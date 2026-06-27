@@ -1,5 +1,10 @@
 {
   "buildCommand": "cd client && npm install && npm run build",
   "outputDirectory": "client/dist",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
 }
