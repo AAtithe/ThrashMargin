@@ -1,7 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useGame } from '../hooks/useGame';
-import { getToken } from '../lib/token';
+import { useGameLocal as useGame } from '../hooks/useGameLocal';
 import {
   BUILDINGS, LV, MAX_LV,
   getSlots, getTroopCap, getGoldProd, getFoodProd, getMatProd, getDefStr, getNeighbours,
@@ -23,7 +22,6 @@ export default function Game() {
   const [attackAmt, setAttackAmt] = useState(1);
 
   useEffect(() => {
-    if (!getToken()) { nav('/login'); return; }
     if (id) loadGame(id);
   }, [id]); // eslint-disable-line
 
