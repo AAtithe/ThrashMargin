@@ -4,6 +4,7 @@ import { useGameLocal as useGame } from '../hooks/useGameLocal';
 import {
   BUILDINGS, LV, MAX_LV,
   getSlots, getTroopCap, getGoldProd, getFoodProd, getMatProd, getDefStr, getNeighbours,
+  prodTotals,
 } from 'shared/engine-reference';
 import { PLAYER, ENEMY, NEUTRAL } from 'shared/types';
 import type { BuildingType, GameState, Territory } from 'shared/types';
@@ -37,6 +38,12 @@ export default function Game() {
     () => sel?.owner === PLAYER ? neighbours.filter(nid => state!.nodes[nid].owner !== PLAYER) : [],
     [sel, neighbours, state],
   );
+
+  const prod = useMemo(() => state ? prodTotals(state.nodes, PLAYER) : { gold: 0, food: 0, mat: 0 }, [state]);
+  const upkeep = useMemo(() => {
+    if (!state) return 0;
+    return state.nodes.filter(n => n.owner === PLAYER).reduce((sum, n) => sum + n.troops, 0) * state.config.upkeep;
+  }, [state]);
 
   const handleNodeClick = (nid: number) => {
     if (!state) return;
@@ -74,9 +81,9 @@ export default function Game() {
         <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
         <span style={s.turnLabel}>Turn {state.turn}</span>
         <div style={s.resRow}>
-          <Res icon="⚙" val={state.resources.gold} unit="g" color="#f59e0b" />
-          <Res icon="🌾" val={state.resources.food} unit="f" color="#34d399" />
-          <Res icon="⛏" val={state.resources.mat}  unit="m" color="#a78bfa" />
+          <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
+          <Res icon="🌾" label="Food" val={state.resources.food} rate={prod.food - upkeep} color="#34d399" />
+          <Res icon="⛏" label="Mat"  val={state.resources.mat}  rate={prod.mat}  color="#a78bfa" />
         </div>
         <button onClick={doEndTurn} disabled={isOver || loading} style={{ ...s.endBtn, ...(isOver ? s.endOver : {}) }}>
           {isOver
@@ -159,6 +166,8 @@ function Node({ n, selId, tgtId, neighbours, attackable, onClick }: {
   const isNbr = neighbours.includes(n.id);
   const r = n.capital ? 22 : 18;
 
+  const hasBlds = n.buildings.length > 0;
+
   return (
     <g onClick={e => { e.stopPropagation(); onClick(n.id); }} style={{ cursor: 'pointer' }}>
       {isSel  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#fff"    strokeWidth={2.5} opacity={0.9} />}
@@ -166,12 +175,23 @@ function Node({ n, selId, tgtId, neighbours, attackable, onClick }: {
       {isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
       {isNbr && !isAtk && !isSel && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.4} />}
 
+      {/* Capital gold glow ring */}
+      {n.capital && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#fbbf24" strokeWidth={2.5} opacity={0.85} />}
+
       <circle cx={n.x} cy={n.y} r={r}
         fill={OWNER_COLOR[n.owner]}
-        stroke={isSel ? '#fff' : OWNER_BORDER[n.owner]}
-        strokeWidth={isSel ? 2.5 : 1.5}
+        stroke={n.capital ? '#fbbf24' : isSel ? '#fff' : OWNER_BORDER[n.owner]}
+        strokeWidth={n.capital ? 2.5 : isSel ? 2.5 : 1.5}
       />
-      {n.capital && <circle cx={n.x} cy={n.y - r + 6} r={3.5} fill="rgba(255,255,255,0.85)" />}
+
+      {/* Capital crown ♛ */}
+      {n.capital && (
+        <text x={n.x} y={n.y - r - 5} textAnchor="middle" dominantBaseline="middle"
+          fill="#fbbf24" fontSize={13} style={{ pointerEvents: 'none' }}>
+          ♛
+        </text>
+      )}
+
       <text x={n.x} y={n.y+1} textAnchor="middle" dominantBaseline="middle"
         fill="#fff" fontSize={n.troops > 9 ? 11 : 13} fontWeight={700} style={{ pointerEvents: 'none' }}>
         {n.troops}
@@ -180,6 +200,16 @@ function Node({ n, selId, tgtId, neighbours, attackable, onClick }: {
         fill="#6b7280" fontSize={9} style={{ pointerEvents: 'none' }}>
         {n.name}
       </text>
+
+      {/* Building indicator dots */}
+      {hasBlds && n.buildings.map((b, i) => {
+        const totalW = n.buildings.length * 7 - 2;
+        const x0 = n.x - totalW / 2 + i * 7;
+        return (
+          <rect key={i} x={x0} y={n.y + r + 16} width={5} height={5} rx={1}
+            fill={BUILDINGS[b]?.col ?? '#555'} opacity={0.9} style={{ pointerEvents: 'none' }} />
+        );
+      })}
     </g>
   );
 }
@@ -325,11 +355,20 @@ function Blank({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Res({ icon, val, unit, color }: { icon: string; val: number; unit: string; color: string }) {
+function Res({ icon, label, val, rate, color }: { icon: string; label: string; val: number; rate: number; color: string }) {
+  const rateStr = rate >= 0 ? `+${rate}` : `${rate}`;
+  const rateColor = rate > 0 ? '#3fb950' : rate < 0 ? '#f85149' : '#7d8590';
   return (
-    <span style={{ color, fontSize: 13, fontWeight: 600 }}>
-      {icon} {val}<span style={{ color: '#7d8590', fontWeight: 400 }}>{unit}</span>
-    </span>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, padding: '5px 10px' }}>
+      <span style={{ fontSize: 15 }}>{icon}</span>
+      <div>
+        <div style={{ color: '#6b7280', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+          <span style={{ color, fontSize: 16, fontWeight: 700, lineHeight: 1 }}>{val}</span>
+          <span style={{ color: rateColor, fontSize: 10, fontWeight: 600 }}>{rateStr}/t</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -370,7 +409,7 @@ const s: Record<string, React.CSSProperties> = {
   bar:      { background: '#161b22', borderBottom: '1px solid #30363d', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 },
   back:     { background: 'none', border: 'none', color: '#7d8590', cursor: 'pointer', fontSize: 13, padding: '4px 8px' },
   turnLabel:{ color: '#e6edf3', fontWeight: 700, fontSize: 15 },
-  resRow:   { display: 'flex', gap: 20, marginLeft: 4 },
+  resRow:   { display: 'flex', gap: 8, marginLeft: 4 },
   endBtn:   { marginLeft: 'auto', background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, padding: '8px 20px', cursor: 'pointer', fontSize: 14 },
   endOver:  { background: '#21262d', cursor: 'default' },
   body:     { display: 'flex', flex: 1, overflow: 'hidden' },

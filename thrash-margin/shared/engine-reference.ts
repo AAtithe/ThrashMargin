@@ -50,13 +50,13 @@ export function getGoldProd(t: Territory): number {
 }
 
 export function getFoodProd(t: Territory): number {
-  let f = 0;
+  let f = t.capital ? 2 : 0;
   t.buildings.forEach(b => { f += BUILDINGS[b]?.prod?.food ?? 0; });
   return f;
 }
 
 export function getMatProd(t: Territory): number {
-  let m = 0;
+  let m = t.capital ? 2 : 0;
   t.buildings.forEach(b => { m += BUILDINGS[b]?.prod?.mat ?? 0; });
   return m;
 }
