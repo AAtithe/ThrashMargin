@@ -1,10 +1,16 @@
-// client/src/hooks/useGame.ts
-// Claude Code: implement API calls, local state management, optimistic updates
-
 import { useState, useCallback } from 'react';
 import type { GameState, GameAction, GameConfig } from 'shared/types';
+import { getToken } from '../lib/token';
 
-const API = '/api';
+const API = import.meta.env.VITE_API_URL ?? '';
+
+function authHeaders(): HeadersInit {
+  const token = getToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
 
 export function useGame() {
   const [state, setState] = useState<GameState | null>(null);
@@ -15,15 +21,16 @@ export function useGame() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/game`, {
+      const res = await fetch(`${API}/api/game`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ config }),
       });
       const data = await res.json();
+      if (!res.ok) { setError(data.message ?? 'Failed to create game'); return null; }
       setState(data.state);
       return data.gameId as string;
-    } catch (e) {
+    } catch {
       setError('Failed to create game');
       return null;
     } finally {
@@ -33,11 +40,13 @@ export function useGame() {
 
   const loadGame = useCallback(async (gameId: string) => {
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API}/game/${gameId}`);
+      const res = await fetch(`${API}/api/game/${gameId}`, { headers: authHeaders() });
       const data = await res.json();
+      if (!res.ok) { setError(data.message ?? 'Failed to load game'); return; }
       setState(data.state);
-    } catch (e) {
+    } catch {
       setError('Failed to load game');
     } finally {
       setLoading(false);
@@ -47,16 +56,17 @@ export function useGame() {
   const sendAction = useCallback(async (gameId: string, action: GameAction) => {
     if (!state) return;
     setLoading(true);
+    setError(null);
     try {
-      const res = await fetch(`${API}/game/${gameId}/action`, {
+      const res = await fetch(`${API}/api/game/${gameId}/action`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ action }),
       });
       const data = await res.json();
       if (data.success) setState(data.state);
       else setError(data.message ?? 'Action failed');
-    } catch (e) {
+    } catch {
       setError('Network error');
     } finally {
       setLoading(false);

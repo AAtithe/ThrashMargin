@@ -3,13 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "cd server && npm run dev",
+    "dev": "vercel dev",
     "dev:client": "cd client && npm run dev",
-    "build": "cd server && npm run build && cd ../client && npm run build",
-    "install:all": "npm install && cd server && npm install && cd ../client && npm install"
+    "build": "cd client && npm install && npm run build",
+    "install:all": "npm install && cd client && npm install"
+  },
+  "dependencies": {
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "@types/bcrypt": "^5.0.2",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.0",
+    "@types/pg": "^8.10.9",
+    "@types/uuid": "^9.0.7",
+    "@vercel/node": "^3.0.0",
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.2",
+    "vercel": "^33.0.0"
   }
 }
