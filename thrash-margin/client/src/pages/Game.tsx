@@ -6,7 +6,7 @@ import {
   FACTION_COLORS, FACTION_NAMES, FACTION_BORDER,
   TECH_TREE, MAP_DEFS,
   getSlots, getTroopCap, getGoldProd, getFoodProd, getMatProd, getDefStr, getNeighbours,
-  prodTotals,
+  prodTotals, resolveCombat,
 } from 'shared/engine-reference';
 import { PLAYER, NEUTRAL, isEnemy } from 'shared/types';
 import type { BuildingType, GameState, Territory, TurnEvent } from 'shared/types';
@@ -21,6 +21,7 @@ export default function Game() {
   const [recruitAmt, setRecruitAmt] = useState(1);
   const [attackAmt, setAttackAmt] = useState(1);
   const [moveAmt,   setMoveAmt]   = useState(1);
+  const [tooltip, setTooltip] = useState<{ id: number; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -110,6 +111,14 @@ export default function Game() {
   if (!state)            return <Blank>Campaign not found. <button onClick={() => nav('/')} style={{ color: '#1f6feb', background: 'none', border: 'none', cursor: 'pointer' }}>← Back</button></Blank>;
 
   const cfg = state.config;
+
+  // Victory / defeat summary stats
+  const playerTerrs  = state.nodes.filter(n => n.owner === PLAYER).length;
+  const playerTroops = state.nodes.filter(n => n.owner === PLAYER).reduce((s, n) => s + n.troops, 0);
+  const eliminatedFactions: number[] = [];
+  for (let f = 2; f <= 1 + (cfg.enemyFactions ?? 1); f++) {
+    if (!state.nodes.some(n => n.owner === f)) eliminatedFactions.push(f);
+  }
   const isOver   = state.status !== 'active';
   const maxAtk   = selId !== null ? Math.max(1, state.nodes[selId].troops - 1) : 1;
   const maxRec   = sel ? Math.max(0, getTroopCap(sel) - sel.troops) : 0;
@@ -126,8 +135,32 @@ export default function Game() {
     : '💀 Defeated'
     : loading ? '…' : 'End Turn →';
 
+  const tooltipNode = tooltip !== null ? state.nodes[tooltip.id] : null;
+
   return (
     <div style={s.page}>
+      {/* ── Victory / defeat overlay ── */}
+      {isOver && (
+        <VictoryScreen
+          state={state}
+          playerTerrs={playerTerrs}
+          playerTroops={playerTroops}
+          eliminatedFactions={eliminatedFactions}
+          onLobby={() => nav('/')}
+        />
+      )}
+
+      {/* ── Territory hover tooltip ── */}
+      {tooltipNode && (
+        <TooltipCard
+          node={tooltipNode}
+          visible={visibleIds.has(tooltipNode.id)}
+          x={tooltip!.x}
+          y={tooltip!.y}
+          research={research}
+        />
+      )}
+
       {/* ── Top bar ── */}
       <div style={s.bar}>
         <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
@@ -148,7 +181,7 @@ export default function Game() {
 
       <div style={s.body}>
         {/* ── Map ── */}
-        <div style={s.mapWrap}>
+        <div style={s.mapWrap} onMouseLeave={() => setTooltip(null)}>
           <svg viewBox={viewBox} style={s.svg}
             onClick={() => { setSelId(null); setTgtId(null); }}>
             {/* edges */}
@@ -162,6 +195,7 @@ export default function Game() {
               neighbours={neighbours} attackable={attackable} movable={movable} annexable={annexable}
               isVisible={visibleIds.has(n.id)}
               onClick={handleNodeClick}
+              onHover={(nid, x, y) => setTooltip({ id: nid, x, y })}
             />)}
           </svg>
         </div>
@@ -228,11 +262,12 @@ export default function Game() {
 }
 
 /* ─── SVG Node ─── */
-function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, annexable, isVisible, onClick }: {
+function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, annexable, isVisible, onClick, onHover }: {
   n: Territory; selId: number | null; tgtId: number | null; tgtIsMove: boolean;
   neighbours: number[]; attackable: number[]; movable: number[]; annexable: number[];
   isVisible: boolean;
   onClick: (id: number) => void;
+  onHover: (id: number, x: number, y: number) => void;
 }) {
   const isSel  = selId === n.id;
   const isTgt  = tgtId === n.id;
@@ -248,7 +283,7 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, ann
 
   if (!isVisible) {
     return (
-      <g onClick={e => { e.stopPropagation(); onClick(n.id); }} style={{ cursor: 'pointer' }}>
+      <g onClick={e => { e.stopPropagation(); onClick(n.id); }} onMouseMove={e => { e.stopPropagation(); onHover(n.id, e.clientX, e.clientY); }} style={{ cursor: 'pointer' }}>
         {isTgt && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
         <circle cx={n.x} cy={n.y} r={r} fill={fillColor} stroke="#30363d" strokeWidth={1.5} opacity={0.35} />
         <text x={n.x} y={n.y+1} textAnchor="middle" dominantBaseline="middle"
@@ -260,7 +295,7 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, ann
   }
 
   return (
-    <g onClick={e => { e.stopPropagation(); onClick(n.id); }} style={{ cursor: 'pointer' }}>
+    <g onClick={e => { e.stopPropagation(); onClick(n.id); }} onMouseMove={e => { e.stopPropagation(); onHover(n.id, e.clientX, e.clientY); }} style={{ cursor: 'pointer' }}>
       {isSel  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#fff"    strokeWidth={2.5} opacity={0.9} />}
       {isTgt && !tgtIsMove && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
       {isTgt && tgtIsMove  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#2dd4bf" strokeWidth={2.5} opacity={0.9} />}
@@ -386,11 +421,12 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
           <p style={s.label}>Attack</p>
           {tgt && !tgtIsMove ? (
             <>
-              <p style={{ color: '#e6edf3', fontSize: 13, margin: '0 0 10px' }}>
+              <p style={{ color: '#e6edf3', fontSize: 13, margin: '0 0 8px' }}>
                 → <strong>{tgt.name}</strong> &nbsp;
                 <span style={{ color: '#7d8590' }}>{tgt.troops} troops · def {getDefStr(tgt, research)}</span>
               </p>
               <Slider label="Send" val={attackAmt} min={1} max={maxAtk} onChange={setAttackAmt} />
+              <CombatPreview sending={attackAmt} tgt={tgt} playerBonus={state.config.playerBonus} research={research} />
               <Btn onClick={onAttack} disabled={disabled || noAtkAp} dim={noAtkAp}>⚔ Attack with {attackAmt} <ApCost n={attackCost} ap={ap} /></Btn>
               {/* Annex option for neutral target when diplomacy enabled */}
               {tgt.owner === NEUTRAL && state.config.enableDiplomacy && (
@@ -692,6 +728,156 @@ function Btn({ children, onClick, disabled, dim }: {
       style={{ ...s.btn, opacity: dim ? 0.45 : 1 }}>
       {children}
     </button>
+  );
+}
+
+/* ─── Combat preview ─── */
+function CombatPreview({ sending, tgt, playerBonus, research }: {
+  sending: number; tgt: Territory; playerBonus: number; research: string[];
+}) {
+  const result = resolveCombat(sending, tgt, playerBonus, research);
+  const ratio = (sending * (1 + playerBonus) * (research.includes('siege_craft') ? 1.25 : 1)) / Math.max(1, sending);
+  const strengthColor = result.won
+    ? (result.attackerLoss / sending < 0.3 ? '#3fb950' : '#f59e0b')
+    : '#f85149';
+  const outcomeLabel = result.won ? '✓ CAPTURE' : '✗ REPELLED';
+
+  return (
+    <div style={{ background: '#0a0f16', border: `1px solid ${strengthColor}33`, borderRadius: 5, padding: '8px 10px', marginBottom: 8, fontSize: 11 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ color: strengthColor, fontWeight: 700, fontSize: 12 }}>{outcomeLabel}</span>
+        <span style={{ color: '#7d8590' }}>ratio {((sending * (1 + playerBonus) * (research.includes('siege_craft') ? 1.25 : 1)) / Math.max(getDefStr(tgt, research), 1)).toFixed(1)}×</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+        <span style={{ color: '#7d8590' }}>Your losses</span>
+        <span style={{ color: '#e6edf3', fontWeight: 600 }}>~{result.attackerLoss} troops</span>
+        {result.won ? (
+          <>
+            <span style={{ color: '#7d8590' }}>Garrison after</span>
+            <span style={{ color: '#3fb950', fontWeight: 600 }}>{result.surviving} troops</span>
+          </>
+        ) : (
+          <>
+            <span style={{ color: '#7d8590' }}>Defender losses</span>
+            <span style={{ color: '#f59e0b', fontWeight: 600 }}>{result.defenderLoss} troops</span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Territory hover tooltip ─── */
+function TooltipCard({ node, visible, x, y, research }: {
+  node: Territory; visible: boolean; x: number; y: number; research: string[];
+}) {
+  const ownerLabel = node.owner === PLAYER ? 'Yours'
+    : isEnemy(node.owner) ? (FACTION_NAMES[node.owner] ?? 'Enemy')
+    : 'Neutral';
+  const color = FACTION_COLORS[node.owner] ?? '#52525b';
+
+  return (
+    <div style={{
+      position: 'fixed', left: x + 14, top: y - 10,
+      background: '#161b22', border: '1px solid #30363d', borderRadius: 6,
+      padding: '8px 12px', pointerEvents: 'none', zIndex: 1000,
+      minWidth: 140, boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+        <div style={{ width: 8, height: 8, borderRadius: '50%', background: color, flexShrink: 0 }} />
+        <span style={{ color: '#e6edf3', fontWeight: 700, fontSize: 12 }}>
+          {node.name}{node.stronghold ? ' ★' : ''}{node.capital ? ' ♛' : ''}
+        </span>
+      </div>
+      <div style={{ color: '#7d8590', fontSize: 11 }}>{ownerLabel} · Lv{node.lv}</div>
+      {visible ? (
+        <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11 }}>
+            <span style={{ color: '#9198a1' }}>Troops</span>
+            <span style={{ color: '#e6edf3', fontWeight: 600 }}>{node.troops}/{getTroopCap(node)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11 }}>
+            <span style={{ color: '#9198a1' }}>Defence</span>
+            <span style={{ color: '#e6edf3', fontWeight: 600 }}>{getDefStr(node, research)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11 }}>
+            <span style={{ color: '#9198a1' }}>Gold/t</span>
+            <span style={{ color: '#f59e0b', fontWeight: 600 }}>+{getGoldProd(node, research)}</span>
+          </div>
+          {node.buildings.length > 0 && (
+            <div style={{ marginTop: 3, display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+              {node.buildings.map((b, i) => (
+                <span key={i} style={{ background: '#21262d', borderRadius: 3, padding: '1px 5px', fontSize: 10, color: '#9198a1' }}>
+                  {BUILDINGS[b]?.name ?? b}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{ color: '#4b5563', fontSize: 11, marginTop: 4, fontStyle: 'italic' }}>Hidden by fog of war</div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Victory / defeat summary ─── */
+function VictoryScreen({ state, playerTerrs, playerTroops, eliminatedFactions, onLobby }: {
+  state: GameState;
+  playerTerrs: number;
+  playerTroops: number;
+  eliminatedFactions: number[];
+  onLobby: () => void;
+}) {
+  const won = state.status === 'victory';
+  const cfg = state.config;
+  const totalFactions = cfg.enemyFactions ?? 1;
+
+  const victoryLabel = !won ? 'DEFEAT'
+    : state.victoryType === 'economic' ? 'ECONOMIC VICTORY'
+    : state.victoryType === 'research' ? 'RESEARCH VICTORY'
+    : 'CONQUEST';
+
+  const victoryDesc = !won
+    ? 'Your realm has fallen. The enemy stands triumphant.'
+    : state.victoryType === 'economic'
+    ? `Your treasury overflowed with ${state.resources.gold} gold — wealth beyond compare.`
+    : state.victoryType === 'research'
+    ? `You mastered the ${state.researchBranch ?? ''} branch of knowledge and changed the world.`
+    : 'All enemy factions have been crushed. The continent is yours.';
+
+  const accentColor = won ? '#3fb950' : '#f85149';
+
+  const stats: { label: string; value: string }[] = [
+    { label: 'Turns played',        value: String(state.turn) },
+    { label: 'Territories held',    value: String(playerTerrs) },
+    { label: 'Troops deployed',     value: String(playerTroops) },
+    { label: 'Techs researched',    value: `${state.research.length}/12` },
+    { label: 'Factions eliminated', value: `${eliminatedFactions.length}/${totalFactions}` },
+    { label: 'Gold in treasury',    value: `${state.resources.gold}` },
+  ];
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.82)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+      <div style={{ background: '#161b22', border: `1px solid ${accentColor}55`, borderRadius: 12, padding: '36px 44px', maxWidth: 440, width: '90%', textAlign: 'center', boxShadow: `0 0 60px ${accentColor}22` }}>
+        <div style={{ fontSize: 44, marginBottom: 8 }}>{won ? '🏆' : '💀'}</div>
+        <h1 style={{ color: accentColor, fontSize: 26, fontWeight: 800, margin: '0 0 8px', letterSpacing: 1 }}>{victoryLabel}</h1>
+        <p style={{ color: '#7d8590', fontSize: 13, margin: '0 0 28px', lineHeight: 1.5 }}>{victoryDesc}</p>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 24px', marginBottom: 28, textAlign: 'left' }}>
+          {stats.map(({ label, value }) => (
+            <div key={label}>
+              <div style={{ color: '#4b5563', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+              <div style={{ color: '#e6edf3', fontSize: 16, fontWeight: 700 }}>{value}</div>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={onLobby} style={{ background: accentColor, border: 'none', borderRadius: 7, color: '#0d1117', fontWeight: 700, fontSize: 15, padding: '12px 32px', cursor: 'pointer', width: '100%' }}>
+          ← Return to Lobby
+        </button>
+      </div>
+    </div>
   );
 }
 
