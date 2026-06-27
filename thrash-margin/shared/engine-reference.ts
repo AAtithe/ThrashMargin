@@ -398,6 +398,25 @@ function runEnemyTurn(state: GameState): GameState {
   return next;
 }
 
+function handleMove(state: GameState, action: { fromId: number; toId: number; troops: number }): GameState {
+  const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
+  const src = nodes[action.fromId];
+  const dst = nodes[action.toId];
+
+  if (!src || !dst) return state;
+  if (src.owner !== PLAYER || dst.owner !== PLAYER) return state;
+  if (!getNeighbours(state.edges, action.fromId).includes(action.toId)) return state;
+  if (action.troops < 1 || action.troops >= src.troops) return state;
+
+  const space = getTroopCap(dst) - dst.troops;
+  const actual = Math.min(action.troops, space);
+  if (actual < 1) return addLog(state, `${dst.name} is at troop capacity.`);
+
+  src.troops -= actual;
+  dst.troops += actual;
+  return addLog({ ...state, nodes }, `Moved ${actual} troops from ${src.name} to ${dst.name}.`);
+}
+
 // ---------------------------------------------------------------------------
 // Main process function — this is the single entry point for all actions
 // ---------------------------------------------------------------------------
@@ -410,6 +429,7 @@ export function processAction(state: GameState, action: GameAction): GameState {
     case 'RECRUIT':   return handleRecruit(state, action);
     case 'BUILD':     return handleBuild(state, action);
     case 'UPGRADE':   return handleUpgrade(state, action);
+    case 'MOVE':      return handleMove(state, action);
     case 'END_TURN':  return handleEndTurn(state);
     default:          return state;
   }

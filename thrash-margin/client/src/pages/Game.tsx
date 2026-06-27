@@ -21,6 +21,7 @@ export default function Game() {
   const [tgtId, setTgtId] = useState<number | null>(null);
   const [recruitAmt, setRecruitAmt] = useState(1);
   const [attackAmt, setAttackAmt] = useState(1);
+  const [moveAmt,   setMoveAmt]   = useState(1);
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -39,6 +40,13 @@ export default function Game() {
     [sel, neighbours, state],
   );
 
+  const movable = useMemo(
+    () => sel?.owner === PLAYER ? neighbours.filter(nid => state!.nodes[nid].owner === PLAYER && nid !== selId) : [],
+    [sel, neighbours, state, selId],
+  );
+
+  const tgtIsMove = tgtId !== null && state !== null && state.nodes[tgtId]?.owner === PLAYER;
+
   const prod = useMemo(() => state ? prodTotals(state.nodes, PLAYER) : { gold: 0, food: 0, mat: 0 }, [state]);
   const upkeep = useMemo(() => {
     if (!state) return 0;
@@ -53,7 +61,12 @@ export default function Game() {
       setAttackAmt(Math.max(1, Math.floor((state.nodes[selId].troops - 1) / 2)));
       return;
     }
-    setSelId(nid); setTgtId(null); setRecruitAmt(1); setAttackAmt(1);
+    if (selId !== null && sel?.owner === PLAYER && movable.includes(nid)) {
+      setTgtId(nid);
+      setMoveAmt(Math.max(1, Math.floor((state.nodes[selId].troops - 1) / 2)));
+      return;
+    }
+    setSelId(nid); setTgtId(null); setRecruitAmt(1); setAttackAmt(1); setMoveAmt(1);
   };
 
   const act = async (action: Parameters<typeof sendAction>[1]) => {
@@ -104,8 +117,8 @@ export default function Game() {
             })}
             {/* nodes */}
             {state.nodes.map(n => <Node
-              key={n.id} n={n} selId={selId} tgtId={tgtId}
-              neighbours={neighbours} attackable={attackable}
+              key={n.id} n={n} selId={selId} tgtId={tgtId} tgtIsMove={tgtIsMove}
+              neighbours={neighbours} attackable={attackable} movable={movable}
               onClick={handleNodeClick}
             />)}
           </svg>
@@ -115,15 +128,17 @@ export default function Game() {
         <div style={s.sidebar}>
           {sel ? (
             <Panel
-              sel={sel} tgt={tgt} state={state}
+              sel={sel} tgt={tgt} tgtIsMove={tgtIsMove} state={state}
               attackAmt={attackAmt} setAttackAmt={setAttackAmt} maxAtk={maxAtk}
               clampRec={clampRec} recruitAmt={recruitAmt} setRecruitAmt={setRecruitAmt} maxRec={maxRec}
-              attackable={attackable}
+              moveAmt={moveAmt} setMoveAmt={setMoveAmt}
+              attackable={attackable} movable={movable}
               isOver={isOver} loading={loading}
               onAttack={() => act({ type: 'ATTACK', fromId: selId!, toId: tgtId!, troops: attackAmt }).then(() => setTgtId(null))}
               onRecruit={() => act({ type: 'RECRUIT', nodeId: selId!, amount: clampRec })}
               onBuild={(b: BuildingType) => act({ type: 'BUILD', nodeId: selId!, building: b })}
               onUpgrade={() => act({ type: 'UPGRADE', nodeId: selId! })}
+              onMove={() => act({ type: 'MOVE', fromId: selId!, toId: tgtId!, troops: moveAmt }).then(() => setTgtId(null))}
             />
           ) : (
             <div style={{ padding: 8 }}>
@@ -155,15 +170,16 @@ export default function Game() {
 }
 
 /* ─── SVG Node ─── */
-function Node({ n, selId, tgtId, neighbours, attackable, onClick }: {
-  n: Territory; selId: number | null; tgtId: number | null;
-  neighbours: number[]; attackable: number[];
+function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, onClick }: {
+  n: Territory; selId: number | null; tgtId: number | null; tgtIsMove: boolean;
+  neighbours: number[]; attackable: number[]; movable: number[];
   onClick: (id: number) => void;
 }) {
-  const isSel = selId === n.id;
-  const isTgt = tgtId === n.id;
-  const isAtk = attackable.includes(n.id);
-  const isNbr = neighbours.includes(n.id);
+  const isSel  = selId === n.id;
+  const isTgt  = tgtId === n.id;
+  const isAtk  = attackable.includes(n.id);
+  const isMov  = movable.includes(n.id);
+  const isNbr  = neighbours.includes(n.id);
   const r = n.capital ? 22 : 18;
 
   const hasBlds = n.buildings.length > 0;
@@ -171,9 +187,11 @@ function Node({ n, selId, tgtId, neighbours, attackable, onClick }: {
   return (
     <g onClick={e => { e.stopPropagation(); onClick(n.id); }} style={{ cursor: 'pointer' }}>
       {isSel  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#fff"    strokeWidth={2.5} opacity={0.9} />}
-      {isTgt  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
+      {isTgt && !tgtIsMove && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
+      {isTgt && tgtIsMove  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#2dd4bf" strokeWidth={2.5} opacity={0.9} />}
       {isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
-      {isNbr && !isAtk && !isSel && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.4} />}
+      {isMov && !isTgt && !isSel && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#2dd4bf" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
+      {isNbr && !isAtk && !isMov && !isSel && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.4} />}
 
       {/* Capital gold glow ring */}
       {n.capital && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#fbbf24" strokeWidth={2.5} opacity={0.85} />}
@@ -215,14 +233,15 @@ function Node({ n, selId, tgtId, neighbours, attackable, onClick }: {
 }
 
 /* ─── Sidebar panel ─── */
-function Panel({ sel, tgt, state, attackAmt, setAttackAmt, maxAtk, clampRec, recruitAmt, setRecruitAmt, maxRec,
-  attackable, isOver, loading, onAttack, onRecruit, onBuild, onUpgrade }: {
-  sel: Territory; tgt: Territory | null; state: GameState;
+function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, clampRec, recruitAmt, setRecruitAmt, maxRec,
+  moveAmt, setMoveAmt, attackable, movable, isOver, loading, onAttack, onRecruit, onBuild, onUpgrade, onMove }: {
+  sel: Territory; tgt: Territory | null; tgtIsMove: boolean; state: GameState;
   attackAmt: number; setAttackAmt: (n: number) => void; maxAtk: number;
   clampRec: number; recruitAmt: number; setRecruitAmt: (n: number) => void; maxRec: number;
-  attackable: number[]; isOver: boolean; loading: boolean;
+  moveAmt: number; setMoveAmt: (n: number) => void;
+  attackable: number[]; movable: number[]; isOver: boolean; loading: boolean;
   onAttack: () => void; onRecruit: () => void;
-  onBuild: (b: BuildingType) => void; onUpgrade: () => void;
+  onBuild: (b: BuildingType) => void; onUpgrade: () => void; onMove: () => void;
 }) {
   const isPlayer = sel.owner === PLAYER;
   const slots    = getSlots(sel);
@@ -292,6 +311,25 @@ function Panel({ sel, tgt, state, attackAmt, setAttackAmt, maxAtk, clampRec, rec
           <Btn onClick={onRecruit} disabled={disabled || state.resources.gold < state.config.recruitCost}>
             + Recruit {clampRec}
           </Btn>
+        </div>
+      )}
+
+      {/* Move troops */}
+      {isPlayer && movable.length > 0 && (
+        <div style={s.card}>
+          <p style={s.label}>Move Troops</p>
+          {tgt && tgtIsMove ? (
+            <>
+              <p style={{ color: '#e6edf3', fontSize: 13, margin: '0 0 10px' }}>
+                → <strong>{tgt.name}</strong> &nbsp;
+                <span style={{ color: '#7d8590' }}>{tgt.troops}/{getTroopCap(tgt)} troops</span>
+              </p>
+              <Slider label="Send" val={moveAmt} min={1} max={Math.max(1, sel.troops - 1)} onChange={setMoveAmt} />
+              <Btn onClick={onMove} disabled={disabled}>↗ Move {moveAmt} troops</Btn>
+            </>
+          ) : (
+            <p style={s.muted}>Click a teal-ringed friendly territory to move troops there.</p>
+          )}
         </div>
       )}
 

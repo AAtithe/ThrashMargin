@@ -14,6 +14,7 @@ export type ActionType =
   | 'RECRUIT'
   | 'BUILD'
   | 'UPGRADE'
+  | 'MOVE'
   | 'END_TURN';
 
 export interface AttackAction {
@@ -40,6 +41,13 @@ export interface UpgradeAction {
   nodeId: number;
 }
 
+export interface MoveAction {
+  type: 'MOVE';
+  fromId: number;
+  toId: number;
+  troops: number;
+}
+
 export interface EndTurnAction {
   type: 'END_TURN';
 }
@@ -49,6 +57,7 @@ export type GameAction =
   | RecruitAction
   | BuildAction
   | UpgradeAction
+  | MoveAction
   | EndTurnAction;
 
 export interface Territory {
