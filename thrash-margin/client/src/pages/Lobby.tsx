@@ -4,17 +4,17 @@ import { useGameLocal } from '../hooks/useGameLocal';
 import type { GameConfig, Difficulty } from 'shared/types';
 
 const DIFF_PRESETS: Record<Difficulty, Partial<GameConfig>> = {
-  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false },
-  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false },
-  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true  },
-  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true  },
+  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 5, fogOfWar: false, enableEvents: true },
+  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false, apPerTurn: 4, fogOfWar: false, enableEvents: true },
+  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true,  apPerTurn: 4, fogOfWar: true,  enableEvents: true },
+  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true,  apPerTurn: 3, fogOfWar: true,  enableEvents: true },
 };
 
 const DIFF_DESC: Record<Difficulty, string> = {
-  easy:   '1 enemy territory, half-strength troops, no pre-built buildings',
-  normal: '2 enemy territories, reduced troops — balanced for most players',
-  hard:   'Full 4 territories, full troops, pre-built — the original challenge',
-  brutal: 'Full territories with 1.5× troops and buildings — relentless',
+  easy:   '1 enemy, half troops, 5 AP/turn, no fog — learning the ropes',
+  normal: '2 enemies, reduced troops, 4 AP/turn — balanced for most players',
+  hard:   '4 enemies, full troops + buildings, fog of war, 4 AP/turn',
+  brutal: '4 enemies, 1.5× troops, fog, only 3 AP/turn — relentless',
 };
 
 export default function Lobby() {
@@ -31,6 +31,9 @@ export default function Lobby() {
   const [enemyTerritories,    setEnemyTerritories]    = useState(DIFF_PRESETS.normal.enemyTerritories    ?? 2);
   const [enemyTroopScale,     setEnemyTroopScale]     = useState(DIFF_PRESETS.normal.enemyTroopScale     ?? 0.75);
   const [enemyStartBuildings, setEnemyStartBuildings] = useState(DIFF_PRESETS.normal.enemyStartBuildings ?? false);
+  const [apPerTurn,    setApPerTurn]    = useState(DIFF_PRESETS.normal.apPerTurn    ?? 4);
+  const [fogOfWar,     setFogOfWar]     = useState(DIFF_PRESETS.normal.fogOfWar     ?? false);
+  const [enableEvents, setEnableEvents] = useState(DIFF_PRESETS.normal.enableEvents ?? true);
 
   const applyDifficulty = (d: Difficulty) => {
     setDifficulty(d);
@@ -38,6 +41,9 @@ export default function Lobby() {
     if (p.enemyTerritories    !== undefined) setEnemyTerritories(p.enemyTerritories);
     if (p.enemyTroopScale     !== undefined) setEnemyTroopScale(p.enemyTroopScale);
     if (p.enemyStartBuildings !== undefined) setEnemyStartBuildings(p.enemyStartBuildings);
+    if (p.apPerTurn           !== undefined) setApPerTurn(p.apPerTurn);
+    if (p.fogOfWar            !== undefined) setFogOfWar(p.fogOfWar);
+    if (p.enableEvents        !== undefined) setEnableEvents(p.enableEvents);
   };
 
   const handleNew = () => {
@@ -51,6 +57,9 @@ export default function Lobby() {
       enemyTerritories,
       enemyTroopScale,
       enemyStartBuildings,
+      apPerTurn,
+      fogOfWar,
+      enableEvents,
     };
     const id = createGame(config);
     nav(`/game/${id}`);
@@ -128,6 +137,53 @@ export default function Lobby() {
                 <div style={s.settingsGrid}>
                   <SettingNum label="Recruit cost (g)" value={recruitCost} min={1} max={12} onChange={setRecruitCost} />
                   <SettingNum label="Troop upkeep (g)" value={upkeep}      min={0} max={4}  onChange={setUpkeep}      />
+                </div>
+              </div>
+
+              {/* Mechanics */}
+              <div style={s.settingsSection}>
+                <p style={s.settingsLabel}>Mechanics</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+                  <div>
+                    <p style={s.subLabel}>Action points per turn (limits actions — lower = harder)</p>
+                    <div style={s.diffRow}>
+                      {[2, 3, 4, 5, 6].map(n => (
+                        <button key={n}
+                          style={{ ...s.diffBtn, ...(apPerTurn === n ? s.diffActive : {}) }}
+                          onClick={() => setApPerTurn(n)}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                    <p style={s.diffDesc}>Attack costs 2 AP · Recruit / Build / Move / Upgrade cost 1 AP each</p>
+                  </div>
+
+                  <div>
+                    <p style={s.subLabel}>Fog of war (hide troop counts beyond your borders)</p>
+                    <div style={{ ...s.diffRow, width: 'fit-content' }}>
+                      {([['On', true], ['Off', false]] as [string, boolean][]).map(([label, val]) => (
+                        <button key={label}
+                          style={{ ...s.diffBtn, minWidth: 60, ...(fogOfWar === val ? s.diffActive : {}) }}
+                          onClick={() => setFogOfWar(val)}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p style={s.subLabel}>Random turn events (supply windfalls, plagues, unrest)</p>
+                    <div style={{ ...s.diffRow, width: 'fit-content' }}>
+                      {([['On', true], ['Off', false]] as [string, boolean][]).map(([label, val]) => (
+                        <button key={label}
+                          style={{ ...s.diffBtn, minWidth: 60, ...(enableEvents === val ? s.diffActive : {}) }}
+                          onClick={() => setEnableEvents(val)}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 

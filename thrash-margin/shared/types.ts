@@ -91,9 +91,19 @@ export interface GameConfig {
   upkeep: number;
   playerBonus: number;
   neutralStr: number;
-  enemyTerritories: number;  // 1-4: how many of the 4 enemy slots start as enemy
-  enemyTroopScale: number;   // multiplier on enemy starting troops (0.25–2.0)
-  enemyStartBuildings: boolean; // whether enemy starts with pre-built buildings
+  enemyTerritories: number;
+  enemyTroopScale: number;
+  enemyStartBuildings: boolean;
+  apPerTurn: number;         // action points available each player turn
+  fogOfWar: boolean;         // hide troop counts/buildings for non-adjacent territories
+  enableEvents: boolean;     // trigger a random event each turn
+}
+
+export interface TurnEvent {
+  id: string;
+  title: string;
+  message: string;
+  type: 'positive' | 'negative' | 'neutral';
 }
 
 export interface LogEntry {
@@ -115,6 +125,8 @@ export interface GameState {
   log: LogEntry[];
   sel: number | null;
   tgt: number | null;
+  actionsLeft: number;
+  lastEvent: TurnEvent | null;
 }
 
 export interface ActionResult {

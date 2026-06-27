@@ -5,9 +5,11 @@
 
 import {
   GameState, GameAction, GameConfig, Territory, Resources,
-  Owner, BuildingType, LogEntry, GameStatus,
+  Owner, BuildingType, LogEntry, GameStatus, TurnEvent,
   PLAYER, ENEMY, NEUTRAL,
 } from './types';
+
+const AP_COST = { ATTACK: 2, RECRUIT: 1, BUILD: 1, UPGRADE: 1, MOVE: 1 } as const;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -208,6 +210,8 @@ export function createInitialState(id: string, config: GameConfig): GameState {
     log: [{ turn: 1, message: 'Campaign begins.', timestamp: Date.now() }],
     sel: null,
     tgt: null,
+    actionsLeft: cfg.apPerTurn,
+    lastEvent: null,
   };
 }
 
@@ -227,6 +231,9 @@ export const DEFAULT_CONFIG: GameConfig = {
   enemyTerritories: 4,
   enemyTroopScale: 1.0,
   enemyStartBuildings: true,
+  apPerTurn: 4,
+  fogOfWar: false,
+  enableEvents: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -248,7 +255,13 @@ function checkWin(state: GameState): GameState {
   return state;
 }
 
+function apLeft(state: GameState): number {
+  return state.actionsLeft ?? state.config.apPerTurn ?? 4;
+}
+
 function handleAttack(state: GameState, action: { fromId: number; toId: number; troops: number }): GameState {
+  if (apLeft(state) < AP_COST.ATTACK) return addLog(state, `Not enough action points to attack (costs ${AP_COST.ATTACK} AP).`);
+
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const att = nodes[action.fromId];
   const def = nodes[action.toId];
@@ -272,12 +285,14 @@ function handleAttack(state: GameState, action: { fromId: number; toId: number; 
     message = `Repelled at ${def.name}. Lost ${action.troops}. Defender lost ${result.defenderLoss}.`;
   }
 
-  let next = { ...state, nodes };
+  let next = { ...state, nodes, actionsLeft: apLeft(state) - AP_COST.ATTACK };
   next = addLog(next, message);
   return checkWin(next);
 }
 
 function handleRecruit(state: GameState, action: { nodeId: number; amount: number }): GameState {
+  if (apLeft(state) < AP_COST.RECRUIT) return addLog(state, `Not enough action points to recruit (costs ${AP_COST.RECRUIT} AP).`);
+
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const node = nodes[action.nodeId];
   if (!node || node.owner !== PLAYER) return state;
@@ -292,10 +307,13 @@ function handleRecruit(state: GameState, action: { nodeId: number; amount: numbe
   node.troops += actual;
   const troops = totalTroops(nodes, PLAYER);
   const resources = { ...state.resources, gold: state.resources.gold - cost };
-  return addLog({ ...state, nodes, resources }, `Recruited ${actual} at ${node.name} for ${cost}g. Upkeep now ${troops}f/turn.`);
+  return addLog({ ...state, nodes, resources, actionsLeft: apLeft(state) - AP_COST.RECRUIT },
+    `Recruited ${actual} at ${node.name} for ${cost}g. Upkeep now ${troops}f/turn.`);
 }
 
 function handleBuild(state: GameState, action: { nodeId: number; building: BuildingType }): GameState {
+  if (apLeft(state) < AP_COST.BUILD) return addLog(state, `Not enough action points to build (costs ${AP_COST.BUILD} AP).`);
+
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const node = nodes[action.nodeId];
   if (!node || node.owner !== PLAYER) return state;
@@ -313,10 +331,13 @@ function handleBuild(state: GameState, action: { nodeId: number; building: Build
     gold: state.resources.gold - b.cost.gold,
     mat: state.resources.mat - b.cost.mat,
   };
-  return addLog({ ...state, nodes, resources }, `Built ${b.name} at ${node.name}. ${b.desc}.`);
+  return addLog({ ...state, nodes, resources, actionsLeft: apLeft(state) - AP_COST.BUILD },
+    `Built ${b.name} at ${node.name}. ${b.desc}.`);
 }
 
 function handleUpgrade(state: GameState, action: { nodeId: number }): GameState {
+  if (apLeft(state) < AP_COST.UPGRADE) return addLog(state, `Not enough action points to upgrade (costs ${AP_COST.UPGRADE} AP).`);
+
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const node = nodes[action.nodeId];
   if (!node || node.owner !== PLAYER) return state;
@@ -330,14 +351,15 @@ function handleUpgrade(state: GameState, action: { nodeId: number }): GameState 
 
   node.lv++;
   const resources = { ...state.resources, mat: state.resources.mat - mc, gold: state.resources.gold - gc };
-  return addLog({ ...state, nodes, resources },
+  return addLog({ ...state, nodes, resources, actionsLeft: apLeft(state) - AP_COST.UPGRADE },
     `${node.name} upgraded to Lv${node.lv}. ${getSlots(node)} slots, cap ${getTroopCap(node)}, ${getGoldProd(node)}g/turn.`);
 }
 
 function handleEndTurn(state: GameState): GameState {
+  const cfg = state.config;
   const p = prodTotals(state.nodes, PLAYER);
   const troops = totalTroops(state.nodes, PLAYER);
-  const upkeep = troops * state.config.upkeep;
+  const upkeep = troops * cfg.upkeep;
   const foodNet = p.food - upkeep;
 
   let nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
@@ -366,8 +388,94 @@ function handleEndTurn(state: GameState): GameState {
   // Enemy turn
   next = runEnemyTurn(next);
 
-  next = { ...next, turn: state.turn + 1, sel: null, tgt: null };
-  return checkWin(next);
+  // Start next player turn
+  next = { ...next, turn: state.turn + 1, sel: null, tgt: null, actionsLeft: cfg.apPerTurn ?? 4, lastEvent: null };
+  next = checkWin(next);
+
+  // Turn events
+  if (next.status === 'active' && cfg.enableEvents) {
+    next = drawTurnEvent(next);
+  }
+
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Turn events
+// ---------------------------------------------------------------------------
+
+interface EventDef {
+  id: string;
+  title: string;
+  type: 'positive' | 'negative' | 'neutral';
+  run: (s: GameState) => { state: GameState; message: string };
+}
+
+const EVENT_POOL: EventDef[] = [
+  {
+    id: 'trade_windfall', title: 'Trade Windfall', type: 'positive',
+    run: s => ({ state: { ...s, resources: { ...s.resources, gold: s.resources.gold + 12 } }, message: 'Merchants flood the markets — +12 gold.' }),
+  },
+  {
+    id: 'harvest', title: 'Harvest Season', type: 'positive',
+    run: s => ({ state: { ...s, resources: { ...s.resources, food: s.resources.food + 10 } }, message: 'Bumper crop this year — +10 food.' }),
+  },
+  {
+    id: 'ore_strike', title: 'Rich Ore Strike', type: 'positive',
+    run: s => ({ state: { ...s, resources: { ...s.resources, mat: s.resources.mat + 8 } }, message: 'Workers uncover a rich vein — +8 mat.' }),
+  },
+  {
+    id: 'enemy_unrest', title: 'Enemy Unrest', type: 'positive',
+    run: s => {
+      const targets = s.nodes.filter(n => n.owner === ENEMY && n.troops > 2);
+      if (!targets.length) return { state: s, message: 'Enemy unrest fomented but had no effect.' };
+      const nodes = s.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
+      const t = targets[Math.floor(Math.random() * targets.length)];
+      nodes[t.id].troops = Math.max(1, nodes[t.id].troops - 3);
+      return { state: { ...s, nodes }, message: `Internal strife in ${t.name} — enemy loses 3 troops.` };
+    },
+  },
+  {
+    id: 'plague', title: 'Plague', type: 'negative',
+    run: s => {
+      const targets = s.nodes.filter(n => n.owner === PLAYER && n.troops > 2);
+      if (!targets.length) return { state: s, message: 'Plague strikes but spares your garrisons.' };
+      const nodes = s.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
+      const t = targets[Math.floor(Math.random() * targets.length)];
+      nodes[t.id].troops = Math.max(1, nodes[t.id].troops - 3);
+      return { state: { ...s, nodes }, message: `Disease sweeps through ${t.name} — you lose 3 troops.` };
+    },
+  },
+  {
+    id: 'crop_blight', title: 'Crop Blight', type: 'negative',
+    run: s => ({ state: { ...s, resources: { ...s.resources, food: Math.max(0, s.resources.food - 10) } }, message: 'The harvest fails — -10 food.' }),
+  },
+  {
+    id: 'supply_crisis', title: 'Supply Crisis', type: 'negative',
+    run: s => ({ state: { ...s, resources: { ...s.resources, mat: Math.max(0, s.resources.mat - 8) } }, message: 'Supply lines disrupted — -8 mat.' }),
+  },
+  {
+    id: 'border_unrest', title: 'Border Unrest', type: 'negative',
+    run: s => {
+      const targets = s.nodes.filter(n => n.owner === NEUTRAL);
+      if (!targets.length) return { state: s, message: 'Border unrest but no neutral territories remain.' };
+      const nodes = s.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
+      const t = targets[Math.floor(Math.random() * targets.length)];
+      nodes[t.id].troops += 2;
+      return { state: { ...s, nodes }, message: `Unrest in ${t.name} — neutral territory grows stronger (+2 troops).` };
+    },
+  },
+  // Calm appears 3× to weight it at ~25% probability
+  { id: 'calm', title: 'Uneventful Turn', type: 'neutral', run: s => ({ state: s, message: 'The realm is quiet this turn.' }) },
+  { id: 'calm', title: 'Uneventful Turn', type: 'neutral', run: s => ({ state: s, message: 'The realm is quiet this turn.' }) },
+  { id: 'calm', title: 'Uneventful Turn', type: 'neutral', run: s => ({ state: s, message: 'The realm is quiet this turn.' }) },
+];
+
+function drawTurnEvent(state: GameState): GameState {
+  const def = EVENT_POOL[Math.floor(Math.random() * EVENT_POOL.length)];
+  const { state: next, message } = def.run(state);
+  const event: TurnEvent = { id: def.id, title: def.title, message, type: def.type };
+  return addLog({ ...next, lastEvent: event }, `📜 ${def.title}: ${message}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +533,8 @@ function runEnemyTurn(state: GameState): GameState {
 }
 
 function handleMove(state: GameState, action: { fromId: number; toId: number; troops: number }): GameState {
+  if (apLeft(state) < AP_COST.MOVE) return addLog(state, `Not enough action points to move (costs ${AP_COST.MOVE} AP).`);
+
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const src = nodes[action.fromId];
   const dst = nodes[action.toId];
@@ -440,7 +550,8 @@ function handleMove(state: GameState, action: { fromId: number; toId: number; tr
 
   src.troops -= actual;
   dst.troops += actual;
-  return addLog({ ...state, nodes }, `Moved ${actual} troops from ${src.name} to ${dst.name}.`);
+  return addLog({ ...state, nodes, actionsLeft: apLeft(state) - AP_COST.MOVE },
+    `Moved ${actual} troops from ${src.name} to ${dst.name}.`);
 }
 
 // ---------------------------------------------------------------------------

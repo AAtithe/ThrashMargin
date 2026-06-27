@@ -7,7 +7,7 @@ import {
   prodTotals,
 } from 'shared/engine-reference';
 import { PLAYER, ENEMY, NEUTRAL } from 'shared/types';
-import type { BuildingType, GameState, Territory } from 'shared/types';
+import type { BuildingType, GameState, Territory, TurnEvent } from 'shared/types';
 
 const OWNER_COLOR  = ['#52525b', '#2563eb', '#dc2626'] as const;
 const OWNER_BORDER = ['#71717a', '#3b82f6', '#ef4444'] as const;
@@ -53,6 +53,19 @@ export default function Game() {
     return state.nodes.filter(n => n.owner === PLAYER).reduce((sum, n) => sum + n.troops, 0) * state.config.upkeep;
   }, [state]);
 
+  const visibleIds = useMemo(() => {
+    if (!state) return new Set<number>();
+    if (!state.config.fogOfWar) return new Set(state.nodes.map(n => n.id));
+    const vis = new Set<number>();
+    state.nodes.forEach(n => {
+      if (n.owner === PLAYER) {
+        vis.add(n.id);
+        getNeighbours(state.edges, n.id).forEach(nid => vis.add(nid));
+      }
+    });
+    return vis;
+  }, [state]);
+
   const handleNodeClick = (nid: number) => {
     if (!state) return;
     if (nid === selId) { setSelId(null); setTgtId(null); return; }
@@ -93,6 +106,7 @@ export default function Game() {
       <div style={s.bar}>
         <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
         <span style={s.turnLabel}>Turn {state.turn}</span>
+        <ApBar ap={state.actionsLeft ?? state.config.apPerTurn} max={state.config.apPerTurn} />
         <div style={s.resRow}>
           <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
           <Res icon="🌾" label="Food" val={state.resources.food} rate={prod.food - upkeep} color="#34d399" />
@@ -119,6 +133,7 @@ export default function Game() {
             {state.nodes.map(n => <Node
               key={n.id} n={n} selId={selId} tgtId={tgtId} tgtIsMove={tgtIsMove}
               neighbours={neighbours} attackable={attackable} movable={movable}
+              isVisible={visibleIds.has(n.id)}
               onClick={handleNodeClick}
             />)}
           </svg>
@@ -133,6 +148,7 @@ export default function Game() {
               clampRec={clampRec} recruitAmt={recruitAmt} setRecruitAmt={setRecruitAmt} maxRec={maxRec}
               moveAmt={moveAmt} setMoveAmt={setMoveAmt}
               attackable={attackable} movable={movable}
+              ap={state.actionsLeft ?? state.config.apPerTurn}
               isOver={isOver} loading={loading}
               onAttack={() => act({ type: 'ATTACK', fromId: selId!, toId: tgtId!, troops: attackAmt }).then(() => setTgtId(null))}
               onRecruit={() => act({ type: 'RECRUIT', nodeId: selId!, amount: clampRec })}
@@ -154,6 +170,9 @@ export default function Game() {
             </div>
           )}
 
+          {/* Event banner */}
+          {state.lastEvent && <EventBanner event={state.lastEvent} />}
+
           {/* Log */}
           <div style={s.log}>
             <p style={s.logHdr}>Battle log</p>
@@ -170,9 +189,10 @@ export default function Game() {
 }
 
 /* ─── SVG Node ─── */
-function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, onClick }: {
+function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, isVisible, onClick }: {
   n: Territory; selId: number | null; tgtId: number | null; tgtIsMove: boolean;
   neighbours: number[]; attackable: number[]; movable: number[];
+  isVisible: boolean;
   onClick: (id: number) => void;
 }) {
   const isSel  = selId === n.id;
@@ -183,6 +203,19 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, onC
   const r = n.capital ? 22 : 18;
 
   const hasBlds = n.buildings.length > 0;
+
+  if (!isVisible) {
+    return (
+      <g onClick={e => { e.stopPropagation(); onClick(n.id); }} style={{ cursor: 'pointer' }}>
+        {isTgt && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
+        <circle cx={n.x} cy={n.y} r={r} fill={OWNER_COLOR[n.owner]} stroke="#30363d" strokeWidth={1.5} opacity={0.35} />
+        <text x={n.x} y={n.y+1} textAnchor="middle" dominantBaseline="middle"
+          fill="#4b5563" fontSize={11} fontWeight={700} style={{ pointerEvents: 'none' }}>?</text>
+        <text x={n.x} y={n.y + r + 11} textAnchor="middle"
+          fill="#374151" fontSize={9} style={{ pointerEvents: 'none' }}>{n.name}</text>
+      </g>
+    );
+  }
 
   return (
     <g onClick={e => { e.stopPropagation(); onClick(n.id); }} style={{ cursor: 'pointer' }}>
@@ -234,12 +267,12 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, onC
 
 /* ─── Sidebar panel ─── */
 function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, clampRec, recruitAmt, setRecruitAmt, maxRec,
-  moveAmt, setMoveAmt, attackable, movable, isOver, loading, onAttack, onRecruit, onBuild, onUpgrade, onMove }: {
+  moveAmt, setMoveAmt, attackable, movable, ap, isOver, loading, onAttack, onRecruit, onBuild, onUpgrade, onMove }: {
   sel: Territory; tgt: Territory | null; tgtIsMove: boolean; state: GameState;
   attackAmt: number; setAttackAmt: (n: number) => void; maxAtk: number;
   clampRec: number; recruitAmt: number; setRecruitAmt: (n: number) => void; maxRec: number;
   moveAmt: number; setMoveAmt: (n: number) => void;
-  attackable: number[]; movable: number[]; isOver: boolean; loading: boolean;
+  attackable: number[]; movable: number[]; ap: number; isOver: boolean; loading: boolean;
   onAttack: () => void; onRecruit: () => void;
   onBuild: (b: BuildingType) => void; onUpgrade: () => void; onMove: () => void;
 }) {
@@ -250,6 +283,8 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
   const upCost   = canUp ? { mat: LV.upCostMat[sel.lv], gold: LV.upCostGold[sel.lv] } : null;
   const canAfUp  = upCost ? state.resources.mat >= upCost.mat && state.resources.gold >= upCost.gold : false;
   const disabled = isOver || loading;
+  const noAp1    = ap < 1;
+  const noAp2    = ap < 2;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -294,7 +329,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
                 <span style={{ color: '#7d8590' }}>{tgt.troops} troops · def {getDefStr(tgt)}</span>
               </p>
               <Slider label="Send" val={attackAmt} min={1} max={maxAtk} onChange={setAttackAmt} />
-              <Btn onClick={onAttack} disabled={disabled}>⚔ Attack with {attackAmt}</Btn>
+              <Btn onClick={onAttack} disabled={disabled || noAp2} dim={noAp2}>⚔ Attack with {attackAmt} <ApCost n={2} ap={ap} /></Btn>
             </>
           ) : (
             <p style={s.muted}>Click an orange-ringed territory to set target.</p>
@@ -308,8 +343,8 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
           <p style={s.label}>Recruit</p>
           <Slider label="Hire" val={clampRec} min={1} max={maxRec} onChange={setRecruitAmt} />
           <p style={{ ...s.muted, marginBottom: 8 }}>Cost: {clampRec * state.config.recruitCost}g · Have {state.resources.gold}g</p>
-          <Btn onClick={onRecruit} disabled={disabled || state.resources.gold < state.config.recruitCost}>
-            + Recruit {clampRec}
+          <Btn onClick={onRecruit} disabled={disabled || noAp1 || state.resources.gold < state.config.recruitCost} dim={noAp1}>
+            + Recruit {clampRec} <ApCost n={1} ap={ap} />
           </Btn>
         </div>
       )}
@@ -325,7 +360,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
                 <span style={{ color: '#7d8590' }}>{tgt.troops}/{getTroopCap(tgt)} troops</span>
               </p>
               <Slider label="Send" val={moveAmt} min={1} max={Math.max(1, sel.troops - 1)} onChange={setMoveAmt} />
-              <Btn onClick={onMove} disabled={disabled}>↗ Move {moveAmt} troops</Btn>
+              <Btn onClick={onMove} disabled={disabled || noAp1} dim={noAp1}>↗ Move {moveAmt} troops <ApCost n={1} ap={ap} /></Btn>
             </>
           ) : (
             <p style={s.muted}>Click a teal-ringed friendly territory to move troops there.</p>
@@ -342,7 +377,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
               .filter(b => !sel.buildings.includes(b))
               .map(b => {
                 const info = BUILDINGS[b];
-                const ok = state.resources.gold >= info.cost.gold && state.resources.mat >= info.cost.mat;
+                const ok = state.resources.gold >= info.cost.gold && state.resources.mat >= info.cost.mat && !noAp1;
                 return (
                   <button key={b} onClick={() => onBuild(b)} disabled={disabled || !ok}
                     style={{ ...s.buildRow, opacity: ok ? 1 : 0.4 }}>
@@ -362,8 +397,8 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
           <p style={{ ...s.muted, marginBottom: 8 }}>
             {upCost.mat}m + {upCost.gold}g → new building slot, +troops cap, +gold/turn
           </p>
-          <Btn onClick={onUpgrade} disabled={disabled || !canAfUp} dim={!canAfUp}>
-            ↑ Upgrade settlement
+          <Btn onClick={onUpgrade} disabled={disabled || noAp1 || !canAfUp} dim={!canAfUp || noAp1}>
+            ↑ Upgrade settlement <ApCost n={1} ap={ap} />
           </Btn>
         </div>
       )}
@@ -389,6 +424,51 @@ function Blank({ children }: { children: React.ReactNode }) {
   return (
     <div style={{ minHeight: '100vh', background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#7d8590', fontFamily: 'system-ui,sans-serif' }}>
       {children}
+    </div>
+  );
+}
+
+function ApBar({ ap, max }: { ap: number; max: number }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, padding: '5px 10px' }}>
+      <span style={{ fontSize: 13 }}>⚡</span>
+      <div>
+        <div style={{ color: '#6b7280', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Actions</div>
+        <div style={{ display: 'flex', gap: 3, marginTop: 3 }}>
+          {Array.from({ length: max }).map((_, i) => (
+            <div key={i} style={{
+              width: 9, height: 9, borderRadius: 2,
+              background: i < ap ? '#f59e0b' : '#21262d',
+              border: '1px solid #30363d',
+            }} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ApCost({ n, ap }: { n: number; ap: number }) {
+  return (
+    <span style={{ fontSize: 10, color: ap >= n ? '#f59e0b' : '#f85149', marginLeft: 4, opacity: 0.8 }}>
+      ({n}⚡)
+    </span>
+  );
+}
+
+function EventBanner({ event }: { event: TurnEvent }) {
+  const colors: Record<string, { border: string; label: string; bg: string }> = {
+    positive: { border: '#3fb950', label: '#3fb950', bg: 'rgba(63,185,80,0.08)' },
+    negative: { border: '#f85149', label: '#f85149', bg: 'rgba(248,81,73,0.08)' },
+    neutral:  { border: '#7d8590', label: '#9198a1', bg: 'rgba(125,133,144,0.06)' },
+  };
+  const c = colors[event.type] ?? colors.neutral;
+  return (
+    <div style={{ background: c.bg, border: `1px solid ${c.border}`, borderRadius: 6, padding: '10px 12px', marginBottom: 8 }}>
+      <p style={{ color: c.label, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 4px' }}>
+        📜 {event.title}
+      </p>
+      <p style={{ color: '#9198a1', fontSize: 11, margin: 0, lineHeight: 1.4 }}>{event.message}</p>
     </div>
   );
 }
