@@ -125,6 +125,7 @@ export interface GameConfig {
   enableStrongholds: boolean;// neutral stronghold territories
   altVictoryGold: number;    // gold threshold for economic victory
   enableTutorial?: boolean;  // guided tutorial mode
+  hotseat?: boolean;         // two human players alternate turns
 }
 
 export interface TurnEvent {
@@ -158,6 +159,7 @@ export interface GameState {
   research: string[];
   victoryType?: string;
   researchBranch?: string;
+  activePlayer: number;      // 1 = Player 1 turn, 2 = Player 2 turn (hot seat only)
 }
 
 export interface ActionResult {

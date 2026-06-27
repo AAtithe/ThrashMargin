@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGameLocal as useGame } from '../hooks/useGameLocal';
 import {
@@ -23,10 +23,22 @@ export default function Game() {
   const [attackAmt, setAttackAmt] = useState(1);
   const [moveAmt,   setMoveAmt]   = useState(1);
   const [tooltip, setTooltip] = useState<{ id: number; x: number; y: number } | null>(null);
+  const [showPassScreen, setShowPassScreen] = useState(false);
 
   useEffect(() => {
     if (id) loadGame(id);
   }, [id]); // eslint-disable-line
+
+  const prevActivePlayerRef = useRef<number>(1);
+  useEffect(() => {
+    if (!state) return;
+    const prev = prevActivePlayerRef.current;
+    const cur  = state.activePlayer ?? 1;
+    if (cur !== prev) {
+      setShowPassScreen(true); // show pass screen any time the active player changes
+      prevActivePlayerRef.current = cur;
+    }
+  }, [state?.activePlayer]);
 
   const sel = state && selId !== null ? state.nodes[selId] : null;
   const tgt = state && tgtId !== null ? state.nodes[tgtId] : null;
@@ -37,17 +49,21 @@ export default function Game() {
   }, [state, selId]);
 
   const attackable = useMemo(
-    () => sel?.owner === PLAYER ? neighbours.filter(nid => state!.nodes[nid].owner !== PLAYER) : [],
+    () => sel?.owner === (state?.activePlayer ?? PLAYER)
+      ? neighbours.filter(nid => state!.nodes[nid].owner !== (state!.activePlayer ?? PLAYER))
+      : [],
     [sel, neighbours, state],
   );
 
   const movable = useMemo(
-    () => sel?.owner === PLAYER ? neighbours.filter(nid => state!.nodes[nid].owner === PLAYER && nid !== selId) : [],
+    () => sel?.owner === (state?.activePlayer ?? PLAYER)
+      ? neighbours.filter(nid => state!.nodes[nid].owner === (state!.activePlayer ?? PLAYER) && nid !== selId)
+      : [],
     [sel, neighbours, state, selId],
   );
 
   const annexable = useMemo(() => {
-    if (!state?.config.enableDiplomacy || sel?.owner !== PLAYER) return [];
+    if (!state?.config.enableDiplomacy || sel?.owner !== (state?.activePlayer ?? PLAYER)) return [];
     return neighbours.filter(nid => state!.nodes[nid].owner === NEUTRAL);
   }, [sel, neighbours, state]);
 
@@ -85,12 +101,12 @@ export default function Game() {
   const handleNodeClick = (nid: number) => {
     if (!state) return;
     if (nid === selId) { setSelId(null); setTgtId(null); return; }
-    if (selId !== null && sel?.owner === PLAYER && attackable.includes(nid)) {
+    if (selId !== null && sel?.owner === (state.activePlayer ?? PLAYER) && attackable.includes(nid)) {
       setTgtId(nid);
       setAttackAmt(Math.max(1, Math.floor((state.nodes[selId].troops - 1) / 2)));
       return;
     }
-    if (selId !== null && sel?.owner === PLAYER && movable.includes(nid)) {
+    if (selId !== null && sel?.owner === (state.activePlayer ?? PLAYER) && movable.includes(nid)) {
       setTgtId(nid);
       setMoveAmt(Math.max(1, Math.floor((state.nodes[selId].troops - 1) / 2)));
       return;
@@ -129,12 +145,14 @@ export default function Game() {
   const viewBox = mapDef?.viewBox ?? '30 10 560 400';
 
   const endBtnText = isOver
-    ? state.status === 'victory'
+    ? (state.status === 'victory'
       ? state.victoryType === 'economic' ? '💰 Economic Victory!'
       : state.victoryType === 'research' ? '🔬 Research Victory!'
       : '🏆 Victory!'
-    : '💀 Defeated'
-    : loading ? '…' : 'End Turn →';
+      : '💀 Defeated')
+    : loading ? '…'
+    : cfg.hotseat ? `End P${state.activePlayer ?? 1} Turn →`
+    : 'End Turn →';
 
   const tooltipNode = tooltip !== null ? state.nodes[tooltip.id] : null;
 
@@ -151,6 +169,11 @@ export default function Game() {
         />
       )}
 
+      {/* ── Hot-seat pass screen ── */}
+      {showPassScreen && !isOver && (
+        <PassScreen toPlayer={state.activePlayer ?? 1} onReady={() => setShowPassScreen(false)} />
+      )}
+
       {/* ── Territory hover tooltip ── */}
       {tooltipNode && (
         <TooltipCard
@@ -165,7 +188,9 @@ export default function Game() {
       {/* ── Top bar ── */}
       <div style={s.bar}>
         <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
-        <span style={s.turnLabel}>Turn {state.turn}</span>
+        <span style={s.turnLabel}>
+          {cfg.hotseat ? `Turn ${state.turn} — P${state.activePlayer ?? 1}` : `Turn ${state.turn}`}
+        </span>
         {(cfg.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? cfg.apPerTurn} max={cfg.apPerTurn} />}
         <div style={s.resRow}>
           <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
@@ -379,7 +404,8 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
   onAttack: () => void; onRecruit: () => void;
   onBuild: (b: BuildingType) => void; onUpgrade: () => void; onMove: () => void; onAnnex: () => void;
 }) {
-  const isPlayer = sel.owner === PLAYER;
+  const activePlayer = state.activePlayer ?? PLAYER;
+  const isPlayer = sel.owner === activePlayer;
   const slots    = getSlots(sel);
   const hasSlot  = sel.buildings.length < slots;
   const canUp    = isPlayer && sel.lv < MAX_LV;
@@ -392,9 +418,9 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
   const attackCost = research.includes('iron_will') ? 1 : 2;
   const noAtkAp  = ap < attackCost;
 
-  const ownerLabel = isEnemy(sel.owner)
-    ? FACTION_NAMES[sel.owner] ?? 'Enemy'
-    : sel.owner === PLAYER ? 'Yours' : 'Neutral';
+  const ownerLabel = sel.owner === activePlayer ? 'Yours'
+    : isEnemy(sel.owner) ? (FACTION_NAMES[sel.owner] ?? 'Enemy')
+    : 'Neutral';
 
   const influenceCost = research.includes('colonisation') ? 12 : 20;
   const canAnnex = (state.resources.influence ?? 0) >= influenceCost && !noAp1;
@@ -946,6 +972,28 @@ function TutorialPanel({ state, selId, tgtId }: { state: GameState; selId: numbe
       </div>
       <p style={{ color: '#86efac', fontSize: 12, fontWeight: 600, margin: '0 0 4px' }}>{hint.title}</p>
       <p style={{ color: '#6b9f7a', fontSize: 11, margin: 0, lineHeight: 1.5 }}>{hint.message}</p>
+    </div>
+  );
+}
+
+/* ─── Pass Screen (Hot Seat) ─── */
+function PassScreen({ toPlayer, onReady }: { toPlayer: number; onReady: () => void }) {
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.92)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:3000 }}>
+      <div style={{ textAlign:'center', maxWidth:360 }}>
+        <div style={{ fontSize:52, marginBottom:12 }}>🎮</div>
+        <h2 style={{ color:'#e6edf3', fontSize:22, fontWeight:800, margin:'0 0 10px' }}>
+          Player {toPlayer}'s Turn
+        </h2>
+        <p style={{ color:'#7d8590', fontSize:14, margin:'0 0 28px', lineHeight:1.5 }}>
+          Pass the device to Player {toPlayer}.<br/>
+          When ready, press the button below.
+        </p>
+        <button onClick={onReady}
+          style={{ background: toPlayer === 2 ? '#dc2626' : '#2563eb', border:'none', borderRadius:8, color:'#fff', fontWeight:700, fontSize:16, padding:'14px 40px', cursor:'pointer', width:'100%' }}>
+          I'm ready — Let's go! →
+        </button>
+      </div>
     </div>
   );
 }

@@ -4,6 +4,15 @@ import { useGameLocal, type SaveMeta } from '../hooks/useGameLocal';
 import { MAP_DEFS } from 'shared/engine-reference';
 import type { GameConfig, Difficulty } from 'shared/types';
 
+const SETTINGS_KEY = 'tm_last_settings';
+function loadLastSettings(): Record<string, unknown> | null {
+  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'); }
+  catch { return null; }
+}
+function saveLastSettings(s: Record<string, unknown>) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+}
+
 const DIFF_PRESETS: Record<Difficulty, Partial<GameConfig>> = {
   easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 99, fogOfWar: false, enableEvents: false, enemyFactions: 1, enableDiplomacy: false, enableTechTree: false, enableAltVictory: false, enableStrongholds: false },
   normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false, apPerTurn: 4,  fogOfWar: false, enableEvents: true,  enemyFactions: 1, enableDiplomacy: false, enableTechTree: true,  enableAltVictory: false, enableStrongholds: false },
@@ -34,25 +43,83 @@ export default function Lobby() {
   // New campaign form
   const [campaignName, setCampaignName] = useState('');
   const [showSettings, setShowSettings] = useState(true);
-  const [difficulty,   setDifficulty]   = useState<Difficulty>('normal');
-  const [startGold,    setStartGold]    = useState(25);
-  const [startFood,    setStartFood]    = useState(20);
-  const [startMat,     setStartMat]     = useState(12);
-  const [recruitCost,  setRecruitCost]  = useState(4);
-  const [upkeep,       setUpkeep]       = useState(1);
-  const [enemyTerritories,    setEnemyTerritories]    = useState(DIFF_PRESETS.normal.enemyTerritories    ?? 2);
-  const [enemyTroopScale,     setEnemyTroopScale]     = useState(DIFF_PRESETS.normal.enemyTroopScale     ?? 0.75);
-  const [enemyStartBuildings, setEnemyStartBuildings] = useState(DIFF_PRESETS.normal.enemyStartBuildings ?? false);
-  const [apPerTurn,    setApPerTurn]    = useState(DIFF_PRESETS.normal.apPerTurn    ?? 4);
-  const [fogOfWar,     setFogOfWar]     = useState(DIFF_PRESETS.normal.fogOfWar     ?? false);
-  const [enableEvents, setEnableEvents] = useState(DIFF_PRESETS.normal.enableEvents ?? true);
-  const [enemyFactions,      setEnemyFactions]      = useState(DIFF_PRESETS.normal.enemyFactions      ?? 1);
-  const [enableDiplomacy,    setEnableDiplomacy]    = useState(DIFF_PRESETS.normal.enableDiplomacy    ?? false);
-  const [enableTechTree,     setEnableTechTree]     = useState(DIFF_PRESETS.normal.enableTechTree     ?? true);
-  const [enableAltVictory,   setEnableAltVictory]   = useState(DIFF_PRESETS.normal.enableAltVictory   ?? false);
-  const [enableStrongholds,  setEnableStrongholds]  = useState(DIFF_PRESETS.normal.enableStrongholds  ?? false);
+  const [difficulty, setDifficulty] = useState<Difficulty>(() => {
+    const last = loadLastSettings();
+    return (last?.difficulty as Difficulty) ?? 'normal';
+  });
+  const [startGold, setStartGold] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.startGold as number) ?? 25;
+  });
+  const [startFood, setStartFood] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.startFood as number) ?? 20;
+  });
+  const [startMat, setStartMat] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.startMat as number) ?? 12;
+  });
+  const [recruitCost, setRecruitCost] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.recruitCost as number) ?? 4;
+  });
+  const [upkeep, setUpkeep] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.upkeep as number) ?? 1;
+  });
+  const [enemyTerritories, setEnemyTerritories] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.enemyTerritories as number) ?? 2;
+  });
+  const [enemyTroopScale, setEnemyTroopScale] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.enemyTroopScale as number) ?? 0.75;
+  });
+  const [enemyStartBuildings, setEnemyStartBuildings] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.enemyStartBuildings as boolean) ?? false;
+  });
+  const [apPerTurn, setApPerTurn] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.apPerTurn as number) ?? 4;
+  });
+  const [fogOfWar, setFogOfWar] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.fogOfWar as boolean) ?? false;
+  });
+  const [enableEvents, setEnableEvents] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.enableEvents as boolean) ?? true;
+  });
+  const [enemyFactions, setEnemyFactions] = useState<number>(() => {
+    const last = loadLastSettings();
+    return (last?.enemyFactions as number) ?? 1;
+  });
+  const [enableDiplomacy, setEnableDiplomacy] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.enableDiplomacy as boolean) ?? false;
+  });
+  const [enableTechTree, setEnableTechTree] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.enableTechTree as boolean) ?? true;
+  });
+  const [enableAltVictory, setEnableAltVictory] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.enableAltVictory as boolean) ?? false;
+  });
+  const [enableStrongholds, setEnableStrongholds] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.enableStrongholds as boolean) ?? false;
+  });
+  const [hotseat, setHotseat] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.hotseat as boolean) ?? false;
+  });
 
-  const [selectedMap, setSelectedMap] = useState('heartlands');
+  const [selectedMap, setSelectedMap] = useState<string>(() => {
+    const last = loadLastSettings();
+    return (last?.selectedMap as string) ?? 'heartlands';
+  });
   const [showConfirm, setShowConfirm] = useState(false);
 
   // Delete confirmation
@@ -75,6 +142,14 @@ export default function Lobby() {
   };
 
   const handleNew = () => {
+    saveLastSettings({
+      difficulty, selectedMap,
+      startGold, startFood, startMat, recruitCost, upkeep,
+      enemyTerritories, enemyTroopScale, enemyStartBuildings,
+      apPerTurn, fogOfWar, enableEvents,
+      enemyFactions, enableDiplomacy, enableTechTree, enableAltVictory, enableStrongholds,
+      hotseat,
+    });
     const config: Partial<GameConfig> = {
       ...DIFF_PRESETS[difficulty],
       startGold, startFood, startMat, recruitCost, upkeep,
@@ -82,6 +157,7 @@ export default function Lobby() {
       apPerTurn, fogOfWar, enableEvents,
       mapId: selectedMap,
       enemyFactions, enableDiplomacy, enableTechTree, enableAltVictory, enableStrongholds,
+      hotseat,
     };
     const name = campaignName.trim() || undefined;
     const id = createGame(config, name);
@@ -262,6 +338,10 @@ export default function Lobby() {
                     <p style={s.subLabel}>Neutral strongholds (fortified neutral territories with high production)</p>
                     <ToggleRow value={enableStrongholds} onChange={setEnableStrongholds} />
                   </div>
+                  <div>
+                    <p style={s.subLabel}>Hot Seat — two players alternate turns on the same device</p>
+                    <ToggleRow value={hotseat} onChange={v => { setHotseat(v); if (v && enemyFactions < 1) setEnemyFactions(1); }} />
+                  </div>
                 </div>
               </div>
 
@@ -338,6 +418,7 @@ export default function Lobby() {
           enableTechTree={enableTechTree}
           enableAltVictory={enableAltVictory}
           enableStrongholds={enableStrongholds}
+          hotseat={hotseat}
           startGold={startGold}
           startFood={startFood}
           startMat={startMat}
@@ -495,12 +576,13 @@ function ToggleRow({ value, onChange }: { value: boolean; onChange: (v: boolean)
 
 function ConfirmModal({ campaignName, mapId, difficulty, enemyFactions, enemyTerritories, enemyTroopScale,
   enemyStartBuildings, apPerTurn, fogOfWar, enableEvents, enableDiplomacy, enableTechTree,
-  enableAltVictory, enableStrongholds, startGold, startFood, startMat,
+  enableAltVictory, enableStrongholds, hotseat, startGold, startFood, startMat,
   recruitCost, upkeep, onBack, onConfirm }: {
   campaignName: string; mapId: string; difficulty: Difficulty;
   enemyFactions: number; enemyTerritories: number; enemyTroopScale: number; enemyStartBuildings: boolean;
   apPerTurn: number; fogOfWar: boolean; enableEvents: boolean;
   enableDiplomacy: boolean; enableTechTree: boolean; enableAltVictory: boolean; enableStrongholds: boolean;
+  hotseat: boolean;
   startGold: number; startFood: number; startMat: number;
   recruitCost: number; upkeep: number;
   onBack: () => void; onConfirm: () => void;
@@ -548,6 +630,7 @@ function ConfirmModal({ campaignName, mapId, difficulty, enemyFactions, enemyTer
             <Row label="Diplomacy"            value={enableDiplomacy ? 'On' : 'Off'} />
             <Row label="Alt. victories"       value={enableAltVictory ? 'On' : 'Off'} />
             <Row label="Strongholds"          value={enableStrongholds ? 'On' : 'Off'} />
+            {hotseat && <Row label="Mode" value="Hot Seat (2 players)" />}
           </div>
 
           <div>

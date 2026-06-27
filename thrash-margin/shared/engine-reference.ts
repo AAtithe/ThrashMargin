@@ -278,6 +278,7 @@ export const MAP_DEFS: MapDef[] = [
   { id: 'crossroads',     name: 'Crossroads',       style: 'Central Control', territories: 16, desc: 'Four arms meet at a contested 4-territory centre cluster. Race for the middle.',                                     viewBox: '30 10 560 400' },
   { id: 'frontier',       name: 'Frontier',         style: 'Open Field',      territories: 18, desc: 'Scattered settlements, staggered routes. Enemy holds two far corners at the top.',                                   viewBox: '30 10 560 400' },
   { id: 'grand_continent',name: 'Grand Continent',  style: 'Multi-Faction',   territories: 34, desc: 'Vast map with three rival factions. Player SW, enemies at NW, NE, and SE corners.',                                  viewBox: '0 0 760 545' },
+  { id: 'random',         name: 'Random Map',       style: 'Procedural',      territories: 28, desc: 'A unique layout generated fresh each campaign. Terrain, strongholds, and enemy positions vary.',                       viewBox: '0 0 760 460' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -718,6 +719,143 @@ function buildTutorial(cfg: GameConfig): { nodes: Territory[]; edges: [number, n
 }
 
 // ---------------------------------------------------------------------------
+// buildRandomMap  — 28 territories, procedurally generated staggered grid
+// ---------------------------------------------------------------------------
+
+const RAND_NAMES = [
+  'Ironhold','Ashford','Dunepass','Stormgate','Millhaven','Greywall',
+  'Thornfield','Ironpass','Lowbridge','Saltmere','Midkeep','Ashveil',
+  'Emberveil','Southfen','Marshgate','Stonekeep','Cindervale','Coppergate',
+  'Silverholm','Dunehaven','Eastkeep','Harrow','Goldvale','Ironmarsh',
+  'Greenwatch','Lowfen','Clayfield','Stonecroft','Thornford','Ashenmere',
+  'Grimholt','Frostfall','Oakridge','Windmere','Redmere','Southgate',
+  'Blackfen','Coldpass','Rivermere','Dunwall',
+];
+
+function buildRandomMap(cfg: GameConfig): { nodes: Territory[]; edges: [number, number][] } {
+  // 5-row staggered grid: rows 0,2,4 have 6 nodes; rows 1,3 have 5 nodes = 28 total
+  const evenX = [60, 185, 310, 435, 560, 685];
+  const oddX  = [122, 248, 372, 498, 623];
+  const rowY  = [50, 140, 230, 320, 410];
+
+  // Build flat coordinate list in row-major order (id === index)
+  const coords: { x: number; y: number; row: number; col: number }[] = [];
+  for (let r = 0; r < 5; r++) {
+    const xs = r % 2 === 0 ? evenX : oddX;
+    xs.forEach((x, c) => coords.push({ x, y: rowY[r], row: r, col: c }));
+  }
+  // coords.length === 28, coords[id].id === id
+
+  // Shuffle a copy of RAND_NAMES to get unique territory names
+  const namePool = [...RAND_NAMES].sort(() => Math.random() - 0.5);
+
+  // Terrain weighting by row
+  const pickTerrain = (row: number): TerrainType | undefined => {
+    const r = Math.random();
+    if (row <= 1) {
+      // Top rows: mountainy / forested
+      if (r < 0.40) return 'mountain';
+      if (r < 0.65) return 'forest';
+      return undefined; // plains
+    }
+    if (row === 2) {
+      // Middle: mixed
+      if (r < 0.20) return 'forest';
+      if (r < 0.35) return 'mountain';
+      if (r < 0.45) return 'coast';
+      return undefined;
+    }
+    // Bottom rows: coastal / plains
+    if (r < 0.30) return 'coast';
+    if (r < 0.40) return 'desert';
+    if (r < 0.50) return 'forest';
+    return undefined;
+  };
+
+  // Determine active enemy faction starting node IDs based on enemyFactions
+  // Faction 2 → top-right (id=5), faction 3 → top-left (id=0), faction 4 → bottom-right (id=27)
+  const factionCapitals: Record<number, number> = { 2: 5, 3: 0, 4: 27 };
+  const activeFactions: number[] = [];
+  for (let f = 2; f <= 1 + Math.min(cfg.enemyFactions ?? 1, 3); f++) activeFactions.push(f);
+
+  // Player capital is always bottom-left (id=22)
+  const playerCapitalId = 22;
+
+  // Randomly pick 2 stronghold neutral node IDs from the middle rows (rows 1-3)
+  const middleNodeIds: number[] = [];
+  coords.forEach((c, id) => { if (c.row >= 1 && c.row <= 3) middleNodeIds.push(id); });
+  const strongholdIds = cfg.enableStrongholds
+    ? middleNodeIds.sort(() => Math.random() - 0.5).slice(0, 2)
+    : [];
+  const strongholdSet = new Set(strongholdIds);
+
+  const ns = cfg.neutralStr;
+
+  const nodes: Territory[] = coords.map((c, id) => {
+    const terrain = pickTerrain(c.row);
+    const isStronghold = strongholdSet.has(id);
+
+    if (id === playerCapitalId) {
+      return {
+        id, x: c.x, y: c.y,
+        name: 'Ironhold',
+        owner: PLAYER, troops: 8, capital: true, lv: 2, buildings: [],
+        terrain: terrain ?? undefined,
+      };
+    }
+
+    // Check if this is an active enemy capital
+    for (const faction of activeFactions) {
+      if (factionCapitals[faction] === id) {
+        return {
+          id, x: c.x, y: c.y,
+          name: namePool.pop() ?? `Territory ${id}`,
+          owner: faction,
+          troops: Math.max(3, Math.round(8 * cfg.enemyTroopScale)),
+          capital: true, lv: 2,
+          buildings: cfg.enemyStartBuildings ? ['tower'] : [],
+          terrain: terrain ?? undefined,
+        };
+      }
+    }
+
+    // Neutral territory
+    return {
+      id, x: c.x, y: c.y,
+      name: namePool.pop() ?? `Territory ${id}`,
+      owner: NEUTRAL,
+      troops: isStronghold ? ns * 2 : ns,
+      capital: false, lv: 1, buildings: [],
+      terrain: terrain ?? undefined,
+      stronghold: isStronghold || undefined,
+    };
+  });
+
+  const edges: [number, number][] = [
+    // Row 0 internal
+    [0,1],[1,2],[2,3],[3,4],[4,5],
+    // Row 0→1
+    [0,6],[1,6],[1,7],[2,7],[2,8],[3,8],[3,9],[4,9],[4,10],[5,10],
+    // Row 1 internal
+    [6,7],[7,8],[8,9],[9,10],
+    // Row 1→2
+    [6,11],[6,12],[7,12],[7,13],[8,13],[8,14],[9,14],[9,15],[10,15],[10,16],
+    // Row 2 internal
+    [11,12],[12,13],[13,14],[14,15],[15,16],
+    // Row 2→3
+    [11,17],[12,17],[12,18],[13,18],[13,19],[14,19],[14,20],[15,20],[15,21],[16,21],
+    // Row 3 internal
+    [17,18],[18,19],[19,20],[20,21],
+    // Row 3→4
+    [17,22],[17,23],[18,23],[18,24],[19,24],[19,25],[20,25],[20,26],[21,26],[21,27],
+    // Row 4 internal
+    [22,23],[23,24],[24,25],[25,26],[26,27],
+  ];
+
+  return { nodes, edges };
+}
+
+// ---------------------------------------------------------------------------
 // Initial state factory
 // ---------------------------------------------------------------------------
 
@@ -731,6 +869,7 @@ export function createInitialState(id: string, config: GameConfig): GameState {
       case 'crossroads':      return buildCrossroads(cfg);
       case 'frontier':        return buildFrontier(cfg);
       case 'grand_continent': return buildGrandContinent(cfg);
+      case 'random':          return buildRandomMap(cfg);
       default:                return buildHeartlands(cfg);
     }
   })();
@@ -749,6 +888,7 @@ export function createInitialState(id: string, config: GameConfig): GameState {
     actionsLeft: cfg.apPerTurn,
     lastEvent: null,
     research: [],
+    activePlayer: 1,
   };
 }
 
@@ -778,6 +918,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   enableAltVictory: false,
   enableStrongholds: false,
   altVictoryGold: 400,
+  hotseat: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -835,8 +976,8 @@ function handleAttack(state: GameState, action: { fromId: number; toId: number; 
   const def = nodes[action.toId];
 
   if (!att || !def) return state;
-  if (att.owner !== PLAYER) return state;
-  if (def.owner === PLAYER) return state;
+  if (att.owner !== (state.activePlayer ?? PLAYER)) return state;
+  if (def.owner === (state.activePlayer ?? PLAYER)) return state;
   if (!getNeighbours(state.edges, action.fromId).includes(action.toId)) return state;
   if (action.troops < 1 || action.troops >= att.troops) return state;
 
@@ -845,7 +986,7 @@ function handleAttack(state: GameState, action: { fromId: number; toId: number; 
 
   let message: string;
   if (result.won) {
-    def.owner = PLAYER;
+    def.owner = (state.activePlayer ?? PLAYER);
     def.troops = Math.max(1, result.surviving);
     message = `Captured ${def.name}. Sent ${action.troops}, lost ${result.attackerLoss}. ${result.surviving} now garrison.`;
   } else {
@@ -863,7 +1004,7 @@ function handleRecruit(state: GameState, action: { nodeId: number; amount: numbe
 
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const node = nodes[action.nodeId];
-  if (!node || node.owner !== PLAYER) return state;
+  if (!node || node.owner !== (state.activePlayer ?? PLAYER)) return state;
 
   const space = getTroopCap(node) - node.troops;
   const actual = Math.min(action.amount, space);
@@ -884,7 +1025,7 @@ function handleBuild(state: GameState, action: { nodeId: number; building: Build
 
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const node = nodes[action.nodeId];
-  if (!node || node.owner !== PLAYER) return state;
+  if (!node || node.owner !== (state.activePlayer ?? PLAYER)) return state;
   if (node.buildings.length >= getSlots(node)) return addLog(state, 'No building slots. Upgrade first.');
 
   const b = BUILDINGS[action.building];
@@ -908,7 +1049,7 @@ function handleUpgrade(state: GameState, action: { nodeId: number }): GameState 
 
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const node = nodes[action.nodeId];
-  if (!node || node.owner !== PLAYER) return state;
+  if (!node || node.owner !== (state.activePlayer ?? PLAYER)) return state;
   if (node.lv >= MAX_LV) return addLog(state, 'Already at max level.');
 
   const mc = LV.upCostMat[node.lv];
@@ -926,6 +1067,22 @@ function handleUpgrade(state: GameState, action: { nodeId: number }): GameState 
 
 function handleEndTurn(state: GameState): GameState {
   const cfg = state.config;
+  const activePlayer = state.activePlayer ?? PLAYER;
+
+  // Hot-seat: Player 1 just ended → switch to Player 2 (no income, no AI yet)
+  if (cfg.hotseat && activePlayer === PLAYER) {
+    const hasFaction2 = state.nodes.some(n => n.owner === 2);
+    if (hasFaction2) {
+      const research = state.research ?? [];
+      const baseAp = cfg.apPerTurn ?? 4;
+      const bonusAp = research.includes('grand_strategy') ? 1 : 0;
+      return addLog(
+        { ...state, activePlayer: 2, actionsLeft: baseAp + bonusAp, sel: null, tgt: null, lastEvent: null },
+        `Player 1 ended their turn. Player 2 — your move.`,
+      );
+    }
+  }
+
   const research = state.research ?? [];
   const p = prodTotals(state.nodes, PLAYER, research);
   const troops = totalTroops(state.nodes, PLAYER);
@@ -980,6 +1137,11 @@ function handleEndTurn(state: GameState): GameState {
     next = drawTurnEvent(next);
   }
 
+  // Hot-seat: after P2 ends and full turn cycle completes, reset to P1
+  if (cfg.hotseat) {
+    next = { ...next, activePlayer: 1 };
+  }
+
   return next;
 }
 
@@ -998,10 +1160,10 @@ function handleAnnex(state: GameState, action: { nodeId: number }): GameState {
   if (!target) return state;
   if (target.owner !== NEUTRAL) return addLog(state, 'Can only annex neutral territories.');
 
-  const isAdjacentToPlayer = getNeighbours(state.edges, action.nodeId).some(nid => nodes[nid].owner === PLAYER);
+  const isAdjacentToPlayer = getNeighbours(state.edges, action.nodeId).some(nid => nodes[nid].owner === (state.activePlayer ?? PLAYER));
   if (!isAdjacentToPlayer) return addLog(state, 'Can only annex territories adjacent to your own.');
 
-  target.owner = PLAYER;
+  target.owner = (state.activePlayer ?? PLAYER);
   target.troops = 1;
   const resources = { ...state.resources, influence: influence - influenceCost };
   let next = { ...state, nodes, resources, actionsLeft: apLeft(state) - AP_COST.ANNEX };
@@ -1171,6 +1333,7 @@ function runEnemyTurn(state: GameState): GameState {
   const factionCount = cfg.enemyFactions ?? 1;
   let next = state;
   for (let faction = ENEMY; faction <= 1 + factionCount; faction++) {
+    if (cfg.hotseat && faction === 2) continue; // Player 2 controls faction 2
     if (next.nodes.some(n => n.owner === faction)) {
       next = runFactionTurn(next, faction);
     }
@@ -1186,7 +1349,7 @@ function handleMove(state: GameState, action: { fromId: number; toId: number; tr
   const dst = nodes[action.toId];
 
   if (!src || !dst) return state;
-  if (src.owner !== PLAYER || dst.owner !== PLAYER) return state;
+  if (src.owner !== (state.activePlayer ?? PLAYER) || dst.owner !== (state.activePlayer ?? PLAYER)) return state;
   if (!getNeighbours(state.edges, action.fromId).includes(action.toId)) return state;
   if (action.troops < 1 || action.troops >= src.troops) return state;
 
