@@ -106,7 +106,7 @@ export default function Game() {
       <div style={s.bar}>
         <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
         <span style={s.turnLabel}>Turn {state.turn}</span>
-        <ApBar ap={state.actionsLeft ?? state.config.apPerTurn} max={state.config.apPerTurn} />
+        {(state.config.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? state.config.apPerTurn} max={state.config.apPerTurn} />}
         <div style={s.resRow}>
           <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
           <Res icon="🌾" label="Food" val={state.resources.food} rate={prod.food - upkeep} color="#34d399" />

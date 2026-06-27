@@ -4,14 +4,14 @@ import { useGameLocal } from '../hooks/useGameLocal';
 import type { GameConfig, Difficulty } from 'shared/types';
 
 const DIFF_PRESETS: Record<Difficulty, Partial<GameConfig>> = {
-  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 5, fogOfWar: false, enableEvents: true },
+  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 99, fogOfWar: false, enableEvents: false },
   normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false, apPerTurn: 4, fogOfWar: false, enableEvents: true },
   hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true,  apPerTurn: 4, fogOfWar: true,  enableEvents: true },
   brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true,  apPerTurn: 3, fogOfWar: true,  enableEvents: true },
 };
 
 const DIFF_DESC: Record<Difficulty, string> = {
-  easy:   '1 enemy, half troops, 5 AP/turn, no fog — learning the ropes',
+  easy:   '1 enemy, half troops, unlimited AP, no fog, no events — learning the ropes',
   normal: '2 enemies, reduced troops, 4 AP/turn — balanced for most players',
   hard:   '4 enemies, full troops + buildings, fog of war, 4 AP/turn',
   brutal: '4 enemies, 1.5× troops, fog, only 3 AP/turn — relentless',
@@ -146,13 +146,13 @@ export default function Lobby() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 
                   <div>
-                    <p style={s.subLabel}>Action points per turn (limits actions — lower = harder)</p>
+                    <p style={s.subLabel}>Action points per turn (Off = unlimited — lower = harder)</p>
                     <div style={s.diffRow}>
-                      {[2, 3, 4, 5, 6].map(n => (
-                        <button key={n}
-                          style={{ ...s.diffBtn, ...(apPerTurn === n ? s.diffActive : {}) }}
-                          onClick={() => setApPerTurn(n)}>
-                          {n}
+                      {([['Off', 99], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]] as [string | number, number][]).map(([label, val]) => (
+                        <button key={val}
+                          style={{ ...s.diffBtn, ...(apPerTurn === val ? s.diffActive : {}) }}
+                          onClick={() => setApPerTurn(val)}>
+                          {label}
                         </button>
                       ))}
                     </div>
