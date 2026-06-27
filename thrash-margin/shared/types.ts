@@ -10,6 +10,7 @@ export function isEnemy(o: Owner): boolean { return o >= 2; }
 
 export type BuildingType = 'farm' | 'mine' | 'barracks' | 'market' | 'tower';
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'brutal';
+export type TerrainType = 'plains' | 'forest' | 'mountain' | 'coast' | 'desert';
 
 export type ActionType =
   | 'ATTACK'
@@ -87,6 +88,7 @@ export interface Territory {
   lv: number;
   buildings: BuildingType[];
   stronghold?: boolean;
+  terrain?: TerrainType;
 }
 
 export interface Resources {
@@ -122,6 +124,7 @@ export interface GameConfig {
   enableAltVictory: boolean; // economic / research victory conditions
   enableStrongholds: boolean;// neutral stronghold territories
   altVictoryGold: number;    // gold threshold for economic victory
+  enableTutorial?: boolean;  // guided tutorial mode
 }
 
 export interface TurnEvent {

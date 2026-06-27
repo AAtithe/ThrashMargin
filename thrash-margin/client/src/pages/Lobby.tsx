@@ -126,6 +126,9 @@ export default function Lobby() {
           </Section>
         )}
 
+        {/* ── How to Play ── */}
+        <HowToPlay />
+
         {/* ── New campaign ── */}
         <Section title="New Campaign">
           {/* Name input */}
@@ -138,6 +141,22 @@ export default function Lobby() {
               placeholder={`Campaign #${saves.length + 1}`}
               maxLength={32}
             />
+          </div>
+
+          {/* Tutorial quick-start */}
+          <div style={{ background: '#0f2a1a', border: '1px solid #15803d', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <p style={{ color: '#3fb950', fontSize: 13, fontWeight: 700, margin: '0 0 3px' }}>🎓 New to the game?</p>
+                <p style={{ color: '#6b9f7a', fontSize: 11, margin: 0 }}>Play the guided tutorial — 8 territories, unlimited actions, step-by-step hints.</p>
+              </div>
+              <button
+                onClick={() => { setSelectedMap('tutorial'); applyDifficulty('easy'); }}
+                style={{ background: '#15803d', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 12, padding: '8px 14px', cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 12 }}
+              >
+                Start Tutorial →
+              </button>
+            </div>
           </div>
 
           {/* Map selection */}
@@ -333,6 +352,63 @@ export default function Lobby() {
 }
 
 /* ── Sub-components ── */
+
+function HowToPlay() {
+  const [open, setOpen] = React.useState<string | null>(null);
+  const toggle = (k: string) => setOpen(v => v === k ? null : k);
+
+  const sections = [
+    {
+      key: 'basics',
+      title: '⚔ The Basics',
+      content: `Thrash Margin is a turn-based territory strategy game. Each turn you spend Action Points (AP) on attacks, recruiting, building, and research. When you run out of AP, end your turn — then the enemy factions take theirs.\n\nYour goal is to conquer all enemy capitals, accumulate enough gold for an Economic Victory, or complete a full Tech Tree branch for a Research Victory.`,
+    },
+    {
+      key: 'combat',
+      title: '🗡 Combat',
+      content: `Select one of your territories, then click an adjacent enemy or neutral territory to set it as your target. A combat preview shows whether you'll win or lose before you commit.\n\nThe attack ratio determines outcome — sending twice as many effective troops as the defender's defence strength guarantees a win with minimal losses. Techs like Siege Craft (+25% attack) and Iron Will (attack costs 1 AP instead of 2) can tilt the odds in your favour.`,
+    },
+    {
+      key: 'economy',
+      title: '💰 Resources',
+      content: `Gold funds recruiting and research. Food feeds your troops — if food runs out, troops starve. Materials are needed for building and upgrades.\n\nEach territory produces resources each turn based on its level and buildings. Build Farms for food, Mines for materials, Markets for gold, Barracks to raise troop cap, and Towers for defence.\n\nInfluence (when Diplomacy is enabled) lets you peacefully annex neutral territories instead of fighting for them.`,
+    },
+    {
+      key: 'techtree',
+      title: '🔬 Tech Tree',
+      content: `The Research panel (▸ in the sidebar) gives access to 12 technologies across three branches:\n\n• Military — cheaper attacks, stronger offence, reduced losses\n• Economic — more gold, better food security, stronger markets\n• Expansion — fog lifted, cheaper annexation, stronger towers, +1 AP/turn\n\nComplete all 4 tiers of any branch for a Research Victory. Each tech costs 1 AP and some gold + materials.`,
+    },
+    {
+      key: 'terrain',
+      title: '🌍 Terrain',
+      content: `Territories have terrain types that affect their stats:\n\n• Plains — no modifiers (default)\n• Forest — +1 food/turn, -1 defence (easier to attack, productive)\n• Mountain — +3 defence, -1 gold/turn (hard to crack, poor income)\n• Coast — +2 gold/turn (rich trade routes)\n• Desert — +1 mat/turn, -1 food/turn (good for materials)\n\nTerrain is shown as a small label below each territory name on the map.`,
+    },
+  ];
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <h3 style={{ color: '#e6edf3', fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>How to Play</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {sections.map(sec => (
+          <div key={sec.key} style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, overflow: 'hidden' }}>
+            <button
+              onClick={() => toggle(sec.key)}
+              style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#e6edf3', padding: '10px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+            >
+              {sec.title}
+              <span style={{ color: '#7d8590', fontSize: 11 }}>{open === sec.key ? '▲' : '▼'}</span>
+            </button>
+            {open === sec.key && (
+              <div style={{ padding: '0 14px 12px', color: '#7d8590', fontSize: 12, lineHeight: 1.7, whiteSpace: 'pre-line' }}>
+                {sec.content}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function Section({ title, children, empty, emptyMsg }: {
   title: string; children?: React.ReactNode;

@@ -6,7 +6,7 @@
 import {
   GameState, GameAction, GameConfig, Territory, Resources,
   Owner, BuildingType, LogEntry, GameStatus, TurnEvent,
-  PLAYER, ENEMY, NEUTRAL, isEnemy,
+  PLAYER, ENEMY, NEUTRAL, isEnemy, TerrainType,
 } from './types';
 
 const AP_COST = { ATTACK: 2, RECRUIT: 1, BUILD: 1, UPGRADE: 1, MOVE: 1, ANNEX: 1, RESEARCH: 1 } as const;
@@ -37,6 +37,32 @@ export const FACTION_BORDER: Record<number, string> = {
   3: '#8b5cf6',
   4: '#10b981',
 };
+
+export const TERRAIN_COLORS: Record<string, string> = {
+  plains:   '#52525b',
+  forest:   '#15803d',
+  mountain: '#78716c',
+  coast:    '#0ea5e9',
+  desert:   '#d97706',
+};
+
+export const TERRAIN_LABELS: Record<string, string> = {
+  plains:   'Plains',
+  forest:   'Forest',
+  mountain: 'Mountain',
+  coast:    'Coast',
+  desert:   'Desert',
+};
+
+export function getTerrainBonus(terrain?: string): { gold: number; food: number; mat: number; def: number } {
+  switch (terrain) {
+    case 'forest':   return { gold:  0, food:  1, mat: 0, def: -1 };
+    case 'mountain': return { gold: -1, food:  0, mat: 0, def:  3 };
+    case 'coast':    return { gold:  2, food:  0, mat: 0, def:  0 };
+    case 'desert':   return { gold:  0, food: -1, mat: 1, def:  0 };
+    default:         return { gold:  0, food:  0, mat: 0, def:  0 };
+  }
+}
 
 export const BUILDINGS: Record<string, {
   name: string; icon: string; col: string;
@@ -105,12 +131,14 @@ export function getGoldProd(t: Territory, research: string[] = []): number {
       g += base;
     }
   });
-  return g;
+  g += getTerrainBonus(t.terrain).gold;
+  return Math.max(1, g);
 }
 
 export function getFoodProd(t: Territory): number {
   let f = t.capital ? 2 : 0;
   t.buildings.forEach(b => { f += BUILDINGS[b]?.prod?.food ?? 0; });
+  f += getTerrainBonus(t.terrain).food;
   return f;
 }
 
@@ -124,6 +152,7 @@ export function getMatProd(t: Territory, research: string[] = []): number {
       m += base;
     }
   });
+  m += getTerrainBonus(t.terrain).mat;
   return m;
 }
 
@@ -143,6 +172,7 @@ export function getDefStr(t: Territory, research: string[] = []): number {
       d += BUILDINGS[b]?.defBonus ?? 0;
     }
   });
+  d += getTerrainBonus(t.terrain).def;
   return d;
 }
 
@@ -242,11 +272,12 @@ export interface MapDef {
 }
 
 export const MAP_DEFS: MapDef[] = [
-  { id: 'heartlands',     name: 'Heartlands',     style: 'Balanced',        territories: 20, desc: 'Classic grid. Player NW, enemy SE. Two enemy capitals at opposite corners.',                                          viewBox: '30 10 560 400' },
-  { id: 'narrows',        name: 'The Narrows',     style: 'Chokepoint',      territories: 14, desc: 'Two wide flanks joined by a 2-territory bottleneck. Control the pass to win.',                                       viewBox: '30 10 560 400' },
-  { id: 'crossroads',     name: 'Crossroads',      style: 'Central Control', territories: 16, desc: 'Four arms meet at a contested 4-territory centre cluster. Race for the middle.',                                     viewBox: '30 10 560 400' },
-  { id: 'frontier',       name: 'Frontier',        style: 'Open Field',      territories: 18, desc: 'Scattered settlements, staggered routes. Enemy holds two far corners at the top.',                                   viewBox: '30 10 560 400' },
-  { id: 'grand_continent',name: 'Grand Continent', style: 'Multi-Faction',   territories: 34, desc: 'Vast map with three rival factions. Player SW, enemies at NW, NE, and SE corners.',                                  viewBox: '0 0 760 545' },
+  { id: 'tutorial',       name: 'Tutorial',        style: 'Guided',          territories: 8,  desc: 'A guided map for new players. Learn the basics: attack, recruit, build, and end turn.',                              viewBox: '30 30 580 340' },
+  { id: 'heartlands',     name: 'Heartlands',      style: 'Balanced',        territories: 20, desc: 'Classic grid. Player NW, enemy SE. Two enemy capitals at opposite corners.',                                          viewBox: '30 10 560 400' },
+  { id: 'narrows',        name: 'The Narrows',      style: 'Chokepoint',      territories: 14, desc: 'Two wide flanks joined by a 2-territory bottleneck. Control the pass to win.',                                       viewBox: '30 10 560 400' },
+  { id: 'crossroads',     name: 'Crossroads',       style: 'Central Control', territories: 16, desc: 'Four arms meet at a contested 4-territory centre cluster. Race for the middle.',                                     viewBox: '30 10 560 400' },
+  { id: 'frontier',       name: 'Frontier',         style: 'Open Field',      territories: 18, desc: 'Scattered settlements, staggered routes. Enemy holds two far corners at the top.',                                   viewBox: '30 10 560 400' },
+  { id: 'grand_continent',name: 'Grand Continent',  style: 'Multi-Faction',   territories: 34, desc: 'Vast map with three rival factions. Player SW, enemies at NW, NE, and SE corners.',                                  viewBox: '0 0 760 545' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -283,26 +314,26 @@ function buildHeartlands(cfg: GameConfig): { nodes: Territory[]; edges: [number,
   const ns = cfg.neutralStr;
 
   const nodes: Territory[] = [
-    { id:  0, x:  68, y:  55, name: 'Ironhold',   owner: PLAYER,  troops: 8,      capital: true,  lv: 2, buildings: [] },
+    { id:  0, x:  68, y:  55, name: 'Ironhold',   owner: PLAYER,  troops: 8,      capital: true,  lv: 2, buildings: [], terrain: 'coast' },
     { id:  1, x: 195, y:  42, name: 'Ashford',    owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id:  2, x: 320, y:  35, name: 'Dunepass',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
+    { id:  2, x: 320, y:  35, name: 'Dunepass',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'forest' },
     { id:  3, x: 445, y:  42, name: 'Stormgate',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id:  4, x: 548, y:  58, name: 'Redfort',    ...applySlot(SLOTS[0], cfg, active) } as Territory,
-    { id:  5, x:  62, y: 158, name: 'Millhaven',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
+    { id:  4, x: 548, y:  58, name: 'Redfort',    ...applySlot(SLOTS[0], cfg, active), terrain: 'mountain' } as Territory,
+    { id:  5, x:  62, y: 158, name: 'Millhaven',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'coast' },
     { id:  6, x: 178, y: 148, name: 'Greywall',   owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [] },
-    { id:  7, x: 300, y: 140, name: 'Thornfield', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds },
+    { id:  7, x: 300, y: 140, name: 'Thornfield', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds, terrain: 'forest' },
     { id:  8, x: 422, y: 148, name: 'Ironpass',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id:  9, x: 535, y: 165, name: 'Crimsonton', ...applySlot(SLOTS[2], cfg, active) } as Territory,
-    { id: 10, x:  80, y: 268, name: 'Lowbridge',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
+    { id:  9, x: 535, y: 165, name: 'Crimsonton', ...applySlot(SLOTS[2], cfg, active), terrain: 'mountain' } as Territory,
+    { id: 10, x:  80, y: 268, name: 'Lowbridge',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'coast' },
     { id: 11, x: 200, y: 258, name: 'Saltmere',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id: 12, x: 318, y: 252, name: 'Midkeep',    owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds },
+    { id: 12, x: 318, y: 252, name: 'Midkeep',    owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds, terrain: 'forest' },
     { id: 13, x: 436, y: 258, name: 'Ashveil',    owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id: 14, x: 540, y: 272, name: 'Emberveil',  ...applySlot(SLOTS[3], cfg, active) } as Territory,
-    { id: 15, x:  65, y: 375, name: 'Southfen',   owner: NEUTRAL, troops: Math.max(1, ns - 1), capital: false, lv: 1, buildings: [] },
+    { id: 14, x: 540, y: 272, name: 'Emberveil',  ...applySlot(SLOTS[3], cfg, active), terrain: 'mountain' } as Territory,
+    { id: 15, x:  65, y: 375, name: 'Southfen',   owner: NEUTRAL, troops: Math.max(1, ns - 1), capital: false, lv: 1, buildings: [], terrain: 'coast' },
     { id: 16, x: 190, y: 368, name: 'Marshgate',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id: 17, x: 312, y: 362, name: 'Stonekeep',  owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [] },
+    { id: 17, x: 312, y: 362, name: 'Stonekeep',  owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], terrain: 'forest' },
     { id: 18, x: 432, y: 368, name: 'Cindervale', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id: 19, x: 542, y: 385, name: 'Ashpeak',    ...applySlot(SLOTS[1], cfg, active) } as Territory,
+    { id: 19, x: 542, y: 385, name: 'Ashpeak',    ...applySlot(SLOTS[1], cfg, active), terrain: 'mountain' } as Territory,
   ];
 
   // Apply stronghold troop bonus
@@ -341,21 +372,21 @@ function buildNarrows(cfg: GameConfig): { nodes: Territory[]; edges: [number, nu
 
   const nodes: Territory[] = [
     // Left flank (player side) — ids 0-5
-    { id:  0, x:  90, y:  80, name: 'Ironhold',  owner: PLAYER,  troops: 8,      capital: true,  lv: 2, buildings: [] },
-    { id:  1, x:  90, y: 200, name: 'Millhaven', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id:  2, x:  90, y: 340, name: 'Southfen',  owner: NEUTRAL, troops: Math.max(1, ns - 1), capital: false, lv: 1, buildings: [] },
+    { id:  0, x:  90, y:  80, name: 'Ironhold',  owner: PLAYER,  troops: 8,      capital: true,  lv: 2, buildings: [], terrain: 'forest' },
+    { id:  1, x:  90, y: 200, name: 'Millhaven', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'forest' },
+    { id:  2, x:  90, y: 340, name: 'Southfen',  owner: NEUTRAL, troops: Math.max(1, ns - 1), capital: false, lv: 1, buildings: [], terrain: 'forest' },
     { id:  3, x: 200, y: 140, name: 'Ashford',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     { id:  4, x: 200, y: 270, name: 'Saltmere',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     { id:  5, x: 200, y: 375, name: 'Marshgate', owner: NEUTRAL, troops: Math.max(1, ns - 1), capital: false, lv: 1, buildings: [] },
     // THE NARROWS — ids 6-7, only 2 territories connecting the two flanks
-    { id:  6, x: 300, y: 175, name: 'Thornpass', owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds },
-    { id:  7, x: 300, y: 295, name: 'Stoneford', owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [] },
+    { id:  6, x: 300, y: 175, name: 'Thornpass', owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds, terrain: 'mountain' },
+    { id:  7, x: 300, y: 295, name: 'Stoneford', owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], terrain: 'mountain' },
     // Right flank (enemy side) — ids 8-13
     { id:  8, x: 415, y:  80, name: 'Dunegate',  ...applySlot(SLOTS[2], cfg, active) } as Territory,
     { id:  9, x: 415, y: 200, name: 'Ironpass',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     { id: 10, x: 415, y: 340, name: 'Ashveil',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id: 11, x: 535, y:  80, name: 'Redfort',   ...applySlot(SLOTS[0], cfg, active) } as Territory,
-    { id: 12, x: 535, y: 210, name: 'Ashpeak',   ...applySlot(SLOTS[1], cfg, active) } as Territory,
+    { id: 11, x: 535, y:  80, name: 'Redfort',   ...applySlot(SLOTS[0], cfg, active), terrain: 'coast' } as Territory,
+    { id: 12, x: 535, y: 210, name: 'Ashpeak',   ...applySlot(SLOTS[1], cfg, active), terrain: 'coast' } as Territory,
     { id: 13, x: 535, y: 350, name: 'Crimsonton',...applySlot(SLOTS[3], cfg, active) } as Territory,
   ];
 
@@ -399,18 +430,18 @@ function buildCrossroads(cfg: GameConfig): { nodes: Territory[]; edges: [number,
     { id:  1, x: 175, y: 315, name: 'Southfen',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     { id:  2, x: 225, y: 260, name: 'Saltmere',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     // NW arm — neutral
-    { id:  3, x:  90, y:  80, name: 'Ashford',    owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id:  4, x: 175, y: 120, name: 'Millhaven',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id:  5, x: 230, y: 185, name: 'Greywall',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
+    { id:  3, x:  90, y:  80, name: 'Ashford',    owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'forest' },
+    { id:  4, x: 175, y: 120, name: 'Millhaven',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'forest' },
+    { id:  5, x: 230, y: 185, name: 'Greywall',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'forest' },
     // Centre — contested
-    { id:  6, x: 305, y: 190, name: 'Crossgate',  owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds },
-    { id:  7, x: 375, y: 190, name: 'Midkeep',    owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [] },
-    { id:  8, x: 305, y: 275, name: 'Thornfield', owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [] },
-    { id:  9, x: 375, y: 275, name: 'Stonevale',  owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds },
+    { id:  6, x: 305, y: 190, name: 'Crossgate',  owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds, terrain: 'mountain' },
+    { id:  7, x: 375, y: 190, name: 'Midkeep',    owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], terrain: 'mountain' },
+    { id:  8, x: 305, y: 275, name: 'Thornfield', owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], terrain: 'mountain' },
+    { id:  9, x: 375, y: 275, name: 'Stonevale',  owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds, terrain: 'mountain' },
     // SE arm — secondary enemy
-    { id: 10, x: 540, y: 360, name: 'Emberveil',  ...applySlot(SLOTS[1], cfg, active) } as Territory,
-    { id: 11, x: 455, y: 315, name: 'Cindervale', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id: 12, x: 400, y: 265, name: 'Ashveil',    owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
+    { id: 10, x: 540, y: 360, name: 'Emberveil',  ...applySlot(SLOTS[1], cfg, active), terrain: 'coast' } as Territory,
+    { id: 11, x: 455, y: 315, name: 'Cindervale', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'coast' },
+    { id: 12, x: 400, y: 265, name: 'Ashveil',    owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [], terrain: 'coast' },
     // NE arm — primary enemy
     { id: 13, x: 540, y:  80, name: 'Redfort',    ...applySlot(SLOTS[0], cfg, active) } as Territory,
     { id: 14, x: 455, y: 120, name: 'Crimsonton', ...applySlot(SLOTS[2], cfg, active) } as Territory,
@@ -456,14 +487,14 @@ function buildFrontier(cfg: GameConfig): { nodes: Territory[]; edges: [number, n
 
   const nodes: Territory[] = [
     // Row 1 (y=55) — top
-    { id:  0, x:  90, y:  55, name: 'Redfort',    ...applySlot(SLOTS[0], cfg, active) } as Territory,
+    { id:  0, x:  90, y:  55, name: 'Redfort',    ...applySlot(SLOTS[0], cfg, active), terrain: 'desert' } as Territory,
     { id:  1, x: 230, y:  55, name: 'Ashford',    ...applySlot(SLOTS[2], cfg, active) } as Territory,
     { id:  2, x: 365, y:  55, name: 'Dunepass',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id:  3, x: 480, y:  55, name: 'Ashpeak',    ...applySlot(SLOTS[1], cfg, active) } as Territory,
+    { id:  3, x: 480, y:  55, name: 'Ashpeak',    ...applySlot(SLOTS[1], cfg, active), terrain: 'desert' } as Territory,
     // Row 2 (y=150) — staggered
     { id:  4, x: 160, y: 150, name: 'Millhaven',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id:  5, x: 300, y: 150, name: 'Thornfield', owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds },
-    { id:  6, x: 430, y: 150, name: 'Ironpass',   ...applySlot(SLOTS[3], cfg, active) } as Territory,
+    { id:  5, x: 300, y: 150, name: 'Thornfield', owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds, terrain: 'forest' },
+    { id:  6, x: 430, y: 150, name: 'Ironpass',   ...applySlot(SLOTS[3], cfg, active), terrain: 'forest' } as Territory,
     // Row 3 (y=245)
     { id:  7, x:  90, y: 245, name: 'Greywall',   owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     { id:  8, x: 230, y: 245, name: 'Midkeep',    owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [] },
@@ -471,11 +502,11 @@ function buildFrontier(cfg: GameConfig): { nodes: Territory[]; edges: [number, n
     { id: 10, x: 480, y: 245, name: 'Crimsonton', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     // Row 4 (y=335) — staggered
     { id: 11, x: 160, y: 335, name: 'Lowbridge',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
-    { id: 12, x: 300, y: 335, name: 'Stonekeep',  owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds },
+    { id: 12, x: 300, y: 335, name: 'Stonekeep',  owner: NEUTRAL, troops: ns + 1, capital: false, lv: 1, buildings: [], stronghold: cfg.enableStrongholds, terrain: 'forest' },
     { id: 13, x: 430, y: 335, name: 'Cindervale', owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     // Row 5 (y=390) — bottom
-    { id: 14, x:  90, y: 390, name: 'Ironhold',   owner: PLAYER,  troops: 8,      capital: true,  lv: 2, buildings: [] },
-    { id: 15, x: 230, y: 390, name: 'Southfen',   owner: NEUTRAL, troops: Math.max(1, ns - 1), capital: false, lv: 1, buildings: [] },
+    { id: 14, x:  90, y: 390, name: 'Ironhold',   owner: PLAYER,  troops: 8,      capital: true,  lv: 2, buildings: [], terrain: 'coast' },
+    { id: 15, x: 230, y: 390, name: 'Southfen',   owner: NEUTRAL, troops: Math.max(1, ns - 1), capital: false, lv: 1, buildings: [], terrain: 'coast' },
     { id: 16, x: 365, y: 390, name: 'Marshgate',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
     { id: 17, x: 480, y: 390, name: 'Emberveil',  owner: NEUTRAL, troops: ns,     capital: false, lv: 1, buildings: [] },
   ];
@@ -610,6 +641,27 @@ function buildGrandContinent(cfg: GameConfig): { nodes: Territory[]; edges: [num
     };
   });
 
+  // Terrain assignments for Grand Continent
+  const grandTerrainMap: Record<number, TerrainType> = {
+    // Top row: mountain for 0,5; forest for 1,2
+    0: 'mountain', 1: 'forest', 2: 'forest', 5: 'mountain',
+    // Row 1: forest 7,8
+    7: 'forest', 8: 'forest',
+    // Row 2: coast 11,16
+    11: 'coast', 16: 'coast',
+    // Row 3: desert 18,19
+    18: 'desert', 19: 'desert',
+    // Row 4: coast 22; desert 26,27
+    22: 'coast', 26: 'desert', 27: 'desert',
+    // Row 5: coast 28,29; desert 33
+    28: 'coast', 29: 'coast', 33: 'desert',
+  };
+  nodes.forEach(n => {
+    if (grandTerrainMap[n.id]) {
+      n.terrain = grandTerrainMap[n.id];
+    }
+  });
+
   const edges: [number, number][] = [
     // Row 0→1
     [0,6],[1,6],[1,7],[2,7],[2,8],[3,8],[3,9],[4,9],[4,10],[5,10],
@@ -637,6 +689,35 @@ function buildGrandContinent(cfg: GameConfig): { nodes: Territory[]; edges: [num
 }
 
 // ---------------------------------------------------------------------------
+// buildTutorial  — 8 territories, guided intro map
+// ---------------------------------------------------------------------------
+
+function buildTutorial(cfg: GameConfig): { nodes: Territory[]; edges: [number, number][] } {
+  const SLOTS: EnemySlot[] = [
+    { id: 7, troops: 6, capital: true, lv: 2, buildings: ['tower'] },
+  ];
+  const active = new Set(SLOTS.slice(0, cfg.enemyTerritories).map(s => s.id));
+  const ns = Math.min(cfg.neutralStr, 3);
+
+  const nodes: Territory[] = [
+    { id: 0, x: 100, y: 180, name: 'Ironhold',   owner: PLAYER,  troops: 6, capital: true,  lv: 2, buildings: [], terrain: 'plains' },
+    { id: 1, x: 230, y: 180, name: 'Meadowkeep', owner: NEUTRAL, troops: ns, capital: false, lv: 1, buildings: ['farm'], terrain: 'plains' },
+    { id: 2, x: 340, y: 120, name: 'Thornwood',  owner: NEUTRAL, troops: ns, capital: false, lv: 1, buildings: [], terrain: 'forest' },
+    { id: 3, x: 450, y: 120, name: 'Ridgepass',  owner: NEUTRAL, troops: ns, capital: false, lv: 1, buildings: [], terrain: 'mountain' },
+    { id: 4, x: 230, y: 280, name: 'Saltcove',   owner: NEUTRAL, troops: ns, capital: false, lv: 1, buildings: [], terrain: 'coast' },
+    { id: 5, x: 450, y: 240, name: 'Ashfen',     owner: NEUTRAL, troops: ns, capital: false, lv: 1, buildings: [], terrain: 'plains' },
+    { id: 6, x: 550, y: 180, name: 'Duskbridge', owner: NEUTRAL, troops: ns, capital: false, lv: 1, buildings: [], terrain: 'plains' },
+    { id: 7, x: 550, y: 280, name: 'Ashpeak',    ...applySlot(SLOTS[0], cfg, active), terrain: 'plains' } as Territory,
+  ];
+
+  const edges: [number, number][] = [
+    [0,1],[1,2],[2,3],[3,5],[1,4],[4,5],[5,6],[6,7],[5,7],
+  ];
+
+  return { nodes, edges };
+}
+
+// ---------------------------------------------------------------------------
 // Initial state factory
 // ---------------------------------------------------------------------------
 
@@ -645,6 +726,7 @@ export function createInitialState(id: string, config: GameConfig): GameState {
 
   const map = (() => {
     switch (cfg.mapId) {
+      case 'tutorial':        return buildTutorial(cfg);
       case 'narrows':         return buildNarrows(cfg);
       case 'crossroads':      return buildCrossroads(cfg);
       case 'frontier':        return buildFrontier(cfg);

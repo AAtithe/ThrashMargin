@@ -5,6 +5,7 @@ import {
   BUILDINGS, LV, MAX_LV,
   FACTION_COLORS, FACTION_NAMES, FACTION_BORDER,
   TECH_TREE, MAP_DEFS,
+  TERRAIN_COLORS, TERRAIN_LABELS, getTerrainBonus,
   getSlots, getTroopCap, getGoldProd, getFoodProd, getMatProd, getDefStr, getNeighbours,
   prodTotals, resolveCombat,
 } from 'shared/engine-reference';
@@ -202,6 +203,10 @@ export default function Game() {
 
         {/* ── Sidebar ── */}
         <div style={s.sidebar}>
+          {/* Tutorial panel */}
+          {cfg.mapId === 'tutorial' && (
+            <TutorialPanel state={state} selId={selId} tgtId={tgtId} />
+          )}
           {sel ? (
             <Panel
               sel={sel} tgt={tgt} tgtIsMove={tgtIsMove} state={state}
@@ -338,15 +343,27 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, ann
         {n.name}
       </text>
 
+      {/* Terrain badge */}
+      {n.terrain && n.terrain !== 'plains' && (
+        <text x={n.x} y={n.y + r + 22} textAnchor="middle"
+          fill={TERRAIN_COLORS[n.terrain]} fontSize={8} fontWeight={600}
+          style={{ pointerEvents: 'none' }}>
+          {n.terrain.charAt(0).toUpperCase() + n.terrain.slice(1)}
+        </text>
+      )}
+
       {/* Building indicator dots */}
-      {hasBlds && n.buildings.map((b, i) => {
-        const totalW = n.buildings.length * 7 - 2;
-        const x0 = n.x - totalW / 2 + i * 7;
-        return (
-          <rect key={i} x={x0} y={n.y + r + 16} width={5} height={5} rx={1}
-            fill={BUILDINGS[b]?.col ?? '#555'} opacity={0.9} style={{ pointerEvents: 'none' }} />
-        );
-      })}
+      {hasBlds && (() => {
+        const bldY = n.terrain && n.terrain !== 'plains' ? n.y + r + 30 : n.y + r + 16;
+        return n.buildings.map((b, i) => {
+          const totalW = n.buildings.length * 7 - 2;
+          const x0 = n.x - totalW / 2 + i * 7;
+          return (
+            <rect key={i} x={x0} y={bldY} width={5} height={5} rx={1}
+              fill={BUILDINGS[b]?.col ?? '#555'} opacity={0.9} style={{ pointerEvents: 'none' }} />
+          );
+        });
+      })()}
     </g>
   );
 }
@@ -406,6 +423,11 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
           <Stat label="Mat/t"    value={`+${getMatProd(sel, research)}`} />
           <Stat label="Slots"    value={`${sel.buildings.length}/${slots}`} />
         </div>
+        {sel.terrain && sel.terrain !== 'plains' && (
+          <div style={{ marginTop: 8 }}>
+            <Stat label="Terrain" value={TERRAIN_LABELS[sel.terrain] ?? sel.terrain} />
+          </div>
+        )}
         {sel.buildings.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: 8 }}>
             {sel.buildings.map((b, i) => (
@@ -767,6 +789,11 @@ function CombatPreview({ sending, tgt, playerBonus, research }: {
   );
 }
 
+/* ─── Terrain helpers ─── */
+function getTerrainDesc(t: string): string {
+  return ({ forest: '+1 food, -1 def', mountain: '+3 def, -1 gold', coast: '+2 gold', desert: '+1 mat, -1 food' } as Record<string, string>)[t] ?? '';
+}
+
 /* ─── Territory hover tooltip ─── */
 function TooltipCard({ node, visible, x, y, research }: {
   node: Territory; visible: boolean; x: number; y: number; research: string[];
@@ -790,6 +817,11 @@ function TooltipCard({ node, visible, x, y, research }: {
         </span>
       </div>
       <div style={{ color: '#7d8590', fontSize: 11 }}>{ownerLabel} · Lv{node.lv}</div>
+      {node.terrain && node.terrain !== 'plains' && (
+        <div style={{ color: TERRAIN_COLORS[node.terrain], fontSize: 10, marginTop: 2, fontWeight: 600 }}>
+          {TERRAIN_LABELS[node.terrain]} — {getTerrainDesc(node.terrain)}
+        </div>
+      )}
       {visible ? (
         <div style={{ marginTop: 5, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11 }}>
@@ -877,6 +909,43 @@ function VictoryScreen({ state, playerTerrs, playerTroops, eliminatedFactions, o
           ← Return to Lobby
         </button>
       </div>
+    </div>
+  );
+}
+
+/* ─── Tutorial Panel ─── */
+function getTutorialHint(state: GameState, selId: number | null, tgtId: number | null): { step: number; title: string; message: string } {
+  const playerTerrs = state.nodes.filter(n => n.owner === PLAYER).length;
+  const turn = state.turn;
+  const actionsUsed = (state.config.apPerTurn ?? 4) - (state.actionsLeft ?? 0) > 0;
+
+  if (playerTerrs === 1 && selId === null)
+    return { step: 1, title: 'Select your territory', message: 'Click Ironhold (your blue capital) to select it and see your options.' };
+  if (playerTerrs === 1 && selId !== null && tgtId === null)
+    return { step: 2, title: 'Recruit or Attack', message: 'You can Recruit more troops, or click an adjacent territory (dashed ring) to attack. Try attacking Meadowkeep to expand your realm.' };
+  if (playerTerrs === 1 && tgtId !== null)
+    return { step: 3, title: 'Launch the attack', message: 'Drag the slider to set how many troops to send, then click ⚔ Attack. Keep 1 troop at home!' };
+  if (playerTerrs === 2 && turn === 1)
+    return { step: 4, title: 'Build for income', message: 'Select one of your territories and build a Farm (food) or Mine (materials). Then click End Turn →.' };
+  if (playerTerrs >= 2 && playerTerrs < 6)
+    return { step: 5, title: 'Keep expanding', message: 'Capture more territories to grow your army. Each territory earns gold each turn. The enemy capital Ashpeak is your ultimate target.' };
+  if (playerTerrs >= 6)
+    return { step: 6, title: 'Final push', message: 'Almost there! Ashpeak is the enemy capital. Muster your strongest army and crush it to win the tutorial.' };
+
+  void actionsUsed; void turn;
+  return { step: 1, title: 'Welcome', message: 'Click Ironhold to begin.' };
+}
+
+function TutorialPanel({ state, selId, tgtId }: { state: GameState; selId: number | null; tgtId: number | null }) {
+  const hint = getTutorialHint(state, selId, tgtId);
+  return (
+    <div style={{ background: '#0f2a1a', border: '1px solid #15803d', borderRadius: 6, padding: '12px 14px', marginBottom: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+        <span style={{ fontSize: 14 }}>🎓</span>
+        <span style={{ color: '#3fb950', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>Tutorial — Step {hint.step}</span>
+      </div>
+      <p style={{ color: '#86efac', fontSize: 12, fontWeight: 600, margin: '0 0 4px' }}>{hint.title}</p>
+      <p style={{ color: '#6b9f7a', fontSize: 11, margin: 0, lineHeight: 1.5 }}>{hint.message}</p>
     </div>
   );
 }
