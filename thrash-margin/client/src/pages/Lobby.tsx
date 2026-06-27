@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameLocal, type SaveMeta } from '../hooks/useGameLocal';
+import { MAP_DEFS } from 'shared/engine-reference';
 import type { GameConfig, Difficulty } from 'shared/types';
 
 const DIFF_PRESETS: Record<Difficulty, Partial<GameConfig>> = {
@@ -46,6 +47,8 @@ export default function Lobby() {
   const [fogOfWar,     setFogOfWar]     = useState(DIFF_PRESETS.normal.fogOfWar     ?? false);
   const [enableEvents, setEnableEvents] = useState(DIFF_PRESETS.normal.enableEvents ?? true);
 
+  const [selectedMap, setSelectedMap] = useState('heartlands');
+
   // Delete confirmation
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -66,6 +69,7 @@ export default function Lobby() {
       startGold, startFood, startMat, recruitCost, upkeep,
       enemyTerritories, enemyTroopScale, enemyStartBuildings,
       apPerTurn, fogOfWar, enableEvents,
+      mapId: selectedMap,
     };
     const name = campaignName.trim() || undefined;
     const id = createGame(config, name);
@@ -122,6 +126,27 @@ export default function Lobby() {
               placeholder={`Campaign #${saves.length + 1}`}
               maxLength={32}
             />
+          </div>
+
+          {/* Map selection */}
+          <div style={{ marginBottom: 14 }}>
+            <p style={{ ...s.sLabel, marginBottom: 8 }}>Choose map</p>
+            <div style={s.mapGrid}>
+              {MAP_DEFS.map(m => {
+                const active = selectedMap === m.id;
+                return (
+                  <button key={m.id} style={{ ...s.mapCard, ...(active ? s.mapCardActive : {}) }}
+                    onClick={() => setSelectedMap(m.id)}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: active ? '#e6edf3' : '#c9d1d9' }}>{m.name}</span>
+                      <span style={{ ...s.styleTag, ...(active ? s.styleTagActive : {}) }}>{m.style}</span>
+                    </div>
+                    <p style={{ fontSize: 11, color: active ? '#9198a1' : '#6b7280', margin: '0 0 5px', lineHeight: 1.4, textAlign: 'left' }}>{m.desc}</p>
+                    <p style={{ fontSize: 10, color: active ? '#58a6ff' : '#4b5563', margin: 0, textAlign: 'left' }}>{m.territories} territories</p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Settings toggle */}
@@ -362,4 +387,10 @@ const s: Record<string, React.CSSProperties> = {
   nudge:          { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', width: 22, height: 22, borderRadius: 4, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 },
 
   newBtn:         { background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, padding: '10px 22px', cursor: 'pointer', fontSize: 14 },
+
+  mapGrid:        { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
+  mapCard:        { background: '#0d1117', border: '1px solid #30363d', borderRadius: 8, padding: '10px 12px', cursor: 'pointer', textAlign: 'left' as const, transition: 'border-color 0.15s' },
+  mapCardActive:  { background: '#0f1f38', border: '1px solid #1f6feb' },
+  styleTag:       { fontSize: 9, background: '#21262d', color: '#7d8590', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' as const },
+  styleTagActive: { background: '#1f3a5f', color: '#58a6ff' },
 };

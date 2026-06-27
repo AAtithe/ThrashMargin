@@ -97,6 +97,7 @@ export interface GameConfig {
   apPerTurn: number;         // action points available each player turn
   fogOfWar: boolean;         // hide troop counts/buildings for non-adjacent territories
   enableEvents: boolean;     // trigger a random event each turn
+  mapId: string;             // which map layout to use
 }
 
 export interface TurnEvent {
