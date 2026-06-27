@@ -5,17 +5,17 @@ import { MAP_DEFS } from 'shared/engine-reference';
 import type { GameConfig, Difficulty } from 'shared/types';
 
 const DIFF_PRESETS: Record<Difficulty, Partial<GameConfig>> = {
-  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 99, fogOfWar: false, enableEvents: false },
-  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false, apPerTurn: 4,  fogOfWar: false, enableEvents: true  },
-  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true,  apPerTurn: 4,  fogOfWar: true,  enableEvents: true  },
-  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true,  apPerTurn: 3,  fogOfWar: true,  enableEvents: true  },
+  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 99, fogOfWar: false, enableEvents: false, enemyFactions: 1, enableDiplomacy: false, enableTechTree: false, enableAltVictory: false, enableStrongholds: false },
+  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false, apPerTurn: 4,  fogOfWar: false, enableEvents: true,  enemyFactions: 1, enableDiplomacy: false, enableTechTree: true,  enableAltVictory: false, enableStrongholds: false },
+  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true,  apPerTurn: 4,  fogOfWar: true,  enableEvents: true,  enemyFactions: 2, enableDiplomacy: true,  enableTechTree: true,  enableAltVictory: true,  enableStrongholds: true  },
+  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true,  apPerTurn: 3,  fogOfWar: true,  enableEvents: true,  enemyFactions: 3, enableDiplomacy: true,  enableTechTree: true,  enableAltVictory: true,  enableStrongholds: true  },
 };
 
 const DIFF_DESC: Record<Difficulty, string> = {
-  easy:   '1 enemy, half troops, unlimited AP, no fog, no events — learning the ropes',
-  normal: '2 enemies, reduced troops, 4 AP/turn — balanced for most players',
-  hard:   '4 enemies, full troops + buildings, fog of war, 4 AP/turn',
-  brutal: '4 enemies, 1.5× troops, fog, only 3 AP/turn — relentless',
+  easy:   '1 enemy faction, half troops, unlimited AP, no fog, no events — learning the ropes',
+  normal: '1 enemy faction, reduced troops, 4 AP/turn — balanced for most players',
+  hard:   '2 enemy factions, full troops + buildings, fog of war, diplomacy & strongholds',
+  brutal: '3 enemy factions, 1.5× troops, fog, only 3 AP/turn — relentless',
 };
 
 function relTime(ts: number): string {
@@ -33,7 +33,7 @@ export default function Lobby() {
 
   // New campaign form
   const [campaignName, setCampaignName] = useState('');
-  const [showSettings, setShowSettings] = useState(false);
+  const [showSettings, setShowSettings] = useState(true);
   const [difficulty,   setDifficulty]   = useState<Difficulty>('normal');
   const [startGold,    setStartGold]    = useState(25);
   const [startFood,    setStartFood]    = useState(20);
@@ -46,6 +46,11 @@ export default function Lobby() {
   const [apPerTurn,    setApPerTurn]    = useState(DIFF_PRESETS.normal.apPerTurn    ?? 4);
   const [fogOfWar,     setFogOfWar]     = useState(DIFF_PRESETS.normal.fogOfWar     ?? false);
   const [enableEvents, setEnableEvents] = useState(DIFF_PRESETS.normal.enableEvents ?? true);
+  const [enemyFactions,      setEnemyFactions]      = useState(DIFF_PRESETS.normal.enemyFactions      ?? 1);
+  const [enableDiplomacy,    setEnableDiplomacy]    = useState(DIFF_PRESETS.normal.enableDiplomacy    ?? false);
+  const [enableTechTree,     setEnableTechTree]     = useState(DIFF_PRESETS.normal.enableTechTree     ?? true);
+  const [enableAltVictory,   setEnableAltVictory]   = useState(DIFF_PRESETS.normal.enableAltVictory   ?? false);
+  const [enableStrongholds,  setEnableStrongholds]  = useState(DIFF_PRESETS.normal.enableStrongholds  ?? false);
 
   const [selectedMap, setSelectedMap] = useState('heartlands');
   const [showConfirm, setShowConfirm] = useState(false);
@@ -62,6 +67,11 @@ export default function Lobby() {
     if (p.apPerTurn           !== undefined) setApPerTurn(p.apPerTurn);
     if (p.fogOfWar            !== undefined) setFogOfWar(p.fogOfWar);
     if (p.enableEvents        !== undefined) setEnableEvents(p.enableEvents);
+    if (p.enemyFactions       !== undefined) setEnemyFactions(p.enemyFactions);
+    if (p.enableDiplomacy     !== undefined) setEnableDiplomacy(p.enableDiplomacy);
+    if (p.enableTechTree      !== undefined) setEnableTechTree(p.enableTechTree);
+    if (p.enableAltVictory    !== undefined) setEnableAltVictory(p.enableAltVictory);
+    if (p.enableStrongholds   !== undefined) setEnableStrongholds(p.enableStrongholds);
   };
 
   const handleNew = () => {
@@ -71,6 +81,7 @@ export default function Lobby() {
       enemyTerritories, enemyTroopScale, enemyStartBuildings,
       apPerTurn, fogOfWar, enableEvents,
       mapId: selectedMap,
+      enemyFactions, enableDiplomacy, enableTechTree, enableAltVictory, enableStrongholds,
     };
     const name = campaignName.trim() || undefined;
     const id = createGame(config, name);
@@ -134,16 +145,16 @@ export default function Lobby() {
             <p style={{ ...s.sLabel, marginBottom: 8 }}>Choose map</p>
             <div style={s.mapGrid}>
               {MAP_DEFS.map(m => {
-                const active = selectedMap === m.id;
+                const isActive = selectedMap === m.id;
                 return (
-                  <button key={m.id} style={{ ...s.mapCard, ...(active ? s.mapCardActive : {}) }}
+                  <button key={m.id} style={{ ...s.mapCard, ...(isActive ? s.mapCardActive : {}) }}
                     onClick={() => setSelectedMap(m.id)}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: active ? '#e6edf3' : '#c9d1d9' }}>{m.name}</span>
-                      <span style={{ ...s.styleTag, ...(active ? s.styleTagActive : {}) }}>{m.style}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: isActive ? '#e6edf3' : '#c9d1d9' }}>{m.name}</span>
+                      <span style={{ ...s.styleTag, ...(isActive ? s.styleTagActive : {}) }}>{m.style}</span>
                     </div>
-                    <p style={{ fontSize: 11, color: active ? '#9198a1' : '#6b7280', margin: '0 0 5px', lineHeight: 1.4, textAlign: 'left' }}>{m.desc}</p>
-                    <p style={{ fontSize: 10, color: active ? '#58a6ff' : '#4b5563', margin: 0, textAlign: 'left' }}>{m.territories} territories</p>
+                    <p style={{ fontSize: 11, color: isActive ? '#9198a1' : '#6b7280', margin: '0 0 5px', lineHeight: 1.4, textAlign: 'left' }}>{m.desc}</p>
+                    <p style={{ fontSize: 10, color: isActive ? '#58a6ff' : '#4b5563', margin: 0, textAlign: 'left' }}>{m.territories} territories</p>
                   </button>
                 );
               })}
@@ -206,7 +217,7 @@ export default function Lobby() {
                         </button>
                       ))}
                     </div>
-                    <p style={s.diffDesc}>Attack costs 2 AP · Recruit / Build / Move / Upgrade cost 1 AP each</p>
+                    <p style={s.diffDesc}>Attack costs 2 AP · Recruit / Build / Move / Upgrade / Annex / Research cost 1 AP each</p>
                   </div>
                   <div>
                     <p style={s.subLabel}>Fog of war (hide troop counts beyond your borders)</p>
@@ -216,6 +227,22 @@ export default function Lobby() {
                     <p style={s.subLabel}>Random turn events (supply windfalls, plagues, unrest)</p>
                     <ToggleRow value={enableEvents} onChange={setEnableEvents} />
                   </div>
+                  <div>
+                    <p style={s.subLabel}>Tech tree (12 techs across 3 branches — research for bonuses and victory)</p>
+                    <ToggleRow value={enableTechTree} onChange={setEnableTechTree} />
+                  </div>
+                  <div>
+                    <p style={s.subLabel}>Diplomacy (influence resource + peaceful annexation of neutral territories)</p>
+                    <ToggleRow value={enableDiplomacy} onChange={setEnableDiplomacy} />
+                  </div>
+                  <div>
+                    <p style={s.subLabel}>Alternative victories (economic: 400g, research: complete a full tech branch)</p>
+                    <ToggleRow value={enableAltVictory} onChange={setEnableAltVictory} />
+                  </div>
+                  <div>
+                    <p style={s.subLabel}>Neutral strongholds (fortified neutral territories with high production)</p>
+                    <ToggleRow value={enableStrongholds} onChange={setEnableStrongholds} />
+                  </div>
                 </div>
               </div>
 
@@ -224,7 +251,19 @@ export default function Lobby() {
                 <p style={s.sLabel}>Enemy Setup</p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                   <div>
-                    <p style={s.subLabel}>Starting territories (1 = easier, 4 = hardest)</p>
+                    <p style={s.subLabel}>Enemy factions (1 = classic, 2-3 = multi-faction chaos)</p>
+                    <div style={s.diffRow}>
+                      {[1, 2, 3].map(n => (
+                        <button key={n}
+                          style={{ ...s.diffBtn, ...(enemyFactions === n ? s.diffActive : {}) }}
+                          onClick={() => setEnemyFactions(n)}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <p style={s.subLabel}>Starting territories per faction (1 = easier, 4 = hardest)</p>
                     <div style={s.diffRow}>
                       {[1, 2, 3, 4].map(n => (
                         <button key={n}
@@ -269,12 +308,17 @@ export default function Lobby() {
           campaignName={campaignName.trim() || `Campaign #${saves.length + 1}`}
           mapId={selectedMap}
           difficulty={difficulty}
+          enemyFactions={enemyFactions}
           enemyTerritories={enemyTerritories}
           enemyTroopScale={enemyTroopScale}
           enemyStartBuildings={enemyStartBuildings}
           apPerTurn={apPerTurn}
           fogOfWar={fogOfWar}
           enableEvents={enableEvents}
+          enableDiplomacy={enableDiplomacy}
+          enableTechTree={enableTechTree}
+          enableAltVictory={enableAltVictory}
+          enableStrongholds={enableStrongholds}
           startGold={startGold}
           startFood={startFood}
           startMat={startMat}
@@ -373,12 +417,14 @@ function ToggleRow({ value, onChange }: { value: boolean; onChange: (v: boolean)
   );
 }
 
-function ConfirmModal({ campaignName, mapId, difficulty, enemyTerritories, enemyTroopScale,
-  enemyStartBuildings, apPerTurn, fogOfWar, enableEvents, startGold, startFood, startMat,
+function ConfirmModal({ campaignName, mapId, difficulty, enemyFactions, enemyTerritories, enemyTroopScale,
+  enemyStartBuildings, apPerTurn, fogOfWar, enableEvents, enableDiplomacy, enableTechTree,
+  enableAltVictory, enableStrongholds, startGold, startFood, startMat,
   recruitCost, upkeep, onBack, onConfirm }: {
   campaignName: string; mapId: string; difficulty: Difficulty;
-  enemyTerritories: number; enemyTroopScale: number; enemyStartBuildings: boolean;
+  enemyFactions: number; enemyTerritories: number; enemyTroopScale: number; enemyStartBuildings: boolean;
   apPerTurn: number; fogOfWar: boolean; enableEvents: boolean;
+  enableDiplomacy: boolean; enableTechTree: boolean; enableAltVictory: boolean; enableStrongholds: boolean;
   startGold: number; startFood: number; startMat: number;
   recruitCost: number; upkeep: number;
   onBack: () => void; onConfirm: () => void;
@@ -411,6 +457,7 @@ function ConfirmModal({ campaignName, mapId, difficulty, enemyTerritories, enemy
 
           <div>
             <p style={s.sLabel}>Enemy Setup</p>
+            <Row label="Enemy factions"       value={String(enemyFactions)} />
             <Row label="Starting territories" value={String(enemyTerritories)} />
             <Row label="Troop strength"        value={troopLabel} />
             <Row label="Pre-built buildings"   value={enemyStartBuildings ? 'Yes' : 'No'} />
@@ -421,6 +468,10 @@ function ConfirmModal({ campaignName, mapId, difficulty, enemyTerritories, enemy
             <Row label="Action points / turn" value={apPerTurn >= 99 ? 'Unlimited' : String(apPerTurn)} />
             <Row label="Fog of war"           value={fogOfWar ? 'On' : 'Off'} />
             <Row label="Random events"        value={enableEvents ? 'On' : 'Off'} />
+            <Row label="Tech tree"            value={enableTechTree ? 'On' : 'Off'} />
+            <Row label="Diplomacy"            value={enableDiplomacy ? 'On' : 'Off'} />
+            <Row label="Alt. victories"       value={enableAltVictory ? 'On' : 'Off'} />
+            <Row label="Strongholds"          value={enableStrongholds ? 'On' : 'Off'} />
           </div>
 
           <div>

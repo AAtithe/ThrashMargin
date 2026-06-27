@@ -1,10 +1,12 @@
 // shared/types.ts
 // All types shared between client and server
 
-export type Owner = 0 | 1 | 2; // 0=Neutral, 1=Player, 2=Enemy
+export type Owner = number; // 0=Neutral, 1=Player, 2+=Enemy factions
 export const NEUTRAL = 0;
 export const PLAYER = 1;
 export const ENEMY = 2;
+
+export function isEnemy(o: Owner): boolean { return o >= 2; }
 
 export type BuildingType = 'farm' | 'mine' | 'barracks' | 'market' | 'tower';
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'brutal';
@@ -15,7 +17,9 @@ export type ActionType =
   | 'BUILD'
   | 'UPGRADE'
   | 'MOVE'
-  | 'END_TURN';
+  | 'END_TURN'
+  | 'RESEARCH'
+  | 'ANNEX';
 
 export interface AttackAction {
   type: 'ATTACK';
@@ -52,13 +56,25 @@ export interface EndTurnAction {
   type: 'END_TURN';
 }
 
+export interface ResearchAction {
+  type: 'RESEARCH';
+  techId: string;
+}
+
+export interface AnnexAction {
+  type: 'ANNEX';
+  nodeId: number;
+}
+
 export type GameAction =
   | AttackAction
   | RecruitAction
   | BuildAction
   | UpgradeAction
   | MoveAction
-  | EndTurnAction;
+  | EndTurnAction
+  | ResearchAction
+  | AnnexAction;
 
 export interface Territory {
   id: number;
@@ -70,12 +86,14 @@ export interface Territory {
   capital: boolean;
   lv: number;
   buildings: BuildingType[];
+  stronghold?: boolean;
 }
 
 export interface Resources {
   gold: number;
   food: number;
   mat: number;
+  influence: number;
 }
 
 export interface GameConfig {
@@ -98,6 +116,12 @@ export interface GameConfig {
   fogOfWar: boolean;         // hide troop counts/buildings for non-adjacent territories
   enableEvents: boolean;     // trigger a random event each turn
   mapId: string;             // which map layout to use
+  enemyFactions: number;     // number of enemy factions (1-3)
+  enableDiplomacy: boolean;  // influence resource + peaceful annexation
+  enableTechTree: boolean;   // tech tree system
+  enableAltVictory: boolean; // economic / research victory conditions
+  enableStrongholds: boolean;// neutral stronghold territories
+  altVictoryGold: number;    // gold threshold for economic victory
 }
 
 export interface TurnEvent {
@@ -128,6 +152,9 @@ export interface GameState {
   tgt: number | null;
   actionsLeft: number;
   lastEvent: TurnEvent | null;
+  research: string[];
+  victoryType?: string;
+  researchBranch?: string;
 }
 
 export interface ActionResult {

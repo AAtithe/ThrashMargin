@@ -3,14 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useGameLocal as useGame } from '../hooks/useGameLocal';
 import {
   BUILDINGS, LV, MAX_LV,
+  FACTION_COLORS, FACTION_NAMES, FACTION_BORDER,
+  TECH_TREE, MAP_DEFS,
   getSlots, getTroopCap, getGoldProd, getFoodProd, getMatProd, getDefStr, getNeighbours,
   prodTotals,
 } from 'shared/engine-reference';
-import { PLAYER, ENEMY, NEUTRAL } from 'shared/types';
+import { PLAYER, NEUTRAL, isEnemy } from 'shared/types';
 import type { BuildingType, GameState, Territory, TurnEvent } from 'shared/types';
-
-const OWNER_COLOR  = ['#52525b', '#2563eb', '#dc2626'] as const;
-const OWNER_BORDER = ['#71717a', '#3b82f6', '#ef4444'] as const;
 
 export default function Game() {
   const { id } = useParams<{ id: string }>();
@@ -45,16 +44,31 @@ export default function Game() {
     [sel, neighbours, state, selId],
   );
 
+  const annexable = useMemo(() => {
+    if (!state?.config.enableDiplomacy || sel?.owner !== PLAYER) return [];
+    return neighbours.filter(nid => state!.nodes[nid].owner === NEUTRAL);
+  }, [sel, neighbours, state]);
+
   const tgtIsMove = tgtId !== null && state !== null && state.nodes[tgtId]?.owner === PLAYER;
 
-  const prod = useMemo(() => state ? prodTotals(state.nodes, PLAYER) : { gold: 0, food: 0, mat: 0 }, [state]);
+  const research = state?.research ?? [];
+
+  const prod = useMemo(() => state ? prodTotals(state.nodes, PLAYER, research) : { gold: 0, food: 0, mat: 0 }, [state, research]);
   const upkeep = useMemo(() => {
     if (!state) return 0;
     return state.nodes.filter(n => n.owner === PLAYER).reduce((sum, n) => sum + n.troops, 0) * state.config.upkeep;
   }, [state]);
 
+  const influenceRate = useMemo(() => {
+    if (!state || !state.config.enableDiplomacy) return 0;
+    const playerNodes = state.nodes.filter(n => n.owner === PLAYER);
+    const marketCount = playerNodes.filter(n => n.buildings.includes('market')).length;
+    return Math.floor(playerNodes.length / 3) + marketCount;
+  }, [state]);
+
   const visibleIds = useMemo(() => {
     if (!state) return new Set<number>();
+    if (research.includes('cartography')) return new Set(state.nodes.map(n => n.id));
     if (!state.config.fogOfWar) return new Set(state.nodes.map(n => n.id));
     const vis = new Set<number>();
     state.nodes.forEach(n => {
@@ -64,7 +78,7 @@ export default function Game() {
       }
     });
     return vis;
-  }, [state]);
+  }, [state, research]);
 
   const handleNodeClick = (nid: number) => {
     if (!state) return;
@@ -95,10 +109,22 @@ export default function Game() {
   if (!state && loading) return <Blank>Loading campaign…</Blank>;
   if (!state)            return <Blank>Campaign not found. <button onClick={() => nav('/')} style={{ color: '#1f6feb', background: 'none', border: 'none', cursor: 'pointer' }}>← Back</button></Blank>;
 
+  const cfg = state.config;
   const isOver   = state.status !== 'active';
   const maxAtk   = selId !== null ? Math.max(1, state.nodes[selId].troops - 1) : 1;
   const maxRec   = sel ? Math.max(0, getTroopCap(sel) - sel.troops) : 0;
   const clampRec = Math.min(recruitAmt, maxRec);
+
+  const mapDef = MAP_DEFS.find(m => m.id === cfg.mapId);
+  const viewBox = mapDef?.viewBox ?? '30 10 560 400';
+
+  const endBtnText = isOver
+    ? state.status === 'victory'
+      ? state.victoryType === 'economic' ? '💰 Economic Victory!'
+      : state.victoryType === 'research' ? '🔬 Research Victory!'
+      : '🏆 Victory!'
+    : '💀 Defeated'
+    : loading ? '…' : 'End Turn →';
 
   return (
     <div style={s.page}>
@@ -106,23 +132,24 @@ export default function Game() {
       <div style={s.bar}>
         <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
         <span style={s.turnLabel}>Turn {state.turn}</span>
-        {(state.config.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? state.config.apPerTurn} max={state.config.apPerTurn} />}
+        {(cfg.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? cfg.apPerTurn} max={cfg.apPerTurn} />}
         <div style={s.resRow}>
           <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
           <Res icon="🌾" label="Food" val={state.resources.food} rate={prod.food - upkeep} color="#34d399" />
           <Res icon="⛏" label="Mat"  val={state.resources.mat}  rate={prod.mat}  color="#a78bfa" />
+          {cfg.enableDiplomacy && (
+            <Res icon="👑" label="Inf" val={state.resources.influence ?? 0} rate={influenceRate} color="#ec4899" />
+          )}
         </div>
         <button onClick={doEndTurn} disabled={isOver || loading} style={{ ...s.endBtn, ...(isOver ? s.endOver : {}) }}>
-          {isOver
-            ? state.status === 'victory' ? '🏆 Victory!' : '💀 Defeated'
-            : loading ? '…' : 'End Turn →'}
+          {endBtnText}
         </button>
       </div>
 
       <div style={s.body}>
         {/* ── Map ── */}
         <div style={s.mapWrap}>
-          <svg viewBox="30 10 560 400" style={s.svg}
+          <svg viewBox={viewBox} style={s.svg}
             onClick={() => { setSelId(null); setTgtId(null); }}>
             {/* edges */}
             {state.edges.map(([a, b], i) => {
@@ -132,7 +159,7 @@ export default function Game() {
             {/* nodes */}
             {state.nodes.map(n => <Node
               key={n.id} n={n} selId={selId} tgtId={tgtId} tgtIsMove={tgtIsMove}
-              neighbours={neighbours} attackable={attackable} movable={movable}
+              neighbours={neighbours} attackable={attackable} movable={movable} annexable={annexable}
               isVisible={visibleIds.has(n.id)}
               onClick={handleNodeClick}
             />)}
@@ -147,27 +174,39 @@ export default function Game() {
               attackAmt={attackAmt} setAttackAmt={setAttackAmt} maxAtk={maxAtk}
               clampRec={clampRec} recruitAmt={recruitAmt} setRecruitAmt={setRecruitAmt} maxRec={maxRec}
               moveAmt={moveAmt} setMoveAmt={setMoveAmt}
-              attackable={attackable} movable={movable}
-              ap={state.actionsLeft ?? state.config.apPerTurn}
+              attackable={attackable} movable={movable} annexable={annexable}
+              ap={state.actionsLeft ?? cfg.apPerTurn}
               isOver={isOver} loading={loading}
               onAttack={() => act({ type: 'ATTACK', fromId: selId!, toId: tgtId!, troops: attackAmt }).then(() => setTgtId(null))}
               onRecruit={() => act({ type: 'RECRUIT', nodeId: selId!, amount: clampRec })}
               onBuild={(b: BuildingType) => act({ type: 'BUILD', nodeId: selId!, building: b })}
               onUpgrade={() => act({ type: 'UPGRADE', nodeId: selId! })}
               onMove={() => act({ type: 'MOVE', fromId: selId!, toId: tgtId!, troops: moveAmt }).then(() => setTgtId(null))}
+              onAnnex={() => act({ type: 'ANNEX', nodeId: tgtId! }).then(() => setTgtId(null))}
             />
           ) : (
             <div style={{ padding: 8 }}>
               <p style={s.muted}>Click a territory to select it.</p>
               <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {([['#2563eb', 'Your territories'], ['#dc2626', 'Enemy territories'], ['#52525b', 'Neutral territories']] as const).map(([c, l]) => (
-                  <div key={l} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 10, height: 10, borderRadius: '50%', background: c }} />
-                    <span style={{ fontSize: 12, color: '#7d8590' }}>{l}</span>
-                  </div>
-                ))}
+                {/* Dynamic faction legend */}
+                {[PLAYER, ...Array.from({ length: cfg.enemyFactions ?? 1 }, (_, i) => i + 2), NEUTRAL].map(owner => {
+                  const label = owner === PLAYER ? 'Your territories'
+                    : owner === NEUTRAL ? 'Neutral territories'
+                    : `${FACTION_NAMES[owner] ?? `Faction ${owner}`}`;
+                  return (
+                    <div key={owner} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 10, height: 10, borderRadius: '50%', background: FACTION_COLORS[owner] ?? '#52525b' }} />
+                      <span style={{ fontSize: 12, color: '#7d8590' }}>{label}</span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
+          )}
+
+          {/* Research panel */}
+          {cfg.enableTechTree && (
+            <ResearchPanel state={state} onResearch={techId => act({ type: 'RESEARCH', techId })} ap={state.actionsLeft ?? cfg.apPerTurn} isOver={isOver} loading={loading} />
           )}
 
           {/* Event banner */}
@@ -189,9 +228,9 @@ export default function Game() {
 }
 
 /* ─── SVG Node ─── */
-function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, isVisible, onClick }: {
+function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, annexable, isVisible, onClick }: {
   n: Territory; selId: number | null; tgtId: number | null; tgtIsMove: boolean;
-  neighbours: number[]; attackable: number[]; movable: number[];
+  neighbours: number[]; attackable: number[]; movable: number[]; annexable: number[];
   isVisible: boolean;
   onClick: (id: number) => void;
 }) {
@@ -199,16 +238,19 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, isV
   const isTgt  = tgtId === n.id;
   const isAtk  = attackable.includes(n.id);
   const isMov  = movable.includes(n.id);
+  const isAnx  = annexable.includes(n.id);
   const isNbr  = neighbours.includes(n.id);
   const r = n.capital ? 22 : 18;
 
   const hasBlds = n.buildings.length > 0;
+  const fillColor  = FACTION_COLORS[n.owner] ?? '#52525b';
+  const borderColor = FACTION_BORDER[n.owner] ?? '#71717a';
 
   if (!isVisible) {
     return (
       <g onClick={e => { e.stopPropagation(); onClick(n.id); }} style={{ cursor: 'pointer' }}>
         {isTgt && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
-        <circle cx={n.x} cy={n.y} r={r} fill={OWNER_COLOR[n.owner]} stroke="#30363d" strokeWidth={1.5} opacity={0.35} />
+        <circle cx={n.x} cy={n.y} r={r} fill={fillColor} stroke="#30363d" strokeWidth={1.5} opacity={0.35} />
         <text x={n.x} y={n.y+1} textAnchor="middle" dominantBaseline="middle"
           fill="#4b5563" fontSize={11} fontWeight={700} style={{ pointerEvents: 'none' }}>?</text>
         <text x={n.x} y={n.y + r + 11} textAnchor="middle"
@@ -224,14 +266,15 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, isV
       {isTgt && tgtIsMove  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#2dd4bf" strokeWidth={2.5} opacity={0.9} />}
       {isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
       {isMov && !isTgt && !isSel && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#2dd4bf" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
-      {isNbr && !isAtk && !isMov && !isSel && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.4} />}
+      {isAnx && !isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#ec4899" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
+      {isNbr && !isAtk && !isMov && !isAnx && !isSel && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.4} />}
 
       {/* Capital gold glow ring */}
       {n.capital && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#fbbf24" strokeWidth={2.5} opacity={0.85} />}
 
       <circle cx={n.x} cy={n.y} r={r}
-        fill={OWNER_COLOR[n.owner]}
-        stroke={n.capital ? '#fbbf24' : isSel ? '#fff' : OWNER_BORDER[n.owner]}
+        fill={fillColor}
+        stroke={n.capital ? '#fbbf24' : isSel ? '#fff' : borderColor}
         strokeWidth={n.capital ? 2.5 : isSel ? 2.5 : 1.5}
       />
 
@@ -240,6 +283,14 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, isV
         <text x={n.x} y={n.y - r - 5} textAnchor="middle" dominantBaseline="middle"
           fill="#fbbf24" fontSize={13} style={{ pointerEvents: 'none' }}>
           ♛
+        </text>
+      )}
+
+      {/* Stronghold star ★ */}
+      {n.stronghold && (
+        <text x={n.x} y={n.y - r - (n.capital ? 20 : 5)} textAnchor="middle" dominantBaseline="middle"
+          fill="#f59e0b" fontSize={11} style={{ pointerEvents: 'none' }}>
+          ★
         </text>
       )}
 
@@ -267,14 +318,14 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, isV
 
 /* ─── Sidebar panel ─── */
 function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, clampRec, recruitAmt, setRecruitAmt, maxRec,
-  moveAmt, setMoveAmt, attackable, movable, ap, isOver, loading, onAttack, onRecruit, onBuild, onUpgrade, onMove }: {
+  moveAmt, setMoveAmt, attackable, movable, annexable, ap, isOver, loading, onAttack, onRecruit, onBuild, onUpgrade, onMove, onAnnex }: {
   sel: Territory; tgt: Territory | null; tgtIsMove: boolean; state: GameState;
   attackAmt: number; setAttackAmt: (n: number) => void; maxAtk: number;
   clampRec: number; recruitAmt: number; setRecruitAmt: (n: number) => void; maxRec: number;
   moveAmt: number; setMoveAmt: (n: number) => void;
-  attackable: number[]; movable: number[]; ap: number; isOver: boolean; loading: boolean;
+  attackable: number[]; movable: number[]; annexable: number[]; ap: number; isOver: boolean; loading: boolean;
   onAttack: () => void; onRecruit: () => void;
-  onBuild: (b: BuildingType) => void; onUpgrade: () => void; onMove: () => void;
+  onBuild: (b: BuildingType) => void; onUpgrade: () => void; onMove: () => void; onAnnex: () => void;
 }) {
   const isPlayer = sel.owner === PLAYER;
   const slots    = getSlots(sel);
@@ -285,6 +336,17 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
   const disabled = isOver || loading;
   const noAp1    = ap < 1;
   const noAp2    = ap < 2;
+  const research = state.research ?? [];
+  const attackCost = research.includes('iron_will') ? 1 : 2;
+  const noAtkAp  = ap < attackCost;
+
+  const ownerLabel = isEnemy(sel.owner)
+    ? FACTION_NAMES[sel.owner] ?? 'Enemy'
+    : sel.owner === PLAYER ? 'Yours' : 'Neutral';
+
+  const influenceCost = research.includes('colonisation') ? 12 : 20;
+  const canAnnex = (state.resources.influence ?? 0) >= influenceCost && !noAp1;
+  const tgtIsAnnex = tgt !== null && tgt.owner === NEUTRAL && !tgtIsMove;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -293,20 +355,20 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
       <div style={s.card}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
           <div>
-            <p style={s.cardTitle}>{sel.name}</p>
+            <p style={s.cardTitle}>{sel.name}{sel.stronghold ? ' ★' : ''}</p>
             <p style={s.cardSub}>
-              {sel.owner === PLAYER ? 'Yours' : sel.owner === ENEMY ? 'Enemy' : 'Neutral'}
+              {ownerLabel}
               {' · '}Lv{sel.lv}{sel.capital ? ' · Capital' : ''}
             </p>
           </div>
-          <div style={{ width: 12, height: 12, borderRadius: '50%', background: OWNER_COLOR[sel.owner], marginTop: 4 }} />
+          <div style={{ width: 12, height: 12, borderRadius: '50%', background: FACTION_COLORS[sel.owner] ?? '#52525b', marginTop: 4 }} />
         </div>
         <div style={s.grid4}>
           <Stat label="Troops"   value={`${sel.troops}/${getTroopCap(sel)}`} />
-          <Stat label="Defence"  value={String(getDefStr(sel))} />
-          <Stat label="Gold/t"   value={`+${getGoldProd(sel)}`} />
+          <Stat label="Defence"  value={String(getDefStr(sel, research))} />
+          <Stat label="Gold/t"   value={`+${getGoldProd(sel, research)}`} />
           <Stat label="Food/t"   value={`+${getFoodProd(sel)}`} />
-          <Stat label="Mat/t"    value={`+${getMatProd(sel)}`} />
+          <Stat label="Mat/t"    value={`+${getMatProd(sel, research)}`} />
           <Stat label="Slots"    value={`${sel.buildings.length}/${slots}`} />
         </div>
         {sel.buildings.length > 0 && (
@@ -322,17 +384,46 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
       {isPlayer && attackable.length > 0 && (
         <div style={s.card}>
           <p style={s.label}>Attack</p>
-          {tgt ? (
+          {tgt && !tgtIsMove ? (
             <>
               <p style={{ color: '#e6edf3', fontSize: 13, margin: '0 0 10px' }}>
                 → <strong>{tgt.name}</strong> &nbsp;
-                <span style={{ color: '#7d8590' }}>{tgt.troops} troops · def {getDefStr(tgt)}</span>
+                <span style={{ color: '#7d8590' }}>{tgt.troops} troops · def {getDefStr(tgt, research)}</span>
               </p>
               <Slider label="Send" val={attackAmt} min={1} max={maxAtk} onChange={setAttackAmt} />
-              <Btn onClick={onAttack} disabled={disabled || noAp2} dim={noAp2}>⚔ Attack with {attackAmt} <ApCost n={2} ap={ap} /></Btn>
+              <Btn onClick={onAttack} disabled={disabled || noAtkAp} dim={noAtkAp}>⚔ Attack with {attackAmt} <ApCost n={attackCost} ap={ap} /></Btn>
+              {/* Annex option for neutral target when diplomacy enabled */}
+              {tgt.owner === NEUTRAL && state.config.enableDiplomacy && (
+                <Btn onClick={onAnnex} disabled={disabled || !canAnnex} dim={!canAnnex}>
+                  👑 Annex ({influenceCost} influence) <ApCost n={1} ap={ap} />
+                </Btn>
+              )}
             </>
           ) : (
             <p style={s.muted}>Click an orange-ringed territory to set target.</p>
+          )}
+        </div>
+      )}
+
+      {/* Annex (when no attack target set but there are annexable neighbours) */}
+      {isPlayer && annexable.length > 0 && attackable.length === 0 && (
+        <div style={s.card}>
+          <p style={s.label}>Annex</p>
+          {tgt && tgtIsAnnex ? (
+            <>
+              <p style={{ color: '#e6edf3', fontSize: 13, margin: '0 0 10px' }}>
+                → <strong>{tgt.name}</strong> &nbsp;
+                <span style={{ color: '#7d8590' }}>Peaceful annexation</span>
+              </p>
+              <p style={{ ...s.muted, marginBottom: 8 }}>
+                Cost: {influenceCost} influence · Have {state.resources.influence ?? 0}
+              </p>
+              <Btn onClick={onAnnex} disabled={disabled || !canAnnex} dim={!canAnnex}>
+                👑 Annex ({influenceCost} influence) <ApCost n={1} ap={ap} />
+              </Btn>
+            </>
+          ) : (
+            <p style={s.muted}>Click a pink-ringed neutral territory to annex it peacefully.</p>
           )}
         </div>
       )}
@@ -404,7 +495,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
       )}
 
       {/* Enemy territory hint */}
-      {sel.owner === ENEMY && (
+      {isEnemy(sel.owner) && (
         <div style={s.card}>
           <p style={s.muted}>Select one of your adjacent territories to launch an attack on this one.</p>
         </div>
@@ -412,7 +503,90 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
 
       {sel.owner === NEUTRAL && !isPlayer && (
         <div style={s.card}>
-          <p style={s.muted}>Neutral territory. Select an adjacent territory you own to attack it.</p>
+          <p style={s.muted}>Neutral territory. Select an adjacent territory you own to attack or annex it.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Research Panel ─── */
+function ResearchPanel({ state, onResearch, ap, isOver, loading }: {
+  state: GameState;
+  onResearch: (techId: string) => void;
+  ap: number;
+  isOver: boolean;
+  loading: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const research = state.research ?? [];
+  const count = research.length;
+  const disabled = isOver || loading || ap < 1;
+
+  const branches = ['military', 'economic', 'expansion'] as const;
+
+  return (
+    <div style={s.card}>
+      <button
+        style={{ background: 'none', border: 'none', color: '#9198a1', cursor: 'pointer', width: '100%', textAlign: 'left', padding: 0, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 }}
+        onClick={() => setOpen(v => !v)}
+      >
+        {open ? '▾' : '▸'} 🔬 Research ({count}/12)
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {branches.map(branch => {
+            const techs = TECH_TREE.filter(t => t.branch === branch);
+            return (
+              <div key={branch}>
+                <p style={{ ...s.label, marginBottom: 4, color: branch === 'military' ? '#ef4444' : branch === 'economic' ? '#f59e0b' : '#3b82f6' }}>
+                  {branch.charAt(0).toUpperCase() + branch.slice(1)}
+                </p>
+                {techs.map(tech => {
+                  const unlocked = research.includes(tech.id);
+                  const prereqMet = tech.prereq === null || research.includes(tech.prereq);
+                  const canAfford = state.resources.gold >= tech.cost.gold && state.resources.mat >= tech.cost.mat;
+                  const canResearch = !unlocked && prereqMet && canAfford && !disabled;
+
+                  return (
+                    <div key={tech.id} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                      padding: '5px 0', borderBottom: '1px solid #21262d',
+                      opacity: unlocked ? 1 : prereqMet ? 1 : 0.4,
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: unlocked ? '#3fb950' : '#e6edf3' }}>
+                            {unlocked ? '✓ ' : ''}{tech.name}
+                          </span>
+                          {!unlocked && (
+                            <span style={{ fontSize: 9, color: '#6b7280' }}>{tech.cost.gold}g {tech.cost.mat}m</span>
+                          )}
+                        </div>
+                        <p style={{ fontSize: 10, color: '#6b7280', margin: 0 }}>{tech.desc}</p>
+                      </div>
+                      {!unlocked && prereqMet && (
+                        <button
+                          onClick={() => onResearch(tech.id)}
+                          disabled={!canResearch}
+                          style={{
+                            marginLeft: 6, flexShrink: 0,
+                            background: canResearch ? '#1f3a5f' : '#0d1117',
+                            border: `1px solid ${canResearch ? '#1f6feb' : '#30363d'}`,
+                            color: canResearch ? '#e6edf3' : '#4b5563',
+                            borderRadius: 4, padding: '3px 7px', fontSize: 10, cursor: canResearch ? 'pointer' : 'default',
+                          }}
+                        >
+                          Unlock
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -542,7 +716,7 @@ const s: Record<string, React.CSSProperties> = {
   grid4:    { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px 12px', marginTop: 8 },
   tag:      { background: '#21262d', border: '1px solid #30363d', borderRadius: 4, padding: '2px 7px', fontSize: 10, color: '#9198a1' },
   buildRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: '#161b22', border: '1px solid #30363d', borderRadius: 5, cursor: 'pointer', color: '#e6edf3', textAlign: 'left', gap: 8 },
-  btn:      { width: '100%', padding: '8px 0', background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer' },
+  btn:      { width: '100%', padding: '8px 0', background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', marginTop: 4 },
   log:      { marginTop: 'auto', borderTop: '1px solid #21262d', paddingTop: 10, paddingBottom: 4 },
   logHdr:   { color: '#6b7280', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 6px' },
   logLine:  { color: '#7d8590', fontSize: 11, margin: '0 0 5px', lineHeight: 1.4 },
