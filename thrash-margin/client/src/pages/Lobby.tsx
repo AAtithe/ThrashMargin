@@ -4,17 +4,17 @@ import { useGameLocal } from '../hooks/useGameLocal';
 import type { GameConfig, Difficulty } from 'shared/types';
 
 const DIFF_PRESETS: Record<Difficulty, Partial<GameConfig>> = {
-  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1 },
-  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.85, growth: 2 },
-  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3 },
-  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4 },
+  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false },
+  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false },
+  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true  },
+  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true  },
 };
 
 const DIFF_DESC: Record<Difficulty, string> = {
-  easy:   'Weaker neutrals, less aggressive AI, attack bonus for you',
-  normal: 'Balanced — recommended for first games',
-  hard:   'Tough neutrals, aggressive AI, slight penalty to your attacks',
-  brutal: 'Max AI aggression, strong neutrals, significant attack penalty',
+  easy:   '1 enemy territory, half-strength troops, no pre-built buildings',
+  normal: '2 enemy territories, reduced troops — balanced for most players',
+  hard:   'Full 4 territories, full troops, pre-built — the original challenge',
+  brutal: 'Full territories with 1.5× troops and buildings — relentless',
 };
 
 export default function Lobby() {
@@ -28,6 +28,17 @@ export default function Lobby() {
   const [startMat,  setStartMat]  = useState(12);
   const [recruitCost, setRecruitCost] = useState(4);
   const [upkeep, setUpkeep] = useState(1);
+  const [enemyTerritories,    setEnemyTerritories]    = useState(DIFF_PRESETS.normal.enemyTerritories    ?? 2);
+  const [enemyTroopScale,     setEnemyTroopScale]     = useState(DIFF_PRESETS.normal.enemyTroopScale     ?? 0.75);
+  const [enemyStartBuildings, setEnemyStartBuildings] = useState(DIFF_PRESETS.normal.enemyStartBuildings ?? false);
+
+  const applyDifficulty = (d: Difficulty) => {
+    setDifficulty(d);
+    const p = DIFF_PRESETS[d];
+    if (p.enemyTerritories    !== undefined) setEnemyTerritories(p.enemyTerritories);
+    if (p.enemyTroopScale     !== undefined) setEnemyTroopScale(p.enemyTroopScale);
+    if (p.enemyStartBuildings !== undefined) setEnemyStartBuildings(p.enemyStartBuildings);
+  };
 
   const handleNew = () => {
     const config: Partial<GameConfig> = {
@@ -37,6 +48,9 @@ export default function Lobby() {
       startMat,
       recruitCost,
       upkeep,
+      enemyTerritories,
+      enemyTroopScale,
+      enemyStartBuildings,
     };
     const id = createGame(config);
     nav(`/game/${id}`);
@@ -90,7 +104,7 @@ export default function Lobby() {
                 <div style={s.diffRow}>
                   {(Object.keys(DIFF_PRESETS) as Difficulty[]).map(d => (
                     <button key={d} style={{ ...s.diffBtn, ...(difficulty === d ? s.diffActive : {}) }}
-                      onClick={() => setDifficulty(d)}>
+                      onClick={() => applyDifficulty(d)}>
                       {d.charAt(0).toUpperCase() + d.slice(1)}
                     </button>
                   ))}
@@ -114,6 +128,55 @@ export default function Lobby() {
                 <div style={s.settingsGrid}>
                   <SettingNum label="Recruit cost (g)" value={recruitCost} min={1} max={12} onChange={setRecruitCost} />
                   <SettingNum label="Troop upkeep (g)" value={upkeep}      min={0} max={4}  onChange={setUpkeep}      />
+                </div>
+              </div>
+
+              {/* Enemy setup */}
+              <div style={s.settingsSection}>
+                <p style={s.settingsLabel}>Enemy Setup</p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {/* Territories */}
+                  <div>
+                    <p style={s.subLabel}>Starting territories (1 = easier, 4 = hardest)</p>
+                    <div style={s.diffRow}>
+                      {[1, 2, 3, 4].map(n => (
+                        <button key={n}
+                          style={{ ...s.diffBtn, ...(enemyTerritories === n ? s.diffActive : {}) }}
+                          onClick={() => setEnemyTerritories(n)}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Troop strength */}
+                  <div>
+                    <p style={s.subLabel}>Starting troop strength</p>
+                    <div style={s.diffRow}>
+                      {([['Weak', 0.5], ['Normal', 1.0], ['Strong', 1.5], ['Brutal', 2.0]] as [string, number][]).map(([label, val]) => (
+                        <button key={label}
+                          style={{ ...s.diffBtn, ...(enemyTroopScale === val ? s.diffActive : {}) }}
+                          onClick={() => setEnemyTroopScale(val)}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Pre-built buildings */}
+                  <div>
+                    <p style={s.subLabel}>Enemy starts with pre-built buildings</p>
+                    <div style={{ ...s.diffRow, width: 'fit-content' }}>
+                      {([['Yes', true], ['No', false]] as [string, boolean][]).map(([label, val]) => (
+                        <button key={label}
+                          style={{ ...s.diffBtn, minWidth: 60, ...(enemyStartBuildings === val ? s.diffActive : {}) }}
+                          onClick={() => setEnemyStartBuildings(val)}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -170,6 +233,7 @@ const s: Record<string, React.CSSProperties> = {
   diffBtn:        { flex: 1, background: '#0d1117', border: '1px solid #30363d', color: '#7d8590', borderRadius: 5, padding: '6px 0', cursor: 'pointer', fontSize: 12 },
   diffActive:     { background: '#1f3a5f', border: '1px solid #1f6feb', color: '#e6edf3', fontWeight: 600 },
   diffDesc:       { color: '#6b7280', fontSize: 11, margin: 0, fontStyle: 'italic' },
+  subLabel:       { color: '#6b7280', fontSize: 11, margin: '0 0 5px' },
   nudge:          { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', width: 22, height: 22, borderRadius: 4, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 },
   newBtn:         { background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, padding: '10px 22px', cursor: 'pointer', fontSize: 14 },
 };

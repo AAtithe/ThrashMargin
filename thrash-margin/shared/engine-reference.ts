@@ -143,27 +143,50 @@ export function diffMult(diff: string): number {
 export function createInitialState(id: string, config: GameConfig): GameState {
   const cfg = { ...DEFAULT_CONFIG, ...config };
 
+  // Enemy node slots in priority order — first N slots are active enemy, rest become neutral
+  const ENEMY_SLOTS: { id: number; troops: number; capital: boolean; lv: number; buildings: BuildingType[] }[] = [
+    { id:  4, troops: 7, capital: true,  lv: 2, buildings: ['farm', 'tower'] },
+    { id: 19, troops: 6, capital: true,  lv: 2, buildings: ['mine', 'barracks'] },
+    { id:  9, troops: 5, capital: false, lv: 1, buildings: ['farm'] },
+    { id: 14, troops: 5, capital: false, lv: 1, buildings: [] },
+  ];
+  const activeEnemyIds = new Set(ENEMY_SLOTS.slice(0, cfg.enemyTerritories).map(s => s.id));
+
+  const enemyNode = (slot: typeof ENEMY_SLOTS[0]): Partial<Territory> => {
+    if (!activeEnemyIds.has(slot.id)) {
+      return { owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] };
+    }
+    const rawTroops = Math.round(slot.troops * cfg.enemyTroopScale);
+    return {
+      owner: ENEMY,
+      troops: Math.max(3, rawTroops),
+      capital: slot.capital,
+      lv: slot.lv,
+      buildings: cfg.enemyStartBuildings ? slot.buildings : [],
+    };
+  };
+
   const nodes: Territory[] = [
     { id:  0, x:  68, y:  55, name: 'Ironhold',   owner: PLAYER,  troops: 8,           capital: true,  lv: 2, buildings: [] },
     { id:  1, x: 195, y:  42, name: 'Ashford',    owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
     { id:  2, x: 320, y:  35, name: 'Dunepass',   owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
     { id:  3, x: 445, y:  42, name: 'Stormgate',  owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
-    { id:  4, x: 548, y:  58, name: 'Redfort',    owner: ENEMY,   troops: 7,           capital: true,  lv: 2, buildings: ['farm', 'tower'] },
+    { id:  4, x: 548, y:  58, name: 'Redfort',    ...enemyNode(ENEMY_SLOTS[0]) } as Territory,
     { id:  5, x:  62, y: 158, name: 'Millhaven',  owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
     { id:  6, x: 178, y: 148, name: 'Greywall',   owner: NEUTRAL, troops: cfg.neutralStr + 1, capital: false, lv: 1, buildings: [] },
     { id:  7, x: 300, y: 140, name: 'Thornfield', owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
     { id:  8, x: 422, y: 148, name: 'Ironpass',   owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
-    { id:  9, x: 535, y: 165, name: 'Crimsonton', owner: ENEMY,   troops: 5,           capital: false, lv: 1, buildings: ['farm'] },
+    { id:  9, x: 535, y: 165, name: 'Crimsonton', ...enemyNode(ENEMY_SLOTS[2]) } as Territory,
     { id: 10, x:  80, y: 268, name: 'Lowbridge',  owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
     { id: 11, x: 200, y: 258, name: 'Saltmere',   owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
     { id: 12, x: 318, y: 252, name: 'Midkeep',    owner: NEUTRAL, troops: cfg.neutralStr + 1, capital: false, lv: 1, buildings: [] },
     { id: 13, x: 436, y: 258, name: 'Ashveil',    owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
-    { id: 14, x: 540, y: 272, name: 'Emberveil',  owner: ENEMY,   troops: 5,           capital: false, lv: 1, buildings: [] },
+    { id: 14, x: 540, y: 272, name: 'Emberveil',  ...enemyNode(ENEMY_SLOTS[3]) } as Territory,
     { id: 15, x:  65, y: 375, name: 'Southfen',   owner: NEUTRAL, troops: Math.max(1, cfg.neutralStr - 1), capital: false, lv: 1, buildings: [] },
     { id: 16, x: 190, y: 368, name: 'Marshgate',  owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
     { id: 17, x: 312, y: 362, name: 'Stonekeep',  owner: NEUTRAL, troops: cfg.neutralStr + 1, capital: false, lv: 1, buildings: [] },
     { id: 18, x: 432, y: 368, name: 'Cindervale', owner: NEUTRAL, troops: cfg.neutralStr, capital: false, lv: 1, buildings: [] },
-    { id: 19, x: 542, y: 385, name: 'Ashpeak',    owner: ENEMY,   troops: 6,           capital: true,  lv: 2, buildings: ['mine', 'barracks'] },
+    { id: 19, x: 542, y: 385, name: 'Ashpeak',    ...enemyNode(ENEMY_SLOTS[1]) } as Territory,
   ];
 
   const edges: [number, number][] = [
@@ -201,6 +224,9 @@ export const DEFAULT_CONFIG: GameConfig = {
   upkeep: 1,
   playerBonus: 0,
   neutralStr: 3,
+  enemyTerritories: 4,
+  enemyTroopScale: 1.0,
+  enemyStartBuildings: true,
 };
 
 // ---------------------------------------------------------------------------

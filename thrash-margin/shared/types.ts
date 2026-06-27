@@ -91,6 +91,9 @@ export interface GameConfig {
   upkeep: number;
   playerBonus: number;
   neutralStr: number;
+  enemyTerritories: number;  // 1-4: how many of the 4 enemy slots start as enemy
+  enemyTroopScale: number;   // multiplier on enemy starting troops (0.25–2.0)
+  enemyStartBuildings: boolean; // whether enemy starts with pre-built buildings
 }
 
 export interface LogEntry {
