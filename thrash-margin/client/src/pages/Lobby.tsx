@@ -48,6 +48,7 @@ export default function Lobby() {
   const [enableEvents, setEnableEvents] = useState(DIFF_PRESETS.normal.enableEvents ?? true);
 
   const [selectedMap, setSelectedMap] = useState('heartlands');
+  const [showConfirm, setShowConfirm] = useState(false);
 
   // Delete confirmation
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -256,12 +257,33 @@ export default function Lobby() {
             </div>
           )}
 
-          <button style={s.newBtn} onClick={handleNew} disabled={loading}>
-            {loading ? 'Starting…' : '+ Start campaign'}
+          <button style={s.newBtn} onClick={() => setShowConfirm(true)} disabled={loading}>
+            Review &amp; start →
           </button>
         </Section>
 
       </div>
+
+      {showConfirm && (
+        <ConfirmModal
+          campaignName={campaignName.trim() || `Campaign #${saves.length + 1}`}
+          mapId={selectedMap}
+          difficulty={difficulty}
+          enemyTerritories={enemyTerritories}
+          enemyTroopScale={enemyTroopScale}
+          enemyStartBuildings={enemyStartBuildings}
+          apPerTurn={apPerTurn}
+          fogOfWar={fogOfWar}
+          enableEvents={enableEvents}
+          startGold={startGold}
+          startFood={startFood}
+          startMat={startMat}
+          recruitCost={recruitCost}
+          upkeep={upkeep}
+          onBack={() => setShowConfirm(false)}
+          onConfirm={() => { setShowConfirm(false); handleNew(); }}
+        />
+      )}
     </div>
   );
 }
@@ -351,6 +373,73 @@ function ToggleRow({ value, onChange }: { value: boolean; onChange: (v: boolean)
   );
 }
 
+function ConfirmModal({ campaignName, mapId, difficulty, enemyTerritories, enemyTroopScale,
+  enemyStartBuildings, apPerTurn, fogOfWar, enableEvents, startGold, startFood, startMat,
+  recruitCost, upkeep, onBack, onConfirm }: {
+  campaignName: string; mapId: string; difficulty: Difficulty;
+  enemyTerritories: number; enemyTroopScale: number; enemyStartBuildings: boolean;
+  apPerTurn: number; fogOfWar: boolean; enableEvents: boolean;
+  startGold: number; startFood: number; startMat: number;
+  recruitCost: number; upkeep: number;
+  onBack: () => void; onConfirm: () => void;
+}) {
+  const map = MAP_DEFS.find(m => m.id === mapId) ?? MAP_DEFS[0];
+  const troopLabel = ({ 0.5: 'Weak', 0.75: 'Reduced', 1.0: 'Normal', 1.5: 'Strong', 2.0: 'Brutal' } as Record<number, string>)[enemyTroopScale] ?? `${enemyTroopScale}×`;
+  const diffLabel = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
+
+  const Row = ({ label, value }: { label: string; value: string }) => (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid #21262d' }}>
+      <span style={{ color: '#7d8590', fontSize: 12 }}>{label}</span>
+      <span style={{ color: '#e6edf3', fontSize: 12, fontWeight: 600 }}>{value}</span>
+    </div>
+  );
+
+  return (
+    <div style={s.modalBackdrop} onClick={onBack}>
+      <div style={s.modal} onClick={e => e.stopPropagation()}>
+        <h2 style={{ color: '#e6edf3', fontSize: 16, fontWeight: 700, margin: '0 0 4px' }}>Ready to start?</h2>
+        <p style={{ color: '#7d8590', fontSize: 12, margin: '0 0 18px' }}>Review your settings before launching.</p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          <div>
+            <p style={s.sLabel}>Campaign</p>
+            <Row label="Name"   value={campaignName} />
+            <Row label="Map"    value={`${map.name} — ${map.style} (${map.territories} territories)`} />
+            <Row label="Difficulty" value={diffLabel} />
+          </div>
+
+          <div>
+            <p style={s.sLabel}>Enemy Setup</p>
+            <Row label="Starting territories" value={String(enemyTerritories)} />
+            <Row label="Troop strength"        value={troopLabel} />
+            <Row label="Pre-built buildings"   value={enemyStartBuildings ? 'Yes' : 'No'} />
+          </div>
+
+          <div>
+            <p style={s.sLabel}>Mechanics</p>
+            <Row label="Action points / turn" value={apPerTurn >= 99 ? 'Unlimited' : String(apPerTurn)} />
+            <Row label="Fog of war"           value={fogOfWar ? 'On' : 'Off'} />
+            <Row label="Random events"        value={enableEvents ? 'On' : 'Off'} />
+          </div>
+
+          <div>
+            <p style={s.sLabel}>Starting Resources &amp; Economy</p>
+            <Row label="Gold / Food / Mat"  value={`${startGold} / ${startFood} / ${startMat}`} />
+            <Row label="Recruit cost"       value={`${recruitCost}g per troop`} />
+            <Row label="Troop upkeep"       value={`${upkeep}f per troop / turn`} />
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+          <button style={s.backBtn} onClick={onBack}>← Back</button>
+          <button style={{ ...s.newBtn, flex: 1 }} onClick={onConfirm}>Start campaign →</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ── Styles ── */
 const s: Record<string, React.CSSProperties> = {
   page:           { minHeight: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'system-ui,sans-serif' },
@@ -393,4 +482,8 @@ const s: Record<string, React.CSSProperties> = {
   mapCardActive:  { background: '#0f1f38', border: '1px solid #1f6feb' },
   styleTag:       { fontSize: 9, background: '#21262d', color: '#7d8590', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' as const },
   styleTagActive: { background: '#1f3a5f', color: '#58a6ff' },
+
+  modalBackdrop:  { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' },
+  modal:          { background: '#161b22', border: '1px solid #30363d', borderRadius: 12, padding: '24px', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' as const },
+  backBtn:        { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 6, padding: '10px 18px', cursor: 'pointer', fontSize: 13 },
 };
