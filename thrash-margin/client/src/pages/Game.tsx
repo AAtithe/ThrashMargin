@@ -4,17 +4,17 @@ import { useGameLocal as useGame } from '../hooks/useGameLocal';
 import {
   BUILDINGS, LV, MAX_LV,
   FACTION_COLORS, FACTION_NAMES, FACTION_BORDER,
-  TECH_TREE, MAP_DEFS,
+  TECH_TREE, MAP_DEFS, DEFAULT_CONFIG,
   TERRAIN_COLORS, TERRAIN_LABELS, getTerrainBonus,
   getSlots, getTroopCap, getGoldProd, getFoodProd, getMatProd, getDefStr, getNeighbours,
-  prodTotals, resolveCombat,
+  prodTotals, resolveCombat, ACHIEVEMENT_DEFS, CAMPAIGN_SCENARIOS,
 } from 'shared/engine-reference';
 import { PLAYER, NEUTRAL, isEnemy } from 'shared/types';
 import type { BuildingType, GameState, Territory, TurnEvent } from 'shared/types';
 
 export default function Game() {
   const { id } = useParams<{ id: string }>();
-  const { state, loading, loadGame, sendAction } = useGame();
+  const { state, loading, loadGame, sendAction, createGame } = useGame();
   const nav = useNavigate();
 
   const [selId, setSelId] = useState<number | null>(null);
@@ -24,6 +24,9 @@ export default function Game() {
   const [moveAmt,   setMoveAmt]   = useState(1);
   const [tooltip, setTooltip] = useState<{ id: number; x: number; y: number } | null>(null);
   const [showPassScreen, setShowPassScreen] = useState(false);
+  const [showProd, setShowProd] = useState(false);
+  const prevOwnersRef = useRef<number[]>([]);
+  const [captureFlash, setCaptureFlash] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -35,10 +38,30 @@ export default function Game() {
     const prev = prevActivePlayerRef.current;
     const cur  = state.activePlayer ?? 1;
     if (cur !== prev) {
-      setShowPassScreen(true); // show pass screen any time the active player changes
+      setShowPassScreen(true);
       prevActivePlayerRef.current = cur;
     }
   }, [state?.activePlayer]);
+
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.textContent = `@keyframes capture-pulse { 0%{opacity:0.85;r:22} 60%{opacity:0.3;r:32} 100%{opacity:0;r:40} }`;
+    document.head.appendChild(style);
+    return () => { document.head.removeChild(style); };
+  }, []);
+
+  useEffect(() => {
+    if (!state) return;
+    const prev = prevOwnersRef.current;
+    if (prev.length > 0) {
+      const changed = state.nodes.filter((n, i) => prev[i] !== undefined && prev[i] !== n.owner).map(n => n.id);
+      if (changed.length) {
+        setCaptureFlash(new Set(changed));
+        setTimeout(() => setCaptureFlash(new Set()), 900);
+      }
+    }
+    prevOwnersRef.current = state.nodes.map(n => n.owner);
+  }, [state?.nodes]);
 
   const sel = state && selId !== null ? state.nodes[selId] : null;
   const tgt = state && tgtId !== null ? state.nodes[tgtId] : null;
@@ -88,7 +111,7 @@ export default function Game() {
     if (!state) return new Set<number>();
     if (research.includes('cartography')) return new Set(state.nodes.map(n => n.id));
     if (!state.config.fogOfWar) return new Set(state.nodes.map(n => n.id));
-    const vis = new Set<number>();
+    const vis = new Set<number>(state.revealed ?? []);
     state.nodes.forEach(n => {
       if (n.owner === PLAYER) {
         vis.add(n.id);
@@ -123,6 +146,26 @@ export default function Game() {
     setSelId(null); setTgtId(null);
     await act({ type: 'END_TURN' });
   };
+
+  const doNextCampaign = React.useCallback(() => {
+    if (!state?.config || state.config.campaignScenario === undefined) return;
+    const nextIndex = state.config.campaignScenario + 1;
+    const next = CAMPAIGN_SCENARIOS[nextIndex];
+    if (!next) return;
+    const newId = createGame({
+      ...DEFAULT_CONFIG,
+      diff: next.diff,
+      mapId: next.mapId,
+      enemyTerritories: 3,
+      fogOfWar: next.diff === 'hard' || next.diff === 'brutal',
+      enableTechTree: true,
+      enableEvents: true,
+      campaignScenario: next.index,
+      campaignBonusGold: next.bonusGold,
+      campaignBonusTechs: next.bonusTechs,
+    }, next.title);
+    nav(`/game/${newId}`);
+  }, [state, createGame, nav]);
 
   if (!state && loading) return <Blank>Loading campaign…</Blank>;
   if (!state)            return <Blank>Campaign not found. <button onClick={() => nav('/')} style={{ color: '#1f6feb', background: 'none', border: 'none', cursor: 'pointer' }}>← Back</button></Blank>;
@@ -166,12 +209,23 @@ export default function Game() {
           playerTroops={playerTroops}
           eliminatedFactions={eliminatedFactions}
           onLobby={() => nav('/')}
+          onNextCampaign={doNextCampaign}
         />
       )}
 
       {/* ── Hot-seat pass screen ── */}
       {showPassScreen && !isOver && (
         <PassScreen toPlayer={state.activePlayer ?? 1} onReady={() => setShowPassScreen(false)} />
+      )}
+
+      {/* ── Production summary modal ── */}
+      {showProd && (
+        <ProductionSummary state={state} research={research} onClose={() => setShowProd(false)} />
+      )}
+
+      {/* ── Event choice modal ── */}
+      {state.pendingEvent && !isOver && (
+        <ChoiceModal event={state.pendingEvent} onChoice={i => act({ type: 'CHOICE', choiceIndex: i })} />
       )}
 
       {/* ── Territory hover tooltip ── */}
@@ -199,6 +253,10 @@ export default function Game() {
           {cfg.enableDiplomacy && (
             <Res icon="👑" label="Inf" val={state.resources.influence ?? 0} rate={influenceRate} color="#ec4899" />
           )}
+          <button onClick={() => setShowProd(true)} title="Production breakdown"
+            style={{ background:'none', border:'1px solid #30363d', borderRadius:4, color:'#7d8590', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center' }}>
+            ⊞
+          </button>
         </div>
         <button onClick={doEndTurn} disabled={isOver || loading} style={{ ...s.endBtn, ...(isOver ? s.endOver : {}) }}>
           {endBtnText}
@@ -219,7 +277,7 @@ export default function Game() {
             {state.nodes.map(n => <Node
               key={n.id} n={n} selId={selId} tgtId={tgtId} tgtIsMove={tgtIsMove}
               neighbours={neighbours} attackable={attackable} movable={movable} annexable={annexable}
-              isVisible={visibleIds.has(n.id)}
+              isVisible={visibleIds.has(n.id)} isFlashing={captureFlash.has(n.id)}
               onClick={handleNodeClick}
               onHover={(nid, x, y) => setTooltip({ id: nid, x, y })}
             />)}
@@ -247,6 +305,8 @@ export default function Game() {
               onUpgrade={() => act({ type: 'UPGRADE', nodeId: selId! })}
               onMove={() => act({ type: 'MOVE', fromId: selId!, toId: tgtId!, troops: moveAmt }).then(() => setTgtId(null))}
               onAnnex={() => act({ type: 'ANNEX', nodeId: tgtId! }).then(() => setTgtId(null))}
+              onSpyReveal={() => act({ type: 'SPY', nodeId: selId!, mode: 'reveal' })}
+              onSpySabotage={() => act({ type: 'SPY', nodeId: selId!, mode: 'sabotage' })}
             />
           ) : (
             <div style={{ padding: 8 }}>
@@ -273,6 +333,46 @@ export default function Game() {
             <ResearchPanel state={state} onResearch={techId => act({ type: 'RESEARCH', techId })} ap={state.actionsLeft ?? cfg.apPerTurn} isOver={isOver} loading={loading} />
           )}
 
+          {/* Diplomacy / Ceasefire panel */}
+          {cfg.enableDiplomacy && !isOver && (() => {
+            const factionAp = state.actionsLeft ?? cfg.apPerTurn;
+            const factionDisabled = loading;
+            const activeFactions: number[] = [];
+            for (let f = 2; f <= 1 + (cfg.enemyFactions ?? 1); f++) {
+              if (state.nodes.some(n => n.owner === f)) activeFactions.push(f);
+            }
+            if (!activeFactions.length) return null;
+            return (
+              <div style={s.card}>
+                <p style={s.label}>Diplomacy</p>
+                <p style={{ ...s.muted, marginBottom: 8 }}>Influence: {state.resources.influence ?? 0} · Ceasefire costs 30 inf / 4 turns</p>
+                {activeFactions.map(f => {
+                  const remaining = (state.ceasefires ?? {})[f] ?? 0;
+                  const canCease = (state.resources.influence ?? 0) >= 30 && factionAp >= 1 && !factionDisabled;
+                  return (
+                    <div key={f} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom: 6 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap: 6 }}>
+                        <div style={{ width:8, height:8, borderRadius:'50%', background: FACTION_COLORS[f] }} />
+                        <span style={{ color:'#e6edf3', fontSize:12 }}>{FACTION_NAMES[f] ?? `Faction ${f}`}</span>
+                        {remaining > 0 && <span style={{ color:'#3fb950', fontSize:10, marginLeft:4 }}>☮ {remaining}t left</span>}
+                      </div>
+                      {remaining === 0 && (
+                        <button onClick={() => act({ type: 'CEASEFIRE', faction: f })}
+                          disabled={!canCease}
+                          style={{ background: canCease ? '#1f3a5f' : '#0d1117',
+                            border:`1px solid ${canCease ? '#1f6feb' : '#30363d'}`,
+                            color: canCease ? '#e6edf3' : '#4b5563',
+                            borderRadius:4, padding:'3px 8px', fontSize:10, cursor: canCease ? 'pointer' : 'default' }}>
+                          🤝 Ceasefire
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           {/* Event banner */}
           {state.lastEvent && <EventBanner event={state.lastEvent} />}
 
@@ -292,10 +392,10 @@ export default function Game() {
 }
 
 /* ─── SVG Node ─── */
-function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, annexable, isVisible, onClick, onHover }: {
+function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, annexable, isVisible, isFlashing, onClick, onHover }: {
   n: Territory; selId: number | null; tgtId: number | null; tgtIsMove: boolean;
   neighbours: number[]; attackable: number[]; movable: number[]; annexable: number[];
-  isVisible: boolean;
+  isVisible: boolean; isFlashing: boolean;
   onClick: (id: number) => void;
   onHover: (id: number, x: number, y: number) => void;
 }) {
@@ -333,6 +433,13 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, ann
       {isMov && !isTgt && !isSel && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#2dd4bf" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
       {isAnx && !isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#ec4899" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
       {isNbr && !isAtk && !isMov && !isAnx && !isSel && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.4} />}
+
+      {/* Capture flash animation */}
+      {isFlashing && (
+        <circle cx={n.x} cy={n.y} r={n.capital ? 22 : 18}
+          fill={FACTION_COLORS[n.owner] ?? '#52525b'}
+          style={{ animation:'capture-pulse 0.9s ease-out forwards', pointerEvents:'none' }} />
+      )}
 
       {/* Capital gold glow ring */}
       {n.capital && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#fbbf24" strokeWidth={2.5} opacity={0.85} />}
@@ -395,7 +502,7 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, ann
 
 /* ─── Sidebar panel ─── */
 function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, clampRec, recruitAmt, setRecruitAmt, maxRec,
-  moveAmt, setMoveAmt, attackable, movable, annexable, ap, isOver, loading, onAttack, onRecruit, onBuild, onUpgrade, onMove, onAnnex }: {
+  moveAmt, setMoveAmt, attackable, movable, annexable, ap, isOver, loading, onAttack, onRecruit, onBuild, onUpgrade, onMove, onAnnex, onSpyReveal, onSpySabotage }: {
   sel: Territory; tgt: Territory | null; tgtIsMove: boolean; state: GameState;
   attackAmt: number; setAttackAmt: (n: number) => void; maxAtk: number;
   clampRec: number; recruitAmt: number; setRecruitAmt: (n: number) => void; maxRec: number;
@@ -403,6 +510,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
   attackable: number[]; movable: number[]; annexable: number[]; ap: number; isOver: boolean; loading: boolean;
   onAttack: () => void; onRecruit: () => void;
   onBuild: (b: BuildingType) => void; onUpgrade: () => void; onMove: () => void; onAnnex: () => void;
+  onSpyReveal: () => void; onSpySabotage: () => void;
 }) {
   const activePlayer = state.activePlayer ?? PLAYER;
   const isPlayer = sel.owner === activePlayer;
@@ -588,6 +696,26 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
       {sel.owner === NEUTRAL && !isPlayer && (
         <div style={s.card}>
           <p style={s.muted}>Neutral territory. Select an adjacent territory you own to attack or annex it.</p>
+        </div>
+      )}
+
+      {/* Spy actions */}
+      {!isPlayer && state.config.enableSpies && state.config.enableDiplomacy && (
+        <div style={s.card}>
+          <p style={s.label}>Spy Actions</p>
+          <p style={{ ...s.muted, marginBottom: 8 }}>Influence: {state.resources.influence ?? 0}</p>
+          <Btn onClick={onSpyReveal}
+            disabled={disabled || noAp1 || (state.resources.influence ?? 0) < 15}
+            dim={(state.resources.influence ?? 0) < 15 || noAp1}>
+            🔍 Reveal territory (15 inf) <ApCost n={1} ap={ap} />
+          </Btn>
+          {getNeighbours(state.edges, sel.id).some(nid => state.nodes[nid]?.owner === activePlayer) && (
+            <Btn onClick={onSpySabotage}
+              disabled={disabled || noAp1 || (state.resources.influence ?? 0) < 25 || sel.buildings.length === 0}
+              dim={(state.resources.influence ?? 0) < 25 || sel.buildings.length === 0 || noAp1}>
+              💣 Sabotage building (25 inf) <ApCost n={1} ap={ap} />
+            </Btn>
+          )}
         </div>
       )}
     </div>
@@ -880,12 +1008,13 @@ function TooltipCard({ node, visible, x, y, research }: {
 }
 
 /* ─── Victory / defeat summary ─── */
-function VictoryScreen({ state, playerTerrs, playerTroops, eliminatedFactions, onLobby }: {
+function VictoryScreen({ state, playerTerrs, playerTroops, eliminatedFactions, onLobby, onNextCampaign }: {
   state: GameState;
   playerTerrs: number;
   playerTroops: number;
   eliminatedFactions: number[];
   onLobby: () => void;
+  onNextCampaign: () => void;
 }) {
   const won = state.status === 'victory';
   const cfg = state.config;
@@ -931,9 +1060,52 @@ function VictoryScreen({ state, playerTerrs, playerTroops, eliminatedFactions, o
           ))}
         </div>
 
+        {/* Territory chart */}
+        {state.history && state.history.length >= 3 && (
+          <div style={{ marginBottom: 18 }}>
+            <div style={{ color:'#6b7280', fontSize:10, textTransform:'uppercase', letterSpacing:0.5, margin:'0 0 6px' }}>Territory Control Over Time</div>
+            <svg width="100%" viewBox="0 0 360 60" style={{ display:'block', background:'#0d1117', borderRadius:4 }}>
+              {(() => {
+                const h = state.history!;
+                const maxT = Math.max(...h.map(e => e.territories), 1);
+                const pts = h.map((e, i) => `${(i/(h.length-1||1))*350+5},${55-(e.territories/maxT)*50}`).join(' ');
+                return <>
+                  <polyline points={pts} fill="none" stroke="#2563eb" strokeWidth={2} strokeLinejoin="round"/>
+                  <text x={5} y={59} fill="#4b5563" fontSize={8}>T{h[0].turn}</text>
+                  <text x={355} y={59} textAnchor="end" fill="#4b5563" fontSize={8}>T{h[h.length-1].turn}</text>
+                </>;
+              })()}
+            </svg>
+          </div>
+        )}
+
+        {/* Achievements */}
+        {state.achievements && state.achievements.length > 0 && (
+          <div style={{ marginBottom: 20, textAlign: 'left' }}>
+            <div style={{ color:'#6b7280', fontSize:10, textTransform:'uppercase', letterSpacing:0.5, margin:'0 0 8px' }}>Achievements Unlocked</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
+              {state.achievements.map(id => {
+                const def = ACHIEVEMENT_DEFS.find(d => d.id === id);
+                return def ? (
+                  <div key={id} title={def.desc}
+                    style={{ background:'#21262d', border:'1px solid #30363d', borderRadius:5, padding:'3px 8px', fontSize:11, color:'#e6edf3' }}>
+                    {def.icon} {def.name}
+                  </div>
+                ) : null;
+              })}
+            </div>
+          </div>
+        )}
+
         <button onClick={onLobby} style={{ background: accentColor, border: 'none', borderRadius: 7, color: '#0d1117', fontWeight: 700, fontSize: 15, padding: '12px 32px', cursor: 'pointer', width: '100%' }}>
           ← Return to Lobby
         </button>
+        {won && state.config.campaignScenario !== undefined && state.config.campaignScenario < 2 && (
+          <button onClick={onNextCampaign}
+            style={{ background:'#1f6feb', border:'none', borderRadius:7, color:'#fff', fontWeight:700, fontSize:14, padding:'11px 28px', cursor:'pointer', width:'100%', marginTop:8 }}>
+            ⚔ Continue Campaign: Act {(state.config.campaignScenario ?? 0) + 2} →
+          </button>
+        )}
       </div>
     </div>
   );
@@ -993,6 +1165,87 @@ function PassScreen({ toPlayer, onReady }: { toPlayer: number; onReady: () => vo
           style={{ background: toPlayer === 2 ? '#dc2626' : '#2563eb', border:'none', borderRadius:8, color:'#fff', fontWeight:700, fontSize:16, padding:'14px 40px', cursor:'pointer', width:'100%' }}>
           I'm ready — Let's go! →
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Production Summary Modal ─── */
+function ProductionSummary({ state, research, onClose }: { state: GameState; research: string[]; onClose: () => void }) {
+  const playerNodes = state.nodes.filter(n => n.owner === PLAYER);
+  const tradeBonus = research.includes('trade_routes') ? Math.floor(playerNodes.length / 2) : 0;
+  const totG = playerNodes.reduce((s, n) => s + getGoldProd(n, research), 0) + tradeBonus;
+  const totF = playerNodes.reduce((s, n) => s + getFoodProd(n), 0);
+  const totM = playerNodes.reduce((s, n) => s + getMatProd(n, research), 0);
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.72)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:1500 }} onClick={onClose}>
+      <div style={{ background:'#161b22', border:'1px solid #30363d', borderRadius:8, padding:'18px 20px', width:440, maxHeight:'70vh', overflowY:'auto' }} onClick={e => e.stopPropagation()}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+          <span style={{ color:'#e6edf3', fontWeight:700, fontSize:14 }}>Production Breakdown</span>
+          <button onClick={onClose} style={{ background:'none', border:'none', color:'#7d8590', cursor:'pointer', fontSize:16 }}>✕</button>
+        </div>
+        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+          <thead>
+            <tr style={{ color:'#6b7280', fontSize:10, textTransform:'uppercase' }}>
+              <th style={{ textAlign:'left', padding:'4px 6px', fontWeight:600 }}>Territory</th>
+              <th style={{ textAlign:'center', color:'#f59e0b' }}>Gold</th>
+              <th style={{ textAlign:'center', color:'#34d399' }}>Food</th>
+              <th style={{ textAlign:'center', color:'#a78bfa' }}>Mat</th>
+            </tr>
+          </thead>
+          <tbody>
+            {playerNodes.map(n => (
+              <tr key={n.id} style={{ borderTop:'1px solid #21262d' }}>
+                <td style={{ padding:'5px 6px', color:'#e6edf3' }}>
+                  {n.name}{n.capital?' ♛':''}{n.stronghold?' ★':''}
+                  {n.terrain && n.terrain !== 'plains' && <span style={{ color: TERRAIN_COLORS[n.terrain], fontSize:9, marginLeft:4 }}>[{n.terrain}]</span>}
+                </td>
+                <td style={{ textAlign:'center', color:'#f59e0b' }}>+{getGoldProd(n, research)}</td>
+                <td style={{ textAlign:'center', color:'#34d399' }}>+{getFoodProd(n)}</td>
+                <td style={{ textAlign:'center', color:'#a78bfa' }}>+{getMatProd(n, research)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            {tradeBonus > 0 && (
+              <tr style={{ borderTop:'1px solid #30363d' }}>
+                <td style={{ padding:'5px 6px', color:'#7d8590', fontStyle:'italic' }}>Trade Routes bonus</td>
+                <td style={{ textAlign:'center', color:'#f59e0b' }}>+{tradeBonus}</td><td/><td/>
+              </tr>
+            )}
+            <tr style={{ borderTop:'2px solid #30363d', fontWeight:700 }}>
+              <td style={{ padding:'6px', color:'#9198a1' }}>TOTAL / TURN</td>
+              <td style={{ textAlign:'center', color:'#f59e0b', fontSize:13 }}>+{totG}</td>
+              <td style={{ textAlign:'center', color:'#34d399', fontSize:13 }}>+{totF}</td>
+              <td style={{ textAlign:'center', color:'#a78bfa', fontSize:13 }}>+{totM}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Event Choice Modal ─── */
+function ChoiceModal({ event, onChoice }: {
+  event: NonNullable<GameState['pendingEvent']>;
+  onChoice: (i: number) => void;
+}) {
+  const typeColor = event.type === 'positive' ? '#3fb950' : event.type === 'negative' ? '#f85149' : '#7d8590';
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2500 }}>
+      <div style={{ background:'#161b22', border:`1px solid ${typeColor}55`, borderRadius:10, padding:'24px 28px', maxWidth:400, width:'90%' }}>
+        <p style={{ color: typeColor, fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:0.5, margin:'0 0 6px' }}>📜 Event</p>
+        <h3 style={{ color:'#e6edf3', fontSize:18, fontWeight:700, margin:'0 0 18px' }}>{event.title}</h3>
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {event.choices.map((c, i) => (
+            <button key={i} onClick={() => onChoice(i)}
+              style={{ background:'#0d1117', border:'1px solid #30363d', borderRadius:6, padding:'10px 14px', cursor:'pointer', textAlign:'left', color:'#e6edf3', width:'100%' }}>
+              <div style={{ fontWeight:600, fontSize:13 }}>{c.label}</div>
+              <div style={{ color:'#7d8590', fontSize:11, marginTop:2 }}>{c.desc}</div>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -5,7 +5,7 @@
 
 import {
   GameState, GameAction, GameConfig, Territory, Resources,
-  Owner, BuildingType, LogEntry, GameStatus, TurnEvent,
+  Owner, BuildingType, LogEntry, GameStatus, TurnEvent, HistoryEntry, Difficulty,
   PLAYER, ENEMY, NEUTRAL, isEnemy, TerrainType,
 } from './types';
 
@@ -874,21 +874,29 @@ export function createInitialState(id: string, config: GameConfig): GameState {
     }
   })();
 
+  const bonusGold = cfg.campaignBonusGold ?? 0;
+  const bonusTechs = cfg.campaignBonusTechs ?? [];
+
   return {
     id,
     turn: 1,
     status: 'active',
     nodes: map.nodes,
     edges: map.edges,
-    resources: { gold: cfg.startGold, food: cfg.startFood, mat: cfg.startMat, influence: 0 },
+    resources: { gold: cfg.startGold + bonusGold, food: cfg.startFood, mat: cfg.startMat, influence: 0 },
     config: cfg,
     log: [{ turn: 1, message: 'Campaign begins.', timestamp: Date.now() }],
     sel: null,
     tgt: null,
     actionsLeft: cfg.apPerTurn,
     lastEvent: null,
-    research: [],
+    research: bonusTechs,
     activePlayer: 1,
+    revealed: [],
+    ceasefires: {},
+    achievements: [],
+    history: [],
+    pendingEvent: undefined,
   };
 }
 
@@ -919,6 +927,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   enableStrongholds: false,
   altVictoryGold: 400,
   hotseat: false,
+  enableSpies: false,
 };
 
 // ---------------------------------------------------------------------------
@@ -1066,6 +1075,14 @@ function handleUpgrade(state: GameState, action: { nodeId: number }): GameState 
 }
 
 function handleEndTurn(state: GameState): GameState {
+  // Auto-resolve any pending choice event (take first option)
+  if (state.pendingEvent) {
+    const def = EVENT_POOL.find(e => e.id === state.pendingEvent!.id);
+    const autoRun = def?.choices?.[0]?.run;
+    const resolved = autoRun ? autoRun({ ...state, pendingEvent: undefined }) : { ...state, pendingEvent: undefined };
+    return handleEndTurn(resolved);
+  }
+
   const cfg = state.config;
   const activePlayer = state.activePlayer ?? PLAYER;
 
@@ -1123,6 +1140,22 @@ function handleEndTurn(state: GameState): GameState {
   let next = { ...state, nodes, resources };
   next = addLog(next, `T${state.turn}: +${p.gold}g +${p.food}f +${p.mat}m. Upkeep ${upkeep}f. Net food ${foodNet >= 0 ? '+' : ''}${foodNet}.${starved > 0 ? ` ${starved} troops starved.` : ''}${influenceGain > 0 ? ` +${influenceGain} influence.` : ''}`);
 
+  // History snapshot
+  const snapshot: HistoryEntry = {
+    turn: state.turn,
+    gold: state.resources.gold,
+    territories: state.nodes.filter(n => n.owner === PLAYER).length,
+    troops: totalTroops(state.nodes, PLAYER),
+  };
+  next = { ...next, history: [...(state.history ?? []), snapshot] };
+
+  // Decrement ceasefires
+  const ceasefires: Record<number, number> = {};
+  Object.entries(next.ceasefires ?? {}).forEach(([f, t]) => {
+    if (Number(t) > 1) ceasefires[Number(f)] = Number(t) - 1;
+  });
+  next = { ...next, ceasefires };
+
   // All enemy faction turns
   next = runEnemyTurn(next);
 
@@ -1142,7 +1175,7 @@ function handleEndTurn(state: GameState): GameState {
     next = { ...next, activePlayer: 1 };
   }
 
-  return next;
+  return checkAchievements(next);
 }
 
 function handleAnnex(state: GameState, action: { nodeId: number }): GameState {
@@ -1201,10 +1234,9 @@ function handleResearch(state: GameState, action: { techId: string }): GameState
 // ---------------------------------------------------------------------------
 
 interface EventDef {
-  id: string;
-  title: string;
-  type: 'positive' | 'negative' | 'neutral';
+  id: string; title: string; type: 'positive'|'negative'|'neutral';
   run: (s: GameState) => { state: GameState; message: string };
+  choices?: Array<{ label: string; desc: string; run: (s: GameState) => GameState }>;
 }
 
 const EVENT_POOL: EventDef[] = [
@@ -1261,6 +1293,38 @@ const EVENT_POOL: EventDef[] = [
       return { state: { ...s, nodes }, message: `Unrest in ${t.name} — neutral territory grows stronger (+2 troops).` };
     },
   },
+  {
+    id: 'wandering_merchant', title: 'Wandering Merchant', type: 'neutral',
+    run: s => ({ state: s, message: 'A merchant arrives with goods for sale.' }),
+    choices: [
+      { label: 'Buy food (15g)', desc: '+20 food', run: s => s.resources.gold >= 15 ? { ...s, resources: { ...s.resources, gold: s.resources.gold-15, food: s.resources.food+20 } } : s },
+      { label: 'Buy materials (12g)', desc: '+12 mat', run: s => s.resources.gold >= 12 ? { ...s, resources: { ...s.resources, gold: s.resources.gold-12, mat: s.resources.mat+12 } } : s },
+      { label: 'Turn away', desc: 'No effect', run: s => s },
+    ],
+  },
+  {
+    id: 'rebel_offer', title: 'Rebel Defectors', type: 'positive',
+    run: s => ({ state: s, message: 'Rebels offer to fight for your cause — for a price.' }),
+    choices: [
+      { label: 'Accept (20g)', desc: '+5 troops on your capital', run: s => {
+        if (s.resources.gold < 20) return s;
+        const nodes = s.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
+        const cap = nodes.find(n => n.owner === PLAYER && n.capital);
+        if (cap) cap.troops = Math.min(cap.troops + 5, getTroopCap(cap));
+        return { ...s, nodes, resources: { ...s.resources, gold: s.resources.gold - 20 } };
+      }},
+      { label: 'Decline', desc: 'No effect', run: s => s },
+    ],
+  },
+  {
+    id: 'ancient_vault', title: 'Ancient Vault', type: 'positive',
+    run: s => ({ state: s, message: 'Your scouts find an ancient vault buried beneath the land.' }),
+    choices: [
+      { label: 'Take the gold', desc: '+25 gold', run: s => ({ ...s, resources: { ...s.resources, gold: s.resources.gold+25 } }) },
+      { label: 'Take the materials', desc: '+18 mat', run: s => ({ ...s, resources: { ...s.resources, mat: s.resources.mat+18 } }) },
+      { label: 'Ignore it', desc: 'No effect', run: s => s },
+    ],
+  },
   // Calm appears 3× to weight it at ~25% probability
   { id: 'calm', title: 'Uneventful Turn', type: 'neutral', run: s => ({ state: s, message: 'The realm is quiet this turn.' }) },
   { id: 'calm', title: 'Uneventful Turn', type: 'neutral', run: s => ({ state: s, message: 'The realm is quiet this turn.' }) },
@@ -1269,9 +1333,26 @@ const EVENT_POOL: EventDef[] = [
 
 function drawTurnEvent(state: GameState): GameState {
   const def = EVENT_POOL[Math.floor(Math.random() * EVENT_POOL.length)];
+  if (def.choices?.length) {
+    const pendingEvent = {
+      id: def.id, title: def.title, type: def.type,
+      choices: def.choices.map(c => ({ label: c.label, desc: c.desc })),
+    };
+    return addLog({ ...state, pendingEvent }, `📜 ${def.title}: A decision awaits.`);
+  }
   const { state: next, message } = def.run(state);
   const event: TurnEvent = { id: def.id, title: def.title, message, type: def.type };
   return addLog({ ...next, lastEvent: event }, `📜 ${def.title}: ${message}`);
+}
+
+function handleChoice(state: GameState, action: { choiceIndex: number }): GameState {
+  if (!state.pendingEvent) return state;
+  const def = EVENT_POOL.find(e => e.id === state.pendingEvent!.id);
+  if (!def?.choices) return { ...state, pendingEvent: undefined };
+  const choice = def.choices[action.choiceIndex] ?? def.choices[0];
+  const next = choice.run({ ...state, pendingEvent: undefined });
+  const event: TurnEvent = { id: def.id, title: def.title, message: `You chose: ${choice.label}. ${choice.desc}`, type: def.type };
+  return addLog({ ...next, lastEvent: event }, `${state.pendingEvent.title}: ${choice.label} — ${choice.desc}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -1298,19 +1379,30 @@ function runFactionTurn(state: GameState, faction: number): GameState {
   // Attacks: faction attacks any non-same-faction territory (including other enemies and player)
   const fNodes = nodes.filter(n => n.owner === faction).sort(() => Math.random() - 0.5);
   fNodes.forEach(att => {
-    if (att.troops <= 3) return;
+    if (att.troops <= 4) return;
+    // Capital protection: keep a garrison of at least 8 on the capital
+    if (att.capital === true && att.troops < 8) return;
     const tgts = getNeighbours(state.edges, att.id).filter(id => nodes[id].owner !== faction);
     if (!tgts.length) return;
 
-    const score = (id: number) =>
-      (nodes[id].owner === PLAYER ? state.config.expand : state.config.expand - 4)
-      + getGoldProd(nodes[id]) - getDefStr(nodes[id]) * 0.8;
+    const score = (id: number) => {
+      const t = nodes[id];
+      const baseScore = getGoldProd(t) - getDefStr(t) * 0.6;
+      if (t.owner === PLAYER) return baseScore + state.config.expand + 6;
+      if (isEnemy(t.owner)) return baseScore + 2; // still attack rival factions but less keenly
+      return baseScore + state.config.expand - 6; // neutrals last priority
+    };
 
     const bestId = tgts.reduce((b, id) => score(id) > score(b) ? id : b, tgts[0]);
     const def = nodes[bestId];
     const sending = Math.max(1, att.troops - 2);
     const ratio = (sending * dm) / Math.max(getDefStr(def), 1);
-    if (ratio < state.config.aggro) return;
+    const isPlayerAdjacent = tgts.some(id => nodes[id].owner === PLAYER);
+    const aggroThreshold = isPlayerAdjacent ? state.config.aggro * 0.8 : state.config.aggro;
+    if (ratio < aggroThreshold) return;
+
+    const ceasefireWithPlayer = (state.ceasefires ?? {})[faction] > 0;
+    if (ceasefireWithPlayer && nodes[bestId].owner === PLAYER) return; // honour ceasefire
 
     const result = resolveCombat(sending, def);
     att.troops -= sending;
@@ -1364,21 +1456,148 @@ function handleMove(state: GameState, action: { fromId: number; toId: number; tr
 }
 
 // ---------------------------------------------------------------------------
+// Spy actions
+// ---------------------------------------------------------------------------
+
+function handleSpy(state: GameState, action: { nodeId: number; mode: 'reveal' | 'sabotage' }): GameState {
+  if (!state.config.enableSpies) return addLog(state, 'Spies not enabled.');
+  if (apLeft(state) < 1) return addLog(state, 'Not enough AP.');
+  const target = state.nodes[action.nodeId];
+  if (!target) return state;
+
+  if (action.mode === 'reveal') {
+    const cost = 15;
+    if ((state.resources.influence ?? 0) < cost) return addLog(state, `Need ${cost} influence to reveal territory.`);
+    const revealed = [...new Set([...(state.revealed ?? []), action.nodeId])];
+    const resources = { ...state.resources, influence: (state.resources.influence ?? 0) - cost };
+    return addLog({ ...state, revealed, resources, actionsLeft: apLeft(state) - 1 },
+      `Spy revealed ${target.name}: ${target.troops} troops, def ${getDefStr(target)}.`);
+  }
+
+  if (action.mode === 'sabotage') {
+    const cost = 25;
+    if ((state.resources.influence ?? 0) < cost) return addLog(state, `Need ${cost} influence to sabotage.`);
+    if (target.owner === PLAYER) return addLog(state, 'Cannot sabotage your own territory.');
+    if (!target.buildings.length) return addLog(state, `${target.name} has no buildings to destroy.`);
+    const isAdjacentToPlayer = getNeighbours(state.edges, action.nodeId).some(nid => state.nodes[nid].owner === PLAYER);
+    if (!isAdjacentToPlayer) return addLog(state, 'Sabotage only works on territories adjacent to yours.');
+    const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
+    const destroyed = nodes[action.nodeId].buildings.pop()!;
+    const resources = { ...state.resources, influence: (state.resources.influence ?? 0) - cost };
+    return addLog({ ...state, nodes, resources, actionsLeft: apLeft(state) - 1 },
+      `Spy sabotaged ${target.name} — ${BUILDINGS[destroyed]?.name ?? destroyed} destroyed!`);
+  }
+  return state;
+}
+
+// ---------------------------------------------------------------------------
+// Ceasefire
+// ---------------------------------------------------------------------------
+
+const CEASEFIRE_COST = 30;
+const CEASEFIRE_TURNS = 4;
+
+function handleCeasefire(state: GameState, action: { faction: number }): GameState {
+  if (!state.config.enableDiplomacy) return addLog(state, 'Diplomacy not enabled.');
+  if (apLeft(state) < 1) return addLog(state, 'Not enough AP.');
+  if ((state.resources.influence ?? 0) < CEASEFIRE_COST) return addLog(state, `Need ${CEASEFIRE_COST} influence for a ceasefire.`);
+  if (!state.nodes.some(n => n.owner === action.faction)) return addLog(state, 'That faction has no territories.');
+  const ceasefires = { ...(state.ceasefires ?? {}), [action.faction]: CEASEFIRE_TURNS };
+  const resources = { ...state.resources, influence: (state.resources.influence ?? 0) - CEASEFIRE_COST };
+  return addLog({ ...state, ceasefires, resources, actionsLeft: apLeft(state) - 1 },
+    `${FACTION_NAMES[action.faction] ?? `Faction ${action.faction}`} ceasefire agreed — ${CEASEFIRE_TURNS} turns of peace.`);
+}
+
+// ---------------------------------------------------------------------------
+// Achievements
+// ---------------------------------------------------------------------------
+
+export interface AchievementDef {
+  id: string; name: string; icon: string; desc: string;
+  check: (state: GameState) => boolean;
+}
+
+export const ACHIEVEMENT_DEFS: AchievementDef[] = [
+  { id:'first_blood',      name:'First Blood',       icon:'⚔',  desc:'Win your first battle.',                          check: s => s.log.some(l => l.message.startsWith('Captured')) },
+  { id:'diplomat',         name:'Pacifist Diplomat',  icon:'🕊', desc:'Annex 3 territories peacefully.',                 check: s => s.log.filter(l => l.message.includes('Annexed')).length >= 3 },
+  { id:'scholar',          name:'Scholar',             icon:'📚', desc:'Research 6 or more technologies.',               check: s => (s.research?.length ?? 0) >= 6 },
+  { id:'grandmaster',      name:'Grandmaster',         icon:'🔬', desc:'Complete an entire tech branch.',                check: s => {
+    const r = s.research ?? [];
+    const b = [['iron_will','siege_craft','war_doctrine','total_war'],['trade_routes','industrialisation','granaries','market_dominance'],['cartography','colonisation','fortifications','grand_strategy']];
+    return b.some(ids => ids.every(id => r.includes(id)));
+  }},
+  { id:'hoarder',          name:'Hoarder',             icon:'💰', desc:'Accumulate 400 gold in your treasury.',          check: s => s.resources.gold >= 400 },
+  { id:'conqueror',        name:'Conqueror',           icon:'🏰', desc:'Hold 15 or more territories at once.',           check: s => s.nodes.filter(n => n.owner === PLAYER).length >= 15 },
+  { id:'speed_run',        name:'Speed Run',           icon:'⚡', desc:'Win a campaign in 10 turns or fewer.',           check: s => s.status === 'victory' && s.turn <= 10 },
+  { id:'tech_savant',      name:'Tech Savant',         icon:'🧬', desc:'Unlock all 12 technologies.',                   check: s => (s.research?.length ?? 0) >= 12 },
+  { id:'warmonger',        name:'Warmonger',           icon:'💀', desc:'Eliminate 2 or more enemy factions.',            check: s => {
+    let e = 0;
+    for (let f = 2; f <= 1+(s.config.enemyFactions??1); f++) if (!s.nodes.some(n => n.owner===f)) e++;
+    return e >= 2;
+  }},
+  { id:'economic_victory', name:'Merchant Prince',    icon:'📈', desc:'Win via Economic Victory.',                      check: s => s.status==='victory' && s.victoryType==='economic' },
+  { id:'research_victory', name:'Renaissance',         icon:'🔭', desc:'Win via Research Victory.',                      check: s => s.status==='victory' && s.victoryType==='research' },
+  { id:'brutal_win',       name:'Ironclad',            icon:'🛡', desc:'Win on Brutal difficulty.',                      check: s => s.status==='victory' && s.config.diff==='brutal' },
+  { id:'peacemaker',       name:'Peacemaker',          icon:'🤝', desc:'Broker 3 ceasefires in one campaign.',           check: s => s.log.filter(l => l.message.includes('ceasefire')).length >= 3 },
+  { id:'grand_conqueror',  name:'Grand Conqueror',     icon:'🌍', desc:'Win on the Grand Continent map.',               check: s => s.status==='victory' && s.config.mapId==='grand_continent' },
+  { id:'fortress',         name:'Fortress Builder',    icon:'🏯', desc:'Have 5 or more towers active at once.',          check: s => s.nodes.filter(n=>n.owner===PLAYER).reduce((sum,n)=>sum+n.buildings.filter(b=>b==='tower').length,0)>=5 },
+  { id:'trading_empire',   name:'Trading Empire',      icon:'🛒', desc:'Have 5 or more markets active at once.',         check: s => s.nodes.filter(n=>n.owner===PLAYER).reduce((sum,n)=>sum+n.buildings.filter(b=>b==='market').length,0)>=5 },
+  { id:'tutorial_complete',name:'Tutorial Graduate',   icon:'🎓', desc:'Complete the tutorial.',                         check: s => s.status==='victory' && s.config.mapId==='tutorial' },
+  { id:'stronghold_king',  name:'Stronghold King',     icon:'★',  desc:'Hold 2 strongholds simultaneously.',            check: s => s.nodes.filter(n=>n.owner===PLAYER&&n.stronghold).length>=2 },
+  { id:'hotseat_winner',   name:'Champion',            icon:'🏆', desc:'Win a hot-seat game.',                           check: s => s.status==='victory' && !!s.config.hotseat },
+  { id:'adventurer',       name:'Adventurer',          icon:'🗺', desc:'Win on a random map.',                           check: s => s.status==='victory' && s.config.mapId==='random' },
+];
+
+function checkAchievements(state: GameState): GameState {
+  const current = new Set(state.achievements ?? []);
+  const newOnes: string[] = [];
+  for (const def of ACHIEVEMENT_DEFS) {
+    if (!current.has(def.id) && def.check(state)) newOnes.push(def.id);
+  }
+  if (!newOnes.length) return state;
+  let next = { ...state, achievements: [...(state.achievements ?? []), ...newOnes] };
+  for (const id of newOnes) {
+    const def = ACHIEVEMENT_DEFS.find(d => d.id === id)!;
+    next = addLog(next, `🏅 Achievement: ${def.icon} ${def.name} — ${def.desc}`);
+  }
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Campaign scenarios
+// ---------------------------------------------------------------------------
+
+export interface CampaignScenario {
+  index: number; title: string; mapId: string; diff: Difficulty;
+  desc: string; bonusGold: number; bonusTechs: string[];
+}
+
+export const CAMPAIGN_SCENARIOS: CampaignScenario[] = [
+  { index:0, title:'Act I — The Narrows',           mapId:'narrows',    diff:'normal', desc:'Seize the chokepoint pass to earn your first victory.', bonusGold:0,  bonusTechs:[] },
+  { index:1, title:'Act II — Battle of Crossroads', mapId:'crossroads', diff:'hard',   desc:'Control the contested central territories.',            bonusGold:35, bonusTechs:['iron_will'] },
+  { index:2, title:'Act III — The Heartlands War',  mapId:'heartlands', diff:'brutal', desc:'Conquer the entire realm in the final decisive battle.', bonusGold:70, bonusTechs:['iron_will','trade_routes'] },
+];
+
+// ---------------------------------------------------------------------------
 // Main process function — this is the single entry point for all actions
 // ---------------------------------------------------------------------------
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.status !== 'active') return state;
-
+  let result: GameState;
   switch (action.type) {
-    case 'ATTACK':    return handleAttack(state, action);
-    case 'RECRUIT':   return handleRecruit(state, action);
-    case 'BUILD':     return handleBuild(state, action);
-    case 'UPGRADE':   return handleUpgrade(state, action);
-    case 'MOVE':      return handleMove(state, action);
-    case 'END_TURN':  return handleEndTurn(state);
-    case 'ANNEX':     return handleAnnex(state, action);
-    case 'RESEARCH':  return handleResearch(state, action);
-    default:          return state;
+    case 'ATTACK':    result = handleAttack(state, action); break;
+    case 'RECRUIT':   result = handleRecruit(state, action); break;
+    case 'BUILD':     result = handleBuild(state, action); break;
+    case 'UPGRADE':   result = handleUpgrade(state, action); break;
+    case 'MOVE':      result = handleMove(state, action); break;
+    case 'END_TURN':  result = handleEndTurn(state); break;
+    case 'ANNEX':     result = handleAnnex(state, action); break;
+    case 'RESEARCH':  result = handleResearch(state, action); break;
+    case 'SPY':       result = handleSpy(state, action); break;
+    case 'CEASEFIRE': result = handleCeasefire(state, action); break;
+    case 'CHOICE':    result = handleChoice(state, action); break;
+    default:          result = state;
   }
+  return checkAchievements(result);
 }

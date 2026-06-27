@@ -20,7 +20,10 @@ export type ActionType =
   | 'MOVE'
   | 'END_TURN'
   | 'RESEARCH'
-  | 'ANNEX';
+  | 'ANNEX'
+  | 'SPY'
+  | 'CEASEFIRE'
+  | 'CHOICE';
 
 export interface AttackAction {
   type: 'ATTACK';
@@ -67,6 +70,10 @@ export interface AnnexAction {
   nodeId: number;
 }
 
+export interface SpyAction { type: 'SPY'; nodeId: number; mode: 'reveal' | 'sabotage'; }
+export interface CeasefireAction { type: 'CEASEFIRE'; faction: number; }
+export interface ChoiceAction { type: 'CHOICE'; choiceIndex: number; }
+
 export type GameAction =
   | AttackAction
   | RecruitAction
@@ -75,7 +82,10 @@ export type GameAction =
   | MoveAction
   | EndTurnAction
   | ResearchAction
-  | AnnexAction;
+  | AnnexAction
+  | SpyAction
+  | CeasefireAction
+  | ChoiceAction;
 
 export interface Territory {
   id: number;
@@ -126,6 +136,10 @@ export interface GameConfig {
   altVictoryGold: number;    // gold threshold for economic victory
   enableTutorial?: boolean;  // guided tutorial mode
   hotseat?: boolean;         // two human players alternate turns
+  enableSpies?: boolean;     // spy actions: reveal / sabotage
+  campaignScenario?: number;     // which act this is (0-based)
+  campaignBonusGold?: number;    // bonus gold carried over from previous act
+  campaignBonusTechs?: string[]; // techs carried over from previous act
 }
 
 export interface TurnEvent {
@@ -142,6 +156,8 @@ export interface LogEntry {
 }
 
 export type GameStatus = 'active' | 'victory' | 'defeated';
+
+export interface HistoryEntry { turn: number; gold: number; territories: number; troops: number; }
 
 export interface GameState {
   id: string;
@@ -160,6 +176,11 @@ export interface GameState {
   victoryType?: string;
   researchBranch?: string;
   activePlayer: number;      // 1 = Player 1 turn, 2 = Player 2 turn (hot seat only)
+  revealed: number[];        // node ids revealed by spy
+  ceasefires: Record<number, number>; // faction -> turns remaining
+  achievements: string[];
+  history: HistoryEntry[];
+  pendingEvent?: { id: string; title: string; type: 'positive'|'negative'|'neutral'; choices: Array<{ label: string; desc: string }> };
 }
 
 export interface ActionResult {

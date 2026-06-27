@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameLocal, type SaveMeta } from '../hooks/useGameLocal';
-import { MAP_DEFS } from 'shared/engine-reference';
+import { MAP_DEFS, ACHIEVEMENT_DEFS, CAMPAIGN_SCENARIOS } from 'shared/engine-reference';
 import type { GameConfig, Difficulty } from 'shared/types';
 
 const SETTINGS_KEY = 'tm_last_settings';
@@ -14,10 +14,10 @@ function saveLastSettings(s: Record<string, unknown>) {
 }
 
 const DIFF_PRESETS: Record<Difficulty, Partial<GameConfig>> = {
-  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 99, fogOfWar: false, enableEvents: false, enemyFactions: 1, enableDiplomacy: false, enableTechTree: false, enableAltVictory: false, enableStrongholds: false },
-  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false, apPerTurn: 4,  fogOfWar: false, enableEvents: true,  enemyFactions: 1, enableDiplomacy: false, enableTechTree: true,  enableAltVictory: false, enableStrongholds: false },
-  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true,  apPerTurn: 4,  fogOfWar: true,  enableEvents: true,  enemyFactions: 2, enableDiplomacy: true,  enableTechTree: true,  enableAltVictory: true,  enableStrongholds: true  },
-  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true,  apPerTurn: 3,  fogOfWar: true,  enableEvents: true,  enemyFactions: 3, enableDiplomacy: true,  enableTechTree: true,  enableAltVictory: true,  enableStrongholds: true  },
+  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 99, fogOfWar: false, enableEvents: false, enemyFactions: 1, enableDiplomacy: false, enableTechTree: false, enableAltVictory: false, enableStrongholds: false, enableSpies: false },
+  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false, apPerTurn: 4,  fogOfWar: false, enableEvents: true,  enemyFactions: 1, enableDiplomacy: false, enableTechTree: true,  enableAltVictory: false, enableStrongholds: false, enableSpies: false },
+  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true,  apPerTurn: 4,  fogOfWar: true,  enableEvents: true,  enemyFactions: 2, enableDiplomacy: true,  enableTechTree: true,  enableAltVictory: true,  enableStrongholds: true,  enableSpies: true  },
+  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true,  apPerTurn: 3,  fogOfWar: true,  enableEvents: true,  enemyFactions: 3, enableDiplomacy: true,  enableTechTree: true,  enableAltVictory: true,  enableStrongholds: true,  enableSpies: true  },
 };
 
 const DIFF_DESC: Record<Difficulty, string> = {
@@ -115,6 +115,10 @@ export default function Lobby() {
     const last = loadLastSettings();
     return (last?.hotseat as boolean) ?? false;
   });
+  const [enableSpies, setEnableSpies] = useState<boolean>(() => {
+    const last = loadLastSettings();
+    return (last?.enableSpies as boolean) ?? false;
+  });
 
   const [selectedMap, setSelectedMap] = useState<string>(() => {
     const last = loadLastSettings();
@@ -139,6 +143,7 @@ export default function Lobby() {
     if (p.enableTechTree      !== undefined) setEnableTechTree(p.enableTechTree);
     if (p.enableAltVictory    !== undefined) setEnableAltVictory(p.enableAltVictory);
     if (p.enableStrongholds   !== undefined) setEnableStrongholds(p.enableStrongholds);
+    if (p.enableSpies         !== undefined) setEnableSpies(p.enableSpies);
   };
 
   const handleNew = () => {
@@ -148,7 +153,7 @@ export default function Lobby() {
       enemyTerritories, enemyTroopScale, enemyStartBuildings,
       apPerTurn, fogOfWar, enableEvents,
       enemyFactions, enableDiplomacy, enableTechTree, enableAltVictory, enableStrongholds,
-      hotseat,
+      hotseat, enableSpies,
     });
     const config: Partial<GameConfig> = {
       ...DIFF_PRESETS[difficulty],
@@ -157,7 +162,7 @@ export default function Lobby() {
       apPerTurn, fogOfWar, enableEvents,
       mapId: selectedMap,
       enemyFactions, enableDiplomacy, enableTechTree, enableAltVictory, enableStrongholds,
-      hotseat,
+      hotseat, enableSpies,
     };
     const name = campaignName.trim() || undefined;
     const id = createGame(config, name);
@@ -201,6 +206,12 @@ export default function Lobby() {
             ))}
           </Section>
         )}
+
+        {/* ── Achievements ── */}
+        <AchievementsSection saves={saves} />
+
+        {/* ── Campaign ── */}
+        <CampaignSection saves={saves} createGame={createGame} nav={nav} />
 
         {/* ── How to Play ── */}
         <HowToPlay />
@@ -342,6 +353,10 @@ export default function Lobby() {
                     <p style={s.subLabel}>Hot Seat — two players alternate turns on the same device</p>
                     <ToggleRow value={hotseat} onChange={v => { setHotseat(v); if (v && enemyFactions < 1) setEnemyFactions(1); }} />
                   </div>
+                  <div>
+                    <p style={s.subLabel}>Spies (spend influence to reveal or sabotage enemy territories — requires Diplomacy)</p>
+                    <ToggleRow value={enableSpies} onChange={setEnableSpies} />
+                  </div>
                 </div>
               </div>
 
@@ -433,6 +448,120 @@ export default function Lobby() {
 }
 
 /* ── Sub-components ── */
+
+function AchievementsSection({ saves }: { saves: SaveMeta[] }) {
+  const [open, setOpen] = React.useState(false);
+  const allAchievements = React.useMemo(() => {
+    const ids = new Set<string>();
+    saves.forEach(save => {
+      try {
+        const raw = localStorage.getItem(`tm_save_${save.id}`);
+        if (raw) {
+          const st = JSON.parse(raw) as { achievements?: string[] };
+          (st.achievements ?? []).forEach(id => ids.add(id));
+        }
+      } catch {}
+    });
+    return ids;
+  }, [saves]);
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ background:'none', border:'none', color:'#e6edf3', fontSize:14, fontWeight:700, cursor:'pointer', padding:0, marginBottom: open ? 10 : 0, display:'flex', alignItems:'center', gap:6 }}>
+        {open ? '▾' : '▸'} 🏅 Achievements ({allAchievements.size}/{ACHIEVEMENT_DEFS.length})
+      </button>
+      {open && (
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+          {ACHIEVEMENT_DEFS.map(def => {
+            const unlocked = allAchievements.has(def.id);
+            return (
+              <div key={def.id} title={def.desc} style={{ background:'#0d1117', border:`1px solid ${unlocked ? '#30363d' : '#161b22'}`, borderRadius:6, padding:'8px 10px', opacity: unlocked ? 1 : 0.32 }}>
+                <div style={{ fontSize:15, marginBottom:2 }}>{def.icon}</div>
+                <div style={{ color:'#e6edf3', fontSize:11, fontWeight:600 }}>{def.name}</div>
+                <div style={{ color:'#6b7280', fontSize:10 }}>{def.desc}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CampaignSection({ saves, createGame, nav }: {
+  saves: SaveMeta[];
+  createGame: (c: Partial<GameConfig>, name?: string) => string;
+  nav: (path: string) => void;
+}) {
+  const highestComplete = React.useMemo(() => {
+    let best = -1;
+    saves.filter(s => s.status === 'victory').forEach(save => {
+      try {
+        const raw = localStorage.getItem(`tm_save_${save.id}`);
+        if (raw) {
+          const st = JSON.parse(raw) as { config?: { campaignScenario?: number } };
+          const idx = st.config?.campaignScenario ?? -1;
+          if (idx > best) best = idx;
+        }
+      } catch {}
+    });
+    return best;
+  }, [saves]);
+
+  const startScenario = (scenario: typeof CAMPAIGN_SCENARIOS[number]) => {
+    const id = createGame({
+      ...DIFF_PRESETS[scenario.diff],
+      mapId: scenario.mapId,
+      enemyTerritories: 3,
+      enableTechTree: true,
+      enableEvents: true,
+      campaignScenario: scenario.index,
+      campaignBonusGold: scenario.bonusGold,
+      campaignBonusTechs: scenario.bonusTechs,
+    }, scenario.title);
+    nav(`/game/${id}`);
+  };
+
+  return (
+    <div style={{ marginBottom: 24 }}>
+      <h3 style={{ color:'#e6edf3', fontSize:14, fontWeight:700, margin:'0 0 6px' }}>⚔ Campaign</h3>
+      <p style={{ color:'#7d8590', fontSize:12, margin:'0 0 12px', lineHeight:1.5 }}>Three linked acts of escalating difficulty. Win each to unlock the next with carry-over bonuses.</p>
+      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+        {CAMPAIGN_SCENARIOS.map(scenario => {
+          const unlocked = scenario.index === 0 || highestComplete >= scenario.index - 1;
+          const completed = highestComplete >= scenario.index;
+          return (
+            <div key={scenario.index} style={{ background:'#0d1117', border:`1px solid ${completed ? '#3fb950' : unlocked ? '#21262d' : '#161b22'}`, borderRadius:8, padding:'12px 14px', opacity: unlocked ? 1 : 0.45 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                    <span style={{ color: completed ? '#3fb950' : '#e6edf3', fontWeight:700, fontSize:13 }}>
+                      {completed ? '✓ ' : ''}{scenario.title}
+                    </span>
+                    <span style={{ background:'#21262d', borderRadius:4, padding:'1px 6px', fontSize:10, color:'#9198a1' }}>{scenario.diff}</span>
+                  </div>
+                  <p style={{ color:'#7d8590', fontSize:11, margin:'0 0 4px' }}>{scenario.desc}</p>
+                  {scenario.bonusGold > 0 && (
+                    <p style={{ color:'#f59e0b', fontSize:10, margin:0 }}>
+                      Carryover: +{scenario.bonusGold}g{scenario.bonusTechs.length ? ` + ${scenario.bonusTechs.length} free tech${scenario.bonusTechs.length > 1 ? 's' : ''}` : ''}
+                    </p>
+                  )}
+                </div>
+                {unlocked && (
+                  <button onClick={() => startScenario(scenario)}
+                    style={{ background: completed ? '#1a3a1a' : '#1f6feb', border:`1px solid ${completed ? '#3fb950' : '#1f6feb'}`, borderRadius:6, color:'#fff', fontWeight:700, fontSize:12, padding:'7px 14px', cursor:'pointer', flexShrink:0, marginLeft:10, whiteSpace:'nowrap' }}>
+                    {completed ? 'Replay' : 'Start →'}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function HowToPlay() {
   const [open, setOpen] = React.useState<string | null>(null);
