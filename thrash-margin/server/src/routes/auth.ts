@@ -29,14 +29,18 @@ router.post('/register', async (req: Request, res: Response) => {
   try {
     const hash = await bcrypt.hash(password, SALT_ROUNDS);
     const id = uuid();
-    db.prepare(
-      `INSERT INTO users (id, username, email, password) VALUES (?, ?, ?, ?)`
-    ).run(id, username.trim(), email.trim().toLowerCase(), hash);
-    db.prepare(`INSERT OR IGNORE INTO player_stats (user_id) VALUES (?)`).run(id);
+    await db.query(
+      `INSERT INTO users (id, username, email, password) VALUES ($1, $2, $3, $4)`,
+      [id, username.trim(), email.trim().toLowerCase(), hash]
+    );
+    await db.query(
+      `INSERT INTO player_stats (user_id) VALUES ($1) ON CONFLICT DO NOTHING`,
+      [id]
+    );
     res.json({ token: makeToken(id, username.trim()), userId: id, username: username.trim() });
   } catch (err: unknown) {
     const msg = (err as { message?: string }).message ?? '';
-    if (msg.includes('UNIQUE')) {
+    if (msg.includes('unique') || msg.includes('duplicate')) {
       res.status(409).json({ message: 'Username or email already taken' });
     } else {
       console.error('register error', err);
@@ -53,10 +57,11 @@ router.post('/login', async (req: Request, res: Response) => {
     return;
   }
   try {
-    const user = db.prepare(
-      `SELECT id, username, password FROM users WHERE username = ?`
-    ).get(username.trim()) as { id: string; username: string; password: string } | undefined;
-
+    const result = await db.query(
+      `SELECT id, username, password FROM users WHERE username = $1`,
+      [username.trim()]
+    );
+    const user = result.rows[0];
     if (!user) {
       res.status(401).json({ message: 'Invalid username or password' });
       return;

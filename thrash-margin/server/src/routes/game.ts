@@ -9,27 +9,26 @@ const router = Router();
 router.use(authMiddleware);
 
 // GET /api/game — list player's saves
-router.get('/', (req: AuthRequest, res: Response) => {
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
-    const rows = db.prepare(
-      `SELECT id, name, turn, status, config, updated_at FROM games
-       WHERE owner_id = ? ORDER BY updated_at DESC`
-    ).all(req.userId) as Array<{
-      id: string; name: string; turn: number; status: string;
-      config: string; updated_at: string;
-    }>;
-
-    const saves = rows.map(r => {
-      const config = JSON.parse(r.config) as Partial<GameConfig>;
-      return {
-        id: r.id,
-        name: r.name,
-        turn: r.turn,
-        status: r.status,
-        diff: config.diff ?? 'normal',
-        savedAt: new Date(r.updated_at).getTime(),
-      };
-    });
+    const result = await db.query(
+      `SELECT id,
+              state->>'name' AS name,
+              (state->>'turn')::int AS turn,
+              status,
+              config->>'diff' AS diff,
+              EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
+       FROM games WHERE owner_id = $1 ORDER BY updated_at DESC`,
+      [req.userId]
+    );
+    const saves = result.rows.map(r => ({
+      id: r.id,
+      name: r.name ?? 'Campaign',
+      turn: r.turn ?? 1,
+      status: r.status,
+      diff: r.diff ?? 'normal',
+      savedAt: Math.round(parseFloat(r.saved_at)),
+    }));
     res.json({ saves });
   } catch (err) {
     console.error('list games error', err);
@@ -38,19 +37,19 @@ router.get('/', (req: AuthRequest, res: Response) => {
 });
 
 // POST /api/game — create a new game
-router.post('/', (req: AuthRequest, res: Response) => {
+router.post('/', async (req: AuthRequest, res: Response) => {
   const { config, name } = req.body ?? {};
   try {
     const id = uuid();
     const mergedConfig: GameConfig = { ...DEFAULT_CONFIG, ...(config ?? {}) };
     const state = createInitialState(id, mergedConfig);
-    const campaignName = ((name as string | undefined) ?? 'Campaign').trim();
+    (state as unknown as Record<string, unknown>).name = ((name as string | undefined) ?? 'Campaign').trim();
 
-    db.prepare(
-      `INSERT INTO games (id, owner_id, mode, status, turn, state, config, name)
-       VALUES (?, ?, 'single', 'active', ?, ?, ?, ?)`
-    ).run(id, req.userId, state.turn, JSON.stringify(state), JSON.stringify(mergedConfig), campaignName);
-
+    await db.query(
+      `INSERT INTO games (id, owner_id, mode, status, turn, state, config)
+       VALUES ($1, $2, 'single', 'active', $3, $4, $5)`,
+      [id, req.userId, state.turn, JSON.stringify(state), JSON.stringify(mergedConfig)]
+    );
     res.json({ gameId: id, state });
   } catch (err) {
     console.error('create game error', err);
@@ -59,71 +58,74 @@ router.post('/', (req: AuthRequest, res: Response) => {
 });
 
 // GET /api/game/:id — fetch game state
-router.get('/:id', (req: AuthRequest, res: Response) => {
+router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    const row = db.prepare(
-      `SELECT state FROM games WHERE id = ? AND owner_id = ?`
-    ).get(req.params.id, req.userId) as { state: string } | undefined;
-
-    if (!row) {
+    const result = await db.query(
+      `SELECT state FROM games WHERE id = $1 AND owner_id = $2`,
+      [req.params.id, req.userId]
+    );
+    if (!result.rows[0]) {
       res.status(404).json({ message: 'Game not found' });
       return;
     }
-    res.json({ state: JSON.parse(row.state) });
+    res.json({ state: result.rows[0].state });
   } catch (err) {
     console.error('load game error', err);
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// POST /api/game/:id/action — process a player action
-router.post('/:id/action', (req: AuthRequest, res: Response) => {
+// POST /api/game/:id/action
+router.post('/:id/action', async (req: AuthRequest, res: Response) => {
   const { action } = (req.body ?? {}) as { action: GameAction };
   if (!action) {
     res.status(400).json({ message: 'action is required' });
     return;
   }
-  const processGame = db.transaction(() => {
-    const row = db.prepare(
-      `SELECT state, turn FROM games WHERE id = ? AND owner_id = ?`
-    ).get(req.params.id, req.userId) as { state: string; turn: number } | undefined;
-
-    if (!row) return null;
-
-    const currentState = JSON.parse(row.state);
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const result = await client.query(
+      `SELECT state, turn FROM games WHERE id = $1 AND owner_id = $2 FOR UPDATE`,
+      [req.params.id, req.userId]
+    );
+    if (!result.rows[0]) {
+      await client.query('ROLLBACK');
+      res.status(404).json({ message: 'Game not found' });
+      return;
+    }
+    const currentState = result.rows[0].state;
     const nextState = processAction(currentState, action);
     const newStatus = nextState.status === 'victory' ? 'victory'
       : nextState.status === 'defeated' ? 'defeated' : 'active';
 
-    db.prepare(
-      `UPDATE games SET state = ?, status = ?, turn = ?, updated_at = datetime('now') WHERE id = ?`
-    ).run(JSON.stringify(nextState), newStatus, nextState.turn, req.params.id);
-
-    db.prepare(
+    await client.query(
+      `UPDATE games SET state = $1, status = $2, turn = $3 WHERE id = $4`,
+      [JSON.stringify(nextState), newStatus, nextState.turn, req.params.id]
+    );
+    await client.query(
       `INSERT INTO game_actions (id, game_id, user_id, turn, action)
-       VALUES (?, ?, ?, ?, ?)`
-    ).run(uuid(), req.params.id, req.userId, currentState.turn, JSON.stringify(action));
-
-    return nextState;
-  });
-
-  try {
-    const nextState = processGame();
-    if (!nextState) {
-      res.status(404).json({ message: 'Game not found' });
-      return;
-    }
+       VALUES ($1, $2, $3, $4, $5)`,
+      [uuid(), req.params.id, req.userId, currentState.turn, JSON.stringify(action)]
+    );
+    await client.query('COMMIT');
     res.json({ success: true, state: nextState });
   } catch (err) {
+    await client.query('ROLLBACK');
     console.error('action error', err);
     res.status(500).json({ message: 'Server error' });
+  } finally {
+    client.release();
   }
 });
 
 // DELETE /api/game/:id
-router.delete('/:id', (req: AuthRequest, res: Response) => {
+router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
-    db.prepare(`DELETE FROM games WHERE id = ? AND owner_id = ?`).run(req.params.id, req.userId);
+    await db.query(
+      `DELETE FROM games WHERE id = $1 AND owner_id = $2`,
+      [req.params.id, req.userId]
+    );
     res.json({ success: true });
   } catch (err) {
     console.error('delete game error', err);
