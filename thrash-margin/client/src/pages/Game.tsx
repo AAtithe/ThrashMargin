@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGameLocal as useGame } from '../hooks/useGameLocal';
 import {
@@ -27,6 +27,13 @@ export default function Game() {
   const [showProd, setShowProd] = useState(false);
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [mapT, setMapT] = useState({ x: 0, y: 0, scale: 1 });
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const isDraggingRef   = useRef(false);
+  const wasDraggingRef  = useRef(false);
+  const lastPosRef      = useRef({ x: 0, y: 0 });
+  const lastTouchDistRef = useRef<number | null>(null);
+  const lastTouchMidRef  = useRef({ x: 0, y: 0 });
   const prevOwnersRef = useRef<number[]>([]);
   const [captureFlash, setCaptureFlash] = useState<Set<number>>(new Set());
 
@@ -51,15 +58,44 @@ export default function Game() {
     return () => window.removeEventListener('resize', handler);
   }, []);
 
+  // Reset pan/zoom when game id changes
+  useEffect(() => { setMapT({ x: 0, y: 0, scale: 1 }); }, [id]);
+
+  // Non-passive wheel for zoom-toward-cursor
+  const onWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.12 : 0.88;
+    setMapT(t => {
+      const newScale = Math.min(6, Math.max(0.2, t.scale * factor));
+      const rect = mapContainerRef.current?.getBoundingClientRect();
+      if (!rect) return { ...t, scale: newScale };
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      return {
+        x: mx - (mx - t.x) * (newScale / t.scale),
+        y: my - (my - t.y) * (newScale / t.scale),
+        scale: newScale,
+      };
+    });
+  }, []);
+  useEffect(() => {
+    const el = mapContainerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [onWheel]);
+
   useEffect(() => {
     const style = document.createElement('style');
     style.id = 'tm-anim-css';
     style.textContent = `
       @keyframes capture-pulse { 0%{opacity:0.85;r:22} 60%{opacity:0.3;r:32} 100%{opacity:0;r:40} }
+      .tm-mapwrap { cursor: grab; }
+      .tm-mapwrap.tm-grabbing { cursor: grabbing !important; }
       .tm-drawer-handle { display: none; }
       @media (max-width: 640px) {
         .tm-body { flex-direction: column !important; overflow: hidden !important; }
-        .tm-mapwrap { flex: unset !important; height: 55vh !important; min-height: 200px !important; }
+        .tm-mapwrap { flex: unset !important; height: 54vh !important; min-height: 180px !important; cursor: grab; }
         .tm-sidebar {
           position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
           width: 100% !important; height: 50vh !important; max-height: 50vh !important;
@@ -157,6 +193,77 @@ export default function Game() {
     });
     return vis;
   }, [state, research]);
+
+  // Map pan handlers
+  const handleMapMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    isDraggingRef.current = true;
+    wasDraggingRef.current = false;
+    lastPosRef.current = { x: e.clientX, y: e.clientY };
+    mapContainerRef.current?.classList.add('tm-grabbing');
+  };
+  const handleMapMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingRef.current) return;
+    const dx = e.clientX - lastPosRef.current.x;
+    const dy = e.clientY - lastPosRef.current.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) wasDraggingRef.current = true;
+    lastPosRef.current = { x: e.clientX, y: e.clientY };
+    setMapT(t => ({ ...t, x: t.x + dx, y: t.y + dy }));
+  };
+  const handleMapMouseUp = () => {
+    isDraggingRef.current = false;
+    mapContainerRef.current?.classList.remove('tm-grabbing');
+  };
+
+  // Touch: single-finger pan, two-finger pinch-zoom
+  const handleTouchStart = (e: React.TouchEvent) => {
+    wasDraggingRef.current = false;
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDistRef.current = Math.sqrt(dx * dx + dy * dy);
+      lastTouchMidRef.current = {
+        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+      };
+    } else if (e.touches.length === 1) {
+      lastTouchMidRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+  };
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (lastTouchDistRef.current !== null) {
+        const factor = dist / lastTouchDistRef.current;
+        const rect = mapContainerRef.current?.getBoundingClientRect();
+        const mid = {
+          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        };
+        setMapT(t => {
+          const newScale = Math.min(6, Math.max(0.2, t.scale * factor));
+          if (!rect) return { ...t, scale: newScale };
+          const mx = mid.x - rect.left;
+          const my = mid.y - rect.top;
+          return {
+            x: mx - (mx - t.x) * (newScale / t.scale),
+            y: my - (my - t.y) * (newScale / t.scale),
+            scale: newScale,
+          };
+        });
+      }
+      lastTouchDistRef.current = dist;
+    } else if (e.touches.length === 1) {
+      const ddx = e.touches[0].clientX - lastTouchMidRef.current.x;
+      const ddy = e.touches[0].clientY - lastTouchMidRef.current.y;
+      if (Math.abs(ddx) + Math.abs(ddy) > 4) wasDraggingRef.current = true;
+      lastTouchMidRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      setMapT(t => ({ ...t, x: t.x + ddx, y: t.y + ddy }));
+    }
+  };
+  const handleTouchEnd = () => { lastTouchDistRef.current = null; };
 
   const handleNodeClick = (nid: number) => {
     if (!state) return;
@@ -277,41 +384,61 @@ export default function Game() {
         />
       )}
 
-      {/* ── Top bar ── */}
-      <div style={s.bar}>
-        <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
-        <span style={s.turnLabel}>
-          {cfg.hotseat ? `Turn ${state.turn} — P${state.activePlayer ?? 1}` : `Turn ${state.turn}`}
-        </span>
-        {(cfg.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? cfg.apPerTurn} max={cfg.apPerTurn} />}
-        <div style={s.resRow} className="tm-bar-resources">
-          <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
-          <Res icon="🌾" label="Food" val={state.resources.food} rate={prod.food - upkeep} color="#34d399" />
-          <Res icon="⛏" label="Mat"  val={state.resources.mat}  rate={prod.mat}  color="#a78bfa" />
-          {cfg.enableDiplomacy && (
-            <Res icon="👑" label="Inf" val={state.resources.influence ?? 0} rate={influenceRate} color="#ec4899" />
-          )}
-          {((state.resources.population ?? 0) > 0 || popRate > 0 || state.nodes.some(n => n.owner === PLAYER && n.lv >= 4)) && (
-            <Res icon="👥" label="Pop" val={state.resources.population ?? 0} rate={popRate} color="#9b59b6" />
-          )}
-          <button onClick={() => setShowProd(true)} title="Production breakdown"
-            style={{ background:'none', border:'1px solid #30363d', borderRadius:4, color:'#7d8590', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center', flexShrink: 0 }}>
-            ⊞
+      {/* ── Header / Top bar ── */}
+      <header style={s.header}>
+        <div style={s.headerLeft}>
+          <span style={s.brand}>⚔ Thrash Margin</span>
+          <span style={s.headerSep} />
+          <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
+        </div>
+        <div style={s.headerCenter}>
+          <span style={s.turnLabel}>
+            {cfg.hotseat ? `Turn ${state.turn} — P${state.activePlayer ?? 1}` : `Turn ${state.turn}`}
+          </span>
+          {(cfg.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? cfg.apPerTurn} max={cfg.apPerTurn} />}
+        </div>
+        <div style={s.headerRight}>
+          <div style={s.resRow} className="tm-bar-resources">
+            <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
+            <Res icon="🌾" label="Food" val={state.resources.food} rate={prod.food - upkeep} color="#34d399" />
+            <Res icon="⛏" label="Mat"  val={state.resources.mat}  rate={prod.mat}  color="#a78bfa" />
+            {cfg.enableDiplomacy && (
+              <Res icon="👑" label="Inf" val={state.resources.influence ?? 0} rate={influenceRate} color="#ec4899" />
+            )}
+            {((state.resources.population ?? 0) > 0 || popRate > 0 || state.nodes.some(n => n.owner === PLAYER && n.lv >= 4)) && (
+              <Res icon="👥" label="Pop" val={state.resources.population ?? 0} rate={popRate} color="#9b59b6" />
+            )}
+            <button onClick={() => setShowProd(true)} title="Production breakdown"
+              style={{ background:'none', border:'1px solid #30363d', borderRadius:4, color:'#7d8590', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center', flexShrink: 0 }}>
+              ⊞
+            </button>
+          </div>
+          <button onClick={doEndTurn} disabled={isOver || loading} style={{ ...s.endBtn, ...(isOver ? s.endOver : {}) }}>
+            {endBtnText}
           </button>
         </div>
-        <button onClick={doEndTurn} disabled={isOver || loading} style={{ ...s.endBtn, ...(isOver ? s.endOver : {}) }}>
-          {endBtnText}
-        </button>
-      </div>
+      </header>
 
-      {/* ── Event strip (below top bar) ── */}
+      {/* ── Event strip (below header) ── */}
       {state.lastEvent && <EventStrip event={state.lastEvent} />}
 
       <div style={s.body} className="tm-body">
         {/* ── Map ── */}
-        <div style={s.mapWrap} className="tm-mapwrap" onMouseLeave={() => setTooltip(null)}>
-          <svg viewBox={viewBox} style={s.svg}
-            onClick={() => { setSelId(null); setTgtId(null); }}>
+        <div style={s.mapWrap} className="tm-mapwrap"
+          ref={mapContainerRef}
+          onMouseDown={handleMapMouseDown}
+          onMouseMove={handleMapMouseMove}
+          onMouseUp={handleMapMouseUp}
+          onMouseLeave={() => { isDraggingRef.current = false; mapContainerRef.current?.classList.remove('tm-grabbing'); setTooltip(null); }}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}>
+          <svg viewBox={viewBox}
+            style={{ ...s.svg, transform: `translate(${mapT.x}px,${mapT.y}px) scale(${mapT.scale})`, transformOrigin: '0 0', touchAction: 'none', userSelect: 'none' }}
+            onClick={() => {
+              if (wasDraggingRef.current) { wasDraggingRef.current = false; return; }
+              setSelId(null); setTgtId(null);
+            }}>
             {/* edges */}
             {state.edges.map(([a, b], i) => {
               const na = state.nodes[a], nb = state.nodes[b];
@@ -326,6 +453,12 @@ export default function Game() {
               onHover={(nid, x, y) => setTooltip({ id: nid, x, y })}
             />)}
           </svg>
+          {/* Zoom controls */}
+          <div style={s.zoomControls}>
+            <button style={s.zoomBtn} onClick={() => setMapT(t => ({ ...t, scale: Math.min(6, t.scale * 1.3) }))}>+</button>
+            <button style={s.zoomBtn} onClick={() => setMapT({ x: 0, y: 0, scale: 1 })} title="Reset view">↺</button>
+            <button style={s.zoomBtn} onClick={() => setMapT(t => ({ ...t, scale: Math.max(0.2, t.scale * 0.77) }))}>−</button>
+          </div>
         </div>
 
         {/* ── Sidebar / Mobile bottom drawer ── */}
@@ -437,6 +570,20 @@ export default function Game() {
           </div>
         </div>
       </div>
+
+      {/* ── Footer ── */}
+      <footer style={s.footer}>
+        <span style={s.footerItem}>{mapDef?.name ?? cfg.mapId}</span>
+        <span style={s.footerSep}>·</span>
+        <span style={s.footerItem}>{state.nodes.filter(n => n.owner === PLAYER).length} territories</span>
+        <span style={s.footerSep}>·</span>
+        <span style={s.footerItem}>{cfg.diff.charAt(0).toUpperCase() + cfg.diff.slice(1)}</span>
+        <span style={{ flex: 1 }} />
+        <span style={s.footerItem}>
+          {mapT.scale !== 1 && `${Math.round(mapT.scale * 100)}% zoom · `}
+          Scroll to zoom · Drag to pan
+        </span>
+      </footer>
     </div>
   );
 }
@@ -1365,17 +1512,27 @@ function ChoiceModal({ event, onChoice }: {
 /* ─── Styles ─── */
 const s: Record<string, React.CSSProperties> = {
   page:     { height: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-  bar:      { background: '#161b22', borderBottom: '1px solid #30363d', padding: '10px 20px', display: 'flex', alignItems: 'center', gap: 16, flexShrink: 0 },
-  back:     { background: 'none', border: 'none', color: '#7d8590', cursor: 'pointer', fontSize: 13, padding: '4px 8px' },
+  header:   { background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 24px', display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0, height: 52 },
+  headerLeft:  { display: 'flex', alignItems: 'center', gap: 0, flexShrink: 0 },
+  headerCenter:{ display: 'flex', alignItems: 'center', gap: 14, padding: '0 20px', flexShrink: 0 },
+  headerRight: { display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' },
+  headerSep:   { width: 1, height: 20, background: '#30363d', margin: '0 12px' } as React.CSSProperties,
+  brand:    { color: '#4b5563', fontSize: 12, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' as const, whiteSpace: 'nowrap' as const },
+  back:     { background: 'none', border: 'none', color: '#7d8590', cursor: 'pointer', fontSize: 13, padding: '4px 0', whiteSpace: 'nowrap' as const },
   turnLabel:{ color: '#e6edf3', fontWeight: 700, fontSize: 15 },
-  resRow:   { display: 'flex', gap: 8, marginLeft: 4 },
-  endBtn:   { marginLeft: 'auto', background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, padding: '8px 20px', cursor: 'pointer', fontSize: 14 },
+  resRow:   { display: 'flex', gap: 8 },
+  endBtn:   { background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, padding: '8px 20px', cursor: 'pointer', fontSize: 14, whiteSpace: 'nowrap' as const, flexShrink: 0 },
   endOver:  { background: '#21262d', cursor: 'default' },
   body:     { display: 'flex', flex: 1, overflow: 'hidden' },
-  mapWrap:  { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 12, overflow: 'hidden' },
-  svg:      { width: '100%', height: '100%', maxHeight: 'calc(100vh - 60px)' },
-  sidebar:  { width: 272, background: '#161b22', borderLeft: '1px solid #30363d', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: 10, gap: 0 },
-  card:     { background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, padding: 12, marginBottom: 8 },
+  mapWrap:  { flex: 1, position: 'relative', overflow: 'hidden', cursor: 'grab' },
+  svg:      { width: '100%', height: '100%', display: 'block' },
+  zoomControls: { position: 'absolute' as const, bottom: 16, right: 16, display: 'flex', flexDirection: 'column' as const, gap: 4, zIndex: 10 },
+  zoomBtn:  { width: 32, height: 32, background: 'rgba(22,27,34,0.9)', border: '1px solid #30363d', borderRadius: 6, color: '#9198a1', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, backdropFilter: 'blur(4px)' } as React.CSSProperties,
+  footer:   { background: '#161b22', borderTop: '1px solid #21262d', padding: '6px 24px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, minHeight: 30 },
+  footerItem:{ color: '#4b5563', fontSize: 11 },
+  footerSep: { color: '#30363d', fontSize: 11 },
+  sidebar:  { width: 280, background: '#161b22', borderLeft: '1px solid #30363d', overflowY: 'auto', display: 'flex', flexDirection: 'column', padding: 12, gap: 0 },
+  card:     { background: '#0d1117', border: '1px solid #21262d', borderRadius: 8, padding: 14, marginBottom: 10 },
   cardTitle:{ color: '#e6edf3', fontSize: 15, fontWeight: 700, margin: '0 0 2px' },
   cardSub:  { color: '#7d8590', fontSize: 11, margin: '0' },
   label:    { color: '#9198a1', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 8px' },

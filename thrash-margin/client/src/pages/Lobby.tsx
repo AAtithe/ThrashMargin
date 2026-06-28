@@ -179,9 +179,17 @@ export default function Lobby() {
 
   return (
     <div style={s.page}>
-      <div style={s.header}>
-        <span style={s.logo}>Thrash Margin</span>
-      </div>
+      <header style={s.header}>
+        <div style={s.headerInner}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
+            <span style={s.logo}>⚔ Thrash Margin</span>
+            <span style={{ color: '#4b5563', fontSize: 13 }}>Turn-based territory strategy</span>
+          </div>
+          <p style={{ color: '#4b5563', fontSize: 11, margin: '6px 0 0', letterSpacing: '0.04em' }}>
+            EXPAND · CONQUER · DEVELOP
+          </p>
+        </div>
+      </header>
 
       <div style={s.content}>
 
@@ -443,6 +451,14 @@ export default function Lobby() {
           onConfirm={() => { setShowConfirm(false); handleNew(); }}
         />
       )}
+
+      <footer style={s.footer}>
+        <span>⚔ Thrash Margin</span>
+        <span style={{ color: '#30363d' }}>·</span>
+        <span>{saves.length} campaign{saves.length !== 1 ? 's' : ''} saved locally</span>
+        <span style={{ flex: 1 }} />
+        <span>v0.1 · open source hobby project</span>
+      </footer>
     </div>
   );
 }
@@ -781,10 +797,12 @@ function ConfirmModal({ campaignName, mapId, difficulty, enemyFactions, enemyTer
 
 /* ── Styles ── */
 const s: Record<string, React.CSSProperties> = {
-  page:           { minHeight: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'system-ui,sans-serif' },
-  header:         { background: '#161b22', borderBottom: '1px solid #30363d', padding: '14px 32px' },
-  logo:           { fontSize: 18, fontWeight: 700 },
-  content:        { maxWidth: 640, margin: '40px auto', padding: '0 24px' },
+  page:           { minHeight: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column' },
+  header:         { background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 40px' },
+  headerInner:    { maxWidth: 640, margin: '0 auto', padding: '24px 0 20px' },
+  logo:           { fontSize: 22, fontWeight: 800, letterSpacing: '-0.01em' },
+  content:        { maxWidth: 640, margin: '40px auto', padding: '0 24px', flex: 1, width: '100%', boxSizing: 'border-box' as const },
+  footer:         { background: '#161b22', borderTop: '1px solid #21262d', padding: '14px 40px', display: 'flex', alignItems: 'center', gap: 10, color: '#4b5563', fontSize: 12, marginTop: 16 },
   sectionTitle:   { fontSize: 13, fontWeight: 600, color: '#9198a1', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 12px' },
   emptyMsg:       { color: '#4b5563', fontSize: 13, margin: 0 },
 
