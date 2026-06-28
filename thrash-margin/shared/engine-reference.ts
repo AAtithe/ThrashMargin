@@ -70,21 +70,55 @@ export const BUILDINGS: Record<string, {
   prod?: { food?: number; mat?: number; gold?: number };
   troopCap?: number; defBonus?: number; desc: string;
 }> = {
-  farm:     { name: 'Farm',     icon: 'F', col: '#2d6e2d', cost: { gold: 6,  mat: 8  }, prod: { food: 4 }, desc: '+4 food/turn' },
-  mine:     { name: 'Mine',     icon: 'M', col: '#7a6010', cost: { gold: 8,  mat: 6  }, prod: { mat: 3  }, desc: '+3 mat/turn'  },
-  barracks: { name: 'Barracks', icon: 'B', col: '#1a4a8a', cost: { gold: 10, mat: 10 }, troopCap: 5,       desc: '+5 troop cap' },
-  market:   { name: 'Market',   icon: '$', col: '#c07010', cost: { gold: 12, mat: 8  }, prod: { gold: 2 }, desc: '+2 gold/turn' },
-  tower:    { name: 'Tower',    icon: 'T', col: '#6a1a6a', cost: { gold: 10, mat: 12 }, defBonus: 4,       desc: '+4 def str'   },
+  // Base tier
+  farm:        { name: 'Farm',         icon: 'F',  col: '#2d6e2d', cost: { gold: 6,  mat: 8  }, prod: { food: 4 }, desc: '+4 food/turn, +1 pop/turn' },
+  mine:        { name: 'Mine',         icon: 'M',  col: '#7a6010', cost: { gold: 8,  mat: 6  }, prod: { mat: 3  }, desc: '+3 mat/turn'  },
+  barracks:    { name: 'Barracks',     icon: 'B',  col: '#1a4a8a', cost: { gold: 10, mat: 10 }, troopCap: 5,       desc: '+5 troop cap' },
+  market:      { name: 'Market',       icon: '$',  col: '#c07010', cost: { gold: 12, mat: 8  }, prod: { gold: 2 }, desc: '+2 gold/turn' },
+  tower:       { name: 'Tower',        icon: 'T',  col: '#6a1a6a', cost: { gold: 10, mat: 12 }, defBonus: 4,       desc: '+4 def str'   },
+  // Tier 2 upgrades
+  large_farm:  { name: 'Large Farm',   icon: 'LF', col: '#1a5c1a', cost: { gold: 10, mat: 12 }, prod: { food: 6 }, desc: '+6 food/turn, +2 pop/turn' },
+  deep_mine:   { name: 'Deep Mine',    icon: 'DM', col: '#4a3a0a', cost: { gold: 12, mat: 8  }, prod: { mat: 5  }, desc: '+5 mat/turn'  },
+  fort:        { name: 'Fort',         icon: 'FT', col: '#0a2a5a', cost: { gold: 18, mat: 18 }, troopCap: 10,      desc: '+10 troop cap' },
+  grand_market:{ name: 'Grand Market', icon: 'GM', col: '#8a4a00', cost: { gold: 20, mat: 14 }, prod: { gold: 4 }, desc: '+4 gold/turn' },
+  fortress:    { name: 'Fortress',     icon: 'FX', col: '#5a0a5a', cost: { gold: 18, mat: 22 }, defBonus: 8,       desc: '+8 def str'   },
+  // Tier 3 upgrades
+  granary:     { name: 'Granary',      icon: 'GR', col: '#0d3d0d', cost: { gold: 18, mat: 20 }, prod: { food: 10 }, desc: '+10 food/turn, +3 pop/turn' },
+  foundry:     { name: 'Foundry',      icon: 'FD', col: '#7a4a0a', cost: { gold: 22, mat: 15 }, prod: { mat: 8  }, desc: '+8 mat/turn'  },
+};
+
+// Forward: building → its upgrade (exported so UI can display upgrade paths)
+export const BUILDING_UPGRADES: Partial<Record<BuildingType, BuildingType>> = {
+  farm: 'large_farm', large_farm: 'granary',
+  mine: 'deep_mine',  deep_mine: 'foundry',
+  barracks: 'fort',
+  market: 'grand_market',
+  tower: 'fortress',
+};
+
+// Backward: upgrade → its prereq (internal)
+const BUILDING_PREREQ: Partial<Record<BuildingType, BuildingType>> = {
+  large_farm: 'farm',  granary: 'large_farm',
+  deep_mine: 'mine',   foundry: 'deep_mine',
+  fort: 'barracks',
+  grand_market: 'market',
+  fortress: 'tower',
 };
 
 export const LV = {
-  slots:      [0, 1, 2, 3, 4],
-  goldBase:   [2, 3, 4, 6, 8],
-  troopBase:  [5, 8, 12, 16, 20],
-  upCostMat:  [0, 12, 22, 36, 55],
-  upCostGold: [0,  5,  9, 15, 22],
+  slots:      [0, 1, 2, 3, 4,  5,  5,  6,  6],
+  goldBase:   [2, 3, 4, 6, 8, 11, 14, 18, 23],
+  troopBase:  [5, 8, 12, 16, 20, 26, 32, 40, 50],
+  upCostMat:  [0, 12, 22, 36,  55,  80, 110, 145, 185],
+  upCostGold: [0,  5,  9, 15,  22,  32,  45,  60,  80],
+  upCostPop:  [0,  0,  0,  0,   0,  10,  20,  35,  55],
 };
-export const MAX_LV = 4;
+export const MAX_LV = 8;
+
+// Population gained per-turn from farming buildings
+const POP_FROM_BUILDING: Partial<Record<BuildingType, number>> = {
+  farm: 1, large_farm: 2, granary: 3,
+};
 export const RECRUIT_GOLD_DEFAULT = 4;
 export const UPKEEP_DEFAULT = 1;
 
@@ -123,10 +157,11 @@ export function getSlots(t: Territory): number { return LV.slots[t.lv]; }
 
 export function getGoldProd(t: Territory, research: string[] = []): number {
   let g = LV.goldBase[t.lv - 1] + (t.capital ? 2 : 0) + (t.stronghold ? 3 : 0);
+  const marketDom = research.includes('market_dominance');
   t.buildings.forEach(b => {
     const base = BUILDINGS[b]?.prod?.gold ?? 0;
-    if (b === 'market' && research.includes('market_dominance')) {
-      g += 3;
+    if ((b === 'market' || b === 'grand_market') && marketDom) {
+      g += base + 1; // +1 extra gold on top of base market prod
     } else {
       g += base;
     }
@@ -144,9 +179,11 @@ export function getFoodProd(t: Territory): number {
 
 export function getMatProd(t: Territory, research: string[] = []): number {
   let m = t.capital ? 2 : 0;
+  const industrialised = research.includes('industrialisation');
   t.buildings.forEach(b => {
     const base = BUILDINGS[b]?.prod?.mat ?? 0;
-    if (b === 'mine' && research.includes('industrialisation')) {
+    // industrialisation applies to all mine tiers
+    if ((b === 'mine' || b === 'deep_mine' || b === 'foundry') && industrialised) {
       m += base + 1;
     } else {
       m += base;
@@ -883,7 +920,7 @@ export function createInitialState(id: string, config: GameConfig): GameState {
     status: 'active',
     nodes: map.nodes,
     edges: map.edges,
-    resources: { gold: cfg.startGold + bonusGold, food: cfg.startFood, mat: cfg.startMat, influence: 0 },
+    resources: { gold: cfg.startGold + bonusGold, food: cfg.startFood, mat: cfg.startMat, influence: 0, population: 0 },
     config: cfg,
     log: [{ turn: 1, message: 'Campaign begins.', timestamp: Date.now() }],
     sel: null,
@@ -1035,7 +1072,6 @@ function handleBuild(state: GameState, action: { nodeId: number; building: Build
   const nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const node = nodes[action.nodeId];
   if (!node || node.owner !== (state.activePlayer ?? PLAYER)) return state;
-  if (node.buildings.length >= getSlots(node)) return addLog(state, 'No building slots. Upgrade first.');
 
   const b = BUILDINGS[action.building];
   if (!b) return state;
@@ -1043,14 +1079,25 @@ function handleBuild(state: GameState, action: { nodeId: number; building: Build
     return addLog(state, `Need ${b.cost.gold}g + ${b.cost.mat}m to build ${b.name}.`);
   }
 
-  node.buildings.push(action.building);
+  const prereq = BUILDING_PREREQ[action.building as BuildingType];
+  if (prereq !== undefined) {
+    // Upgrade path: replace prereq in same slot, no new slot consumed
+    const idx = node.buildings.indexOf(prereq);
+    if (idx === -1) return addLog(state, `Need a ${BUILDINGS[prereq].name} first.`);
+    node.buildings[idx] = action.building;
+  } else {
+    // New building: requires a free slot
+    if (node.buildings.length >= getSlots(node)) return addLog(state, 'No building slots. Upgrade settlement first.');
+    node.buildings.push(action.building);
+  }
+
   const resources = {
     ...state.resources,
     gold: state.resources.gold - b.cost.gold,
     mat: state.resources.mat - b.cost.mat,
   };
   return addLog({ ...state, nodes, resources, actionsLeft: apLeft(state) - AP_COST.BUILD },
-    `Built ${b.name} at ${node.name}. ${b.desc}.`);
+    `${prereq !== undefined ? 'Upgraded to' : 'Built'} ${b.name} at ${node.name}. ${b.desc}.`);
 }
 
 function handleUpgrade(state: GameState, action: { nodeId: number }): GameState {
@@ -1061,14 +1108,24 @@ function handleUpgrade(state: GameState, action: { nodeId: number }): GameState 
   if (!node || node.owner !== (state.activePlayer ?? PLAYER)) return state;
   if (node.lv >= MAX_LV) return addLog(state, 'Already at max level.');
 
-  const mc = LV.upCostMat[node.lv];
-  const gc = LV.upCostGold[node.lv];
+  const mc  = LV.upCostMat[node.lv];
+  const gc  = LV.upCostGold[node.lv];
+  const pc  = LV.upCostPop[node.lv];
+  const pop = state.resources.population ?? 0;
   if (state.resources.mat < mc || state.resources.gold < gc) {
-    return addLog(state, `Need ${mc}m + ${gc}g to upgrade.`);
+    return addLog(state, `Need ${mc}m + ${gc}g${pc > 0 ? ` + ${pc} pop` : ''} to upgrade.`);
+  }
+  if (pc > 0 && pop < pc) {
+    return addLog(state, `Need ${pc} population to reach Lv${node.lv + 1} (have ${pop}). Build Farms to grow population.`);
   }
 
   node.lv++;
-  const resources = { ...state.resources, mat: state.resources.mat - mc, gold: state.resources.gold - gc };
+  const resources = {
+    ...state.resources,
+    mat: state.resources.mat - mc,
+    gold: state.resources.gold - gc,
+    population: Math.max(0, pop - pc),
+  };
   const research = state.research ?? [];
   return addLog({ ...state, nodes, resources, actionsLeft: apLeft(state) - AP_COST.UPGRADE },
     `${node.name} upgraded to Lv${node.lv}. ${getSlots(node)} slots, cap ${getTroopCap(node)}, ${getGoldProd(node, research)}g/turn.`);
@@ -1115,11 +1172,17 @@ function handleEndTurn(state: GameState): GameState {
     ? Math.floor(playerTerrCount / 3) + marketCount
     : 0;
 
+  // Population produced by farming buildings
+  const popGain = state.nodes.filter(n => n.owner === PLAYER).reduce((sum, n) => {
+    return sum + n.buildings.reduce((bs, b) => bs + (POP_FROM_BUILDING[b as BuildingType] ?? 0), 0);
+  }, 0);
+
   let resources: Resources = {
     gold: state.resources.gold + p.gold,
     food: state.resources.food + foodNet,
     mat: state.resources.mat + p.mat,
     influence: (state.resources.influence ?? 0) + influenceGain,
+    population: (state.resources.population ?? 0) + popGain,
   };
 
   // Starvation

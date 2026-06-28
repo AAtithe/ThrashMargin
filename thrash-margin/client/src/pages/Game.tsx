@@ -2,7 +2,7 @@ import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGameLocal as useGame } from '../hooks/useGameLocal';
 import {
-  BUILDINGS, LV, MAX_LV,
+  BUILDINGS, BUILDING_UPGRADES, LV, MAX_LV,
   FACTION_COLORS, FACTION_NAMES, FACTION_BORDER,
   TECH_TREE, MAP_DEFS, DEFAULT_CONFIG,
   TERRAIN_COLORS, TERRAIN_LABELS, getTerrainBonus,
@@ -25,6 +25,8 @@ export default function Game() {
   const [tooltip, setTooltip] = useState<{ id: number; x: number; y: number } | null>(null);
   const [showPassScreen, setShowPassScreen] = useState(false);
   const [showProd, setShowProd] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const prevOwnersRef = useRef<number[]>([]);
   const [captureFlash, setCaptureFlash] = useState<Set<number>>(new Set());
 
@@ -44,10 +46,38 @@ export default function Game() {
   }, [state?.activePlayer]);
 
   useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 640);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+
+  useEffect(() => {
     const style = document.createElement('style');
-    style.textContent = `@keyframes capture-pulse { 0%{opacity:0.85;r:22} 60%{opacity:0.3;r:32} 100%{opacity:0;r:40} }`;
+    style.id = 'tm-anim-css';
+    style.textContent = `
+      @keyframes capture-pulse { 0%{opacity:0.85;r:22} 60%{opacity:0.3;r:32} 100%{opacity:0;r:40} }
+      .tm-drawer-handle { display: none; }
+      @media (max-width: 640px) {
+        .tm-body { flex-direction: column !important; overflow: hidden !important; }
+        .tm-mapwrap { flex: unset !important; height: 55vh !important; min-height: 200px !important; }
+        .tm-sidebar {
+          position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
+          width: 100% !important; height: 50vh !important; max-height: 50vh !important;
+          transform: translateY(calc(100% - 48px));
+          transition: transform 0.28s ease;
+          border-left: none !important; border-top: 1px solid #30363d !important;
+          z-index: 200 !important; overflow-y: auto !important;
+          border-radius: 12px 12px 0 0;
+        }
+        .tm-sidebar.open { transform: translateY(0); }
+        .tm-drawer-handle { display: flex !important; align-items: center; justify-content: space-between;
+          padding: 10px 16px; cursor: pointer; background: #161b22; border-bottom: 1px solid #30363d;
+          border-radius: 12px 12px 0 0; position: sticky; top: 0; z-index: 1; flex-shrink: 0; }
+        .tm-bar-resources { overflow-x: auto; flex-wrap: nowrap !important; }
+      }
+    `;
     document.head.appendChild(style);
-    return () => { document.head.removeChild(style); };
+    return () => { document.getElementById('tm-anim-css')?.remove(); };
   }, []);
 
   useEffect(() => {
@@ -107,6 +137,13 @@ export default function Game() {
     return Math.floor(playerNodes.length / 3) + marketCount;
   }, [state]);
 
+  const popRate = useMemo(() => {
+    if (!state) return 0;
+    const popPerBuilding: Record<string, number> = { farm: 1, large_farm: 2, granary: 3 };
+    return state.nodes.filter(n => n.owner === PLAYER).reduce((sum, n) =>
+      sum + n.buildings.reduce((bs, b) => bs + (popPerBuilding[b] ?? 0), 0), 0);
+  }, [state]);
+
   const visibleIds = useMemo(() => {
     if (!state) return new Set<number>();
     if (research.includes('cartography')) return new Set(state.nodes.map(n => n.id));
@@ -123,7 +160,7 @@ export default function Game() {
 
   const handleNodeClick = (nid: number) => {
     if (!state) return;
-    if (nid === selId) { setSelId(null); setTgtId(null); return; }
+    if (nid === selId) { setSelId(null); setTgtId(null); setDrawerOpen(false); return; }
     if (selId !== null && sel?.owner === (state.activePlayer ?? PLAYER) && attackable.includes(nid)) {
       setTgtId(nid);
       setAttackAmt(Math.max(1, Math.floor((state.nodes[selId].troops - 1) / 2)));
@@ -135,6 +172,7 @@ export default function Game() {
       return;
     }
     setSelId(nid); setTgtId(null); setRecruitAmt(1); setAttackAmt(1); setMoveAmt(1);
+    if (isMobile) setDrawerOpen(true);
   };
 
   const act = async (action: Parameters<typeof sendAction>[1]) => {
@@ -246,15 +284,18 @@ export default function Game() {
           {cfg.hotseat ? `Turn ${state.turn} — P${state.activePlayer ?? 1}` : `Turn ${state.turn}`}
         </span>
         {(cfg.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? cfg.apPerTurn} max={cfg.apPerTurn} />}
-        <div style={s.resRow}>
+        <div style={s.resRow} className="tm-bar-resources">
           <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
           <Res icon="🌾" label="Food" val={state.resources.food} rate={prod.food - upkeep} color="#34d399" />
           <Res icon="⛏" label="Mat"  val={state.resources.mat}  rate={prod.mat}  color="#a78bfa" />
           {cfg.enableDiplomacy && (
             <Res icon="👑" label="Inf" val={state.resources.influence ?? 0} rate={influenceRate} color="#ec4899" />
           )}
+          {((state.resources.population ?? 0) > 0 || popRate > 0 || state.nodes.some(n => n.owner === PLAYER && n.lv >= 4)) && (
+            <Res icon="👥" label="Pop" val={state.resources.population ?? 0} rate={popRate} color="#9b59b6" />
+          )}
           <button onClick={() => setShowProd(true)} title="Production breakdown"
-            style={{ background:'none', border:'1px solid #30363d', borderRadius:4, color:'#7d8590', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center' }}>
+            style={{ background:'none', border:'1px solid #30363d', borderRadius:4, color:'#7d8590', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center', flexShrink: 0 }}>
             ⊞
           </button>
         </div>
@@ -263,9 +304,12 @@ export default function Game() {
         </button>
       </div>
 
-      <div style={s.body}>
+      {/* ── Event strip (below top bar) ── */}
+      {state.lastEvent && <EventStrip event={state.lastEvent} />}
+
+      <div style={s.body} className="tm-body">
         {/* ── Map ── */}
-        <div style={s.mapWrap} onMouseLeave={() => setTooltip(null)}>
+        <div style={s.mapWrap} className="tm-mapwrap" onMouseLeave={() => setTooltip(null)}>
           <svg viewBox={viewBox} style={s.svg}
             onClick={() => { setSelId(null); setTgtId(null); }}>
             {/* edges */}
@@ -284,8 +328,15 @@ export default function Game() {
           </svg>
         </div>
 
-        {/* ── Sidebar ── */}
-        <div style={s.sidebar}>
+        {/* ── Sidebar / Mobile bottom drawer ── */}
+        <div style={s.sidebar} className={`tm-sidebar${(isMobile && (selId !== null || drawerOpen)) ? ' open' : ''}`}>
+          {/* Mobile drawer handle */}
+          <div className="tm-drawer-handle" onClick={() => setDrawerOpen(v => !v)}>
+            <span style={{ fontSize: 12, color: '#9198a1', fontWeight: 600 }}>
+              {sel ? sel.name : 'Tap a territory'}
+            </span>
+            <span style={{ color: '#7d8590', fontSize: 14 }}>{drawerOpen ? '▼' : '▲'}</span>
+          </div>
           {/* Tutorial panel */}
           {cfg.mapId === 'tutorial' && (
             <TutorialPanel state={state} selId={selId} tgtId={tgtId} />
@@ -373,8 +424,7 @@ export default function Game() {
             );
           })()}
 
-          {/* Event banner */}
-          {state.lastEvent && <EventBanner event={state.lastEvent} />}
+          {/* Event banner removed — now in top strip */}
 
           {/* Log */}
           <div style={s.log}>
@@ -651,14 +701,38 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
         </div>
       )}
 
-      {/* Build */}
-      {isPlayer && hasSlot && (
-        <div style={s.card}>
-          <p style={s.label}>Build ({sel.buildings.length}/{slots} slots)</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {(Object.keys(BUILDINGS) as BuildingType[])
-              .filter(b => !sel.buildings.includes(b))
-              .map(b => {
+      {/* Build & Upgrade buildings */}
+      {isPlayer && (hasSlot || sel.buildings.some(b => BUILDING_UPGRADES[b as BuildingType])) && (() => {
+        // Build set for upgrade detection
+        const upgradeTargets = new Set(Object.values(BUILDING_UPGRADES));
+        // Base buildings: not reachable as an upgrade, not already built, slot available
+        const baseBuildings = (Object.keys(BUILDINGS) as BuildingType[]).filter(b =>
+          !upgradeTargets.has(b) && !sel.buildings.includes(b) && hasSlot
+        );
+        // Upgrades available for existing buildings
+        const upgrades = sel.buildings
+          .map(b => ({ from: b, to: BUILDING_UPGRADES[b as BuildingType] }))
+          .filter((u): u is { from: BuildingType; to: BuildingType } => u.to !== undefined);
+
+        if (baseBuildings.length === 0 && upgrades.length === 0) return null;
+        return (
+          <div style={s.card}>
+            <p style={s.label}>Build {hasSlot ? `(${sel.buildings.length}/${slots} slots)` : '— Upgrades'}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {/* Upgrades first */}
+              {upgrades.map(({ from, to }) => {
+                const info = BUILDINGS[to];
+                const ok = state.resources.gold >= info.cost.gold && state.resources.mat >= info.cost.mat && !noAp1;
+                return (
+                  <button key={to} onClick={() => onBuild(to)} disabled={disabled || !ok}
+                    style={{ ...s.buildRow, opacity: ok ? 1 : 0.4, borderColor: ok ? '#1f6feb' : '#30363d' }}>
+                    <span style={{ fontWeight: 600, fontSize: 12 }}>↑ {BUILDINGS[from].name} → {info.name}</span>
+                    <span style={{ color: '#7d8590', fontSize: 11 }}>{info.cost.gold}g + {info.cost.mat}m · {info.desc}</span>
+                  </button>
+                );
+              })}
+              {/* New buildings */}
+              {baseBuildings.map(b => {
                 const info = BUILDINGS[b];
                 const ok = state.resources.gold >= info.cost.gold && state.resources.mat >= info.cost.mat && !noAp1;
                 return (
@@ -669,22 +743,34 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
                   </button>
                 );
               })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Upgrade */}
-      {canUp && upCost && (
-        <div style={s.card}>
-          <p style={s.label}>Upgrade to Lv{sel.lv + 1}</p>
-          <p style={{ ...s.muted, marginBottom: 8 }}>
-            {upCost.mat}m + {upCost.gold}g → new building slot, +troops cap, +gold/turn
-          </p>
-          <Btn onClick={onUpgrade} disabled={disabled || noAp1 || !canAfUp} dim={!canAfUp || noAp1}>
-            ↑ Upgrade settlement <ApCost n={1} ap={ap} />
-          </Btn>
-        </div>
-      )}
+      {canUp && upCost && (() => {
+        const popCost = LV.upCostPop[sel.lv] ?? 0;
+        const pop = state.resources.population ?? 0;
+        const canAfPop = popCost === 0 || pop >= popCost;
+        const canAfAll = canAfUp && canAfPop;
+        return (
+          <div style={s.card}>
+            <p style={s.label}>Upgrade to Lv{sel.lv + 1}</p>
+            <p style={{ ...s.muted, marginBottom: 8 }}>
+              {upCost.mat}m + {upCost.gold}g{popCost > 0 ? ` + ${popCost} pop` : ''} → {LV.slots[sel.lv] < LV.slots[sel.lv + 1] ? 'new slot, ' : ''}+troops cap, +gold/turn
+            </p>
+            {popCost > 0 && (
+              <p style={{ ...s.muted, marginBottom: 8, color: canAfPop ? '#9b59b6' : '#f85149' }}>
+                Population: {pop}/{popCost} {canAfPop ? '✓' : '— build Farms to grow'}
+              </p>
+            )}
+            <Btn onClick={onUpgrade} disabled={disabled || noAp1 || !canAfAll} dim={!canAfAll || noAp1}>
+              ↑ Upgrade settlement <ApCost n={1} ap={ap} />
+            </Btn>
+          </div>
+        );
+      })()}
 
       {/* Enemy territory hint */}
       {isEnemy(sel.owner) && (
@@ -842,6 +928,22 @@ function ApCost({ n, ap }: { n: number; ap: number }) {
   );
 }
 
+function EventStrip({ event }: { event: TurnEvent }) {
+  const colors: Record<string, { border: string; bg: string; dot: string }> = {
+    positive: { border: '#3fb950', bg: 'rgba(63,185,80,0.10)', dot: '#3fb950' },
+    negative: { border: '#f85149', bg: 'rgba(248,81,73,0.10)', dot: '#f85149' },
+    neutral:  { border: '#30363d', bg: 'rgba(125,133,144,0.06)', dot: '#7d8590' },
+  };
+  const c = colors[event.type] ?? colors.neutral;
+  return (
+    <div style={{ background: c.bg, borderBottom: `1px solid ${c.border}`, padding: '5px 20px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+      <div style={{ width: 6, height: 6, borderRadius: '50%', background: c.dot, flexShrink: 0 }} />
+      <span style={{ color: '#9198a1', fontSize: 11, fontWeight: 700 }}>📜 {event.title}:</span>
+      <span style={{ color: '#7d8590', fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{event.message}</span>
+    </div>
+  );
+}
+
 function EventBanner({ event }: { event: TurnEvent }) {
   const colors: Record<string, { border: string; label: string; bg: string }> = {
     positive: { border: '#3fb950', label: '#3fb950', bg: 'rgba(63,185,80,0.08)' },
@@ -886,10 +988,19 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 function Slider({ label, val, min, max, onChange }: { label: string; val: number; min: number; max: number; onChange: (n: number) => void }) {
+  const nudge = (delta: number) => onChange(Math.min(max, Math.max(min, val + delta)));
+  const btnStyle: React.CSSProperties = {
+    background: '#21262d', border: '1px solid #30363d', borderRadius: 4,
+    color: '#e6edf3', fontSize: 14, fontWeight: 700,
+    width: 26, height: 26, cursor: 'pointer', flexShrink: 0,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
+  };
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
       <span style={{ color: '#7d8590', fontSize: 12, minWidth: 28 }}>{label}</span>
+      <button style={btnStyle} onClick={() => nudge(-1)} disabled={val <= min}>−</button>
       <input type="range" min={min} max={max} value={val} onChange={e => onChange(Number(e.target.value))} style={{ flex: 1 }} />
+      <button style={btnStyle} onClick={() => nudge(1)} disabled={val >= max}>+</button>
       <span style={{ color: '#e6edf3', fontWeight: 700, fontSize: 14, minWidth: 22, textAlign: 'right' }}>{val}</span>
     </div>
   );

@@ -8,7 +8,12 @@ export const ENEMY = 2;
 
 export function isEnemy(o: Owner): boolean { return o >= 2; }
 
-export type BuildingType = 'farm' | 'mine' | 'barracks' | 'market' | 'tower';
+export type BuildingType =
+  | 'farm' | 'large_farm' | 'granary'
+  | 'mine' | 'deep_mine' | 'foundry'
+  | 'barracks' | 'fort'
+  | 'market' | 'grand_market'
+  | 'tower' | 'fortress';
 export type Difficulty = 'easy' | 'normal' | 'hard' | 'brutal';
 export type TerrainType = 'plains' | 'forest' | 'mountain' | 'coast' | 'desert';
 
@@ -106,6 +111,7 @@ export interface Resources {
   food: number;
   mat: number;
   influence: number;
+  population: number;
 }
 
 export interface GameConfig {
