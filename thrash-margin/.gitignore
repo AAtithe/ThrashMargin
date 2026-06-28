@@ -6,3 +6,6 @@ dist/
 .DS_Store
 .vite/
 coverage/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

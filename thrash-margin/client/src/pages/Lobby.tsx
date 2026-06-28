@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGameLocal, type SaveMeta } from '../hooks/useGameLocal';
+import { useGameHybrid } from '../hooks/useGameHybrid';
+import type { SaveMeta } from '../hooks/useGameLocal';
+import { getStoredUser, clearToken } from '../lib/token';
 import { MAP_DEFS, ACHIEVEMENT_DEFS, CAMPAIGN_SCENARIOS } from 'shared/engine-reference';
 import type { GameConfig, Difficulty } from 'shared/types';
 
@@ -37,8 +39,9 @@ function relTime(ts: number): string {
 }
 
 export default function Lobby() {
-  const { saves, createGame, deleteGame, loading } = useGameLocal();
+  const { saves, createGame, deleteGame, loading } = useGameHybrid();
   const nav = useNavigate();
+  const user = getStoredUser();
 
   // New campaign form
   const [campaignName, setCampaignName] = useState('');
@@ -146,7 +149,7 @@ export default function Lobby() {
     if (p.enableSpies         !== undefined) setEnableSpies(p.enableSpies);
   };
 
-  const handleNew = () => {
+  const handleNew = async () => {
     saveLastSettings({
       difficulty, selectedMap,
       startGold, startFood, startMat, recruitCost, upkeep,
@@ -165,8 +168,8 @@ export default function Lobby() {
       hotseat, enableSpies,
     };
     const name = campaignName.trim() || undefined;
-    const id = createGame(config, name);
-    nav(`/game/${id}`);
+    const id = await Promise.resolve(createGame(config, name));
+    if (id) nav(`/game/${id}`);
   };
 
   const handleDelete = (id: string) => {
@@ -188,6 +191,20 @@ export default function Lobby() {
           <p style={{ color: '#4b5563', fontSize: 11, margin: '6px 0 0', letterSpacing: '0.04em' }}>
             EXPAND · CONQUER · DEVELOP
           </p>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {user ? (
+            <>
+              <span style={{ color: '#7d8590', fontSize: 12 }}>⚙ {user.username}</span>
+              <button style={s.authBtn} onClick={() => { clearToken(); window.location.reload(); }}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button style={{ ...s.authBtn, background: '#1f6feb', color: '#fff' }} onClick={() => nav('/login')}>
+              Sign in
+            </button>
+          )}
         </div>
       </header>
 
@@ -455,7 +472,7 @@ export default function Lobby() {
       <footer style={s.footer}>
         <span>⚔ Thrash Margin</span>
         <span style={{ color: '#30363d' }}>·</span>
-        <span>{saves.length} campaign{saves.length !== 1 ? 's' : ''} saved locally</span>
+        <span>{saves.length} campaign{saves.length !== 1 ? 's' : ''} saved {user ? 'in cloud' : 'locally'}</span>
         <span style={{ flex: 1 }} />
         <span>v0.1 · open source hobby project</span>
       </footer>
@@ -507,7 +524,7 @@ function AchievementsSection({ saves }: { saves: SaveMeta[] }) {
 
 function CampaignSection({ saves, createGame, nav }: {
   saves: SaveMeta[];
-  createGame: (c: Partial<GameConfig>, name?: string) => string;
+  createGame: (c: Partial<GameConfig>, name?: string) => string | null | Promise<string | null>;
   nav: (path: string) => void;
 }) {
   const highestComplete = React.useMemo(() => {
@@ -525,8 +542,8 @@ function CampaignSection({ saves, createGame, nav }: {
     return best;
   }, [saves]);
 
-  const startScenario = (scenario: typeof CAMPAIGN_SCENARIOS[number]) => {
-    const id = createGame({
+  const startScenario = async (scenario: typeof CAMPAIGN_SCENARIOS[number]) => {
+    const id = await Promise.resolve(createGame({
       ...DIFF_PRESETS[scenario.diff],
       mapId: scenario.mapId,
       enemyTerritories: 3,
@@ -535,8 +552,8 @@ function CampaignSection({ saves, createGame, nav }: {
       campaignScenario: scenario.index,
       campaignBonusGold: scenario.bonusGold,
       campaignBonusTechs: scenario.bonusTechs,
-    }, scenario.title);
-    nav(`/game/${id}`);
+    }, scenario.title));
+    if (id) nav(`/game/${id}`);
   };
 
   return (
@@ -798,8 +815,9 @@ function ConfirmModal({ campaignName, mapId, difficulty, enemyFactions, enemyTer
 /* ── Styles ── */
 const s: Record<string, React.CSSProperties> = {
   page:           { minHeight: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column' },
-  header:         { background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 40px' },
-  headerInner:    { maxWidth: 640, margin: '0 auto', padding: '24px 0 20px' },
+  header:         { background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
+  headerInner:    { padding: '24px 0 20px' },
+  authBtn:        { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', padding: '6px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
   logo:           { fontSize: 22, fontWeight: 800, letterSpacing: '-0.01em' },
   content:        { maxWidth: 640, margin: '40px auto', padding: '0 24px', flex: 1, width: '100%', boxSizing: 'border-box' as const },
   footer:         { background: '#161b22', borderTop: '1px solid #21262d', padding: '14px 40px', display: 'flex', alignItems: 'center', gap: 10, color: '#4b5563', fontSize: 12, marginTop: 16 },

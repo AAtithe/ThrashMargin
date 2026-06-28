@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useGameLocal as useGame } from '../hooks/useGameLocal';
+import { useGameHybrid as useGame } from '../hooks/useGameHybrid';
 import {
   BUILDINGS, BUILDING_UPGRADES, LV, MAX_LV,
   FACTION_COLORS, FACTION_NAMES, FACTION_BORDER,
