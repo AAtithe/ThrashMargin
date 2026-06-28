@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { GameState, GameAction, GameConfig } from 'shared/types';
+import { processAction } from 'shared/engine-reference';
 import { getToken } from '../lib/token';
 import type { SaveMeta } from './useGameLocal';
 
@@ -18,6 +19,9 @@ export function useGame() {
   const [saves, setSaves] = useState<SaveMeta[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Track the current gameId so the state-save knows where to write
+  const gameIdRef = useRef<string | null>(null);
 
   const fetchSaves = useCallback(async () => {
     try {
@@ -42,6 +46,7 @@ export function useGame() {
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to create game'); return null; }
       setState(data.state);
+      gameIdRef.current = data.gameId;
       await fetchSaves();
       return data.gameId as string;
     } catch {
@@ -60,6 +65,7 @@ export function useGame() {
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to load game'); return; }
       setState(data.state);
+      gameIdRef.current = gameId;
     } catch {
       setError('Failed to load game');
     } finally {
@@ -67,21 +73,30 @@ export function useGame() {
     }
   }, []);
 
+  // Apply actions locally (instant), sync full state to server only on end_turn.
+  // This eliminates per-action network round trips — gameplay is completely smooth.
   const sendAction = useCallback(async (gameId: string, action: GameAction) => {
-    if (!state) return;
-    try {
-      const res = await fetch(`${API}/api/game/${gameId}/action`, {
-        method: 'POST',
-        headers: authHeaders(),
-        body: JSON.stringify({ action }),
-      });
-      const data = await res.json();
-      if (data.success) setState(data.state);
-      else setError(data.message ?? 'Action failed');
-    } catch {
-      setError('Network error');
+    setState(prev => {
+      if (!prev) return prev;
+      return processAction(prev, action);
+    });
+
+    if (action.type === 'END_TURN') {
+      // Flush the post-action state to server after React has committed the update.
+      // We read from a ref so we get the updated value after setState settles.
+      setTimeout(async () => {
+        setState(current => {
+          if (!current) return current;
+          fetch(`${API}/api/game/${gameId}/state`, {
+            method: 'PUT',
+            headers: authHeaders(),
+            body: JSON.stringify({ state: current }),
+          }).catch(() => { /* non-fatal: state is still correct locally */ });
+          return current;
+        });
+      }, 0);
     }
-  }, [state]);
+  }, []);
 
   const deleteGame = useCallback(async (gameId: string) => {
     try {

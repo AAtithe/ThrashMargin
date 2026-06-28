@@ -26,6 +26,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
+  if (req.method === 'PUT') {
+    // Overwrite full state — client batches local actions and syncs once at end-of-turn
+    const { state } = req.body ?? {};
+    if (!state) return res.status(400).json({ message: 'state required' });
+    try {
+      const newStatus = state.status === 'victory' ? 'victory'
+        : state.status === 'defeated' ? 'defeated' : 'active';
+      await db.query(
+        'UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW() WHERE id = $4 AND owner_id = $5',
+        [JSON.stringify(state), newStatus, state.turn, id, user.userId],
+      );
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('save state error', err);
+      return res.status(500).json({ message: 'Server error' });
+    }
+  }
+
   if (req.method === 'DELETE') {
     try {
       await db.query(

@@ -119,6 +119,24 @@ router.post('/:id/action', async (req: AuthRequest, res: Response) => {
   }
 });
 
+// PUT /api/game/:id/state — overwrite full state (used by client after batching local actions)
+router.put('/:id/state', async (req: AuthRequest, res: Response) => {
+  const { state } = req.body ?? {};
+  if (!state) { res.status(400).json({ message: 'state is required' }); return; }
+  try {
+    const newStatus = state.status === 'victory' ? 'victory'
+      : state.status === 'defeated' ? 'defeated' : 'active';
+    await db.query(
+      `UPDATE games SET state = $1, status = $2, turn = $3 WHERE id = $4 AND owner_id = $5`,
+      [JSON.stringify(state), newStatus, state.turn, req.params.id, req.userId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('save state error', err);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // DELETE /api/game/:id
 router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {

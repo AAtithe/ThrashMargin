@@ -439,10 +439,33 @@ export default function Game() {
               if (wasDraggingRef.current) { wasDraggingRef.current = false; return; }
               setSelId(null); setTgtId(null);
             }}>
+            <defs>
+              {[0,1,2,3,4].map(owner => (
+                <radialGradient key={owner} id={`grd${owner}`} cx="35%" cy="30%" r="65%">
+                  <stop offset="0%" stopColor={FACTION_BORDER[owner] ?? '#71717a'} />
+                  <stop offset="100%" stopColor={FACTION_COLORS[owner] ?? '#52525b'} />
+                </radialGradient>
+              ))}
+              <filter id="tshadow" x="-40%" y="-40%" width="180%" height="180%">
+                <feDropShadow dx="0" dy="1.5" stdDeviation="3" floodColor="#000" floodOpacity="0.6" />
+              </filter>
+              <pattern id="mapgrid" width="50" height="50" patternUnits="userSpaceOnUse">
+                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1a2233" strokeWidth="0.6"/>
+              </pattern>
+            </defs>
+            {/* Map background */}
+            <rect x="-500" y="-500" width="3000" height="2000" fill="#0c1120" />
+            <rect x="-500" y="-500" width="3000" height="2000" fill="url(#mapgrid)" opacity="0.5" />
             {/* edges */}
             {state.edges.map(([a, b], i) => {
               const na = state.nodes[a], nb = state.nodes[b];
-              return <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y} stroke="#30363d" strokeWidth={1.5} />;
+              const sameNonNeutral = na.owner === nb.owner && na.owner !== NEUTRAL;
+              const bothOwned = na.owner !== NEUTRAL && nb.owner !== NEUTRAL && na.owner !== nb.owner;
+              return <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
+                stroke={sameNonNeutral ? (FACTION_COLORS[na.owner] ?? '#30363d') : bothOwned ? '#7f1d1d' : '#252d3d'}
+                strokeWidth={sameNonNeutral ? 2.5 : 1.8}
+                opacity={sameNonNeutral ? 0.45 : 1}
+              />;
             })}
             {/* nodes */}
             {state.nodes.map(n => <Node
@@ -611,11 +634,11 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, ann
   if (!isVisible) {
     return (
       <g onClick={e => { e.stopPropagation(); onClick(n.id); }} onMouseMove={e => { e.stopPropagation(); onHover(n.id, e.clientX, e.clientY); }} style={{ cursor: 'pointer' }}>
-        {isTgt && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
-        <circle cx={n.x} cy={n.y} r={r} fill={fillColor} stroke="#30363d" strokeWidth={1.5} opacity={0.35} />
+        {isTgt && <circle cx={n.x} cy={n.y} r={r+7} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
+        <circle cx={n.x} cy={n.y} r={r} fill="#0f1623" stroke="#252d3d" strokeWidth={1.5} />
         <text x={n.x} y={n.y+1} textAnchor="middle" dominantBaseline="middle"
-          fill="#4b5563" fontSize={11} fontWeight={700} style={{ pointerEvents: 'none' }}>?</text>
-        <text x={n.x} y={n.y + r + 11} textAnchor="middle"
+          fill="#374151" fontSize={12} fontWeight={700} style={{ pointerEvents: 'none' }}>?</text>
+        <text x={n.x} y={n.y + r + 12} textAnchor="middle"
           fill="#374151" fontSize={9} style={{ pointerEvents: 'none' }}>{n.name}</text>
       </g>
     );
@@ -623,73 +646,101 @@ function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, ann
 
   return (
     <g onClick={e => { e.stopPropagation(); onClick(n.id); }} onMouseMove={e => { e.stopPropagation(); onHover(n.id, e.clientX, e.clientY); }} style={{ cursor: 'pointer' }}>
-      {isSel  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#fff"    strokeWidth={2.5} opacity={0.9} />}
-      {isTgt && !tgtIsMove && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
-      {isTgt && tgtIsMove  && <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#2dd4bf" strokeWidth={2.5} opacity={0.9} />}
-      {isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#f97316" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
-      {isMov && !isTgt && !isSel && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#2dd4bf" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
-      {isAnx && !isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#ec4899" strokeWidth={1.5} strokeDasharray="4 3" opacity={0.7} />}
-      {isNbr && !isAtk && !isMov && !isAnx && !isSel && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.4} />}
+      {/* Selection / target rings */}
+      {isSel  && <circle cx={n.x} cy={n.y} r={r+8} fill="none" stroke="#fff" strokeWidth={2.5} opacity={0.85} />}
+      {isTgt && !tgtIsMove && <circle cx={n.x} cy={n.y} r={r+8} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
+      {isTgt && tgtIsMove  && <circle cx={n.x} cy={n.y} r={r+8} fill="none" stroke="#2dd4bf" strokeWidth={2.5} opacity={0.9} />}
+      {isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+7} fill="none" stroke="#f97316" strokeWidth={1.8} strokeDasharray="4 3" opacity={0.75} />}
+      {isMov && !isTgt && !isSel && <circle cx={n.x} cy={n.y} r={r+7} fill="none" stroke="#2dd4bf" strokeWidth={1.8} strokeDasharray="4 3" opacity={0.75} />}
+      {isAnx && !isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+7} fill="none" stroke="#ec4899" strokeWidth={1.8} strokeDasharray="4 3" opacity={0.75} />}
+      {isNbr && !isAtk && !isMov && !isAnx && !isSel && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.35} />}
 
       {/* Capture flash animation */}
       {isFlashing && (
-        <circle cx={n.x} cy={n.y} r={n.capital ? 22 : 18}
+        <circle cx={n.x} cy={n.y} r={r}
           fill={FACTION_COLORS[n.owner] ?? '#52525b'}
           style={{ animation:'capture-pulse 0.9s ease-out forwards', pointerEvents:'none' }} />
       )}
 
-      {/* Capital gold glow ring */}
-      {n.capital && <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#fbbf24" strokeWidth={2.5} opacity={0.85} />}
+      {/* Capital outer glow ring */}
+      {n.capital && (
+        <>
+          <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#ffd700" strokeWidth={1} opacity={0.3} />
+          <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#ffd700" strokeWidth={2.5} opacity={0.9} />
+        </>
+      )}
 
+      {/* Drop shadow */}
+      <circle cx={n.x} cy={n.y+2} r={r} fill="#000" opacity={0.4} style={{ pointerEvents: 'none' }} />
+
+      {/* Main territory circle — gradient fill */}
       <circle cx={n.x} cy={n.y} r={r}
-        fill={fillColor}
-        stroke={n.capital ? '#fbbf24' : isSel ? '#fff' : borderColor}
-        strokeWidth={n.capital ? 2.5 : isSel ? 2.5 : 1.5}
+        fill={`url(#grd${n.owner})`}
+        stroke={n.capital ? '#ffd700' : isSel ? '#fff' : (FACTION_BORDER[n.owner] ?? '#71717a')}
+        strokeWidth={n.capital ? 3 : isSel ? 2.5 : 1.8}
       />
+
+      {/* Subtle inner highlight for depth */}
+      <circle cx={n.x - r*0.25} cy={n.y - r*0.25} r={r * 0.38}
+        fill="#fff" opacity={0.08} style={{ pointerEvents: 'none' }} />
 
       {/* Capital crown ♛ */}
       {n.capital && (
-        <text x={n.x} y={n.y - r - 5} textAnchor="middle" dominantBaseline="middle"
-          fill="#fbbf24" fontSize={13} style={{ pointerEvents: 'none' }}>
+        <text x={n.x} y={n.y - r - 6} textAnchor="middle" dominantBaseline="middle"
+          fill="#ffd700" fontSize={14} style={{ pointerEvents: 'none' }}>
           ♛
         </text>
       )}
 
       {/* Stronghold star ★ */}
       {n.stronghold && (
-        <text x={n.x} y={n.y - r - (n.capital ? 20 : 5)} textAnchor="middle" dominantBaseline="middle"
-          fill="#f59e0b" fontSize={11} style={{ pointerEvents: 'none' }}>
+        <text x={n.x + (n.capital ? 10 : 0)} y={n.y - r - (n.capital ? 6 : 5)} textAnchor="middle" dominantBaseline="middle"
+          fill="#f59e0b" fontSize={10} style={{ pointerEvents: 'none' }}>
           ★
         </text>
       )}
 
+      {/* Troop count */}
       <text x={n.x} y={n.y+1} textAnchor="middle" dominantBaseline="middle"
-        fill="#fff" fontSize={n.troops > 9 ? 11 : 13} fontWeight={700} style={{ pointerEvents: 'none' }}>
+        fill="#fff" fontSize={n.troops > 99 ? 9 : n.troops > 9 ? 11 : 13} fontWeight={800}
+        style={{ pointerEvents: 'none' }}>
         {n.troops}
       </text>
-      <text x={n.x} y={n.y + r + 11} textAnchor="middle"
-        fill="#6b7280" fontSize={9} style={{ pointerEvents: 'none' }}>
+
+      {/* Territory name */}
+      <text x={n.x} y={n.y + r + 12} textAnchor="middle"
+        fill="#9ba8bb" fontSize={9} fontWeight={500} style={{ pointerEvents: 'none' }}>
         {n.name}
       </text>
 
       {/* Terrain badge */}
-      {n.terrain && n.terrain !== 'plains' && (
-        <text x={n.x} y={n.y + r + 22} textAnchor="middle"
-          fill={TERRAIN_COLORS[n.terrain]} fontSize={8} fontWeight={600}
-          style={{ pointerEvents: 'none' }}>
-          {n.terrain.charAt(0).toUpperCase() + n.terrain.slice(1)}
-        </text>
-      )}
+      {n.terrain && n.terrain !== 'plains' && (() => {
+        const tc = TERRAIN_COLORS[n.terrain] ?? '#52525b';
+        const label = n.terrain.charAt(0).toUpperCase() + n.terrain.slice(1);
+        const badgeY = n.y + r + 15;
+        return (
+          <>
+            <rect x={n.x - 16} y={badgeY} width={32} height={11} rx={5.5}
+              fill={tc} opacity={0.2} style={{ pointerEvents: 'none' }} />
+            <text x={n.x} y={badgeY + 8} textAnchor="middle"
+              fill={tc} fontSize={7.5} fontWeight={700}
+              style={{ pointerEvents: 'none' }}>
+              {label}
+            </text>
+          </>
+        );
+      })()}
 
       {/* Building indicator dots */}
       {hasBlds && (() => {
-        const bldY = n.terrain && n.terrain !== 'plains' ? n.y + r + 30 : n.y + r + 16;
+        const hasTerrain = n.terrain && n.terrain !== 'plains';
+        const bldY = hasTerrain ? n.y + r + 28 : n.y + r + 16;
         return n.buildings.map((b, i) => {
           const totalW = n.buildings.length * 7 - 2;
           const x0 = n.x - totalW / 2 + i * 7;
           return (
-            <rect key={i} x={x0} y={bldY} width={5} height={5} rx={1}
-              fill={BUILDINGS[b]?.col ?? '#555'} opacity={0.9} style={{ pointerEvents: 'none' }} />
+            <rect key={i} x={x0} y={bldY} width={5} height={5} rx={1.5}
+              fill={BUILDINGS[b]?.col ?? '#555'} opacity={0.95} style={{ pointerEvents: 'none' }} />
           );
         });
       })()}

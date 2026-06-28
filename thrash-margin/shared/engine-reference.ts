@@ -343,10 +343,10 @@ function applySlot(slot: EnemySlot, cfg: GameConfig, activeIds: Set<number>): Pa
 
 function buildHeartlands(cfg: GameConfig): { nodes: Territory[]; edges: [number, number][] } {
   const SLOTS: EnemySlot[] = [
-    { id:  4, troops: 7, capital: true,  lv: 2, buildings: ['farm', 'tower'] },
-    { id: 19, troops: 6, capital: true,  lv: 2, buildings: ['mine', 'barracks'] },
-    { id:  9, troops: 5, capital: false, lv: 1, buildings: ['farm'] },
-    { id: 14, troops: 5, capital: false, lv: 1, buildings: [] },
+    { id:  4, troops: 5, capital: true,  lv: 2, buildings: ['farm', 'tower'] },
+    { id: 19, troops: 4, capital: true,  lv: 2, buildings: ['mine', 'barracks'] },
+    { id:  9, troops: 3, capital: false, lv: 1, buildings: ['farm'] },
+    { id: 14, troops: 3, capital: false, lv: 1, buildings: [] },
   ];
   const active = new Set(SLOTS.slice(0, cfg.enemyTerritories).map(s => s.id));
   const ns = cfg.neutralStr;
@@ -454,10 +454,10 @@ function buildNarrows(cfg: GameConfig): { nodes: Territory[]; edges: [number, nu
 
 function buildCrossroads(cfg: GameConfig): { nodes: Territory[]; edges: [number, number][] } {
   const SLOTS: EnemySlot[] = [
-    { id: 13, troops: 7, capital: true,  lv: 2, buildings: ['farm', 'tower'] },    // NE corner
-    { id: 10, troops: 6, capital: true,  lv: 2, buildings: ['mine', 'barracks'] }, // SE corner
-    { id: 14, troops: 5, capital: false, lv: 1, buildings: ['farm'] },              // NE arm node
-    { id: 15, troops: 4, capital: false, lv: 1, buildings: [] },                    // NE entry node
+    { id: 13, troops: 5, capital: true,  lv: 2, buildings: ['farm', 'tower'] },    // NE corner
+    { id: 10, troops: 4, capital: true,  lv: 2, buildings: ['mine', 'barracks'] }, // SE corner
+    { id: 14, troops: 3, capital: false, lv: 1, buildings: ['farm'] },              // NE arm node
+    { id: 15, troops: 3, capital: false, lv: 1, buildings: [] },                    // NE entry node
   ];
   const active = new Set(SLOTS.slice(0, cfg.enemyTerritories).map(s => s.id));
   const ns = cfg.neutralStr;
@@ -502,8 +502,8 @@ function buildCrossroads(cfg: GameConfig): { nodes: Territory[]; edges: [number,
     [5,6],[5,7],           // NW → centre
     [12,8],[12,9],         // SE → centre
     [15,7],[15,9],         // NE → centre
-    // Centre mesh (full + diagonals make it richly connected)
-    [6,7],[6,8],[7,9],[8,9],[6,9],[7,8],
+    // Centre mesh — no diagonals so it's defensible rather than a death funnel
+    [6,7],[6,8],[7,9],[8,9],
   ];
 
   return { nodes, edges };
@@ -515,10 +515,10 @@ function buildCrossroads(cfg: GameConfig): { nodes: Territory[]; edges: [number,
 
 function buildFrontier(cfg: GameConfig): { nodes: Territory[]; edges: [number, number][] } {
   const SLOTS: EnemySlot[] = [
-    { id:  0, troops: 7, capital: true,  lv: 2, buildings: ['farm', 'tower'] },    // NW corner
-    { id:  3, troops: 6, capital: true,  lv: 2, buildings: ['mine', 'barracks'] }, // NE corner
-    { id:  1, troops: 5, capital: false, lv: 1, buildings: ['farm'] },              // North-centre
-    { id:  6, troops: 4, capital: false, lv: 1, buildings: [] },                    // NE inner
+    { id:  0, troops: 5, capital: true,  lv: 2, buildings: ['farm', 'tower'] },    // NW corner
+    { id:  3, troops: 4, capital: true,  lv: 2, buildings: ['mine', 'barracks'] }, // NE corner
+    { id:  1, troops: 3, capital: false, lv: 1, buildings: ['farm'] },              // North-centre
+    { id:  6, troops: 3, capital: false, lv: 1, buildings: [] },                    // NE inner
   ];
   const active = new Set(SLOTS.slice(0, cfg.enemyTerritories).map(s => s.id));
   const ns = cfg.neutralStr;
@@ -586,20 +586,20 @@ interface GrandSlot { id: number; faction: number; priority: number; troops: num
 
 const GRAND_SLOTS: GrandSlot[] = [
   // Faction 2 (Red, NW)
-  { id: 0,  faction: 2, priority: 0, troops: 8, capital: true,  lv: 2, buildings: ['farm', 'tower'] },
-  { id: 1,  faction: 2, priority: 1, troops: 5, capital: false, lv: 1, buildings: ['farm'] },
-  { id: 6,  faction: 2, priority: 2, troops: 5, capital: false, lv: 1, buildings: [] },
-  { id: 11, faction: 2, priority: 3, troops: 4, capital: false, lv: 1, buildings: [] },
+  { id: 0,  faction: 2, priority: 0, troops: 5, capital: true,  lv: 2, buildings: ['farm', 'tower'] },
+  { id: 1,  faction: 2, priority: 1, troops: 3, capital: false, lv: 1, buildings: ['farm'] },
+  { id: 6,  faction: 2, priority: 2, troops: 3, capital: false, lv: 1, buildings: [] },
+  { id: 11, faction: 2, priority: 3, troops: 3, capital: false, lv: 1, buildings: [] },
   // Faction 3 (Purple, NE)
-  { id: 5,  faction: 3, priority: 0, troops: 8, capital: true,  lv: 2, buildings: ['mine', 'barracks'] },
-  { id: 4,  faction: 3, priority: 1, troops: 5, capital: false, lv: 1, buildings: ['mine'] },
-  { id: 10, faction: 3, priority: 2, troops: 5, capital: false, lv: 1, buildings: [] },
-  { id: 16, faction: 3, priority: 3, troops: 4, capital: false, lv: 1, buildings: [] },
+  { id: 5,  faction: 3, priority: 0, troops: 5, capital: true,  lv: 2, buildings: ['mine', 'barracks'] },
+  { id: 4,  faction: 3, priority: 1, troops: 3, capital: false, lv: 1, buildings: ['mine'] },
+  { id: 10, faction: 3, priority: 2, troops: 3, capital: false, lv: 1, buildings: [] },
+  { id: 16, faction: 3, priority: 3, troops: 3, capital: false, lv: 1, buildings: [] },
   // Faction 4 (Green, SE)
-  { id: 33, faction: 4, priority: 0, troops: 8, capital: true,  lv: 2, buildings: ['tower', 'barracks'] },
-  { id: 32, faction: 4, priority: 1, troops: 5, capital: false, lv: 1, buildings: ['farm'] },
-  { id: 27, faction: 4, priority: 2, troops: 5, capital: false, lv: 1, buildings: [] },
-  { id: 21, faction: 4, priority: 3, troops: 4, capital: false, lv: 1, buildings: [] },
+  { id: 33, faction: 4, priority: 0, troops: 5, capital: true,  lv: 2, buildings: ['tower', 'barracks'] },
+  { id: 32, faction: 4, priority: 1, troops: 3, capital: false, lv: 1, buildings: ['farm'] },
+  { id: 27, faction: 4, priority: 2, troops: 3, capital: false, lv: 1, buildings: [] },
+  { id: 21, faction: 4, priority: 3, troops: 3, capital: false, lv: 1, buildings: [] },
 ];
 
 function buildGrandContinent(cfg: GameConfig): { nodes: Territory[]; edges: [number, number][] } {
@@ -938,14 +938,14 @@ export function createInitialState(id: string, config: GameConfig): GameState {
 }
 
 export const DEFAULT_CONFIG: GameConfig = {
-  aggro: 0.85,
+  aggro: 1.1,
   expand: 6,
-  growth: 2,
-  buildChance: 0.15,
+  growth: 1.5,
+  buildChance: 0.10,
   diff: 'normal',
-  startGold: 25,
+  startGold: 35,
   startFood: 20,
-  startMat: 12,
+  startMat: 15,
   recruitCost: 4,
   upkeep: 1,
   playerBonus: 0,
@@ -1436,7 +1436,7 @@ function runFactionTurn(state: GameState, faction: number): GameState {
       const opts = Object.keys(BUILDINGS).filter(k => !n.buildings.includes(k as BuildingType));
       if (opts.length) n.buildings.push(opts[Math.floor(Math.random() * opts.length)] as BuildingType);
     }
-    if (Math.random() < 0.08 * dm && n.lv < MAX_LV) n.lv = Math.min(n.lv + 1, MAX_LV);
+    if (Math.random() < 0.04 * dm && n.lv < MAX_LV) n.lv = Math.min(n.lv + 1, MAX_LV);
   });
 
   // Attacks: faction attacks any non-same-faction territory (including other enemies and player)
@@ -1458,11 +1458,9 @@ function runFactionTurn(state: GameState, faction: number): GameState {
 
     const bestId = tgts.reduce((b, id) => score(id) > score(b) ? id : b, tgts[0]);
     const def = nodes[bestId];
-    const sending = Math.max(1, att.troops - 2);
+    const sending = Math.max(1, att.troops - 3);
     const ratio = (sending * dm) / Math.max(getDefStr(def), 1);
-    const isPlayerAdjacent = tgts.some(id => nodes[id].owner === PLAYER);
-    const aggroThreshold = isPlayerAdjacent ? state.config.aggro * 0.8 : state.config.aggro;
-    if (ratio < aggroThreshold) return;
+    if (ratio < state.config.aggro) return;
 
     const ceasefireWithPlayer = (state.ceasefires ?? {})[faction] > 0;
     if (ceasefireWithPlayer && nodes[bestId].owner === PLAYER) return; // honour ceasefire
