@@ -530,6 +530,13 @@ function CampaignSection({ saves, createGame, nav }: {
   const highestComplete = React.useMemo(() => {
     let best = -1;
     saves.filter(s => s.status === 'victory').forEach(save => {
+      // campaignScenario is now in SaveMeta directly (from server or local index)
+      if (save.campaignScenario !== undefined && save.campaignScenario > best) {
+        best = save.campaignScenario;
+        return;
+      }
+      // Fallback: read full state from localStorage for older local saves that
+      // were persisted before campaignScenario was added to the index.
       try {
         const raw = localStorage.getItem(`tm_save_${save.id}`);
         if (raw) {

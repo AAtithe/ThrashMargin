@@ -12,6 +12,7 @@ export interface SaveMeta {
   status: 'active' | 'victory' | 'defeated';
   diff: string;
   savedAt: number; // ms timestamp
+  campaignScenario?: number;
 }
 
 function readIndex(): SaveMeta[] {
@@ -55,6 +56,7 @@ function upsertIndex(s: GameState, nameOverride?: string): SaveMeta[] {
     status: s.status as SaveMeta['status'],
     diff: s.config?.diff ?? 'normal',
     savedAt: Date.now(),
+    ...(s.config?.campaignScenario !== undefined && { campaignScenario: s.config.campaignScenario }),
   };
   const newIdx = existing
     ? idx.map(e => e.id === s.id ? meta : e)

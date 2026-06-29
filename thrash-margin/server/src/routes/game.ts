@@ -17,6 +17,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
               (state->>'turn')::int AS turn,
               status,
               config->>'diff' AS diff,
+              (config->>'campaignScenario')::int AS campaign_scenario,
               EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
        FROM games WHERE owner_id = $1 ORDER BY updated_at DESC`,
       [req.userId]
@@ -28,6 +29,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       status: r.status,
       diff: r.diff ?? 'normal',
       savedAt: Math.round(parseFloat(r.saved_at)),
+      ...(r.campaign_scenario != null && { campaignScenario: Number(r.campaign_scenario) }),
     }));
     res.json({ saves });
   } catch (err) {

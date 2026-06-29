@@ -20,8 +20,9 @@ export function useGame() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Track the current gameId so the state-save knows where to write
   const gameIdRef = useRef<string | null>(null);
+  // Always holds the latest committed state so we can read it outside React renders
+  const latestStateRef = useRef<GameState | null>(null);
 
   const fetchSaves = useCallback(async () => {
     try {
@@ -65,6 +66,7 @@ export function useGame() {
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to load game'); return; }
       setState(data.state);
+      latestStateRef.current = data.state;
       gameIdRef.current = gameId;
     } catch {
       setError('Failed to load game');
@@ -73,30 +75,33 @@ export function useGame() {
     }
   }, []);
 
-  // Apply actions locally (instant), sync full state to server only on end_turn.
-  // This eliminates per-action network round trips — gameplay is completely smooth.
+  // Apply actions locally (instant), sync full state to server only on END_TURN.
   const sendAction = useCallback(async (gameId: string, action: GameAction) => {
+    // Apply locally and capture the resulting state in the ref
     setState(prev => {
       if (!prev) return prev;
-      return processAction(prev, action);
+      const next = processAction(prev, action);
+      latestStateRef.current = next;
+      return next;
     });
 
     if (action.type === 'END_TURN') {
-      // Flush the post-action state to server after React has committed the update.
-      // We read from a ref so we get the updated value after setState settles.
+      // Defer slightly so React has committed the setState above
       setTimeout(async () => {
-        setState(current => {
-          if (!current) return current;
-          fetch(`${API}/api/game/${gameId}/state`, {
+        const current = latestStateRef.current;
+        if (!current) return;
+        try {
+          await fetch(`${API}/api/game/${gameId}/state`, {
             method: 'PUT',
             headers: authHeaders(),
             body: JSON.stringify({ state: current }),
-          }).catch(() => { /* non-fatal: state is still correct locally */ });
-          return current;
-        });
+          });
+          // Refresh saves list so lobby shows updated status (victory/defeat/turn count)
+          fetchSaves();
+        } catch { /* non-fatal — state is still correct locally */ }
       }, 0);
     }
-  }, []);
+  }, [fetchSaves]);
 
   const deleteGame = useCallback(async (gameId: string) => {
     try {

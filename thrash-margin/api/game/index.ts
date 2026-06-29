@@ -39,6 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         `SELECT id, status, turn,
                 state->>'name' AS name,
                 config->>'diff' AS diff,
+                (config->>'campaignScenario')::int AS campaign_scenario,
                 EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
          FROM games WHERE owner_id = $1 ORDER BY updated_at DESC LIMIT 50`,
         [user.userId],
@@ -50,6 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         status: r.status,
         diff: r.diff ?? 'normal',
         savedAt: Math.round(parseFloat(r.saved_at)),
+        ...(r.campaign_scenario != null && { campaignScenario: Number(r.campaign_scenario) }),
       }));
       return res.json({ saves });
     } catch (err) {
