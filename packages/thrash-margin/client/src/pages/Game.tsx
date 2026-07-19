@@ -1,6 +1,8 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useGameHybrid as useGame } from '../hooks/useGameHybrid';
+import { useBreakpoint, BREAKPOINTS } from '../hooks/useBreakpoint';
+import { computeMapGeometry, type MapGeometry } from '../map/regionGeometry';
 import {
   BUILDINGS, BUILDING_UPGRADES, LV, MAX_LV,
   FACTION_COLORS, FACTION_NAMES, FACTION_BORDER,
@@ -25,17 +27,33 @@ export default function Game() {
   const [tooltip, setTooltip] = useState<{ id: number; x: number; y: number } | null>(null);
   const [showPassScreen, setShowPassScreen] = useState(false);
   const [showProd, setShowProd] = useState(false);
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth < 640);
+  const tier = useBreakpoint();
+  const isMobile = tier === 'mobile';
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [mapT, setMapT] = useState({ x: 0, y: 0, scale: 1 });
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const isDraggingRef   = useRef(false);
   const wasDraggingRef  = useRef(false);
-  const lastPosRef      = useRef({ x: 0, y: 0 });
-  const lastTouchDistRef = useRef<number | null>(null);
-  const lastTouchMidRef  = useRef({ x: 0, y: 0 });
+  // Unified pointer tracking (mouse + touch + pen) for pan/pinch — replaces the old
+  // separate mouse-drag and touch-pan/pinch code paths.
+  const activePointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const lastPanPosRef   = useRef({ x: 0, y: 0 });
+  const pinchDistRef    = useRef<number | null>(null);
+  const velocitySamplesRef = useRef<{ x: number; y: number; t: number }[]>([]);
+  const momentumRafRef  = useRef<number | null>(null);
+  const lastTapRef      = useRef<{ t: number; x: number; y: number } | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const prevOwnersRef = useRef<number[]>([]);
   const [captureFlash, setCaptureFlash] = useState<Set<number>>(new Set());
+
+  // Territory (x,y) positions and edges never change after a map is built, so this only
+  // needs recomputing when the game/map instance itself changes, not on every turn.
+  // `state` loads asynchronously (null on the first render), so `state?.nodes.length`
+  // must be in the deps too — otherwise this caches `null` forever from that first render.
+  const geometry: MapGeometry | null = useMemo(() => {
+    if (!state) return null;
+    const def = MAP_DEFS.find(m => m.id === state.config.mapId);
+    return computeMapGeometry(state.nodes, state.edges, def?.viewBox ?? '30 10 560 400');
+  }, [id, state?.nodes.length]); // eslint-disable-line
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -52,25 +70,18 @@ export default function Game() {
     }
   }, [state?.activePlayer]);
 
-  useEffect(() => {
-    const handler = () => setIsMobile(window.innerWidth < 640);
-    window.addEventListener('resize', handler);
-    return () => window.removeEventListener('resize', handler);
-  }, []);
-
   // Reset pan/zoom when game id changes
   useEffect(() => { setMapT({ x: 0, y: 0, scale: 1 }); }, [id]);
 
-  // Non-passive wheel for zoom-toward-cursor
-  const onWheel = useCallback((e: WheelEvent) => {
-    e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.12 : 0.88;
+  // Shared zoom-toward-a-point math, used by wheel zoom, pinch zoom, and double-tap zoom
+  // so the calculation only exists once.
+  const zoomToward = useCallback((factor: number, focalX: number, focalY: number) => {
     setMapT(t => {
       const newScale = Math.min(6, Math.max(0.2, t.scale * factor));
       const rect = mapContainerRef.current?.getBoundingClientRect();
       if (!rect) return { ...t, scale: newScale };
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+      const mx = focalX - rect.left;
+      const my = focalY - rect.top;
       return {
         x: mx - (mx - t.x) * (newScale / t.scale),
         y: my - (my - t.y) * (newScale / t.scale),
@@ -78,6 +89,13 @@ export default function Game() {
       };
     });
   }, []);
+
+  // Non-passive wheel for zoom-toward-cursor (wheel has no touch analog, so this stays separate)
+  const onWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault();
+    const factor = e.deltaY < 0 ? 1.12 : 0.88;
+    zoomToward(factor, e.clientX, e.clientY);
+  }, [zoomToward]);
   useEffect(() => {
     const el = mapContainerRef.current;
     if (!el) return;
@@ -88,15 +106,21 @@ export default function Game() {
   useEffect(() => {
     const style = document.createElement('style');
     style.id = 'tm-anim-css';
+    const mobileMax = BREAKPOINTS.mobile;
+    const tabletMin = BREAKPOINTS.mobile + 1;
+    const tabletMax = BREAKPOINTS.tablet - 1;
     style.textContent = `
       @keyframes capture-pulse { 0%{opacity:0.85;r:22} 60%{opacity:0.3;r:32} 100%{opacity:0;r:40} }
+      @keyframes capture-pulse-path { 0%{opacity:0.85} 100%{opacity:0} }
+      @keyframes marching-ants { to { stroke-dashoffset: -20; } }
       .tm-mapwrap { cursor: grab; }
       .tm-mapwrap.tm-grabbing { cursor: grabbing !important; }
       .tm-drawer-handle { display: none; }
-      @media (max-width: 640px) {
+      @media (max-width: ${mobileMax}px) {
         .tm-body { flex-direction: column !important; overflow: hidden !important; }
         .tm-mapwrap { flex: unset !important; height: 54vh !important; min-height: 180px !important; cursor: grab; }
         .tm-sidebar {
+          box-sizing: border-box !important;
           position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
           width: 100% !important; height: 50vh !important; max-height: 50vh !important;
           transform: translateY(calc(100% - 48px));
@@ -109,6 +133,10 @@ export default function Game() {
         .tm-drawer-handle { display: flex !important; align-items: center; justify-content: space-between;
           padding: 10px 16px; cursor: pointer; background: #161b22; border-bottom: 1px solid #30363d;
           border-radius: 12px 12px 0 0; position: sticky; top: 0; z-index: 1; flex-shrink: 0; }
+        .tm-bar-resources { overflow-x: auto; flex-wrap: nowrap !important; }
+      }
+      @media (min-width: ${tabletMin}px) and (max-width: ${tabletMax}px) {
+        .tm-sidebar { box-sizing: border-box !important; width: 240px !important; padding: 10px !important; }
         .tm-bar-resources { overflow-x: auto; flex-wrap: nowrap !important; }
       }
     `;
@@ -194,76 +222,121 @@ export default function Game() {
     return vis;
   }, [state, research]);
 
-  // Map pan handlers
-  const handleMapMouseDown = (e: React.MouseEvent) => {
-    if (e.button !== 0) return;
-    isDraggingRef.current = true;
-    wasDraggingRef.current = false;
-    lastPosRef.current = { x: e.clientX, y: e.clientY };
-    mapContainerRef.current?.classList.add('tm-grabbing');
+  // Unified pointer-event pan/pinch (mouse, touch, pen share one code path).
+  // Wheel zoom stays separate (no touch analog); pinch distance/midpoint still needs
+  // manual tracking since Pointer Events give one event per contact, not a gesture primitive.
+  const MOVE_THRESHOLD = 4;
+  const DOUBLE_TAP_MS = 300;
+  const DOUBLE_TAP_DIST = 25;
+  const LONG_PRESS_MS = 350;
+  const MOMENTUM_FRICTION = 0.92;
+
+  const clearLongPressTimer = () => {
+    if (longPressTimerRef.current != null) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
   };
-  const handleMapMouseMove = (e: React.MouseEvent) => {
-    if (!isDraggingRef.current) return;
-    const dx = e.clientX - lastPosRef.current.x;
-    const dy = e.clientY - lastPosRef.current.y;
-    if (Math.abs(dx) + Math.abs(dy) > 3) wasDraggingRef.current = true;
-    lastPosRef.current = { x: e.clientX, y: e.clientY };
-    setMapT(t => ({ ...t, x: t.x + dx, y: t.y + dy }));
+  // Touch has no hover, so a long-press on a territory shows the same peek tooltip a
+  // mouse-hover would (reuses the existing `tooltip` state/TooltipCard) without
+  // committing to a full tap-to-select.
+  const startLongPressTimer = (x: number, y: number) => {
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => {
+      if (wasDraggingRef.current) return;
+      const el = document.elementFromPoint(x, y)?.closest('[data-territory-id]');
+      const nid = el ? Number(el.getAttribute('data-territory-id')) : NaN;
+      if (!Number.isNaN(nid)) setTooltip({ id: nid, x, y });
+    }, LONG_PRESS_MS);
   };
-  const handleMapMouseUp = () => {
-    isDraggingRef.current = false;
-    mapContainerRef.current?.classList.remove('tm-grabbing');
+  const cancelMomentum = () => {
+    if (momentumRafRef.current != null) {
+      cancelAnimationFrame(momentumRafRef.current);
+      momentumRafRef.current = null;
+    }
+  };
+  const maybeStartMomentum = () => {
+    const samples = velocitySamplesRef.current;
+    if (samples.length < 2) return;
+    const first = samples[0];
+    const last = samples[samples.length - 1];
+    const dt = last.t - first.t;
+    if (dt <= 0 || dt > 200) return; // stale gesture — finger paused before lifting, no fling
+    let vx = (last.x - first.x) / dt; // px/ms
+    let vy = (last.y - first.y) / dt;
+    if (Math.sqrt(vx * vx + vy * vy) < 0.05) return; // too slow to bother
+    const step = () => {
+      vx *= MOMENTUM_FRICTION; vy *= MOMENTUM_FRICTION;
+      setMapT(t => ({ ...t, x: t.x + vx * 16, y: t.y + vy * 16 }));
+      momentumRafRef.current = Math.sqrt(vx * vx + vy * vy) > 0.01 ? requestAnimationFrame(step) : null;
+    };
+    momentumRafRef.current = requestAnimationFrame(step);
+  };
+  const maybeHandleDoubleTap = (x: number, y: number) => {
+    if (wasDraggingRef.current) return;
+    const now = performance.now();
+    const prev = lastTapRef.current;
+    if (prev && now - prev.t < DOUBLE_TAP_MS && Math.abs(x - prev.x) + Math.abs(y - prev.y) < DOUBLE_TAP_DIST) {
+      zoomToward(1.8, x, y);
+      lastTapRef.current = null;
+    } else {
+      lastTapRef.current = { t: now, x, y };
+    }
   };
 
-  // Touch: single-finger pan, two-finger pinch-zoom
-  const handleTouchStart = (e: React.TouchEvent) => {
-    wasDraggingRef.current = false;
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      lastTouchDistRef.current = Math.sqrt(dx * dx + dy * dy);
-      lastTouchMidRef.current = {
-        x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-        y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
-      };
-    } else if (e.touches.length === 1) {
-      lastTouchMidRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    cancelMomentum();
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (activePointersRef.current.size === 1) {
+      wasDraggingRef.current = false;
+      lastPanPosRef.current = { x: e.clientX, y: e.clientY };
+      velocitySamplesRef.current = [{ x: e.clientX, y: e.clientY, t: performance.now() }];
+      mapContainerRef.current?.classList.add('tm-grabbing');
+      setTooltip(null); // dismiss any lingering long-press peek tooltip from a prior gesture
+      startLongPressTimer(e.clientX, e.clientY);
+    } else if (activePointersRef.current.size === 2) {
+      clearLongPressTimer();
+      const [p0, p1] = Array.from(activePointersRef.current.values());
+      pinchDistRef.current = Math.hypot(p0.x - p1.x, p0.y - p1.y);
     }
   };
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2) {
-      const dx = e.touches[0].clientX - e.touches[1].clientX;
-      const dy = e.touches[0].clientY - e.touches[1].clientY;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (lastTouchDistRef.current !== null) {
-        const factor = dist / lastTouchDistRef.current;
-        const rect = mapContainerRef.current?.getBoundingClientRect();
-        const mid = {
-          x: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-          y: (e.touches[0].clientY + e.touches[1].clientY) / 2,
-        };
-        setMapT(t => {
-          const newScale = Math.min(6, Math.max(0.2, t.scale * factor));
-          if (!rect) return { ...t, scale: newScale };
-          const mx = mid.x - rect.left;
-          const my = mid.y - rect.top;
-          return {
-            x: mx - (mx - t.x) * (newScale / t.scale),
-            y: my - (my - t.y) * (newScale / t.scale),
-            scale: newScale,
-          };
-        });
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!activePointersRef.current.has(e.pointerId)) return;
+    activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+    if (activePointersRef.current.size === 2) {
+      const [p0, p1] = Array.from(activePointersRef.current.values());
+      const dist = Math.hypot(p0.x - p1.x, p0.y - p1.y);
+      if (pinchDistRef.current != null) {
+        zoomToward(dist / pinchDistRef.current, (p0.x + p1.x) / 2, (p0.y + p1.y) / 2);
       }
-      lastTouchDistRef.current = dist;
-    } else if (e.touches.length === 1) {
-      const ddx = e.touches[0].clientX - lastTouchMidRef.current.x;
-      const ddy = e.touches[0].clientY - lastTouchMidRef.current.y;
-      if (Math.abs(ddx) + Math.abs(ddy) > 4) wasDraggingRef.current = true;
-      lastTouchMidRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      setMapT(t => ({ ...t, x: t.x + ddx, y: t.y + ddy }));
+      pinchDistRef.current = dist;
+      return;
+    }
+    if (activePointersRef.current.size === 1) {
+      const dx = e.clientX - lastPanPosRef.current.x;
+      const dy = e.clientY - lastPanPosRef.current.y;
+      if (Math.abs(dx) + Math.abs(dy) > MOVE_THRESHOLD) { wasDraggingRef.current = true; clearLongPressTimer(); }
+      lastPanPosRef.current = { x: e.clientX, y: e.clientY };
+      setMapT(t => ({ ...t, x: t.x + dx, y: t.y + dy }));
+      const now = performance.now();
+      velocitySamplesRef.current.push({ x: e.clientX, y: e.clientY, t: now });
+      if (velocitySamplesRef.current.length > 5) velocitySamplesRef.current.shift();
     }
   };
-  const handleTouchEnd = () => { lastTouchDistRef.current = null; };
+  const endPointer = (e: React.PointerEvent, fire: boolean) => {
+    activePointersRef.current.delete(e.pointerId);
+    clearLongPressTimer();
+    if (activePointersRef.current.size < 2) pinchDistRef.current = null;
+    if (activePointersRef.current.size === 0) {
+      mapContainerRef.current?.classList.remove('tm-grabbing');
+      if (fire) { maybeStartMomentum(); maybeHandleDoubleTap(e.clientX, e.clientY); }
+    }
+  };
+  const handlePointerUp = (e: React.PointerEvent) => endPointer(e, true);
+  const handlePointerCancel = (e: React.PointerEvent) => endPointer(e, false);
 
   const handleNodeClick = (nid: number) => {
     if (!state) return;
@@ -426,13 +499,11 @@ export default function Game() {
         {/* ── Map ── */}
         <div style={s.mapWrap} className="tm-mapwrap"
           ref={mapContainerRef}
-          onMouseDown={handleMapMouseDown}
-          onMouseMove={handleMapMouseMove}
-          onMouseUp={handleMapMouseUp}
-          onMouseLeave={() => { isDraggingRef.current = false; mapContainerRef.current?.classList.remove('tm-grabbing'); setTooltip(null); }}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}>
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handlePointerCancel}
+          onPointerLeave={() => setTooltip(null)}>
           <svg viewBox={viewBox}
             style={{ ...s.svg, transform: `translate(${mapT.x}px,${mapT.y}px) scale(${mapT.scale})`, transformOrigin: '0 0', touchAction: 'none', userSelect: 'none' }}
             onClick={() => {
@@ -446,35 +517,18 @@ export default function Game() {
                   <stop offset="100%" stopColor={FACTION_COLORS[owner] ?? '#52525b'} />
                 </radialGradient>
               ))}
-              <filter id="tshadow" x="-40%" y="-40%" width="180%" height="180%">
-                <feDropShadow dx="0" dy="1.5" stdDeviation="3" floodColor="#000" floodOpacity="0.6" />
-              </filter>
-              <pattern id="mapgrid" width="50" height="50" patternUnits="userSpaceOnUse">
-                <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#1a2233" strokeWidth="0.6"/>
-              </pattern>
+              <TerrainDefs />
             </defs>
-            {/* Map background */}
-            <rect x="-500" y="-500" width="3000" height="2000" fill="#0c1120" />
-            <rect x="-500" y="-500" width="3000" height="2000" fill="url(#mapgrid)" opacity="0.5" />
-            {/* edges */}
-            {state.edges.map(([a, b], i) => {
-              const na = state.nodes[a], nb = state.nodes[b];
-              const sameNonNeutral = na.owner === nb.owner && na.owner !== NEUTRAL;
-              const bothOwned = na.owner !== NEUTRAL && nb.owner !== NEUTRAL && na.owner !== nb.owner;
-              return <line key={i} x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
-                stroke={sameNonNeutral ? (FACTION_COLORS[na.owner] ?? '#30363d') : bothOwned ? '#7f1d1d' : '#252d3d'}
-                strokeWidth={sameNonNeutral ? 2.5 : 1.8}
-                opacity={sameNonNeutral ? 0.45 : 1}
-              />;
-            })}
-            {/* nodes */}
-            {state.nodes.map(n => <Node
-              key={n.id} n={n} selId={selId} tgtId={tgtId} tgtIsMove={tgtIsMove}
-              neighbours={neighbours} attackable={attackable} movable={movable} annexable={annexable}
-              isVisible={visibleIds.has(n.id)} isFlashing={captureFlash.has(n.id)}
-              onClick={handleNodeClick}
-              onHover={(nid, x, y) => setTooltip({ id: nid, x, y })}
-            />)}
+            {geometry && (
+              <PolygonMap
+                state={state} geometry={geometry}
+                selId={selId} tgtId={tgtId} tgtIsMove={tgtIsMove}
+                neighbours={neighbours} attackable={attackable} movable={movable} annexable={annexable}
+                visibleIds={visibleIds} captureFlash={captureFlash}
+                onClick={handleNodeClick}
+                onHover={(nid, x, y) => setTooltip({ id: nid, x, y })}
+              />
+            )}
           </svg>
           {/* Zoom controls */}
           <div style={s.zoomControls}>
@@ -611,133 +665,218 @@ export default function Game() {
   );
 }
 
-/* ─── SVG Node ─── */
-function Node({ n, selId, tgtId, tgtIsMove, neighbours, attackable, movable, annexable, isVisible, isFlashing, onClick, onHover }: {
-  n: Territory; selId: number | null; tgtId: number | null; tgtIsMove: boolean;
+/* ─── Terrain pattern fills + ocean gradient (organic-region renderer) ─── */
+function TerrainDefs() {
+  return (
+    <>
+      <radialGradient id="ocean" cx="50%" cy="40%" r="75%">
+        <stop offset="0%" stopColor="#16233b" />
+        <stop offset="100%" stopColor="#070b14" />
+      </radialGradient>
+      <pattern id="terrain-plains" width="24" height="24" patternUnits="userSpaceOnUse">
+        <rect width="24" height="24" fill={TERRAIN_COLORS.plains} />
+        <circle cx="6" cy="6" r="1" fill="#fff" opacity="0.06" />
+        <circle cx="18" cy="14" r="1" fill="#fff" opacity="0.05" />
+        <circle cx="12" cy="20" r="1" fill="#000" opacity="0.06" />
+      </pattern>
+      <pattern id="terrain-forest" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="16" height="16" fill={TERRAIN_COLORS.forest} />
+        <line x1="0" y1="0" x2="0" y2="16" stroke="#000" strokeOpacity="0.18" strokeWidth="3" />
+        <line x1="8" y1="0" x2="8" y2="16" stroke="#fff" strokeOpacity="0.06" strokeWidth="2" />
+      </pattern>
+      <pattern id="terrain-mountain" width="20" height="14" patternUnits="userSpaceOnUse">
+        <rect width="20" height="14" fill={TERRAIN_COLORS.mountain} />
+        <path d="M0 14 L5 4 L10 14 Z" fill="#fff" opacity="0.10" />
+        <path d="M10 14 L15 2 L20 14 Z" fill="#000" opacity="0.12" />
+      </pattern>
+      <pattern id="terrain-coast" width="24" height="12" patternUnits="userSpaceOnUse">
+        <rect width="24" height="12" fill={TERRAIN_COLORS.coast} />
+        <path d="M0 6 Q6 2 12 6 T24 6" fill="none" stroke="#fff" strokeOpacity="0.25" strokeWidth="1.5" />
+        <path d="M0 10 Q6 6 12 10 T24 10" fill="none" stroke="#fff" strokeOpacity="0.15" strokeWidth="1.5" />
+      </pattern>
+      <pattern id="terrain-desert" width="18" height="18" patternUnits="userSpaceOnUse">
+        <rect width="18" height="18" fill={TERRAIN_COLORS.desert} />
+        <circle cx="4" cy="4" r="1.2" fill="#fff" opacity="0.12" />
+        <circle cx="13" cy="9" r="1" fill="#000" opacity="0.10" />
+        <circle cx="7" cy="14" r="1.1" fill="#fff" opacity="0.08" />
+      </pattern>
+    </>
+  );
+}
+
+/* ─── Organic polygon-region map (feature-flagged renderer) ─── */
+function PolygonMap({ state, geometry, selId, tgtId, tgtIsMove, neighbours, attackable, movable, annexable, visibleIds, captureFlash, onClick, onHover }: {
+  state: GameState; geometry: MapGeometry;
+  selId: number | null; tgtId: number | null; tgtIsMove: boolean;
+  neighbours: number[]; attackable: number[]; movable: number[]; annexable: number[];
+  visibleIds: Set<number>; captureFlash: Set<number>;
+  onClick: (id: number) => void;
+  onHover: (id: number, x: number, y: number) => void;
+}) {
+  return (
+    <>
+      {/* Ocean + landmass base. Not used as a hard clip: boundary territories' Voronoi
+          cells can legitimately extend a little past the hull silhouette, and clipping
+          would cut into their labels too — this is a decorative backdrop, not a mask. */}
+      <rect x="-500" y="-500" width="3000" height="2000" fill="url(#ocean)" />
+      <path d={geometry.coastlinePath} fill="#11161f" />
+      <g>
+        {/* Border seams (true geometric neighbours) and route connectors (gameplay-adjacent but not touching) */}
+        {state.edges.map(([a, b], i) => {
+          const na = state.nodes[a], nb = state.nodes[b];
+          const ca = geometry.centroids.get(na.id) ?? { x: na.x, y: na.y, radius: 18 };
+          const cb = geometry.centroids.get(nb.id) ?? { x: nb.x, y: nb.y, radius: 18 };
+          const key = na.id < nb.id ? `${na.id}-${nb.id}` : `${nb.id}-${na.id}`;
+          const touching = geometry.geometricEdgeSet.has(key);
+          const sameNonNeutral = na.owner === nb.owner && na.owner !== NEUTRAL;
+          const bothOwned = na.owner !== NEUTRAL && nb.owner !== NEUTRAL && na.owner !== nb.owner;
+          const color = sameNonNeutral ? (FACTION_COLORS[na.owner] ?? '#30363d') : bothOwned ? '#7f1d1d' : '#252d3d';
+          if (touching) {
+            return <line key={i} x1={ca.x} y1={ca.y} x2={cb.x} y2={cb.y}
+              stroke={color} strokeWidth={sameNonNeutral ? 2.5 : 1.4} opacity={sameNonNeutral ? 0.4 : 0.5} />;
+          }
+          // Gameplay-adjacent but geometrically apart — an explicit Risk-style route connector
+          const mx = (ca.x + cb.x) / 2, my = (ca.y + cb.y) / 2;
+          return (
+            <g key={i}>
+              <line x1={ca.x} y1={ca.y} x2={cb.x} y2={cb.y}
+                stroke={color} strokeWidth={2} strokeDasharray="6 4" opacity={0.65} />
+              <circle cx={mx} cy={my} r={7} fill="#0d1117" stroke={color} strokeWidth={1.5} />
+              <text x={mx} y={my + 3} textAnchor="middle" fontSize={8} fill={color} style={{ pointerEvents: 'none' }}>⤳</text>
+            </g>
+          );
+        })}
+        {/* Territory regions */}
+        {state.nodes.map(n => (
+          <TerritoryRegion
+            key={n.id} n={n}
+            path={geometry.cellPaths.get(n.id) ?? ''}
+            centroid={geometry.centroids.get(n.id) ?? { x: n.x, y: n.y, radius: 18 }}
+            selId={selId} tgtId={tgtId} tgtIsMove={tgtIsMove}
+            neighbours={neighbours} attackable={attackable} movable={movable} annexable={annexable}
+            isVisible={visibleIds.has(n.id)} isFlashing={captureFlash.has(n.id)}
+            onClick={onClick} onHover={onHover}
+          />
+        ))}
+      </g>
+      {/* Coastline outline on top for a crisp edge */}
+      <path d={geometry.coastlinePath} fill="none" stroke="#7dd3fc" strokeWidth={2} opacity={0.5} />
+    </>
+  );
+}
+
+/* ─── SVG territory region (organic polygon — replaces circle Node) ─── */
+function TerritoryRegion({ n, path, centroid, selId, tgtId, tgtIsMove, neighbours, attackable, movable, annexable, isVisible, isFlashing, onClick, onHover }: {
+  n: Territory; path: string; centroid: { x: number; y: number; radius: number };
+  selId: number | null; tgtId: number | null; tgtIsMove: boolean;
   neighbours: number[]; attackable: number[]; movable: number[]; annexable: number[];
   isVisible: boolean; isFlashing: boolean;
   onClick: (id: number) => void;
   onHover: (id: number, x: number, y: number) => void;
 }) {
-  const isSel  = selId === n.id;
-  const isTgt  = tgtId === n.id;
-  const isAtk  = attackable.includes(n.id);
-  const isMov  = movable.includes(n.id);
-  const isAnx  = annexable.includes(n.id);
-  const isNbr  = neighbours.includes(n.id);
-  const r = n.capital ? 22 : 18;
-
+  const isSel = selId === n.id;
+  const isTgt = tgtId === n.id;
+  const isAtk = attackable.includes(n.id);
+  const isMov = movable.includes(n.id);
+  const isAnx = annexable.includes(n.id);
+  const isNbr = neighbours.includes(n.id);
+  const { x: cx, y: cy, radius: r } = centroid;
   const hasBlds = n.buildings.length > 0;
-  const fillColor  = FACTION_COLORS[n.owner] ?? '#52525b';
   const borderColor = FACTION_BORDER[n.owner] ?? '#71717a';
+
+  const handlers = {
+    onClick: (e: React.MouseEvent) => { e.stopPropagation(); onClick(n.id); },
+    onMouseMove: (e: React.MouseEvent) => { e.stopPropagation(); onHover(n.id, e.clientX, e.clientY); },
+    style: { cursor: 'pointer' as const },
+    'data-territory-id': n.id, // hit-test target for the touch long-press peek tooltip
+  };
 
   if (!isVisible) {
     return (
-      <g onClick={e => { e.stopPropagation(); onClick(n.id); }} onMouseMove={e => { e.stopPropagation(); onHover(n.id, e.clientX, e.clientY); }} style={{ cursor: 'pointer' }}>
-        {isTgt && <circle cx={n.x} cy={n.y} r={r+7} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
-        <circle cx={n.x} cy={n.y} r={r} fill="#0f1623" stroke="#252d3d" strokeWidth={1.5} />
-        <text x={n.x} y={n.y+1} textAnchor="middle" dominantBaseline="middle"
+      <g {...handlers}>
+        <path d={path} fill="#0f1623" stroke="#252d3d" strokeWidth={1.5} />
+        {isTgt && <path d={path} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
+        <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle"
           fill="#374151" fontSize={12} fontWeight={700} style={{ pointerEvents: 'none' }}>?</text>
-        <text x={n.x} y={n.y + r + 12} textAnchor="middle"
+        <text x={cx} y={cy + r + 12} textAnchor="middle"
           fill="#374151" fontSize={9} style={{ pointerEvents: 'none' }}>{n.name}</text>
       </g>
     );
   }
 
   return (
-    <g onClick={e => { e.stopPropagation(); onClick(n.id); }} onMouseMove={e => { e.stopPropagation(); onHover(n.id, e.clientX, e.clientY); }} style={{ cursor: 'pointer' }}>
-      {/* Selection / target rings */}
-      {isSel  && <circle cx={n.x} cy={n.y} r={r+8} fill="none" stroke="#fff" strokeWidth={2.5} opacity={0.85} />}
-      {isTgt && !tgtIsMove && <circle cx={n.x} cy={n.y} r={r+8} fill="none" stroke="#f97316" strokeWidth={2.5} opacity={0.9} />}
-      {isTgt && tgtIsMove  && <circle cx={n.x} cy={n.y} r={r+8} fill="none" stroke="#2dd4bf" strokeWidth={2.5} opacity={0.9} />}
-      {isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+7} fill="none" stroke="#f97316" strokeWidth={1.8} strokeDasharray="4 3" opacity={0.75} />}
-      {isMov && !isTgt && !isSel && <circle cx={n.x} cy={n.y} r={r+7} fill="none" stroke="#2dd4bf" strokeWidth={1.8} strokeDasharray="4 3" opacity={0.75} />}
-      {isAnx && !isAtk && !isTgt && <circle cx={n.x} cy={n.y} r={r+7} fill="none" stroke="#ec4899" strokeWidth={1.8} strokeDasharray="4 3" opacity={0.75} />}
-      {isNbr && !isAtk && !isMov && !isAnx && !isSel && <circle cx={n.x} cy={n.y} r={r+5} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.35} />}
+    <g {...handlers}>
+      {/* Base fill: terrain texture, then owner colour wash on top */}
+      <path d={path} fill={`url(#terrain-${n.terrain ?? 'plains'})`} />
+      <path d={path} fill={`url(#grd${n.owner})`} opacity={0.55} />
 
-      {/* Capture flash animation */}
+      {/* Capture flash */}
       {isFlashing && (
-        <circle cx={n.x} cy={n.y} r={r}
-          fill={FACTION_COLORS[n.owner] ?? '#52525b'}
-          style={{ animation:'capture-pulse 0.9s ease-out forwards', pointerEvents:'none' }} />
+        <path d={path} fill={FACTION_COLORS[n.owner] ?? '#52525b'}
+          style={{ animation: 'capture-pulse-path 0.9s ease-out forwards', pointerEvents: 'none' }} />
       )}
 
-      {/* Capital outer glow ring */}
+      {/* Own border */}
+      <path d={path} fill="none"
+        stroke={n.capital ? '#ffd700' : isSel ? '#fff' : borderColor}
+        strokeWidth={n.capital ? 3 : isSel ? 2.5 : 1.5} />
+
+      {/* Selection / target / attackable / movable / annexable / neighbour outline states */}
+      {isSel && <path d={path} fill="none" stroke="#fff" strokeWidth={3} opacity={0.9}
+        style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.6))' }} />}
+      {isTgt && !tgtIsMove && <path d={path} fill="none" stroke="#f97316" strokeWidth={3} opacity={0.95} />}
+      {isTgt && tgtIsMove && <path d={path} fill="none" stroke="#2dd4bf" strokeWidth={3} opacity={0.95} />}
+      {isAtk && !isTgt && <path d={path} fill="none" stroke="#f97316" strokeWidth={2} strokeDasharray="6 4"
+        opacity={0.8} style={{ animation: 'marching-ants 0.8s linear infinite' }} />}
+      {isMov && !isTgt && !isSel && <path d={path} fill="none" stroke="#2dd4bf" strokeWidth={2} strokeDasharray="6 4"
+        opacity={0.8} style={{ animation: 'marching-ants 0.8s linear infinite' }} />}
+      {isAnx && !isAtk && !isTgt && <path d={path} fill="none" stroke="#ec4899" strokeWidth={2} strokeDasharray="6 4"
+        opacity={0.8} style={{ animation: 'marching-ants 0.8s linear infinite' }} />}
+      {isNbr && !isAtk && !isMov && !isAnx && !isSel && <path d={path} fill="none" stroke="#7d8590" strokeWidth={1} strokeDasharray="3 3" opacity={0.3} />}
+
+      {/* Capital glow */}
       {n.capital && (
-        <>
-          <circle cx={n.x} cy={n.y} r={r+6} fill="none" stroke="#ffd700" strokeWidth={1} opacity={0.3} />
-          <circle cx={n.x} cy={n.y} r={r+4} fill="none" stroke="#ffd700" strokeWidth={2.5} opacity={0.9} />
-        </>
+        <path d={path} fill="none" stroke="#ffd700" strokeWidth={1.5} opacity={0.35} />
       )}
-
-      {/* Drop shadow */}
-      <circle cx={n.x} cy={n.y+2} r={r} fill="#000" opacity={0.4} style={{ pointerEvents: 'none' }} />
-
-      {/* Main territory circle — gradient fill */}
-      <circle cx={n.x} cy={n.y} r={r}
-        fill={`url(#grd${n.owner})`}
-        stroke={n.capital ? '#ffd700' : isSel ? '#fff' : (FACTION_BORDER[n.owner] ?? '#71717a')}
-        strokeWidth={n.capital ? 3 : isSel ? 2.5 : 1.8}
-      />
-
-      {/* Subtle inner highlight for depth */}
-      <circle cx={n.x - r*0.25} cy={n.y - r*0.25} r={r * 0.38}
-        fill="#fff" opacity={0.08} style={{ pointerEvents: 'none' }} />
 
       {/* Capital crown ♛ */}
       {n.capital && (
-        <text x={n.x} y={n.y - r - 6} textAnchor="middle" dominantBaseline="middle"
-          fill="#ffd700" fontSize={14} style={{ pointerEvents: 'none' }}>
-          ♛
-        </text>
+        <text x={cx} y={cy - r - 6} textAnchor="middle" dominantBaseline="middle"
+          fill="#ffd700" fontSize={14} style={{ pointerEvents: 'none' }}>♛</text>
       )}
 
       {/* Stronghold star ★ */}
       {n.stronghold && (
-        <text x={n.x + (n.capital ? 10 : 0)} y={n.y - r - (n.capital ? 6 : 5)} textAnchor="middle" dominantBaseline="middle"
-          fill="#f59e0b" fontSize={10} style={{ pointerEvents: 'none' }}>
-          ★
-        </text>
+        <text x={cx + (n.capital ? 10 : 0)} y={cy - r - (n.capital ? 6 : 5)} textAnchor="middle" dominantBaseline="middle"
+          fill="#f59e0b" fontSize={10} style={{ pointerEvents: 'none' }}>★</text>
       )}
 
       {/* Troop count */}
-      <text x={n.x} y={n.y+1} textAnchor="middle" dominantBaseline="middle"
+      <text x={cx} y={cy + 1} textAnchor="middle" dominantBaseline="middle"
         fill="#fff" fontSize={n.troops > 99 ? 9 : n.troops > 9 ? 11 : 13} fontWeight={800}
-        style={{ pointerEvents: 'none' }}>
-        {n.troops}
-      </text>
+        style={{ pointerEvents: 'none' }}>{n.troops}</text>
 
       {/* Territory name */}
-      <text x={n.x} y={n.y + r + 12} textAnchor="middle"
-        fill="#9ba8bb" fontSize={9} fontWeight={500} style={{ pointerEvents: 'none' }}>
-        {n.name}
-      </text>
+      <text x={cx} y={cy + r + 12} textAnchor="middle"
+        fill="#9ba8bb" fontSize={9} fontWeight={500} style={{ pointerEvents: 'none' }}>{n.name}</text>
 
-      {/* Terrain badge */}
+      {/* Terrain label */}
       {n.terrain && n.terrain !== 'plains' && (() => {
         const tc = TERRAIN_COLORS[n.terrain] ?? '#52525b';
         const label = n.terrain.charAt(0).toUpperCase() + n.terrain.slice(1);
-        const badgeY = n.y + r + 15;
         return (
-          <>
-            <rect x={n.x - 16} y={badgeY} width={32} height={11} rx={5.5}
-              fill={tc} opacity={0.2} style={{ pointerEvents: 'none' }} />
-            <text x={n.x} y={badgeY + 8} textAnchor="middle"
-              fill={tc} fontSize={7.5} fontWeight={700}
-              style={{ pointerEvents: 'none' }}>
-              {label}
-            </text>
-          </>
+          <text x={cx} y={cy + r + 23} textAnchor="middle" fill={tc} fontSize={7.5} fontWeight={700}
+            style={{ pointerEvents: 'none' }}>{label}</text>
         );
       })()}
 
       {/* Building indicator dots */}
       {hasBlds && (() => {
         const hasTerrain = n.terrain && n.terrain !== 'plains';
-        const bldY = hasTerrain ? n.y + r + 28 : n.y + r + 16;
+        const bldY = cy + r + (hasTerrain ? 30 : 18);
         return n.buildings.map((b, i) => {
           const totalW = n.buildings.length * 7 - 2;
-          const x0 = n.x - totalW / 2 + i * 7;
+          const x0 = cx - totalW / 2 + i * 7;
           return (
             <rect key={i} x={x0} y={bldY} width={5} height={5} rx={1.5}
               fill={BUILDINGS[b]?.col ?? '#555'} opacity={0.95} style={{ pointerEvents: 'none' }} />
@@ -1577,8 +1716,8 @@ const s: Record<string, React.CSSProperties> = {
   body:     { display: 'flex', flex: 1, overflow: 'hidden' },
   mapWrap:  { flex: 1, position: 'relative', overflow: 'hidden', cursor: 'grab' },
   svg:      { width: '100%', height: '100%', display: 'block' },
-  zoomControls: { position: 'absolute' as const, bottom: 16, right: 16, display: 'flex', flexDirection: 'column' as const, gap: 4, zIndex: 10 },
-  zoomBtn:  { width: 32, height: 32, background: 'rgba(22,27,34,0.9)', border: '1px solid #30363d', borderRadius: 6, color: '#9198a1', fontSize: 16, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, backdropFilter: 'blur(4px)' } as React.CSSProperties,
+  zoomControls: { position: 'absolute' as const, bottom: 16, right: 16, display: 'flex', flexDirection: 'column' as const, gap: 8, zIndex: 10 },
+  zoomBtn:  { width: 44, height: 44, background: 'rgba(22,27,34,0.9)', border: '1px solid #30363d', borderRadius: 8, color: '#9198a1', fontSize: 18, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0, backdropFilter: 'blur(4px)' } as React.CSSProperties,
   footer:   { background: '#161b22', borderTop: '1px solid #21262d', padding: '6px 24px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, minHeight: 30 },
   footerItem:{ color: '#4b5563', fontSize: 11 },
   footerSep: { color: '#30363d', fontSize: 11 },
