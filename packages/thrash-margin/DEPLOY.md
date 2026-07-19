@@ -26,10 +26,12 @@
 
 ## 2. Vercel — deploy frontend + API
 
+**This project no longer deploys standalone.** As of the Banco di Niccolo portal (see repo-root `vercel.json`), the single Vercel project covers the whole monorepo: a landing page at `/`, this app under `/thrash-margin/`, Niccolo under `/niccolo/`, and this app's `api/` functions re-exported via thin shims at repo-root `/api/*`. Root Directory is **empty / repo root**, not `thrash-margin` — leave it that way. The build is driven by `scripts/build-portal.sh`, not by anything in this folder.
+
 1. Go to [vercel.com](https://vercel.com) → **New Project** → Import `AAtithe/ThrashMargin`
-2. Set **Root Directory** to `thrash-margin`
-3. Framework preset: **Other** (Vercel auto-detects from `vercel.json`)
-4. Add these **Environment Variables** in the Vercel dashboard:
+2. Leave **Root Directory** empty (repo root)
+3. Framework preset: **Other** (Vercel auto-detects from the repo-root `vercel.json`)
+4. Add these **Environment Variables** in the Vercel dashboard (same as before — the API's env vars are unaffected by the portal restructuring):
 
    | Key              | Value                                      |
    |------------------|--------------------------------------------|
@@ -38,7 +40,7 @@
    | `JWT_EXPIRES_IN` | `7d`                                       |
    | `CORS_ORIGIN`    | Your Vercel deployment URL (add after first deploy, e.g. `https://thrash-margin.vercel.app`) |
 
-5. Deploy — Vercel will build the client and deploy the `api/` functions automatically.
+5. Deploy — Vercel runs `scripts/build-portal.sh` (builds Niccolo and this client under their own subpaths, assembles the landing page) and deploys the root-level `api/` functions automatically.
 
 ---
 

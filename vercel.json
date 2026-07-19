@@ -1,0 +1,12 @@
+{
+  "buildCommand": "bash scripts/build-portal.sh",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "rewrites": [
+    { "source": "/niccolo/(.*)", "destination": "/niccolo/index.html" },
+    { "source": "/thrash-margin/(.*)", "destination": "/thrash-margin/index.html" }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

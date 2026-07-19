@@ -6,6 +6,7 @@
     "dev:tm": "npm run dev --workspace=packages/thrash-margin",
     "dev:niccolo": "npm run dev --workspace=packages/niccolo",
     "build:tm": "npm run build --workspace=packages/thrash-margin",
-    "build:niccolo": "npm run build --workspace=packages/niccolo"
+    "build:niccolo": "npm run build --workspace=packages/niccolo",
+    "build:portal": "bash scripts/build-portal.sh"
   }
 }
