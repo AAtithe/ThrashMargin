@@ -1,0 +1,10 @@
+[
+  { "id": "wool",    "name": "Wool",           "unit": "bale" },
+  { "id": "cloth",   "name": "Flemish Cloth",  "unit": "bale" },
+  { "id": "madder",  "name": "Madder",         "unit": "barrel" },
+  { "id": "wine",    "name": "Wine",           "unit": "cask" },
+  { "id": "salt",    "name": "Salt",           "unit": "barrel" },
+  { "id": "silk",    "name": "Silk",           "unit": "bale" },
+  { "id": "spices",  "name": "Spices",         "unit": "chest" },
+  { "id": "glass",   "name": "Glass",          "unit": "crate" }
+]

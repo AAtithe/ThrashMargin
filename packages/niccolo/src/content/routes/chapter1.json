@@ -1,0 +1,15 @@
+[
+  { "id": "bruges-ghent",    "from": "bruges",  "to": "ghent",    "distanceWeeks": 1, "type": "land", "seasonal": false },
+  { "id": "bruges-antwerp",  "from": "bruges",  "to": "antwerp",  "distanceWeeks": 1, "type": "land", "seasonal": false },
+  { "id": "bruges-calais",   "from": "bruges",  "to": "calais",   "distanceWeeks": 1, "type": "land", "seasonal": false },
+  { "id": "calais-london",   "from": "calais",  "to": "london",   "distanceWeeks": 1, "type": "sea",  "seasonal": false },
+  { "id": "bruges-dijon",    "from": "bruges",  "to": "dijon",    "distanceWeeks": 3, "type": "land", "seasonal": false },
+  { "id": "dijon-geneva",    "from": "dijon",   "to": "geneva",   "distanceWeeks": 2, "type": "land", "seasonal": false },
+  { "id": "geneva-lyon",     "from": "geneva",  "to": "lyon",     "distanceWeeks": 1, "type": "land", "seasonal": false },
+  { "id": "geneva-milan",    "from": "geneva",  "to": "milan",    "distanceWeeks": 2, "type": "land", "seasonal": true },
+  { "id": "milan-genoa",     "from": "milan",   "to": "genoa",    "distanceWeeks": 1, "type": "land", "seasonal": false },
+  { "id": "milan-florence",  "from": "milan",   "to": "florence", "distanceWeeks": 2, "type": "land", "seasonal": false },
+  { "id": "florence-venice", "from": "florence","to": "venice",   "distanceWeeks": 2, "type": "land", "seasonal": false },
+  { "id": "genoa-venice",    "from": "genoa",   "to": "venice",   "distanceWeeks": 2, "type": "sea",  "seasonal": false },
+  { "id": "bruges-venice",   "from": "bruges",  "to": "venice",   "distanceWeeks": 8, "type": "sea",  "seasonal": true }
+]
