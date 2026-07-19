@@ -6,5 +6,6 @@
   { "id": "salt",    "name": "Salt",           "unit": "barrel" },
   { "id": "silk",    "name": "Silk",           "unit": "bale" },
   { "id": "spices",  "name": "Spices",         "unit": "chest" },
-  { "id": "glass",   "name": "Glass",          "unit": "crate" }
+  { "id": "glass",   "name": "Glass",          "unit": "crate" },
+  { "id": "cannon",  "name": "Cannon",         "unit": "piece" }
 ]

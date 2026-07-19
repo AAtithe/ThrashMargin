@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { formatWeekDate } from '@repo/engine';
 import { useGameLocal } from './hooks/useGameLocal';
-import { CITIES, CAMPAIGN_START, findCity, findEvent } from './sim/content';
+import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent } from './sim/content';
 import { cargoTotal } from './sim/market';
 import MapView from './components/MapView';
 import MarketPanel from './components/MarketPanel';
 import DispatchesPanel from './components/DispatchesPanel';
 import LedgerPanel from './components/LedgerPanel';
 import HouseholdPanel from './components/HouseholdPanel';
+import HousesPanel from './components/HousesPanel';
+import SecretsPanel from './components/SecretsPanel';
 import EventOverlay from './components/EventOverlay';
 import PortalNav from './components/PortalNav';
 
@@ -116,6 +118,34 @@ export default function App() {
     );
   }
 
+  if (state.flags.chapter1_complete) {
+    const secretsUsed = state.secrets.filter(s => s.used).length;
+    const secretsExpired = state.secrets.filter(s => s.expired).length;
+    const departed = state.characters.filter(c => c.status === 'departed');
+    return (
+      <div style={STYLE}>
+        <PortalNav variant="header" />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+          <h1 style={TITLE}>Chapter 1 — Niccolo Rising</h1>
+          <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
+            The partnership is converted. The company survives, at the cost the year always meant to charge for it.
+          </p>
+          <p style={{ color: '#8a7a5a', maxWidth: '30rem', textAlign: 'center', fontSize: '0.9rem' }}>
+            Concluded in {formatWeekDate(state.week, CAMPAIGN_START)}, {Math.round(state.cash)}f on hand, conscience{' '}
+            {Math.round(state.conscience)}. Secrets used: {secretsUsed}, expired unused: {secretsExpired}.
+            {departed.length > 0
+              ? ` Left the company along the way: ${departed.map(c => c.name).join(', ')}.`
+              : ' The household is intact.'}
+          </p>
+          <button style={BUTTON} onClick={resetGame}>
+            Start a new campaign
+          </button>
+        </div>
+        <PortalNav variant="footer" />
+      </div>
+    );
+  }
+
   const pendingEvent = state.pendingEvents[0] ? findEvent(state.pendingEvents[0]) : null;
 
   return (
@@ -214,7 +244,22 @@ export default function App() {
             vessels={state.vessels}
             cash={state.cash}
             conscience={state.conscience}
+            condotta={state.condotta}
             onAssign={(characterId, assignment) => dispatch({ type: 'ASSIGN_CHARACTER', characterId, assignment })}
+          />
+
+          <SecretsPanel
+            secrets={state.secrets}
+            week={state.week}
+            onUse={secretId => dispatch({ type: 'USE_SECRET', secretId })}
+          />
+
+          <HousesPanel
+            houses={HOUSES}
+            houseRelations={state.houseRelations}
+            agents={state.agents}
+            cash={state.cash}
+            onPlaceAgent={(placement, name) => dispatch({ type: 'PLACE_AGENT', placement, name })}
           />
 
           <LedgerPanel

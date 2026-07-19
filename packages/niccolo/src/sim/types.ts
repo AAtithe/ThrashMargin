@@ -130,23 +130,45 @@ export interface Character {
 /**
  * All conditions present must hold for the event to trigger (AND semantics). `dateAfter` is
  * an ISO calendar date compared against the in-game clock; `location` requires some vessel to
- * be docked (not under way) at that city; `flag` requires a flag already set by an earlier
- * event's choice — the mechanism for scripting a chain.
+ * be docked (not under way) at that city; `flag`/`flags` require a flag (or every flag in the
+ * list) already set by an earlier event's choice — the mechanism for scripting a chain;
+ * `flagAbsent` requires a flag NOT be set — the mechanism for scripting mutually exclusive
+ * outcomes (e.g. a deadline-miss event that must not fire once the success event already has);
+ * `cargoAtLeast` requires some non-under-way vessel at `location` to be carrying at least
+ * `quantity` of `goodId` — the mechanism for a real logistics delivery check (Phase 7's cannon
+ * shipment set piece).
  */
 export interface EventTrigger {
   dateAfter?: string;
   location?: string;
   flag?: string;
+  flags?: string[];
+  flagAbsent?: string;
+  cargoAtLeast?: { location: string; goodId: string; quantity: number };
 }
 
 /**
  * Effects an event choice can apply. Only systems that already exist in the sim are wired —
- * no `rep.*` (AI houses, Phase 8) and no scripted death/departure (Phase 7+ chapter content).
+ * no `rep.*` (AI houses, Phase 8) and no scripted character death/departure (roster characters
+ * are never killed by Ch1 content; Felix, Simon and Jordan are narrative-only, not Character
+ * records). `secret` and `condotta` are Phase 7 additions: §6 and §5 of the design doc name
+ * both as their own asset classes, so each gets a real (if minimal) system rather than being
+ * faked as a one-off cash/flag pair.
  */
 export interface EventEffects {
   flag?: string;
+  flags?: string[];
   cash?: number;
   conscience?: number;
+  secret?: { id: string; name: string; description: string; value: number; expiresInWeeks?: number };
+  condotta?: { retainerPerWeek: number; weeks: number };
+  /**
+   * houseId -> relation delta (design doc §8's own example: `"rep.stpol": -10`). Deferred at
+   * Phase 6 and Phase 7 for lack of an AI house to hold a reputation with; wired now that Phase 8
+   * gives it one. No Chapter 1 event uses it yet — Chapter 1's content shipped in Phase 7, before
+   * this existed — but it's available to Phase 9+ chapter authors.
+   */
+  rep?: Record<string, number>;
 }
 
 export interface EventChoice {
@@ -161,6 +183,72 @@ export interface ScriptedEvent {
   title: string;
   body: string;
   choices: EventChoice[];
+}
+
+/**
+ * A discovered piece of held knowledge (design doc §6): an explicit value, realised by
+ * `USE_SECRET` (exploiting or selling are the same mechanical move — there are no named buyers
+ * yet, that's Phase 8's AI houses), and an optional expiry after which it's worthless if unused.
+ */
+export interface Secret {
+  id: string;
+  name: string;
+  description: string;
+  value: number;
+  discoveredWeek: number;
+  expiresWeek: number | null;
+  used: boolean;
+  expired: boolean;
+}
+
+/**
+ * Astorre's company under contract (design doc §5: "pays a retainer plus campaign bonuses").
+ * Resolved automatically every ADVANCE_WEEK: pays `retainerPerWeek` and counts down; on reaching
+ * zero, pays a campaign-bonus lump sum and clears, setting `condotta_naples_complete`.
+ */
+export interface CondottaContract {
+  retainerPerWeek: number;
+  weeksRemaining: number;
+}
+
+export type HouseDisposition = 'ally' | 'neutral' | 'hostile';
+
+/**
+ * Static content for one of the AI houses (design doc §10). Phase 8 ships exactly the three
+ * Section 12 names for Phase 8 itself — Medici, St Pol interests, one Genoese house — not the
+ * fuller §10 roster (Doria, Vatachino, Adorne), which belongs to the chapters that actually
+ * introduce them. Each house runs "the same systems as the player... at reduced fidelity": here,
+ * a light weekly trade footprint at its home city, nothing else.
+ */
+export interface House {
+  id: string;
+  name: string;
+  homeCity: string;
+  disposition: HouseDisposition;
+  /** Relation the house's standing drifts toward over time, absent any push from events or agents. */
+  baselineRelation: number;
+  /** One piece of insider knowledge a player agent placed inside this house might surface. */
+  insiderSecret?: {
+    id: string;
+    name: string;
+    description: string;
+    value: number;
+    expiresInWeeks?: number;
+  };
+}
+
+/**
+ * Where a placed agent works (design doc §6): a city agent shields that city's weekly report
+ * from being planted by a hostile house; a house agent has a weekly chance of surfacing that
+ * house's insider secret via the existing Secret system.
+ */
+export type AgentPlacement = { type: 'city'; cityId: string } | { type: 'house'; houseId: string };
+
+export interface Agent {
+  id: string;
+  name: string;
+  placement: AgentPlacement;
+  placedWeek: number;
 }
 
 export interface GameState {
@@ -187,6 +275,14 @@ export interface GameState {
   firedEvents: string[];
   /** Ids of events that have triggered and are awaiting a player choice, oldest first. */
   pendingEvents: string[];
+  /** Secrets discovered so far, whether still usable, already used, or expired unused. */
+  secrets: Secret[];
+  /** Astorre's company, if currently under contract. Null when no condotta is running. */
+  condotta: CondottaContract | null;
+  /** Dynamic standing with each AI house, 0-100 (mirrors Conscience). Starts at each house's baseline. */
+  houseRelations: Record<string, number>;
+  /** Player-placed agents: in a city (shields its reports) or inside a rival house (may surface secrets). */
+  agents: Agent[];
 }
 
 export type GameAction =
@@ -200,4 +296,6 @@ export type GameAction =
   | { type: 'WRITE_LOAN'; kind: 'merchant' | 'prince'; florins: number; termWeeks: number }
   | { type: 'DISCOUNT_OBLIGATION'; obligationId: string }
   | { type: 'ASSIGN_CHARACTER'; characterId: string; assignment: CharacterAssignment }
-  | { type: 'RESOLVE_EVENT'; eventId: string; choiceIndex: number };
+  | { type: 'RESOLVE_EVENT'; eventId: string; choiceIndex: number }
+  | { type: 'USE_SECRET'; secretId: string }
+  | { type: 'PLACE_AGENT'; placement: AgentPlacement; name?: string };

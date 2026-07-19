@@ -17,6 +17,8 @@ export const LOAN_PRINCE_RATE_PER_WEEK = 0.009;
 export const LOAN_PRINCE_DEFAULT_CHANCE = 0.2;
 /** Selling a receivable early (discounting) costs more than just waiting out its own accrual. */
 export const DISCOUNT_RATE_PER_WEEK = 0.01;
+/** Extra discount on a Florence bill's spread once the Medici relationship (Ch1 content) pays off. */
+export const MEDICI_FAVOR_DISCOUNT = 0.15;
 /** Forced liquidation during insolvency sells cargo at this fraction of local market price. */
 export const LIQUIDATION_HAIRCUT = 0.7;
 
@@ -46,7 +48,8 @@ export function writeBill(state: GameState, cityId: string, florins: number, ter
   const currency = city.currency;
   const rate = state.exchangeRates[currency];
   const principal = florins / rate;
-  const spread = BILL_SPREAD_PER_WEEK * (1 - negotiateDiscount(state.characters, cityId));
+  const medici = cityId === 'florence' && state.flags.medici_favor ? MEDICI_FAVOR_DISCOUNT : 0;
+  const spread = BILL_SPREAD_PER_WEEK * (1 - negotiateDiscount(state.characters, cityId)) * (1 - medici);
   const amount = principal * (1 + spread * termWeeks);
 
   const obligation: Obligation = {

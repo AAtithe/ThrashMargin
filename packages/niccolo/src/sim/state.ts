@@ -2,6 +2,7 @@ import { CHARACTERS } from './content';
 import { STARTING_CONSCIENCE } from './characters';
 import { initialExchangeRates } from './currency';
 import { checkTriggers } from './events';
+import { initialHouseRelations } from './houses';
 import { initialScarcity } from './market';
 import { generateNews, resolveArrivals } from './news';
 import type { GameState } from './types';
@@ -34,6 +35,10 @@ export function createInitialState(id: string): GameState {
     flags: {},
     firedEvents: [],
     pendingEvents: [],
+    secrets: [],
+    condotta: null,
+    houseRelations: initialHouseRelations(),
+    agents: [],
     vessels: [
       {
         id: 'ship_1',

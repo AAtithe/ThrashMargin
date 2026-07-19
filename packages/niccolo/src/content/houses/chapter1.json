@@ -1,0 +1,44 @@
+[
+  {
+    "id": "medici",
+    "name": "The Medici Bank",
+    "homeCity": "florence",
+    "disposition": "ally",
+    "baselineRelation": 65,
+    "insiderSecret": {
+      "id": "medici_ledger_glimpse",
+      "name": "A glimpse of the Medici ledger",
+      "description": "An afternoon's careless talk in the Florence counting house — who the Medici are really lending to this season.",
+      "value": 40,
+      "expiresInWeeks": 12
+    }
+  },
+  {
+    "id": "stpol",
+    "name": "St Pol / Ribérac interests",
+    "homeCity": "bruges",
+    "disposition": "hostile",
+    "baselineRelation": 30,
+    "insiderSecret": {
+      "id": "stpol_shipping_manifest",
+      "name": "A St Pol shipping manifest",
+      "description": "A clerk paid in the wrong coin lets slip which cargoes Simon's house is actually moving this quarter.",
+      "value": 55,
+      "expiresInWeeks": 10
+    }
+  },
+  {
+    "id": "genoese",
+    "name": "The Genoese consortium",
+    "homeCity": "genoa",
+    "disposition": "neutral",
+    "baselineRelation": 50,
+    "insiderSecret": {
+      "id": "genoese_freight_rates",
+      "name": "Genoese freight rates, in confidence",
+      "description": "What the consortium is quietly charging its favoured shippers, and who those are.",
+      "value": 30,
+      "expiresInWeeks": 8
+    }
+  }
+]

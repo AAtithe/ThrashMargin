@@ -13,8 +13,8 @@
 | 4 | Credit — bills, maturity ladder, deposits, loans, insolvency | ✅ Complete |
 | 5 | Characters and assignments | ✅ Complete |
 | 6 | Event engine — triggers, choices, effects, flags | ✅ Complete |
-| 7 | Chapter 1 content pack — full Niccolo Rising arc | ⬜ Next |
-| 8 | AI houses v1 — Medici, St Pol, Genoese; agents | ⬜ |
+| 7 | Chapter 1 content pack — full Niccolo Rising arc | ✅ Complete |
+| 8 | AI houses v1 — Medici, St Pol, Genoese; agents | ⬜ Next |
 | 9+ | One chapter content pack per phase (Ch2 onward) | ⬜ |
 
 ---
@@ -169,9 +169,39 @@ Verified live in browser: on a fresh campaign, "A ledger left open" (dateAfter 1
 
 ---
 
+## Phase 7 — Done
+
+Deliverable met: **Chapter 1 content pack complete — full Niccolo Rising arc, Bruges start to partnership end. First real playthrough.** Verified via a scripted end-to-end simulation of the whole event chain (not hand-clicked — a 32-event, ~90-week campaign is impractical to click through turn-by-turn for verification, so a driver script exercised `processAction` directly the same way the UI does) plus live-browser checks of every new UI surface. See "Verification" below for both.
+
+1. **32 scripted events** (`packages/niccolo/src/content/events/chapter1.json`) — the existing 10 Phase 6 test events plus 22 new ones, spanning March 1460 to November 1461, covering every named beat in §9's Chapter 1 outline: dye jobs and pawnbroking for the Charetty widow, the courier round's first arrivals at Geneva and Milan, Astorre's Naples condotta (broker, run, and wrap-up), the cannon shipment logistics set piece, the ostrich errand, the Medici relationship, discovery of two alum-adjacent secrets, marriage to Marian, an escalating St Pol/Ribérac vendetta reaching "first blood," Felix's scripted death, and a finale that converts the partnership. Full list and rationale recorded as an implementation note in `banco-di-niccolo-design.md` (Section 9).
+
+2. **Secrets** (design doc §6, previously unbuilt) — `Secret` type and `GameState.secrets`, granted by a new `effects.secret` event field (`sim/secrets.ts`). A new `USE_SECRET` action exploits-or-sells a held secret for its florin value in one move (no named buyers yet — Phase 8 content, same abstraction precedent as Phase 4/5's uncounterpartied bills and loans). Secrets can expire: past `expiresWeek` and unused, they flip to `expired` on the next `ADVANCE_WEEK` and become worthless. Chapter 1 ships two — the Phocea alum interest (modest, no urgency) and the Tolfa alum discovery (large, time-limited) — not three; recorded as an implementation note in Section 6.
+
+3. **Condotta contracts** (design doc §5, previously unbuilt) — `CondottaContract` on `GameState.condotta`, started by a new `effects.condotta` event field and resolved every `ADVANCE_WEEK` (`sim/condotta.ts`): pays a weekly retainer, counts down, and on completion pays a campaign-bonus lump sum and sets a flag for the wrap-up event. No sub-brokering (the design doc's own "can be," not "is"). Recorded as an implementation note in Section 5.
+
+4. **The cannon shipment** — Chapter 1's "1 extraction or logistics set piece" (§9's own preamble). Built on the *real* cargo system rather than a flavour-only event chain: a new `cannon` good sellable only at Milan, a new Naples city (13th on the map, no market — added solely as the delivery point) reached by a new Genoa–Naples sea route, and two new event-trigger fields to make a genuine delivery deadline possible — `cargoAtLeast` (a docked vessel at a city must be carrying at least a quantity of a good) and `flagAbsent` (a flag must *not* be set, the mechanism guarding the success and deadline-miss events against ever both firing). A third trigger addition, `flags` (an array, all must be set), gates the chapter finale on five independent threads at once. All three are additive — no existing event or save shape changed. Recorded as an implementation note in Section 8.
+
+5. **Medici favor** — the one relationship in Chapter 1 with a mechanical payoff: a `medici_favor` flag, earned via a short event chain, shaves an extra 15% off a bill's spread specifically at Florence (`writeBill` in `sim/credit.ts`).
+
+6. **Chapter exit** — `chapter1_complete` is a flag, not an actual transition into Chapter 2 (that's Phase 9+). Set by a finale event gated on `married_marian`, `felix_lost`, `condotta_naples_resolved`, `cannon_shipment_resolved`, and `stpol_first_blood` all being true, plus a floor date. `processAction` freezes once it's set, mirroring the existing `insolvent` short-circuit, and `App.tsx` renders a completion screen (weeks elapsed, final cash and conscience, secrets used/expired, any officers lost) in place of the normal UI — the same treatment the insolvency screen already gets. Every one of the five threads resolves regardless of which choices the player makes, including a `simon_ignored` branch (ev_c1_004's other option) that had no path to the vendetta's `stpol_grudge` flag until this phase added `ev_c1_031` to bridge it — without that, choosing "say nothing" to Simon on the first encounter would have permanently soft-locked the campaign out of ever reaching the finale.
+
+7. **New UI** — `SecretsPanel` (list, value, status, an Exploit/Sell button per active secret; renders nothing when no secrets are held) and a one-line condotta status added to `HouseholdPanel` ("Astorre's company: on campaign at Naples, N weeks left · Xf/wk retainer" or "no active contract").
+
+Also required, not originally itemised: extended the save-guard in `useGameLocal.ts` to discard pre-Phase-7 saves missing `secrets`/`condotta` (the latter nullable, so checked by key presence rather than truthiness).
+
+**Verification.** Two whole-campaign scripted playthroughs (success and failure branches of the cannon shipment, and the humiliated/ignored branches of the Simon encounter) both reached `chapter1_complete: true` cleanly at week 86, with all five finale-gating flags correctly set and no stuck or double-fired events. A separate isolated check confirmed `cargoAtLeast` fires the shipment's success event only once 6+ cannon are actually docked at Naples (not before, not with fewer), and that its `flagAbsent` guard prevents the success and deadline-miss events from ever both firing. Direct checks confirmed `USE_SECRET` pays out and can't be reused, expired secrets can't be used, and the Medici-favor discount applies at Florence only. Live in the browser: campaign loads clean with no console errors, the week-0 event fires and resolves normally, Naples appears correctly everywhere a city belongs (map, negotiate/investigate dropdowns, bill-city selector), and the Household panel's new condotta line renders. `tsc --noEmit` and `vite build` both clean.
+
+One pre-existing cosmetic note, not introduced by this phase: the map SVG's height doesn't stay bounded to its pane on tall viewports (the sidebar's long household dropdown lists push the whole page taller, and the map stretches with it), so reaching cities near the bottom of the map — Naples included — needs a page scroll rather than fitting on one screen. This CSS is unchanged from Phase 1; it isn't a Phase 7 regression, and fixing it is a UI polish item outside this phase's content-pack scope.
+
+No AI houses, agents, or counter-intelligence (Phase 8); no branch network or sub-brokered condotta; no Chapter 2 content or an actual chapter transition (Phase 9+). Those remain later phases. **Do not start Phase 8 — stop here per instructions.**
+
+---
+
 ## Decisions needed from you
 
-None outstanding. Phase 6's two scope judgement calls (effects limited to flag/cash/conscience; weekly-tick trigger evaluation) follow the same scope-discipline precedent as every prior phase and are recorded as an implementation note in `banco-di-niccolo-design.md` (Section 8).
+None outstanding. Phase 7's scope judgement calls (2 secrets rather than 3; condotta and secrets built as minimal real systems rather than one-off event flavour; Naples added with no market and a placeholder currency; three additive trigger-field extensions; Simon/Jordan/Felix as narrative-only, not roster characters; the chapter exit as a flag rather than an actual Chapter 2 transition) follow the same scope-discipline precedent as every prior phase and are recorded as implementation notes in `banco-di-niccolo-design.md` (Sections 5, 6, 7, 8, and 9).
+
+Phase 6's two scope judgement calls (effects limited to flag/cash/conscience; weekly-tick trigger evaluation) follow the same scope-discipline precedent as every prior phase and are recorded as an implementation note in `banco-di-niccolo-design.md` (Section 8).
 
 Phase 5's three scope judgement calls (roster seeding, assignment-to-system mapping, Conscience trigger) were made under the same scope-discipline precedent as Phases 3/4 — no invented stand-ins for systems that don't exist yet — and are recorded as implementation notes in `banco-di-niccolo-design.md` (Section 7).
 
@@ -251,4 +281,16 @@ The audit verdict (sibling app, no shared engine) is recorded in `AUDIT.md` for 
 - Extended the save-guard for the new fields; built `EventOverlay` (title, body, one button per choice, full-screen modal) and wired it into `App.tsx`.
 - Created `.claude/launch.json` (it didn't exist yet) so the niccolo dev server could be previewed for verification.
 - Verified end-to-end in the browser: a week-0 date+location event fired and blocked the UI immediately on a fresh campaign; a second date-triggered event fired on schedule three weeks later; refusing its shortcut choice set a flag whose chained follow-up event fired only on the *next* week's tick (not instantly), paying out cash on resolution; confirmed normal play was inert while an event card was open and resumed immediately after resolving it. Reset the campaign afterward.
+- `tsc --noEmit` and `vite build` both clean.
+
+### 2026-07-19 — Phase 7
+- Added three additive `EventTrigger` fields (`flags`, `flagAbsent`, `cargoAtLeast`) and two additive `EventEffects` fields (`secret`, `condotta`) to `sim/types.ts`; wired all five into `sim/events.ts`'s `triggerMatches`/`resolveEvent`.
+- Built `sim/secrets.ts` (`addSecret`, `useSecret`, `resolveSecretExpiry`) and `sim/condotta.ts` (`startCondotta`, `resolveWeeklyCondotta`); added `GameState.secrets`/`condotta` and the `USE_SECRET` action; wired weekly condotta resolution and secret expiry into `advanceWeek`.
+- Added a `medici_favor` discount hook to `writeBill` in `sim/credit.ts` (Florence only); added the `chapter1_complete` freeze to `processAction`, mirroring `insolvent`.
+- Added Naples (13th city, no market) and a Genoa–Naples sea route to the Chapter 1 map content; added a `cannon` good sellable only at Milan.
+- Authored 22 new scripted events (`ev_c1_011` through `ev_c1_032`) covering every named Chapter 1 beat: courier-round arrivals, pawnbroking, the Medici relationship, the ostrich errand, two alum-adjacent secrets, the St Pol/Ribérac vendetta escalating to first blood (with a bridging event added so the previously dead-end `simon_ignored` branch also reaches the vendetta), Astorre's Naples condotta, the cannon shipment logistics set piece, marriage to Marian, Felix's death, and a five-thread finale that sets `chapter1_complete`.
+- Built `SecretsPanel` and a condotta status line in `HouseholdPanel`; wired both into `App.tsx` along with a chapter-completion ending screen (mirroring the existing insolvency screen) and the `USE_SECRET` dispatch.
+- Extended the save-guard in `useGameLocal.ts` for `secrets`/`condotta`.
+- Verified with a scripted driver calling `processAction` directly (a ~90-week, 32-event campaign isn't practical to click through by hand for verification): two full playthroughs — one delivering the cannon shipment successfully via Milan→Genoa→Naples, one declining it and taking the `simon_ignored` vendetta branch — both reached `chapter1_complete: true` cleanly with all five finale flags set correctly and no stuck events. Isolated checks confirmed `cargoAtLeast` fires the shipment's success event only at 6+ cannon (not at 3), its `flagAbsent` guard prevents the success/failure events from double-firing, `USE_SECRET` pays out once and rejects reuse or use-after-expiry, and the Medici discount applies at Florence only.
+- Verified live in the browser: clean load with no console errors, the week-0 event resolves normally, Naples renders correctly in the map, both assignment dropdowns, and the bill-city selector, and the new Household condotta line displays. Noted (but did not fix, as out of this phase's scope) a pre-existing CSS issue where the map SVG's height isn't bounded on tall viewports, requiring a page scroll to reach cities near the bottom of the map.
 - `tsc --noEmit` and `vite build` both clean.

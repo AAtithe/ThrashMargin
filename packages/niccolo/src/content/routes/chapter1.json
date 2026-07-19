@@ -11,5 +11,6 @@
   { "id": "milan-florence",  "from": "milan",   "to": "florence", "distanceWeeks": 2, "type": "land", "seasonal": false },
   { "id": "florence-venice", "from": "florence","to": "venice",   "distanceWeeks": 2, "type": "land", "seasonal": false },
   { "id": "genoa-venice",    "from": "genoa",   "to": "venice",   "distanceWeeks": 2, "type": "sea",  "seasonal": false },
-  { "id": "bruges-venice",   "from": "bruges",  "to": "venice",   "distanceWeeks": 8, "type": "sea",  "seasonal": true }
+  { "id": "bruges-venice",   "from": "bruges",  "to": "venice",   "distanceWeeks": 8, "type": "sea",  "seasonal": true },
+  { "id": "genoa-naples",    "from": "genoa",   "to": "naples",   "distanceWeeks": 2, "type": "sea",  "seasonal": false }
 ]

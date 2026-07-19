@@ -16,11 +16,12 @@
   { "id": "lyon",     "name": "Lyon",     "region": "france",    "power": "france",  "x": 310, "y": 400, "port": false, "currency": "ecu",
     "market": { "wine": { "base": 10 }, "silk": { "base": 52 }, "spices": { "base": 68 } } },
   { "id": "milan",    "name": "Milan",    "region": "lombardy",  "power": "milan",   "x": 480, "y": 440, "port": false, "currency": "ecu",
-    "market": { "silk": { "base": 40 }, "cloth": { "base": 34 }, "glass": { "base": 46 } } },
+    "market": { "silk": { "base": 40 }, "cloth": { "base": 34 }, "glass": { "base": 46 }, "cannon": { "base": 35 } } },
   { "id": "genoa",    "name": "Genoa",    "region": "liguria",   "power": "genoa",   "x": 460, "y": 500, "port": true, "currency": "ecu",
     "market": { "silk": { "base": 36 }, "spices": { "base": 50 }, "glass": { "base": 42 }, "salt": { "base": 20 } } },
   { "id": "florence", "name": "Florence", "region": "tuscany",   "power": "florence","x": 530, "y": 520, "port": false, "currency": "florin",
     "market": { "cloth": { "base": 32 }, "silk": { "base": 38 }, "wine": { "base": 20 } } },
   { "id": "venice",   "name": "Venice",   "region": "veneto",    "power": "venice",  "x": 600, "y": 460, "port": true, "currency": "ducat",
-    "market": { "spices": { "base": 32 }, "silk": { "base": 34 }, "glass": { "base": 26 }, "salt": { "base": 24 } } }
+    "market": { "spices": { "base": 32 }, "silk": { "base": 34 }, "glass": { "base": 26 }, "salt": { "base": 24 } } },
+  { "id": "naples",   "name": "Naples",   "region": "campania",  "power": "naples",  "x": 520, "y": 548, "port": true, "currency": "ducat" }
 ]

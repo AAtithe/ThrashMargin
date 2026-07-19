@@ -1,11 +1,20 @@
 import { advanceWeek as advanceWeekCounter } from '@repo/engine';
 import { HOME_CITY, findCity, findRoute } from './content';
 import { assignCharacter, resolveWeeklyUpkeep, tradeBonus } from './characters';
+import { resolveWeeklyCondotta } from './condotta';
 import { discountObligation, resolveMaturingObligations, takeDeposit, writeBill, writeLoan } from './credit';
 import { driftExchangeRates } from './currency';
 import { checkTriggers, resolveEvent } from './events';
+import {
+  applyHouseTradeFootprint,
+  corruptNews,
+  driftHouseRelations,
+  placeAgent,
+  resolveWeeklyAgentIntelligence,
+} from './houses';
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, driftScarcity, priceAt } from './market';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
+import { resolveSecretExpiry, useSecret } from './secrets';
 import type { GameState, GameAction, Vessel } from './types';
 
 function tickVessel(v: Vessel): Vessel {
@@ -100,9 +109,14 @@ function advanceWeek(state: GameState): GameState {
   const exchangeRates = driftExchangeRates(state.exchangeRates);
   const maturity = resolveMaturingObligations(state, week, exchangeRates);
   const upkeep = resolveWeeklyUpkeep({ ...state, cash: maturity.cash });
-  const scarcity = driftScarcity(applyBackgroundFlows(maturity.scarcity));
+  const condottaResolution = resolveWeeklyCondotta({ ...state, cash: upkeep.cash });
+  const scarcity = applyHouseTradeFootprint(driftScarcity(applyBackgroundFlows(maturity.scarcity)));
+  const houseRelations = driftHouseRelations(state.houseRelations, state.flags);
+  const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
+  const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
 
-  const newNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
+  const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
+  const newNews = corruptNews(rawNews, state.agents, HOME_CITY);
   const { arrived, stillPending } = resolveArrivals([...state.pendingNews, ...newNews], week);
   const knownPrices = { ...state.knownPrices };
   for (const item of arrived) knownPrices[item.cityId] = item;
@@ -110,13 +124,19 @@ function advanceWeek(state: GameState): GameState {
   return checkTriggers({
     ...state,
     week,
-    cash: upkeep.cash,
+    cash: condottaResolution.cash,
     vessels: maturity.vessels.map(tickVessel),
     obligations: maturity.obligations,
     insolvent: state.insolvent || maturity.insolvent,
     characters: upkeep.characters,
+    condotta: condottaResolution.condotta,
+    flags: condottaResolution.condottaJustCompleted
+      ? { ...state.flags, condotta_naples_complete: true }
+      : state.flags,
     exchangeRates,
     scarcity,
+    houseRelations,
+    secrets,
     pendingNews: stillPending,
     knownPrices,
   });
@@ -143,6 +163,7 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
+  if (state.flags.chapter1_complete) return state;
   if (state.pendingEvents.length > 0 && action.type !== 'RESOLVE_EVENT') return state;
 
   switch (action.type) {
@@ -168,6 +189,10 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return assignCharacter(state, action.characterId, action.assignment);
     case 'RESOLVE_EVENT':
       return resolveEvent(state, action.eventId, action.choiceIndex);
+    case 'USE_SECRET':
+      return useSecret(state, action.secretId);
+    case 'PLACE_AGENT':
+      return placeAgent(state, action.placement, action.name);
     default:
       return state;
   }

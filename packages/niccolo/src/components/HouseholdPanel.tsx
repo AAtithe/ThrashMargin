@@ -1,5 +1,5 @@
 import { CITIES, HOME_CITY, findCity } from '../sim/content';
-import type { Character, CharacterAssignment, Vessel } from '../sim/types';
+import type { Character, CharacterAssignment, CondottaContract, Vessel } from '../sim/types';
 
 const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
@@ -77,10 +77,11 @@ interface HouseholdPanelProps {
   vessels: Vessel[];
   cash: number;
   conscience: number;
+  condotta: CondottaContract | null;
   onAssign: (characterId: string, assignment: CharacterAssignment) => void;
 }
 
-export default function HouseholdPanel({ characters, vessels, cash, conscience, onAssign }: HouseholdPanelProps) {
+export default function HouseholdPanel({ characters, vessels, cash, conscience, condotta, onAssign }: HouseholdPanelProps) {
   const active = characters.filter(c => c.status === 'active');
   const departed = characters.filter(c => c.status === 'departed');
   const totalSalary = active.reduce((sum, c) => sum + c.salary, 0);
@@ -94,6 +95,17 @@ export default function HouseholdPanel({ characters, vessels, cash, conscience, 
         {' · '}
         Wages due next week: {totalSalary}f{' '}
         <span style={{ color: canPayNext ? '#3a6b5a' : '#b5451a' }}>{canPayNext ? '(covered)' : '(cannot pay — loyalty will fall)'}</span>
+      </p>
+      <p style={{ fontSize: '0.75rem', margin: '0.3rem 0 0', color: '#8a7a5a' }}>
+        Astorre's company:{' '}
+        {condotta ? (
+          <span style={{ color: '#3a6b5a' }}>
+            on campaign at Naples, {condotta.weeksRemaining} week{condotta.weeksRemaining === 1 ? '' : 's'} left ·{' '}
+            {condotta.retainerPerWeek}f/wk retainer
+          </span>
+        ) : (
+          'no active contract'
+        )}
       </p>
 
       <div style={LIST}>

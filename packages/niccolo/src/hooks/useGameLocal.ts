@@ -30,6 +30,15 @@ function readSave(): GameState | null {
     if (!parsed.flags || !parsed.firedEvents || !parsed.pendingEvents) {
       return null;
     }
+    // Saves from before Phase 7 lack the secrets/condotta fields ('condotta' is nullable, so
+    // check for its presence as a key rather than truthiness).
+    if (!parsed.secrets || !('condotta' in parsed)) {
+      return null;
+    }
+    // Saves from before Phase 8 lack the AI-houses/agents fields.
+    if (!parsed.houseRelations || !parsed.agents) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;

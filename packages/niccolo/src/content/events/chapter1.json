@@ -105,5 +105,238 @@
       { "text": "Take stock quietly", "effects": { "flag": "season_reckoned", "conscience": 1 } },
       { "text": "Celebrate the takings instead", "effects": { "cash": -5, "flag": "season_celebrated" } }
     ]
+  },
+  {
+    "id": "ev_c1_011",
+    "chapter": 1,
+    "trigger": { "location": "geneva" },
+    "title": "The Geneva account",
+    "body": "The fairs at Geneva run on paper as much as coin. A local factor offers the Charetty house a standing arrangement — letters and small sums handled on your account whenever a courier passes through, for a fee.",
+    "choices": [
+      { "text": "Open a standing account with the factor", "effects": { "cash": -8, "flag": "courier_geneva" } },
+      { "text": "Rely on passing traffic for now", "effects": { "flag": "courier_geneva_deferred" } }
+    ]
+  },
+  {
+    "id": "ev_c1_012",
+    "chapter": 1,
+    "trigger": { "location": "milan" },
+    "title": "The Milan crossing",
+    "body": "Past the Alpine passes, Milan trades in silk, armour and short tempers. An armourer's foreman, sizing up the Charetty mark, asks whether the house means to be more than a passing customer.",
+    "choices": [
+      { "text": "Introduce the house properly, for future business", "effects": { "flag": "milan_contact" } },
+      { "text": "Keep to trade and move on", "effects": { "cash": 6, "flag": "milan_traded" } }
+    ]
+  },
+  {
+    "id": "ev_c1_013",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-11-01", "location": "bruges" },
+    "title": "The pledge",
+    "body": "A woman past the dyeworks gate offers her wedding ring against a loan for winter grain, and will not meet your eye while she says it. The pawnshop side of the business rarely feels like banking; this is one of those days.",
+    "choices": [
+      { "text": "Lend her the ring's full worth", "effects": { "cash": -6, "conscience": 2 } },
+      { "text": "Lend at the house's usual rate", "effects": { "cash": 4 } }
+    ]
+  },
+  {
+    "id": "ev_c1_014",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-09-01" },
+    "title": "A letter from the Medici agent",
+    "body": "A Florentine correspondent, writing on behalf of the Medici bank's local agent, asks after the Charetty house's standing and hints at business to come — if the acquaintance is worth deepening.",
+    "choices": [
+      { "text": "Answer warmly and open the correspondence", "effects": { "cash": -4, "flag": "medici_courted" } },
+      { "text": "Reply briefly and keep the house's own counsel", "effects": { "flag": "medici_distant" } }
+    ]
+  },
+  {
+    "id": "ev_c1_015",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-12-01", "flag": "medici_courted" },
+    "title": "The Medici agent's favour",
+    "body": "The correspondence has borne fruit. The agent lets slip, in the way of a man doing a favour rather than a service, that a word from him at Florence will smooth the Charetty house's paper there.",
+    "choices": [
+      { "text": "Accept the goodwill", "effects": { "cash": 8, "flag": "medici_favor" } }
+    ]
+  },
+  {
+    "id": "ev_c1_016",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-08-01", "location": "bruges" },
+    "title": "The ostrich",
+    "body": "A Portuguese factor, stuck with a live ostrich meant as a wedding gift for a Burgundian noble and no way to deliver it presentably, offers good money to anyone willing to see the bird safely to its destination.",
+    "choices": [
+      { "text": "Take the commission", "effects": { "cash": -3, "flag": "ostrich_accepted" } },
+      { "text": "Decline — the house has enough to manage", "effects": {} }
+    ]
+  },
+  {
+    "id": "ev_c1_017",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-08-01", "flag": "ostrich_accepted" },
+    "title": "Delivered, more or less",
+    "body": "The ostrich arrives at its destination alive, insulted, and short several tail feathers it left behind at three separate posting inns. The noble is delighted regardless.",
+    "choices": [
+      { "text": "Collect the fee and say nothing about the feathers", "effects": { "cash": 12 } }
+    ]
+  },
+  {
+    "id": "ev_c1_018",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-01-01", "location": "genoa" },
+    "title": "A Genoese confidence",
+    "body": "A Genoese contact, well into his cups but not so far gone he doesn't know what he's saying, describes a concealed holding in the Phocea alum works — the kind of knowledge that is worth money precisely because so few people have it.",
+    "choices": [
+      { "text": "Note it quietly and say nothing further", "effects": { "secret": { "id": "secret_phocea", "name": "The Phocea alum interest", "description": "A Genoese contact's concealed holding in the Phocea alum works — modest value, and no urgency to use it.", "value": 40 } } },
+      { "text": "It isn't the house's business", "effects": {} }
+    ]
+  },
+  {
+    "id": "ev_c1_019",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-09-01" },
+    "title": "Whispers from Rome",
+    "body": "A report reaches the house, third-hand and unconfirmed, that new alum deposits have been found near Tolfa, within the Papal states — deposits that could break the Ottoman alum trade's whole value if the rumour holds. It will not stay a rumour long.",
+    "choices": [
+      { "text": "Weigh the whisper carefully and hold it close", "effects": { "secret": { "id": "secret_tolfa", "name": "The Tolfa alum discovery", "description": "Word of new alum deposits at Tolfa that could break the Ottoman alum monopoly — large value, but it will become common knowledge soon and be worth nothing to hold.", "value": 130, "expiresInWeeks": 20 } } },
+      { "text": "Dismiss it as market talk", "effects": {} }
+    ]
+  },
+  {
+    "id": "ev_c1_020",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-02-01", "flag": "stpol_grudge" },
+    "title": "Jordan de Ribérac takes an interest",
+    "body": "Simon's father is a colder proposition than his son: precise, patient, and now apparently convinced there's a contract technicality worth suing over. The threat arrives by letter, correctly worded and entirely serious.",
+    "choices": [
+      { "text": "Fight it through Julius and Gregorio", "effects": { "cash": -12, "flag": "stpol_lawsuit_fought" } },
+      { "text": "Settle quietly and be done with it", "effects": { "cash": -8, "flag": "stpol_settled" } }
+    ]
+  },
+  {
+    "id": "ev_c1_021",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-04-01", "flag": "stpol_lawsuit_fought" },
+    "title": "A public rebuke",
+    "body": "The court finds for the Charetty house, and finds it publicly enough that Jordan de Ribérac's composure slips, once, in front of witnesses who will talk about it for months.",
+    "choices": [
+      { "text": "Let the judgment stand and say no more", "effects": { "flag": "stpol_first_blood_path" } }
+    ]
+  },
+  {
+    "id": "ev_c1_022",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-04-01", "flag": "stpol_settled" },
+    "title": "A quiet knife",
+    "body": "The settlement cost less than a court fight would have, but it bought no peace. Simon takes the quiet resolution as proof the house can be pushed, and starts looking for the next place to push.",
+    "choices": [
+      { "text": "Note it and prepare for the next round", "effects": { "flag": "stpol_first_blood_path" } }
+    ]
+  },
+  {
+    "id": "ev_c1_023",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-05-01", "flag": "stpol_first_blood_path" },
+    "title": "First blood",
+    "body": "It happens on the Bruges quay, in daylight, in front of enough people that neither side can pretend afterward it didn't. Words become something closer to a brawl before it's pulled apart. Nobody is badly hurt. Nobody forgets it either.",
+    "choices": [
+      { "text": "Answer him in kind", "effects": { "cash": -10, "conscience": -3, "flags": ["stpol_first_blood"] } },
+      { "text": "Walk away and let the house's standing speak for itself", "effects": { "conscience": 2, "flags": ["stpol_first_blood"] } }
+    ]
+  },
+  {
+    "id": "ev_c1_024",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-11-01", "location": "bruges" },
+    "title": "Astorre's opportunity",
+    "body": "Astorre brings word of a condotta on offer at Naples: the company of lances, paid a retainer to serve a campaign's length, with bonuses if it goes well. He wants the house's blessing to broker it — and its backing.",
+    "choices": [
+      { "text": "Negotiate hard through Gregorio", "effects": { "condotta": { "retainerPerWeek": 4, "weeks": 16 }, "flag": "condotta_naples_active" } },
+      { "text": "Accept the terms offered and move quickly", "effects": { "cash": 10, "condotta": { "retainerPerWeek": 2.5, "weeks": 16 }, "flag": "condotta_naples_active" } }
+    ]
+  },
+  {
+    "id": "ev_c1_025",
+    "chapter": 1,
+    "trigger": { "flag": "condotta_naples_complete" },
+    "title": "The company of lances comes home",
+    "body": "Astorre's contract at Naples runs its course. The retainer is paid out in full, the campaign bonus with it, and the company returns to Bruges a little richer and a little harder than it left.",
+    "choices": [
+      { "text": "Welcome Astorre's company home", "effects": { "flag": "condotta_naples_resolved" } }
+    ]
+  },
+  {
+    "id": "ev_c1_026",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-06-01", "location": "bruges" },
+    "title": "A commission from the arsenal",
+    "body": "The Naples campaign needs guns, and Milan's foundries can supply them — if someone will carry them the length of Italy in time to matter. The commission is straightforward and the road is not.",
+    "choices": [
+      { "text": "Accept the commission", "effects": { "flag": "cannon_commission_accepted" } },
+      { "text": "Decline — too much can go wrong on that road", "effects": { "flags": ["cannon_shipment_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c1_027",
+    "chapter": 1,
+    "trigger": { "location": "naples", "flag": "cannon_commission_accepted", "flagAbsent": "cannon_shipment_expired", "cargoAtLeast": { "location": "naples", "goodId": "cannon", "quantity": 6 } },
+    "title": "The guns of Naples",
+    "body": "The shipment makes it — six pieces of Milanese ordnance, unloaded on the Naples quay in time to matter. Word of the delivery reaches Astorre's camp before the ink on the receipt is dry.",
+    "choices": [
+      { "text": "Hand over the shipment", "effects": { "cash": 90, "flags": ["cannon_delivered", "cannon_shipment_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c1_028",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-01-01", "flag": "cannon_commission_accepted", "flagAbsent": "cannon_delivered" },
+    "title": "The window closes",
+    "body": "The season for the commission has passed without the guns arriving. Whatever became of the shipment along the road, the campaign it was meant for no longer needs it, and the arsenal wants its advance back.",
+    "choices": [
+      { "text": "Absorb the loss", "effects": { "cash": -15, "flags": ["cannon_shipment_expired", "cannon_shipment_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c1_029",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-06-01", "location": "bruges" },
+    "title": "The Charetty match",
+    "body": "Marian puts the question to you herself, plainly, the way she does everything: the widow and the apprentice, the company and its heir apparent, made one household instead of two arrangements. It is the practical course. It is also not only that.",
+    "choices": [
+      { "text": "Marry her, and mean it", "effects": { "conscience": 3, "flag": "married_marian" } },
+      { "text": "Marry her, as the practical course it plainly is", "effects": { "cash": 20, "flag": "married_marian" } }
+    ]
+  },
+  {
+    "id": "ev_c1_030",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-10-01" },
+    "title": "News from the field",
+    "body": "Felix takes a fall at the lists that should not have killed him, and does anyway, the wound turning bad in the space of a fortnight no physician can explain away. Marian's son, dead at the edge of a war that was never his to fight. Nothing in the house's ledgers accounts for this.",
+    "choices": [
+      { "text": "Grieve with Marian, and let the house wait", "effects": { "conscience": 2, "flag": "felix_lost" } },
+      { "text": "Keep the house moving — grief can be paid out later", "effects": { "cash": 10, "conscience": -2, "flag": "felix_lost" } }
+    ]
+  },
+  {
+    "id": "ev_c1_031",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-09-01", "flag": "simon_ignored" },
+    "title": "Simon's patience",
+    "body": "Silence didn't end it. Simon takes your refusal to rise as its own kind of insult, and starts finding smaller, quieter ways to make the house's business harder than it needs to be.",
+    "choices": [
+      { "text": "Note it and carry on", "effects": { "flag": "stpol_grudge" } }
+    ]
+  },
+  {
+    "id": "ev_c1_032",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1461-11-01", "flags": ["married_marian", "felix_lost", "condotta_naples_resolved", "cannon_shipment_resolved", "stpol_first_blood"] },
+    "title": "The partnership is sealed",
+    "body": "The company that started the year as a dyeworks and a dying widow's gamble ends it as a bank with a partner's name on the door. Every gain this year cost something on the other side of the ledger nobody keeps. Niccolo Rising, such as it was, is finished.",
+    "choices": [
+      { "text": "Take up the bank's seal as partner", "effects": { "flag": "chapter1_complete" } }
+    ]
   }
 ]

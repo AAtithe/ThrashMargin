@@ -3,7 +3,8 @@ import routesData from '../content/routes/chapter1.json';
 import goodsData from '../content/goods/chapter1.json';
 import charactersData from '../content/characters/chapter1.json';
 import eventsData from '../content/events/chapter1.json';
-import type { City, Route, Good, Character, ScriptedEvent } from './types';
+import housesData from '../content/houses/chapter1.json';
+import type { City, Route, Good, Character, ScriptedEvent, House } from './types';
 
 export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
 
@@ -15,6 +16,7 @@ export const ROUTES: Route[] = routesData as Route[];
 export const GOODS: Good[] = goodsData as Good[];
 export const CHARACTERS: Character[] = charactersData as unknown as Character[];
 export const EVENTS: ScriptedEvent[] = eventsData as unknown as ScriptedEvent[];
+export const HOUSES: House[] = housesData as unknown as House[];
 
 export function findCity(id: string): City | undefined {
   return CITIES.find(c => c.id === id);
@@ -30,6 +32,10 @@ export function findCharacter(id: string): Character | undefined {
 
 export function findEvent(id: string): ScriptedEvent | undefined {
   return EVENTS.find(e => e.id === id);
+}
+
+export function findHouse(id: string): House | undefined {
+  return HOUSES.find(h => h.id === id);
 }
 
 /** Good ids traded in a city's market, in content-file order. */

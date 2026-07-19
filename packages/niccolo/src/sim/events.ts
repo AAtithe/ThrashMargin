@@ -1,5 +1,7 @@
 import { dateForWeek } from '@repo/engine';
 import { CAMPAIGN_START, EVENTS, findEvent } from './content';
+import { addSecret } from './secrets';
+import { startCondotta } from './condotta';
 import type { EventTrigger, GameState } from './types';
 
 function clamp(n: number, min: number, max: number): number {
@@ -14,6 +16,15 @@ function triggerMatches(state: GameState, trigger: EventTrigger): boolean {
     return false;
   }
   if (trigger.flag && !state.flags[trigger.flag]) return false;
+  if (trigger.flags && !trigger.flags.every(f => state.flags[f])) return false;
+  if (trigger.flagAbsent && state.flags[trigger.flagAbsent]) return false;
+  if (trigger.cargoAtLeast) {
+    const { location, goodId, quantity } = trigger.cargoAtLeast;
+    const satisfied = state.vessels.some(
+      v => !v.destination && v.location === location && (v.cargo[goodId] ?? 0) >= quantity,
+    );
+    if (!satisfied) return false;
+  }
   return true;
 }
 
@@ -46,9 +57,26 @@ export function resolveEvent(state: GameState, eventId: string, choiceIndex: num
   };
   const { effects } = choice;
   if (effects.flag) next = { ...next, flags: { ...next.flags, [effects.flag]: true } };
+  if (effects.flags) {
+    const set = { ...next.flags };
+    for (const f of effects.flags) set[f] = true;
+    next = { ...next, flags: set };
+  }
   if (typeof effects.cash === 'number') next = { ...next, cash: next.cash + effects.cash };
   if (typeof effects.conscience === 'number') {
     next = { ...next, conscience: clamp(next.conscience + effects.conscience, 0, 100) };
+  }
+  if (effects.secret) next = { ...next, secrets: addSecret(next.secrets, next.week, effects.secret) };
+  if (effects.condotta) {
+    const { retainerPerWeek, weeks } = effects.condotta;
+    next = { ...next, condotta: startCondotta(next.condotta, { retainerPerWeek, weeksRemaining: weeks }) };
+  }
+  if (effects.rep) {
+    const houseRelations = { ...next.houseRelations };
+    for (const [houseId, delta] of Object.entries(effects.rep)) {
+      houseRelations[houseId] = clamp((houseRelations[houseId] ?? 0) + delta, 0, 100);
+    }
+    next = { ...next, houseRelations };
   }
   return next;
 }
