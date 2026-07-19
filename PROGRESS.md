@@ -12,8 +12,8 @@
 | 3 | Information layer — news latency, stale prices, couriers | ✅ Complete |
 | 4 | Credit — bills, maturity ladder, deposits, loans, insolvency | ✅ Complete |
 | 5 | Characters and assignments | ✅ Complete |
-| 6 | Event engine — triggers, choices, effects, flags | ⬜ Next |
-| 7 | Chapter 1 content pack — full Niccolo Rising arc | ⬜ |
+| 6 | Event engine — triggers, choices, effects, flags | ✅ Complete |
+| 7 | Chapter 1 content pack — full Niccolo Rising arc | ⬜ Next |
 | 8 | AI houses v1 — Medici, St Pol, Genoese; agents | ⬜ |
 | 9+ | One chapter content pack per phase (Ch2 onward) | ⬜ |
 
@@ -150,9 +150,30 @@ No branch network, no condotta contracts as a live asset, no chapter-scripted jo
 
 ---
 
+## Phase 6 — Done
+
+Section 12 gives Phase 6 no explicit "Playable:" sentence either (its own line is "Author 10 test events"), so the deliverable is scoped tightly to that and to §8's own feature list, following the same pattern Phase 5 used: **data-driven events fire on schedule, chain off each other's flags, and interrupt play with a real choice that changes cash, Conscience, or the flag state — proven with 10 authored test events, not narrated Chapter 1 content.** Verified live in browser.
+
+1. **Event data model** — `ScriptedEvent`/`EventTrigger`/`EventChoice`/`EventEffects` (`packages/niccolo/src/sim/types.ts`) match §8's own JSON shape: `id`, `chapter`, `trigger` (`dateAfter`/`location`/`flag`, all optional and AND-combined), `title`, `body`, `choices[].{text, effects}`. Content lives entirely in `packages/niccolo/src/content/events/chapter1.json` — logic never inspects a hardcoded event id beyond the engine's own bookkeeping.
+2. **Triggers** — `sim/events.ts`'s `triggerMatches` checks the in-game clock (`dateForWeek` against `trigger.dateAfter`), whether any vessel is docked at `trigger.location`, and whether `trigger.flag` is already set in `GameState.flags`. `checkTriggers` runs once at campaign start and once after every `ADVANCE_WEEK`, queuing any newly-satisfied, not-yet-fired-or-pending event onto `pendingEvents`.
+3. **Choices and effects** — `resolveEvent` (new `RESOLVE_EVENT` action) pops the front of `pendingEvents`, applies the chosen effect (`flag` sets a flag permanently, `cash` deltas the florin balance, `conscience` deltas the meter, clamped 0-100), and records the event id in `firedEvents` so it can never fire again.
+4. **Flags** — `GameState.flags: Record<string, boolean>`, set only by event effects, readable only by later event triggers — the chaining mechanism. Two of the 10 test events demonstrate a chain: refusing a shortcut (`refused_shortcut`) unlocks a follow-up reward the week after (`reputation_probity`); paying for a dockside tip (`dockside_tip`) unlocks its payoff (`tip_paid_off`).
+5. **Interruption** — while `pendingEvents` is non-empty, `processAction` blocks every action except `RESOLVE_EVENT` (mirroring the existing `insolvent` short-circuit), and only the front of the queue can be resolved — one scripted scene at a time, per pillar 3 ("victories cost more than defeats... interrupts commercial positions").
+6. **10 test events** — authored in `content/events/chapter1.json` (`ev_c1_001` through `ev_c1_010`), spanning March–October 1460: pure date triggers, date+location triggers (Bruges, London, Venice), and the two flag-gated chains above, exercising all three trigger fields and all three effect fields the engine supports.
+
+Also required, not originally itemised: extended the save-guard in `useGameLocal.ts` to discard pre-Phase-6 saves missing `flags`/`firedEvents`/`pendingEvents`; built `EventOverlay` (design doc's UI screen 8) as a full-screen modal card (title, body, one button per choice) and wired it into `App.tsx` above everything else when `state.pendingEvents[0]` resolves to a known event; created `.claude/launch.json` so the niccolo dev server can be previewed (`npm run dev --workspace niccolo`, port 5174) — it didn't exist yet.
+
+No `rep.*` house-reputation effects (no AI houses to hold a reputation with — Phase 8), no scripted deaths/departures, no Chapter 1 narrative content — those remain Phase 7 (content pack) and Phase 8 (AI houses). The scope judgement calls (effects limited to flag/cash/conscience; trigger evaluation on the weekly tick, not instantly on flag-set) are recorded as an implementation note in `banco-di-niccolo-design.md` (Section 8).
+
+Verified live in browser: on a fresh campaign, "A ledger left open" (dateAfter 1460-03-01, location Bruges) fired immediately at week 0 and blocked the rest of the UI until resolved; chose "Take his word for it" (conscience +1, clamped at the 100 ceiling). Advanced three weeks to 4 April 1460 and watched "The dyeworks apprentice" fire on schedule; chose "Refuse — the vats are done properly" (sets `refused_shortcut`). Advanced one more week and confirmed the chained "Word gets around" fired only now (not the same tick the flag was set), paying out +10f on the queue's single choice, cash rising from 2f to 12f. Confirmed normal play (buy/sell, dispatch, household, ledger) was inert while an event card was up and resumed the instant it was resolved. Reset the campaign afterward. `tsc --noEmit` and `vite build` both clean.
+
+---
+
 ## Decisions needed from you
 
-None outstanding. Phase 5's three scope judgement calls (roster seeding, assignment-to-system mapping, Conscience trigger) were made under the same scope-discipline precedent as Phases 3/4 — no invented stand-ins for systems that don't exist yet — and are recorded as implementation notes in `banco-di-niccolo-design.md` (Section 7).
+None outstanding. Phase 6's two scope judgement calls (effects limited to flag/cash/conscience; weekly-tick trigger evaluation) follow the same scope-discipline precedent as every prior phase and are recorded as an implementation note in `banco-di-niccolo-design.md` (Section 8).
+
+Phase 5's three scope judgement calls (roster seeding, assignment-to-system mapping, Conscience trigger) were made under the same scope-discipline precedent as Phases 3/4 — no invented stand-ins for systems that don't exist yet — and are recorded as implementation notes in `banco-di-niccolo-design.md` (Section 7).
 
 Three Phase 4 scope questions were flagged for your input and confirmed on 2026-07-19 — all are now recorded as implementation notes directly in `banco-di-niccolo-design.md` (Section 5) rather than left as open questions:
 
@@ -220,4 +241,14 @@ The audit verdict (sibling app, no shared engine) is recorded in `AUDIT.md` for 
 - Built `HouseholdPanel` (roster, skills, loyalty, salary, a combined assignment dropdown per officer, Conscience/wages summary) and wired it into `App.tsx`; added a Conscience readout to the header; taught `DispatchesPanel` to name an investigating officer inline with a city's latency.
 - Extended the save-guard for `characters`/`conscience`.
 - Verified end-to-end in the browser: negotiated a bill's rate down via Julius at Bruges, cut London's report latency in half by assigning Tobie to investigate there (confirmed against the courier-investment button switching to "Fastest"), watched a wool purchase get cheaper with Marian aboard the ship, wrote a prince loan and watched Conscience and Godscalc/Tobie's loyalty fall while the rest of the roster was untouched, then starved the payroll on purpose and watched every active officer's loyalty drop uniformly on the next `ADVANCE_WEEK`. Reset the campaign to a clean state afterward.
+- `tsc --noEmit` and `vite build` both clean.
+
+### 2026-07-19 — Phase 6
+- Added `ScriptedEvent`/`EventTrigger`/`EventChoice`/`EventEffects` types and `GameState.flags`/`firedEvents`/`pendingEvents`; added the `RESOLVE_EVENT` action.
+- Built `sim/events.ts`: `triggerMatches` (date/location/flag, AND-combined) and `checkTriggers` (queues newly-satisfied events, never refires a fired one) and `resolveEvent` (applies the front-of-queue choice's effects, marks it fired).
+- Wired `checkTriggers` into `createInitialState` and the end of `advanceWeek`; `processAction` now blocks every action except `RESOLVE_EVENT` while an event is pending, mirroring the existing `insolvent` short-circuit.
+- Authored 10 test events as JSON (`content/events/chapter1.json`), including two flag-gated chains, to exercise every trigger and effect field without writing any Chapter 1 narrative content.
+- Extended the save-guard for the new fields; built `EventOverlay` (title, body, one button per choice, full-screen modal) and wired it into `App.tsx`.
+- Created `.claude/launch.json` (it didn't exist yet) so the niccolo dev server could be previewed for verification.
+- Verified end-to-end in the browser: a week-0 date+location event fired and blocked the UI immediately on a fresh campaign; a second date-triggered event fired on schedule three weeks later; refusing its shortcut choice set a flag whose chained follow-up event fired only on the *next* week's tick (not instantly), paying out cash on resolution; confirmed normal play was inert while an event card was open and resumed immediately after resolving it. Reset the campaign afterward.
 - `tsc --noEmit` and `vite build` both clean.

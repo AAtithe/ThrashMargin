@@ -1,0 +1,109 @@
+[
+  {
+    "id": "ev_c1_001",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-03-01", "location": "bruges" },
+    "title": "A ledger left open",
+    "body": "Julius sets the counting-house book in front of you, open to a page of his own corrections. He says nothing about who the errors belonged to before he found them.",
+    "choices": [
+      { "text": "Go through the figures yourself, line by line", "effects": { "flag": "audited_ledger" } },
+      { "text": "Take his word for it and move on", "effects": { "flag": "trusted_julius", "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c1_002",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-04-01", "location": "bruges" },
+    "title": "The dyeworks apprentice",
+    "body": "A cloth merchant offers good money for a rush batch of madder-dyed wool, no questions asked about how the colour is fixed so fast. The usual process wants another week the merchant won't wait for.",
+    "choices": [
+      { "text": "Take the commission and cut the process short", "effects": { "cash": 15, "conscience": -2 } },
+      { "text": "Refuse — the vats are done properly or not at all", "effects": { "flag": "refused_shortcut" } }
+    ]
+  },
+  {
+    "id": "ev_c1_003",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-04-01", "flag": "refused_shortcut" },
+    "title": "Word gets around",
+    "body": "A wool-stapler who lost money to a dyer's shortcut last year hears you turned down easy coin rather than rush a vat. He brings his custom to the Charetty house instead.",
+    "choices": [
+      { "text": "Accept the custom", "effects": { "cash": 10, "flag": "reputation_probity" } }
+    ]
+  },
+  {
+    "id": "ev_c1_004",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-05-01", "location": "bruges" },
+    "title": "Simon's courtesy",
+    "body": "Simon de St Pol finds you on the Bruges quay and delivers a compliment shaped like an insult, loudly enough for the dockhands to hear.",
+    "choices": [
+      { "text": "Answer with a joke of your own", "effects": { "flag": "simon_humiliated" } },
+      { "text": "Say nothing and let him talk", "effects": { "flag": "simon_ignored", "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c1_005",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-06-01", "location": "london" },
+    "title": "A dockside rumour",
+    "body": "A stevedore at the London wharves offers, for a few pence, a name and a ship due in from Calais with a hold worth knowing about before the rest of the quay does.",
+    "choices": [
+      { "text": "Pay for the tip", "effects": { "cash": -5, "flag": "dockside_tip" } },
+      { "text": "Walk on", "effects": {} }
+    ]
+  },
+  {
+    "id": "ev_c1_006",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-06-01", "flag": "dockside_tip" },
+    "title": "The rumour proves true",
+    "body": "The ship the stevedore named comes in exactly as he said, and the cargo it carries moves the London market before anyone else has heard of it.",
+    "choices": [
+      { "text": "Take the profit", "effects": { "cash": 25, "flag": "tip_paid_off" } }
+    ]
+  },
+  {
+    "id": "ev_c1_007",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-07-01", "location": "bruges" },
+    "title": "Godscalc's counsel",
+    "body": "Father Godscalc asks, without preamble, whether a bank's ledger and a man's conscience are kept in the same hand or two different ones.",
+    "choices": [
+      { "text": "Hear him out", "effects": { "conscience": 3 } },
+      { "text": "Tell him the ledger comes first", "effects": { "conscience": -1 } }
+    ]
+  },
+  {
+    "id": "ev_c1_008",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-08-01", "location": "venice" },
+    "title": "News from the Rialto",
+    "body": "A broker at the Rialto steps, recognising the Charetty mark on your manifest, offers to talk further than the going gossip — for a price, and in private.",
+    "choices": [
+      { "text": "Press him for more", "effects": { "cash": -3, "flag": "rialto_contact" } },
+      { "text": "Note the offer and move on", "effects": { "flag": "rialto_noted" } }
+    ]
+  },
+  {
+    "id": "ev_c1_009",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-09-01", "flag": "simon_humiliated" },
+    "title": "Simon remembers",
+    "body": "A shipment that should have cleared Calais on schedule is delayed a week by a customs officer who owes Simon de St Pol a favour. Nothing can be proven; nothing needs to be.",
+    "choices": [
+      { "text": "Absorb the loss and say nothing", "effects": { "cash": -10, "flag": "stpol_grudge" } }
+    ]
+  },
+  {
+    "id": "ev_c1_010",
+    "chapter": 1,
+    "trigger": { "dateAfter": "1460-10-01", "location": "bruges" },
+    "title": "A season's reckoning",
+    "body": "The dyeworks is quiet for an evening. Marian asks what the last seven months have actually added up to, beyond the entries in the book.",
+    "choices": [
+      { "text": "Take stock quietly", "effects": { "flag": "season_reckoned", "conscience": 1 } },
+      { "text": "Celebrate the takings instead", "effects": { "cash": -5, "flag": "season_celebrated" } }
+    ]
+  }
+]

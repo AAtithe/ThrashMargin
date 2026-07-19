@@ -1,13 +1,15 @@
 import { useState } from 'react';
 import { formatWeekDate } from '@repo/engine';
 import { useGameLocal } from './hooks/useGameLocal';
-import { CITIES, CAMPAIGN_START, findCity } from './sim/content';
+import { CITIES, CAMPAIGN_START, findCity, findEvent } from './sim/content';
 import { cargoTotal } from './sim/market';
 import MapView from './components/MapView';
 import MarketPanel from './components/MarketPanel';
 import DispatchesPanel from './components/DispatchesPanel';
 import LedgerPanel from './components/LedgerPanel';
 import HouseholdPanel from './components/HouseholdPanel';
+import EventOverlay from './components/EventOverlay';
+import PortalNav from './components/PortalNav';
 
 const STYLE: React.CSSProperties = {
   minHeight: '100vh',
@@ -97,21 +99,34 @@ export default function App() {
 
   if (state.insolvent) {
     return (
-      <div style={{ ...STYLE, alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-        <h1 style={TITLE}>The house is insolvent</h1>
-        <p style={{ color: '#8a7a5a', maxWidth: '28rem', textAlign: 'center' }}>
-          A matured obligation could not be met, even after a forced sale of every docked cargo.
-          The company is ruined in {formatWeekDate(state.week, CAMPAIGN_START)}.
-        </p>
-        <button style={BUTTON} onClick={resetGame}>
-          Start a new campaign
-        </button>
+      <div style={STYLE}>
+        <PortalNav variant="header" />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
+          <h1 style={TITLE}>The house is insolvent</h1>
+          <p style={{ color: '#8a7a5a', maxWidth: '28rem', textAlign: 'center' }}>
+            A matured obligation could not be met, even after a forced sale of every docked cargo.
+            The company is ruined in {formatWeekDate(state.week, CAMPAIGN_START)}.
+          </p>
+          <button style={BUTTON} onClick={resetGame}>
+            Start a new campaign
+          </button>
+        </div>
+        <PortalNav variant="footer" />
       </div>
     );
   }
 
+  const pendingEvent = state.pendingEvents[0] ? findEvent(state.pendingEvents[0]) : null;
+
   return (
     <div style={STYLE}>
+      {pendingEvent && (
+        <EventOverlay
+          event={pendingEvent}
+          onChoose={choiceIndex => dispatch({ type: 'RESOLVE_EVENT', eventId: pendingEvent.id, choiceIndex })}
+        />
+      )}
+      <PortalNav variant="header" />
       <header style={HEADER}>
         <h1 style={TITLE}>Banco di Niccolo</h1>
         <span style={CLOCK}>
@@ -224,6 +239,7 @@ export default function App() {
           </button>
         </div>
       </div>
+      <PortalNav variant="footer" />
     </div>
   );
 }

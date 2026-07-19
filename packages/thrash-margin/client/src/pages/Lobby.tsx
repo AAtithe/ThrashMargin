@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import type { SaveMeta } from '../hooks/useGameLocal';
 import { getStoredUser, clearToken } from '../lib/token';
+import PortalNav from '../components/PortalNav';
 import { MAP_DEFS, ACHIEVEMENT_DEFS, CAMPAIGN_SCENARIOS } from 'shared/engine-reference';
 import type { GameConfig, Difficulty } from 'shared/types';
 
@@ -182,6 +183,7 @@ export default function Lobby() {
 
   return (
     <div style={s.page}>
+      <PortalNav variant="header" />
       <header style={s.header}>
         <div style={s.headerInner}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
@@ -476,6 +478,7 @@ export default function Lobby() {
         <span style={{ flex: 1 }} />
         <span>v0.1 · open source hobby project</span>
       </footer>
+      <PortalNav variant="footer" />
     </div>
   );
 }

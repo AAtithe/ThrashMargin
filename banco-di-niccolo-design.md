@@ -233,6 +233,12 @@ Persistent tracks:
 
 Chapter transitions replicate the novels' pattern: each chapter ends with a commercial triumph immediately taxed by a personal catastrophe, and the next chapter opens with the player rebuilding.
 
+> **Phase 6 implementation, confirmed 2026-07-19:** the event data model above is built almost verbatim — `id`, `chapter`, `trigger` (`dateAfter`/`location`/`flag`, AND-combined), `title`, `body`, `choices[].{text, effects}` — as `ScriptedEvent` in `packages/niccolo/src/sim/types.ts`, with content authored as JSON (`packages/niccolo/src/content/events/chapter1.json`), never in code, per §0's own rule. Two scope points not spelled out above:
+>
+> Effects are limited to what already exists in the sim — `flag` (sets a flag permanently), `cash` (delta to the florin balance), `conscience` (delta, clamped 0-100) — not the `rep.stpol`-style house-reputation effect this section's own example shows. Reputation-with-a-house has no home to live in until AI houses exist (Phase 8); inventing a `rep` bag now would mean either a dead stat or a second, competing reputation system once Phase 8 lands. The 10 test events (`ev_c1_001` through `ev_c1_010`) exercise `flag` and `cash` and `conscience` and two deliberate flag-gated chains (`refused_shortcut` → `reputation_probity`, `dockside_tip` → `tip_paid_off`) to prove chaining works, not to narrate Chapter 1 itself — that's Phase 7's content pack.
+>
+> Triggers are evaluated once per `ADVANCE_WEEK` (and once at campaign start, for anything satisfiable at week 0), not the instant a flag is set. A choice made this week that satisfies another event's `flag` trigger surfaces that event on the *next* week's tick, not immediately — turns are weekly, so this reads as the natural grain rather than a same-tick chain reaction. A fired event never fires again; only one event is ever mid-decision at a time (a queue, oldest first), and while one is pending, `processAction` blocks every other action except `RESOLVE_EVENT` — mirroring the existing `insolvent` short-circuit in `sim/actions.ts` and matching pillar 3 (personal events interrupt commercial play, not run alongside it).
+
 ---
 
 ## 9. CHAPTER OUTLINES

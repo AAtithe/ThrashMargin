@@ -26,6 +26,10 @@ function readSave(): GameState | null {
     if (!parsed.characters || typeof parsed.conscience !== 'number') {
       return null;
     }
+    // Saves from before Phase 6 lack the event-engine fields.
+    if (!parsed.flags || !parsed.firedEvents || !parsed.pendingEvents) {
+      return null;
+    }
     return parsed;
   } catch {
     return null;

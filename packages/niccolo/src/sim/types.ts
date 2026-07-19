@@ -127,6 +127,42 @@ export interface Character {
   assignment: CharacterAssignment;
 }
 
+/**
+ * All conditions present must hold for the event to trigger (AND semantics). `dateAfter` is
+ * an ISO calendar date compared against the in-game clock; `location` requires some vessel to
+ * be docked (not under way) at that city; `flag` requires a flag already set by an earlier
+ * event's choice — the mechanism for scripting a chain.
+ */
+export interface EventTrigger {
+  dateAfter?: string;
+  location?: string;
+  flag?: string;
+}
+
+/**
+ * Effects an event choice can apply. Only systems that already exist in the sim are wired —
+ * no `rep.*` (AI houses, Phase 8) and no scripted death/departure (Phase 7+ chapter content).
+ */
+export interface EventEffects {
+  flag?: string;
+  cash?: number;
+  conscience?: number;
+}
+
+export interface EventChoice {
+  text: string;
+  effects: EventEffects;
+}
+
+export interface ScriptedEvent {
+  id: string;
+  chapter: number;
+  trigger: EventTrigger;
+  title: string;
+  body: string;
+  choices: EventChoice[];
+}
+
 export interface GameState {
   id: string;
   week: number;
@@ -145,6 +181,12 @@ export interface GameState {
   characters: Character[];
   /** 0-100, starts clean at 100. Certain profitable-but-costly actions spend it permanently. */
   conscience: number;
+  /** Flags set permanently by event choices; other events' triggers can require one. */
+  flags: Record<string, boolean>;
+  /** Ids of events already resolved. An event never fires twice. */
+  firedEvents: string[];
+  /** Ids of events that have triggered and are awaiting a player choice, oldest first. */
+  pendingEvents: string[];
 }
 
 export type GameAction =
@@ -157,4 +199,5 @@ export type GameAction =
   | { type: 'TAKE_DEPOSIT'; florins: number; termWeeks: number }
   | { type: 'WRITE_LOAN'; kind: 'merchant' | 'prince'; florins: number; termWeeks: number }
   | { type: 'DISCOUNT_OBLIGATION'; obligationId: string }
-  | { type: 'ASSIGN_CHARACTER'; characterId: string; assignment: CharacterAssignment };
+  | { type: 'ASSIGN_CHARACTER'; characterId: string; assignment: CharacterAssignment }
+  | { type: 'RESOLVE_EVENT'; eventId: string; choiceIndex: number };

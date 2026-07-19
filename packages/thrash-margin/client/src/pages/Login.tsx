@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getToken, setToken, setStoredUser } from '../lib/token';
+import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
@@ -43,8 +44,10 @@ export default function Login() {
   };
 
   return (
-    <div style={s.page}>
-      <div style={s.card}>
+    <div style={s.outer}>
+      <PortalNav variant="header" />
+      <div style={s.page}>
+        <div style={s.card}>
         <h1 style={s.title}>Thrash Margin</h1>
         <p style={s.subtitle}>Territory · Economy · Conquest</p>
 
@@ -76,13 +79,16 @@ export default function Login() {
             {loading ? '…' : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
           </button>
         </form>
+        </div>
       </div>
+      <PortalNav variant="footer" />
     </div>
   );
 }
 
 const s: Record<string, React.CSSProperties> = {
-  page:    { minHeight: '100vh', background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif' },
+  outer:   { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
+  page:    { flex: 1, background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif' },
   card:    { background: '#161b22', border: '1px solid #30363d', borderRadius: 10, padding: '40px 48px', width: 340 },
   title:   { color: '#e6edf3', fontSize: 28, fontWeight: 700, margin: '0 0 4px', letterSpacing: -0.5 },
   subtitle:{ color: '#7d8590', margin: '0 0 28px', fontSize: 13 },

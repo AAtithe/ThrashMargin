@@ -3,6 +3,7 @@ import { HOME_CITY, findCity, findRoute } from './content';
 import { assignCharacter, resolveWeeklyUpkeep, tradeBonus } from './characters';
 import { discountObligation, resolveMaturingObligations, takeDeposit, writeBill, writeLoan } from './credit';
 import { driftExchangeRates } from './currency';
+import { checkTriggers, resolveEvent } from './events';
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, driftScarcity, priceAt } from './market';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
 import type { GameState, GameAction, Vessel } from './types';
@@ -106,7 +107,7 @@ function advanceWeek(state: GameState): GameState {
   const knownPrices = { ...state.knownPrices };
   for (const item of arrived) knownPrices[item.cityId] = item;
 
-  return {
+  return checkTriggers({
     ...state,
     week,
     cash: upkeep.cash,
@@ -118,7 +119,7 @@ function advanceWeek(state: GameState): GameState {
     scarcity,
     pendingNews: stillPending,
     knownPrices,
-  };
+  });
 }
 
 function investCourier(state: GameState, cityId: string): GameState {
@@ -142,6 +143,7 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
+  if (state.pendingEvents.length > 0 && action.type !== 'RESOLVE_EVENT') return state;
 
   switch (action.type) {
     case 'ADVANCE_WEEK':
@@ -164,6 +166,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return discountObligation(state, action.obligationId);
     case 'ASSIGN_CHARACTER':
       return assignCharacter(state, action.characterId, action.assignment);
+    case 'RESOLVE_EVENT':
+      return resolveEvent(state, action.eventId, action.choiceIndex);
     default:
       return state;
   }
