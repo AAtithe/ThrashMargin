@@ -1,0 +1,14 @@
+node_modules/
+packages/*/node_modules/
+packages/*/dist/
+packages/*/client/node_modules/
+packages/*/client/dist/
+.env
+.env.local
+*.log
+.DS_Store
+.vite/
+coverage/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

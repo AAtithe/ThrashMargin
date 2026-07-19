@@ -1,0 +1,11 @@
+{
+  "name": "hobbies-monorepo",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev:tm": "npm run dev --workspace=packages/thrash-margin",
+    "dev:niccolo": "npm run dev --workspace=packages/niccolo",
+    "build:tm": "npm run build --workspace=packages/thrash-margin",
+    "build:niccolo": "npm run build --workspace=packages/niccolo"
+  }
+}
