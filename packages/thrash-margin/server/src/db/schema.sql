@@ -14,9 +14,14 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Games
+-- `game` discriminates which app owns this row so Thrash Margin and Banco di Niccolo (and any
+-- future game) can share one users/games/auth infrastructure instead of standing up a second
+-- database. Existing rows predate this column and default to 'thrash_margin', so no backfill
+-- is needed.
 CREATE TABLE IF NOT EXISTS games (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  game        VARCHAR(16) NOT NULL DEFAULT 'thrash_margin',  -- 'thrash_margin' | 'niccolo'
   mode        VARCHAR(16) NOT NULL DEFAULT 'single',  -- 'single' | 'pvp'
   status      VARCHAR(16) NOT NULL DEFAULT 'active',  -- 'active' | 'victory' | 'defeated'
   turn        INTEGER NOT NULL DEFAULT 1,
@@ -25,6 +30,11 @@ CREATE TABLE IF NOT EXISTS games (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotent migration for a database created before the `game` column existed (e.g. the
+-- already-deployed Supabase instance) — running this file again against a fresh install is a
+-- harmless no-op since the column is already in the CREATE TABLE above.
+ALTER TABLE games ADD COLUMN IF NOT EXISTS game VARCHAR(16) NOT NULL DEFAULT 'thrash_margin';
 
 -- Action log (for replay and audit)
 CREATE TABLE IF NOT EXISTS game_actions (
@@ -50,6 +60,7 @@ CREATE TABLE IF NOT EXISTS player_stats (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_games_owner    ON games(owner_id);
 CREATE INDEX IF NOT EXISTS idx_games_status   ON games(status);
+CREATE INDEX IF NOT EXISTS idx_games_owner_game ON games(owner_id, game);
 CREATE INDEX IF NOT EXISTS idx_actions_game   ON game_actions(game_id);
 CREATE INDEX IF NOT EXISTS idx_actions_turn   ON game_actions(game_id, turn);
 

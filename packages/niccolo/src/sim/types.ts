@@ -253,6 +253,9 @@ export interface Agent {
 
 export interface GameState {
   id: string;
+  /** Player-chosen campaign name, shown in the lobby's save list. Optional only because saves
+   * from before multi-campaign support (Phase 8's persistence work) predate the field. */
+  name?: string;
   week: number;
   cash: number;
   vessels: Vessel[];

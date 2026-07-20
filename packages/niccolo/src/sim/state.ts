@@ -11,7 +11,7 @@ import type { GameState } from './types';
 const STARTING_CASH = 40;
 const SHIP_CAPACITY = 20;
 
-export function createInitialState(id: string): GameState {
+export function createInitialState(id: string, name?: string): GameState {
   const scarcity = initialScarcity();
   const characters = CHARACTERS.map(c => ({ ...c, skills: { ...c.skills } }));
   const seedNews = generateNews(scarcity, 0, {}, characters);
@@ -21,6 +21,7 @@ export function createInitialState(id: string): GameState {
 
   const state: GameState = {
     id,
+    name,
     week: 0,
     cash: STARTING_CASH,
     scarcity,

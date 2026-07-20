@@ -1,17 +1,18 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { formatWeekDate } from '@repo/engine';
-import { useGameLocal } from './hooks/useGameLocal';
-import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent } from './sim/content';
-import { cargoTotal } from './sim/market';
-import MapView from './components/MapView';
-import MarketPanel from './components/MarketPanel';
-import DispatchesPanel from './components/DispatchesPanel';
-import LedgerPanel from './components/LedgerPanel';
-import HouseholdPanel from './components/HouseholdPanel';
-import HousesPanel from './components/HousesPanel';
-import SecretsPanel from './components/SecretsPanel';
-import EventOverlay from './components/EventOverlay';
-import PortalNav from './components/PortalNav';
+import { useGameHybrid } from '../hooks/useGameHybrid';
+import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent } from '../sim/content';
+import { cargoTotal } from '../sim/market';
+import MapView from '../components/MapView';
+import MarketPanel from '../components/MarketPanel';
+import DispatchesPanel from '../components/DispatchesPanel';
+import LedgerPanel from '../components/LedgerPanel';
+import HouseholdPanel from '../components/HouseholdPanel';
+import HousesPanel from '../components/HousesPanel';
+import SecretsPanel from '../components/SecretsPanel';
+import EventOverlay from '../components/EventOverlay';
+import PortalNav from '../components/PortalNav';
 
 const STYLE: React.CSSProperties = {
   minHeight: '100vh',
@@ -82,9 +83,40 @@ const BUTTON_ACTIVE: React.CSSProperties = {
   color: '#e8d5a3',
 };
 
-export default function App() {
-  const { state, error, dispatch, resetGame } = useGameLocal();
-  const [selectedVesselId, setSelectedVesselId] = useState<string | null>(state.vessels[0]?.id ?? null);
+function CenteredMessage({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={STYLE}>
+      <PortalNav variant="header" />
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: '#8a7a5a' }}>{children}</p>
+      </div>
+      <PortalNav variant="footer" />
+    </div>
+  );
+}
+
+export default function GameScreen() {
+  const { id } = useParams<{ id: string }>();
+  const { state, error, dispatch, loadGame, deleteGame } = useGameHybrid();
+  const nav = useNavigate();
+  const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (id) loadGame(id);
+  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setSelectedVesselId(state?.vessels[0]?.id ?? null);
+  }, [state?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const abandonAndReturn = () => {
+    if (id) deleteGame(id);
+    nav('/');
+  };
+
+  if (!state) {
+    return <CenteredMessage>Loading campaign…</CenteredMessage>;
+  }
 
   const selectedVessel = state.vessels.find(v => v.id === selectedVesselId) ?? null;
   const dockedCityIds = new Set(state.vessels.filter(v => !v.destination).map(v => v.location));
@@ -109,8 +141,8 @@ export default function App() {
             A matured obligation could not be met, even after a forced sale of every docked cargo.
             The company is ruined in {formatWeekDate(state.week, CAMPAIGN_START)}.
           </p>
-          <button style={BUTTON} onClick={resetGame}>
-            Start a new campaign
+          <button style={BUTTON} onClick={() => nav('/')}>
+            Return to campaigns
           </button>
         </div>
         <PortalNav variant="footer" />
@@ -137,8 +169,8 @@ export default function App() {
               ? ` Left the company along the way: ${departed.map(c => c.name).join(', ')}.`
               : ' The household is intact.'}
           </p>
-          <button style={BUTTON} onClick={resetGame}>
-            Start a new campaign
+          <button style={BUTTON} onClick={() => nav('/')}>
+            Return to campaigns
           </button>
         </div>
         <PortalNav variant="footer" />
@@ -158,7 +190,7 @@ export default function App() {
       )}
       <PortalNav variant="header" />
       <header style={HEADER}>
-        <h1 style={TITLE}>Banco di Niccolo</h1>
+        <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
         <span style={CLOCK}>
           {Math.round(state.cash)}f &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
           &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
@@ -279,8 +311,11 @@ export default function App() {
             Advance one week
           </button>
 
-          <button style={{ ...BUTTON, marginTop: 'auto', color: '#6a5a40' }} onClick={resetGame}>
-            Reset campaign
+          <button style={{ ...BUTTON, marginTop: 'auto', color: '#6a5a40' }} onClick={() => nav('/')}>
+            ← Back to campaigns
+          </button>
+          <button style={{ ...BUTTON, color: '#6a5a40' }} onClick={abandonAndReturn}>
+            Abandon this campaign
           </button>
         </div>
       </div>
