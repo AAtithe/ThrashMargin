@@ -1,7 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { handleCors } from './_lib/cors';
+import { dateForWeek } from '@repo/engine';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (handleCors(req, res)) return;
-  return res.status(200).json({ ok: true, which: 'lib-only-v2' });
+  return res.status(200).json({ ok: true, which: 'repo-engine-only', date: String(dateForWeek(0, new Date(2026, 0, 1))) });
 }
