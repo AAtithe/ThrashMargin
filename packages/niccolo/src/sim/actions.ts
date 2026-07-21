@@ -1,4 +1,4 @@
-import { advanceWeek as advanceWeekCounter } from '@repo/engine';
+import { advanceWeek as advanceWeekCounter } from './clock';
 import { HOME_CITY, findCity, findRoute } from './content';
 import { assignCharacter, resolveWeeklyUpkeep, tradeBonus } from './characters';
 import { resolveWeeklyCondotta } from './condotta';

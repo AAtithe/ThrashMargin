@@ -1,4 +1,4 @@
-import { dateForWeek } from '@repo/engine';
+import { dateForWeek } from './clock';
 import { CAMPAIGN_START, EVENTS, findEvent } from './content';
 import { addSecret } from './secrets';
 import { startCondotta } from './condotta';
