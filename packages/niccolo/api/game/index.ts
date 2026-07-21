@@ -1,8 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v4 as uuid } from 'uuid';
-import { getDb } from '../../../thrash-margin/api/_lib/db';
-import { getUser } from '../../../thrash-margin/api/_lib/auth';
-import { handleCors } from '../../../thrash-margin/api/_lib/cors';
+import { getDb } from '../_lib/db';
+import { getUser } from '../_lib/auth';
+import { handleCors } from '../_lib/cors';
 import { createInitialState } from '../../src/sim/state';
 
 /**
