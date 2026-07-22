@@ -1,5 +1,5 @@
 import { advanceWeek as advanceWeekCounter } from './clock';
-import { HOME_CITY, findCity, findRoute } from './content';
+import { HOME_CITY, ROUTES, findCity, findRoute } from './content';
 import { assignCharacter, resolveWeeklyUpkeep, tradeBonus } from './characters';
 import { resolveWeeklyCondotta } from './condotta';
 import { discountObligation, resolveMaturingObligations, takeDeposit, writeBill, writeLoan } from './credit';
@@ -14,6 +14,7 @@ import {
   resolveHouseSabotage,
   resolveWeeklyAgentIntelligence,
 } from './houses';
+import { canInsureAt, clearArrivedInsurance, quoteInsurance, resolveVoyageRisk } from './insurance';
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, driftScarcity, priceAt } from './market';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
 import { resolveSecretExpiry, useSecret } from './secrets';
@@ -28,7 +29,7 @@ function tickVessel(v: Vessel): Vessel {
   return { ...v, weeksRemaining };
 }
 
-function dispatchVessel(state: GameState, vesselId: string, destinationId: string): GameState {
+function dispatchVessel(state: GameState, vesselId: string, destinationId: string, insure?: boolean): GameState {
   const vessel = state.vessels.find(v => v.id === vesselId);
   if (!vessel) throw new Error(`No such vessel: ${vesselId}`);
   if (vessel.destination) throw new Error(`${vessel.name} is already under way`);
@@ -40,8 +41,28 @@ function dispatchVessel(state: GameState, vesselId: string, destinationId: strin
     throw new Error(`${vessel.name} cannot travel by sea`);
   }
 
+  let cash = state.cash;
+  let insurance = state.insurance ?? [];
+  if (insure) {
+    if (!canInsureAt(vessel.location)) {
+      throw new Error('Insurance is only underwritten at Bruges, Venice, or Genoa');
+    }
+    const quote = quoteInsurance(state, vessel, route, destinationId);
+    if (quote.coverage <= 0) throw new Error(`${vessel.name} is carrying no cargo to insure`);
+    if (quote.premium > cash) {
+      throw new Error(`Not enough cash for the premium (need ${quote.premium}, have ${Math.round(cash)})`);
+    }
+    cash -= quote.premium;
+    insurance = [
+      ...insurance.filter(i => i.vesselId !== vesselId),
+      { vesselId, routeId: route.id, coverage: quote.coverage, premiumPaid: quote.premium },
+    ];
+  }
+
   return {
     ...state,
+    cash,
+    insurance,
     vessels: state.vessels.map(v =>
       v.id === vesselId
         ? { ...v, destination: destinationId, routeId: route.id, weeksRemaining: route.distanceWeeks }
@@ -116,7 +137,10 @@ function advanceWeek(state: GameState): GameState {
   const houseRelations = driftHouseRelations(state.houseRelations, state.flags);
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
-  const sabotage = resolveHouseSabotage(maturity.vessels.map(tickVessel));
+  const risk = resolveVoyageRisk(maturity.vessels, state.insurance ?? [], ROUTES, week);
+  const tickedVessels = risk.vessels.map(tickVessel);
+  const insurance = clearArrivedInsurance(risk.insurance, tickedVessels);
+  const sabotage = resolveHouseSabotage(tickedVessels);
   const estate = resolveWeeklyEstate(state.estate);
 
   const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
@@ -132,7 +156,7 @@ function advanceWeek(state: GameState): GameState {
   return checkTriggers({
     ...state,
     week,
-    cash: condottaResolution.cash,
+    cash: condottaResolution.cash + risk.cashDelta,
     vessels: sabotage.vessels,
     obligations: maturity.obligations,
     insolvent: state.insolvent || maturity.insolvent,
@@ -146,6 +170,8 @@ function advanceWeek(state: GameState): GameState {
     pendingNews: stillPending,
     knownPrices,
     estate,
+    insurance,
+    lastVoyageEvent: risk.event ?? state.lastVoyageEvent,
   });
 }
 
@@ -181,7 +207,7 @@ export function processAction(state: GameState, action: GameAction): GameState {
     case 'ADVANCE_WEEK':
       return advanceWeek(state);
     case 'DISPATCH_VESSEL':
-      return dispatchVessel(state, action.vesselId, action.destinationId);
+      return dispatchVessel(state, action.vesselId, action.destinationId, action.insure);
     case 'BUY_GOOD':
       return buyGood(state, action.vesselId, action.goodId, action.quantity);
     case 'SELL_GOOD':

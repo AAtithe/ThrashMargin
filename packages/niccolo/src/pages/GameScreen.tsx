@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { formatWeekDate } from '../sim/clock';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent } from '../sim/content';
+import { canInsureAt } from '../sim/insurance';
 import { cargoTotal } from '../sim/market';
 import MapView from '../components/MapView';
 import MarketPanel from '../components/MarketPanel';
@@ -16,7 +17,13 @@ import EventOverlay from '../components/EventOverlay';
 import PortalNav from '../components/PortalNav';
 
 const STYLE: React.CSSProperties = {
-  minHeight: '100vh',
+  // Bounded to the viewport (not just a minimum) so BODY's flex:1 has a real cap to divide —
+  // otherwise the sidebar's own content height (many stacked panels) stretches this whole
+  // container taller, and MAP_PANE's height:100% svg stretches right along with it, pushing
+  // cities near the bottom of the map below the fold. SIDEBAR already scrolls internally
+  // (overflowY: auto); this is what lets that actually take effect instead of growing the page.
+  height: '100vh',
+  overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
   background: '#0e0b07',
@@ -101,6 +108,7 @@ export default function GameScreen() {
   const { state, error, dispatch, loadGame, deleteGame } = useGameHybrid();
   const nav = useNavigate();
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
+  const [insureNext, setInsureNext] = useState(false);
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -109,6 +117,10 @@ export default function GameScreen() {
   useEffect(() => {
     setSelectedVesselId(state?.vessels[0]?.id ?? null);
   }, [state?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    setInsureNext(false);
+  }, [selectedVesselId]);
 
   const abandonAndReturn = () => {
     if (id) deleteGame(id);
@@ -129,8 +141,16 @@ export default function GameScreen() {
 
   const handleSelectCity = (cityId: string) => {
     if (!selectedVessel) return;
-    dispatch({ type: 'DISPATCH_VESSEL', vesselId: selectedVessel.id, destinationId: cityId });
+    dispatch({ type: 'DISPATCH_VESSEL', vesselId: selectedVessel.id, destinationId: cityId, insure: insureNext });
+    setInsureNext(false);
   };
+
+  const activePolicy = selectedVessel ? state.insurance.find(i => i.vesselId === selectedVessel.id) : undefined;
+  const canOfferInsurance =
+    !!selectedVessel &&
+    !selectedVessel.destination &&
+    canInsureAt(selectedVessel.location) &&
+    cargoTotal(selectedVessel.cargo) > 0;
 
   if (state.insolvent) {
     return (
@@ -239,6 +259,16 @@ export default function GameScreen() {
             })}
           </div>
 
+          {state.lastVoyageEvent && (
+            <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+              Week {state.lastVoyageEvent.week}: storm struck {state.lastVoyageEvent.vesselName} — lost{' '}
+              {state.lastVoyageEvent.quantityLost} {state.lastVoyageEvent.goodId}.{' '}
+              {state.lastVoyageEvent.insured
+                ? <span style={{ color: '#3a6b5a' }}>Insurance paid {state.lastVoyageEvent.payout}f.</span>
+                : <span style={{ color: '#b5451a' }}>Uninsured — a total loss.</span>}
+            </p>
+          )}
+
           <p style={{ fontSize: '0.8rem', color: '#8a7a5a', margin: 0 }}>
             {selectedVessel
               ? selectedVessel.destination
@@ -246,6 +276,24 @@ export default function GameScreen() {
                 : `Select a lit city on the map to send ${selectedVessel.name} there.`
               : 'Select a vessel.'}
           </p>
+
+          {activePolicy && (
+            <p style={{ fontSize: '0.75rem', color: '#3a6b5a', margin: 0 }}>
+              Insured for {Math.round(activePolicy.coverage)}f this voyage (premium {activePolicy.premiumPaid}f paid).
+            </p>
+          )}
+
+          {canOfferInsurance && (
+            <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start' }}>
+              <input type="checkbox" checked={insureNext} onChange={e => setInsureNext(e.target.checked)} />
+              <span>
+                Insure this cargo before it departs — underwritten here at{' '}
+                {findCity(selectedVessel!.location)?.name}. Premium reflects the route's risk and how stale our
+                own word from the destination is; charged when you choose where to send{' '}
+                {selectedVessel!.name}.
+              </span>
+            </label>
+          )}
 
           {selectedVessel && !selectedVessel.destination && selectedVessel.capacity > 0 && (
             <MarketPanel

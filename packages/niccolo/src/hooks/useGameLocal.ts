@@ -24,8 +24,8 @@ function statusOf(s: GameState): SaveMeta['status'] {
   return 'active';
 }
 
-/** A save from before Phase 2/3/4/5/6/7/8 is missing fields those phases added and would crash
- * the sim if loaded as-is — discard it rather than throw, matching every prior phase's guard. */
+/** A save from before Phase 2/3/4/5/6/7/8/10/11 is missing fields those phases added and would
+ * crash the sim if loaded as-is — discard it rather than throw, matching every prior phase's guard. */
 function isCurrentShape(parsed: unknown): parsed is GameState {
   const s = parsed as Partial<GameState> | null;
   if (!s || typeof s !== 'object') return false;
@@ -37,6 +37,7 @@ function isCurrentShape(parsed: unknown): parsed is GameState {
   if (!s.secrets || !('condotta' in s)) return false;
   if (!s.houseRelations || !s.agents) return false;
   if (!('estate' in s)) return false;
+  if (!s.insurance || !('lastVoyageEvent' in s)) return false;
   return true;
 }
 

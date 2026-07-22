@@ -41,6 +41,8 @@ export function createInitialState(id: string, name?: string): GameState {
     houseRelations: initialHouseRelations(),
     agents: [],
     estate: null,
+    insurance: [],
+    lastVoyageEvent: null,
     vessels: [
       {
         id: 'ship_1',

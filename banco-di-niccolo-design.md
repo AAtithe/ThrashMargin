@@ -111,6 +111,8 @@ Logistics:
 - Ships (round ship, galley, caravel later) and land caravans. Capacity, speed, crew, escort.
 - Cargo in transit is capital at risk. Insurance is purchasable in Bruges/Venice/Genoa at a premium that reflects the insurer's information, not the player's.
 
+> **Phase 11 implementation, confirmed 2026-07-22:** this paragraph was deferred by Phase 2/3's own implementation notes to "Phase 4" and then never actually built by any phase through Phase 10 — a genuine gap, not a deliberate simplification. Closed in `packages/niccolo/src/sim/insurance.ts`: `quoteInsurance` prices a policy from the route's own risk (sea costs more than land, seasonal routes more still) plus a surcharge for how stale — or altogether absent — the underwriting city's own knowledge of the destination is, read off the existing news/latency system rather than a second information model invented just for this (the literal reading of "a premium that reflects the insurer's information, not the player's"). `resolveVoyageRisk` gives every vessel under way with cargo a weekly chance of a storm/piracy loss (one vessel hit per week at most, mirroring `resolveHouseSabotage`'s own shape); an active policy pays out cash scaled to the fraction of coverage lost, an uninsured vessel just loses the goods. Bought via an optional `insure` flag on `DISPATCH_VESSEL` while docked at Bruges/Venice/or Genoa — folded into the existing dispatch flow in `GameScreen.tsx` rather than the separate Venture Planner screen §11 describes (see that section's own note).
+
 ---
 
 ## 5. CREDIT AND BANKING
@@ -324,6 +326,8 @@ Reuse or adapt Thrash Margin's AI evaluation framework. Houses: the Medici (most
 7. Evidence board (parentage dossier, Vatachino unmasking, chapter secrets)
 8. Event overlay (scripted scenes with choices)
 
+> **Phase 11 note, confirmed 2026-07-22:** screen 3 (Counting house) has had no dedicated build since Phase 4 folded it into the Ledger screen — recorded in that phase's own note. Screen 6 (Venture planner) is still unbuilt as a dedicated screen; Phase 11 added insurance (the one part of its own description not covered elsewhere) directly into the existing dispatch flow in `GameScreen.tsx` instead of building a screen whose other components — ship, cargo, crew, route — already exist across the Map, Market, and Household panels. The same consolidation call Phase 4 made for screen 3. Screen 7 (Evidence board) remains Chapter 5+ content (the parentage dossier and Vatachino unmasking don't exist yet) and is out of scope under Section 14's current hold on Chapter 4+ work.
+
 Aesthetic direction for later: manuscript and counting-house, ink on paper, red wax accents, no fantasy chrome. Read /mnt/skills/public/frontend-design/SKILL.md before building UI.
 
 ---
@@ -364,3 +368,5 @@ Rule for every phase: content in JSON, logic in code, and the owner must be able
 ## 14. SCOPE CONTROL
 
 Chapters 1 to 3 are the game. Build those to full quality before any Chapter 4+ content. If only Chapter 1 ever exists at high polish, the project has succeeded. Do not scaffold all 8 chapters thinly.
+
+> **Phase 11, confirmed 2026-07-22:** Phases 0-10 shipped Chapters 1-3 complete, at which point Section 12's own phase list (which implies Phase 11 continues into Chapter 4, "Scales of Gold") directly conflicts with this section. Flagged before starting; the owner confirmed this section governs — Phase 11 became a Chapters 1-3 quality pass (cargo insurance/voyage risk per §4, the map SVG height regression noted since Phase 7, the api tsconfig JSX noise noted since Phase 10) rather than Chapter 4 content. Chapter 4+ work stays paused until explicitly requested, regardless of what Section 12's phase numbering would otherwise suggest comes next.

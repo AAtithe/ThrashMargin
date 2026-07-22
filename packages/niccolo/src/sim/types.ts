@@ -55,6 +55,33 @@ export interface Vessel {
   capacity: number;
 }
 
+/**
+ * Cargo insurance for one voyage (design doc §4: "purchasable in Bruges/Venice/Genoa at a
+ * premium that reflects the insurer's information, not the player's"). Bought at dispatch time
+ * while docked at one of the three underwriting cities; pays out in cash if a storm/piracy loss
+ * (see `sim/insurance.ts`) strikes that vessel before it reaches its destination. Cleared on
+ * arrival (unused) or on a loss (paid out), so at most one policy exists per vessel at a time.
+ */
+export interface Insurance {
+  vesselId: string;
+  routeId: string;
+  /** Florin value of the cargo insured, fixed at purchase. */
+  coverage: number;
+  premiumPaid: number;
+}
+
+/** The most recent storm/piracy loss, kept for the UI to report — there is no other feedback
+ * channel for something that happens automatically inside ADVANCE_WEEK. Null until the first. */
+export interface VoyageLossEvent {
+  week: number;
+  vesselId: string;
+  vesselName: string;
+  goodId: string;
+  quantityLost: number;
+  insured: boolean;
+  payout: number;
+}
+
 /** cityId -> goodId -> scarcity multiplier (1 = base price, >1 = scarce/dear, <1 = glut/cheap) */
 export type MarketScarcity = Record<string, Record<string, number>>;
 
@@ -321,11 +348,15 @@ export interface GameState {
   agents: Agent[];
   /** Chapter 3's sugar estate at Kouklia, once established. Null before then and never removable. */
   estate: Estate | null;
+  /** Active cargo-insurance policies, one per insured vessel currently under way. */
+  insurance: Insurance[];
+  /** The most recent storm/piracy loss, for the UI to report. Null until the first one occurs. */
+  lastVoyageEvent: VoyageLossEvent | null;
 }
 
 export type GameAction =
   | { type: 'ADVANCE_WEEK' }
-  | { type: 'DISPATCH_VESSEL'; vesselId: string; destinationId: string }
+  | { type: 'DISPATCH_VESSEL'; vesselId: string; destinationId: string; insure?: boolean }
   | { type: 'BUY_GOOD'; vesselId: string; goodId: string; quantity: number }
   | { type: 'SELL_GOOD'; vesselId: string; goodId: string; quantity: number }
   | { type: 'INVEST_COURIER'; cityId: string }
