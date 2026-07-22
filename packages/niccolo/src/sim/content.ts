@@ -4,6 +4,11 @@ import goodsData from '../content/goods/chapter1.json';
 import charactersData from '../content/characters/chapter1.json';
 import eventsData from '../content/events/chapter1.json';
 import housesData from '../content/houses/chapter1.json';
+import cities2Data from '../content/cities/chapter2.json';
+import routes2Data from '../content/routes/chapter2.json';
+import characters2Data from '../content/characters/chapter2.json';
+import events2Data from '../content/events/chapter2.json';
+import houses2Data from '../content/houses/chapter2.json';
 import type { City, Route, Good, Character, ScriptedEvent, House } from './types';
 
 export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
@@ -11,12 +16,25 @@ export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
 /** The Charetty company's seat — the player always has live, first-hand knowledge of prices here. */
 export const HOME_CITY = 'bruges';
 
-export const CITIES: City[] = citiesData as unknown as City[];
-export const ROUTES: Route[] = routesData as Route[];
+/**
+ * Chapter 1 (Phase 1-8) content lives in `chapter1.json` per content type; Chapter 2 (Phase 9)
+ * ships as its own `chapter2.json` files and is concatenated in here, rather than appended into
+ * the chapter1 files the way Phase 7/8 grew Naples/cannon/houses in place — this is the first
+ * phase that actually is a new chapter, so it's the first to get its own content pack on disk,
+ * establishing the pattern Section 12 describes for Phase 10+ (one chapter, one file per type).
+ */
+export const CITIES: City[] = [...(citiesData as unknown as City[]), ...(cities2Data as unknown as City[])];
+export const ROUTES: Route[] = [...(routesData as Route[]), ...(routes2Data as Route[])];
 export const GOODS: Good[] = goodsData as Good[];
-export const CHARACTERS: Character[] = charactersData as unknown as Character[];
-export const EVENTS: ScriptedEvent[] = eventsData as unknown as ScriptedEvent[];
-export const HOUSES: House[] = housesData as unknown as House[];
+export const CHARACTERS: Character[] = [
+  ...(charactersData as unknown as Character[]),
+  ...(characters2Data as unknown as Character[]),
+];
+export const EVENTS: ScriptedEvent[] = [
+  ...(eventsData as unknown as ScriptedEvent[]),
+  ...(events2Data as unknown as ScriptedEvent[]),
+];
+export const HOUSES: House[] = [...(housesData as unknown as House[]), ...(houses2Data as unknown as House[])];
 
 export function findCity(id: string): City | undefined {
   return CITIES.find(c => c.id === id);

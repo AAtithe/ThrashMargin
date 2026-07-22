@@ -1,0 +1,5 @@
+[
+  { "id": "diniz", "name": "Diniz Vasquez", "role": "ward",
+    "skills": { "law": 1, "trade": 3, "combat": 2, "intrigue": 1 },
+    "loyalty": 70, "salary": 1, "location": "bruges", "status": "pending", "assignment": { "type": "idle" } }
+]

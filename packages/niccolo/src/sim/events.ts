@@ -1,5 +1,5 @@
 import { dateForWeek } from './clock';
-import { CAMPAIGN_START, EVENTS, findEvent } from './content';
+import { CAMPAIGN_START, EVENTS, findCharacter, findEvent } from './content';
 import { addSecret } from './secrets';
 import { startCondotta } from './condotta';
 import type { EventTrigger, GameState } from './types';
@@ -77,6 +77,31 @@ export function resolveEvent(state: GameState, eventId: string, choiceIndex: num
       houseRelations[houseId] = clamp((houseRelations[houseId] ?? 0) + delta, 0, 100);
     }
     next = { ...next, houseRelations };
+  }
+  if (effects.joinCharacter) {
+    const id = effects.joinCharacter;
+    if (next.characters.some(c => c.id === id)) {
+      next = {
+        ...next,
+        characters: next.characters.map(c => (c.id === id ? { ...c, status: 'active' as const } : c)),
+      };
+    } else {
+      // A save from before this character existed in content — add them fresh rather than no-op,
+      // so a mid-campaign join still works for a campaign that predates it.
+      const template = findCharacter(id);
+      if (template) next = { ...next, characters: [...next.characters, { ...template, status: 'active' as const }] };
+    }
+  }
+  if (effects.characterDeparts) {
+    const id = effects.characterDeparts;
+    next = {
+      ...next,
+      characters: next.characters.map(c =>
+        c.id === id && c.status === 'active'
+          ? { ...c, status: 'departed' as const, assignment: { type: 'idle' as const } }
+          : c,
+      ),
+    };
   }
   return next;
 }

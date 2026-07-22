@@ -10,6 +10,7 @@ import {
   corruptNews,
   driftHouseRelations,
   placeAgent,
+  resolveHouseSabotage,
   resolveWeeklyAgentIntelligence,
 } from './houses';
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, driftScarcity, priceAt } from './market';
@@ -114,6 +115,7 @@ function advanceWeek(state: GameState): GameState {
   const houseRelations = driftHouseRelations(state.houseRelations, state.flags);
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
+  const sabotage = resolveHouseSabotage(maturity.vessels.map(tickVessel));
 
   const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
   const newNews = corruptNews(rawNews, state.agents, HOME_CITY);
@@ -121,18 +123,20 @@ function advanceWeek(state: GameState): GameState {
   const knownPrices = { ...state.knownPrices };
   for (const item of arrived) knownPrices[item.cityId] = item;
 
+  let flags = state.flags;
+  if (condottaResolution.condottaJustCompleted) flags = { ...flags, condotta_naples_complete: true };
+  if (sabotage.sabotaged) flags = { ...flags, doria_sabotage_occurred: true };
+
   return checkTriggers({
     ...state,
     week,
     cash: condottaResolution.cash,
-    vessels: maturity.vessels.map(tickVessel),
+    vessels: sabotage.vessels,
     obligations: maturity.obligations,
     insolvent: state.insolvent || maturity.insolvent,
     characters: upkeep.characters,
     condotta: condottaResolution.condotta,
-    flags: condottaResolution.condottaJustCompleted
-      ? { ...state.flags, condotta_naples_complete: true }
-      : state.flags,
+    flags,
     exchangeRates,
     scarcity,
     houseRelations,
@@ -163,7 +167,10 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
-  if (state.flags.chapter1_complete) return state;
+  // chapter1_complete no longer freezes play — it's a mid-campaign flag Chapter 2's own events
+  // trigger on (design doc §12, "Phase 9 onward: one chapter content pack per phase"). Only the
+  // true end of the shipped content (chapter2_complete) stops the clock now.
+  if (state.flags.chapter2_complete) return state;
   if (state.pendingEvents.length > 0 && action.type !== 'RESOLVE_EVENT') return state;
 
   switch (action.type) {

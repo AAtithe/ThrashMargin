@@ -42,7 +42,7 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
   const selected = vessels.find(v => v.id === selectedVesselId) ?? null;
 
   return (
-    <svg viewBox="0 0 660 560" style={{ width: '100%', height: '100%', background: '#0e0b07' }}>
+    <svg viewBox="0 0 780 560" style={{ width: '100%', height: '100%', background: '#0e0b07' }}>
       {ROUTES.map(r => {
         const from = findCity(r.from)!;
         const to = findCity(r.to)!;

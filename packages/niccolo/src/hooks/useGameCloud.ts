@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { processAction } from '../sim/actions';
+import { withAllCurrencies } from '../sim/currency';
 import { API, authHeaders } from '../lib/api';
 import type { GameAction, GameState } from '../sim/types';
 import type { SaveMeta } from './useGameLocal';
@@ -52,7 +53,7 @@ export function useGameCloud() {
       const res = await fetch(`${API}/api/niccolo/game/${gameId}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to load campaign'); return; }
-      setState(data.state);
+      setState({ ...data.state, exchangeRates: withAllCurrencies(data.state.exchangeRates) });
     } catch {
       setError('Network error — failed to load campaign');
     }

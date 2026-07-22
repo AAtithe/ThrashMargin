@@ -8,8 +8,9 @@ export interface CityMarketGood {
   base: number;
 }
 
-/** florin is the player's home ledger currency; the rest are foreign, grouped by City.power. */
-export type CurrencyId = 'florin' | 'groot' | 'pound' | 'ecu' | 'ducat';
+/** florin is the player's home ledger currency; the rest are foreign, grouped by City.power.
+ * `asper` (Chapter 2, Phase 9) is Trebizond's money of account. */
+export type CurrencyId = 'florin' | 'groot' | 'pound' | 'ecu' | 'ducat' | 'asper';
 
 export interface City {
   id: string;
@@ -123,7 +124,11 @@ export interface Character {
   salary: number;
   /** Home city while idle; otherwise informational only (the assignment target is authoritative). */
   location: string;
-  status: 'active' | 'departed';
+  /** `pending` (Chapter 2, Phase 9): authored in content but not yet part of the roster — a
+   * mid-campaign `joinCharacter` event effect is what flips one to `active`. Every function that
+   * already filters on `status === 'active'` (upkeep, assignment, discounts) treats `pending`
+   * exactly like `departed`: present in save data, invisible to every system until it joins. */
+  status: 'active' | 'departed' | 'pending';
   assignment: CharacterAssignment;
 }
 
@@ -165,10 +170,16 @@ export interface EventEffects {
   /**
    * houseId -> relation delta (design doc §8's own example: `"rep.stpol": -10`). Deferred at
    * Phase 6 and Phase 7 for lack of an AI house to hold a reputation with; wired now that Phase 8
-   * gives it one. No Chapter 1 event uses it yet — Chapter 1's content shipped in Phase 7, before
-   * this existed — but it's available to Phase 9+ chapter authors.
+   * gives it one. Chapter 2 (Phase 9) is its first real user.
    */
   rep?: Record<string, number>;
+  /** Chapter 2 (Phase 9): activates a character already present in save data with `status:
+   * 'pending'`, or — for a save from before that character existed — adds them fresh from
+   * content. Scripts a mid-campaign join (Diniz) without a chapter-scripted join-date system. */
+  joinCharacter?: string;
+  /** Chapter 2 (Phase 9): a scripted departure (the extraction's human stake), distinct from the
+   * generic loyalty-zero departure — a no-op if the character isn't currently active. */
+  characterDeparts?: string;
 }
 
 export interface EventChoice {

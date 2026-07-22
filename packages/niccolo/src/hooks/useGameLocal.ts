@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { createInitialState } from '../sim/state';
 import { processAction } from '../sim/actions';
+import { withAllCurrencies } from '../sim/currency';
 import type { GameAction, GameState } from '../sim/types';
 
 const INDEX_KEY = 'niccolo_saves';
@@ -17,7 +18,9 @@ export interface SaveMeta {
 
 function statusOf(s: GameState): SaveMeta['status'] {
   if (s.insolvent) return 'defeated';
-  if (s.flags.chapter1_complete) return 'victory';
+  // chapter1_complete is a mid-campaign flag now (Chapter 2 plays on past it) — only the actual
+  // end of shipped content, chapter2_complete, counts as a finished campaign.
+  if (s.flags.chapter2_complete) return 'victory';
   return 'active';
 }
 
@@ -106,7 +109,7 @@ export function useGameLocal() {
       const raw = localStorage.getItem(stateKey(gameId));
       const parsed = raw ? JSON.parse(raw) : null;
       if (!isCurrentShape(parsed)) { setError('Save not found or too old to load'); return; }
-      setState(parsed);
+      setState({ ...parsed, exchangeRates: withAllCurrencies(parsed.exchangeRates) });
       setError(null);
     } catch {
       setError('Could not load save');

@@ -1,7 +1,7 @@
 import { HOUSES, findCity, findHouse } from './content';
 import { addSecret } from './secrets';
-import { adjustScarcity } from './market';
-import type { Agent, AgentPlacement, GameState, House, MarketScarcity, NewsItem, Secret } from './types';
+import { adjustScarcity, cargoTotal } from './market';
+import type { Agent, AgentPlacement, GameState, House, MarketScarcity, NewsItem, Secret, Vessel } from './types';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -151,4 +151,42 @@ export function resolveWeeklyAgentIntelligence(
     }
   }
   return next;
+}
+
+/**
+ * Doria's "sabotage" (design doc §10/Chapter 2): a hostile house with a home city the player's
+ * own vessels actually visit can, some weeks, cost a docked vessel part of one cargo good — spoilage,
+ * a bribed customs man, a fouled cask, left to the player's imagination. Reduced-fidelity, same as
+ * every other house behaviour here: no named crew, no combat, just a number moving. Any hostile
+ * house with cargo docked at its own home city can trigger this, not only Doria by name, so a
+ * future chapter's hostile house gets it for free.
+ */
+const SABOTAGE_CHANCE_PER_WEEK = 0.15;
+const SABOTAGE_LOSS_FRACTION = 0.3;
+
+export interface SabotageResolution {
+  vessels: Vessel[];
+  /** True if some vessel was hit this week — content can react to this via a flag the caller sets. */
+  sabotaged: boolean;
+}
+
+export function resolveHouseSabotage(vessels: Vessel[]): SabotageResolution {
+  const hostileHomes = new Set(HOUSES.filter(h => h.disposition === 'hostile').map(h => h.homeCity));
+  if (hostileHomes.size === 0) return { vessels, sabotaged: false };
+
+  const target = vessels.find(
+    v => !v.destination && hostileHomes.has(v.location) && cargoTotal(v.cargo) > 0,
+  );
+  if (!target || Math.random() >= SABOTAGE_CHANCE_PER_WEEK) return { vessels, sabotaged: false };
+
+  const goodIds = Object.keys(target.cargo).filter(id => (target.cargo[id] ?? 0) > 0);
+  if (goodIds.length === 0) return { vessels, sabotaged: false };
+  const goodId = goodIds[Math.floor(Math.random() * goodIds.length)];
+  const held = target.cargo[goodId];
+  const lost = Math.max(1, Math.floor(held * SABOTAGE_LOSS_FRACTION));
+
+  return {
+    vessels: vessels.map(v => (v.id === target.id ? { ...v, cargo: { ...v.cargo, [goodId]: held - lost } } : v)),
+    sabotaged: true,
+  };
 }

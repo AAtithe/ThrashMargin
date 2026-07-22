@@ -1,0 +1,239 @@
+[
+  {
+    "id": "ev_c2_001",
+    "chapter": 2,
+    "trigger": { "flag": "chapter1_complete" },
+    "title": "The Spring of the Ram",
+    "body": "The partnership barely has its seal dry before it has its first real commission: a silk agency at Trebizond, the last free stretch of Black Sea coast left standing since Constantinople fell. Word from Genoa says Pagano Doria means to open the same trade under his own name, on his own ship, and means to get there first.",
+    "choices": [
+      { "text": "Sail before the season closes the passage", "effects": { "cash": -5, "flag": "chapter2_started" } },
+      { "text": "Fit the ship out properly and sail when ready", "effects": { "flag": "chapter2_started" } }
+    ]
+  },
+  {
+    "id": "ev_c2_002",
+    "chapter": 2,
+    "trigger": { "flag": "chapter2_started" },
+    "title": "Diniz",
+    "body": "Marian's young ward asks to go east with the venture, plainly more out of restlessness than any use he'd be. Gregorio thinks it a bad idea. Diniz thinks it the only idea worth having this year.",
+    "choices": [
+      { "text": "Take him aboard", "effects": { "joinCharacter": "diniz", "flag": "diniz_joined" } },
+      { "text": "Leave him in Bruges, safer for it", "effects": { "conscience": 1, "flag": "diniz_left_behind" } }
+    ]
+  },
+  {
+    "id": "ev_c2_003",
+    "chapter": 2,
+    "trigger": { "flag": "chapter2_started" },
+    "title": "Word of a rival",
+    "body": "Doria's ship is reported victualling at Genoa, bound the same way, on the same trade. There is no law against two houses racing for the same market. There is also no particular reason to make it easy for him.",
+    "choices": [
+      { "text": "Send a civil word ahead, for form's sake", "effects": { "cash": -3, "rep": { "doria": 5 } } },
+      { "text": "Ignore him and sail", "effects": { "rep": { "doria": -5 } } }
+    ]
+  },
+  {
+    "id": "ev_c2_004",
+    "chapter": 2,
+    "trigger": { "flag": "chapter2_started", "location": "trebizond" },
+    "title": "Trebizond",
+    "body": "The city sits on its headland above the Black Sea, a Greek court still keeping its own coin and its own ceremony as though Constantinople had never fallen at all. The house's credentials are presented at the quay, in the language of a bank that has never done business this far east before.",
+    "choices": [
+      { "text": "Open the agency", "effects": { "flag": "reached_trebizond" } }
+    ]
+  },
+  {
+    "id": "ev_c2_005",
+    "chapter": 2,
+    "trigger": { "flag": "reached_trebizond" },
+    "title": "The silk market",
+    "body": "A broker who has clearly done this before offers a first parcel at a price that assumes the house doesn't yet know the going local rate.",
+    "choices": [
+      { "text": "Buy on his word — time matters more than the margin", "effects": { "cash": 8 } },
+      { "text": "Have the bales checked before agreeing to anything", "effects": { "cash": 4, "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c2_006",
+    "chapter": 2,
+    "trigger": { "flag": "reached_trebizond" },
+    "title": "An audience is granted",
+    "body": "Emperor David's court extends the courtesy of a hearing to the new Florentine bank at his gate — as much curiosity as courtesy, in a court that sees fewer western ledgers every year the Ottoman ring around it tightens.",
+    "choices": [
+      { "text": "Attend in the house's plainest good clothes", "effects": { "flag": "court_audience" } }
+    ]
+  },
+  {
+    "id": "ev_c2_007",
+    "chapter": 2,
+    "trigger": { "flag": "reached_trebizond" },
+    "title": "A letter from Bruges",
+    "body": "Julius writes, in his own hand rather than a clerk's, that the household is well and the ledgers balance, and that Gregorio wishes it minuted, formally, that sending anyone at all this far past Venice was against his advice.",
+    "choices": [
+      { "text": "Read it twice and answer it properly", "effects": { "conscience": 1 } },
+      { "text": "File it and get back to the day's business", "effects": { "cash": 5 } }
+    ]
+  },
+  {
+    "id": "ev_c2_008",
+    "chapter": 2,
+    "trigger": { "flag": "reached_trebizond" },
+    "title": "The customs officer's ledger",
+    "body": "A minor official at the harbour customs house, paid too little and resentful of it, lets it be known he keeps a private tally of what the Ottoman side across the border is really moving in alum — knowledge worth more in Genoa or Florence than it is to him.",
+    "choices": [
+      { "text": "Pay for a look at it", "effects": { "cash": -15, "secret": { "id": "secret_trebizond_alum", "name": "The Ottoman alum accounts", "description": "A customs officer's private tally of alum moving through Ottoman-held ground east of Trebizond — the same trade Tolfa threatens to undercut, seen from the other side of the ledger.", "value": 60, "expiresInWeeks": 16 } } },
+      { "text": "Decline — it isn't worth the risk of being seen buying it", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c2_009",
+    "chapter": 2,
+    "trigger": { "flags": ["reached_trebizond", "diniz_joined"] },
+    "title": "Diniz proves useful",
+    "body": "Whatever he lacks in judgement, Diniz has an eye for a bale of silk that no amount of Bruges schooling explains, and a bargaining manner the Trebizond brokers seem to find more entertaining than insulting.",
+    "choices": [
+      { "text": "Let him drive the next bargain himself", "effects": { "cash": 6 } }
+    ]
+  },
+  {
+    "id": "ev_c2_010",
+    "chapter": 2,
+    "trigger": { "flag": "court_audience" },
+    "title": "The Emperor's request",
+    "body": "David's court is short of ready coin, as courts under this much pressure usually are, and a discreet request comes back through a chamberlain rather than the Emperor's own mouth: a gift, or a loan the court has no real intention of troubling itself to repay.",
+    "choices": [
+      { "text": "Grant it, and bank the goodwill", "effects": { "cash": -20, "flag": "court_favor_choice_made" } },
+      { "text": "Decline as diplomatically as the language allows", "effects": { "conscience": 1, "flag": "court_favor_choice_made" } }
+    ]
+  },
+  {
+    "id": "ev_c2_011",
+    "chapter": 2,
+    "trigger": { "flag": "court_audience" },
+    "title": "Pagano's charm offensive",
+    "body": "Doria arrives in Trebizond a fortnight behind and makes up the ground at court in an afternoon — better Greek than any Charetty officer speaks, and a manner that makes every merchant he meets feel like his oldest friend.",
+    "choices": [
+      { "text": "Match him, contact for contact", "effects": { "cash": -10, "rep": { "doria": -5 } } },
+      { "text": "Let him have this round", "effects": { "rep": { "doria": 3 } } }
+    ]
+  },
+  {
+    "id": "ev_c2_012",
+    "chapter": 2,
+    "trigger": { "flag": "court_audience" },
+    "title": "The Venetian bailo's warning",
+    "body": "Venice keeps its own resident agent at Trebizond, and he is franker with a fellow westerner than the occasion strictly calls for: the Serenissima's own read is that this court has perhaps a season or two of independence left in it, no more.",
+    "choices": [
+      { "text": "Take the warning seriously", "effects": { "conscience": 1 } },
+      { "text": "Discount it as a rival trader's caution", "effects": { "cash": 5 } }
+    ]
+  },
+  {
+    "id": "ev_c2_013",
+    "chapter": 2,
+    "trigger": { "flag": "court_favor_choice_made" },
+    "title": "Who backs Pagano Doria",
+    "body": "A loose thread, pulled carefully: Doria's venture is better financed than one Genoese captain's own purse could account for, and the names behind it, once traced, are not names he has mentioned to anyone.",
+    "choices": [
+      { "text": "Follow the thread quietly", "effects": { "secret": { "id": "secret_doria_backers", "name": "Doria's silent partners", "description": "The financiers standing behind Pagano Doria's Trebizond venture, none of whom he has named to a soul.", "value": 45, "expiresInWeeks": 20 } } },
+      { "text": "Let it lie — some doors are better left shut", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c2_014",
+    "chapter": 2,
+    "trigger": { "flag": "court_audience" },
+    "title": "Word of the Sultan's muster",
+    "body": "News reaches the court, and through it the agency, of a muster gathering at the Sultan's order along the Anatolian coast road — the kind of muster that has, this past decade, tended to end with a city changing hands.",
+    "choices": [
+      { "text": "Note it and carry on trading", "effects": { "flag": "ottoman_muster_known" } }
+    ]
+  },
+  {
+    "id": "ev_c2_015",
+    "chapter": 2,
+    "trigger": { "flag": "ottoman_muster_known" },
+    "title": "The city prepares",
+    "body": "Trebizond starts quietly moving what it can move and burying what it can't. The house's own trade goes on, because it has to, alongside a city visibly deciding what of itself is worth saving.",
+    "choices": [
+      { "text": "Help where the house reasonably can", "effects": { "cash": -15, "conscience": 3 } },
+      { "text": "Keep to the house's own business", "effects": { "cash": 10, "conscience": -2 } }
+    ]
+  },
+  {
+    "id": "ev_c2_016",
+    "chapter": 2,
+    "trigger": { "flag": "ottoman_muster_known" },
+    "title": "What the house stands to lose",
+    "body": "The agency's position is plain enough once said aloud: people first, then capital, then whatever cargo can still be moved — in that order, and there may not be time to save all three.",
+    "choices": [
+      { "text": "Set the priorities and start moving on them", "effects": { "flag": "trebizond_extraction_open" } }
+    ]
+  },
+  {
+    "id": "ev_c2_017",
+    "chapter": 2,
+    "trigger": { "flag": "doria_sabotage_occurred" },
+    "title": "Spoiled goods",
+    "body": "Part of a hold turns up ruined, or missing, or both, in circumstances a Trebizond harbour master shrugs off as simply what happens to cargo in a crowded port — circumstances that happen, this once, to favour a rival's ship rather more than luck alone would explain.",
+    "choices": [
+      { "text": "Say nothing and absorb the loss", "effects": { "conscience": 1 } },
+      { "text": "Make it known whose hand you suspect", "effects": { "rep": { "doria": -8 }, "flag": "doria_accused" } }
+    ]
+  },
+  {
+    "id": "ev_c2_018",
+    "chapter": 2,
+    "trigger": {
+      "location": "venice",
+      "flag": "trebizond_extraction_open",
+      "flagAbsent": "trebizond_fallen",
+      "cargoAtLeast": { "location": "venice", "goodId": "silk", "quantity": 8 }
+    },
+    "title": "Out before the gates close",
+    "body": "The ship makes Venice with its hold still full and its people still aboard, weeks ahead of whatever is now happening to the city it left. The agency's books close in credit, not in ruin.",
+    "choices": [
+      { "text": "Make port and call the agency closed", "effects": { "cash": 60, "flags": ["trebizond_extraction_success", "trebizond_extraction_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c2_019",
+    "chapter": 2,
+    "trigger": { "dateAfter": "1463-01-01", "flag": "trebizond_extraction_open", "flagAbsent": "trebizond_extraction_success" },
+    "title": "The fall of Trebizond",
+    "body": "The season the court had feared arrives on its own schedule, not the house's. Whatever wasn't already clear of the city when the gates finally closed is not coming out of it now.",
+    "choices": [
+      { "text": "Get out with whoever and whatever is still to hand", "effects": { "cash": -40, "conscience": -4, "characterDeparts": "diniz", "flags": ["trebizond_extraction_resolved", "trebizond_fallen"] } }
+    ]
+  },
+  {
+    "id": "ev_c2_020",
+    "chapter": 2,
+    "trigger": { "flag": "trebizond_extraction_success" },
+    "title": "What survived",
+    "body": "The agency is closed, the ledger struck through and totalled. Whatever the ledger doesn't show — a city's court, a market, a season's worth of contacts built and now scattered — is a cost the house pays without ever entering it as a line.",
+    "choices": [
+      { "text": "Reckon the gain against the cost, and move on", "effects": { "flag": "trebizond_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c2_021",
+    "chapter": 2,
+    "trigger": { "flag": "trebizond_fallen" },
+    "title": "What was lost",
+    "body": "The agency's books close all the same, in a harder hand than the house would have chosen. Not everything came out. Not everyone did, either. The bank survives it; not every part of the house does.",
+    "choices": [
+      { "text": "Reckon the cost, such as it is, and move on", "effects": { "flag": "trebizond_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c2_022",
+    "chapter": 2,
+    "trigger": { "flags": ["trebizond_extraction_resolved", "trebizond_epilogue"] },
+    "title": "The Spring of the Ram, concluded",
+    "body": "Trebizond's spring closes the way the court at Constantinople's did before it, on a schedule the house never controlled and could only race. Pagano Doria's venture outlasts the city it was built on, one way or another — a name the house will hear again. What the agency actually shows for the season is whatever is still standing when the books are struck.",
+    "choices": [
+      { "text": "Close the Trebizond agency's books for good", "effects": { "flag": "chapter2_complete" } }
+    ]
+  }
+]

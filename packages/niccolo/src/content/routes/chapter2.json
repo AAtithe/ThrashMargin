@@ -1,0 +1,3 @@
+[
+  { "id": "venice-trebizond", "from": "venice", "to": "trebizond", "distanceWeeks": 6, "type": "sea", "seasonal": true }
+]

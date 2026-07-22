@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { state } = req.body ?? {};
     if (!state) return res.status(400).json({ message: 'state required' });
     try {
-      const status = state.insolvent ? 'defeated' : state.flags?.chapter1_complete ? 'victory' : 'active';
+      const status = state.insolvent ? 'defeated' : state.flags?.chapter2_complete ? 'victory' : 'active';
       await db.query(
         `UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW()
          WHERE id = $4 AND owner_id = $5 AND game = $6`,

@@ -11,7 +11,8 @@ export interface Currency {
  * ledger currency (and Florence's own), groot covers Burgundy/Flanders, pound covers England,
  * écu covers Savoy/France/Milan/Genoa, ducat covers Venice. Pegs below are simplified money-of-
  * account values relative to the florin, not literal historical mint weights — a flavour pass
- * can sharpen them later without touching the mechanic.
+ * can sharpen them later without touching the mechanic. `asper` (Chapter 2, Phase 9) adds
+ * Trebizond on the same basis.
  */
 export const CURRENCIES: Currency[] = [
   { id: 'florin', name: 'Florentine florin', symbol: 'f' },
@@ -19,6 +20,7 @@ export const CURRENCIES: Currency[] = [
   { id: 'pound', name: 'Pound sterling', symbol: '£' },
   { id: 'ecu', name: 'Écu', symbol: 'é' },
   { id: 'ducat', name: 'Venetian ducat', symbol: 'd' },
+  { id: 'asper', name: 'Trapezuntine asper', symbol: 'a' },
 ];
 
 const PEG: ExchangeRates = {
@@ -27,6 +29,7 @@ const PEG: ExchangeRates = {
   pound: 1.3,
   ecu: 0.95,
   ducat: 1.05,
+  asper: 0.4,
 };
 
 /** Largest random walk step an exchange rate can take in a week, as a fraction of its peg. */
@@ -43,17 +46,28 @@ export function initialExchangeRates(): ExchangeRates {
   return { ...PEG };
 }
 
+/** Backfills any currency missing from a *loaded* save's exchange rates at its peg value — a
+ * save from before that currency existed (e.g. `asper`, Chapter 2) would otherwise read
+ * `undefined` in any consumer (display, bill-writing) that runs before the first ADVANCE_WEEK,
+ * which is the only place `driftExchangeRates`'s own missing-key fallback would normally apply. */
+export function withAllCurrencies(rates: ExchangeRates): ExchangeRates {
+  return { ...initialExchangeRates(), ...rates };
+}
+
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
 
-/** Rates random-walk week to week but mean-revert toward par, so drift is a risk, not a trend. */
+/** Rates random-walk week to week but mean-revert toward par, so drift is a risk, not a trend.
+ * Falls back to par for a currency missing from `rates` — a save from before that currency
+ * existed (e.g. a Chapter 1 campaign in progress when `asper` shipped) rather than drifting
+ * `undefined` into `NaN` forever. */
 export function driftExchangeRates(rates: ExchangeRates): ExchangeRates {
   const next: ExchangeRates = { ...rates };
   for (const currency of CURRENCIES) {
     if (currency.id === 'florin') continue;
     const par = PEG[currency.id];
-    const current = rates[currency.id];
+    const current = rates[currency.id] ?? par;
     const reverted = current + (par - current) * REVERSION_RATE;
     const delta = (Math.random() * 2 - 1) * DRIFT_MAX * par;
     next[currency.id] = clamp(reverted + delta, par * (1 - BAND), par * (1 + BAND));
