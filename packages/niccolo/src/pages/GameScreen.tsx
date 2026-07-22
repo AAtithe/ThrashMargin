@@ -14,6 +14,7 @@ import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
 import EstatePanel from '../components/EstatePanel';
 import EventOverlay from '../components/EventOverlay';
+import TutorialOverlay, { hasSeenTutorial } from '../components/TutorialOverlay';
 import PortalNav from '../components/PortalNav';
 
 const STYLE: React.CSSProperties = {
@@ -109,6 +110,7 @@ export default function GameScreen() {
   const nav = useNavigate();
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
   const [insureNext, setInsureNext] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -121,6 +123,15 @@ export default function GameScreen() {
   useEffect(() => {
     setInsureNext(false);
   }, [selectedVesselId]);
+
+  // Show once per browser, the first time this screen is reached with no scripted event already
+  // in the way — a local UI preference, not campaign state, so it isn't part of GameState/saves.
+  useEffect(() => {
+    if (!state) return;
+    if (state.pendingEvents.length > 0) return;
+    if (hasSeenTutorial()) return;
+    setShowTutorial(true);
+  }, [state?.id, state?.pendingEvents.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const abandonAndReturn = () => {
     if (id) deleteGame(id);
@@ -212,13 +223,19 @@ export default function GameScreen() {
           onChoose={choiceIndex => dispatch({ type: 'RESOLVE_EVENT', eventId: pendingEvent.id, choiceIndex })}
         />
       )}
+      {showTutorial && !pendingEvent && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
       <PortalNav variant="header" />
       <header style={HEADER}>
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
-        <span style={CLOCK}>
-          {Math.round(state.cash)}f &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
-          &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
-        </span>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.2rem' }}>
+          <span style={CLOCK}>
+            {Math.round(state.cash)}f &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
+            &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
+          </span>
+          <button style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }} onClick={() => setShowTutorial(true)}>
+            How to play
+          </button>
+        </div>
       </header>
 
       <div style={BODY}>

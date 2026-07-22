@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
 import PortalNav from '../components/PortalNav';
+import TutorialOverlay from '../components/TutorialOverlay';
 import type { SaveMeta } from '../hooks/useGameLocal';
 
 const STYLE: React.CSSProperties = {
@@ -98,6 +99,7 @@ export default function Lobby() {
   const [name, setName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
 
   const handleNew = async () => {
     setStarting(true);
@@ -111,9 +113,15 @@ export default function Lobby() {
 
   return (
     <div style={STYLE}>
+      {showTutorial && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
       <PortalNav variant="header" />
       <div style={CONTENT}>
-        <h1 style={TITLE}>Banco di Niccolo</h1>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem' }}>
+          <h1 style={TITLE}>Banco di Niccolo</h1>
+          <button style={BUTTON} onClick={() => setShowTutorial(true)}>
+            How to play
+          </button>
+        </div>
         <p style={SUBTITLE}>Trading, banking and intelligence in the House of Niccolo — Chapter 1: Niccolo Rising.</p>
 
         <p style={SECTION_LABEL}>Begin a new campaign</p>
