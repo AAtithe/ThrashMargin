@@ -15,6 +15,7 @@ import SecretsPanel from '../components/SecretsPanel';
 import EstatePanel from '../components/EstatePanel';
 import EventOverlay from '../components/EventOverlay';
 import TutorialOverlay, { hasSeenTutorial } from '../components/TutorialOverlay';
+import GuidedTour from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
 
 const STYLE: React.CSSProperties = {
@@ -111,6 +112,7 @@ export default function GameScreen() {
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
   const [insureNext, setInsureNext] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showGuidedTour, setShowGuidedTour] = useState(false);
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -155,6 +157,12 @@ export default function GameScreen() {
     dispatch({ type: 'DISPATCH_VESSEL', vesselId: selectedVessel.id, destinationId: cityId, insure: insureNext });
     setInsureNext(false);
   };
+
+  // The guided tour's steps are scripted for a fresh campaign's exact starting position (the
+  // ship docked, empty-handed, at Bruges) — only offer it while that's still true, rather than
+  // risk a stale instruction ("click Ghent") that no longer matches where the ship actually is.
+  const ship = state.vessels.find(v => v.id === 'ship_1');
+  const canGuidedTour = state.week === 0 && !!ship && ship.location === 'bruges' && !ship.destination;
 
   const activePolicy = selectedVessel ? state.insurance.find(i => i.vesselId === selectedVessel.id) : undefined;
   const canOfferInsurance =
@@ -223,7 +231,22 @@ export default function GameScreen() {
           onChoose={choiceIndex => dispatch({ type: 'RESOLVE_EVENT', eventId: pendingEvent.id, choiceIndex })}
         />
       )}
-      {showTutorial && !pendingEvent && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
+      {showTutorial && !showGuidedTour && !pendingEvent && (
+        <TutorialOverlay
+          onClose={() => setShowTutorial(false)}
+          onStartGuidedTour={
+            canGuidedTour
+              ? () => {
+                  setShowTutorial(false);
+                  setShowGuidedTour(true);
+                }
+              : undefined
+          }
+        />
+      )}
+      {showGuidedTour && !showTutorial && !pendingEvent && (
+        <GuidedTour state={state} selectedVesselId={selectedVesselId} onFinish={() => setShowGuidedTour(false)} />
+      )}
       <PortalNav variant="header" />
       <header style={HEADER}>
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
@@ -232,7 +255,18 @@ export default function GameScreen() {
             {Math.round(state.cash)}f &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
             &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
           </span>
-          <button style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }} onClick={() => setShowTutorial(true)}>
+          {canGuidedTour && (
+            <button
+              style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+              onClick={() => { setShowTutorial(false); setShowGuidedTour(true); }}
+            >
+              Guided tour
+            </button>
+          )}
+          <button
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+            onClick={() => { setShowGuidedTour(false); setShowTutorial(true); }}
+          >
             How to play
           </button>
         </div>
@@ -248,7 +282,7 @@ export default function GameScreen() {
           />
         </div>
 
-        <div style={SIDEBAR}>
+        <div id="game-sidebar" style={SIDEBAR}>
           <div>
             <p style={{ fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#8a7a5a' }}>
               Vessels
@@ -260,6 +294,7 @@ export default function GameScreen() {
               return (
                 <button
                   key={v.id}
+                  id={`vessel-button-${v.id}`}
                   style={v.id === selectedVesselId ? BUTTON_ACTIVE : BUTTON}
                   onClick={() => setSelectedVesselId(v.id)}
                 >
@@ -386,7 +421,7 @@ export default function GameScreen() {
 
           {error && <p style={{ fontSize: '0.8rem', color: '#b5451a', margin: 0 }}>{error}</p>}
 
-          <button style={BUTTON} onClick={() => dispatch({ type: 'ADVANCE_WEEK' })}>
+          <button id="advance-week-button" style={BUTTON} onClick={() => dispatch({ type: 'ADVANCE_WEEK' })}>
             Advance one week
           </button>
 

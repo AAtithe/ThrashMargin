@@ -149,7 +149,12 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
           : false;
         const opacity = fogOpacity(cityInfoAge[c.id] ?? null);
         return (
-          <g key={c.id} onClick={() => reachable && onSelectCity(c.id)} style={{ cursor: reachable ? 'pointer' : 'default' }}>
+          <g
+            key={c.id}
+            id={`city-node-${c.id}`}
+            onClick={() => reachable && onSelectCity(c.id)}
+            style={{ cursor: reachable ? 'pointer' : 'default' }}
+          >
             <circle
               cx={c.x} cy={c.y} r={c.port ? 7 : 5.5}
               fill={reachable ? GOLD : PARCHMENT}

@@ -137,9 +137,13 @@ const STEPS: Step[] = [
 
 interface TutorialOverlayProps {
   onClose: () => void;
+  /** Only passed by GameScreen, and only when a guided, hands-on walkthrough of the campaign's
+   * first moves actually makes sense right now (a fresh, undispatched campaign) — Lobby has no
+   * live game state to walk through, and mid-campaign the scripted first-hop steps wouldn't apply. */
+  onStartGuidedTour?: () => void;
 }
 
-export default function TutorialOverlay({ onClose }: TutorialOverlayProps) {
+export default function TutorialOverlay({ onClose, onStartGuidedTour }: TutorialOverlayProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
@@ -147,6 +151,11 @@ export default function TutorialOverlay({ onClose }: TutorialOverlayProps) {
   const close = () => {
     localStorage.setItem(TUTORIAL_SEEN_KEY, '1');
     onClose();
+  };
+
+  const startGuidedTour = () => {
+    localStorage.setItem(TUTORIAL_SEEN_KEY, '1');
+    onStartGuidedTour?.();
   };
 
   return (
@@ -172,17 +181,30 @@ export default function TutorialOverlay({ onClose }: TutorialOverlayProps) {
             ))}
           </div>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
-            <button style={GHOST_BUTTON} onClick={close}>
-              Skip
-            </button>
             {stepIndex > 0 && (
               <button style={BUTTON} onClick={() => setStepIndex(i => i - 1)}>
                 Back
               </button>
             )}
-            <button style={PRIMARY_BUTTON} onClick={() => (isLast ? close() : setStepIndex(i => i + 1))}>
-              {isLast ? 'Begin' : 'Next'}
-            </button>
+            {isLast && onStartGuidedTour ? (
+              <>
+                <button style={GHOST_BUTTON} onClick={close}>
+                  Explore on my own
+                </button>
+                <button style={PRIMARY_BUTTON} onClick={startGuidedTour}>
+                  Walk me through the first move
+                </button>
+              </>
+            ) : (
+              <>
+                <button style={GHOST_BUTTON} onClick={close}>
+                  Skip
+                </button>
+                <button style={PRIMARY_BUTTON} onClick={() => (isLast ? close() : setStepIndex(i => i + 1))}>
+                  {isLast ? 'Begin' : 'Next'}
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
