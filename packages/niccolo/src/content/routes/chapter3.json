@@ -1,0 +1,4 @@
+[
+  { "id": "venice-famagusta", "from": "venice", "to": "famagusta", "distanceWeeks": 5, "type": "sea", "seasonal": false },
+  { "id": "famagusta-kouklia", "from": "famagusta", "to": "kouklia", "distanceWeeks": 2, "type": "land", "seasonal": false }
+]

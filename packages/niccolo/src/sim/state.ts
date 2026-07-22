@@ -40,6 +40,7 @@ export function createInitialState(id: string, name?: string): GameState {
     condotta: null,
     houseRelations: initialHouseRelations(),
     agents: [],
+    estate: null,
     vessels: [
       {
         id: 'ship_1',

@@ -11,6 +11,7 @@ import LedgerPanel from '../components/LedgerPanel';
 import HouseholdPanel from '../components/HouseholdPanel';
 import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
+import EstatePanel from '../components/EstatePanel';
 import EventOverlay from '../components/EventOverlay';
 import PortalNav from '../components/PortalNav';
 
@@ -150,20 +151,20 @@ export default function GameScreen() {
     );
   }
 
-  if (state.flags.chapter2_complete) {
+  if (state.flags.chapter3_complete) {
     const secretsUsed = state.secrets.filter(s => s.used).length;
     const secretsExpired = state.secrets.filter(s => s.expired).length;
     const departed = state.characters.filter(c => c.status === 'departed');
-    const extractionSucceeded = !!state.flags.trebizond_extraction_success;
+    const siegeSurvived = !!state.flags.famagusta_siege_survived;
     return (
       <div style={STYLE}>
         <PortalNav variant="header" />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-          <h1 style={TITLE}>Chapter 2 — The Spring of the Ram</h1>
+          <h1 style={TITLE}>Chapter 3 — Race of Scorpions</h1>
           <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {extractionSucceeded
-              ? 'Trebizond falls, but the house got its people, its capital, and its cargo out first. Score is what survives — and enough survived.'
-              : 'Trebizond falls before the house could get everything clear of it. Something survives. Not everything does.'}
+            {siegeSurvived
+              ? "Famagusta falls, but the house got its people and Kouklia's sugar out first. A crown changed hands on its own schedule; the branch outlasts the war around it."
+              : "Famagusta falls before the house could get everything clear of it. A branch survives Cyprus. Not everyone does."}
           </p>
           <p style={{ color: '#8a7a5a', maxWidth: '30rem', textAlign: 'center', fontSize: '0.9rem' }}>
             Concluded in {formatWeekDate(state.week, CAMPAIGN_START)}, {Math.round(state.cash)}f on hand, conscience{' '}
@@ -295,6 +296,16 @@ export default function GameScreen() {
             agents={state.agents}
             cash={state.cash}
             onPlaceAgent={(placement, name) => dispatch({ type: 'PLACE_AGENT', placement, name })}
+          />
+
+          <EstatePanel
+            estate={state.estate}
+            flags={state.flags}
+            cash={state.cash}
+            selectedVessel={selectedVessel}
+            onEstablish={() => dispatch({ type: 'ESTABLISH_ESTATE' })}
+            onHarvest={() => dispatch({ type: 'HARVEST_ESTATE' })}
+            onShip={(vesselId, quantity) => dispatch({ type: 'SHIP_ESTATE_GOODS', vesselId, quantity })}
           />
 
           <LedgerPanel

@@ -1,0 +1,266 @@
+[
+  {
+    "id": "ev_c3_001",
+    "chapter": 3,
+    "trigger": { "flag": "chapter2_complete" },
+    "title": "The Race of Scorpions",
+    "body": "Cyprus has had two rulers claiming one crown since old King John died, and neither means to yield the island while breath remains: James, his bastard son, with a Mamluk sword at his back; Carlotta, his daughter, crowned and legitimate and losing ground by the month. A Genoese correspondent thinks there's a banking commission in it for whichever house gets an agency onto the island first.",
+    "choices": [
+      { "text": "Sail before the commission goes to a slower house", "effects": { "cash": -5, "flag": "chapter3_started" } },
+      { "text": "Fit the ship out properly and sail when ready", "effects": { "flag": "chapter3_started" } }
+    ]
+  },
+  {
+    "id": "ev_c3_002",
+    "chapter": 3,
+    "trigger": { "flag": "chapter3_started" },
+    "title": "A kingdom split in two",
+    "body": "Every report out of Cyprus contradicts the last one. Genoa favours the bastard, being no friend to legitimacy when a friendlier claimant is on offer; Venice hedges; the Mamluk sultan's interest in the island's harbours is plain enough not to need saying aloud.",
+    "choices": [
+      { "text": "Read every report twice before committing to anything", "effects": { "conscience": 1 } },
+      { "text": "Decide as matters arise, not before", "effects": { "cash": 5 } }
+    ]
+  },
+  {
+    "id": "ev_c3_003",
+    "chapter": 3,
+    "trigger": { "flag": "chapter3_started", "location": "famagusta" },
+    "title": "Landfall at Famagusta",
+    "body": "The harbour is Genoese-walled and Cypriot-garrisoned and, this year, uncertain which of those facts matters more. The house's credentials are presented at the citadel gate to a customs officer who has clearly been asked, more than once this season, whose side a new arrival is on before he asks their business.",
+    "choices": [
+      { "text": "Open the agency and answer no questions not yet asked", "effects": { "flag": "reached_famagusta" } }
+    ]
+  },
+  {
+    "id": "ev_c3_004",
+    "chapter": 3,
+    "trigger": { "flag": "reached_famagusta" },
+    "title": "Two courts, one crown",
+    "body": "An agency doing business on Cyprus is expected, sooner rather than later, to have an opinion about which court it does that business under. Both send word, separately and with equal courtesy, inviting the house to make its position known.",
+    "choices": [
+      { "text": "Back James — bastard-born, but with Cairo's soldiers behind him", "effects": { "cash": -10, "flag": "sided_zacco" } },
+      { "text": "Back Carlotta — crowned and legitimate, whatever her army's size", "effects": { "cash": -10, "flag": "sided_carlotta" } },
+      { "text": "Keep the house's name off either banner", "effects": { "flag": "chose_neutral_cyprus" } }
+    ]
+  },
+  {
+    "id": "ev_c3_005",
+    "chapter": 3,
+    "trigger": { "flag": "chose_neutral_cyprus", "dateAfter": "1463-06-01" },
+    "title": "A civil war has no room for neutrals",
+    "body": "The courtesy of not asking twice runs out. An agency with no declared allegiance is, on an island this small and this contested, simply an agency nobody trusts — and James's men now hold enough of the ground that the choice of who to declare for has effectively stopped being a choice.",
+    "choices": [
+      { "text": "Declare, now that declaring is the only option left", "effects": { "conscience": -2, "flags": ["sided_zacco", "zacco_forced"] } }
+    ]
+  },
+  {
+    "id": "ev_c3_006",
+    "chapter": 3,
+    "trigger": { "flag": "sided_zacco" },
+    "title": "The bastard's cause",
+    "body": "James's court is short on ceremony and long on Mamluk soldiery, and neither seems to trouble the merchants doing business with it. Whatever the histories eventually call him, this year he is simply the party winning.",
+    "choices": [
+      { "text": "Note the alliance for what it's worth and carry on trading", "effects": { "cash": 5 } }
+    ]
+  },
+  {
+    "id": "ev_c3_007",
+    "chapter": 3,
+    "trigger": { "flag": "sided_carlotta" },
+    "title": "The crowned queen's court",
+    "body": "Carlotta's household keeps every form the crown is owed and rather fewer of the soldiers a crown needs kept. Savoy sends what it can spare, which this year is not much.",
+    "choices": [
+      { "text": "Keep faith with the crowned queen regardless", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c3_008",
+    "chapter": 3,
+    "trigger": { "flag": "sided_carlotta", "dateAfter": "1464-06-01" },
+    "title": "Carlotta's cause fails",
+    "body": "History does not consult the house's ledger before deciding these things. Carlotta's last strongholds fall or surrender through this year regardless of who backed her, and an agency that named itself for the losing side pays for the association whether or not it ever drew a sword.",
+    "choices": [
+      { "text": "Absorb the cost of having chosen the losing crown", "effects": { "cash": -20, "conscience": 2, "flag": "carlotta_cause_failed" } }
+    ]
+  },
+  {
+    "id": "ev_c3_009",
+    "chapter": 3,
+    "trigger": { "flag": "sided_zacco", "dateAfter": "1464-06-01" },
+    "title": "The bastard's cause prevails",
+    "body": "James's Mamluk-backed claim outlasts Carlotta's crowned one, on the historical schedule and not the house's — the same lesson Trebizond taught the agency two years and a continent away: history is the deadline, not an opponent that can be out-traded.",
+    "choices": [
+      { "text": "Bank the goodwill of having backed the winning side", "effects": { "cash": 15, "flag": "zacco_cause_won" } }
+    ]
+  },
+  {
+    "id": "ev_c3_010",
+    "chapter": 3,
+    "trigger": { "flag": "reached_famagusta" },
+    "title": "Word of Kouklia",
+    "body": "A factor with land near Kouklia, on the island's far side, is offering a stake in his cane fields to any house with capital idle and patience to match — sugar refined and shipped rather than merely traded, the kind of asset that pays slowly and keeps paying.",
+    "choices": [
+      { "text": "Ride out to Kouklia and look the ground over first", "effects": { "cash": -5, "flag": "kouklia_estate_available" } },
+      { "text": "Take the factor's word for it and arrange terms from Famagusta", "effects": { "flag": "kouklia_estate_available" } }
+    ]
+  },
+  {
+    "id": "ev_c3_011",
+    "chapter": 3,
+    "trigger": { "flag": "kouklia_estate_available", "location": "kouklia" },
+    "title": "The fields at Kouklia",
+    "body": "Cane stands in long rows down toward the water-mills, and the factor talks of planting, growing, cutting and boiling as though the house's officers had never seen a harvest before. An estate is a different asset from a hold full of cargo: it pays only if someone keeps coming back to work it.",
+    "choices": [
+      { "text": "Walk the fields with the factor and take his measure", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c3_012",
+    "chapter": 3,
+    "trigger": { "flag": "kouklia_estate_available", "location": "famagusta", "cargoAtLeast": { "location": "famagusta", "goodId": "sugar", "quantity": 5 } },
+    "title": "The first sugar reaches market",
+    "body": "The estate's first refined chests come off the cart and onto the Famagusta quay before anyone in Bruges quite believes the venture is real. It sells easily enough — Cyprus sugar is not yet a name Europe recognises, but the mills at Kouklia are the house's own, which no cargo bought off a stranger's quay ever is.",
+    "choices": [
+      { "text": "Sell the first parcel and mark the ledger accordingly", "effects": { "cash": 10 } }
+    ]
+  },
+  {
+    "id": "ev_c3_013",
+    "chapter": 3,
+    "trigger": { "flag": "reached_famagusta" },
+    "title": "Two republics, one harbour",
+    "body": "Genoa holds Famagusta's walls; Venice holds most of the trade that passes through them; neither much likes sharing the arrangement, and a new house on the quay is expected to know which flag it nods to first.",
+    "choices": [
+      { "text": "Stay visibly even-handed between the two republics", "effects": { "cash": 5 } },
+      { "text": "Favour the Venetian faction quietly — Bruges's own habits run that way", "effects": { "conscience": -1, "cash": 8 } }
+    ]
+  },
+  {
+    "id": "ev_c3_014",
+    "chapter": 3,
+    "trigger": { "flag": "reached_famagusta" },
+    "title": "The customs clerk's private ledger",
+    "body": "A Genoese clerk at the customs house keeps, alongside his official tally, a second set of figures — which Cyprus cargoes are quietly finding their way to a Mamluk broker in Alexandria, and in what quantity. He is not proud of it, but he is not well paid either.",
+    "choices": [
+      { "text": "Pay for a look at the second ledger", "effects": { "cash": -12, "secret": { "id": "secret_cyprus_mamluk_trade", "name": "The Mamluk broker's tally", "description": "A Genoese customs clerk's private record of Cyprus goods quietly reaching a Mamluk broker in Alexandria — knowledge worth more to a rival house than it ever was to the clerk.", "value": 50, "expiresInWeeks": 18 } } },
+      { "text": "Decline — better not to be seen buying it", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c3_015",
+    "chapter": 3,
+    "trigger": { "flag": "reached_famagusta" },
+    "title": "Cairo's real preference",
+    "body": "The Mamluk resident's household in Famagusta says one thing in public about which Cypriot claimant Cairo favours, and — if a clerk there can be persuaded to talk — rather a different thing in private.",
+    "choices": [
+      { "text": "Cultivate the resident's clerk", "effects": { "cash": -10, "secret": { "id": "secret_cairo_favor", "name": "Cairo's real preference", "description": "Word from inside the Mamluk resident's own household of which Cypriot claimant Cairo actually intends to back, regardless of what its ambassadors say aloud.", "value": 55, "expiresInWeeks": 20 } } },
+      { "text": "Leave the Mamluk household well alone", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c3_016",
+    "chapter": 3,
+    "trigger": { "flag": "reached_famagusta", "dateAfter": "1463-03-01" },
+    "title": "Word from the Mamluk coast",
+    "body": "Reports converge on the same fact from several directions at once: a Mamluk fleet is being fitted for Cyprus, in numbers no island garrison this size has ever needed to answer before.",
+    "choices": [
+      { "text": "Note it and carry on trading", "effects": { "flag": "famagusta_threat_known" } }
+    ]
+  },
+  {
+    "id": "ev_c3_017",
+    "chapter": 3,
+    "trigger": { "flag": "famagusta_threat_known" },
+    "title": "The city girds itself",
+    "body": "Famagusta starts quietly moving what it can move and shoring up what it can't. The house's own trade goes on, because it has to, alongside a garrison town visibly deciding what of itself is worth defending.",
+    "choices": [
+      { "text": "Help where the house reasonably can", "effects": { "cash": -15, "conscience": 3 } },
+      { "text": "Keep to the house's own business", "effects": { "cash": 10, "conscience": -2 } }
+    ]
+  },
+  {
+    "id": "ev_c3_018",
+    "chapter": 3,
+    "trigger": { "flag": "famagusta_threat_known" },
+    "title": "Katelina",
+    "body": "Katelina van Borselen has been on Cyprus since before the house's own agency opened here, tangled in the island's politics in ways no ledger ever recorded and no choice of the house's own could have prevented. Word reaches Famagusta that she did not leave the coast in time. The house's business continues; not everything it touches gets to.",
+    "choices": [
+      { "text": "Grieve as the house can afford to, and keep the ledger moving", "effects": { "conscience": -3, "cash": -5, "flag": "katelina_lost" } }
+    ]
+  },
+  {
+    "id": "ev_c3_019",
+    "chapter": 3,
+    "trigger": { "flag": "katelina_lost" },
+    "title": "The siege closes in",
+    "body": "Whatever room for manoeuvre Famagusta had is narrowing fast. The house's position, once said aloud, is the same one Trebizond taught it: people first, then capital, then whatever cargo can still be moved — and there may not be time to save all three.",
+    "choices": [
+      { "text": "Set the priorities and start moving on them", "effects": { "flag": "famagusta_siege_open" } }
+    ]
+  },
+  {
+    "id": "ev_c3_020",
+    "chapter": 3,
+    "trigger": {
+      "location": "venice",
+      "flag": "famagusta_siege_open",
+      "flagAbsent": "famagusta_fallen",
+      "cargoAtLeast": { "location": "venice", "goodId": "sugar", "quantity": 8 }
+    },
+    "title": "Out from under the siege",
+    "body": "The ship makes Venice with its hold still carrying Kouklia's sugar and its people still aboard, well ahead of whatever is now closing around the harbour it left. The Cyprus agency's books close in credit, not in ruin.",
+    "choices": [
+      { "text": "Make port and call the agency's books closed in credit", "effects": { "cash": 60, "flags": ["famagusta_siege_survived", "famagusta_siege_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c3_021",
+    "chapter": 3,
+    "trigger": { "dateAfter": "1466-06-01", "flag": "famagusta_siege_open", "flagAbsent": "famagusta_siege_survived" },
+    "title": "Famagusta falls",
+    "body": "The siege the reports had warned of arrives at its own conclusion, not the house's. Whatever wasn't already clear of the harbour when the walls finally gave is not coming out of it now.",
+    "choices": [
+      { "text": "Get out with whoever and whatever is still to hand", "effects": { "cash": -40, "conscience": -4, "flags": ["famagusta_fallen", "famagusta_siege_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c3_022",
+    "chapter": 3,
+    "trigger": { "flag": "famagusta_siege_survived" },
+    "title": "What Kouklia bought",
+    "body": "The Cyprus agency's ledger is struck through and totalled, an estate's worth of sugar the one asset that came out of the island heavier than it went in. Everything else the venture cost — a queen's cause, a customs clerk's ledger, Katelina — is a cost the house pays without ever entering it as a line.",
+    "choices": [
+      { "text": "Reckon the gain against the cost, and move on", "effects": { "flag": "famagusta_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c3_023",
+    "chapter": 3,
+    "trigger": { "flag": "famagusta_fallen" },
+    "title": "What Cyprus cost",
+    "body": "The agency's books close all the same, in a harder hand than the house would have chosen. A crown was won on the historical schedule regardless of what the house believed about it, and Cyprus keeps what it kept and returns what it returns. Not everyone came back from it.",
+    "choices": [
+      { "text": "Reckon the cost, such as it is, and move on", "effects": { "flag": "famagusta_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c3_024",
+    "chapter": 3,
+    "trigger": { "flag": "famagusta_epilogue" },
+    "title": "A branch worth keeping",
+    "body": "Whatever the season cost, Cyprus is not a market worth walking away from entirely — a formal branch, a manager left in place, correspondence kept up rather than let lapse the way a closed agency's usually does.",
+    "choices": [
+      { "text": "Formalise the Cyprus branch", "effects": { "cash": -25, "flag": "cyprus_branch_opened" } }
+    ]
+  },
+  {
+    "id": "ev_c3_025",
+    "chapter": 3,
+    "trigger": { "flags": ["famagusta_epilogue", "cyprus_branch_opened"] },
+    "title": "Race of Scorpions, concluded",
+    "body": "Cyprus closes the way its own two claimants fought it: at length, expensively, and on a schedule the house never controlled. What the ledger shows for the season is a branch worth keeping and a sugar estate that will outlast the war that surrounded it. What it doesn't show is the scar the crown left on the way through.",
+    "choices": [
+      { "text": "Close the Cyprus agency's opening books for good", "effects": { "flag": "chapter3_complete" } }
+    ]
+  }
+]

@@ -18,9 +18,9 @@ export interface SaveMeta {
 
 function statusOf(s: GameState): SaveMeta['status'] {
   if (s.insolvent) return 'defeated';
-  // chapter1_complete is a mid-campaign flag now (Chapter 2 plays on past it) — only the actual
-  // end of shipped content, chapter2_complete, counts as a finished campaign.
-  if (s.flags.chapter2_complete) return 'victory';
+  // chapter1_complete/chapter2_complete are mid-campaign flags now (later chapters play on past
+  // them) — only the actual end of shipped content, chapter3_complete, counts as a finished campaign.
+  if (s.flags.chapter3_complete) return 'victory';
   return 'active';
 }
 
@@ -36,6 +36,7 @@ function isCurrentShape(parsed: unknown): parsed is GameState {
   if (!s.flags || !s.firedEvents || !s.pendingEvents) return false;
   if (!s.secrets || !('condotta' in s)) return false;
   if (!s.houseRelations || !s.agents) return false;
+  if (!('estate' in s)) return false;
   return true;
 }
 

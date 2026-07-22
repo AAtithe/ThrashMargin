@@ -1,0 +1,5 @@
+[
+  { "id": "famagusta", "name": "Famagusta", "region": "cyprus", "power": "cyprus", "x": 720, "y": 470, "port": true, "currency": "bezant",
+    "market": { "sugar": { "base": 18 } } },
+  { "id": "kouklia", "name": "Kouklia", "region": "cyprus", "power": "cyprus", "x": 680, "y": 480, "port": false, "currency": "bezant" }
+]

@@ -9,6 +9,10 @@ import routes2Data from '../content/routes/chapter2.json';
 import characters2Data from '../content/characters/chapter2.json';
 import events2Data from '../content/events/chapter2.json';
 import houses2Data from '../content/houses/chapter2.json';
+import cities3Data from '../content/cities/chapter3.json';
+import routes3Data from '../content/routes/chapter3.json';
+import goods3Data from '../content/goods/chapter3.json';
+import events3Data from '../content/events/chapter3.json';
 import type { City, Route, Good, Character, ScriptedEvent, House } from './types';
 
 export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
@@ -17,15 +21,21 @@ export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
 export const HOME_CITY = 'bruges';
 
 /**
- * Chapter 1 (Phase 1-8) content lives in `chapter1.json` per content type; Chapter 2 (Phase 9)
- * ships as its own `chapter2.json` files and is concatenated in here, rather than appended into
- * the chapter1 files the way Phase 7/8 grew Naples/cannon/houses in place — this is the first
- * phase that actually is a new chapter, so it's the first to get its own content pack on disk,
- * establishing the pattern Section 12 describes for Phase 10+ (one chapter, one file per type).
+ * Chapter 1 (Phase 1-8) content lives in `chapter1.json` per content type; Chapter 2 (Phase 9) and
+ * Chapter 3 (Phase 10) each ship as their own `chapterN.json` files, concatenated in here, rather
+ * than appended into the chapter1 files the way Phase 7/8 grew Naples/cannon/houses in place —
+ * establishing (Phase 9) and continuing (Phase 10) the one-chapter-one-file-per-type convention
+ * Section 12 describes for Phase 10+. Chapter 3 has no new characters or houses of its own (the
+ * Cyprus arc's antagonist is a historical siege, not a rival trading house), so `goods3Data` and
+ * `events3Data` are the only new imports it needs beyond cities and routes.
  */
-export const CITIES: City[] = [...(citiesData as unknown as City[]), ...(cities2Data as unknown as City[])];
-export const ROUTES: Route[] = [...(routesData as Route[]), ...(routes2Data as Route[])];
-export const GOODS: Good[] = goodsData as Good[];
+export const CITIES: City[] = [
+  ...(citiesData as unknown as City[]),
+  ...(cities2Data as unknown as City[]),
+  ...(cities3Data as unknown as City[]),
+];
+export const ROUTES: Route[] = [...(routesData as Route[]), ...(routes2Data as Route[]), ...(routes3Data as Route[])];
+export const GOODS: Good[] = [...(goodsData as Good[]), ...(goods3Data as Good[])];
 export const CHARACTERS: Character[] = [
   ...(charactersData as unknown as Character[]),
   ...(characters2Data as unknown as Character[]),
@@ -33,6 +43,7 @@ export const CHARACTERS: Character[] = [
 export const EVENTS: ScriptedEvent[] = [
   ...(eventsData as unknown as ScriptedEvent[]),
   ...(events2Data as unknown as ScriptedEvent[]),
+  ...(events3Data as unknown as ScriptedEvent[]),
 ];
 export const HOUSES: House[] = [...(housesData as unknown as House[]), ...(houses2Data as unknown as House[])];
 

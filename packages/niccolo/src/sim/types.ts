@@ -9,8 +9,9 @@ export interface CityMarketGood {
 }
 
 /** florin is the player's home ledger currency; the rest are foreign, grouped by City.power.
- * `asper` (Chapter 2, Phase 9) is Trebizond's money of account. */
-export type CurrencyId = 'florin' | 'groot' | 'pound' | 'ecu' | 'ducat' | 'asper';
+ * `asper` (Chapter 2, Phase 9) is Trebizond's money of account; `bezant` (Chapter 3, Phase 10)
+ * is the Lusignan kingdom of Cyprus's. */
+export type CurrencyId = 'florin' | 'groot' | 'pound' | 'ecu' | 'ducat' | 'asper' | 'bezant';
 
 export interface City {
   id: string;
@@ -262,6 +263,27 @@ export interface Agent {
   placedWeek: number;
 }
 
+export type EstateStage = 'growing' | 'ready' | 'refining';
+
+/**
+ * Chapter 3's production asset (design doc §12, "production assets in Ch3") — the sugar estate
+ * at Kouklia. Kept singular and single-city, the same reduced-fidelity discipline every other
+ * chapter's first outing of a new mechanic already used (one condotta, one house roster at a
+ * time). `plant` is folded into `ESTABLISH_ESTATE` (an estate is planted the moment it's
+ * founded); `growing`/`refining` advance automatically once a week via `resolveWeeklyEstate`;
+ * `ready` waits on the player's own `HARVEST_ESTATE` action, so harvest is a deliberate choice
+ * rather than another silent tick; `ship` is `SHIP_ESTATE_GOODS`, loading the stockpile onto a
+ * docked vessel exactly like any other cargo, so it sells through the existing market system
+ * rather than a second parallel one.
+ */
+export interface Estate {
+  cityId: string;
+  goodId: string;
+  stage: EstateStage;
+  weeksInStage: number;
+  stockpile: number;
+}
+
 export interface GameState {
   id: string;
   /** Player-chosen campaign name, shown in the lobby's save list. Optional only because saves
@@ -297,6 +319,8 @@ export interface GameState {
   houseRelations: Record<string, number>;
   /** Player-placed agents: in a city (shields its reports) or inside a rival house (may surface secrets). */
   agents: Agent[];
+  /** Chapter 3's sugar estate at Kouklia, once established. Null before then and never removable. */
+  estate: Estate | null;
 }
 
 export type GameAction =
@@ -312,4 +336,7 @@ export type GameAction =
   | { type: 'ASSIGN_CHARACTER'; characterId: string; assignment: CharacterAssignment }
   | { type: 'RESOLVE_EVENT'; eventId: string; choiceIndex: number }
   | { type: 'USE_SECRET'; secretId: string }
-  | { type: 'PLACE_AGENT'; placement: AgentPlacement; name?: string };
+  | { type: 'PLACE_AGENT'; placement: AgentPlacement; name?: string }
+  | { type: 'ESTABLISH_ESTATE' }
+  | { type: 'HARVEST_ESTATE' }
+  | { type: 'SHIP_ESTATE_GOODS'; vesselId: string; quantity: number };

@@ -4,6 +4,7 @@ import { assignCharacter, resolveWeeklyUpkeep, tradeBonus } from './characters';
 import { resolveWeeklyCondotta } from './condotta';
 import { discountObligation, resolveMaturingObligations, takeDeposit, writeBill, writeLoan } from './credit';
 import { driftExchangeRates } from './currency';
+import { establishEstate, harvestEstate, resolveWeeklyEstate, shipEstateGoods } from './estates';
 import { checkTriggers, resolveEvent } from './events';
 import {
   applyHouseTradeFootprint,
@@ -116,6 +117,7 @@ function advanceWeek(state: GameState): GameState {
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
   const sabotage = resolveHouseSabotage(maturity.vessels.map(tickVessel));
+  const estate = resolveWeeklyEstate(state.estate);
 
   const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
   const newNews = corruptNews(rawNews, state.agents, HOME_CITY);
@@ -143,6 +145,7 @@ function advanceWeek(state: GameState): GameState {
     secrets,
     pendingNews: stillPending,
     knownPrices,
+    estate,
   });
 }
 
@@ -167,10 +170,11 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
-  // chapter1_complete no longer freezes play — it's a mid-campaign flag Chapter 2's own events
-  // trigger on (design doc §12, "Phase 9 onward: one chapter content pack per phase"). Only the
-  // true end of the shipped content (chapter2_complete) stops the clock now.
-  if (state.flags.chapter2_complete) return state;
+  // chapter1_complete and chapter2_complete no longer freeze play — each is a mid-campaign flag
+  // the next chapter's own events trigger on (design doc §12, "Phase 9 onward: one chapter
+  // content pack per phase"). Only the true end of the shipped content (chapter3_complete) stops
+  // the clock now.
+  if (state.flags.chapter3_complete) return state;
   if (state.pendingEvents.length > 0 && action.type !== 'RESOLVE_EVENT') return state;
 
   switch (action.type) {
@@ -200,6 +204,12 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return useSecret(state, action.secretId);
     case 'PLACE_AGENT':
       return placeAgent(state, action.placement, action.name);
+    case 'ESTABLISH_ESTATE':
+      return establishEstate(state);
+    case 'HARVEST_ESTATE':
+      return harvestEstate(state);
+    case 'SHIP_ESTATE_GOODS':
+      return shipEstateGoods(state, action.vesselId, action.quantity);
     default:
       return state;
   }

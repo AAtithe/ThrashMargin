@@ -12,7 +12,8 @@ export interface Currency {
  * écu covers Savoy/France/Milan/Genoa, ducat covers Venice. Pegs below are simplified money-of-
  * account values relative to the florin, not literal historical mint weights — a flavour pass
  * can sharpen them later without touching the mechanic. `asper` (Chapter 2, Phase 9) adds
- * Trebizond on the same basis.
+ * Trebizond on the same basis; `bezant` (Chapter 3, Phase 10) adds Lusignan Cyprus, pegged low
+ * to reflect a kingdom already living on borrowed time by 1462.
  */
 export const CURRENCIES: Currency[] = [
   { id: 'florin', name: 'Florentine florin', symbol: 'f' },
@@ -21,6 +22,7 @@ export const CURRENCIES: Currency[] = [
   { id: 'ecu', name: 'Écu', symbol: 'é' },
   { id: 'ducat', name: 'Venetian ducat', symbol: 'd' },
   { id: 'asper', name: 'Trapezuntine asper', symbol: 'a' },
+  { id: 'bezant', name: 'Cypriot bezant', symbol: 'b' },
 ];
 
 const PEG: ExchangeRates = {
@@ -30,6 +32,7 @@ const PEG: ExchangeRates = {
   ecu: 0.95,
   ducat: 1.05,
   asper: 0.4,
+  bezant: 0.5,
 };
 
 /** Largest random walk step an exchange rate can take in a week, as a fraction of its peg. */
