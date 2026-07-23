@@ -58,12 +58,21 @@ const BUTTON: React.CSSProperties = {
 const PRIMARY_BUTTON: React.CSSProperties = { ...BUTTON, borderColor: GOLD, color: GOLD };
 const GHOST_BUTTON: React.CSSProperties = { ...BUTTON, border: 'none', color: '#6a5a40', padding: '0.4rem 0.2rem' };
 
-/** Fixed vessel id `createInitialState` always assigns the player's ship — stable enough for a
+/**
+ * Fixed vessel id `createInitialState` always assigns the player's ship — stable enough for a
  * tour scoped to the very first moves of a fresh campaign (see the eligibility gate this
- * component's caller applies before ever rendering it). */
+ * component's caller applies before ever rendering it).
+ *
+ * The destination/good pair below must actually be a *sellable, profitable* one-hop trade from
+ * Bruges — content/cities/chapter1.json's own market data is the source of truth, not assumption:
+ * Ghent (an earlier version's target) trades cloth and madder but never wool, so a player
+ * following that script correctly could not sell what they'd bought. Antwerp/cloth is a real,
+ * profitable pair confirmed against that file (cloth: 24f at Bruges, 30f at Antwerp) — if either
+ * city's market ever changes, re-check this pairing still clears a profit before reusing it.
+ */
 const SHIP_ID = 'ship_1';
-const FIRST_HOP_CITY = 'ghent';
-const FIRST_HOP_GOOD = 'wool';
+const FIRST_HOP_CITY = 'antwerp';
+const FIRST_HOP_GOOD = 'cloth';
 
 interface TourStep {
   title: string;
@@ -71,7 +80,7 @@ interface TourStep {
   /** DOM id of the real UI element to spotlight; null for the intro/outro cards, which have no
    * single target and instead show a manual button. */
   targetId: string | null;
-  isComplete: (state: GameState, selectedVesselId: string | null) => boolean;
+  isComplete: (state: GameState, selectedVesselId: string | null, previewCityId: string | null) => boolean;
 }
 
 const STEPS: TourStep[] = [
@@ -88,15 +97,21 @@ const STEPS: TourStep[] = [
     isComplete: (_state, selectedVesselId) => selectedVesselId === SHIP_ID,
   },
   {
-    title: 'Buy some wool',
-    body: 'Bruges sells wool cheap. Click Buy to load a unit aboard.',
+    title: 'Buy some cloth',
+    body: 'Bruges weaves fine cloth. Click Buy to load a bale aboard.',
     targetId: `market-buy-${FIRST_HOP_GOOD}`,
     isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) > 0,
   },
   {
-    title: 'Send the ship to Ghent',
-    body: "Ghent is a day's ride from Bruges — click its marker on the map.",
+    title: 'Look at Antwerp',
+    body: "Antwerp is a day's ride from Bruges, and pays more for cloth than home does — click its marker on the map to see what's known about it.",
     targetId: `city-node-${FIRST_HOP_CITY}`,
+    isComplete: (_state, _selectedVesselId, previewCityId) => previewCityId === FIRST_HOP_CITY,
+  },
+  {
+    title: 'Confirm the voyage',
+    body: 'Click "Send The Charetty ship here" to commit to the crossing.',
+    targetId: 'confirm-dispatch-button',
     isComplete: state => state.vessels.find(v => v.id === SHIP_ID)?.destination === FIRST_HOP_CITY,
   },
   {
@@ -106,6 +121,12 @@ const STEPS: TourStep[] = [
     isComplete: state => state.week >= 1,
   },
   {
+    title: 'Sell it at a profit',
+    body: 'Antwerp pays more for cloth than Bruges did. Click Sell to close the loop.',
+    targetId: `market-sell-${FIRST_HOP_GOOD}`,
+    isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) === 0,
+  },
+  {
     title: "That's the loop",
     body: 'Buy low, carry it somewhere it sells dear, mind the clock and the ledger. From here, the house is yours to run.',
     targetId: null,
@@ -113,9 +134,9 @@ const STEPS: TourStep[] = [
   },
 ];
 
-function firstIncompleteStep(state: GameState, selectedVesselId: string | null): number {
+function firstIncompleteStep(state: GameState, selectedVesselId: string | null, previewCityId: string | null): number {
   let i = 0;
-  while (i < STEPS.length && STEPS[i].isComplete(state, selectedVesselId)) i++;
+  while (i < STEPS.length && STEPS[i].isComplete(state, selectedVesselId, previewCityId)) i++;
   return Math.min(i, STEPS.length - 1);
 }
 
@@ -172,11 +193,12 @@ function useTargetRect(targetId: string | null): DOMRect | null {
 interface GuidedTourProps {
   state: GameState;
   selectedVesselId: string | null;
+  previewCityId: string | null;
   onFinish: () => void;
 }
 
-export default function GuidedTour({ state, selectedVesselId, onFinish }: GuidedTourProps) {
-  const [stepIndex, setStepIndex] = useState(() => firstIncompleteStep(state, selectedVesselId));
+export default function GuidedTour({ state, selectedVesselId, previewCityId, onFinish }: GuidedTourProps) {
+  const [stepIndex, setStepIndex] = useState(() => firstIncompleteStep(state, selectedVesselId, previewCityId));
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
   const isManual = step.targetId === null;
@@ -185,11 +207,11 @@ export default function GuidedTour({ state, selectedVesselId, onFinish }: Guided
   // Auto-advance once the player actually performs the real action a step asks for.
   useEffect(() => {
     if (isManual) return;
-    if (!step.isComplete(state, selectedVesselId)) return;
+    if (!step.isComplete(state, selectedVesselId, previewCityId)) return;
     const t = setTimeout(() => setStepIndex(i => Math.min(i + 1, STEPS.length - 1)), 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, selectedVesselId, stepIndex]);
+  }, [state, selectedVesselId, previewCityId, stepIndex]);
 
   const PADDING = 8;
   const spotlight: React.CSSProperties | null = rect

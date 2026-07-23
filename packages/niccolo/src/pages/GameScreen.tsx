@@ -3,10 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { formatWeekDate } from '../sim/clock';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent } from '../sim/content';
-import { canInsureAt } from '../sim/insurance';
 import { cargoTotal } from '../sim/market';
 import MapView from '../components/MapView';
 import MarketPanel from '../components/MarketPanel';
+import CityPreviewPanel from '../components/CityPreviewPanel';
 import DispatchesPanel from '../components/DispatchesPanel';
 import LedgerPanel from '../components/LedgerPanel';
 import HouseholdPanel from '../components/HouseholdPanel';
@@ -110,6 +110,7 @@ export default function GameScreen() {
   const { state, error, dispatch, loadGame, deleteGame } = useGameHybrid();
   const nav = useNavigate();
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
+  const [previewCityId, setPreviewCityId] = useState<string | null>(null);
   const [insureNext, setInsureNext] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showGuidedTour, setShowGuidedTour] = useState(false);
@@ -124,6 +125,10 @@ export default function GameScreen() {
 
   useEffect(() => {
     setInsureNext(false);
+    // Default the preview to wherever the newly-selected vessel actually is, so the sidebar shows
+    // something useful immediately rather than staying empty until the map is clicked.
+    setPreviewCityId(state?.vessels.find(v => v.id === selectedVesselId)?.location ?? null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedVesselId]);
 
   // Show once per browser, the first time this screen is reached with no scripted event already
@@ -152,9 +157,13 @@ export default function GameScreen() {
     cityInfoAge[c.id] = dockedCityIds.has(c.id) ? 0 : report ? state.week - report.trueAsOfWeek : null;
   }
 
-  const handleSelectCity = (cityId: string) => {
-    if (!selectedVessel) return;
-    dispatch({ type: 'DISPATCH_VESSEL', vesselId: selectedVessel.id, destinationId: cityId, insure: insureNext });
+  // Clicking a city (reachable or not) only previews it — see CityPreviewPanel — so the player
+  // can check prices before committing. Dispatch is a separate, explicit confirmation.
+  const handlePreviewCity = (cityId: string) => setPreviewCityId(cityId);
+
+  const handleConfirmDispatch = () => {
+    if (!selectedVessel || !previewCityId) return;
+    dispatch({ type: 'DISPATCH_VESSEL', vesselId: selectedVessel.id, destinationId: previewCityId, insure: insureNext });
     setInsureNext(false);
   };
 
@@ -165,11 +174,7 @@ export default function GameScreen() {
   const canGuidedTour = state.week === 0 && !!ship && ship.location === 'bruges' && !ship.destination;
 
   const activePolicy = selectedVessel ? state.insurance.find(i => i.vesselId === selectedVessel.id) : undefined;
-  const canOfferInsurance =
-    !!selectedVessel &&
-    !selectedVessel.destination &&
-    canInsureAt(selectedVessel.location) &&
-    cargoTotal(selectedVessel.cargo) > 0;
+  const previewCity = previewCityId ? findCity(previewCityId) : undefined;
 
   if (state.insolvent) {
     return (
@@ -245,7 +250,12 @@ export default function GameScreen() {
         />
       )}
       {showGuidedTour && !showTutorial && !pendingEvent && (
-        <GuidedTour state={state} selectedVesselId={selectedVesselId} onFinish={() => setShowGuidedTour(false)} />
+        <GuidedTour
+          state={state}
+          selectedVesselId={selectedVesselId}
+          previewCityId={previewCityId}
+          onFinish={() => setShowGuidedTour(false)}
+        />
       )}
       <PortalNav variant="header" />
       <header style={HEADER}>
@@ -277,8 +287,9 @@ export default function GameScreen() {
           <MapView
             vessels={state.vessels}
             selectedVesselId={selectedVesselId}
-            onSelectCity={handleSelectCity}
+            onSelectCity={handlePreviewCity}
             cityInfoAge={cityInfoAge}
+            previewedCityId={previewCityId}
           />
         </div>
 
@@ -325,7 +336,7 @@ export default function GameScreen() {
             {selectedVessel
               ? selectedVessel.destination
                 ? `${selectedVessel.name} cannot be redirected while under way.`
-                : `Select a lit city on the map to send ${selectedVessel.name} there.`
+                : 'Click any city on the map to see what\'s known about it.'
               : 'Select a vessel.'}
           </p>
 
@@ -335,16 +346,18 @@ export default function GameScreen() {
             </p>
           )}
 
-          {canOfferInsurance && (
-            <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start' }}>
-              <input type="checkbox" checked={insureNext} onChange={e => setInsureNext(e.target.checked)} />
-              <span>
-                Insure this cargo before it departs — underwritten here at{' '}
-                {findCity(selectedVessel!.location)?.name}. Premium reflects the route's risk and how stale our
-                own word from the destination is; charged when you choose where to send{' '}
-                {selectedVessel!.name}.
-              </span>
-            </label>
+          {previewCity && (
+            <CityPreviewPanel
+              city={previewCity}
+              isLive={dockedCityIds.has(previewCity.id)}
+              report={state.knownPrices[previewCity.id]}
+              week={state.week}
+              scarcity={state.scarcity}
+              vessel={selectedVessel}
+              insureNext={insureNext}
+              onInsureChange={setInsureNext}
+              onConfirmDispatch={handleConfirmDispatch}
+            />
           )}
 
           {selectedVessel && !selectedVessel.destination && selectedVessel.capacity > 0 && (

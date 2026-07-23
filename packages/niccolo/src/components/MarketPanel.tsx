@@ -72,7 +72,7 @@ function MarketRow({ goodId, price, held, canBuy, canSell, onBuy, onSell }: Mark
       <button id={`market-buy-${goodId}`} style={SMALL_BUTTON} disabled={!canBuy} onClick={() => onBuy(qty)}>
         Buy
       </button>
-      <button style={SMALL_BUTTON} disabled={!canSell || held < qty} onClick={() => onSell(qty)}>
+      <button id={`market-sell-${goodId}`} style={SMALL_BUTTON} disabled={!canSell || held < qty} onClick={() => onSell(qty)}>
         Sell
       </button>
     </div>

@@ -57,9 +57,14 @@ function vesselPoint(v: Vessel): { x: number; y: number } | null {
 interface MapViewProps {
   vessels: Vessel[];
   selectedVesselId: string | null;
+  /** Clicking any city — reachable or not — calls this to preview it; dispatching the selected
+   * vessel there is a separate, explicit confirmation in the sidebar, not the click itself. */
   onSelectCity: (cityId: string) => void;
   /** cityId -> weeks since the player's known report on that city was true; null if no report yet. */
   cityInfoAge: Record<string, number | null>;
+  /** The city currently shown in the sidebar's preview panel, if any — highlighted distinctly
+   * from "reachable" so the player can see which marker their click actually landed on. */
+  previewedCityId?: string | null;
 }
 
 /** Fog by information age: fresh news reads solid, old or absent news fades the city out. */
@@ -111,7 +116,7 @@ function RhumbLines() {
   );
 }
 
-export default function MapView({ vessels, selectedVesselId, onSelectCity, cityInfoAge }: MapViewProps) {
+export default function MapView({ vessels, selectedVesselId, onSelectCity, cityInfoAge, previewedCityId }: MapViewProps) {
   const selected = vessels.find(v => v.id === selectedVesselId) ?? null;
 
   return (
@@ -148,13 +153,22 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
             })
           : false;
         const opacity = fogOpacity(cityInfoAge[c.id] ?? null);
+        const isPreviewed = c.id === previewedCityId;
         return (
           <g
             key={c.id}
             id={`city-node-${c.id}`}
-            onClick={() => reachable && onSelectCity(c.id)}
-            style={{ cursor: reachable ? 'pointer' : 'default' }}
+            onClick={() => onSelectCity(c.id)}
+            style={{ cursor: 'pointer' }}
           >
+            {isPreviewed && (
+              <circle
+                cx={c.x} cy={c.y} r={(c.port ? 7 : 5.5) + 4}
+                fill="none"
+                stroke={GOLD}
+                strokeWidth={1.5}
+              />
+            )}
             <circle
               cx={c.x} cy={c.y} r={c.port ? 7 : 5.5}
               fill={reachable ? GOLD : PARCHMENT}
