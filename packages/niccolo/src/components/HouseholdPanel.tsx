@@ -123,6 +123,7 @@ export default function HouseholdPanel({ characters, vessels, cash, conscience, 
             </div>
             <div style={{ fontSize: '0.7rem', color: '#c9b88a' }}>{assignmentSummary(c.assignment, vessels)}</div>
             <select
+              id={`household-assign-${c.id}`}
               style={FIELD}
               value={assignmentKey(c.assignment)}
               onChange={e => onAssign(c.id, parseAssignmentKey(e.target.value))}

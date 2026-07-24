@@ -94,11 +94,11 @@ export function useGameLocal() {
   const [error, setError] = useState<string | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>(readIndex);
 
-  const createGame = useCallback((name?: string): string => {
+  const createGame = useCallback((name?: string, skipPrologue?: boolean): string => {
     const idx = readIndex();
     const id = crypto.randomUUID();
     const campaignName = name?.trim() || `Campaign #${idx.length + 1}`;
-    const fresh = createInitialState(id, campaignName);
+    const fresh = createInitialState(id, campaignName, { skipPrologue });
     localStorage.setItem(stateKey(id), JSON.stringify(fresh));
     setSaves(upsertIndex(fresh));
     setState(fresh);

@@ -131,7 +131,11 @@ function advanceWeek(state: GameState): GameState {
   const week = advanceWeekCounter(state.week);
   const exchangeRates = driftExchangeRates(state.exchangeRates);
   const maturity = resolveMaturingObligations(state, week, exchangeRates);
-  const upkeep = resolveWeeklyUpkeep({ ...state, cash: maturity.cash });
+  // Chapter 0: an apprentice doesn't owe the household's wages — that's Marian's problem until
+  // Claes is formally made her factor. Wages and loyalty drift are suspended until then.
+  const upkeep = state.flags.chapter0_complete
+    ? resolveWeeklyUpkeep({ ...state, cash: maturity.cash })
+    : { cash: maturity.cash, characters: state.characters };
   const condottaResolution = resolveWeeklyCondotta({ ...state, cash: upkeep.cash });
   const scarcity = applyHouseTradeFootprint(driftScarcity(applyBackgroundFlows(maturity.scarcity)));
   const houseRelations = driftHouseRelations(state.houseRelations, state.flags);

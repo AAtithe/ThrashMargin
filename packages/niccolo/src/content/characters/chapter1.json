@@ -7,14 +7,14 @@
     "loyalty": 70, "salary": 4, "location": "bruges", "status": "active", "assignment": { "type": "idle" } },
   { "id": "tobie",    "name": "Tobias Beventini", "role": "physician",
     "skills": { "law": 1, "trade": 1, "combat": 1, "intrigue": 3 },
-    "loyalty": 75, "salary": 3, "location": "bruges", "status": "active", "assignment": { "type": "idle" } },
+    "loyalty": 75, "salary": 3, "location": "bruges", "status": "pending", "assignment": { "type": "idle" } },
   { "id": "godscalc", "name": "Father Godscalc", "role": "chaplain",
     "skills": { "law": 2, "trade": 1, "combat": 1, "intrigue": 2 },
     "loyalty": 85, "salary": 2, "location": "bruges", "status": "active", "assignment": { "type": "idle" } },
   { "id": "gregorio", "name": "Gregorio of Asti", "role": "lawyer",
     "skills": { "law": 5, "trade": 2, "combat": 1, "intrigue": 2 },
-    "loyalty": 65, "salary": 4, "location": "bruges", "status": "active", "assignment": { "type": "idle" } },
+    "loyalty": 65, "salary": 4, "location": "bruges", "status": "pending", "assignment": { "type": "idle" } },
   { "id": "astorre",  "name": "Astorre", "role": "condottiere",
     "skills": { "law": 1, "trade": 1, "combat": 5, "intrigue": 2 },
-    "loyalty": 60, "salary": 6, "location": "bruges", "status": "active", "assignment": { "type": "idle" } }
+    "loyalty": 60, "salary": 6, "location": "bruges", "status": "pending", "assignment": { "type": "idle" } }
 ]

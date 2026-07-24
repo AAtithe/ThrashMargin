@@ -2,7 +2,7 @@
   {
     "id": "ev_c1_001",
     "chapter": 1,
-    "trigger": { "dateAfter": "1460-03-01", "location": "bruges" },
+    "trigger": { "dateAfter": "1460-03-01", "location": "bruges", "flag": "chapter0_complete" },
     "title": "A ledger left open",
     "body": "Julius sets the counting-house book in front of you, open to a page of his own corrections. He says nothing about who the errors belonged to before he found them.",
     "choices": [

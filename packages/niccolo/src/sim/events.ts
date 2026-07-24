@@ -103,5 +103,15 @@ export function resolveEvent(state: GameState, eventId: string, choiceIndex: num
       ),
     };
   }
+  if (effects.grantVessel && !next.vessels.some(v => v.id === effects.grantVessel!.id)) {
+    const { id, kind, name, capacity, location } = effects.grantVessel;
+    next = {
+      ...next,
+      vessels: [
+        ...next.vessels,
+        { id, kind, name, capacity, location, destination: null, routeId: null, weeksRemaining: 0, cargo: {} },
+      ],
+    };
+  }
   return next;
 }

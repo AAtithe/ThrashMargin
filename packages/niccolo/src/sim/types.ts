@@ -208,6 +208,10 @@ export interface EventEffects {
   /** Chapter 2 (Phase 9): a scripted departure (the extraction's human stake), distinct from the
    * generic loyalty-zero departure — a no-op if the character isn't currently active. */
   characterDeparts?: string;
+  /** Chapter 0: hands the player a new vessel mid-campaign (Claes's cargo ship, granted once he's
+   * formally made the house's factor) — a no-op if a vessel with that id already exists, so a
+   * replayed or already-past finale can't duplicate it. Docks immediately at `location`. */
+  grantVessel?: { id: string; kind: VesselKind; name: string; capacity: number; location: string };
 }
 
 export interface EventChoice {

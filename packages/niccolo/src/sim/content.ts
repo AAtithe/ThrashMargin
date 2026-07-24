@@ -1,3 +1,4 @@
+import events0Data from '../content/events/chapter0.json';
 import citiesData from '../content/cities/chapter1.json';
 import routesData from '../content/routes/chapter1.json';
 import goodsData from '../content/goods/chapter1.json';
@@ -27,7 +28,9 @@ export const HOME_CITY = 'bruges';
  * establishing (Phase 9) and continuing (Phase 10) the one-chapter-one-file-per-type convention
  * Section 12 describes for Phase 10+. Chapter 3 has no new characters or houses of its own (the
  * Cyprus arc's antagonist is a historical siege, not a rival trading house), so `goods3Data` and
- * `events3Data` are the only new imports it needs beyond cities and routes.
+ * `events3Data` are the only new imports it needs beyond cities and routes. Chapter 0 (the
+ * pre-Chapter-1 prologue) reuses Chapter 1's own cities/routes/characters entirely — it needs
+ * only its own `events/chapter0.json`, concatenated first into `EVENTS`.
  */
 export const CITIES: City[] = [
   ...(citiesData as unknown as City[]),
@@ -41,6 +44,7 @@ export const CHARACTERS: Character[] = [
   ...(characters2Data as unknown as Character[]),
 ];
 export const EVENTS: ScriptedEvent[] = [
+  ...(events0Data as unknown as ScriptedEvent[]),
   ...(eventsData as unknown as ScriptedEvent[]),
   ...(events2Data as unknown as ScriptedEvent[]),
   ...(events3Data as unknown as ScriptedEvent[]),

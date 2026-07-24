@@ -26,8 +26,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === 'POST') {
     const name: string = ((req.body?.name as string | undefined) ?? 'Campaign').trim();
+    const skipPrologue = req.body?.skipPrologue === true;
     const id = uuid();
-    const state = createInitialState(id, name);
+    const state = createInitialState(id, name, { skipPrologue });
 
     try {
       await db.query(

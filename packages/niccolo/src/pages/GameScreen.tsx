@@ -132,13 +132,16 @@ export default function GameScreen() {
   }, [selectedVesselId]);
 
   // Show once per browser, the first time this screen is reached with no scripted event already
-  // in the way — a local UI preference, not campaign state, so it isn't part of GameState/saves.
+  // in the way and Chapter 0 (if the campaign is playing it) has actually concluded — its own
+  // "You hold 40 florins, a ship..." opening line isn't true yet during the prologue itself. A
+  // local UI preference, not campaign state, so it isn't part of GameState/saves.
   useEffect(() => {
     if (!state) return;
     if (state.pendingEvents.length > 0) return;
+    if (!state.flags.chapter0_complete) return;
     if (hasSeenTutorial()) return;
     setShowTutorial(true);
-  }, [state?.id, state?.pendingEvents.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state?.id, state?.pendingEvents.length, state?.flags.chapter0_complete]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const abandonAndReturn = () => {
     if (id) deleteGame(id);
@@ -167,11 +170,13 @@ export default function GameScreen() {
     setInsureNext(false);
   };
 
-  // The guided tour's steps are scripted for a fresh campaign's exact starting position (the
-  // ship docked, empty-handed, at Bruges) — only offer it while that's still true, rather than
-  // risk a stale instruction ("click Ghent") that no longer matches where the ship actually is.
+  // The guided tour's trade-loop steps need the ship to actually exist and be free to dispatch —
+  // true once Chapter 0 hands it over (or immediately, for a skip-prologue campaign). It's no
+  // longer tied to week 0: Chapter 0 itself now owns the player's very first moves, and this tour
+  // covers the systems that come after — Household, Dispatches, the Ledger — that a prologue
+  // player wouldn't have touched yet either.
   const ship = state.vessels.find(v => v.id === 'ship_1');
-  const canGuidedTour = state.week === 0 && !!ship && ship.location === 'bruges' && !ship.destination;
+  const canGuidedTour = !!state.flags.chapter0_complete && !!ship && !ship.destination;
 
   const activePolicy = selectedVessel ? state.insurance.find(i => i.vesselId === selectedVessel.id) : undefined;
   const previewCity = previewCityId ? findCity(previewCityId) : undefined;
@@ -408,6 +413,7 @@ export default function GameScreen() {
             houseRelations={state.houseRelations}
             agents={state.agents}
             cash={state.cash}
+            flags={state.flags}
             onPlaceAgent={(placement, name) => dispatch({ type: 'PLACE_AGENT', placement, name })}
           />
 
@@ -426,6 +432,7 @@ export default function GameScreen() {
             cash={state.cash}
             exchangeRates={state.exchangeRates}
             obligations={state.obligations}
+            flags={state.flags}
             onWriteBill={(cityId, florins, termWeeks) => dispatch({ type: 'WRITE_BILL', cityId, florins, termWeeks })}
             onTakeDeposit={(florins, termWeeks) => dispatch({ type: 'TAKE_DEPOSIT', florins, termWeeks })}
             onWriteLoan={(kind, florins, termWeeks) => dispatch({ type: 'WRITE_LOAN', kind, florins, termWeeks })}

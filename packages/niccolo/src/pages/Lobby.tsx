@@ -100,10 +100,11 @@ export default function Lobby() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [skipPrologue, setSkipPrologue] = useState(false);
 
   const handleNew = async () => {
     setStarting(true);
-    const id = await Promise.resolve(createGame(name.trim() || undefined));
+    const id = await Promise.resolve(createGame(name.trim() || undefined, skipPrologue));
     setStarting(false);
     if (id) nav(`/game/${id}`);
   };
@@ -122,10 +123,12 @@ export default function Lobby() {
             How to play
           </button>
         </div>
-        <p style={SUBTITLE}>Trading, banking and intelligence in the House of Niccolo — Chapter 1: Niccolo Rising.</p>
+        <p style={SUBTITLE}>
+          Trading, banking and intelligence in the House of Niccolo — Chapter 0: Claes begins.
+        </p>
 
         <p style={SECTION_LABEL}>Begin a new campaign</p>
-        <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem' }}>
+        <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.6rem' }}>
           <input
             style={FIELD}
             placeholder={`Campaign #${saves.length + 1}`}
@@ -137,6 +140,13 @@ export default function Lobby() {
             {starting ? '…' : 'Begin →'}
           </button>
         </div>
+        <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '2rem' }}>
+          <input type="checkbox" checked={skipPrologue} onChange={e => setSkipPrologue(e.target.checked)} />
+          <span>
+            Skip the prologue — start straight in as a merchant with a ship, a courier, and 40f,
+            rather than as Claes the dyeworks apprentice with nothing yet.
+          </span>
+        </label>
 
         <p style={SECTION_LABEL}>Active campaigns</p>
         {active.length === 0 && (

@@ -105,6 +105,7 @@ export default function DispatchesPanel({
               </div>
               {c.id !== HOME_CITY && (
                 <button
+                  id={`dispatches-invest-${c.id}`}
                   style={SMALL_BUTTON}
                   disabled={!investable || cost > cash}
                   onClick={() => onInvest(c.id)}

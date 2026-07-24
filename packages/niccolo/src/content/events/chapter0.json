@@ -1,0 +1,91 @@
+[
+  {
+    "id": "ev_c0_001",
+    "chapter": 0,
+    "trigger": { "location": "bruges" },
+    "title": "Claes at the dyeworks",
+    "body": "You are Claes: no capital, no name that matters yet, and a place swept for you at the Charetty dyeworks by the widow herself. Marian de Charetty runs the house; Julius keeps its books; Father Godscalc keeps, after his own fashion, its conscience. None of them owe you anything yet.",
+    "choices": [
+      { "text": "Get to work", "effects": { "flag": "chapter0_started" } }
+    ]
+  },
+  {
+    "id": "ev_c0_002",
+    "chapter": 0,
+    "trigger": { "flag": "chapter0_started" },
+    "title": "Learn the roads",
+    "body": "Julius has a message for the wool-buyers at Ghent and no one idle to carry it but you. \"Learn the roads before you learn the ledger,\" he says. Send the dispatch rider there yourself.",
+    "choices": [
+      { "text": "Take the message", "effects": { "flag": "sent_to_ghent" } }
+    ]
+  },
+  {
+    "id": "ev_c0_003",
+    "chapter": 0,
+    "trigger": { "location": "ghent", "flag": "sent_to_ghent" },
+    "title": "Message delivered",
+    "body": "The wool-buyers read Julius's letter without comment and press a couple of coins on you anyway, the way you tip a boy so he remembers the way back.",
+    "choices": [
+      { "text": "Pocket the coin", "effects": { "cash": 3, "flag": "learned_the_roads" } }
+    ]
+  },
+  {
+    "id": "ev_c0_004",
+    "chapter": 0,
+    "trigger": { "flag": "learned_the_roads" },
+    "title": "The dyeworks shortcut",
+    "body": "A cloth merchant offers good money for a rush batch of madder-dyed wool, no questions asked about how the colour is fixed so fast. The usual process wants another week he won't wait for.",
+    "choices": [
+      { "text": "Take the commission and cut the process short", "effects": { "cash": 8, "conscience": -2, "flag": "first_wages" } },
+      { "text": "Refuse — the vats are done properly or not at all", "effects": { "flag": "first_wages" } }
+    ]
+  },
+  {
+    "id": "ev_c0_005",
+    "chapter": 0,
+    "trigger": { "flag": "first_wages" },
+    "title": "Gregorio's favour",
+    "body": "A jobbing lawyer named Gregorio untangles a small dispute over the dyeworks' rent, expecting nothing for it but the chance that you'll remember him when you're someone worth knowing. You will.",
+    "choices": [
+      { "text": "Accept his help", "effects": { "joinCharacter": "gregorio", "flag": "gregorio_joined" } }
+    ]
+  },
+  {
+    "id": "ev_c0_006",
+    "chapter": 0,
+    "trigger": { "flag": "gregorio_joined" },
+    "title": "Word from home",
+    "body": "A dyer grumbles that the price he was quoted for madder at Antwerp had already moved by the time his own letter arrived to act on it. News is never as current as the man reading it believes. You start to see why that matters.",
+    "choices": [
+      { "text": "Take note of it", "effects": { "flag": "saw_the_lag" } }
+    ]
+  },
+  {
+    "id": "ev_c0_007",
+    "chapter": 0,
+    "trigger": { "flag": "saw_the_lag" },
+    "title": "Tobie's remedy",
+    "body": "A fever from the dye fumes puts you flat for two days. Tobias Beventini, a physician more often paid in favours than florins, tends you without being asked twice and stays on afterward out of what looks like habit.",
+    "choices": [
+      { "text": "Accept his care", "effects": { "joinCharacter": "tobie", "flag": "tobie_joined" } }
+    ]
+  },
+  {
+    "id": "ev_c0_008",
+    "chapter": 0,
+    "trigger": { "flag": "tobie_joined" },
+    "title": "Marian's decision",
+    "body": "Marian calls you into the counting-house, not the dyeshop. She has watched what you've made of a courier's errand and a dyer's shortcut, and she has decided you are worth more to her as a factor than an apprentice. A ship, a stake, and Astorre's company come with the charge — and so does everything that can go wrong with them, which is now yours to answer for as much as hers.",
+    "choices": [
+      {
+        "text": "Accept the charge",
+        "effects": {
+          "grantVessel": { "id": "ship_1", "kind": "ship", "name": "The Charetty ship", "capacity": 20, "location": "bruges" },
+          "cash": 40,
+          "joinCharacter": "astorre",
+          "flag": "chapter0_complete"
+        }
+      }
+    ]
+  }
+]

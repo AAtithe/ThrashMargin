@@ -73,6 +73,15 @@ const GHOST_BUTTON: React.CSSProperties = { ...BUTTON, border: 'none', color: '#
 const SHIP_ID = 'ship_1';
 const FIRST_HOP_CITY = 'antwerp';
 const FIRST_HOP_GOOD = 'cloth';
+/** Julius is active in every campaign regardless of the Chapter 0 path (he's one of the "3
+ * friendships" characters even in the prologue), so he's a safe, always-present officer to
+ * demonstrate an assignment on. */
+const DEMO_CHARACTER_ID = 'julius';
+/** Ghent/Antwerp/Calais all sit at Bruges' 1-week base latency floor already — courier investment
+ * can never improve on that, so their own "Invest" control is permanently stuck on "Fastest" and
+ * can't demonstrate the mechanic. London (base latency 2 weeks) is the nearest city investment
+ * actually does something to, at the same base 15f first-level cost. */
+const DEMO_INVEST_CITY = 'london';
 
 interface TourStep {
   title: string;
@@ -106,13 +115,25 @@ const STEPS: TourStep[] = [
     title: 'Look at Antwerp',
     body: "Antwerp is a day's ride from Bruges, and pays more for cloth than home does — click its marker on the map to see what's known about it.",
     targetId: `city-node-${FIRST_HOP_CITY}`,
-    isComplete: (_state, _selectedVesselId, previewCityId) => previewCityId === FIRST_HOP_CITY,
+    // Also true once the ship is actually en route or has arrived — `previewCityId` alone is
+    // transient (it changes the moment any other city is clicked, or resets on vessel reselect),
+    // so checking only that would make a resumed tour re-ask for a look that already happened.
+    isComplete: (state, _selectedVesselId, previewCityId) => {
+      const ship = state.vessels.find(v => v.id === SHIP_ID);
+      return previewCityId === FIRST_HOP_CITY || ship?.destination === FIRST_HOP_CITY || ship?.location === FIRST_HOP_CITY;
+    },
   },
   {
     title: 'Confirm the voyage',
     body: 'Click "Send The Charetty ship here" to commit to the crossing.',
     targetId: 'confirm-dispatch-button',
-    isComplete: state => state.vessels.find(v => v.id === SHIP_ID)?.destination === FIRST_HOP_CITY,
+    // Checked against `location` too, not just `destination` — once the ship arrives,
+    // `destination` reverts to null, and this step needs to still read as done on a resumed tour
+    // (e.g. after an unrelated scripted event interrupted it mid-voyage), not ask again.
+    isComplete: state => {
+      const ship = state.vessels.find(v => v.id === SHIP_ID);
+      return ship?.destination === FIRST_HOP_CITY || ship?.location === FIRST_HOP_CITY;
+    },
   },
   {
     title: 'Advance the clock',
@@ -127,17 +148,48 @@ const STEPS: TourStep[] = [
     isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) === 0,
   },
   {
+    title: 'Assign an officer',
+    body: "Officers can be given a posting instead of sitting idle. Give Julius an assignment — negotiate or investigate somewhere, or send him aboard a ship.",
+    targetId: `household-assign-${DEMO_CHARACTER_ID}`,
+    isComplete: state => state.characters.find(c => c.id === DEMO_CHARACTER_ID)?.assignment.type !== 'idle',
+  },
+  {
+    title: 'Invest in a courier line',
+    body: "Reports arrive faster from a city you've paid to speed up. Try investing in London's courier line.",
+    targetId: `dispatches-invest-${DEMO_INVEST_CITY}`,
+    isComplete: state => (state.courierInvestment[DEMO_INVEST_CITY] ?? 0) >= 1,
+  },
+  {
+    title: 'Write a bill of exchange',
+    body: 'The Ledger lets you borrow now against a future repayment — real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
+    targetId: 'ledger-borrow-button',
+    isComplete: state => state.obligations.length > 0,
+  },
+  {
     title: "That's the loop",
-    body: 'Buy low, carry it somewhere it sells dear, mind the clock and the ledger. From here, the house is yours to run.',
+    body:
+      "Buy low, carry it somewhere it sells dear, mind the clock and the ledger. Cargo at sea can be insured before it departs, at Bruges, Venice, or Genoa; rival houses and the secrets you uncover from them live in their own panel further down. From here, the house is yours to run.",
     targetId: null,
     isComplete: () => false,
   },
 ];
 
+/**
+ * Where to resume on mount. The manual intro/outro steps always report `isComplete() => false` —
+ * they're narrative bookends, not real progress — so a naive "skip while complete" scan would
+ * never get past the very first (intro) step on a *re*-mount, resetting an interrupted tour back
+ * to the welcome card every time (observed happening whenever a scripted story event interrupts
+ * the tour mid-flow, since `GameScreen` unmounts `GuidedTour` while that event is up). Instead:
+ * if no real (non-manual) step has been completed yet, this is a genuinely fresh start — show the
+ * intro. Otherwise skip straight to the first not-yet-complete real step (or the outro, if every
+ * real step is already done).
+ */
 function firstIncompleteStep(state: GameState, selectedVesselId: string | null, previewCityId: string | null): number {
-  let i = 0;
-  while (i < STEPS.length && STEPS[i].isComplete(state, selectedVesselId, previewCityId)) i++;
-  return Math.min(i, STEPS.length - 1);
+  const realSteps = STEPS.map((step, index) => ({ step, index })).filter(({ step }) => step.targetId !== null);
+  const anyProgress = realSteps.some(({ step }) => step.isComplete(state, selectedVesselId, previewCityId));
+  if (!anyProgress) return 0;
+  const nextIncomplete = realSteps.find(({ step }) => !step.isComplete(state, selectedVesselId, previewCityId));
+  return nextIncomplete ? nextIncomplete.index : STEPS.length - 1;
 }
 
 function useTargetRect(targetId: string | null): DOMRect | null {

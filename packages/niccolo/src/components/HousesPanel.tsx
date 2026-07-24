@@ -54,14 +54,18 @@ interface HousesPanelProps {
   houseRelations: Record<string, number>;
   agents: Agent[];
   cash: number;
+  flags: Record<string, boolean>;
   onPlaceAgent: (placement: AgentPlacement, name?: string) => void;
 }
 
-export default function HousesPanel({ houses, houseRelations, agents, cash, onPlaceAgent }: HousesPanelProps) {
+export default function HousesPanel({ houses, houseRelations, agents, cash, flags, onPlaceAgent }: HousesPanelProps) {
   const [target, setTarget] = useState<string>(() => (houses[0] ? `house:${houses[0].id}` : ''));
   const [name, setName] = useState('');
   const cost = agentPlacementCost(agents);
   const canAfford = cost <= cash;
+
+  // Chapter 0: an apprentice wouldn't know the wider stage of rival banking houses yet.
+  if (!flags.chapter0_complete) return null;
 
   const submit = () => {
     const [type, id] = target.split(':');

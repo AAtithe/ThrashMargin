@@ -68,6 +68,7 @@ interface LedgerPanelProps {
   cash: number;
   exchangeRates: ExchangeRates;
   obligations: Obligation[];
+  flags: Record<string, boolean>;
   onWriteBill: (cityId: string, florins: number, termWeeks: number) => void;
   onTakeDeposit: (florins: number, termWeeks: number) => void;
   onWriteLoan: (kind: 'merchant' | 'prince', florins: number, termWeeks: number) => void;
@@ -79,6 +80,7 @@ export default function LedgerPanel({
   cash,
   exchangeRates,
   obligations,
+  flags,
   onWriteBill,
   onTakeDeposit,
   onWriteLoan,
@@ -94,6 +96,9 @@ export default function LedgerPanel({
   const [loanKind, setLoanKind] = useState<'merchant' | 'prince'>('merchant');
   const [loanFlorins, setLoanFlorins] = useState(20);
   const [loanTerm, setLoanTerm] = useState(8);
+
+  // Chapter 0: credit isn't Claes's to extend until he's formally made the house's factor.
+  if (!flags.chapter0_complete) return null;
 
   const ladder = obligations
     .filter(o => !o.settled)
@@ -181,7 +186,7 @@ export default function LedgerPanel({
           onChange={e => setBillTerm(Math.max(MIN_TERM_WEEKS, Math.min(MAX_TERM_WEEKS, Math.floor(Number(e.target.value)) || MIN_TERM_WEEKS)))}
         />
         wks
-        <button style={SMALL_BUTTON} onClick={() => onWriteBill(billCity, billFlorins, billTerm)}>
+        <button id="ledger-borrow-button" style={SMALL_BUTTON} onClick={() => onWriteBill(billCity, billFlorins, billTerm)}>
           Borrow
         </button>
       </div>
