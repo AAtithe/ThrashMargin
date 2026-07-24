@@ -10,8 +10,8 @@ export interface CityMarketGood {
 
 /** florin is the player's home ledger currency; the rest are foreign, grouped by City.power.
  * `asper` (Chapter 2, Phase 9) is Trebizond's money of account; `bezant` (Chapter 3, Phase 10)
- * is the Lusignan kingdom of Cyprus's. */
-export type CurrencyId = 'florin' | 'groot' | 'pound' | 'ecu' | 'ducat' | 'asper' | 'bezant';
+ * is the Lusignan kingdom of Cyprus's; `cruzado` (Chapter 4, Phase 13) is Lisbon/Madeira/Gambia's. */
+export type CurrencyId = 'florin' | 'groot' | 'pound' | 'ecu' | 'ducat' | 'asper' | 'bezant' | 'cruzado';
 
 export interface City {
   id: string;
@@ -31,8 +31,12 @@ export interface Route {
   from: string;
   to: string;
   distanceWeeks: number;
-  /** `river`: ship-only, exactly like `sea` — every courier-restriction check already excludes
-   * "not land" generically, so no river-specific exclusion is needed anywhere. */
+  /** `river` (Chapter 4, Phase 13): the Gambia-Timbuktu leg. Ship-only, exactly like `sea` — every
+   * courier-restriction check already excludes "not land" generically, so no river-specific
+   * exclusion was needed anywhere. Deliberately excluded from `insurance.ts`'s sea/land premium
+   * and risk branches (falls through to the land rate as written) since `sim/expedition.ts`'s
+   * disease clock is the dedicated risk model for this route — stacking storm/piracy risk on top
+   * would double-jeopardy the same voyage. */
   type: 'land' | 'sea' | 'river';
   seasonal: boolean;
 }
@@ -97,6 +101,33 @@ export interface SabotageLossEvent {
   quantityLost: number;
   cityId: string;
   houseName: string;
+}
+
+export type ExpeditionHealthStatus = 'healthy' | 'ailing' | 'stricken';
+
+/**
+ * Chapter 4's disease clock (design doc §9: "the Gambia voyage: river navigation, disease
+ * clock"). Tracks at most one vessel at a time — the same singular-instance discipline `Estate`
+ * used for its first outing — while it lingers at Gambia, at Timbuktu, or under way on the
+ * `river` route; clears to null the week the tracked vessel leaves that zone (a live clock, not a
+ * history — `ExpeditionHealthEvent` below is the history). Resolved weekly in `resolveWeeklyExpedition`.
+ */
+export interface ExpeditionState {
+  vesselId: string;
+  weeksUpriver: number;
+  healthStatus: ExpeditionHealthStatus;
+}
+
+/** The most recent expedition-health event, for the UI to report — same "no other feedback
+ * channel" reasoning as `VoyageLossEvent`/`SabotageLossEvent`. Optional/undefined for a save from
+ * before this field existed, null on a fresh campaign until the first one occurs. */
+export interface ExpeditionHealthEvent {
+  week: number;
+  vesselId: string;
+  vesselName: string;
+  healthStatus: ExpeditionHealthStatus;
+  cashCost: number;
+  conscienceCost: number;
 }
 
 /** cityId -> goodId -> scarcity multiplier (1 = base price, >1 = scarce/dear, <1 = glut/cheap) */
@@ -381,6 +412,13 @@ export interface GameState {
   /** The most recent hostile-house sabotage loss, for the UI to report. Optional/undefined for a
    * save from before this field existed, and null on a fresh campaign until the first one occurs. */
   lastSabotageEvent?: SabotageLossEvent | null;
+  /** Chapter 4's disease clock, if a vessel is currently in the Gambia/Timbuktu zone. Optional
+   * (not required-but-nullable like `estate`) so `isCurrentShape` needs no changes — a save from
+   * before this field existed simply has no expedition running, not a shape mismatch. */
+  expedition?: ExpeditionState | null;
+  /** The most recent expedition-health event, for the UI to report. Optional/undefined for a save
+   * from before this field existed, null on a fresh campaign until the first one occurs. */
+  lastExpeditionEvent?: ExpeditionHealthEvent | null;
 }
 
 export type GameAction =
