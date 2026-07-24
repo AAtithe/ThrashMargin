@@ -32,10 +32,27 @@ function triggerMatches(state: GameState, trigger: EventTrigger): boolean {
  * Runs after every ADVANCE_WEEK (and once on a fresh campaign): any event not already fired or
  * pending whose trigger now holds joins the pending queue, oldest first. An event never fires
  * twice, and firing only queues it — the player resolves it explicitly via RESOLVE_EVENT.
+ *
+ * Chapter 0 and Chapter 1+ events are mutually exclusive on top of whatever their own trigger
+ * says: Chapter 0's own events only fire while `chapter0_complete` isn't yet set (a skip-prologue
+ * campaign starts with it already true, so `ev_c0_001` — trigger is bare `location: "bruges"`,
+ * with no flag of its own — must not also fire alongside Chapter 1's real opener); Chapter 1+
+ * events only fire once it is set. Most of Chapter 1's own events only gate on
+ * `dateAfter`+`location: "bruges"` with no flag at all (authored before Chapter 0 existed), and
+ * Chapter 0 can genuinely take several real calendar weeks (courier/handcart round trips) — without
+ * this backstop the calendar can cross into Chapter 1's own dates while the prologue is still
+ * running, misfiring its content mid Chapter 0. `ev_c1_001` already carries an explicit
+ * `flag: "chapter0_complete"` for documentation, but every later Chapter 1 event needs the same
+ * guarantee, hence enforcing both directions here once for all.
  */
 export function checkTriggers(state: GameState): GameState {
   const known = new Set([...state.firedEvents, ...state.pendingEvents]);
-  const newlyTriggered = EVENTS.filter(e => !known.has(e.id) && triggerMatches(state, e.trigger)).map(e => e.id);
+  const newlyTriggered = EVENTS.filter(
+    e =>
+      !known.has(e.id) &&
+      (e.chapter === 0 ? !state.flags.chapter0_complete : state.flags.chapter0_complete) &&
+      triggerMatches(state, e.trigger),
+  ).map(e => e.id);
   if (newlyTriggered.length === 0) return state;
   return { ...state, pendingEvents: [...state.pendingEvents, ...newlyTriggered] };
 }
@@ -111,6 +128,15 @@ export function resolveEvent(state: GameState, eventId: string, choiceIndex: num
         ...next.vessels,
         { id, kind, name, capacity, location, destination: null, routeId: null, weeksRemaining: 0, cargo: {} },
       ],
+    };
+  }
+  if (effects.grantCargo) {
+    const { vesselId, goodId, quantity } = effects.grantCargo;
+    next = {
+      ...next,
+      vessels: next.vessels.map(v =>
+        v.id === vesselId ? { ...v, cargo: { ...v.cargo, [goodId]: (v.cargo[goodId] ?? 0) + quantity } } : v,
+      ),
     };
   }
   return next;

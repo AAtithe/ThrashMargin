@@ -4,9 +4,15 @@
     "chapter": 0,
     "trigger": { "location": "bruges" },
     "title": "Claes at the dyeworks",
-    "body": "You are Claes: no capital, no name that matters yet, and a place swept for you at the Charetty dyeworks by the widow herself. Marian de Charetty runs the house; Julius keeps its books; Father Godscalc keeps, after his own fashion, its conscience. None of them owe you anything yet.",
+    "body": "You are Claes: no capital, no name that matters yet, and a place swept for you at the Charetty dyeworks by the widow herself. Marian de Charetty runs the house; Julius keeps its books; Father Godscalc keeps, after his own fashion, its conscience. None of them owe you anything yet. Julius tosses you the key to an old handcart out back — \"if you're carrying messages, you can carry a sack or two alongside them. Try not to lose either.\"",
     "choices": [
-      { "text": "Get to work", "effects": { "flag": "chapter0_started" } }
+      {
+        "text": "Get to work",
+        "effects": {
+          "flag": "chapter0_started",
+          "grantVessel": { "id": "handcart_1", "kind": "courier", "name": "Claes's handcart", "capacity": 3, "location": "bruges" }
+        }
+      }
     ]
   },
   {
@@ -14,9 +20,15 @@
     "chapter": 0,
     "trigger": { "flag": "chapter0_started" },
     "title": "Learn the roads",
-    "body": "Julius has a message for the wool-buyers at Ghent and no one idle to carry it but you. \"Learn the roads before you learn the ledger,\" he says. Send the dispatch rider there yourself.",
+    "body": "Julius has a letter for the cloth merchants at Ghent and no one idle to carry it but you. \"Learn the roads before you learn the ledger,\" he says, and nods at three sacks of madder waiting by the door — dye the dyeworks has no buyer for at Bruges this month. \"Sell it there if anyone's paying. Keep what it makes; call it your first wages.\" Load the handcart and send it to Ghent yourself.",
     "choices": [
-      { "text": "Take the message", "effects": { "flag": "sent_to_ghent" } }
+      {
+        "text": "Take the message and the madder",
+        "effects": {
+          "flag": "sent_to_ghent",
+          "grantCargo": { "vesselId": "handcart_1", "goodId": "madder", "quantity": 3 }
+        }
+      }
     ]
   },
   {
@@ -24,9 +36,9 @@
     "chapter": 0,
     "trigger": { "location": "ghent", "flag": "sent_to_ghent" },
     "title": "Message delivered",
-    "body": "The wool-buyers read Julius's letter without comment and press a couple of coins on you anyway, the way you tip a boy so he remembers the way back.",
+    "body": "The cloth merchants read Julius's letter without comment. Your madder is your own business, not the house's — the Market panel here will buy it same as it would from anyone. Sell it while the handcart's docked, then head back to Bruges when you're ready.",
     "choices": [
-      { "text": "Pocket the coin", "effects": { "cash": 3, "flag": "learned_the_roads" } }
+      { "text": "See to it", "effects": { "flag": "learned_the_roads" } }
     ]
   },
   {
@@ -55,7 +67,7 @@
     "chapter": 0,
     "trigger": { "flag": "gregorio_joined" },
     "title": "Word from home",
-    "body": "A dyer grumbles that the price he was quoted for madder at Antwerp had already moved by the time his own letter arrived to act on it. News is never as current as the man reading it believes. You start to see why that matters.",
+    "body": "A dyer grumbles that the price he was quoted for madder at Antwerp had already moved by the time his own letter arrived to act on it. News is never as current as the man reading it believes. You start to see why that matters — and why the handcart, run right, can turn a real profit on the gap between what a city last reported and what's actually true there now.",
     "choices": [
       { "text": "Take note of it", "effects": { "flag": "saw_the_lag" } }
     ]
@@ -75,7 +87,7 @@
     "chapter": 0,
     "trigger": { "flag": "tobie_joined" },
     "title": "Marian's decision",
-    "body": "Marian calls you into the counting-house, not the dyeshop. She has watched what you've made of a courier's errand and a dyer's shortcut, and she has decided you are worth more to her as a factor than an apprentice. A ship, a stake, and Astorre's company come with the charge — and so does everything that can go wrong with them, which is now yours to answer for as much as hers.",
+    "body": "Marian calls you into the counting-house, not the dyeshop. She has watched what you've made of a courier's errand and a handcart of dye — and decided you are worth more to her as a factor than an apprentice. A ship, a stake, and Astorre's company come with the charge — and so does everything that can go wrong with them, which is now yours to answer for as much as hers.",
     "choices": [
       {
         "text": "Accept the charge",

@@ -78,10 +78,22 @@ interface HouseholdPanelProps {
   cash: number;
   conscience: number;
   condotta: CondottaContract | null;
+  /** Chapter 0: an apprentice doesn't owe the household's wages yet (see `advanceWeek`'s own
+   * matching gate) — showing the usual "cannot pay, loyalty will fall" warning here would be
+   * flatly wrong, since no wages are actually deducted until Chapter 0 concludes. */
+  wagesSuspended?: boolean;
   onAssign: (characterId: string, assignment: CharacterAssignment) => void;
 }
 
-export default function HouseholdPanel({ characters, vessels, cash, conscience, condotta, onAssign }: HouseholdPanelProps) {
+export default function HouseholdPanel({
+  characters,
+  vessels,
+  cash,
+  conscience,
+  condotta,
+  wagesSuspended,
+  onAssign,
+}: HouseholdPanelProps) {
   const active = characters.filter(c => c.status === 'active');
   const departed = characters.filter(c => c.status === 'departed');
   const totalSalary = active.reduce((sum, c) => sum + c.salary, 0);
@@ -93,8 +105,16 @@ export default function HouseholdPanel({ characters, vessels, cash, conscience, 
       <p style={{ fontSize: '0.75rem', margin: 0, color: '#8a7a5a' }}>
         Conscience: <span style={{ color: conscience <= 40 ? '#b5451a' : '#e8d5a3' }}>{Math.round(conscience)}</span>
         {' · '}
-        Wages due next week: {totalSalary}f{' '}
-        <span style={{ color: canPayNext ? '#3a6b5a' : '#b5451a' }}>{canPayNext ? '(covered)' : '(cannot pay — loyalty will fall)'}</span>
+        {wagesSuspended ? (
+          <>Wages: not yet owed — no one draws a salary until you're formally made factor</>
+        ) : (
+          <>
+            Wages due next week: {totalSalary}f{' '}
+            <span style={{ color: canPayNext ? '#3a6b5a' : '#b5451a' }}>
+              {canPayNext ? '(covered)' : '(cannot pay — loyalty will fall)'}
+            </span>
+          </>
+        )}
       </p>
       <p style={{ fontSize: '0.75rem', margin: '0.3rem 0 0', color: '#8a7a5a' }}>
         Astorre's company:{' '}

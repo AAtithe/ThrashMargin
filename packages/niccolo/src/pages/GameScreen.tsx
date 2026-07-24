@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { formatWeekDate } from '../sim/clock';
 import { useGameHybrid } from '../hooks/useGameHybrid';
-import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent } from '../sim/content';
+import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood } from '../sim/content';
 import { cargoTotal } from '../sim/market';
 import MapView from '../components/MapView';
 import MarketPanel from '../components/MarketPanel';
@@ -14,7 +14,7 @@ import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
 import EstatePanel from '../components/EstatePanel';
 import EventOverlay from '../components/EventOverlay';
-import TutorialOverlay, { hasSeenTutorial } from '../components/TutorialOverlay';
+import TutorialOverlay, { hasSeenTutorial, hasSeenChapter0Tutorial } from '../components/TutorialOverlay';
 import GuidedTour from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
 
@@ -132,14 +132,19 @@ export default function GameScreen() {
   }, [selectedVesselId]);
 
   // Show once per browser, the first time this screen is reached with no scripted event already
-  // in the way and Chapter 0 (if the campaign is playing it) has actually concluded — its own
-  // "You hold 40 florins, a ship..." opening line isn't true yet during the prologue itself. A
-  // local UI preference, not campaign state, so it isn't part of GameState/saves.
+  // in the way — a shorter Chapter-0-specific walkthrough while the prologue is still running (its
+  // own "no capital, a handcart" framing), then the main one once Chapter 0 concludes and the real
+  // resources ("You hold 40 florins, a ship...") actually exist. Tracked as two separate one-time
+  // flags so a campaign that plays through both chapters sees each, once. A local UI preference,
+  // not campaign state, so neither flag lives in GameState/saves.
   useEffect(() => {
     if (!state) return;
     if (state.pendingEvents.length > 0) return;
-    if (!state.flags.chapter0_complete) return;
-    if (hasSeenTutorial()) return;
+    if (state.flags.chapter0_complete) {
+      if (hasSeenTutorial()) return;
+    } else {
+      if (hasSeenChapter0Tutorial()) return;
+    }
     setShowTutorial(true);
   }, [state?.id, state?.pendingEvents.length, state?.flags.chapter0_complete]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -180,6 +185,18 @@ export default function GameScreen() {
 
   const activePolicy = selectedVessel ? state.insurance.find(i => i.vesselId === selectedVessel.id) : undefined;
   const previewCity = previewCityId ? findCity(previewCityId) : undefined;
+
+  // Everything currently owned that isn't cash: cargo held across every vessel, combined — shown
+  // in the header so "what you own" is visible at a glance without opening each vessel in turn.
+  const heldGoods: Record<string, number> = {};
+  for (const v of state.vessels) {
+    for (const [goodId, quantity] of Object.entries(v.cargo)) {
+      if (quantity > 0) heldGoods[goodId] = (heldGoods[goodId] ?? 0) + quantity;
+    }
+  }
+  const heldGoodsSummary = Object.entries(heldGoods)
+    .map(([goodId, quantity]) => `${quantity} ${findGood(goodId)?.name ?? goodId}`)
+    .join(', ');
 
   if (state.insolvent) {
     return (
@@ -243,6 +260,7 @@ export default function GameScreen() {
       )}
       {showTutorial && !showGuidedTour && !pendingEvent && (
         <TutorialOverlay
+          variant={state.flags.chapter0_complete ? 'main' : 'chapter0'}
           onClose={() => setShowTutorial(false)}
           onStartGuidedTour={
             canGuidedTour
@@ -267,7 +285,8 @@ export default function GameScreen() {
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.2rem' }}>
           <span style={CLOCK}>
-            {Math.round(state.cash)}f &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
+            {Math.round(state.cash)}f &nbsp;·&nbsp; hold: {heldGoodsSummary || 'nothing'}
+            &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
             &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
           </span>
           {canGuidedTour && (
@@ -399,6 +418,7 @@ export default function GameScreen() {
             cash={state.cash}
             conscience={state.conscience}
             condotta={state.condotta}
+            wagesSuspended={!state.flags.chapter0_complete}
             onAssign={(characterId, assignment) => dispatch({ type: 'ASSIGN_CHARACTER', characterId, assignment })}
           />
 

@@ -1,11 +1,19 @@
 import { useState } from 'react';
 
 const TUTORIAL_SEEN_KEY = 'niccolo_tutorial_seen';
+const CHAPTER0_TUTORIAL_SEEN_KEY = 'niccolo_chapter0_tutorial_seen';
 
-/** Whether the tutorial has been dismissed before, in this browser — a local UI preference, not
- * campaign state, so it lives in localStorage rather than GameState/saves. */
+/** Whether the main (post-Chapter-0) tutorial has been dismissed before, in this browser — a
+ * local UI preference, not campaign state, so it lives in localStorage rather than GameState/saves. */
 export function hasSeenTutorial(): boolean {
   return !!localStorage.getItem(TUTORIAL_SEEN_KEY);
+}
+
+/** Whether the separate, shorter Chapter 0 tutorial has been dismissed before. Tracked apart from
+ * `hasSeenTutorial` since the two describe different resources (nothing yet vs. a ship and 40f)
+ * and a player can legitimately need to see both, once each, in the same browser. */
+export function hasSeenChapter0Tutorial(): boolean {
+  return !!localStorage.getItem(CHAPTER0_TUTORIAL_SEEN_KEY);
 }
 
 const BACKDROP: React.CSSProperties = {
@@ -135,21 +143,49 @@ const STEPS: Step[] = [
   },
 ];
 
+const CHAPTER0_STEPS: Step[] = [
+  {
+    title: 'You are Claes',
+    body:
+      "Bruges, 14 March 1460. No florins, no ship — just a dispatch rider for carrying messages and a handcart Julius has just lent you for carrying a little cargo alongside them. Scripted events (the cards that interrupt play) are most of what drives Chapter 0: read them, choose, and they'll tell you plainly what to do next.",
+  },
+  {
+    title: 'The handcart trades for real',
+    body:
+      "It only holds 3 units, but it's a real cargo hold: dock it at a city with a market and the Market panel opens exactly as it will later for a full ship — buy what's cheap, sell what's dear, or just sell whatever an event has handed you. Select it from the Vessels list in the sidebar, then click a city on the map to send it there.",
+  },
+  {
+    title: 'Waiting is part of it',
+    body:
+      "Some events wait on a flag from an earlier choice, or on a vessel actually reaching a city — nothing happens until you advance the week (or the handcart arrives) to let it catch up. If nothing's pending and you're not sure what to do, that usually just means: send the handcart where the last event pointed, then advance the week.",
+  },
+  {
+    title: 'This all carries over',
+    body:
+      "Once Marian judges you ready, she hands you a real ship, a real stake, and the household you've been quietly building — Julius, Godscalc, and whoever else has joined along the way. Everything you've learned here (the map, the market, information lag) works exactly the same from then on, just at a larger scale.",
+  },
+];
+
 interface TutorialOverlayProps {
   onClose: () => void;
+  /** Chapter 0 (no ship, no capital yet) needs its own shorter walkthrough — the main one below
+   * describes resources ("You hold 40 florins, a ship...") that aren't true yet during the
+   * prologue. Selects both the step content and which "seen" flag gets set on close. */
+  variant?: 'main' | 'chapter0';
   /** Only passed by GameScreen, and only when a guided, hands-on walkthrough of the campaign's
    * first moves actually makes sense right now (a fresh, undispatched campaign) — Lobby has no
    * live game state to walk through, and mid-campaign the scripted first-hop steps wouldn't apply. */
   onStartGuidedTour?: () => void;
 }
 
-export default function TutorialOverlay({ onClose, onStartGuidedTour }: TutorialOverlayProps) {
+export default function TutorialOverlay({ onClose, variant = 'main', onStartGuidedTour }: TutorialOverlayProps) {
   const [stepIndex, setStepIndex] = useState(0);
-  const step = STEPS[stepIndex];
-  const isLast = stepIndex === STEPS.length - 1;
+  const steps = variant === 'chapter0' ? CHAPTER0_STEPS : STEPS;
+  const step = steps[stepIndex];
+  const isLast = stepIndex === steps.length - 1;
 
   const close = () => {
-    localStorage.setItem(TUTORIAL_SEEN_KEY, '1');
+    localStorage.setItem(variant === 'chapter0' ? CHAPTER0_TUTORIAL_SEEN_KEY : TUTORIAL_SEEN_KEY, '1');
     onClose();
   };
 
@@ -162,13 +198,13 @@ export default function TutorialOverlay({ onClose, onStartGuidedTour }: Tutorial
     <div style={BACKDROP}>
       <div style={CARD}>
         <p style={STEP_LABEL}>
-          How to play — {stepIndex + 1} of {STEPS.length}
+          How to play — {stepIndex + 1} of {steps.length}
         </p>
         <h2 style={TITLE}>{step.title}</h2>
         <p style={BODY}>{step.body}</p>
         <div style={FOOTER}>
           <div style={DOTS}>
-            {STEPS.map((_, i) => (
+            {steps.map((_, i) => (
               <span
                 key={i}
                 style={{

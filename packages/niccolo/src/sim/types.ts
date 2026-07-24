@@ -212,6 +212,11 @@ export interface EventEffects {
    * formally made the house's factor) — a no-op if a vessel with that id already exists, so a
    * replayed or already-past finale can't duplicate it. Docks immediately at `location`. */
   grantVessel?: { id: string; kind: VesselKind; name: string; capacity: number; location: string };
+  /** Chapter 0: hands a vessel starter cargo with no purchase behind it — the mechanism for
+   * giving Claes something to sell before he has any florins of his own to buy with. A no-op if
+   * the named vessel doesn't exist (a replayed event, or a skip-prologue save that never has it
+   * pending in the first place). */
+  grantCargo?: { vesselId: string; goodId: string; quantity: number };
 }
 
 export interface EventChoice {
