@@ -1,4 +1,4 @@
 [
-  { "id": "trebizond", "name": "Trebizond", "region": "pontus", "power": "trebizond", "x": 700, "y": 340, "port": true, "currency": "asper",
+  { "id": "trebizond", "name": "Trebizond", "region": "pontus", "power": "trebizond", "x": 6757.4, "y": 2901.9, "port": true, "currency": "asper",
     "market": { "silk": { "base": 16 } } }
 ]

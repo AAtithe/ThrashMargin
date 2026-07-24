@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { CITIES, ROUTES, findCity } from '../sim/content';
+import { BACKDROP, GEO_STROKE } from '../sim/geography';
 import type { Vessel } from '../sim/types';
 
 const INK = '#4a3d28';
@@ -9,40 +10,65 @@ const SHIP_COLOR = '#b5451a';
 const COURIER_COLOR = '#3a6b5a';
 const VOID_COLOR = '#0e0b07';
 const SEA_COLOR = '#182430';
-const LAND_COLOR = '#241c12';
 
-const VB_WIDTH = 780;
-const VB_HEIGHT = 560;
+/**
+ * Recolored palette for the real-geography backdrop (see `sim/geography.ts`), tuned into this
+ * file's existing dark ink/gold/parchment family rather than the source project's own white-paper
+ * look — confirmed by actually building and screenshotting a recolored test render before settling
+ * on these. Enclosed seas/lakes reuse `SEA_COLOR` directly (no separate "paper" tone — they
+ * visually disappear into the surrounding ocean, which is the correct read); the graticule and
+ * region labels reuse `PARCHMENT` at low opacity rather than `GOLD`, partly so the graticule isn't
+ * mistaken for the existing dashed-gold trade-route lines.
+ */
+const GEO_COAST = '#998965'; // coastline ink — a muted gold (50/50 GOLD/INK): plain INK has too
+// little contrast against LAND_COLOR/SEA_COLOR here, and plain GOLD already means
+// "reachable/selected" elsewhere in this file.
+const GEO_COAST_GHOST = '#716347'; // the fainter doubled "sketch" stroke, pulled further toward INK.
+const GEO_HATCH = '#695c40'; // hachure texture — a first, darker attempt read as invisible in testing.
+const GEO_RELIEF = '#817253'; // mountain "caterpillar" strokes, between GEO_COAST and GEO_COAST_GHOST.
+const GEO_WATER = '#747c82'; // rivers + sea-name label text — SEA_COLOR lightened toward white,
+// deliberately not COURIER_COLOR even though both are teal-adjacent (couriers already own that hue).
+
+/** Real-world geography's viewBox dimensions, imported so they can never drift out of sync with
+ * the projector in `sim/geography.ts` — never hand-copied literals. */
+const VB_WIDTH = BACKDROP.width;
+const VB_HEIGHT = BACKDROP.height;
 const ZOOM_MIN = 0.7;
 const ZOOM_MAX = 2.5;
 
-/**
- * Stylized landmasses, hand-fitted around the existing city x/y coordinates (viewBox 0 0 780 560)
- * rather than traced from a real coastline — the design doc's aesthetic direction is "manuscript
- * and counting-house, ink on paper," not cartographic accuracy. Each blob is drawn in the same
- * fill/stroke and overlaps its neighbour enough to read as one continuous coastline. Grouped
- * roughly as: Britain, the Low Countries, Burgundy/Savoy/France, Italy, the Pontic coast near
- * Trebizond (Chapter 2), and Cyprus (Chapter 3) — every city in `content/cities/*.json` sits on
- * one of these.
- */
-const LANDMASSES = [
-  // Britain — London.
-  'M 95,18 C 60,20 35,45 32,85 C 30,120 45,150 80,160 C 115,170 155,160 172,125 C 188,95 180,55 150,32 C 132,20 115,16 95,18 Z',
-  // Low Countries / northern France — Calais, Bruges, Ghent, Antwerp, reaching toward Dijon.
-  'M 190,100 C 175,130 180,170 210,190 C 230,205 260,195 280,175 C 300,155 330,150 350,170 C 370,190 375,230 360,270 C 350,295 340,310 345,330 C 350,350 330,355 310,340 C 290,325 270,300 250,280 C 220,255 190,230 180,195 C 170,160 175,120 190,100 Z',
-  // Burgundy / Savoy / France — Dijon, Geneva, Lyon.
-  'M 300,270 C 340,260 380,275 400,300 C 420,325 425,360 410,390 C 395,415 365,425 335,415 C 305,405 280,385 275,355 C 270,325 275,290 300,270 Z',
-  // Italy — Milan, Genoa, Florence, Venice, Naples.
-  'M 430,410 C 470,395 520,400 560,420 C 600,435 630,430 650,455 C 665,475 655,495 630,505 C 600,517 580,545 550,560 C 525,572 500,565 490,545 C 480,525 460,530 445,510 C 425,485 415,450 420,425 C 422,418 425,413 430,410 Z',
-  // Pontic coast — Trebizond (Chapter 2).
-  'M 650,320 C 670,300 710,295 740,310 C 765,322 775,345 765,365 C 750,385 715,395 685,385 C 660,377 645,350 650,320 Z',
-  // Cyprus — Famagusta, Kouklia (Chapter 3).
-  'M 660,465 C 675,455 705,452 725,460 C 745,468 748,485 735,495 C 715,505 685,503 668,492 C 655,483 652,472 660,465 Z',
-];
+/** Scale factor for this file's own hand-authored "chrome" (the compass rose, the decorative
+ * border frame) — neither is part of the ported geography backdrop (which scales itself via
+ * `sim/geography.ts`'s own `P.scale()`), and neither is a gameplay icon (those, per design
+ * decision, stay a fixed pixel size regardless of canvas size — see `CASTLE_HALF_SIZE`/
+ * `DOCK_RADIUS` below). This preserves their old relative appearance (authored against the
+ * previous 780px-wide canvas) at the new, much larger canvas size. */
+const CHROME = VB_WIDTH / 780;
 
-/** A jagged ridge line hinting at the Alps between Burgundy/Savoy and Italy — the same divide the
- * Geneva-Milan route's own `seasonal` flag already treats as a real crossing, not flavour text. */
-const ALPS_RIDGE = 'M 405,392 L 420,372 L 435,394 L 450,374 L 462,398';
+const neatlinePath = `M ${BACKDROP.neatline.map(p => p.join(' ')).join(' L ')} Z`;
+
+/** Default pan/zoom: frames every city currently in the game (CITIES is already the concatenation
+ * of every shipped chapter's own city array), not the whole Ptolemaic world — at zoom=1 the full
+ * Thule-to-Timbuktu domain would compress the actual playable area into a small corner, exactly
+ * the "clutter" this whole change exists to fix. Computed once from static data, not hardcoded, so
+ * a future chapter adding more cities updates this automatically with zero code change here. */
+const DEFAULT_VIEW = (() => {
+  const xs = CITIES.map(c => c.x);
+  const ys = CITIES.map(c => c.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const bw = maxX - minX;
+  const bh = maxY - minY;
+  const MARGIN_FACTOR = 1.2; // ~20% margin so cities don't sit flush against the pane's edge
+  const zoom = Math.min(
+    ZOOM_MAX,
+    Math.max(ZOOM_MIN, Math.min(VB_WIDTH / (bw * MARGIN_FACTOR), VB_HEIGHT / (bh * MARGIN_FACTOR))),
+  );
+  return { panX: VB_WIDTH / 2 - cx * zoom, panY: VB_HEIGHT / 2 - cy * zoom, zoom };
+})();
 
 /**
  * City markers: a crenellated-castle silhouette instead of a plain dot — larger and more
@@ -62,18 +88,26 @@ const INLAND_CASTLE_DOOR = { x: -2, y: 3, width: 4, height: 7 };
 const PORT_CASTLE_FLAG = 'M 0,-14 L 0,-20 M 0,-20 L 6,-18 L 0,-16';
 
 /** Half-width/half-height of each castle glyph, used both to clear the city's own label and to
- * recalibrate how far a docked vessel must fan out to clear the icon (see `DOCK_RADIUS`). */
+ * recalibrate how far a docked vessel must fan out to clear the icon (see `DOCK_RADIUS`).
+ * Deliberately NOT scaled with the bigger canvas: icon size is a design choice independent of the
+ * projection, and the real-geography city spacing already gives every pair of cities generous
+ * clearance at these fixed sizes (verified directly against the actual new coordinates) —
+ * scaling icons up would make them relatively larger exactly where there's least new room
+ * (Flanders, Cyprus — the clusters that are genuinely tight in reality, not just on the old
+ * hand-drawn map), which is backwards. */
 const CASTLE_HALF_SIZE = {
   port: { w: 12, h: 14 },
   inland: { w: 8, h: 10 },
 };
 
 /** Cities whose label flips to the left of their icon (`x - 14`, right-aligned) instead of the
- * usual right-side offset — found by visual inspection after the bigger castle icons shipped:
- * Ghent sits boxed in by Bruges/Antwerp/Calais on multiple sides, and Kouklia's label otherwise
- * runs straight into neighbouring Famagusta (the tightest city pair in the game, ~41 units apart,
- * tighter than the Bruges cluster). One-city special cases, not a general layout system. */
-const FLIPPED_LABEL_CITY_IDS = new Set(['ghent', 'kouklia']);
+ * usual right-side offset. Empty for now: the previous two special cases (Ghent, Kouklia) were
+ * both solving label crowding the real-geography spacing already fixes — verified directly against
+ * the actual new coordinates, neither pair's label rects still overlap. Milan/Genoa came out as a
+ * new, much closer call by the same estimate (~5.5px apart on one axis) — check live in the browser
+ * and add here only if it actually reads as crowded on screen, the same way Ghent's original flip
+ * was found by visual inspection, not computed. */
+const FLIPPED_LABEL_CITY_IDS = new Set<string>();
 
 /**
  * Slot angles (degrees, SVG convention) for vessels docked at the same city, fanned within a
@@ -89,9 +123,9 @@ const DOCK_SLOT_ANGLES_DEG: Record<number, number[]> = {
   3: [-120, -90, -60],
 };
 
-/** Clearance radius for a vessel fanned out around a city, recalibrated for the bigger castle
- * icons: `Math.hypot(halfWidth, halfHeight) + 9` — the diagonal slots (±60°/±120°) are the binding
- * case since a castle's crenellations poke out near its top corners, not straight up. */
+/** Clearance radius for a vessel fanned out around a city — `Math.hypot(halfWidth, halfHeight) + 9`,
+ * the diagonal slots (±60°/±120°) are the binding case since a castle's crenellations poke out near
+ * its top corners, not straight up. */
 const DOCK_RADIUS = {
   port: Math.hypot(CASTLE_HALF_SIZE.port.w, CASTLE_HALF_SIZE.port.h) + 9,
   inland: Math.hypot(CASTLE_HALF_SIZE.inland.w, CASTLE_HALF_SIZE.inland.h) + 9,
@@ -176,10 +210,13 @@ function fogOpacity(age: number | null): number {
   return Math.max(0.5, 1 - age * 0.04);
 }
 
-/** A simple compass rose in the map's one empty corner — decoration only, no gameplay meaning. */
-function CompassRose() {
+/** A simple compass rose in the map's one empty corner — decoration only, no gameplay meaning.
+ * This is the game's own UI chrome (kept regardless of the source backdrop's own, disabled,
+ * compass layer), so it takes an explicit `scale` to preserve its old relative size against the
+ * much bigger canvas rather than being authored in backdrop-projection units. */
+function CompassRose({ x, y, scale }: { x: number; y: number; scale: number }) {
   return (
-    <g transform="translate(735,55)" opacity={0.55}>
+    <g transform={`translate(${x},${y}) scale(${scale})`} opacity={0.55}>
       <circle r={26} fill="none" stroke={GOLD} strokeWidth={1} />
       <circle r={2} fill={GOLD} />
       <line x1={0} y1={-24} x2={0} y2={24} stroke={GOLD} strokeWidth={1} />
@@ -192,34 +229,8 @@ function CompassRose() {
   );
 }
 
-/** A handful of faint rhumb lines in the open sea, the way a portolan chart radiates bearing
- * lines from a few fixed points — decorative texture, not a real navigation aid. */
-function RhumbLines() {
-  const origins = [
-    { x: 250, y: 460 },
-    { x: 560, y: 200 },
-  ];
-  return (
-    <g stroke={GOLD} strokeWidth={0.5} opacity={0.1}>
-      {origins.flatMap((o, oi) =>
-        Array.from({ length: 8 }, (_, i) => {
-          const angle = (Math.PI / 4) * i;
-          const len = 700;
-          return (
-            <line
-              key={`${oi}-${i}`}
-              x1={o.x} y1={o.y}
-              x2={o.x + Math.cos(angle) * len} y2={o.y + Math.sin(angle) * len}
-            />
-          );
-        }),
-      )}
-    </g>
-  );
-}
-
 /** Actual rendered content scale/offset for the SVG's `viewBox`, accounting for letterboxing —
- * `MAP_PANE` won't generally match the viewBox's own 780:560 aspect ratio, so the default
+ * `MAP_PANE` won't generally match the viewBox's own aspect ratio, so the default
  * `preserveAspectRatio` (`xMidYMid meet`) centers the content within the rendered box rather than
  * stretching it. A naive `viewBoxWidth / renderedWidth` ratio is wrong whenever there's a
  * letterbox bar on either axis; screen-to-viewBox conversion must go through this instead. */
@@ -262,7 +273,7 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ startClientX: number; startClientY: number; startPanX: number; startPanY: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [view, setView] = useState({ panX: 0, panY: 0, zoom: 1 });
+  const [view, setView] = useState(DEFAULT_VIEW);
 
   // Drag-to-pan: window-level listeners (not SVG-level) so a fast drag that exits the map pane
   // into the sidebar still ends cleanly on mouseup, rather than getting stuck mid-drag.
@@ -325,12 +336,121 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
       >
         <g transform={`translate(${view.panX},${view.panY}) scale(${view.zoom})`}>
           <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill={SEA_COLOR} />
-          <RhumbLines />
-          {LANDMASSES.map((d, i) => (
-            <path key={i} d={d} fill={LAND_COLOR} stroke={INK} strokeWidth={1.5} opacity={0.95} />
+
+          <defs>
+            <pattern
+              id="geo-hatch"
+              width={GEO_STROKE.hatchGap}
+              height={GEO_STROKE.hatchGap}
+              patternUnits="userSpaceOnUse"
+              patternTransform="rotate(35)"
+            >
+              <line x1={0} y1={0} x2={0} y2={GEO_STROKE.hatchGap} stroke={GEO_HATCH} strokeWidth={GEO_STROKE.hatchLine} />
+            </pattern>
+            <clipPath id="geo-sheet">
+              <path d={neatlinePath} />
+            </clipPath>
+          </defs>
+
+          <g clipPath="url(#geo-sheet)">
+            <path
+              d={BACKDROP.graticule}
+              fill="none"
+              stroke={PARCHMENT}
+              strokeWidth={GEO_STROKE.grid}
+              opacity={0.12}
+            />
+
+            <path
+              id="geo-land"
+              d={BACKDROP.land}
+              fill="url(#geo-hatch)"
+              stroke={GEO_COAST}
+              strokeWidth={GEO_STROKE.coast}
+              strokeLinejoin="round"
+              strokeLinecap="round"
+            />
+            <use
+              href="#geo-land"
+              fill="none"
+              stroke={GEO_COAST_GHOST}
+              strokeWidth={GEO_STROKE.ghost}
+              opacity={0.6}
+              transform={`translate(${GEO_STROKE.ghostOffsetX},${GEO_STROKE.ghostOffsetY})`}
+            />
+
+            {BACKDROP.seas.map(sea => (
+              <Fragment key={sea.id}>
+                <path
+                  id={`geo-sea-${sea.id}`}
+                  d={sea.d}
+                  fill={SEA_COLOR}
+                  stroke={GEO_COAST}
+                  strokeWidth={GEO_STROKE.coast * 0.85}
+                  strokeLinejoin="round"
+                />
+                <use
+                  href={`#geo-sea-${sea.id}`}
+                  fill="none"
+                  stroke={GEO_COAST_GHOST}
+                  strokeWidth={GEO_STROKE.ghost}
+                  opacity={0.6}
+                  transform={`translate(${GEO_STROKE.ghostOffsetX},${GEO_STROKE.ghostOffsetY})`}
+                />
+              </Fragment>
+            ))}
+
+            {BACKDROP.islands.map(isl => (
+              <Fragment key={isl.id}>
+                <path
+                  id={`geo-isl-${isl.id}`}
+                  d={isl.d}
+                  fill="url(#geo-hatch)"
+                  stroke={GEO_COAST}
+                  strokeWidth={GEO_STROKE.coast * 0.85}
+                  strokeLinejoin="round"
+                />
+                <use
+                  href={`#geo-isl-${isl.id}`}
+                  fill="none"
+                  stroke={GEO_COAST_GHOST}
+                  strokeWidth={GEO_STROKE.ghost}
+                  opacity={0.6}
+                  transform={`translate(${GEO_STROKE.ghostOffsetX},${GEO_STROKE.ghostOffsetY})`}
+                />
+              </Fragment>
+            ))}
+
+            <path d={BACKDROP.rivers} fill="none" stroke={GEO_WATER} strokeWidth={GEO_STROKE.river} strokeLinecap="round" />
+            {BACKDROP.lakes.map(lk => (
+              <ellipse
+                key={lk.id}
+                cx={lk.cx} cy={lk.cy} rx={lk.rx} ry={lk.ry}
+                fill={SEA_COLOR}
+                stroke={GEO_COAST_GHOST}
+                strokeWidth={GEO_STROKE.coast * 0.6}
+              />
+            ))}
+
+            <path d={BACKDROP.mountains} fill="none" stroke={GEO_RELIEF} strokeWidth={GEO_STROKE.relief} strokeLinecap="round" />
+          </g>
+
+          {BACKDROP.labels.map((lb, i) => (
+            <text
+              key={i}
+              x={lb.x} y={lb.y}
+              textAnchor="middle"
+              fontStyle="italic"
+              fontSize={lb.kind === 'sea' ? 11 : 9}
+              fill={lb.kind === 'sea' ? GEO_WATER : PARCHMENT}
+              fillOpacity={lb.kind === 'sea' ? 0.5 : 0.45}
+              fontFamily="Georgia, serif"
+            >
+              {lb.text}
+            </text>
           ))}
-          <path d={ALPS_RIDGE} fill="none" stroke={INK} strokeWidth={1.5} opacity={0.8} strokeLinejoin="round" />
-          <CompassRose />
+
+          <CompassRose x={VB_WIDTH - 45 * CHROME} y={55 * CHROME} scale={CHROME} />
 
           {ROUTES.map(r => {
             const from = findCity(r.from)!;
@@ -341,7 +461,7 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
                 x1={from.x} y1={from.y} x2={to.x} y2={to.y}
                 stroke={GOLD}
                 strokeWidth={1.25}
-                strokeDasharray={r.type === 'sea' ? '5 4' : undefined}
+                strokeDasharray={r.type === 'sea' ? '5 4' : r.type === 'river' ? '2 2' : undefined}
                 opacity={0.5}
               />
             );
@@ -437,10 +557,18 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
           })}
         </g>
 
-        <rect x={6} y={6} width={768} height={548} fill="none" stroke={INK} strokeWidth={2} opacity={0.8} />
-        <rect x={11} y={11} width={758} height={538} fill="none" stroke={INK} strokeWidth={1} opacity={0.45} />
+        <rect
+          x={6 * CHROME} y={6 * CHROME}
+          width={VB_WIDTH - 12 * CHROME} height={VB_HEIGHT - 12 * CHROME}
+          fill="none" stroke={INK} strokeWidth={2 * CHROME} opacity={0.8}
+        />
+        <rect
+          x={11 * CHROME} y={11 * CHROME}
+          width={VB_WIDTH - 22 * CHROME} height={VB_HEIGHT - 22 * CHROME}
+          fill="none" stroke={INK} strokeWidth={1 * CHROME} opacity={0.45}
+        />
       </svg>
-      <button style={RESET_VIEW_BUTTON} onClick={() => setView({ panX: 0, panY: 0, zoom: 1 })}>
+      <button style={RESET_VIEW_BUTTON} onClick={() => setView(DEFAULT_VIEW)}>
         Reset view
       </button>
     </div>
