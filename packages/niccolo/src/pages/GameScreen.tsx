@@ -4,6 +4,8 @@ import { formatWeekDate } from '../sim/clock';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood } from '../sim/content';
 import { cargoTotal } from '../sim/market';
+import { activeCharacters, assignmentSummary } from '../sim/characters';
+import type { Character } from '../sim/types';
 import MapView from '../components/MapView';
 import MarketPanel from '../components/MarketPanel';
 import CityPreviewPanel from '../components/CityPreviewPanel';
@@ -250,6 +252,16 @@ export default function GameScreen() {
 
   const pendingEvent = state.pendingEvents[0] ? findEvent(state.pendingEvents[0]) : null;
 
+  // Fleet & Household: one combined "who is where" list replacing the old plain Vessels list —
+  // every officer nested under whichever vessel they're aboard, or listed with their own plain
+  // assignment line below. At most ~6 characters and 3 vessels ever exist, so a partition pass is
+  // simplest — no need for a Map keyed by vessel id.
+  const activeRoster = activeCharacters(state.characters);
+  const aboardRoster = activeRoster.filter(
+    (c): c is Character & { assignment: { type: 'aboard'; vesselId: string } } => c.assignment.type === 'aboard',
+  );
+  const notAboardRoster = activeRoster.filter(c => c.assignment.type !== 'aboard');
+
   return (
     <div style={STYLE}>
       {pendingEvent && (
@@ -320,30 +332,42 @@ export default function GameScreen() {
         <div id="game-sidebar" style={SIDEBAR}>
           <div>
             <p style={{ fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#8a7a5a' }}>
-              Vessels
+              Fleet &amp; Household
             </p>
             {state.vessels.map(v => {
               const at = findCity(v.location);
               const to = v.destination ? findCity(v.destination) : null;
               const held = cargoTotal(v.cargo);
+              const crew = aboardRoster.filter(c => c.assignment.vesselId === v.id);
               return (
-                <button
-                  key={v.id}
-                  id={`vessel-button-${v.id}`}
-                  style={v.id === selectedVesselId ? BUTTON_ACTIVE : BUTTON}
-                  onClick={() => setSelectedVesselId(v.id)}
-                >
-                  {v.name}
-                  <br />
-                  <span style={{ fontSize: '0.75rem', color: '#8a7a5a' }}>
-                    {to
-                      ? `en route to ${to.name} — ${v.weeksRemaining} week${v.weeksRemaining === 1 ? '' : 's'} left`
-                      : `docked at ${at?.name ?? v.location}`}
-                    {v.capacity > 0 && ` · hold ${held}/${v.capacity}`}
-                  </span>
-                </button>
+                <div key={v.id}>
+                  <button
+                    id={`vessel-button-${v.id}`}
+                    style={v.id === selectedVesselId ? BUTTON_ACTIVE : BUTTON}
+                    onClick={() => setSelectedVesselId(v.id)}
+                  >
+                    {v.name}
+                    <br />
+                    <span style={{ fontSize: '0.75rem', color: '#8a7a5a' }}>
+                      {to
+                        ? `en route to ${to.name} — ${v.weeksRemaining} week${v.weeksRemaining === 1 ? '' : 's'} left`
+                        : `docked at ${at?.name ?? v.location}`}
+                      {v.capacity > 0 && ` · hold ${held}/${v.capacity}`}
+                    </span>
+                  </button>
+                  {crew.map(c => (
+                    <p key={c.id} style={{ fontSize: '0.72rem', color: '#8a7a5a', margin: '0.15rem 0 0.4rem 0.9rem' }}>
+                      {c.name} — aboard
+                    </p>
+                  ))}
+                </div>
               );
             })}
+            {notAboardRoster.map(c => (
+              <p key={c.id} style={{ fontSize: '0.78rem', color: '#c9b88a', margin: '0.3rem 0' }}>
+                {c.name} <span style={{ color: '#8a7a5a' }}>— {assignmentSummary(c, state.vessels)}</span>
+              </p>
+            ))}
           </div>
 
           {state.lastVoyageEvent && (

@@ -1,5 +1,5 @@
 import { findCity } from './content';
-import type { Character, CharacterAssignment, GameState } from './types';
+import type { Character, CharacterAssignment, GameState, Vessel } from './types';
 
 export const STARTING_CONSCIENCE = 100;
 
@@ -30,6 +30,26 @@ function clamp(n: number, min: number, max: number): number {
 
 export function activeCharacters(characters: Character[]): Character[] {
   return characters.filter(c => c.status === 'active');
+}
+
+/** Plain-text summary of what a character is currently doing, for any panel that needs to show
+ * "who is where" — the Household roster's own editor and the sidebar's read-only Fleet & Household
+ * summary both use this rather than duplicating the derivation. Idle reads from the character's
+ * own `location` field (documented in `types.ts` as authoritative while idle), not a hardcoded
+ * home city — it only ever looked right before because every character starts at Bruges and
+ * nothing currently moves an idle character's `location`. */
+export function assignmentSummary(character: Character, vessels: Vessel[]): string {
+  const { assignment } = character;
+  switch (assignment.type) {
+    case 'aboard':
+      return `Aboard ${vessels.find(v => v.id === assignment.vesselId)?.name ?? assignment.vesselId}`;
+    case 'negotiate':
+      return `Negotiating at ${findCity(assignment.cityId)?.name ?? assignment.cityId}`;
+    case 'investigate':
+      return `Investigating at ${findCity(assignment.cityId)?.name ?? assignment.cityId}`;
+    default:
+      return `Idle, at ${findCity(character.location)?.name ?? character.location}`;
+  }
 }
 
 export function assignCharacter(

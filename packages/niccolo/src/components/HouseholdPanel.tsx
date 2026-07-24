@@ -1,4 +1,5 @@
-import { CITIES, HOME_CITY, findCity } from '../sim/content';
+import { CITIES, HOME_CITY } from '../sim/content';
+import { activeCharacters, assignmentSummary } from '../sim/characters';
 import type { Character, CharacterAssignment, CondottaContract, Vessel } from '../sim/types';
 
 const LABEL: React.CSSProperties = {
@@ -59,19 +60,6 @@ function parseAssignmentKey(key: string): CharacterAssignment {
   return { type: 'idle' };
 }
 
-function assignmentSummary(assignment: CharacterAssignment, vessels: Vessel[]): string {
-  switch (assignment.type) {
-    case 'aboard':
-      return `Aboard ${vessels.find(v => v.id === assignment.vesselId)?.name ?? assignment.vesselId}`;
-    case 'negotiate':
-      return `Negotiating at ${findCity(assignment.cityId)?.name ?? assignment.cityId}`;
-    case 'investigate':
-      return `Investigating at ${findCity(assignment.cityId)?.name ?? assignment.cityId}`;
-    default:
-      return 'Idle, at Bruges';
-  }
-}
-
 interface HouseholdPanelProps {
   characters: Character[];
   vessels: Vessel[];
@@ -94,7 +82,7 @@ export default function HouseholdPanel({
   wagesSuspended,
   onAssign,
 }: HouseholdPanelProps) {
-  const active = characters.filter(c => c.status === 'active');
+  const active = activeCharacters(characters);
   const departed = characters.filter(c => c.status === 'departed');
   const totalSalary = active.reduce((sum, c) => sum + c.salary, 0);
   const canPayNext = totalSalary <= cash;
@@ -141,7 +129,7 @@ export default function HouseholdPanel({
               law {c.skills.law} · trade {c.skills.trade} · combat {c.skills.combat} · intrigue {c.skills.intrigue}
               {c.salary > 0 && ` · ${c.salary}f/wk`}
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#c9b88a' }}>{assignmentSummary(c.assignment, vessels)}</div>
+            <div style={{ fontSize: '0.7rem', color: '#c9b88a' }}>{assignmentSummary(c, vessels)}</div>
             <select
               id={`household-assign-${c.id}`}
               style={FIELD}

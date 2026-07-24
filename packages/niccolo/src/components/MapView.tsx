@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CITIES, ROUTES, findCity } from '../sim/content';
 import type { Vessel } from '../sim/types';
 
@@ -38,20 +39,78 @@ const LANDMASSES = [
  * Geneva-Milan route's own `seasonal` flag already treats as a real crossing, not flavour text. */
 const ALPS_RIDGE = 'M 405,392 L 420,372 L 435,394 L 450,374 L 462,398';
 
-function vesselPoint(v: Vessel): { x: number; y: number } | null {
-  const at = findCity(v.location);
-  if (!at) return null;
-  if (!v.destination) return { x: at.x, y: at.y };
+/**
+ * Slot angles (degrees, SVG convention) for vessels docked at the same city, fanned within a
+ * 60°-wide arc centered straight up — away from the city's own label (drawn to the lower-right,
+ * `c.x+10, c.y+4`) and clear of every route line touching the crowded Bruges/Ghent cluster. At
+ * most 3 vessels ever exist in this game (a ship, a courier, and Chapter 0's handcart, which is
+ * never removed), so a fixed set of slots is enough — no "N vessels here" badge needed. A single
+ * vessel gets the center slot (reads as deliberate, not an arbitrary pick); two get the outer
+ * slots for symmetry; three get all of them.
+ */
+const DOCK_SLOT_ANGLES_DEG: Record<number, number[]> = {
+  1: [-90],
+  2: [-120, -60],
+  3: [-120, -90, -60],
+};
 
-  const to = findCity(v.destination);
-  const route = ROUTES.find(r => r.id === v.routeId);
-  if (!to || !route) return { x: at.x, y: at.y };
+interface VesselRender {
+  vessel: Vessel;
+  x: number;
+  y: number;
+  /** Degrees to rotate a directional glyph toward the destination; null while docked (no facing). */
+  rotationDeg: number | null;
+}
 
-  const traveled = (route.distanceWeeks - v.weeksRemaining) / route.distanceWeeks;
-  return {
-    x: at.x + (to.x - at.x) * traveled,
-    y: at.y + (to.y - at.y) * traveled,
-  };
+/**
+ * Docked vessels used to render at the exact same (x,y) as their city's own dot — invisible when
+ * more than one shared a city, and liable to sit on top of (and swallow clicks meant for) the city
+ * marker itself. Docked vessels now fan out to a small ring of slots around the city instead;
+ * vessels under way keep the existing route-interpolated position, unchanged.
+ */
+function computeVesselRenders(vessels: Vessel[]): VesselRender[] {
+  const dockedGroups = new Map<string, Vessel[]>();
+  for (const v of vessels) {
+    if (v.destination) continue;
+    const group = dockedGroups.get(v.location) ?? [];
+    group.push(v);
+    dockedGroups.set(v.location, group);
+  }
+  for (const group of dockedGroups.values()) group.sort((a, b) => a.id.localeCompare(b.id));
+
+  const renders: VesselRender[] = [];
+  for (const v of vessels) {
+    if (v.destination) {
+      const at = findCity(v.location);
+      const to = findCity(v.destination);
+      const route = ROUTES.find(r => r.id === v.routeId);
+      if (!at || !to || !route) continue;
+      const traveled = (route.distanceWeeks - v.weeksRemaining) / route.distanceWeeks;
+      renders.push({
+        vessel: v,
+        x: at.x + (to.x - at.x) * traveled,
+        y: at.y + (to.y - at.y) * traveled,
+        rotationDeg: (Math.atan2(to.y - at.y, to.x - at.x) * 180) / Math.PI,
+      });
+      continue;
+    }
+
+    const at = findCity(v.location);
+    if (!at) continue;
+    const group = dockedGroups.get(v.location) ?? [v];
+    const slotIndex = Math.max(0, group.findIndex(gv => gv.id === v.id));
+    const angles = DOCK_SLOT_ANGLES_DEG[group.length] ?? DOCK_SLOT_ANGLES_DEG[3];
+    const angleDeg = angles[slotIndex % angles.length];
+    const radius = (at.port ? 7 : 5.5) + 9;
+    const rad = (angleDeg * Math.PI) / 180;
+    renders.push({
+      vessel: v,
+      x: at.x + radius * Math.cos(rad),
+      y: at.y + radius * Math.sin(rad),
+      rotationDeg: null,
+    });
+  }
+  return renders;
 }
 
 interface MapViewProps {
@@ -118,6 +177,7 @@ function RhumbLines() {
 
 export default function MapView({ vessels, selectedVesselId, onSelectCity, cityInfoAge, previewedCityId }: MapViewProps) {
   const selected = vessels.find(v => v.id === selectedVesselId) ?? null;
+  const [hoveredVesselId, setHoveredVesselId] = useState<string | null>(null);
 
   return (
     <svg viewBox="0 0 780 560" style={{ width: '100%', height: '100%', background: VOID_COLOR }}>
@@ -183,19 +243,47 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
         );
       })}
 
-      {vessels.map(v => {
-        const p = vesselPoint(v);
-        if (!p) return null;
+      {computeVesselRenders(vessels).map(({ vessel: v, x, y, rotationDeg }) => {
         const color = v.kind === 'ship' ? SHIP_COLOR : COURIER_COLOR;
         const isSelected = v.id === selectedVesselId;
+        const showLabel = isSelected || v.id === hoveredVesselId;
         return (
-          <g key={v.id}>
-            <circle
-              cx={p.x} cy={p.y} r={isSelected ? 8 : 6}
-              fill={color}
-              stroke={isSelected ? GOLD : '#000'}
-              strokeWidth={isSelected ? 2 : 1}
-            />
+          <g
+            key={v.id}
+            onMouseEnter={() => setHoveredVesselId(v.id)}
+            onMouseLeave={() => setHoveredVesselId(id => (id === v.id ? null : id))}
+            style={{ cursor: 'default' }}
+          >
+            {v.kind === 'ship' ? (
+              <path
+                d="M 0,-7 L 6,6 L -6,6 Z"
+                transform={`translate(${x},${y})`}
+                fill={color}
+                stroke={isSelected ? GOLD : '#000'}
+                strokeWidth={isSelected ? 2 : 1}
+              />
+            ) : (
+              <g transform={`translate(${x},${y})`}>
+                <circle r={isSelected ? 6 : 5} fill={color} stroke={isSelected ? GOLD : '#000'} strokeWidth={isSelected ? 2 : 1} />
+                {rotationDeg !== null && (
+                  <path d="M 5,0 L -3,-4 L -3,4 Z" transform={`rotate(${rotationDeg})`} fill={color} stroke="#000" strokeWidth={0.75} />
+                )}
+              </g>
+            )}
+            {showLabel && (
+              <text
+                x={x + 10} y={y + 4}
+                fontSize={11}
+                fill={GOLD}
+                fontFamily="Georgia, serif"
+                stroke={VOID_COLOR}
+                strokeWidth={3}
+                paintOrder="stroke"
+                pointerEvents="none"
+              >
+                {v.name}
+              </text>
+            )}
           </g>
         );
       })}
