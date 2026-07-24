@@ -14,6 +14,11 @@ import cities3Data from '../content/cities/chapter3.json';
 import routes3Data from '../content/routes/chapter3.json';
 import goods3Data from '../content/goods/chapter3.json';
 import events3Data from '../content/events/chapter3.json';
+import cities4Data from '../content/cities/chapter4.json';
+import routes4Data from '../content/routes/chapter4.json';
+import goods4Data from '../content/goods/chapter4.json';
+import characters4Data from '../content/characters/chapter4.json';
+import events4Data from '../content/events/chapter4.json';
 import type { City, Route, Good, Character, ScriptedEvent, House } from './types';
 
 export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
@@ -30,24 +35,35 @@ export const HOME_CITY = 'bruges';
  * Cyprus arc's antagonist is a historical siege, not a rival trading house), so `goods3Data` and
  * `events3Data` are the only new imports it needs beyond cities and routes. Chapter 0 (the
  * pre-Chapter-1 prologue) reuses Chapter 1's own cities/routes/characters entirely — it needs
- * only its own `events/chapter0.json`, concatenated first into `EVENTS`.
+ * only its own `events/chapter0.json`, concatenated first into `EVENTS`. Chapter 4 (Phase 13)
+ * continues the same convention: a new currency, route type, and one mid-campaign character all
+ * live in code (types.ts/currency.ts/houses.ts), while the map/goods/events content that uses them
+ * lives here in `chapter4.json` per type, same as every chapter since.
  */
 export const CITIES: City[] = [
   ...(citiesData as unknown as City[]),
   ...(cities2Data as unknown as City[]),
   ...(cities3Data as unknown as City[]),
+  ...(cities4Data as unknown as City[]),
 ];
-export const ROUTES: Route[] = [...(routesData as Route[]), ...(routes2Data as Route[]), ...(routes3Data as Route[])];
-export const GOODS: Good[] = [...(goodsData as Good[]), ...(goods3Data as Good[])];
+export const ROUTES: Route[] = [
+  ...(routesData as Route[]),
+  ...(routes2Data as Route[]),
+  ...(routes3Data as Route[]),
+  ...(routes4Data as Route[]),
+];
+export const GOODS: Good[] = [...(goodsData as Good[]), ...(goods3Data as Good[]), ...(goods4Data as Good[])];
 export const CHARACTERS: Character[] = [
   ...(charactersData as unknown as Character[]),
   ...(characters2Data as unknown as Character[]),
+  ...(characters4Data as unknown as Character[]),
 ];
 export const EVENTS: ScriptedEvent[] = [
   ...(events0Data as unknown as ScriptedEvent[]),
   ...(eventsData as unknown as ScriptedEvent[]),
   ...(events2Data as unknown as ScriptedEvent[]),
   ...(events3Data as unknown as ScriptedEvent[]),
+  ...(events4Data as unknown as ScriptedEvent[]),
 ];
 export const HOUSES: House[] = [...(housesData as unknown as House[]), ...(houses2Data as unknown as House[])];
 

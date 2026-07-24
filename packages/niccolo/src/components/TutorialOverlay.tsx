@@ -82,9 +82,12 @@ const BUTTON: React.CSSProperties = {
   cursor: 'pointer',
 };
 
+// Override the full `border` shorthand, not just `borderColor` — mixing a shorthand and a longhand
+// for the same property across renders of the same element is a real React warning ("Removing
+// borderColor border"), not just a lint nag.
 const PRIMARY_BUTTON: React.CSSProperties = {
   ...BUTTON,
-  borderColor: '#e8d5a3',
+  border: '1px solid #e8d5a3',
   color: '#e8d5a3',
 };
 

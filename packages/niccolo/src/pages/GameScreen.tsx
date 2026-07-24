@@ -11,6 +11,7 @@ import MarketPanel from '../components/MarketPanel';
 import CityPreviewPanel from '../components/CityPreviewPanel';
 import DispatchesPanel from '../components/DispatchesPanel';
 import LedgerPanel from '../components/LedgerPanel';
+import CountingHousePanel from '../components/CountingHousePanel';
 import HouseholdPanel from '../components/HouseholdPanel';
 import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
@@ -94,7 +95,11 @@ const BUTTON: React.CSSProperties = {
 
 const BUTTON_ACTIVE: React.CSSProperties = {
   ...BUTTON,
-  borderColor: '#e8d5a3',
+  // Override the full `border` shorthand, not just `borderColor` — mixing a shorthand and a
+  // longhand for the same property across renders of the same element (toggling between BUTTON
+  // and BUTTON_ACTIVE, as the vessel selector and the Ledger/Counting House tabs both do) is a
+  // real React warning ("Removing borderColor border"), not just a lint nag.
+  border: '1px solid #e8d5a3',
   color: '#e8d5a3',
 };
 
@@ -119,6 +124,7 @@ export default function GameScreen() {
   const [insureNext, setInsureNext] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [showGuidedTour, setShowGuidedTour] = useState(false);
+  const [ledgerTab, setLedgerTab] = useState<'ledger' | 'countingHouse'>('ledger');
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -152,6 +158,14 @@ export default function GameScreen() {
     }
     setShowTutorial(true);
   }, [state?.id, state?.pendingEvents.length, state?.flags.chapter0_complete]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // The tour's "write a bill of exchange" step spotlights a Counting House control — force that
+  // tab open for the tour's whole duration so the target is never hidden behind the Ledger tab
+  // (both panels stay mounted, toggled via `display`, so a hidden target would otherwise measure
+  // as a zero-size rect instead of spotlighting anything).
+  useEffect(() => {
+    if (showGuidedTour) setLedgerTab('countingHouse');
+  }, [showGuidedTour]);
 
   const abandonAndReturn = () => {
     if (id) deleteGame(id);
@@ -190,6 +204,7 @@ export default function GameScreen() {
 
   const activePolicy = selectedVessel ? state.insurance.find(i => i.vesselId === selectedVessel.id) : undefined;
   const previewCity = previewCityId ? findCity(previewCityId) : undefined;
+  const expeditionVessel = state.expedition ? state.vessels.find(v => v.id === state.expedition!.vesselId) : undefined;
 
   // Everything currently owned that isn't cash: cargo held across every vessel, combined — shown
   // in the header so "what you own" is visible at a glance without opening each vessel in turn.
@@ -222,24 +237,26 @@ export default function GameScreen() {
     );
   }
 
-  if (state.flags.chapter3_complete) {
+  if (state.flags.chapter4_complete) {
     const secretsUsed = state.secrets.filter(s => s.used).length;
     const secretsExpired = state.secrets.filter(s => s.expired).length;
     const departed = state.characters.filter(c => c.status === 'departed');
-    const siegeSurvived = !!state.flags.famagusta_siege_survived;
+    const gambiaSucceeded = !!state.flags.gambia_expedition_success;
+    const umarShownMercy = !!state.flags.umars_choice_mercy;
     return (
       <div style={STYLE}>
         <PortalNav variant="header" />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-          <h1 style={TITLE}>Chapter 3 — Race of Scorpions</h1>
+          <h1 style={TITLE}>Chapter 4 — Scales of Gold</h1>
           <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {siegeSurvived
-              ? "Famagusta falls, but the house got its people and Kouklia's sugar out first. A crown changed hands on its own schedule; the branch outlasts the war around it."
-              : "Famagusta falls before the house could get everything clear of it. A branch survives Cyprus. Not everyone does."}
+            {gambiaSucceeded
+              ? "The ship came back from the Gambia with gold in its hold and fewer hands than sailed with it — a fortune the house's Bruges ledger has no real precedent for, and a river that took its own price regardless."
+              : "The Gambia venture cost more than it returned. Whatever the fever and the current didn't take, the delay finally did, and the house's ledger shows it plainly."}
           </p>
           <p style={{ color: '#8a7a5a', maxWidth: '30rem', textAlign: 'center', fontSize: '0.9rem' }}>
             Concluded in {formatWeekDate(state.week, CAMPAIGN_START)}, {Math.round(state.cash)}f on hand, conscience{' '}
-            {Math.round(state.conscience)}. Secrets used: {secretsUsed}, expired unused: {secretsExpired}.
+            {Math.round(state.conscience)}. {umarShownMercy ? "Umar's kin were bought clear of Timbuktu." : "Umar's own business at Timbuktu was left to him."}{' '}
+            Secrets used: {secretsUsed}, expired unused: {secretsExpired}.
             {departed.length > 0
               ? ` Left the company along the way: ${departed.map(c => c.name).join(', ')}.`
               : ' The household is intact.'}
@@ -298,12 +315,19 @@ export default function GameScreen() {
       <PortalNav variant="header" />
       <header style={HEADER}>
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.2rem' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.2rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
           <span style={CLOCK}>
             {Math.round(state.cash)}f &nbsp;·&nbsp; hold: {heldGoodsSummary || 'nothing'}
             &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
             &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
           </span>
+          <button
+            id="advance-week-button"
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+            onClick={() => dispatch({ type: 'ADVANCE_WEEK' })}
+          >
+            Advance one week
+          </button>
           {canGuidedTour && (
             <button
               style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
@@ -317,6 +341,18 @@ export default function GameScreen() {
             onClick={() => { setShowGuidedTour(false); setShowTutorial(true); }}
           >
             How to play
+          </button>
+          <button
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: '#6a5a40' }}
+            onClick={() => nav('/')}
+          >
+            ← Back to campaigns
+          </button>
+          <button
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: '#6a5a40' }}
+            onClick={abandonAndReturn}
+          >
+            Abandon this campaign
           </button>
         </div>
       </header>
@@ -378,6 +414,21 @@ export default function GameScreen() {
               Week {state.lastSabotageEvent.week}: {state.lastSabotageEvent.houseName} got to{' '}
               {state.lastSabotageEvent.vesselName}'s cargo at {findCity(state.lastSabotageEvent.cityId)?.name ?? state.lastSabotageEvent.cityId} —
               lost {state.lastSabotageEvent.quantityLost} {state.lastSabotageEvent.goodId}.
+            </p>
+          )}
+
+          {state.lastExpeditionEvent && (
+            <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+              Week {state.lastExpeditionEvent.week}: {state.lastExpeditionEvent.vesselName}'s crew turn{' '}
+              {state.lastExpeditionEvent.healthStatus} — {state.lastExpeditionEvent.cashCost}f spent on physicians and delay.
+            </p>
+          )}
+
+          {state.expedition && (
+            <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+              {expeditionVessel?.name ?? 'The vessel'} is {state.expedition.weeksUpriver} week
+              {state.expedition.weeksUpriver === 1 ? '' : 's'} into the Gambia's interior — crew health:{' '}
+              {state.expedition.healthStatus}.
             </p>
           )}
 
@@ -472,30 +523,41 @@ export default function GameScreen() {
             onShip={(vesselId, quantity) => dispatch({ type: 'SHIP_ESTATE_GOODS', vesselId, quantity })}
           />
 
-          <LedgerPanel
-            week={state.week}
-            cash={state.cash}
-            exchangeRates={state.exchangeRates}
-            obligations={state.obligations}
-            flags={state.flags}
-            onWriteBill={(cityId, florins, termWeeks) => dispatch({ type: 'WRITE_BILL', cityId, florins, termWeeks })}
-            onTakeDeposit={(florins, termWeeks) => dispatch({ type: 'TAKE_DEPOSIT', florins, termWeeks })}
-            onWriteLoan={(kind, florins, termWeeks) => dispatch({ type: 'WRITE_LOAN', kind, florins, termWeeks })}
-            onDiscount={obligationId => dispatch({ type: 'DISCOUNT_OBLIGATION', obligationId })}
-          />
+          {state.flags.chapter0_complete && (
+            <div>
+              <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.3rem' }}>
+                <button style={ledgerTab === 'ledger' ? BUTTON_ACTIVE : BUTTON} onClick={() => setLedgerTab('ledger')}>
+                  Ledger
+                </button>
+                <button
+                  style={ledgerTab === 'countingHouse' ? BUTTON_ACTIVE : BUTTON}
+                  onClick={() => setLedgerTab('countingHouse')}
+                >
+                  Counting House
+                </button>
+              </div>
+              <div style={{ display: ledgerTab === 'ledger' ? 'block' : 'none' }}>
+                <LedgerPanel
+                  week={state.week}
+                  cash={state.cash}
+                  exchangeRates={state.exchangeRates}
+                  obligations={state.obligations}
+                  flags={state.flags}
+                  onDiscount={obligationId => dispatch({ type: 'DISCOUNT_OBLIGATION', obligationId })}
+                />
+              </div>
+              <div style={{ display: ledgerTab === 'countingHouse' ? 'block' : 'none' }}>
+                <CountingHousePanel
+                  flags={state.flags}
+                  onWriteBill={(cityId, florins, termWeeks) => dispatch({ type: 'WRITE_BILL', cityId, florins, termWeeks })}
+                  onTakeDeposit={(florins, termWeeks) => dispatch({ type: 'TAKE_DEPOSIT', florins, termWeeks })}
+                  onWriteLoan={(kind, florins, termWeeks) => dispatch({ type: 'WRITE_LOAN', kind, florins, termWeeks })}
+                />
+              </div>
+            </div>
+          )}
 
           {error && <p style={{ fontSize: '0.8rem', color: '#b5451a', margin: 0 }}>{error}</p>}
-
-          <button id="advance-week-button" style={BUTTON} onClick={() => dispatch({ type: 'ADVANCE_WEEK' })}>
-            Advance one week
-          </button>
-
-          <button style={{ ...BUTTON, marginTop: 'auto', color: '#6a5a40' }} onClick={() => nav('/')}>
-            ← Back to campaigns
-          </button>
-          <button style={{ ...BUTTON, color: '#6a5a40' }} onClick={abandonAndReturn}>
-            Abandon this campaign
-          </button>
         </div>
 
         <div style={MAP_PANE}>

@@ -1,0 +1,10 @@
+[
+  { "id": "lisbon", "name": "Lisbon", "region": "portugal", "power": "portugal", "x": 1858.0, "y": 3079.8, "port": true, "currency": "cruzado",
+    "market": { "spices": { "base": 70 }, "gold": { "base": 150 }, "malaguetta": { "base": 40 } } },
+  { "id": "madeira", "name": "Madeira", "region": "madeira", "power": "portugal", "x": 1309.8, "y": 3879.9, "port": true, "currency": "cruzado",
+    "market": { "sugar": { "base": 16 }, "wine": { "base": 12 }, "ivory": { "base": 50 } } },
+  { "id": "gambia", "name": "Gambia", "region": "senegambia", "power": "portugal", "x": 1611.5, "y": 5480.2, "port": true, "currency": "cruzado",
+    "market": { "ivory": { "base": 20 }, "malaguetta": { "base": 18 } } },
+  { "id": "timbuktu", "name": "Timbuktu", "region": "sahel", "power": "songhai", "x": 1971.5, "y": 5302.4, "port": false, "currency": "cruzado",
+    "market": { "gold": { "base": 90 } } }
+]

@@ -1,0 +1,5 @@
+[
+  { "id": "gelis", "name": "Gelis van Borselen", "role": "ward",
+    "skills": { "law": 2, "trade": 3, "combat": 1, "intrigue": 4 },
+    "loyalty": 55, "salary": 2, "location": "bruges", "status": "pending", "assignment": { "type": "idle" } }
+]

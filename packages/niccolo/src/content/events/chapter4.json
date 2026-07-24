@@ -1,0 +1,332 @@
+[
+  {
+    "id": "ev_c4_001",
+    "chapter": 4,
+    "trigger": { "flag": "chapter3_complete" },
+    "title": "Scales of Gold",
+    "body": "Cyprus is settled, at whatever cost the ledger eventually agreed to call it. A Venetian house that quietly carried part of that cost — a bill written against the Cyprus agency's own credit, back when the siege made borrowing look cheaper than waiting — sends word, with excessive courtesy, that it would welcome knowing when the house intends to make it whole.",
+    "choices": [
+      { "text": "Answer the courtesy with courtesy, and start settling now", "effects": { "cash": -15, "flag": "venice_pressure_started" } },
+      { "text": "Let the correspondence run a little longer before committing to anything", "effects": { "flag": "venice_pressure_started" } }
+    ]
+  },
+  {
+    "id": "ev_c4_002",
+    "chapter": 4,
+    "trigger": { "flag": "venice_pressure_started" },
+    "title": "The bill comes due",
+    "body": "The correspondence stops being courteous. The Venetian house wants its exposure closed in full, and sooner than the paper's own term strictly requires — prudence, they call it, now that a contested island has shown what backing the wrong season can cost a foreign house.",
+    "choices": [
+      { "text": "Meet it in full, now, whatever the ledger says", "effects": { "cash": -40, "flags": ["venice_debt_met", "venice_debt_resolved"] } },
+      { "text": "Talk them into an extension instead", "effects": { "cash": -10, "conscience": -1, "flags": ["venice_debt_extended", "venice_debt_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c4_003",
+    "chapter": 4,
+    "trigger": { "flag": "venice_debt_resolved" },
+    "title": "West, to a coast with no ledger yet",
+    "body": "With Venice settled, the house's correspondence starts carrying a different kind of report: Portuguese captains returning to Lisbon with cargoes — ivory, a strange grained pepper, occasionally gold — that no Mediterranean house yet has any share of. Bruges has never needed a Lisbon agency before. It may need one now.",
+    "choices": [
+      { "text": "Fit a ship out for the Lisbon run", "effects": { "cash": -10, "flag": "lisbon_bound" } },
+      { "text": "Send word ahead and follow at leisure", "effects": { "flag": "lisbon_bound" } }
+    ]
+  },
+  {
+    "id": "ev_c4_004",
+    "chapter": 4,
+    "trigger": { "flag": "lisbon_bound", "location": "lisbon" },
+    "title": "Landfall at Lisbon",
+    "body": "The Tagus is wider and busier than the Zwin ever was, and the crown's own Guinea House watches every foreign hull that enters it with an attention Bruges never bothered with. The house's credentials are presented; nobody actually says no.",
+    "choices": [
+      { "text": "Open the agency and keep to what's plainly permitted", "effects": { "flag": "reached_lisbon" } }
+    ]
+  },
+  {
+    "id": "ev_c4_005",
+    "chapter": 4,
+    "trigger": { "flag": "reached_lisbon" },
+    "title": "A factor who already knows this coast",
+    "body": "A Flemish factor long resident in Lisbon, married into a Portuguese house and comfortably placed in its confidence, offers — for a price — a clear account of who is actually financing the crown's African voyages, and on what terms. It is exactly the kind of intelligence no Mediterranean house currently holds.",
+    "choices": [
+      { "text": "Pay for the account", "effects": { "cash": -15, "secret": { "id": "secret_lisbon_guinea_financing", "name": "Who finances the Guinea voyages", "description": "A Lisbon factor's clear account of which houses actually stand behind the Portuguese crown's African trade, and on what terms — knowledge no Mediterranean house currently holds.", "value": 55, "expiresInWeeks": 20 } } },
+      { "text": "Decline, and rely on what the agency learns honestly", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c4_006",
+    "chapter": 4,
+    "trigger": { "flag": "reached_lisbon" },
+    "title": "The crown's own monopoly",
+    "body": "The Guinea trade is the Portuguese crown's by charter, not by custom — a foreign house that trades there at all does so at the edges of what's actually permitted, not in open water. Madeira, a few days further out into the Atlantic, is where the crown's own subjects go to arrange what Lisbon's charter doesn't quite forbid.",
+    "choices": [
+      { "text": "Open the Lisbon agency in earnest, and look to Madeira next", "effects": { "flags": ["lisbon_agency_opened", "madeira_bound"] } }
+    ]
+  },
+  {
+    "id": "ev_c4_007",
+    "chapter": 4,
+    "trigger": { "flag": "madeira_bound", "location": "madeira" },
+    "title": "Landfall at Madeira",
+    "body": "Madeira is smaller than its reputation: a green island of terraced cane and new-planted vines, worked hard enough already that the house's arrival draws more curiosity than welcome.",
+    "choices": [
+      { "text": "Open the agency and start asking after the trade", "effects": { "flag": "reached_madeira" } }
+    ]
+  },
+  {
+    "id": "ev_c4_008",
+    "chapter": 4,
+    "trigger": { "flag": "reached_madeira" },
+    "title": "Cane and sugar, an old idea in new ground",
+    "body": "The island's cane fields were bearing sugar years before Kouklia's ever were — Cyprus's own estate, it turns out, was never the novelty the house liked to think it. Madeira's planters are further along, better capitalised, and considerably less interested in a Flemish house's advice on how to run one.",
+    "choices": [
+      { "text": "Note the resemblance and say nothing of Kouklia", "effects": { "conscience": 1 } },
+      { "text": "Mention the Cyprus estate anyway, planter to planter", "effects": { "cash": 5 } }
+    ]
+  },
+  {
+    "id": "ev_c4_009",
+    "chapter": 4,
+    "trigger": { "flag": "reached_madeira" },
+    "title": "A familiar house, on unfamiliar ground",
+    "body": "A ship already at anchor in Funchal's roads flies colours the house knows from Bruges: St Pol interests, come to the same island for the same reason, and plainly not pleased to find the Charetty company had the same idea first.",
+    "choices": [
+      { "text": "Compete for the planters' custom openly", "effects": { "cash": 10, "rep": { "stpol": -15 }, "flag": "stpol_madeira_collision" } },
+      { "text": "Let St Pol have the ground rather than force a second front", "effects": { "cash": -10, "flag": "stpol_madeira_collision" } }
+    ]
+  },
+  {
+    "id": "ev_c4_010",
+    "chapter": 4,
+    "trigger": { "flag": "stpol_madeira_collision" },
+    "title": "What Madeira cost the vendetta",
+    "body": "Simon's house does not forget a market it was made to share, any more than it forgot Bruges. Madeira closes as a modest, ongoing trade — sugar and wine enough to justify the agency — and one more grievance on a ledger St Pol has been keeping since the very first year.",
+    "choices": [
+      { "text": "Close the Madeira agency's books for this season", "effects": { "flag": "madeira_collision_resolved" } }
+    ]
+  },
+  {
+    "id": "ev_c4_011",
+    "chapter": 4,
+    "trigger": { "flag": "madeira_collision_resolved" },
+    "title": "Further than any Bruges ship has gone",
+    "body": "Everything past Madeira is a coast the house's own charts draw from other men's report, not its own soundings: a river mouth two weeks' further sail, and upriver from it, by every account, gold enough to be worth the risk of a fever no physician in Flanders has ever had to name.",
+    "choices": [
+      { "text": "Provision properly for a long, uncertain voyage", "effects": { "cash": -20, "flag": "gambia_bound" } },
+      { "text": "Sail on what's already aboard, and trust to speed", "effects": { "flag": "gambia_bound" } }
+    ]
+  },
+  {
+    "id": "ev_c4_012",
+    "chapter": 4,
+    "trigger": { "flag": "gambia_bound", "location": "gambia" },
+    "title": "Landfall at the Gambia's mouth",
+    "body": "The river meets the sea in a wide, brown confusion of mangrove and mudbank, nothing like Bruges's own tidy Zwin. A trading post no older than a few seasons stands on the north bank, doing business in ivory and a pepper sharp enough to pass, at a distance, for the real Indies spice.",
+    "choices": [
+      { "text": "Open the post's trade and see what it actually offers", "effects": { "flag": "reached_gambia" } }
+    ]
+  },
+  {
+    "id": "ev_c4_013",
+    "chapter": 4,
+    "trigger": { "flag": "reached_gambia" },
+    "title": "Umar",
+    "body": "The post's most useful broker is a man named Umar, fluent in more languages than the house has officers to match, and plainly the reason any European trade happens here at all rather than failing on the first misunderstanding. He deals fairly, names a price and holds to it, and he already knows exactly what lies upriver.",
+    "choices": [
+      { "text": "Deal through Umar and pay his terms", "effects": { "cash": -8 } },
+      { "text": "Try the post's other brokers first, cheaper if less reliable", "effects": { "cash": 5, "conscience": -1 } }
+    ]
+  },
+  {
+    "id": "ev_c4_014",
+    "chapter": 4,
+    "trigger": { "flag": "reached_gambia" },
+    "title": "The word from upriver",
+    "body": "Umar's account of the river is plain enough to be worth trusting: three weeks' hard poling against the current to reach the city the Moors call Timbuktu, through country where a fever takes hold of Europeans in a way it does not trouble the men born to it. He has made the journey before. He is willing to make it again.",
+    "choices": [
+      { "text": "Press upriver, Umar guiding", "effects": { "flag": "timbuktu_bound" } }
+    ]
+  },
+  {
+    "id": "ev_c4_015",
+    "chapter": 4,
+    "trigger": { "flag": "timbuktu_bound" },
+    "title": "What the river asks in return",
+    "body": "Three days upriver, the first man aboard takes a fever that has nothing in common with anything Bruges's own physician has treated before, if one is even aboard to treat it. Umar says this is usual, and survivable, and says it in a tone that suggests he has buried men who found out otherwise.",
+    "choices": [
+      { "text": "Press on regardless", "effects": { "conscience": -1 } },
+      { "text": "Slow the pace and nurse the sick properly", "effects": { "cash": -10 } }
+    ]
+  },
+  {
+    "id": "ev_c4_016",
+    "chapter": 4,
+    "trigger": { "flag": "timbuktu_bound", "location": "timbuktu" },
+    "title": "Landfall at Timbuktu",
+    "body": "The city stands well back from the river on ground too dry for mangrove, mud-walled and considerably larger than any report from Lisbon had prepared the house to expect — a market for gold and salt and, by every account, for books, older and busier than most of what passes for scholarship in Bruges.",
+    "choices": [
+      { "text": "Open the house's trade here and take the city's measure", "effects": { "flags": ["reached_timbuktu", "gambia_return_open"] } }
+    ]
+  },
+  {
+    "id": "ev_c4_017",
+    "chapter": 4,
+    "trigger": { "flag": "reached_timbuktu" },
+    "title": "A city the sea has never touched",
+    "body": "No European report reached this far before the house's own ship's boat did. It is not, on that account, at peace: word in the market is that a Songhai army has already put river towns downstream to the sword this year, and that Timbuktu's own old masters are not confident of holding it much longer.",
+    "choices": [
+      { "text": "Trade quickly, and don't linger to find out", "effects": { "cash": 5 } },
+      { "text": "Take the risk seriously enough to ask more questions", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c4_018",
+    "chapter": 4,
+    "trigger": { "flag": "reached_timbuktu" },
+    "title": "The gold, and the price of reaching it",
+    "body": "Gold changes hands here at a price that will look absurd the moment it reaches Lisbon, let alone Bruges — the entire justification for three weeks against the current and a fever with no name. Nobody in the market asks where it was dug, or by whom, or on what terms. The house is not obliged to ask either.",
+    "choices": [
+      { "text": "Buy as much as the hold and the cash allow, and leave it at that", "effects": { "cash": -5 } },
+      { "text": "Ask anyway, and buy rather less", "effects": { "cash": -15, "conscience": 2 } }
+    ]
+  },
+  {
+    "id": "ev_c4_019",
+    "chapter": 4,
+    "trigger": { "flag": "reached_timbuktu" },
+    "title": "The learning",
+    "body": "A scholar attached to one of the city's mosques, unhurried about it in a way that suggests he has done this before for other curious foreigners, will show a European willing to pay for the privilege something of what Timbuktu actually keeps in its libraries: geography, mostly, of an Africa no Lisbon chart yet agrees on the shape of.",
+    "choices": [
+      { "text": "Pay for the privilege", "effects": { "cash": -20, "secret": { "id": "secret_timbuktu_geography", "name": "What Timbuktu's libraries know of Africa", "description": "A Timbuktu scholar's account of the continent's interior — river courses and distances no Lisbon chart yet agrees on, copied out for a price.", "value": 60, "expiresInWeeks": 16 } } },
+      { "text": "Leave the scholar's library to the city that actually values it", "effects": { "conscience": 2 } }
+    ]
+  },
+  {
+    "id": "ev_c4_020",
+    "chapter": 4,
+    "trigger": { "flag": "reached_timbuktu" },
+    "title": "Umar's choice",
+    "body": "Umar's own reason for making this crossing surfaces only now, in the market, and plainly: kin of his, taken in the same fighting the city's gossip already fears will come again, are held here against a price the house could meet without much troubling the season's profit. He has not asked the house for anything. He has simply let it be known.",
+    "choices": [
+      { "text": "Meet the price, and call it the cost of the man who got you here", "effects": { "cash": -30, "conscience": 5, "flags": ["umars_choice_mercy", "umars_choice_made"] } },
+      { "text": "This is Umar's business, not the house's ledger", "effects": { "cash": 15, "conscience": -6, "flags": ["umars_choice_profit", "umars_choice_made"] } }
+    ]
+  },
+  {
+    "id": "ev_c4_021",
+    "chapter": 4,
+    "trigger": { "flag": "umars_choice_made" },
+    "title": "What Timbuktu asked of the house",
+    "body": "Whatever else the city gave up — gold, a library's worth of geography, a broker's own account settled or left unsettled — Timbuktu is not a place the house's ledger will ever fully reckon. The river is still there to be gone back down, fever and current both indifferent to what was decided in the market.",
+    "choices": [
+      { "text": "Turn the ship's boat back downriver", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c4_022",
+    "chapter": 4,
+    "trigger": {
+      "location": "bruges",
+      "flag": "gambia_return_open",
+      "flagAbsent": "gambia_expedition_failed",
+      "cargoAtLeast": { "location": "bruges", "goodId": "gold", "quantity": 5 }
+    },
+    "title": "Out of the interior, gold in the hold",
+    "body": "The ship makes Bruges with the river and the fever both behind it, gold still in the hold and the crew, fewer of them than sailed, still able to walk off under their own power. The Gambia agency's books close in credit — the first Mediterranean house's, by every account, to make the round trip and say so honestly.",
+    "choices": [
+      { "text": "Make port and call the venture closed", "effects": { "cash": 70, "flags": ["gambia_expedition_success", "gambia_expedition_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c4_023",
+    "chapter": 4,
+    "trigger": { "dateAfter": "1471-01-01", "flag": "gambia_return_open", "flagAbsent": "gambia_expedition_success" },
+    "title": "What the river took instead",
+    "body": "The season the physicians in Lisbon had quietly predicted arrives on its own schedule: whatever the fever and the current didn't already take, the delay finally does. What comes back from the Gambia is a smaller venture than the one that sailed for it, and a smaller crew.",
+    "choices": [
+      { "text": "Close the venture's books, such as they are", "effects": { "cash": -35, "conscience": -3, "flags": ["gambia_expedition_failed", "gambia_expedition_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c4_024",
+    "chapter": 4,
+    "trigger": { "flag": "gambia_expedition_success" },
+    "title": "What the gold bought",
+    "body": "The ledger shows a genuine fortune for a first venture — gold enough to make the fever, the current, and Umar's own price all look, in hindsight, like a bargain. Nothing in that column records what the choice at Timbuktu actually cost, on either side of it.",
+    "choices": [
+      { "text": "Reckon the gain against the cost, and move on", "effects": { "flag": "gambia_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c4_025",
+    "chapter": 4,
+    "trigger": { "flag": "gambia_expedition_failed" },
+    "title": "What the interior cost",
+    "body": "The venture's books close in a harder hand than the house would have chosen, gold or no gold. A river that took men going up took more coming down, on a schedule no amount of provisioning in Madeira could have bought against forever.",
+    "choices": [
+      { "text": "Reckon the cost, such as it is, and move on", "effects": { "flag": "gambia_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c4_026",
+    "chapter": 4,
+    "trigger": { "flag": "gambia_epilogue" },
+    "title": "A name from Katelina's family",
+    "body": "Correspondence waiting in Bruges since before the ship ever cleared the Gambia carries an old name back into the house's business: Gelis van Borselen, Katelina's younger sister, writing with a bluntness her sister never quite allowed herself, about an arrangement she believes the house owes her family.",
+    "choices": [
+      { "text": "Answer the letter in person", "effects": { "flag": "gelis_arc_begins" } }
+    ]
+  },
+  {
+    "id": "ev_c4_027",
+    "chapter": 4,
+    "trigger": { "flag": "gelis_arc_begins" },
+    "title": "Gelis",
+    "body": "She is nothing like the account Bruges gossip gives of a grieving younger sister, and says so herself before anyone else can. Whatever she wants from the house, it is not sympathy, and she is plainly better at this already than most of the officers currently drawing a salary for it.",
+    "choices": [
+      { "text": "Bring her into the house's own business, formally", "effects": { "joinCharacter": "gelis", "flag": "gelis_joined" } }
+    ]
+  },
+  {
+    "id": "ev_c4_028",
+    "chapter": 4,
+    "trigger": { "flag": "gelis_joined" },
+    "title": "A wager, plainly stated",
+    "body": "She proposes it exactly the way she proposes everything: without preamble, and for a sum large enough to be taken seriously. She is wrong, she says, about nothing that matters — and is willing to stake real florins on being proven right about something the house would rather she weren't.",
+    "choices": [
+      { "text": "Take the wager, and mean to win it honestly", "effects": { "cash": -25, "conscience": 2, "flags": ["gelis_wager_honest", "gelis_wager_made"] } },
+      { "text": "Take the wager, and arrange matters so it can't be lost", "effects": { "cash": 20, "conscience": -3, "flags": ["gelis_wager_arranged", "gelis_wager_made"] } }
+    ]
+  },
+  {
+    "id": "ev_c4_029",
+    "chapter": 4,
+    "trigger": { "flag": "gelis_wager_made", "location": "bruges" },
+    "title": "The trap closes, and is welcomed",
+    "body": "However the wager was actually settled, its real purpose was never in serious doubt to anyone except, perhaps, the man who thought he was only playing for florins. Gelis puts the actual question to him herself, exactly as bluntly as she has done everything else since Bruges first heard her name.",
+    "choices": [
+      { "text": "Marry her, and mean it", "effects": { "conscience": 3, "flag": "married_gelis" } },
+      { "text": "Marry her, and admit she engineered the whole approach", "effects": { "cash": 15, "flag": "married_gelis" } }
+    ]
+  },
+  {
+    "id": "ev_c4_030",
+    "chapter": 4,
+    "trigger": { "flags": ["venice_debt_resolved", "lisbon_agency_opened", "madeira_collision_resolved", "gambia_epilogue", "married_gelis"] },
+    "title": "Scales of Gold, concluded",
+    "body": "Four years and three coasts after Cyprus, the house's ledger runs to currencies Bruges had no name for when the chapter opened: cruzados from a trade the Portuguese crown still thinks it alone controls, gold weighed out of a city no Flemish ship had reason to reach before this one did. What the season actually cost — Simon's grudge deepened on a second continent, whatever was decided in a Timbuktu market, a wager that turned out to be a proposal — is not a column the ledger has room for.",
+    "choices": [
+      { "text": "Close Scales of Gold's own books for good", "effects": { "flag": "chapter4_complete" } }
+    ]
+  },
+  {
+    "id": "ev_c4_031",
+    "chapter": 4,
+    "trigger": { "flag": "expedition_crisis" },
+    "title": "The fever reaches its worst",
+    "body": "Whatever Umar called usual has, for one man aboard, stopped being survivable-sounding and started being merely survived, barely. The ship's own physician — if one is aboard at all — has run out of anything to offer beyond time, and whatever nursing can be spared from the rest of the work.",
+    "choices": [
+      { "text": "Give the sick what time and care can be spared", "effects": { "cash": -10, "conscience": 2 } }
+    ]
+  }
+]

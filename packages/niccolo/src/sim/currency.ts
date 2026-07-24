@@ -13,7 +13,9 @@ export interface Currency {
  * account values relative to the florin, not literal historical mint weights — a flavour pass
  * can sharpen them later without touching the mechanic. `asper` (Chapter 2, Phase 9) adds
  * Trebizond on the same basis; `bezant` (Chapter 3, Phase 10) adds Lusignan Cyprus, pegged low
- * to reflect a kingdom already living on borrowed time by 1462.
+ * to reflect a kingdom already living on borrowed time by 1462. `cruzado` (Chapter 4, Phase 13)
+ * adds Lisbon/Madeira/Gambia — pegged comparably to `ducat`, not low like `asper`/`bezant`, a
+ * deliberate contrast: this is a rising Atlantic trade coin, not a declining kingdom's.
  */
 export const CURRENCIES: Currency[] = [
   { id: 'florin', name: 'Florentine florin', symbol: 'f' },
@@ -23,6 +25,7 @@ export const CURRENCIES: Currency[] = [
   { id: 'ducat', name: 'Venetian ducat', symbol: 'd' },
   { id: 'asper', name: 'Trapezuntine asper', symbol: 'a' },
   { id: 'bezant', name: 'Cypriot bezant', symbol: 'b' },
+  { id: 'cruzado', name: 'Portuguese cruzado', symbol: 'c' },
 ];
 
 const PEG: ExchangeRates = {
@@ -33,6 +36,7 @@ const PEG: ExchangeRates = {
   ducat: 1.05,
   asper: 0.4,
   bezant: 0.5,
+  cruzado: 1.1,
 };
 
 /** Largest random walk step an exchange rate can take in a week, as a fraction of its peg. */

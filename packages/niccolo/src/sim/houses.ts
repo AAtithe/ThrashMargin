@@ -17,14 +17,19 @@ export function initialHouseRelations(): Record<string, number> {
  * shape already used for exchange rates and market scarcity, not a fresh invented mechanic. */
 const RELATION_DRIFT_RATE = 0.05;
 /** Once blood is actually drawn (design doc §8's vendetta track), St Pol's own baseline sours —
- * relation keeps drifting, just toward a worse floor. */
+ * relation keeps drifting, just toward a worse floor. Madeira (Chapter 4, Phase 13) is a second,
+ * independent souring of the same vendetta — a commercial collision, not a violent one, so it
+ * stacks with (rather than replaces) first blood's own penalty: two separate grudges the house
+ * has given St Pol, not one bigger version of the first. */
 const STPOL_FIRST_BLOOD_BASELINE_PENALTY = 20;
+const STPOL_MADEIRA_COLLISION_BASELINE_PENALTY = 10;
 
 function baselineFor(house: House, flags: Record<string, boolean>): number {
-  if (house.id === 'stpol' && flags.stpol_first_blood) {
-    return clamp(house.baselineRelation - STPOL_FIRST_BLOOD_BASELINE_PENALTY, 0, 100);
-  }
-  return house.baselineRelation;
+  if (house.id !== 'stpol') return house.baselineRelation;
+  let penalty = 0;
+  if (flags.stpol_first_blood) penalty += STPOL_FIRST_BLOOD_BASELINE_PENALTY;
+  if (flags.stpol_madeira_collision) penalty += STPOL_MADEIRA_COLLISION_BASELINE_PENALTY;
+  return clamp(house.baselineRelation - penalty, 0, 100);
 }
 
 export function driftHouseRelations(

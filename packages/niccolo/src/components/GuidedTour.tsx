@@ -55,7 +55,10 @@ const BUTTON: React.CSSProperties = {
   cursor: 'pointer',
 };
 
-const PRIMARY_BUTTON: React.CSSProperties = { ...BUTTON, borderColor: GOLD, color: GOLD };
+// Override the full `border` shorthand, not just `borderColor` — mixing a shorthand and a longhand
+// for the same property across renders of the same element is a real React warning ("Removing
+// borderColor border"), not just a lint nag.
+const PRIMARY_BUTTON: React.CSSProperties = { ...BUTTON, border: `1px solid ${GOLD}`, color: GOLD };
 const GHOST_BUTTON: React.CSSProperties = { ...BUTTON, border: 'none', color: '#6a5a40', padding: '0.4rem 0.2rem' };
 
 /**
@@ -161,8 +164,8 @@ const STEPS: TourStep[] = [
   },
   {
     title: 'Write a bill of exchange',
-    body: 'The Ledger lets you borrow now against a future repayment — real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
-    targetId: 'ledger-borrow-button',
+    body: 'The Counting House lets you borrow now against a future repayment — real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
+    targetId: 'counting-house-borrow-button',
     isComplete: state => state.obligations.length > 0,
   },
   {

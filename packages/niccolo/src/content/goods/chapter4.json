@@ -1,0 +1,5 @@
+[
+  { "id": "gold",       "name": "Gold",              "unit": "bar" },
+  { "id": "ivory",      "name": "Ivory",              "unit": "tusk" },
+  { "id": "malaguetta", "name": "Malaguetta Pepper",  "unit": "sack" }
+]

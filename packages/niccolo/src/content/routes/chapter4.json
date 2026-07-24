@@ -1,0 +1,6 @@
+[
+  { "id": "bruges-lisbon", "from": "bruges", "to": "lisbon", "distanceWeeks": 4, "type": "sea", "seasonal": false },
+  { "id": "lisbon-madeira", "from": "lisbon", "to": "madeira", "distanceWeeks": 2, "type": "sea", "seasonal": false },
+  { "id": "madeira-gambia", "from": "madeira", "to": "gambia", "distanceWeeks": 3, "type": "sea", "seasonal": true },
+  { "id": "gambia-timbuktu", "from": "gambia", "to": "timbuktu", "distanceWeeks": 3, "type": "river", "seasonal": true }
+]

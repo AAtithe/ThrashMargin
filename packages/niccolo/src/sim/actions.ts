@@ -6,6 +6,7 @@ import { discountObligation, resolveMaturingObligations, takeDeposit, writeBill,
 import { driftExchangeRates } from './currency';
 import { establishEstate, harvestEstate, resolveWeeklyEstate, shipEstateGoods } from './estates';
 import { checkTriggers, resolveEvent } from './events';
+import { resolveWeeklyExpedition } from './expedition';
 import {
   applyHouseTradeFootprint,
   corruptNews,
@@ -146,6 +147,10 @@ function advanceWeek(state: GameState): GameState {
   const insurance = clearArrivedInsurance(risk.insurance, tickedVessels);
   const sabotage = resolveHouseSabotage(tickedVessels, week);
   const estate = resolveWeeklyEstate(state.estate);
+  const expeditionResolution = resolveWeeklyExpedition(
+    { ...state, cash: condottaResolution.cash + risk.cashDelta, vessels: sabotage.vessels, characters: upkeep.characters },
+    week,
+  );
 
   const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
   const newNews = corruptNews(rawNews, state.agents, HOME_CITY);
@@ -156,11 +161,13 @@ function advanceWeek(state: GameState): GameState {
   let flags = state.flags;
   if (condottaResolution.condottaJustCompleted) flags = { ...flags, condotta_naples_complete: true };
   if (sabotage.sabotaged) flags = { ...flags, doria_sabotage_occurred: true };
+  if (expeditionResolution.crisisReached) flags = { ...flags, expedition_crisis: true };
 
   return checkTriggers({
     ...state,
     week,
-    cash: condottaResolution.cash + risk.cashDelta,
+    cash: expeditionResolution.cash,
+    conscience: expeditionResolution.conscience,
     vessels: sabotage.vessels,
     obligations: maturity.obligations,
     insolvent: state.insolvent || maturity.insolvent,
@@ -177,6 +184,8 @@ function advanceWeek(state: GameState): GameState {
     insurance,
     lastVoyageEvent: risk.event ?? state.lastVoyageEvent,
     lastSabotageEvent: sabotage.event ?? state.lastSabotageEvent ?? null,
+    expedition: expeditionResolution.expedition,
+    lastExpeditionEvent: expeditionResolution.event ?? state.lastExpeditionEvent ?? null,
   });
 }
 
@@ -201,11 +210,11 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
-  // chapter1_complete and chapter2_complete no longer freeze play — each is a mid-campaign flag
-  // the next chapter's own events trigger on (design doc §12, "Phase 9 onward: one chapter
-  // content pack per phase"). Only the true end of the shipped content (chapter3_complete) stops
+  // chapter1_complete through chapter3_complete no longer freeze play — each is a mid-campaign
+  // flag the next chapter's own events trigger on (design doc §12, "Phase 9 onward: one chapter
+  // content pack per phase"). Only the true end of the shipped content (chapter4_complete) stops
   // the clock now.
-  if (state.flags.chapter3_complete) return state;
+  if (state.flags.chapter4_complete) return state;
   if (state.pendingEvents.length > 0 && action.type !== 'RESOLVE_EVENT') return state;
 
   switch (action.type) {
