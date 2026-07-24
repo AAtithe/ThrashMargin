@@ -62,10 +62,17 @@ export default function CityPreviewPanel({
   onConfirmDispatch,
 }: CityPreviewPanelProps) {
   const goods = marketGoodsAt(city.id);
+  // Whether the *selected* vessel itself is already sitting here — distinct from `isLive`, which
+  // is true whenever *any* vessel is docked here (so the player genuinely does know this city's
+  // true current prices). Conflating the two used to hide the dispatch controls for a selected
+  // vessel that was elsewhere entirely, whenever some *other* vessel happened to be docked at the
+  // previewed city — e.g. previewing Bruges to send a courier home while a second vessel already
+  // sat there made the "Send ... here" button vanish, with no way to dispatch back at all.
+  const selectedVesselHere = !!vessel && !vessel.destination && vessel.location === city.id;
   const reachable =
     !!vessel &&
     !vessel.destination &&
-    vessel.location !== city.id &&
+    !selectedVesselHere &&
     reachableFrom(vessel.location, vessel.kind === 'courier').some(r => r.from === city.id || r.to === city.id);
   const canInsureHere = !!vessel && canInsureAt(vessel.location);
 
@@ -103,7 +110,7 @@ export default function CityPreviewPanel({
         <p style={{ fontSize: '0.78rem', color: '#6a5a40', margin: 0 }}>No report yet for this city.</p>
       )}
 
-      {vessel && !isLive && (
+      {vessel && !selectedVesselHere && (
         <>
           {reachable ? (
             <>

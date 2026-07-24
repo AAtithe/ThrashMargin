@@ -95,6 +95,7 @@ export function createInitialState(id: string, name?: string, options?: CreateIn
     estate: null,
     insurance: [],
     lastVoyageEvent: null,
+    lastSabotageEvent: null,
     vessels: skipPrologue ? [newShip(), newCourier()] : [newCourier()],
   };
 

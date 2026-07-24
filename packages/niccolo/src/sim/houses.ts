@@ -1,7 +1,7 @@
 import { HOUSES, findCity, findHouse } from './content';
 import { addSecret } from './secrets';
 import { adjustScarcity, cargoTotal } from './market';
-import type { Agent, AgentPlacement, GameState, House, MarketScarcity, NewsItem, Secret, Vessel } from './types';
+import type { Agent, AgentPlacement, GameState, House, MarketScarcity, NewsItem, SabotageLossEvent, Secret, Vessel } from './types';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -168,10 +168,15 @@ export interface SabotageResolution {
   vessels: Vessel[];
   /** True if some vessel was hit this week — content can react to this via a flag the caller sets. */
   sabotaged: boolean;
+  /** Full detail of the loss, for the UI to report — mirrors `VoyageLossEvent`'s own reasoning:
+   * this happens silently inside ADVANCE_WEEK with no other feedback channel, and a vessel simply
+   * sitting docked losing cargo with no visible explanation reads as a bug, not a hostile house. */
+  event?: SabotageLossEvent;
 }
 
-export function resolveHouseSabotage(vessels: Vessel[]): SabotageResolution {
-  const hostileHomes = new Set(HOUSES.filter(h => h.disposition === 'hostile').map(h => h.homeCity));
+export function resolveHouseSabotage(vessels: Vessel[], week: number): SabotageResolution {
+  const hostileHouses = HOUSES.filter(h => h.disposition === 'hostile');
+  const hostileHomes = new Map(hostileHouses.map(h => [h.homeCity, h]));
   if (hostileHomes.size === 0) return { vessels, sabotaged: false };
 
   const target = vessels.find(
@@ -184,9 +189,19 @@ export function resolveHouseSabotage(vessels: Vessel[]): SabotageResolution {
   const goodId = goodIds[Math.floor(Math.random() * goodIds.length)];
   const held = target.cargo[goodId];
   const lost = Math.max(1, Math.floor(held * SABOTAGE_LOSS_FRACTION));
+  const house = hostileHomes.get(target.location)!;
 
   return {
     vessels: vessels.map(v => (v.id === target.id ? { ...v, cargo: { ...v.cargo, [goodId]: held - lost } } : v)),
     sabotaged: true,
+    event: {
+      week,
+      vesselId: target.id,
+      vesselName: target.name,
+      goodId,
+      quantityLost: lost,
+      cityId: target.location,
+      houseName: house.name,
+    },
   };
 }

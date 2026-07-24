@@ -82,6 +82,21 @@ export interface VoyageLossEvent {
   payout: number;
 }
 
+/** The most recent hostile-house sabotage (see `resolveHouseSabotage`) — same "no other feedback
+ * channel" problem `VoyageLossEvent` solves, for a cargo loss that can happen while a vessel is
+ * simply docked at a hostile house's home city, not under way. Optional on `GameState` (a save
+ * from before this field existed just has no history to show, not a shape mismatch) so it never
+ * invalidates an in-progress campaign the way a required field would. */
+export interface SabotageLossEvent {
+  week: number;
+  vesselId: string;
+  vesselName: string;
+  goodId: string;
+  quantityLost: number;
+  cityId: string;
+  houseName: string;
+}
+
 /** cityId -> goodId -> scarcity multiplier (1 = base price, >1 = scarce/dear, <1 = glut/cheap) */
 export type MarketScarcity = Record<string, Record<string, number>>;
 
@@ -361,6 +376,9 @@ export interface GameState {
   insurance: Insurance[];
   /** The most recent storm/piracy loss, for the UI to report. Null until the first one occurs. */
   lastVoyageEvent: VoyageLossEvent | null;
+  /** The most recent hostile-house sabotage loss, for the UI to report. Optional/undefined for a
+   * save from before this field existed, and null on a fresh campaign until the first one occurs. */
+  lastSabotageEvent?: SabotageLossEvent | null;
 }
 
 export type GameAction =

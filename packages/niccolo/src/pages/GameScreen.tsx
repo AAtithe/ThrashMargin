@@ -356,6 +356,14 @@ export default function GameScreen() {
             </p>
           )}
 
+          {state.lastSabotageEvent && (
+            <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+              Week {state.lastSabotageEvent.week}: {state.lastSabotageEvent.houseName} got to{' '}
+              {state.lastSabotageEvent.vesselName}'s cargo at {findCity(state.lastSabotageEvent.cityId)?.name ?? state.lastSabotageEvent.cityId} —
+              lost {state.lastSabotageEvent.quantityLost} {state.lastSabotageEvent.goodId}.
+            </p>
+          )}
+
           <p style={{ fontSize: '0.8rem', color: '#8a7a5a', margin: 0 }}>
             {selectedVessel
               ? selectedVessel.destination

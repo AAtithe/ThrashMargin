@@ -144,7 +144,7 @@ function advanceWeek(state: GameState): GameState {
   const risk = resolveVoyageRisk(maturity.vessels, state.insurance ?? [], ROUTES, week);
   const tickedVessels = risk.vessels.map(tickVessel);
   const insurance = clearArrivedInsurance(risk.insurance, tickedVessels);
-  const sabotage = resolveHouseSabotage(tickedVessels);
+  const sabotage = resolveHouseSabotage(tickedVessels, week);
   const estate = resolveWeeklyEstate(state.estate);
 
   const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
@@ -176,6 +176,7 @@ function advanceWeek(state: GameState): GameState {
     estate,
     insurance,
     lastVoyageEvent: risk.event ?? state.lastVoyageEvent,
+    lastSabotageEvent: sabotage.event ?? state.lastSabotageEvent ?? null,
   });
 }
 
