@@ -64,13 +64,16 @@ const BODY: React.CSSProperties = {
 
 const MAP_PANE: React.CSSProperties = {
   flex: 1,
-  padding: '1rem',
+  padding: '0.5rem',
+  // Anchors MapView's absolutely-positioned "Reset view" control to this pane's own corner,
+  // independent of the map's internal pan/zoom transform.
+  position: 'relative',
 };
 
 const SIDEBAR: React.CSSProperties = {
-  width: '320px',
+  width: '280px',
   padding: '1.2rem',
-  borderLeft: '1px solid #4a3d28',
+  borderRight: '1px solid #4a3d28',
   display: 'flex',
   flexDirection: 'column',
   gap: '1.2rem',
@@ -319,16 +322,6 @@ export default function GameScreen() {
       </header>
 
       <div style={BODY}>
-        <div style={MAP_PANE}>
-          <MapView
-            vessels={state.vessels}
-            selectedVesselId={selectedVesselId}
-            onSelectCity={handlePreviewCity}
-            cityInfoAge={cityInfoAge}
-            previewedCityId={previewCityId}
-          />
-        </div>
-
         <div id="game-sidebar" style={SIDEBAR}>
           <div>
             <p style={{ fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#8a7a5a' }}>
@@ -503,6 +496,17 @@ export default function GameScreen() {
           <button style={{ ...BUTTON, color: '#6a5a40' }} onClick={abandonAndReturn}>
             Abandon this campaign
           </button>
+        </div>
+
+        <div style={MAP_PANE}>
+          <MapView
+            key={state.id}
+            vessels={state.vessels}
+            selectedVesselId={selectedVesselId}
+            onSelectCity={handlePreviewCity}
+            cityInfoAge={cityInfoAge}
+            previewedCityId={previewCityId}
+          />
         </div>
       </div>
       <PortalNav variant="footer" />

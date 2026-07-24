@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { CITIES, ROUTES, findCity } from '../sim/content';
 import type { Vessel } from '../sim/types';
 
@@ -10,6 +10,11 @@ const COURIER_COLOR = '#3a6b5a';
 const VOID_COLOR = '#0e0b07';
 const SEA_COLOR = '#182430';
 const LAND_COLOR = '#241c12';
+
+const VB_WIDTH = 780;
+const VB_HEIGHT = 560;
+const ZOOM_MIN = 0.7;
+const ZOOM_MAX = 2.5;
 
 /**
  * Stylized landmasses, hand-fitted around the existing city x/y coordinates (viewBox 0 0 780 560)
@@ -40,18 +45,56 @@ const LANDMASSES = [
 const ALPS_RIDGE = 'M 405,392 L 420,372 L 435,394 L 450,374 L 462,398';
 
 /**
+ * City markers: a crenellated-castle silhouette instead of a plain dot — larger and more
+ * figurative, per the owner's "medieval style" ask (mocked up and approved before drawing these:
+ * https://claude.ai/code/artifact/737981ee-d174-4955-a6a4-2fa4e8270191, option A). Port cities get
+ * a wider 3-tower version with a small pennant (half-width 12, half-height 14 — the tallest,
+ * center merlon reaches y=-14); inland cities get a single-tower version (half-width 8,
+ * half-height 10). Both centered on `(c.x, c.y)`, same as the circle they replace.
+ */
+const PORT_CASTLE_PATH =
+  'M -12,14 L -12,-4 L -8,-4 L -8,-9 L -4,-9 L -4,-4 L -1,-4 L -1,-14 L 1,-14 L 1,-4 L 4,-4 L 4,-9 L 8,-9 L 8,-4 L 12,-4 L 12,14 Z';
+const INLAND_CASTLE_PATH =
+  'M -8,10 L -8,-4 L -5,-4 L -5,-10 L -2,-10 L -2,-4 L 2,-4 L 2,-10 L 5,-10 L 5,-4 L 8,-4 L 8,10 Z';
+const PORT_CASTLE_DOOR = { x: -3, y: 2, width: 6, height: 12 };
+const INLAND_CASTLE_DOOR = { x: -2, y: 3, width: 4, height: 7 };
+/** Pennant flag, port cities only — a small accent on the tallest (center) tower. */
+const PORT_CASTLE_FLAG = 'M 0,-14 L 0,-20 M 0,-20 L 6,-18 L 0,-16';
+
+/** Half-width/half-height of each castle glyph, used both to clear the city's own label and to
+ * recalibrate how far a docked vessel must fan out to clear the icon (see `DOCK_RADIUS`). */
+const CASTLE_HALF_SIZE = {
+  port: { w: 12, h: 14 },
+  inland: { w: 8, h: 10 },
+};
+
+/** Cities whose label flips to the left of their icon (`x - 14`, right-aligned) instead of the
+ * usual right-side offset — found by visual inspection after the bigger castle icons shipped:
+ * Ghent sits boxed in by Bruges/Antwerp/Calais on multiple sides, and Kouklia's label otherwise
+ * runs straight into neighbouring Famagusta (the tightest city pair in the game, ~41 units apart,
+ * tighter than the Bruges cluster). One-city special cases, not a general layout system. */
+const FLIPPED_LABEL_CITY_IDS = new Set(['ghent', 'kouklia']);
+
+/**
  * Slot angles (degrees, SVG convention) for vessels docked at the same city, fanned within a
- * 60°-wide arc centered straight up — away from the city's own label (drawn to the lower-right,
- * `c.x+10, c.y+4`) and clear of every route line touching the crowded Bruges/Ghent cluster. At
- * most 3 vessels ever exist in this game (a ship, a courier, and Chapter 0's handcart, which is
- * never removed), so a fixed set of slots is enough — no "N vessels here" badge needed. A single
- * vessel gets the center slot (reads as deliberate, not an arbitrary pick); two get the outer
- * slots for symmetry; three get all of them.
+ * 60°-wide arc centered straight up — away from the city's own label and clear of every route
+ * line touching the crowded Bruges/Ghent cluster. At most 3 vessels ever exist in this game (a
+ * ship, a courier, and Chapter 0's handcart, which is never removed), so a fixed set of slots is
+ * enough — no "N vessels here" badge needed. A single vessel gets the center slot (reads as
+ * deliberate, not an arbitrary pick); two get the outer slots for symmetry; three get all of them.
  */
 const DOCK_SLOT_ANGLES_DEG: Record<number, number[]> = {
   1: [-90],
   2: [-120, -60],
   3: [-120, -90, -60],
+};
+
+/** Clearance radius for a vessel fanned out around a city, recalibrated for the bigger castle
+ * icons: `Math.hypot(halfWidth, halfHeight) + 9` — the diagonal slots (±60°/±120°) are the binding
+ * case since a castle's crenellations poke out near its top corners, not straight up. */
+const DOCK_RADIUS = {
+  port: Math.hypot(CASTLE_HALF_SIZE.port.w, CASTLE_HALF_SIZE.port.h) + 9,
+  inland: Math.hypot(CASTLE_HALF_SIZE.inland.w, CASTLE_HALF_SIZE.inland.h) + 9,
 };
 
 interface VesselRender {
@@ -101,7 +144,7 @@ function computeVesselRenders(vessels: Vessel[]): VesselRender[] {
     const slotIndex = Math.max(0, group.findIndex(gv => gv.id === v.id));
     const angles = DOCK_SLOT_ANGLES_DEG[group.length] ?? DOCK_SLOT_ANGLES_DEG[3];
     const angleDeg = angles[slotIndex % angles.length];
-    const radius = (at.port ? 7 : 5.5) + 9;
+    const radius = at.port ? DOCK_RADIUS.port : DOCK_RADIUS.inland;
     const rad = (angleDeg * Math.PI) / 180;
     renders.push({
       vessel: v,
@@ -175,121 +218,231 @@ function RhumbLines() {
   );
 }
 
+/** Actual rendered content scale/offset for the SVG's `viewBox`, accounting for letterboxing —
+ * `MAP_PANE` won't generally match the viewBox's own 780:560 aspect ratio, so the default
+ * `preserveAspectRatio` (`xMidYMid meet`) centers the content within the rendered box rather than
+ * stretching it. A naive `viewBoxWidth / renderedWidth` ratio is wrong whenever there's a
+ * letterbox bar on either axis; screen-to-viewBox conversion must go through this instead. */
+function getContentScale(svgEl: SVGSVGElement): { scale: number; offsetX: number; offsetY: number } {
+  const rect = svgEl.getBoundingClientRect();
+  const scale = Math.min(rect.width / VB_WIDTH, rect.height / VB_HEIGHT);
+  return {
+    scale,
+    offsetX: (rect.width - VB_WIDTH * scale) / 2,
+    offsetY: (rect.height - VB_HEIGHT * scale) / 2,
+  };
+}
+
+function clientToViewBox(svgEl: SVGSVGElement, clientX: number, clientY: number): { x: number; y: number } {
+  const rect = svgEl.getBoundingClientRect();
+  const { scale, offsetX, offsetY } = getContentScale(svgEl);
+  return {
+    x: (clientX - rect.left - offsetX) / scale,
+    y: (clientY - rect.top - offsetY) / scale,
+  };
+}
+
+const RESET_VIEW_BUTTON: React.CSSProperties = {
+  position: 'absolute',
+  right: '0.6rem',
+  bottom: '0.6rem',
+  background: '#1a1510',
+  border: `1px solid ${INK}`,
+  color: PARCHMENT,
+  padding: '0.3rem 0.6rem',
+  fontFamily: 'Georgia, serif',
+  fontSize: '0.72rem',
+  cursor: 'pointer',
+};
+
 export default function MapView({ vessels, selectedVesselId, onSelectCity, cityInfoAge, previewedCityId }: MapViewProps) {
   const selected = vessels.find(v => v.id === selectedVesselId) ?? null;
   const [hoveredVesselId, setHoveredVesselId] = useState<string | null>(null);
 
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<{ startClientX: number; startClientY: number; startPanX: number; startPanY: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [view, setView] = useState({ panX: 0, panY: 0, zoom: 1 });
+
+  // Drag-to-pan: window-level listeners (not SVG-level) so a fast drag that exits the map pane
+  // into the sidebar still ends cleanly on mouseup, rather than getting stuck mid-drag.
+  useEffect(() => {
+    if (!isDragging) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const svgEl = svgRef.current;
+      const drag = dragRef.current;
+      if (!svgEl || !drag) return;
+      const { scale } = getContentScale(svgEl);
+      const dx = (e.clientX - drag.startClientX) / scale;
+      const dy = (e.clientY - drag.startClientY) / scale;
+      setView(prev => ({ ...prev, panX: drag.startPanX + dx, panY: drag.startPanY + dy }));
+    };
+    const handleMouseUp = () => {
+      setIsDragging(false);
+      dragRef.current = null;
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
+
+  // Scroll-to-zoom toward the cursor. Must be a real native listener, not JSX onWheel: React
+  // registers wheel as passive by default, so preventDefault() inside a synthetic onWheel handler
+  // is silently ignored and the page scrolls anyway.
+  useEffect(() => {
+    const svgEl = svgRef.current;
+    if (!svgEl) return;
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const vb = clientToViewBox(svgEl, e.clientX, e.clientY);
+      setView(prev => {
+        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * factor));
+        const contentX = (vb.x - prev.panX) / prev.zoom;
+        const contentY = (vb.y - prev.panY) / prev.zoom;
+        return { zoom: newZoom, panX: vb.x - contentX * newZoom, panY: vb.y - contentY * newZoom };
+      });
+    };
+    svgEl.addEventListener('wheel', handleWheel, { passive: false });
+    return () => svgEl.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+    dragRef.current = { startClientX: e.clientX, startClientY: e.clientY, startPanX: view.panX, startPanY: view.panY };
+    setIsDragging(true);
+  };
+
   return (
-    <svg viewBox="0 0 780 560" style={{ width: '100%', height: '100%', background: VOID_COLOR }}>
-      <rect x={0} y={0} width={780} height={560} fill={SEA_COLOR} />
-      <RhumbLines />
-      {LANDMASSES.map((d, i) => (
-        <path key={i} d={d} fill={LAND_COLOR} stroke={INK} strokeWidth={1.5} opacity={0.95} />
-      ))}
-      <path d={ALPS_RIDGE} fill="none" stroke={INK} strokeWidth={1.5} opacity={0.8} strokeLinejoin="round" />
-      <CompassRose />
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+      <svg
+        ref={svgRef}
+        viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
+        style={{ width: '100%', height: '100%', background: VOID_COLOR, cursor: isDragging ? 'grabbing' : 'grab' }}
+        onMouseDown={handleMouseDown}
+      >
+        <g transform={`translate(${view.panX},${view.panY}) scale(${view.zoom})`}>
+          <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill={SEA_COLOR} />
+          <RhumbLines />
+          {LANDMASSES.map((d, i) => (
+            <path key={i} d={d} fill={LAND_COLOR} stroke={INK} strokeWidth={1.5} opacity={0.95} />
+          ))}
+          <path d={ALPS_RIDGE} fill="none" stroke={INK} strokeWidth={1.5} opacity={0.8} strokeLinejoin="round" />
+          <CompassRose />
 
-      {ROUTES.map(r => {
-        const from = findCity(r.from)!;
-        const to = findCity(r.to)!;
-        return (
-          <line
-            key={r.id}
-            x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-            stroke={GOLD}
-            strokeWidth={1.25}
-            strokeDasharray={r.type === 'sea' ? '5 4' : undefined}
-            opacity={0.5}
-          />
-        );
-      })}
-
-      {CITIES.map(c => {
-        const reachable = selected
-          ? ROUTES.some(r => {
-              if (selected.kind === 'courier' && r.type !== 'land') return false;
-              return (r.from === selected.location && r.to === c.id) ||
-                     (r.to === selected.location && r.from === c.id);
-            })
-          : false;
-        const opacity = fogOpacity(cityInfoAge[c.id] ?? null);
-        const isPreviewed = c.id === previewedCityId;
-        return (
-          <g
-            key={c.id}
-            id={`city-node-${c.id}`}
-            onClick={() => onSelectCity(c.id)}
-            style={{ cursor: 'pointer' }}
-          >
-            {isPreviewed && (
-              <circle
-                cx={c.x} cy={c.y} r={(c.port ? 7 : 5.5) + 4}
-                fill="none"
+          {ROUTES.map(r => {
+            const from = findCity(r.from)!;
+            const to = findCity(r.to)!;
+            return (
+              <line
+                key={r.id}
+                x1={from.x} y1={from.y} x2={to.x} y2={to.y}
                 stroke={GOLD}
-                strokeWidth={1.5}
+                strokeWidth={1.25}
+                strokeDasharray={r.type === 'sea' ? '5 4' : undefined}
+                opacity={0.5}
               />
-            )}
-            <circle
-              cx={c.x} cy={c.y} r={c.port ? 7 : 5.5}
-              fill={reachable ? GOLD : PARCHMENT}
-              fillOpacity={opacity}
-              stroke={INK}
-              strokeWidth={1.5}
-            />
-            <text x={c.x + 10} y={c.y + 4} fontSize={12} fill={PARCHMENT} fillOpacity={opacity} fontFamily="Georgia, serif">
-              {c.name}
-            </text>
-          </g>
-        );
-      })}
+            );
+          })}
 
-      {computeVesselRenders(vessels).map(({ vessel: v, x, y, rotationDeg }) => {
-        const color = v.kind === 'ship' ? SHIP_COLOR : COURIER_COLOR;
-        const isSelected = v.id === selectedVesselId;
-        const showLabel = isSelected || v.id === hoveredVesselId;
-        return (
-          <g
-            key={v.id}
-            onMouseEnter={() => setHoveredVesselId(v.id)}
-            onMouseLeave={() => setHoveredVesselId(id => (id === v.id ? null : id))}
-            style={{ cursor: 'default' }}
-          >
-            {v.kind === 'ship' ? (
-              <path
-                d="M 0,-7 L 6,6 L -6,6 Z"
-                transform={`translate(${x},${y})`}
-                fill={color}
-                stroke={isSelected ? GOLD : '#000'}
-                strokeWidth={isSelected ? 2 : 1}
-              />
-            ) : (
-              <g transform={`translate(${x},${y})`}>
-                <circle r={isSelected ? 6 : 5} fill={color} stroke={isSelected ? GOLD : '#000'} strokeWidth={isSelected ? 2 : 1} />
-                {rotationDeg !== null && (
-                  <path d="M 5,0 L -3,-4 L -3,4 Z" transform={`rotate(${rotationDeg})`} fill={color} stroke="#000" strokeWidth={0.75} />
+          {CITIES.map(c => {
+            const reachable = selected
+              ? ROUTES.some(r => {
+                  if (selected.kind === 'courier' && r.type !== 'land') return false;
+                  return (r.from === selected.location && r.to === c.id) ||
+                         (r.to === selected.location && r.from === c.id);
+                })
+              : false;
+            const opacity = fogOpacity(cityInfoAge[c.id] ?? null);
+            const isPreviewed = c.id === previewedCityId;
+            const fill = reachable ? GOLD : PARCHMENT;
+            const half = c.port ? CASTLE_HALF_SIZE.port : CASTLE_HALF_SIZE.inland;
+            const ringRadius = Math.hypot(half.w, half.h) + 3;
+            const flipLabel = FLIPPED_LABEL_CITY_IDS.has(c.id);
+            return (
+              <g
+                key={c.id}
+                id={`city-node-${c.id}`}
+                onClick={() => onSelectCity(c.id)}
+                style={{ cursor: 'pointer' }}
+              >
+                {isPreviewed && (
+                  <circle cx={c.x} cy={c.y} r={ringRadius} fill="none" stroke={GOLD} strokeWidth={1.5} />
+                )}
+                <g transform={`translate(${c.x},${c.y})`} fillOpacity={opacity}>
+                  <path d={c.port ? PORT_CASTLE_PATH : INLAND_CASTLE_PATH} fill={fill} stroke={INK} strokeWidth={1.5} />
+                  <rect {...(c.port ? PORT_CASTLE_DOOR : INLAND_CASTLE_DOOR)} fill={INK} />
+                  {c.port && <path d={PORT_CASTLE_FLAG} fill="none" stroke={fill} strokeWidth={1.5} />}
+                </g>
+                <text
+                  x={flipLabel ? c.x - 14 : c.x + 14}
+                  y={c.y + 4}
+                  textAnchor={flipLabel ? 'end' : 'start'}
+                  fontSize={12}
+                  fill={PARCHMENT}
+                  fillOpacity={opacity}
+                  fontFamily="Georgia, serif"
+                >
+                  {c.name}
+                </text>
+              </g>
+            );
+          })}
+
+          {computeVesselRenders(vessels).map(({ vessel: v, x, y, rotationDeg }) => {
+            const color = v.kind === 'ship' ? SHIP_COLOR : COURIER_COLOR;
+            const isSelected = v.id === selectedVesselId;
+            const showLabel = isSelected || v.id === hoveredVesselId;
+            return (
+              <g
+                key={v.id}
+                onMouseEnter={() => setHoveredVesselId(v.id)}
+                onMouseLeave={() => setHoveredVesselId(id => (id === v.id ? null : id))}
+                style={{ cursor: 'default' }}
+              >
+                {v.kind === 'ship' ? (
+                  <path
+                    d="M 0,-7 L 6,6 L -6,6 Z"
+                    transform={`translate(${x},${y})`}
+                    fill={color}
+                    stroke={isSelected ? GOLD : '#000'}
+                    strokeWidth={isSelected ? 2 : 1}
+                  />
+                ) : (
+                  <g transform={`translate(${x},${y})`}>
+                    <circle r={isSelected ? 6 : 5} fill={color} stroke={isSelected ? GOLD : '#000'} strokeWidth={isSelected ? 2 : 1} />
+                    {rotationDeg !== null && (
+                      <path d="M 5,0 L -3,-4 L -3,4 Z" transform={`rotate(${rotationDeg})`} fill={color} stroke="#000" strokeWidth={0.75} />
+                    )}
+                  </g>
+                )}
+                {showLabel && (
+                  <text
+                    x={x + 10} y={y + 4}
+                    fontSize={11}
+                    fill={GOLD}
+                    fontFamily="Georgia, serif"
+                    stroke={VOID_COLOR}
+                    strokeWidth={3}
+                    paintOrder="stroke"
+                    pointerEvents="none"
+                  >
+                    {v.name}
+                  </text>
                 )}
               </g>
-            )}
-            {showLabel && (
-              <text
-                x={x + 10} y={y + 4}
-                fontSize={11}
-                fill={GOLD}
-                fontFamily="Georgia, serif"
-                stroke={VOID_COLOR}
-                strokeWidth={3}
-                paintOrder="stroke"
-                pointerEvents="none"
-              >
-                {v.name}
-              </text>
-            )}
-          </g>
-        );
-      })}
+            );
+          })}
+        </g>
 
-      <rect x={6} y={6} width={768} height={548} fill="none" stroke={INK} strokeWidth={2} opacity={0.8} />
-      <rect x={11} y={11} width={758} height={538} fill="none" stroke={INK} strokeWidth={1} opacity={0.45} />
-    </svg>
+        <rect x={6} y={6} width={768} height={548} fill="none" stroke={INK} strokeWidth={2} opacity={0.8} />
+        <rect x={11} y={11} width={758} height={538} fill="none" stroke={INK} strokeWidth={1} opacity={0.45} />
+      </svg>
+      <button style={RESET_VIEW_BUTTON} onClick={() => setView({ panX: 0, panY: 0, zoom: 1 })}>
+        Reset view
+      </button>
+    </div>
   );
 }
