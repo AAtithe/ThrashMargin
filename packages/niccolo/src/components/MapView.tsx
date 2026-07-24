@@ -34,15 +34,37 @@ const GEO_WATER = '#747c82'; // rivers + sea-name label text — SEA_COLOR light
 const VB_WIDTH = BACKDROP.width;
 const VB_HEIGHT = BACKDROP.height;
 const ZOOM_MIN = 0.7;
-const ZOOM_MAX = 2.5;
+/** Raised from 2.5 (the pre-real-geography value) after live measurement showed it was nowhere near
+ * enough to resolve the tightest real city clusters. Both a city's icon size and its distance to its
+ * neighbours are world-unit quantities, so their RATIO — whether two icons visually overlap — is
+ * zoom-invariant; zooming in doesn't by itself fix overlap. What zoom range actually buys is enough
+ * on-screen size to read a cluster clearly once `ICON_SCALE` (below) has been picked small enough
+ * that the tightest real pair (Bruges-Ghent, 73.1 world units apart, the closest of any pair in the
+ * game — measured directly from the migrated coordinates) doesn't overlap at all. At `ICON_SCALE`
+ * 1.5 a port icon's half-diagonal is ~27.7 units; reaching a legible ~25 screen px for it requires
+ * zooming to roughly 25 / (27.7 * 0.0834 px-per-unit-at-zoom-1) ≈ 10.8 — 12 gives comfortable
+ * headroom beyond that for inspecting the tightest clusters up close. */
+const ZOOM_MAX = 12;
 
-/** Scale factor for this file's own hand-authored "chrome" (the compass rose, the decorative
- * border frame) — neither is part of the ported geography backdrop (which scales itself via
- * `sim/geography.ts`'s own `P.scale()`), and neither is a gameplay icon (those, per design
- * decision, stay a fixed pixel size regardless of canvas size — see `CASTLE_HALF_SIZE`/
- * `DOCK_RADIUS` below). This preserves their old relative appearance (authored against the
- * previous 780px-wide canvas) at the new, much larger canvas size. */
-const CHROME = VB_WIDTH / 780;
+/** Scale factor for this file's own hand-authored "chrome" (the compass rose, the decorative border
+ * frame) — decorative elements that live in the map's open margins, never inside a tight city
+ * cluster, so they can be scaled all the way up to match the new canvas's actual size. Originally
+ * authored in absolute pixel terms against the previous 780px-wide canvas. NOT used for gameplay
+ * icons/labels/vessels — see `ICON_SCALE` below for why those need a much smaller factor. */
+const UI_SCALE = VB_WIDTH / 780;
+
+/** Scale factor for every gameplay-relevant map element that must coexist inside a real, sometimes
+ * very tight, city cluster: castle icons, dock-slot geometry, city labels, vessel glyphs/labels,
+ * route lines, region/sea labels. These were originally authored in absolute pixel terms against
+ * the previous 780px-wide canvas, where 1 unit ≈ 1 screen px; naively multiplying them by the full
+ * canvas growth factor (`UI_SCALE`, ~12.8x) makes a single icon's own footprint bigger than the real
+ * distance between Bruges and Ghent (73.1 world units, the tightest pair in the game — measured
+ * directly from the migrated coordinates), guaranteeing overlap regardless of icon size vs. UI_SCALE
+ * being merely "the same relative size as before." 1.5 was chosen by directly checking the combined
+ * radius of a port + inland icon (the Bruges/Ghent case) against that 73.1 unit gap: at 1.5 the
+ * combined radius is 46.9 units, leaving 36% of the gap as clear space — a modest, verified-live
+ * increase over the original size, not a guess. */
+const ICON_SCALE = 1.5;
 
 const neatlinePath = `M ${BACKDROP.neatline.map(p => p.join(' ')).join(' L ')} Z`;
 
@@ -87,17 +109,14 @@ const INLAND_CASTLE_DOOR = { x: -2, y: 3, width: 4, height: 7 };
 /** Pennant flag, port cities only — a small accent on the tallest (center) tower. */
 const PORT_CASTLE_FLAG = 'M 0,-14 L 0,-20 M 0,-20 L 6,-18 L 0,-16';
 
-/** Half-width/half-height of each castle glyph, used both to clear the city's own label and to
- * recalibrate how far a docked vessel must fan out to clear the icon (see `DOCK_RADIUS`).
- * Deliberately NOT scaled with the bigger canvas: icon size is a design choice independent of the
- * projection, and the real-geography city spacing already gives every pair of cities generous
- * clearance at these fixed sizes (verified directly against the actual new coordinates) —
- * scaling icons up would make them relatively larger exactly where there's least new room
- * (Flanders, Cyprus — the clusters that are genuinely tight in reality, not just on the old
- * hand-drawn map), which is backwards. */
+/** Half-width/half-height of each castle glyph in WORLD units (i.e. already multiplied by
+ * `ICON_SCALE`), used both to clear the city's own label and to recalibrate how far a docked vessel
+ * must fan out to clear the icon (see `DOCK_RADIUS`). The glyph's own path coordinates below stay
+ * authored at the original 780-canvas size; the `<g transform="... scale(ICON_SCALE)">` that draws
+ * each city's icon applies the same factor, so these two stay in lock-step automatically. */
 const CASTLE_HALF_SIZE = {
-  port: { w: 12, h: 14 },
-  inland: { w: 8, h: 10 },
+  port: { w: 12 * ICON_SCALE, h: 14 * ICON_SCALE },
+  inland: { w: 8 * ICON_SCALE, h: 10 * ICON_SCALE },
 };
 
 /** Cities whose label flips to the left of their icon (`x - 14`, right-aligned) instead of the
@@ -127,8 +146,8 @@ const DOCK_SLOT_ANGLES_DEG: Record<number, number[]> = {
  * the diagonal slots (±60°/±120°) are the binding case since a castle's crenellations poke out near
  * its top corners, not straight up. */
 const DOCK_RADIUS = {
-  port: Math.hypot(CASTLE_HALF_SIZE.port.w, CASTLE_HALF_SIZE.port.h) + 9,
-  inland: Math.hypot(CASTLE_HALF_SIZE.inland.w, CASTLE_HALF_SIZE.inland.h) + 9,
+  port: Math.hypot(CASTLE_HALF_SIZE.port.w, CASTLE_HALF_SIZE.port.h) + 9 * ICON_SCALE,
+  inland: Math.hypot(CASTLE_HALF_SIZE.inland.w, CASTLE_HALF_SIZE.inland.h) + 9 * ICON_SCALE,
 };
 
 interface VesselRender {
@@ -441,7 +460,7 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
               x={lb.x} y={lb.y}
               textAnchor="middle"
               fontStyle="italic"
-              fontSize={lb.kind === 'sea' ? 11 : 9}
+              fontSize={(lb.kind === 'sea' ? 11 : 9) * ICON_SCALE}
               fill={lb.kind === 'sea' ? GEO_WATER : PARCHMENT}
               fillOpacity={lb.kind === 'sea' ? 0.5 : 0.45}
               fontFamily="Georgia, serif"
@@ -450,7 +469,7 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
             </text>
           ))}
 
-          <CompassRose x={VB_WIDTH - 45 * CHROME} y={55 * CHROME} scale={CHROME} />
+          <CompassRose x={VB_WIDTH - 45 * UI_SCALE} y={55 * UI_SCALE} scale={UI_SCALE} />
 
           {ROUTES.map(r => {
             const from = findCity(r.from)!;
@@ -460,8 +479,14 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
                 key={r.id}
                 x1={from.x} y1={from.y} x2={to.x} y2={to.y}
                 stroke={GOLD}
-                strokeWidth={1.25}
-                strokeDasharray={r.type === 'sea' ? '5 4' : r.type === 'river' ? '2 2' : undefined}
+                strokeWidth={1.25 * ICON_SCALE}
+                strokeDasharray={
+                  r.type === 'sea'
+                    ? `${5 * ICON_SCALE} ${4 * ICON_SCALE}`
+                    : r.type === 'river'
+                      ? `${2 * ICON_SCALE} ${2 * ICON_SCALE}`
+                      : undefined
+                }
                 opacity={0.5}
               />
             );
@@ -479,7 +504,7 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
             const isPreviewed = c.id === previewedCityId;
             const fill = reachable ? GOLD : PARCHMENT;
             const half = c.port ? CASTLE_HALF_SIZE.port : CASTLE_HALF_SIZE.inland;
-            const ringRadius = Math.hypot(half.w, half.h) + 3;
+            const ringRadius = Math.hypot(half.w, half.h) + 3 * ICON_SCALE;
             const flipLabel = FLIPPED_LABEL_CITY_IDS.has(c.id);
             return (
               <g
@@ -489,18 +514,18 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
                 style={{ cursor: 'pointer' }}
               >
                 {isPreviewed && (
-                  <circle cx={c.x} cy={c.y} r={ringRadius} fill="none" stroke={GOLD} strokeWidth={1.5} />
+                  <circle cx={c.x} cy={c.y} r={ringRadius} fill="none" stroke={GOLD} strokeWidth={1.5 * ICON_SCALE} />
                 )}
-                <g transform={`translate(${c.x},${c.y})`} fillOpacity={opacity}>
+                <g transform={`translate(${c.x},${c.y}) scale(${ICON_SCALE})`} fillOpacity={opacity}>
                   <path d={c.port ? PORT_CASTLE_PATH : INLAND_CASTLE_PATH} fill={fill} stroke={INK} strokeWidth={1.5} />
                   <rect {...(c.port ? PORT_CASTLE_DOOR : INLAND_CASTLE_DOOR)} fill={INK} />
                   {c.port && <path d={PORT_CASTLE_FLAG} fill="none" stroke={fill} strokeWidth={1.5} />}
                 </g>
                 <text
-                  x={flipLabel ? c.x - 14 : c.x + 14}
-                  y={c.y + 4}
+                  x={flipLabel ? c.x - 14 * ICON_SCALE : c.x + 14 * ICON_SCALE}
+                  y={c.y + 4 * ICON_SCALE}
                   textAnchor={flipLabel ? 'end' : 'start'}
-                  fontSize={12}
+                  fontSize={12 * ICON_SCALE}
                   fill={PARCHMENT}
                   fillOpacity={opacity}
                   fontFamily="Georgia, serif"
@@ -525,13 +550,13 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
                 {v.kind === 'ship' ? (
                   <path
                     d="M 0,-7 L 6,6 L -6,6 Z"
-                    transform={`translate(${x},${y})`}
+                    transform={`translate(${x},${y}) scale(${ICON_SCALE})`}
                     fill={color}
                     stroke={isSelected ? GOLD : '#000'}
                     strokeWidth={isSelected ? 2 : 1}
                   />
                 ) : (
-                  <g transform={`translate(${x},${y})`}>
+                  <g transform={`translate(${x},${y}) scale(${ICON_SCALE})`}>
                     <circle r={isSelected ? 6 : 5} fill={color} stroke={isSelected ? GOLD : '#000'} strokeWidth={isSelected ? 2 : 1} />
                     {rotationDeg !== null && (
                       <path d="M 5,0 L -3,-4 L -3,4 Z" transform={`rotate(${rotationDeg})`} fill={color} stroke="#000" strokeWidth={0.75} />
@@ -540,12 +565,12 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
                 )}
                 {showLabel && (
                   <text
-                    x={x + 10} y={y + 4}
-                    fontSize={11}
+                    x={x + 10 * ICON_SCALE} y={y + 4 * ICON_SCALE}
+                    fontSize={11 * ICON_SCALE}
                     fill={GOLD}
                     fontFamily="Georgia, serif"
                     stroke={VOID_COLOR}
-                    strokeWidth={3}
+                    strokeWidth={3 * ICON_SCALE}
                     paintOrder="stroke"
                     pointerEvents="none"
                   >
@@ -558,14 +583,14 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
         </g>
 
         <rect
-          x={6 * CHROME} y={6 * CHROME}
-          width={VB_WIDTH - 12 * CHROME} height={VB_HEIGHT - 12 * CHROME}
-          fill="none" stroke={INK} strokeWidth={2 * CHROME} opacity={0.8}
+          x={6 * UI_SCALE} y={6 * UI_SCALE}
+          width={VB_WIDTH - 12 * UI_SCALE} height={VB_HEIGHT - 12 * UI_SCALE}
+          fill="none" stroke={INK} strokeWidth={2 * UI_SCALE} opacity={0.8}
         />
         <rect
-          x={11 * CHROME} y={11 * CHROME}
-          width={VB_WIDTH - 22 * CHROME} height={VB_HEIGHT - 22 * CHROME}
-          fill="none" stroke={INK} strokeWidth={1 * CHROME} opacity={0.45}
+          x={11 * UI_SCALE} y={11 * UI_SCALE}
+          width={VB_WIDTH - 22 * UI_SCALE} height={VB_HEIGHT - 22 * UI_SCALE}
+          fill="none" stroke={INK} strokeWidth={1 * UI_SCALE} opacity={0.45}
         />
       </svg>
       <button style={RESET_VIEW_BUTTON} onClick={() => setView(DEFAULT_VIEW)}>
