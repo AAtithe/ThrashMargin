@@ -33,7 +33,12 @@ const GEO_WATER = '#747c82'; // rivers + sea-name label text — SEA_COLOR light
  * the projector in `sim/geography.ts` — never hand-copied literals. */
 const VB_WIDTH = BACKDROP.width;
 const VB_HEIGHT = BACKDROP.height;
-const ZOOM_MIN = 0.7;
+/** Raised from 0.7 (which let the content shrink smaller than the viewBox — since the outer
+ * `<svg viewBox>` stays a fixed size, any zoom below 1 guarantees gaps of bare `VOID_COLOR` beyond
+ * the map's own edges, regardless of pan) to exactly 1, the smallest zoom at which the content can
+ * possibly cover the whole viewBox. See `clampPan` below for the other half of this fix — zoom
+ * alone doesn't prevent the same gap from appearing if the content is panned too far off-center. */
+const ZOOM_MIN = 1;
 /** Raised from 2.5 (the pre-real-geography value) after live measurement showed it was nowhere near
  * enough to resolve the tightest real city clusters. Both a city's icon size and its distance to its
  * neighbours are world-unit quantities, so their RATIO — whether two icons visually overlap — is
@@ -68,6 +73,17 @@ const ICON_SCALE = 1.5;
 
 const neatlinePath = `M ${BACKDROP.neatline.map(p => p.join(' ')).join(' L ')} Z`;
 
+/** Keeps the transformed content's bounds always covering the entire (fixed-size) viewBox, so
+ * panning can never push the map's own edge into view and expose bare `VOID_COLOR` behind it —
+ * `ZOOM_MIN` alone only prevents this at the exact default pan; without also clamping pan, dragging
+ * far enough at any zoom (including 1, the new minimum) reveals the same gap on the far side. */
+function clampPan(panX: number, panY: number, zoom: number): { panX: number; panY: number } {
+  return {
+    panX: Math.min(0, Math.max(VB_WIDTH * (1 - zoom), panX)),
+    panY: Math.min(0, Math.max(VB_HEIGHT * (1 - zoom), panY)),
+  };
+}
+
 /** Default pan/zoom: frames every city currently in the game (CITIES is already the concatenation
  * of every shipped chapter's own city array), not the whole Ptolemaic world — at zoom=1 the full
  * Thule-to-Timbuktu domain would compress the actual playable area into a small corner, exactly
@@ -89,7 +105,8 @@ const DEFAULT_VIEW = (() => {
     ZOOM_MAX,
     Math.max(ZOOM_MIN, Math.min(VB_WIDTH / (bw * MARGIN_FACTOR), VB_HEIGHT / (bh * MARGIN_FACTOR))),
   );
-  return { panX: VB_WIDTH / 2 - cx * zoom, panY: VB_HEIGHT / 2 - cy * zoom, zoom };
+  const { panX, panY } = clampPan(VB_WIDTH / 2 - cx * zoom, VB_HEIGHT / 2 - cy * zoom, zoom);
+  return { panX, panY, zoom };
 })();
 
 /**
@@ -303,9 +320,10 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
       const drag = dragRef.current;
       if (!svgEl || !drag) return;
       const { scale } = getContentScale(svgEl);
+      if (!Number.isFinite(scale) || scale <= 0) return; // see handleWheel's identical guard
       const dx = (e.clientX - drag.startClientX) / scale;
       const dy = (e.clientY - drag.startClientY) / scale;
-      setView(prev => ({ ...prev, panX: drag.startPanX + dx, panY: drag.startPanY + dy }));
+      setView(prev => ({ ...prev, ...clampPan(drag.startPanX + dx, drag.startPanY + dy, prev.zoom) }));
     };
     const handleMouseUp = () => {
       setIsDragging(false);
@@ -327,13 +345,20 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
     if (!svgEl) return;
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
+      // Guards a real, observed edge case: if the SVG is momentarily zero-sized (e.g. mid-transition
+      // while an event modal opens over the map), `getContentScale`'s scale is 0 and every following
+      // computation divides by it, producing NaN that then permanently corrupts `view` — Math.max/min
+      // never recovers from NaN once it's in the state. Skip the event entirely rather than let that
+      // happen; there's nothing meaningful to zoom toward on an invisible element anyway.
+      if (!Number.isFinite(getContentScale(svgEl).scale) || getContentScale(svgEl).scale <= 0) return;
       const vb = clientToViewBox(svgEl, e.clientX, e.clientY);
       setView(prev => {
         const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
         const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * factor));
         const contentX = (vb.x - prev.panX) / prev.zoom;
         const contentY = (vb.y - prev.panY) / prev.zoom;
-        return { zoom: newZoom, panX: vb.x - contentX * newZoom, panY: vb.y - contentY * newZoom };
+        const { panX, panY } = clampPan(vb.x - contentX * newZoom, vb.y - contentY * newZoom, newZoom);
+        return { zoom: newZoom, panX, panY };
       });
     };
     svgEl.addEventListener('wheel', handleWheel, { passive: false });
