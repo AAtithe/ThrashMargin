@@ -1,5 +1,5 @@
 import geographyData from '../content/geography.json';
-import { createProjector, ringToPath, smoothPath, reliefPath } from './projection';
+import { createProjector, smoothRingPath, smoothPath, reliefPath } from './projection';
 
 /**
  * Real-geography map backdrop (the Donis-trapezoidal Ptolemaic projection, ported from the
@@ -54,14 +54,13 @@ const P = createProjector({
  * ink strokes on a real chart of any size would. */
 export const GEO_STROKE = {
   coast: Math.max(0.8, P.scale(1.5)),
-  ghost: Math.max(0.4, P.scale(0.8)),
-  ghostOffsetX: Math.max(1, P.scale(2.4)),
-  ghostOffsetY: Math.max(1, P.scale(2.4)) * 0.7,
   grid: Math.max(0.3, P.scale(0.55)),
   river: Math.max(0.5, P.scale(1.2)),
   relief: Math.max(0.5, P.scale(1.2)) * 0.9,
-  hatchLine: Math.max(0.35, P.scale(0.9)),
-  hatchGap: Math.max(4, P.scale(11)),
+  // Thinner, wider-spaced than the previous crosshatch (was 0.9/11) — sparser, finer lines read as
+  // engraved contour hatching rather than a dense shading fill.
+  hatchLine: Math.max(0.3, P.scale(0.7)),
+  hatchGap: Math.max(5, P.scale(16)),
 };
 const HUMP = Math.max(3, P.scale(9));
 
@@ -76,9 +75,13 @@ export const BACKDROP = {
   width: BACKDROP_WIDTH,
   height: P.height,
   neatline: P.neatline(),
-  land: ringToPath(geo.landmass, P.project),
-  seas: geo.seas.map(s => ({ id: s.id, d: ringToPath(s.ring, P.project) })),
-  islands: geo.islands.map(i => ({ id: i.id, d: ringToPath(i.ring, P.project) })),
+  // Coastlines are smoothed (Catmull-Rom through the real vertices), not drawn as straight `L`
+  // segments — the underlying gazetteer data is coarse enough that a literal ringToPath reads as a
+  // crude, low-poly outline. The graticule/neatline below stay straight lines on purpose: those
+  // really are straight in this projection, unlike a coastline.
+  land: smoothRingPath(geo.landmass, P.project),
+  seas: geo.seas.map(s => ({ id: s.id, d: smoothRingPath(s.ring, P.project) })),
+  islands: geo.islands.map(i => ({ id: i.id, d: smoothRingPath(i.ring, P.project) })),
   rivers: geo.rivers.map(r => smoothPath(r.line.map(([lo, la]) => P.project(lo, la)), 0.4)).join(' '),
   lakes: (geo.lakes ?? []).map(lk => {
     const [cx, cy] = P.project(lk.centre[0], lk.centre[1]);

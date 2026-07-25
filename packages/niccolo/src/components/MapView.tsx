@@ -9,25 +9,27 @@ const GOLD = '#e8d5a3';
 const SHIP_COLOR = '#b5451a';
 const COURIER_COLOR = '#3a6b5a';
 const VOID_COLOR = '#0e0b07';
-const SEA_COLOR = '#182430';
+/** Near-black, not the previous mid-navy `#182430` — the "Engraver's Chart" direction (owner-picked
+ * from three real-geometry mockups: https://claude.ai/code/artifact/9ba83a8a-9674-49d9-ba3a-3f8c9ba3f5f7)
+ * leans on a much darker sea so the pale coastline ink reads with real contrast, closer to a
+ * copper-plate print than the previous mid-toned wash. */
+const SEA_COLOR = '#0c1b22';
 
 /**
- * Recolored palette for the real-geography backdrop (see `sim/geography.ts`), tuned into this
- * file's existing dark ink/gold/parchment family rather than the source project's own white-paper
- * look — confirmed by actually building and screenshotting a recolored test render before settling
- * on these. Enclosed seas/lakes reuse `SEA_COLOR` directly (no separate "paper" tone — they
- * visually disappear into the surrounding ocean, which is the correct read); the graticule and
- * region labels reuse `PARCHMENT` at low opacity rather than `GOLD`, partly so the graticule isn't
- * mistaken for the existing dashed-gold trade-route lines.
+ * "Engraver's Chart" palette for the real-geography backdrop (see `sim/geography.ts`) — a bone-pale
+ * ink line on a near-black ground, fine engraved hatching instead of a crosshatch fill, and no
+ * doubled "ghost" sketch stroke (that hand-sketched-manuscript touch read as soft/busy; a real
+ * engraving is crisp, single-line). Enclosed seas/lakes still reuse `SEA_COLOR` directly.
  */
-const GEO_COAST = '#998965'; // coastline ink — a muted gold (50/50 GOLD/INK): plain INK has too
-// little contrast against LAND_COLOR/SEA_COLOR here, and plain GOLD already means
-// "reachable/selected" elsewhere in this file.
-const GEO_COAST_GHOST = '#716347'; // the fainter doubled "sketch" stroke, pulled further toward INK.
-const GEO_HATCH = '#695c40'; // hachure texture — a first, darker attempt read as invisible in testing.
-const GEO_RELIEF = '#817253'; // mountain "caterpillar" strokes, between GEO_COAST and GEO_COAST_GHOST.
-const GEO_WATER = '#747c82'; // rivers + sea-name label text — SEA_COLOR lightened toward white,
-// deliberately not COURIER_COLOR even though both are teal-adjacent (couriers already own that hue).
+const GEO_COAST = '#e4d3ac'; // coastline ink — bone-pale, high contrast against the near-black sea;
+// this is the map's single highest-contrast line, doing the job a hand-inked coastline does on a
+// real engraved chart.
+const GEO_HATCH = '#8a7550'; // fine engraved hatching texture — see sim/geography.ts's GEO_STROKE
+// for the wider, sparser spacing that reads as engraving rather than crosshatch shading.
+const GEO_RELIEF = '#c2a97a'; // mountain "caterpillar" strokes — paler than GEO_HATCH so relief
+// reads as drawn linework, not more fill texture.
+const GEO_WATER = '#7ea3ac'; // rivers + sea-name label text — a cool blue-grey with real presence
+// against the near-black sea, distinct from COURIER_COLOR's teal even though both are cool.
 
 /** Real-world geography's viewBox dimensions, imported so they can never drift out of sync with
  * the projector in `sim/geography.ts` — never hand-copied literals. */
@@ -72,6 +74,35 @@ const UI_SCALE = VB_WIDTH / 780;
 const ICON_SCALE = 1.5;
 
 const neatlinePath = `M ${BACKDROP.neatline.map(p => p.join(' ')).join(' L ')} Z`;
+
+/** Moves each corner of a quad toward its centroid by roughly `inset` world units — used for the
+ * decorative border frame below. The sheet's real border (`BACKDROP.neatline`) is a genuine
+ * trapezoid, not a rectangle (Donis projection meridians converge toward the pole, so the sheet is
+ * wider at its low-latitude edge) — the frame previously drawn here was two axis-aligned `<rect>`s
+ * that didn't match that shape at all, leaving a visible gap between the map's real edge and its own
+ * "frame" in the corners. A true perpendicular stroke-inset of an arbitrary quad needs real edge
+ * offsetting; moving corners toward the centroid is a simpler approximation that's plenty accurate
+ * for a thin decorative border at this scale. */
+function insetQuad(points: [number, number][], inset: number): [number, number][] {
+  const cx = points.reduce((s, p) => s + p[0], 0) / points.length;
+  const cy = points.reduce((s, p) => s + p[1], 0) / points.length;
+  return points.map(([x, y]) => {
+    const dx = x - cx;
+    const dy = y - cy;
+    const len = Math.hypot(dx, dy) || 1;
+    const scale = Math.max(0, (len - inset) / len);
+    return [cx + dx * scale, cy + dy * scale];
+  });
+}
+
+function quadToPath(points: [number, number][]): string {
+  return `M ${points.map(p => p.join(' ')).join(' L ')} Z`;
+}
+
+/** Two concentric trapezoids following the sheet's real shape, replacing the two axis-aligned
+ * `<rect>`s this used to draw (same double-frame look, same `UI_SCALE`-derived inset amounts). */
+const FRAME_OUTER = quadToPath(insetQuad(BACKDROP.neatline, 6 * UI_SCALE));
+const FRAME_INNER = quadToPath(insetQuad(BACKDROP.neatline, 11 * UI_SCALE));
 
 /** Keeps the transformed content's bounds always covering the entire (fixed-size) viewBox, so
  * panning can never push the map's own edge into view and expose bare `VOID_COLOR` behind it —
@@ -387,7 +418,7 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
               width={GEO_STROKE.hatchGap}
               height={GEO_STROKE.hatchGap}
               patternUnits="userSpaceOnUse"
-              patternTransform="rotate(35)"
+              patternTransform="rotate(8)"
             >
               <line x1={0} y1={0} x2={0} y2={GEO_STROKE.hatchGap} stroke={GEO_HATCH} strokeWidth={GEO_STROKE.hatchLine} />
             </pattern>
@@ -406,7 +437,6 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
             />
 
             <path
-              id="geo-land"
               d={BACKDROP.land}
               fill="url(#geo-hatch)"
               stroke={GEO_COAST}
@@ -414,55 +444,27 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
               strokeLinejoin="round"
               strokeLinecap="round"
             />
-            <use
-              href="#geo-land"
-              fill="none"
-              stroke={GEO_COAST_GHOST}
-              strokeWidth={GEO_STROKE.ghost}
-              opacity={0.6}
-              transform={`translate(${GEO_STROKE.ghostOffsetX},${GEO_STROKE.ghostOffsetY})`}
-            />
 
             {BACKDROP.seas.map(sea => (
-              <Fragment key={sea.id}>
-                <path
-                  id={`geo-sea-${sea.id}`}
-                  d={sea.d}
-                  fill={SEA_COLOR}
-                  stroke={GEO_COAST}
-                  strokeWidth={GEO_STROKE.coast * 0.85}
-                  strokeLinejoin="round"
-                />
-                <use
-                  href={`#geo-sea-${sea.id}`}
-                  fill="none"
-                  stroke={GEO_COAST_GHOST}
-                  strokeWidth={GEO_STROKE.ghost}
-                  opacity={0.6}
-                  transform={`translate(${GEO_STROKE.ghostOffsetX},${GEO_STROKE.ghostOffsetY})`}
-                />
-              </Fragment>
+              <path
+                key={sea.id}
+                d={sea.d}
+                fill={SEA_COLOR}
+                stroke={GEO_COAST}
+                strokeWidth={GEO_STROKE.coast * 0.85}
+                strokeLinejoin="round"
+              />
             ))}
 
             {BACKDROP.islands.map(isl => (
-              <Fragment key={isl.id}>
-                <path
-                  id={`geo-isl-${isl.id}`}
-                  d={isl.d}
-                  fill="url(#geo-hatch)"
-                  stroke={GEO_COAST}
-                  strokeWidth={GEO_STROKE.coast * 0.85}
-                  strokeLinejoin="round"
-                />
-                <use
-                  href={`#geo-isl-${isl.id}`}
-                  fill="none"
-                  stroke={GEO_COAST_GHOST}
-                  strokeWidth={GEO_STROKE.ghost}
-                  opacity={0.6}
-                  transform={`translate(${GEO_STROKE.ghostOffsetX},${GEO_STROKE.ghostOffsetY})`}
-                />
-              </Fragment>
+              <path
+                key={isl.id}
+                d={isl.d}
+                fill="url(#geo-hatch)"
+                stroke={GEO_COAST}
+                strokeWidth={GEO_STROKE.coast * 0.85}
+                strokeLinejoin="round"
+              />
             ))}
 
             <path d={BACKDROP.rivers} fill="none" stroke={GEO_WATER} strokeWidth={GEO_STROKE.river} strokeLinecap="round" />
@@ -471,8 +473,9 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
                 key={lk.id}
                 cx={lk.cx} cy={lk.cy} rx={lk.rx} ry={lk.ry}
                 fill={SEA_COLOR}
-                stroke={GEO_COAST_GHOST}
+                stroke={GEO_COAST}
                 strokeWidth={GEO_STROKE.coast * 0.6}
+                opacity={0.8}
               />
             ))}
 
@@ -607,16 +610,8 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
           })}
         </g>
 
-        <rect
-          x={6 * UI_SCALE} y={6 * UI_SCALE}
-          width={VB_WIDTH - 12 * UI_SCALE} height={VB_HEIGHT - 12 * UI_SCALE}
-          fill="none" stroke={INK} strokeWidth={2 * UI_SCALE} opacity={0.8}
-        />
-        <rect
-          x={11 * UI_SCALE} y={11 * UI_SCALE}
-          width={VB_WIDTH - 22 * UI_SCALE} height={VB_HEIGHT - 22 * UI_SCALE}
-          fill="none" stroke={INK} strokeWidth={1 * UI_SCALE} opacity={0.45}
-        />
+        <path d={FRAME_OUTER} fill="none" stroke={GEO_COAST} strokeWidth={2 * UI_SCALE} opacity={0.8} />
+        <path d={FRAME_INNER} fill="none" stroke={GEO_COAST} strokeWidth={1 * UI_SCALE} opacity={0.45} />
       </svg>
       <button style={RESET_VIEW_BUTTON} onClick={() => setView(DEFAULT_VIEW)}>
         Reset view

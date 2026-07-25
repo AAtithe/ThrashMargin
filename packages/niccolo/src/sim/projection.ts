@@ -179,6 +179,31 @@ export function smoothPath(points: [number, number][], tension = 0.5): string {
   return d;
 }
 
+/** Catmull-Rom to cubic Bezier for a CLOSED ring (coastlines, seas, islands) — unlike `smoothPath`,
+ * which pads its open ends by duplicating the first/last point, this wraps neighbour lookups
+ * cyclically so the curve flows continuously through the seam back to the start with no visible
+ * kink, and closes with `Z`. Coastlines were previously drawn as straight `L` segments via
+ * `ringToPath` (correct for the graticule/neatline, which really are straight lines, but wrong for a
+ * coastline, which reads as a crude, low-poly outline when every vertex is a sharp corner). */
+export function smoothRingPath(ring: [number, number][], project: Projector['project'], tension = 0.5): string {
+  if (ring.length < 3) return ringToPath(ring, project);
+  const pts = ring.map(([lo, la]) => project(lo, la));
+  const n = pts.length;
+  let d = `M ${pts[0][0].toFixed(2)} ${pts[0][1].toFixed(2)}`;
+  for (let i = 0; i < n; i++) {
+    const [x0, y0] = pts[(i - 1 + n) % n];
+    const [x1, y1] = pts[i];
+    const [x2, y2] = pts[(i + 1) % n];
+    const [x3, y3] = pts[(i + 2) % n];
+    const c1x = x1 + ((x2 - x0) / 6) * tension * 2;
+    const c1y = y1 + ((y2 - y0) / 6) * tension * 2;
+    const c2x = x2 - ((x3 - x1) / 6) * tension * 2;
+    const c2y = y2 - ((y3 - y1) / 6) * tension * 2;
+    d += ` C ${c1x.toFixed(2)} ${c1y.toFixed(2)} ${c2x.toFixed(2)} ${c2y.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+  }
+  return d + ' Z';
+}
+
 /** Caterpillar mountain-hump path, ported from renderMap.js's reliefPath(). Pure geometry. */
 export function reliefPath(pts: [number, number][], hump: number): string {
   let d = '';
