@@ -1,0 +1,30 @@
+[
+  { "id": "obj_c4_venice", "chapterNumber": 4, "label": "Settle the Venice debt",
+    "description": "A Venetian house wants its wartime exposure closed, in full or on new terms.",
+    "kind": { "type": "flag", "flag": "venice_debt_resolved" },
+    "outcomeFlags": { "positive": "venice_debt_met", "costly": "venice_debt_extended" } },
+
+  { "id": "obj_c4_lisbon", "chapterNumber": 4, "label": "Open the Lisbon agency",
+    "description": "The house's first foothold on the Portuguese Guinea trade.",
+    "kind": { "type": "flag", "flag": "lisbon_agency_opened" } },
+
+  { "id": "obj_c4_madeira", "chapterNumber": 4, "label": "Navigate the collision with St Pol at Madeira",
+    "description": "The confrontation itself isn't avoidable once you've reached the island — only how you handle it is.",
+    "kind": { "type": "flag", "flag": "madeira_collision_resolved" },
+    "inevitable": true },
+
+  { "id": "obj_c4_gambia", "chapterNumber": 4, "label": "See the Gambia expedition home",
+    "description": "Gold upriver at Timbuktu, if the fever and the river allow the ship back.",
+    "kind": { "type": "flag", "flag": "gambia_epilogue" },
+    "outcomeFlags": { "positive": "gambia_expedition_success", "costly": "gambia_expedition_failed" } },
+
+  { "id": "obj_c4_gelis", "chapterNumber": 4, "label": "Marry Gelis van Borselen",
+    "description": "A wager that was never really about the florins.",
+    "kind": { "type": "flag", "flag": "married_gelis" },
+    "inevitable": true },
+
+  { "id": "obj_c4_umar", "chapterNumber": 4, "label": "Umar's kin", "optional": true,
+    "description": "A side reckoning at Timbuktu, mercy against profit — doesn't gate the chapter, just marks the choice.",
+    "kind": { "type": "flag", "flag": "umars_choice_made" },
+    "outcomeFlags": { "positive": "umars_choice_mercy", "costly": "umars_choice_profit" } }
+]

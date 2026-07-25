@@ -340,11 +340,64 @@ export interface House {
  */
 export type AgentPlacement = { type: 'city'; cityId: string } | { type: 'house'; houseId: string };
 
+/**
+ * The hotseat house experiment (Phase 14, design doc §10's "reduced fidelity" model kept exactly
+ * as-is — no cargo hold, no ledger, nothing new for a human to manage). A seated player, on the
+ * same device, makes the small number of decisions `sim/houses.ts` otherwise resolves by
+ * `Math.random()` for one chosen house's home-city trade nudge, and — only if that house is
+ * hostile — whether to plant corrupted news and where, and whether to attempt sabotage this week.
+ * Every other house (and every other mechanic) is unaffected; this never touches persistence,
+ * networking, or story content. Collected once per week via a decision prompt shown instead of
+ * advancing immediately, mirroring Thrash Margin's own same-device hotseat pattern.
+ */
+export interface HotseatDecision {
+  tradeGoodId: string;
+  tradeDirection: 1 | -1;
+  /** Null = decided not to plant this week. Only meaningful for a hostile house. */
+  plantTargetCityId: string | null;
+  /** Only meaningful for a hostile house with an eligible docked, cargo-carrying vessel at its
+   * own home city this week. */
+  attemptSabotage: boolean;
+}
+
 export interface Agent {
   id: string;
   name: string;
   placement: AgentPlacement;
   placedWeek: number;
+}
+
+/**
+ * Story-tied success conditions (Phase 14), toggleable per campaign (`GameState.objectivesHidden`,
+ * mirrors the "Skip the prologue" toggle's own shape). Purely a read-only projection over flags a
+ * chapter's own event content already sets — `flag`/`flagAbsent` describe an existing thread's
+ * gating flag, never a new one; `checkTriggers`/`resolveEvent`/`EventEffects` are all untouched.
+ * `cashThreshold` exists for a future chapter that might genuinely hinge on a real financial
+ * deadline, but is deliberately unused by Chapters 1-4's own objective content — see
+ * `content/objectives/chapterN.json`'s own authoring notes.
+ */
+export type ObjectiveKind =
+  | { type: 'flag'; flag: string }
+  | { type: 'flagAbsent'; flag: string }
+  | { type: 'cashThreshold'; amount: number; byWeek: number };
+
+export interface Objective {
+  id: string;
+  chapterNumber: number;
+  label: string;
+  description?: string;
+  kind: ObjectiveKind;
+  /** Cosmetic only: when a thread's gating flag is the shared funnel-point of two narrative
+   * branches that already exist in content (a good outcome vs. a costly one), name both flags here
+   * so the panel can caption which branch actually resolved — no new gating semantics. */
+  outcomeFlags?: { positive?: string; costly?: string };
+  /** True for a beat the player cannot choose to prevent (a scripted death, an unavoidable
+   * confrontation) — the panel renders these as "will occur" / "occurred" rather than implying a
+   * success the player could have failed to earn. */
+  inevitable?: boolean;
+  /** Flavor/character threads that aren't part of the chapter's finale AND-gate — shown for
+   * texture but never counted toward the "N of M resolved" footer. */
+  optional?: boolean;
 }
 
 export type EstateStage = 'growing' | 'ready' | 'refining';
@@ -419,10 +472,18 @@ export interface GameState {
   /** The most recent expedition-health event, for the UI to report. Optional/undefined for a save
    * from before this field existed, null on a fresh campaign until the first one occurs. */
   lastExpeditionEvent?: ExpeditionHealthEvent | null;
+  /** Campaign-creation toggle (Lobby "Hide chapter objectives"). Optional and defaults falsy-shown
+   * (undefined/false both mean "show them"), so a save from before this field existed simply
+   * renders the panel — not a shape mismatch, same discipline as `expedition`/`lastExpeditionEvent`. */
+  objectivesHidden?: boolean;
+  /** Campaign-creation toggle (Lobby "hotseat house") naming which house, if any, a seated human
+   * plays this campaign instead of the formulas in `sim/houses.ts`. Optional/null-safe for a save
+   * from before this field existed (no house is hotseat-controlled, identical to today). */
+  hotseatHouseId?: string | null;
 }
 
 export type GameAction =
-  | { type: 'ADVANCE_WEEK' }
+  | { type: 'ADVANCE_WEEK'; hotseatDecision?: HotseatDecision }
   | { type: 'DISPATCH_VESSEL'; vesselId: string; destinationId: string; insure?: boolean }
   | { type: 'BUY_GOOD'; vesselId: string; goodId: string; quantity: number }
   | { type: 'SELL_GOOD'; vesselId: string; goodId: string; quantity: number }

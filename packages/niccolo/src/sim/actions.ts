@@ -19,7 +19,7 @@ import { canInsureAt, clearArrivedInsurance, quoteInsurance, resolveVoyageRisk }
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, driftScarcity, priceAt } from './market';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
 import { resolveSecretExpiry, useSecret } from './secrets';
-import type { GameState, GameAction, Vessel } from './types';
+import type { GameState, GameAction, HotseatDecision, Vessel } from './types';
 
 function tickVessel(v: Vessel): Vessel {
   if (!v.destination || v.weeksRemaining <= 0) return v;
@@ -128,7 +128,7 @@ function sellGood(state: GameState, vesselId: string, goodId: string, quantity: 
   };
 }
 
-function advanceWeek(state: GameState): GameState {
+function advanceWeek(state: GameState, hotseatDecision?: HotseatDecision): GameState {
   const week = advanceWeekCounter(state.week);
   const exchangeRates = driftExchangeRates(state.exchangeRates);
   const maturity = resolveMaturingObligations(state, week, exchangeRates);
@@ -138,14 +138,29 @@ function advanceWeek(state: GameState): GameState {
     ? resolveWeeklyUpkeep({ ...state, cash: maturity.cash })
     : { cash: maturity.cash, characters: state.characters };
   const condottaResolution = resolveWeeklyCondotta({ ...state, cash: upkeep.cash });
-  const scarcity = applyHouseTradeFootprint(driftScarcity(applyBackgroundFlows(maturity.scarcity)));
+  // A hotseat house's own weekly decision (Phase 14) replaces that one house's dice at each of the
+  // three points below — every other house still rolls, exactly as before.
+  const hotseatHouseId = state.hotseatHouseId ?? null;
+  const manualTrade =
+    hotseatHouseId && hotseatDecision
+      ? { houseId: hotseatHouseId, goodId: hotseatDecision.tradeGoodId, direction: hotseatDecision.tradeDirection }
+      : undefined;
+  const manualPlant =
+    hotseatHouseId && hotseatDecision
+      ? { houseId: hotseatHouseId, targetCityId: hotseatDecision.plantTargetCityId }
+      : undefined;
+  const manualSabotage =
+    hotseatHouseId && hotseatDecision
+      ? { houseId: hotseatHouseId, attempt: hotseatDecision.attemptSabotage }
+      : undefined;
+  const scarcity = applyHouseTradeFootprint(driftScarcity(applyBackgroundFlows(maturity.scarcity)), manualTrade);
   const houseRelations = driftHouseRelations(state.houseRelations, state.flags);
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
   const risk = resolveVoyageRisk(maturity.vessels, state.insurance ?? [], ROUTES, week);
   const tickedVessels = risk.vessels.map(tickVessel);
   const insurance = clearArrivedInsurance(risk.insurance, tickedVessels);
-  const sabotage = resolveHouseSabotage(tickedVessels, week);
+  const sabotage = resolveHouseSabotage(tickedVessels, week, manualSabotage);
   const estate = resolveWeeklyEstate(state.estate);
   const expeditionResolution = resolveWeeklyExpedition(
     { ...state, cash: condottaResolution.cash + risk.cashDelta, vessels: sabotage.vessels, characters: upkeep.characters },
@@ -153,7 +168,7 @@ function advanceWeek(state: GameState): GameState {
   );
 
   const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
-  const newNews = corruptNews(rawNews, state.agents, HOME_CITY);
+  const newNews = corruptNews(rawNews, state.agents, HOME_CITY, manualPlant);
   const { arrived, stillPending } = resolveArrivals([...state.pendingNews, ...newNews], week);
   const knownPrices = { ...state.knownPrices };
   for (const item of arrived) knownPrices[item.cityId] = item;
@@ -219,7 +234,7 @@ export function processAction(state: GameState, action: GameAction): GameState {
 
   switch (action.type) {
     case 'ADVANCE_WEEK':
-      return advanceWeek(state);
+      return advanceWeek(state, action.hotseatDecision);
     case 'DISPATCH_VESSEL':
       return dispatchVessel(state, action.vesselId, action.destinationId, action.insure);
     case 'BUY_GOOD':

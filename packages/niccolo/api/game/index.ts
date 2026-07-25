@@ -27,8 +27,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'POST') {
     const name: string = ((req.body?.name as string | undefined) ?? 'Campaign').trim();
     const skipPrologue = req.body?.skipPrologue === true;
+    const hideObjectives = req.body?.hideObjectives === true;
+    const hotseatHouseId: string | null =
+      typeof req.body?.hotseatHouseId === 'string' ? req.body.hotseatHouseId : null;
     const id = uuid();
-    const state = createInitialState(id, name, { skipPrologue });
+    const state = createInitialState(id, name, { skipPrologue, hideObjectives, hotseatHouseId });
 
     try {
       await db.query(

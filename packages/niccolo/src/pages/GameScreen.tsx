@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { formatWeekDate } from '../sim/clock';
 import { useGameHybrid } from '../hooks/useGameHybrid';
-import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood } from '../sim/content';
+import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood, findHouse } from '../sim/content';
 import { cargoTotal } from '../sim/market';
 import { activeCharacters, assignmentSummary } from '../sim/characters';
+import { currentChapterNumber, objectivesForChapter } from '../sim/objectives';
 import type { Character } from '../sim/types';
 import MapView from '../components/MapView';
 import MarketPanel from '../components/MarketPanel';
@@ -16,10 +17,24 @@ import HouseholdPanel from '../components/HouseholdPanel';
 import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
 import EstatePanel from '../components/EstatePanel';
+import ObjectivesPanel from '../components/ObjectivesPanel';
+import PhaseStepper from '../components/PhaseStepper';
+import HotseatDecisionModal from '../components/HotseatDecisionModal';
 import EventOverlay from '../components/EventOverlay';
 import TutorialOverlay, { hasSeenTutorial, hasSeenChapter0Tutorial } from '../components/TutorialOverlay';
 import GuidedTour from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
+
+type TurnPhase = 'trade' | 'household' | 'finance';
+const PHASE_TABS_KEY = 'niccolo_phase_tabs_enabled';
+function readPhaseTabsEnabled(): boolean {
+  return typeof localStorage !== 'undefined' && localStorage.getItem(PHASE_TABS_KEY) === 'true';
+}
+const PHASE_STEPS: { id: TurnPhase; label: string }[] = [
+  { id: 'trade', label: 'Trade & Dispatch' },
+  { id: 'household', label: 'Household & Intelligence' },
+  { id: 'finance', label: 'Counting House' },
+];
 
 const STYLE: React.CSSProperties = {
   // Bounded to the viewport (not just a minimum) so BODY's flex:1 has a real cap to divide —
@@ -125,6 +140,13 @@ export default function GameScreen() {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showGuidedTour, setShowGuidedTour] = useState(false);
   const [ledgerTab, setLedgerTab] = useState<'ledger' | 'countingHouse'>('ledger');
+  // Multi-step turns (Phase 14): a local UI preference, not campaign state (mirrors
+  // hasSeenTutorial()'s own reasoning) — organizational tabs only, never a gate, so it's safe to
+  // flip mid-campaign or leave off entirely without affecting the simulation at all.
+  const [phaseTabsEnabled, setPhaseTabsEnabled] = useState(readPhaseTabsEnabled);
+  const [activePhase, setActivePhase] = useState<TurnPhase>('trade');
+  const [visitedPhases, setVisitedPhases] = useState<Set<TurnPhase>>(new Set(['trade']));
+  const [showHotseatModal, setShowHotseatModal] = useState(false);
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -159,13 +181,38 @@ export default function GameScreen() {
     setShowTutorial(true);
   }, [state?.id, state?.pendingEvents.length, state?.flags.chapter0_complete]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // The tour's "write a bill of exchange" step spotlights a Counting House control — force that
-  // tab open for the tour's whole duration so the target is never hidden behind the Ledger tab
-  // (both panels stay mounted, toggled via `display`, so a hidden target would otherwise measure
-  // as a zero-size rect instead of spotlighting anything).
+  // Multi-step turns: a new week starts back on the first tab, with a fresh "visited" slate —
+  // fresh arrivals/prices/wages are worth reviewing from the top, not wherever last week's stepper
+  // happened to end up.
   useEffect(() => {
-    if (showGuidedTour) setLedgerTab('countingHouse');
-  }, [showGuidedTour]);
+    setActivePhase('trade');
+    setVisitedPhases(new Set(['trade']));
+  }, [state?.week]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const togglePhaseTabs = () => {
+    setPhaseTabsEnabled(prev => {
+      const next = !prev;
+      localStorage.setItem(PHASE_TABS_KEY, String(next));
+      return next;
+    });
+  };
+
+  const selectPhase = (id: string) => {
+    const phase = id as TurnPhase;
+    setActivePhase(phase);
+    setVisitedPhases(prev => new Set(prev).add(phase));
+  };
+
+  // The tour's Household/Finance steps spotlight controls that live inside a phase tab — force the
+  // right one open exactly when that step becomes current (not just once for the tour's whole
+  // duration, so backing up or resuming mid-tour still lands on an unhidden target). Both panels in
+  // each group stay mounted regardless (toggled via `display`), so a hidden target would otherwise
+  // measure as a zero-size rect instead of spotlighting anything.
+  const handleTourStepChange = (requiresPhase: 'household' | 'finance' | undefined) => {
+    if (!requiresPhase) return;
+    if (phaseTabsEnabled) selectPhase(requiresPhase);
+    if (requiresPhase === 'finance') setLedgerTab('countingHouse');
+  };
 
   const abandonAndReturn = () => {
     if (id) deleteGame(id);
@@ -205,6 +252,21 @@ export default function GameScreen() {
   const activePolicy = selectedVessel ? state.insurance.find(i => i.vesselId === selectedVessel.id) : undefined;
   const previewCity = previewCityId ? findCity(previewCityId) : undefined;
   const expeditionVessel = state.expedition ? state.vessels.find(v => v.id === state.expedition!.vesselId) : undefined;
+
+  // Hotseat house experiment (Phase 14): if a house is seated this campaign, "Advance one week"
+  // opens a decision prompt instead of dispatching immediately — see HotseatDecisionModal.
+  const hotseatHouse = state.hotseatHouseId ? findHouse(state.hotseatHouseId) : undefined;
+  const hotseatSabotageEligible = !!(
+    hotseatHouse &&
+    state.vessels.some(v => !v.destination && v.location === hotseatHouse.homeCity && cargoTotal(v.cargo) > 0)
+  );
+  const handleAdvanceClick = () => {
+    if (hotseatHouse) setShowHotseatModal(true);
+    else dispatch({ type: 'ADVANCE_WEEK' });
+  };
+
+  const objectiveChapter = currentChapterNumber(state);
+  const objectiveProgress = state.objectivesHidden ? [] : objectivesForChapter(state, objectiveChapter);
 
   // Everything currently owned that isn't cash: cargo held across every vessel, combined — shown
   // in the header so "what you own" is visible at a glance without opening each vessel in turn.
@@ -310,6 +372,18 @@ export default function GameScreen() {
           selectedVesselId={selectedVesselId}
           previewCityId={previewCityId}
           onFinish={() => setShowGuidedTour(false)}
+          onStepChange={handleTourStepChange}
+        />
+      )}
+      {showHotseatModal && hotseatHouse && (
+        <HotseatDecisionModal
+          house={hotseatHouse}
+          sabotageEligible={hotseatSabotageEligible}
+          onCancel={() => setShowHotseatModal(false)}
+          onConfirm={hotseatDecision => {
+            setShowHotseatModal(false);
+            dispatch({ type: 'ADVANCE_WEEK', hotseatDecision });
+          }}
         />
       )}
       <PortalNav variant="header" />
@@ -324,9 +398,15 @@ export default function GameScreen() {
           <button
             id="advance-week-button"
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
-            onClick={() => dispatch({ type: 'ADVANCE_WEEK' })}
+            onClick={handleAdvanceClick}
           >
             Advance one week
+          </button>
+          <button
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: phaseTabsEnabled ? '#e8d5a3' : '#6a5a40' }}
+            onClick={togglePhaseTabs}
+          >
+            Multi-step turns: {phaseTabsEnabled ? 'on' : 'off'}
           </button>
           {canGuidedTour && (
             <button
@@ -359,6 +439,8 @@ export default function GameScreen() {
 
       <div style={BODY}>
         <div id="game-sidebar" style={SIDEBAR}>
+          <ObjectivesPanel chapterNumber={objectiveChapter} progress={objectiveProgress} />
+
           <div>
             <p style={{ fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#8a7a5a' }}>
               Fleet &amp; Household
@@ -477,52 +559,66 @@ export default function GameScreen() {
             />
           )}
 
-          <DispatchesPanel
-            week={state.week}
-            cash={state.cash}
-            knownPrices={state.knownPrices}
-            pendingNews={state.pendingNews}
-            courierInvestment={state.courierInvestment}
-            characters={state.characters}
-            dockedCityIds={dockedCityIds}
-            onInvest={cityId => dispatch({ type: 'INVEST_COURIER', cityId })}
-          />
+          {phaseTabsEnabled && (
+            <PhaseStepper steps={PHASE_STEPS} active={activePhase} visited={visitedPhases} onSelect={selectPhase} />
+          )}
 
-          <HouseholdPanel
-            characters={state.characters}
-            vessels={state.vessels}
-            cash={state.cash}
-            conscience={state.conscience}
-            condotta={state.condotta}
-            wagesSuspended={!state.flags.chapter0_complete}
-            onAssign={(characterId, assignment) => dispatch({ type: 'ASSIGN_CHARACTER', characterId, assignment })}
-          />
+          <div style={{ display: !phaseTabsEnabled || activePhase === 'trade' ? 'block' : 'none' }}>
+            <EstatePanel
+              estate={state.estate}
+              flags={state.flags}
+              cash={state.cash}
+              selectedVessel={selectedVessel}
+              onEstablish={() => dispatch({ type: 'ESTABLISH_ESTATE' })}
+              onHarvest={() => dispatch({ type: 'HARVEST_ESTATE' })}
+              onShip={(vesselId, quantity) => dispatch({ type: 'SHIP_ESTATE_GOODS', vesselId, quantity })}
+            />
+          </div>
 
-          <SecretsPanel
-            secrets={state.secrets}
-            week={state.week}
-            onUse={secretId => dispatch({ type: 'USE_SECRET', secretId })}
-          />
+          <div style={{ display: !phaseTabsEnabled || activePhase === 'household' ? 'block' : 'none' }}>
+            <DispatchesPanel
+              week={state.week}
+              cash={state.cash}
+              knownPrices={state.knownPrices}
+              pendingNews={state.pendingNews}
+              courierInvestment={state.courierInvestment}
+              characters={state.characters}
+              dockedCityIds={dockedCityIds}
+              onInvest={cityId => dispatch({ type: 'INVEST_COURIER', cityId })}
+            />
 
-          <HousesPanel
-            houses={HOUSES}
-            houseRelations={state.houseRelations}
-            agents={state.agents}
-            cash={state.cash}
-            flags={state.flags}
-            onPlaceAgent={(placement, name) => dispatch({ type: 'PLACE_AGENT', placement, name })}
-          />
+            <HouseholdPanel
+              characters={state.characters}
+              vessels={state.vessels}
+              cash={state.cash}
+              conscience={state.conscience}
+              condotta={state.condotta}
+              wagesSuspended={!state.flags.chapter0_complete}
+              onAssign={(characterId, assignment) => dispatch({ type: 'ASSIGN_CHARACTER', characterId, assignment })}
+            />
 
-          <EstatePanel
-            estate={state.estate}
-            flags={state.flags}
-            cash={state.cash}
-            selectedVessel={selectedVessel}
-            onEstablish={() => dispatch({ type: 'ESTABLISH_ESTATE' })}
-            onHarvest={() => dispatch({ type: 'HARVEST_ESTATE' })}
-            onShip={(vesselId, quantity) => dispatch({ type: 'SHIP_ESTATE_GOODS', vesselId, quantity })}
-          />
+            <SecretsPanel
+              secrets={state.secrets}
+              week={state.week}
+              onUse={secretId => dispatch({ type: 'USE_SECRET', secretId })}
+            />
 
+            <HousesPanel
+              houses={HOUSES}
+              houseRelations={state.houseRelations}
+              agents={state.agents}
+              cash={state.cash}
+              flags={state.flags}
+              onPlaceAgent={(placement, name) => dispatch({ type: 'PLACE_AGENT', placement, name })}
+            />
+          </div>
+
+          <div style={{ display: !phaseTabsEnabled || activePhase === 'finance' ? 'block' : 'none' }}>
+          {!state.flags.chapter0_complete && phaseTabsEnabled && (
+            <p style={{ fontSize: '0.78rem', color: '#6a5a40', margin: 0 }}>
+              Not available yet — credit isn't Claes's to extend until he's formally made the house's factor.
+            </p>
+          )}
           {state.flags.chapter0_complete && (
             <div>
               <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.3rem' }}>
@@ -556,6 +652,7 @@ export default function GameScreen() {
               </div>
             </div>
           )}
+          </div>
 
           {error && <p style={{ fontSize: '0.8rem', color: '#b5451a', margin: 0 }}>{error}</p>}
         </div>

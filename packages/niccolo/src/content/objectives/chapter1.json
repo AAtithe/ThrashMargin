@@ -1,0 +1,24 @@
+[
+  { "id": "obj_c1_marian", "chapterNumber": 1, "label": "Marry Marian",
+    "description": "Both paths through this lead to the same place — a widow and an apprentice, made one household.",
+    "kind": { "type": "flag", "flag": "married_marian" },
+    "inevitable": true },
+
+  { "id": "obj_c1_condotta", "chapterNumber": 1, "label": "See Astorre's Naples condotta through",
+    "kind": { "type": "flag", "flag": "condotta_naples_resolved" } },
+
+  { "id": "obj_c1_cannon", "chapterNumber": 1, "label": "Deliver the Milan cannon shipment",
+    "description": "Buy at Milan, sail it to Naples via Genoa, and be there with enough of it before the deadline lapses.",
+    "kind": { "type": "flag", "flag": "cannon_shipment_resolved" },
+    "outcomeFlags": { "positive": "cannon_delivered", "costly": "cannon_shipment_expired" } },
+
+  { "id": "obj_c1_stpol", "chapterNumber": 1, "label": "First blood with St Pol",
+    "description": "The vendetta's opening move. Not a choice that can be avoided, only shaped.",
+    "kind": { "type": "flag", "flag": "stpol_first_blood" },
+    "inevitable": true },
+
+  { "id": "obj_c1_felix", "chapterNumber": 1, "label": "Felix's fate",
+    "description": "A scripted loss, not a choice — position for it, don't expect to prevent it.",
+    "kind": { "type": "flag", "flag": "felix_lost" },
+    "inevitable": true }
+]

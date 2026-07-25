@@ -1,0 +1,9 @@
+[
+  { "id": "obj_c2_extraction", "chapterNumber": 2, "label": "Extract the Trebizond agency",
+    "description": "People first, then capital, then whatever cargo can still be moved — before the city falls.",
+    "kind": { "type": "flag", "flag": "trebizond_extraction_resolved" },
+    "outcomeFlags": { "positive": "trebizond_extraction_success", "costly": "trebizond_fallen" } },
+
+  { "id": "obj_c2_epilogue", "chapterNumber": 2, "label": "Reckon what Trebizond cost",
+    "kind": { "type": "flag", "flag": "trebizond_epilogue" } }
+]

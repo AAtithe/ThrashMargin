@@ -1,0 +1,12 @@
+[
+  { "id": "obj_c3_siege", "chapterNumber": 3, "label": "See Famagusta's siege through",
+    "description": "Kouklia's sugar, and everyone who can still be gotten aboard, out ahead of the Mamluk fleet.",
+    "kind": { "type": "flag", "flag": "famagusta_siege_resolved" },
+    "outcomeFlags": { "positive": "famagusta_siege_survived", "costly": "famagusta_fallen" } },
+
+  { "id": "obj_c3_epilogue", "chapterNumber": 3, "label": "Reckon what the siege cost",
+    "kind": { "type": "flag", "flag": "famagusta_epilogue" } },
+
+  { "id": "obj_c3_branch", "chapterNumber": 3, "label": "Formalise the Cyprus branch",
+    "kind": { "type": "flag", "flag": "cyprus_branch_opened" } }
+]

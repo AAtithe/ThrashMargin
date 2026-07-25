@@ -93,6 +93,11 @@ interface TourStep {
    * single target and instead show a manual button. */
   targetId: string | null;
   isComplete: (state: GameState, selectedVesselId: string | null, previewCityId: string | null) => boolean;
+  /** Phase 14: only set for a step whose target lives inside a phase-tab group (Household or
+   * Finance) rather than the always-visible zone or the map — `GameScreen.tsx`'s `onStepChange`
+   * forces the right tab open whenever this step becomes current, the same way it already forces
+   * the Ledger/Counting-House split for the "write a bill" step specifically. */
+  requiresPhase?: 'household' | 'finance';
 }
 
 const STEPS: TourStep[] = [
@@ -155,18 +160,21 @@ const STEPS: TourStep[] = [
     body: "Officers can be given a posting instead of sitting idle. Give Julius an assignment — negotiate or investigate somewhere, or send him aboard a ship.",
     targetId: `household-assign-${DEMO_CHARACTER_ID}`,
     isComplete: state => state.characters.find(c => c.id === DEMO_CHARACTER_ID)?.assignment.type !== 'idle',
+    requiresPhase: 'household',
   },
   {
     title: 'Invest in a courier line',
     body: "Reports arrive faster from a city you've paid to speed up. Try investing in London's courier line.",
     targetId: `dispatches-invest-${DEMO_INVEST_CITY}`,
     isComplete: state => (state.courierInvestment[DEMO_INVEST_CITY] ?? 0) >= 1,
+    requiresPhase: 'household',
   },
   {
     title: 'Write a bill of exchange',
     body: 'The Counting House lets you borrow now against a future repayment — real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
     targetId: 'counting-house-borrow-button',
     isComplete: state => state.obligations.length > 0,
+    requiresPhase: 'finance',
   },
   {
     title: "That's the loop",
@@ -250,14 +258,24 @@ interface GuidedTourProps {
   selectedVesselId: string | null;
   previewCityId: string | null;
   onFinish: () => void;
+  /** Phase 14: called whenever the current step changes (including on mount, so a tour resumed
+   * directly onto a Household/Finance step still forces the right tab open immediately) — the
+   * caller decides what "forcing a phase" means, since phase tabs are an opt-in GameScreen
+   * preference this component has no knowledge of. */
+  onStepChange?: (requiresPhase: 'household' | 'finance' | undefined) => void;
 }
 
-export default function GuidedTour({ state, selectedVesselId, previewCityId, onFinish }: GuidedTourProps) {
+export default function GuidedTour({ state, selectedVesselId, previewCityId, onFinish, onStepChange }: GuidedTourProps) {
   const [stepIndex, setStepIndex] = useState(() => firstIncompleteStep(state, selectedVesselId, previewCityId));
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
   const isManual = step.targetId === null;
   const rect = useTargetRect(step.targetId);
+
+  useEffect(() => {
+    onStepChange?.(step.requiresPhase);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stepIndex]);
 
   // Auto-advance once the player actually performs the real action a step asks for.
   useEffect(() => {

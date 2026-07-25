@@ -53,10 +53,17 @@ export interface CreateInitialStateOptions {
    * prologue. Default (false/omitted) starts Claes with nothing yet — see Chapter 0's own
    * content pack for how he earns his way into the same state this produces immediately. */
   skipPrologue?: boolean;
+  /** Lobby "Hide chapter objectives" toggle (Phase 14). Default (false/omitted) shows them. */
+  hideObjectives?: boolean;
+  /** Lobby "hotseat house" toggle (Phase 14) — which house, if any, a seated human plays this
+   * campaign instead of `sim/houses.ts`'s own formulas. Default (undefined/null) is no house. */
+  hotseatHouseId?: string | null;
 }
 
 export function createInitialState(id: string, name?: string, options?: CreateInitialStateOptions): GameState {
   const skipPrologue = options?.skipPrologue ?? false;
+  const objectivesHidden = options?.hideObjectives ?? false;
+  const hotseatHouseId = options?.hotseatHouseId ?? null;
   const scarcity = initialScarcity();
   const characters = CHARACTERS.map(c => ({
     ...c,
@@ -98,6 +105,8 @@ export function createInitialState(id: string, name?: string, options?: CreateIn
     lastSabotageEvent: null,
     expedition: null,
     lastExpeditionEvent: null,
+    objectivesHidden,
+    hotseatHouseId,
     vessels: skipPrologue ? [newShip(), newCourier()] : [newCourier()],
   };
 

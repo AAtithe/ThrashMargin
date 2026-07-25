@@ -3,6 +3,27 @@ import { addSecret } from './secrets';
 import { adjustScarcity, cargoTotal } from './market';
 import type { Agent, AgentPlacement, GameState, House, MarketScarcity, NewsItem, SabotageLossEvent, Secret, Vessel } from './types';
 
+/** A hotseat player's manual choice for their one house's weekly trade nudge (Phase 14),
+ * replacing that house's own random good/direction pick — every other house still rolls. */
+export interface ManualTradeChoice {
+  houseId: string;
+  goodId: string;
+  direction: 1 | -1;
+}
+
+/** A hotseat player's manual choice for their one house's weekly news-planting attempt (Phase 14).
+ * `targetCityId: null` means they chose not to plant this week. */
+export interface ManualPlantChoice {
+  houseId: string;
+  targetCityId: string | null;
+}
+
+/** A hotseat player's manual choice for their one house's weekly sabotage attempt (Phase 14). */
+export interface ManualSabotageChoice {
+  houseId: string;
+  attempt: boolean;
+}
+
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
@@ -51,15 +72,22 @@ export function driftHouseRelations(
  * "reduced fidelity" trade design doc §10 asks for — houses are not full second players with
  * their own cargo and ledgers. */
 const HOUSE_TRADE_UNITS = 2;
-export function applyHouseTradeFootprint(scarcity: MarketScarcity): MarketScarcity {
+export function applyHouseTradeFootprint(scarcity: MarketScarcity, manual?: ManualTradeChoice): MarketScarcity {
   let next = scarcity;
   for (const house of HOUSES) {
     const city = findCity(house.homeCity);
     if (!city?.market) continue;
     const goodIds = Object.keys(city.market);
     if (goodIds.length === 0) continue;
-    const goodId = goodIds[Math.floor(Math.random() * goodIds.length)];
-    const direction = Math.random() < 0.5 ? 1 : -1;
+    let goodId: string;
+    let direction: number;
+    if (manual && house.id === manual.houseId) {
+      goodId = manual.goodId;
+      direction = manual.direction;
+    } else {
+      goodId = goodIds[Math.floor(Math.random() * goodIds.length)];
+      direction = Math.random() < 0.5 ? 1 : -1;
+    }
     next = adjustScarcity(next, house.homeCity, goodId, direction * HOUSE_TRADE_UNITS);
   }
   return next;
@@ -116,14 +144,24 @@ const PLANT_CHANCE_PER_HOSTILE_HOUSE = 0.12;
 const PLANT_PRICE_DISTORTION_MIN = 0.5;
 const PLANT_PRICE_DISTORTION_MAX = 1.8;
 
-export function corruptNews(news: NewsItem[], agents: Agent[], homeCityId: string): NewsItem[] {
+export function corruptNews(
+  news: NewsItem[],
+  agents: Agent[],
+  homeCityId: string,
+  manual?: ManualPlantChoice,
+): NewsItem[] {
   const hostile = HOUSES.filter(h => h.disposition === 'hostile');
   if (hostile.length === 0) return news;
+  // The hotseat house's own chance is a manual pick, not a roll — every other hostile house
+  // still rolls independently, exactly as before.
+  const aiHostile = manual ? hostile.filter(h => h.id !== manual.houseId) : hostile;
 
   return news.map(item => {
     if (item.cityId === homeCityId) return item;
     if (cityIsShielded(agents, item.cityId)) return item;
-    const targeted = hostile.some(() => Math.random() < PLANT_CHANCE_PER_HOSTILE_HOUSE);
+    const manualHit = !!manual && manual.targetCityId === item.cityId;
+    const aiHit = aiHostile.some(() => Math.random() < PLANT_CHANCE_PER_HOSTILE_HOUSE);
+    const targeted = manualHit || aiHit;
     if (!targeted) return item;
 
     const prices: Record<string, number> = {};
@@ -179,7 +217,11 @@ export interface SabotageResolution {
   event?: SabotageLossEvent;
 }
 
-export function resolveHouseSabotage(vessels: Vessel[], week: number): SabotageResolution {
+export function resolveHouseSabotage(
+  vessels: Vessel[],
+  week: number,
+  manual?: ManualSabotageChoice,
+): SabotageResolution {
   const hostileHouses = HOUSES.filter(h => h.disposition === 'hostile');
   const hostileHomes = new Map(hostileHouses.map(h => [h.homeCity, h]));
   if (hostileHomes.size === 0) return { vessels, sabotaged: false };
@@ -187,14 +229,18 @@ export function resolveHouseSabotage(vessels: Vessel[], week: number): SabotageR
   const target = vessels.find(
     v => !v.destination && hostileHomes.has(v.location) && cargoTotal(v.cargo) > 0,
   );
-  if (!target || Math.random() >= SABOTAGE_CHANCE_PER_WEEK) return { vessels, sabotaged: false };
+  if (!target) return { vessels, sabotaged: false };
+  const targetHouse = hostileHomes.get(target.location)!;
+  const attempts =
+    manual && manual.houseId === targetHouse.id ? manual.attempt : Math.random() < SABOTAGE_CHANCE_PER_WEEK;
+  if (!attempts) return { vessels, sabotaged: false };
 
   const goodIds = Object.keys(target.cargo).filter(id => (target.cargo[id] ?? 0) > 0);
   if (goodIds.length === 0) return { vessels, sabotaged: false };
   const goodId = goodIds[Math.floor(Math.random() * goodIds.length)];
   const held = target.cargo[goodId];
   const lost = Math.max(1, Math.floor(held * SABOTAGE_LOSS_FRACTION));
-  const house = hostileHomes.get(target.location)!;
+  const house = targetHouse;
 
   return {
     vessels: vessels.map(v => (v.id === target.id ? { ...v, cargo: { ...v.cargo, [goodId]: held - lost } } : v)),

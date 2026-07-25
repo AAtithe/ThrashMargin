@@ -19,7 +19,11 @@ import routes4Data from '../content/routes/chapter4.json';
 import goods4Data from '../content/goods/chapter4.json';
 import characters4Data from '../content/characters/chapter4.json';
 import events4Data from '../content/events/chapter4.json';
-import type { City, Route, Good, Character, ScriptedEvent, House } from './types';
+import objectives1Data from '../content/objectives/chapter1.json';
+import objectives2Data from '../content/objectives/chapter2.json';
+import objectives3Data from '../content/objectives/chapter3.json';
+import objectives4Data from '../content/objectives/chapter4.json';
+import type { City, Route, Good, Character, ScriptedEvent, House, Objective } from './types';
 
 export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
 
@@ -66,6 +70,15 @@ export const EVENTS: ScriptedEvent[] = [
   ...(events4Data as unknown as ScriptedEvent[]),
 ];
 export const HOUSES: House[] = [...(housesData as unknown as House[]), ...(houses2Data as unknown as House[])];
+/** Story-tied objectives (Phase 14) — a read-only projection over flags the chapters above already
+ * set, authored per chapter like every other content type. Chapter 0 has none of its own (see
+ * `sim/objectives.ts`'s own note on why). */
+export const OBJECTIVES: Objective[] = [
+  ...(objectives1Data as Objective[]),
+  ...(objectives2Data as Objective[]),
+  ...(objectives3Data as Objective[]),
+  ...(objectives4Data as Objective[]),
+];
 
 export function findCity(id: string): City | undefined {
   return CITIES.find(c => c.id === id);

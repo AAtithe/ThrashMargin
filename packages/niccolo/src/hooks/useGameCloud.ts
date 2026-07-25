@@ -28,13 +28,18 @@ export function useGameCloud() {
 
   useEffect(() => { fetchSaves(); }, [fetchSaves]);
 
-  const createGame = useCallback(async (name?: string, skipPrologue?: boolean): Promise<string | null> => {
+  const createGame = useCallback(async (
+    name?: string,
+    skipPrologue?: boolean,
+    hideObjectives?: boolean,
+    hotseatHouseId?: string | null,
+  ): Promise<string | null> => {
     setError(null);
     try {
       const res = await fetch(`${API}/api/niccolo/game`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ name, skipPrologue }),
+        body: JSON.stringify({ name, skipPrologue, hideObjectives, hotseatHouseId }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to start campaign'); return null; }

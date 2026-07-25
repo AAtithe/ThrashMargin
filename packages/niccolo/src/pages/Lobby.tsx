@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
+import { HOUSES } from '../sim/content';
 import PortalNav from '../components/PortalNav';
 import TutorialOverlay from '../components/TutorialOverlay';
 import type { SaveMeta } from '../hooks/useGameLocal';
@@ -101,10 +102,14 @@ export default function Lobby() {
   const [starting, setStarting] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
   const [skipPrologue, setSkipPrologue] = useState(false);
+  const [hideObjectives, setHideObjectives] = useState(false);
+  const [hotseatHouseId, setHotseatHouseId] = useState('');
 
   const handleNew = async () => {
     setStarting(true);
-    const id = await Promise.resolve(createGame(name.trim() || undefined, skipPrologue));
+    const id = await Promise.resolve(
+      createGame(name.trim() || undefined, skipPrologue, hideObjectives, hotseatHouseId || null),
+    );
     setStarting(false);
     if (id) nav(`/game/${id}`);
   };
@@ -140,12 +145,34 @@ export default function Lobby() {
             {starting ? '…' : 'Begin →'}
           </button>
         </div>
-        <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '2rem' }}>
+        <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
           <input type="checkbox" checked={skipPrologue} onChange={e => setSkipPrologue(e.target.checked)} />
           <span>
             Skip the prologue — start straight in as a merchant with a ship, a courier, and 40f,
             rather than as Claes the dyeworks apprentice with nothing yet.
           </span>
+        </label>
+
+        <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+          <input type="checkbox" checked={hideObjectives} onChange={e => setHideObjectives(e.target.checked)} />
+          <span>
+            Hide chapter objectives — track your own progress without a checklist naming which
+            story threads still need resolving.
+          </span>
+        </label>
+
+        <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '2rem' }}>
+          <span style={{ whiteSpace: 'nowrap' }}>Let a friend run a rival house this campaign:</span>
+          <select
+            style={{ ...FIELD, flex: 'none', width: 'auto', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+            value={hotseatHouseId}
+            onChange={e => setHotseatHouseId(e.target.value)}
+          >
+            <option value="">No one — every house stays on its own formula</option>
+            {HOUSES.map(h => (
+              <option key={h.id} value={h.id}>{h.name}</option>
+            ))}
+          </select>
         </label>
 
         <p style={SECTION_LABEL}>Active campaigns</p>
