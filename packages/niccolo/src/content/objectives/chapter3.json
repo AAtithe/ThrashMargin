@@ -5,8 +5,10 @@
     "outcomeFlags": { "positive": "famagusta_siege_survived", "costly": "famagusta_fallen" } },
 
   { "id": "obj_c3_epilogue", "chapterNumber": 3, "label": "Reckon what the siege cost",
+    "description": "A formality once Famagusta's siege resolves — the house reckons what the season cost, one way or the other.",
     "kind": { "type": "flag", "flag": "famagusta_epilogue" } },
 
   { "id": "obj_c3_branch", "chapterNumber": 3, "label": "Formalise the Cyprus branch",
+    "description": "A formality once Famagusta's siege is reckoned — whether to keep a foothold in Cyprus going forward.",
     "kind": { "type": "flag", "flag": "cyprus_branch_opened" } }
 ]

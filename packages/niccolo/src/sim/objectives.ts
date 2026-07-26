@@ -20,7 +20,25 @@ export interface ObjectiveProgress {
   objective: Objective;
   status: ObjectiveStatusKind;
   outcome?: 'positive' | 'costly';
+  /** Whether `objective.description` should actually be shown (Phase 15's "forward-looking
+   * hints"). True whenever the objective has no `revealFlag`, the flag is already set, or the
+   * objective is no longer pending — once a thread resolves (complete or missed) there's nothing
+   * left to spoil, only context to give, so the real description always shows from that point on
+   * regardless of whether its reveal flag ever fired (e.g. declining a commission before it's
+   * ever offered still resolves the thread without ever "having a lead"). */
+  revealed: boolean;
 }
+
+/** Chapter titles (design doc §9's own names), used by the chapter-close acknowledgment card and
+ * the ambient campaign-progress header — kept here, not duplicated in each UI component, so both
+ * read the exact same list as more chapters ship. */
+export const CHAPTER_TITLES: Record<number, string> = {
+  0: 'Claes Begins',
+  1: 'Niccolo Rising',
+  2: 'The Spring of the Ram',
+  3: 'Race of Scorpions',
+  4: 'Scales of Gold',
+};
 
 /**
  * Pure, read-only projection over flags/state a chapter's own event content already sets —
@@ -44,6 +62,8 @@ export function objectivesForChapter(state: GameState, chapterNumber: number): O
     if (o.outcomeFlags?.positive && state.flags[o.outcomeFlags.positive]) outcome = 'positive';
     else if (o.outcomeFlags?.costly && state.flags[o.outcomeFlags.costly]) outcome = 'costly';
 
-    return { objective: o, status, outcome };
+    const revealed = status !== 'pending' || !o.revealFlag || !!state.flags[o.revealFlag];
+
+    return { objective: o, status, outcome, revealed };
   });
 }

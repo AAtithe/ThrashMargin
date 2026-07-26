@@ -5,12 +5,15 @@
     "inevitable": true },
 
   { "id": "obj_c1_condotta", "chapterNumber": 1, "label": "See Astorre's Naples condotta through",
-    "kind": { "type": "flag", "flag": "condotta_naples_resolved" } },
+    "description": "Astorre's company serves a paid campaign at Naples — once the terms are struck, it runs its own course and comes home in time.",
+    "kind": { "type": "flag", "flag": "condotta_naples_resolved" },
+    "revealFlag": "condotta_naples_active" },
 
   { "id": "obj_c1_cannon", "chapterNumber": 1, "label": "Deliver the Milan cannon shipment",
     "description": "Buy at Milan, sail it to Naples via Genoa, and be there with enough of it before the deadline lapses.",
     "kind": { "type": "flag", "flag": "cannon_shipment_resolved" },
-    "outcomeFlags": { "positive": "cannon_delivered", "costly": "cannon_shipment_expired" } },
+    "outcomeFlags": { "positive": "cannon_delivered", "costly": "cannon_shipment_expired" },
+    "revealFlag": "cannon_commission_accepted" },
 
   { "id": "obj_c1_stpol", "chapterNumber": 1, "label": "First blood with St Pol",
     "description": "The vendetta's opening move. Not a choice that can be avoided, only shaped.",

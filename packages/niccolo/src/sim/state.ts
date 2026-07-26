@@ -107,6 +107,10 @@ export function createInitialState(id: string, name?: string, options?: CreateIn
     lastExpeditionEvent: null,
     objectivesHidden,
     hotseatHouseId,
+    // Seeded to match the campaign's actual starting chapter (1 for skip-prologue, which begins
+    // already past chapter0_complete; 0 otherwise) so no "Chapter 0 complete" card falsely appears
+    // at creation for a campaign that never played chapter 0 at all.
+    lastAcknowledgedChapter: skipPrologue ? 1 : 0,
     vessels: skipPrologue ? [newShip(), newCourier()] : [newCourier()],
   };
 

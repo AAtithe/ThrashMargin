@@ -14,19 +14,40 @@ const ROW: React.CSSProperties = {
   fontSize: '0.78rem',
 };
 
-function statusColor(p: ObjectiveProgress): string {
+export function statusColor(p: ObjectiveProgress): string {
   if (p.status === 'missed') return '#b5451a';
   if (p.status === 'complete') return p.outcome === 'costly' ? '#a08040' : '#3a6b5a';
   return '#8a7a5a';
 }
 
-function statusSuffix(p: ObjectiveProgress): string {
+export function statusSuffix(p: ObjectiveProgress): string {
   if (p.objective.inevitable) {
     return p.status === 'pending' ? 'will occur' : 'occurred';
   }
   if (p.status === 'missed') return 'deadline passed';
   if (p.status === 'complete') return p.outcome === 'costly' ? 'resolved — cost more than it returned' : 'resolved';
   return 'open';
+}
+
+/** One objective's row — shared by the live sidebar panel below, the chapter-close acknowledgment
+ * card, and the Chronicle log, so all three read a resolved thread identically. */
+export function ObjectiveRow({ p }: { p: ObjectiveProgress }) {
+  return (
+    <div style={ROW}>
+      <div style={{ color: statusColor(p) }}>{p.objective.label}</div>
+      {p.revealed ? (
+        p.objective.description && (
+          <div style={{ fontSize: '0.7rem', color: '#8a7a5a' }}>{p.objective.description}</div>
+        )
+      ) : (
+        <div style={{ fontSize: '0.7rem', color: '#6a5a40', fontStyle: 'italic' }}>No lead yet — keep the story moving.</div>
+      )}
+      <div style={{ fontSize: '0.7rem', color: statusColor(p) }}>
+        {statusSuffix(p)}
+        {p.objective.optional && <span style={{ color: '#6a5a40' }}> · optional</span>}
+      </div>
+    </div>
+  );
 }
 
 interface ObjectivesPanelProps {
@@ -49,16 +70,7 @@ export default function ObjectivesPanel({ chapterNumber, progress }: ObjectivesP
     <div>
       <p style={LABEL}>Chapter {chapterNumber} objectives</p>
       {progress.map(p => (
-        <div key={p.objective.id} style={ROW}>
-          <div style={{ color: statusColor(p) }}>{p.objective.label}</div>
-          {p.objective.description && (
-            <div style={{ fontSize: '0.7rem', color: '#8a7a5a' }}>{p.objective.description}</div>
-          )}
-          <div style={{ fontSize: '0.7rem', color: statusColor(p) }}>
-            {statusSuffix(p)}
-            {p.objective.optional && <span style={{ color: '#6a5a40' }}> · optional</span>}
-          </div>
-        </div>
+        <ObjectiveRow key={p.objective.id} p={p} />
       ))}
       <p style={{ fontSize: '0.7rem', color: '#6a5a40', margin: '0.4rem 0 0' }}>
         {resolved} of {counted.length} threads resolved

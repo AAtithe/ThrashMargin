@@ -113,10 +113,76 @@ export function findRoute(fromId: string, toId: string): Route | undefined {
   );
 }
 
+export function findRouteById(routeId: string): Route | undefined {
+  return ROUTES.find(r => r.id === routeId);
+}
+
+/** The city at the other end of a route from a known endpoint — routes are stored one-directional
+ * but sailable either way, so every caller that already has "the end I'm not at" needs this same
+ * from/to flip (dispatching the first leg of a queued journey, resolving a `CONTINUE_PLANNED_ROUTE`
+ * to its destination, describing a planned path back to the player). */
+export function otherEndOfRoute(route: Route, cityId: string): string {
+  return route.from === cityId ? route.to : route.from;
+}
+
 /** Cities directly reachable from `fromId`, honouring courier land-only restriction. */
 export function reachableFrom(fromId: string, landOnly: boolean): Route[] {
   return ROUTES.filter(r => {
     if (landOnly && r.type !== 'land') return false;
     return r.from === fromId || r.to === fromId;
   });
+}
+
+export interface PlannedRoute {
+  /** Ordered route ids from `fromId` to `toId`, one hop each. */
+  routeIds: string[];
+  totalWeeks: number;
+}
+
+/**
+ * Shortest path (by total `distanceWeeks`) from `fromId` to `toId` across the existing `ROUTES`
+ * graph — a plain Dijkstra, since every edge weight is positive and the graph is small (≤20
+ * cities). Used only by the UI (path preview, "Queue journey") to explain and offer a multi-hop
+ * dispatch as a *chain of the existing single-hop `dispatchVessel` calls*; the sim's own dispatch
+ * mechanic still only ever moves a vessel one direct edge at a time — see `Vessel.plannedRoute`'s
+ * own doc comment for why that invariant (a vessel always docks, and becomes tradeable, at every
+ * intermediate city) is preserved rather than replaced. Returns null if no path exists at all
+ * under the given `landOnly` restriction (e.g. a courier trying to reach a sea-locked city).
+ */
+export function planRoute(fromId: string, toId: string, landOnly: boolean): PlannedRoute | null {
+  if (fromId === toId) return null;
+  const dist: Record<string, number> = { [fromId]: 0 };
+  const viaRoute: Record<string, Route> = {};
+  const visited = new Set<string>();
+
+  while (true) {
+    let current: string | null = null;
+    let currentDist = Infinity;
+    for (const cityId of Object.keys(dist)) {
+      if (!visited.has(cityId) && dist[cityId] < currentDist) {
+        current = cityId;
+        currentDist = dist[cityId];
+      }
+    }
+    if (current === null || current === toId) break;
+    visited.add(current);
+    for (const route of reachableFrom(current, landOnly)) {
+      const neighbor = otherEndOfRoute(route, current);
+      const candidate = currentDist + route.distanceWeeks;
+      if (dist[neighbor] === undefined || candidate < dist[neighbor]) {
+        dist[neighbor] = candidate;
+        viaRoute[neighbor] = route;
+      }
+    }
+  }
+
+  if (dist[toId] === undefined) return null;
+  const routeIds: string[] = [];
+  let cursor = toId;
+  while (cursor !== fromId) {
+    const route = viaRoute[cursor];
+    routeIds.unshift(route.id);
+    cursor = otherEndOfRoute(route, cursor);
+  }
+  return { routeIds, totalWeeks: dist[toId] };
 }

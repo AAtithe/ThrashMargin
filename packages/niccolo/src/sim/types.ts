@@ -59,6 +59,12 @@ export interface Vessel {
   cargo: Cargo;
   /** Total units of goods this vessel can hold. Couriers carry none. */
   capacity: number;
+  /** Remaining route ids of a multi-hop journey queued via "Queue journey" (Phase 15), set
+   * explicitly on every `DISPATCH_VESSEL` (undefined clears any stale plan on a manual redispatch
+   * elsewhere). While docked with a non-empty plan, the UI offers a "Continue to X?" prompt that
+   * dispatches the next leg via `CONTINUE_PLANNED_ROUTE` — each leg remains its own real,
+   * individually insured `dispatchVessel` call; nothing sails through a city without stopping. */
+  plannedRoute?: string[];
 }
 
 /**
@@ -391,6 +397,14 @@ export interface Objective {
    * branches that already exist in content (a good outcome vs. a costly one), name both flags here
    * so the panel can caption which branch actually resolved — no new gating semantics. */
   outcomeFlags?: { positive?: string; costly?: string };
+  /** Gates `description` behind a flag (Phase 15's "forward-looking hints") — while the flag is
+   * unset AND the objective is still `pending`, the panel shows a generic "no lead yet" placeholder
+   * instead of `description`, so a concrete walkthrough (e.g. the cannon shipment's exact route)
+   * doesn't spoil a thread before its own content has actually introduced it. Once the objective is
+   * no longer pending (complete or missed), the real description always shows regardless — there's
+   * nothing left to spoil, only context to give. Most objectives have no `revealFlag` and are
+   * described from the chapter's start, same as before this field existed. */
+  revealFlag?: string;
   /** True for a beat the player cannot choose to prevent (a scripted death, an unavoidable
    * confrontation) — the panel renders these as "will occur" / "occurred" rather than implying a
    * success the player could have failed to earn. */
@@ -480,11 +494,22 @@ export interface GameState {
    * plays this campaign instead of the formulas in `sim/houses.ts`. Optional/null-safe for a save
    * from before this field existed (no house is hotseat-controlled, identical to today). */
   hotseatHouseId?: string | null;
+  /** Highest chapter number the player has already seen a "Chapter N complete" acknowledgment card
+   * for (Phase 15) — persisted so a save/reload between a chapter flipping and the player clicking
+   * "Continue" can't silently eat the card (an ephemeral component-local ref would reinitialize to
+   * the already-current chapter number on remount and never show it). `createInitialState` seeds
+   * this to match the campaign's actual starting chapter (0, or 1 for skip-prologue) so no false
+   * card appears at creation; optional/undefined on an older save just means "acknowledge nothing
+   * yet," which at worst re-shows one already-seen card once, never crashes. */
+  lastAcknowledgedChapter?: number;
 }
 
 export type GameAction =
   | { type: 'ADVANCE_WEEK'; hotseatDecision?: HotseatDecision }
-  | { type: 'DISPATCH_VESSEL'; vesselId: string; destinationId: string; insure?: boolean }
+  | { type: 'DISPATCH_VESSEL'; vesselId: string; destinationId: string; insure?: boolean; plannedRoute?: string[] }
+  | { type: 'CONTINUE_PLANNED_ROUTE'; vesselId: string; insure?: boolean }
+  | { type: 'CANCEL_PLANNED_ROUTE'; vesselId: string }
+  | { type: 'ACKNOWLEDGE_CHAPTER'; chapterNumber: number }
   | { type: 'BUY_GOOD'; vesselId: string; goodId: string; quantity: number }
   | { type: 'SELL_GOOD'; vesselId: string; goodId: string; quantity: number }
   | { type: 'INVEST_COURIER'; cityId: string }

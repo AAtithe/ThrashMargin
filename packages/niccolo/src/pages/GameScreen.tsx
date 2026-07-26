@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { formatWeekDate } from '../sim/clock';
 import { useGameHybrid } from '../hooks/useGameHybrid';
-import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood, findHouse } from '../sim/content';
+import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood, findHouse, findRouteById, otherEndOfRoute } from '../sim/content';
+import type { PlannedRoute } from '../sim/content';
 import { cargoTotal } from '../sim/market';
 import { activeCharacters, assignmentSummary } from '../sim/characters';
-import { currentChapterNumber, objectivesForChapter } from '../sim/objectives';
+import { currentChapterNumber, objectivesForChapter, CHAPTER_TITLES } from '../sim/objectives';
+import { canInsureAt } from '../sim/insurance';
 import type { Character } from '../sim/types';
 import MapView from '../components/MapView';
 import MarketPanel from '../components/MarketPanel';
@@ -18,6 +20,9 @@ import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
 import EstatePanel from '../components/EstatePanel';
 import ObjectivesPanel from '../components/ObjectivesPanel';
+import ChapterCompleteCard from '../components/ChapterCompleteCard';
+import CampaignProgress from '../components/CampaignProgress';
+import ChronicleLog from '../components/ChronicleLog';
 import PhaseStepper from '../components/PhaseStepper';
 import HotseatDecisionModal from '../components/HotseatDecisionModal';
 import EventOverlay from '../components/EventOverlay';
@@ -118,6 +123,16 @@ const BUTTON_ACTIVE: React.CSSProperties = {
   color: '#e8d5a3',
 };
 
+const SMALL_BUTTON: React.CSSProperties = {
+  background: '#1a1510',
+  border: '1px solid #4a3d28',
+  color: '#c9b88a',
+  padding: '0.2rem 0.5rem',
+  fontFamily: 'inherit',
+  fontSize: '0.7rem',
+  cursor: 'pointer',
+};
+
 function CenteredMessage({ children }: { children: React.ReactNode }) {
   return (
     <div style={STYLE}>
@@ -137,8 +152,14 @@ export default function GameScreen() {
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
   const [previewCityId, setPreviewCityId] = useState<string | null>(null);
   const [insureNext, setInsureNext] = useState(false);
+  // Phase 15: whether to insure the next leg of a *queued* journey, keyed per vessel since more
+  // than one vessel could have a plan queued at once — separate from `insureNext` above, which is
+  // scoped to the CityPreviewPanel's own direct-dispatch flow and would otherwise carry a stale
+  // checked/unchecked value across an unrelated vessel's "Continue?" prompt.
+  const [continueInsure, setContinueInsure] = useState<Record<string, boolean>>({});
   const [showTutorial, setShowTutorial] = useState(false);
   const [showGuidedTour, setShowGuidedTour] = useState(false);
+  const [showChronicle, setShowChronicle] = useState(false);
   const [ledgerTab, setLedgerTab] = useState<'ledger' | 'countingHouse'>('ledger');
   // Multi-step turns (Phase 14): a local UI preference, not campaign state (mirrors
   // hasSeenTutorial()'s own reasoning) — organizational tabs only, never a gate, so it's safe to
@@ -241,6 +262,24 @@ export default function GameScreen() {
     setInsureNext(false);
   };
 
+  // Phase 15: dispatches the first hop of a multi-leg plan and queues the rest — the vessel still
+  // stops, docks, and becomes tradeable at every intermediate city exactly as a manual redispatch
+  // would; only the "what to do next" reminder is automated.
+  const handleQueueRoute = (plan: PlannedRoute) => {
+    if (!selectedVessel) return;
+    const firstRoute = findRouteById(plan.routeIds[0]);
+    if (!firstRoute) return;
+    const firstHop = otherEndOfRoute(firstRoute, selectedVessel.location);
+    dispatch({
+      type: 'DISPATCH_VESSEL',
+      vesselId: selectedVessel.id,
+      destinationId: firstHop,
+      insure: insureNext,
+      plannedRoute: plan.routeIds.slice(1),
+    });
+    setInsureNext(false);
+  };
+
   // The guided tour's trade-loop steps need the ship to actually exist and be free to dispatch —
   // true once Chapter 0 hands it over (or immediately, for a skip-prologue campaign). It's no
   // longer tied to week 0: Chapter 0 itself now owns the player's very first moves, and this tour
@@ -267,6 +306,27 @@ export default function GameScreen() {
 
   const objectiveChapter = currentChapterNumber(state);
   const objectiveProgress = state.objectivesHidden ? [] : objectivesForChapter(state, objectiveChapter);
+
+  // Phase 15: reaching chapter1/2/3_complete used to produce zero UI feedback — the next chapter's
+  // own opening event fires the same tick, in the exact render slot a full-screen ending used to
+  // occupy before it got moved forward each time a new chapter shipped. `lastAcknowledgedChapter`
+  // is persisted (not a component-local ref) precisely so a reload between the flag flipping and
+  // the player clicking "Continue" can't silently skip the card — see its own doc comment.
+  const lastAcknowledgedChapter = state.lastAcknowledgedChapter ?? 0;
+  const showChapterCompleteCard = objectiveChapter > lastAcknowledgedChapter;
+  const closedChapterNumber = objectiveChapter - 1;
+  const closedChapterProgress =
+    showChapterCompleteCard && !state.objectivesHidden ? objectivesForChapter(state, closedChapterNumber) : [];
+
+  // Chronicle (Phase 15 fast-follow): every chapter already closed, oldest first — same read-only
+  // projection as the live panel, just re-read for a past chapter number.
+  const chronicleChapters = state.objectivesHidden
+    ? []
+    : Array.from({ length: objectiveChapter }, (_, n) => ({
+        chapterNumber: n,
+        title: CHAPTER_TITLES[n] ?? `Chapter ${n}`,
+        progress: objectivesForChapter(state, n),
+      }));
 
   // Everything currently owned that isn't cash: cargo held across every vessel, combined — shown
   // in the header so "what you own" is visible at a glance without opening each vessel in turn.
@@ -346,13 +406,25 @@ export default function GameScreen() {
 
   return (
     <div style={STYLE}>
-      {pendingEvent && (
-        <EventOverlay
-          event={pendingEvent}
-          onChoose={choiceIndex => dispatch({ type: 'RESOLVE_EVENT', eventId: pendingEvent.id, choiceIndex })}
+      {showChapterCompleteCard ? (
+        <ChapterCompleteCard
+          chapterNumber={closedChapterNumber}
+          title={CHAPTER_TITLES[closedChapterNumber] ?? `Chapter ${closedChapterNumber}`}
+          progress={closedChapterProgress}
+          onContinue={() => dispatch({ type: 'ACKNOWLEDGE_CHAPTER', chapterNumber: objectiveChapter })}
         />
+      ) : (
+        pendingEvent && (
+          <EventOverlay
+            event={pendingEvent}
+            onChoose={choiceIndex => dispatch({ type: 'RESOLVE_EVENT', eventId: pendingEvent.id, choiceIndex })}
+          />
+        )
       )}
-      {showTutorial && !showGuidedTour && !pendingEvent && (
+      {showChronicle && (
+        <ChronicleLog chapters={chronicleChapters} onClose={() => setShowChronicle(false)} />
+      )}
+      {showTutorial && !showGuidedTour && !pendingEvent && !showChapterCompleteCard && (
         <TutorialOverlay
           variant={state.flags.chapter0_complete ? 'main' : 'chapter0'}
           onClose={() => setShowTutorial(false)}
@@ -366,7 +438,7 @@ export default function GameScreen() {
           }
         />
       )}
-      {showGuidedTour && !showTutorial && !pendingEvent && (
+      {showGuidedTour && !showTutorial && !pendingEvent && !showChapterCompleteCard && (
         <GuidedTour
           state={state}
           selectedVesselId={selectedVesselId}
@@ -395,6 +467,7 @@ export default function GameScreen() {
             &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
             &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
           </span>
+          <CampaignProgress chapterNumber={objectiveChapter} title={CHAPTER_TITLES[objectiveChapter] ?? `Chapter ${objectiveChapter}`} />
           <button
             id="advance-week-button"
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
@@ -422,6 +495,14 @@ export default function GameScreen() {
           >
             How to play
           </button>
+          {!state.objectivesHidden && objectiveChapter > 0 && (
+            <button
+              style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+              onClick={() => setShowChronicle(true)}
+            >
+              Chronicle
+            </button>
+          )}
           <button
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: '#6a5a40' }}
             onClick={() => nav('/')}
@@ -471,6 +552,43 @@ export default function GameScreen() {
                       {c.name} — aboard
                     </p>
                   ))}
+                  {!v.destination && v.plannedRoute && v.plannedRoute.length > 0 && (() => {
+                    const nextRoute = findRouteById(v.plannedRoute[0]);
+                    if (!nextRoute) return null;
+                    const nextCity = findCity(otherEndOfRoute(nextRoute, v.location));
+                    const canInsureNextLeg = canInsureAt(v.location) && held > 0;
+                    return (
+                      <div style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem' }}>
+                        <p style={{ color: '#8a7a5a', margin: '0 0 0.3rem' }}>
+                          Continue on to {nextCity?.name ?? nextRoute.id}? {v.plannedRoute.length} leg
+                          {v.plannedRoute.length === 1 ? '' : 's'} remaining.
+                        </p>
+                        {canInsureNextLeg && (
+                          <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-start', color: '#8a7a5a', margin: '0 0 0.3rem' }}>
+                            <input
+                              type="checkbox"
+                              checked={!!continueInsure[v.id]}
+                              onChange={e => setContinueInsure(prev => ({ ...prev, [v.id]: e.target.checked }))}
+                            />
+                            <span>Insure this cargo for this leg.</span>
+                          </label>
+                        )}
+                        <div style={{ display: 'flex', gap: '0.4rem' }}>
+                          <button
+                            style={SMALL_BUTTON}
+                            onClick={() =>
+                              dispatch({ type: 'CONTINUE_PLANNED_ROUTE', vesselId: v.id, insure: !!continueInsure[v.id] })
+                            }
+                          >
+                            Continue
+                          </button>
+                          <button style={SMALL_BUTTON} onClick={() => dispatch({ type: 'CANCEL_PLANNED_ROUTE', vesselId: v.id })}>
+                            Not yet
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
@@ -539,6 +657,7 @@ export default function GameScreen() {
               insureNext={insureNext}
               onInsureChange={setInsureNext}
               onConfirmDispatch={handleConfirmDispatch}
+              onQueueRoute={handleQueueRoute}
             />
           )}
 

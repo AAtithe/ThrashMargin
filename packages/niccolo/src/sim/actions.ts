@@ -1,5 +1,5 @@
 import { advanceWeek as advanceWeekCounter } from './clock';
-import { HOME_CITY, ROUTES, findCity, findRoute } from './content';
+import { HOME_CITY, ROUTES, findCity, findRoute, findRouteById, otherEndOfRoute } from './content';
 import { assignCharacter, resolveWeeklyUpkeep, tradeBonus } from './characters';
 import { resolveWeeklyCondotta } from './condotta';
 import { discountObligation, resolveMaturingObligations, takeDeposit, writeBill, writeLoan } from './credit';
@@ -30,7 +30,13 @@ function tickVessel(v: Vessel): Vessel {
   return { ...v, weeksRemaining };
 }
 
-function dispatchVessel(state: GameState, vesselId: string, destinationId: string, insure?: boolean): GameState {
+function dispatchVessel(
+  state: GameState,
+  vesselId: string,
+  destinationId: string,
+  insure?: boolean,
+  plannedRoute?: string[],
+): GameState {
   const vessel = state.vessels.find(v => v.id === vesselId);
   if (!vessel) throw new Error(`No such vessel: ${vesselId}`);
   if (vessel.destination) throw new Error(`${vessel.name} is already under way`);
@@ -66,10 +72,53 @@ function dispatchVessel(state: GameState, vesselId: string, destinationId: strin
     insurance,
     vessels: state.vessels.map(v =>
       v.id === vesselId
-        ? { ...v, destination: destinationId, routeId: route.id, weeksRemaining: route.distanceWeeks }
+        ? {
+            ...v,
+            destination: destinationId,
+            routeId: route.id,
+            weeksRemaining: route.distanceWeeks,
+            // Always set explicitly (undefined if not passed) — a manual redispatch away from a
+            // queued journey correctly drops the stale plan rather than leaving a "Continue to X?"
+            // prompt pointing at a city the vessel is no longer chained toward.
+            plannedRoute,
+          }
         : v,
     ),
   };
+}
+
+/** Dispatches the next leg of a journey queued via "Queue journey" (Phase 15) — resolves the
+ * queued route id to a real destination from the vessel's *current* location (not assumed from
+ * when the plan was made) and dispatches through the exact same `dispatchVessel` every other
+ * voyage uses, so this leg is insured, risked, and expedition-tracked identically to a manually
+ * chosen one. */
+function continuePlannedRoute(state: GameState, vesselId: string, insure?: boolean): GameState {
+  const vessel = state.vessels.find(v => v.id === vesselId);
+  if (!vessel) throw new Error(`No such vessel: ${vesselId}`);
+  if (!vessel.plannedRoute || vessel.plannedRoute.length === 0) {
+    throw new Error(`${vessel.name} has no planned route to continue`);
+  }
+  const [nextRouteId, ...remaining] = vessel.plannedRoute;
+  const route = findRouteById(nextRouteId);
+  if (!route) throw new Error(`Unknown route: ${nextRouteId}`);
+  const destinationId = otherEndOfRoute(route, vessel.location);
+  return dispatchVessel(state, vesselId, destinationId, insure, remaining);
+}
+
+/** Drops a queued journey without moving the vessel — it stays a normal docked, tradeable,
+ * freely-redirectable vessel exactly as if it had never been queued. */
+function cancelPlannedRoute(state: GameState, vesselId: string): GameState {
+  return {
+    ...state,
+    vessels: state.vessels.map(v => (v.id === vesselId ? { ...v, plannedRoute: undefined } : v)),
+  };
+}
+
+/** Records that the player has seen the "Chapter N complete" acknowledgment card (Phase 15) — a
+ * monotonic high-water mark, never lowered, so re-showing an already-seen card is impossible even
+ * if this were somehow dispatched twice for the same transition. */
+function acknowledgeChapter(state: GameState, chapterNumber: number): GameState {
+  return { ...state, lastAcknowledgedChapter: Math.max(state.lastAcknowledgedChapter ?? 0, chapterNumber) };
 }
 
 function buyGood(state: GameState, vesselId: string, goodId: string, quantity: number): GameState {
@@ -230,13 +279,26 @@ export function processAction(state: GameState, action: GameAction): GameState {
   // content pack per phase"). Only the true end of the shipped content (chapter4_complete) stops
   // the clock now.
   if (state.flags.chapter4_complete) return state;
-  if (state.pendingEvents.length > 0 && action.type !== 'RESOLVE_EVENT') return state;
+  // ACKNOWLEDGE_CHAPTER is UI bookkeeping (dismissing the "Chapter N complete" card), not a
+  // commercial/narrative action — it must go through even while the next chapter's own opening
+  // event is already queued in pendingEvents (which it typically is, by design: that event's
+  // trigger fires the same tick the previous chapter's flag does), or the card could never be
+  // dismissed at all.
+  if (state.pendingEvents.length > 0 && action.type !== 'RESOLVE_EVENT' && action.type !== 'ACKNOWLEDGE_CHAPTER') {
+    return state;
+  }
 
   switch (action.type) {
     case 'ADVANCE_WEEK':
       return advanceWeek(state, action.hotseatDecision);
     case 'DISPATCH_VESSEL':
-      return dispatchVessel(state, action.vesselId, action.destinationId, action.insure);
+      return dispatchVessel(state, action.vesselId, action.destinationId, action.insure, action.plannedRoute);
+    case 'CONTINUE_PLANNED_ROUTE':
+      return continuePlannedRoute(state, action.vesselId, action.insure);
+    case 'CANCEL_PLANNED_ROUTE':
+      return cancelPlannedRoute(state, action.vesselId);
+    case 'ACKNOWLEDGE_CHAPTER':
+      return acknowledgeChapter(state, action.chapterNumber);
     case 'BUY_GOOD':
       return buyGood(state, action.vesselId, action.goodId, action.quantity);
     case 'SELL_GOOD':

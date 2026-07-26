@@ -1,7 +1,24 @@
-import { marketGoodsAt, reachableFrom, findGood } from '../sim/content';
+import { marketGoodsAt, reachableFrom, findGood, findCity, findRouteById, otherEndOfRoute, planRoute } from '../sim/content';
+import type { PlannedRoute } from '../sim/content';
 import { priceAt } from '../sim/market';
 import { canInsureAt } from '../sim/insurance';
 import type { City, MarketScarcity, NewsItem, Vessel } from '../sim/types';
+
+/** Turns a computed path into "Bruges (1wk) → Venice (8wk) → Trebizond (6wk)" — the per-leg
+ * arrival nature is spelled out in the surrounding copy (see below), not implied by this string
+ * alone, since nothing here actually moves the vessel through the intermediate stops in one tick. */
+function describePath(fromId: string, plan: PlannedRoute): string {
+  const names: string[] = [findCity(fromId)?.name ?? fromId];
+  let cursor = fromId;
+  for (const routeId of plan.routeIds) {
+    const route = findRouteById(routeId);
+    if (!route) continue;
+    const next = otherEndOfRoute(route, cursor);
+    names.push(`${findCity(next)?.name ?? next} (${route.distanceWeeks}wk)`);
+    cursor = next;
+  }
+  return names.join(' → ');
+}
 
 const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
@@ -45,6 +62,9 @@ interface CityPreviewPanelProps {
   insureNext: boolean;
   onInsureChange: (value: boolean) => void;
   onConfirmDispatch: () => void;
+  /** Phase 15: dispatches the first hop of a multi-leg path and queues the rest — same insurance
+   * flag as a direct dispatch, applied only to that first leg. */
+  onQueueRoute: (plan: PlannedRoute) => void;
 }
 
 /**
@@ -64,6 +84,7 @@ export default function CityPreviewPanel({
   insureNext,
   onInsureChange,
   onConfirmDispatch,
+  onQueueRoute,
 }: CityPreviewPanelProps) {
   const goods = marketGoodsAt(city.id);
   // Whether the *selected* vessel itself is already sitting here — distinct from `isLive`, which
@@ -79,6 +100,14 @@ export default function CityPreviewPanel({
     !selectedVesselHere &&
     reachableFrom(vessel.location, vessel.kind === 'courier').some(r => r.from === city.id || r.to === city.id);
   const canInsureHere = !!vessel && canInsureAt(vessel.location);
+  // Phase 15: when there's no direct edge, offer the actual multi-hop path through the existing
+  // route graph instead of a bare "not reachable" dead end — see planRoute's own doc comment for
+  // why this stays a UI-only convenience (queuing a chain of real, individually-insured single-hop
+  // dispatches) rather than a new "sail anywhere in one move" mechanic.
+  const plan =
+    vessel && !vessel.destination && !selectedVesselHere && !reachable
+      ? planRoute(vessel.location, city.id, vessel.kind === 'courier')
+      : null;
 
   return (
     <div style={{ border: '1px solid #2a2117', padding: '0.6rem 0.7rem' }}>
@@ -128,9 +157,29 @@ export default function CityPreviewPanel({
                 Send {vessel.name} here
               </button>
             </>
+          ) : plan ? (
+            <>
+              <p style={{ fontSize: '0.72rem', color: '#6a5a40', margin: '0.5rem 0 0.3rem' }}>
+                Not reachable directly. Nearest path: {describePath(vessel.location, plan)} —{' '}
+                {plan.routeIds.length} dispatch{plan.routeIds.length === 1 ? '' : 'es'}, {plan.totalWeeks} weeks of
+                sailing. {vessel.name} will dock — and can trade — at each stop; you'll be prompted to continue on
+                arrival.
+              </p>
+              {canInsureHere && vessel.capacity > 0 && (
+                <label style={{ fontSize: '0.72rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
+                  <input type="checkbox" checked={insureNext} onChange={e => onInsureChange(e.target.checked)} />
+                  <span>Insure this cargo for the first leg only — underwritten at the ship's current port.</span>
+                </label>
+              )}
+              <button style={PRIMARY_BUTTON} onClick={() => onQueueRoute(plan)}>
+                Queue journey to {city.name}
+              </button>
+            </>
           ) : (
             <p style={{ fontSize: '0.72rem', color: '#6a5a40', margin: '0.5rem 0 0' }}>
-              Not reachable directly from {vessel.name}'s current position.
+              {vessel.kind === 'courier'
+                ? `No all-land route connects ${vessel.name}'s position to ${city.name} — try a ship.`
+                : `No route connects ${vessel.name}'s position to ${city.name}.`}
             </p>
           )}
         </>

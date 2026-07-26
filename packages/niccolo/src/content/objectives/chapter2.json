@@ -5,5 +5,6 @@
     "outcomeFlags": { "positive": "trebizond_extraction_success", "costly": "trebizond_fallen" } },
 
   { "id": "obj_c2_epilogue", "chapterNumber": 2, "label": "Reckon what Trebizond cost",
+    "description": "A formality once Trebizond's fate is settled — the house reckons what the season cost, one way or the other.",
     "kind": { "type": "flag", "flag": "trebizond_epilogue" } }
 ]
