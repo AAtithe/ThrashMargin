@@ -556,6 +556,22 @@ export default function GameScreen() {
                     const nextRoute = findRouteById(v.plannedRoute[0]);
                     if (!nextRoute) return null;
                     const nextCity = findCity(otherEndOfRoute(nextRoute, v.location));
+                    // Real bug, confirmed live: EventOverlay/ChapterCompleteCard are full-viewport
+                    // backdrops (position:fixed, inset:0) that sit visually on top of this whole
+                    // sidebar but only darken it (rgba, not opaque) — the Continue/Not yet buttons
+                    // still render at normal-looking brightness underneath, so a click here is
+                    // silently swallowed by the backdrop with zero feedback. From the player's side
+                    // this reads as "I clicked Continue and the ship just sits there, no matter how
+                    // many weeks I advance" — exactly the reported bug. Fix: don't render a
+                    // clickable-looking control that can't actually be clicked; explain why instead,
+                    // so the plan's survival is visible even while blocked.
+                    if (pendingEvent || showChapterCompleteCard) {
+                      return (
+                        <p style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem', color: '#6a5a40', fontStyle: 'italic' }}>
+                          Continuing on to {nextCity?.name ?? nextRoute.id} waits on the matter above being resolved first.
+                        </p>
+                      );
+                    }
                     const canInsureNextLeg = canInsureAt(v.location) && held > 0;
                     return (
                       <div style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem' }}>
