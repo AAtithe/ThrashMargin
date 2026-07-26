@@ -4,7 +4,7 @@
   { "id": "calais",   "name": "Calais",   "region": "england",   "power": "england", "x": 3329.0, "y": 1999.6, "port": true, "currency": "pound",
     "market": { "wool": { "base": 14 }, "cloth": { "base": 40 } } },
   { "id": "bruges",   "name": "Bruges",   "region": "flanders",  "power": "burgundy","x": 3440.9, "y": 2004.0, "port": true, "currency": "groot",
-    "market": { "cloth": { "base": 24 }, "wool": { "base": 20 }, "madder": { "base": 22 } } },
+    "market": { "cloth": { "base": 24 }, "wool": { "base": 20 }, "madder": { "base": 22 }, "spices": { "base": 28 } } },
   { "id": "ghent",    "name": "Ghent",    "region": "flanders",  "power": "burgundy","x": 3508.9, "y": 2030.7, "port": false, "currency": "groot",
     "market": { "cloth": { "base": 22 }, "madder": { "base": 18 } } },
   { "id": "antwerp",  "name": "Antwerp",  "region": "flanders",  "power": "burgundy","x": 3592.7, "y": 2008.5, "port": true, "currency": "groot",
@@ -22,6 +22,6 @@
   { "id": "florence", "name": "Florence", "region": "tuscany",   "power": "florence","x": 3909.4, "y": 2828.2, "port": false, "currency": "florin",
     "market": { "cloth": { "base": 32 }, "silk": { "base": 38 }, "wine": { "base": 20 } } },
   { "id": "venice",   "name": "Venice",   "region": "veneto",    "power": "venice",  "x": 4003.0, "y": 2693.0, "port": true, "currency": "ducat",
-    "market": { "spices": { "base": 32 }, "silk": { "base": 34 }, "glass": { "base": 26 }, "salt": { "base": 24 } } },
+    "market": { "spices": { "base": 32 }, "silk": { "base": 34 }, "glass": { "base": 26 }, "salt": { "base": 24 }, "sugar": { "base": 14 } } },
   { "id": "naples",   "name": "Naples",   "region": "campania",  "power": "naples",  "x": 4441.4, "y": 3084.2, "port": true, "currency": "ducat" }
 ]

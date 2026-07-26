@@ -1,6 +1,7 @@
 import { CITIES, HOME_CITY, findGood } from '../sim/content';
 import { activeCharacters } from '../sim/characters';
 import { baseLatencyFor, canInvestFurther, courierInvestmentCost, currentLatencyFor } from '../sim/news';
+import { describeMarketCause } from './marketCauseText';
 import type { Character, CourierInvestment, NewsItem } from '../sim/types';
 
 const LABEL: React.CSSProperties = {
@@ -100,6 +101,11 @@ export default function DispatchesPanel({
                     {Object.entries(report.prices)
                       .map(([goodId, price]) => `${findGood(goodId)?.name ?? goodId} ${price}f`)
                       .join(' · ')}
+                  </div>
+                )}
+                {!live && report?.causes && report.causes.length > 0 && (
+                  <div style={{ fontSize: '0.68rem', color: '#8a7a5a', marginTop: '0.15rem' }}>
+                    {report.causes.map(cause => describeMarketCause(cause, c.name)).join(' ')}
                   </div>
                 )}
               </div>

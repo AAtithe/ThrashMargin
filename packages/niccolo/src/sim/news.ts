@@ -1,7 +1,7 @@
 import { CITIES, HOME_CITY, ROUTES, marketGoodsAt } from './content';
 import { investigateLatencyBonus } from './characters';
 import { priceAt } from './market';
-import type { Character, CourierInvestment, MarketScarcity, NewsItem } from './types';
+import type { Character, CourierInvestment, MarketScarcity, NewsItem, PriceCauseNote } from './types';
 
 /** A report can never arrive faster than this, however much courier investment is put in — someone still has to carry it. */
 const MIN_LATENCY = 1;
@@ -84,23 +84,28 @@ export function canInvestFurther(
   return currentLatencyFor(cityId, courierInvestment, characters) > MIN_LATENCY;
 }
 
-/** Snapshot every city's true prices this week and schedule their arrival. */
+/** Snapshot every city's true prices this week and schedule their arrival. `causesByCity` (Phase
+ * 16, `sim/market.ts`'s `deriveMarketCauses`) is folded straight in — a cause is exactly as stale
+ * as the price it explains, since it travels through this exact same courier-latency pipeline. */
 export function generateNews(
   scarcity: MarketScarcity,
   week: number,
   courierInvestment: CourierInvestment,
   characters: Character[] = [],
+  causesByCity?: Record<string, PriceCauseNote[]>,
 ): NewsItem[] {
   return CITIES.filter(c => c.market).map(c => {
     const prices: Record<string, number> = {};
     for (const goodId of marketGoodsAt(c.id)) {
       prices[goodId] = priceAt(scarcity, c.id, goodId) ?? 0;
     }
+    const causes = causesByCity?.[c.id];
     return {
       cityId: c.id,
       trueAsOfWeek: week,
       receivedOnWeek: week + currentLatencyFor(c.id, courierInvestment, characters),
       prices,
+      ...(causes && causes.length > 0 ? { causes } : {}),
     };
   });
 }

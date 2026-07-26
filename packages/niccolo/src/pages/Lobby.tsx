@@ -94,7 +94,7 @@ function relTime(ts: number): string {
 }
 
 export default function Lobby() {
-  const { saves, createGame, deleteGame } = useGameHybrid();
+  const { saves, error, createGame, deleteGame } = useGameHybrid();
   const nav = useNavigate();
   const user = getStoredUser();
   const [name, setName] = useState('');
@@ -131,6 +131,12 @@ export default function Lobby() {
         <p style={SUBTITLE}>
           Trading, banking and intelligence in the House of Niccolo — Chapter 0: Claes begins.
         </p>
+
+        {error && (
+          <p style={{ fontSize: '0.8rem', color: '#b5451a', border: '1px solid #4a2a1a', background: '#1a0f0a', padding: '0.6rem 0.8rem', margin: '0 0 1.2rem' }}>
+            {error}
+          </p>
+        )}
 
         <p style={SECTION_LABEL}>Begin a new campaign</p>
         <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '0.6rem' }}>

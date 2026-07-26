@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { findGood, marketGoodsAt } from '../sim/content';
 import { cargoTotal, priceAt } from '../sim/market';
-import type { Cargo, MarketScarcity } from '../sim/types';
+import { describeMarketCause } from './marketCauseText';
+import type { Cargo, MarketScarcity, PriceCauseNote } from '../sim/types';
 
 const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
@@ -86,6 +87,9 @@ interface MarketPanelProps {
   cargo: Cargo;
   capacity: number;
   scarcity: MarketScarcity;
+  /** Phase 16: this week's causes at the vessel's own (always-live) location — the highest-value
+   * spot to explain a price, since it's the exact moment the player is deciding whether to trade. */
+  causes?: PriceCauseNote[];
   onBuy: (goodId: string, quantity: number) => void;
   onSell: (goodId: string, quantity: number) => void;
 }
@@ -97,6 +101,7 @@ export default function MarketPanel({
   cargo,
   capacity,
   scarcity,
+  causes,
   onBuy,
   onSell,
 }: MarketPanelProps) {
@@ -115,6 +120,11 @@ export default function MarketPanel({
         {' · '}
         Hold: {used}/{capacity}
       </p>
+      {causes && causes.length > 0 && (
+        <p style={{ fontSize: '0.7rem', color: '#8a7a5a', margin: '0 0 0.5rem' }}>
+          {causes.map(cause => describeMarketCause(cause, cityName)).join(' ')}
+        </p>
+      )}
       {goods.map(goodId => {
         const price = priceAt(scarcity, cityId, goodId) ?? 0;
         const held = cargo[goodId] ?? 0;

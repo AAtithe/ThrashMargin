@@ -146,6 +146,42 @@ export interface NewsItem {
   receivedOnWeek: number;
   /** goodId -> price, as it stood at trueAsOfWeek. */
   prices: Record<string, number>;
+  /** Why each good's price moved that week, if it moved enough to be worth narrating (Phase 16) —
+   * optional and often absent, since silence (no notable move) is the common case. A corrupted
+   * report (`houses.ts`'s `corruptNews`) overwrites this with fabricated notes matching its own
+   * fabricated prices, so a planted report's causes read exactly like a true one's — there is no
+   * "no cause shown" tell that would give away which reports are corrected later. */
+  causes?: PriceCauseNote[];
+}
+
+/** `house_trade`: a specific AI house's own weekly footprint moved this exact good at its home
+ * city (see `houses.ts`'s `applyHouseTradeFootprint`). `unknown_flows`: background trade the
+ * player never sees directly moved it (`market.ts`'s `applyBackgroundFlows`) — the pre-existing
+ * reason a stale report can already be wrong, now given a name. `settling`: the price is decaying
+ * back toward its base rate (`market.ts`'s `driftScarcity`), the natural end of any prior spike or
+ * crash (including the player's own selling — see `sim/actions.ts`'s `buyGood` for why buying no
+ * longer causes one). */
+export type PriceCauseKind = 'house_trade' | 'unknown_flows' | 'settling';
+
+export interface PriceCauseNote {
+  goodId: string;
+  kind: PriceCauseKind;
+  /** 1 = price rose, -1 = price fell — the real observed direction, independent of kind. */
+  direction: 1 | -1;
+  /** Only set for `kind: 'house_trade'`. */
+  houseName?: string;
+}
+
+/** One AI house's own weekly trade footprint, as `sim/houses.ts`'s `applyHouseTradeFootprint`
+ * actually resolved it that week — surfaced so `deriveMarketCauses` (`sim/market.ts`) can name the
+ * house responsible for a price move, rather than lumping every non-player cause into one vague
+ * "unknown flows" bucket. */
+export interface HouseTradeNote {
+  houseId: string;
+  houseName: string;
+  cityId: string;
+  goodId: string;
+  direction: 1 | -1;
 }
 
 /** cityId -> weeks of latency shaved off that city's reports by courier investment. */
@@ -502,6 +538,13 @@ export interface GameState {
    * card appears at creation; optional/undefined on an older save just means "acknowledge nothing
    * yet," which at worst re-shows one already-seen card once, never crashes. */
   lastAcknowledgedChapter?: number;
+  /** Every notable price move from the week just resolved, by city — recomputed fresh every
+   * `ADVANCE_WEEK` (Phase 16), never accumulated, so it always describes only the most recent
+   * week regardless of whether this field existed on an older save. This is the live,
+   * latency-free channel for wherever the player is actually standing right now; a city the
+   * player isn't currently at instead gets its causes via the normal courier-latency `NewsItem`
+   * pipeline (`NewsItem.causes`), same as prices already work. */
+  lastMarketCauses?: Record<string, PriceCauseNote[]>;
 }
 
 export type GameAction =

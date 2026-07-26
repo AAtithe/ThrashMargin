@@ -1,12 +1,17 @@
 import { CITIES, findCity } from './content';
-import type { MarketScarcity } from './types';
+import type { HouseTradeNote, MarketScarcity, PriceCauseKind, PriceCauseNote } from './types';
 
 /** How sharply one unit traded moves the local price. */
 const SCARCITY_STEP = 0.03;
 const SCARCITY_MIN = 0.5;
 const SCARCITY_MAX = 2;
-/** Fraction of the gap back to 1.0 (base price) that closes each week. */
-const DRIFT_RATE = 0.1;
+/** Fraction of the gap back to 1.0 (base price) that closes each week. Tuned so a full dump's
+ * price crash mostly recovers within about a month (1 - 0.7^4 ≈ 76% closed after 4 weeks) rather
+ * than the old 0.1 rate's ~34% — the previous rate left a depressed/inflated price sitting still
+ * for a long time, which is part of what made the buy/sell round-trip exploit (see actions.ts's
+ * buyGood — buying no longer moves scarcity at all, precisely to close that loop) worth repeating
+ * instead of a one-off. */
+const DRIFT_RATE = 0.3;
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
@@ -32,7 +37,12 @@ export function priceAt(scarcity: MarketScarcity, cityId: string, goodId: string
   return Math.round(base * multiplier);
 }
 
-/** Buying `quantity` units depletes local supply and raises the price; selling does the reverse. */
+/** A positive `quantityBought` raises the local price, negative depresses it — generic in
+ * direction since this is shared by the player's own selling (`sim/actions.ts`'s `sellGood`,
+ * always negative), forced liquidation (`sim/credit.ts`, always negative), and an AI house's own
+ * weekly trade footprint (`sim/houses.ts`, either sign). The player's own *buying* deliberately
+ * does not call this at all (see `buyGood`'s own comment) — only selling moves price from the
+ * player's side, to close a same-city buy-then-sell round-trip exploit. */
 export function adjustScarcity(
   scarcity: MarketScarcity,
   cityId: string,
@@ -83,4 +93,67 @@ export function applyBackgroundFlows(scarcity: MarketScarcity): MarketScarcity {
 
 export function cargoTotal(cargo: Record<string, number>): number {
   return Object.values(cargo).reduce((sum, qty) => sum + qty, 0);
+}
+
+/** A move must clear both an absolute (1 florin) and a relative (5% of the pre-week price) floor
+ * to count as notable. A bare "the rounded integer changed at all" gate turned out, verified by a
+ * scripted check, to fire on a large majority of city-good pairs most weeks — `BACKGROUND_FLOW_MAX`
+ * alone (an 8% multiplier swing) rounds to a different integer on most typical base prices, so
+ * "silence is the common case" didn't actually hold without this second, relative floor. */
+const NOTABILITY_FRACTION = 0.05;
+
+/**
+ * Explains why each city-good's *displayed* price actually changed this week (Phase 16) — gated
+ * on the rounded integer `priceAt` value clearing `NOTABILITY_FRACTION`, not any raw multiplier
+ * change, so a small drift stays silent; most goods most weeks stay under that floor and get no
+ * note at all, which is the deliberately common case, not a bug. `before` is the scarcity at the
+ * very start of the week's resolution (`sim/actions.ts`'s `advanceWeek`, prior to background
+ * flow/drift/house footprint); `afterBackground`/`afterDrift` are its own two intermediate stages;
+ * `final` is the scarcity after the house-trade footprint has also applied (what the player
+ * actually sees).
+ *
+ * A house trade on the exact city+good takes priority whenever its own direction agrees with the
+ * net observed move — it's the most specific, nameable cause available. Otherwise, whichever of
+ * background flow or drift contributed the larger raw magnitude decides between 'unknown_flows'
+ * (unseen trade) and 'settling' (reverting toward base) — an approximation, not a perfect
+ * attribution, since the two stages can partly offset each other; good enough for flavor text
+ * that's never used to make a mechanical decision.
+ */
+export function deriveMarketCauses(
+  before: MarketScarcity,
+  afterBackground: MarketScarcity,
+  afterDrift: MarketScarcity,
+  final: MarketScarcity,
+  houseTrades: HouseTradeNote[],
+): Record<string, PriceCauseNote[]> {
+  const houseTradeByKey = new Map<string, HouseTradeNote>();
+  for (const trade of houseTrades) houseTradeByKey.set(`${trade.cityId}:${trade.goodId}`, trade);
+
+  const out: Record<string, PriceCauseNote[]> = {};
+  for (const cityId of Object.keys(final)) {
+    const city = findCity(cityId);
+    if (!city?.market) continue;
+    for (const goodId of Object.keys(city.market)) {
+      const priceBefore = priceAt(before, cityId, goodId);
+      const priceFinal = priceAt(final, cityId, goodId);
+      if (priceBefore === null || priceFinal === null || priceBefore === priceFinal) continue;
+      const delta = Math.abs(priceFinal - priceBefore);
+      if (delta < 1 || delta < priceBefore * NOTABILITY_FRACTION) continue;
+      const direction: 1 | -1 = priceFinal > priceBefore ? 1 : -1;
+
+      const houseTrade = houseTradeByKey.get(`${cityId}:${goodId}`);
+      let note: PriceCauseNote;
+      if (houseTrade && houseTrade.direction === direction) {
+        note = { goodId, kind: 'house_trade', direction, houseName: houseTrade.houseName };
+      } else {
+        const backgroundDelta = Math.abs((afterBackground[cityId]?.[goodId] ?? 1) - (before[cityId]?.[goodId] ?? 1));
+        const driftDelta = Math.abs((afterDrift[cityId]?.[goodId] ?? 1) - (afterBackground[cityId]?.[goodId] ?? 1));
+        const kind: PriceCauseKind = driftDelta > backgroundDelta ? 'settling' : 'unknown_flows';
+        note = { goodId, kind, direction };
+      }
+
+      (out[cityId] ??= []).push(note);
+    }
+  }
+  return out;
 }

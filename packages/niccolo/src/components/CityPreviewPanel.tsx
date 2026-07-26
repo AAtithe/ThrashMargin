@@ -2,7 +2,8 @@ import { marketGoodsAt, reachableFrom, findGood, findCity, findRouteById, otherE
 import type { PlannedRoute } from '../sim/content';
 import { priceAt } from '../sim/market';
 import { canInsureAt } from '../sim/insurance';
-import type { City, MarketScarcity, NewsItem, Vessel } from '../sim/types';
+import { describeMarketCause } from './marketCauseText';
+import type { City, MarketScarcity, NewsItem, PriceCauseNote, Vessel } from '../sim/types';
 
 /** Turns a computed path into "Bruges (1wk) → Venice (8wk) → Trebizond (6wk)" — the per-leg
  * arrival nature is spelled out in the surrounding copy (see below), not implied by this string
@@ -58,6 +59,10 @@ interface CityPreviewPanelProps {
   report: NewsItem | undefined;
   week: number;
   scarcity: MarketScarcity;
+  /** Phase 16: this week's causes for wherever the player is actually standing (the `isLive`
+   * branch) — a stale-report city instead reads its causes off `report.causes`, which already
+   * travels through the normal courier-latency pipeline. */
+  liveCauses?: PriceCauseNote[];
   vessel: Vessel | null;
   insureNext: boolean;
   onInsureChange: (value: boolean) => void;
@@ -80,6 +85,7 @@ export default function CityPreviewPanel({
   report,
   week,
   scarcity,
+  liveCauses,
   vessel,
   insureNext,
   onInsureChange,
@@ -126,6 +132,11 @@ export default function CityPreviewPanel({
               <span style={{ color: '#e8d5a3' }}>{priceAt(scarcity, city.id, goodId)}f</span>
             </div>
           ))}
+          {liveCauses && liveCauses.length > 0 && (
+            <p style={{ fontSize: '0.68rem', color: '#8a7a5a', margin: '0.3rem 0 0' }}>
+              {liveCauses.map(cause => describeMarketCause(cause, city.name)).join(' ')}
+            </p>
+          )}
         </>
       ) : report ? (
         <>
@@ -138,6 +149,11 @@ export default function CityPreviewPanel({
               <span style={{ color: '#e8d5a3' }}>{report.prices[goodId] ?? '—'}f</span>
             </div>
           ))}
+          {report.causes && report.causes.length > 0 && (
+            <p style={{ fontSize: '0.68rem', color: '#8a7a5a', margin: '0.3rem 0 0' }}>
+              {report.causes.map(cause => describeMarketCause(cause, city.name)).join(' ')}
+            </p>
+          )}
         </>
       ) : (
         <p style={{ fontSize: '0.78rem', color: '#6a5a40', margin: 0 }}>No report yet for this city.</p>

@@ -241,7 +241,7 @@ export default function GameScreen() {
   };
 
   if (!state) {
-    return <CenteredMessage>Loading campaign…</CenteredMessage>;
+    return <CenteredMessage>{error ?? 'Loading campaign…'}</CenteredMessage>;
   }
 
   const selectedVessel = state.vessels.find(v => v.id === selectedVesselId) ?? null;
@@ -669,6 +669,7 @@ export default function GameScreen() {
               report={state.knownPrices[previewCity.id]}
               week={state.week}
               scarcity={state.scarcity}
+              liveCauses={state.lastMarketCauses?.[previewCity.id]}
               vessel={selectedVessel}
               insureNext={insureNext}
               onInsureChange={setInsureNext}
@@ -685,6 +686,7 @@ export default function GameScreen() {
               cargo={selectedVessel.cargo}
               capacity={selectedVessel.capacity}
               scarcity={state.scarcity}
+              causes={state.lastMarketCauses?.[selectedVessel.location]}
               onBuy={(goodId, quantity) =>
                 dispatch({ type: 'BUY_GOOD', vesselId: selectedVessel.id, goodId, quantity })
               }

@@ -1,7 +1,19 @@
 import { HOUSES, findCity, findHouse } from './content';
 import { addSecret } from './secrets';
 import { adjustScarcity, cargoTotal } from './market';
-import type { Agent, AgentPlacement, GameState, House, MarketScarcity, NewsItem, SabotageLossEvent, Secret, Vessel } from './types';
+import type {
+  Agent,
+  AgentPlacement,
+  GameState,
+  House,
+  HouseTradeNote,
+  MarketScarcity,
+  NewsItem,
+  PriceCauseNote,
+  SabotageLossEvent,
+  Secret,
+  Vessel,
+} from './types';
 
 /** A hotseat player's manual choice for their one house's weekly trade nudge (Phase 14),
  * replacing that house's own random good/direction pick — every other house still rolls. */
@@ -72,15 +84,25 @@ export function driftHouseRelations(
  * "reduced fidelity" trade design doc §10 asks for — houses are not full second players with
  * their own cargo and ledgers. */
 const HOUSE_TRADE_UNITS = 2;
-export function applyHouseTradeFootprint(scarcity: MarketScarcity, manual?: ManualTradeChoice): MarketScarcity {
+
+export interface HouseTradeFootprintResult {
+  scarcity: MarketScarcity;
+  /** Every house's own trade this week, one per house that has a market at its home city — fed
+   * into `sim/market.ts`'s `deriveMarketCauses` (Phase 16) so a price move caused by a specific
+   * rival house can be named as such, rather than folded into a vaguer "unknown flows" note. */
+  trades: HouseTradeNote[];
+}
+
+export function applyHouseTradeFootprint(scarcity: MarketScarcity, manual?: ManualTradeChoice): HouseTradeFootprintResult {
   let next = scarcity;
+  const trades: HouseTradeNote[] = [];
   for (const house of HOUSES) {
     const city = findCity(house.homeCity);
     if (!city?.market) continue;
     const goodIds = Object.keys(city.market);
     if (goodIds.length === 0) continue;
     let goodId: string;
-    let direction: number;
+    let direction: 1 | -1;
     if (manual && house.id === manual.houseId) {
       goodId = manual.goodId;
       direction = manual.direction;
@@ -89,8 +111,9 @@ export function applyHouseTradeFootprint(scarcity: MarketScarcity, manual?: Manu
       direction = Math.random() < 0.5 ? 1 : -1;
     }
     next = adjustScarcity(next, house.homeCity, goodId, direction * HOUSE_TRADE_UNITS);
+    trades.push({ houseId: house.id, houseName: house.name, cityId: house.homeCity, goodId, direction });
   }
-  return next;
+  return { scarcity: next, trades };
 }
 
 export const AGENT_BASE_COST = 25;
@@ -165,12 +188,21 @@ export function corruptNews(
     if (!targeted) return item;
 
     const prices: Record<string, number> = {};
+    // One fabricated cause per distorted good, not one for "the" price — corruptNews already
+    // distorts every good in the targeted report independently, so a single note would leave
+    // most of them unexplained (or, worse, still carrying their real cause) while the price next
+    // to them is fake. Every fabricated note uses 'unknown_flows' specifically: it's the one kind
+    // that never names a checkable specifics (no house, no "settling back" claim), so a corrected
+    // report's causes read exactly like a true 'unknown_flows' note would — there's still no tell.
+    const causes: PriceCauseNote[] = [];
     for (const [goodId, price] of Object.entries(item.prices)) {
       const distortion =
         PLANT_PRICE_DISTORTION_MIN + Math.random() * (PLANT_PRICE_DISTORTION_MAX - PLANT_PRICE_DISTORTION_MIN);
-      prices[goodId] = Math.max(1, Math.round(price * distortion));
+      const distorted = Math.max(1, Math.round(price * distortion));
+      prices[goodId] = distorted;
+      causes.push({ goodId, kind: 'unknown_flows', direction: distorted >= price ? 1 : -1 });
     }
-    return { ...item, prices };
+    return { ...item, prices, causes };
   });
 }
 

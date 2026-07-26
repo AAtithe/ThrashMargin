@@ -5,6 +5,12 @@ import { API, authHeaders } from '../lib/api';
 import type { GameAction, GameState } from '../sim/types';
 import type { SaveMeta } from './useGameLocal';
 
+/** The `tm_token` JWT this hook sends (see api/_lib/auth.ts) expires after 7 days by default —
+ * every endpoint here 401s once that happens, and without this distinct message the player just
+ * sees campaigns silently fail to list/start with no clue why, since the JWT stays sitting in
+ * localStorage looking "signed in" (PortalNav only checks for its presence, not validity). */
+const SESSION_EXPIRED = 'Your sign-in has expired — use "Sign out" above, then sign in again to reach your cloud campaigns.';
+
 /**
  * Cloud persistence for signed-in players, backed by the same Supabase/Postgres `games` table
  * Thrash Margin uses (see packages/niccolo/api/game/*, discriminated by `game = 'niccolo'`).
@@ -20,6 +26,7 @@ export function useGameCloud() {
   const fetchSaves = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/niccolo/game`, { headers: authHeaders() });
+      if (res.status === 401) { setError(SESSION_EXPIRED); return; }
       if (!res.ok) return;
       const data = await res.json();
       setSaves(data.saves ?? []);
@@ -41,6 +48,7 @@ export function useGameCloud() {
         headers: authHeaders(),
         body: JSON.stringify({ name, skipPrologue, hideObjectives, hotseatHouseId }),
       });
+      if (res.status === 401) { setError(SESSION_EXPIRED); return null; }
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to start campaign'); return null; }
       setState(data.state);
@@ -56,6 +64,7 @@ export function useGameCloud() {
     setError(null);
     try {
       const res = await fetch(`${API}/api/niccolo/game/${gameId}`, { headers: authHeaders() });
+      if (res.status === 401) { setError(SESSION_EXPIRED); return; }
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to load campaign'); return; }
       setState({ ...data.state, exchangeRates: withAllCurrencies(data.state.exchangeRates) });
@@ -82,7 +91,7 @@ export function useGameCloud() {
         headers: authHeaders(),
         body: JSON.stringify({ state: next }),
       })
-        .then(() => fetchSaves())
+        .then(res => { if (res.status === 401) setError(SESSION_EXPIRED); else return fetchSaves(); })
         .catch(() => { /* non-fatal */ });
       return next;
     });

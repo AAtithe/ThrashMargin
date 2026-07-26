@@ -16,7 +16,7 @@ import {
   resolveWeeklyAgentIntelligence,
 } from './houses';
 import { canInsureAt, clearArrivedInsurance, quoteInsurance, resolveVoyageRisk } from './insurance';
-import { adjustScarcity, applyBackgroundFlows, cargoTotal, driftScarcity, priceAt } from './market';
+import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, driftScarcity, priceAt } from './market';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
 import { resolveSecretExpiry, useSecret } from './secrets';
 import type { GameState, GameAction, HotseatDecision, Vessel } from './types';
@@ -139,10 +139,18 @@ function buyGood(state: GameState, vesselId: string, goodId: string, quantity: n
   const cost = price * quantity * (1 - tradeBonus(state.characters, vesselId));
   if (cost > state.cash) throw new Error(`Not enough cash (need ${Math.round(cost)}, have ${Math.round(state.cash)})`);
 
+  // Deliberately does NOT call adjustScarcity: an earlier version raised the local price on every
+  // purchase, priced at a single pre-trade snapshot for the whole quantity — buying up a port's
+  // stock (or as much as capacity allowed) inflated the price *after* the fact, and immediately
+  // selling the same goods back cashed in that self-inflicted spike for a real, repeatable,
+  // zero-risk profit. The player's own buying no longer moves the price at all; only selling
+  // does (below), which still creates the intended "dump crashes the local price, recovers over
+  // about a month" dynamic without a same-city round-trip to exploit. Genuine cross-city arbitrage
+  // (buy cheap here, sail elsewhere, sell for more) is untouched — that price gap comes from each
+  // city's own base price plus background flows/AI house trade, not the player's own purchase.
   return {
     ...state,
     cash: state.cash - cost,
-    scarcity: adjustScarcity(state.scarcity, vessel.location, goodId, quantity),
     vessels: state.vessels.map(v =>
       v.id === vesselId
         ? { ...v, cargo: { ...v.cargo, [goodId]: (v.cargo[goodId] ?? 0) + quantity } }
@@ -202,7 +210,12 @@ function advanceWeek(state: GameState, hotseatDecision?: HotseatDecision): GameS
     hotseatHouseId && hotseatDecision
       ? { houseId: hotseatHouseId, attempt: hotseatDecision.attemptSabotage }
       : undefined;
-  const scarcity = applyHouseTradeFootprint(driftScarcity(applyBackgroundFlows(maturity.scarcity)), manualTrade);
+  // Named intermediates (Phase 16), not a single chained expression — deriveMarketCauses (below)
+  // needs to compare each stage against the last to explain which force actually moved a price.
+  const afterBackgroundFlows = applyBackgroundFlows(maturity.scarcity);
+  const afterDrift = driftScarcity(afterBackgroundFlows);
+  const houseFootprint = applyHouseTradeFootprint(afterDrift, manualTrade);
+  const scarcity = houseFootprint.scarcity;
   const houseRelations = driftHouseRelations(state.houseRelations, state.flags);
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
@@ -216,7 +229,8 @@ function advanceWeek(state: GameState, hotseatDecision?: HotseatDecision): GameS
     week,
   );
 
-  const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters);
+  const marketCauses = deriveMarketCauses(maturity.scarcity, afterBackgroundFlows, afterDrift, scarcity, houseFootprint.trades);
+  const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters, marketCauses);
   const newNews = corruptNews(rawNews, state.agents, HOME_CITY, manualPlant);
   const { arrived, stillPending } = resolveArrivals([...state.pendingNews, ...newNews], week);
   const knownPrices = { ...state.knownPrices };
@@ -244,6 +258,7 @@ function advanceWeek(state: GameState, hotseatDecision?: HotseatDecision): GameS
     secrets,
     pendingNews: stillPending,
     knownPrices,
+    lastMarketCauses: marketCauses,
     estate,
     insurance,
     lastVoyageEvent: risk.event ?? state.lastVoyageEvent,
