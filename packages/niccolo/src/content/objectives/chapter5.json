@@ -1,0 +1,32 @@
+[
+  { "id": "obj_c5_scotland", "chapterNumber": 5, "label": "Come out of the Scottish court with something to show",
+    "description": "A burgh customs contract is the prize; the family currently holding the king is the hazard.",
+    "kind": { "type": "flag", "flag": "scotland_court_resolved" },
+    "outcomeFlags": { "positive": "boyd_fall_clean", "costly": "boyd_fall_costly" } },
+
+  { "id": "obj_c5_child", "chapterNumber": 5, "label": "Find the child", "inevitable": true,
+    "description": "The trail can be followed further or less far. It cannot be followed to the end — not this chapter.",
+    "kind": { "type": "flag", "flag": "child_hunt_resolved" },
+    "outcomeFlags": { "positive": "child_named" } },
+
+  { "id": "obj_c5_egypt", "chapterNumber": 5, "label": "Settle terms with the sultan's customs",
+    "description": "Alexandria for the warehouse, Cairo for the prices. Licensed or unlicensed is the whole question.",
+    "kind": { "type": "flag", "flag": "egypt_licence_resolved" },
+    "outcomeFlags": { "positive": "egypt_licence_bought", "costly": "egypt_licence_evaded" } },
+
+  { "id": "obj_c5_sinai", "chapterNumber": 5, "label": "See the St Catherine's consignment through",
+    "description": "Buy Venetian glass at Venice, and have the ship at St Catherine's still carrying at least 3 crates of it — Alexandria, then Cairo, then three weeks inland. Then bring the ship back down to Cairo to close the account. The safe-conduct lasts 30 weeks from the day the commission is taken.",
+    "revealFlag": "sinai_journey_open",
+    "kind": { "type": "flag", "flag": "sinai_epilogue" },
+    "outcomeFlags": { "positive": "sinai_journey_success", "costly": "sinai_journey_failed" } },
+
+  { "id": "obj_c5_vatachino", "chapterNumber": 5, "label": "Learn who the Vatachino are",
+    "description": "Three pieces of the file name them. Two come to the house on their own; the third is bought from a Genoese notary, or lifted by an agent placed inside the company itself.",
+    "revealFlag": "vatachino_noticed",
+    "kind": { "type": "flag", "flag": "vatachino_resolved" },
+    "outcomeFlags": { "positive": "vatachino_named", "costly": "vatachino_masked_still" } },
+
+  { "id": "obj_c5_divining", "chapterNumber": 5, "label": "Put the gift to deliberate use", "optional": true,
+    "description": "Water at St Catherine's, ore at Edinburgh, a direction at Cairo — three uses, four weeks' recovery apiece, and Conscience each time. None of it is required; all of it opens something.",
+    "kind": { "type": "flag", "flag": "divining_unlocked" } }
+]

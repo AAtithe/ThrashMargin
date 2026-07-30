@@ -1,11 +1,35 @@
 import { dateForWeek } from './clock';
 import { CAMPAIGN_START, EVENTS, findCharacter, findEvent } from './content';
+import { addEvidence } from './dossier';
 import { addSecret } from './secrets';
 import { startCondotta } from './condotta';
 import type { EventTrigger, GameState } from './types';
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
+}
+
+/**
+ * Sets flags and, for any that were not already set, records the week it happened — the backing
+ * store `EventTrigger.weeksAfterFlag` reads for a relative deadline (Chapter 5, Phase 19). Exported
+ * because `advanceWeek` sets a handful of engine-side flags of its own (a completed condotta, a
+ * sabotage, an expedition crisis, a house unmasked) and those deserve the same timestamps as an
+ * event choice's; nothing should be able to set a flag without dating it. Already-set flags keep
+ * their original week — this records the first time, not the most recent.
+ */
+export function withFlagsSet(
+  flags: Record<string, boolean>,
+  flagWeeks: Record<string, number> | undefined,
+  week: number,
+  ids: string[],
+): { flags: Record<string, boolean>; flagWeeks: Record<string, number> } {
+  const nextFlags = { ...flags };
+  const nextWeeks = { ...(flagWeeks ?? {}) };
+  for (const id of ids) {
+    if (!nextFlags[id]) nextWeeks[id] = week;
+    nextFlags[id] = true;
+  }
+  return { flags: nextFlags, flagWeeks: nextWeeks };
 }
 
 function triggerMatches(state: GameState, trigger: EventTrigger): boolean {
@@ -29,6 +53,14 @@ function triggerMatches(state: GameState, trigger: EventTrigger): boolean {
     const { kind, location } = trigger.vesselKindAt;
     const satisfied = state.vessels.some(v => !v.destination && v.location === location && v.kind === kind);
     if (!satisfied) return false;
+  }
+  if (trigger.weeksAfterFlag) {
+    const { flag, weeks } = trigger.weeksAfterFlag;
+    if (!state.flags[flag]) return false;
+    const setWeek = state.flagWeeks?.[flag];
+    // A flag set before `flagWeeks` existed has no timestamp to count from — degrade to the plain
+    // flag check rather than blocking forever (see EventTrigger's own doc comment).
+    if (setWeek !== undefined && state.week < setWeek + weeks) return false;
   }
   return true;
 }
@@ -78,17 +110,18 @@ export function resolveEvent(state: GameState, eventId: string, choiceIndex: num
     firedEvents: [...state.firedEvents, eventId],
   };
   const { effects } = choice;
-  if (effects.flag) next = { ...next, flags: { ...next.flags, [effects.flag]: true } };
-  if (effects.flags) {
-    const set = { ...next.flags };
-    for (const f of effects.flags) set[f] = true;
-    next = { ...next, flags: set };
+  const flagsToSet = [...(effects.flag ? [effects.flag] : []), ...(effects.flags ?? [])];
+  if (flagsToSet.length > 0) {
+    next = { ...next, ...withFlagsSet(next.flags, next.flagWeeks, next.week, flagsToSet) };
   }
   if (typeof effects.cash === 'number') next = { ...next, cash: next.cash + effects.cash };
   if (typeof effects.conscience === 'number') {
     next = { ...next, conscience: clamp(next.conscience + effects.conscience, 0, 100) };
   }
   if (effects.secret) next = { ...next, secrets: addSecret(next.secrets, next.week, effects.secret) };
+  if (effects.evidence) {
+    next = { ...next, evidence: addEvidence(next.evidence ?? [], next.week, effects.evidence) };
+  }
   if (effects.condotta) {
     const { retainerPerWeek, weeks } = effects.condotta;
     next = { ...next, condotta: startCondotta(next.condotta, { retainerPerWeek, weeksRemaining: weeks }) };

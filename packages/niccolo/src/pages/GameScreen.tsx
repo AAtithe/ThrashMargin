@@ -18,6 +18,8 @@ import CountingHousePanel from '../components/CountingHousePanel';
 import HouseholdPanel from '../components/HouseholdPanel';
 import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
+import EvidenceBoardPanel from '../components/EvidenceBoardPanel';
+import DiviningPanel from '../components/DiviningPanel';
 import EstatePanel from '../components/EstatePanel';
 import ObjectivesPanel from '../components/ObjectivesPanel';
 import ChapterCompleteCard from '../components/ChapterCompleteCard';
@@ -44,6 +46,7 @@ export type SectionId =
   | 'household'
   | 'secrets'
   | 'houses'
+  | 'dossier'
   | 'ledger';
 
 const SECTION_TITLES: Record<SectionId, string> = {
@@ -55,6 +58,7 @@ const SECTION_TITLES: Record<SectionId, string> = {
   household: 'Household',
   secrets: 'Secrets',
   houses: 'Houses & Agents',
+  dossier: 'Evidence board',
   ledger: 'Ledger',
 };
 
@@ -351,26 +355,37 @@ export default function GameScreen() {
     );
   }
 
-  if (state.flags.chapter4_complete) {
+  if (state.flags.chapter5_complete) {
     const secretsUsed = state.secrets.filter(s => s.used).length;
     const secretsExpired = state.secrets.filter(s => s.expired).length;
     const departed = state.characters.filter(c => c.status === 'departed');
-    const gambiaSucceeded = !!state.flags.gambia_expedition_success;
-    const umarShownMercy = !!state.flags.umars_choice_mercy;
+    const sinaiSucceeded = !!state.flags.sinai_journey_success;
+    const childNamed = !!state.flags.child_named;
+    const vatachinoNamed = !!state.flags.vatachino_named;
+    const parentagePieces = (state.evidence ?? []).filter(e => e.track === 'parentage').length;
     return (
       <div style={STYLE}>
         <PortalNav variant="header" />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-          <h1 style={TITLE}>Chapter 4 — Scales of Gold</h1>
+          <h1 style={TITLE}>Chapter 5 — The Unicorn Hunt</h1>
           <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {gambiaSucceeded
-              ? "The ship came back from the Gambia with gold in its hold and fewer hands than sailed with it — a fortune the house's Bruges ledger has no real precedent for, and a river that took its own price regardless."
-              : "The Gambia venture cost more than it returned. Whatever the fever and the current didn't take, the delay finally did, and the house's ledger shows it plainly."}
+            {sinaiSucceeded
+              ? "The lamps were hung at St Catherine's and paid for in the sultan's own coin, and the house came out of the desert with a standing in the pilgrim trade four Italian houses had wanted for a decade."
+              : "The safe-conduct lapsed with the glass still in a warehouse, and the pilgrim houses that had declined the commission were civil about it, which cost more than the commission would have."}
+          </p>
+          <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
+            {childNamed
+              ? 'The boy has a name, given at a font his father was not told about, and a bearing three days south of Cairo that led to an empty house eleven days cold.'
+              : 'The boy exists. That is the whole of what the season established about him.'}
           </p>
           <p style={{ color: '#8a7a5a', maxWidth: '30rem', textAlign: 'center', fontSize: '0.9rem' }}>
             Concluded in {formatWeekDate(state.week, CAMPAIGN_START)}, {Math.round(state.cash)}f on hand, conscience{' '}
-            {Math.round(state.conscience)}. {umarShownMercy ? "Umar's kin were bought clear of Timbuktu." : "Umar's own business at Timbuktu was left to him."}{' '}
-            Secrets used: {secretsUsed}, expired unused: {secretsExpired}.
+            {Math.round(state.conscience)}.{' '}
+            {vatachinoNamed
+              ? 'The Vatachino have names behind them now, and one of them was always going to be Ribérac.'
+              : 'The Vatachino remain a company that belongs to nobody the house can name.'}{' '}
+            Parentage dossier: {parentagePieces} piece{parentagePieces === 1 ? '' : 's'} pinned. Secrets used: {secretsUsed},
+            expired unused: {secretsExpired}.
             {departed.length > 0
               ? ` Left the company along the way: ${departed.map(c => c.name).join(', ')}.`
               : ' The household is intact.'}
@@ -406,6 +421,13 @@ export default function GameScreen() {
 
   const estateUnlocked = !!state.estate || !!state.flags.kouklia_estate_available;
 
+  // The Evidence board (design doc §11 screen 7) only appears in the rail once there is something on
+  // it — the dossier and the divining gift are both Chapter 5 content, and an always-present tab
+  // that reads "nothing pinned here yet" for four chapters is worse than no tab. Same conditional-
+  // inclusion pattern the Estate tab already uses, and the same reason.
+  const dossierUnlocked =
+    (state.evidence?.length ?? 0) > 0 || !!state.flags.divining_unlocked || !!state.flags.chapter4_complete;
+
   const SECTIONS: SectionDef[] = [
     { id: 'objectives', glyph: '✦', label: 'Objectives' },
     { id: 'fleet', glyph: '⚓', label: 'Fleet', badge: fleetHasNews },
@@ -415,6 +437,7 @@ export default function GameScreen() {
     { id: 'household', glyph: '⌂', label: 'Household' },
     { id: 'secrets', glyph: '🔍', label: 'Secrets' },
     { id: 'houses', glyph: '⚜', label: 'Houses' },
+    ...(dossierUnlocked ? [{ id: 'dossier', glyph: '✎', label: 'Dossier' }] : []),
     { id: 'ledger', glyph: '📖', label: 'Ledger' },
   ];
 
@@ -795,6 +818,13 @@ export default function GameScreen() {
               flags={state.flags}
               onPlaceAgent={(placement, name) => dispatch({ type: 'PLACE_AGENT', placement, name })}
             />
+          )}
+
+          {activeSection === 'dossier' && (
+            <>
+              <EvidenceBoardPanel evidence={state.evidence ?? []} houses={HOUSES} flags={state.flags} />
+              <DiviningPanel state={state} onUse={purpose => dispatch({ type: 'USE_DIVINING', purpose })} />
+            </>
           )}
 
           {activeSection === 'ledger' && (

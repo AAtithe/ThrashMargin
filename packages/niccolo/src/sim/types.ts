@@ -20,8 +20,21 @@ export type GradeId = 'common' | 'fine' | 'excellent';
 
 /** florin is the player's home ledger currency; the rest are foreign, grouped by City.power.
  * `asper` (Chapter 2, Phase 9) is Trebizond's money of account; `bezant` (Chapter 3, Phase 10)
- * is the Lusignan kingdom of Cyprus's; `cruzado` (Chapter 4, Phase 13) is Lisbon/Madeira/Gambia's. */
-export type CurrencyId = 'florin' | 'groot' | 'pound' | 'ecu' | 'ducat' | 'asper' | 'bezant' | 'cruzado';
+ * is the Lusignan kingdom of Cyprus's; `cruzado` (Chapter 4, Phase 13) is Lisbon/Madeira/Gambia's.
+ * `scots_pound` and `dinar` (Chapter 5, Phase 19) are the two §5 names still unimplemented —
+ * "Scottish/English pounds" as two separate coins, and "Ottoman/Mamluk coin" — added together
+ * because this one chapter is the first to have a city using either. */
+export type CurrencyId =
+  | 'florin'
+  | 'groot'
+  | 'pound'
+  | 'ecu'
+  | 'ducat'
+  | 'asper'
+  | 'bezant'
+  | 'cruzado'
+  | 'scots_pound'
+  | 'dinar';
 
 export interface City {
   id: string;
@@ -148,6 +161,60 @@ export interface ExpeditionHealthEvent {
   healthStatus: ExpeditionHealthStatus;
   cashCost: number;
   conscienceCost: number;
+}
+
+/**
+ * The two dossiers the Evidence Board (design doc §11 screen 7) actually holds. `parentage` is the
+ * long track §8 describes as assembled across all eight chapters and resolved in Chapter 8 — Chapter
+ * 5 only contributes to it, it does not answer it. `vatachino` is the short, self-contained track:
+ * enough of it in hand and the masked rival company's backers are named (see `House.hiddenBackers`),
+ * which is §9's own "a mystery the intelligence system can unmask early or late".
+ */
+export type EvidenceTrack = 'parentage' | 'vatachino';
+
+/**
+ * One item pinned to the Evidence Board — a document, a testimony, or a date, the three kinds §8
+ * itself names. Deliberately *not* a `Secret`: a secret has a florin value and is spent by selling
+ * it, while evidence is never sold and only matters in combination with other evidence. Sharing the
+ * Secret type would have meant either a sellable dossier or a `value: 0` secret that the Secrets
+ * panel would then have to learn to hide.
+ */
+export interface EvidenceItem {
+  id: string;
+  name: string;
+  description: string;
+  track: EvidenceTrack;
+  /** `document` | `testimony` | `date` — §8's own three words for what the dossier is made of. */
+  kind: 'document' | 'testimony' | 'date';
+  discoveredWeek: number;
+}
+
+/** Which of §8's three named uses of the divining gift ("find water/ore, sense a person's
+ * direction") a `USE_DIVINING` action is attempting. Each is tied to one city in
+ * `sim/divining.ts` — the gift answers a question about the ground the player is standing on, so
+ * it can't be exercised from Bruges to reach across the map. */
+export type DiviningPurpose = 'water' | 'ore' | 'person';
+
+/**
+ * The divining gift (design doc §8 track 4: "a limited-use ability... with a Conscience and health
+ * cost"). Absent/null until Chapter 5's own content unlocks it, then created on first use.
+ * `usesRemaining` is the hard campaign cap; `restUntilWeek` is how "health cost" is modelled — see
+ * `sim/divining.ts` for why a recovery cooldown rather than a second health meter beside Conscience.
+ */
+export interface DiviningState {
+  usesRemaining: number;
+  restUntilWeek: number;
+}
+
+/** The most recent use of the divining gift, for the UI to report — the flag a use sets is only
+ * reacted to by a scripted event on the *following* ADVANCE_WEEK, so without this the action would
+ * appear to do nothing at all in the week it was actually taken. */
+export interface DiviningEvent {
+  week: number;
+  purpose: DiviningPurpose;
+  cityId: string;
+  conscienceCost: number;
+  restWeeks: number;
 }
 
 /** cityId -> goodId -> scarcity multiplier (1 = base price, >1 = scarce/dear, <1 = glut/cheap) */
@@ -282,6 +349,18 @@ export interface Character {
  * before reaching Bruges — completely normal trading — broke that, and simply dropping the cargo
  * check let the event fire as soon as *any* vessel, i.e. the stationary home courier, was at
  * Bruges, which is always true).
+ *
+ * `weeksAfterFlag` (Chapter 5, Phase 19) is a *relative* deadline: satisfied once `flag` has been
+ * set for at least `weeks` weeks, read off `GameState.flagWeeks`. It exists to retire a compromise
+ * Chapters 2, 3 and 4 each recorded independently — the campaign clock runs continuously with no
+ * per-chapter reset, so an absolute `dateAfter` deadline is either already in the past the moment
+ * its chapter unlocks or absurdly far in the future. (Chapter 4's own `dateAfter: "1471-01-01"`
+ * failure fallback is week 563; a player who reached Timbuktu on schedule faced ~140 weeks of
+ * pressing "Advance one week" with nothing to do before the arc would resolve itself either way.)
+ * A relative deadline is reachable from wherever the chapter actually starts. If the flag is set but
+ * has no `flagWeeks` entry — a save from before that field existed — this degrades to the plain
+ * `flag` check rather than blocking forever, which is the safe direction: a stuck deadline soft-locks
+ * a chapter, an early one merely resolves it.
  */
 export interface EventTrigger {
   dateAfter?: string;
@@ -291,6 +370,7 @@ export interface EventTrigger {
   flagAbsent?: string;
   cargoAtLeast?: { location: string; goodId: string; quantity: number };
   vesselKindAt?: { kind: VesselKind; location: string };
+  weeksAfterFlag?: { flag: string; weeks: number };
 }
 
 /**
@@ -330,6 +410,11 @@ export interface EventEffects {
    * the named vessel doesn't exist (a replayed event, or a skip-prologue save that never has it
    * pending in the first place). */
   grantCargo?: { vesselId: string; goodId: string; quantity: number };
+  /** Chapter 5 (Phase 19): pins one item to the Evidence Board (design doc §11 screen 7). Mirrors
+   * `secret`'s own shape — an inline spec, idempotent on id — because an event is the only way a
+   * document or a testimony enters the dossier from the story side; the other way in is a placed
+   * agent (see `House.backerLeads`). */
+  evidence?: { id: string; name: string; description: string; track: EvidenceTrack; kind: EvidenceItem['kind'] };
 }
 
 export interface EventChoice {
@@ -396,6 +481,33 @@ export interface House {
     value: number;
     expiresInWeeks?: number;
   };
+  /**
+   * Hidden ownership (design doc §10's own parenthesis for the Vatachino, "hidden ownership";
+   * §9's "an AI house whose backers are a mystery the intelligence system can unmask early or
+   * late"). While `revealedByFlag` is unset, the Houses panel shows the seat and the standing but
+   * not who actually stands behind the house; once set, `text` is shown. The flag is set
+   * automatically once the player holds `UNMASK_EVIDENCE_THRESHOLD` items on `track` — see
+   * `sim/dossier.ts`'s `resolveUnmasking`, which is generic over every house carrying this field
+   * rather than special-cased to the Vatachino by name.
+   */
+  hiddenBackers?: {
+    track: EvidenceTrack;
+    revealedByFlag: string;
+    text: string;
+  };
+  /**
+   * Evidence a player agent placed inside this house may surface week by week — the "unmask early"
+   * half of §9's own line. Content-authored, drawn from in file order, and de-duplicated against
+   * what the player already holds, so an agent and the chapter's own events can hand over the same
+   * dossier in either order without either one producing a duplicate.
+   */
+  backerLeads?: {
+    id: string;
+    name: string;
+    description: string;
+    track: EvidenceTrack;
+    kind: EvidenceItem['kind'];
+  }[];
 }
 
 /**
@@ -561,6 +673,23 @@ export interface GameState {
    * card appears at creation; optional/undefined on an older save just means "acknowledge nothing
    * yet," which at worst re-shows one already-seen card once, never crashes. */
   lastAcknowledgedChapter?: number;
+  /** The Evidence Board's contents (Chapter 5, Phase 19) — both tracks in one list, filtered by
+   * `track` at the read sites. Optional so a save from before this field existed simply has an
+   * empty dossier rather than a shape mismatch, the same discipline `expedition`/`objectivesHidden`
+   * already use. */
+  evidence?: EvidenceItem[];
+  /** The divining gift's remaining uses and recovery window (Chapter 5, Phase 19). Optional/null
+   * until Chapter 5's content unlocks it and the player first exercises it. */
+  divining?: DiviningState | null;
+  /** The most recent use of the divining gift, for the UI to report. Optional/null, same as every
+   * other `last*Event` field. */
+  lastDiviningEvent?: DiviningEvent | null;
+  /** The week each flag was first set — the backing store for `EventTrigger.weeksAfterFlag`'s
+   * relative deadlines (Chapter 5, Phase 19). Written whenever a flag flips from unset to set;
+   * never rewritten, so it records the first time, not the most recent. Optional: an older save
+   * simply has no history, and `weeksAfterFlag` degrades to a plain flag check for any flag missing
+   * from it (see that field's own doc comment for why that's the safe direction). */
+  flagWeeks?: Record<string, number>;
   /** Every notable price move from the week just resolved, by city — recomputed fresh every
    * `ADVANCE_WEEK` (Phase 16), never accumulated, so it always describes only the most recent
    * week regardless of whether this field existed on an older save. This is the live,
@@ -587,6 +716,7 @@ export type GameAction =
   | { type: 'RESOLVE_EVENT'; eventId: string; choiceIndex: number }
   | { type: 'USE_SECRET'; secretId: string }
   | { type: 'PLACE_AGENT'; placement: AgentPlacement; name?: string }
+  | { type: 'USE_DIVINING'; purpose: DiviningPurpose }
   | { type: 'ESTABLISH_ESTATE' }
   | { type: 'HARVEST_ESTATE' }
   | { type: 'SHIP_ESTATE_GOODS'; vesselId: string; quantity: number };

@@ -16,6 +16,11 @@ export interface Currency {
  * to reflect a kingdom already living on borrowed time by 1462. `cruzado` (Chapter 4, Phase 13)
  * adds Lisbon/Madeira/Gambia — pegged comparably to `ducat`, not low like `asper`/`bezant`, a
  * deliberate contrast: this is a rising Atlantic trade coin, not a declining kingdom's.
+ * `scots_pound` and `dinar` (Chapter 5, Phase 19) close out §5's own currency list: the Scottish
+ * pound is deliberately *not* the English `pound` above but its own, much weaker coin (James III's
+ * debasement is real history, and §5 names "Scottish/English pounds" as two things); the Mamluk
+ * `dinar` is the strongest coin on the map, since a gold ashrafi genuinely was — the sultan's own
+ * mint is the reason Alexandria could dictate spice terms to every European house that came to it.
  */
 export const CURRENCIES: Currency[] = [
   { id: 'florin', name: 'Florentine florin', symbol: 'f' },
@@ -26,6 +31,8 @@ export const CURRENCIES: Currency[] = [
   { id: 'asper', name: 'Trapezuntine asper', symbol: 'a' },
   { id: 'bezant', name: 'Cypriot bezant', symbol: 'b' },
   { id: 'cruzado', name: 'Portuguese cruzado', symbol: 'c' },
+  { id: 'scots_pound', name: 'Scots pound', symbol: '£s' },
+  { id: 'dinar', name: 'Mamluk dinar', symbol: 'δ' },
 ];
 
 const PEG: ExchangeRates = {
@@ -37,6 +44,8 @@ const PEG: ExchangeRates = {
   asper: 0.4,
   bezant: 0.5,
   cruzado: 1.1,
+  scots_pound: 0.55,
+  dinar: 1.45,
 };
 
 /** Largest random walk step an exchange rate can take in a week, as a fraction of its peg. */

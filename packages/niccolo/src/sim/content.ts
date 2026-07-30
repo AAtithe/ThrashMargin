@@ -19,10 +19,16 @@ import routes4Data from '../content/routes/chapter4.json';
 import goods4Data from '../content/goods/chapter4.json';
 import characters4Data from '../content/characters/chapter4.json';
 import events4Data from '../content/events/chapter4.json';
+import cities5Data from '../content/cities/chapter5.json';
+import routes5Data from '../content/routes/chapter5.json';
+import characters5Data from '../content/characters/chapter5.json';
+import events5Data from '../content/events/chapter5.json';
+import houses5Data from '../content/houses/chapter5.json';
 import objectives1Data from '../content/objectives/chapter1.json';
 import objectives2Data from '../content/objectives/chapter2.json';
 import objectives3Data from '../content/objectives/chapter3.json';
 import objectives4Data from '../content/objectives/chapter4.json';
+import objectives5Data from '../content/objectives/chapter5.json';
 import type { City, Route, Good, Character, ScriptedEvent, House, Objective } from './types';
 
 export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
@@ -42,25 +48,33 @@ export const HOME_CITY = 'bruges';
  * only its own `events/chapter0.json`, concatenated first into `EVENTS`. Chapter 4 (Phase 13)
  * continues the same convention: a new currency, route type, and one mid-campaign character all
  * live in code (types.ts/currency.ts/houses.ts), while the map/goods/events content that uses them
- * lives here in `chapter4.json` per type, same as every chapter since.
+ * lives here in `chapter4.json` per type, same as every chapter since. Chapter 5 (Phase 19) is the
+ * first chapter pack to add **no** new goods file at all: Scotland's cheap wool, Egypt's cheap
+ * spices and sugar, and the court market at Cairo for Flemish cloth and Venetian glass are all
+ * existing goods placed in new markets, which is both historically what those cities actually
+ * traded and the only way to add four cities without opening four new dead-end goods (see the
+ * dead-end-goods audit in PROGRESS.md's own Phase 15 follow-up #2 entry for why that matters).
  */
 export const CITIES: City[] = [
   ...(citiesData as unknown as City[]),
   ...(cities2Data as unknown as City[]),
   ...(cities3Data as unknown as City[]),
   ...(cities4Data as unknown as City[]),
+  ...(cities5Data as unknown as City[]),
 ];
 export const ROUTES: Route[] = [
   ...(routesData as Route[]),
   ...(routes2Data as Route[]),
   ...(routes3Data as Route[]),
   ...(routes4Data as Route[]),
+  ...(routes5Data as Route[]),
 ];
 export const GOODS: Good[] = [...(goodsData as Good[]), ...(goods3Data as Good[]), ...(goods4Data as Good[])];
 export const CHARACTERS: Character[] = [
   ...(charactersData as unknown as Character[]),
   ...(characters2Data as unknown as Character[]),
   ...(characters4Data as unknown as Character[]),
+  ...(characters5Data as unknown as Character[]),
 ];
 export const EVENTS: ScriptedEvent[] = [
   ...(events0Data as unknown as ScriptedEvent[]),
@@ -68,8 +82,13 @@ export const EVENTS: ScriptedEvent[] = [
   ...(events2Data as unknown as ScriptedEvent[]),
   ...(events3Data as unknown as ScriptedEvent[]),
   ...(events4Data as unknown as ScriptedEvent[]),
+  ...(events5Data as unknown as ScriptedEvent[]),
 ];
-export const HOUSES: House[] = [...(housesData as unknown as House[]), ...(houses2Data as unknown as House[])];
+export const HOUSES: House[] = [
+  ...(housesData as unknown as House[]),
+  ...(houses2Data as unknown as House[]),
+  ...(houses5Data as unknown as House[]),
+];
 /** Story-tied objectives (Phase 14) — a read-only projection over flags the chapters above already
  * set, authored per chapter like every other content type. Chapter 0 has none of its own (see
  * `sim/objectives.ts`'s own note on why). */
@@ -78,6 +97,7 @@ export const OBJECTIVES: Objective[] = [
   ...(objectives2Data as Objective[]),
   ...(objectives3Data as Objective[]),
   ...(objectives4Data as Objective[]),
+  ...(objectives5Data as Objective[]),
 ];
 
 export function findCity(id: string): City | undefined {

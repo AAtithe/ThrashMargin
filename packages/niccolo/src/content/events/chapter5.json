@@ -1,0 +1,367 @@
+[
+  {
+    "id": "ev_c5_001",
+    "chapter": 5,
+    "trigger": { "flag": "chapter4_complete" },
+    "title": "The Unicorn Hunt",
+    "body": "Scales of Gold's own ledger is closed, and the house is rich in a way Bruges has not yet decided how to talk about. Two letters arrive in the same week. One is from a Scottish burgh council asking, in the roundabout manner of men who have already decided, whether a Flemish house of some standing might care to bid for the customs of a wool staple. The other is not signed at all, and says only that the lady Gelis is no longer in Flanders.",
+    "choices": [
+      { "text": "Answer the burgh council, and go north yourself", "effects": { "flag": "scotland_bound" } },
+      { "text": "Answer the burgh council, and say nothing yet of the other letter", "effects": { "conscience": -1, "flag": "scotland_bound" } }
+    ]
+  },
+  {
+    "id": "ev_c5_002",
+    "chapter": 5,
+    "trigger": { "flag": "scotland_bound", "location": "edinburgh" },
+    "title": "Leith roads, and the town above them",
+    "body": "The ship comes in on the tide to a shore of open beach and timber cranes, with the burgh itself a mile inland up a spine of rock, its castle at one end and its abbey at the other. Everything the kingdom sells goes out through this stretch of sand, and everything it cannot make comes in the same way — which is exactly why the customs of it are worth bidding for.",
+    "choices": [
+      { "text": "Take lodgings in the burgh and present the house's credentials", "effects": { "flag": "reached_edinburgh" } }
+    ]
+  },
+  {
+    "id": "ev_c5_003",
+    "chapter": 5,
+    "trigger": { "flag": "reached_edinburgh" },
+    "title": "Anselm Adorne's niece",
+    "body": "The Bruges house of Adorne keeps interests in Scotland the way it keeps interests everywhere: quietly, and through family. Its representative in the burgh this season is Anselm's niece, Katelijne Sersanders, who is small, unwell rather often, and has already worked out three things about the Charetty company's business here that nobody has told her.",
+    "choices": [
+      { "text": "Accept her uncle's introduction, family papers and all", "effects": { "joinCharacter": "kathi", "flag": "kathi_joined", "evidence": { "id": "par_adorne_papers", "name": "The Adorne family's Bruges papers", "description": "Copies Anselm Adorne's household keeps of instruments witnessed in Bruges over thirty years — including two whose parties the house would rather not have found together.", "track": "parentage", "kind": "document" } } },
+      { "text": "Take her on her own account, and leave her uncle out of it", "effects": { "joinCharacter": "kathi", "conscience": 1, "flag": "kathi_joined" } }
+    ]
+  },
+  {
+    "id": "ev_c5_004",
+    "chapter": 5,
+    "trigger": { "flag": "reached_edinburgh" },
+    "title": "The trick with the rods",
+    "body": "A dry well behind the lodging house is the occasion, and a pair of hazel rods the instrument, and the whole thing begins as the sort of performance a man puts on to amuse a household. It stops being that when the well is dug where he says and comes in sweet at eleven feet. Father Godscalc's face, when told, is not the face of a man who found it amusing either.",
+    "choices": [
+      { "text": "Own it, and use it openly when it serves", "effects": { "conscience": -2, "flag": "divining_unlocked" } },
+      { "text": "Own it to no one, and use it only when nobody is watching", "effects": { "flags": ["divining_unlocked", "divining_concealed"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_005",
+    "chapter": 5,
+    "trigger": { "flag": "reached_edinburgh" },
+    "title": "A king coming of age, and the men who held him",
+    "body": "The king is seventeen, has been governed since childhood by whichever family last managed to have him under its roof, and is plainly not going to be governed much longer. There is a Danish marriage being arranged, a Norwegian claim being bought out, and a treasury that would take foreign credit gratefully and repay it on a schedule of its own choosing.",
+    "choices": [
+      { "text": "Lend to the crown's own account, and take the terms offered", "effects": { "cash": -35, "flags": ["scots_crown_backed", "scots_crown_choice_made"] } },
+      { "text": "Bid for the customs only, and keep clear of the treasury", "effects": { "flags": ["scots_crown_declined", "scots_crown_choice_made"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_006",
+    "chapter": 5,
+    "trigger": { "flag": "scots_crown_choice_made" },
+    "title": "The Boyds",
+    "body": "Lord Boyd holds the king's person, his son holds the king's sister in marriage, and between them they hold most of what the crown can grant. They are also, on the evidence of two evenings' conversation, entirely without a plan for the year after this one. Their chamberlain would like the house's money in a Scottish venture, at a rate no Flemish lender would offer a family with better prospects.",
+    "choices": [
+      { "text": "Take the rate, and the Boyd name with it", "effects": { "cash": 45, "conscience": -2, "flags": ["boyd_money_taken", "boyd_entanglement_made"] } },
+      { "text": "Decline courteously, and buy the chamberlain's candour instead", "effects": { "cash": -12, "flag": "boyd_entanglement_made", "secret": { "id": "secret_boyd_forfeiture", "name": "Whose lands are already listed", "description": "A Scottish chamberlain's own working list of the estates that will change hands when the king moves against the family currently holding him — drawn up, tellingly, by a servant of that family.", "value": 70, "expiresInWeeks": 14 } } }
+    ]
+  },
+  {
+    "id": "ev_c5_007",
+    "chapter": 5,
+    "trigger": { "weeksAfterFlag": { "flag": "boyd_entanglement_made", "weeks": 8 }, "flag": "boyd_money_taken" },
+    "title": "The forfeiture, and what it took with it",
+    "body": "It happens in a single sitting of parliament, and by the standards of such things it is done politely: the family is summoned, does not come, and is forfeited in its absence. The son is at sea before the sentence is read, the king's sister goes after him, and every instrument bearing the Boyd name — including a Flemish house's — becomes a claim against estates that no longer belong to anybody who signed for them.",
+    "choices": [
+      { "text": "Write the Scottish venture down and keep the customs contract", "effects": { "cash": -50, "flags": ["boyd_fall_costly", "scotland_court_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_008",
+    "chapter": 5,
+    "trigger": { "weeksAfterFlag": { "flag": "boyd_entanglement_made", "weeks": 8 }, "flagAbsent": "boyd_money_taken" },
+    "title": "The forfeiture, watched from a safe distance",
+    "body": "It happens in a single sitting of parliament, and the house's name appears nowhere in it. The family is summoned, does not come, and is forfeited in its absence; two of the estates on the chamberlain's own list change hands within the month, exactly as listed. The customs contract, held in the burgh's name rather than any lord's, is renewed without comment.",
+    "choices": [
+      { "text": "Renew the customs contract and say nothing about the list", "effects": { "cash": 25, "flags": ["boyd_fall_clean", "scotland_court_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_009",
+    "chapter": 5,
+    "trigger": { "flag": "kathi_joined" },
+    "title": "What the unsigned letter was for",
+    "body": "Demoiselle Katelijne, who reads correspondence the way an assayer reads silver, points out what a fortnight of the house's own clerks did not: the unsigned letter is in a Bruges hand, was carried by a Scottish ship, and is dated four months after the lady Gelis was last accounted for in Flanders. She does not say the word. She simply puts the dates in a column, and waits.",
+    "choices": [
+      { "text": "Set the house's own couriers to it, properly and expensively", "effects": { "cash": -18, "flag": "child_hunt_open" } },
+      { "text": "Ask quietly, through the Adorne connection, and pay nothing", "effects": { "conscience": -1, "flag": "child_hunt_open" } }
+    ]
+  },
+  {
+    "id": "ev_c5_010",
+    "chapter": 5,
+    "trigger": { "flag": "child_hunt_open" },
+    "title": "The trail out of Flanders",
+    "body": "It is not a trail so much as a series of absences: a lying-in paid for and no name entered, a wet-nurse dismissed with a year's wages, a Borselen servant travelling with a household of four where the household should have been three. Every one of them is a fact. None of them, taken alone, is worth putting in a letter.",
+    "choices": [
+      { "text": "Follow the absences wherever they lead", "effects": { "flag": "child_trail_flanders" } }
+    ]
+  },
+  {
+    "id": "ev_c5_011",
+    "chapter": 5,
+    "trigger": { "flag": "child_trail_flanders" },
+    "title": "Not east into the Empire, then",
+    "body": "The household of four does not go up the Rhine, where a Borselen would have friends. It takes ship out of Sluys for the Levant, in a season when nobody sails for the Levant except pilgrims and the houses that carry them. Which narrows the question considerably, and makes the answer to it a great deal further away.",
+    "choices": [
+      { "text": "Fit out for Alexandria, and take the trade with you to pay for it", "effects": { "flag": "egypt_bound" } },
+      { "text": "Fit out for Alexandria whatever it costs the season", "effects": { "cash": -22, "flag": "egypt_bound" } }
+    ]
+  },
+  {
+    "id": "ev_c5_012",
+    "chapter": 5,
+    "trigger": { "flag": "divined_person" },
+    "title": "A direction, and nothing else",
+    "body": "It is done at night, in a walled garden off the Cairo house, with a ring on a thread and no witnesses but one — which is the only condition under which he will do it at all. There is no vision, no voice, nothing anybody could write down and swear to. There is simply, at the end of it, an unarguable certainty about a direction, and afterwards a headache that lasts three days and a silence that lasts longer.",
+    "choices": [
+      { "text": "Write down the bearing and say nothing of how it was got", "effects": { "flag": "child_direction_known", "evidence": { "id": "par_cairo_bearing", "name": "The bearing out of Cairo", "description": "A direction and a date in Nicholas's own hand, with no account whatever of how either was arrived at — and, folded with it, a second sheet in the same hand asking a question about his own birth.", "track": "parentage", "kind": "testimony" } } }
+    ]
+  },
+  {
+    "id": "ev_c5_013",
+    "chapter": 5,
+    "trigger": { "flags": ["child_trail_flanders", "child_direction_known"], "flagAbsent": "child_hunt_resolved" },
+    "title": "A name, and a closed door",
+    "body": "The bearing is good. The house at the end of it, three days south of the city, has been empty for eleven days, and the man who kept its gate is willing to be paid for what he remembers: a Flemish lady, a nurse, an infant boy about a year old, and a name — the boy's own, given him at a font his father was not told about. They left before the house's own courier reached the road.",
+    "choices": [
+      { "text": "Take the name, pay the gatekeeper, and turn back", "effects": { "conscience": -3, "flags": ["child_named", "child_withheld", "child_hunt_resolved"] } },
+      { "text": "Take the name, pay the gatekeeper, and set a watch on every port between here and Flanders", "effects": { "cash": -30, "flags": ["child_named", "child_withheld", "child_hunt_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_014",
+    "chapter": 5,
+    "trigger": { "weeksAfterFlag": { "flag": "child_trail_flanders", "weeks": 40 }, "flagAbsent": "child_direction_known" },
+    "title": "The trail goes cold in the ordinary way",
+    "body": "There is no dramatic loss of the scent, no door shut in anybody's face. There is simply a season in which four separate enquiries all come back with nothing, and a fifth comes back with something that turns out, on being checked, to be a different Flemish household altogether. Demoiselle Katelijne closes the column of dates without comment, which is worse than comment.",
+    "choices": [
+      { "text": "Close the enquiry, and be honest with the household about why", "effects": { "conscience": 1, "flags": ["child_withheld", "child_hunt_resolved"] } },
+      { "text": "Close the enquiry, and let the household believe it is still open", "effects": { "conscience": -4, "flags": ["child_withheld", "child_hunt_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_015",
+    "chapter": 5,
+    "trigger": { "flag": "egypt_bound", "location": "alexandria" },
+    "title": "Landfall at Alexandria",
+    "body": "The city is smaller than its name and older than anything in it: two harbours, a ruined lighthouse being quarried for a fort, and a foreign quarter of walled compounds where every Christian house of consequence keeps its own gate, its own warehouse, and its own consul to be shouted at by the sultan's customs when the accounts do not agree.",
+    "choices": [
+      { "text": "Present the house's papers at the Venetian compound and take a warehouse", "effects": { "cash": -14, "flag": "reached_alexandria" } }
+    ]
+  },
+  {
+    "id": "ev_c5_016",
+    "chapter": 5,
+    "trigger": { "flag": "reached_alexandria" },
+    "title": "What the sultan's customs are actually for",
+    "body": "Nothing arrives here from the Indies except through the sultan's own hands, and nothing leaves except at the rate his customs put on it that season, which is set less by the market than by what the treasury owes its soldiers. A licence to trade under the Venetian consul's protection is expensive and lawful. Trading a little outside it is cheap, entirely normal, and expensive in a different way if noticed.",
+    "choices": [
+      { "text": "Buy the licence and trade in the open", "effects": { "cash": -40, "flags": ["egypt_licence_bought", "egypt_licence_choice_made"] } },
+      { "text": "Trade at the compound's margins, as most houses do", "effects": { "cash": 15, "conscience": -3, "flags": ["egypt_licence_evaded", "egypt_licence_choice_made"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_017",
+    "chapter": 5,
+    "trigger": { "flag": "egypt_licence_choice_made", "location": "cairo" },
+    "title": "Cairo, and the market above the customs",
+    "body": "Cairo is not a port and does not behave like one. It is the place where the sultan is, which means it is the place where prices are decided rather than merely paid — and where a court newly settled under a soldier-sultan buys Flemish cloth and Venetian glass at figures that would embarrass a Bruges factor to repeat at home. A red-headed Aberdonian engineer, in the city on somebody else's gun-founding contract, offers to make the introductions for a share.",
+    "choices": [
+      { "text": "Take him on the house's own books and keep him", "effects": { "joinCharacter": "johnlegrant", "flags": ["johnlegrant_joined", "reached_cairo"] } },
+      { "text": "Pay him for the introductions only", "effects": { "cash": -10, "flag": "reached_cairo" } }
+    ]
+  },
+  {
+    "id": "ev_c5_018",
+    "chapter": 5,
+    "trigger": { "flag": "reached_cairo" },
+    "title": "The terms, and who has already seen them",
+    "body": "A clerk of the customs, badly paid in a coin that has been getting worse for a decade, will copy out what the spice rate is actually to be for the coming season, and — for the same money — which two European houses were told a fortnight ago. It is precisely the kind of paper that is worth nothing at all once everybody has it.",
+    "choices": [
+      { "text": "Pay the clerk", "effects": { "cash": -18, "secret": { "id": "secret_mamluk_spice_terms", "name": "Next season's spice rate, before it is set", "description": "A customs clerk's copy of the rate the sultan's treasury intends to put on pepper this season, and the names of the two houses already trading on it.", "value": 80, "expiresInWeeks": 14 } } },
+      { "text": "Leave the clerk alone and buy at whatever is posted", "effects": { "conscience": 2 } }
+    ]
+  },
+  {
+    "id": "ev_c5_019",
+    "chapter": 5,
+    "trigger": { "flags": ["reached_cairo", "egypt_licence_choice_made"] },
+    "title": "The Egyptian agency, on paper at last",
+    "body": "Whatever was decided at the compound gate, the house now has a warehouse at Alexandria, a factor at Cairo, and a line in its own ledger denominated in a coin heavy enough to make the florin look thin. It also has, for the first time, a standing position in a trade that begins somewhere none of its officers can name and passes through the hands of a prince who is under no obligation whatever to be predictable.",
+    "choices": [
+      { "text": "Open the Egyptian agency's books formally", "effects": { "flag": "egypt_licence_resolved" } }
+    ]
+  },
+  {
+    "id": "ev_c5_020",
+    "chapter": 5,
+    "trigger": { "flag": "egypt_licence_resolved" },
+    "title": "The commission from the mountain",
+    "body": "The monastery of St Catherine, three weeks inland across a desert with two wells worth the name, has burned the same lamps for eight hundred years and would like new ones: Venetian glass, carried under the sultan's own safe-conduct, paid for in Cairo on delivery. Every pilgrim house in the city has declined it. Every pilgrim house in the city has also explained, at length, why.",
+    "choices": [
+      { "text": "Take the commission, and provision the crossing properly", "effects": { "cash": -20, "flag": "sinai_journey_open" } },
+      { "text": "Take the commission, and travel light to save the season", "effects": { "conscience": -1, "flag": "sinai_journey_open" } }
+    ]
+  },
+  {
+    "id": "ev_c5_021",
+    "chapter": 5,
+    "trigger": {
+      "flag": "sinai_journey_open",
+      "vesselKindAt": { "kind": "ship", "location": "sinai" },
+      "cargoAtLeast": { "location": "sinai", "goodId": "glass", "quantity": 3 },
+      "flagAbsent": "sinai_journey_resolved"
+    },
+    "title": "St Catherine's, and the glass intact",
+    "body": "The monastery stands in a cleft between two red mountains, walled like a fort because it has needed to be, and the crates come up the last mile on the backs of men because nothing else will take them. Three of the lamps are hung before the party has finished eating. The abbot pays in Cairo coin, at the figure agreed, without haggling, which nobody in the party has experienced anywhere else in this trade.",
+    "choices": [
+      { "text": "Deliver the glass and take the abbot's payment", "effects": { "cash": 120, "flags": ["sinai_journey_success", "sinai_journey_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_022",
+    "chapter": 5,
+    "trigger": {
+      "weeksAfterFlag": { "flag": "sinai_journey_open", "weeks": 30 },
+      "flagAbsent": "sinai_journey_resolved"
+    },
+    "title": "The season closes on the desert road",
+    "body": "The safe-conduct was granted for a season and the season is over. What the monastery wanted is still in a Venetian warehouse or a Cairo one, the sultan's clerks have struck the commission from their register, and the pilgrim houses that declined it in the first place are civil enough about it, which is its own kind of expense.",
+    "choices": [
+      { "text": "Return the safe-conduct and write the commission off", "effects": { "cash": -30, "conscience": -2, "flags": ["sinai_journey_failed", "sinai_journey_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_023",
+    "chapter": 5,
+    "trigger": { "flag": "divined_water" },
+    "title": "Water, where the maps have none",
+    "body": "The cistern below the monastery wall is low, the last well on the road up has been dry two summers, and the pilgrim caravan due behind this one is forty strong. What happens next is done in front of most of them and cannot afterwards be explained to any of them: a place chosen on bare rock for no reason anybody can see, and water at nine feet. The monastery's own guides are grateful. Father Godscalc, when the account reaches him, is not.",
+    "choices": [
+      { "text": "Let the guides call it what they like", "effects": { "cash": 25, "conscience": -2 } },
+      { "text": "Tell them plainly it was a guess, and let them believe that instead", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c5_024",
+    "chapter": 5,
+    "trigger": { "flag": "sinai_journey_success" },
+    "title": "What the mountain keeps besides lamps",
+    "body": "The library is not shown to merchants, as a rule. It is shown to this one because the lamps are hung and because Demoiselle Katelijne asked in Greek. Among a great deal else of no commercial interest whatever, the monastery holds notarial copies of instruments deposited by pilgrims for safe keeping over two centuries — including, filed under a year the house has reason to care about, one out of Bruges.",
+    "choices": [
+      { "text": "Pay the monastery for a fair copy", "effects": { "cash": -15, "evidence": { "id": "par_sinai_deposit", "name": "The Bruges instrument, deposited at Sinai", "description": "A notarial copy left with the monastery by a pilgrim in a year the house has cause to remember, naming parties to a settlement that Bruges has always maintained was never made.", "track": "parentage", "kind": "document" } } },
+      { "text": "Read it, note the year, and leave it where it lies", "effects": { "conscience": 1 } }
+    ]
+  },
+  {
+    "id": "ev_c5_025",
+    "chapter": 5,
+    "trigger": { "flag": "sinai_journey_success", "vesselKindAt": { "kind": "ship", "location": "cairo" } },
+    "title": "Back down to Cairo with a full ledger",
+    "body": "The crossing pays: the abbot's coin, a safe-conduct honoured in both directions, and a standing in the pilgrim trade that four Italian houses have been trying to buy for a decade. It also puts the house's own officers in a desert for six weeks at the exact season in which a household of four, one of them an infant, was moving between ports the house had no watch on.",
+    "choices": [
+      { "text": "Reckon the season's gain, and what it was bought with", "effects": { "flag": "sinai_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c5_026",
+    "chapter": 5,
+    "trigger": { "flag": "sinai_journey_failed" },
+    "title": "Back down to Cairo with a struck register",
+    "body": "The house keeps the Egyptian agency, the warehouse and the factor, and loses the one piece of business in the city that no Italian competitor had wanted to touch. It is not a disaster. It is a season spent, and a reputation among the pilgrim houses that will take two more to mend, and it happens to have been spent in exactly the months when the trail out of Flanders was still warm.",
+    "choices": [
+      { "text": "Reckon the season's cost, and what it was spent on instead", "effects": { "flag": "sinai_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c5_027",
+    "chapter": 5,
+    "trigger": { "flag": "reached_edinburgh" },
+    "title": "Underbid by a company nobody has heard of",
+    "body": "The wool staple's customs go to a company calling itself the Vatachino, at a figure four groats under the house's own sealed bid. Four groats is not a market judgement. Four groats is what a man bids when he has seen the other paper, and the only copies of the other paper were in the house's own strongbox and the burgh clerk's.",
+    "choices": [
+      { "text": "Say nothing publicly, and start keeping a file", "effects": { "flag": "vatachino_noticed", "evidence": { "id": "vat_lead_bid", "name": "The bid that was too well informed", "description": "A Scottish customs contract lost by a margin nobody outside the house's own counting room should have been able to calculate.", "track": "vatachino", "kind": "document" } } },
+      { "text": "Complain to the burgh, loudly, and get nothing but a hearing", "effects": { "cash": -8, "flag": "vatachino_noticed", "evidence": { "id": "vat_lead_bid", "name": "The bid that was too well informed", "description": "A Scottish customs contract lost by a margin nobody outside the house's own counting room should have been able to calculate.", "track": "vatachino", "kind": "document" } } }
+    ]
+  },
+  {
+    "id": "ev_c5_028",
+    "chapter": 5,
+    "trigger": { "flags": ["vatachino_noticed", "reached_alexandria"] },
+    "title": "The same name, four thousand miles off",
+    "body": "The compound next but one to the Venetian gate flies no colours and keeps a warehouse larger than its trade appears to justify. Its factor signs for the Vatachino, in a Genoese hand, and has been in the city eighteen months. Nobody in the quarter can name a single partner of the company. Everybody in the quarter has been quietly outbid by it.",
+    "choices": [
+      { "text": "Have the factor watched, and learn who paid his passage out", "effects": { "cash": -14, "flag": "vatachino_traced", "evidence": { "id": "vat_lead_factor", "name": "A factor with two employers", "description": "The name of the man who signs for the Vatachino at Alexandria, and the name of the house that paid his passage there.", "track": "vatachino", "kind": "testimony" } } }
+    ]
+  },
+  {
+    "id": "ev_c5_029",
+    "chapter": 5,
+    "trigger": { "flag": "vatachino_traced" },
+    "title": "The notary at Genoa who will sell anything twice",
+    "body": "The company was constituted somewhere, by someone, before a notary who kept the register — and Genoese notaries keep registers the way the sea keeps wrecks. The man holding this one is perfectly willing to produce a fair copy of the instrument of association, at a price that makes plain he has understood exactly what he is holding.",
+    "choices": [
+      { "text": "Pay whatever the register costs", "effects": { "cash": -55, "flag": "vatachino_inquiry_closed", "evidence": { "id": "vat_lead_signature", "name": "The third signature", "description": "A notarised instrument out of Genoa, witnessed by three parties, one of whose hands the house has seen on a Bruges writ before.", "track": "vatachino", "kind": "document" } } },
+      { "text": "Refuse the price, and let the house's own agents earn it instead", "effects": { "flag": "vatachino_inquiry_closed" } }
+    ]
+  },
+  {
+    "id": "ev_c5_030",
+    "chapter": 5,
+    "trigger": { "flags": ["vatachino_inquiry_closed", "vatachino_unmasked"], "flagAbsent": "vatachino_resolved" },
+    "title": "Three names, and one of them expected",
+    "body": "Laid side by side, the file answers itself. The capital is Genoese and fronted. The second interest belongs to a crown officer who has never once appeared in the company's papers and never needed to. The third signature is a hand the house first saw on a Bruges writ nine years ago, and has been paying for ever since. The Vatachino is not a rival that appeared out of nowhere. It is the vendetta, incorporated.",
+    "choices": [
+      { "text": "Keep the knowledge, and let them go on believing they are masked", "effects": { "conscience": -1, "rep": { "stpol": -5 }, "flags": ["vatachino_named", "vatachino_resolved"] } },
+      { "text": "Let it be known in Bruges, Genoa and Alexandria at once", "effects": { "cash": 40, "rep": { "stpol": -15, "genoese": -10 }, "flags": ["vatachino_named", "vatachino_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_031",
+    "chapter": 5,
+    "trigger": { "weeksAfterFlag": { "flag": "vatachino_inquiry_closed", "weeks": 12 }, "flagAbsent": "vatachino_unmasked" },
+    "title": "Still a name and nothing behind it",
+    "body": "The file is thick and proves nothing. A company exists, is well capitalised, is consistently better informed than it has any right to be, and cannot be shown to belong to anybody at all. The house closes the enquiry for this season on the understanding — Demoiselle Katelijne's phrasing, not the notary's — that an opponent one cannot name is an opponent one has not finished paying for.",
+    "choices": [
+      { "text": "Close the file, and keep it where it can be reopened", "effects": { "flags": ["vatachino_masked_still", "vatachino_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c5_032",
+    "chapter": 5,
+    "trigger": { "flag": "divined_ore" },
+    "title": "The seam under the Lothian grass",
+    "body": "A tenant of the burgh's has been turning up galena in a field he would rather be growing oats in, and has no idea whether there is a mine under it or a nuisance. The rods say there is, and say where, and the assay afterwards agrees with them to within twenty feet — which is the part that will be remembered, and repeated, and eventually asked about by somebody the house would rather not answer.",
+    "choices": [
+      { "text": "Take a share of the working and let the story travel", "effects": { "cash": 45, "conscience": -3 } },
+      { "text": "Buy the tenant's silence along with his lease", "effects": { "cash": 10, "conscience": -1 } }
+    ]
+  },
+  {
+    "id": "ev_c5_033",
+    "chapter": 5,
+    "trigger": {
+      "flags": [
+        "scotland_court_resolved",
+        "child_hunt_resolved",
+        "egypt_licence_resolved",
+        "sinai_epilogue",
+        "vatachino_resolved"
+      ]
+    },
+    "title": "The Unicorn Hunt, concluded",
+    "body": "Three years, two kingdoms and a desert, and the house comes out of it with a Scottish customs contract, an Egyptian agency, a standing in the pilgrim trade and a coin in its ledger that no Bruges clerk can weigh by eye. Against that: a boy who exists, whose name is either known or is not, and who is not here; a gift its owner cannot put in any column; and a rival company that has been reading the house's own paper for three years, whether or not it now has names attached.",
+    "choices": [
+      { "text": "Close The Unicorn Hunt's own books", "effects": { "flag": "chapter5_complete" } }
+    ]
+  }
+]

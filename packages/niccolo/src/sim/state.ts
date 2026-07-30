@@ -105,6 +105,10 @@ export function createInitialState(id: string, name?: string, options?: CreateIn
     lastSabotageEvent: null,
     expedition: null,
     lastExpeditionEvent: null,
+    evidence: [],
+    divining: null,
+    lastDiviningEvent: null,
+    flagWeeks: skipPrologue ? { chapter0_complete: 0 } : {},
     objectivesHidden,
     hotseatHouseId,
     // Seeded to match the campaign's actual starting chapter (1 for skip-prologue, which begins

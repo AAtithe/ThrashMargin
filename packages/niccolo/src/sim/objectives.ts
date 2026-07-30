@@ -7,6 +7,7 @@ import type { GameState, Objective } from './types';
  * a single bare flag, no AND-gate to describe) — `objectivesForChapter(state, 0)` simply returns
  * an empty list, which is what lets `ObjectivesPanel` self-hide during the prologue for free. */
 export function currentChapterNumber(state: GameState): number {
+  if (state.flags.chapter4_complete) return 5;
   if (state.flags.chapter3_complete) return 4;
   if (state.flags.chapter2_complete) return 3;
   if (state.flags.chapter1_complete) return 2;
@@ -38,6 +39,7 @@ export const CHAPTER_TITLES: Record<number, string> = {
   2: 'The Spring of the Ram',
   3: 'Race of Scorpions',
   4: 'Scales of Gold',
+  5: 'The Unicorn Hunt',
 };
 
 /**

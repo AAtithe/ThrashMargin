@@ -1,0 +1,44 @@
+[
+  {
+    "id": "vatachino",
+    "name": "The Vatachino",
+    "homeCity": "alexandria",
+    "disposition": "hostile",
+    "baselineRelation": 20,
+    "insiderSecret": {
+      "id": "vatachino_bidding_floor",
+      "name": "What the Vatachino will actually pay",
+      "description": "A clerk of theirs, careless in a Cairo courtyard, on the floor beneath which the company withdraws from a bid rather than be seen to lose one.",
+      "value": 65,
+      "expiresInWeeks": 12
+    },
+    "hiddenBackers": {
+      "track": "vatachino",
+      "revealedByFlag": "vatachino_unmasked",
+      "text": "Three names stand behind the company, and not one of them is Vatachino: a Genoese consortium fronting the capital, a Portuguese crown officer who has never once appeared in its papers, and — on the third signature, in a hand the house has seen before on a Bruges lawsuit — Jordan de Ribérac."
+    },
+    "backerLeads": [
+      {
+        "id": "vat_lead_bid",
+        "name": "The bid that was too well informed",
+        "description": "A Scottish customs contract lost by a margin nobody outside the house's own counting room should have been able to calculate.",
+        "track": "vatachino",
+        "kind": "document"
+      },
+      {
+        "id": "vat_lead_factor",
+        "name": "A factor with two employers",
+        "description": "The name of the man who signs for the Vatachino at Alexandria, and the name of the house that paid his passage there.",
+        "track": "vatachino",
+        "kind": "testimony"
+      },
+      {
+        "id": "vat_lead_signature",
+        "name": "The third signature",
+        "description": "A notarised instrument out of Genoa, witnessed by three parties, one of whose hands the house has seen on a Bruges writ before.",
+        "track": "vatachino",
+        "kind": "document"
+      }
+    ]
+  }
+]

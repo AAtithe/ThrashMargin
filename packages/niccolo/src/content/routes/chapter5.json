@@ -1,0 +1,8 @@
+[
+  { "id": "bruges-edinburgh", "from": "bruges", "to": "edinburgh", "distanceWeeks": 3, "type": "sea", "seasonal": true },
+  { "id": "london-edinburgh", "from": "london", "to": "edinburgh", "distanceWeeks": 2, "type": "sea", "seasonal": false },
+  { "id": "venice-alexandria", "from": "venice", "to": "alexandria", "distanceWeeks": 5, "type": "sea", "seasonal": true },
+  { "id": "famagusta-alexandria", "from": "famagusta", "to": "alexandria", "distanceWeeks": 2, "type": "sea", "seasonal": false },
+  { "id": "alexandria-cairo", "from": "alexandria", "to": "cairo", "distanceWeeks": 1, "type": "land", "seasonal": false },
+  { "id": "cairo-sinai", "from": "cairo", "to": "sinai", "distanceWeeks": 3, "type": "land", "seasonal": true }
+]

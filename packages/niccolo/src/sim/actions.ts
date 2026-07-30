@@ -4,8 +4,10 @@ import { assignCharacter, resolveWeeklyUpkeep, tradeBonus } from './characters';
 import { resolveWeeklyCondotta } from './condotta';
 import { discountObligation, resolveMaturingObligations, takeDeposit, writeBill, writeLoan } from './credit';
 import { driftExchangeRates } from './currency';
+import { useDivining } from './divining';
+import { resolveUnmasking } from './dossier';
 import { establishEstate, harvestEstate, resolveWeeklyEstate, shipEstateGoods } from './estates';
-import { checkTriggers, resolveEvent } from './events';
+import { checkTriggers, resolveEvent, withFlagsSet } from './events';
 import { resolveWeeklyExpedition } from './expedition';
 import {
   applyHouseTradeFootprint,
@@ -13,6 +15,7 @@ import {
   driftHouseRelations,
   placeAgent,
   resolveHouseSabotage,
+  resolveWeeklyAgentEvidence,
   resolveWeeklyAgentIntelligence,
 } from './houses';
 import { canInsureAt, clearArrivedInsurance, quoteInsurance, resolveVoyageRisk } from './insurance';
@@ -274,6 +277,7 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   const houseRelations = driftHouseRelations(state.houseRelations, state.flags);
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
+  const evidence = resolveWeeklyAgentEvidence(state.agents, state.evidence ?? [], week);
   const risk = resolveVoyageRisk(maturity.vessels, state.insurance ?? [], ROUTES, week);
   const tickedVessels = risk.vessels.map(tickVessel);
   const insurance = clearArrivedInsurance(risk.insurance, tickedVessels);
@@ -291,10 +295,19 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   const knownPrices = { ...state.knownPrices };
   for (const item of arrived) knownPrices[item.cityId] = item;
 
-  let flags = state.flags;
-  if (condottaResolution.condottaJustCompleted) flags = { ...flags, condotta_naples_complete: true };
-  if (sabotage.sabotaged) flags = { ...flags, doria_sabotage_occurred: true };
-  if (expeditionResolution.crisisReached) flags = { ...flags, expedition_crisis: true };
+  // Every engine-side flag this week sets, collected before being applied, so all of them get a
+  // `flagWeeks` timestamp from the one place that knows how to record one (see `withFlagsSet`) —
+  // relative `weeksAfterFlag` deadlines are only as trustworthy as the dating behind them.
+  const engineFlags: string[] = [];
+  if (condottaResolution.condottaJustCompleted) engineFlags.push('condotta_naples_complete');
+  if (sabotage.sabotaged) engineFlags.push('doria_sabotage_occurred');
+  if (expeditionResolution.crisisReached) engineFlags.push('expedition_crisis');
+  // A masked house is unmasked the moment the dossier is complete, whichever route completed it
+  // (a placed agent's lead this very week, or a chapter event's earlier grant) — read against the
+  // post-agent `evidence` above, not `state.evidence`, or an agent's final lead would sit unread
+  // for a week.
+  engineFlags.push(...resolveUnmasking({ ...state, evidence }));
+  const { flags, flagWeeks } = withFlagsSet(state.flags, state.flagWeeks, week, engineFlags);
 
   // Storm/piracy loss, sabotage, and forced liquidation (maturity.vessels, above) each just remove
   // `n` units of some good with no idea grades (`sim/grades.ts`) exist — this is the one place all
@@ -313,10 +326,12 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     characters: upkeep.characters,
     condotta: condottaResolution.condotta,
     flags,
+    flagWeeks,
     exchangeRates,
     scarcity,
     houseRelations,
     secrets,
+    evidence,
     pendingNews: stillPending,
     knownPrices,
     lastMarketCauses: marketCauses,
@@ -350,11 +365,11 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
-  // chapter1_complete through chapter3_complete no longer freeze play — each is a mid-campaign
+  // chapter1_complete through chapter4_complete no longer freeze play — each is a mid-campaign
   // flag the next chapter's own events trigger on (design doc §12, "Phase 9 onward: one chapter
-  // content pack per phase"). Only the true end of the shipped content (chapter4_complete) stops
+  // content pack per phase"). Only the true end of the shipped content (chapter5_complete) stops
   // the clock now.
-  if (state.flags.chapter4_complete) return state;
+  if (state.flags.chapter5_complete) return state;
   // ACKNOWLEDGE_CHAPTER is UI bookkeeping (dismissing the "Chapter N complete" card), not a
   // commercial/narrative action — it must go through even while the next chapter's own opening
   // event is already queued in pendingEvents (which it typically is, by design: that event's
@@ -397,6 +412,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return useSecret(state, action.secretId);
     case 'PLACE_AGENT':
       return placeAgent(state, action.placement, action.name);
+    case 'USE_DIVINING':
+      return useDivining(state, action.purpose);
     case 'ESTABLISH_ESTATE':
       return establishEstate(state);
     case 'HARVEST_ESTATE':

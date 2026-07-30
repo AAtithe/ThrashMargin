@@ -1,9 +1,11 @@
 import { HOUSES, findCity, findHouse } from './content';
+import { addEvidence } from './dossier';
 import { addSecret } from './secrets';
 import { adjustScarcity, cargoTotal } from './market';
 import type {
   Agent,
   AgentPlacement,
+  EvidenceItem,
   GameState,
   House,
   HouseTradeNote,
@@ -223,6 +225,38 @@ export function resolveWeeklyAgentIntelligence(
     if (next.some(s => s.id === house.insiderSecret!.id)) continue;
     if (Math.random() < AGENT_SECRET_CHANCE_PER_WEEK) {
       next = addSecret(next, week, house.insiderSecret);
+    }
+  }
+  return next;
+}
+
+/**
+ * The "unmask early" half of §9's line about the Vatachino ("an AI house whose backers are a
+ * mystery the intelligence system can unmask early or late"): an agent placed inside a house that
+ * has authored `backerLeads` may, some weeks, send home one of them as an Evidence Board item.
+ * Deliberately a *lower* weekly chance than `resolveWeeklyAgentIntelligence`'s own secret roll —
+ * who actually owns a company is the thing a masked house guards hardest, and an agent that
+ * assembled the whole dossier in a month would make the chapter's own paid informant beat pointless.
+ * Reuses the existing agent placement and the existing evidence store rather than adding a second
+ * intelligence mechanic; leads already held (from either route) are skipped, so this and the
+ * chapter's own events can hand over the same dossier in any order.
+ */
+const AGENT_BACKER_LEAD_CHANCE_PER_WEEK = 0.08;
+
+export function resolveWeeklyAgentEvidence(
+  agents: Agent[],
+  evidence: EvidenceItem[],
+  week: number,
+): EvidenceItem[] {
+  let next = evidence;
+  for (const house of HOUSES) {
+    if (!house.backerLeads?.length) continue;
+    if (agentsInHouse(agents, house.id).length === 0) continue;
+    const held = new Set(next.map(e => e.id));
+    const lead = house.backerLeads.find(l => !held.has(l.id));
+    if (!lead) continue;
+    if (Math.random() < AGENT_BACKER_LEAD_CHANCE_PER_WEEK) {
+      next = addEvidence(next, week, lead);
     }
   }
   return next;

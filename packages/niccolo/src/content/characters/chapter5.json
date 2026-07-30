@@ -1,0 +1,8 @@
+[
+  { "id": "kathi", "name": "Katelijne Sersanders", "role": "observer",
+    "skills": { "law": 2, "trade": 2, "combat": 1, "intrigue": 5 },
+    "loyalty": 60, "salary": 2, "location": "bruges", "status": "pending", "assignment": { "type": "idle" } },
+  { "id": "johnlegrant", "name": "John le Grant", "role": "engineer",
+    "skills": { "law": 1, "trade": 3, "combat": 4, "intrigue": 2 },
+    "loyalty": 65, "salary": 3, "location": "bruges", "status": "pending", "assignment": { "type": "idle" } }
+]
