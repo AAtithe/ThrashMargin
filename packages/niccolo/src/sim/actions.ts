@@ -16,10 +16,11 @@ import {
   resolveWeeklyAgentIntelligence,
 } from './houses';
 import { canInsureAt, clearArrivedInsurance, quoteInsurance, resolveVoyageRisk } from './insurance';
+import { addGrade, gradeBuyMultiplier, gradeHeld, gradeSellMultiplier, reconcileVesselCargoGrades, removeGrade } from './grades';
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, driftScarcity, priceAt } from './market';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
 import { resolveSecretExpiry, useSecret } from './secrets';
-import type { GameState, GameAction, HotseatDecision, Vessel } from './types';
+import type { GameState, GameAction, GradeId, HotseatDecision, Vessel } from './types';
 
 function tickVessel(v: Vessel): Vessel {
   if (!v.destination || v.weeksRemaining <= 0) return v;
@@ -114,6 +115,34 @@ function cancelPlannedRoute(state: GameState, vesselId: string): GameState {
   };
 }
 
+/**
+ * Auto-continues any vessel that's sitting docked with a queued plan still remaining (Phase 17
+ * follow-up: "it still only takes you one port at a time" — the owner wanted the queued journey
+ * to keep sailing on its own rather than needing a manual "Continue?" click at every intermediate
+ * stop). Deliberately uninsured — insuring is a paid, opt-in choice (`quoteInsurance`), and
+ * auto-applying it would silently charge the player a premium they never explicitly asked for on
+ * this leg; a player who wants a leg insured can still cancel the plan and redispatch manually.
+ *
+ * Called at the very top of `advanceWeek`, *before* this week's own `tickVessel`/`checkTriggers`
+ * run — critically, this means a vessel that arrives at an intermediate city *this* week is never
+ * auto-continued in that same tick. It's still sitting there (destination non-null) when this
+ * function runs, since it only acts on vessels already docked *before* this week's movement — so
+ * arrival events (e.g. "Landfall at Madeira") always get a full turn to queue and be resolved
+ * first. The vessel only actually auto-continues on the *next* `ADVANCE_WEEK` after it arrives,
+ * exactly mirroring how a manual "Continue" click already worked (dispatch is a free action; only
+ * the following `ADVANCE_WEEK` ticks travel time). The player can still interrupt at any
+ * intermediate stop with `CANCEL_PLANNED_ROUTE` any time before that next `ADVANCE_WEEK`.
+ */
+function autoContinuePlannedRoutes(state: GameState): GameState {
+  let next = state;
+  for (const vessel of state.vessels) {
+    if (!vessel.destination && vessel.plannedRoute && vessel.plannedRoute.length > 0) {
+      next = continuePlannedRoute(next, vessel.id);
+    }
+  }
+  return next;
+}
+
 /** Records that the player has seen the "Chapter N complete" acknowledgment card (Phase 15) — a
  * monotonic high-water mark, never lowered, so re-showing an already-seen card is impossible even
  * if this were somehow dispatched twice for the same transition. */
@@ -121,7 +150,13 @@ function acknowledgeChapter(state: GameState, chapterNumber: number): GameState 
   return { ...state, lastAcknowledgedChapter: Math.max(state.lastAcknowledgedChapter ?? 0, chapterNumber) };
 }
 
-function buyGood(state: GameState, vesselId: string, goodId: string, quantity: number): GameState {
+function buyGood(
+  state: GameState,
+  vesselId: string,
+  goodId: string,
+  quantity: number,
+  grade: GradeId = 'common',
+): GameState {
   if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Quantity must be a positive whole number');
 
   const vessel = state.vessels.find(v => v.id === vesselId);
@@ -136,7 +171,9 @@ function buyGood(state: GameState, vesselId: string, goodId: string, quantity: n
   const spaceLeft = vessel.capacity - cargoTotal(vessel.cargo);
   if (quantity > spaceLeft) throw new Error(`Only ${spaceLeft} unit${spaceLeft === 1 ? '' : 's'} of cargo space left`);
 
-  const cost = price * quantity * (1 - tradeBonus(state.characters, vesselId));
+  // Quality grades (pilot: cloth/silk, `sim/grades.ts`) charge a flat premium on top of the same
+  // market price every other buyer pays — a real cost, not a discount, so grade is never "free."
+  const cost = price * quantity * gradeBuyMultiplier(grade) * (1 - tradeBonus(state.characters, vesselId));
   if (cost > state.cash) throw new Error(`Not enough cash (need ${Math.round(cost)}, have ${Math.round(state.cash)})`);
 
   // Deliberately does NOT call adjustScarcity: an earlier version raised the local price on every
@@ -153,39 +190,57 @@ function buyGood(state: GameState, vesselId: string, goodId: string, quantity: n
     cash: state.cash - cost,
     vessels: state.vessels.map(v =>
       v.id === vesselId
-        ? { ...v, cargo: { ...v.cargo, [goodId]: (v.cargo[goodId] ?? 0) + quantity } }
+        ? {
+            ...v,
+            cargo: { ...v.cargo, [goodId]: (v.cargo[goodId] ?? 0) + quantity },
+            cargoGrades: addGrade(v.cargoGrades, goodId, grade, quantity),
+          }
         : v,
     ),
   };
 }
 
-function sellGood(state: GameState, vesselId: string, goodId: string, quantity: number): GameState {
+function sellGood(
+  state: GameState,
+  vesselId: string,
+  goodId: string,
+  quantity: number,
+  grade: GradeId = 'common',
+): GameState {
   if (!Number.isInteger(quantity) || quantity <= 0) throw new Error('Quantity must be a positive whole number');
 
   const vessel = state.vessels.find(v => v.id === vesselId);
   if (!vessel) throw new Error(`No such vessel: ${vesselId}`);
   if (vessel.destination) throw new Error(`${vessel.name} is under way and cannot trade`);
 
-  const held = vessel.cargo[goodId] ?? 0;
-  if (quantity > held) throw new Error(`${vessel.name} is not carrying that much`);
+  const held = gradeHeld(vessel.cargo, vessel.cargoGrades, goodId, grade);
+  if (quantity > held) throw new Error(`${vessel.name} is not carrying that much of that grade`);
 
   const city = findCity(vessel.location);
   const price = priceAt(state.scarcity, vessel.location, goodId);
   if (price === null) throw new Error(`${city?.name ?? vessel.location} has no market for that good`);
 
-  const revenue = price * quantity * (1 + tradeBonus(state.characters, vesselId));
+  const qualityMarket = city?.market?.[goodId]?.qualityMarket ?? false;
+  const revenue = price * quantity * gradeSellMultiplier(grade, qualityMarket) * (1 + tradeBonus(state.characters, vesselId));
 
   return {
     ...state,
     cash: state.cash + revenue,
     scarcity: adjustScarcity(state.scarcity, vessel.location, goodId, -quantity),
     vessels: state.vessels.map(v =>
-      v.id === vesselId ? { ...v, cargo: { ...v.cargo, [goodId]: held - quantity } } : v,
+      v.id === vesselId
+        ? {
+            ...v,
+            cargo: { ...v.cargo, [goodId]: (v.cargo[goodId] ?? 0) - quantity },
+            cargoGrades: removeGrade(v.cargoGrades, goodId, grade, quantity),
+          }
+        : v,
     ),
   };
 }
 
-function advanceWeek(state: GameState, hotseatDecision?: HotseatDecision): GameState {
+function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): GameState {
+  const state = autoContinuePlannedRoutes(rawState);
   const week = advanceWeekCounter(state.week);
   const exchangeRates = driftExchangeRates(state.exchangeRates);
   const maturity = resolveMaturingObligations(state, week, exchangeRates);
@@ -241,12 +296,18 @@ function advanceWeek(state: GameState, hotseatDecision?: HotseatDecision): GameS
   if (sabotage.sabotaged) flags = { ...flags, doria_sabotage_occurred: true };
   if (expeditionResolution.crisisReached) flags = { ...flags, expedition_crisis: true };
 
+  // Storm/piracy loss, sabotage, and forced liquidation (maturity.vessels, above) each just remove
+  // `n` units of some good with no idea grades (`sim/grades.ts`) exist — this is the one place all
+  // three have already run, so it's the one place a pilot good's cargoGrades needs clamping back
+  // down to what `cargo` actually still holds, rather than patching all three files individually.
+  const vessels = sabotage.vessels.map(reconcileVesselCargoGrades);
+
   return checkTriggers({
     ...state,
     week,
     cash: expeditionResolution.cash,
     conscience: expeditionResolution.conscience,
-    vessels: sabotage.vessels,
+    vessels,
     obligations: maturity.obligations,
     insolvent: state.insolvent || maturity.insolvent,
     characters: upkeep.characters,
@@ -315,9 +376,9 @@ export function processAction(state: GameState, action: GameAction): GameState {
     case 'ACKNOWLEDGE_CHAPTER':
       return acknowledgeChapter(state, action.chapterNumber);
     case 'BUY_GOOD':
-      return buyGood(state, action.vesselId, action.goodId, action.quantity);
+      return buyGood(state, action.vesselId, action.goodId, action.quantity, action.grade);
     case 'SELL_GOOD':
-      return sellGood(state, action.vesselId, action.goodId, action.quantity);
+      return sellGood(state, action.vesselId, action.goodId, action.quantity, action.grade);
     case 'INVEST_COURIER':
       return investCourier(state, action.cityId);
     case 'WRITE_BILL':

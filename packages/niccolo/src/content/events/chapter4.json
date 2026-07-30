@@ -226,13 +226,12 @@
     "id": "ev_c4_022",
     "chapter": 4,
     "trigger": {
-      "location": "bruges",
+      "vesselKindAt": { "kind": "ship", "location": "bruges" },
       "flag": "gambia_return_open",
-      "flagAbsent": "gambia_expedition_failed",
-      "cargoAtLeast": { "location": "bruges", "goodId": "gold", "quantity": 5 }
+      "flagAbsent": "gambia_expedition_failed"
     },
-    "title": "Out of the interior, gold in the hold",
-    "body": "The ship makes Bruges with the river and the fever both behind it, gold still in the hold and the crew, fewer of them than sailed, still able to walk off under their own power. The Gambia agency's books close in credit — the first Mediterranean house's, by every account, to make the round trip and say so honestly.",
+    "title": "Out of the interior, home before the season turns",
+    "body": "The ship makes Bruges with the river and the fever both behind it, whatever gold it carried sold along the way at Lisbon's own better price or still riding in the hold, and the crew, fewer of them than sailed, still able to walk off under their own power. The Gambia agency's books close in credit — the first Mediterranean house's, by every account, to make the round trip and say so honestly.",
     "choices": [
       { "text": "Make port and call the venture closed", "effects": { "cash": 70, "flags": ["gambia_expedition_success", "gambia_expedition_resolved"] } }
     ]

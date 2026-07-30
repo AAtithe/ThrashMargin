@@ -178,8 +178,8 @@ export default function CityPreviewPanel({
               <p style={{ fontSize: '0.72rem', color: '#6a5a40', margin: '0.5rem 0 0.3rem' }}>
                 Not reachable directly. Nearest path: {describePath(vessel.location, plan)} —{' '}
                 {plan.routeIds.length} dispatch{plan.routeIds.length === 1 ? '' : 'es'}, {plan.totalWeeks} weeks of
-                sailing. {vessel.name} will dock — and can trade — at each stop; you'll be prompted to continue on
-                arrival.
+                sailing. {vessel.name} will dock — and can trade — at each stop, then carry on toward{' '}
+                {city.name} automatically; cancel any time before the next stop if you'd rather stay.
               </p>
               {canInsureHere && vessel.capacity > 0 && (
                 <label style={{ fontSize: '0.72rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.3rem' }}>

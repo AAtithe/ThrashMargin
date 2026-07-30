@@ -1,6 +1,6 @@
 [
   { "id": "london",   "name": "London",   "region": "england",   "power": "england", "x": 3193.8, "y": 1924.0,  "port": true, "currency": "pound",
-    "market": { "wool": { "base": 10 }, "cloth": { "base": 45 } } },
+    "market": { "wool": { "base": 10 }, "cloth": { "base": 45, "qualityMarket": true } } },
   { "id": "calais",   "name": "Calais",   "region": "england",   "power": "england", "x": 3329.0, "y": 1999.6, "port": true, "currency": "pound",
     "market": { "wool": { "base": 14 }, "cloth": { "base": 40 } } },
   { "id": "bruges",   "name": "Bruges",   "region": "flanders",  "power": "burgundy","x": 3440.9, "y": 2004.0, "port": true, "currency": "groot",
@@ -12,7 +12,7 @@
   { "id": "dijon",    "name": "Dijon",    "region": "burgundy",  "power": "burgundy","x": 3334.6, "y": 2421.9, "port": false, "currency": "groot",
     "market": { "wine": { "base": 11 }, "salt": { "base": 18 } } },
   { "id": "geneva",   "name": "Geneva",   "region": "savoy",     "power": "savoy",   "x": 3498.6, "y": 2661.9, "port": false, "currency": "ecu",
-    "market": { "wine": { "base": 16 }, "silk": { "base": 58 } } },
+    "market": { "wine": { "base": 16 }, "silk": { "base": 58, "qualityMarket": true } } },
   { "id": "lyon",     "name": "Lyon",     "region": "france",    "power": "france",  "x": 3257.8, "y": 2709.0, "port": false, "currency": "ecu",
     "market": { "wine": { "base": 10 }, "silk": { "base": 52 }, "spices": { "base": 68 } } },
   { "id": "milan",    "name": "Milan",    "region": "lombardy",  "power": "milan",   "x": 3814.9, "y": 2706.4, "port": false, "currency": "ecu",

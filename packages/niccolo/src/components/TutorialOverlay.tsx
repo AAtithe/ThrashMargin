@@ -112,22 +112,22 @@ const STEPS: Step[] = [
   {
     title: 'The map',
     body:
-      "Select a vessel from the sidebar, then click a lit city to send it there. Couriers travel by land only; the ship can also cross the sea routes (the dashed lines). A vessel already under way can't be redirected — check how many weeks are left before you commit it.",
+      "Select a vessel from the Fleet menu, then click a lit city to send it there. Couriers travel by land only; the ship can also cross the sea routes (the dashed lines). A vessel already under way can't be redirected — check how many weeks are left before you commit it.",
   },
   {
     title: 'Buying and selling',
     body:
-      'Dock a cargo vessel at a city with a market and the Market panel opens: buy low, carry it somewhere it sells dear. Every trade nudges that city\'s price against you a little — buying enough wool drives the price up, selling drives it down — and prices drift back toward normal over time if you leave a market alone.',
+      "Dock a cargo vessel at a city with a market and open the Market menu: buy low, carry it somewhere it sells dear. Every trade nudges that city's price against you a little — buying enough wool drives the price up, selling drives it down — and prices drift back toward normal over time if you leave a market alone.",
   },
   {
     title: 'Information is not the same as truth',
     body:
-      "Except at Bruges — home, where you always know the truth — every price you see for a city is a report, current as of whenever it was written, not as of now. A report takes real weeks to reach you, and a city you haven't visited in a while may have moved on from what you last heard. The Dispatches panel shows each city's report age and lets you pay to speed up its courier line.",
+      "Except at Bruges — home, where you always know the truth — every price you see for a city is a report, current as of whenever it was written, not as of now. A report takes real weeks to reach you, and a city you haven't visited in a while may have moved on from what you last heard. The Dispatches menu shows each city's report age and lets you pay to speed up its courier line.",
   },
   {
     title: 'Credit is leverage, not free money',
     body:
-      "The Ledger lets you write bills of exchange (borrow now, owe more later, in a foreign currency whose exchange rate can move against you), take deposits, and lend to merchants or princes. Every obligation lands on the maturity ladder. If a payment comes due and you can't cover it — even after your ships are forced to sell their cargo at a loss — the house goes insolvent and the campaign ends.",
+      "The Ledger menu lets you write bills of exchange (borrow now, owe more later, in a foreign currency whose exchange rate can move against you), take deposits, and lend to merchants or princes. Every obligation lands on the maturity ladder. If a payment comes due and you can't cover it — even after your ships are forced to sell their cargo at a loss — the house goes insolvent and the campaign ends.",
   },
   {
     title: 'Your household',
@@ -155,7 +155,7 @@ const CHAPTER0_STEPS: Step[] = [
   {
     title: 'The handcart trades for real',
     body:
-      "It only holds 3 units, but it's a real cargo hold: dock it at a city with a market and the Market panel opens exactly as it will later for a full ship — buy what's cheap, sell what's dear, or just sell whatever an event has handed you. Select it from the Vessels list in the sidebar, then click a city on the map to send it there.",
+      "It only holds 3 units, but it's a real cargo hold: dock it at a city with a market and the Market menu works exactly as it will later for a full ship — buy what's cheap, sell what's dear, or just sell whatever an event has handed you. Select it from the Vessels list in the Fleet menu, then click a city on the map to send it there.",
   },
   {
     title: 'Waiting is part of it',

@@ -93,11 +93,12 @@ interface TourStep {
    * single target and instead show a manual button. */
   targetId: string | null;
   isComplete: (state: GameState, selectedVesselId: string | null, previewCityId: string | null) => boolean;
-  /** Phase 14: only set for a step whose target lives inside a phase-tab group (Household or
-   * Finance) rather than the always-visible zone or the map — `GameScreen.tsx`'s `onStepChange`
-   * forces the right tab open whenever this step becomes current, the same way it already forces
-   * the Ledger/Counting-House split for the "write a bill" step specifically. */
-  requiresPhase?: 'household' | 'finance';
+  /** Phase 17 follow-up: only set for a step whose target lives inside a popup menu section
+   * rather than the header or the map, which are always visible — `GameScreen.tsx`'s
+   * `onStepChange` forces the right popup open whenever this step becomes current, the same way
+   * it already forces the Ledger/Counting-House split for the "write a bill" step specifically.
+   * (Formerly named `requiresPhase`, tied to the now-removed phase-tab grouping this superseded.) */
+  requiresSection?: 'fleet' | 'city' | 'household' | 'dispatches' | 'ledger';
 }
 
 const STEPS: TourStep[] = [
@@ -109,15 +110,17 @@ const STEPS: TourStep[] = [
   },
   {
     title: 'Select your ship',
-    body: 'Click "The Charetty ship" in the Vessels list.',
+    body: 'Open the Fleet menu, then click "The Charetty ship" in the Vessels list.',
     targetId: `vessel-button-${SHIP_ID}`,
     isComplete: (_state, selectedVesselId) => selectedVesselId === SHIP_ID,
+    requiresSection: 'fleet',
   },
   {
     title: 'Buy some cloth',
-    body: 'Bruges weaves fine cloth. Click Buy to load a bale aboard.',
+    body: 'Open the Market menu — Bruges weaves fine cloth. Click Buy to load a bale aboard.',
     targetId: `market-buy-${FIRST_HOP_GOOD}`,
     isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) > 0,
+    requiresSection: 'city',
   },
   {
     title: 'Look at Antwerp',
@@ -142,6 +145,7 @@ const STEPS: TourStep[] = [
       const ship = state.vessels.find(v => v.id === SHIP_ID);
       return ship?.destination === FIRST_HOP_CITY || ship?.location === FIRST_HOP_CITY;
     },
+    requiresSection: 'city',
   },
   {
     title: 'Advance the clock',
@@ -154,32 +158,33 @@ const STEPS: TourStep[] = [
     body: 'Antwerp pays more for cloth than Bruges did. Click Sell to close the loop.',
     targetId: `market-sell-${FIRST_HOP_GOOD}`,
     isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) === 0,
+    requiresSection: 'city',
   },
   {
     title: 'Assign an officer',
-    body: "Officers can be given a posting instead of sitting idle. Give Julius an assignment — negotiate or investigate somewhere, or send him aboard a ship.",
+    body: "Officers can be given a posting instead of sitting idle. Open the Household menu and give Julius an assignment — negotiate or investigate somewhere, or send him aboard a ship.",
     targetId: `household-assign-${DEMO_CHARACTER_ID}`,
     isComplete: state => state.characters.find(c => c.id === DEMO_CHARACTER_ID)?.assignment.type !== 'idle',
-    requiresPhase: 'household',
+    requiresSection: 'household',
   },
   {
     title: 'Invest in a courier line',
-    body: "Reports arrive faster from a city you've paid to speed up. Try investing in London's courier line.",
+    body: "Reports arrive faster from a city you've paid to speed up. Open the Dispatches menu and try investing in London's courier line.",
     targetId: `dispatches-invest-${DEMO_INVEST_CITY}`,
     isComplete: state => (state.courierInvestment[DEMO_INVEST_CITY] ?? 0) >= 1,
-    requiresPhase: 'household',
+    requiresSection: 'dispatches',
   },
   {
     title: 'Write a bill of exchange',
-    body: 'The Counting House lets you borrow now against a future repayment — real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
+    body: 'The Ledger menu\'s Counting House lets you borrow now against a future repayment — real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
     targetId: 'counting-house-borrow-button',
     isComplete: state => state.obligations.length > 0,
-    requiresPhase: 'finance',
+    requiresSection: 'ledger',
   },
   {
     title: "That's the loop",
     body:
-      "Buy low, carry it somewhere it sells dear, mind the clock and the ledger. Cargo at sea can be insured before it departs, at Bruges, Venice, or Genoa; rival houses and the secrets you uncover from them live in their own panel further down. From here, the house is yours to run.",
+      "Buy low, carry it somewhere it sells dear, mind the clock and the ledger. Cargo at sea can be insured before it departs, at Bruges, Venice, or Genoa; rival houses and the secrets you uncover from them live in their own menu. From here, the house is yours to run.",
     targetId: null,
     isComplete: () => false,
   },
@@ -211,15 +216,15 @@ function useTargetRect(targetId: string | null): DOMRect | null {
       setRect(null);
       return;
     }
-    // The sidebar (id="game-sidebar" in GameScreen.tsx) scrolls internally, and a step's target
-    // (e.g. the Advance-week button, well below the fold once enough panels are showing) may not
-    // be visible yet. Scroll it into view once per step — computed directly against the sidebar's
-    // own scrollTop rather than delegated to `Element.scrollIntoView`, whose browser-implemented
-    // scroll distance proved unreliable here (observed nudging the container a few pixels instead
-    // of the ~1000px actually needed). Checked on every poll tick rather than only when the step
-    // starts, since right after a dispatched action the sidebar's layout (panels appearing or
-    // disappearing) can still be settling at that exact instant. `scrolledOnce` stops it from
-    // re-yanking the sidebar if the player deliberately scrolls elsewhere afterward.
+    // Phase 17 follow-up: a step's target now typically lives inside a popup section's own
+    // scrolling body (`id="section-popup-scroll"` in `SectionPopup.tsx`), which may need scrolling
+    // if that section's content is tall enough. Same proven approach as before this redesign
+    // (compute directly against the container's own scrollTop, not `Element.scrollIntoView`,
+    // whose browser-implemented scroll distance proved unreliable here) — just retargeted from the
+    // old always-open `#game-sidebar` to the new popup's scroll container, which may not exist at
+    // all for a step targeting the map or header (fine — `sidebar` is just null then, no scroll
+    // needed since those are never tall enough to need it). `scrolledOnce` stops it from re-yanking
+    // the container if the player deliberately scrolls elsewhere afterward.
     let scrolledOnce = false;
     const measure = () => {
       const el = document.getElementById(targetId);
@@ -230,7 +235,7 @@ function useTargetRect(targetId: string | null): DOMRect | null {
       const r = el.getBoundingClientRect();
       setRect(r);
       if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
-        const sidebar = document.getElementById('game-sidebar');
+        const sidebar = document.getElementById('section-popup-scroll');
         if (sidebar) {
           const sidebarRect = sidebar.getBoundingClientRect();
           const target = sidebar.scrollTop + (r.top - sidebarRect.top) - sidebarRect.height / 2 + r.height / 2;
@@ -240,8 +245,8 @@ function useTargetRect(targetId: string | null): DOMRect | null {
       }
     };
     measure();
-    // Re-measure on a short interval — the sidebar scrolls and panels show/hide as the player
-    // acts, and a plain resize listener wouldn't catch either of those.
+    // Re-measure on a short interval — the popup's content can show/hide as the player acts, and a
+    // plain resize listener wouldn't catch that.
     const interval = setInterval(measure, 250);
     window.addEventListener('resize', measure);
     return () => {
@@ -258,11 +263,11 @@ interface GuidedTourProps {
   selectedVesselId: string | null;
   previewCityId: string | null;
   onFinish: () => void;
-  /** Phase 14: called whenever the current step changes (including on mount, so a tour resumed
-   * directly onto a Household/Finance step still forces the right tab open immediately) — the
-   * caller decides what "forcing a phase" means, since phase tabs are an opt-in GameScreen
-   * preference this component has no knowledge of. */
-  onStepChange?: (requiresPhase: 'household' | 'finance' | undefined) => void;
+  /** Called whenever the current step changes (including on mount, so a tour resumed directly onto
+   * a step that needs a popup section still forces it open immediately, and a step that doesn't
+   * needs the caller to close whatever was open before) — the caller owns what "showing a section"
+   * actually means, since popup state lives in `GameScreen`, not here. */
+  onStepChange?: (requiresSection: TourStep['requiresSection']) => void;
 }
 
 export default function GuidedTour({ state, selectedVesselId, previewCityId, onFinish, onStepChange }: GuidedTourProps) {
@@ -273,7 +278,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
   const rect = useTargetRect(step.targetId);
 
   useEffect(() => {
-    onStepChange?.(step.requiresPhase);
+    onStepChange?.(step.requiresSection);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIndex]);
 

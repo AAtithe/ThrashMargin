@@ -6,7 +6,17 @@ export interface Good {
 
 export interface CityMarketGood {
   base: number;
+  /** Quality grades (pilot: cloth/silk, `sim/grades.ts`): this city pays a real premium for a
+   * `fine`/`excellent` lot of this good, not just the flat buy-side markup every city charges —
+   * the reason to route a graded lot here specifically rather than sell it wherever's convenient. */
+  qualityMarket?: boolean;
 }
+
+/** Quality grades (pilot: cloth/silk only — `sim/grades.ts`). `common` is never stored explicitly
+ * in `Vessel.cargoGrades`; it's whatever's left of `cargo[goodId]` once `fine`/`excellent` are
+ * subtracted, so a pre-grades save (or any non-pilot good) needs no migration at all — it's just
+ * entirely, implicitly `common`. */
+export type GradeId = 'common' | 'fine' | 'excellent';
 
 /** florin is the player's home ledger currency; the rest are foreign, grouped by City.power.
  * `asper` (Chapter 2, Phase 9) is Trebizond's money of account; `bezant` (Chapter 3, Phase 10)
@@ -65,6 +75,10 @@ export interface Vessel {
    * dispatches the next leg via `CONTINUE_PLANNED_ROUTE` — each leg remains its own real,
    * individually insured `dispatchVessel` call; nothing sails through a city without stopping. */
   plannedRoute?: string[];
+  /** Non-`common` grade breakdown for pilot goods only (`sim/grades.ts`) — goodId -> the `fine`/
+   * `excellent` units held; `common` held is always derived as `cargo[goodId]` minus these, never
+   * stored. Absent entirely on any vessel that has never held a graded lot. */
+  cargoGrades?: Record<string, Partial<Record<'fine' | 'excellent', number>>>;
 }
 
 /**
@@ -253,13 +267,21 @@ export interface Character {
 /**
  * All conditions present must hold for the event to trigger (AND semantics). `dateAfter` is
  * an ISO calendar date compared against the in-game clock; `location` requires some vessel to
- * be docked (not under way) at that city; `flag`/`flags` require a flag (or every flag in the
- * list) already set by an earlier event's choice — the mechanism for scripting a chain;
- * `flagAbsent` requires a flag NOT be set — the mechanism for scripting mutually exclusive
- * outcomes (e.g. a deadline-miss event that must not fire once the success event already has);
- * `cargoAtLeast` requires some non-under-way vessel at `location` to be carrying at least
- * `quantity` of `goodId` — the mechanism for a real logistics delivery check (Phase 7's cannon
- * shipment set piece).
+ * be docked (not under way) at that city — note this is satisfied by *any* docked vessel, so at
+ * the home city (where a courier permanently sits) it's true for the whole campaign and can't
+ * distinguish "a specific vessel has arrived here" (see `vesselKindAt` for that); `flag`/`flags`
+ * require a flag (or every flag in the list) already set by an earlier event's choice — the
+ * mechanism for scripting a chain; `flagAbsent` requires a flag NOT be set — the mechanism for
+ * scripting mutually exclusive outcomes (e.g. a deadline-miss event that must not fire once the
+ * success event already has); `cargoAtLeast` requires some non-under-way vessel at `location` to
+ * be carrying at least `quantity` of `goodId` — the mechanism for a real logistics delivery check
+ * (Phase 7's cannon shipment set piece); `vesselKindAt` requires some non-under-way vessel of that
+ * specific `VesselKind` at `location` — the mechanism for "the ship (not the ever-present courier)
+ * has come home" (Phase 17 follow-up: Gambia's return-to-Bruges trigger used a bare `location`
+ * check plus a cargo check that only coincidentally forced the right vessel; selling the cargo
+ * before reaching Bruges — completely normal trading — broke that, and simply dropping the cargo
+ * check let the event fire as soon as *any* vessel, i.e. the stationary home courier, was at
+ * Bruges, which is always true).
  */
 export interface EventTrigger {
   dateAfter?: string;
@@ -268,6 +290,7 @@ export interface EventTrigger {
   flags?: string[];
   flagAbsent?: string;
   cargoAtLeast?: { location: string; goodId: string; quantity: number };
+  vesselKindAt?: { kind: VesselKind; location: string };
 }
 
 /**
@@ -553,8 +576,8 @@ export type GameAction =
   | { type: 'CONTINUE_PLANNED_ROUTE'; vesselId: string; insure?: boolean }
   | { type: 'CANCEL_PLANNED_ROUTE'; vesselId: string }
   | { type: 'ACKNOWLEDGE_CHAPTER'; chapterNumber: number }
-  | { type: 'BUY_GOOD'; vesselId: string; goodId: string; quantity: number }
-  | { type: 'SELL_GOOD'; vesselId: string; goodId: string; quantity: number }
+  | { type: 'BUY_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId }
+  | { type: 'SELL_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId }
   | { type: 'INVEST_COURIER'; cityId: string }
   | { type: 'WRITE_BILL'; cityId: string; florins: number; termWeeks: number }
   | { type: 'TAKE_DEPOSIT'; florins: number; termWeeks: number }

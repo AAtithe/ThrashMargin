@@ -25,6 +25,11 @@ function triggerMatches(state: GameState, trigger: EventTrigger): boolean {
     );
     if (!satisfied) return false;
   }
+  if (trigger.vesselKindAt) {
+    const { kind, location } = trigger.vesselKindAt;
+    const satisfied = state.vessels.some(v => !v.destination && v.location === location && v.kind === kind);
+    if (!satisfied) return false;
+  }
   return true;
 }
 
