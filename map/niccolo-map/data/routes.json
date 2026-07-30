@@ -1,0 +1,54 @@
+{
+  "$comment": "Each route is an ordered list of gazetteer ids. The renderer looks each id up, projects it, and draws a smoothed dashed polyline. Add a route by adding an object here; no code change needed. 'legend' controls whether it appears in the key.",
+  "routes": [
+    {
+      "id": "flanders_staple",
+      "name": "Flanders staple",
+      "colour": "#3f6b7a",
+      "legend": true,
+      "via": ["london", "calais", "bruges", "ghent", "antwerp"]
+    },
+    {
+      "id": "alpine_bank",
+      "name": "Alpine banking road",
+      "colour": "#7a5a8a",
+      "legend": true,
+      "via": ["bruges", "dijon", "lyon", "geneva", "milan", "venice"]
+    },
+    {
+      "id": "silk_spice",
+      "name": "Silk and spice road",
+      "colour": "#a8562a",
+      "legend": true,
+      "via": ["venice", "constantinople", "trebizond", "tabriz"]
+    },
+    {
+      "id": "black_sea",
+      "name": "Black Sea run",
+      "colour": "#a8562a",
+      "legend": false,
+      "via": ["trebizond", "caffa"]
+    },
+    {
+      "id": "levant",
+      "name": "Levant and sugar run",
+      "colour": "#b08428",
+      "legend": true,
+      "via": ["venice", "rhodes", "famagusta", "kouklia", "alexandria", "cairo"]
+    },
+    {
+      "id": "italian_bank",
+      "name": "Italian banking circuit",
+      "colour": "#7a5a8a",
+      "legend": false,
+      "via": ["milan", "genoa", "florence", "rome", "naples"]
+    },
+    {
+      "id": "atlantic_gold",
+      "name": "Atlantic gold road",
+      "colour": "#6f7d47",
+      "legend": true,
+      "via": ["lisbon", "madeira", "gambia", "timbuktu"]
+    }
+  ]
+}

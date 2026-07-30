@@ -1,0 +1,540 @@
+{
+  "width": 1560,
+  "height": 1239,
+  "projection": "donis-trapezoidal",
+  "places": [
+    {
+      "id": "thule",
+      "name": "Thule",
+      "region": "britain",
+      "lon": 17,
+      "lat": 63,
+      "x": 500.95,
+      "y": 175.32,
+      "label": {
+        "x": 515.88,
+        "y": 182.45,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "edinburgh",
+      "name": "Edinburgh",
+      "region": "britain",
+      "lon": 24,
+      "lat": 57.5,
+      "x": 548.94,
+      "y": 251.6,
+      "label": {
+        "x": 563.87,
+        "y": 258.73,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "london",
+      "name": "London",
+      "region": "britain",
+      "lon": 20,
+      "lat": 54,
+      "x": 498.23,
+      "y": 300.14,
+      "label": {
+        "x": 483.3,
+        "y": 307.28,
+        "anchor": "end",
+        "leader": false
+      }
+    },
+    {
+      "id": "calais",
+      "name": "Calais",
+      "region": "flanders",
+      "lon": 22.3,
+      "lat": 53.15,
+      "x": 519.33,
+      "y": 311.93,
+      "label": {
+        "x": 435.98,
+        "y": 258,
+        "anchor": "end",
+        "leader": true
+      }
+    },
+    {
+      "id": "bruges",
+      "name": "Bruges",
+      "region": "flanders",
+      "lon": 24,
+      "lat": 53.1,
+      "x": 536.78,
+      "y": 312.63,
+      "label": {
+        "x": 536.78,
+        "y": 346.5,
+        "anchor": "middle",
+        "leader": false
+      }
+    },
+    {
+      "id": "ghent",
+      "name": "Ghent",
+      "region": "flanders",
+      "lon": 25.1,
+      "lat": 52.8,
+      "x": 547.4,
+      "y": 316.79,
+      "label": {
+        "x": 630.74,
+        "y": 380.52,
+        "anchor": "start",
+        "leader": true
+      }
+    },
+    {
+      "id": "antwerp",
+      "name": "Antwerp",
+      "region": "flanders",
+      "lon": 26.3,
+      "lat": 53.05,
+      "x": 560.46,
+      "y": 313.32,
+      "label": {
+        "x": 560.46,
+        "y": 295.05,
+        "anchor": "middle",
+        "leader": false
+      }
+    },
+    {
+      "id": "danzig",
+      "name": "Danzig",
+      "region": "baltic",
+      "lon": 43,
+      "lat": 55.5,
+      "x": 734.68,
+      "y": 279.34,
+      "label": {
+        "x": 749.61,
+        "y": 286.47,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "dijon",
+      "name": "Dijon",
+      "region": "gaul",
+      "lon": 23.6,
+      "lat": 48.4,
+      "x": 520.19,
+      "y": 377.81,
+      "label": {
+        "x": 535.13,
+        "y": 384.94,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "lyon",
+      "name": "Lyon",
+      "region": "gaul",
+      "lon": 23.25,
+      "lat": 45.17,
+      "x": 508.22,
+      "y": 422.61,
+      "label": {
+        "x": 493.29,
+        "y": 429.74,
+        "anchor": "end",
+        "leader": false
+      }
+    },
+    {
+      "id": "geneva",
+      "name": "Geneva",
+      "region": "gaul",
+      "lon": 26.5,
+      "lat": 45.7,
+      "x": 545.78,
+      "y": 415.26,
+      "label": {
+        "x": 462.43,
+        "y": 479,
+        "anchor": "end",
+        "leader": true
+      }
+    },
+    {
+      "id": "milan",
+      "name": "Milan",
+      "region": "italy",
+      "lon": 31,
+      "lat": 45.2,
+      "x": 595.13,
+      "y": 422.19,
+      "label": {
+        "x": 546.1,
+        "y": 458.96,
+        "anchor": "end",
+        "leader": true
+      }
+    },
+    {
+      "id": "venice",
+      "name": "Venice",
+      "region": "italy",
+      "lon": 33.6,
+      "lat": 45.35,
+      "x": 624.47,
+      "y": 420.11,
+      "label": {
+        "x": 673.5,
+        "y": 456.88,
+        "anchor": "start",
+        "leader": true
+      }
+    },
+    {
+      "id": "genoa",
+      "name": "Genoa",
+      "region": "italy",
+      "lon": 30.6,
+      "lat": 44.35,
+      "x": 589.2,
+      "y": 433.98,
+      "label": {
+        "x": 604.13,
+        "y": 441.11,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "florence",
+      "name": "Florence",
+      "region": "italy",
+      "lon": 32.5,
+      "lat": 43.83,
+      "x": 609.87,
+      "y": 441.19,
+      "label": {
+        "x": 658.9,
+        "y": 411.78,
+        "anchor": "start",
+        "leader": true
+      }
+    },
+    {
+      "id": "rome",
+      "name": "Rome",
+      "region": "italy",
+      "lon": 36.67,
+      "lat": 41.67,
+      "x": 654.9,
+      "y": 471.15,
+      "label": {
+        "x": 639.97,
+        "y": 478.28,
+        "anchor": "end",
+        "leader": false
+      }
+    },
+    {
+      "id": "naples",
+      "name": "Naples",
+      "region": "italy",
+      "lon": 40,
+      "lat": 40.95,
+      "x": 692.85,
+      "y": 481.14,
+      "label": {
+        "x": 707.78,
+        "y": 488.27,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "lisbon",
+      "name": "Lisbon",
+      "region": "iberia",
+      "lon": 5.3,
+      "lat": 41,
+      "x": 289.85,
+      "y": 480.44,
+      "label": {
+        "x": 274.92,
+        "y": 487.57,
+        "anchor": "end",
+        "leader": false
+      }
+    },
+    {
+      "id": "madeira",
+      "name": "Madeira",
+      "region": "iberia",
+      "lon": 1,
+      "lat": 32,
+      "x": 204.32,
+      "y": 605.27,
+      "label": {
+        "x": 189.39,
+        "y": 612.4,
+        "anchor": "end",
+        "leader": false
+      }
+    },
+    {
+      "id": "constantinople",
+      "name": "Constantinople",
+      "region": "aegean",
+      "lon": 56,
+      "lat": 43.1,
+      "x": 877.02,
+      "y": 451.32,
+      "label": {
+        "x": 891.95,
+        "y": 458.45,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "rhodes",
+      "name": "Rhodes",
+      "region": "aegean",
+      "lon": 58.3,
+      "lat": 36,
+      "x": 910.25,
+      "y": 549.79,
+      "label": {
+        "x": 895.32,
+        "y": 556.92,
+        "anchor": "end",
+        "leader": false
+      }
+    },
+    {
+      "id": "kouklia",
+      "name": "Kouklia",
+      "region": "levant",
+      "lon": 64.33,
+      "lat": 34.83,
+      "x": 984.6,
+      "y": 566.02,
+      "label": {
+        "x": 984.6,
+        "y": 599.89,
+        "anchor": "middle",
+        "leader": false
+      }
+    },
+    {
+      "id": "famagusta",
+      "name": "Famagusta",
+      "region": "levant",
+      "lon": 66.2,
+      "lat": 35.17,
+      "x": 1006.82,
+      "y": 561.3,
+      "label": {
+        "x": 1021.75,
+        "y": 568.43,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "alexandria",
+      "name": "Alexandria",
+      "region": "levant",
+      "lon": 60.5,
+      "lat": 31,
+      "x": 941.91,
+      "y": 619.13,
+      "label": {
+        "x": 926.98,
+        "y": 626.27,
+        "anchor": "end",
+        "leader": false
+      }
+    },
+    {
+      "id": "cairo",
+      "name": "Cairo",
+      "region": "levant",
+      "lon": 62.5,
+      "lat": 30,
+      "x": 967.91,
+      "y": 633,
+      "label": {
+        "x": 982.84,
+        "y": 640.14,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "caffa",
+      "name": "Caffa",
+      "region": "pontic",
+      "lon": 63.5,
+      "lat": 47.5,
+      "x": 955.46,
+      "y": 390.29,
+      "label": {
+        "x": 955.46,
+        "y": 372.02,
+        "anchor": "middle",
+        "leader": false
+      }
+    },
+    {
+      "id": "trebizond",
+      "name": "Trebizond",
+      "region": "pontic",
+      "lon": 71.5,
+      "lat": 43,
+      "x": 1054.16,
+      "y": 452.7,
+      "label": {
+        "x": 1103.19,
+        "y": 423.29,
+        "anchor": "start",
+        "leader": true
+      }
+    },
+    {
+      "id": "tabriz",
+      "name": "Tabriz",
+      "region": "pontic",
+      "lon": 82,
+      "lat": 38,
+      "x": 1190.13,
+      "y": 522.05,
+      "label": {
+        "x": 1205.06,
+        "y": 529.18,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "gambia",
+      "name": "The Gambia",
+      "region": "africa",
+      "lon": 8,
+      "lat": 14,
+      "x": 251.39,
+      "y": 854.91,
+      "label": {
+        "x": 266.32,
+        "y": 862.04,
+        "anchor": "start",
+        "leader": false
+      }
+    },
+    {
+      "id": "timbuktu",
+      "name": "Timbuktu",
+      "region": "africa",
+      "lon": 12,
+      "lat": 16,
+      "x": 307.55,
+      "y": 827.17,
+      "label": {
+        "x": 307.55,
+        "y": 808.9,
+        "anchor": "middle",
+        "leader": false
+      }
+    }
+  ],
+  "routes": [
+    {
+      "id": "flanders_staple",
+      "name": "Flanders staple",
+      "colour": "#3f6b7a",
+      "via": [
+        "london",
+        "calais",
+        "bruges",
+        "ghent",
+        "antwerp"
+      ]
+    },
+    {
+      "id": "alpine_bank",
+      "name": "Alpine banking road",
+      "colour": "#7a5a8a",
+      "via": [
+        "bruges",
+        "dijon",
+        "lyon",
+        "geneva",
+        "milan",
+        "venice"
+      ]
+    },
+    {
+      "id": "silk_spice",
+      "name": "Silk and spice road",
+      "colour": "#a8562a",
+      "via": [
+        "venice",
+        "constantinople",
+        "trebizond",
+        "tabriz"
+      ]
+    },
+    {
+      "id": "black_sea",
+      "name": "Black Sea run",
+      "colour": "#a8562a",
+      "via": [
+        "trebizond",
+        "caffa"
+      ]
+    },
+    {
+      "id": "levant",
+      "name": "Levant and sugar run",
+      "colour": "#b08428",
+      "via": [
+        "venice",
+        "rhodes",
+        "famagusta",
+        "kouklia",
+        "alexandria",
+        "cairo"
+      ]
+    },
+    {
+      "id": "italian_bank",
+      "name": "Italian banking circuit",
+      "colour": "#7a5a8a",
+      "via": [
+        "milan",
+        "genoa",
+        "florence",
+        "rome",
+        "naples"
+      ]
+    },
+    {
+      "id": "atlantic_gold",
+      "name": "Atlantic gold road",
+      "colour": "#6f7d47",
+      "via": [
+        "lisbon",
+        "madeira",
+        "gambia",
+        "timbuktu"
+      ]
+    }
+  ]
+}

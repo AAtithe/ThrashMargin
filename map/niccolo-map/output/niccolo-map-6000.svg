@@ -1,0 +1,121 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="6000" height="4764" viewBox="0 0 6000 4764" role="img">
+<title>The World of Niccolo — Ptolemaic projection, circa 1460</title>
+<desc>Pen and ink world map on the Donis trapezoidal projection using Ptolemy's own coordinates. 30 places plotted.</desc>
+<style>@import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;1,400&amp;display=swap');
+.f{font-family:'EB Garamond', Georgia, 'Times New Roman', serif}
+.ct{font-size:85.7px;fill:#3c3325}
+.rg{font-size:77.1px;fill:#8a7f68;font-style:italic}
+.sl{font-size:81.4px;fill:#9a8f76;font-style:italic;letter-spacing:8.57px}</style>
+<defs>
+<pattern id="hx" width="47.14" height="47.14" patternUnits="userSpaceOnUse" patternTransform="rotate(35)"><line x1="0" y1="0" x2="0" y2="47.14" stroke="#bdb199" stroke-width="3.86"/></pattern>
+<clipPath id="sheet"><path d="M 1399.27 514.29 L 4600.73 514.29 L 5485.71 3821.54 L 514.29 3821.54 Z"/></clipPath>
+</defs>
+<rect width="6000" height="4764" fill="#ffffff"/>
+<g clip-path="url(#sheet)">
+<path d="M 514.29 3821.54 L 1399.27 514.29 M 1037.59 3821.54 L 1736.27 514.29 M 1560.90 3821.54 L 2073.26 514.29 M 2084.21 3821.54 L 2410.26 514.29 M 2607.52 3821.54 L 2747.25 514.29 M 3130.83 3821.54 L 3084.25 514.29 M 3654.14 3821.54 L 3421.24 514.29 M 4177.44 3821.54 L 3758.24 514.29 M 4700.75 3821.54 L 4095.23 514.29 M 5224.06 3821.54 L 4432.23 514.29 M 533.39 3501.49 L 5466.61 3501.49 M 600.97 2968.06 L 5399.03 2968.06 M 711.31 2434.63 L 5288.69 2434.63 M 861.07 1901.20 L 5138.93 1901.20 M 1045.70 1367.77 L 4954.30 1367.77 M 1259.58 834.34 L 4740.42 834.34" fill="none" stroke="#c9c0ad" stroke-width="2.36" stroke-dasharray="51.4 25.7"/>
+<path id="ld" d="M 2443.96 514.29 L 2539.02 861.01 L 2602.92 967.70 L 2551.95 1101.06 L 2389.16 1154.40 L 2206.99 1159.73 L 2015.96 1167.74 L 1621.64 1447.79 L 1646.26 1607.81 L 1596.93 1634.49 L 1165.21 1634.49 L 1101.42 1847.86 L 954.70 1981.22 L 1041.34 2101.24 L 1118.75 2087.90 L 1370.86 2034.56 L 1530.81 1927.87 L 1682.16 1847.86 L 2055.37 1741.17 L 2237.75 1687.83 L 2488.35 1821.19 L 2699.73 1869.20 L 2703.91 1981.22 L 2842.39 1901.20 L 2540.65 1714.50 L 2386.57 1597.15 L 2465.26 1581.14 L 2716.88 1687.83 L 2866.53 1821.19 L 3162.35 2114.57 L 3229.87 2047.89 L 3089.70 1874.53 L 3288.48 1805.18 L 3373.14 1735.84 L 3458.91 2034.56 L 3624.00 2087.90 L 4000.74 2141.24 L 3989.28 2237.26 L 3857.09 2327.94 L 3765.55 2370.62 L 3622.75 2381.29 L 3453.73 2354.62 L 3166.66 2327.94 L 2975.98 2407.96 L 2761.92 2327.94 L 2402.89 2221.26 L 1935.29 2274.60 L 1180.06 2141.24 L 1059.87 2274.60 L 978.27 2541.32 L 968.03 2754.69 L 954.51 2968.06 L 978.15 3181.43 L 966.90 3288.12 L 1052.68 3501.49 L 1200.05 3661.52 L 2084.97 3768.20 L 3130.59 3714.86 L 4173.88 3661.52 L 5210.82 3554.83 L 5461.84 3448.14 L 4600.73 514.29 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="6.43" stroke-linejoin="round" stroke-linecap="round"/>
+<use href="#ld" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="sea0" d="M 3373.14 1735.84 L 3545.42 1698.50 L 3809.33 1714.50 L 4054.47 1741.17 L 4072.07 1666.49 L 3953.54 1527.80 L 3772.72 1447.79 L 3707.07 1522.47 L 3652.23 1453.12 L 3563.88 1447.79 L 3404.51 1554.47 L 3280.61 1634.49 Z" fill="#ffffff" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#sea0" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="sea1" d="M 4415.61 1687.83 L 4716.38 1527.80 L 5047.19 1687.83 L 5048.87 1901.20 L 4701.75 1954.54 L 4407.19 1847.86 Z" fill="#ffffff" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#sea1" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="sea2" d="M 3785.38 2434.63 L 3903.07 2455.97 L 4566.37 3384.13 L 4496.60 3426.81 L 4186.89 2968.06 L 3749.37 2466.64 Z" fill="#ffffff" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#sea2" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="sea3" d="M 4508.96 2381.29 L 4768.57 2487.97 L 5151.21 2701.34 L 5115.23 2776.02 L 4757.49 2562.65 L 4477.52 2423.96 Z" fill="#ffffff" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#sea3" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="sea4" d="M 2610.97 962.37 L 2713.95 1005.04 L 2942.65 1015.71 L 3169.13 941.03 L 3231.91 727.66 L 3087.97 674.31 L 2926.72 834.34 L 2721.64 887.69 L 2628.85 887.69 Z" fill="#ffffff" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#sea4" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl0" d="M 1537.44 1234.41 L 2010.34 1175.74 L 1998.82 1047.71 L 2342.28 941.03 L 2395.43 834.34 L 2122.28 914.36 L 1839.53 994.37 L 1733.78 1101.06 L 1758.63 1154.40 L 1704.84 1207.74 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl0" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl1" d="M 1422.63 887.69 L 1662.62 834.34 L 1657.51 967.70 L 1459.05 994.37 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl1" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl2" d="M 1849.30 674.31 L 1940.23 626.31 L 2004.13 674.31 L 1913.31 722.32 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl2" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl3" d="M 2768.09 727.66 L 3017.59 674.31 L 3090.40 781.00 L 2798.48 834.34 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl3" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl4" d="M 2566.60 1991.88 L 2702.80 2007.89 L 2699.55 2087.90 L 2516.39 2061.23 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl4" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl5" d="M 2194.60 1858.53 L 2261.71 1858.53 L 2250.09 1965.21 L 2181.91 1965.21 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl5" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl6" d="M 2219.03 1767.84 L 2271.97 1767.84 L 2264.10 1837.19 L 2210.58 1837.19 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl6" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl7" d="M 1844.58 1943.88 L 1935.20 1943.88 L 1930.33 1975.88 L 1839.29 1975.88 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl7" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl8" d="M 3209.31 2135.91 L 3419.20 2146.58 L 3420.63 2173.25 L 3210.03 2162.58 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl8" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl9" d="M 3467.51 2098.57 L 3532.31 2098.57 L 3534.54 2130.58 L 3469.47 2130.58 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl9" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl10" d="M 3751.95 2167.92 L 3795.93 2141.24 L 3859.91 2130.58 L 3927.53 2151.91 L 3911.97 2178.58 L 3842.95 2189.25 L 3782.07 2189.25 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl10" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl11" d="M 3580.01 1442.45 L 3767.78 1442.45 L 3740.94 1522.47 L 3662.38 1538.47 L 3598.92 1501.13 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl11" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl12" d="M 754.71 2301.27 L 838.81 2306.61 L 822.11 2354.62 L 747.05 2349.28 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl12" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl13" d="M 846.59 2391.96 L 893.32 2397.29 L 881.17 2429.30 L 834.26 2423.96 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl13" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path id="isl14" d="M 725.43 2455.97 L 772.48 2461.30 L 760.20 2493.31 L 712.98 2487.97 Z" fill="url(#hx)" stroke="#4a4030" stroke-width="5.46" stroke-linejoin="round"/>
+<use href="#isl14" fill="none" stroke="#6b6050" stroke-width="3.43" opacity="0.6" transform="translate(10.29,7.20)"/>
+<path d="M 3696.64 2407.96 C 3701.34 2447.08 3733.24 2612.44 3731.91 2701.34 C 3730.58 2790.25 3698.06 2982.28 3686.67 3074.74 C 3675.28 3167.21 3651.84 3352.13 3646.48 3394.80 M 3646.48 3394.80 L 3520.53 3576.17 M 3646.48 3394.80 L 3858.88 3576.17 M 1036.91 3368.13 C 1062.66 3348.93 1176.41 3249.00 1230.00 3224.10 C 1283.58 3199.21 1388.36 3169.34 1438.83 3181.43 C 1489.29 3193.52 1585.89 3297.01 1608.52 3314.79 M 2187.57 1181.07 C 2194.41 1205.97 2238.40 1317.99 2238.85 1367.77 C 2239.31 1417.56 2197.36 1529.58 2190.98 1554.47 M 2470.25 1527.80 C 2515.34 1531.36 2723.50 1547.36 2808.39 1554.47 C 2893.28 1561.58 3027.41 1580.43 3106.95 1581.14 C 3186.48 1581.85 3365.16 1562.65 3404.89 1559.81" fill="none" stroke="#8a8778" stroke-width="5.14" stroke-linecap="round"/>
+<ellipse cx="3520.69" cy="3586.84" rx="114.55" ry="42.67" fill="#ffffff" stroke="#6b6050" stroke-width="3.86"/>
+<ellipse cx="3859.14" cy="3586.84" rx="114.55" ry="42.67" fill="#ffffff" stroke="#6b6050" stroke-width="3.86"/>
+<path d="M 2078.55 1591.81 q 19.29 -57.86 38.57 0 M 2166.00 1578.48 q 19.29 -57.86 38.57 0 M 2253.45 1565.14 q 19.29 -57.86 38.57 0 M 2339.04 1562.47 q 19.29 -57.86 38.57 0 M 1225.49 2274.60 q 19.29 -57.86 38.57 0 M 1295.30 2281.27 q 19.29 -57.86 38.57 0 M 1365.11 2287.94 q 19.29 -57.86 38.57 0 M 1434.92 2294.60 q 19.29 -57.86 38.57 0 M 1504.72 2301.27 q 19.29 -57.86 38.57 0 M 1576.50 2297.27 q 19.29 -57.86 38.57 0 M 1648.27 2293.27 q 19.29 -57.86 38.57 0 M 1720.04 2289.27 q 19.29 -57.86 38.57 0 M 3480.80 2018.56 q 19.29 -57.86 38.57 0 M 3557.64 2023.89 q 19.29 -57.86 38.57 0 M 3634.47 2029.22 q 19.29 -57.86 38.57 0 M 3711.31 2034.56 q 19.29 -57.86 38.57 0 M 3788.48 2039.89 q 19.29 -57.86 38.57 0 M 3865.65 2045.23 q 19.29 -57.86 38.57 0 M 4100.87 1634.49 q 19.29 -57.86 38.57 0 M 4184.33 1621.15 q 19.29 -57.86 38.57 0 M 4267.79 1607.81 q 19.29 -57.86 38.57 0 M 4355.71 1615.82 q 19.29 -57.86 38.57 0 M 3495.77 3672.18 q 19.29 -57.86 38.57 0 M 3565.49 3681.08 q 19.29 -57.86 38.57 0 M 3635.21 3689.97 q 19.29 -57.86 38.57 0 M 3704.93 3698.86 q 19.29 -57.86 38.57 0 M 3774.37 3689.97 q 19.29 -57.86 38.57 0 M 3843.81 3681.08 q 19.29 -57.86 38.57 0 M 1589.38 1666.49 q 19.29 -57.86 38.57 0 M 1653.35 1671.83 q 19.29 -57.86 38.57 0 M 1717.32 1677.16 q 19.29 -57.86 38.57 0 M 1783.56 1671.83 q 19.29 -57.86 38.57 0" fill="none" stroke="#5d5344" stroke-width="4.63" stroke-linecap="round"/>
+<path d="M 1916.26 1154.40 C 1925.73 1159.69 1980.12 1194.14 1997.41 1199.74 C 2014.71 1205.34 2051.94 1200.23 2064.53 1202.41 C 2077.13 1204.59 2094.74 1218.10 2105.37 1218.41 C 2115.99 1218.72 2149.76 1206.63 2155.62 1205.08" fill="none" stroke="#3f6b7a" stroke-width="8.57" stroke-dasharray="38.6 30.0" stroke-linecap="round" opacity="0.85"/>
+<path d="M 2064.53 1202.41 C 2057.09 1231.66 2013.56 1403.77 2000.75 1453.12 C 1987.93 1502.47 1943.22 1608.62 1954.70 1625.42 C 1966.18 1642.22 2060.16 1597.33 2099.16 1597.15 C 2138.15 1596.96 2253.65 1621.64 2288.96 1623.82 C 2324.27 1626.00 2388.65 1616.75 2401.82 1615.82" fill="none" stroke="#7a5a8a" stroke-width="8.57" stroke-dasharray="38.6 30.0" stroke-linecap="round" opacity="0.85"/>
+<path d="M 2401.82 1615.82 C 2515.14 1629.82 3180.33 1721.21 3373.14 1735.84 C 3565.95 1750.46 3913.96 1709.43 4054.47 1741.17 C 4194.97 1772.91 4516.42 1976.77 4577.43 2007.89" fill="none" stroke="#a8562a" stroke-width="8.57" stroke-dasharray="38.6 30.0" stroke-linecap="round" opacity="0.85"/>
+<path d="M 4054.47 1741.17 L 3674.84 1501.13" fill="none" stroke="#a8562a" stroke-width="8.57" stroke-dasharray="38.6 30.0" stroke-linecap="round" opacity="0.85"/>
+<path d="M 2401.82 1615.82 C 2530.05 1674.00 3329.39 2051.22 3500.96 2114.57 C 3672.52 2177.93 3839.01 2151.57 3872.37 2158.85 C 3905.74 2166.13 3816.06 2151.03 3786.94 2176.98 C 3757.82 2202.93 3630.24 2351.23 3622.75 2381.29 C 3615.26 2411.35 3711.08 2428.41 3722.74 2434.63" fill="none" stroke="#b08428" stroke-width="8.57" stroke-dasharray="38.6 30.0" stroke-linecap="round" opacity="0.85"/>
+<path d="M 2288.96 1623.82 C 2286.30 1629.11 2259.54 1660.63 2266.15 1669.16 C 2272.77 1677.69 2316.19 1680.22 2345.67 1696.90 C 2375.15 1713.58 2481.60 1794.19 2518.83 1812.12 C 2556.07 1830.04 2647.79 1846.04 2664.82 1850.53" fill="none" stroke="#7a5a8a" stroke-width="8.57" stroke-dasharray="38.6 30.0" stroke-linecap="round" opacity="0.85"/>
+<path d="M 1114.82 1847.86 C 1076.44 1903.87 803.12 2159.91 785.86 2327.94 C 768.60 2495.97 920.58 3188.54 966.90 3288.12 C 1013.22 3387.69 1157.70 3193.88 1182.90 3181.43" fill="none" stroke="#6f7d47" stroke-width="8.57" stroke-dasharray="38.6 30.0" stroke-linecap="round" opacity="0.85"/>
+</g>
+<text class="f rg" x="1575.43" y="770.33" text-anchor="middle">Hibernia</text>
+<text class="f rg" x="2930.61" y="620.97" text-anchor="middle">Scandia</text>
+<text class="f rg" x="3531.29" y="834.34" text-anchor="middle">Sarmatia</text>
+<text class="f rg" x="4328.49" y="1047.71" text-anchor="middle">Scythia</text>
+<text class="f rg" x="3711.29" y="620.97" text-anchor="middle">Terra incognita</text>
+<text class="f rg" x="2412.69" y="1287.76" text-anchor="middle">Germania</text>
+<text class="f rg" x="1786.28" y="1367.77" text-anchor="middle">Gallia</text>
+<text class="f rg" x="1345.39" y="1767.84" text-anchor="middle">Hispania</text>
+<text class="f rg" x="1203.62" y="2381.29" text-anchor="middle">Mauretania</text>
+<text class="f rg" x="1936.76" y="2701.34" text-anchor="middle">Libya interior</text>
+<text class="f rg" x="2508.67" y="3394.80" text-anchor="middle">Aethiopia</text>
+<text class="f rg" x="3861.28" y="2648.00" text-anchor="middle">Aegyptus</text>
+<text class="f rg" x="4067.39" y="2295.94" text-anchor="middle">Syria</text>
+<text class="f rg" x="4710.45" y="2194.59" text-anchor="middle">Media</text>
+<text class="f rg" x="4962.38" y="2487.97" text-anchor="middle">Persis</text>
+<text class="f rg" x="4250.23" y="3128.09" text-anchor="middle">Arabia Felix</text>
+<text class="f rg" x="2372.33" y="1650.49" text-anchor="middle">Italia</text>
+<text class="f sl" x="1283.62" y="1527.80" text-anchor="middle">OCEANVS OCCIDENTALIS</text>
+<text class="f sl" x="2835.44" y="2221.26" text-anchor="middle">MARE INTERNVM</text>
+<text class="f sl" x="3665.52" y="1602.48" text-anchor="middle">PONTVS EVXINVS</text>
+<text class="f sl" x="4742.85" y="1767.84" text-anchor="middle">MARE HYRCANVM</text>
+<text class="f sl" x="4232.67" y="2914.72" text-anchor="middle">Sinvs Arabicvs</text>
+<text class="f sl" x="4890.14" y="2621.33" text-anchor="middle">Sinvs Persicvs</text>
+<path d="M 1997.41 1199.74 L 1676.84 968.31 M 2105.37 1218.41 L 2425.94 1439.55 M 2099.16 1597.15 L 1778.58 1818.29 M 2288.96 1623.82 L 2100.39 1741.25 M 2401.82 1615.82 L 2590.39 1733.24 M 2345.67 1696.90 L 2534.24 1559.75 M 4054.47 1741.17 L 4243.04 1604.03" fill="none" stroke="#8a7f68" stroke-width="2.36" stroke-dasharray="12.9 12.9" opacity="0.85"/>
+<g fill="#a8562a" stroke="#ffffff" stroke-width="5.28"><circle cx="1926.72" cy="674.31" r="18.86"/><circle cx="2111.31" cy="967.70" r="18.86"/><circle cx="1916.26" cy="1154.40" r="18.86"/><circle cx="1997.41" cy="1199.74" r="18.86"/><circle cx="2064.53" cy="1202.41" r="18.86"/><circle cx="2105.37" cy="1218.41" r="18.86"/><circle cx="2155.62" cy="1205.08" r="18.86"/><circle cx="2825.69" cy="1074.39" r="18.86"/><circle cx="2000.75" cy="1453.12" r="18.86"/><circle cx="1954.70" cy="1625.42" r="18.86"/><circle cx="2099.16" cy="1597.15" r="18.86"/><circle cx="2288.96" cy="1623.82" r="18.86"/><circle cx="2401.82" cy="1615.82" r="18.86"/><circle cx="2266.15" cy="1669.16" r="18.86"/><circle cx="2345.67" cy="1696.90" r="18.86"/><circle cx="2518.83" cy="1812.12" r="18.86"/><circle cx="2664.82" cy="1850.53" r="18.86"/><circle cx="1114.82" cy="1847.86" r="18.86"/><circle cx="785.86" cy="2327.94" r="18.86"/><circle cx="3373.14" cy="1735.84" r="18.86"/><circle cx="3500.96" cy="2114.57" r="18.86"/><circle cx="3786.94" cy="2176.98" r="18.86"/><circle cx="3872.37" cy="2158.85" r="18.86"/><circle cx="3622.75" cy="2381.29" r="18.86"/><circle cx="3722.74" cy="2434.63" r="18.86"/><circle cx="3674.84" cy="1501.13" r="18.86"/><circle cx="4054.47" cy="1741.17" r="18.86"/><circle cx="4577.43" cy="2007.89" r="18.86"/><circle cx="966.90" cy="3288.12" r="18.86"/><circle cx="1182.90" cy="3181.43" r="18.86"/></g>
+<g><text class="f ct" x="1984.15" y="701.74" text-anchor="start">Thule</text><text class="f ct" x="2168.74" y="995.13" text-anchor="start">Edinburgh</text><text class="f ct" x="1858.83" y="1181.83" text-anchor="end">London</text><text class="f ct" x="1676.84" y="992.31" text-anchor="end">Calais</text><text class="f ct" x="2064.53" y="1332.69" text-anchor="middle">Bruges</text><text class="f ct" x="2425.94" y="1463.55" text-anchor="start">Ghent</text><text class="f ct" x="2155.62" y="1134.79" text-anchor="middle">Antwerp</text><text class="f ct" x="2883.12" y="1101.81" text-anchor="start">Danzig</text><text class="f ct" x="2058.17" y="1480.55" text-anchor="start">Dijon</text><text class="f ct" x="1897.27" y="1652.85" text-anchor="end">Lyon</text><text class="f ct" x="1778.58" y="1842.29" text-anchor="end">Geneva</text><text class="f ct" x="2100.39" y="1765.25" text-anchor="end">Milan</text><text class="f ct" x="2590.39" y="1757.24" text-anchor="start">Venice</text><text class="f ct" x="2323.58" y="1696.59" text-anchor="start">Genoa</text><text class="f ct" x="2534.24" y="1583.75" text-anchor="start">Florence</text><text class="f ct" x="2461.41" y="1839.55" text-anchor="end">Rome</text><text class="f ct" x="2722.25" y="1877.95" text-anchor="start">Naples</text><text class="f ct" x="1057.39" y="1875.29" text-anchor="end">Lisbon</text><text class="f ct" x="728.43" y="2355.37" text-anchor="end">Madeira</text><text class="f ct" x="3430.57" y="1763.27" text-anchor="start">Constantinople</text><text class="f ct" x="3443.53" y="2142.00" text-anchor="end">Rhodes</text><text class="f ct" x="3786.94" y="2307.27" text-anchor="middle">Kouklia</text><text class="f ct" x="3929.80" y="2186.28" text-anchor="start">Famagusta</text><text class="f ct" x="3565.32" y="2408.72" text-anchor="end">Alexandria</text><text class="f ct" x="3780.17" y="2462.06" text-anchor="start">Cairo</text><text class="f ct" x="3674.84" y="1430.84" text-anchor="middle">Caffa</text><text class="f ct" x="4243.04" y="1628.03" text-anchor="start">Trebizond</text><text class="f ct" x="4634.86" y="2035.32" text-anchor="start">Tabriz</text><text class="f ct" x="1024.33" y="3315.54" text-anchor="start">The Gambia</text><text class="f ct" x="1182.90" y="3111.14" text-anchor="middle">Timbuktu</text></g>
+<g transform="translate(5520.00,4340.12)" fill="none">
+<circle r="222.9" stroke="#4a4030" stroke-width="6.43"/>
+<circle r="151.5" stroke="#8a7f68" stroke-width="2.36"/>
+<polygon points="0,-263.0 40.1,-31.2 0,0 -40.1,-31.2" fill="#a8562a"/>
+<polygon points="0,263.0 40.1,31.2 0,0 -40.1,31.2" fill="#8a7f68"/>
+<polygon points="263.0,0 31.2,40.1 0,0 31.2,-40.1" fill="#8a7f68"/>
+<polygon points="-263.0,0 -31.2,40.1 0,0 -31.2,-40.1" fill="#8a7f68"/>
+<text class="f rg" x="0" y="-300.9" text-anchor="middle" fill="#8a7f68">N</text>
+</g>
+<rect x="308.6" y="4057.3" width="1842.9" height="480.0" fill="#ffffff" stroke="#4a4030" stroke-width="6.43"/>
+<text class="f" x="1230.0" y="4278.1" text-anchor="middle" font-size="145.7" fill="#3c3325" letter-spacing="6.86">The World of Niccolo</text>
+<text class="f" x="1230.0" y="4431.7" text-anchor="middle" font-size="72.9" fill="#8a7f68" font-style="italic">Ad mentem Ptolemaei, orbis terrarum, MCDLX</text>
+<rect x="2280.0" y="4057.3" width="1628.6" height="745.7" fill="#ffffff" stroke="#4a4030" stroke-width="4.50"/>
+<line x1="2348.6" y1="4173.0" x2="2545.7" y2="4173.0" stroke="#3f6b7a" stroke-width="8.57" stroke-dasharray="38.6 30.0"/>
+<text class="f ct" x="2605.7" y="4202.1">Flanders staple</text>
+<line x1="2348.6" y1="4301.5" x2="2545.7" y2="4301.5" stroke="#7a5a8a" stroke-width="8.57" stroke-dasharray="38.6 30.0"/>
+<text class="f ct" x="2605.7" y="4330.7">Alpine banking road</text>
+<line x1="2348.6" y1="4430.1" x2="2545.7" y2="4430.1" stroke="#a8562a" stroke-width="8.57" stroke-dasharray="38.6 30.0"/>
+<text class="f ct" x="2605.7" y="4459.3">Silk and spice road</text>
+<line x1="2348.6" y1="4558.7" x2="2545.7" y2="4558.7" stroke="#b08428" stroke-width="8.57" stroke-dasharray="38.6 30.0"/>
+<text class="f ct" x="2605.7" y="4587.8">Levant and sugar run</text>
+<line x1="2348.6" y1="4687.3" x2="2545.7" y2="4687.3" stroke="#6f7d47" stroke-width="8.57" stroke-dasharray="38.6 30.0"/>
+<text class="f ct" x="2605.7" y="4716.4">Atlantic gold road</text>
+<path d="M 1399.27 514.29 L 4600.73 514.29 L 5485.71 3821.54 L 514.29 3821.54 Z" fill="none" stroke="#4a4030" stroke-width="11.57"/>
+<path d="M 1399.27 514.29 L 4600.73 514.29 L 5485.71 3821.54 L 514.29 3821.54 Z" fill="none" stroke="#8a7f68" stroke-width="2.36" transform="translate(26.74,26.74) scale(0.9955)" transform-origin="3000.0 2382.2"/>
+</svg>

@@ -1,0 +1,18 @@
+{
+  "name": "niccolo-map",
+  "version": "1.0.0",
+  "description": "Data-driven Ptolemaic world map of the House of Niccolo, rendered to SVG at any size",
+  "type": "module",
+  "main": "src/renderMap.js",
+  "exports": {
+    ".": "./src/renderMap.js",
+    "./projection": "./src/projection.js"
+  },
+  "scripts": {
+    "render": "node scripts/render.mjs",
+    "positions": "node scripts/positions.mjs",
+    "validate": "node scripts/validate.mjs"
+  },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
