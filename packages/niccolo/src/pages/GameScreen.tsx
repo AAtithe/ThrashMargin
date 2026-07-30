@@ -97,6 +97,11 @@ const BODY: React.CSSProperties = {
   display: 'flex',
   flex: 1,
   minHeight: 0,
+  // Positioning context for the slide-out section drawer, which is deliberately scoped to this pane
+  // rather than the viewport: a viewport-wide scrim covered the section bar itself, so switching
+  // sections silently closed the drawer instead (the same overlay-swallows-clicks trap this codebase
+  // has now hit three times). Keeping it in here leaves the header and the bar permanently live.
+  position: 'relative',
 };
 
 const MAP_PANE: React.CSSProperties = {
@@ -555,9 +560,16 @@ export default function GameScreen() {
         </p>
       )}
 
-      <div style={BODY}>
-        <SectionRail sections={SECTIONS} active={activeSection} onSelect={id => setActiveSection(id as SectionId)} />
+      {/* Horizontal section bar above the map — see SectionRail's own comment on why this is a row
+          and not the vertical column it began as (tabs below the fold read as missing entirely).
+          Clicking the open section again closes it, so the bar is a real toggle. */}
+      <SectionRail
+        sections={SECTIONS}
+        active={activeSection}
+        onSelect={id => setActiveSection(prev => (prev === id ? null : (id as SectionId)))}
+      />
 
+      <div style={BODY}>
         <div style={MAP_PANE}>
           <MapView
             key={state.id}
@@ -568,7 +580,6 @@ export default function GameScreen() {
             previewedCityId={previewCityId}
           />
         </div>
-      </div>
 
       {activeSection && (
         <SectionPopup title={SECTION_TITLES[activeSection]} onClose={() => setActiveSection(null)}>
@@ -870,6 +881,7 @@ export default function GameScreen() {
           )}
         </SectionPopup>
       )}
+      </div>
 
       <PortalNav variant="footer" />
     </div>

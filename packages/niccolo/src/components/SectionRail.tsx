@@ -8,58 +8,71 @@ export interface SectionDef {
   badge?: boolean;
 }
 
+/**
+ * A single horizontal bar of section tabs, sitting above the map.
+ *
+ * Deliberately horizontal rather than the vertical column this started as: ten tabs at ~65px each
+ * overflowed a short viewport, and because the column scrolled *internally* the tabs below the fold
+ * (Household among them) simply looked absent — a player reported being unable to reassign anyone
+ * because the tab had effectively vanished. A single row fits every section on screen at once at any
+ * realistic window height, and `flexWrap` handles genuinely narrow widths by wrapping to a second
+ * line rather than hiding anything.
+ */
 const RAIL: React.CSSProperties = {
-  width: '58px',
   flexShrink: 0,
   background: '#161009',
-  borderRight: '1px solid #2a2117',
+  borderBottom: '1px solid #2a2117',
   display: 'flex',
-  flexDirection: 'column',
-  paddingTop: '0.8rem',
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  alignItems: 'stretch',
+  padding: '0 0.75rem',
   gap: '0.1rem',
-  overflowY: 'auto',
 };
 
 const TAB: React.CSSProperties = {
   position: 'relative',
   background: 'none',
-  border: 'none',
-  borderLeft: '3px solid transparent',
+  // Longhands only, never the `border` shorthand alongside a `borderBottom` longhand: toggling
+  // between TAB and TAB_ACTIVE on the same element then makes React drop one against the other
+  // ("Removing borderLeft border" — a real dev warning this codebase has already been bitten by,
+  // not a lint nag). Any future active/hover variant here must keep to longhands too.
+  borderTop: 'none',
+  borderRight: 'none',
+  borderLeft: 'none',
+  borderBottom: '2px solid transparent',
   color: '#8a7a5a',
   fontFamily: 'inherit',
-  padding: '0.65rem 0.25rem',
+  padding: '0.5rem 0.7rem',
   cursor: 'pointer',
   display: 'flex',
-  flexDirection: 'column',
+  flexDirection: 'row',
   alignItems: 'center',
-  gap: '0.3rem',
+  gap: '0.35rem',
+  whiteSpace: 'nowrap',
 };
 
 const TAB_ACTIVE: React.CSSProperties = {
   ...TAB,
   color: '#e8d5a3',
-  borderLeft: '3px solid #c9a24a',
+  borderBottom: '2px solid #c9a24a',
   background: 'rgba(201,162,74,0.09)',
 };
 
-const GLYPH: React.CSSProperties = { fontSize: '1.05rem', lineHeight: 1 };
+const GLYPH: React.CSSProperties = { fontSize: '0.95rem', lineHeight: 1 };
 
 const LABEL: React.CSSProperties = {
-  writingMode: 'vertical-rl',
-  textOrientation: 'mixed',
-  fontSize: '0.6rem',
-  letterSpacing: '0.07em',
+  fontSize: '0.62rem',
+  letterSpacing: '0.09em',
   textTransform: 'uppercase',
 };
 
 const BADGE: React.CSSProperties = {
-  position: 'absolute',
-  top: '4px',
-  right: '6px',
   width: '6px',
   height: '6px',
   borderRadius: '50%',
   background: '#c9a24a',
+  flexShrink: 0,
 };
 
 interface SectionRailProps {

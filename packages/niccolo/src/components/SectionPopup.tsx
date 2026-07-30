@@ -1,33 +1,57 @@
 /**
- * Modal chrome for one menu section (Phase 17 follow-up: "redesign the menu so there are sections
- * for each part of the game... a pop up menu for each"). Every panel that used to sit permanently
- * stacked in a single long scrolling sidebar now opens here instead, one at a time — mirrors the
- * dark full-viewport backdrop + centered card convention `EventOverlay`/`TutorialOverlay` already
- * use, so a popup section reads as the same kind of surface as the game's other modals, not a new
- * one. `id="section-popup-scroll"` on the scrolling body is a stable hook `GuidedTour.tsx`'s
- * `useTargetRect` scrolls against (the same proven scrollTop-math the old sidebar used, just
- * retargeted — see that file's own comment for why `Element.scrollIntoView()` isn't used here).
+ * Slide-out drawer chrome for one menu section.
+ *
+ * Started life as a centered modal card over a dimmed full-viewport backdrop, which was the wrong
+ * shape for this content: these panels are working surfaces the player reads *against* the map
+ * (checking a market against where a ship is, reassigning an officer while looking at the route),
+ * and a centered modal both hid the map entirely and read as an interruption. Now it slides in from
+ * the left, taking a fixed column and leaving the map visible beside it, with only a very light
+ * scrim so the map is dimmed but still legible.
+ *
+ * Two details are load-bearing and should survive future edits:
+ * - `id="section-popup-scroll"` on the scrolling body is a stable hook `GuidedTour.tsx`'s
+ *   `useTargetRect` scrolls against (the same scrollTop math the original sidebar used — see that
+ *   file for why `Element.scrollIntoView()` isn't used here).
+ * - Both layers are `absolute`, not `fixed`, so they are scoped to the map pane (`BODY` in
+ *   `GameScreen.tsx` is their positioning context) and **never cover the header or the section
+ *   bar**. A first cut used a viewport-wide fixed scrim, which sat on top of the bar and made every
+ *   tab click silently close the drawer instead of switching section — verified with
+ *   `elementFromPoint`, and the third time this codebase has been bitten by a translucent overlay
+ *   quietly eating clicks. Keep them scoped here.
  */
-const BACKDROP: React.CSSProperties = {
-  position: 'fixed',
+const SCRIM: React.CSSProperties = {
+  position: 'absolute',
   inset: 0,
-  background: 'rgba(8, 6, 4, 0.72)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  zIndex: 60,
-  padding: '2rem',
+  background: 'rgba(8, 6, 4, 0.35)',
+  zIndex: 55,
 };
 
-const CARD: React.CSSProperties = {
-  width: 'min(640px, 100%)',
-  maxHeight: '100%',
+const DRAWER: React.CSSProperties = {
+  position: 'absolute',
+  top: 0,
+  left: 0,
+  bottom: 0,
+  width: 'min(460px, 92vw)',
   display: 'flex',
   flexDirection: 'column',
   background: '#161009',
-  border: '1px solid #4a3d28',
-  boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+  borderRight: '1px solid #4a3d28',
+  boxShadow: '8px 0 32px rgba(0,0,0,0.55)',
+  zIndex: 60,
+  animation: 'niccolo-drawer-in 160ms ease-out',
 };
+
+/** Keyframes have to be real CSS, not inline style — injected once, idempotently. */
+const KEYFRAMES_ID = 'niccolo-drawer-keyframes';
+function ensureKeyframes() {
+  if (typeof document === 'undefined' || document.getElementById(KEYFRAMES_ID)) return;
+  const el = document.createElement('style');
+  el.id = KEYFRAMES_ID;
+  el.textContent =
+    '@keyframes niccolo-drawer-in{from{transform:translateX(-100%)}to{transform:translateX(0)}}' +
+    '@media (prefers-reduced-motion: reduce){[data-niccolo-drawer]{animation:none !important}}';
+  document.head.appendChild(el);
+}
 
 const HEAD: React.CSSProperties = {
   display: 'flex',
@@ -71,9 +95,11 @@ interface SectionPopupProps {
 }
 
 export default function SectionPopup({ title, onClose, children }: SectionPopupProps) {
+  ensureKeyframes();
   return (
-    <div style={BACKDROP} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div style={CARD}>
+    <>
+      <div style={SCRIM} onClick={onClose} />
+      <div style={DRAWER} data-niccolo-drawer>
         <div style={HEAD}>
           <h2 style={TITLE}>{title}</h2>
           <button style={CLOSE} onClick={onClose} aria-label="Close">
@@ -84,6 +110,6 @@ export default function SectionPopup({ title, onClose, children }: SectionPopupP
           {children}
         </div>
       </div>
-    </div>
+    </>
   );
 }
