@@ -1,0 +1,66 @@
+/*
+ * The few things inline styles cannot do: media queries, pseudo-classes, and the scrollbar.
+ * Everything else lives in theme.ts alongside the palette it belongs to.
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keyboard users must be able to see where they are. */
+:focus-visible {
+  outline: 2px solid #d09a4e;
+  outline-offset: 2px;
+}
+
+button:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/*
+ * On a wide screen the chart stays put while the panels beside it scroll. Without this the
+ * sidebar is tall enough to push the map right off the top of the window, which makes "click a
+ * port to lay off a course" impossible to actually do.
+ *
+ * Deliberately gated behind a breakpoint: once the columns wrap, the chart sits above the panels
+ * and pinning it would eat most of a phone's viewport.
+ */
+@media (min-width: 900px) {
+  .tr-map-column {
+    position: sticky;
+    top: 0.75rem;
+    align-self: flex-start;
+  }
+}
+
+/* Dark scrollbars, so the log panel doesn't get a bright strip down its edge. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3a4b56 transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #3a4b56;
+  border-radius: 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

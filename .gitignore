@@ -14,5 +14,6 @@ coverage/
 *.sqlite-shm
 *.sqlite-wal
 
-# Natural Earth source data cached by packages/niccolo/scripts/build_geography.py
+# Natural Earth source data cached by the map build scripts
 packages/niccolo/scripts/.cache/
+packages/tea-race/scripts/.cache/

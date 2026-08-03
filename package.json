@@ -5,8 +5,11 @@
   "scripts": {
     "dev:tm": "npm run dev --workspace=packages/thrash-margin",
     "dev:niccolo": "npm run dev --workspace=packages/niccolo",
+    "dev:tea": "npm run dev --workspace=packages/tea-race",
     "build:tm": "npm run build --workspace=packages/thrash-margin",
     "build:niccolo": "npm run build --workspace=packages/niccolo",
+    "build:tea": "npm run build --workspace=packages/tea-race",
+    "drive:tea": "npm run drive --workspace=packages/tea-race",
     "build:portal": "bash scripts/build-portal.sh"
   }
 }

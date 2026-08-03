@@ -1,0 +1,24 @@
+{
+  "$comment": "basePrice is what a lot of this good costs at ANY port that supplies it, and is the number the 4x/2x contract payout multiplies. Deliberately flat per good rather than varying by port: the 1988 board pays 'four times the purchase price', which is only unambiguous if the purchase price is a property of the card, not of where you happened to buy. Prices are balance numbers, not history — see tea-race-design.md.",
+  "goods": [
+    { "id": "cloth", "name": "Cloth", "basePrice": 45, "colour": "#b8c4d4" },
+    { "id": "tea", "name": "Tea", "basePrice": 60, "colour": "#8fae72" },
+    { "id": "silk", "name": "Silk", "basePrice": 90, "colour": "#d9a3c4" },
+    { "id": "spices", "name": "Spices", "basePrice": 55, "colour": "#d08a4a" },
+    { "id": "cotton", "name": "Cotton", "basePrice": 40, "colour": "#e6e0d2" },
+    { "id": "opium", "name": "Opium", "basePrice": 80, "colour": "#7a6b8f" },
+    { "id": "wool", "name": "Wool", "basePrice": 35, "colour": "#c9bfa4" },
+    { "id": "coffee", "name": "Coffee", "basePrice": 45, "colour": "#7a5230" },
+    { "id": "sugar", "name": "Sugar", "basePrice": 30, "colour": "#e8ddc0" },
+    { "id": "tobacco", "name": "Tobacco", "basePrice": 40, "colour": "#9c7b44" },
+    { "id": "rum", "name": "Rum", "basePrice": 35, "colour": "#a5642e" },
+    { "id": "timber", "name": "Timber", "basePrice": 25, "colour": "#8a6a45" },
+    { "id": "hides", "name": "Hides", "basePrice": 30, "colour": "#8d7358" },
+    { "id": "ivory", "name": "Ivory", "basePrice": 85, "colour": "#efe8d8" },
+    { "id": "jute", "name": "Jute", "basePrice": 20, "colour": "#b9a06a" },
+    { "id": "indigo", "name": "Indigo", "basePrice": 65, "colour": "#5a6ea8" },
+    { "id": "guano", "name": "Guano", "basePrice": 20, "colour": "#9a9a8c" },
+    { "id": "porcelain", "name": "Porcelain", "basePrice": 70, "colour": "#a8c6d6" },
+    { "id": "wine", "name": "Wine", "basePrice": 45, "colour": "#8e3b4a" }
+  ]
+}

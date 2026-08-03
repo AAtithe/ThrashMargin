@@ -1,0 +1,588 @@
+{
+  "$comment": "lon/lat are real WGS84 and are the source of truth — screen coordinates are derived from them by sim/geography.ts, never authored directly. `nudge` is an optional [dx, dy] in canvas units applied AFTER projection, purely so a tight real-world cluster (Liverpool/London, Hong Kong/Foochow/Shanghai, Sydney/Melbourne) reads legibly on a stylised board chart; keep nudges small and re-run the DOM label-collision check after changing any. `supplies` is what may be bought here, `demands` is what a contract may ask to be delivered here.",
+  "ports": [
+    {
+      "id": "liverpool",
+      "name": "Liverpool",
+      "region": "britain",
+      "lon": -3.0,
+      "lat": 53.4,
+      "nudge": [
+        -14,
+        -14
+      ],
+      "labelSide": "w",
+      "home": true,
+      "supplies": [
+        "cloth"
+      ],
+      "demands": [
+        "tea",
+        "cotton",
+        "silk",
+        "spices",
+        "sugar",
+        "tobacco",
+        "ivory",
+        "indigo",
+        "guano",
+        "hides",
+        "porcelain",
+        "jute"
+      ]
+    },
+    {
+      "id": "london",
+      "name": "London",
+      "region": "britain",
+      "lon": 0.0,
+      "lat": 51.5,
+      "nudge": [
+        8,
+        10
+      ],
+      "labelSide": "s",
+      "supplies": [
+        "cloth"
+      ],
+      "demands": [
+        "tea",
+        "silk",
+        "spices",
+        "coffee",
+        "sugar",
+        "wool",
+        "porcelain",
+        "ivory",
+        "wine",
+        "indigo",
+        "guano"
+      ]
+    },
+    {
+      "id": "hamburg",
+      "name": "Hamburg",
+      "region": "europe",
+      "lon": 10.0,
+      "lat": 53.5,
+      "nudge": [
+        8,
+        -6
+      ],
+      "labelSide": "e",
+      "supplies": [
+        "cloth",
+        "timber"
+      ],
+      "demands": [
+        "coffee",
+        "sugar",
+        "tobacco",
+        "hides",
+        "jute",
+        "indigo",
+        "ivory",
+        "guano",
+        "wool"
+      ]
+    },
+    {
+      "id": "lisbon",
+      "name": "Lisbon",
+      "region": "europe",
+      "lon": -9.1,
+      "lat": 38.7,
+      "labelSide": "w",
+      "supplies": [
+        "wine"
+      ],
+      "demands": [
+        "tea",
+        "spices",
+        "cotton",
+        "coffee",
+        "timber",
+        "guano",
+        "sugar"
+      ]
+    },
+    {
+      "id": "alexandria",
+      "name": "Alexandria",
+      "region": "europe",
+      "lon": 29.9,
+      "lat": 31.2,
+      "labelSide": "s",
+      "supplies": [],
+      "demands": [
+        "timber",
+        "cotton",
+        "tea",
+        "wine",
+        "coffee",
+        "wool",
+        "indigo"
+      ]
+    },
+    {
+      "id": "new_york",
+      "name": "New York",
+      "region": "north_america",
+      "lon": -74.0,
+      "lat": 40.7,
+      "labelSide": "w",
+      "supplies": [
+        "timber",
+        "tobacco"
+      ],
+      "demands": [
+        "cloth",
+        "tea",
+        "silk",
+        "spices",
+        "coffee",
+        "porcelain",
+        "wine",
+        "wool",
+        "guano",
+        "jute",
+        "indigo"
+      ]
+    },
+    {
+      "id": "new_orleans",
+      "name": "New Orleans",
+      "region": "north_america",
+      "lon": -90.1,
+      "lat": 30.0,
+      "labelSide": "w",
+      "supplies": [
+        "cotton",
+        "tobacco",
+        "rum"
+      ],
+      "demands": [
+        "coffee",
+        "timber",
+        "hides",
+        "wine",
+        "tea",
+        "jute"
+      ]
+    },
+    {
+      "id": "havana",
+      "name": "Havana",
+      "region": "caribbean",
+      "lon": -82.4,
+      "lat": 23.1,
+      "labelSide": "s",
+      "supplies": [
+        "sugar",
+        "tobacco",
+        "rum"
+      ],
+      "demands": [
+        "timber",
+        "cotton",
+        "hides",
+        "jute",
+        "tea",
+        "wine"
+      ]
+    },
+    {
+      "id": "rio",
+      "name": "Rio de Janeiro",
+      "region": "south_america",
+      "lon": -43.2,
+      "lat": -22.9,
+      "labelSide": "e",
+      "supplies": [
+        "coffee",
+        "sugar",
+        "hides"
+      ],
+      "demands": [
+        "cloth",
+        "cotton",
+        "timber",
+        "wine",
+        "tea",
+        "wool"
+      ]
+    },
+    {
+      "id": "valparaiso",
+      "name": "Valparaiso",
+      "region": "pacific_america",
+      "lon": -71.6,
+      "lat": -33.0,
+      "labelSide": "w",
+      "supplies": [
+        "hides",
+        "guano"
+      ],
+      "demands": [
+        "cloth",
+        "timber",
+        "cotton",
+        "tea",
+        "wine",
+        "tobacco"
+      ]
+    },
+    {
+      "id": "callao",
+      "name": "Callao",
+      "region": "pacific_america",
+      "lon": -77.1,
+      "lat": -12.1,
+      "labelSide": "w",
+      "supplies": [
+        "guano"
+      ],
+      "demands": [
+        "cloth",
+        "timber",
+        "cotton",
+        "rum",
+        "tea",
+        "wine"
+      ]
+    },
+    {
+      "id": "san_francisco",
+      "name": "San Francisco",
+      "region": "north_america",
+      "lon": -122.4,
+      "lat": 37.8,
+      "labelSide": "w",
+      "supplies": [
+        "timber"
+      ],
+      "demands": [
+        "cloth",
+        "tea",
+        "silk",
+        "spices",
+        "opium",
+        "porcelain",
+        "wine",
+        "wool"
+      ]
+    },
+    {
+      "id": "cape_town",
+      "name": "Cape Town",
+      "region": "africa",
+      "lon": 18.4,
+      "lat": -33.9,
+      "labelSide": "s",
+      "supplies": [
+        "wool",
+        "ivory",
+        "wine"
+      ],
+      "demands": [
+        "cloth",
+        "tea",
+        "cotton",
+        "timber",
+        "rum",
+        "jute",
+        "spices",
+        "tobacco"
+      ]
+    },
+    {
+      "id": "zanzibar",
+      "name": "Zanzibar",
+      "region": "africa",
+      "lon": 39.2,
+      "lat": -6.2,
+      "labelSide": "e",
+      "supplies": [
+        "ivory",
+        "coffee"
+      ],
+      "demands": [
+        "cloth",
+        "cotton",
+        "rum",
+        "timber",
+        "tobacco"
+      ]
+    },
+    {
+      "id": "mauritius",
+      "name": "Mauritius",
+      "region": "indian_ocean",
+      "lon": 57.5,
+      "lat": -20.2,
+      "labelSide": "e",
+      "supplies": [
+        "sugar"
+      ],
+      "demands": [
+        "cloth",
+        "cotton",
+        "timber",
+        "rum",
+        "jute",
+        "tobacco"
+      ]
+    },
+    {
+      "id": "bombay",
+      "name": "Bombay",
+      "region": "indian_ocean",
+      "lon": 72.8,
+      "lat": 19.1,
+      "labelSide": "w",
+      "supplies": [
+        "cotton",
+        "opium",
+        "indigo"
+      ],
+      "demands": [
+        "cloth",
+        "timber",
+        "wool",
+        "wine",
+        "rum",
+        "tobacco",
+        "hides"
+      ]
+    },
+    {
+      "id": "calcutta",
+      "name": "Calcutta",
+      "region": "indian_ocean",
+      "lon": 88.4,
+      "lat": 22.6,
+      "labelSide": "e",
+      "supplies": [
+        "opium",
+        "jute",
+        "indigo",
+        "cotton"
+      ],
+      "demands": [
+        "cloth",
+        "timber",
+        "wool",
+        "rum",
+        "wine",
+        "tobacco",
+        "hides"
+      ]
+    },
+    {
+      "id": "colombo",
+      "name": "Colombo",
+      "region": "indian_ocean",
+      "lon": 79.9,
+      "lat": 6.9,
+      "labelSide": "s",
+      "supplies": [
+        "spices"
+      ],
+      "demands": [
+        "cloth",
+        "cotton",
+        "rum",
+        "timber",
+        "tobacco"
+      ]
+    },
+    {
+      "id": "singapore",
+      "name": "Singapore",
+      "region": "east_indies",
+      "lon": 103.8,
+      "lat": 1.4,
+      "labelSide": "s",
+      "supplies": [
+        "spices"
+      ],
+      "demands": [
+        "cloth",
+        "cotton",
+        "opium",
+        "timber",
+        "rum",
+        "tobacco",
+        "hides",
+        "indigo"
+      ]
+    },
+    {
+      "id": "batavia",
+      "name": "Batavia",
+      "region": "east_indies",
+      "lon": 106.8,
+      "lat": -6.2,
+      "labelSide": "s",
+      "supplies": [
+        "spices",
+        "coffee"
+      ],
+      "demands": [
+        "cloth",
+        "cotton",
+        "opium",
+        "timber",
+        "rum",
+        "tobacco"
+      ]
+    },
+    {
+      "id": "hong_kong",
+      "name": "Hong Kong",
+      "region": "far_east",
+      "lon": 114.2,
+      "lat": 22.3,
+      "nudge": [
+        -12,
+        14
+      ],
+      "labelSide": "s",
+      "supplies": [
+        "tea",
+        "porcelain"
+      ],
+      "demands": [
+        "cloth",
+        "opium",
+        "cotton",
+        "jute",
+        "timber",
+        "hides",
+        "wool",
+        "indigo"
+      ]
+    },
+    {
+      "id": "foochow",
+      "name": "Foochow",
+      "region": "far_east",
+      "lon": 119.3,
+      "lat": 26.1,
+      "nudge": [
+        16,
+        -2
+      ],
+      "labelSide": "e",
+      "supplies": [
+        "tea",
+        "silk",
+        "porcelain"
+      ],
+      "demands": [
+        "cloth",
+        "opium",
+        "cotton",
+        "jute",
+        "hides"
+      ]
+    },
+    {
+      "id": "shanghai",
+      "name": "Shanghai",
+      "region": "far_east",
+      "lon": 121.5,
+      "lat": 31.2,
+      "nudge": [
+        10,
+        -12
+      ],
+      "labelSide": "e",
+      "supplies": [
+        "tea",
+        "silk",
+        "porcelain"
+      ],
+      "demands": [
+        "cloth",
+        "opium",
+        "cotton",
+        "wool",
+        "timber",
+        "hides"
+      ]
+    },
+    {
+      "id": "yokohama",
+      "name": "Yokohama",
+      "region": "far_east",
+      "lon": 139.6,
+      "lat": 35.4,
+      "labelSide": "e",
+      "supplies": [
+        "silk"
+      ],
+      "demands": [
+        "cloth",
+        "cotton",
+        "wool",
+        "sugar",
+        "timber",
+        "hides",
+        "rum"
+      ]
+    },
+    {
+      "id": "sydney",
+      "name": "Sydney",
+      "region": "australasia",
+      "lon": 151.2,
+      "lat": -33.9,
+      "nudge": [
+        10,
+        -8
+      ],
+      "labelSide": "e",
+      "supplies": [
+        "wool",
+        "hides"
+      ],
+      "demands": [
+        "cloth",
+        "tea",
+        "silk",
+        "spices",
+        "sugar",
+        "rum",
+        "timber",
+        "porcelain",
+        "tobacco"
+      ]
+    },
+    {
+      "id": "melbourne",
+      "name": "Melbourne",
+      "region": "australasia",
+      "lon": 144.9,
+      "lat": -37.8,
+      "nudge": [
+        -14,
+        14
+      ],
+      "labelSide": "s",
+      "supplies": [
+        "wool"
+      ],
+      "demands": [
+        "cloth",
+        "tea",
+        "spices",
+        "sugar",
+        "rum",
+        "timber",
+        "wine",
+        "tobacco"
+      ]
+    }
+  ]
+}

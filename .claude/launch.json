@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "niccolo"],
       "port": 5174
+    },
+    {
+      "name": "tea-race",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "tea-race"],
+      "port": 5175
     }
   ]
 }

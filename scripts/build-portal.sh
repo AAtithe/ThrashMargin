@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the combined portal deployment: a static landing page at "/" plus
-# Niccolo and Thrash Margin's client builds under their own subpaths.
+# Niccolo, The Tea Race and Thrash Margin's client builds under their own subpaths.
 # The API (packages/thrash-margin/api) is not built here — it's picked up
 # directly by Vercel's function detection via the /api shim files at repo root.
 set -euo pipefail
@@ -11,14 +11,18 @@ cd "$ROOT_DIR"
 echo "==> Building Niccolo (base /niccolo/)"
 npm run build --workspace=packages/niccolo -- --base=/niccolo/
 
+echo "==> Building The Tea Race (base /tea-race/)"
+npm run build --workspace=packages/tea-race -- --base=/tea-race/
+
 echo "==> Building Thrash Margin client (base /thrash-margin/)"
 (cd packages/thrash-margin/client && npm install && npm run build -- --base=/thrash-margin/)
 
 echo "==> Assembling dist/"
 rm -rf dist
-mkdir -p dist/niccolo dist/thrash-margin
+mkdir -p dist/niccolo dist/tea-race dist/thrash-margin
 cp -r landing/. dist/
 cp -r packages/niccolo/dist/. dist/niccolo/
+cp -r packages/tea-race/dist/. dist/tea-race/
 cp -r packages/thrash-margin/client/dist/. dist/thrash-margin/
 
 echo "==> Portal build complete"

@@ -14,14 +14,15 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- Games
--- `game` discriminates which app owns this row so Thrash Margin and Banco di Niccolo (and any
--- future game) can share one users/games/auth infrastructure instead of standing up a second
--- database. Existing rows predate this column and default to 'thrash_margin', so no backfill
--- is needed.
+-- `game` discriminates which app owns this row so Thrash Margin, Banco di Niccolo, The Tea Race
+-- (and any future game) can share one users/games/auth infrastructure instead of standing up a
+-- second database. Existing rows predate this column and default to 'thrash_margin', so no
+-- backfill is needed. There is deliberately no CHECK constraint on the value: adding a game means
+-- adding a string, not running a migration. Keep new values within VARCHAR(16).
 CREATE TABLE IF NOT EXISTS games (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   owner_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  game        VARCHAR(16) NOT NULL DEFAULT 'thrash_margin',  -- 'thrash_margin' | 'niccolo'
+  game        VARCHAR(16) NOT NULL DEFAULT 'thrash_margin',  -- 'thrash_margin' | 'niccolo' | 'tea_race'
   mode        VARCHAR(16) NOT NULL DEFAULT 'single',  -- 'single' | 'pvp'
   status      VARCHAR(16) NOT NULL DEFAULT 'active',  -- 'active' | 'victory' | 'defeated'
   turn        INTEGER NOT NULL DEFAULT 1,

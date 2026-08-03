@@ -4,6 +4,7 @@
   "installCommand": "npm install",
   "rewrites": [
     { "source": "/niccolo/(.*)", "destination": "/niccolo/index.html" },
+    { "source": "/tea-race/(.*)", "destination": "/tea-race/index.html" },
     { "source": "/thrash-margin/(.*)", "destination": "/thrash-margin/index.html" }
   ],
   "env": {

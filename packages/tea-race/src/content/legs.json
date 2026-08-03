@@ -1,0 +1,256 @@
+{
+  "$comment": "Sea legs are undirected. `distance` is in sail points, roughly (nautical miles / 500) rounded to a whole number that plays well - a 2d6 roll averages 7, so a 14-point leg is two turns of hard sailing and the whole world is about seven. `cape` marks a leg rounding one of the great capes; it carries no mechanical effect in the classic ruleset and exists for the chart's own labelling (and for Voyage mode later). There is deliberately NO Suez route: the 1869 canal is what killed the clippers, and including it would make the Cape routes pointless.",
+  "legs": [
+    {
+      "a": "liverpool",
+      "b": "london",
+      "distance": 2
+    },
+    {
+      "a": "liverpool",
+      "b": "hamburg",
+      "distance": 2
+    },
+    {
+      "a": "london",
+      "b": "hamburg",
+      "distance": 2
+    },
+    {
+      "a": "liverpool",
+      "b": "lisbon",
+      "distance": 4
+    },
+    {
+      "a": "london",
+      "b": "lisbon",
+      "distance": 4
+    },
+    {
+      "a": "hamburg",
+      "b": "lisbon",
+      "distance": 5
+    },
+    {
+      "a": "lisbon",
+      "b": "alexandria",
+      "distance": 5
+    },
+    {
+      "a": "london",
+      "b": "alexandria",
+      "distance": 7
+    },
+    {
+      "a": "liverpool",
+      "b": "new_york",
+      "distance": 8
+    },
+    {
+      "a": "london",
+      "b": "new_york",
+      "distance": 9
+    },
+    {
+      "a": "lisbon",
+      "b": "new_york",
+      "distance": 10
+    },
+    {
+      "a": "lisbon",
+      "b": "havana",
+      "distance": 10
+    },
+    {
+      "a": "lisbon",
+      "b": "rio",
+      "distance": 10
+    },
+    {
+      "a": "lisbon",
+      "b": "cape_town",
+      "distance": 14
+    },
+    {
+      "a": "new_york",
+      "b": "havana",
+      "distance": 3
+    },
+    {
+      "a": "new_york",
+      "b": "new_orleans",
+      "distance": 4
+    },
+    {
+      "a": "havana",
+      "b": "new_orleans",
+      "distance": 2
+    },
+    {
+      "a": "havana",
+      "b": "rio",
+      "distance": 8
+    },
+    {
+      "a": "new_orleans",
+      "b": "rio",
+      "distance": 9
+    },
+    {
+      "a": "rio",
+      "b": "valparaiso",
+      "distance": 11,
+      "cape": "Cape Horn"
+    },
+    {
+      "a": "rio",
+      "b": "cape_town",
+      "distance": 7
+    },
+    {
+      "a": "valparaiso",
+      "b": "callao",
+      "distance": 4
+    },
+    {
+      "a": "callao",
+      "b": "san_francisco",
+      "distance": 9
+    },
+    {
+      "a": "valparaiso",
+      "b": "sydney",
+      "distance": 15
+    },
+    {
+      "a": "san_francisco",
+      "b": "yokohama",
+      "distance": 12
+    },
+    {
+      "a": "san_francisco",
+      "b": "hong_kong",
+      "distance": 15
+    },
+    {
+      "a": "cape_town",
+      "b": "zanzibar",
+      "distance": 6,
+      "cape": "Cape of Good Hope"
+    },
+    {
+      "a": "cape_town",
+      "b": "mauritius",
+      "distance": 7,
+      "cape": "Cape of Good Hope"
+    },
+    {
+      "a": "cape_town",
+      "b": "bombay",
+      "distance": 13,
+      "cape": "Cape of Good Hope"
+    },
+    {
+      "a": "cape_town",
+      "b": "melbourne",
+      "distance": 14,
+      "cape": "Cape of Good Hope"
+    },
+    {
+      "a": "zanzibar",
+      "b": "bombay",
+      "distance": 7
+    },
+    {
+      "a": "zanzibar",
+      "b": "mauritius",
+      "distance": 5
+    },
+    {
+      "a": "mauritius",
+      "b": "colombo",
+      "distance": 7
+    },
+    {
+      "a": "mauritius",
+      "b": "batavia",
+      "distance": 10
+    },
+    {
+      "a": "bombay",
+      "b": "colombo",
+      "distance": 3
+    },
+    {
+      "a": "colombo",
+      "b": "calcutta",
+      "distance": 4
+    },
+    {
+      "a": "colombo",
+      "b": "singapore",
+      "distance": 5
+    },
+    {
+      "a": "calcutta",
+      "b": "singapore",
+      "distance": 5
+    },
+    {
+      "a": "singapore",
+      "b": "batavia",
+      "distance": 2
+    },
+    {
+      "a": "singapore",
+      "b": "hong_kong",
+      "distance": 5
+    },
+    {
+      "a": "singapore",
+      "b": "sydney",
+      "distance": 10
+    },
+    {
+      "a": "batavia",
+      "b": "sydney",
+      "distance": 9
+    },
+    {
+      "a": "hong_kong",
+      "b": "foochow",
+      "distance": 2
+    },
+    {
+      "a": "foochow",
+      "b": "shanghai",
+      "distance": 2
+    },
+    {
+      "a": "hong_kong",
+      "b": "shanghai",
+      "distance": 4
+    },
+    {
+      "a": "shanghai",
+      "b": "yokohama",
+      "distance": 4
+    },
+    {
+      "a": "hong_kong",
+      "b": "yokohama",
+      "distance": 5
+    },
+    {
+      "a": "sydney",
+      "b": "melbourne",
+      "distance": 2
+    },
+    {
+      "a": "melbourne",
+      "b": "valparaiso",
+      "distance": 14,
+      "cape": "Cape Horn"
+    }
+  ]
+}

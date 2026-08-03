@@ -1,14 +1,17 @@
-import { getStoredUser, clearToken } from '../lib/token';
+import { getStoredUser, clearToken } from '../lib/portalAuth';
 
 interface PortalNavProps {
   variant?: 'header' | 'footer';
 }
 
 /**
- * Chrome for moving between the three games and managing the account that's shared
- * across them (same tm_token/tm_user localStorage keys the other games' PortalNavs read).
- * Deliberately not rendered on the in-game screen (Game.tsx) — that header is already
- * dense with live gameplay state and this adds nothing useful mid-turn.
+ * Chrome for moving between the three games and managing the account shared across them (the same
+ * tm_token/tm_user localStorage keys the other two games' PortalNavs read and write).
+ *
+ * Deliberately styled as portal chrome rather than in this game's own palette — it is the one strip
+ * that looks identical everywhere, which is what makes it read as "the site" rather than part of
+ * whichever game you happen to be in. Not rendered on the board screen itself, matching Thrash
+ * Margin's own rule: that header is already dense with live state and this adds nothing mid-turn.
  */
 export default function PortalNav({ variant = 'header' }: PortalNavProps) {
   const user = getStoredUser();
@@ -21,12 +24,12 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
           🏠 Home
         </a>
         <span style={styles.sep}>·</span>
-        <a href="/niccolo/" style={styles.link}>
-          ⚖️ Banco di Niccolo
+        <a href="/thrash-margin/" style={styles.link}>
+          🎮 Thrash Margin
         </a>
         <span style={styles.sep}>·</span>
-        <a href="/tea-race/" style={styles.link}>
-          ⛵ The Tea Race
+        <a href="/niccolo/" style={styles.link}>
+          ⚖️ Banco di Niccolo
         </a>
       </div>
       <div style={styles.right}>

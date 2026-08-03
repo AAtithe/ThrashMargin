@@ -4,9 +4,9 @@ interface PortalNavProps {
   variant?: 'header' | 'footer';
 }
 
-/** Chrome for moving between the two games and managing the Thrash Margin account
+/** Chrome for moving between the three games and managing the Thrash Margin account
  * session — Niccolo itself has no accounts, this just reflects/controls the same
- * tm_token/tm_user localStorage keys the other game's PortalNav writes. */
+ * tm_token/tm_user localStorage keys the other games' PortalNavs write. */
 export default function PortalNav({ variant = 'header' }: PortalNavProps) {
   const user = getStoredUser();
   const isFooter = variant === 'footer';
@@ -19,7 +19,11 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         </a>
         <span style={styles.sep}>·</span>
         <a href="/thrash-margin/" style={styles.link}>
-          🎮 Play Thrash Margin
+          🎮 Thrash Margin
+        </a>
+        <span style={styles.sep}>·</span>
+        <a href="/tea-race/" style={styles.link}>
+          ⛵ The Tea Race
         </a>
       </div>
       <div style={styles.right}>
@@ -51,6 +55,8 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '0.4rem',
     padding: '0.45rem 1.25rem',
     background: '#0b0c10',
     fontSize: '0.78rem',
@@ -59,7 +65,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   barHeader: { borderBottom: '1px solid #22252b' },
   barFooter: { borderTop: '1px solid #22252b' },
-  links: { display: 'flex', alignItems: 'center' },
+  links: { display: 'flex', alignItems: 'center', flexWrap: 'wrap' },
   sep: { color: '#3a3e46', margin: '0 0.6rem' },
   right: { display: 'flex', alignItems: 'center', gap: '0.6rem' },
   link: { color: '#9aa1ad', textDecoration: 'none' },
