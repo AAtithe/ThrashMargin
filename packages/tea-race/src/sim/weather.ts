@@ -60,8 +60,46 @@ export function roundsLeftInSeason(round: number): number {
 export const voyageYear = (round: number): number =>
   Math.floor(Math.max(0, round - 1) / (ROUNDS_PER_SEASON * SEASONS.length)) + 1;
 
-/** True in the months the south-west monsoon blows. */
-const isSouthWestMonsoon = (season: Season) => season === 'spring' || season === 'summer';
+/**
+ * Which way the monsoon is blowing, and how hard.
+ *
+ * Four seasons only mean something if they behave four different ways. A first pass had the monsoon
+ * simply reverse at the half-year and the Forties strengthen for the other half, which made
+ * spring identical to summer and autumn identical to winter — two seasons wearing four names.
+ * The real monsoon has two settled phases and two turning ones, so that is what this returns.
+ */
+type MonsoonPhase = 'south-west' | 'north-east' | 'turning to the south-west' | 'turning to the north-east';
+
+function monsoonPhase(season: Season): { phase: MonsoonPhase; settled: boolean; towardsNorthEastIsFair: boolean } {
+  switch (season) {
+    // The south-west monsoon proper: fair for anything running up towards the north-east.
+    case 'summer':
+      return { phase: 'south-west', settled: true, towardsNorthEastIsFair: true };
+    // The north-east monsoon proper, blowing back down the other way.
+    case 'winter':
+      return { phase: 'north-east', settled: true, towardsNorthEastIsFair: false };
+    // The turning months: light, unsettled airs leaning towards the monsoon that is coming.
+    case 'spring':
+      return { phase: 'turning to the south-west', settled: false, towardsNorthEastIsFair: true };
+    case 'autumn':
+      return { phase: 'turning to the north-east', settled: false, towardsNorthEastIsFair: false };
+  }
+}
+
+/**
+ * Extra strength in the Southern Ocean, by season.
+ *
+ * Note these are NORTHERN season names — the game is played from Liverpool — so the Forties are at
+ * their worst in "summer", which is the southern winter. The northern westerlies peak in northern
+ * winter, six months apart from this. That asymmetry is real, and it is what makes an eastbound
+ * Southern Ocean passage a different decision from a westbound North Atlantic one.
+ */
+const FORTIES_SEASONAL: Record<Season, number> = {
+  summer: 2,
+  spring: 1,
+  autumn: 1,
+  winter: 0,
+};
 
 // ---------------------------------------------------------------------------
 // Wind bands
@@ -165,20 +203,20 @@ export function windFor(from: PortId, to: PortId, season: Season): Wind {
     }
 
     case 'horse':
-      return { band, modifier: WIND.foul, label: 'fitful airs' };
+      return { band, modifier: WIND.fitful, label: 'fitful airs' };
 
     case 'westerlies': {
       // Northern westerlies blow west to east.
       if (!zonal) return { band, modifier: WIND.slack, label: 'across the westerlies' };
       return east > 0
         ? { band, modifier: WIND.favourable, label: 'with the westerlies' }
-        : { band, modifier: WIND.foul, label: 'against the westerlies' };
+        : { band, modifier: WIND.contrary, label: 'against the westerlies' };
     }
 
     case 'forties': {
       // The Southern Ocean, and the strongest wind on the chart. Eastward is very fast, westward
       // is a punishment — which is exactly why the real clippers ran their easting down.
-      const seasonal = season === 'winter' || season === 'autumn' ? 1 : 0;
+      const seasonal = FORTIES_SEASONAL[season];
       if (!zonal) return { band, modifier: WIND.slack, label: 'across the Forties' };
       return east > 0
         ? { band, modifier: WIND.fair + seasonal, label: 'running the easting down' }
@@ -186,14 +224,20 @@ export function windFor(from: PortId, to: PortId, season: Season): Wind {
     }
 
     case 'monsoon': {
-      // The reversing wind. South-west monsoon blows toward the north-east half of the year; the
-      // north-east monsoon blows back the other way for the rest of it.
+      const { phase, settled, towardsNorthEastIsFair } = monsoonPhase(season);
       const towardsNorthEast = east + north > 0;
-      const fairNow = isSouthWestMonsoon(season) ? towardsNorthEast : !towardsNorthEast;
-      const which = isSouthWestMonsoon(season) ? 'south-west' : 'north-east';
+      const fairNow = towardsNorthEast === towardsNorthEastIsFair;
+
+      // A settled monsoon is the strongest steady wind in the game; the turning months are only a
+      // lean, which is what keeps spring distinct from summer and autumn from winter.
+      if (settled) {
+        return fairNow
+          ? { band, modifier: WIND.fair, label: `with the ${phase} monsoon` }
+          : { band, modifier: WIND.foul, label: `against the ${phase} monsoon` };
+      }
       return fairNow
-        ? { band, modifier: WIND.fair, label: `with the ${which} monsoon` }
-        : { band, modifier: WIND.foul, label: `against the ${which} monsoon` };
+        ? { band, modifier: WIND.light, label: `light airs, ${phase}` }
+        : { band, modifier: WIND.lightFoul, label: `slack airs, ${phase}` };
     }
   }
 }
@@ -231,10 +275,16 @@ export function stormRating(from: PortId, to: PortId, season: Season): number {
   // Each band has its bad season: northern winter gales, southern winter in the Forties, and the
   // typhoon and hurricane seasons in the tropics come late summer.
   const band = bandFor(from, to);
-  if (band === 'westerlies' && (season === 'winter' || season === 'autumn')) rating += 1;
-  if (band === 'forties' && (season === 'winter' || season === 'autumn')) rating += 1;
-  if (band === 'monsoon' && season === 'summer') rating += 1;
-  if (band === 'trades' && season === 'summer' && abs > 12) rating += 1;
+  // Northern gales peak in northern winter; the Southern Ocean peaks in northern summer, which is
+  // its own winter. Six months apart, deliberately.
+  if (band === 'westerlies' && season === 'winter') rating += 2;
+  else if (band === 'westerlies' && season === 'autumn') rating += 1;
+  if (band === 'forties') rating += FORTIES_SEASONAL[season];
+  // The monsoon brings its worst weather as it blows hardest, and the typhoon and hurricane seasons
+  // fall in late northern summer.
+  if (band === 'monsoon' && season === 'summer') rating += 2;
+  else if (band === 'monsoon' && season === 'autumn') rating += 1;
+  if (band === 'trades' && (season === 'summer' || season === 'autumn') && abs > 12) rating += 1;
 
   return rating;
 }

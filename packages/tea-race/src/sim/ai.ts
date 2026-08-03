@@ -15,6 +15,7 @@ import { distanceBetween, portDemands, portSupplies, GOODS, GOOD_BY_ID, PORT_BY_
 import { payoutFor } from './contracts';
 import {
   canBuyOut,
+  FITTING_PRICES,
   MAX_SHIPS,
   SHARE_MAJORITY,
   SHARE_PRICE,
@@ -23,6 +24,8 @@ import {
   VICTORY_CASH,
 } from './rules';
 import { activeCaptain, shipsOf } from './state';
+import { seasonOf, turnsBetween } from './weather';
+import { piracyRating } from './hazards';
 import type { AiProfile, Captain, Contract, GameAction, GameState, Ship } from './types';
 
 /** Average of 2d6 — used to turn sail points into an estimate of turns. */
@@ -61,6 +64,25 @@ const TEMPERAMENTS: Record<AiProfile, Temperament> = {
 const temperamentOf = (c: Captain): Temperament => TEMPERAMENTS[c.aiProfile ?? 'racer'];
 
 const turnsFor = (points: number) => Math.max(1, points / POINTS_PER_TURN);
+
+/**
+ * How long a passage really takes, wind included. Without this the AI keeps scoring runs by raw
+ * distance and so keeps choosing the geometrically shortest one — the exact failure the wind-aware
+ * pathfinder exists to prevent, just relocated into the opponent's head.
+ */
+function passageTurns(s: GameState, from: string, to: string, fallbackDistance: number): number {
+  if (!s.hazards?.weather) return turnsFor(fallbackDistance);
+  const turns = turnsBetween(from, to, seasonOf(s.round));
+  return Number.isFinite(turns) ? Math.max(0.5, turns) : turnsFor(fallbackDistance);
+}
+
+/** Expected fraction of a cargo's value lost to pirates on a passage. Used to discount a run. */
+function piracyDrag(s: GameState, from: string, to: string): number {
+  if (!s.hazards?.piracy) return 0;
+  // Cheap proxy: the worst rating on the direct leg, if there is one. The AI is reduced-fidelity by
+  // design and does not path-integrate risk.
+  return Math.min(0.3, piracyRating(from, to) * 0.04);
+}
 
 const liveContracts = (s: GameState): Contract[] => s.contracts.filter(c => c.fills.length < 2);
 
@@ -116,7 +138,11 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
     const multiplier = takenPlaces === 0 ? 4 : 2;
     const profit = contract.price * (multiplier - 1);
 
-    const score = profit / turnsFor(toSource + toDest);
+    const turns =
+      passageTurns(s, from, contract.source, toSource) +
+      passageTurns(s, contract.source, contract.destination, toDest);
+    const drag = piracyDrag(s, contract.source, contract.destination);
+    const score = (profit * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, score };
   }
   return best;
@@ -136,7 +162,10 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
     const contested = rivalsAhead(s, contract, ship.ownerId, distance);
     if (contract.fills.length + contested >= 2) continue;
 
-    const score = (ship.cargo.paid * (payoutFor(contract) / contract.price)) / turnsFor(distance);
+    const turns = passageTurns(s, ship.location, contract.destination, distance);
+    const drag = piracyDrag(s, ship.location, contract.destination);
+    const gross = ship.cargo.paid * (payoutFor(contract) / contract.price);
+    const score = (gross * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, score };
   }
   return best;
@@ -175,6 +204,18 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
     if (spare >= sharePrice && (bankHasShares || canRaid(s, captain))) return { type: 'BUY_SHARE' };
     return null;
   }
+
+  /**
+   * A majority already in hand: stop buying shares and save for the cash bar.
+   *
+   * Shares beyond six do nothing — the win needs a majority, not a maximum — and buying them is
+   * actively self-defeating, because the same cash is the other half of the victory condition. The
+   * harness found a game that ran to 401 rounds without an ending because of precisely this: a
+   * captain held a majority for 1,170 consecutive turns and was cash-ready on none of them, since
+   * every time she clawed back up to £370 she spent £240 on a seventh share. Her rivals ended on
+   * £5,947 and £5,029 while she sat on £620 and could never declare.
+   */
+  if (captain.shares >= SHARE_MAJORITY) return null;
 
   // One share short of a majority is always worth taking, at any price it can afford.
   const oneShort = captain.shares === SHARE_MAJORITY - 1;
@@ -254,7 +295,48 @@ export function nextAiAction(s: GameState): GameAction | null {
     if (here) return { type: 'DELIVER', shipId: ship.id, contractId: here.id };
   }
 
-  // 2. Loaded ships still in port: set a course for the card their cargo fits.
+  // 2. Fit out and insure, before anyone is ordered to sea.
+  //
+  // Two postures, and the difference matters. A captain still building is buying protection for a
+  // long campaign, so fittings are worth a real outlay. A captain already holding a majority is
+  // waiting on one number — the cash bar — and every pound of variance between here and there is
+  // what stops them declaring. The harness found a game that never finished for exactly that
+  // reason: a leader on six shares ransomed back below £750 again and again. For them, insurance is
+  // the point (it converts variance into a small known cost) and fittings are just money leaving.
+  const closingOut = captain.shares >= SHARE_MAJORITY;
+
+  if (s.hazards?.piracy) {
+    for (const ship of docked) {
+      const worthInsuring = closingOut ? Boolean(ship.cargo) : (ship.cargo?.paid ?? 0) >= 55;
+      if (worthInsuring && !ship.insured) {
+        return { type: 'SET_INSURANCE', shipId: ship.id, insured: true };
+      }
+      // Deliberately never closed again. A policy only costs anything at cast-off, and an empty
+      // hold pays the minimum premium, so churning it open and shut saves almost nothing and
+      // produced 800-odd log lines of noise across a handful of games.
+    }
+  }
+
+  if (!closingOut) {
+    // Fittings are a real outlay, so they wait for a real surplus. Buying copper on every ship the
+    // moment it was affordable diverted the money that buys shares and stretched the game.
+    const surplus = spendable - TRADING_FLOAT - 60;
+    for (const ship of docked) {
+      if (s.hazards?.weather && !ship.fittings?.copper && surplus >= FITTING_PRICES.copper) {
+        return { type: 'BUY_FITTING', shipId: ship.id, fitting: 'copper' };
+      }
+      if (
+        s.hazards?.piracy &&
+        !ship.fittings?.guns &&
+        (ship.cargo?.paid ?? 0) >= 55 &&
+        surplus >= FITTING_PRICES.guns
+      ) {
+        return { type: 'BUY_FITTING', shipId: ship.id, fitting: 'guns' };
+      }
+    }
+  }
+
+  // 3. Loaded ships still in port: set a course for the card their cargo fits.
   for (const ship of docked) {
     if (!ship.cargo) continue;
     const run = bestRunForLoadedShip(s, ship);
@@ -271,7 +353,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     if (outlet) return { type: 'SAIL_TO', shipId: ship.id, destination: outlet };
   }
 
-  // 3. Empty ships in port: load here if this is the source, otherwise sail for one.
+  // 4. Empty ships in port: load here if this is the source, otherwise sail for one.
   for (const ship of docked) {
     if (ship.cargo) continue;
     const run = bestRunForEmptyShip(s, ship.location!, captain.id);
@@ -300,7 +382,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     if (run) return { type: 'SAIL_TO', shipId: ship.id, destination: run.contract.source };
   }
 
-  // 4. Too poor to buy the cheapest lot anywhere and holding shares? Cash one in. This is the
+  // 4b. Too poor to buy the cheapest lot anywhere and holding shares? Cash one in. This is the
   //    softlock escape, and the AI reaches for it before it is completely stuck rather than after.
   if (captain.shares > 0 && captain.cash < CHEAPEST_LOT && !ships.some(sh => sh.cargo)) {
     return { type: 'SELL_SHARE' };

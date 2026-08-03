@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { planRoute, portName } from '../sim/content';
+import { SEASON_NAMES, planFastestRoute, roundsLeftInSeason, seasonOf, voyageYear } from '../sim/weather';
 import { destinationOf } from '../sim/movement';
 import { DECLARATION_TURNS, SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
@@ -67,13 +68,18 @@ export default function GameScreen() {
   const canAct = state.phase === 'act' && isHuman;
   const mustRoll = state.phase === 'roll' && isHuman;
   const over = state.phase === 'over';
+  const season = (state.hazards?.weather ?? false) ? seasonOf(state.round) : null;
 
   /** The course drawn on the chart: what the selected ship is running, or what she's being sent on. */
   const plannedRoute: PortId[] | null = (() => {
     if (!selectedShip) return null;
     if (selectedShip.voyage) return [selectedShip.voyage.legFrom, ...selectedShip.voyage.route];
     if (selectedShip.location && targetPort && targetPort !== selectedShip.location) {
-      const route = planRoute(selectedShip.location, targetPort);
+      // Draw the course she would actually be given: fastest in this season when there is weather,
+      // shortest when there is not.
+      const route = season
+        ? planFastestRoute(selectedShip.location, targetPort, season, selectedShip.fittings?.copper)
+        : planRoute(selectedShip.location, targetPort);
       return route ? [selectedShip.location, ...route.path] : null;
     }
     if (focusedContract) {
@@ -120,6 +126,23 @@ export default function GameScreen() {
         </Button>
       </header>
 
+      {/* --- The season ------------------------------------------------------------------- */}
+      {season && !over && (
+        <div style={seasonBanner}>
+          <span style={{ color: UI.verdigris, fontFamily: FONT.display, fontSize: '0.9rem' }}>
+            {SEASON_NAMES[season]}
+          </span>
+          <span style={{ ...dataText, fontSize: '0.72rem', color: UI.textFaint }}>
+            year {voyageYear(state.round)} · turns in {roundsLeftInSeason(state.round)} round
+            {roundsLeftInSeason(state.round) === 1 ? '' : 's'}
+          </span>
+          <span style={{ ...bodySmall, fontSize: '0.76rem' }}>
+            Green chevrons on the chart point the way the wind is fair. Crossed swords mark piratical
+            waters.
+          </span>
+        </div>
+      )}
+
       {/* --- Declaration clock ----------------------------------------------------------- */}
       {state.declaration && !over && (
         <div style={declarationBanner} role="status">
@@ -141,6 +164,8 @@ export default function GameScreen() {
             contracts={state.contracts}
             selectedShipId={selectedShipId}
             plannedRoute={plannedRoute}
+            season={season}
+            showPiracy={state.hazards?.piracy ?? false}
             onPortClick={portId => {
               setTargetPort(portId);
               setFocusedContract(null);
@@ -226,12 +251,15 @@ export default function GameScreen() {
                 onClearTarget={() => setTargetPort(null)}
                 dispatch={dispatch}
                 enabled={canAct}
+                season={season}
+                piracyOn={state.hazards?.piracy ?? false}
               />
 
               <CountingHouse
                 state={state}
                 captain={captain}
                 fleetSize={myShips.length}
+                ships={myShips}
                 dispatch={dispatch}
                 enabled={canAct}
               />
@@ -296,6 +324,16 @@ const header: React.CSSProperties = {
   padding: '0.6rem 1rem',
   borderBottom: `1px solid ${UI.rule}`,
   background: UI.panel,
+};
+
+const seasonBanner: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: '0.7rem',
+  flexWrap: 'wrap',
+  padding: '0.4rem 1rem',
+  borderBottom: `1px solid ${UI.rule}`,
+  background: 'rgba(111, 176, 164, 0.07)',
 };
 
 const declarationBanner: React.CSSProperties = {

@@ -17,12 +17,35 @@ export interface SailOutcome {
   passed: PortId[];
 }
 
-/** Sets a ship's course. Only legal while docked — a clipper does not come about mid-ocean. */
-export function plotCourse(ship: Ship, destination: PortId): Ship | null {
+/**
+ * Sets a ship's course. Only legal while docked — a clipper does not come about mid-ocean.
+ *
+ * `via` lets the caller supply the exact path rather than take the shortest one. That matters once
+ * there is wind: the player may deliberately choose a longer route with the weather behind them, and
+ * without this the engine would quietly re-plan it as the shortest and make the choice a lie. Any
+ * supplied path is validated hop by hop against the real chart, so a malformed one is rejected
+ * rather than trusted.
+ */
+export function plotCourse(ship: Ship, destination: PortId, via?: PortId[]): Ship | null {
   if (ship.location === null) return null;
   if (ship.location === destination) return null;
-  const route = planRoute(ship.location, destination);
-  if (!route || route.path.length === 0) return null;
+
+  let path: PortId[] | null = null;
+  if (via && via.length > 0 && via[via.length - 1] === destination) {
+    let cursor = ship.location;
+    let valid = true;
+    for (const step of via) {
+      if (!Number.isFinite(legDistance(cursor, step))) {
+        valid = false;
+        break;
+      }
+      cursor = step;
+    }
+    if (valid) path = via.slice();
+  }
+  if (!path) path = planRoute(ship.location, destination)?.path ?? null;
+  if (!path || path.length === 0) return null;
+  const route = { path };
 
   const first = route.path[0];
   return {

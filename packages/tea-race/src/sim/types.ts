@@ -273,8 +273,11 @@ export type GameAction =
    * would be pure ceremony. Docked ships keep their points for a SAIL_TO this turn.
    */
   | { type: 'ROLL' }
-  /** Plot a course from a docked ship and spend this turn's points on it in one go. */
-  | { type: 'SAIL_TO'; shipId: ShipId; destination: PortId }
+  /**
+   * Plot a course from a docked ship and spend this turn's points on it in one go. `via` is the
+   * exact path to take, so a player who chose the longer route with a fair wind actually gets it.
+   */
+  | { type: 'SAIL_TO'; shipId: ShipId; destination: PortId; via?: PortId[] }
   | { type: 'BUY_CARGO'; shipId: ShipId; good: GoodId }
   | { type: 'DELIVER'; shipId: ShipId; contractId: ContractId }
   /** Dump a speculative lot nobody ended up wanting, at half what was paid. */

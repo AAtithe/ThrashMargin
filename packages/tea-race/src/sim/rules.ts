@@ -151,34 +151,48 @@ export const ROUNDS_PER_SEASON = 6;
  * genuinely the faster passage, which is the whole point. The harness asserts that some port pairs
  * really do route differently in summer than in winter — if that ever stops being true, these
  * numbers have gone too timid.
+ *
+ * **Every directional band's two directions must sum to zero.** The wind's job is to redistribute
+ * speed around the chart, not to remove it: a net-negative field simply makes the whole fleet
+ * slower and stretches the game, which is measurable and was measured. The first pass came out at
+ * -0.41 points distance-weighted — a 5.8% fleet-wide slowdown — because the horse latitudes and the
+ * doldrums were -2 in *both* directions while nothing anywhere was +2 in both. Those two bands
+ * genuinely have no fair side, so they keep a penalty, but a small one. Check this with the mean
+ * modifier, not by eye.
  */
 export const WIND = {
-  /** Dead downwind in the trades or the Forties. */
+  /** Dead downwind in the trades, a settled monsoon, or the Forties. */
   fair: 3,
-  /** A beam reach, or the fair side of a fitful band. */
-  favourable: 1,
-  /** Nothing doing either way. */
+  /** Its exact opposite, close-hauled. Paired with `fair` so those bands net to zero. */
+  foul: -3,
+  /** A useful slant — the northern westerlies behind you. */
+  favourable: 2,
+  /** Beating into the westerlies. Paired with `favourable`. */
+  contrary: -2,
+  /** The light airs of a turning monsoon, either way. */
+  light: 1,
+  lightFoul: -1,
+  /** Nothing doing in either direction. */
   slack: 0,
-  /** Close-hauled against the prevailing wind. */
-  foul: -2,
-  /** Beating into the westerlies or the Forties the wrong way. */
+  /** Beating into the Forties the wrong way. Paired with `fair` plus the same seasonal term. */
   hard: -3,
-  /** Becalmed at the line. */
-  doldrums: -2,
+  /** Bands with no fair side at all. Kept small deliberately — see the note below. */
+  doldrums: -1,
+  fitful: -1,
 } as const;
 
 /** AUTHORED — chance a ship at sea is caught by weather, per point of the leg's storm rating. */
-export const STORM_CHANCE_PER_RATING = 0.045;
+export const STORM_CHANCE_PER_RATING = 0.055;
 
 /** AUTHORED — sail points a storm sets a ship back, before copper. Never past her leg's start. */
-export const STORM_SETBACK = { min: 2, max: 6 } as const;
+export const STORM_SETBACK = { min: 2, max: 4 } as const;
 
 /** AUTHORED — copper cuts a storm's setback by this fraction, and adds a point of speed always. */
 export const COPPER_STORM_REDUCTION = 0.5;
 export const COPPER_SPEED_BONUS = 1;
 
 /** AUTHORED — chance of a piracy encounter per point of a leg's piracy rating. */
-export const PIRACY_CHANCE_PER_RATING = 0.05;
+export const PIRACY_CHANCE_PER_RATING = 0.06;
 
 /** AUTHORED — guns cut the chance of an encounter, and downgrade most seizures to a ransom. */
 export const GUNS_ENCOUNTER_REDUCTION = 0.5;
@@ -192,8 +206,8 @@ export const GUNS_SEIZURE_TO_RANSOM = 0.75;
 export const PIRACY_RANSOM_SHARE = 0.72;
 
 /** AUTHORED — a ransom takes this share of the captain's cash, within these bounds. */
-export const RANSOM_CASH_SHARE = 0.18;
-export const RANSOM_BOUNDS = { min: 15, max: 220 } as const;
+export const RANSOM_CASH_SHARE = 0.11;
+export const RANSOM_BOUNDS = { min: 12, max: 140 } as const;
 
 /** AUTHORED — permanent per-ship fittings, bought while docked. */
 export const FITTING_PRICES = { guns: 120, copper: 150 } as const;
@@ -204,7 +218,7 @@ export const FITTING_PRICES = { guns: 120, copper: 150 } as const;
  * taken and ransoms paid, and never lost time.
  */
 export const INSURANCE_BASE_RATE = 0.06;
-export const INSURANCE_RISK_MULTIPLIER = 0.9;
+export const INSURANCE_RISK_LOADING = 1.8;
 export const INSURANCE_MINIMUM_PREMIUM = 4;
 
 /** AUTHORED — how many entries of the running log to keep. Older lines are dropped from the save. */

@@ -24,7 +24,17 @@ import {
   TOTAL_SHARES,
   VICTORY_CASH,
 } from '../src/sim/rules';
-import type { Contract, GameState, Ship } from '../src/sim/types';
+import { LEGS, PORTS, planRoute } from '../src/sim/content';
+import {
+  SEASONS,
+  planFastestRoute,
+  resolveStorm,
+  seasonOf,
+  stormRating,
+  windFor,
+} from '../src/sim/weather';
+import { piracyRating, resolvePiracy } from '../src/sim/hazards';
+import type { Contract, GameState, Season, Ship } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
 // Tiny assertion harness
@@ -517,7 +527,265 @@ function testDeclaration() {
 }
 
 // ---------------------------------------------------------------------------
-// 6. Full AI games, with per-turn invariants
+// 6. Weather, wind and piracy
+// ---------------------------------------------------------------------------
+
+function testWeather() {
+  const label = 'weather';
+
+  // Seasons are a pure function of the round, so every client agrees without storing anything.
+  for (const round of [1, 6, 7, 12, 13, 19, 25, 31]) {
+    equal(`${label}: round ${round} is always the same season`, seasonOf(round), seasonOf(round));
+  }
+  check(
+    `${label}: all four seasons occur within a year`,
+    new Set([1, 7, 13, 19].map(seasonOf)).size === 4,
+  );
+  check(
+    `${label}: the year wraps`,
+    seasonOf(25) === seasonOf(1),
+    `round 25 is ${seasonOf(25)}, round 1 is ${seasonOf(1)}`,
+  );
+
+  // The wind must be directional. In every band that has a fair side, sailing the other way must be
+  // worse — otherwise the wind is a tax rather than a routing decision.
+  let withAFairSide = 0;
+  const legSeasons = LEGS.length * SEASONS.length;
+  for (const leg of LEGS) {
+    for (const season of SEASONS) {
+      const out = windFor(leg.a, leg.b, season);
+      const home = windFor(leg.b, leg.a, season);
+      // Whichever way is fair, the other way must be strictly worse.
+      if (out.modifier > 0) {
+        check(
+          `${label}: ${leg.a}->${leg.b} fair means the reverse is not`,
+          home.modifier < out.modifier,
+          `${out.modifier} out, ${home.modifier} home in ${season}`,
+        );
+      }
+      if (home.modifier > 0) {
+        check(
+          `${label}: ${leg.b}->${leg.a} fair means the reverse is not`,
+          out.modifier < home.modifier,
+          `${home.modifier} out, ${out.modifier} home in ${season}`,
+        );
+      }
+      if (out.modifier > 0 || home.modifier > 0) withAFairSide++;
+    }
+  }
+  // Around a quarter of the chart is doldrums or horse latitudes, which have no fair side at all, so
+  // the rest should. Half of all leg-seasons is a comfortable floor for "the wind means something".
+  check(
+    `${label}: most legs have a fair direction in most seasons`,
+    withAFairSide > legSeasons * 0.5,
+    `${withAFairSide} of ${legSeasons} leg-seasons`,
+  );
+
+  // The wind redistributes speed rather than removing it: every directional band nets to zero.
+  const byBand = new Map<string, { sum: number; dist: number }>();
+  for (const leg of LEGS) {
+    for (const [a, b] of [[leg.a, leg.b], [leg.b, leg.a]]) {
+      for (const season of SEASONS) {
+        const w = windFor(a, b, season);
+        const e = byBand.get(w.band) ?? { sum: 0, dist: 0 };
+        e.sum += w.modifier * leg.distance;
+        e.dist += leg.distance;
+        byBand.set(w.band, e);
+      }
+    }
+  }
+  for (const [band, e] of byBand) {
+    // Doldrums and horse latitudes genuinely have no fair side, so they are allowed to be negative.
+    if (band === 'doldrums' || band === 'horse') continue;
+    check(
+      `${label}: ${band} nets to zero over both directions`,
+      Math.abs(e.sum / e.dist) < 0.01,
+      `mean ${(e.sum / e.dist).toFixed(3)}`,
+    );
+  }
+
+  // The monsoon must actually reverse across the year, or seasons are decoration.
+  const summer = windFor('colombo', 'bombay', 'summer').modifier;
+  const winter = windFor('colombo', 'bombay', 'winter').modifier;
+  check(
+    `${label}: the monsoon reverses between summer and winter`,
+    Math.sign(summer) !== Math.sign(winter) && summer !== 0 && winter !== 0,
+    `summer ${summer}, winter ${winter}`,
+  );
+
+  // The whole point of the wind: some passages take a different route depending on the season.
+  let seasonal = 0;
+  let differsFromShortest = 0;
+  for (const a of PORTS) {
+    for (const b of PORTS) {
+      if (a.id === b.id) continue;
+      const routes = SEASONS.map(sn => planFastestRoute(a.id, b.id, sn)?.path.join('>') ?? '');
+      if (new Set(routes).size > 1) seasonal++;
+      const shortest = planRoute(a.id, b.id)?.path.join('>') ?? '';
+      if (routes.some(r => r !== shortest)) differsFromShortest++;
+    }
+  }
+  check(
+    `${label}: some port pairs route differently by season`,
+    seasonal > 40,
+    `only ${seasonal} of ${PORTS.length * (PORTS.length - 1)} — the wind bands have gone too timid`,
+  );
+  check(
+    `${label}: the fastest route is often not the shortest`,
+    differsFromShortest > 100,
+    `only ${differsFromShortest}`,
+  );
+
+  // Storms cost time and nothing else, and can never drive a ship behind her leg's start.
+  let stormy = 0;
+  let seed = 12345;
+  for (let i = 0; i < 4000; i++) {
+    const leg = LEGS[i % LEGS.length];
+    const season = SEASONS[i % SEASONS.length];
+    const progressed = Math.floor((i % 5) * (leg.distance / 5));
+    const ship: Ship = {
+      id: 's1', ownerId: 'p1', name: 'Test',
+      location: null,
+      voyage: {
+        route: [leg.b], legFrom: leg.a,
+        legRemaining: leg.distance - progressed, legDistance: leg.distance,
+      },
+      cargo: { good: 'tea', paid: 60, boughtAt: leg.a, boughtOnTurn: 0 },
+    };
+    const out = resolveStorm(seed, ship, season);
+    seed = out.seed;
+    if (out.setback > 0) {
+      stormy++;
+      check(
+        `${label}: a storm never drives a ship past her leg's start`,
+        out.setback <= progressed,
+        `set back ${out.setback} having made only ${progressed}`,
+      );
+    }
+    check(`${label}: storm ratings are never negative`, stormRating(leg.a, leg.b, season) >= 0);
+  }
+  check(`${label}: storms actually happen`, stormy > 20, `only ${stormy} in 4000 rolls`);
+}
+
+function testPiracy() {
+  const label = 'piracy';
+
+  const rated = LEGS.filter(l => (l.piracy ?? 0) > 0);
+  check(`${label}: some waters are piratical`, rated.length >= 10, `${rated.length} legs`);
+  check(
+    `${label}: safe waters have no rating`,
+    LEGS.every(l => (l.piracy ?? 0) >= 0 && (l.piracy ?? 0) <= 3),
+  );
+
+  const makeShip = (from: string, to: string, guns: boolean, cargo: boolean): Ship => ({
+    id: 's1', ownerId: 'p1', name: 'Test',
+    location: null,
+    voyage: { route: [to], legFrom: from, legRemaining: 5, legDistance: 10 },
+    cargo: cargo ? { good: 'tea', paid: 60, boughtAt: from, boughtOnTurn: 0 } : null,
+    fittings: guns ? { guns: true } : undefined,
+  });
+
+  // Pirates only ever strike where the chart says they are.
+  const safe = LEGS.find(l => !l.piracy)!;
+  let seed = 999;
+  let strikes = 0;
+  for (let i = 0; i < 3000; i++) {
+    const out = resolvePiracy(seed, makeShip(safe.a, safe.b, false, true), 800);
+    seed = out.seed;
+    if (out.kind !== 'none') strikes++;
+  }
+  equal(`${label}: never strikes in safe waters`, strikes, 0);
+
+  // Guns cut both the frequency and the severity. Measured over many trials, not asserted by faith.
+  const worst = rated.reduce((a, b) => ((a.piracy ?? 0) >= (b.piracy ?? 0) ? a : b));
+  const trial = (guns: boolean) => {
+    let s = 4242;
+    let encounters = 0;
+    let seizures = 0;
+    for (let i = 0; i < 20000; i++) {
+      const out = resolvePiracy(s, makeShip(worst.a, worst.b, guns, true), 800);
+      s = out.seed;
+      if (out.kind !== 'none') encounters++;
+      if (out.kind === 'seizure') seizures++;
+    }
+    return { encounters, seizures };
+  };
+  const bare = trial(false);
+  const armed = trial(true);
+  check(
+    `${label}: guns reduce encounters`,
+    armed.encounters < bare.encounters,
+    `${armed.encounters} armed vs ${bare.encounters} bare`,
+  );
+  check(
+    `${label}: guns reduce seizures further still`,
+    armed.seizures * 3 < bare.seizures,
+    `${armed.seizures} armed vs ${bare.seizures} bare`,
+  );
+  check(
+    `${label}: ransom is the common outcome`,
+    bare.encounters - bare.seizures > bare.seizures,
+    `${bare.seizures} seizures of ${bare.encounters} encounters`,
+  );
+
+  // An empty hold cannot be robbed of cargo, so those encounters settle for money.
+  let s2 = 77;
+  let emptySeizures = 0;
+  for (let i = 0; i < 8000; i++) {
+    const out = resolvePiracy(s2, makeShip(worst.a, worst.b, false, false), 800);
+    s2 = out.seed;
+    if (out.kind === 'seizure') emptySeizures++;
+  }
+  equal(`${label}: a ship running light never loses a cargo`, emptySeizures, 0);
+
+  // A ransom can never take more than the captain has.
+  let s3 = 31337;
+  for (const cash of [0, 5, 40, 5000]) {
+    for (let i = 0; i < 400; i++) {
+      const out = resolvePiracy(s3, makeShip(worst.a, worst.b, false, true), cash);
+      s3 = out.seed;
+      if (out.kind === 'ransom') {
+        check(
+          `${label}: a ransom never exceeds what is in hand`,
+          out.amount <= cash,
+          `took ${out.amount} of ${cash}`,
+        );
+      }
+    }
+  }
+  check(`${label}: rated legs carry a rating helper`, piracyRating(worst.a, worst.b) > 0);
+}
+
+/**
+ * Hazards off must behave exactly as the game did before they existed. The strong form of this is a
+ * byte-identical replay against a baseline, which is not available inside the harness; the checkable
+ * form is that a hazards-off game is deterministic and emits no hazard events at all.
+ */
+function testHazardsOff() {
+  const label = 'hazards off';
+  const play = () => {
+    let s = createInitialState('t-off', 'Off', {
+      humanNames: [], aiCount: 4, seed: 'hazards-off', createdAt: 0,
+      hazards: { weather: false, piracy: false },
+    });
+    for (let i = 0; i < 400 && s.phase !== 'over'; i++) s = runAiTurn(s);
+    return s;
+  };
+  const a = play();
+  const b = play();
+  check(`${label}: replays byte-identically`, JSON.stringify(a) === JSON.stringify(b));
+
+  const hazardKinds = new Set(['storm', 'piracy', 'insurance', 'fitting']);
+  const leaked = a.log.filter(e => hazardKinds.has(e.kind));
+  equal(`${label}: emits no hazard events at all`, leaked.length, 0);
+  check(
+    `${label}: no ship is ever fitted out`,
+    a.ships.every(sh => !sh.fittings && !sh.insured),
+  );
+}
+
+// ---------------------------------------------------------------------------
+// 7. Full AI games, with per-turn invariants
 // ---------------------------------------------------------------------------
 
 interface GameReport {
@@ -721,6 +989,9 @@ function main() {
   testSailing();
   testCaps();
   testDeclaration();
+  testWeather();
+  testPiracy();
+  testHazardsOff();
   testDeterminism();
 
   const reports: [string, GameReport][] = [];

@@ -1,5 +1,5 @@
 {
-  "$comment": "Sea legs are undirected. `distance` is in sail points, roughly (nautical miles / 500) rounded to a whole number that plays well - a 2d6 roll averages 7, so a 14-point leg is two turns of hard sailing and the whole world is about seven. `cape` marks a leg rounding one of the great capes; it carries no mechanical effect in the classic ruleset and exists for the chart's own labelling (and for Voyage mode later). There is deliberately NO Suez route: the 1869 canal is what killed the clippers, and including it would make the Cape routes pointless.",
+  "$comment": "Sea legs are undirected. `distance` is in sail points, roughly (nautical miles / 500) rounded to a whole number that plays well - a 2d6 roll averages 7, so a 14-point leg is two turns of hard sailing and the whole world is about seven. `cape` marks a leg rounding one of the great capes; it carries no mechanical effect in the classic ruleset and exists for the chart's own labelling (and for Voyage mode later). `piracy` is how piratical the waters are, 1 to 3, absent meaning safe - authored rather than derived, unlike the wind, because piracy is a fact of history and no formula over coordinates would find the Malacca Strait. There is deliberately NO Suez route: the 1869 canal is what killed the clippers, and including it would make the Cape routes pointless.",
   "legs": [
     {
       "a": "liverpool",
@@ -34,12 +34,14 @@
     {
       "a": "lisbon",
       "b": "alexandria",
-      "distance": 5
+      "distance": 5,
+      "piracy": 2
     },
     {
       "a": "london",
       "b": "alexandria",
-      "distance": 7
+      "distance": 7,
+      "piracy": 1
     },
     {
       "a": "liverpool",
@@ -59,7 +61,8 @@
     {
       "a": "lisbon",
       "b": "havana",
-      "distance": 10
+      "distance": 10,
+      "piracy": 1
     },
     {
       "a": "lisbon",
@@ -74,7 +77,8 @@
     {
       "a": "new_york",
       "b": "havana",
-      "distance": 3
+      "distance": 3,
+      "piracy": 2
     },
     {
       "a": "new_york",
@@ -84,7 +88,8 @@
     {
       "a": "havana",
       "b": "new_orleans",
-      "distance": 2
+      "distance": 2,
+      "piracy": 2
     },
     {
       "a": "havana",
@@ -136,7 +141,8 @@
       "a": "cape_town",
       "b": "zanzibar",
       "distance": 6,
-      "cape": "Cape of Good Hope"
+      "cape": "Cape of Good Hope",
+      "piracy": 1
     },
     {
       "a": "cape_town",
@@ -159,12 +165,14 @@
     {
       "a": "zanzibar",
       "b": "bombay",
-      "distance": 7
+      "distance": 7,
+      "piracy": 2
     },
     {
       "a": "zanzibar",
       "b": "mauritius",
-      "distance": 5
+      "distance": 5,
+      "piracy": 1
     },
     {
       "a": "mauritius",
@@ -174,7 +182,8 @@
     {
       "a": "mauritius",
       "b": "batavia",
-      "distance": 10
+      "distance": 10,
+      "piracy": 1
     },
     {
       "a": "bombay",
@@ -189,22 +198,26 @@
     {
       "a": "colombo",
       "b": "singapore",
-      "distance": 5
+      "distance": 5,
+      "piracy": 2
     },
     {
       "a": "calcutta",
       "b": "singapore",
-      "distance": 5
+      "distance": 5,
+      "piracy": 2
     },
     {
       "a": "singapore",
       "b": "batavia",
-      "distance": 2
+      "distance": 2,
+      "piracy": 2
     },
     {
       "a": "singapore",
       "b": "hong_kong",
-      "distance": 5
+      "distance": 5,
+      "piracy": 3
     },
     {
       "a": "singapore",
@@ -219,7 +232,8 @@
     {
       "a": "hong_kong",
       "b": "foochow",
-      "distance": 2
+      "distance": 2,
+      "piracy": 2
     },
     {
       "a": "foochow",
@@ -229,7 +243,8 @@
     {
       "a": "hong_kong",
       "b": "shanghai",
-      "distance": 4
+      "distance": 4,
+      "piracy": 2
     },
     {
       "a": "shanghai",

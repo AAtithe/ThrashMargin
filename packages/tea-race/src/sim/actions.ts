@@ -13,9 +13,13 @@ import { GOOD_BY_ID, HOME_PORT, goodName, portDemands, portName, portSupplies } 
 import { drawContract, faceUpKeys, isContractComplete, nextRank } from './contracts';
 import { destinationOf, plotCourse, pointsToDestination, sail } from './movement';
 import { roll2d6 } from './rng';
+import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
+import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
 import {
   canBuyOut,
+  COPPER_SPEED_BONUS,
   DECLARATION_TURNS,
+  FITTING_PRICES,
   LOG_LIMIT,
   MAX_SHIPS,
   PAYOUT_MULTIPLIERS,
@@ -212,6 +216,9 @@ function endTurn(state: GameState): GameState {
 function doRoll(state: GameState): GameState {
   if (state.phase !== 'roll') return state;
   const captain = activeCaptain(state);
+  const season = seasonOf(state.round);
+  const weather = state.hazards?.weather ?? false;
+  const piracy = state.hazards?.piracy ?? false;
   let s: GameState = { ...state, phase: 'act' };
 
   const sailPoints: Record<string, number> = {};
@@ -221,19 +228,46 @@ function doRoll(state: GameState): GameState {
   for (const ship of shipsOf(s, captain.id)) {
     const r = roll2d6(seed);
     seed = r.seed;
-    sailPoints[ship.id] = r.total;
+
+    // Wind is applied to the leg the ship is on when she takes it, and to that whole roll. A ship
+    // that crosses a waypoint mid-turn keeps the old leg's wind for the remainder — a deliberate
+    // simplification, so the number shown is the number used.
+    const wind = weather ? windForShip(ship, season) : null;
+    const copper = ship.fittings?.copper ? COPPER_SPEED_BONUS : 0;
+    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper);
     dice[ship.id] = r.dice;
   }
   s = { ...s, rngSeed: seed, sailPoints, dice };
 
   const rolls = Object.entries(dice)
-    .map(([id, d]) => `${s.ships.find(x => x.id === id)?.name}: ${d[0]}+${d[1]}`)
+    .map(([id, d]) => {
+      const ship = s.ships.find(x => x.id === id);
+      const total = s.sailPoints[id] ?? 0;
+      const raw = d[0] + d[1];
+      return `${ship?.name}: ${d[0]}+${d[1]}${total !== raw ? ` = ${total}` : ''}`;
+    })
     .join(', ');
   s = log(s, 'roll', `${captain.name} takes the wind — ${rolls}.`, captain.id);
 
   // Ships already at sea have no decision to make; advance them now.
   for (const ship of shipsOf(s, captain.id)) {
     if (!ship.voyage) continue;
+
+    if (weather) {
+      const wind = windForShip(ship, season);
+      if (wind && wind.modifier !== 0) {
+        s = log(
+          s,
+          'sail',
+          `${ship.name} is ${wind.modifier > 0 ? 'carried' : 'held'} — ${wind.label}, ${
+            wind.modifier > 0 ? '+' : ''
+          }${wind.modifier} points.`,
+          captain.id,
+          { shipId: ship.id, band: wind.band, modifier: wind.modifier },
+        );
+      }
+    }
+
     const points = s.sailPoints[ship.id] ?? 0;
     const outcome = sail(ship, points);
     s = replaceShip(s, outcome.ship);
@@ -253,23 +287,134 @@ function doRoll(state: GameState): GameState {
         captain.id,
       );
     }
+
+    // Hazards fall on ships still at sea after the run — a ship that reached port is safe in it.
+    const afloat = s.ships.find(x => x.id === ship.id)!;
+    if (weather && afloat.voyage) s = applyStorm(s, afloat, season, captain.id);
+    const stillAfloat = s.ships.find(x => x.id === ship.id)!;
+    if (piracy && stillAfloat.voyage) s = applyPiracy(s, stillAfloat, captain.id);
   }
   return s;
 }
 
-function doSailTo(state: GameState, shipId: string, destination: string): GameState {
+/** Weather on a ship at sea. Costs time and nothing else — never a ship, never a cargo. */
+function applyStorm(state: GameState, ship: Ship, season: ReturnType<typeof seasonOf>, captainId: string): GameState {
+  const outcome = resolveStorm(state.rngSeed, ship, season);
+  let s: GameState = { ...state, rngSeed: outcome.seed };
+  if (outcome.setback <= 0 || !ship.voyage) return s;
+
+  s = replaceShip(s, {
+    ...ship,
+    voyage: { ...ship.voyage, legRemaining: ship.voyage.legRemaining + outcome.setback },
+  });
+  // Whatever was left of this turn's wind goes with it.
+  s = { ...s, sailPoints: { ...s.sailPoints, [ship.id]: 0 } };
+  return log(
+    s,
+    'storm',
+    `${ship.name} is caught by heavy weather and driven back ${outcome.setback} points.${
+      ship.fittings?.copper ? ' Her copper saved her the worst of it.' : ''
+    }`,
+    captainId,
+    { shipId: ship.id, setback: outcome.setback },
+  );
+}
+
+/** Pirates on a ship at sea, in waters that carry a rating. Ransom is the common outcome. */
+function applyPiracy(state: GameState, ship: Ship, captainId: string): GameState {
+  const captain = state.captains.find(c => c.id === captainId)!;
+  const outcome = resolvePiracy(state.rngSeed, ship, captain.cash);
+  let s: GameState = { ...state, rngSeed: outcome.seed };
+  if (outcome.kind === 'none') return s;
+
+  const covered = ship.insured ? indemnityFor(outcome, ship) : 0;
+
+  if (outcome.kind === 'ransom') {
+    s = updateCaptain(s, captainId, { cash: captain.cash - outcome.amount + covered });
+    s = log(
+      s,
+      'piracy',
+      `${ship.name} is boarded and ransomed for ${money(outcome.amount)}.${
+        ship.fittings?.guns ? ' Her guns bought her off cheaply.' : ''
+      }`,
+      captainId,
+      { shipId: ship.id, ransom: outcome.amount },
+    );
+  } else {
+    const lost = ship.cargo;
+    s = replaceShip(s, { ...ship, cargo: null });
+    if (covered > 0) s = updateCaptain(s, captainId, { cash: captain.cash + covered });
+    s = log(
+      s,
+      'piracy',
+      `${ship.name} is taken and stripped — ${
+        lost ? goodName(lost.good) : 'her cargo'
+      } gone.`,
+      captainId,
+      { shipId: ship.id, seized: lost?.paid ?? 0 },
+    );
+  }
+
+  if (covered > 0) {
+    s = log(
+      s,
+      'insurance',
+      `The underwriters make ${money(covered)} good on ${ship.name}'s policy.`,
+      captainId,
+      { shipId: ship.id, indemnity: covered },
+    );
+  }
+  return s;
+}
+
+function doSailTo(
+  state: GameState,
+  shipId: string,
+  destination: string,
+  via?: string[],
+): GameState {
   const ship = ownShip(state, shipId);
   if (!ship || ship.location === null) return state;
   if (ship.location === destination) return state;
 
-  const plotted = plotCourse(ship, destination);
+  // No explicit path: plan the one a captain would actually want — fastest for the season when
+  // there is weather to reckon with, shortest when there is not.
+  let path = via;
+  if (!path && state.hazards?.weather) {
+    path = planFastestRoute(
+      ship.location,
+      destination,
+      seasonOf(state.round),
+      ship.fittings?.copper,
+    )?.path;
+  }
+
+  const plotted = plotCourse(ship, destination, path);
   if (!plotted) return state;
 
   const captain = activeCaptain(state);
   const points = state.sailPoints[ship.id] ?? 0;
-  const outcome = sail(plotted, points);
 
-  let s = replaceShip(state, outcome.ship);
+  // A standing policy is charged per voyage, at cast-off, priced from this course's real risk and
+  // the cargo actually aboard. Refuse the voyage rather than let a captain sail uninsured while
+  // believing they are covered.
+  let s: GameState = state;
+  if (ship.insured && state.hazards?.piracy) {
+    const risk = routeRisk(ship.location, plotted.voyage!.route, seasonOf(state.round));
+    const premium = insurancePremium(ship.cargo?.paid ?? 0, risk);
+    if (captain.cash < premium) return state;
+    s = updateCaptain(s, captain.id, { cash: captain.cash - premium });
+    s = log(
+      s,
+      'insurance',
+      `${ship.name}'s policy is endorsed for the passage — premium ${money(premium)}.`,
+      captain.id,
+      { shipId: ship.id, premium, risk: Math.round(risk * 100) },
+    );
+  }
+
+  const outcome = sail(plotted, points);
+  s = replaceShip(s, outcome.ship);
   // Tying up forfeits the rest of the roll — see doRoll.
   const left = outcome.arrivedAt ? 0 : points - outcome.spent;
   s = { ...s, sailPoints: { ...s.sailPoints, [ship.id]: left } };
@@ -481,6 +626,47 @@ function doSellShare(state: GameState): GameState {
   );
 }
 
+function doBuyFitting(state: GameState, shipId: string, fitting: 'guns' | 'copper'): GameState {
+  const ship = ownShip(state, shipId);
+  // Fitted out in port, like anything else done to a ship.
+  if (!ship || ship.location === null) return state;
+  if (ship.fittings?.[fitting]) return state;
+
+  const captain = activeCaptain(state);
+  const price = FITTING_PRICES[fitting];
+  if (captain.cash < price) return state;
+
+  let s = updateCaptain(state, captain.id, { cash: captain.cash - price });
+  s = replaceShip(s, { ...ship, fittings: { ...ship.fittings, [fitting]: true } });
+  return log(
+    s,
+    'fitting',
+    fitting === 'guns'
+      ? `${ship.name} is armed at ${portName(ship.location)} for ${money(price)}.`
+      : `${ship.name} is coppered at ${portName(ship.location)} for ${money(price)} — a point faster, and easier on heavy weather.`,
+    captain.id,
+    { shipId: ship.id, fitting, price },
+  );
+}
+
+function doSetInsurance(state: GameState, shipId: string, insured: boolean): GameState {
+  const ship = ownShip(state, shipId);
+  if (!ship) return state;
+  if ((ship.insured ?? false) === insured) return state;
+
+  const captain = activeCaptain(state);
+  const s = replaceShip(state, { ...ship, insured });
+  return log(
+    s,
+    'insurance',
+    insured
+      ? `${ship.name} is entered on an open policy — every voyage covered, premium taken at cast-off.`
+      : `${ship.name}'s policy is closed. She sails at her owner's risk.`,
+    captain.id,
+    { shipId: ship.id },
+  );
+}
+
 function doDeclare(state: GameState): GameState {
   if (state.phase !== 'act' || state.declaration) return state;
   const captain = activeCaptain(state);
@@ -518,7 +704,7 @@ export function processAction(state: GameState, action: GameAction): GameState {
     case 'ROLL':
       return doRoll(state);
     case 'SAIL_TO':
-      return doSailTo(state, action.shipId, action.destination);
+      return doSailTo(state, action.shipId, action.destination, action.via);
     case 'BUY_CARGO':
       return doBuyCargo(state, action.shipId, action.good);
     case 'DELIVER':
@@ -527,6 +713,10 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doSellLocal(state, action.shipId);
     case 'BUY_SHIP':
       return doBuyShip(state);
+    case 'BUY_FITTING':
+      return doBuyFitting(state, action.shipId, action.fitting as 'guns' | 'copper');
+    case 'SET_INSURANCE':
+      return doSetInsurance(state, action.shipId, action.insured);
     case 'BUY_SHARE':
       return doBuyShare(state);
     case 'SELL_SHARE':

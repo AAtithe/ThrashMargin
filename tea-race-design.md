@@ -234,14 +234,87 @@ exactly this reason.
 **A wide seed set is not optional.** Every pathology in this game's history showed up in some seeds
 and not others, and a five-seed run twice reported a bug fixed while it was still there.
 
-Current pacing across twenty seeds: every game finishes, median **109 rounds**, range 59–211.
+Current pacing across twenty seeds with hazards on: every game finishes, median **155 rounds**,
+range 116–307. Without hazards the median is about 114, so weather and pirates cost roughly a third
+again in length — which is the price of having them.
 
 ---
 
+## 5a. Weather, wind and piracy
+
+Optional, per game, both defaulting on. A save with no `hazards` field reads as off, so anything
+made before they existed still plays the pure 1988 rules.
+
+**This moved the game toward its source, not past it.** Before it, every captain raced round the
+world in the same direction, because raw distance was the only thing telling one route from another.
+That is a circuit, not clipper sailing.
+
+### The wind is derived, not authored
+
+`sim/weather.ts` computes wind from the same real lon/lat the chart is built on — six bands from the
+leg's mid-latitude and the direction it is sailed. Two properties carry the whole feature:
+
+- **It is directional.** `windFor(a, b, s)` and `windFor(b, a, s)` are different questions. In every
+  band with a fair side, the reverse is strictly worse.
+- **The monsoon reverses**, which is why seasons exist at all. Seasons are a pure function of the
+  round — derived, never stored, nothing to migrate.
+
+**Every directional band must net to zero over both directions.** The wind's job is to redistribute
+speed, not remove it; a net-negative field just makes the whole fleet slower and stretches the game.
+The first pass came out at −0.41 points distance-weighted, a 5.8% fleet-wide slowdown, because the
+horse latitudes and doldrums were −2 in *both* directions while nothing was +2 in both. Those two
+genuinely have no fair side and keep a −1, giving a residual −0.25. **Check this with the mean
+modifier, not by eye** — the harness asserts it per band.
+
+Four seasons must behave four ways. A first pass had the monsoon flip at the half-year and the
+Forties strengthen for the other half, which made spring identical to summer — two seasons wearing
+four names. The monsoon now has two settled phases and two turning ones, and the Forties peak in
+northern *summer* (southern winter), six months from the northern westerlies' own peak.
+
+### Route choice is the point
+
+Directional wind is worthless if the game still tells everyone to sail the same way. `planRoute`
+gained a pluggable edge cost; `planFastestRoute` costs edges by expected turns in a season. The raw
+distance matrix stays for things that should be stable facts about geography — the contract deck's
+cap and the port table's "how far".
+
+Measured: **154 of 650 port pairs change route with the season, 290 differ from the shortest path,
+and all 650 have a different way home than way out.** Liverpool to Foochow switches from the Cape
+and India in spring to running the easting down through Melbourne in autumn — the real clipper
+strategy, falling out of the latitudes rather than authored.
+
+`SAIL_TO` carries an optional `via`, so a player choosing the longer fair-wind route actually sails
+it instead of being quietly re-planned onto the shortest.
+
+### Storms cost time, pirates cost money
+
+Kept strictly distinct so the two never blur into one tax. A storm forfeits the rest of the turn and
+sets the ship back, never past her leg's start, and never touches ship or cargo. Piracy lives on
+`SeaLeg.piracy` — **authored**, unlike the wind, because the Malacca Strait was dangerous for
+reasons no formula over latitude would find. Measured at 93% ransoms to 7% seizures: taking the
+cargo off a captain who was winning is the harshest thing this game can do, so it is the rare case.
+
+### Three mitigations, each covering a different failure
+
+**Guns** halve encounters and talk most seizures down to a ransom. **Copper** cuts storm setback and
+adds a point of speed always. **Insurance** is a standing open policy — set once, premium taken at
+cast-off, priced from the route's real risk — and covers goods taken and ransoms paid, **never lost
+time**. Routing and timing fall out of the above for free.
+
+### What the harness caught here
+
+| Symptom | Cause |
+|---|---|
+| Median game 114 → 179 rounds | The net-negative wind field, not the hazard rates. Halving the rates barely moved it. |
+| A game of 20 never finishing | A captain held a majority for **1,170 consecutive turns** and was cash-ready on none of them, because every time she reached £370 she bought a *seventh* share. Shares past a majority are worthless and the AI no longer buys them. |
+| Zero fittings and zero policies in 1,085 rounds | The AI ordered every docked ship to sea before it ever considered fitting her out. Fit-out now happens before sailing. |
+| 800 policy toggles of log noise | The AI opened and closed policies as holds filled and emptied. A policy is never closed now. |
+
 ## 6. Things deliberately not built
 
-Weather and wind systems, crew and captain skills, ship speed classes or upgrades, piracy, voluntary
-share trading between captains, networked multiplayer, and Voyage mode below.
+Crew and captain skills, ship speed classes beyond copper, weather forecasting as a purchasable
+information layer, voluntary share trading between captains, networked multiplayer, and Voyage mode
+below.
 
 ---
 
@@ -308,6 +381,18 @@ Bugs found and fixed during the build, all by measurement rather than by looking
 | Browser play-through | The contract highlight ring swallowed clicks on the port beneath it |
 | Browser play-through | Clicking your own port read "No sea route from Lisbon to Lisbon" |
 | Browser play-through | The sidebar pushed the chart off screen, making "click a port" impossible |
+
+### Session 3 (2026-08-03) — weather, wind, piracy, and a stuck endgame
+
+Two bugs made a live game look like it would never finish. The declared-majority countdown ran for
+twelve complete table **rounds** — forty-eight turns at a four-captain table — because "the game
+lasts for 12 more turns" was read as rounds; it is twelve individual turns, which is both shorter and
+more faithful. And the AI declared on money it did not have, failing and re-declaring: **five
+declare-and-lapse cycles in one 91-round game**, each putting the countdown banner back at full.
+It now declares only holding the £750, and protects that cash once it has. One declaration per game,
+zero lapses, across twenty seeds.
+
+Then weather, wind and piracy — see §5a.
 
 ### Session 2 (2026-08-03) — owner feedback
 

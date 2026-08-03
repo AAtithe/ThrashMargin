@@ -17,6 +17,8 @@ export default function Lobby() {
   const [ai, setAi] = useState(3);
   const [seed, setSeed] = useState('');
   const [humanNames, setHumanNames] = useState<string[]>(['You']);
+  const [weather, setWeather] = useState(true);
+  const [piracy, setPiracy] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -40,6 +42,7 @@ export default function Lobby() {
         humanNames: humanNames.slice(0, humans),
         aiCount: ai,
         seed: seed.trim() || undefined,
+        hazards: { weather, piracy },
       });
       if (id) navigate(`/game/${id}`);
     } finally {
@@ -129,6 +132,27 @@ export default function Lobby() {
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
               The same seed always deals the same cards and rolls the same wind — useful for playing
               the identical season twice.
+            </p>
+          </div>
+
+          <div style={field}>
+            <Label>Hazards</Label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={weather} onChange={e => setWeather(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>Wind and weather</strong> — a seasonal wind chart, so
+                the fast way round changes through the year, and storms that cost time.
+              </span>
+            </label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={piracy} onChange={e => setPiracy(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>Pirates</strong> — ransoms and the occasional seizure
+                in piratical waters. Guns and insurance become worth buying.
+              </span>
+            </label>
+            <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
+              Turn both off for the 1988 board's own rules, exactly as published.
             </p>
           </div>
 
@@ -299,6 +323,18 @@ const saveRow: React.CSSProperties = {
   border: `1px solid ${UI.rule}`,
   borderRadius: 2,
   padding: '0.5rem 0.6rem',
+};
+
+const checkRow: React.CSSProperties = {
+  display: 'flex',
+  gap: '0.45rem',
+  alignItems: 'flex-start',
+  fontFamily: FONT.body,
+  fontSize: '0.82rem',
+  lineHeight: 1.4,
+  color: UI.textSoft,
+  cursor: 'pointer',
+  maxWidth: '52ch',
 };
 
 const errorBanner: React.CSSProperties = {

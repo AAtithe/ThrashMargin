@@ -1,4 +1,6 @@
 import {
+  DECLARATION_TURNS,
+  FITTING_PRICES,
   MAX_SHIPS,
   SHARE_BUYBACK_FRACTION,
   SHARE_MAJORITY,
@@ -12,7 +14,7 @@ import {
 import { HOME_PORT, portName } from '../sim/content';
 import { UI, money } from '../theme';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
-import type { Captain, GameAction, GameState } from '../sim/types';
+import type { Captain, GameAction, GameState, Ship } from '../sim/types';
 
 interface Props {
   state: GameState;
@@ -20,13 +22,15 @@ interface Props {
   fleetSize: number;
   dispatch: (action: GameAction) => void;
   enabled: boolean;
+  /** The captain's own ships, so fittings can be bought for whichever is in port. */
+  ships: Ship[];
 }
 
 /**
  * Shares, ships and the claim to the company. Everything here is how a captain converts a good
  * trading season into an actual win, which is a separate skill from running cargo well.
  */
-export default function CountingHouse({ state, captain, fleetSize, dispatch, enabled }: Props) {
+export default function CountingHouse({ state, captain, fleetSize, dispatch, enabled, ships }: Props) {
   const bankHasShares = state.sharesRemaining > 0;
   const sharePrice = bankHasShares ? SHARE_PRICE : SHARE_PRICE * SHARE_RAID_MULTIPLIER;
 
@@ -52,7 +56,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
     >
       <p style={{ ...bodySmall, margin: 0 }}>
         To carry the company you need {SHARE_MAJORITY} of the {TOTAL_SHARES} shares, then{' '}
-        {money(VICTORY_CASH)} and a ship still afloat twelve rounds later.
+        {money(VICTORY_CASH)} and a ship still afloat {DECLARATION_TURNS} turns later.
       </p>
 
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
@@ -99,7 +103,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
             Declare a majority
           </Button>
           <p style={{ ...bodySmall, fontSize: '0.75rem', margin: '0.4rem 0 0', color: UI.warn }}>
-            Twelve rounds from the declaration the books close. You must still hold{' '}
+            {DECLARATION_TURNS} turns from the declaration the books close. You must still hold{' '}
             {SHARE_MAJORITY} shares, {money(VICTORY_CASH)} and a ship, or the claim lapses and
             trading goes on.
           </p>
@@ -109,6 +113,63 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
       <p style={{ ...dataText, fontSize: '0.7rem', margin: 0, color: UI.textFaint }}>
         Bank holds {state.sharesRemaining} · you hold {captain.shares} · {fleetSize}/{MAX_SHIPS} ships
       </p>
+
+      {/* --- Fitting out ------------------------------------------------------------------ */}
+      {(state.hazards?.weather || state.hazards?.piracy) && (
+        <div style={{ borderTop: `1px solid ${UI.rule}`, paddingTop: '0.55rem', display: 'flex', flexDirection: 'column', gap: '0.45rem' }}>
+          <Label>Fitting out</Label>
+          {ships.length === 0 ? (
+            <p style={{ ...bodySmall, margin: 0, color: UI.textFaint }}>No ships.</p>
+          ) : (
+            ships.map(ship => {
+              const docked = ship.location !== null;
+              return (
+                <div key={ship.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <span style={{ ...dataText, fontSize: '0.7rem', color: UI.textSoft }}>
+                    {ship.name}
+                    {!docked && ' — at sea'}
+                  </span>
+                  <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                    {state.hazards?.weather && (
+                      <Button
+                        disabled={!enabled || !docked || Boolean(ship.fittings?.copper) || captain.cash < FITTING_PRICES.copper}
+                        title="Coppered hulls foul less: a point of speed always, and less ground lost to heavy weather."
+                        onClick={() => dispatch({ type: 'BUY_FITTING', shipId: ship.id, fitting: 'copper' })}
+                      >
+                        {ship.fittings?.copper ? '✓ Coppered' : `Copper — ${money(FITTING_PRICES.copper)}`}
+                      </Button>
+                    )}
+                    {state.hazards?.piracy && (
+                      <>
+                        <Button
+                          disabled={!enabled || !docked || Boolean(ship.fittings?.guns) || captain.cash < FITTING_PRICES.guns}
+                          title="Guns halve the chance of being troubled, and talk most boarders down to a ransom."
+                          onClick={() => dispatch({ type: 'BUY_FITTING', shipId: ship.id, fitting: 'guns' })}
+                        >
+                          {ship.fittings?.guns ? '✓ Armed' : `Guns — ${money(FITTING_PRICES.guns)}`}
+                        </Button>
+                        <Button
+                          tone={ship.insured ? 'default' : 'quiet'}
+                          disabled={!enabled}
+                          title="An open policy: every voyage covered, premium taken at cast-off. Covers goods taken and ransoms paid — never lost time."
+                          onClick={() =>
+                            dispatch({ type: 'SET_INSURANCE', shipId: ship.id, insured: !ship.insured })
+                          }
+                        >
+                          {ship.insured ? '✓ Insured' : 'Insure her'}
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0, color: UI.textFaint }}>
+            Fittings are permanent and fitted in port. A policy can be opened or closed at any time.
+          </p>
+        </div>
+      )}
     </Panel>
   );
 }

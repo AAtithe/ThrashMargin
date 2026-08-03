@@ -31,6 +31,12 @@ export interface ChartPalette {
   label: string;
   labelHalo: string;
   distance: string;
+  /** A leg whose prevailing wind is fair this season. */
+  windFair: string;
+  /** A leg that has to be beaten against. */
+  windFoul: string;
+  /** Waters that carry a piracy rating. */
+  piracy: string;
 }
 
 export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
@@ -49,6 +55,9 @@ export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
     label: '#cfc3a4',
     labelHalo: '#0a151a',
     distance: '#5d7684',
+    windFair: '#7fb069',
+    windFoul: '#c2606a',
+    piracy: '#c2606a',
   },
   // Pale, like a printed board on a table.
   printed: {
@@ -65,6 +74,9 @@ export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
     label: '#2f2a20',
     labelHalo: '#dfe6e4',
     distance: '#7d7159',
+    windFair: '#2f6b3a',
+    windFoul: '#a8342f',
+    piracy: '#8c2b26',
   },
 };
 

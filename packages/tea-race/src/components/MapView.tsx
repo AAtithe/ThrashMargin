@@ -12,6 +12,8 @@ import {
   wrapPanX,
 } from '../sim/geography';
 import { destinationOf } from '../sim/movement';
+import { windFor, type Season } from '../sim/weather';
+import { piracyRating } from '../sim/hazards';
 import type { Captain, Contract, PortId, Ship } from '../sim/types';
 
 interface MapViewProps {
@@ -21,6 +23,9 @@ interface MapViewProps {
   selectedShipId: string | null;
   onPortClick: (portId: PortId) => void;
   plannedRoute: PortId[] | null;
+  /** Null when this game is played without weather — then no wind is drawn at all. */
+  season: Season | null;
+  showPiracy: boolean;
 }
 
 const ZOOM_MIN = 1;
@@ -46,6 +51,8 @@ export default function MapView({
   selectedShipId,
   onPortClick,
   plannedRoute,
+  season,
+  showPiracy,
 }: MapViewProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
@@ -141,13 +148,42 @@ export default function MapView({
       return { zoom, panX: wrapPanX(panX, zoom), panY: clampPanY(panY, zoom) };
     });
 
-  /** Every leg, already unwrapped so Pacific crossings run the short way off the edge. */
+  /**
+   * Every leg, already unwrapped so Pacific crossings run the short way off the edge, and carrying
+   * this season's wind.
+   *
+   * The wind mark is the point of this: a chevron at the leg's midpoint pointing the way the wind
+   * is fair, so the chart answers "which way round is fast this season" at a glance rather than
+   * making the player discover it by sailing. Legs with no fair direction get no chevron.
+   */
   const drawnLegs = useMemo(
     () =>
       LEGS.map(leg => {
         const a = PORT_POINTS[leg.a];
         const b = PORT_POINTS[leg.b];
         const dx = wrapDx(a.x, b.x);
+
+        // Ask both directions; the fair one, if either is, decides where the chevron points.
+        const forward = season ? windFor(leg.a, leg.b, season) : null;
+        const back = season ? windFor(leg.b, leg.a, season) : null;
+        let fairWay: 'forward' | 'back' | null = null;
+        let strength = 0;
+        let label = '';
+        if (forward && back) {
+          if (forward.modifier > 0 && forward.modifier >= back.modifier) {
+            fairWay = 'forward';
+            strength = forward.modifier;
+            label = forward.label;
+          } else if (back.modifier > 0) {
+            fairWay = 'back';
+            strength = back.modifier;
+            label = back.label;
+          } else {
+            // Neither way is fair — the doldrums and the horse latitudes.
+            label = forward.label;
+          }
+        }
+
         return {
           key: `${leg.a}-${leg.b}`,
           x1: a.x,
@@ -157,9 +193,14 @@ export default function MapView({
           distance: leg.distance,
           /** True for the four Pacific legs — drawn twice so both edges of the seam are covered. */
           wraps: Math.abs(dx) !== Math.abs(b.x - a.x),
+          fairWay,
+          strength,
+          windLabel: label,
+          becalmed: Boolean(forward && back && forward.modifier < 0 && back.modifier < 0),
+          piracy: showPiracy ? piracyRating(leg.a, leg.b) : 0,
         };
       }),
-    [],
+    [season, showPiracy],
   );
 
   const routePath = useMemo(() => {
@@ -190,14 +231,14 @@ export default function MapView({
               y1={leg.y1}
               x2={leg.x2}
               y2={leg.y2}
-              stroke={CHART.route}
-              strokeWidth={1.3}
-              strokeDasharray="5 5"
-              opacity={0.75}
+              stroke={leg.piracy > 0 ? CHART.piracy : CHART.route}
+              strokeWidth={leg.piracy > 0 ? 1.6 : 1.3}
+              strokeDasharray={leg.piracy > 0 ? '2 4' : '5 5'}
+              opacity={leg.piracy > 0 ? 0.85 : 0.75}
             />
             <text
               x={(leg.x1 + leg.x2) / 2}
-              y={(leg.y1 + leg.y2) / 2}
+              y={(leg.y1 + leg.y2) / 2 - 6}
               fill={CHART.distance}
               fontFamily={FONT.data}
               fontSize={9}
@@ -207,6 +248,21 @@ export default function MapView({
             >
               {leg.distance}
             </text>
+            <WindMark leg={leg} />
+            {leg.piracy > 0 && (
+              <text
+                x={(leg.x1 + leg.x2) / 2}
+                y={(leg.y1 + leg.y2) / 2 + 12}
+                fill={CHART.piracy}
+                fontFamily={FONT.data}
+                fontSize={9}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                pointerEvents="none"
+              >
+                {'\u2694'.repeat(Math.min(3, leg.piracy))}
+              </text>
+            )}
           </g>
         )),
       )}
@@ -325,6 +381,50 @@ export default function MapView({
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The wind mark on a leg: a chevron pointing the way the wind is fair, sized by how hard it blows.
+ * A leg with no fair direction gets a small open circle instead — calm is information too.
+ */
+function WindMark({
+  leg,
+}: {
+  leg: {
+    x1: number; y1: number; x2: number; y2: number;
+    fairWay: 'forward' | 'back' | null; strength: number; windLabel: string; becalmed: boolean;
+  };
+}) {
+  const mx = (leg.x1 + leg.x2) / 2;
+  const my = (leg.y1 + leg.y2) / 2;
+
+  if (!leg.fairWay) {
+    if (!leg.becalmed) return null;
+    return (
+      <circle cx={mx} cy={my} r={2.6} fill="none" stroke={CHART.windFoul} strokeWidth={1} opacity={0.75} pointerEvents="none">
+        <title>{leg.windLabel}</title>
+      </circle>
+    );
+  }
+
+  const sign = leg.fairWay === 'forward' ? 1 : -1;
+  const angle = (Math.atan2((leg.y2 - leg.y1) * sign, (leg.x2 - leg.x1) * sign) * 180) / Math.PI;
+  const size = 3 + leg.strength * 0.9;
+
+  return (
+    <g transform={`translate(${mx} ${my}) rotate(${angle})`} pointerEvents="none">
+      <path
+        d={`M${-size} ${-size * 0.72} L${size} 0 L${-size} ${size * 0.72}`}
+        fill="none"
+        stroke={CHART.windFair}
+        strokeWidth={1.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity={0.9}
+      />
+      <title>{leg.windLabel}</title>
+    </g>
   );
 }
 

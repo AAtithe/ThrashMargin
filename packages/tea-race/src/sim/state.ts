@@ -15,7 +15,7 @@ import {
   STARTING_CASH,
   TOTAL_SHARES,
 } from './rules';
-import type { AiProfile, Captain, GameState, Ship } from './types';
+import type { AiProfile, Captain, GameState, Hazards, Ship } from './types';
 
 export interface NewGameOptions {
   /** Seat names for the human captains. One entry per human; empty means a pure AI game. */
@@ -26,6 +26,11 @@ export interface NewGameOptions {
   seed?: string;
   /** ms epoch. Passed in rather than read here so the sim never touches a clock. */
   createdAt?: number;
+  /**
+   * Which hazards to play with. Defaults to both on for a new game; a save written before hazards
+   * existed has no field at all, which reads as off and keeps the pure 1988 rules.
+   */
+  hazards?: Hazards;
 }
 
 /** Profiles are handed out in rotation so a three-rival game always sees all three temperaments. */
@@ -80,6 +85,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     id,
     name: name.trim() || 'Voyage',
     rules: 'classic',
+    hazards: opts.hazards ?? { weather: true, piracy: true },
     createdAt: opts.createdAt ?? 0,
     rngSeed: dealt.seed,
 
