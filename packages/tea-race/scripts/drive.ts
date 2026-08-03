@@ -13,9 +13,8 @@
 import { createInitialState } from '../src/sim/state';
 import { processAction, runAiTurn } from '../src/sim/actions';
 import { PORT_BY_ID, GOOD_BY_ID, distanceBetween } from '../src/sim/content';
-import { payoutFor } from '../src/sim/contracts';
 import {
-  DECLARATION_ROUNDS,
+  DECLARATION_TURNS,
   FACE_UP_CONTRACTS,
   MAX_SHIPS,
   SHARE_MAJORITY,
@@ -420,9 +419,9 @@ function testCaps() {
 // ---------------------------------------------------------------------------
 
 /** Runs the table forward `rounds` complete laps without anybody doing anything. */
-function idleRounds(state: GameState, rounds: number): GameState {
+/** Runs the table forward `turns` individual turns without anybody doing anything. */
+function idleTurns(state: GameState, turns: number): GameState {
   let s = state;
-  const turns = rounds * s.captains.length;
   for (let i = 0; i < turns && s.phase !== 'over'; i++) {
     if (s.phase === 'handover') s = processAction(s, { type: 'ACKNOWLEDGE_HANDOVER' });
     if (s.phase === 'roll') s = processAction(s, { type: 'ROLL' });
@@ -457,13 +456,17 @@ function testDeclaration() {
   let win = setup(SHARE_MAJORITY, VICTORY_CASH + 50, 1);
   win = processAction(win, { type: 'DECLARE' });
   check(`${label}: declaring starts the clock`, win.declaration !== null);
-  equal(`${label}: the clock is ${DECLARATION_ROUNDS} rounds`, win.declaration!.roundsRemaining, DECLARATION_ROUNDS);
+  equal(
+    `${label}: the clock is ${DECLARATION_TURNS} turns`,
+    win.declaration!.turnsRemaining,
+    DECLARATION_TURNS,
+  );
 
-  const early = idleRounds(win, DECLARATION_ROUNDS - 1);
+  const early = idleTurns(win, DECLARATION_TURNS - 1);
   check(`${label}: nobody wins before the clock runs out`, early.phase !== 'over', `phase ${early.phase}`);
   check(`${label}: the clock is still running`, early.declaration !== null);
 
-  const done = idleRounds(early, 2);
+  const done = idleTurns(early, 2);
   equal(`${label}: the declarer wins`, done.winnerId, 'p1');
   equal(`${label}: the game is over`, done.phase, 'over');
   check(
@@ -471,10 +474,33 @@ function testDeclaration() {
     processAction(done, { type: 'ROLL' }) === done,
   );
 
+  // The countdown is twelve *individual turns* whatever the size of the table — the reading that
+  // stopped the endgame being forty-eight turns long at four captains. See DECLARATION_TURNS.
+  for (const seats of [2, 4, 6]) {
+    let g = createInitialState('t-dec-n', 'Declare', {
+      humanNames: Array.from({ length: seats }, (_, i) => `C${i + 1}`),
+      aiCount: 0,
+      seed: `declare-${seats}`,
+    });
+    g = setShares(g, 'p1', SHARE_MAJORITY);
+    g = setCash(g, 'p1', VICTORY_CASH + 50);
+    g = processAction(g, { type: 'ROLL' });
+    g = processAction(g, { type: 'DECLARE' });
+
+    const justBefore = idleTurns(g, DECLARATION_TURNS - 1);
+    check(
+      `${label}: at ${seats} captains the clock still runs after ${DECLARATION_TURNS - 1} turns`,
+      justBefore.phase !== 'over',
+      `ended early, phase ${justBefore.phase}`,
+    );
+    const expired = idleTurns(justBefore, 1);
+    equal(`${label}: at ${seats} captains it resolves on turn ${DECLARATION_TURNS}`, expired.winnerId, 'p1');
+  }
+
   // Short of the cash bar, the claim lapses and trading goes on.
   let poor = setup(SHARE_MAJORITY, VICTORY_CASH - 1, 1);
   poor = processAction(poor, { type: 'DECLARE' });
-  const lapsed = idleRounds(poor, DECLARATION_ROUNDS + 1);
+  const lapsed = idleTurns(poor, DECLARATION_TURNS + 1);
   equal(`${label}: a claim short of ${VICTORY_CASH} lapses`, lapsed.winnerId, null);
   equal(`${label}: play continues after a lapse`, lapsed.declaration, null);
   check(`${label}: the game is still live`, lapsed.phase !== 'over');
@@ -486,7 +512,7 @@ function testDeclaration() {
   // With no ship afloat the claim fails even holding shares and cash.
   let shipless = setup(SHARE_MAJORITY, VICTORY_CASH + 500, 0);
   shipless = processAction(shipless, { type: 'DECLARE' });
-  const failed = idleRounds(shipless, DECLARATION_ROUNDS + 1);
+  const failed = idleTurns(shipless, DECLARATION_TURNS + 1);
   equal(`${label}: a claim with no ship lapses`, failed.winnerId, null);
 }
 

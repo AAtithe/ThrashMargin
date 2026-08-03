@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { planRoute, portName } from '../sim/content';
 import { destinationOf } from '../sim/movement';
-import { DECLARATION_ROUNDS, SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
+import { DECLARATION_TURNS, SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import MapView from '../components/MapView';
 import ContractBoard from '../components/ContractBoard';
@@ -127,7 +127,7 @@ export default function GameScreen() {
             {state.captains.find(c => c.id === state.declaration!.captainId)?.name} has claimed the
             company.
           </strong>{' '}
-          {state.declaration.roundsRemaining} of {DECLARATION_ROUNDS} rounds left. At the close they
+          {state.declaration.turnsRemaining} of {DECLARATION_TURNS} turns left. At the close they
           must still hold {SHARE_MAJORITY} shares, {money(VICTORY_CASH)} and a ship.
         </div>
       )}

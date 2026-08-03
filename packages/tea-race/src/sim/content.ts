@@ -43,19 +43,30 @@ export interface Route {
   path: PortId[];
   /** Total sail points. */
   distance: number;
+  /** Expected turns, when the route was planned against a season's wind. */
+  turns?: number;
 }
 
+/** How an edge is costed. Distance is pure geography; turns account for the wind on it. */
+export type EdgeCost = (from: PortId, to: PortId, distance: number) => number;
+
+const byDistance: EdgeCost = (_from, _to, distance) => distance;
+
 /**
- * Shortest sea route by sail points (Dijkstra over ADJACENCY). Unlike Niccolo's dispatch, a course
- * here may cross several legs in one plot — a clipper does not have to stop at every island — so
- * intermediate ports are sailed straight past. To trade somewhere on the way, plot a course to
- * that port instead.
+ * Dijkstra over ADJACENCY with a pluggable edge cost. Unlike Niccolo's dispatch, a course here may
+ * cross several legs in one plot — a clipper does not have to stop at every island — so intermediate
+ * ports are sailed straight past. To trade somewhere on the way, plot a course to that port instead.
+ *
+ * The edge cost is a parameter because of the wind. Costing edges by raw distance makes the
+ * geometrically shortest path always the answer, which would leave directional wind as nothing but
+ * a tax on a route everyone takes anyway. Costing them by expected turns is what lets the homeward
+ * passage legitimately differ from the outbound one.
  */
-export function planRoute(from: PortId, to: PortId): Route | null {
+export function searchRoute(from: PortId, to: PortId, cost: EdgeCost): Route | null {
   if (from === to) return { path: [], distance: 0 };
   if (!ADJACENCY[from] || !ADJACENCY[to]) return null;
 
-  const dist: Record<PortId, number> = { [from]: 0 };
+  const score: Record<PortId, number> = { [from]: 0 };
   const prev: Record<PortId, PortId> = {};
   const settled = new Set<PortId>();
 
@@ -63,19 +74,19 @@ export function planRoute(from: PortId, to: PortId): Route | null {
   for (;;) {
     let best: PortId | null = null;
     let bestCost = Infinity;
-    for (const [id, cost] of Object.entries(dist)) {
-      if (!settled.has(id) && cost < bestCost) {
+    for (const [id, c] of Object.entries(score)) {
+      if (!settled.has(id) && c < bestCost) {
         best = id;
-        bestCost = cost;
+        bestCost = c;
       }
     }
     if (best === null) return null;
     if (best === to) break;
     settled.add(best);
     for (const edge of ADJACENCY[best]) {
-      const next = bestCost + edge.distance;
-      if (next < (dist[edge.to] ?? Infinity)) {
-        dist[edge.to] = next;
+      const nextCost = bestCost + cost(best, edge.to, edge.distance);
+      if (nextCost < (score[edge.to] ?? Infinity)) {
+        score[edge.to] = nextCost;
         prev[edge.to] = best;
       }
     }
@@ -83,7 +94,27 @@ export function planRoute(from: PortId, to: PortId): Route | null {
 
   const path: PortId[] = [];
   for (let at: PortId | undefined = to; at !== undefined && at !== from; at = prev[at]) path.unshift(at);
-  return { path, distance: dist[to] };
+
+  // Report the path's real sail-point length whatever it was costed by, so callers always get a
+  // number they can compare against a leg distance.
+  let distance = 0;
+  let cursor = from;
+  for (const step of path) {
+    distance += legDistance(cursor, step);
+    cursor = step;
+  }
+  return { path, distance };
+}
+
+/**
+ * The geometrically shortest route, ignoring weather.
+ *
+ * Still the right answer for anything that should be a stable fact about the world rather than
+ * about this month's wind: the contract deck's distance cap, and the port table's "how far" readout.
+ * For actually sailing somewhere, see `planFastestRoute` in sim/weather.ts.
+ */
+export function planRoute(from: PortId, to: PortId): Route | null {
+  return searchRoute(from, to, byDistance);
 }
 
 /** Every pairwise shortest distance, precomputed — the AI scores contracts against this constantly. */

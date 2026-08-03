@@ -142,15 +142,15 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
   return best;
 }
 
-/** The most valuable thing this port sells that the captain can afford, for a speculative load. */
-function bestSpeculativeLoad(s: GameState, captain: Captain, portId: string): string | null {
+/** The most valuable thing this port sells within the given budget, for a speculative load. */
+function bestSpeculativeLoad(s: GameState, budget: number, portId: string): string | null {
   const port = PORT_BY_ID[portId];
   if (!port) return null;
   let best: string | null = null;
   let bestPrice = 0;
   for (const good of port.supplies) {
     const price = GOOD_BY_ID[good]?.basePrice ?? 0;
-    if (price > bestPrice && price <= captain.cash) {
+    if (price > bestPrice && price <= budget) {
       best = good;
       bestPrice = price;
     }
@@ -221,20 +221,29 @@ export function nextAiAction(s: GameState): GameAction | null {
   const captain = activeCaptain(s);
   if (captain.kind !== 'ai') return null;
 
-  // Winning beats everything else on the board — but only claim it when the cash bar is within
-  // reach of twelve rounds' trading. Declaring at £80 in hand just burns the claim and hands the
-  // table twelve rounds of warning, which the harness saw happen over and over.
-  if (
-    captain.shares >= SHARE_MAJORITY &&
-    !s.declaration &&
-    captain.cash >= VICTORY_CASH * 0.4
-  ) {
+  // Winning beats everything else on the board — but only claim it holding the cash the claim
+  // actually requires.
+  //
+  // This was `VICTORY_CASH * 0.4`, on the theory that a captain could trade the rest up before the
+  // clock ran out. In practice they could not, and the harness showed *five* declare-and-lapse
+  // cycles in a single 91-round game. Every one of them puts the countdown banner back on screen at
+  // full, which is what "the game keeps counting down and never finishes" looks like from the
+  // outside. A claim should be the end of the game, not a recurring event.
+  if (captain.shares >= SHARE_MAJORITY && !s.declaration && captain.cash >= VICTORY_CASH) {
     return { type: 'DECLARE' };
   }
 
   const temperament = temperamentOf(captain);
   const ships = shipsOf(s, captain.id);
   const docked = ships.filter(sh => sh.location !== null);
+
+  /**
+   * Once this captain has declared, the cash bar is the win condition and must be protected. The
+   * investment path already guards it, but buying cargo did not — which is why the harness still
+   * saw claims lapse "only £725 in hand", losing a won game for the sake of one more lot.
+   */
+  const declarer = s.declaration?.captainId === captain.id;
+  const spendable = declarer ? Math.max(0, captain.cash - VICTORY_CASH) : captain.cash;
 
   // 1. Land anything that can be landed this instant.
   for (const ship of docked) {
@@ -268,7 +277,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     const run = bestRunForEmptyShip(s, ship.location!, captain.id);
 
     if (run && run.contract.source === ship.location) {
-      if (captain.cash >= run.contract.price) {
+      if (spendable >= run.contract.price) {
         return { type: 'BUY_CARGO', shipId: ship.id, good: run.contract.good };
       }
     }
@@ -281,7 +290,7 @@ export function nextAiAction(s: GameState): GameAction | null {
 
     // Speculators will load the best thing on the quay when no card is worth chasing.
     if (temperament.speculateBelow > 0 && (!run || run.score < temperament.speculateBelow)) {
-      const good = bestSpeculativeLoad(s, captain, ship.location!);
+      const good = bestSpeculativeLoad(s, spendable, ship.location!);
       if (good && portSupplies(ship.location!, good)) {
         return { type: 'BUY_CARGO', shipId: ship.id, good };
       }

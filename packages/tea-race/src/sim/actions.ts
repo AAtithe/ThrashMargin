@@ -15,7 +15,7 @@ import { destinationOf, plotCourse, pointsToDestination, sail } from './movement
 import { roll2d6 } from './rng';
 import {
   canBuyOut,
-  DECLARATION_ROUNDS,
+  DECLARATION_TURNS,
   LOG_LIMIT,
   MAX_SHIPS,
   PAYOUT_MULTIPLIERS,
@@ -148,14 +148,14 @@ function advanceSeat(state: GameState): GameState {
 
   const nextIndex = (s.activeIndex + 1) % s.captains.length;
   s = { ...s, activeIndex: nextIndex };
+  if (nextIndex === 0) s = { ...s, round: s.round + 1 };
 
-  if (nextIndex === 0) {
-    s = { ...s, round: s.round + 1 };
-    if (s.declaration) {
-      const remaining = s.declaration.roundsRemaining - 1;
-      s = { ...s, declaration: { ...s.declaration, roundsRemaining: remaining } };
-      if (remaining <= 0) s = resolveDeclaration(s);
-    }
+  // Every individual turn, not once per completed round — see DECLARATION_TURNS. Read as rounds it
+  // made the endgame forty-eight turns long at a four-captain table.
+  if (s.declaration) {
+    const remaining = s.declaration.turnsRemaining - 1;
+    s = { ...s, declaration: { ...s.declaration, turnsRemaining: remaining } };
+    if (remaining <= 0) s = resolveDeclaration(s);
   }
   return s;
 }
@@ -491,13 +491,13 @@ function doDeclare(state: GameState): GameState {
     declaration: {
       captainId: captain.id,
       declaredOnRound: state.round,
-      roundsRemaining: DECLARATION_ROUNDS,
+      turnsRemaining: DECLARATION_TURNS,
     },
   };
   return log(
     s,
     'declare',
-    `${captain.name} declares a majority — ${captain.shares} of the ten. The company is wound up in ${DECLARATION_ROUNDS} rounds; ${money(
+    `${captain.name} declares a majority — ${captain.shares} of the ten. The company is wound up in ${DECLARATION_TURNS} turns; ${money(
       VICTORY_CASH,
     )} and a ship must still be in hand.`,
     captain.id,

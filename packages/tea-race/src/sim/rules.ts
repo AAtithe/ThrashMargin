@@ -19,8 +19,21 @@ export const TOTAL_SHARES = 10;
 /** FAITHFUL — a majority of the ten. */
 export const SHARE_MAJORITY = 6;
 
-/** FAITHFUL — declaring runs the game on for twelve more turns. Read here as full table rounds. */
-export const DECLARATION_ROUNDS = 12;
+/**
+ * FAITHFUL — declaring runs the game on for twelve more turns, counted as twelve **individual
+ * turns**, not twelve complete table rounds.
+ *
+ * This was originally read as full rounds, and that reading was wrong twice over. At a four-captain
+ * table it made the endgame forty-eight turns long — the harness showed the first declaration
+ * landing around round 66-107 and then twelve more rounds in which everyone already knew the
+ * answer. And in ordinary board-game usage "twelve turns" means twelve player turns anyway, so the
+ * shorter reading is also the more faithful one.
+ *
+ * Consequence worth knowing: the countdown now scales with the size of the table — three rounds at
+ * four captains, six at two. That follows from taking "turns" literally, and twelve turns of play is
+ * twelve turns of play however many people are at the table.
+ */
+export const DECLARATION_TURNS = 12;
 
 /** FAITHFUL — the cash bar at the end of the countdown. */
 export const VICTORY_CASH = 750;
@@ -116,6 +129,83 @@ export const DIE_FACES = 6;
  * Half is deliberately a bad price. It should hurt to need it.
  */
 export const SHARE_BUYBACK_FRACTION = 0.5;
+
+// ---------------------------------------------------------------------------
+// Weather, wind and piracy
+//
+// All AUTHORED — the 1988 rules say nothing about any of it. But authored *in the spirit of* the
+// source rather than bolted on top: without directional wind every captain races round the world in
+// the same direction, because raw distance is the only thing telling one route from another. The
+// real tea races turned on the outbound and homeward passages being different problems, and on the
+// fast way round in one season being the slow way in another.
+// ---------------------------------------------------------------------------
+
+/** Rounds per season. Four seasons, so a year is 24 rounds. */
+export const ROUNDS_PER_SEASON = 6;
+
+/**
+ * Wind modifiers in sail points, against a 2d6 roll averaging 7.
+ *
+ * Sized to change decisions, not to be a polite nudge. A ±1 modifier is a tax nobody reroutes for;
+ * at these magnitudes a foul beat costs enough that the longer way round with a fair wind is
+ * genuinely the faster passage, which is the whole point. The harness asserts that some port pairs
+ * really do route differently in summer than in winter — if that ever stops being true, these
+ * numbers have gone too timid.
+ */
+export const WIND = {
+  /** Dead downwind in the trades or the Forties. */
+  fair: 3,
+  /** A beam reach, or the fair side of a fitful band. */
+  favourable: 1,
+  /** Nothing doing either way. */
+  slack: 0,
+  /** Close-hauled against the prevailing wind. */
+  foul: -2,
+  /** Beating into the westerlies or the Forties the wrong way. */
+  hard: -3,
+  /** Becalmed at the line. */
+  doldrums: -2,
+} as const;
+
+/** AUTHORED — chance a ship at sea is caught by weather, per point of the leg's storm rating. */
+export const STORM_CHANCE_PER_RATING = 0.045;
+
+/** AUTHORED — sail points a storm sets a ship back, before copper. Never past her leg's start. */
+export const STORM_SETBACK = { min: 2, max: 6 } as const;
+
+/** AUTHORED — copper cuts a storm's setback by this fraction, and adds a point of speed always. */
+export const COPPER_STORM_REDUCTION = 0.5;
+export const COPPER_SPEED_BONUS = 1;
+
+/** AUTHORED — chance of a piracy encounter per point of a leg's piracy rating. */
+export const PIRACY_CHANCE_PER_RATING = 0.05;
+
+/** AUTHORED — guns cut the chance of an encounter, and downgrade most seizures to a ransom. */
+export const GUNS_ENCOUNTER_REDUCTION = 0.5;
+export const GUNS_SEIZURE_TO_RANSOM = 0.75;
+
+/**
+ * AUTHORED — of encounters that happen, this fraction are a ransom and the rest a seizure.
+ * Ransom-first on purpose: taking the cargo off a captain who was winning the race is the harshest
+ * thing this game can do, so it should be the uncommon case.
+ */
+export const PIRACY_RANSOM_SHARE = 0.72;
+
+/** AUTHORED — a ransom takes this share of the captain's cash, within these bounds. */
+export const RANSOM_CASH_SHARE = 0.18;
+export const RANSOM_BOUNDS = { min: 15, max: 220 } as const;
+
+/** AUTHORED — permanent per-ship fittings, bought while docked. */
+export const FITTING_PRICES = { guns: 120, copper: 150 } as const;
+
+/**
+ * AUTHORED — an open insurance policy. Set once on a ship and every voyage she makes is covered.
+ * The premium is a share of the insured value scaled by the route's real risk; it indemnifies goods
+ * taken and ransoms paid, and never lost time.
+ */
+export const INSURANCE_BASE_RATE = 0.06;
+export const INSURANCE_RISK_MULTIPLIER = 0.9;
+export const INSURANCE_MINIMUM_PREMIUM = 4;
 
 /** AUTHORED — how many entries of the running log to keep. Older lines are dropped from the save. */
 export const LOG_LIMIT = 400;

@@ -48,8 +48,16 @@ export interface SeaLeg {
   b: PortId;
   /** Sail points. A 2d6 roll averages 7. */
   distance: number;
-  /** Decorative only in the classic ruleset. */
+  /** Rounding one of the great capes. Named for the chart, and adds to the leg's storm rating. */
   cape?: string;
+  /**
+   * How piratical these waters are, 1 to 3. Absent means safe.
+   *
+   * Authored rather than derived, unlike the wind: piracy is a fact of history, not of latitude.
+   * The Malacca approaches, the South China Sea, the Caribbean, the Barbary Mediterranean and the
+   * Zanzibar runs are dangerous for reasons no formula over coordinates would find.
+   */
+  piracy?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +83,13 @@ export interface Voyage {
   legDistance: number;
 }
 
+export interface ShipFittings {
+  /** Cuts the chance of a piracy encounter, and turns most seizures into a ransom. */
+  guns?: boolean;
+  /** Cuts a storm's setback, and adds a point of speed always — coppered hulls fouled less. */
+  copper?: boolean;
+}
+
 export interface Ship {
   id: ShipId;
   ownerId: CaptainId;
@@ -84,6 +99,17 @@ export interface Ship {
   voyage: Voyage | null;
   /** A clipper carries one lot at a time. */
   cargo: CargoLot | null;
+  /**
+   * Permanent fittings. Optional so that a save written before hazards existed loads untouched —
+   * the same reason every other field added by the hazards work is optional.
+   */
+  fittings?: ShipFittings;
+  /**
+   * A standing open insurance policy. Set once and every voyage she makes is covered, with the
+   * premium taken at cast-off. Deliberately not a per-dispatch prompt: a checkbox you set once is a
+   * decision, a modal on every dispatch is a chore.
+   */
+  insured?: boolean;
 }
 
 export type AiProfile = 'racer' | 'speculator' | 'financier';
@@ -115,17 +141,32 @@ export interface Contract {
   fills: ContractFill[];
 }
 
+export interface Hazards {
+  /** Seasonal directional wind, and storms that cost time. */
+  weather: boolean;
+  /** Piracy in historically piratical waters, with ransoms, seizures and insurance. */
+  piracy: boolean;
+}
+
 export interface Declaration {
   captainId: CaptainId;
   declaredOnRound: number;
-  /** Counts down by one each time the table completes a full round. */
-  roundsRemaining: number;
+  /**
+   * Counts down by one on every individual turn, not once per table round — see
+   * DECLARATION_TURNS in rules.ts for why that reading is both shorter and more faithful.
+   */
+  turnsRemaining: number;
 }
 
 export type LogKind =
   | 'roll'
   | 'sail'
   | 'arrive'
+  | 'storm'
+  | 'piracy'
+  | 'insurance'
+  | 'fitting'
+  | 'season'
   | 'buy'
   | 'deliver'
   | 'missed'
@@ -178,6 +219,12 @@ export interface GameState {
    * deliberately not implemented — see that document before adding it.
    */
   rules: 'classic';
+  /**
+   * Which hazards this game plays with. Optional, and **absent means off** — so a save written
+   * before hazards existed keeps playing the pure 1988 rules, and the faithful-versus-authored line
+   * in the design doc stays honest. New games default both on.
+   */
+  hazards?: Hazards;
   /** ms epoch, stamped by the caller. The sim itself never reads a clock. */
   createdAt: number;
   rngSeed: number;
@@ -233,6 +280,10 @@ export type GameAction =
   /** Dump a speculative lot nobody ended up wanting, at half what was paid. */
   | { type: 'SELL_LOCAL'; shipId: ShipId }
   | { type: 'BUY_SHIP' }
+  /** Fit guns or copper to a docked ship, permanently. */
+  | { type: 'BUY_FITTING'; shipId: ShipId; fitting: keyof ShipFittings }
+  /** Open or close a ship's standing insurance policy. */
+  | { type: 'SET_INSURANCE'; shipId: ShipId; insured: boolean }
   | { type: 'BUY_SHARE' }
   /** Sell a share back to the bank at half price — the way out of having no working capital. */
   | { type: 'SELL_SHARE' }
