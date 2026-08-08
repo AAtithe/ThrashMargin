@@ -6,6 +6,7 @@
   { "id": "bruges",   "name": "Bruges",   "region": "flanders",  "power": "burgundy","x": 3440.9, "y": 2004.0, "port": true, "currency": "groot",
     "market": { "cloth": { "base": 24 }, "wool": { "base": 20 }, "madder": { "base": 22 }, "spices": { "base": 28 } } },
   { "id": "ghent",    "name": "Ghent",    "region": "flanders",  "power": "burgundy","x": 3508.9, "y": 2030.7, "port": false, "currency": "groot",
+    "labelSide": "s",
     "market": { "cloth": { "base": 22 }, "madder": { "base": 18 } } },
   { "id": "antwerp",  "name": "Antwerp",  "region": "flanders",  "power": "burgundy","x": 3592.7, "y": 2008.5, "port": true, "currency": "groot",
     "market": { "cloth": { "base": 30 }, "salt": { "base": 16 }, "wine": { "base": 22 } } },

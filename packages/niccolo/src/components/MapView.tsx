@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { CITIES, ROUTES, findCity } from '../sim/content';
 import { BACKDROP, GEO_STROKE } from '../sim/geography';
-import type { Vessel } from '../sim/types';
+import type { LabelSide, Vessel } from '../sim/types';
 
 const INK = '#4a3d28';
 const PARCHMENT = '#c9b88a';
@@ -50,6 +50,10 @@ const ZOOM_MIN = 1;
  * zooming to roughly 25 / (27.7 * 0.0834 px-per-unit-at-zoom-1) ≈ 10.8 — 12 gives comfortable
  * headroom beyond that for inspecting the tightest clusters up close. */
 const ZOOM_MAX = 12;
+/** Per wheel notch / per button press. 1.12 is tea-race's, and it reads noticeably better than the
+ * 1.1 this file used: with a 12x range, 1.1 takes 27 notches end to end and feels like the map is
+ * resisting you. */
+const ZOOM_STEP = 1.12;
 
 /** Scale factor for this file's own hand-authored "chrome" (the compass rose, the decorative border
  * frame) — decorative elements that live in the map's open margins, never inside a tight city
@@ -136,14 +140,19 @@ const CASTLE_HALF_SIZE = {
   inland: { w: 8 * ICON_SCALE, h: 10 * ICON_SCALE },
 };
 
-/** Cities whose label flips to the left of their icon (`x - 14`, right-aligned) instead of the
- * usual right-side offset. Empty for now: the previous two special cases (Ghent, Kouklia) were
- * both solving label crowding the real-geography spacing already fixes — verified directly against
- * the actual new coordinates, neither pair's label rects still overlap. Milan/Genoa came out as a
- * new, much closer call by the same estimate (~5.5px apart on one axis) — check live in the browser
- * and add here only if it actually reads as crowded on screen, the same way Ghent's original flip
- * was found by visual inspection, not computed. */
-const FLIPPED_LABEL_CITY_IDS = new Set<string>();
+/** Label placement, ported from tea-race's chart. Offsets are authored at the original 780-canvas
+ * scale and multiplied by `ICON_SCALE` at use, like every other gameplay-sized quantity here. This
+ * replaces a binary "flip this city's label to the left" set, which could only ever move a label
+ * along one axis — in the Bruges/Ghent/Antwerp cluster the free space is vertical, so left/right was
+ * the one direction that could not help. */
+const LABEL_OFFSET: Record<LabelSide, [number, number]> = {
+  n: [0, -18],
+  s: [0, 24],
+  e: [14, 4],
+  w: [-14, 4],
+};
+type TextAnchor = 'start' | 'middle' | 'end';
+const LABEL_ANCHOR: Record<LabelSide, TextAnchor> = { n: 'middle', s: 'middle', e: 'start', w: 'end' };
 
 /**
  * Slot angles (degrees, SVG convention) for vessels docked at the same city, fanned within a
@@ -166,6 +175,59 @@ const DOCK_RADIUS = {
   port: Math.hypot(CASTLE_HALF_SIZE.port.w, CASTLE_HALF_SIZE.port.h) + 9 * ICON_SCALE,
   inland: Math.hypot(CASTLE_HALF_SIZE.inland.w, CASTLE_HALF_SIZE.inland.h) + 9 * ICON_SCALE,
 };
+
+/** Rough text box in world units. Georgia at `fontSize` averages a bit over half an em per
+ * character; 0.55 is deliberately generous, since over-estimating only costs a hidden route label
+ * while under-estimating puts two pieces of text on top of each other. */
+function textBox(text: string, fontSize: number, x: number, y: number, anchor: TextAnchor) {
+  const w = text.length * fontSize * 0.55;
+  const h = fontSize * 1.1;
+  const left = anchor === 'start' ? x : anchor === 'end' ? x - w : x - w / 2;
+  return { left, right: left + w, top: y - h * 0.8, bottom: y + h * 0.2 };
+}
+
+type Box = ReturnType<typeof textBox>;
+const boxesOverlap = (a: Box, b: Box) =>
+  a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+
+/**
+ * Where each route's sailing-time label goes, and whether it can be drawn at all.
+ *
+ * Nudged perpendicular to its own leg so it sits beside the dashed line rather than on it, then
+ * dropped entirely if it would still land on a city's icon or name. Short legs are the problem
+ * case — a one-week hop's midpoint is only half a leg from each end, which on the Channel crossings
+ * put "1w" directly on top of "Calais". A route label is decoration; a city name is not, so the
+ * route label is what yields. Computed once at module load: every input is static.
+ */
+const ROUTE_LABELS = (() => {
+  const cityBoxes: Box[] = [];
+  for (const c of CITIES) {
+    const half = c.port ? CASTLE_HALF_SIZE.port : CASTLE_HALF_SIZE.inland;
+    cityBoxes.push({ left: c.x - half.w, right: c.x + half.w, top: c.y - half.h, bottom: c.y + half.h });
+    const side: LabelSide = c.labelSide ?? 'e';
+    const [dx, dy] = LABEL_OFFSET[side];
+    cityBoxes.push(
+      textBox(c.name, 12 * ICON_SCALE, c.x + dx * ICON_SCALE, c.y + dy * ICON_SCALE, LABEL_ANCHOR[side]),
+    );
+  }
+
+  return ROUTES.flatMap(r => {
+    const from = findCity(r.from);
+    const to = findCity(r.to);
+    if (!from || !to) return [];
+    const vx = to.x - from.x;
+    const vy = to.y - from.y;
+    const len = Math.hypot(vx, vy) || 1;
+    // Perpendicular unit vector, always nudging "up" the screen so labels read consistently.
+    const off = 7 * ICON_SCALE * (vy > 0 ? -1 : 1);
+    const x = (from.x + to.x) / 2 + (-vy / len) * off;
+    const y = (from.y + to.y) / 2 + (vx / len) * off;
+    const text = `${r.distanceWeeks}w`;
+    const box = textBox(text, 9 * ICON_SCALE, x, y, 'middle');
+    if (cityBoxes.some(cb => boxesOverlap(box, cb))) return [];
+    return [{ id: r.id, x, y, text }];
+  });
+})();
 
 interface VesselRender {
   vessel: Vessel;
@@ -289,17 +351,30 @@ function clientToViewBox(svgEl: SVGSVGElement, clientX: number, clientY: number)
   };
 }
 
-const RESET_VIEW_BUTTON: React.CSSProperties = {
+/** Zoom cluster, ported from tea-race's chart: a real +/−/fit column instead of a lone text link.
+ * The buttons are the only way to zoom without a scroll wheel, which is the whole point on a
+ * trackpad-pinch-less or touch device. Sized at tea-race's 44px, the standard touch target. */
+const ZOOM_CONTROLS: React.CSSProperties = {
   position: 'absolute',
   right: '0.6rem',
   bottom: '0.6rem',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+};
+
+const ZOOM_BUTTON: React.CSSProperties = {
+  width: 44,
+  height: 44,
   background: '#1a1510',
   border: `1px solid ${INK}`,
   color: PARCHMENT,
-  padding: '0.3rem 0.6rem',
   fontFamily: 'Georgia, serif',
-  fontSize: '0.72rem',
+  fontSize: '1.1rem',
+  lineHeight: 1,
   cursor: 'pointer',
+  borderRadius: 2,
+  opacity: 0.92,
 };
 
 export default function MapView({ vessels, selectedVesselId, onSelectCity, cityInfoAge, previewedCityId }: MapViewProps) {
@@ -310,12 +385,19 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
   const dragRef = useRef<{ startClientX: number; startClientY: number; startPanX: number; startPanY: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [view, setView] = useState(DEFAULT_VIEW);
+  const [hoveredCityId, setHoveredCityId] = useState<string | null>(null);
 
   // Drag-to-pan: window-level listeners (not SVG-level) so a fast drag that exits the map pane
-  // into the sidebar still ends cleanly on mouseup, rather than getting stuck mid-drag.
+  // into the sidebar still ends cleanly on release, rather than getting stuck mid-drag.
+  //
+  // Pointer events, not mouse events (tea-race's chart does the same): `pointermove` covers mouse,
+  // touch and pen from one code path, so the map is draggable on a tablet — with the old
+  // mouse-only listeners it simply was not. `pointercancel` matters too: the browser fires it
+  // (and no `pointerup`) when it steals the gesture for a system scroll, which would otherwise
+  // leave `isDragging` stuck true and the map glued to the cursor.
   useEffect(() => {
     if (!isDragging) return;
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       const svgEl = svgRef.current;
       const drag = dragRef.current;
       if (!svgEl || !drag) return;
@@ -325,15 +407,17 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
       const dy = (e.clientY - drag.startClientY) / scale;
       setView(prev => ({ ...prev, ...clampPan(drag.startPanX + dx, drag.startPanY + dy, prev.zoom) }));
     };
-    const handleMouseUp = () => {
+    const endDrag = () => {
       setIsDragging(false);
       dragRef.current = null;
     };
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', endDrag);
+      window.removeEventListener('pointercancel', endDrag);
     };
   }, [isDragging]);
 
@@ -353,7 +437,7 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
       if (!Number.isFinite(getContentScale(svgEl).scale) || getContentScale(svgEl).scale <= 0) return;
       const vb = clientToViewBox(svgEl, e.clientX, e.clientY);
       setView(prev => {
-        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
         const newZoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * factor));
         const contentX = (vb.x - prev.panX) / prev.zoom;
         const contentY = (vb.y - prev.panY) / prev.zoom;
@@ -365,22 +449,49 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
     return () => svgEl.removeEventListener('wheel', handleWheel);
   }, []);
 
-  const handleMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
+  const handlePointerDown = (e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.button !== 0) return; // left button / primary touch only, so right-click can't start a pan
     dragRef.current = { startClientX: e.clientX, startClientY: e.clientY, startPanX: view.panX, startPanY: view.panY };
     setIsDragging(true);
   };
+
+  /** Zoom about the centre of the pane — what the +/− buttons do, since they have no cursor
+   * position to zoom toward the way the wheel does. */
+  const zoomBy = (factor: number) =>
+    setView(prev => {
+      const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * factor));
+      const cx = VB_WIDTH / 2;
+      const cy = VB_HEIGHT / 2;
+      const contentX = (cx - prev.panX) / prev.zoom;
+      const contentY = (cy - prev.panY) / prev.zoom;
+      return { zoom, ...clampPan(cx - contentX * zoom, cy - contentY * zoom, zoom) };
+    });
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
-        style={{ width: '100%', height: '100%', background: VOID_COLOR, cursor: isDragging ? 'grabbing' : 'grab' }}
-        onMouseDown={handleMouseDown}
+        style={{
+          width: '100%',
+          height: '100%',
+          background: VOID_COLOR,
+          cursor: isDragging ? 'grabbing' : 'grab',
+          // Without this the browser claims touch-drags for its own scrolling and the map never
+          // sees a pointermove. Same reason tea-race's chart sets it.
+          touchAction: 'none',
+        }}
+        onPointerDown={handlePointerDown}
+        role="img"
+        aria-label="Ptolemaic world map of trading cities and routes"
       >
-        <g transform={`translate(${view.panX},${view.panY}) scale(${view.zoom})`}>
-          <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill={SEA_COLOR} />
+        {/* Outside the transformed group on purpose (tea-race does the same): inside it, the sea
+            pans away with the content and bare VOID_COLOR shows through at the sheet's edges. Out
+            here it is a permanent ground the map moves over, so no pan or zoom can ever expose a
+            gap — the failure `ZOOM_MIN`/`clampPan` were both originally introduced to work around. */}
+        <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill={SEA_COLOR} />
 
+        <g transform={`translate(${view.panX},${view.panY}) scale(${view.zoom})`}>
           <defs>
             <pattern
               id="geo-hatch"
@@ -489,6 +600,9 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
               fill={lb.kind === 'sea' ? GEO_WATER : PARCHMENT}
               fillOpacity={lb.kind === 'sea' ? 0.5 : 0.45}
               fontFamily="Georgia, serif"
+              /* Atmosphere, never a target — a region name sprawling across the map must not
+                 intercept a click meant for a city sitting inside it. */
+              pointerEvents="none"
             >
               {lb.text}
             </text>
@@ -517,6 +631,30 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
             );
           })}
 
+          {/* Sailing time on the leg itself, the way tea-race prints a leg's distance on it: the map
+              answers "how far is that?" directly instead of making the player select a vessel and
+              read the sidebar. Drawn after the lines so a label always sits over its own leg, and
+              only for the routes `ROUTE_LABELS` found room for. */}
+          {ROUTE_LABELS.map(rl => (
+            <text
+              key={rl.id}
+              x={rl.x} y={rl.y}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize={9 * ICON_SCALE}
+              fill={GOLD}
+              fillOpacity={0.65}
+              fontFamily="Georgia, serif"
+              stroke={VOID_COLOR}
+              strokeWidth={2.5 * ICON_SCALE}
+              paintOrder="stroke"
+              strokeLinejoin="round"
+              pointerEvents="none"
+            >
+              {rl.text}
+            </text>
+          ))}
+
           {CITIES.map(c => {
             const reachable = selected
               ? ROUTES.some(r => {
@@ -527,19 +665,33 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
               : false;
             const opacity = fogOpacity(cityInfoAge[c.id] ?? null);
             const isPreviewed = c.id === previewedCityId;
+            const isHovered = c.id === hoveredCityId;
             const fill = reachable ? GOLD : PARCHMENT;
             const half = c.port ? CASTLE_HALF_SIZE.port : CASTLE_HALF_SIZE.inland;
             const ringRadius = Math.hypot(half.w, half.h) + 3 * ICON_SCALE;
-            const flipLabel = FLIPPED_LABEL_CITY_IDS.has(c.id);
+            const side: LabelSide = c.labelSide ?? 'e';
+            const [ldx, ldy] = LABEL_OFFSET[side];
             return (
               <g
                 key={c.id}
                 id={`city-node-${c.id}`}
                 onClick={() => onSelectCity(c.id)}
+                onPointerEnter={() => setHoveredCityId(c.id)}
+                onPointerLeave={() => setHoveredCityId(id => (id === c.id ? null : id))}
                 style={{ cursor: 'pointer' }}
               >
                 {isPreviewed && (
                   <circle cx={c.x} cy={c.y} r={ringRadius} fill="none" stroke={GOLD} strokeWidth={1.5 * ICON_SCALE} />
+                )}
+                {/* Hover feedback, as tea-race's ports have: in a tight cluster it is otherwise
+                    genuinely unclear which mark a click is about to land on. Non-interactive so the
+                    ring itself can never swallow the click it exists to reassure you about. */}
+                {isHovered && !isPreviewed && (
+                  <circle
+                    cx={c.x} cy={c.y} r={ringRadius}
+                    fill="none" stroke={GOLD} strokeWidth={1 * ICON_SCALE} opacity={0.55}
+                    pointerEvents="none"
+                  />
                 )}
                 <g transform={`translate(${c.x},${c.y}) scale(${ICON_SCALE})`} fillOpacity={opacity}>
                   <path d={c.port ? PORT_CASTLE_PATH : INLAND_CASTLE_PATH} fill={fill} stroke={INK} strokeWidth={1.5} />
@@ -547,13 +699,24 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
                   {c.port && <path d={PORT_CASTLE_FLAG} fill="none" stroke={fill} strokeWidth={1.5} />}
                 </g>
                 <text
-                  x={flipLabel ? c.x - 14 * ICON_SCALE : c.x + 14 * ICON_SCALE}
-                  y={c.y + 4 * ICON_SCALE}
-                  textAnchor={flipLabel ? 'end' : 'start'}
+                  x={c.x + ldx * ICON_SCALE}
+                  y={c.y + ldy * ICON_SCALE}
+                  textAnchor={LABEL_ANCHOR[side]}
                   fontSize={12 * ICON_SCALE}
-                  fill={PARCHMENT}
+                  fill={isHovered ? GOLD : PARCHMENT}
                   fillOpacity={opacity}
                   fontFamily="Georgia, serif"
+                  /* Halo, as on tea-race's port labels: over hachured land or a route line, plain
+                     parchment text on this palette is genuinely hard to read. */
+                  stroke={VOID_COLOR}
+                  strokeWidth={3 * ICON_SCALE}
+                  paintOrder="stroke"
+                  strokeLinejoin="round"
+                  /* Load-bearing, not tidiness: a label extends well past its own city's icon, so
+                     without this it covers — and silently eats the click meant for — whichever
+                     neighbour it happens to overlap. The Bruges/Ghent/Antwerp cluster overlaps by
+                     construction, so this was a real, reachable bug. */
+                  pointerEvents="none"
                 >
                   {c.name}
                 </text>
@@ -618,9 +781,25 @@ export default function MapView({ vessels, selectedVesselId, onSelectCity, cityI
           fill="none" stroke={INK} strokeWidth={1 * UI_SCALE} opacity={0.45}
         />
       </svg>
-      <button style={RESET_VIEW_BUTTON} onClick={() => setView(DEFAULT_VIEW)}>
-        Reset view
-      </button>
+
+      <div style={ZOOM_CONTROLS}>
+        <button style={ZOOM_BUTTON} onClick={() => zoomBy(ZOOM_STEP ** 3)} aria-label="Zoom in">
+          +
+        </button>
+        <button style={ZOOM_BUTTON} onClick={() => zoomBy(1 / ZOOM_STEP ** 3)} aria-label="Zoom out">
+          −
+        </button>
+        {/* "fit" restores the framing that shows every city in the game, not zoom 1 — at zoom 1 the
+            full Ptolemaic domain runs from Thule to the Gambia and squeezes the playable area into a
+            corner. Zoom out with − to see the whole world. */}
+        <button
+          style={{ ...ZOOM_BUTTON, fontSize: '0.6rem' }}
+          onClick={() => setView(DEFAULT_VIEW)}
+          aria-label="Fit every city in view"
+        >
+          fit
+        </button>
+      </div>
     </div>
   );
 }

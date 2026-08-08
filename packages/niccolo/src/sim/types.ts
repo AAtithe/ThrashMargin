@@ -36,6 +36,12 @@ export type CurrencyId =
   | 'scots_pound'
   | 'dinar';
 
+/** Which side of its own icon a city's label sits on. Borrowed from tea-race's `Port.labelSide`,
+ * which solves the same problem far better than a binary "flip it left" set did: in a tight cluster
+ * the escape route is often up or down, not sideways. Optional — a city without one gets 'e', the
+ * old default, so no existing city content needed changing. */
+export type LabelSide = 'n' | 's' | 'e' | 'w';
+
 export interface City {
   id: string;
   name: string;
@@ -47,6 +53,8 @@ export interface City {
   market?: Record<string, CityMarketGood>;
   /** The money of account this city settles bills and deposits in. */
   currency: CurrencyId;
+  /** Legibility only — never gameplay. Defaults to 'e' (right of the icon). */
+  labelSide?: LabelSide;
 }
 
 export interface Route {
