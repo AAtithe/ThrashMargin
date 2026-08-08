@@ -1,5 +1,5 @@
 [
-  { "id": "famagusta", "name": "Famagusta", "region": "cyprus", "power": "cyprus", "x": 6453.9, "y": 3598.1, "port": true, "currency": "bezant",
+  { "id": "famagusta", "name": "Famagusta", "region": "cyprus", "power": "cyprus", "lon": 33.94, "lat": 35.12, "port": true, "currency": "bezant",
     "market": { "sugar": { "base": 18 } } },
-  { "id": "kouklia", "name": "Kouklia", "region": "cyprus", "power": "cyprus", "x": 6311.6, "y": 3628.3, "port": false, "currency": "bezant" }
+  { "id": "kouklia", "name": "Kouklia", "region": "cyprus", "power": "cyprus", "lon": 32.58, "lat": 34.71, "port": false, "currency": "bezant" }
 ]

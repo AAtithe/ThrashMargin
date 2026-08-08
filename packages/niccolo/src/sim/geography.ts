@@ -1,100 +1,181 @@
-import geographyData from '../content/geography.json';
-import { createProjector, ringToPath, smoothPath, reliefPath } from './projection';
-
 /**
- * Real-geography map backdrop (the Donis-trapezoidal Ptolemaic projection, ported from the
- * standalone map/niccolo-map project), computed once at module load — ES modules are singletons,
- * so this runs exactly once per page load, not once per MapView mount or render. No build step, no
- * generated file to keep in sync: geography.json's domain/rings never change at runtime, so a
- * small module of computed constants is cheaper and simpler than either a codegen script or
- * recomputing on every render.
+ * Chart projection. Cities and coastlines go through the SAME `project()` call, which is the whole
+ * reason a city sits on its own coast without anyone hand-placing it.
+ *
+ * The projection is plate carree (equirectangular): longitude maps linearly to x, latitude linearly
+ * to y. This replaced a Ptolemaic chart — real coordinates warped onto Ptolemy's own positions and
+ * drawn on his Donis trapezoidal projection. That was historically authentic but read as visibly
+ * skewed, and being a bounded rectangle rather than a globe it could not wrap, so there was no way
+ * to scroll round the world.
+ *
+ * VB_WIDTH/VB_HEIGHT are the SVG viewBox. Everything downstream (icon sizes, label offsets, route
+ * strokes) is authored directly in these units, so there is no second scale factor to keep in
+ * step — the mistake that made this game's own city icons need an `ICON_SCALE` fudge after its
+ * canvas changed size.
  */
+import chart from '../content/worldChart.json';
+import { CITIES } from './content';
+import type { City } from './types';
 
-/** Canvas width the backdrop is projected at. Chosen so every city's own dock-slot fan-out
- * (MapView.tsx's DOCK_RADIUS, unchanged by this migration) clears its neighbours with real margin
- * — at this width, the tightest city pair in the game (Bruges-Ghent) lands at ~1.5x the hard
- * overlap floor, not just barely over it. City x/y in content/cities/chapter*.json were projected
- * at this exact same width for 1:1 alignment with this backdrop; changing this constant without
- * re-migrating every city's coordinates would visibly misalign them. */
-export const BACKDROP_WIDTH = 10000;
+export const VB_WIDTH = 1600;
+export const VB_HEIGHT = 900;
 
-const mk = BACKDROP_WIDTH / 1400;
-// Uniform margins, not the source project's default asymmetric {top,right,bottom:220*mk,left} —
-// the extra bottom band only exists there to leave room for a cartouche/legend/compass band this
-// game draws itself, elsewhere. Dropping the asymmetry saves dead canvas height with zero effect
-// on any city's projected (x,y): verified directly (dx/dy = 0.0000 for every city checked) since
-// margin.bottom affects only the total canvas height, not the project() function's output.
-const MARGIN = { top: 120 * mk, right: 120 * mk, bottom: 120 * mk, left: 120 * mk };
+export const LON_MIN = -180;
+export const LON_MAX = 180;
+export const LAT_MAX = chart.latMax;
+export const LAT_MIN = chart.latMin;
 
-interface GeographyData {
-  domain: { lonMin: number; lonMax: number; latMin: number; latMax: number };
-  landmass: [number, number][];
-  seas: { id: string; name: string; ring: [number, number][] }[];
-  islands: { id: string; name: string; ring: [number, number][] }[];
-  rivers: { id: string; name: string; line: [number, number][] }[];
-  lakes?: { id: string; centre: [number, number]; rLon: number; rLat: number }[];
-  mountains: { id: string; name: string; line: [number, number][] }[];
-  labels: { text: string; at: [number, number]; kind: 'region' | 'sea' }[];
+const LON_SPAN = LON_MAX - LON_MIN;
+const LAT_SPAN = LAT_MAX - LAT_MIN;
+
+export interface Point {
+  x: number;
+  y: number;
 }
 
-const geo = geographyData as unknown as GeographyData;
+export function project(lon: number, lat: number): Point {
+  return {
+    x: ((lon - LON_MIN) / LON_SPAN) * VB_WIDTH,
+    y: ((LAT_MAX - lat) / LAT_SPAN) * VB_HEIGHT,
+  };
+}
 
-const P = createProjector({
-  width: BACKDROP_WIDTH,
-  domain: geo.domain,
-  convergence: 0.55,
-  latStretch: 1.15,
-  margin: MARGIN,
-});
+/** Inverse of `project`, for turning a click back into a position on the globe. */
+export function unproject(x: number, y: number): { lon: number; lat: number } {
+  return {
+    lon: LON_MIN + (x / VB_WIDTH) * LON_SPAN,
+    lat: LAT_MAX - (y / VB_HEIGHT) * LAT_SPAN,
+  };
+}
 
-/** Design values, authored against the source project's own 1400px reference and scaled by
- * P.scale() — the same "authored small, scaled up" pattern MapView.tsx's own castle icons and
- * vessel glyphs don't use (those are fixed pixel sizes, deliberately, see MapView.tsx), but which
- * is exactly right here since this backdrop's linework should scale with the projection the way
- * ink strokes on a real chart of any size would. */
-export const GEO_STROKE = {
-  coast: Math.max(0.8, P.scale(1.5)),
-  ghost: Math.max(0.4, P.scale(0.8)),
-  ghostOffsetX: Math.max(1, P.scale(2.4)),
-  ghostOffsetY: Math.max(1, P.scale(2.4)) * 0.7,
-  grid: Math.max(0.3, P.scale(0.55)),
-  river: Math.max(0.5, P.scale(1.2)),
-  relief: Math.max(0.5, P.scale(1.2)) * 0.9,
-  hatchLine: Math.max(0.35, P.scale(0.9)),
-  hatchGap: Math.max(4, P.scale(11)),
-};
-const HUMP = Math.max(3, P.scale(9));
+export const CITY_POINTS: Record<string, Point> = Object.fromEntries(
+  (CITIES as City[]).map(c => [c.id, project(c.lon, c.lat)]),
+);
 
-export interface BackdropLabel {
+/**
+ * The chart wraps east–west, because the ocean does.
+ *
+ * `wrapDx` returns the signed x-offset by the shorter way round, which may run off one edge of the
+ * sheet. `WORLD_COPIES` is how that is made to look continuous: the whole chart is drawn three
+ * times side by side, so a line leaving the right edge is picked up by the copy beyond it.
+ */
+export function wrapDx(fromX: number, toX: number): number {
+  let dx = toX - fromX;
+  if (dx > VB_WIDTH / 2) dx -= VB_WIDTH;
+  if (dx < -VB_WIDTH / 2) dx += VB_WIDTH;
+  return dx;
+}
+
+/** Offsets, in viewBox units, at which the whole chart is repeated. */
+export const WORLD_COPIES = [-VB_WIDTH, 0, VB_WIDTH];
+
+/**
+ * Lays a sequence of points out in one continuous unwrapped run, each hop taken the short way. The
+ * result can extend past either edge of the sheet; the repeated copies make that read correctly.
+ */
+export function unwrapRun(points: Point[]): Point[] {
+  if (points.length === 0) return [];
+  const out: Point[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const prev = out[i - 1];
+    out.push({ x: prev.x + wrapDx(points[i - 1].x, points[i].x), y: points[i].y });
+  }
+  return out;
+}
+
+/**
+ * Normalises a horizontal pan into (-worldWidth, 0], so panning east or west forever stays seamless
+ * instead of scrolling off into empty space. With the pan in that range, the copy at 0 and the copy
+ * one world to its right always cover the viewport between them.
+ */
+export function wrapPanX(panX: number, zoom: number): number {
+  const span = VB_WIDTH * zoom;
+  if (!Number.isFinite(span) || span <= 0) return 0;
+  const m = panX % span;
+  return m > 0 ? m - span : m;
+}
+
+/** Vertical pan is clamped so the sheet's top and bottom edges never scroll into view. Latitude
+ * does not wrap — only longitude does. */
+export const clampPanY = (panY: number, zoom: number) =>
+  Math.min(0, Math.max(VB_HEIGHT * (1 - zoom), panY));
+
+function ringToPath(ring: number[][]): string {
+  let d = '';
+  for (let i = 0; i < ring.length; i++) {
+    const { x, y } = project(ring[i][0], ring[i][1]);
+    d += `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }
+  return d + 'Z';
+}
+
+function lineToPath(line: number[][]): string {
+  let d = '';
+  for (let i = 0; i < line.length; i++) {
+    const { x, y } = project(line[i][0], line[i][1]);
+    d += `${i === 0 ? 'M' : 'L'}${x.toFixed(1)} ${y.toFixed(1)}`;
+  }
+  return d;
+}
+
+/** A mountain ridge drawn as a row of little humps along its line, the old chart's "caterpillar". */
+function reliefPath(line: number[][], hump: number): string {
+  const pts = line.map(([lo, la]) => project(lo, la));
+  let d = '';
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    const n = Math.max(1, Math.round(len / (hump * 1.6)));
+    for (let k = 0; k < n; k++) {
+      const t0 = k / n;
+      const t1 = (k + 1) / n;
+      const x0 = a.x + (b.x - a.x) * t0;
+      const y0 = a.y + (b.y - a.y) * t0;
+      const x1 = a.x + (b.x - a.x) * t1;
+      const y1 = a.y + (b.y - a.y) * t1;
+      d += `M${x0.toFixed(1)} ${y0.toFixed(1)}Q${((x0 + x1) / 2).toFixed(1)} ${(Math.min(y0, y1) - hump).toFixed(1)} ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+    }
+  }
+  return d;
+}
+
+export interface ChartLabel {
   text: string;
   kind: 'region' | 'sea';
   x: number;
   y: number;
 }
 
-export const BACKDROP = {
-  width: BACKDROP_WIDTH,
-  height: P.height,
-  neatline: P.neatline(),
-  land: ringToPath(geo.landmass, P.project),
-  seas: geo.seas.map(s => ({ id: s.id, d: ringToPath(s.ring, P.project) })),
-  islands: geo.islands.map(i => ({ id: i.id, d: ringToPath(i.ring, P.project) })),
-  rivers: geo.rivers.map(r => smoothPath(r.line.map(([lo, la]) => P.project(lo, la)), 0.4)).join(' '),
-  lakes: (geo.lakes ?? []).map(lk => {
-    const [cx, cy] = P.project(lk.centre[0], lk.centre[1]);
-    const [ex] = P.project(lk.centre[0] + lk.rLon, lk.centre[1]);
-    const [, ey] = P.project(lk.centre[0], lk.centre[1] - lk.rLat);
-    return { id: lk.id, cx, cy, rx: Math.abs(ex - cx), ry: Math.abs(ey - cy) };
-  }),
-  mountains: geo.mountains.map(m => reliefPath(m.line.map(([lo, la]) => P.project(lo, la)), HUMP)).join(' '),
-  graticule: (() => {
-    const g = P.graticule(10, 10);
-    return [...g.meridians, ...g.parallels]
-      .map(seg => `M ${seg[0][0].toFixed(2)} ${seg[0][1].toFixed(2)} L ${seg[1][0].toFixed(2)} ${seg[1][1].toFixed(2)}`)
-      .join(' ');
+/**
+ * Pre-built SVG path strings, computed once at module load (ES modules are singletons, so this runs
+ * once per page load, not per render). The renderer never projects anything itself — if the
+ * projection changes, land, graticule, rivers and cities all move together by construction.
+ */
+export const CHART = {
+  width: VB_WIDTH,
+  height: VB_HEIGHT,
+  land: (chart.land as number[][][]).map(ringToPath),
+  /** Enclosed water that sits inside a landmass (the Caspian), drawn over the land. */
+  seas: (chart.seas as number[][][]).map(ringToPath),
+  rivers: (chart.rivers as { name: string; line: number[][] }[]).map(r => lineToPath(r.line)).join(' '),
+  mountains: (chart.mountains as { id: string; line: number[][] }[])
+    .map(m => reliefPath(m.line, 4))
+    .join(' '),
+  graticule: (chart.graticule as number[][][])
+    .map(seg => {
+      const a = project(seg[0][0], seg[0][1]);
+      const b = project(seg[1][0], seg[1][1]);
+      return `M${a.x.toFixed(1)} ${a.y.toFixed(1)}L${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+    })
+    .join(' '),
+  equator: (() => {
+    const a = project(LON_MIN, 0);
+    const b = project(LON_MAX, 0);
+    return `M${a.x.toFixed(1)} ${a.y.toFixed(1)}L${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
   })(),
-  labels: geo.labels.map((lb): BackdropLabel => {
-    const [x, y] = P.project(lb.at[0], lb.at[1]);
-    return { text: lb.text, kind: lb.kind, x, y };
+  labels: (chart.labels as { text: string; at: number[]; kind: string }[]).map((lb): ChartLabel => {
+    const p = project(lb.at[0], lb.at[1]);
+    return { text: lb.text, kind: lb.kind as 'region' | 'sea', x: p.x, y: p.y };
   }),
 };

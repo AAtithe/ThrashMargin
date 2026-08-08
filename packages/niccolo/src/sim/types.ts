@@ -47,8 +47,10 @@ export interface City {
   name: string;
   region: string;
   power: string;
-  x: number;
-  y: number;
+  /** Real WGS84. Screen position is derived from these by sim/geography.ts, never authored — that
+   * is what keeps a city on its own coastline without anyone placing it by hand. */
+  lon: number;
+  lat: number;
   port: boolean;
   market?: Record<string, CityMarketGood>;
   /** The money of account this city settles bills and deposits in. */

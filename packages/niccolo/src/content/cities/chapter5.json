@@ -1,9 +1,9 @@
 [
-  { "id": "edinburgh", "name": "Edinburgh", "region": "scotland", "power": "scotland", "x": 3268.9, "y": 1603.9, "port": true, "currency": "scots_pound",
+  { "id": "edinburgh", "name": "Edinburgh", "region": "scotland", "power": "scotland", "lon": -3.2, "lat": 55.9, "port": true, "currency": "scots_pound",
     "market": { "wool": { "base": 7 }, "cloth": { "base": 38 }, "wine": { "base": 26 } } },
-  { "id": "alexandria", "name": "Alexandria", "region": "egypt", "power": "mamluk", "x": 6037.9, "y": 3968.8, "port": true, "currency": "dinar",
+  { "id": "alexandria", "name": "Alexandria", "region": "egypt", "power": "mamluk", "lon": 29.9, "lat": 31.2, "port": true, "currency": "dinar",
     "market": { "spices": { "base": 22 }, "sugar": { "base": 10 }, "cloth": { "base": 42 } } },
-  { "id": "cairo", "name": "Cairo", "region": "egypt", "power": "mamluk", "x": 6204.6, "y": 4057.7, "port": false, "currency": "dinar",
+  { "id": "cairo", "name": "Cairo", "region": "egypt", "power": "mamluk", "lon": 31.25, "lat": 30.05, "port": false, "currency": "dinar",
     "market": { "cloth": { "base": 46 }, "glass": { "base": 52 } } },
-  { "id": "sinai", "name": "St Catherine's", "region": "sinai", "power": "mamluk", "x": 6446.3, "y": 4066.6, "port": false, "currency": "dinar" }
+  { "id": "sinai", "name": "St Catherine's", "region": "sinai", "power": "mamluk", "lon": 33.98, "lat": 28.56, "port": false, "currency": "dinar" }
 ]
