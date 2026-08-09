@@ -490,6 +490,13 @@ function AchievementsSection({ saves }: { saves: SaveMeta[] }) {
   const allAchievements = React.useMemo(() => {
     const ids = new Set<string>();
     saves.forEach(save => {
+      // Primary: use SaveMeta.achievements (works for cloud saves — the API returns this
+      // straight from state->'achievements', same pattern as campaignScenario below).
+      if (save.achievements?.length) {
+        save.achievements.forEach(id => ids.add(id));
+        return;
+      }
+      // Fallback: localStorage for old pre-fix local saves that predate this field.
       try {
         const raw = localStorage.getItem(`tm_save_${save.id}`);
         if (raw) {

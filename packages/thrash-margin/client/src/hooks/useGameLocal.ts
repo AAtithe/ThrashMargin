@@ -13,6 +13,7 @@ export interface SaveMeta {
   diff: string;
   savedAt: number; // ms timestamp
   campaignScenario?: number;
+  achievements?: string[];
 }
 
 function readIndex(): SaveMeta[] {
@@ -57,6 +58,7 @@ function upsertIndex(s: GameState, nameOverride?: string): SaveMeta[] {
     diff: s.config?.diff ?? 'normal',
     savedAt: Date.now(),
     ...(s.config?.campaignScenario !== undefined && { campaignScenario: s.config.campaignScenario }),
+    ...(s.achievements?.length && { achievements: s.achievements }),
   };
   const newIdx = existing
     ? idx.map(e => e.id === s.id ? meta : e)

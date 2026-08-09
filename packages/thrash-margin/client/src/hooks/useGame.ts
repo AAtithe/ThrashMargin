@@ -33,7 +33,9 @@ export function useGame() {
     } catch { /* ignore */ }
   }, []);
 
-  useEffect(() => { fetchSaves(); }, [fetchSaves]);
+  // Skip the fetch entirely when signed out — useGameHybrid mounts this hook unconditionally
+  // even for local-only players, and an unauthenticated /api/game call only ever 401s.
+  useEffect(() => { if (getToken()) fetchSaves(); }, [fetchSaves]);
 
   const createGame = useCallback(async (config?: Partial<GameConfig>, name?: string): Promise<string | null> => {
     setLoading(true);

@@ -118,7 +118,12 @@ export default function Game() {
       .tm-drawer-handle { display: none; }
       @media (max-width: ${mobileMax}px) {
         .tm-body { flex-direction: column !important; overflow: hidden !important; }
-        .tm-mapwrap { flex: unset !important; height: 54vh !important; min-height: 180px !important; cursor: grab; }
+        /* flex:1 (not a fixed vh) so the map fills whatever space is actually left after the
+           header — a hardcoded 54vh left a dead gap above the drawer on taller phones, since
+           the sidebar below is pulled out of flow via position:fixed and nothing else claimed
+           that space. padding-bottom reserves room for the drawer's collapsed peek strip. */
+        .tm-mapwrap { flex: 1 !important; min-height: 180px !important; padding-bottom: 48px;
+          box-sizing: border-box !important; cursor: grab; }
         .tm-sidebar {
           box-sizing: border-box !important;
           position: fixed !important; bottom: 0 !important; left: 0 !important; right: 0 !important;
@@ -134,6 +139,14 @@ export default function Game() {
           padding: 10px 16px; cursor: pointer; background: #161b22; border-bottom: 1px solid #30363d;
           border-radius: 12px 12px 0 0; position: sticky; top: 0; z-index: 1; flex-shrink: 0; }
         .tm-bar-resources { overflow-x: auto; flex-wrap: nowrap !important; }
+        /* Header content (brand + lobby link + turn/AP + resources + end turn) was wider than
+           any phone viewport with no wrap or scroll, so End Turn and some resource pills were
+           simply off-screen and untappable. Compact the pieces (see .tm-brand-text/.tm-lobby-text
+           /.tm-res-label/.tm-ap-label below) and scroll as a fallback if it still overflows. */
+        .tm-header { padding: 0 8px !important; gap: 6px; }
+        .tm-header-scroll { overflow-x: auto !important; }
+        .tm-brand-text, .tm-lobby-text, .tm-res-label, .tm-ap-label { display: none !important; }
+        .tm-header-center { padding: 0 8px !important; gap: 8px !important; }
       }
       @media (min-width: ${tabletMin}px) and (max-width: ${tabletMax}px) {
         .tm-sidebar { box-sizing: border-box !important; width: 240px !important; padding: 10px !important; }
@@ -365,12 +378,15 @@ export default function Game() {
     await act({ type: 'END_TURN' });
   };
 
-  const doNextCampaign = React.useCallback(() => {
+  const doNextCampaign = React.useCallback(async () => {
     if (!state?.config || state.config.campaignScenario === undefined) return;
     const nextIndex = state.config.campaignScenario + 1;
     const next = CAMPAIGN_SCENARIOS[nextIndex];
     if (!next) return;
-    const newId = createGame({
+    // createGame returns a plain string for local saves but a Promise for cloud saves
+    // (useGameHybrid picks one implementation at runtime) — always await it, or signed-in
+    // players get navigated to a URL containing the literal text "[object Promise]".
+    const newId = await Promise.resolve(createGame({
       ...DEFAULT_CONFIG,
       diff: next.diff,
       mapId: next.mapId,
@@ -381,8 +397,8 @@ export default function Game() {
       campaignScenario: next.index,
       campaignBonusGold: next.bonusGold,
       campaignBonusTechs: next.bonusTechs,
-    }, next.title);
-    nav(`/game/${newId}`);
+    }, next.title));
+    if (newId) nav(`/game/${newId}`);
   }, [state, createGame, nav]);
 
   if (!state && loading) return <Blank>Loading campaign…</Blank>;
@@ -391,8 +407,9 @@ export default function Game() {
   const cfg = state.config;
 
   // Victory / defeat summary stats
-  const playerTerrs  = state.nodes.filter(n => n.owner === PLAYER).length;
-  const playerTroops = state.nodes.filter(n => n.owner === PLAYER).reduce((s, n) => s + n.troops, 0);
+  const playerTerrs   = state.nodes.filter(n => n.owner === PLAYER).length;
+  const playerTroops  = state.nodes.filter(n => n.owner === PLAYER).reduce((s, n) => s + n.troops, 0);
+  const playerCapital = state.nodes.find(n => n.owner === PLAYER && n.capital) ?? null;
   const eliminatedFactions: number[] = [];
   for (let f = 2; f <= 1 + (cfg.enemyFactions ?? 1); f++) {
     if (!state.nodes.some(n => n.owner === f)) eliminatedFactions.push(f);
@@ -458,19 +475,22 @@ export default function Game() {
       )}
 
       {/* ── Header / Top bar ── */}
-      <header style={s.header}>
-        <div style={s.headerLeft}>
-          <span style={s.brand}>⚔ Thrash Margin</span>
-          <span style={s.headerSep} />
-          <button onClick={() => nav('/')} style={s.back}>← Lobby</button>
-        </div>
-        <div style={s.headerCenter}>
-          <span style={s.turnLabel}>
-            {cfg.hotseat ? `Turn ${state.turn} — P${state.activePlayer ?? 1}` : `Turn ${state.turn}`}
-          </span>
-          {(cfg.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? cfg.apPerTurn} max={cfg.apPerTurn} />}
-        </div>
-        <div style={s.headerRight}>
+      {/* headerLeft/headerCenter/resRow are grouped into one scrollable region on mobile —
+          the End Turn button (and the production-breakdown button) sit outside it so they're
+          always reachable without having to scroll past everything else to find them. */}
+      <header style={s.header} className="tm-header">
+        <div className="tm-header-scroll" style={{ display: 'flex', alignItems: 'center', flex: 1, minWidth: 0 }}>
+          <div style={s.headerLeft}>
+            <span style={s.brand}>⚔<span className="tm-brand-text"> Thrash Margin</span></span>
+            <span style={s.headerSep} />
+            <button onClick={() => nav('/')} style={s.back}>← <span className="tm-lobby-text">Lobby</span></button>
+          </div>
+          <div style={s.headerCenter} className="tm-header-center">
+            <span style={s.turnLabel}>
+              {cfg.hotseat ? `Turn ${state.turn} — P${state.activePlayer ?? 1}` : `Turn ${state.turn}`}
+            </span>
+            {(cfg.apPerTurn ?? 4) < 99 && <ApBar ap={state.actionsLeft ?? cfg.apPerTurn} max={cfg.apPerTurn} />}
+          </div>
           <div style={s.resRow} className="tm-bar-resources">
             <Res icon="⚙" label="Gold" val={state.resources.gold} rate={prod.gold} color="#f59e0b" />
             <Res icon="🌾" label="Food" val={state.resources.food} rate={prod.food - upkeep} color="#34d399" />
@@ -481,11 +501,13 @@ export default function Game() {
             {((state.resources.population ?? 0) > 0 || popRate > 0 || state.nodes.some(n => n.owner === PLAYER && n.lv >= 4)) && (
               <Res icon="👥" label="Pop" val={state.resources.population ?? 0} rate={popRate} color="#9b59b6" />
             )}
-            <button onClick={() => setShowProd(true)} title="Production breakdown"
-              style={{ background:'none', border:'1px solid #30363d', borderRadius:4, color:'#7d8590', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center', flexShrink: 0 }}>
-              ⊞
-            </button>
           </div>
+        </div>
+        <div style={s.headerRight}>
+          <button onClick={() => setShowProd(true)} title="Production breakdown"
+            style={{ background:'none', border:'1px solid #30363d', borderRadius:4, color:'#7d8590', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center', flexShrink: 0 }}>
+            ⊞
+          </button>
           <button onClick={doEndTurn} disabled={isOver || loading} style={{ ...s.endBtn, ...(isOver ? s.endOver : {}) }}>
             {endBtnText}
           </button>
@@ -571,17 +593,44 @@ export default function Game() {
             />
           ) : (
             <div style={{ padding: 8 }}>
+              {/* Empire overview — this used to be dead space (just the legend below) whenever
+                  nothing was selected, which is most of the time between actions. */}
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ color: '#6b7280', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 8 }}>
+                  Empire Overview
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 16px' }}>
+                  <div>
+                    <div style={{ color: '#4b5563', fontSize: 10 }}>Territories</div>
+                    <div style={{ color: '#e6edf3', fontSize: 18, fontWeight: 700 }}>
+                      {playerTerrs}<span style={{ color: '#4b5563', fontSize: 11, fontWeight: 400 }}> / {state.nodes.length}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#4b5563', fontSize: 10 }}>Troops</div>
+                    <div style={{ color: '#e6edf3', fontSize: 18, fontWeight: 700 }}>{playerTroops}</div>
+                  </div>
+                </div>
+                {playerCapital && (
+                  <button onClick={() => handleNodeClick(playerCapital.id)}
+                    style={{ marginTop: 10, width: '100%', background: 'none', border: '1px solid #30363d', borderRadius: 6, color: '#9ba8bb', fontSize: 12, padding: '6px 10px', cursor: 'pointer' }}>
+                    ♛ Jump to {playerCapital.name}
+                  </button>
+                )}
+              </div>
               <p style={s.muted}>Click a territory to select it.</p>
               <div style={{ marginTop: 16, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {/* Dynamic faction legend */}
+                {/* Dynamic faction legend, now with a live territory count per faction */}
                 {[PLAYER, ...Array.from({ length: cfg.enemyFactions ?? 1 }, (_, i) => i + 2), NEUTRAL].map(owner => {
                   const label = owner === PLAYER ? 'Your territories'
                     : owner === NEUTRAL ? 'Neutral territories'
                     : `${FACTION_NAMES[owner] ?? `Faction ${owner}`}`;
+                  const count = state.nodes.filter(n => n.owner === owner).length;
                   return (
                     <div key={owner} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ width: 10, height: 10, borderRadius: '50%', background: FACTION_COLORS[owner] ?? '#52525b' }} />
-                      <span style={{ fontSize: 12, color: '#7d8590' }}>{label}</span>
+                      <span style={{ fontSize: 12, color: '#7d8590', flex: 1 }}>{label}</span>
+                      <span style={{ fontSize: 12, color: '#4b5563' }}>{count}</span>
                     </div>
                   );
                 })}
@@ -1242,7 +1291,7 @@ function ApBar({ ap, max }: { ap: number; max: number }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, padding: '5px 10px' }}>
       <span style={{ fontSize: 13 }}>⚡</span>
       <div>
-        <div style={{ color: '#6b7280', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Actions</div>
+        <div className="tm-ap-label" style={{ color: '#6b7280', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>Actions</div>
         <div style={{ display: 'flex', gap: 3, marginTop: 3 }}>
           {Array.from({ length: max }).map((_, i) => (
             <div key={i} style={{
@@ -1305,7 +1354,7 @@ function Res({ icon, label, val, rate, color }: { icon: string; label: string; v
     <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, padding: '5px 10px' }}>
       <span style={{ fontSize: 15 }}>{icon}</span>
       <div>
-        <div style={{ color: '#6b7280', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+        <div className="tm-res-label" style={{ color: '#6b7280', fontSize: 9, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
           <span style={{ color, fontSize: 16, fontWeight: 700, lineHeight: 1 }}>{val}</span>
           <span style={{ color: rateColor, fontSize: 10, fontWeight: 600 }}>{rateStr}/t</span>

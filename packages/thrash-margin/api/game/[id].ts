@@ -3,6 +3,9 @@ import { getDb } from '../_lib/db';
 import { getUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
 
+// Discriminator for the shared `games` table — see api/game/index.ts for the full explanation.
+const GAME_KIND = 'thrash_margin';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
 
@@ -15,8 +18,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     try {
       const { rows } = await db.query(
-        'SELECT state FROM games WHERE id = $1 AND owner_id = $2',
-        [id, user.userId],
+        'SELECT state FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
+        [id, user.userId, GAME_KIND],
       );
       if (!rows[0]) return res.status(404).json({ message: 'Game not found' });
       return res.json({ state: rows[0].state });
@@ -34,8 +37,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const newStatus = state.status === 'victory' ? 'victory'
         : state.status === 'defeated' ? 'defeated' : 'active';
       await db.query(
-        'UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW() WHERE id = $4 AND owner_id = $5',
-        [JSON.stringify(state), newStatus, state.turn, id, user.userId],
+        'UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW() WHERE id = $4 AND owner_id = $5 AND game = $6',
+        [JSON.stringify(state), newStatus, state.turn, id, user.userId, GAME_KIND],
       );
       return res.json({ success: true });
     } catch (err) {
@@ -47,8 +50,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'DELETE') {
     try {
       await db.query(
-        'DELETE FROM games WHERE id = $1 AND owner_id = $2',
-        [id, user.userId],
+        'DELETE FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
+        [id, user.userId, GAME_KIND],
       );
       return res.json({ success: true });
     } catch (err) {

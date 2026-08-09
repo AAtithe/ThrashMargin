@@ -5,6 +5,9 @@ import { handleCors } from '../../_lib/cors';
 import { processAction } from '../../../shared/engine-reference';
 import type { GameAction } from '../../../shared/types';
 
+// Discriminator for the shared `games` table — see api/game/index.ts for the full explanation.
+const GAME_KIND = 'thrash_margin';
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).end();
@@ -19,8 +22,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = getDb();
   try {
     const { rows } = await db.query(
-      'SELECT state FROM games WHERE id = $1 AND owner_id = $2',
-      [id, user.userId],
+      'SELECT state FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
+      [id, user.userId, GAME_KIND],
     );
     const row = rows[0];
     if (!row) return res.status(404).json({ message: 'Game not found' });
@@ -33,8 +36,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const newState = processAction(currentState, action);
 
     await db.query(
-      'UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW() WHERE id = $4',
-      [JSON.stringify(newState), newState.status, newState.turn, id],
+      'UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW() WHERE id = $4 AND game = $5',
+      [JSON.stringify(newState), newState.status, newState.turn, id, GAME_KIND],
     );
 
     await db.query(

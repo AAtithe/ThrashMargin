@@ -1422,21 +1422,56 @@ function handleChoice(state: GameState, action: { choiceIndex: number }): GameSt
 // Enemy AI — per-faction turn
 // ---------------------------------------------------------------------------
 
+// Buildings an AI faction favours on a border territory (defence) vs. a safe interior one
+// (economy). Falls back to a uniform random pick when none of the preferred kind are
+// available in a slot — same behaviour as before this function existed.
+const FRONTLINE_BUILDING_PREF: BuildingType[] = ['tower', 'fortress'];
+const INTERIOR_BUILDING_PREF: BuildingType[] = ['farm', 'large_farm', 'granary', 'mine', 'deep_mine', 'foundry', 'market', 'grand_market'];
+
 function runFactionTurn(state: GameState, faction: number): GameState {
   const dm = diffMult(state.config.diff);
   let nodes = state.nodes.map(n => ({ ...n, buildings: [...n.buildings] }));
   const log: string[] = [];
+
+  // Ownership doesn't change until the attack phase below, so this is stable for the
+  // whole income/building/consolidation pass.
+  const isFrontLine = (id: number) => getNeighbours(state.edges, id).some(nb => nodes[nb].owner !== faction);
 
   // Income and building
   nodes.forEach(n => {
     if (n.owner !== faction) return;
     const income = Math.ceil((getGoldProd(n) * dm) / 2) * state.config.growth;
     n.troops = Math.min(n.troops + income, getTroopCap(n));
+    const frontLine = isFrontLine(n.id);
     if (Math.random() < state.config.buildChance * dm && n.buildings.length < getSlots(n)) {
-      const opts = Object.keys(BUILDINGS).filter(k => !n.buildings.includes(k as BuildingType));
-      if (opts.length) n.buildings.push(opts[Math.floor(Math.random() * opts.length)] as BuildingType);
+      const opts = Object.keys(BUILDINGS).filter(k => !n.buildings.includes(k as BuildingType)) as BuildingType[];
+      const preferred = opts.filter(k => (frontLine ? FRONTLINE_BUILDING_PREF : INTERIOR_BUILDING_PREF).includes(k));
+      const pool = preferred.length ? preferred : opts;
+      if (pool.length) n.buildings.push(pool[Math.floor(Math.random() * pool.length)]);
     }
-    if (Math.random() < 0.04 * dm && n.lv < MAX_LV) n.lv = Math.min(n.lv + 1, MAX_LV);
+    // Capitals and front-line territories upgrade a bit more readily — they're where the
+    // extra troop cap and defence actually matter.
+    const upgradeChance = (n.capital || frontLine) ? 0.06 : 0.04;
+    if (Math.random() < upgradeChance * dm && n.lv < MAX_LV) n.lv = Math.min(n.lv + 1, MAX_LV);
+  });
+
+  // Troop consolidation: nudge surplus troops one hop from safe interior territories toward
+  // the front line. Previously the AI never moved troops at all, so garrisons on long-held
+  // interior nodes just sat capped and idle while border territories — the ones that actually
+  // need the numbers — stayed thin. This isn't full pathfinding, just a one-hop-per-turn drift
+  // outward, but it compounds over a multi-turn campaign.
+  const RESERVE = 3;
+  nodes.forEach(n => {
+    if (n.owner !== faction || isFrontLine(n.id)) return;
+    const surplus = n.troops - RESERVE;
+    if (surplus <= 0) return;
+    const friendlyNbrs = getNeighbours(state.edges, n.id).filter(id => nodes[id].owner === faction);
+    if (!friendlyNbrs.length) return;
+    const target = friendlyNbrs.find(isFrontLine)
+      ?? friendlyNbrs.reduce((b, id) => nodes[id].troops < nodes[b].troops ? id : b, friendlyNbrs[0]);
+    const move = Math.ceil(surplus / 2); // drift outward gradually, don't strip the interior in one turn
+    n.troops -= move;
+    nodes[target].troops = Math.min(nodes[target].troops + move, getTroopCap(nodes[target]));
   });
 
   // Attacks: faction attacks any non-same-faction territory (including other enemies and player)

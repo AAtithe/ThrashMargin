@@ -8,6 +8,12 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 const router = Router();
 router.use(authMiddleware);
 
+// Discriminator for the shared `games` table — Niccolo and The Tea Race use the same table
+// (same Postgres instance, same users/auth) and filter on this column so no app's queries
+// see another's rows. Applies here too since this Express server and the Vercel functions
+// point at the same database.
+const GAME_KIND = 'thrash_margin';
+
 // GET /api/game — list player's saves
 router.get('/', async (req: AuthRequest, res: Response) => {
   try {
@@ -18,9 +24,10 @@ router.get('/', async (req: AuthRequest, res: Response) => {
               status,
               config->>'diff' AS diff,
               (config->>'campaignScenario')::int AS campaign_scenario,
+              state->'achievements' AS achievements,
               EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
-       FROM games WHERE owner_id = $1 ORDER BY updated_at DESC`,
-      [req.userId]
+       FROM games WHERE owner_id = $1 AND game = $2 ORDER BY updated_at DESC`,
+      [req.userId, GAME_KIND]
     );
     const saves = result.rows.map(r => ({
       id: r.id,
@@ -30,6 +37,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       diff: r.diff ?? 'normal',
       savedAt: Math.round(parseFloat(r.saved_at)),
       ...(r.campaign_scenario != null && { campaignScenario: Number(r.campaign_scenario) }),
+      ...(Array.isArray(r.achievements) && r.achievements.length && { achievements: r.achievements }),
     }));
     res.json({ saves });
   } catch (err) {
@@ -48,9 +56,9 @@ router.post('/', async (req: AuthRequest, res: Response) => {
     (state as unknown as Record<string, unknown>).name = ((name as string | undefined) ?? 'Campaign').trim();
 
     await db.query(
-      `INSERT INTO games (id, owner_id, mode, status, turn, state, config)
-       VALUES ($1, $2, 'single', 'active', $3, $4, $5)`,
-      [id, req.userId, state.turn, JSON.stringify(state), JSON.stringify(mergedConfig)]
+      `INSERT INTO games (id, owner_id, game, mode, status, turn, state, config)
+       VALUES ($1, $2, $3, 'single', 'active', $4, $5, $6)`,
+      [id, req.userId, GAME_KIND, state.turn, JSON.stringify(state), JSON.stringify(mergedConfig)]
     );
     res.json({ gameId: id, state });
   } catch (err) {
@@ -63,8 +71,8 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.get('/:id', async (req: AuthRequest, res: Response) => {
   try {
     const result = await db.query(
-      `SELECT state FROM games WHERE id = $1 AND owner_id = $2`,
-      [req.params.id, req.userId]
+      `SELECT state FROM games WHERE id = $1 AND owner_id = $2 AND game = $3`,
+      [req.params.id, req.userId, GAME_KIND]
     );
     if (!result.rows[0]) {
       res.status(404).json({ message: 'Game not found' });
@@ -88,8 +96,8 @@ router.post('/:id/action', async (req: AuthRequest, res: Response) => {
   try {
     await client.query('BEGIN');
     const result = await client.query(
-      `SELECT state, turn FROM games WHERE id = $1 AND owner_id = $2 FOR UPDATE`,
-      [req.params.id, req.userId]
+      `SELECT state, turn FROM games WHERE id = $1 AND owner_id = $2 AND game = $3 FOR UPDATE`,
+      [req.params.id, req.userId, GAME_KIND]
     );
     if (!result.rows[0]) {
       await client.query('ROLLBACK');
@@ -102,8 +110,8 @@ router.post('/:id/action', async (req: AuthRequest, res: Response) => {
       : nextState.status === 'defeated' ? 'defeated' : 'active';
 
     await client.query(
-      `UPDATE games SET state = $1, status = $2, turn = $3 WHERE id = $4`,
-      [JSON.stringify(nextState), newStatus, nextState.turn, req.params.id]
+      `UPDATE games SET state = $1, status = $2, turn = $3 WHERE id = $4 AND game = $5`,
+      [JSON.stringify(nextState), newStatus, nextState.turn, req.params.id, GAME_KIND]
     );
     await client.query(
       `INSERT INTO game_actions (id, game_id, user_id, turn, action)
@@ -129,8 +137,8 @@ router.put('/:id/state', async (req: AuthRequest, res: Response) => {
     const newStatus = state.status === 'victory' ? 'victory'
       : state.status === 'defeated' ? 'defeated' : 'active';
     await db.query(
-      `UPDATE games SET state = $1, status = $2, turn = $3 WHERE id = $4 AND owner_id = $5`,
-      [JSON.stringify(state), newStatus, state.turn, req.params.id, req.userId]
+      `UPDATE games SET state = $1, status = $2, turn = $3 WHERE id = $4 AND owner_id = $5 AND game = $6`,
+      [JSON.stringify(state), newStatus, state.turn, req.params.id, req.userId, GAME_KIND]
     );
     res.json({ success: true });
   } catch (err) {
@@ -143,8 +151,8 @@ router.put('/:id/state', async (req: AuthRequest, res: Response) => {
 router.delete('/:id', async (req: AuthRequest, res: Response) => {
   try {
     await db.query(
-      `DELETE FROM games WHERE id = $1 AND owner_id = $2`,
-      [req.params.id, req.userId]
+      `DELETE FROM games WHERE id = $1 AND owner_id = $2 AND game = $3`,
+      [req.params.id, req.userId, GAME_KIND]
     );
     res.json({ success: true });
   } catch (err) {

@@ -44,7 +44,11 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
             </button>
           </>
         ) : (
-          <a href="/thrash-margin/login" style={styles.link}>
+          // Base-relative, unlike the cross-app links above: this points at Thrash Margin's
+          // own login route, so it must resolve under whatever base this app is served from
+          // (`/` in local dev, `/thrash-margin/` in the portal build) rather than a hardcoded
+          // production path.
+          <a href={`${import.meta.env.BASE_URL}login`} style={styles.link}>
             Sign in
           </a>
         )}
