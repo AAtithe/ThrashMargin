@@ -14,116 +14,136 @@ one JWT session.
 
 ## 1. What the original game is
 
-Published descriptions of the 1988 board give the following, and only the following:
+Sourced in two passes, and the difference matters.
 
-- 2–6 players, each starting with an empty clipper docked at **Liverpool**.
-- **Five commodity cards** face up at all times, each naming a commodity, the port that has it and
-  the port that wants it.
-- Players roll dice to move, buy the commodity at its source and carry it to its destination.
-- **Only the first two ships to arrive are paid**: the first gets **four times** the purchase
-  price, the second **twice**. Later arrivals get nothing.
-- Buying a commodity **on speculation**, with no card yet calling for it, is legal and expected.
-- A player may own up to **three ships**.
-- There are **ten shares**.
-- Once a player holds a majority of the ten and **declares** it, the game runs **twelve more
-  turns**. At the end, the declarer wins if they hold the majority, **£750**, and at least one ship.
+**Pass one (2026-08-02)** worked from published *descriptions* of the 1988 board — the skeleton
+only. Everything the descriptions did not cover was authored from scratch and marked as such.
 
-Everything above is implemented faithfully. Everything below marked **[authored]** fills a gap the
-published rules do not cover. The distinction is kept in the code too: every constant in
-`src/sim/rules.ts` is commented FAITHFUL or AUTHORED.
+**Pass two (2026-08-05)** worked from the owner's own compiled rules manual for John Rudford's
+Ocean Trader (1988), which is far more detailed. **It showed that six things I had invented to fill
+gaps are in the real game, done differently.** Those are corrected, and the FAITHFUL/AUTHORED marks
+throughout this document and in `src/sim/rules.ts` now reflect the fuller source.
+
+What the real rules give:
+
+- 2–6 players, each starting with one clipper at **Liverpool** and a bankroll of **£500–£1,000**.
+- A world map of shipping lanes marked by **movement nodes**, one node = one movement point.
+- **Every ship has exactly three cargo slots.** A full fleet of three ships carries nine.
+- **Five commodity cards face up at all times.** Each locks one good to one source and one
+  destination; selling to any other port is illegal.
+- **Independent dice per ship** — movement points are not shared across a fleet.
+- Exact rolls are not needed to dock, and **excess points are forfeited on arrival**.
+- Ports have infinite capacity; ships never block one another.
+- Payouts by arrival order: **4× the purchase price first, 2× second, nothing after.**
+- **Speculation is legal** — buy goods no card calls for and hope one turns up. The source names the
+  cost of guessing wrong the *speculation bottleneck*: spec cargo locks up a third to two thirds of
+  a ship's capacity.
+- **Dumping cargo returns exactly £0.** The whole purchase price is forfeit to the bank. There is no
+  selling back.
+- Up to **three ships** per player.
+- **Ten shares**, paying no dividends, whose price **scales upward as the pool empties**,
+  "preventing a wealthy player from buying a victory in a single turn".
+- Holding 6+ shares lets you **declare**, which starts a **twelve-turn countdown**. The source calls
+  this the **sabotage window**: "Opponents use this window to buy shares away from the leader."
+- At the end of it the declarer must hold 6+ shares, **£750** and at least one ship. **If they fail
+  they lose automatically**, and the player with the highest total asset value wins instead.
+
+### What pass two corrected
+
+| Rule | Pass one had | The source says |
+|---|---|---|
+| Cargo capacity | One lot per ship | **Three slots**, nine across a fleet |
+| Dumping | Half price back at a port that wanted it | **£0, anywhere** |
+| Share price | Flat £120 | **Scales as the pool empties** |
+| A failed claim | Lapses; trading continues | **Declarer loses; highest assets wins** |
+| The countdown | Leader's shares untouchable | **A sabotage window** — raid the leader |
+| Starting capital | £250 | **£500–£1,000** (we use £600) |
+
+The three-slot hull was the most consequential. Pass one's single-lot ship made every voyage a
+there-and-back errand, which is precisely the "flat gameplay" the owner reported. Three slots turn a
+voyage into a routing puzzle and give the speculation bottleneck something to bite on — and it only
+bites because dumping now returns nothing.
 
 ---
 
 ## 2. Authored rulings
 
-Ordered roughly by how much they matter.
+What follows is **not** in the source, even in the detailed manual, and is my own ruling. Each one
+fills a real gap; several were forced by measurement rather than taste.
 
 ### 2.1 Forced buy-outs, and why they have to exist
 
 **The rule.** When the bank has sold all ten shares, a captain may still buy one — from the captain
-holding the **fewest**, at **double** price, and only if the buyer **already holds at least as many
-shares as the seller**. The seller cannot refuse and is paid.
+holding the **fewest**, at **double** price, and only if the buyer already holds at least as many
+shares as the seller. During a countdown that last restriction lifts entirely, which *is* faithful:
+the source's sabotage window explicitly lets opponents buy shares off the leader.
 
 **Why any such rule is needed.** With bank purchases alone, ten shares among four captains can
-settle as 3/3/2/2. Nobody can reach six, nobody can declare, and the game has no ending whatsoever.
-This is not hypothetical — it is what the harness produced: five games, none finished, every captain
-rich, all ten shares out, no majority anywhere. The physical game must have a rule of this shape for
-the same reason.
+settle as 3/3/2/2. Nobody reaches six, nobody can declare, and the game has no ending. The harness
+produced exactly that: five games, none finished, every captain rich, all ten shares out, no
+majority anywhere.
 
-**Why the specific shape.** Two obvious versions both fail, and both were tried and measured:
+**Why the specific shape.** Two obvious versions fail, and both were tried and measured:
 
 | Rule tried | What happened |
 |---|---|
-| Buy from the **largest** holder | A raids B to six, B raids A back to five, forever. One game declared and lapsed **32 times** without settling. |
-| Buy from the **smallest** holder, no restriction on the buyer | Concentrates within a turn, then the next captain strips it back. **10,850** share transactions in one game. A forced sale moves money *between players*, so nothing is ever spent down and it never self-limits. |
+| Buy from the **largest** holder | A raids B to six, B raids A back to five, forever. One game declared and lapsed **32 times**. |
+| Buy from the **smallest**, no restriction on the buyer | The next captain strips it straight back. **10,850** share transactions in one game — a forced sale moves money between players, so nothing is ever spent down. |
 
-The restriction `buyer.shares >= seller.shares` is what makes it provably terminate. Take the sum of
-the squares of every captain's holding: moving a share from a captain with `s` to one with `b >= s`
-changes it by `2(b − s) + 2`, always positive. So every forced sale strictly increases a quantity
-bounded above by 100, the whole game admits only a bounded number of them, and the holding always
-concentrates. Once a captain does hold six, they are nobody's smallest holder, so the majority
-cannot be raided away.
-
-The cost to a trailing captain is real and deliberate: hold no shares and you cannot force your way
-in, only buy from the bank. Every captain gets the same shot at the bank's ten in the opening
-rounds — around round 25 in practice — so declining one is a decision, not an accident.
+`buyer.shares >= seller.shares` is what makes it terminate. Take the sum of the squares of every
+holding: moving a share from a captain with `s` to one with `b >= s` changes it by `2(b − s) + 2`,
+always positive, and the sum is bounded above by 100. So only a bounded number of forced sales can
+ever happen, and the holding always concentrates.
 
 ### 2.2 Selling a share back — the softlock escape
 
-A captain may sell a share to the bank for **half** its issue price.
+A captain may sell a share to the bank at half the current price band. This exists because the
+harness found a real dead end: a captain who spends down to £10 cannot afford the cheapest lot on any
+quay, so she has no way to earn and nothing to sell. One sat on a *winning* majority with £10 for
+**370 rounds**. Half is deliberately a bad price.
 
-This exists because the harness found a real dead end: a captain who spends down to £10 buying
-shares cannot afford the cheapest lot on any quay (£20), so she has no way to earn, nothing to sell,
-and simply sails in circles. One sat on a *winning* majority of six shares and £10 for **370
-rounds**, unable to raise the £750 the win also requires, while nobody else could reach a majority
-either. Half is deliberately a bad price; it should hurt to need it.
+### 2.3 Movement, in sail points rather than nodes
 
-### 2.3 Dumping an unwanted cargo
+The board uses printed nodes at one point each. We use **sail points** — roughly nautical miles ÷
+500 — which is the same idea at a different granularity, chosen so that real geography could drive
+the chart. A 2d6 roll averages 7, the world is about seven turns across.
 
-A lot nobody has a card for can be sold at any port that buys that good, for **half** what was paid.
-Speculation is a real part of the original game, and without an exit a speculating ship can be
-bricked permanently.
+Faithful within that: independent dice per ship, no exact roll needed to dock, excess forfeited on
+arrival, infinite port capacity.
 
-### 2.4 Movement
+**Authored:** a course may cross several legs in one plot, sailing past intermediate ports. And a
+ship at sea may be re-ordered to either end of the leg she is on — carry on, or put about and lose
+the ground she made. The source is silent on both; the second exists because forbidding any change
+of course once set was simply annoying.
 
-- **2d6 per ship per turn** [authored — the board's own multi-ship movement rule is not documented].
-- Ships already at sea advance the moment their owner rolls, without a separate click: a ship
-  mid-ocean has no decision to make.
-- A course may cross several legs; intermediate ports are **sailed past**, not called at. To trade
-  somewhere on the way, plot a course to that port instead. This is the routing decision the game
-  is actually about.
-- Tying up **forfeits the rest of the roll**. You cannot bank the wind.
-- A course can only be set from port. No coming about mid-ocean.
-
-### 2.5 Money
+### 2.4 Money
 
 | Constant | Value | Note |
 |---|---|---|
-| Starting cash | £250 | Two mid-value lots, not enough for a share |
-| Share (from the bank) | £120 | Six of them is £720 |
-| Share (forced buy-out) | £240 | Double |
-| Share sold back | £60 | Half |
-| A new clipper | £250 | Fits out at Liverpool wherever her owner is |
-| Cargo | £20–£90 | Flat per good, everywhere |
+| Starting cash | £600 | FAITHFUL — inside the source's £500–£1,000 |
+| Share, from the bank | £90 rising £45 a step | FAITHFUL in shape; the numbers are ours |
+| Share, forced buy-out | 2× the top band | Authored |
+| Share sold back | half the band | Authored |
+| A new clipper | £250 | Authored |
+| Cargo | £20–£90 a lot | Authored |
 
-Cargo prices are flat per good rather than varying by port. This is not laziness: the payout is
-"four times **the purchase price**", which is only unambiguous if the purchase price is a property
-of the card rather than of where you happened to buy.
+Cargo prices are flat per good rather than varying by port. The payout is "four times **the purchase
+price**", which is only unambiguous if that price is a property of the card rather than of where you
+happened to buy.
 
-### 2.6 The deck
+### 2.5 The deck
 
-A card is only dealt if its source and destination are within **24 sail points**. Without a cap the
-deck contains genuinely undeliverable runs — Hamburg timber to Yokohama is the width of the chart,
-seven turns of sailing for a £75 profit — which would sit face-up and dead in one of only five
-slots. At 24 the median run is about two turns and every good still appears; at 18, guano drops out
-of the game entirely.
+A card is only dealt if source and destination are within **24 sail points**. Without a cap the deck
+contains genuinely undeliverable runs — Hamburg timber to Yokohama is the width of the chart — which
+would sit face-up and dead in one of only five slots. At 24 the median run is about two turns and
+every good still appears; at 18, guano drops out of the game entirely.
 
 The five face-up cards are kept distinct, so the same run never appears twice.
 
-### 2.7 A lapsed claim
+### 2.6 Everything in §5a
 
-If a declarer fails any of the three conditions when the twelve rounds are up, the claim lapses,
-trading continues, and it can be re-declared. The original does not say.
+Weather, wind, storms, piracy, ransoms, insurance, guns and copper are **entirely authored**. The
+source says nothing about any of them. They are all optional and off in the 1988 preset.
 
 ---
 
@@ -234,9 +254,8 @@ exactly this reason.
 **A wide seed set is not optional.** Every pathology in this game's history showed up in some seeds
 and not others, and a five-seed run twice reported a bug fixed while it was still there.
 
-Current pacing across twenty seeds with hazards on: every game finishes, median **155 rounds**,
-range 116–307. Without hazards the median is about 114, so weather and pirates cost roughly a third
-again in length — which is the price of having them.
+Current pacing across twenty seeds with hazards on: every game finishes, median **87 rounds**,
+range 34–149. Three cargo slots roughly doubled throughput and brought this down from 155.
 
 ---
 
@@ -313,8 +332,11 @@ time**. Routing and timing fall out of the above for free.
 ## 6. Things deliberately not built
 
 Crew and captain skills, ship speed classes beyond copper, weather forecasting as a purchasable
-information layer, voluntary share trading between captains, networked multiplayer, and Voyage mode
-below.
+information layer, networked multiplayer, and Voyage mode below.
+
+**Requested and not yet built:** optional *multiple stocks* — several shipping companies whose share
+prices move with the trade flowing through their regions, so shares become a market to read rather
+than a counter to fill. Designed in conversation, not started.
 
 ---
 
@@ -381,6 +403,29 @@ Bugs found and fixed during the build, all by measurement rather than by looking
 | Browser play-through | The contract highlight ring swallowed clicks on the port beneath it |
 | Browser play-through | Clicking your own port read "No sea route from Lisbon to Lisbon" |
 | Browser play-through | The sidebar pushed the chart off screen, making "click a port" impossible |
+
+### Session 4 (2026-08-05) — the real rulebook
+
+The owner supplied a compiled rules manual for the actual 1988 game, which invalidated six authored
+rulings at once (§1). Correcting them was the most productive change the game has had:
+
+- **Three cargo slots** answered the "flat gameplay" complaint directly, and roughly doubled
+  throughput — median game 155 rounds → **87**.
+- **The scaling share price and the sabotage window** fixed a genuine dead end the owner spotted:
+  the bank sold out by round 37–63 of a ~155-round game at a flat £120, after which a captain on
+  zero shares could never buy in, because a forced buy-out requires already holding as many as your
+  target. Six shares now cost ~£1,600 across the whole game.
+- **A failed claim ending the game on asset value** means out-trading the table is a real route to
+  victory, so nobody is locked out by the share race.
+
+Also this session: mid-voyage redirect, the three-column board (exchange left, chart centre, controls
+right), rival ships made legible with wakes, captain names and cargo pips, a RivalFleets panel, and
+two lobby presets.
+
+**A methodology note worth keeping.** Half a session was spent diagnosing a "stuck game" against a
+working tree where an in-progress rename had left `actions.ts` uncompilable. `tsx` transpiles without
+typechecking, so every game looked broken for reasons unrelated to the bug being hunted. **Typecheck
+before trusting any measurement taken mid-refactor.**
 
 ### Session 3 (2026-08-03) — weather, wind, piracy, and a stuck endgame
 
