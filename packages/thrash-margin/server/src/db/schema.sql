@@ -5,13 +5,18 @@
 
 -- Users
 CREATE TABLE IF NOT EXISTS users (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  username    VARCHAR(32) UNIQUE NOT NULL,
-  email       VARCHAR(255) UNIQUE NOT NULL,
-  password    VARCHAR(255) NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  username       VARCHAR(32) UNIQUE NOT NULL,
+  email          VARCHAR(255) UNIQUE NOT NULL,
+  password       VARCHAR(255) NOT NULL,
+  last_login_at  TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- Idempotent migration for the already-deployed instance — see the `games.game` migration
+-- below for why this pattern is used instead of a separate numbered migration file.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 -- Games
 -- `game` discriminates which app owns this row so Thrash Margin, Banco di Niccolo, The Tea Race
@@ -58,12 +63,29 @@ CREATE TABLE IF NOT EXISTS player_stats (
   updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Feedback / bug reports / ideas, submitted by any signed-in user against any of the three
+-- games (or 'general' for portal-wide feedback). Admin-only to read; any signed-in user can
+-- submit. `user_id` is nullable with ON DELETE SET NULL so a deleted account doesn't take its
+-- feedback history with it.
+CREATE TABLE IF NOT EXISTS feedback (
+  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+  game        VARCHAR(16) NOT NULL DEFAULT 'general',  -- 'thrash_margin' | 'niccolo' | 'tea_race' | 'general'
+  type        VARCHAR(16) NOT NULL DEFAULT 'idea',     -- 'bug' | 'idea' | 'comment'
+  message     TEXT NOT NULL,
+  status      VARCHAR(16) NOT NULL DEFAULT 'open',     -- 'open' | 'resolved'
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_games_owner    ON games(owner_id);
 CREATE INDEX IF NOT EXISTS idx_games_status   ON games(status);
 CREATE INDEX IF NOT EXISTS idx_games_owner_game ON games(owner_id, game);
 CREATE INDEX IF NOT EXISTS idx_actions_game   ON game_actions(game_id);
 CREATE INDEX IF NOT EXISTS idx_actions_turn   ON game_actions(game_id, turn);
+CREATE INDEX IF NOT EXISTS idx_feedback_game   ON feedback(game);
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
+CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);
 
 -- Auto-update updated_at
 CREATE OR REPLACE FUNCTION update_updated_at()

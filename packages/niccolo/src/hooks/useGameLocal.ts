@@ -18,10 +18,10 @@ export interface SaveMeta {
 
 function statusOf(s: GameState): SaveMeta['status'] {
   if (s.insolvent) return 'defeated';
-  // chapter1_complete through chapter4_complete are mid-campaign flags now (later chapters play on
-  // past them) — only the actual end of shipped content, chapter5_complete, counts as a finished
+  // chapter1_complete through chapter5_complete are mid-campaign flags now (later chapters play on
+  // past them) — only the actual end of shipped content, chapter6_complete, counts as a finished
   // campaign.
-  if (s.flags.chapter5_complete) return 'victory';
+  if (s.flags.chapter6_complete) return 'victory';
   return 'active';
 }
 

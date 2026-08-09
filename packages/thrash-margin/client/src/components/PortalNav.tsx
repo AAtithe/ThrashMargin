@@ -28,11 +28,19 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         <a href="/tea-race/" style={styles.link}>
           ⛵ The Tea Race
         </a>
+        <span style={styles.sep}>·</span>
+        {/* Base-relative, like the Sign in link below — this is Thrash Margin's own route. */}
+        <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>
+          💬 Feedback
+        </a>
       </div>
       <div style={styles.right}>
         {user ? (
           <>
             <span>Signed in as {user.username}</span>
+            <a href={`${import.meta.env.BASE_URL}profile`} style={styles.link}>
+              Profile
+            </a>
             <button
               style={styles.signOut}
               onClick={() => {

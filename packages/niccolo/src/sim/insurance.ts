@@ -1,3 +1,4 @@
+import { ESCORT_RISK_MULTIPLIER } from './convoy';
 import { priceAt } from './market';
 import type { Cargo, GameState, Insurance, MarketScarcity, Route, Vessel, VoyageLossEvent } from './types';
 
@@ -75,14 +76,19 @@ export function resolveVoyageRisk(
   insurance: Insurance[],
   routes: Route[],
   week: number,
+  /** Vessels riding with a paid convoy escort (Chapter 6) — their weekly risk is multiplied down,
+   * never to zero. Optional and empty by default, so every campaign without a convoy takes exactly
+   * the same path through this function as before it existed. */
+  escorted: Set<string> = new Set(),
 ): VoyageRiskResolution {
   const candidates = vessels.filter(v => v.destination && Object.values(v.cargo).some(q => q > 0));
 
   for (const vessel of candidates) {
     const route = routes.find(r => r.id === vessel.routeId);
     if (!route) continue;
-    const risk =
+    const baseRisk =
       (route.type === 'sea' ? SEA_RISK_PER_WEEK : LAND_RISK_PER_WEEK) + (route.seasonal ? SEASONAL_RISK_SURCHARGE : 0);
+    const risk = escorted.has(vessel.id) ? baseRisk * ESCORT_RISK_MULTIPLIER : baseRisk;
     if (Math.random() >= risk) continue;
 
     const goodIds = Object.keys(vessel.cargo).filter(id => (vessel.cargo[id] ?? 0) > 0);

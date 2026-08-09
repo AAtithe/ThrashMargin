@@ -380,6 +380,33 @@ export interface EventTrigger {
   flagAbsent?: string;
   cargoAtLeast?: { location: string; goodId: string; quantity: number };
   vesselKindAt?: { kind: VesselKind; location: string };
+  /**
+   * Requires one *specific* vessel, by id, to be docked at `location` — the exact-identity version
+   * of `vesselKindAt` (Chapter 6, Phase 20).
+   *
+   * `vesselKindAt` was correct only while the player could own exactly one ship. Chapter 6 is the
+   * first chapter to grant a second (the Iceland convoy), which makes "some vessel of kind `ship`
+   * is at Bruges" true for a ship idling at home while the voyage that actually matters is still
+   * three thousand miles away — the regression `freeplay-and-trading-design.md` predicted when it
+   * specced fleet growth. Chapters 4 and 5's own homecoming triggers are pinned to `ship_1` (the
+   * single ship those chapters can possibly have used, granted by Chapter 0's finale or seeded by
+   * `skipPrologue`) rather than left on a kind check that a bigger fleet quietly widens.
+   *
+   * **Prefer this over `vesselKindAt` for any "the vessel that did X has arrived" check.**
+   * `vesselKindAt` remains correct only where *any* vessel of that kind genuinely satisfies the
+   * beat — and note that a bare `location` is weaker still, since the home courier never leaves
+   * Bruges and makes `location: "bruges"` true for the whole campaign.
+   */
+  vesselIdAt?: { vesselId: string; location: string };
+  /**
+   * Requires the *combined* holdings of every non-under-way vessel at `location` to reach
+   * `quantity` of `goodId` — Chapter 6's "mass logistics" delivery check (Section 12's own system
+   * line for this chapter), as against `cargoAtLeast`, which asks one hull to carry the lot.
+   * Deliberately a separate field rather than a flag on `cargoAtLeast`: the existing single-hull
+   * checks (Chapter 1's cannon, Chapter 5's glass) are load-bearing as written, and quietly
+   * teaching them to sum across vessels would let two hulls jointly satisfy a beat authored for one.
+   */
+  combinedCargoAtLeast?: { location: string; goodId: string; quantity: number };
   weeksAfterFlag?: { flag: string; weeks: number };
 }
 
@@ -595,6 +622,21 @@ export interface Objective {
   optional?: boolean;
 }
 
+/**
+ * Chapter 6's "mass logistics" (design doc §12's own system line for this chapter): several vessels
+ * sailing as one hull's worth of decision. See `sim/convoy.ts` for why this deliberately does not
+ * include buying ships, and why it is singular.
+ */
+export interface Convoy {
+  /** Every vessel sailing together. At least two, all cargo-capable, all in the same port when formed. */
+  vesselIds: string[];
+  /** Whether a paid escort is currently riding with it — lowers each member's storm/piracy chance
+   * (§4: "war events raise it, escorts lower it"). Lapses if its weekly pay can't be met. */
+  escorted: boolean;
+  /** Flavour only: what the hired escort is called, if the player named it. */
+  escortName?: string;
+}
+
 export type EstateStage = 'growing' | 'ready' | 'refining';
 
 /**
@@ -683,6 +725,12 @@ export interface GameState {
    * card appears at creation; optional/undefined on an older save just means "acknowledge nothing
    * yet," which at worst re-shows one already-seen card once, never crashes. */
   lastAcknowledgedChapter?: number;
+  /** The convoy currently sailing together, if any (Chapter 6, Phase 20). Optional/null so a save
+   * from before this field existed simply has no convoy, not a shape mismatch — the same discipline
+   * `expedition` and `evidence` already use. */
+  convoy?: Convoy | null;
+  /** True for the one week a paid escort lapsed for want of cash, so the UI can say so. */
+  escortLapsed?: boolean;
   /** The Evidence Board's contents (Chapter 5, Phase 19) — both tracks in one list, filtered by
    * `track` at the read sites. Optional so a save from before this field existed simply has an
    * empty dossier rather than a shape mismatch, the same discipline `expedition`/`objectivesHidden`
@@ -727,6 +775,9 @@ export type GameAction =
   | { type: 'USE_SECRET'; secretId: string }
   | { type: 'PLACE_AGENT'; placement: AgentPlacement; name?: string }
   | { type: 'USE_DIVINING'; purpose: DiviningPurpose }
+  | { type: 'FORM_CONVOY'; vesselIds: string[] }
+  | { type: 'DISBAND_CONVOY' }
+  | { type: 'HIRE_ESCORT'; escortName?: string }
   | { type: 'ESTABLISH_ESTATE' }
   | { type: 'HARVEST_ESTATE' }
   | { type: 'SHIP_ESTATE_GOODS'; vesselId: string; quantity: number };

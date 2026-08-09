@@ -1,0 +1,5 @@
+[
+  { "id": "crackbene", "name": "Mick Crackbene", "role": "shipmaster",
+    "skills": { "law": 1, "trade": 3, "combat": 4, "intrigue": 3 },
+    "loyalty": 50, "salary": 3, "location": "bruges", "status": "pending", "assignment": { "type": "idle" } }
+]

@@ -1,0 +1,6 @@
+[
+  { "id": "edinburgh-reykjavik", "from": "edinburgh", "to": "reykjavik", "distanceWeeks": 4, "type": "sea", "seasonal": true },
+  { "id": "london-reykjavik", "from": "london", "to": "reykjavik", "distanceWeeks": 5, "type": "sea", "seasonal": true },
+  { "id": "bruges-danzig", "from": "bruges", "to": "danzig", "distanceWeeks": 3, "type": "sea", "seasonal": true },
+  { "id": "london-danzig", "from": "london", "to": "danzig", "distanceWeeks": 3, "type": "sea", "seasonal": false }
+]

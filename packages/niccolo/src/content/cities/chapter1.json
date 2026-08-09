@@ -1,10 +1,10 @@
 [
   { "id": "london",   "name": "London",   "region": "england",   "power": "england", "lon": -0.13, "lat": 51.5,  "port": true, "currency": "pound",
-    "market": { "wool": { "base": 10 }, "cloth": { "base": 45, "qualityMarket": true } } },
+    "market": { "wool": { "base": 10 }, "cloth": { "base": 45, "qualityMarket": true }, "stockfish": { "base": 18 } } },
   { "id": "calais",   "name": "Calais",   "region": "england",   "power": "england", "lon": 1.85, "lat": 50.95, "port": true, "currency": "pound",
     "market": { "wool": { "base": 14 }, "cloth": { "base": 40 } } },
   { "id": "bruges",   "name": "Bruges",   "region": "flanders",  "power": "burgundy","lon": 3.2, "lat": 51.2, "port": true, "currency": "groot",
-    "market": { "cloth": { "base": 24 }, "wool": { "base": 20 }, "madder": { "base": 22 }, "spices": { "base": 28 } } },
+    "market": { "cloth": { "base": 24 }, "wool": { "base": 20 }, "madder": { "base": 22 }, "spices": { "base": 28 }, "stockfish": { "base": 16 }, "furs": { "base": 40 } } },
   { "id": "ghent",    "name": "Ghent",    "region": "flanders",  "power": "burgundy","lon": 3.7, "lat": 51.05, "port": false, "currency": "groot",
     "labelSide": "s",
     "market": { "cloth": { "base": 22 }, "madder": { "base": 18 } } },
@@ -23,6 +23,6 @@
   { "id": "florence", "name": "Florence", "region": "tuscany",   "power": "florence","lon": 11.25, "lat": 43.8, "port": false, "currency": "florin",
     "market": { "cloth": { "base": 32 }, "silk": { "base": 38 }, "wine": { "base": 20 } } },
   { "id": "venice",   "name": "Venice",   "region": "veneto",    "power": "venice",  "lon": 12.3, "lat": 45.4, "port": true, "currency": "ducat",
-    "market": { "spices": { "base": 32 }, "silk": { "base": 34 }, "glass": { "base": 26 }, "salt": { "base": 24 }, "sugar": { "base": 14 } } },
+    "market": { "spices": { "base": 32 }, "silk": { "base": 34 }, "glass": { "base": 26 }, "salt": { "base": 24 }, "sugar": { "base": 14 }, "furs": { "base": 46 } } },
   { "id": "naples",   "name": "Naples",   "region": "campania",  "power": "naples",  "lon": 14.25, "lat": 40.85, "port": true, "currency": "ducat" }
 ]

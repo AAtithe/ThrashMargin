@@ -1,0 +1,4 @@
+[
+  { "id": "stockfish", "name": "Stockfish", "unit": "barrel" },
+  { "id": "furs",      "name": "Furs",      "unit": "bale" }
+]

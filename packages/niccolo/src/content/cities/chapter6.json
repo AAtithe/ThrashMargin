@@ -1,0 +1,6 @@
+[
+  { "id": "reykjavik", "name": "Reykjavik", "region": "iceland", "power": "denmark", "lon": -21.94, "lat": 64.15, "port": true, "currency": "groot", "labelSide": "e",
+    "market": { "stockfish": { "base": 4 }, "salt": { "base": 30 }, "cloth": { "base": 44 } } },
+  { "id": "danzig", "name": "Danzig", "region": "baltic", "power": "hanse", "lon": 18.65, "lat": 54.35, "port": true, "currency": "groot", "labelSide": "e",
+    "market": { "furs": { "base": 18 }, "cloth": { "base": 34 }, "wine": { "base": 24 } } }
+]

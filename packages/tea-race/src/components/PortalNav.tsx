@@ -31,11 +31,18 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         <a href="/niccolo/" style={styles.link}>
           ⚖️ Banco di Niccolo
         </a>
+        <span style={styles.sep}>·</span>
+        <a href="/thrash-margin/feedback" style={styles.link}>
+          💬 Feedback
+        </a>
       </div>
       <div style={styles.right}>
         {user ? (
           <>
             <span>Signed in as {user.username}</span>
+            <a href="/thrash-margin/profile" style={styles.link}>
+              Profile
+            </a>
             <button
               style={styles.signOut}
               onClick={() => {

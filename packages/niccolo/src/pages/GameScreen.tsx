@@ -18,6 +18,7 @@ import CountingHousePanel from '../components/CountingHousePanel';
 import HouseholdPanel from '../components/HouseholdPanel';
 import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
+import ConvoyPanel from '../components/ConvoyPanel';
 import EvidenceBoardPanel from '../components/EvidenceBoardPanel';
 import DiviningPanel from '../components/DiviningPanel';
 import EstatePanel from '../components/EstatePanel';
@@ -360,35 +361,37 @@ export default function GameScreen() {
     );
   }
 
-  if (state.flags.chapter5_complete) {
+  if (state.flags.chapter6_complete) {
     const secretsUsed = state.secrets.filter(s => s.used).length;
     const secretsExpired = state.secrets.filter(s => s.expired).length;
     const departed = state.characters.filter(c => c.status === 'departed');
-    const sinaiSucceeded = !!state.flags.sinai_journey_success;
-    const childNamed = !!state.flags.child_named;
-    const vatachinoNamed = !!state.flags.vatachino_named;
+    const icelandSucceeded = !!state.flags.iceland_venture_success;
+    const volterraRuin = !!state.flags.volterra_ruin;
+    const stayedClearOfBurgundy = !!state.flags.burgundy_stayed_clear;
+    const tookTheRefugees = !!state.flags.iceland_refugees_taken;
     const parentagePieces = (state.evidence ?? []).filter(e => e.track === 'parentage').length;
     return (
       <div style={STYLE}>
         <PortalNav variant="header" />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-          <h1 style={TITLE}>Chapter 5 — The Unicorn Hunt</h1>
+          <h1 style={TITLE}>Chapter 6 — To Lie with Lions</h1>
           <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {sinaiSucceeded
-              ? "The lamps were hung at St Catherine's and paid for in the sultan's own coin, and the house came out of the desert with a standing in the pilgrim trade four Italian houses had wanted for a decade."
-              : "The safe-conduct lapsed with the glass still in a warehouse, and the pilgrim houses that had declined the commission were civil about it, which cost more than the commission would have."}
+            {icelandSucceeded
+              ? 'Three hulls came up the Zwin together with more dried fish aboard than Bruges had seen out of one Flemish house, and the northern trade stopped being a speculation and became the house\'s own.'
+              : 'The season shut in the north with the holds part-full, and what the venture proved was only how much tonnage the trade actually needs.'}
           </p>
           <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {childNamed
-              ? 'The boy has a name, given at a font his father was not told about, and a bearing three days south of Cairo that led to an empty house eleven days cold.'
-              : 'The boy exists. That is the whole of what the season established about him.'}
+            {volterraRuin
+              ? 'Volterra was taken in two days by seven thousand men, and every florin the house had standing in the alum went with it — a position perfectly priced, perfectly documented, and gone.'
+              : 'Volterra was taken in two days by seven thousand men, and the house\'s money was standing somewhere else. Three houses it deals with weekly were not so placed.'}
           </p>
           <p style={{ color: '#8a7a5a', maxWidth: '30rem', textAlign: 'center', fontSize: '0.9rem' }}>
             Concluded in {formatWeekDate(state.week, CAMPAIGN_START)}, {Math.round(state.cash)}f on hand, conscience{' '}
             {Math.round(state.conscience)}.{' '}
-            {vatachinoNamed
-              ? 'The Vatachino have names behind them now, and one of them was always going to be Ribérac.'
-              : 'The Vatachino remain a company that belongs to nobody the house can name.'}{' '}
+            {stayedClearOfBurgundy
+              ? 'The house lent Burgundy nothing, and was unpopular in Flanders for it.'
+              : 'The house is a creditor of a duke who went to Trier for a crown and came home without one.'}{' '}
+            {tookTheRefugees ? 'A hold that should have carried fish carried families out from under the ash.' : ''}{' '}
             Parentage dossier: {parentagePieces} piece{parentagePieces === 1 ? '' : 's'} pinned. Secrets used: {secretsUsed},
             expired unused: {secretsExpired}.
             {departed.length > 0
@@ -712,6 +715,13 @@ export default function GameScreen() {
                   {state.expedition.healthStatus}.
                 </p>
               )}
+
+              <ConvoyPanel
+                state={state}
+                onForm={vesselIds => dispatch({ type: 'FORM_CONVOY', vesselIds })}
+                onDisband={() => dispatch({ type: 'DISBAND_CONVOY' })}
+                onHireEscort={escortName => dispatch({ type: 'HIRE_ESCORT', escortName })}
+              />
             </>
           )}
 

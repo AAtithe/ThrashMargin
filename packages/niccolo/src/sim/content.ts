@@ -24,11 +24,18 @@ import routes5Data from '../content/routes/chapter5.json';
 import characters5Data from '../content/characters/chapter5.json';
 import events5Data from '../content/events/chapter5.json';
 import houses5Data from '../content/houses/chapter5.json';
+import cities6Data from '../content/cities/chapter6.json';
+import routes6Data from '../content/routes/chapter6.json';
+import goods6Data from '../content/goods/chapter6.json';
+import characters6Data from '../content/characters/chapter6.json';
+import events6Data from '../content/events/chapter6.json';
+import houses6Data from '../content/houses/chapter6.json';
 import objectives1Data from '../content/objectives/chapter1.json';
 import objectives2Data from '../content/objectives/chapter2.json';
 import objectives3Data from '../content/objectives/chapter3.json';
 import objectives4Data from '../content/objectives/chapter4.json';
 import objectives5Data from '../content/objectives/chapter5.json';
+import objectives6Data from '../content/objectives/chapter6.json';
 import type { City, Route, Good, Character, ScriptedEvent, House, Objective } from './types';
 
 export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
@@ -61,6 +68,7 @@ export const CITIES: City[] = [
   ...(cities3Data as unknown as City[]),
   ...(cities4Data as unknown as City[]),
   ...(cities5Data as unknown as City[]),
+  ...(cities6Data as unknown as City[]),
 ];
 export const ROUTES: Route[] = [
   ...(routesData as Route[]),
@@ -68,13 +76,20 @@ export const ROUTES: Route[] = [
   ...(routes3Data as Route[]),
   ...(routes4Data as Route[]),
   ...(routes5Data as Route[]),
+  ...(routes6Data as Route[]),
 ];
-export const GOODS: Good[] = [...(goodsData as Good[]), ...(goods3Data as Good[]), ...(goods4Data as Good[])];
+export const GOODS: Good[] = [
+  ...(goodsData as Good[]),
+  ...(goods3Data as Good[]),
+  ...(goods4Data as Good[]),
+  ...(goods6Data as Good[]),
+];
 export const CHARACTERS: Character[] = [
   ...(charactersData as unknown as Character[]),
   ...(characters2Data as unknown as Character[]),
   ...(characters4Data as unknown as Character[]),
   ...(characters5Data as unknown as Character[]),
+  ...(characters6Data as unknown as Character[]),
 ];
 export const EVENTS: ScriptedEvent[] = [
   ...(events0Data as unknown as ScriptedEvent[]),
@@ -83,11 +98,13 @@ export const EVENTS: ScriptedEvent[] = [
   ...(events3Data as unknown as ScriptedEvent[]),
   ...(events4Data as unknown as ScriptedEvent[]),
   ...(events5Data as unknown as ScriptedEvent[]),
+  ...(events6Data as unknown as ScriptedEvent[]),
 ];
 export const HOUSES: House[] = [
   ...(housesData as unknown as House[]),
   ...(houses2Data as unknown as House[]),
   ...(houses5Data as unknown as House[]),
+  ...(houses6Data as unknown as House[]),
 ];
 /** Story-tied objectives (Phase 14) — a read-only projection over flags the chapters above already
  * set, authored per chapter like every other content type. Chapter 0 has none of its own (see
@@ -98,6 +115,7 @@ export const OBJECTIVES: Objective[] = [
   ...(objectives3Data as Objective[]),
   ...(objectives4Data as Objective[]),
   ...(objectives5Data as Objective[]),
+  ...(objectives6Data as Objective[]),
 ];
 
 export function findCity(id: string): City | undefined {

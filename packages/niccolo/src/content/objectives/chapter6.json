@@ -1,0 +1,30 @@
+[
+  { "id": "obj_c6_godscalc", "chapterNumber": 6, "label": "See Father Godscalc out properly", "inevitable": true,
+    "description": "What he brought back out of Africa has been killing him for four years. Nothing in the house's power alters that; only how it is met.",
+    "kind": { "type": "flag", "flag": "godscalc_mourned" } },
+
+  { "id": "obj_c6_iceland", "chapterNumber": 6, "label": "Bring the northern venture home",
+    "description": "Form the three hulls into one convoy, carry salt north to the Iceland stations, and land at least 40 barrels of stockfish at Bruges between them — the combined hold is the point, no single ship can do it. An escort is expensive and halves what the crossing costs in losses. The season shuts in 40 weeks.",
+    "revealFlag": "iceland_proposed",
+    "kind": { "type": "flag", "flag": "iceland_epilogue" },
+    "outcomeFlags": { "positive": "iceland_venture_success", "costly": "iceland_venture_failed" } },
+
+  { "id": "obj_c6_nativity", "chapterNumber": 6, "label": "Stage the Nativity at the Scottish court",
+    "description": "A nominal fee and an audience that decides who holds the burgh's customs next year.",
+    "kind": { "type": "flag", "flag": "nativity_resolved" } },
+
+  { "id": "obj_c6_burgundy", "chapterNumber": 6, "label": "Survive what Burgundy asks for",
+    "description": "The duke wants money against revenues already pledged three times over. Refusing costs something in Flanders immediately; lending costs something later, at Trier.",
+    "kind": { "type": "flag", "flag": "burgundy_trap_resolved" },
+    "outcomeFlags": { "positive": "burgundy_stayed_clear", "costly": "burgundy_paper_dumped" } },
+
+  { "id": "obj_c6_volterra", "chapterNumber": 6, "label": "Settle the house's position in the Volterra alum",
+    "description": "Alum on a subject town's own hillside, in a state whose leading family has never let a profitable thing belong to somebody else. How deep the house stands in it is the whole question.",
+    "revealFlag": "volterra_alum_known",
+    "kind": { "type": "flag", "flag": "volterra_reckoning_resolved" },
+    "outcomeFlags": { "positive": "volterra_survived", "costly": "volterra_ruin" } },
+
+  { "id": "obj_c6_refugees", "chapterNumber": 6, "label": "The families under the ash", "optional": true,
+    "description": "A week's delay and a hold given over to people instead of fish. Doesn't gate the chapter — just marks the choice.",
+    "kind": { "type": "flag", "flag": "iceland_refugees_taken" } }
+]

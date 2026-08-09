@@ -54,6 +54,18 @@ function triggerMatches(state: GameState, trigger: EventTrigger): boolean {
     const satisfied = state.vessels.some(v => !v.destination && v.location === location && v.kind === kind);
     if (!satisfied) return false;
   }
+  if (trigger.vesselIdAt) {
+    const { vesselId, location } = trigger.vesselIdAt;
+    const satisfied = state.vessels.some(v => !v.destination && v.location === location && v.id === vesselId);
+    if (!satisfied) return false;
+  }
+  if (trigger.combinedCargoAtLeast) {
+    const { location, goodId, quantity } = trigger.combinedCargoAtLeast;
+    const held = state.vessels
+      .filter(v => !v.destination && v.location === location)
+      .reduce((sum, v) => sum + (v.cargo[goodId] ?? 0), 0);
+    if (held < quantity) return false;
+  }
   if (trigger.weeksAfterFlag) {
     const { flag, weeks } = trigger.weeksAfterFlag;
     if (!state.flags[flag]) return false;

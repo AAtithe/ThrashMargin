@@ -1,0 +1,16 @@
+[
+  {
+    "id": "hanse",
+    "name": "The Danzig Hanse",
+    "homeCity": "danzig",
+    "disposition": "hostile",
+    "baselineRelation": 25,
+    "insiderSecret": {
+      "id": "hanse_settlement_floor",
+      "name": "What the Hanse will settle for",
+      "description": "The terms the Danzig and Lubeck delegates have privately agreed they will accept to end the war with England — the Steelyard back, and the fisheries left ambiguous.",
+      "value": 85,
+      "expiresInWeeks": 16
+    }
+  }
+]

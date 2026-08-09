@@ -1,0 +1,334 @@
+[
+  {
+    "id": "ev_c6_001",
+    "chapter": 6,
+    "trigger": { "flag": "chapter5_complete" },
+    "title": "To Lie with Lions",
+    "body": "The Unicorn Hunt's own books are closed, and the house is larger than any of its officers has quite caught up with: agencies in four kingdoms, a Scottish customs contract, an Egyptian warehouse, and a chaplain who has been too ill to say Mass since the spring and will not discuss it.",
+    "choices": [
+      { "text": "Take stock properly, and start with the household", "effects": { "flag": "chapter6_open" } }
+    ]
+  },
+  {
+    "id": "ev_c6_002",
+    "chapter": 6,
+    "trigger": { "flag": "chapter6_open" },
+    "title": "What Father Godscalc will not discuss",
+    "body": "Master Tobie is blunt about it, in private, because being blunt is the only professional courtesy he has left to offer: what the chaplain brought back out of Africa has been killing him by degrees for four years, it is doing so faster now, and there is no physician in Flanders or anywhere else who can alter that. Godscalc himself has known considerably longer than anyone has told him.",
+    "choices": [
+      { "text": "Send for every physician the house can afford", "effects": { "cash": -40, "flag": "godscalc_failing" } },
+      { "text": "Ask him what he wants, and do that instead", "effects": { "conscience": 3, "flag": "godscalc_failing" } }
+    ]
+  },
+  {
+    "id": "ev_c6_003",
+    "chapter": 6,
+    "trigger": { "flag": "godscalc_failing" },
+    "title": "The chaplain's last charge",
+    "body": "He goes in his own time and in full possession of it, having spent his last useful fortnight on correspondence rather than prayer, which surprises nobody who knew him. The final letter is to Nicholas, sealed, and its instruction is not a request: keep the conscience of the house where the house can see it, and stop pretending the two ledgers are separate.",
+    "choices": [
+      { "text": "Read it, and keep it", "effects": { "characterDeparts": "godscalc", "conscience": 4, "flag": "godscalc_lost", "evidence": { "id": "par_godscalc_letter", "name": "Godscalc's sealed letter", "description": "The chaplain's last letter, which spends four lines on the house's conscience and eleven on what he was told in Africa about a Bruges christening — by a man who had no reason to lie and is now also dead.", "track": "parentage", "kind": "testimony" } } },
+      { "text": "Read it, and put it where nobody else will", "effects": { "characterDeparts": "godscalc", "conscience": -2, "flag": "godscalc_lost" } }
+    ]
+  },
+  {
+    "id": "ev_c6_004",
+    "chapter": 6,
+    "trigger": { "flag": "godscalc_lost" },
+    "title": "A house with no chaplain",
+    "body": "The funeral is larger than he would have wanted and the silence afterwards is worse than either. Practically, the company has lost the one officer whose whole function was to be inconvenient at the right moment; the ledger records none of that, and will go on not recording it.",
+    "choices": [
+      { "text": "Leave the post empty rather than fill it badly", "effects": { "conscience": 2, "flag": "godscalc_mourned" } },
+      { "text": "Put the chaplain's stipend back into the trading account", "effects": { "cash": 30, "conscience": -3, "flag": "godscalc_mourned" } }
+    ]
+  },
+  {
+    "id": "ev_c6_005",
+    "chapter": 6,
+    "trigger": { "flag": "godscalc_mourned" },
+    "title": "Fish, of all things",
+    "body": "The proposal is unglamorous enough to be worth hearing: dried cod out of Iceland, bought at the stations for almost nothing, sold in Flanders and England for a great deal more, in a trade the English and the Hanse have been shooting at each other over since sixty-nine. Nobody makes a fortune on one shipload. That is the entire point — it only pays in tonnage.",
+    "choices": [
+      { "text": "Look into it properly", "effects": { "flag": "iceland_proposed" } },
+      { "text": "Look into it properly, and quietly, given who else is in that trade", "effects": { "cash": -8, "flag": "iceland_proposed" } }
+    ]
+  },
+  {
+    "id": "ev_c6_006",
+    "chapter": 6,
+    "trigger": { "flag": "iceland_proposed" },
+    "title": "A shipmaster who has been north",
+    "body": "Mick Crackbene has sailed for the Danes, the Portuguese and at least two men he declines to name, has been to Iceland four times, and is entirely candid that he will take the house's wages for exactly as long as they are the best on offer. Master Julius dislikes him on sight. Nobody disputes that he is the right man.",
+    "choices": [
+      { "text": "Take him on at his price", "effects": { "joinCharacter": "crackbene", "cash": -15, "flag": "crackbene_joined" } },
+      { "text": "Take him on, and have Julius write the terms very carefully indeed", "effects": { "joinCharacter": "crackbene", "conscience": 1, "flag": "crackbene_joined" } }
+    ]
+  },
+  {
+    "id": "ev_c6_007",
+    "chapter": 6,
+    "trigger": { "flag": "crackbene_joined" },
+    "title": "The first of the hulls",
+    "body": "One ship cannot carry enough dried fish to be worth the crossing, which is why the trade belongs to men who own several. Crackbene finds the first: a round ship laid up at Sluys since her owner's creditors caught him, sound below the waterline and cheap for exactly that reason.",
+    "choices": [
+      { "text": "Buy her and put Crackbene's name to the survey", "effects": { "cash": -55, "flag": "second_hull", "grantVessel": { "id": "ship_2", "kind": "ship", "name": "The Svipa", "capacity": 20, "location": "bruges" } } }
+    ]
+  },
+  {
+    "id": "ev_c6_008",
+    "chapter": 6,
+    "trigger": { "flag": "second_hull" },
+    "title": "And the third",
+    "body": "The third comes out of the same set of misfortunes as the second, from a Danzig owner unwilling to sail her west while the war is on and unwilling to say so in writing. She is bigger, slower, and has been north before, which her papers are careful not to mention.",
+    "choices": [
+      { "text": "Buy her too, and be done with it", "effects": { "cash": -55, "flags": ["iceland_fleet_ready"], "grantVessel": { "id": "ship_3", "kind": "ship", "name": "The Ghost", "capacity": 20, "location": "bruges" } } }
+    ]
+  },
+  {
+    "id": "ev_c6_009",
+    "chapter": 6,
+    "trigger": { "flag": "iceland_fleet_ready" },
+    "title": "Three hulls, one voyage",
+    "body": "Crackbene's terms for going north are not negotiable and are, on inspection, simply seamanship: the ships sail together or they do not sail. A straggler in those waters is a prize, and the Hanse have been taking prizes since the war began. He would also like an armed escort, and says so in the tone of a man who expects to be refused and to be proved right about it later.",
+    "choices": [
+      { "text": "Form the ships up as one convoy and provision for the north", "effects": { "cash": -25, "flag": "iceland_bound" } },
+      { "text": "Form them up, and sail on what's already aboard", "effects": { "conscience": -1, "flag": "iceland_bound" } }
+    ]
+  },
+  {
+    "id": "ev_c6_010",
+    "chapter": 6,
+    "trigger": { "flag": "iceland_bound", "location": "reykjavik" },
+    "title": "Landfall in Iceland",
+    "body": "There is no town in any sense the house would recognise: a shore, a church, turf houses banked against a wind that does not stop, and a season's dried cod stacked in open racks by the ton. Everything the island cannot make — salt, meal, cloth, timber, iron — arrives on ships like these or does not arrive.",
+    "choices": [
+      { "text": "Open the house's trade at the station", "effects": { "flag": "reached_iceland" } }
+    ]
+  },
+  {
+    "id": "ev_c6_011",
+    "chapter": 6,
+    "trigger": { "flag": "reached_iceland" },
+    "title": "What the stations actually want",
+    "body": "The bargaining is done in a mixture of Norse, Low German and gesture, and turns almost entirely on salt: without it the next season's catch cannot be cured, and the Danish crown's own licensed traders have not come this year. A house that arrives with salt in its holds is not a foreign merchant. It is the difference between a fishing station and an abandoned one.",
+    "choices": [
+      { "text": "Trade fairly, and take the fish at the price they name", "effects": { "conscience": 3, "flag": "iceland_trading" } },
+      { "text": "Trade on what the shortage is actually worth", "effects": { "cash": 45, "conscience": -5, "flag": "iceland_trading" } }
+    ]
+  },
+  {
+    "id": "ev_c6_012",
+    "chapter": 6,
+    "trigger": { "flag": "reached_iceland" },
+    "title": "The mountain that is on fire",
+    "body": "It is visible for three days before anyone will say what it is: a column of ash standing off the eastern quarter of the island, and afterwards a fall of grey grit on the decks, on the racks, on the grass the sheep were meant to have. The Icelanders are unsurprised in a way that is worse than alarm. Whole districts have been given up to this before and will be again.",
+    "choices": [
+      { "text": "Load what will load and get the ships to sea", "effects": { "cash": -10, "flag": "iceland_eruption_seen" } },
+      { "text": "Stay a week, and carry off whoever wants to be carried off", "effects": { "cash": -30, "conscience": 5, "flags": ["iceland_eruption_seen", "iceland_refugees_taken"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_013",
+    "chapter": 6,
+    "trigger": { "flags": ["iceland_trading", "iceland_eruption_seen"] },
+    "title": "The Hanse in the roads",
+    "body": "Two ships out of Danzig stand in on the fourth morning and do not answer a hail. This is not piracy in any sense a court would need explained: England and the Hanse have been at open war for four years, the fisheries are the war's real subject, and a Flemish house trading here under nobody's protection is an ambiguity that can be resolved with a gun.",
+    "choices": [
+      { "text": "Keep the convoy together and refuse to be cut out", "effects": { "rep": { "hanse": -20 }, "flags": ["hanse_first_blood", "iceland_stood_off"] } },
+      { "text": "Give up the outermost hull's deck cargo and get the rest away", "effects": { "cash": -60, "rep": { "hanse": -5 }, "flag": "hanse_first_blood" } }
+    ]
+  },
+  {
+    "id": "ev_c6_014",
+    "chapter": 6,
+    "trigger": {
+      "flag": "hanse_first_blood",
+      "combinedCargoAtLeast": { "location": "bruges", "goodId": "stockfish", "quantity": 40 },
+      "flagAbsent": "iceland_venture_resolved"
+    },
+    "title": "Forty barrels and three hulls home",
+    "body": "The convoy comes up the Zwin together, which is the part Crackbene is quietly satisfied about, and the fish comes ashore in a quantity Bruges has not seen out of a single Flemish house before. It is not an elegant cargo. It is, laid out on the quay and priced, an unarguable one.",
+    "choices": [
+      { "text": "Land the catch and close the venture's books", "effects": { "cash": 90, "flags": ["iceland_venture_success", "iceland_venture_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_015",
+    "chapter": 6,
+    "trigger": {
+      "weeksAfterFlag": { "flag": "iceland_bound", "weeks": 40 },
+      "flagAbsent": "iceland_venture_resolved"
+    },
+    "title": "The season shuts in the north",
+    "body": "There is no disaster to point at, which is its own kind of answer: the weather closes, the stations stop dealing with anyone who cannot winter there, and whatever is in the holds when that happens is what the venture returned. Crackbene, who warned about exactly this in exactly these words, has the grace not to repeat them.",
+    "choices": [
+      { "text": "Write the northern venture down and lay the ships up", "effects": { "cash": -50, "conscience": -2, "flags": ["iceland_venture_failed", "iceland_venture_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_016",
+    "chapter": 6,
+    "trigger": { "flag": "iceland_venture_success" },
+    "title": "What the north was actually worth",
+    "body": "The fish pays, and pays again, and the interesting figure is not the profit but the ratio: three hulls sailing as one earned more than three hulls sailing separately could have, because only the convoy could carry enough salt out to be worth the stations' whole season. It is the first venture the house has run that could not have been run smaller.",
+    "choices": [
+      { "text": "Enter it as the house's own trade, not a speculation", "effects": { "flag": "iceland_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c6_017",
+    "chapter": 6,
+    "trigger": { "flag": "iceland_venture_failed" },
+    "title": "What the north cost instead",
+    "body": "Two ships bought, a shipmaster on wages, a season spent, and a quantity of dried cod that would have been respectable for a single hull and is derisory for three. The trade itself was never the error. The house simply learned what tonnage means by not having enough of it in the right place at the right time.",
+    "choices": [
+      { "text": "Enter the loss honestly and keep the hulls", "effects": { "flag": "iceland_epilogue" } }
+    ]
+  },
+  {
+    "id": "ev_c6_018",
+    "chapter": 6,
+    "trigger": { "flag": "godscalc_mourned" },
+    "title": "A request from the Scottish court",
+    "body": "Demoiselle Katelijne's connections at Edinburgh produce an invitation of a sort the house has no procedure for: the king's household would like a Nativity play at Christmas, staged properly, and has noticed that the Flemish company in the burgh employs an engineer who builds siege machinery. The fee is nominal. The audience is not.",
+    "choices": [
+      { "text": "Accept, and put John le Grant to work on the machinery", "effects": { "cash": -20, "flag": "nativity_invited" } },
+      { "text": "Accept, and keep it modest — this is not what a bank is for", "effects": { "flag": "nativity_invited" } }
+    ]
+  },
+  {
+    "id": "ev_c6_019",
+    "chapter": 6,
+    "trigger": { "flag": "nativity_invited", "location": "edinburgh" },
+    "title": "The Nativity, with machinery",
+    "body": "It is performed in the hall at Christmas with an angel that descends on a counterweight of le Grant's design, a star that travels the length of the roof beam, and a company of merchants' clerks who have never acted in their lives. Whether it is devotional is a matter of opinion. That it is the most impressive thing the court has seen indoors in a decade is not.",
+    "choices": [
+      { "text": "Let the machinery be the point, and take the credit", "effects": { "cash": 25, "flags": ["nativity_played", "nativity_spectacle"] } },
+      { "text": "Keep the house's name off it and let the play stand on its own", "effects": { "conscience": 3, "flag": "nativity_played" } }
+    ]
+  },
+  {
+    "id": "ev_c6_020",
+    "chapter": 6,
+    "trigger": { "flag": "nativity_played" },
+    "title": "What a reputation is for",
+    "body": "The practical consequence arrives within a month and has nothing to do with piety: the burgh's customs are renewed without a competing bid being sought, two Scottish lords ask the house to hold money for them, and a rival company that had been quietly underbidding all year finds itself explaining who it actually is. Standing, it turns out, is a tradeable instrument.",
+    "choices": [
+      { "text": "Bank the goodwill and say nothing clever about it", "effects": { "cash": 35, "flag": "nativity_resolved" } }
+    ]
+  },
+  {
+    "id": "ev_c6_021",
+    "chapter": 6,
+    "trigger": { "flag": "chapter6_open" },
+    "title": "The duke would be obliged",
+    "body": "Burgundy's request comes through the usual channels and is not, in form, a request. Duke Charles is at war on two frontiers, is negotiating with the Emperor for something he will not name in writing, and requires money now against revenues that are pledged three times over already. The houses that refuse him will trade in Flanders afterwards on terms he sets.",
+    "choices": [
+      { "text": "Hear the terms out in full before answering", "effects": { "flag": "burgundy_demand_made" } }
+    ]
+  },
+  {
+    "id": "ev_c6_022",
+    "chapter": 6,
+    "trigger": { "flag": "burgundy_demand_made" },
+    "title": "Lend to a prince, or explain why not",
+    "body": "The margin is extraordinary and so is the security, which consists of the duke's own word and a lien on customs that are already carrying two prior charges. Master Gregorio, who reads such instruments for a living, observes that the paper is perfectly sound provided the duke remains solvent, and declines to say anything at all about the second clause of that sentence.",
+    "choices": [
+      { "text": "Lend, at the margin offered", "effects": { "cash": 120, "conscience": -3, "flags": ["burgundy_lent", "burgundy_choice_made"] } },
+      { "text": "Decline courteously, and accept what declining costs in Flanders", "effects": { "cash": -35, "flags": ["burgundy_refused", "burgundy_choice_made"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_023",
+    "chapter": 6,
+    "trigger": { "weeksAfterFlag": { "flag": "burgundy_choice_made", "weeks": 22 }, "flag": "burgundy_lent" },
+    "title": "Trier, and the crown that was not given",
+    "body": "The duke goes to Trier to be made a king, and the Emperor — having spent ten weeks on the arrangements, the vestments and the order of procession — leaves the city before dawn without crowning him and without settling the marriage. What Burgundy owes does not change. What Burgundy can pay it out of has just stopped being a kingdom's revenues and gone back to being a duchy's, and every house that lent against the difference now holds paper worth what the duke's temper allows.",
+    "choices": [
+      { "text": "Discount the Burgundian paper for whatever it will fetch", "effects": { "cash": -90, "flags": ["burgundy_paper_dumped", "burgundy_trap_resolved"] } },
+      { "text": "Hold it, and be a creditor of Burgundy for as long as that lasts", "effects": { "conscience": -2, "flags": ["burgundy_paper_held", "burgundy_trap_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_024",
+    "chapter": 6,
+    "trigger": { "weeksAfterFlag": { "flag": "burgundy_choice_made", "weeks": 22 }, "flagAbsent": "burgundy_lent" },
+    "title": "Trier, watched from Bruges",
+    "body": "The duke goes to Trier to be made a king and comes back a duke, the Emperor having left the city before dawn rather than hold the ceremony. The houses that lent against a crown spend the winter discovering what their paper is actually worth. The house that declined spends it being conspicuously unpopular in Flanders, and solvent.",
+    "choices": [
+      { "text": "Be unpopular, and keep the books clean", "effects": { "conscience": 2, "flags": ["burgundy_stayed_clear", "burgundy_trap_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_025",
+    "chapter": 6,
+    "trigger": { "flag": "chapter6_open" },
+    "title": "Alum, on the wrong commune's ground",
+    "body": "The report out of Tuscany is short and the house has been waiting thirteen years to read something like it: alum has been found on land belonging to the commune of Volterra. Not papal land. Not Tolfa. A subject town's own hillside, worked by a company of speculators, in a state whose leading family has never yet allowed a profitable thing to belong to somebody else.",
+    "choices": [
+      { "text": "Buy the fullest account of the concession that money will buy", "effects": { "cash": -25, "flag": "volterra_alum_known", "secret": { "id": "secret_volterra_alum", "name": "Who holds the Volterra concession", "description": "The names on the alum company's own articles, the terms the commune granted, and which Florentine houses are already quietly behind it — including one that will have to choose a side.", "value": 95, "expiresInWeeks": 18 } } },
+      { "text": "Note it, and wait to see who moves first", "effects": { "flag": "volterra_alum_known" } }
+    ]
+  },
+  {
+    "id": "ev_c6_026",
+    "chapter": 6,
+    "trigger": { "flag": "volterra_alum_known" },
+    "title": "How deep to stand in it",
+    "body": "The trade is genuinely good and the risk is entirely political, which is the combination that has ruined more banks than bad arithmetic ever has. The house can take a real position in the concession, or lend against it at a distance and keep the exposure where a bad season can be survived. Master Gregorio has an opinion. Master Julius has the opposite one, more loudly.",
+    "choices": [
+      { "text": "Take a full position — this is what the Tolfa lesson was for", "effects": { "cash": 60, "flags": ["volterra_exposed", "volterra_position_taken"] } },
+      { "text": "Lend at a distance and keep the exposure small", "effects": { "cash": 15, "flags": ["volterra_hedged", "volterra_position_taken"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_027",
+    "chapter": 6,
+    "trigger": { "weeksAfterFlag": { "flag": "volterra_position_taken", "weeks": 16 }, "flag": "volterra_exposed" },
+    "title": "Florence takes the hill",
+    "body": "It is settled the way such things are settled: the commune refuses arbitration, Florence hires a professional soldier and seven thousand men, the town holds for a month and then opens its gates on terms, and the terms are not observed. Two days of sack, a few hundred dead, and an alum concession whose ownership is afterwards not in any doubt whatsoever. Every florin the house had standing in it is standing in it still, and belongs to somebody else.",
+    "choices": [
+      { "text": "Write the position off in one entry and take it publicly", "effects": { "cash": -170, "conscience": -4, "flags": ["volterra_ruin", "volterra_reckoning_resolved"] } },
+      { "text": "Spread the loss across three seasons' books where it will show less", "effects": { "cash": -120, "conscience": -8, "flags": ["volterra_ruin", "volterra_concealed", "volterra_reckoning_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_028",
+    "chapter": 6,
+    "trigger": { "weeksAfterFlag": { "flag": "volterra_position_taken", "weeks": 16 }, "flagAbsent": "volterra_exposed" },
+    "title": "Florence takes the hill, and the house is not on it",
+    "body": "The same month, the same soldier, the same seven thousand men, the same two days that nobody involved will describe accurately afterwards. The house's exposure is a loan at one remove, secured on something other than the concession itself, and it comes back whole. Three houses the company deals with weekly do not come back whole at all.",
+    "choices": [
+      { "text": "Collect what's owed and decline to say it was foresight", "effects": { "cash": -30, "conscience": 2, "flags": ["volterra_survived", "volterra_reckoning_resolved"] } }
+    ]
+  },
+  {
+    "id": "ev_c6_029",
+    "chapter": 6,
+    "trigger": { "flag": "volterra_reckoning_resolved" },
+    "title": "What a bank is actually exposed to",
+    "body": "The lesson is not about alum, and every officer in the counting house knows it by the end of the week. A position can be perfectly priced, perfectly documented and perfectly legal, and still be taken off you in two days by a prince who wanted it — and there is no instrument, no spread and no clause that changes that. The house has been treating political risk as a discount on the rate. It is not a discount on the rate.",
+    "choices": [
+      { "text": "Write the principle into the house's own standing orders", "effects": { "conscience": 2, "flag": "volterra_lesson_taken" } },
+      { "text": "Note it, and get back to the ledger", "effects": { "cash": 10, "flag": "volterra_lesson_taken" } }
+    ]
+  },
+  {
+    "id": "ev_c6_030",
+    "chapter": 6,
+    "trigger": {
+      "flags": [
+        "godscalc_mourned",
+        "iceland_epilogue",
+        "nativity_resolved",
+        "burgundy_trap_resolved",
+        "volterra_reckoning_resolved"
+      ]
+    },
+    "title": "To Lie with Lions, concluded",
+    "body": "Three years, and the shape of the house has changed rather than its size: three hulls that sail as one and a trade in dried fish that nobody in Bruges thinks is beneath it any more; a standing at the Scottish court bought with a counterweighted angel; a duke who is not a king and owes money anyway; and a hillside in Tuscany that taught the counting house something no instrument in it can price. The chaplain who would have had the sharpest word to say about all of it has been dead since the spring.",
+    "choices": [
+      { "text": "Close To Lie with Lions' own books", "effects": { "flag": "chapter6_complete" } }
+    ]
+  }
+]

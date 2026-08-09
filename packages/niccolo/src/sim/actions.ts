@@ -4,6 +4,14 @@ import { assignCharacter, resolveWeeklyUpkeep, tradeBonus } from './characters';
 import { resolveWeeklyCondotta } from './condotta';
 import { discountObligation, resolveMaturingObligations, takeDeposit, writeBill, writeLoan } from './credit';
 import { driftExchangeRates } from './currency';
+import {
+  disbandConvoy,
+  escortedVesselIds,
+  formConvoy,
+  hireEscort,
+  inConvoy,
+  resolveWeeklyConvoy,
+} from './convoy';
 import { useDivining } from './divining';
 import { resolveUnmasking } from './dossier';
 import { establishEstate, harvestEstate, resolveWeeklyEstate, shipEstateGoods } from './estates';
@@ -70,12 +78,30 @@ function dispatchVessel(
     ];
   }
 
+  // A convoy (Chapter 6) sails as one: dispatching any member sends every other member that is in
+  // the same port and free to go, on the same route, with the same queued plan — otherwise an
+  // auto-continued journey would split the convoy at the first intermediate stop, which is exactly
+  // the failure mode `Vessel.plannedRoute` was introduced to prevent for a single hull.
+  // The insurance policy above stays on the explicitly dispatched vessel only: `quoteInsurance`
+  // prices one hull's cargo, and silently charging a premium per member would spend the player's
+  // cash on a decision they didn't make.
+  const sailingWith = new Set<string>([vesselId]);
+  if (inConvoy(state.convoy, vesselId)) {
+    for (const member of state.vessels) {
+      if (!state.convoy!.vesselIds.includes(member.id)) continue;
+      if (member.destination) continue;
+      if (member.location !== vessel.location) continue;
+      if (member.kind === 'courier' && route.type !== 'land') continue;
+      sailingWith.add(member.id);
+    }
+  }
+
   return {
     ...state,
     cash,
     insurance,
     vessels: state.vessels.map(v =>
-      v.id === vesselId
+      sailingWith.has(v.id)
         ? {
             ...v,
             destination: destinationId,
@@ -139,8 +165,14 @@ function cancelPlannedRoute(state: GameState, vesselId: string): GameState {
 function autoContinuePlannedRoutes(state: GameState): GameState {
   let next = state;
   for (const vessel of state.vessels) {
-    if (!vessel.destination && vessel.plannedRoute && vessel.plannedRoute.length > 0) {
-      next = continuePlannedRoute(next, vessel.id);
+    // Re-read from `next`, not the loop's own snapshot: a convoy member's continuation fans out to
+    // every other member (see `dispatchVessel`), so by the time the loop reaches member two it is
+    // already under way — and `continuePlannedRoute` would throw "already under way" and take the
+    // whole week's tick down with it.
+    const current = next.vessels.find(v => v.id === vessel.id);
+    if (!current || current.destination) continue;
+    if (current.plannedRoute && current.plannedRoute.length > 0) {
+      next = continuePlannedRoute(next, current.id);
     }
   }
   return next;
@@ -253,6 +285,9 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     ? resolveWeeklyUpkeep({ ...state, cash: maturity.cash })
     : { cash: maturity.cash, characters: state.characters };
   const condottaResolution = resolveWeeklyCondotta({ ...state, cash: upkeep.cash });
+  // A hired escort draws its weekly pay here, alongside the household's own wages and the condotta's
+  // retainer — and lapses if it can't be met, rather than accruing a debt the ladder never sees.
+  const convoyResolution = resolveWeeklyConvoy({ ...state, cash: condottaResolution.cash });
   // A hotseat house's own weekly decision (Phase 14) replaces that one house's dice at each of the
   // three points below — every other house still rolls, exactly as before.
   const hotseatHouseId = state.hotseatHouseId ?? null;
@@ -278,13 +313,19 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
   const evidence = resolveWeeklyAgentEvidence(state.agents, state.evidence ?? [], week);
-  const risk = resolveVoyageRisk(maturity.vessels, state.insurance ?? [], ROUTES, week);
+  const risk = resolveVoyageRisk(
+    maturity.vessels,
+    state.insurance ?? [],
+    ROUTES,
+    week,
+    escortedVesselIds(convoyResolution.convoy),
+  );
   const tickedVessels = risk.vessels.map(tickVessel);
   const insurance = clearArrivedInsurance(risk.insurance, tickedVessels);
   const sabotage = resolveHouseSabotage(tickedVessels, week, manualSabotage);
   const estate = resolveWeeklyEstate(state.estate);
   const expeditionResolution = resolveWeeklyExpedition(
-    { ...state, cash: condottaResolution.cash + risk.cashDelta, vessels: sabotage.vessels, characters: upkeep.characters },
+    { ...state, cash: convoyResolution.cash + risk.cashDelta, vessels: sabotage.vessels, characters: upkeep.characters },
     week,
   );
 
@@ -336,6 +377,8 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     knownPrices,
     lastMarketCauses: marketCauses,
     estate,
+    convoy: convoyResolution.convoy,
+    escortLapsed: convoyResolution.escortLapsed,
     insurance,
     lastVoyageEvent: risk.event ?? state.lastVoyageEvent,
     lastSabotageEvent: sabotage.event ?? state.lastSabotageEvent ?? null,
@@ -365,11 +408,11 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
-  // chapter1_complete through chapter4_complete no longer freeze play — each is a mid-campaign
+  // chapter1_complete through chapter5_complete no longer freeze play — each is a mid-campaign
   // flag the next chapter's own events trigger on (design doc §12, "Phase 9 onward: one chapter
-  // content pack per phase"). Only the true end of the shipped content (chapter5_complete) stops
+  // content pack per phase"). Only the true end of the shipped content (chapter6_complete) stops
   // the clock now.
-  if (state.flags.chapter5_complete) return state;
+  if (state.flags.chapter6_complete) return state;
   // ACKNOWLEDGE_CHAPTER is UI bookkeeping (dismissing the "Chapter N complete" card), not a
   // commercial/narrative action — it must go through even while the next chapter's own opening
   // event is already queued in pendingEvents (which it typically is, by design: that event's
@@ -414,6 +457,12 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return placeAgent(state, action.placement, action.name);
     case 'USE_DIVINING':
       return useDivining(state, action.purpose);
+    case 'FORM_CONVOY':
+      return formConvoy(state, action.vesselIds);
+    case 'DISBAND_CONVOY':
+      return disbandConvoy(state);
+    case 'HIRE_ESCORT':
+      return hireEscort(state, action.escortName);
     case 'ESTABLISH_ESTATE':
       return establishEstate(state);
     case 'HARVEST_ESTATE':

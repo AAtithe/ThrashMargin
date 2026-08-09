@@ -25,6 +25,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const match = await bcrypt.compare(String(password), user.password);
     if (!match) return res.status(401).json({ message: 'Invalid credentials' });
 
+    // Non-blocking: a failed timestamp update shouldn't fail the login itself.
+    db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]).catch(err =>
+      console.error('last_login_at update failed', err),
+    );
+
     const token = signToken({ userId: user.id, username: user.username });
     return res.json({ token, userId: user.id, username: user.username });
   } catch (err) {

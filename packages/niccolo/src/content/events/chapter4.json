@@ -226,7 +226,7 @@
     "id": "ev_c4_022",
     "chapter": 4,
     "trigger": {
-      "vesselKindAt": { "kind": "ship", "location": "bruges" },
+      "vesselIdAt": { "vesselId": "ship_1", "location": "bruges" },
       "flag": "gambia_return_open",
       "flagAbsent": "gambia_expedition_failed"
     },

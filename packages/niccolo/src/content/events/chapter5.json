@@ -217,7 +217,7 @@
     "chapter": 5,
     "trigger": {
       "flag": "sinai_journey_open",
-      "vesselKindAt": { "kind": "ship", "location": "sinai" },
+      "vesselIdAt": { "vesselId": "ship_1", "location": "sinai" },
       "cargoAtLeast": { "location": "sinai", "goodId": "glass", "quantity": 3 },
       "flagAbsent": "sinai_journey_resolved"
     },
@@ -265,7 +265,7 @@
   {
     "id": "ev_c5_025",
     "chapter": 5,
-    "trigger": { "flag": "sinai_journey_success", "vesselKindAt": { "kind": "ship", "location": "cairo" } },
+    "trigger": { "flag": "sinai_journey_success", "vesselIdAt": { "vesselId": "ship_1", "location": "cairo" } },
     "title": "Back down to Cairo with a full ledger",
     "body": "The crossing pays: the abbot's coin, a safe-conduct honoured in both directions, and a standing in the pilgrim trade that four Italian houses have been trying to buy for a decade. It also puts the house's own officers in a desert for six weeks at the exact season in which a household of four, one of them an infant, was moving between ports the house had no watch on.",
     "choices": [
