@@ -76,6 +76,8 @@ const LABEL_HALO = 3;
 const CITY_FONT = 13;
 const ROUTE_FONT = 10;
 const VESSEL_FONT = 12;
+/** How far a route's week-count sits off its own line, in screen pixels. */
+const ROUTE_LABEL_NUDGE = 7;
 
 /** Label placement, from tea-race's chart. Offsets are in chart units. */
 const LABEL_OFFSET: Record<LabelSide, [number, number]> = {
@@ -198,12 +200,21 @@ const ROUTE_LABELS = (() => {
     const dx = wrapDx(a.x, b.x);
     const dy = b.y - a.y;
     const len = Math.hypot(dx, dy) || 1;
-    const off = 3 * (dy > 0 ? -1 : 1);
-    const x = a.x + dx / 2 + (-dy / len) * off;
-    const y = a.y + dy / 2 + (dx / len) * off;
+    // Midpoint plus a perpendicular UNIT vector. The actual nudge is applied at draw time scaled by
+    // 1/zoom — baking a fixed world-unit offset in here would leave the label drifting further and
+    // further off its own line the more you zoomed in, the same mistake that beached docked vessels.
+    const sign = dy > 0 ? -1 : 1;
+    const mx = a.x + dx / 2;
+    const my = a.y + dy / 2;
+    const nx = (-dy / len) * sign;
+    const ny = (dx / len) * sign;
     const text = `${r.distanceWeeks}w`;
-    if (cityBoxes.some(cb => boxesOverlap(textBox(text, ROUTE_FONT, x, y, 'middle'), cb))) return [];
-    return [{ id: r.id, x, y, text }];
+    // Suppression is judged at full marker size, which is the crowded case — so a label kept here
+    // is clear at every zoom, not just wide ones.
+    if (cityBoxes.some(cb => boxesOverlap(textBox(text, ROUTE_FONT, mx + nx * ROUTE_LABEL_NUDGE, my + ny * ROUTE_LABEL_NUDGE, 'middle'), cb))) {
+      return [];
+    }
+    return [{ id: r.id, mx, my, nx, ny, text }];
   });
 })();
 
@@ -214,9 +225,15 @@ interface VesselRender {
   rotationDeg: number | null;
 }
 
-/** Docked vessels fan out to a small ring of slots so they never cover the city's own marker; a
- * vessel under way is interpolated along its leg the short way round the globe. */
-function computeVesselRenders(vessels: Vessel[]): VesselRender[] {
+/**
+ * Docked vessels fan out to a small ring of slots so they never cover the city's own marker; a
+ * vessel under way is interpolated along its leg the short way round the globe.
+ *
+ * `inv` is required, not optional: `DOCK_RADIUS` is authored in screen pixels like every other
+ * size here, and applying it in world units instead put a ship docked at Bruges 4.6 degrees north
+ * of it — 500km out in the North Sea. Counter-scaling keeps the fan a constant distance on screen.
+ */
+function computeVesselRenders(vessels: Vessel[], inv: number): VesselRender[] {
   const dockedGroups = new Map<string, Vessel[]>();
   for (const v of vessels) {
     if (v.destination) continue;
@@ -253,7 +270,7 @@ function computeVesselRenders(vessels: Vessel[]): VesselRender[] {
     const slotIndex = Math.max(0, group.findIndex(gv => gv.id === v.id));
     const angles = DOCK_SLOT_ANGLES_DEG[group.length] ?? DOCK_SLOT_ANGLES_DEG[3];
     const rad = (angles[slotIndex % angles.length] * Math.PI) / 180;
-    const radius = at.port ? DOCK_RADIUS.port : DOCK_RADIUS.inland;
+    const radius = (at.port ? DOCK_RADIUS.port : DOCK_RADIUS.inland) * inv;
     renders.push({
       vessel: v,
       x: p.x + radius * Math.cos(rad),
@@ -386,11 +403,11 @@ export default function MapView({
       };
     });
 
-  const vesselRenders = useMemo(() => computeVesselRenders(vessels), [vessels]);
-
   /** Counter-scale for markers and text, so they hold a constant screen size at any zoom. See the
    * note on the size constants at the top of this file for why that is load-bearing here. */
   const inv = 1 / view.zoom;
+
+  const vesselRenders = useMemo(() => computeVesselRenders(vessels, inv), [vessels, inv]);
 
   /**
    * Which city labels to draw at this zoom. Every label is a constant screen size, so in world
@@ -510,8 +527,8 @@ export default function MapView({
         ROUTE_LABELS.map(rl => (
           <text
             key={rl.id}
-            x={rl.x}
-            y={rl.y}
+            x={rl.mx + rl.nx * ROUTE_LABEL_NUDGE * inv}
+            y={rl.my + rl.ny * ROUTE_LABEL_NUDGE * inv}
             textAnchor="middle"
             dominantBaseline="middle"
             fontSize={ROUTE_FONT * inv}
