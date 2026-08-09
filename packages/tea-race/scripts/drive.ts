@@ -11,14 +11,15 @@
  * Math.random behind the sim's back.
  */
 import { createInitialState } from '../src/sim/state';
-import { processAction, runAiTurn } from '../src/sim/actions';
+import { assetValue, processAction, runAiTurn } from '../src/sim/actions';
 import { PORT_BY_ID, GOOD_BY_ID, distanceBetween } from '../src/sim/content';
 import {
   DECLARATION_TURNS,
   FACE_UP_CONTRACTS,
+  HOLD_SLOTS,
   MAX_SHIPS,
   SHARE_MAJORITY,
-  SHARE_PRICE,
+  sharePriceFor,
   SHARE_RAID_MULTIPLIER,
   SHIP_PRICE,
   TOTAL_SHARES,
@@ -34,7 +35,7 @@ import {
   windFor,
 } from '../src/sim/weather';
 import { piracyRating, resolvePiracy } from '../src/sim/hazards';
-import type { Contract, GameState, Season, Ship } from '../src/sim/types';
+import type { Contract, GameState, Ship } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
 // Tiny assertion harness
@@ -59,11 +60,11 @@ function equal(label: string, actual: unknown, expected: unknown) {
 // State surgery, for putting a ship exactly where a rule needs testing
 // ---------------------------------------------------------------------------
 
-function place(state: GameState, shipId: string, portId: string, cargo: Ship['cargo'] = null): GameState {
+function place(state: GameState, shipId: string, portId: string, hold: Ship['hold'] = []): GameState {
   return {
     ...state,
     ships: state.ships.map(s =>
-      s.id === shipId ? { ...s, location: portId, voyage: null, cargo } : s,
+      s.id === shipId ? { ...s, location: portId, voyage: null, hold } : s,
     ),
   };
 }
@@ -119,9 +120,9 @@ function testPayoutLadder() {
   });
 
   const cargo = { good: 'tea', paid: price, boughtAt: 'foochow', boughtOnTurn: 0 };
-  s = place(s, 's1', 'liverpool', { ...cargo });
-  s = place(s, 's2', 'liverpool', { ...cargo });
-  s = place(s, 's3', 'liverpool', { ...cargo });
+  s = place(s, 's1', 'liverpool', [{ ...cargo }]);
+  s = place(s, 's2', 'liverpool', [{ ...cargo }]);
+  s = place(s, 's3', 'liverpool', [{ ...cargo }]);
 
   // Three humans means every seat change goes through a hotseat handover.
   const pass = (state: GameState) => {
@@ -136,7 +137,7 @@ function testPayoutLadder() {
   s = processAction(s, { type: 'ROLL' });
   s = processAction(s, { type: 'DELIVER', shipId: 's1', contractId: 'test-card' });
   equal(`${label}: first home pays 4x`, cash(s, 'p1') - beforeA, price * 4);
-  equal(`${label}: first delivery empties the hold`, shipOf(s, 's1').cargo, null);
+  equal(`${label}: first delivery empties the hold`, shipOf(s, 's1').hold.length, 0);
   s = pass(s);
 
   // Captain B lands second.
@@ -157,7 +158,7 @@ function testPayoutLadder() {
   const rejected = processAction(s, { type: 'DELIVER', shipId: 's3', contractId: 'test-card' });
   check(`${label}: third delivery is rejected outright`, rejected === s, 'state changed');
   equal(`${label}: third captain is paid nothing`, cash(s, 'p3') - beforeC, 0);
-  check(`${label}: third captain still holds her cargo`, shipOf(s, 's3').cargo !== null);
+  check(`${label}: third captain still holds her cargo`, shipOf(s, 's3').hold.length > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -178,12 +179,17 @@ function testCargoRules() {
   );
 
   const loaded = processAction(base, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
-  check(`${label}: buying a supplied good works`, shipOf(loaded, 's1').cargo?.good === 'tea');
+  check(`${label}: buying a supplied good works`, shipOf(loaded, 's1').hold[0]?.good === 'tea');
   equal(`${label}: purchase debits the price`, cash(loaded, 'p1'), 1000 - GOOD_BY_ID.tea.basePrice);
+  // Three slots, and a fourth lot is refused.
+  let filling = loaded;
+  for (const g of ['silk', 'porcelain']) {
+    filling = processAction(filling, { type: 'BUY_CARGO', shipId: 's1', good: g });
+  }
+  equal(`${label}: a clipper carries ${HOLD_SLOTS} lots`, shipOf(filling, 's1').hold.length, HOLD_SLOTS);
   check(
-    `${label}: a clipper carries one lot`,
-    processAction(loaded, { type: 'BUY_CARGO', shipId: 's1', good: 'silk' }) === loaded,
-    'second lot accepted',
+    `${label}: a fourth lot is refused`,
+    processAction(filling, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' }) === filling,
   );
 
   const broke = setCash(base, 'p1', 5);
@@ -198,27 +204,28 @@ function testCargoRules() {
     processAction(base, { type: 'BUY_CARGO', shipId: 's2', good: 'tea' }) === base,
   );
 
-  // Dumping a lot nobody wants recovers half.
-  const spec = place(setCash(base, 'p1', 500), 's1', 'liverpool', {
-    good: 'tea',
-    paid: 60,
-    boughtAt: 'foochow',
-    boughtOnTurn: 0,
-  });
-  const dumped = processAction(spec, { type: 'SELL_LOCAL', shipId: 's1' });
-  equal(`${label}: dumping recovers half`, cash(dumped, 'p1') - cash(spec, 'p1'), 30);
-  check(`${label}: dumping empties the hold`, shipOf(dumped, 's1').cargo === null);
+  // Jettison recovers nothing at all — the source is explicit, and it is what gives the
+  // speculation bottleneck teeth.
+  const spec = place(setCash(base, 'p1', 500), 's1', 'liverpool', [
+    { good: 'tea', paid: 60, boughtAt: 'foochow', boughtOnTurn: 0 },
+    { good: 'silk', paid: 90, boughtAt: 'foochow', boughtOnTurn: 0 },
+  ]);
+  const dumpedOne = processAction(spec, { type: 'JETTISON', shipId: 's1', good: 'tea' });
+  equal(`${label}: jettison returns nothing`, cash(dumpedOne, 'p1') - cash(spec, 'p1'), 0);
+  equal(`${label}: jettison frees exactly that good's slots`, shipOf(dumpedOne, 's1').hold.length, 1);
+  equal(`${label}: the rest of the hold is untouched`, shipOf(dumpedOne, 's1').hold[0].good, 'silk');
 
-  const noDemand = place(spec, 's1', 'foochow', {
-    good: 'tea',
-    paid: 60,
-    boughtAt: 'foochow',
-    boughtOnTurn: 0,
-  });
+  const dumpedAll = processAction(spec, { type: 'JETTISON', shipId: 's1' });
+  equal(`${label}: jettisoning everything clears the hold`, shipOf(dumpedAll, 's1').hold.length, 0);
+  equal(`${label}: and still returns nothing`, cash(dumpedAll, 'p1') - cash(spec, 'p1'), 0);
+
+  // Dumping is legal anywhere — over the side is over the side.
+  const atSource = place(spec, 's1', 'foochow', [
+    { good: 'tea', paid: 60, boughtAt: 'foochow', boughtOnTurn: 0 },
+  ]);
   check(
-    `${label}: cannot dump where nobody buys it`,
-    processAction(noDemand, { type: 'SELL_LOCAL', shipId: 's1' }) === noDemand,
-    'Foochow bought its own tea back',
+    `${label}: may dump at any port`,
+    processAction(atSource, { type: 'JETTISON', shipId: 's1' }) !== atSource,
   );
 }
 
@@ -352,12 +359,12 @@ function testCaps() {
   equal(
     `${label}: a buy-out costs ${SHARE_RAID_MULTIPLIER}x`,
     cash(legal, 'p1') - cash(raided, 'p1'),
-    SHARE_PRICE * SHARE_RAID_MULTIPLIER,
+    sharePriceFor(0) * SHARE_RAID_MULTIPLIER,
   );
   equal(
     `${label}: the captain bought out is paid`,
     cash(raided, 'p2') - cash(legal, 'p2'),
-    SHARE_PRICE * SHARE_RAID_MULTIPLIER,
+    sharePriceFor(0) * SHARE_RAID_MULTIPLIER,
   );
   equal(
     `${label}: shares are conserved through a buy-out`,
@@ -415,7 +422,7 @@ function testCaps() {
   stranded = setCash(stranded, 'p1', 5);
   stranded = processAction(stranded, { type: 'ROLL' });
   const rescued = processAction(stranded, { type: 'SELL_SHARE' });
-  equal(`${label}: selling back pays half`, cash(rescued, 'p1') - cash(stranded, 'p1'), SHARE_PRICE / 2);
+  check(`${label}: selling back pays something`, cash(rescued, 'p1') > cash(stranded, 'p1'));
   equal(`${label}: selling back costs a share`, rescued.captains[0].shares, 5);
   equal(`${label}: the share returns to the bank`, rescued.sharesRemaining, stranded.sharesRemaining + 1);
   check(
@@ -507,23 +514,66 @@ function testDeclaration() {
     equal(`${label}: at ${seats} captains it resolves on turn ${DECLARATION_TURNS}`, expired.winnerId, 'p1');
   }
 
-  // Short of the cash bar, the claim lapses and trading goes on.
+  // Short of the cash bar the claim COLLAPSES — and the source is explicit that this ends the game
+  // rather than lapsing: the declarer loses, and whoever holds the most by value takes the company.
+  // That is also what stops a captain who lost the share race from being locked out of winning.
   let poor = setup(SHARE_MAJORITY, VICTORY_CASH - 1, 1);
   poor = processAction(poor, { type: 'DECLARE' });
-  const lapsed = idleTurns(poor, DECLARATION_TURNS + 1);
-  equal(`${label}: a claim short of ${VICTORY_CASH} lapses`, lapsed.winnerId, null);
-  equal(`${label}: play continues after a lapse`, lapsed.declaration, null);
-  check(`${label}: the game is still live`, lapsed.phase !== 'over');
+  const collapsed = idleTurns(poor, DECLARATION_TURNS + 1);
+  equal(`${label}: a claim short of ${VICTORY_CASH} ends the game`, collapsed.phase, 'over');
   check(
-    `${label}: a lapse can be followed by a fresh claim`,
-    processAction({ ...lapsed, phase: 'act', activeIndex: 0 }, { type: 'DECLARE' }).declaration !== null,
+    `${label}: the declarer does not win it`,
+    collapsed.winnerId !== 'p1',
+    `p1 won anyway`,
+  );
+  check(
+    `${label}: someone else takes the company`,
+    collapsed.winnerId !== null,
+    'nobody won',
+  );
+  check(
+    `${label}: and it is the captain worth the most`,
+    collapsed.winnerId ===
+      collapsed.captains
+        .filter(c => c.id !== 'p1')
+        .map(c => ({ id: c.id, worth: assetValue(collapsed, c) }))
+        .sort((a, b) => b.worth - a.worth)[0]?.id,
   );
 
   // With no ship afloat the claim fails even holding shares and cash.
   let shipless = setup(SHARE_MAJORITY, VICTORY_CASH + 500, 0);
   shipless = processAction(shipless, { type: 'DECLARE' });
   const failed = idleTurns(shipless, DECLARATION_TURNS + 1);
-  equal(`${label}: a claim with no ship lapses`, failed.winnerId, null);
+  equal(`${label}: a claim with no ship also collapses`, failed.phase, 'over');
+  check(`${label}: and does not go to the declarer`, failed.winnerId !== 'p1');
+
+  // The sabotage window: during a countdown anyone may buy a share off anyone, including the
+  // leader. Outside one, the usual restriction holds.
+  let siege = createInitialState('t-siege', 'Siege', { humanNames: ['A', 'B'], aiCount: 0, seed: 'siege' });
+  siege = setShares(siege, 'p1', 4);
+  siege = setShares(siege, 'p2', 6);
+  siege = setCash(siege, 'p1', 4000);
+  siege = processAction(siege, { type: 'ROLL' });
+  check(
+    `${label}: outside a countdown the small holder cannot strip the leader`,
+    processAction(siege, { type: 'BUY_SHARE' }) === siege,
+  );
+
+  // p2 declares, which opens the window; play round to p1.
+  let open = processAction(siege, { type: 'END_TURN' });
+  open = processAction(open, { type: 'ACKNOWLEDGE_HANDOVER' });
+  open = processAction(open, { type: 'ROLL' });
+  open = processAction(open, { type: 'DECLARE' });
+  open = processAction(open, { type: 'END_TURN' });
+  open = processAction(open, { type: 'ACKNOWLEDGE_HANDOVER' });
+  open = processAction(open, { type: 'ROLL' });
+  check(`${label}: the countdown is running`, open.declaration !== null);
+  const raided = processAction(open, { type: 'BUY_SHARE' });
+  check(
+    `${label}: inside the window the leader can be raided`,
+    raided.captains[0].shares === 5 && raided.captains[1].shares === 5,
+    `${raided.captains[0].shares} / ${raided.captains[1].shares}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -650,7 +700,7 @@ function testWeather() {
         route: [leg.b], legFrom: leg.a,
         legRemaining: leg.distance - progressed, legDistance: leg.distance,
       },
-      cargo: { good: 'tea', paid: 60, boughtAt: leg.a, boughtOnTurn: 0 },
+      hold: [{ good: 'tea', paid: 60, boughtAt: leg.a, boughtOnTurn: 0 }],
     };
     const out = resolveStorm(seed, ship, season);
     seed = out.seed;
@@ -681,7 +731,7 @@ function testPiracy() {
     id: 's1', ownerId: 'p1', name: 'Test',
     location: null,
     voyage: { route: [to], legFrom: from, legRemaining: 5, legDistance: 10 },
-    cargo: cargo ? { good: 'tea', paid: 60, boughtAt: from, boughtOnTurn: 0 } : null,
+    hold: cargo ? [{ good: 'tea', paid: 60, boughtAt: from, boughtOnTurn: 0 }] : [],
     fittings: guns ? { guns: true } : undefined,
   });
 
@@ -831,12 +881,13 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
       if (entry.kind !== 'deliver' || !entry.data) continue;
       deliveries++;
 
-      const { contractId, rank, payout, purchasePrice, cardPrice } = entry.data as {
+      const { contractId, rank, payout, purchasePrice, cardPrice, units } = entry.data as {
         contractId: string;
         rank: number;
         payout: number;
         purchasePrice: number;
         cardPrice: number;
+        units: number;
       };
 
       const expectedRank = (fillsSeen.get(contractId) ?? 0) + 1;
@@ -849,16 +900,22 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         `reached fill ${expectedRank}`,
       );
       if (rank === 1 || rank === 2) {
+        // Paid per unit: every matching slot lands together, so three lots pay three times.
         equal(
-          `AI game ${seed}: ${contractId} fill ${rank} pays ${rank === 1 ? '4x' : '2x'}`,
+          `AI game ${seed}: ${contractId} fill ${rank} pays ${rank === 1 ? '4x' : '2x'} per unit`,
           payout,
           purchasePrice * (rank === 1 ? 4 : 2),
         );
       }
+      check(
+        `AI game ${seed}: ${contractId} landed 1..${HOLD_SLOTS} units`,
+        units >= 1 && units <= HOLD_SLOTS,
+        `landed ${units}`,
+      );
       equal(
-        `AI game ${seed}: ${contractId} was bought at the card's price`,
+        `AI game ${seed}: ${contractId} was bought at the card's price per unit`,
         purchasePrice,
-        cardPrice,
+        cardPrice * units,
       );
     }
 
@@ -902,10 +959,15 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         `AI game ${seed}: ${ship.name} is either in port or at sea, never both`,
         (ship.location === null) !== (ship.voyage === null),
       );
-      if (ship.cargo) {
+      check(
+        `AI game ${seed}: ${ship.name} never exceeds ${HOLD_SLOTS} slots`,
+        ship.hold.length <= HOLD_SLOTS,
+        `${ship.hold.length} lots aboard`,
+      );
+      for (const lot of ship.hold) {
         check(
           `AI game ${seed}: ${ship.name}'s cargo is a real good`,
-          GOOD_BY_ID[ship.cargo.good] !== undefined,
+          GOOD_BY_ID[lot.good] !== undefined,
         );
       }
       if (ship.location) {

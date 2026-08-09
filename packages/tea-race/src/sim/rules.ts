@@ -41,14 +41,50 @@ export const VICTORY_CASH = 750;
 /** FAITHFUL — a captain may own up to three ships (the starting one plus two). */
 export const MAX_SHIPS = 3;
 
-/** AUTHORED — starting cash. Enough for two mid-value lots, not enough for a share. */
-export const STARTING_CASH = 250;
+/** FAITHFUL — every ship has exactly three cargo slots, so a full fleet carries nine. */
+export const HOLD_SLOTS = 3;
+
+/**
+ * FAITHFUL — dumping cargo recovers nothing at all. "Dumping forfeits the entire original purchase
+ * price to the bank, returning exactly £0."
+ *
+ * This replaces an earlier authored half-price sale, which was far too gentle: at half back,
+ * speculating badly cost a captain almost nothing, and the source's "speculation bottleneck" — the
+ * risk that guessing wrong locks up your hull — had no teeth.
+ */
+export const JETTISON_RECOVERS = 0;
+
+/** FAITHFUL — the source gives a range of £500 to £1,000 depending on variant. */
+export const STARTING_CASH = 600;
 
 /** AUTHORED — price of an additional clipper. */
 export const SHIP_PRICE = 250;
 
-/** AUTHORED — price of one share from the bank. Six of them plus the cash bar is ~£1470 to raise. */
-export const SHARE_PRICE = 120;
+/**
+ * FAITHFUL — the share price **scales as the pool empties**. The source: "As the pool diminishes,
+ * the remaining shares become progressively more expensive, preventing a wealthy player from buying
+ * a victory in a single turn."
+ *
+ * This replaces a flat £120, which was measurably wrong: across 20 seeds the bank sold out by round
+ * 37-63 of a ~155-round game, so the entire share market closed in the first third and any captain
+ * who had not bought in was locked out for the rest of the game. Six shares cost £720 — four or five
+ * good deliveries.
+ *
+ * On this ladder the first share is cheap and the last is dear, so six now cost about £1,600 and
+ * have to be earned across the whole game rather than banked early.
+ */
+export const SHARE_BASE_PRICE = 90;
+export const SHARE_SCARCITY_STEP = 45;
+
+/** What the bank charges for the next share, given how many it still holds. */
+export function sharePriceFor(sharesRemaining: number): number {
+  const sold = TOTAL_SHARES - Math.max(0, Math.min(TOTAL_SHARES, sharesRemaining));
+  return SHARE_BASE_PRICE + sold * SHARE_SCARCITY_STEP;
+}
+
+/** What the bank pays to take one back, at the price band it would next sell at. */
+export const shareBuybackFor = (sharesRemaining: number): number =>
+  Math.floor(sharePriceFor(Math.min(TOTAL_SHARES - 1, sharesRemaining)) * SHARE_BUYBACK_FRACTION);
 
 /**
  * AUTHORED, and load-bearing: what a share costs once the bank has none left. The seller is
@@ -99,8 +135,17 @@ export const SHARE_RAID_MULTIPLIER = 2;
  * way in, only buy from the bank. Every captain gets the same chance at the bank's ten in the
  * opening rounds, so declining to take one is a decision, not an accident.
  */
-export const canBuyOut = (buyerShares: number, sellerShares: number): boolean =>
-  buyerShares >= sellerShares;
+export const canBuyOut = (
+  buyerShares: number,
+  sellerShares: number,
+  /**
+   * FAITHFUL — during the twelve-turn countdown the restriction lifts entirely. The source calls
+   * this the sabotage window and states its purpose outright: "Opponents use this window to buy
+   * shares away from the leader." Termination is not at risk, because the countdown itself is
+   * bounded — twelve turns and the game is over either way.
+   */
+  sabotageWindow = false,
+): boolean => sabotageWindow || buyerShares >= sellerShares;
 
 /**
  * AUTHORED — a card is only dealt if its source and destination are within this many sail points.
@@ -116,7 +161,7 @@ export const DICE_PER_SHIP = 2;
 export const DIE_FACES = 6;
 
 /**
- * AUTHORED — what the bank pays to take a share back, as a fraction of its issue price.
+ * AUTHORED — what the bank pays to take a share back, as a fraction of the price band.
  *
  * This is the game's only escape hatch, and it exists because the harness found a real softlock: a
  * captain who spends down to £10 buying shares cannot afford the cheapest lot on any quay (£20),

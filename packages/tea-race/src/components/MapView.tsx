@@ -462,7 +462,7 @@ function ShipMarker({ ship, colour, selected }: { ship: Ship; colour: string; se
       <path
         d="M0 -9 L5 6 L0 3 L-5 6 Z"
         fill={colour}
-        fillOpacity={ship.cargo ? 0.95 : 0.45}
+        fillOpacity={ship.hold.length > 0 ? 0.95 : 0.45}
         stroke={colour}
         strokeWidth={1.6}
         strokeLinejoin="round"

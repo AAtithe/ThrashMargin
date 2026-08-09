@@ -85,7 +85,7 @@ export default function GameScreen() {
     if (focusedContract) {
       const from = selectedShip.location;
       if (!from) return null;
-      const carrying = selectedShip.cargo?.good === focusedContract.good;
+      const carrying = selectedShip.hold.some(lot => lot.good === focusedContract.good);
       const to = carrying ? focusedContract.destination : focusedContract.source;
       const route = planRoute(from, to);
       return route ? [from, ...route.path] : null;

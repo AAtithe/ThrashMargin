@@ -74,7 +74,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     name: SHIP_NAMES[i % SHIP_NAMES.length],
     location: HOME_PORT,
     voyage: null,
-    cargo: null,
+    hold: [],
   }));
 
   const seed0 = seedFromString(opts.seed?.trim() || id);
@@ -122,6 +122,27 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
         }. Five commissions are posted on the exchange.`,
       },
     ],
+  };
+}
+
+/**
+ * Brings an older save up to the current shape.
+ *
+ * The only breaking change so far is single-cargo to three-slot holds. A save from before that
+ * carries `cargo: CargoLot | null`, which migrates cleanly to a one-slot hold — discarding those
+ * saves would have been the lazy option and would have thrown away real games.
+ */
+export function migrateState(raw: unknown): GameState | null {
+  const s = raw as (GameState & { ships?: (Ship & { cargo?: unknown })[] }) | null;
+  if (!s || typeof s !== 'object' || !Array.isArray(s.ships)) return null;
+  return {
+    ...s,
+    ships: s.ships.map(ship => {
+      if (Array.isArray(ship.hold)) return ship;
+      const legacy = (ship as { cargo?: GameState['ships'][number]['hold'][number] | null }).cargo;
+      const { cargo: _dropped, ...rest } = ship as Ship & { cargo?: unknown };
+      return { ...rest, hold: legacy ? [legacy] : [] };
+    }),
   };
 }
 

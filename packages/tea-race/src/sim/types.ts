@@ -97,8 +97,15 @@ export interface Ship {
   /** The port it is tied up at. Null exactly when `voyage` is set. */
   location: PortId | null;
   voyage: Voyage | null;
-  /** A clipper carries one lot at a time. */
-  cargo: CargoLot | null;
+  /**
+   * The hold: up to HOLD_SLOTS lots, one good per slot.
+   *
+   * The real 1988 ship carries **three** slots, not one, and that single fact is what turns a
+   * voyage from a there-and-back errand into a routing puzzle — load three things, plan the drops,
+   * and decide how much of the hull to gamble on speculation. The source calls that last tension
+   * the "speculation bottleneck": spec cargo locks up a third to two thirds of your capacity.
+   */
+  hold: CargoLot[];
   /**
    * Permanent fittings. Optional so that a save written before hazards existed loads untouched —
    * the same reason every other field added by the hazards work is optional.
@@ -279,9 +286,13 @@ export type GameAction =
    */
   | { type: 'SAIL_TO'; shipId: ShipId; destination: PortId; via?: PortId[] }
   | { type: 'BUY_CARGO'; shipId: ShipId; good: GoodId }
+  /** Lands every slot matching the contract, and is paid per unit. */
   | { type: 'DELIVER'; shipId: ShipId; contractId: ContractId }
-  /** Dump a speculative lot nobody ended up wanting, at half what was paid. */
-  | { type: 'SELL_LOCAL'; shipId: ShipId }
+  /**
+   * Over the side. Recovers **nothing** — the source is explicit that dumping forfeits the whole
+   * purchase price to the bank. Omit `good` to clear the entire hold.
+   */
+  | { type: 'JETTISON'; shipId: ShipId; good?: GoodId }
   | { type: 'BUY_SHIP' }
   /** Fit guns or copper to a docked ship, permanently. */
   | { type: 'BUY_FITTING'; shipId: ShipId; fitting: keyof ShipFittings }

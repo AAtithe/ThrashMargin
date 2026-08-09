@@ -2,9 +2,9 @@ import {
   DECLARATION_TURNS,
   FITTING_PRICES,
   MAX_SHIPS,
-  SHARE_BUYBACK_FRACTION,
   SHARE_MAJORITY,
-  SHARE_PRICE,
+  shareBuybackFor,
+  sharePriceFor,
   SHARE_RAID_MULTIPLIER,
   SHIP_PRICE,
   TOTAL_SHARES,
@@ -32,18 +32,26 @@ interface Props {
  */
 export default function CountingHouse({ state, captain, fleetSize, dispatch, enabled, ships }: Props) {
   const bankHasShares = state.sharesRemaining > 0;
-  const sharePrice = bankHasShares ? SHARE_PRICE : SHARE_PRICE * SHARE_RAID_MULTIPLIER;
+  const sharePrice = bankHasShares
+    ? sharePriceFor(state.sharesRemaining)
+    : sharePriceFor(0) * SHARE_RAID_MULTIPLIER;
+  // During the countdown anyone may buy off anyone — the source's sabotage window.
+  const sabotage = state.declaration !== null;
 
   const buyoutTarget = state.captains
-    .filter(c => c.id !== captain.id && c.shares > 0 && canBuyOut(captain.shares, c.shares))
-    .sort((a, b) => a.shares - b.shares || state.captains.indexOf(a) - state.captains.indexOf(b))[0];
+    .filter(c => c.id !== captain.id && c.shares > 0 && canBuyOut(captain.shares, c.shares, sabotage))
+    .sort((a, b) =>
+      sabotage
+        ? b.shares - a.shares || state.captains.indexOf(a) - state.captains.indexOf(b)
+        : a.shares - b.shares || state.captains.indexOf(a) - state.captains.indexOf(b),
+    )[0];
 
   const canBuyShare = bankHasShares
     ? captain.cash >= sharePrice
     : Boolean(buyoutTarget) && captain.cash >= sharePrice;
 
   const canDeclare = captain.shares >= SHARE_MAJORITY && !state.declaration;
-  const buyback = Math.floor(SHARE_PRICE * SHARE_BUYBACK_FRACTION);
+  const buyback = shareBuybackFor(state.sharesRemaining);
 
   return (
     <Panel
@@ -92,8 +100,10 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
 
       {!bankHasShares && (
         <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-          The bank's ten are all out. A share now costs {SHARE_RAID_MULTIPLIER}× and can only be
-          bought off a captain holding no more than you do.
+          The bank's ten are all out. A share now costs {SHARE_RAID_MULTIPLIER}×{' '}
+          {sabotage
+            ? '— and while the countdown runs you may buy one off anyone, including the leader.'
+            : 'and can only be bought off a captain holding no more than you do.'}
         </p>
       )}
 

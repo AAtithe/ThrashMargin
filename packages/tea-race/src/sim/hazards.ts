@@ -74,7 +74,7 @@ export function resolvePiracy(seed: number, ship: Ship, captainCash: number): Pi
 
   // An empty hold has nothing worth seizing, so they settle for money instead. Without this a
   // captain running light would "lose" a cargo that was never aboard.
-  if (seizure && !ship.cargo) seizure = false;
+  if (seizure && ship.hold.length === 0) seizure = false;
 
   if (seizure) return { kind: 'seizure', seed: s };
 
@@ -127,6 +127,6 @@ export function insurancePremium(insuredValue: number, risk: number): number {
  */
 export function indemnityFor(outcome: PiracyOutcome, ship: Ship): number {
   if (outcome.kind === 'ransom') return outcome.amount;
-  if (outcome.kind === 'seizure') return ship.cargo?.paid ?? 0;
+  if (outcome.kind === 'seizure') return ship.hold.reduce((n, lot) => n + lot.paid, 0);
   return 0;
 }

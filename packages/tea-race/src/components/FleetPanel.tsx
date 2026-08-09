@@ -1,4 +1,5 @@
 import { GOOD_BY_ID, portName } from '../sim/content';
+import { HOLD_SLOTS } from '../sim/rules';
 import { destinationOf, pointsToDestination } from '../sim/movement';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel, Pill, bodySmall, dataText } from './ui';
@@ -36,7 +37,7 @@ export default function FleetPanel({
           const points = sailPoints[ship.id] ?? 0;
           const roll = dice[ship.id];
           const dest = destinationOf(ship);
-          const good = ship.cargo ? GOOD_BY_ID[ship.cargo.good] : null;
+
 
           return (
             <button
@@ -74,13 +75,25 @@ export default function FleetPanel({
                     : 'At sea'}
               </span>
 
-              <span>
-                {good ? (
-                  <Pill colour={good.colour}>
-                    {good.name} · paid {money(ship.cargo!.paid)}
-                  </Pill>
+              <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
+                {ship.hold.length === 0 ? (
+                  <span style={{ ...dataText, fontSize: '0.68rem', color: UI.textFaint }}>
+                    hold empty — {HOLD_SLOTS} slots
+                  </span>
                 ) : (
-                  <span style={{ ...dataText, fontSize: '0.68rem', color: UI.textFaint }}>hold empty</span>
+                  <>
+                    {ship.hold.map((lot, i) => {
+                      const g = GOOD_BY_ID[lot.good];
+                      return (
+                        <Pill key={i} colour={g?.colour ?? UI.textSoft}>
+                          {g?.name ?? lot.good} {money(lot.paid)}
+                        </Pill>
+                      );
+                    })}
+                    <span style={{ ...dataText, fontSize: '0.66rem', color: UI.textFaint }}>
+                      {ship.hold.length}/{HOLD_SLOTS}
+                    </span>
+                  </>
                 )}
               </span>
             </button>

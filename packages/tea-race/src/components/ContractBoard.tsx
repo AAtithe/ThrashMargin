@@ -36,7 +36,7 @@ export default function ContractBoard({ contracts, captains, reference, onFocus,
           if (reference) {
             const at = reference.location ?? reference.voyage?.route[reference.voyage.route.length - 1];
             if (at) {
-              const carryingIt = reference.cargo?.good === contract.good;
+              const carryingIt = reference.hold.some(lot => lot.good === contract.good);
               const target = carryingIt ? contract.destination : contract.source;
               const legs = distanceBetween(at, target);
               if (Number.isFinite(legs)) {

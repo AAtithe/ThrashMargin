@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { processAction } from '../sim/actions';
+import { migrateState } from '../sim/state';
 import { API, authHeaders } from '../lib/api';
 import type { NewGameOptions } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
@@ -96,7 +97,7 @@ export function useGameCloud() {
         setError(data.message ?? 'Failed to load the voyage');
         return;
       }
-      setState(data.state);
+      setState(migrateState(data.state));
     } catch {
       setError('Network error — failed to load the voyage');
     }

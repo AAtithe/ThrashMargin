@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { createInitialState, type NewGameOptions } from '../sim/state';
+import { createInitialState, migrateState, type NewGameOptions } from '../sim/state';
 import { processAction } from '../sim/actions';
 import type { GameAction, GameState } from '../sim/types';
 
@@ -34,6 +34,8 @@ function isCurrentShape(parsed: unknown): parsed is GameState {
   if (!Array.isArray(s.contracts) || !Array.isArray(s.deck)) return false;
   if (typeof s.sharesRemaining !== 'number' || !('declaration' in s) || !('winnerId' in s)) return false;
   if (!s.sailPoints || !s.dice || !Array.isArray(s.log)) return false;
+  // Every ship must have a hold — migrateState converts the old single-cargo shape first.
+  if (!s.ships.every(sh => Array.isArray((sh as { hold?: unknown }).hold))) return false;
   if (typeof s.nextContractSeq !== 'number' || typeof s.nextShipSeq !== 'number') return false;
   if (typeof s.nextLogSeq !== 'number') return false;
   return true;
@@ -86,7 +88,7 @@ export function useGameLocal() {
   const loadGame = useCallback((gameId: string) => {
     try {
       const raw = localStorage.getItem(stateKey(gameId));
-      const parsed = raw ? JSON.parse(raw) : null;
+      const parsed = migrateState(raw ? JSON.parse(raw) : null);
       if (!isCurrentShape(parsed)) {
         setError('Save not found, or from an older version of the game');
         return;

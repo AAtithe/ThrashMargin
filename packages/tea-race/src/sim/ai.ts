@@ -11,17 +11,18 @@
  * every proposal must make progress or the loop would just re-propose it. The guard in
  * `runAiTurn` bounds that, but relying on the guard would show up as a captain who wastes turns.
  */
-import { distanceBetween, portDemands, portSupplies, GOODS, GOOD_BY_ID, PORT_BY_ID } from './content';
+import { distanceBetween, portSupplies, GOODS, GOOD_BY_ID, PORT_BY_ID } from './content';
 import { payoutFor } from './contracts';
 import {
   canBuyOut,
   FITTING_PRICES,
+  HOLD_SLOTS,
   MAX_SHIPS,
   SHARE_MAJORITY,
-  SHARE_PRICE,
   SHARE_RAID_MULTIPLIER,
   SHIP_PRICE,
   VICTORY_CASH,
+  sharePriceFor,
 } from './rules';
 import { activeCaptain, shipsOf } from './state';
 import { seasonOf, turnsBetween } from './weather';
@@ -48,7 +49,7 @@ interface Temperament {
   shipReserve: number;
   /** Below this score, an empty ship will load something on spec rather than chase a contract. */
   speculateBelow: number;
-  /** Turns a lot may sit unwanted before it is dumped at half price. */
+  /** Turns a lot may sit unwanted before it goes over the side. Dumping recovers nothing. */
   patience: number;
 }
 
@@ -112,7 +113,7 @@ function rivalsAhead(s: GameState, contract: Contract, mine: string, myDistance:
   let ahead = 0;
   for (const ship of s.ships) {
     if (ship.ownerId === mine) continue;
-    if (ship.cargo?.good !== contract.good) continue;
+    if (!ship.hold.some(lot => lot.good === contract.good)) continue;
     const from = ship.location ?? ship.voyage?.route[ship.voyage.route.length - 1];
     if (!from) continue;
     if (distanceBetween(from, contract.destination) < myDistance) ahead++;
@@ -148,12 +149,12 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
   return best;
 }
 
-/** For a loaded ship at `from`: the card its cargo can still fill, ranked by payout per turn. */
+/** For a loaded ship at `from`: the card her hold can still fill, ranked by payout per turn. */
 function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
-  if (!ship.cargo || !ship.location) return null;
+  if (ship.hold.length === 0 || !ship.location) return null;
   let best: Run | null = null;
   for (const contract of liveContracts(s)) {
-    if (contract.good !== ship.cargo.good) continue;
+    if (!ship.hold.some(lot => lot.good === contract.good)) continue;
     const distance = distanceBetween(ship.location, contract.destination);
     if (!isFinite(distance)) continue;
 
@@ -164,7 +165,10 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
 
     const turns = passageTurns(s, ship.location, contract.destination, distance);
     const drag = piracyDrag(s, ship.location, contract.destination);
-    const gross = ship.cargo.paid * (payoutFor(contract) / contract.price);
+    // Every matching slot lands together and is paid per unit, so three lots are worth three times
+    // the trip. That is what makes filling the hull with one good the right move.
+    const units = ship.hold.filter(lot => lot.good === contract.good);
+    const gross = units.reduce((n, lot) => n + lot.paid, 0) * (payoutFor(contract) / contract.price);
     const score = (gross * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, score };
   }
@@ -195,7 +199,9 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
   const temperament = temperamentOf(captain);
   const ships = shipsOf(s, captain.id);
   const bankHasShares = s.sharesRemaining > 0;
-  const sharePrice = bankHasShares ? SHARE_PRICE : SHARE_PRICE * SHARE_RAID_MULTIPLIER;
+  const sharePrice = bankHasShares
+    ? sharePriceFor(s.sharesRemaining)
+    : sharePriceFor(0) * SHARE_RAID_MULTIPLIER;
 
   // Already declared: the only job left is to be holding the cash and the shares when the clock
   // runs out. Buying anything that drops cash below the bar would lose the game it just claimed.
@@ -288,9 +294,12 @@ export function nextAiAction(s: GameState): GameAction | null {
 
   // 1. Land anything that can be landed this instant.
   for (const ship of docked) {
-    if (!ship.cargo) continue;
+    if (ship.hold.length === 0) continue;
     const here = s.contracts.find(
-      c => c.destination === ship.location && c.good === ship.cargo!.good && c.fills.length < 2,
+      c =>
+        c.destination === ship.location &&
+        ship.hold.some(lot => lot.good === c.good) &&
+        c.fills.length < 2,
     );
     if (here) return { type: 'DELIVER', shipId: ship.id, contractId: here.id };
   }
@@ -307,7 +316,8 @@ export function nextAiAction(s: GameState): GameAction | null {
 
   if (s.hazards?.piracy) {
     for (const ship of docked) {
-      const worthInsuring = closingOut ? Boolean(ship.cargo) : (ship.cargo?.paid ?? 0) >= 55;
+      const holdValue = ship.hold.reduce((n, lot) => n + lot.paid, 0);
+      const worthInsuring = closingOut ? holdValue > 0 : holdValue >= 90;
       if (worthInsuring && !ship.insured) {
         return { type: 'SET_INSURANCE', shipId: ship.id, insured: true };
       }
@@ -328,7 +338,7 @@ export function nextAiAction(s: GameState): GameAction | null {
       if (
         s.hazards?.piracy &&
         !ship.fittings?.guns &&
-        (ship.cargo?.paid ?? 0) >= 55 &&
+        ship.hold.reduce((n, lot) => n + lot.paid, 0) >= 90 &&
         surplus >= FITTING_PRICES.guns
       ) {
         return { type: 'BUY_FITTING', shipId: ship.id, fitting: 'guns' };
@@ -336,26 +346,32 @@ export function nextAiAction(s: GameState): GameAction | null {
     }
   }
 
-  // 3. Loaded ships still in port: set a course for the card their cargo fits.
+  // 3. Loaded ships still in port. Top up the hold first if there is a good reason to, then sail.
   for (const ship of docked) {
-    if (!ship.cargo) continue;
+    if (ship.hold.length === 0) continue;
     const run = bestRunForLoadedShip(s, ship);
+
+    // Filling spare slots with more of what she is already carrying multiplies the same voyage.
+    if (run && ship.hold.length < HOLD_SLOTS && ship.location === run.contract.source) {
+      const price = GOOD_BY_ID[run.contract.good]?.basePrice ?? 0;
+      if (spendable >= price) {
+        return { type: 'BUY_CARGO', shipId: ship.id, good: run.contract.good };
+      }
+    }
     if (run) return { type: 'SAIL_TO', shipId: ship.id, destination: run.contract.destination };
 
-    // Nothing face-up wants it. Hold a while in case a card turns up, then cut the loss —
-    // a hold full of unsellable spec cargo takes a ship out of the game permanently.
-    const held = s.turn - ship.cargo.boughtOnTurn;
-    if (held >= temperament.patience && portDemands(ship.location!, ship.cargo.good)) {
-      return { type: 'SELL_LOCAL', shipId: ship.id };
+    // Nothing face-up wants any of it. Dumping now recovers nothing at all, so hold considerably
+    // longer than when a half-price sale was available — the hull is only worth clearing once the
+    // cargo is genuinely dead weight blocking better work.
+    const oldest = Math.max(...ship.hold.map(lot => s.turn - lot.boughtOnTurn));
+    if (oldest >= temperament.patience * 2 && ship.hold.length >= HOLD_SLOTS) {
+      return { type: 'JETTISON', shipId: ship.id };
     }
-    // Otherwise carry it somewhere that at least buys it, so SELL_LOCAL becomes possible.
-    const outlet = nearestOutlet(s, ship);
-    if (outlet) return { type: 'SAIL_TO', shipId: ship.id, destination: outlet };
   }
 
   // 4. Empty ships in port: load here if this is the source, otherwise sail for one.
   for (const ship of docked) {
-    if (ship.cargo) continue;
+    if (ship.hold.length > 0) continue;
     const run = bestRunForEmptyShip(s, ship.location!, captain.id);
 
     if (run && run.contract.source === ship.location) {
@@ -384,7 +400,7 @@ export function nextAiAction(s: GameState): GameAction | null {
 
   // 4b. Too poor to buy the cheapest lot anywhere and holding shares? Cash one in. This is the
   //    softlock escape, and the AI reaches for it before it is completely stuck rather than after.
-  if (captain.shares > 0 && captain.cash < CHEAPEST_LOT && !ships.some(sh => sh.cargo)) {
+  if (captain.shares > 0 && captain.cash < CHEAPEST_LOT && !ships.some(sh => sh.hold.length > 0)) {
     return { type: 'SELL_SHARE' };
   }
 
@@ -392,19 +408,4 @@ export function nextAiAction(s: GameState): GameAction | null {
   return investmentAction(s, captain);
 }
 
-/** Nearest port that buys this ship's cargo, so an unwanted lot can eventually be cleared. */
-function nearestOutlet(s: GameState, ship: Ship): string | null {
-  if (!ship.cargo || !ship.location) return null;
-  let best: string | null = null;
-  let bestDistance = Infinity;
-  for (const port of Object.values(PORT_BY_ID)) {
-    if (port.id === ship.location) continue;
-    if (!portDemands(port.id, ship.cargo.good)) continue;
-    const d = distanceBetween(ship.location, port.id);
-    if (d < bestDistance) {
-      best = port.id;
-      bestDistance = d;
-    }
-  }
-  return best;
-}
+

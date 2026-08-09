@@ -60,6 +60,52 @@ export function plotCourse(ship: Ship, destination: PortId, via?: PortId[]): Shi
   };
 }
 
+/**
+ * Re-orders a ship already at sea. She may only be sent to one of the two ports on the leg she is
+ * currently sailing: carry on to the next one, or put about and run back the way she came.
+ *
+ * Authored — the source is silent on this. But the previous rule, that a course could never be
+ * changed once set, was simply annoying: a card would be taken while you were three turns from the
+ * quay and there was nothing you could do about it. This keeps the physical honesty (no teleporting
+ * mid-ocean, and putting about costs you all the ground you had made) while giving the decision back.
+ */
+export function reorderAtSea(ship: Ship, destination: PortId): Ship | null {
+  if (!ship.voyage) return null;
+  const ahead = ship.voyage.route[0];
+  const behind = ship.voyage.legFrom;
+
+  // Carry on, but stop at the next port rather than sailing past it.
+  if (destination === ahead) {
+    if (ship.voyage.route.length === 1) return null; // already her destination
+    return { ...ship, voyage: { ...ship.voyage, route: [ahead] } };
+  }
+
+  // Put about. Whatever she had made on this leg is now the distance back.
+  if (destination === behind) {
+    return {
+      ...ship,
+      voyage: {
+        route: [behind],
+        legFrom: ahead,
+        legRemaining: ship.voyage.legDistance - ship.voyage.legRemaining,
+        legDistance: ship.voyage.legDistance,
+      },
+    };
+  }
+  return null;
+}
+
+/** The two ports a ship at sea may be re-ordered to. Empty while she is in port. */
+export function reachableAtSea(ship: Ship): PortId[] {
+  if (!ship.voyage) return [];
+  const ahead = ship.voyage.route[0];
+  const behind = ship.voyage.legFrom;
+  const out: PortId[] = [];
+  if (ship.voyage.route.length > 1) out.push(ahead);
+  out.push(behind);
+  return out;
+}
+
 /** Abandons a plotted course. Only legal while still in port — i.e. before any points are spent. */
 export function cancelCourse(ship: Ship): Ship | null {
   if (!ship.voyage) return null;
@@ -99,7 +145,7 @@ export function sail(ship: Ship, points: number): SailOutcome {
     if (rest.length === 0) {
       // Final destination — tie up, and forfeit whatever is left of the roll.
       return {
-        ship: { ...ship, voyage: null, location: reached, cargo: ship.cargo },
+        ship: { ...ship, voyage: null, location: reached },
         spent,
         arrivedAt: reached,
         passed,

@@ -9,9 +9,9 @@
  *  2. Nothing here calls Math.random or reads a clock. Dice come from `rng.ts` against
  *     `state.rngSeed`; timestamps are passed in at creation.
  */
-import { GOOD_BY_ID, HOME_PORT, goodName, portDemands, portName, portSupplies } from './content';
+import { GOOD_BY_ID, HOME_PORT, goodName, portName, portSupplies } from './content';
 import { drawContract, faceUpKeys, isContractComplete, nextRank } from './contracts';
-import { destinationOf, plotCourse, pointsToDestination, sail } from './movement';
+import { destinationOf, plotCourse, pointsToDestination, reorderAtSea, sail } from './movement';
 import { roll2d6 } from './rng';
 import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
@@ -23,10 +23,12 @@ import {
   LOG_LIMIT,
   MAX_SHIPS,
   PAYOUT_MULTIPLIERS,
-  SHARE_BUYBACK_FRACTION,
+  HOLD_SLOTS,
   SHARE_MAJORITY,
-  SHARE_PRICE,
   SHARE_RAID_MULTIPLIER,
+  TOTAL_SHARES,
+  shareBuybackFor,
+  sharePriceFor,
   SHIP_NAMES,
   SHIP_PRICE,
   VICTORY_CASH,
@@ -112,6 +114,24 @@ function replenishContracts(state: GameState): GameState {
 // Turn flow
 // ---------------------------------------------------------------------------
 
+/**
+ * Everything a captain is worth: cash, ships at what they cost, shares at the bank's current band,
+ * and whatever is in the holds. Used when a claim collapses and the game is decided on assets.
+ */
+export function assetValue(state: GameState, captain: Captain): number {
+  const ships = state.ships.filter(sh => sh.ownerId === captain.id);
+  const holds = ships.reduce(
+    (sum, sh) => sum + sh.hold.reduce((n, lot) => n + lot.paid, 0),
+    0,
+  );
+  return (
+    captain.cash +
+    ships.length * SHIP_PRICE +
+    captain.shares * sharePriceFor(TOTAL_SHARES - captain.shares) +
+    holds
+  );
+}
+
 function resolveDeclaration(state: GameState): GameState {
   const d = state.declaration;
   if (!d) return state;
@@ -134,16 +154,39 @@ function resolveDeclaration(state: GameState): GameState {
     );
   }
 
+  // A failed claim ends the game outright — the declarer loses, and the company goes to whoever
+  // holds the most by value. Straight from the source, and it means nobody is ever locked out of
+  // winning just because they lost the share race: out-trade the table and the collapse hands it to
+  // you. It also removes the endgame drag, since a lapse used to restart the whole thing.
   const missing: string[] = [];
   if (!holdsMajority) missing.push(`only ${captain.shares} shares`);
   if (!holdsCash) missing.push(`only ${money(captain.cash)} in hand`);
   if (ships < 1) missing.push('no ship afloat');
-  return log(
-    { ...state, declaration: null },
+
+  const ranked = state.captains
+    .filter(c => c.id !== captain.id)
+    .map(c => ({ c, worth: assetValue(state, c) }))
+    .sort((a, b) => b.worth - a.worth);
+  const heir = ranked[0];
+
+  let s: GameState = { ...state, declaration: null, phase: 'over', winnerId: heir?.c.id ?? null };
+  s = log(
+    s,
     'lapse',
-    `${captain.name}'s claim lapses — ${missing.join(', ')}. Trading continues.`,
+    `${captain.name}'s claim collapses — ${missing.join(', ')}. The company is broken up.`,
     captain.id,
   );
+  if (heir) {
+    s = log(
+      s,
+      'victory',
+      `${heir.c.name} is left holding the most by value — ${money(
+        heir.worth,
+      )} in cash, ships and shares — and takes the company.`,
+      heir.c.id,
+    );
+  }
+  return s;
 }
 
 /** Moves to the next seat, handling the round roll-over and the declaration countdown. */
@@ -341,17 +384,18 @@ function applyPiracy(state: GameState, ship: Ship, captainId: string): GameState
       { shipId: ship.id, ransom: outcome.amount },
     );
   } else {
-    const lost = ship.cargo;
-    s = replaceShip(s, { ...ship, cargo: null });
+    // Pirates take the whole hold. With three slots that finally hurts, which is the point.
+    const lost = ship.hold;
+    s = replaceShip(s, { ...ship, hold: [] });
     if (covered > 0) s = updateCaptain(s, captainId, { cash: captain.cash + covered });
     s = log(
       s,
       'piracy',
       `${ship.name} is taken and stripped — ${
-        lost ? goodName(lost.good) : 'her cargo'
+        lost.length ? lost.map(l => goodName(l.good)).join(', ') : 'her cargo'
       } gone.`,
       captainId,
-      { shipId: ship.id, seized: lost?.paid ?? 0 },
+      { shipId: ship.id, seized: lost.reduce((n, l) => n + l.paid, 0), units: lost.length },
     );
   }
 
@@ -374,7 +418,26 @@ function doSailTo(
   via?: string[],
 ): GameState {
   const ship = ownShip(state, shipId);
-  if (!ship || ship.location === null) return state;
+  if (!ship) return state;
+
+  // At sea: she may only be re-ordered to one end of the leg she is on.
+  if (ship.location === null) {
+    const turned = reorderAtSea(ship, destination);
+    if (!turned) return state;
+    const captain = activeCaptain(state);
+    const putAbout = destination === ship.voyage!.legFrom;
+    const s = replaceShip(state, turned);
+    return log(
+      s,
+      'sail',
+      putAbout
+        ? `${ship.name} puts about and runs back for ${portName(destination)}.`
+        : `${ship.name} is re-ordered to hold at ${portName(destination)}.`,
+      captain.id,
+      { shipId: ship.id, reordered: destination },
+    );
+  }
+
   if (ship.location === destination) return state;
 
   // No explicit path: plan the one a captain would actually want — fastest for the season when
@@ -401,7 +464,7 @@ function doSailTo(
   let s: GameState = state;
   if (ship.insured && state.hazards?.piracy) {
     const risk = routeRisk(ship.location, plotted.voyage!.route, seasonOf(state.round));
-    const premium = insurancePremium(ship.cargo?.paid ?? 0, risk);
+    const premium = insurancePremium(ship.hold.reduce((n, l) => n + l.paid, 0), risk);
     if (captain.cash < premium) return state;
     s = updateCaptain(s, captain.id, { cash: captain.cash - premium });
     s = log(
@@ -441,7 +504,8 @@ function doSailTo(
 
 function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   const ship = ownShip(state, shipId);
-  if (!ship || ship.location === null || ship.cargo) return state;
+  if (!ship || ship.location === null) return state;
+  if (ship.hold.length >= HOLD_SLOTS) return state;
   if (!portSupplies(ship.location, good)) return state;
 
   const captain = activeCaptain(state);
@@ -451,35 +515,40 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   let s = updateCaptain(state, captain.id, { cash: captain.cash - price });
   s = replaceShip(s, {
     ...ship,
-    cargo: { good, paid: price, boughtAt: ship.location, boughtOnTurn: s.turn },
+    hold: [...ship.hold, { good, paid: price, boughtAt: ship.location, boughtOnTurn: s.turn }],
   });
   return log(
     s,
     'buy',
-    `${ship.name} loads ${goodName(good)} at ${portName(ship.location)} for ${money(price)}.`,
+    `${ship.name} loads ${goodName(good)} at ${portName(ship.location)} for ${money(price)} — ${
+      ship.hold.length + 1
+    } of ${HOLD_SLOTS} slots full.`,
     captain.id,
   );
 }
 
 function doDeliver(state: GameState, shipId: string, contractId: string): GameState {
   const ship = ownShip(state, shipId);
-  if (!ship || ship.location === null || !ship.cargo) return state;
+  if (!ship || ship.location === null || ship.hold.length === 0) return state;
 
   const contract = state.contracts.find(c => c.id === contractId);
   if (!contract) return state;
   if (contract.destination !== ship.location) return state;
-  if (contract.good !== ship.cargo.good) return state;
+
+  // Every matching slot goes ashore at once, and is paid per unit. This is the source's own
+  // "fill all three slots with identical goods to maximise a single delivery payout".
+  const landed = ship.hold.filter(lot => lot.good === contract.good);
+  if (landed.length === 0) return state;
 
   const rank = nextRank(contract);
   if (rank === null) return state;
 
   const captain = activeCaptain(state);
-  // "Four times the purchase price" — what this captain actually paid, not the card's face value.
-  const payout = ship.cargo.paid * PAYOUT_MULTIPLIERS[rank];
+  const payout = landed.reduce((sum, lot) => sum + lot.paid * PAYOUT_MULTIPLIERS[rank], 0);
   const fill: ContractFill = { captainId: captain.id, rank, paid: payout, onTurn: state.turn };
 
   let s = updateCaptain(state, captain.id, { cash: captain.cash + payout });
-  s = replaceShip(s, { ...ship, cargo: null });
+  s = replaceShip(s, { ...ship, hold: ship.hold.filter(lot => lot.good !== contract.good) });
   s = {
     ...s,
     contracts: s.contracts.map(c => (c.id === contract.id ? { ...c, fills: [...c.fills, fill] } : c)),
@@ -487,40 +556,49 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
   s = log(
     s,
     'deliver',
-    `${ship.name} lands ${goodName(contract.good)} at ${portName(contract.destination)} — ${
-      rank === 1 ? 'first home' : 'second home'
-    }, ${PAYOUT_MULTIPLIERS[rank]}x, ${money(payout)}.`,
+    `${ship.name} lands ${landed.length} of ${goodName(contract.good)} at ${portName(
+      contract.destination,
+    )} — ${rank === 1 ? 'first home' : 'second home'}, ${PAYOUT_MULTIPLIERS[rank]}x, ${money(payout)}.`,
     captain.id,
     {
       contractId: contract.id,
       good: contract.good,
       rank,
       payout,
-      purchasePrice: ship.cargo.paid,
+      units: landed.length,
+      purchasePrice: landed.reduce((sum, lot) => sum + lot.paid, 0),
       cardPrice: contract.price,
     },
   );
   return replenishContracts(s);
 }
 
-function doSellLocal(state: GameState, shipId: string): GameState {
+/**
+ * Over the side, recovering nothing. The source is explicit that dumping forfeits the whole purchase
+ * price to the bank — which is what gives the "speculation bottleneck" teeth. An earlier authored
+ * rule gave half back at a port that wanted the goods, and made guessing wrong almost free.
+ */
+function doJettison(state: GameState, shipId: string, good?: string): GameState {
   const ship = ownShip(state, shipId);
-  if (!ship || ship.location === null || !ship.cargo) return state;
-  if (!portDemands(ship.location, ship.cargo.good)) return state;
+  if (!ship || ship.hold.length === 0) return state;
+
+  const dumped = good ? ship.hold.filter(l => l.good === good) : ship.hold;
+  if (dumped.length === 0) return state;
+  const kept = good ? ship.hold.filter(l => l.good !== good) : [];
 
   const captain = activeCaptain(state);
-  const proceeds = Math.floor(ship.cargo.paid / 2);
-  const cargoName = goodName(ship.cargo.good);
-
-  let s = updateCaptain(state, captain.id, { cash: captain.cash + proceeds });
-  s = replaceShip(s, { ...ship, cargo: null });
+  const lost = dumped.reduce((sum, l) => sum + l.paid, 0);
+  const s = replaceShip(state, { ...ship, hold: kept });
   return log(
     s,
     'missed',
-    `${ship.name} clears her hold of ${cargoName} at ${portName(
-      ship.location,
-    )} for ${money(proceeds)} — half what it cost.`,
+    `${ship.name} puts ${dumped.length} ${
+      good ? goodName(good) : 'lot' + (dumped.length === 1 ? '' : 's')
+    } over the side — ${money(lost)} lost outright, ${HOLD_SLOTS - kept.length} slot${
+      HOLD_SLOTS - kept.length === 1 ? '' : 's'
+    } clear.`,
     captain.id,
+    { shipId: ship.id, units: dumped.length, forfeited: lost },
   );
 }
 
@@ -538,7 +616,7 @@ function doBuyShip(state: GameState): GameState {
     // She is bought from the yard at home and fits out there, wherever her owner happens to be.
     location: HOME_PORT,
     voyage: null,
-    cargo: null,
+    hold: [],
   };
 
   let s: GameState = {
@@ -562,32 +640,35 @@ function doBuyShare(state: GameState): GameState {
   const captain = activeCaptain(state);
 
   if (state.sharesRemaining > 0) {
-    if (captain.cash < SHARE_PRICE) return state;
+    const price = sharePriceFor(state.sharesRemaining);
+    if (captain.cash < price) return state;
     let s: GameState = { ...state, sharesRemaining: state.sharesRemaining - 1 };
-    s = updateCaptain(s, captain.id, {
-      cash: captain.cash - SHARE_PRICE,
-      shares: captain.shares + 1,
-    });
+    s = updateCaptain(s, captain.id, { cash: captain.cash - price, shares: captain.shares + 1 });
     return log(
       s,
       'share',
-      `${captain.name} takes up a share for ${money(SHARE_PRICE)} — ${
-        captain.shares + 1
-      } held, ${s.sharesRemaining} left with the bank.`,
+      `${captain.name} takes up a share for ${money(price)} — ${captain.shares + 1} held, ${
+        s.sharesRemaining
+      } left with the bank at ${money(sharePriceFor(s.sharesRemaining))}.`,
       captain.id,
+      { price, held: captain.shares + 1, remaining: s.sharesRemaining },
     );
   }
 
-  // Bank empty: a forced buy-out of the SMALLEST outside stake. Smallest, not largest — see
-  // SHARE_RAID_MULTIPLIER for why. Buying out the smallest holder strictly reduces the number of
-  // captains holding shares, so the issue always concentrates and a majority is always eventually
-  // reached; buying out the largest oscillates forever and leaves the game with no ending.
+  // Bank empty: a forced buy-out. Normally only of a captain holding no more than you — but during
+  // the countdown that restriction lifts entirely, which is the source's sabotage window.
+  const sabotage = state.declaration !== null;
   const seller = state.captains
-    .filter(c => c.id !== captain.id && c.shares > 0 && canBuyOut(captain.shares, c.shares))
-    .sort((a, b) => a.shares - b.shares || state.captains.indexOf(a) - state.captains.indexOf(b))[0];
+    .filter(c => c.id !== captain.id && c.shares > 0 && canBuyOut(captain.shares, c.shares, sabotage))
+    // In the sabotage window you go for the leader; otherwise you absorb the smallest partner.
+    .sort((a, b) =>
+      sabotage
+        ? b.shares - a.shares || state.captains.indexOf(a) - state.captains.indexOf(b)
+        : a.shares - b.shares || state.captains.indexOf(a) - state.captains.indexOf(b),
+    )[0];
   if (!seller) return state;
 
-  const price = SHARE_PRICE * SHARE_RAID_MULTIPLIER;
+  const price = sharePriceFor(0) * SHARE_RAID_MULTIPLIER;
   if (captain.cash < price) return state;
 
   let s = updateCaptain(state, captain.id, {
@@ -598,9 +679,13 @@ function doBuyShare(state: GameState): GameState {
   return log(
     s,
     'share',
-    `${captain.name} buys a share off ${seller.name} on the exchange for ${money(price)} — ${
-      captain.shares + 1
-    } against ${seller.shares - 1}.`,
+    sabotage
+      ? `${captain.name} buys a share out from under ${seller.name} for ${money(price)} — ${
+          captain.shares + 1
+        } against ${seller.shares - 1}.`
+      : `${captain.name} buys a share off ${seller.name} on the exchange for ${money(price)} — ${
+          captain.shares + 1
+        } against ${seller.shares - 1}.`,
     captain.id,
   );
 }
@@ -610,7 +695,7 @@ function doSellShare(state: GameState): GameState {
   const captain = activeCaptain(state);
   if (captain.shares <= 0) return state;
 
-  const proceeds = Math.floor(SHARE_PRICE * SHARE_BUYBACK_FRACTION);
+  const proceeds = shareBuybackFor(state.sharesRemaining);
   let s: GameState = { ...state, sharesRemaining: state.sharesRemaining + 1 };
   s = updateCaptain(s, captain.id, {
     cash: captain.cash + proceeds,
@@ -709,8 +794,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doBuyCargo(state, action.shipId, action.good);
     case 'DELIVER':
       return doDeliver(state, action.shipId, action.contractId);
-    case 'SELL_LOCAL':
-      return doSellLocal(state, action.shipId);
+    case 'JETTISON':
+      return doJettison(state, action.shipId, action.good);
     case 'BUY_SHIP':
       return doBuyShip(state);
     case 'BUY_FITTING':

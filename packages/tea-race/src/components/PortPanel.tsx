@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
-import { GOOD_BY_ID, PORT_BY_ID, goodName, planRoute, portDemands, portName } from '../sim/content';
+import { GOOD_BY_ID, PORT_BY_ID, goodName, planRoute, portName } from '../sim/content';
 import { payoutFor } from '../sim/contracts';
-import { destinationOf, pointsToDestination } from '../sim/movement';
+import { HOLD_SLOTS } from '../sim/rules';
+import { destinationOf, pointsToDestination, reachableAtSea } from '../sim/movement';
 import { UI, money } from '../theme';
 import { planFastestRoute, routeTurns, windFor, type Season } from '../sim/weather';
 import { insurancePremium, piracyRating, routeRisk } from '../sim/hazards';
@@ -43,13 +44,14 @@ export default function PortPanel({
   const port = ship?.location ? PORT_BY_ID[ship.location] : null;
   const points = ship ? (sailPoints[ship.id] ?? 0) : 0;
 
-  /** Commissions this ship could land right here, right now. */
+  /** Commissions this ship could land right here, right now, and how many slots each would take. */
   const landable = useMemo(
     () =>
-      ship?.location && ship.cargo
-        ? contracts.filter(
-            c => c.destination === ship.location && c.good === ship.cargo!.good && c.fills.length < 2,
-          )
+      ship?.location && ship.hold.length > 0
+        ? contracts
+            .filter(c => c.destination === ship.location && c.fills.length < 2)
+            .map(c => ({ contract: c, units: ship.hold.filter(l => l.good === c.good).length }))
+            .filter(x => x.units > 0)
         : [],
     [contracts, ship],
   );
@@ -78,7 +80,10 @@ export default function PortPanel({
 
   const premium = useMemo(() => {
     if (!ship?.location || !course || !piracyOn || !ship.insured || !season) return null;
-    return insurancePremium(ship.cargo?.paid ?? 0, routeRisk(ship.location, course.path, season));
+    return insurancePremium(
+      ship.hold.reduce((n, l) => n + l.paid, 0),
+      routeRisk(ship.location, course.path, season),
+    );
   }, [ship, course, piracyOn, season]);
 
   if (!ship) {
@@ -91,13 +96,44 @@ export default function PortPanel({
 
   if (!ship.location) {
     const dest = destinationOf(ship);
+    const options = reachableAtSea(ship);
     return (
       <Panel title="Orders" aside={<Label>{ship.name}</Label>}>
         <p style={{ ...bodySmall, margin: 0 }}>
           {ship.name} is at sea, {pointsToDestination(ship)} sail points off{' '}
-          {dest ? portName(dest) : 'her destination'}. She sails on with each turn's wind — there is
-          nothing to decide until she ties up.
+          {dest ? portName(dest) : 'her destination'}.
+          {ship.hold.length > 0 && ` She carries ${ship.hold.length} of ${HOLD_SLOTS} slots.`}
         </p>
+        {options.length > 0 && (
+          <div style={block}>
+            <Label>Change her orders</Label>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+              {options.map(portId => {
+                const putAbout = portId === ship.voyage!.legFrom;
+                return (
+                  <Button
+                    key={portId}
+                    disabled={!enabled}
+                    title={
+                      putAbout
+                        ? 'Put about — she loses whatever ground she has made on this leg'
+                        : 'Hold at the next port instead of sailing past it'
+                    }
+                    onClick={() =>
+                      dispatch({ type: 'SAIL_TO', shipId: ship.id, destination: portId })
+                    }
+                  >
+                    {putAbout ? 'Put about for' : 'Hold at'} {portName(portId)}
+                  </Button>
+                );
+              })}
+            </div>
+            <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
+              Mid-ocean she can only make for one end of the leg she is on. A fresh course can be
+              laid off once she ties up.
+            </p>
+          </div>
+        )}
       </Panel>
     );
   }
@@ -108,16 +144,18 @@ export default function PortPanel({
       {landable.length > 0 && (
         <div style={block}>
           <Label>Land her cargo</Label>
-          {landable.map(c => {
+          {landable.map(({ contract: c, units }) => {
             const rank = c.fills.length + 1;
             return (
               <Button
                 key={c.id}
                 tone="primary"
                 disabled={!enabled}
+                title={`Every matching slot lands at once and is paid per unit`}
                 onClick={() => dispatch({ type: 'DELIVER', shipId: ship.id, contractId: c.id })}
               >
-                Land {goodName(c.good)} — {rank === 1 ? 'first home' : 'second home'}, {money(payoutFor(c))}
+                Land {units} × {goodName(c.good)} — {rank === 1 ? 'first home' : 'second home'},{' '}
+                {money(payoutFor(c) * units)}
               </Button>
             );
           })}
@@ -125,9 +163,11 @@ export default function PortPanel({
       )}
 
       {/* --- Buy a cargo -------------------------------------------------------------- */}
-      {!ship.cargo && port && (
+      {ship.hold.length < HOLD_SLOTS && port && (
         <div style={block}>
-          <Label>Load a cargo</Label>
+          <Label>
+            Load a cargo — {HOLD_SLOTS - ship.hold.length} of {HOLD_SLOTS} slots free
+          </Label>
           {port.supplies.length === 0 ? (
             <Empty>{port.name} has nothing to sell. She must go elsewhere for a cargo.</Empty>
           ) : (
@@ -160,19 +200,28 @@ export default function PortPanel({
         </div>
       )}
 
-      {/* --- Dump a cargo nobody wants -------------------------------------------------- */}
-      {ship.cargo && landable.length === 0 && portDemands(port!.id, ship.cargo.good) && (
+      {/* --- Over the side ------------------------------------------------------------- */}
+      {ship.hold.length > 0 && (
         <div style={block}>
-          <Label>No commission here</Label>
-          <Button
-            tone="danger"
-            disabled={!enabled}
-            onClick={() => dispatch({ type: 'SELL_LOCAL', shipId: ship.id })}
-          >
-            Clear the hold of {goodName(ship.cargo.good)} for {money(Math.floor(ship.cargo.paid / 2))}
-          </Button>
+          <Label>Clear the hold</Label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+            {[...new Set(ship.hold.map(l => l.good))].map(good => {
+              const lots = ship.hold.filter(l => l.good === good);
+              return (
+                <Button
+                  key={good}
+                  tone="danger"
+                  disabled={!enabled}
+                  title="Dumping recovers nothing at all — the whole purchase price is forfeit"
+                  onClick={() => dispatch({ type: 'JETTISON', shipId: ship.id, good })}
+                >
+                  Jettison {lots.length} × {goodName(good)}
+                </Button>
+              );
+            })}
+          </div>
           <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-            Half what you paid. Only worth it to free the ship.
+            Over the side. You get nothing back — only do it to free a slot for better work.
           </p>
         </div>
       )}
