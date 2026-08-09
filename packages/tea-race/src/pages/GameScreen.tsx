@@ -12,6 +12,7 @@ import FleetPanel from '../components/FleetPanel';
 import PortPanel from '../components/PortPanel';
 import CountingHouse from '../components/CountingHouse';
 import PortLedger from '../components/PortLedger';
+import RivalFleets from '../components/RivalFleets';
 import CaptainsTable from '../components/CaptainsTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
@@ -156,7 +157,23 @@ export default function GameScreen() {
       )}
 
       {/* --- Board -------------------------------------------------------------------- */}
-      <main style={board}>
+      <main style={board} className="tr-board">
+        {/* Left: what everyone is racing over. Narrow on purpose — it is reference, not controls. */}
+        <aside style={exchangeColumn}>
+          <ContractBoard
+            contracts={state.contracts}
+            captains={state.captains}
+            reference={selectedShip}
+            focusedId={focusedContract?.id ?? null}
+            onFocus={contract => {
+              setFocusedContract(prev => (prev?.id === contract.id ? null : contract));
+              setTargetPort(null);
+            }}
+          />
+          <CaptainsTable state={state} />
+        </aside>
+
+        {/* Centre: the chart, given the room. */}
         <div style={mapColumn}>
           <MapView
             ships={state.ships}
@@ -164,6 +181,7 @@ export default function GameScreen() {
             contracts={state.contracts}
             selectedShipId={selectedShipId}
             plannedRoute={plannedRoute}
+            viewerId={captain?.id ?? null}
             season={season}
             showPiracy={state.hazards?.piracy ?? false}
             onPortClick={portId => {
@@ -215,18 +233,8 @@ export default function GameScreen() {
           />
         </div>
 
-        <aside style={sidebar} id="game-sidebar">
-          <ContractBoard
-            contracts={state.contracts}
-            captains={state.captains}
-            reference={selectedShip}
-            focusedId={focusedContract?.id ?? null}
-            onFocus={contract => {
-              setFocusedContract(prev => (prev?.id === contract.id ? null : contract));
-              setTargetPort(null);
-            }}
-          />
-
+        {/* Right: everything you actually do. */}
+        <aside style={actionColumn} id="game-sidebar">
           {captain && (
             <>
               <FleetPanel
@@ -266,7 +274,7 @@ export default function GameScreen() {
             </>
           )}
 
-          <CaptainsTable state={state} />
+          <RivalFleets state={state} viewerId={captain?.id ?? null} />
           <ChronicleLog log={state.log} captains={state.captains} />
         </aside>
       </main>
@@ -345,26 +353,38 @@ const declarationBanner: React.CSSProperties = {
   color: UI.textSoft,
 };
 
+/**
+ * Three columns: the exchange on the left as reference, the chart in the middle with the room it
+ * needs, and every control on the right. Previously the chart and a single tall sidebar shared the
+ * width, which squeezed the map and mixed "what I am racing over" with "what I can do".
+ * `tr-board` in styles.css collapses this to one column on narrow screens.
+ */
 const board: React.CSSProperties = {
   display: 'flex',
-  flexWrap: 'wrap',
   alignItems: 'flex-start',
-  gap: '0.9rem',
-  padding: '0.9rem',
+  gap: '0.8rem',
+  padding: '0.8rem',
   flex: 1,
 };
 
+const exchangeColumn: React.CSSProperties = {
+  flex: '0 1 265px',
+  minWidth: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.7rem',
+};
+
 const mapColumn: React.CSSProperties = {
-  flex: '1 1 560px',
+  flex: '1 1 auto',
   minWidth: 0,
   display: 'flex',
   flexDirection: 'column',
   gap: '0.6rem',
 };
 
-const sidebar: React.CSSProperties = {
-  flex: '1 1 330px',
-  maxWidth: 420,
+const actionColumn: React.CSSProperties = {
+  flex: '0 1 355px',
   minWidth: 0,
   display: 'flex',
   flexDirection: 'column',

@@ -269,6 +269,28 @@ export const INSURANCE_MINIMUM_PREMIUM = 4;
 /** AUTHORED — how many entries of the running log to keep. Older lines are dropped from the save. */
 export const LOG_LIMIT = 400;
 
+/**
+ * The two ways to play, and everything each one turns on.
+ *
+ * "1988 Board" is the published game and nothing else — no weather, no pirates, no fittings. It
+ * exists so the faithful version is always one click away, which is the whole reason every added
+ * rule has been kept behind a switch rather than baked in.
+ */
+export const PRESETS = {
+  board: {
+    label: 'The 1988 board',
+    blurb: 'The published game exactly: dice, five cards, ten shares, nothing else.',
+    hazards: { weather: false, piracy: false },
+  },
+  full: {
+    label: 'Full game',
+    blurb: 'Everything on — seasonal wind, storms, pirates, guns, copper and insurance.',
+    hazards: { weather: true, piracy: true },
+  },
+} as const;
+
+export type PresetName = keyof typeof PRESETS;
+
 /** AUTHORED — bounds on the lobby's captain roster. The board itself is 2-6 players. */
 export const MIN_CAPTAINS = 2;
 export const MAX_CAPTAINS = 6;

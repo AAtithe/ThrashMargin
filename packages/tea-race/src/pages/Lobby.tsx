@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
-import { MAX_CAPTAINS, SHARE_MAJORITY, TOTAL_SHARES, VICTORY_CASH } from '../sim/rules';
+import { MAX_CAPTAINS, PRESETS, SHARE_MAJORITY, TOTAL_SHARES, VICTORY_CASH, type PresetName } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
@@ -136,7 +136,37 @@ export default function Lobby() {
           </div>
 
           <div style={field}>
-            <Label>Hazards</Label>
+            <Label>How to play</Label>
+            <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+              {(Object.keys(PRESETS) as PresetName[]).map(key => {
+                const preset = PRESETS[key];
+                const active = weather === preset.hazards.weather && piracy === preset.hazards.piracy;
+                return (
+                  <Button
+                    key={key}
+                    tone={active ? 'primary' : 'default'}
+                    title={preset.blurb}
+                    onClick={() => {
+                      setWeather(preset.hazards.weather);
+                      setPiracy(preset.hazards.piracy);
+                    }}
+                  >
+                    {preset.label}
+                  </Button>
+                );
+              })}
+            </div>
+            <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
+              {weather === PRESETS.board.hazards.weather && piracy === PRESETS.board.hazards.piracy
+                ? PRESETS.board.blurb
+                : weather && piracy
+                  ? PRESETS.full.blurb
+                  : 'A mixture of your own — set the switches below however you like.'}
+            </p>
+          </div>
+
+          <div style={field}>
+            <Label>Or pick your own</Label>
             <label style={checkRow}>
               <input type="checkbox" checked={weather} onChange={e => setWeather(e.target.checked)} style={{ accentColor: UI.brass }} />
               <span>
@@ -152,7 +182,8 @@ export default function Lobby() {
               </span>
             </label>
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-              Turn both off for the 1988 board's own rules, exactly as published.
+              Three cargo slots a ship, the scaling share price and the twelve-turn countdown are the
+              published rules and are always on.
             </p>
           </div>
 

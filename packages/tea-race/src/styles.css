@@ -23,18 +23,15 @@ button:focus:not(:focus-visible) {
 }
 
 /*
- * On a wide screen the chart stays put while the panels beside it scroll. Without this the
- * sidebar is tall enough to push the map right off the top of the window, which makes "click a
- * port to lay off a course" impossible to actually do.
- *
- * Deliberately gated behind a breakpoint: once the columns wrap, the chart sits above the panels
- * and pinning it would eat most of a phone's viewport.
+ * The three-column board needs a real width. Below that the columns stack, exchange first, so a
+ * phone still shows what is being raced over before the chart.
  */
-@media (min-width: 900px) {
-  .tr-map-column {
-    position: sticky;
-    top: 0.75rem;
-    align-self: flex-start;
+@media (max-width: 1100px) {
+  .tr-board {
+    flex-wrap: wrap;
+  }
+  .tr-board > * {
+    flex: 1 1 100% !important;
   }
 }
 

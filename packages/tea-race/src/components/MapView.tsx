@@ -26,6 +26,8 @@ interface MapViewProps {
   /** Null when this game is played without weather — then no wind is drawn at all. */
   season: Season | null;
   showPiracy: boolean;
+  /** Whose ships are "mine" — everyone else's get their captain's name on the chart. */
+  viewerId: string | null;
 }
 
 const ZOOM_MIN = 1;
@@ -53,6 +55,7 @@ export default function MapView({
   plannedRoute,
   season,
   showPiracy,
+  viewerId,
 }: MapViewProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
@@ -61,6 +64,10 @@ export default function MapView({
 
   const colourOf = useMemo(
     () => Object.fromEntries(captains.map(c => [c.id, c.colour])),
+    [captains],
+  );
+  const nameOf = useMemo(
+    () => Object.fromEntries(captains.map(c => [c.id, c.name.replace('Capt. ', '')])),
     [captains],
   );
 
@@ -339,6 +346,8 @@ export default function MapView({
           ship={ship}
           colour={colourOf[ship.ownerId] ?? CHART.port}
           selected={ship.id === selectedShipId}
+          captainName={nameOf[ship.ownerId] ?? ''}
+          isRival={ship.ownerId !== viewerId}
         />
       ))}
     </g>
@@ -428,46 +437,124 @@ function WindMark({
   );
 }
 
-/** A clipper: a pennant pointing along her heading, or upright while tied up. */
-function ShipMarker({ ship, colour, selected }: { ship: Ship; colour: string; selected: boolean }) {
+/**
+ * A clipper on the chart.
+ *
+ * Deliberately chunky and filled in her captain's colour, with a wake showing where she is bound.
+ * The earlier marker was a thin outline at the same size for everyone, which made it genuinely hard
+ * to tell what a rival was up to — and in a game where the whole board is public information, not
+ * being able to see the race is just friction.
+ */
+function ShipMarker({
+  ship,
+  colour,
+  selected,
+  captainName,
+  isRival,
+}: {
+  ship: Ship;
+  colour: string;
+  selected: boolean;
+  captainName: string;
+  isRival: boolean;
+}) {
   let x: number;
   let y: number;
   let heading = 0;
+  let wake: { x: number; y: number } | null = null;
 
   if (ship.location) {
     const p = PORT_POINTS[ship.location];
     if (!p) return null;
-    // Sit her just off the quay so she never covers the port's own mark.
-    x = p.x + 11;
-    y = p.y - 11;
+    // Just off the quay so she never covers the port's own mark.
+    x = p.x + 13;
+    y = p.y - 13;
   } else if (ship.voyage) {
     const from = PORT_POINTS[ship.voyage.legFrom];
     const to = PORT_POINTS[ship.voyage.route[0]];
     if (!from || !to) return null;
     const progress =
       ship.voyage.legDistance > 0 ? 1 - ship.voyage.legRemaining / ship.voyage.legDistance : 0;
-    // Interpolate the short way round, so a ship crossing the Pacific is drawn in the Pacific.
     const dx = wrapDx(from.x, to.x);
     x = from.x + dx * progress;
     y = from.y + (to.y - from.y) * progress;
     heading = (Math.atan2(to.y - from.y, dx) * 180) / Math.PI + 90;
+    wake = { x: from.x, y: from.y };
   } else {
     return null;
   }
 
   const dest = destinationOf(ship);
+  const laden = ship.hold.length > 0;
+  const size = selected ? 15 : 12;
+
   return (
-    <g transform={`translate(${x} ${y}) rotate(${heading})`} pointerEvents="none">
-      {selected && <circle cx={0} cy={0} r={12} fill="none" stroke={colour} strokeWidth={1.6} opacity={0.9} />}
-      <path
-        d="M0 -9 L5 6 L0 3 L-5 6 Z"
+    <g pointerEvents="none">
+      {/* Where she has come from on this leg, so a rival's direction is readable at a glance. */}
+      {wake && (
+        <line
+          x1={wake.x}
+          y1={wake.y}
+          x2={x}
+          y2={y}
+          stroke={colour}
+          strokeWidth={selected ? 2.4 : 1.6}
+          strokeDasharray="3 4"
+          opacity={0.55}
+        />
+      )}
+      <g transform={`translate(${x} ${y}) rotate(${heading})`}>
+        {selected && (
+          <circle cx={0} cy={0} r={size + 7} fill="none" stroke={colour} strokeWidth={2} opacity={0.9} />
+        )}
+        {/* A dark keel under the hull so a pale colour still reads on pale sea. */}
+        <path
+          d={`M0 ${-size} L${size * 0.62} ${size * 0.7} L0 ${size * 0.34} L${-size * 0.62} ${size * 0.7} Z`}
+          fill={CHART.labelHalo}
+          opacity={0.85}
+          transform="translate(0 1.5)"
+        />
+        <path
+          d={`M0 ${-size} L${size * 0.62} ${size * 0.7} L0 ${size * 0.34} L${-size * 0.62} ${size * 0.7} Z`}
+          fill={colour}
+          fillOpacity={laden ? 1 : 0.5}
+          stroke={colour}
+          strokeWidth={1.8}
+          strokeLinejoin="round"
+        />
+        {/* Cargo pips: how full she is, without needing a panel. */}
+        {laden &&
+          ship.hold.map((_, i) => (
+            <circle
+              key={i}
+              cx={(i - (ship.hold.length - 1) / 2) * 4.4}
+              cy={size * 0.16}
+              r={1.5}
+              fill={CHART.labelHalo}
+              opacity={0.9}
+            />
+          ))}
+      </g>
+      <text
+        x={x}
+        y={y + size + 13}
         fill={colour}
-        fillOpacity={ship.hold.length > 0 ? 0.95 : 0.45}
-        stroke={colour}
-        strokeWidth={1.6}
+        fontFamily={FONT.data}
+        fontSize={10}
+        textAnchor="middle"
+        paintOrder="stroke"
+        stroke={CHART.labelHalo}
+        strokeWidth={3}
         strokeLinejoin="round"
-      />
-      {dest && <title>{`${ship.name} — bound for ${PORT_BY_ID[dest]?.name ?? dest}`}</title>}
+        opacity={isRival ? 0.95 : 0.75}
+      >
+        {isRival ? captainName : ship.name}
+      </text>
+      <title>
+        {`${ship.name} — ${captainName}. ${
+          ship.hold.length ? `${ship.hold.length} of 3 slots full` : 'running light'
+        }${dest ? `, bound for ${PORT_BY_ID[dest]?.name ?? dest}` : ', in port'}`}
+      </title>
     </g>
   );
 }
