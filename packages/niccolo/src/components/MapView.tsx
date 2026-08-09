@@ -21,15 +21,19 @@ const COURIER_COLOR = '#3a6b5a';
 const VOID_COLOR = '#0e0b07';
 const SEA_COLOR = '#182430';
 /**
- * Land's own ground tone, under the hachure — warm where `SEA_COLOR` is cool.
+ * Land's own ground tone, under the hachure: a dark olive.
  *
- * Picked to separate by BOTH hue and lightness, not hue alone. The first attempt (`#2b2418`) looked
- * right to me but measured 1.03:1 against the sea: identical brightness, so anyone who does not
- * discriminate warm from cool would have seen no coastline at all. This is 1.22:1 — still subtle,
- * but a real difference — while keeping parchment labels on land at 6.6:1, well clear of the 4.5:1
- * readability threshold. The hachure is the third, non-colour cue: land is textured, water never is.
+ * Green rather than the earlier brown so land and sea read as a coordinated pair — olive sits about
+ * 130 degrees from the sea's blue on the wheel, where the brown sat nearly opposite it and fought.
+ *
+ * Chosen by measurement, not by eye. An early brown (`#2b2418`) looked right but was 1.03:1 against
+ * the sea — identical lightness, so anyone who does not discriminate warm from cool would have seen
+ * no coastline at all. This olive separates on BOTH axes: 1.32:1 against the sea (better than the
+ * brown it replaced, at 1.22:1) while parchment labels on land stay at 6.1:1, well clear of the
+ * 4.5:1 readability threshold. The hachure is the third, non-colour cue: land is textured, water
+ * never is.
  */
-const LAND_COLOR = '#3a3020';
+const LAND_COLOR = '#313a22';
 
 /** Chart palette, kept from the previous backdrop so the map still reads as this game's own dark
  * parchment rather than tea-race's printed board. Only the projection underneath changed. */
