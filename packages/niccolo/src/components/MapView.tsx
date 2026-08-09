@@ -20,6 +20,16 @@ const SHIP_COLOR = '#b5451a';
 const COURIER_COLOR = '#3a6b5a';
 const VOID_COLOR = '#0e0b07';
 const SEA_COLOR = '#182430';
+/**
+ * Land's own ground tone, under the hachure — warm where `SEA_COLOR` is cool.
+ *
+ * Picked to separate by BOTH hue and lightness, not hue alone. The first attempt (`#2b2418`) looked
+ * right to me but measured 1.03:1 against the sea: identical brightness, so anyone who does not
+ * discriminate warm from cool would have seen no coastline at all. This is 1.22:1 — still subtle,
+ * but a real difference — while keeping parchment labels on land at 6.6:1, well clear of the 4.5:1
+ * readability threshold. The hachure is the third, non-colour cue: land is textured, water never is.
+ */
+const LAND_COLOR = '#3a3020';
 
 /** Chart palette, kept from the previous backdrop so the map still reads as this game's own dark
  * parchment rather than tea-race's printed board. Only the projection underneath changed. */
@@ -692,6 +702,11 @@ export default function MapView({
             patternUnits="userSpaceOnUse"
             patternTransform={`rotate(35) scale(${inv})`}
           >
+            {/* Opaque ground inside the tile. Without it the land paths were hachure strokes over
+                nothing, so the ocean showed through the gaps and land and sea read as the same
+                tone — the reason the two were hard to tell apart. Slightly oversized so the
+                rotated tiles cannot leave hairline seams between them. */}
+            <rect x={-0.5} y={-0.5} width={4.2} height={4.2} fill={LAND_COLOR} />
             <line x1={0} y1={0} x2={0} y2={3.2} stroke={GEO_HATCH} strokeWidth={0.35 * inv} />
           </pattern>
         </defs>
