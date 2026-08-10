@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { GOOD_BY_ID, PORTS, distanceBetween } from '../sim/content';
+import { sourcesFor, GOOD_BY_ID, PORTS, distanceBetween } from '../sim/content';
 import { FONT, UI, money } from '../theme';
 import { Panel } from './ui';
 import type { Contract, GoodId, PortId, Ship } from '../sim/types';
@@ -62,7 +62,10 @@ export default function PortLedger({ contracts, reference, onPortClick, targetPo
     const sinks: Record<PortId, Set<GoodId>> = {};
     for (const c of contracts) {
       if (c.fills.length >= 2) continue;
-      (sources[c.source] ??= new Set()).add(c.good);
+      // Any port stocking the good is a place a live commission can be loaded, not one named port.
+      for (const seller of sourcesFor(c.good, c.destination)) {
+        (sources[seller] ??= new Set()).add(c.good);
+      }
       (sinks[c.destination] ??= new Set()).add(c.good);
     }
     return { hotSources: sources, hotSinks: sinks };

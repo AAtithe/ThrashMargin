@@ -11,7 +11,7 @@
  * every proposal must make progress or the loop would just re-propose it. The guard in
  * `runAiTurn` bounds that, but relying on the guard would show up as a captain who wastes turns.
  */
-import { distanceBetween, portSupplies, GOODS, GOOD_BY_ID, PORT_BY_ID } from './content';
+import { distanceBetween, portSupplies, sourcesFor, GOODS, GOOD_BY_ID, PORT_BY_ID } from './content';
 import { payoutFor } from './contracts';
 import { goodEmbargoed, landedValue, portStruck } from './events';
 import {
@@ -28,7 +28,7 @@ import {
 import { activeCaptain, shipsOf } from './state';
 import { seasonOf, turnsBetween } from './weather';
 import { piracyRating } from './hazards';
-import type { AiProfile, Captain, Contract, GameAction, GameState, Ship } from './types';
+import type { AiProfile, Captain, Contract, GameAction, GameState, PortId, Ship } from './types';
 
 /** Average of 2d6 — used to turn sail points into an estimate of turns. */
 const POINTS_PER_TURN = 7;
@@ -97,6 +97,12 @@ const CHEAPEST_LOT = Math.min(...GOODS.map(g => g.basePrice));
 
 interface Run {
   contract: Contract;
+  /**
+   * The port she means to load at. Chosen, not read off the card — cards name the buyer only, so
+   * picking the supplier is now part of the decision and part of what the AI has to be good at.
+   * Null for a ship already carrying the good, who needs no source.
+   */
+  source: PortId | null;
   /** Profit per turn, the only number the AI actually ranks on. */
   score: number;
 }
@@ -126,33 +132,42 @@ function rivalsAhead(s: GameState, contract: Contract, mine: string, myDistance:
 function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | null {
   let best: Run | null = null;
   for (const contract of liveContracts(s)) {
-    const toSource = distanceBetween(from, contract.source);
-    const toDest = distanceBetween(contract.source, contract.destination);
-    if (!isFinite(toSource) || !isFinite(toDest)) continue;
+    // An embargo stops her lading the good anywhere, so the card is out whatever the route.
+    if (goodEmbargoed(s, contract.good)) continue;
 
-    // News that stops her lading at all rules the card out; news at the far end does not, because a
-    // strike runs two or three rounds and the passage takes longer than that. Sailing off to a port
-    // that is shut today is fine. Sailing off to buy something she cannot legally load is not.
-    if (portStruck(s, contract.source) || goodEmbargoed(s, contract.good)) continue;
-
-    // Rivals already loaded and closer will take the paid places before this ship even loads.
-    const contested = rivalsAhead(s, contract, owner, toSource + toDest);
-    const placesLeft = 2 - contract.fills.length - contested;
-    if (placesLeft <= 0) continue;
-
-    // If one paid place is already gone, the realistic outcome is second money, not first.
-    const takenPlaces = contract.fills.length + contested;
-    const multiplier = takenPlaces === 0 ? 4 : 2;
     // Priced through the same call the reducer will use, so a glut genuinely deters her and an
     // Admiralty bounty genuinely tempts her across an ocean.
-    const profit = landedValue(s, contract.good, contract.price, multiplier) - contract.price;
+    const multiplierIfFirst = 4;
 
-    const turns =
-      passageTurns(s, from, contract.source, toSource) +
-      passageTurns(s, contract.source, contract.destination, toDest);
-    const drag = piracyDrag(s, contract.source, contract.destination);
-    const score = (profit * (1 - drag)) / Math.max(0.5, turns);
-    if (!best || score > best.score) best = { contract, score };
+    // The card names no source, so every port that stocks the good is a candidate and the whole
+    // out-and-back has to be costed for each. This is the work the old code got for free by being
+    // told where to load — and getting it right is what makes an off-card sourcing decision, the
+    // thing the owner remembered from the board game, actually pay off.
+    for (const source of sourcesFor(contract.good, from)) {
+      if (source === contract.destination) continue;
+      // Shut today means she cannot load there today; another supplier probably serves.
+      if (portStruck(s, source)) continue;
+
+      const toSource = distanceBetween(from, source);
+      const toDest = distanceBetween(source, contract.destination);
+      if (!isFinite(toSource) || !isFinite(toDest)) continue;
+
+      // Rivals already loaded and closer will take the paid places before this ship even loads.
+      const contested = rivalsAhead(s, contract, owner, toSource + toDest);
+      const takenPlaces = contract.fills.length + contested;
+      if (2 - takenPlaces <= 0) continue;
+
+      // If one paid place is already gone, the realistic outcome is second money, not first.
+      const multiplier = takenPlaces === 0 ? multiplierIfFirst : 2;
+      const profit = landedValue(s, contract.good, contract.price, multiplier) - contract.price;
+
+      const turns =
+        passageTurns(s, from, source, toSource) +
+        passageTurns(s, source, contract.destination, toDest);
+      const drag = piracyDrag(s, source, contract.destination);
+      const score = (profit * (1 - drag)) / Math.max(0.5, turns);
+      if (!best || score > best.score) best = { contract, source, score };
+    }
   }
   return best;
 }
@@ -179,7 +194,7 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
     const multiplier = payoutFor(contract) / contract.price;
     const gross = units.reduce((n, lot) => n + landedValue(s, lot.good, lot.paid, multiplier), 0);
     const score = (gross * (1 - drag)) / Math.max(0.5, turns);
-    if (!best || score > best.score) best = { contract, score };
+    if (!best || score > best.score) best = { contract, source: null, score };
   }
   return best;
 }
@@ -363,7 +378,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     const run = bestRunForLoadedShip(s, ship);
 
     // Filling spare slots with more of what she is already carrying multiplies the same voyage.
-    if (run && ship.hold.length < HOLD_SLOTS && ship.location === run.contract.source) {
+    if (run && ship.hold.length < HOLD_SLOTS && portSupplies(ship.location!, run.contract.good)) {
       const price = GOOD_BY_ID[run.contract.good]?.basePrice ?? 0;
       if (spendable >= price) {
         return { type: 'BUY_CARGO', shipId: ship.id, good: run.contract.good };
@@ -399,15 +414,15 @@ export function nextAiAction(s: GameState): GameAction | null {
     if (ship.hold.length > 0) continue;
     const run = bestRunForEmptyShip(s, ship.location!, captain.id);
 
-    if (run && run.contract.source === ship.location) {
+    if (run && run.source === ship.location) {
       if (spendable >= run.contract.price) {
         return { type: 'BUY_CARGO', shipId: ship.id, good: run.contract.good };
       }
     }
 
-    if (run && (run.score >= temperament.speculateBelow || temperament.speculateBelow === 0)) {
-      if (run.contract.source !== ship.location) {
-        return { type: 'SAIL_TO', shipId: ship.id, destination: run.contract.source };
+    if (run?.source && (run.score >= temperament.speculateBelow || temperament.speculateBelow === 0)) {
+      if (run.source !== ship.location) {
+        return { type: 'SAIL_TO', shipId: ship.id, destination: run.source };
       }
     }
 
@@ -420,7 +435,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     }
 
     // Nothing to load and nothing worth chasing — go where the cards generally are.
-    if (run) return { type: 'SAIL_TO', shipId: ship.id, destination: run.contract.source };
+    if (run?.source) return { type: 'SAIL_TO', shipId: ship.id, destination: run.source };
   }
 
   // 5. Put the money to work.

@@ -21,6 +21,7 @@ import {
 import { assetValue, processAction, runAiTurn } from '../src/sim/actions';
 import { PORT_BY_ID, GOOD_BY_ID, distanceBetween } from '../src/sim/content';
 import {
+  CONTRACT_MAX_DISTANCE,
   DECLARATION_TURNS,
   FACE_UP_CONTRACTS,
   HOLD_SLOTS,
@@ -32,7 +33,7 @@ import {
   TOTAL_SHARES,
   VICTORY_CASH,
 } from '../src/sim/rules';
-import { LEGS, PORTS, planRoute } from '../src/sim/content';
+import { LEGS, PORTS, planRoute, sourcesFor } from '../src/sim/content';
 import {
   SEASONS,
   planFastestRoute,
@@ -42,6 +43,7 @@ import {
   windFor,
 } from '../src/sim/weather';
 import { piracyRating, resolvePiracy } from '../src/sim/hazards';
+import { buildDeck, parseCardKey } from '../src/sim/contracts';
 import type { Contract, GameState, Ship, WorldEventKind } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
@@ -958,7 +960,7 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
     );
     check(
       `AI game ${seed}: cards are distinct`,
-      new Set(state.contracts.map(c => `${c.good}|${c.source}|${c.destination}`)).size ===
+      new Set(state.contracts.map(c => `${c.good}|${c.destination}`)).size ===
         state.contracts.length,
       'duplicate card face-up',
     );
@@ -1062,6 +1064,72 @@ function testDeterminism() {
     a === b,
     a === b ? '' : `diverged at char ${[...a].findIndex((ch, i) => ch !== b[i])}`,
   );
+}
+
+/**
+ * A card names a buyer, never a seller.
+ *
+ * The reducer always worked this way — `doDeliver` only ever matched the good and the destination —
+ * but the card *read* "Calcutta -> Foochow", so nobody would think to load at Bombay. Opium bought
+ * at Bombay filled that card for the full 4x and always would have. These checks pin the behaviour
+ * down now that the model says so out loud.
+ */
+function testSourcelessCards() {
+  const label = 'sourceless cards';
+
+  const deck = buildDeck();
+  check(`${label}: the deck is not empty`, deck.length > 0);
+  check(
+    `${label}: every key is good|destination`,
+    deck.every(k => k.split('|').length === 2),
+    deck.find(k => k.split('|').length !== 2),
+  );
+  check(
+    `${label}: no card names a source port`,
+    deck.every(k => {
+      const parsed = parseCardKey(k);
+      return parsed !== null && !('source' in parsed);
+    }),
+  );
+  // Old three-part keys must still parse, or an existing save loses its draw pile.
+  const legacy = parseCardKey('opium|calcutta|foochow');
+  equal(`${label}: a legacy key keeps its good`, legacy?.good, 'opium');
+  equal(`${label}: a legacy key keeps its destination`, legacy?.destination, 'foochow');
+
+  // Every good a card can name must be buyable somewhere within reach of the buyer, or the card is
+  // an errand nobody can run — the reachability test that replaced the old source-sink distance cap.
+  for (const k of deck) {
+    const parsed = parseCardKey(k)!;
+    const sellers = sourcesFor(parsed.good, parsed.destination).filter(
+      p => p !== parsed.destination,
+    );
+    check(`${label}: ${k} has a seller`, sellers.length > 0);
+    check(
+      `${label}: ${k} has a seller within the cap`,
+      sellers.some(p => distanceBetween(p, parsed.destination) <= CONTRACT_MAX_DISTANCE),
+    );
+  }
+
+  // The behavioural check: load somewhere the old card would not have named, and land it.
+  let g = createInitialState('t-src', 'Src', { humanNames: ['A'], aiCount: 1, seed: 'src' });
+  const card = g.contracts[0];
+  const sellers = sourcesFor(card.good, card.destination).filter(p => p !== card.destination);
+  check(`${label}: the test card has at least two sellers`, sellers.length >= 2, `${sellers.length}`);
+
+  // Deliberately the *furthest* seller, to be sure nothing privileges a canonical one.
+  const odd = sellers[sellers.length - 1];
+  g = place(g, 's1', odd);
+  g = setCash(g, 'p1', 5000);
+  g = processAction(g, { type: 'ROLL' });
+  const bought = processAction(g, { type: 'BUY_CARGO', shipId: 's1', good: card.good });
+  check(`${label}: she loads at ${odd}`, bought !== g);
+  equal(`${label}: one slot filled`, shipOf(bought, 's1').hold.length, 1);
+
+  // place() empties the hold unless it is handed back — carry her cargo across with her.
+  const atDest = place(bought, 's1', card.destination, shipOf(bought, 's1').hold);
+  const landed = processAction(atDest, { type: 'DELIVER', shipId: 's1', contractId: card.id });
+  check(`${label}: and lands it on the card`, landed !== atDest);
+  equal(`${label}: for the full first-home money`, cash(landed, 'p1') - cash(atDest, 'p1'), card.price * 4);
 }
 
 /**
@@ -1256,6 +1324,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testSourcelessCards();
   testWorldEvents();
   testDeterminism();
 

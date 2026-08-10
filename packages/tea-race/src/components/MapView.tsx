@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CHART, FONT } from '../theme';
-import { LEGS, PORTS, PORT_BY_ID } from '../sim/content';
+import { sourcesFor, LEGS, PORTS, PORT_BY_ID } from '../sim/content';
 import {
   CHART as BACKDROP,
   PORT_POINTS,
@@ -75,8 +75,10 @@ export default function MapView({
     const set = new Set<PortId>();
     for (const c of contracts) {
       if (c.fills.length >= 2) continue;
-      set.add(c.source);
       set.add(c.destination);
+      // Cards name no source, so every port stocking the good is on the race — which is rather the
+      // point of dropping the source, and the chart should show it.
+      for (const seller of sourcesFor(c.good, c.destination)) set.add(seller);
     }
     return set;
   }, [contracts]);

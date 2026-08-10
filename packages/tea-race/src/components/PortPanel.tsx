@@ -174,9 +174,9 @@ export default function PortPanel({
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
               {port.supplies.map(id => {
                 const good = GOOD_BY_ID[id];
-                const wanted = contracts.some(
-                  c => c.good === id && c.source === port.id && c.fills.length < 2,
-                );
+                // A live commission wants this good — and since cards name no source, this quay
+                // will do as well as any other that stocks it.
+                const wanted = contracts.some(c => c.good === id && c.fills.length < 2);
                 const afford = captain.cash >= good.basePrice;
                 return (
                   <Button
@@ -194,8 +194,9 @@ export default function PortPanel({
             </div>
           )}
           <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-            ★ marks a good a face-up commission wants from this quay. Anything else is a gamble on a
-            card turning up.
+            ★ marks a good some face-up commission wants. No card names a source port, so this quay
+            will serve as well as any other that stocks it. Anything unstarred is a gamble on a card
+            turning up.
           </p>
         </div>
       )}

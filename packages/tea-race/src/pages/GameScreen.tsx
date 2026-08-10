@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
-import { planRoute, portName } from '../sim/content';
+import { sourcesFor, planRoute, portName } from '../sim/content';
 import { SEASON_NAMES, planFastestRoute, roundsLeftInSeason, seasonOf, voyageYear } from '../sim/weather';
 import { destinationOf } from '../sim/movement';
 import { DECLARATION_TURNS, SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
@@ -89,7 +89,11 @@ export default function GameScreen() {
       const from = selectedShip.location;
       if (!from) return null;
       const carrying = selectedShip.hold.some(lot => lot.good === focusedContract.good);
-      const to = carrying ? focusedContract.destination : focusedContract.source;
+      // Empty, she wants the nearest port that stocks it — the card names a buyer, not a seller.
+      const to = carrying
+        ? focusedContract.destination
+        : sourcesFor(focusedContract.good, from)[0];
+      if (!to) return null;
       const route = planRoute(from, to);
       return route ? [from, ...route.path] : null;
     }

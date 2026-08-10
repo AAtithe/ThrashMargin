@@ -111,9 +111,9 @@ function replenishContracts(state: GameState): GameState {
     s = log(
       s,
       'contract',
-      `New commission posted: ${goodName(drawn.contract.good)}, ${portName(
-        drawn.contract.source,
-      )} to ${portName(drawn.contract.destination)}, ${money(drawn.contract.price)} a lot.`,
+      `New commission posted: ${portName(drawn.contract.destination)} wants ${goodName(
+        drawn.contract.good,
+      )} at ${money(drawn.contract.price)} a lot. Load it wherever you can get it.`,
     );
   }
   return s;

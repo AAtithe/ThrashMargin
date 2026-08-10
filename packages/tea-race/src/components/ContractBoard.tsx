@@ -1,4 +1,4 @@
-import { GOOD_BY_ID, distanceBetween, portName } from '../sim/content';
+import { sourcesFor, GOOD_BY_ID, distanceBetween, portName } from '../sim/content';
 import { payoutFor } from '../sim/contracts';
 import { FONT, UI, money } from '../theme';
 import { Empty, Label, Panel, bodySmall, dataText } from './ui';
@@ -28,21 +28,28 @@ export default function ContractBoard({ contracts, captains, reference, onFocus,
           const good = GOOD_BY_ID[contract.good];
           const next = payoutFor(contract);
           const focused = contract.id === focusedId;
+          // Every port that stocks the good, nearest the destination first — the list a captain
+          // actually reads when deciding where to load.
+          const sellers = sourcesFor(contract.good, contract.destination);
 
           // Distance is measured from wherever the selected ship actually is: if she is empty the
-          // run starts at the source, if she is already loaded with the right cargo it starts at
-          // the destination. Anything else would be answering a question nobody asked.
+          // run starts at whichever port selling this good is nearest her, if she is already loaded
+          // with the right cargo it starts at the destination. Anything else would be answering a
+          // question nobody asked.
+          //
+          // "Nearest seller" rather than a named source port, because the card names no source —
+          // sourcing is the captain's decision, and this line is the number that decision needs.
           let reach: string | null = null;
+          let nearestSeller: string | null = null;
           if (reference) {
             const at = reference.location ?? reference.voyage?.route[reference.voyage.route.length - 1];
             if (at) {
               const carryingIt = reference.hold.some(lot => lot.good === contract.good);
-              const target = carryingIt ? contract.destination : contract.source;
-              const legs = distanceBetween(at, target);
+              nearestSeller = sourcesFor(contract.good, at)[0] ?? null;
+              const target = carryingIt ? contract.destination : nearestSeller;
+              const legs = target ? distanceBetween(at, target) : Infinity;
               if (Number.isFinite(legs)) {
-                reach = carryingIt
-                  ? `${legs} pts to deliver`
-                  : `${legs} pts to the quay`;
+                reach = carryingIt ? `${legs} pts to deliver` : `${legs} pts to the nearest seller`;
               }
             }
           }
@@ -66,8 +73,29 @@ export default function ContractBoard({ contracts, captains, reference, onFocus,
                 </span>
 
                 <span style={{ ...bodySmall, color: UI.textSoft }}>
-                  {portName(contract.source)} <span style={{ color: UI.textFaint }}>→</span>{' '}
-                  {portName(contract.destination)}
+                  wanted at <strong style={{ color: UI.text }}>{portName(contract.destination)}</strong>
+                </span>
+
+                {/* Where it can be had. The card does not dictate a source, so the useful thing to
+                    show is the choice: nearest first, with the selected ship's nearest picked out. */}
+                <span style={{ ...bodySmall, color: UI.textFaint, fontSize: '0.72rem' }}>
+                  load at{' '}
+                  {sellers.length === 0
+                    ? 'nowhere on this chart'
+                    : sellers.map((portId, i) => (
+                        <span key={portId}>
+                          {i > 0 && ', '}
+                          <span
+                            style={
+                              portId === nearestSeller
+                                ? { color: UI.verdigris, fontWeight: 600 }
+                                : undefined
+                            }
+                          >
+                            {portName(portId)}
+                          </span>
+                        </span>
+                      ))}
                 </span>
 
                 <span style={ladder}>

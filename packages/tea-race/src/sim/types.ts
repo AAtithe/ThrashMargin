@@ -139,10 +139,21 @@ export interface ContractFill {
   onTurn: number;
 }
 
+/**
+ * A posted commission: a good, the port that wants it, and the price it is reckoned at.
+ *
+ * **No source port.** A card names the buyer, not the seller — load the good at any port that
+ * stocks it. The reducer always worked this way (`doDeliver` only ever matched the good and the
+ * destination), but the card used to *read* "Calcutta → Foochow", which everybody took as an
+ * instruction. Opium bought at Bombay filled that card for the full 4x and always would have. The
+ * label was the only lock, and the owner's recollection of the board game was right.
+ *
+ * Sourcing is therefore a decision — where is it cheapest to reach, and which rival is nearer —
+ * rather than a lookup.
+ */
 export interface Contract {
   id: ContractId;
   good: GoodId;
-  source: PortId;
   destination: PortId;
   price: number;
   fills: ContractFill[];
@@ -281,7 +292,7 @@ export interface GameState {
 
   /** Always FACE_UP_CONTRACTS long while the game is live. */
   contracts: Contract[];
-  /** Remaining draw pile, as compact "good|source|destination" keys. */
+  /** Remaining draw pile, as compact "good|destination" keys. */
   deck: string[];
   /** Monotonic counter behind contract ids, so ids stay unique across reshuffles. */
   nextContractSeq: number;

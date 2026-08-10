@@ -1,10 +1,12 @@
 /**
  * The commodity deck: which cards exist, how they are drawn, and what a delivery pays.
  *
- * The deck is persisted as compact "good|source|destination" keys rather than whole Contract
- * objects — a full deck is ~230 cards and would otherwise be ~25KB of duplicated JSON in every
- * save. Keys are self-describing, so a save made before a content change still loads: an entry
- * naming a port or good that no longer exists is skipped at draw time rather than crashing.
+ * The deck is persisted as compact "good|destination" keys rather than whole Contract objects.
+ * Keys are self-describing, so a save made before a content change still loads: an entry naming a
+ * port or good that no longer exists is skipped at draw time rather than crashing.
+ *
+ * A card names the buyer and the price, never the seller — see the Contract type. The three-part
+ * "good|source|destination" keys of earlier saves are still parsed, with the middle field dropped.
  */
 import { CONTRACT_MAX_DISTANCE, FACE_UP_CONTRACTS, PAYOUT_MULTIPLIERS } from './rules';
 import { GOODS, GOOD_BY_ID, PORTS, PORT_BY_ID, distanceBetween } from './content';
@@ -13,31 +15,38 @@ import type { Contract, ContractFill, GoodId, PortId } from './types';
 
 export type CardKey = string;
 
-const key = (good: GoodId, source: PortId, destination: PortId): CardKey =>
-  `${good}|${source}|${destination}`;
+const key = (good: GoodId, destination: PortId): CardKey => `${good}|${destination}`;
 
-export function parseCardKey(k: CardKey): { good: GoodId; source: PortId; destination: PortId } | null {
-  const [good, source, destination] = k.split('|');
-  if (!good || !source || !destination) return null;
-  if (!GOOD_BY_ID[good] || !PORT_BY_ID[source] || !PORT_BY_ID[destination]) return null;
-  return { good, source, destination };
+export function parseCardKey(k: CardKey): { good: GoodId; destination: PortId } | null {
+  const parts = k.split('|');
+  // Two parts is the current form. Three is a save from when cards named a source port: the middle
+  // field is dropped rather than rejected, so an existing game keeps its draw pile.
+  const good = parts[0];
+  const destination = parts.length >= 3 ? parts[2] : parts[1];
+  if (!good || !destination) return null;
+  if (!GOOD_BY_ID[good] || !PORT_BY_ID[destination]) return null;
+  return { good, destination };
 }
 
 /**
- * Every legal card: a good, a port that sells it, and a port that wants it, close enough together
- * to be a real race. Deterministic and content-derived, so two clients agree on the deck.
+ * Every legal card: a good and a port that wants it, with at least one port selling that good near
+ * enough to make a real race of it. Deterministic and content-derived, so two clients agree.
+ *
+ * The distance cap is now a *reachability* test rather than a property of one named pair: some
+ * supplier has to be within CONTRACT_MAX_DISTANCE of the buyer, but which one the captain uses is
+ * their business. This is why the deck is a few dozen cards rather than a few hundred — the old one
+ * enumerated every source-sink pair, and most of those were the same commission over again.
  */
 export function buildDeck(): CardKey[] {
   const cards: CardKey[] = [];
   for (const good of GOODS) {
     const sources = PORTS.filter(p => p.supplies.includes(good.id));
-    const sinks = PORTS.filter(p => p.demands.includes(good.id));
-    for (const s of sources) {
-      for (const d of sinks) {
-        if (s.id === d.id) continue;
-        if (distanceBetween(s.id, d.id) > CONTRACT_MAX_DISTANCE) continue;
-        cards.push(key(good.id, s.id, d.id));
-      }
+    for (const d of PORTS.filter(p => p.demands.includes(good.id))) {
+      const reachable = sources.some(
+        s => s.id !== d.id && distanceBetween(s.id, d.id) <= CONTRACT_MAX_DISTANCE,
+      );
+      if (!reachable) continue;
+      cards.push(key(good.id, d.id));
     }
   }
   return cards;
@@ -86,7 +95,6 @@ export function drawContract(
         contract: {
           id: `c${seq}`,
           good: parsed.good,
-          source: parsed.source,
           destination: parsed.destination,
           price: GOOD_BY_ID[parsed.good].basePrice,
           fills: [],
@@ -115,14 +123,14 @@ export function dealOpeningContracts(seed: number, deck: CardKey[], seq: number)
     pile = drawn.deck;
     n = drawn.seq;
     contracts.push(drawn.contract);
-    seen.add(key(drawn.contract.good, drawn.contract.source, drawn.contract.destination));
+    seen.add(key(drawn.contract.good, drawn.contract.destination));
   }
   return { seed: s, deck: pile, seq: n, contracts };
 }
 
 /** The keys currently face-up, for passing as `exclude`. */
 export const faceUpKeys = (contracts: readonly Contract[]): Set<CardKey> =>
-  new Set(contracts.map(c => key(c.good, c.source, c.destination)));
+  new Set(contracts.map(c => key(c.good, c.destination)));
 
 /** What the next delivery on this contract would pay. Zero once two captains have filled it. */
 export function payoutFor(contract: Contract): number {

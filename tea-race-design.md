@@ -399,8 +399,28 @@ existed, so the variety is free.
 
 The rules change the owner cares most about, and the one that makes the map matter.
 
-- **A card no longer locks its source.** It names a good, a destination and a price; the good may be
-  bought at any port that stocks it. Turns sourcing into a decision rather than a lookup.
+- ✅ **A card no longer locks its source** (2026-08-10). It names a good, a buyer and a price; load it
+  at any port that stocks it.
+
+  The finding that reframed this: **the source lock never existed in the rules.** `doDeliver` has
+  always matched only the good and the destination, so opium bought at Bombay filled a
+  "Calcutta → Foochow" card for the full 4× and always would have. The card's own label was the only
+  lock. The owner's recollection of the board game was right and the implementation was already
+  right — the UI was lying about it. Verified before changing anything, by loading off-source in the
+  harness and watching it pay.
+
+  So this was a presentation-and-model change, not a rules change. `Contract` lost its `source`
+  field; card keys went from `good|source|destination` to `good|destination` (three-part keys from
+  older saves still parse, with the middle field dropped, so an existing game keeps its draw pile);
+  the deck's distance cap became a *reachability* test — some seller within
+  `CONTRACT_MAX_DISTANCE` of the buyer — rather than a property of one named pair. Cards now read
+  "Coffee, wanted at London, load at Rio de Janeiro, Zanzibar, Batavia", nearest seller picked out.
+
+  The AI had to change most: it now costs the whole out-and-back for *every* port stocking the good
+  and keeps the best, which is the work it previously got for free by being told where to load.
+  Pacing improved as a result — 20 seeds went from min 35 / median 88 / max 151 to
+  **min 49 / median 73 / max 123**, faster and much tighter, because nobody treks past a nearer
+  supplier any more.
 - **Prices vary by port** — tea dearer in London than Foochow. Falls straight out of the above, and
   turns the port table from reference into a price sheet worth reading.
 - **Re-audit §1's FAITHFUL marks** against the owner's own recollection, per the caveat above.
