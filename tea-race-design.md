@@ -19,10 +19,22 @@ Sourced in two passes, and the difference matters.
 **Pass one (2026-08-02)** worked from published *descriptions* of the 1988 board — the skeleton
 only. Everything the descriptions did not cover was authored from scratch and marked as such.
 
-**Pass two (2026-08-05)** worked from the owner's own compiled rules manual for John Rudford's
-Ocean Trader (1988), which is far more detailed. **It showed that six things I had invented to fill
-gaps are in the real game, done differently.** Those are corrected, and the FAITHFUL/AUTHORED marks
-throughout this document and in `src/sim/rules.ts` now reflect the fuller source.
+**Pass two (2026-08-05)** worked from a compiled rules manual the owner supplied, which is far more
+detailed and showed that six things pass one had invented were in the real game, done differently.
+
+**Treat that document as a strong hint, not as authority.** On re-reading it carries the marks of an
+AI-generated compilation rather than a transcription of the printed rules: bracketed citation markers
+(`[1, 2]`), the phrase "formatted for direct copy-pasting", and a sign-off offering to draft an
+appendix. It is confident and specific, which is exactly how a confabulation reads.
+
+It has already been caught out once. The document states that a commodity card locks buying to one
+named port — "Alternate routing or selling to unauthorized ports is illegal" — and the owner, who has
+actually played the game, remembers the opposite: the card tells you where the good is available at
+that price, and you may buy it anywhere that stocks it. **Where the owner's memory and that document
+disagree, the owner wins.** Phase 2 of the roadmap acts on this.
+
+So the FAITHFUL marks added in pass two are held with less confidence than the ones from pass one's
+published descriptions, and several may yet move back to AUTHORED.
 
 What the real rules give:
 
@@ -339,6 +351,47 @@ prices move with the trade flowing through their regions, so shares become a mar
 than a counter to fill. Designed in conversation, not started.
 
 ---
+
+## 6a. Roadmap — three phases
+
+Agreed with the owner 2026-08-05, ordered so each phase ships on its own and the risk climbs as it
+goes. Phase 1 changes no rules at all; phase 2 changes the core economy; phase 3 adds systems.
+
+### Phase 1 — make what already happens visible
+
+The owner's report was "pirates don't seem to do anything". They do: measured over 1,394 rounds,
+268 storms, 70 ransoms and 8 seizures — roughly a storm every five rounds. But every one of them
+produces only a line in a scrolling log, and if it fired on a computer captain's turn nobody ever
+sees it. **This is a presentation failure, not a rules one**, which is why it comes first and why it
+is cheap.
+
+- **One event card component** as the universal reporting surface: storms, ransoms, seizures, a
+  rival landing a cargo you were racing for, a card being taken, the season turning. Dismissible,
+  and stacking when several fire at once.
+- **A real event deck** beyond hazards — a harbour strike closing a port, a glut halving one good's
+  price, a blockade, a quarantine, an admiralty contract paying double, a rival dismasted. Drawn on
+  a schedule rather than per-ship, so they hit the whole table and become news everyone reacts to.
+- **A news banner** — a ticker of what just happened, so the race is readable without the log.
+
+### Phase 2 — make trading dynamic
+
+The rules change the owner cares most about, and the one that makes the map matter.
+
+- **A card no longer locks its source.** It names a good, a destination and a price; the good may be
+  bought at any port that stocks it. Turns sourcing into a decision rather than a lookup.
+- **Prices vary by port** — tea dearer in London than Foochow. Falls straight out of the above, and
+  turns the port table from reference into a price sheet worth reading.
+- **Re-audit §1's FAITHFUL marks** against the owner's own recollection, per the caveat above.
+
+### Phase 3 — add depth
+
+- **Named ship classes** — a fast clipper with two slots, a slow barque with four, an armed Indiaman
+  with three. Fleet composition becomes strategy, and it slots into the copper and guns economy that
+  already exists.
+- **Port agents** — a cheap standing investment: early word of new cards, or cheaper loading. Gives
+  money a use besides shares and makes where you trade matter over time.
+- **Multiple stocks** — several shipping companies whose prices move with the trade flowing through
+  their regions, so shares become a market to read rather than a counter to fill.
 
 ## 7. Voyage mode — designed, not built
 
