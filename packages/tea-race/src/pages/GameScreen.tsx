@@ -13,6 +13,7 @@ import PortPanel from '../components/PortPanel';
 import CountingHouse from '../components/CountingHouse';
 import PortLedger from '../components/PortLedger';
 import RivalFleets from '../components/RivalFleets';
+import EventCards from '../components/EventCards';
 import CaptainsTable from '../components/CaptainsTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
@@ -278,6 +279,9 @@ export default function GameScreen() {
           <ChronicleLog log={state.log} captains={state.captains} />
         </aside>
       </main>
+
+      {/* Notable events pop as cards so the game can be watched rather than read. */}
+      <EventCards log={state.log} captains={state.captains} viewerId={captain?.id ?? null} />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
       {state.phase === 'handover' && captain && (
