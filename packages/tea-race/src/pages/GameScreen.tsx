@@ -14,6 +14,7 @@ import CountingHouse from '../components/CountingHouse';
 import PortLedger from '../components/PortLedger';
 import RivalFleets from '../components/RivalFleets';
 import EventCards from '../components/EventCards';
+import NewsBanner from '../components/NewsBanner';
 import CaptainsTable from '../components/CaptainsTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
@@ -146,6 +147,9 @@ export default function GameScreen() {
       )}
 
       {/* --- Declaration clock ----------------------------------------------------------- */}
+      {/* --- The news ---------------------------------------------------------------------- */}
+      {!over && <NewsBanner events={state.events ?? []} round={state.round} />}
+
       {state.declaration && !over && (
         <div style={declarationBanner} role="status">
           <strong style={{ color: UI.warn }}>

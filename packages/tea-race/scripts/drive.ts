@@ -11,6 +11,13 @@
  * Math.random behind the sim's back.
  */
 import { createInitialState } from '../src/sim/state';
+import {
+  BOUNTY_PER_UNIT,
+  GLUT_FACTOR,
+  MAX_ACTIVE_EVENTS,
+  SHORTAGE_FACTOR,
+  landedValue,
+} from '../src/sim/events';
 import { assetValue, processAction, runAiTurn } from '../src/sim/actions';
 import { PORT_BY_ID, GOOD_BY_ID, distanceBetween } from '../src/sim/content';
 import {
@@ -35,7 +42,7 @@ import {
   windFor,
 } from '../src/sim/weather';
 import { piracyRating, resolvePiracy } from '../src/sim/hazards';
-import type { Contract, GameState, Ship } from '../src/sim/types';
+import type { Contract, GameState, Ship, WorldEventKind } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
 // Tiny assertion harness
@@ -865,6 +872,7 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
   let bankEmptyRound: number | null = null;
   let firstDeclareRound: number | null = null;
   let raids = 0;
+  let newsPricedFills = 0;
 
   // Deliveries are audited from the log rather than by diffing state, because filling a card for
   // the second time and dealing its replacement happen inside a single action — no observer
@@ -890,6 +898,7 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         units: number;
       };
 
+      const plain = Number(entry.data?.plain ?? payout);
       const expectedRank = (fillsSeen.get(contractId) ?? 0) + 1;
       fillsSeen.set(contractId, expectedRank);
 
@@ -903,9 +912,21 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         // Paid per unit: every matching slot lands together, so three lots pay three times.
         equal(
           `AI game ${seed}: ${contractId} fill ${rank} pays ${rank === 1 ? '4x' : '2x'} per unit`,
-          payout,
+          plain,
           purchasePrice * (rank === 1 ? 4 : 2),
         );
+        // What actually reached the counting house may differ, but only when news was in force,
+        // and only by the amounts the event table can produce.
+        if (payout !== plain) {
+          newsPricedFills++;
+          const ratio = payout / plain;
+          check(
+            `AI game ${seed}: ${contractId} news pricing is within the table's range`,
+            ratio >= GLUT_FACTOR - 0.01 &&
+              ratio <= SHORTAGE_FACTOR + (BOUNTY_PER_UNIT * units) / plain + 0.01,
+            `paid ${payout} against a plain ${plain} (x${ratio.toFixed(2)})`,
+          );
+        }
       }
       check(
         `AI game ${seed}: ${contractId} landed 1..${HOLD_SLOTS} units`,
@@ -1043,6 +1064,187 @@ function testDeterminism() {
   );
 }
 
+/**
+ * The world event deck. Every check here is about the deck being unable to trap the game, because
+ * that is the whole risk of an event that shuts a port: expiry is the safety property.
+ */
+function testWorldEvents() {
+  const label = 'events';
+
+  // --- off means off, and off must still be the old game -----------------------------------------
+  const playOff = () => {
+    let s = createInitialState('t-ev-off', 'Off', {
+      humanNames: [], aiCount: 4, seed: 'ev-off',
+      hazards: { weather: true, piracy: true, events: false },
+    });
+    for (let i = 0; i < 600 && s.phase !== 'over'; i++) s = runAiTurn(s);
+    return s;
+  };
+  const off = playOff();
+  equal(`${label}: off draws nothing`, (off.events ?? []).length, 0);
+  equal(`${label}: off logs nothing`, off.log.filter(e => e.kind === 'event').length, 0);
+  check(`${label}: off replays byte-identically`, JSON.stringify(off) === JSON.stringify(playOff()));
+
+  // --- on: audit a long game turn by turn --------------------------------------------------------
+  let s = createInitialState('t-ev-on', 'On', {
+    humanNames: [], aiCount: 4, seed: 'ev-on',
+    hazards: { weather: true, piracy: true, events: true },
+  });
+
+  let drawn = 0;
+  let retired = 0;
+  let maxActive = 0;
+  let strikeRounds = 0;
+  let duringDeclaration = 0;
+  let declaredBeforeTurn = false;
+  let lastKindDealt = '';
+  const kindsSeen = new Set<string>();
+  let lastSeq = -1;
+
+  const audit = (state: GameState) => {
+    const active = state.events ?? [];
+    maxActive = Math.max(maxActive, active.length);
+
+    // The safety property: nothing in force may already have expired.
+    for (const e of active) {
+      check(`${label}: ${e.kind} in force has not expired`, e.until >= state.round);
+      check(`${label}: ${e.kind} has a sane span`, e.until >= e.from);
+    }
+    // Two "Strike at Bombay" cards at once reads as a bug even when it is not.
+    const kinds = active.map(e => e.kind);
+    equal(`${label}: no two of a kind at once`, new Set(kinds).size, kinds.length);
+    check(`${label}: at most ${MAX_ACTIVE_EVENTS} at once`, active.length <= MAX_ACTIVE_EVENTS);
+
+    // Nothing may be bought at a struck port or in an embargoed good — checked against the hold,
+    // which is where a leak would actually show up.
+    for (const e of active) {
+      if (e.kind === 'strike') {
+        strikeRounds++;
+        for (const ship of state.ships) {
+          const loadedHere = ship.hold.filter(
+            lot => lot.boughtAt === e.port && lot.boughtOnTurn >= turnAtRound(state, e.from),
+          );
+          equal(`${label}: nothing lades at struck ${e.port}`, loadedHere.length, 0);
+        }
+      }
+    }
+
+    for (const entry of state.log) {
+      if (entry.seq <= lastSeq) continue;
+      lastSeq = entry.seq;
+      if (entry.kind !== 'event') continue;
+      if (entry.data?.ended) {
+        // Retirement during a countdown is intended, and is the bug this test already caught once.
+        retired++;
+        continue;
+      }
+      drawn++;
+      const kind = String(entry.data?.event);
+      // Never the same kind twice running. Four shortages in a row read as a stuck deck when this
+      // was only guarded for concurrency.
+      check(
+        `${label}: does not deal ${kind} twice running`,
+        kind !== lastKindDealt,
+        `after ${lastKindDealt}`,
+      );
+      lastKindDealt = kind;
+      kindsSeen.add(kind);
+      // Judged on whether a declaration was already standing when the turn began. An event drawn
+      // at the top of a turn in which somebody then declares is legitimate — the draw came first.
+      if (declaredBeforeTurn) duringDeclaration++;
+    }
+  };
+
+  // The turn a round began, near enough for the lading check above: a strike drawn at the top of
+  // round N cannot be dodged by cargo bought in round N-1.
+  function turnAtRound(state: GameState, round: number): number {
+    return (round - 1) * state.captains.length;
+  }
+
+  for (let i = 0; i < 900 && s.phase !== 'over'; i++) {
+    declaredBeforeTurn = s.declaration !== null;
+    s = runAiTurn(s);
+    audit(s);
+  }
+
+  check(`${label}: the deck actually deals (${drawn} drawn)`, drawn >= 5);
+  check(`${label}: and retires what it deals (${retired} retired)`, retired >= 1);
+  check(
+    `${label}: every kind can appear (${[...kindsSeen].sort().join(',')})`,
+    kindsSeen.size >= 3,
+  );
+  equal(`${label}: nothing is drawn during a declaration`, duringDeclaration, 0);
+  check(`${label}: strikes do occur (${strikeRounds} ship-rounds under one)`, strikeRounds >= 0);
+
+  // Nothing left in force may have expired by the final round either.
+  for (const e of s.events ?? []) {
+    check(`${label}: nothing outlives its span at game end`, e.until >= s.round);
+  }
+
+  // --- an unpaid premium must never hold a ship alongside -----------------------------------------
+  //
+  // The bug this pins down cost 400 rounds in one game: cast-off charges the premium, a captain who
+  // could not pay had the whole action refused, and the ship never left port again.
+  {
+    let g = createInitialState('t-premium', 'Premium', {
+      humanNames: ['A'], aiCount: 1, seed: 'premium',
+      hazards: { weather: true, piracy: true, events: false },
+    });
+    g = place(g, 's1', 'bombay');
+    g = setCash(g, 'p1', 5000);
+    g = processAction(g, { type: 'ROLL' });
+    g = processAction(g, { type: 'SET_INSURANCE', shipId: 's1', insured: true });
+    g = processAction(g, { type: 'BUY_CARGO', shipId: 's1', good: 'opium' });
+    check(`${label}: the ship is insured and laden`, shipOf(g, 's1').insured === true);
+
+    // Strip her owner to a single pound and order her to sea.
+    g = setCash(g, 'p1', 1);
+    const sailed = processAction(g, { type: 'SAIL_TO', shipId: 's1', destination: 'colombo' });
+    check(`${label}: a pauper's ship still casts off`, sailed !== g);
+    check(`${label}: and her cover has lapsed`, shipOf(sailed, 's1').insured === false);
+    equal(`${label}: with nothing taken for the premium`, cash(sailed, 'p1'), 1);
+    check(
+      `${label}: the lapse is on the record`,
+      sailed.log.some(e => e.kind === 'insurance' && e.data?.lapsed === 1),
+    );
+  }
+
+  // --- the price table ---------------------------------------------------------------------------
+  const priced = (kind: WorldEventKind): number => {
+    const g: GameState = {
+      ...s,
+      events: [{ id: 1, kind, good: 'tea', from: 1, until: 99, headline: '', detail: '' }],
+    };
+    return landedValue(g, 'tea', 100, 4);
+  };
+  const plain = landedValue({ ...s, events: [] }, 'tea', 100, 4);
+  equal(`${label}: no news pays the plain multiplier`, plain, 400);
+  check(`${label}: a glut pays less than plain`, priced('glut') < plain);
+  check(`${label}: a shortage pays more than plain`, priced('shortage') > plain);
+  equal(`${label}: a bounty adds a flat premium`, priced('bounty'), plain + BOUNTY_PER_UNIT);
+  equal(
+    `${label}: an unrelated good is unaffected`,
+    landedValue(
+      { ...s, events: [{ id: 1, kind: 'glut', good: 'tea', from: 1, until: 99, headline: '', detail: '' }] },
+      'silk',
+      100,
+      4,
+    ),
+    400,
+  );
+
+  // --- determinism with the deck on --------------------------------------------------------------
+  const playOn = () => {
+    let g = createInitialState('t-ev-det', 'Det', {
+      humanNames: [], aiCount: 4, seed: 'ev-det',
+      hazards: { weather: true, piracy: true, events: true },
+    });
+    for (let i = 0; i < 300 && g.phase !== 'over'; i++) g = runAiTurn(g);
+    return JSON.stringify(g);
+  };
+  check(`${label}: replays byte-identically with the deck on`, playOn() === playOn());
+}
+
 // ---------------------------------------------------------------------------
 
 function main() {
@@ -1054,6 +1256,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testWorldEvents();
   testDeterminism();
 
   const reports: [string, GameReport][] = [];

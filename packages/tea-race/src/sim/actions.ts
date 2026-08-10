@@ -16,6 +16,15 @@ import { roll2d6 } from './rng';
 import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
 import {
+  drawEvent,
+  expired,
+  goodEmbargoed,
+  landedValue,
+  portStruck,
+  remember,
+  stillRunning,
+} from './events';
+import {
   canBuyOut,
   COPPER_SPEED_BONUS,
   DECLARATION_TURNS,
@@ -189,13 +198,68 @@ function resolveDeclaration(state: GameState): GameState {
   return s;
 }
 
+/**
+ * Runs the world event deck for the round just starting: retires what has expired, then draws.
+ *
+ * No new event is drawn once a declaration is live. The endgame is a fixed countdown against a
+ * fixed target and it took real work to make it resolve exactly once; a strike landing on the
+ * declarer's home port mid-count would settle the game by dice instead of by play.
+ *
+ * Expiry, though, keeps running throughout — and it must. Gating the whole of this function on the
+ * declaration was the first version, and it quietly froze the deck: anything in force at the moment
+ * somebody declared stayed in force for the rest of the game, port closures included. The harness
+ * caught it as "bounty in force has not expired". Retiring news is never the unfair half.
+ */
+function turnTheWorld(state: GameState): GameState {
+  if (!state.hazards?.events) return state;
+  if (state.phase === 'over') return state;
+
+  let s = state;
+  const active = s.events ?? [];
+  const done = expired(active, s.round);
+  const running = stillRunning(active, s.round);
+
+  if (done.length > 0) {
+    s = { ...s, events: running };
+    for (const e of done) {
+      s = log(s, 'event', `${e.headline} — the news is stale; trade returns to normal.`, null, {
+        event: e.kind,
+        ended: 1,
+      });
+    }
+  }
+
+  if (s.declaration || s.winnerId) return s;
+
+  const draw = drawEvent(s.rngSeed, s.round, running, s.nextEventSeq ?? 1, s.recentEvents ?? []);
+  s = { ...s, rngSeed: draw.seed };
+  if (!draw.event) return s;
+
+  const e = draw.event;
+  s = {
+    ...s,
+    events: [...(s.events ?? running), e],
+    nextEventSeq: e.id + 1,
+    recentEvents: remember(s.recentEvents ?? [], e.kind),
+  };
+  return log(s, 'event', `${e.headline}. ${e.detail}`, null, {
+    event: e.kind,
+    until: e.until,
+    ...(e.port ? { port: e.port } : {}),
+    ...(e.good ? { good: e.good } : {}),
+  });
+}
+
 /** Moves to the next seat, handling the round roll-over and the declaration countdown. */
 function advanceSeat(state: GameState): GameState {
   let s: GameState = { ...state, sailPoints: {}, dice: {}, turn: state.turn + 1, phase: 'roll' };
 
   const nextIndex = (s.activeIndex + 1) % s.captains.length;
   s = { ...s, activeIndex: nextIndex };
-  if (nextIndex === 0) s = { ...s, round: s.round + 1 };
+  if (nextIndex === 0) {
+    s = { ...s, round: s.round + 1 };
+    s = turnTheWorld(s);
+  }
 
   // Every individual turn, not once per completed round — see DECLARATION_TURNS. Read as rounds it
   // made the endgame forty-eight turns long at a four-captain table.
@@ -459,24 +523,42 @@ function doSailTo(
   const points = state.sailPoints[ship.id] ?? 0;
 
   // A standing policy is charged per voyage, at cast-off, priced from this course's real risk and
-  // the cargo actually aboard. Refuse the voyage rather than let a captain sail uninsured while
-  // believing they are covered.
+  // the cargo actually aboard.
+  //
+  // If the premium cannot be met the **cover lapses** and she sails uninsured, told plainly. The
+  // first version refused the voyage instead, reasoning that sailing uninsured while believing
+  // yourself covered is worse — true, but it imprisons the ship. The harness found a captain with a
+  // winning six shares, two lots of opium aboard, orders for Shanghai and £1 in hand: every cast-off
+  // was rejected for an unpaid premium, so she never sailed, never sold the cargo, never reached the
+  // £750, and could not be raided. Four hundred rounds tied up at Bombay. An unpayable bill must
+  // never be able to hold a ship alongside, and a lapsed policy is what really happens.
   let s: GameState = state;
+  let hull = plotted;
   if (ship.insured && state.hazards?.piracy) {
     const risk = routeRisk(ship.location, plotted.voyage!.route, seasonOf(state.round));
     const premium = insurancePremium(ship.hold.reduce((n, l) => n + l.paid, 0), risk);
-    if (captain.cash < premium) return state;
-    s = updateCaptain(s, captain.id, { cash: captain.cash - premium });
-    s = log(
-      s,
-      'insurance',
-      `${ship.name}'s policy is endorsed for the passage — premium ${money(premium)}.`,
-      captain.id,
-      { shipId: ship.id, premium, risk: Math.round(risk * 100) },
-    );
+    if (captain.cash < premium) {
+      hull = { ...plotted, insured: false };
+      s = log(
+        s,
+        'insurance',
+        `${ship.name}'s policy lapses — the ${money(premium)} premium could not be met. She sails uncovered.`,
+        captain.id,
+        { shipId: ship.id, premium, lapsed: 1 },
+      );
+    } else {
+      s = updateCaptain(s, captain.id, { cash: captain.cash - premium });
+      s = log(
+        s,
+        'insurance',
+        `${ship.name}'s policy is endorsed for the passage — premium ${money(premium)}.`,
+        captain.id,
+        { shipId: ship.id, premium, risk: Math.round(risk * 100) },
+      );
+    }
   }
 
-  const outcome = sail(plotted, points);
+  const outcome = sail(hull, points);
   s = replaceShip(s, outcome.ship);
   // Tying up forfeits the rest of the roll — see doRoll.
   const left = outcome.arrivedAt ? 0 : points - outcome.spent;
@@ -507,6 +589,10 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   if (!ship || ship.location === null) return state;
   if (ship.hold.length >= HOLD_SLOTS) return state;
   if (!portSupplies(ship.location, good)) return state;
+  // A struck port loads nothing and an embargoed good loads nowhere. Cargo already aboard is
+  // untouched by both — only lading is stopped, so nobody is ever left holding an unlandable hold.
+  if (portStruck(state, ship.location)) return state;
+  if (goodEmbargoed(state, good)) return state;
 
   const captain = activeCaptain(state);
   const price = GOOD_BY_ID[good]?.basePrice;
@@ -534,6 +620,7 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
   const contract = state.contracts.find(c => c.id === contractId);
   if (!contract) return state;
   if (contract.destination !== ship.location) return state;
+  if (portStruck(state, ship.location)) return state;
 
   // Every matching slot goes ashore at once, and is paid per unit. This is the source's own
   // "fill all three slots with identical goods to maximise a single delivery payout".
@@ -544,7 +631,13 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
   if (rank === null) return state;
 
   const captain = activeCaptain(state);
-  const payout = landed.reduce((sum, lot) => sum + lot.paid * PAYOUT_MULTIPLIERS[rank], 0);
+  // Priced through the event table, so a glut, a shortage or an Admiralty bounty is felt here and
+  // the AI can score a plan with the identical call.
+  const plain = landed.reduce((sum, lot) => sum + lot.paid * PAYOUT_MULTIPLIERS[rank], 0);
+  const payout = landed.reduce(
+    (sum, lot) => sum + landedValue(state, lot.good, lot.paid, PAYOUT_MULTIPLIERS[rank]),
+    0,
+  );
   const fill: ContractFill = { captainId: captain.id, rank, paid: payout, onTurn: state.turn };
 
   let s = updateCaptain(state, captain.id, { cash: captain.cash + payout });
@@ -565,6 +658,13 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
       good: contract.good,
       rank,
       payout,
+      /**
+       * What the card would have paid with no news in force. The driver audits the multiplier off
+       * this rather than off a hard-coded 4x, because a glut is *meant* to break that constant —
+       * so the invariant worth checking is "payout equals plain except where the news says
+       * otherwise", not "payout equals plain".
+       */
+      plain,
       units: landed.length,
       purchasePrice: landed.reduce((sum, lot) => sum + lot.paid, 0),
       cardPrice: contract.price,

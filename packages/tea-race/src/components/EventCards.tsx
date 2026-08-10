@@ -31,6 +31,7 @@ function isNotable(entry: LogEntry): boolean {
     case 'lapse':
     case 'victory':
     case 'contract':
+    case 'event':
       return true;
     case 'insurance':
       return entry.data?.indemnity !== undefined;
@@ -45,6 +46,7 @@ const PRESENTATION: Partial<Record<LogKind, { title: string; colour: string; gly
   piracy: { title: 'Pirates', colour: UI.bad, glyph: '⚔' },
   insurance: { title: 'The underwriters', colour: UI.verdigris, glyph: '§' },
   contract: { title: 'New commission', colour: UI.textSoft, glyph: '✦' },
+  event: { title: 'From the exchange', colour: UI.warn, glyph: '⚑' },
   declare: { title: 'A claim is made', colour: UI.brass, glyph: '★' },
   lapse: { title: 'The claim collapses', colour: UI.warn, glyph: '✕' },
   victory: { title: 'The company is carried', colour: UI.brass, glyph: '♛' },
@@ -133,11 +135,17 @@ export default function EventCards({
   );
 }
 
+/**
+ * Bottom *left*, not right, and that is deliberate. The first version floated bottom-right and sat
+ * squarely on top of the orders panel — the one column in this layout you actually click. The left
+ * column is the exchange: reference you read rather than operate, so a card resting over it costs
+ * nothing. Sized to sit roughly over that column so it reads as belonging there.
+ */
 const stack: React.CSSProperties = {
   position: 'fixed',
-  right: '0.9rem',
+  left: '0.9rem',
   bottom: '0.9rem',
-  width: 'min(340px, calc(100vw - 1.8rem))',
+  width: 'min(320px, calc(100vw - 1.8rem))',
   display: 'flex',
   flexDirection: 'column',
   gap: '0.4rem',
@@ -183,7 +191,7 @@ const body: React.CSSProperties = {
 };
 
 const clearAll: React.CSSProperties = {
-  alignSelf: 'flex-end',
+  alignSelf: 'flex-start',
   background: 'transparent',
   border: `1px solid ${UI.rule}`,
   borderRadius: 2,

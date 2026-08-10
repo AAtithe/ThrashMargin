@@ -280,12 +280,13 @@ export const PRESETS = {
   board: {
     label: 'The 1988 board',
     blurb: 'The published game exactly: dice, five cards, ten shares, nothing else.',
-    hazards: { weather: false, piracy: false },
+    hazards: { weather: false, piracy: false, events: false },
   },
   full: {
     label: 'Full game',
-    blurb: 'Everything on — seasonal wind, storms, pirates, guns, copper and insurance.',
-    hazards: { weather: true, piracy: true },
+    blurb:
+      'Everything on — seasonal wind, storms, pirates, guns, copper, insurance and the world event deck.',
+    hazards: { weather: true, piracy: true, events: true },
   },
 } as const;
 

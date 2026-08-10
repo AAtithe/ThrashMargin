@@ -357,7 +357,7 @@ than a counter to fill. Designed in conversation, not started.
 Agreed with the owner 2026-08-05, ordered so each phase ships on its own and the risk climbs as it
 goes. Phase 1 changes no rules at all; phase 2 changes the core economy; phase 3 adds systems.
 
-### Phase 1 — make what already happens visible
+### Phase 1 — make what already happens visible ✅
 
 The owner's report was "pirates don't seem to do anything". They do: measured over 1,394 rounds,
 268 storms, 70 ransoms and 8 seizures — roughly a storm every five rounds. But every one of them
@@ -365,13 +365,35 @@ produces only a line in a scrolling log, and if it fired on a computer captain's
 sees it. **This is a presentation failure, not a rules one**, which is why it comes first and why it
 is cheap.
 
-- **One event card component** as the universal reporting surface: storms, ransoms, seizures, a
-  rival landing a cargo you were racing for, a card being taken, the season turning. Dismissible,
-  and stacking when several fire at once.
-- **A real event deck** beyond hazards — a harbour strike closing a port, a glut halving one good's
-  price, a blockade, a quarantine, an admiralty contract paying double, a rival dismasted. Drawn on
-  a schedule rather than per-ship, so they hit the whole table and become news everyone reacts to.
-- **A news banner** — a ticker of what just happened, so the race is readable without the log.
+**Shipped 2026-08-10.** All three parts are in, and the ruleset is untouched: a game with the
+`events` toggle off plays exactly as it did before, byte-identically, which the harness asserts.
+
+- **The event card** (`components/EventCards.tsx`) — the universal reporting surface. Driven off
+  `state.log` rather than a parallel event channel, because everything notable already writes one
+  entry with structured `data`, so there is nothing to keep in step. Seen-ness is tracked by
+  `LogEntry.seq`, never by index, and everything present at mount counts as seen so a reload does
+  not dump the backlog.
+- **The event deck** (`sim/events.ts`) — five kinds: a **strike** shutting a port to all trade, an
+  **embargo** stopping a good being loaded anywhere, a **glut** paying ×0.55, a **shortage** paying
+  ×1.5, and an **Admiralty bounty** paying +£45 a unit. Drawn at the top of a round, at most two at
+  once, never the same kind twice running.
+- **The news banner** (`components/NewsBanner.tsx`) — what is in force right now, with rounds
+  remaining. The cards are the notification; the banner is the state.
+
+Three properties hold the deck together, and each was a bug first:
+
+- **Everything expires**, and expiry runs unconditionally. New draws stop once a declaration is
+  live — a strike on the declarer's home port mid-countdown would settle the game by dice — but the
+  first version gated the whole round-turn on the declaration and quietly froze the deck, so
+  anything in force when somebody declared stayed in force forever.
+- **The AI prices the news with the same call the reducer uses** (`landedValue`), so a glut deters it
+  and a bounty tempts it. Left news-blind it kept sailing to shut ports: median game 106 rounds
+  against 87. Taught to read it, 88 — with the deck on.
+- **Nothing repeats.** "No two of a kind at once" was not enough: four shortages in a row, each
+  retiring as the next was dealt, read as a stuck deck. The deck now remembers its last two draws.
+
+Pacing with everything on, 20 seeds: **min 35, median 88, max 151** — the same as before the deck
+existed, so the variety is free.
 
 ### Phase 2 — make trading dynamic
 
@@ -456,6 +478,40 @@ Bugs found and fixed during the build, all by measurement rather than by looking
 | Browser play-through | The contract highlight ring swallowed clicks on the port beneath it |
 | Browser play-through | Clicking your own port read "No sea route from Lisbon to Lisbon" |
 | Browser play-through | The sidebar pushed the chart off screen, making "click a port" impossible |
+
+### Session 5 (2026-08-10) — phase 1: the event deck
+
+Shipped the whole of phase 1 above: the event card, the five-kind world event deck, and the news
+banner. No rule changed for anyone playing with `events` off.
+
+Four bugs, all found by the harness or the browser rather than by reading:
+
+- **Insurance premiums drowned the card surface.** A standing policy writes a premium line at every
+  cast-off; promoting log kinds wholesale to cards buried a storm under three identical notices about
+  paperwork. Notability is now a predicate, not a list of kinds: only an actual payout is news.
+- **The cards covered the orders panel.** Floating bottom-right put them squarely over the one column
+  you click. They live bottom-left now, over the exchange, which is read rather than operated.
+- **Gating the round-turn on the declaration froze expiry**, so events in force when somebody
+  declared never retired. Only *drawing* belongs outside the endgame; retiring news never does.
+- **An unpayable premium could imprison a ship for good.** `SAIL_TO` charged the premium at cast-off
+  and refused the whole voyage if the captain could not pay — sound reasoning ("better than sailing
+  uninsured while believing you are covered") with a fatal consequence. The harness found a captain
+  holding a *winning* six shares with two lots of opium aboard, orders for Shanghai and £1 in hand:
+  every cast-off rejected, so she never sailed, never sold, never reached the £750 the win also
+  needs, and could not be raided because a forced buy-out requires the buyer to hold at least as many
+  shares as the seller and she held the most. Four hundred rounds tied up at Bombay. **An unpayable
+  bill must never be able to hold a ship alongside.** The cover lapses instead, which is also what
+  really happens. This one was latent long before the event deck — longer games merely reached it.
+
+That last bug also exposed a second latent one: the AI's softlock escape (`SELL_SHARE` when too poor
+to buy the cheapest lot) sat *after* the sailing branch and was therefore unreachable, because a
+captain with ships always finds some card worth steering for. It now comes first. A majority you
+cannot turn into £750 is worth nothing.
+
+Verification: 391,352 assertions over 20 seeds, 0 failed. Pacing min 35 / median 88 / max 151 —
+indistinguishable from before the deck, so the added variety costs no length. Browser-verified:
+banner, cards, retirement notices and expiry all observed in one six-round game, and the orders panel
+stays clear.
 
 ### Session 4 (2026-08-05) — the real rulebook
 

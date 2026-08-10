@@ -13,6 +13,7 @@
  */
 import { distanceBetween, portSupplies, GOODS, GOOD_BY_ID, PORT_BY_ID } from './content';
 import { payoutFor } from './contracts';
+import { goodEmbargoed, landedValue, portStruck } from './events';
 import {
   canBuyOut,
   FITTING_PRICES,
@@ -129,6 +130,11 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
     const toDest = distanceBetween(contract.source, contract.destination);
     if (!isFinite(toSource) || !isFinite(toDest)) continue;
 
+    // News that stops her lading at all rules the card out; news at the far end does not, because a
+    // strike runs two or three rounds and the passage takes longer than that. Sailing off to a port
+    // that is shut today is fine. Sailing off to buy something she cannot legally load is not.
+    if (portStruck(s, contract.source) || goodEmbargoed(s, contract.good)) continue;
+
     // Rivals already loaded and closer will take the paid places before this ship even loads.
     const contested = rivalsAhead(s, contract, owner, toSource + toDest);
     const placesLeft = 2 - contract.fills.length - contested;
@@ -137,7 +143,9 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
     // If one paid place is already gone, the realistic outcome is second money, not first.
     const takenPlaces = contract.fills.length + contested;
     const multiplier = takenPlaces === 0 ? 4 : 2;
-    const profit = contract.price * (multiplier - 1);
+    // Priced through the same call the reducer will use, so a glut genuinely deters her and an
+    // Admiralty bounty genuinely tempts her across an ocean.
+    const profit = landedValue(s, contract.good, contract.price, multiplier) - contract.price;
 
     const turns =
       passageTurns(s, from, contract.source, toSource) +
@@ -168,7 +176,8 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
     // Every matching slot lands together and is paid per unit, so three lots are worth three times
     // the trip. That is what makes filling the hull with one good the right move.
     const units = ship.hold.filter(lot => lot.good === contract.good);
-    const gross = units.reduce((n, lot) => n + lot.paid, 0) * (payoutFor(contract) / contract.price);
+    const multiplier = payoutFor(contract) / contract.price;
+    const gross = units.reduce((n, lot) => n + landedValue(s, lot.good, lot.paid, multiplier), 0);
     const score = (gross * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, score };
   }
@@ -179,9 +188,11 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
 function bestSpeculativeLoad(s: GameState, budget: number, portId: string): string | null {
   const port = PORT_BY_ID[portId];
   if (!port) return null;
+  if (portStruck(s, portId)) return null;
   let best: string | null = null;
   let bestPrice = 0;
   for (const good of port.supplies) {
+    if (goodEmbargoed(s, good)) continue;
     const price = GOOD_BY_ID[good]?.basePrice ?? 0;
     if (price > bestPrice && price <= budget) {
       best = good;
@@ -369,7 +380,21 @@ export function nextAiAction(s: GameState): GameAction | null {
     }
   }
 
-  // 4. Empty ships in port: load here if this is the source, otherwise sail for one.
+  // 4. Too poor to buy the cheapest lot anywhere and holding shares? Cash one in.
+  //
+  //    This is the softlock escape, and it has to come *before* the sailing below, which is the
+  //    mistake the first version made. Sitting at step 4b it was unreachable: a captain with ships
+  //    always finds some card worth steering for, returns SAIL_TO, and never falls through to here.
+  //    The harness found her holding a winning six shares on £1 — no cargo, nothing affordable on
+  //    any quay, and unraidable, because a forced buy-out needs the buyer to hold at least as many
+  //    shares as the seller and she held the most. Four hundred rounds of sailing to ports where she
+  //    could not buy anything. A majority you can never turn into the £750 the win also needs is
+  //    worth nothing, so sell one and trade back up.
+  if (captain.shares > 0 && captain.cash < CHEAPEST_LOT && !ships.some(sh => sh.hold.length > 0)) {
+    return { type: 'SELL_SHARE' };
+  }
+
+  // 4a. Empty ships in port: load here if this is the source, otherwise sail for one.
   for (const ship of docked) {
     if (ship.hold.length > 0) continue;
     const run = bestRunForEmptyShip(s, ship.location!, captain.id);
@@ -389,19 +414,13 @@ export function nextAiAction(s: GameState): GameAction | null {
     // Speculators will load the best thing on the quay when no card is worth chasing.
     if (temperament.speculateBelow > 0 && (!run || run.score < temperament.speculateBelow)) {
       const good = bestSpeculativeLoad(s, spendable, ship.location!);
-      if (good && portSupplies(ship.location!, good)) {
+      if (good && portSupplies(ship.location!, good) && !goodEmbargoed(s, good)) {
         return { type: 'BUY_CARGO', shipId: ship.id, good };
       }
     }
 
     // Nothing to load and nothing worth chasing — go where the cards generally are.
     if (run) return { type: 'SAIL_TO', shipId: ship.id, destination: run.contract.source };
-  }
-
-  // 4b. Too poor to buy the cheapest lot anywhere and holding shares? Cash one in. This is the
-  //    softlock escape, and the AI reaches for it before it is completely stuck rather than after.
-  if (captain.shares > 0 && captain.cash < CHEAPEST_LOT && !ships.some(sh => sh.hold.length > 0)) {
-    return { type: 'SELL_SHARE' };
   }
 
   // 5. Put the money to work.

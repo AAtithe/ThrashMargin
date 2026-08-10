@@ -153,6 +153,29 @@ export interface Hazards {
   weather: boolean;
   /** Piracy in historically piratical waters, with ransoms, seizures and insurance. */
   piracy: boolean;
+  /** The world event deck — strikes, embargoes, gluts, shortages, Admiralty bounties. */
+  events?: boolean;
+}
+
+/** The kinds of thing the world does to everybody at once. See sim/events.ts. */
+export type WorldEventKind = 'strike' | 'embargo' | 'glut' | 'shortage' | 'bounty';
+
+/**
+ * One piece of news in force. Always carries the last round it applies to, so no draw can put the
+ * game somewhere it cannot get out of.
+ */
+export interface WorldEvent {
+  id: number;
+  kind: WorldEventKind;
+  /** The port shut, for a strike. */
+  port?: PortId;
+  /** The commodity affected, for everything else. */
+  good?: GoodId;
+  from: number;
+  /** Inclusive: the event is in force while `round <= until`. */
+  until: number;
+  headline: string;
+  detail: string;
 }
 
 export interface Declaration {
@@ -182,7 +205,8 @@ export type LogKind =
   | 'declare'
   | 'lapse'
   | 'victory'
-  | 'contract';
+  | 'contract'
+  | 'event';
 
 export interface LogEntry {
   /**
@@ -232,6 +256,15 @@ export interface GameState {
    * in the design doc stays honest. New games default both on.
    */
   hazards?: Hazards;
+  /**
+   * World events in force. Optional and **absent means none** — a save written before the event deck
+   * existed keeps playing without one. Pruned at the top of each round.
+   */
+  events?: WorldEvent[];
+  /** Monotonic counter behind WorldEvent.id. */
+  nextEventSeq?: number;
+  /** The last few event kinds dealt, newest first, so the deck does not repeat itself. */
+  recentEvents?: WorldEventKind[];
   /** ms epoch, stamped by the caller. The sim itself never reads a clock. */
   createdAt: number;
   rngSeed: number;
