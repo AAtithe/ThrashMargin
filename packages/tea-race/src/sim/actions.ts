@@ -9,12 +9,13 @@
  *  2. Nothing here calls Math.random or reads a clock. Dice come from `rng.ts` against
  *     `state.rngSeed`; timestamps are passed in at creation.
  */
-import { GOOD_BY_ID, HOME_PORT, goodName, portName, portSupplies } from './content';
+import { HOME_PORT, goodName, portName, portSupplies } from './content';
 import { drawContract, faceUpKeys, isContractComplete, nextRank } from './contracts';
 import { destinationOf, plotCourse, pointsToDestination, reorderAtSea, sail } from './movement';
 import { roll2d6 } from './rng';
 import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
+import { priceAt, priceStanding } from './pricing';
 import {
   drawEvent,
   expired,
@@ -595,9 +596,11 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   if (goodEmbargoed(state, good)) return state;
 
   const captain = activeCaptain(state);
-  const price = GOOD_BY_ID[good]?.basePrice;
-  if (price === undefined || captain.cash < price) return state;
+  // The quay's price, not the card's — see sim/pricing.ts for why those are different numbers.
+  const price = priceAt(ship.location, good);
+  if (price <= 0 || captain.cash < price) return state;
 
+  const standing = priceStanding(ship.location, good);
   let s = updateCaptain(state, captain.id, { cash: captain.cash - price });
   s = replaceShip(s, {
     ...ship,
@@ -606,9 +609,9 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   return log(
     s,
     'buy',
-    `${ship.name} loads ${goodName(good)} at ${portName(ship.location)} for ${money(price)} — ${
-      ship.hold.length + 1
-    } of ${HOLD_SLOTS} slots full.`,
+    `${ship.name} loads ${goodName(good)} at ${portName(ship.location)} for ${money(price)}${
+      standing === 'level' ? '' : standing === 'cheap' ? ' — under the reckoning' : ' — over the reckoning'
+    } — ${ship.hold.length + 1} of ${HOLD_SLOTS} slots full.`,
     captain.id,
   );
 }
@@ -633,9 +636,13 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
   const captain = activeCaptain(state);
   // Priced through the event table, so a glut, a shortage or an Admiralty bounty is felt here and
   // the AI can score a plan with the identical call.
-  const plain = landed.reduce((sum, lot) => sum + lot.paid * PAYOUT_MULTIPLIERS[rank], 0);
+  //
+  // Reckoned on the **card's** price per unit, never on what the captain happened to pay for it.
+  // Paying from `lot.paid` would mean the cheapest quay earned the least, so the correct play would
+  // be to always buy at the dearest one — see sim/pricing.ts.
+  const plain = landed.length * contract.price * PAYOUT_MULTIPLIERS[rank];
   const payout = landed.reduce(
-    (sum, lot) => sum + landedValue(state, lot.good, lot.paid, PAYOUT_MULTIPLIERS[rank]),
+    (sum, lot) => sum + landedValue(state, lot.good, contract.price, PAYOUT_MULTIPLIERS[rank]),
     0,
   );
   const fill: ContractFill = { captainId: captain.id, rank, paid: payout, onTurn: state.turn };
@@ -667,6 +674,8 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
       plain,
       units: landed.length,
       purchasePrice: landed.reduce((sum, lot) => sum + lot.paid, 0),
+      /** Profit after what the quays actually charged — the number the sourcing decision moves. */
+      margin: payout - landed.reduce((sum, lot) => sum + lot.paid, 0),
       cardPrice: contract.price,
     },
   );

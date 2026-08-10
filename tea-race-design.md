@@ -27,22 +27,38 @@ AI-generated compilation rather than a transcription of the printed rules: brack
 (`[1, 2]`), the phrase "formatted for direct copy-pasting", and a sign-off offering to draft an
 appendix. It is confident and specific, which is exactly how a confabulation reads.
 
-It has already been caught out once. The document states that a commodity card locks buying to one
-named port — "Alternate routing or selling to unauthorized ports is illegal" — and the owner, who has
-actually played the game, remembers the opposite: the card tells you where the good is available at
-that price, and you may buy it anywhere that stocks it. **Where the owner's memory and that document
-disagree, the owner wins.** Phase 2 of the roadmap acts on this.
+It has already been caught out once, and the correction has now been *tested*. The document states
+that a commodity card locks buying to one named port — "Alternate routing or selling to unauthorized
+ports is illegal" — and the owner, who has actually played the game, remembers the opposite: the card
+tells you where the good is available at that price, and you may buy it anywhere that stocks it.
+**Where the owner's memory and that document disagree, the owner wins.**
 
-So the FAITHFUL marks added in pass two are held with less confidence than the ones from pass one's
-published descriptions, and several may yet move back to AUTHORED.
+**Resolved 2026-08-10.** Before changing a line, a ship was put at Bombay, loaded with opium and
+sailed to Foochow to land it on a card reading "Calcutta → Foochow". It paid the full 4×, because
+`doDeliver` has only ever matched the good and the destination. **The lock was never implemented and
+the document's claim was never in force** — the card's own label was the only thing enforcing it, and
+only on the player. The owner's recollection was correct twice over: about the board game, and about
+this implementation. §6a phase 2 records the change that stopped the UI implying otherwise.
+
+That is one confabulation confirmed, and it is the only mark in the table below with direct evidence
+either way. The rest still stand on that document alone, so the pass-two FAITHFUL marks continue to be
+held with less confidence than pass one's, and several may yet move back to AUTHORED — the way to
+settle any of them is to ask the owner, not to re-read the file.
+
+**One mark has effectively moved.** "Four times the purchase price" is now read as four times the
+*card's reckoned* price, because §6a phase 2 gave each quay its own price and the two readings came
+apart. With a single global price they are numerically identical, so nothing published is
+contradicted; but the choice is ours and it is recorded in `sim/pricing.ts` rather than claimed as
+faithful.
 
 What the real rules give:
 
 - 2–6 players, each starting with one clipper at **Liverpool** and a bankroll of **£500–£1,000**.
 - A world map of shipping lanes marked by **movement nodes**, one node = one movement point.
 - **Every ship has exactly three cargo slots.** A full fleet of three ships carries nine.
-- **Five commodity cards face up at all times.** Each locks one good to one source and one
-  destination; selling to any other port is illegal.
+- **Five commodity cards face up at all times.** ~~Each locks one good to one source and one
+  destination; selling to any other port is illegal.~~ **Disproved — see above.** A card names a good,
+  a buyer and a price; load it wherever it is stocked.
 - **Independent dice per ship** — movement points are not shared across a fleet.
 - Exact rolls are not needed to dock, and **excess points are forfeited on arrival**.
 - Ports have infinite capacity; ships never block one another.
@@ -395,7 +411,7 @@ Three properties hold the deck together, and each was a bug first:
 Pacing with everything on, 20 seeds: **min 35, median 88, max 151** — the same as before the deck
 existed, so the variety is free.
 
-### Phase 2 — make trading dynamic
+### Phase 2 — make trading dynamic ✅
 
 The rules change the owner cares most about, and the one that makes the map matter.
 
@@ -421,9 +437,30 @@ The rules change the owner cares most about, and the one that makes the map matt
   Pacing improved as a result — 20 seeds went from min 35 / median 88 / max 151 to
   **min 49 / median 73 / max 123**, faster and much tighter, because nobody treks past a nearer
   supplier any more.
-- **Prices vary by port** — tea dearer in London than Foochow. Falls straight out of the above, and
-  turns the port table from reference into a price sheet worth reading.
-- **Re-audit §1's FAITHFUL marks** against the owner's own recollection, per the caveat above.
+- ✅ **Prices vary by port** (2026-08-10). Each quay has its own price for each good it stocks, so the
+  port table is a price sheet rather than a reference card.
+
+  Nothing is hand-authored: `sim/pricing.ts` derives every figure from the content, from two forces.
+  **Volume** — a port shipping many goods is a place trade passes through and prices below the
+  reckoning, so Singapore is cheap because everything comes past it. **Local conditions** — a fixed
+  per-quay idiosyncrasy, so two entrepôts of equal size are still worth choosing between. The band is
+  0.78–1.22 of the card's price; observed across the actual content, 0.83–1.17. Deterministic and
+  game-independent, because two players reading the same port table must agree on what a lot costs.
+
+  **The trap, and it inverts the whole game if missed:** a delivery used to pay `lot.paid × 4`. Leave
+  that alone once quays disagree on price and the cheapest port earns the *least*, making "always buy
+  at the dearest quay" correct. Payout is therefore reckoned on the **card's** stated price per unit,
+  and what you pay at the quay is the margin. The harness asserts the direction explicitly — buying at
+  the cheapest seller must net strictly more than the dearest, by exactly the price difference — so
+  this cannot silently regress. See the note in §1 on how this re-reads "four times the purchase
+  price".
+
+  The AI shops on it: it costs every seller's price against the card's reckoning, and its speculative
+  load now ranks on *underpricing* rather than on the dearest lot it can afford, which was exactly
+  backwards once prices stopped agreeing.
+- ✅ **Re-audited §1's FAITHFUL marks** (2026-08-10) — see §1. The source-lock claim is now disproved by
+  test rather than merely doubted; the remaining pass-two marks still rest on that one document and are
+  flagged as such.
 
 ### Phase 3 — add depth
 
@@ -498,6 +535,45 @@ Bugs found and fixed during the build, all by measurement rather than by looking
 | Browser play-through | The contract highlight ring swallowed clicks on the port beneath it |
 | Browser play-through | Clicking your own port read "No sea route from Lisbon to Lisbon" |
 | Browser play-through | The sidebar pushed the chart off screen, making "click a port" impossible |
+
+### Session 6 (2026-08-10) — phase 2: sourcing becomes a decision
+
+Two changes, and the first one turned out to be a discovery rather than a change.
+
+**Cards name a buyer, never a seller.** The owner remembered the board game not making you buy at a
+named port. Before touching anything I tested it: a ship at Bombay, loaded with opium, landed it on a
+"Calcutta → Foochow" card and was paid the full 4×. `doDeliver` has only ever matched the good and
+the destination, so **the source lock was never implemented** — the card's label was the only thing
+enforcing it, and only on the player. The owner was right about the board game *and* about this
+codebase; the UI was lying about the rules. So the work was to stop it lying: `Contract` lost its
+`source`, card keys went to `good|destination` (three-part keys still parse, so existing saves keep
+their draw pile), and the deck's distance cap became a reachability test rather than a property of one
+named pair.
+
+The AI changed most, and improved: it now costs the whole out-and-back for every port stocking the
+good instead of being told where to load. Pacing went from min 35 / median 88 / max 151 to
+min 49 / median 73 / max 123 — faster and much tighter, because nobody treks past a nearer supplier.
+
+**Prices vary by port**, derived from the content rather than authored: a volume discount for
+entrepôts, plus a fixed per-quay idiosyncrasy, banded 0.78–1.22 of the card's reckoning.
+
+That change carries a trap worth recording, because it is easy to write by accident and it inverts the
+whole game. Payout was `lot.paid × multiplier`. Leave that as it is once quays disagree on price and
+**the cheapest port earns the least**, so the correct play becomes "always buy at the dearest quay" —
+nonsense, and it would have looked like working code. Payout is now reckoned on the card's stated
+price per unit; what the quay charges is the margin. The harness asserts the direction outright:
+buying at the cheapest seller must net strictly more than the dearest, by exactly the price
+difference. Two more general lessons from this session:
+
+- **Test the belief before implementing it.** An hour's worth of change turned into a five-line probe
+  and a much better commit message, because the rule I was about to "add" was already there.
+- **When a derived quantity changes meaning, re-check every formula that consumed it.** `lot.paid`
+  went from "the card's price" to "what this quay charged" without changing type, so nothing broke and
+  everything reading it silently changed meaning.
+
+Verified: 370,788 assertions, 0 failed, all 20 seeds reaching a winner. Browser-verified against a
+pre-change round-41 save: it loads clean, cards read "wanted at London / load at Rio de Janeiro,
+Zanzibar, Batavia", and Liverpool asks £52 for cloth reckoned at £45.
 
 ### Session 5 (2026-08-10) — phase 1: the event deck
 

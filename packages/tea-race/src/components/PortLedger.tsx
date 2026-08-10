@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { priceAt } from '../sim/pricing';
 import { sourcesFor, GOOD_BY_ID, PORTS, distanceBetween } from '../sim/content';
 import { FONT, UI, money } from '../theme';
 import { Panel } from './ui';
@@ -162,7 +163,11 @@ export default function PortLedger({ contracts, reference, onPortClick, targetPo
                             title={
                               wanted
                                 ? `A commission wants ${good?.name} ${mode === 'sells' ? 'loaded' : 'landed'} here`
-                                : `${good?.name} — ${money(good?.basePrice ?? 0)} a lot`
+                                : mode === 'sells'
+                                  ? `${good?.name} — ${port.name} asks ${money(
+                                      priceAt(port.id, id),
+                                    )} a lot, reckoned at ${money(good?.basePrice ?? 0)}`
+                                  : `${good?.name} — reckoned at ${money(good?.basePrice ?? 0)} a lot`
                             }
                             style={{
                               ...goodChip,

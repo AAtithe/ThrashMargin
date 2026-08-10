@@ -11,7 +11,15 @@
  * every proposal must make progress or the loop would just re-propose it. The guard in
  * `runAiTurn` bounds that, but relying on the guard would show up as a captain who wastes turns.
  */
-import { distanceBetween, portSupplies, sourcesFor, GOODS, GOOD_BY_ID, PORT_BY_ID } from './content';
+import {
+  distanceBetween,
+  portSupplies,
+  sourcesFor,
+  GOODS,
+  GOOD_BY_ID,
+  PORTS,
+  PORT_BY_ID,
+} from './content';
 import { payoutFor } from './contracts';
 import { goodEmbargoed, landedValue, portStruck } from './events';
 import {
@@ -28,6 +36,7 @@ import {
 import { activeCaptain, shipsOf } from './state';
 import { seasonOf, turnsBetween } from './weather';
 import { piracyRating } from './hazards';
+import { priceAt } from './pricing';
 import type { AiProfile, Captain, Contract, GameAction, GameState, PortId, Ship } from './types';
 
 /** Average of 2d6 — used to turn sail points into an estimate of turns. */
@@ -89,7 +98,11 @@ function piracyDrag(s: GameState, from: string, to: string): number {
 const liveContracts = (s: GameState): Contract[] => s.contracts.filter(c => c.fills.length < 2);
 
 /** The cheapest lot on any quay. Below this a captain literally cannot trade. */
-const CHEAPEST_LOT = Math.min(...GOODS.map(g => g.basePrice));
+// The cheapest lot obtainable anywhere on the chart. Measured across quays, not off base prices,
+// because a quay can price below the reckoning and this figure gates the softlock escape.
+const CHEAPEST_LOT = Math.min(
+  ...GOODS.flatMap(g => PORTS.filter(p => p.supplies.includes(g.id)).map(p => priceAt(p.id, g.id))),
+);
 
 // ---------------------------------------------------------------------------
 // Scoring
@@ -159,7 +172,10 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
 
       // If one paid place is already gone, the realistic outcome is second money, not first.
       const multiplier = takenPlaces === 0 ? multiplierIfFirst : 2;
-      const profit = landedValue(s, contract.good, contract.price, multiplier) - contract.price;
+      // Paid at this quay's price, landed at the card's reckoning: the margin is the whole reason to
+      // sail past a nearer supplier for a cheaper one, so it has to be in the score.
+      const cost = priceAt(source, contract.good);
+      const profit = landedValue(s, contract.good, contract.price, multiplier) - cost;
 
       const turns =
         passageTurns(s, from, source, toSource) +
@@ -192,7 +208,12 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
     // the trip. That is what makes filling the hull with one good the right move.
     const units = ship.hold.filter(lot => lot.good === contract.good);
     const multiplier = payoutFor(contract) / contract.price;
-    const gross = units.reduce((n, lot) => n + landedValue(s, lot.good, lot.paid, multiplier), 0);
+    // Landed on the card's reckoning per unit, not on what was paid for the lot — the reducer pays
+    // that way and the AI must score it that way or it will chase the wrong cards.
+    const gross = units.reduce(
+      (n, lot) => n + landedValue(s, lot.good, contract.price, multiplier),
+      0,
+    );
     const score = (gross * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, source: null, score };
   }
@@ -204,14 +225,21 @@ function bestSpeculativeLoad(s: GameState, budget: number, portId: string): stri
   const port = PORT_BY_ID[portId];
   if (!port) return null;
   if (portStruck(s, portId)) return null;
+  // Ranked on the reckoned value she could land, less what this quay charges — a lot going cheap
+  // here is a better gamble than an expensive one, which the old "dearest affordable" rule had
+  // exactly backwards once quays stopped agreeing on price.
   let best: string | null = null;
-  let bestPrice = 0;
+  let bestEdge = -Infinity;
   for (const good of port.supplies) {
     if (goodEmbargoed(s, good)) continue;
-    const price = GOOD_BY_ID[good]?.basePrice ?? 0;
-    if (price > bestPrice && price <= budget) {
+    const price = priceAt(portId, good);
+    if (price > budget) continue;
+    const reckoning = GOOD_BY_ID[good]?.basePrice ?? 0;
+    // Weighted by the reckoning so she still favours valuable cargo over merely underpriced tat.
+    const edge = reckoning - price + reckoning * 0.5;
+    if (edge > bestEdge) {
       best = good;
-      bestPrice = price;
+      bestEdge = edge;
     }
   }
   return best;
@@ -379,7 +407,7 @@ export function nextAiAction(s: GameState): GameAction | null {
 
     // Filling spare slots with more of what she is already carrying multiplies the same voyage.
     if (run && ship.hold.length < HOLD_SLOTS && portSupplies(ship.location!, run.contract.good)) {
-      const price = GOOD_BY_ID[run.contract.good]?.basePrice ?? 0;
+      const price = priceAt(ship.location!, run.contract.good);
       if (spendable >= price) {
         return { type: 'BUY_CARGO', shipId: ship.id, good: run.contract.good };
       }

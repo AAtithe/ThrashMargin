@@ -19,7 +19,7 @@ import {
   landedValue,
 } from '../src/sim/events';
 import { assetValue, processAction, runAiTurn } from '../src/sim/actions';
-import { PORT_BY_ID, GOOD_BY_ID, distanceBetween } from '../src/sim/content';
+import { PORT_BY_ID, GOOD_BY_ID, GOODS, distanceBetween } from '../src/sim/content';
 import {
   CONTRACT_MAX_DISTANCE,
   DECLARATION_TURNS,
@@ -43,8 +43,15 @@ import {
   windFor,
 } from '../src/sim/weather';
 import { piracyRating, resolvePiracy } from '../src/sim/hazards';
+import {
+  PRICE_CEILING,
+  PRICE_FLOOR,
+  cheapestSources,
+  observedSpread,
+  priceAt,
+} from '../src/sim/pricing';
 import { buildDeck, parseCardKey } from '../src/sim/contracts';
-import type { Contract, GameState, Ship, WorldEventKind } from '../src/sim/types';
+import type { Contract, GameState, PortId, Ship, WorldEventKind } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
 // Tiny assertion harness
@@ -189,7 +196,9 @@ function testCargoRules() {
 
   const loaded = processAction(base, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
   check(`${label}: buying a supplied good works`, shipOf(loaded, 's1').hold[0]?.good === 'tea');
-  equal(`${label}: purchase debits the price`, cash(loaded, 'p1'), 1000 - GOOD_BY_ID.tea.basePrice);
+  // The *quay's* price, which is no longer the card's reckoning — see sim/pricing.ts.
+  equal(`${label}: purchase debits this quay's price`, cash(loaded, 'p1'), 1000 - priceAt('foochow', 'tea'));
+  equal(`${label}: and that is what the lot records paying`, shipOf(loaded, 's1').hold[0].paid, priceAt('foochow', 'tea'));
   // Three slots, and a fourth lot is refused.
   let filling = loaded;
   for (const g of ['silk', 'porcelain']) {
@@ -875,6 +884,7 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
   let firstDeclareRound: number | null = null;
   let raids = 0;
   let newsPricedFills = 0;
+  let offReckoningBuys = 0;
 
   // Deliveries are audited from the log rather than by diffing state, because filling a card for
   // the second time and dealing its replacement happen inside a single action — no observer
@@ -912,10 +922,13 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
       );
       if (rank === 1 || rank === 2) {
         // Paid per unit: every matching slot lands together, so three lots pay three times.
+        // Reckoned on the CARD's price per unit, not on what the captain paid. Paying from what was
+        // paid would mean the cheapest quay earned the least, so the right play would be to buy at
+        // the dearest — see sim/pricing.ts.
         equal(
-          `AI game ${seed}: ${contractId} fill ${rank} pays ${rank === 1 ? '4x' : '2x'} per unit`,
+          `AI game ${seed}: ${contractId} fill ${rank} pays ${rank === 1 ? '4x' : '2x'} on the card's price`,
           plain,
-          purchasePrice * (rank === 1 ? 4 : 2),
+          cardPrice * units * (rank === 1 ? 4 : 2),
         );
         // What actually reached the counting house may differ, but only when news was in force,
         // and only by the amounts the event table can produce.
@@ -935,11 +948,14 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         units >= 1 && units <= HOLD_SLOTS,
         `landed ${units}`,
       );
-      equal(
-        `AI game ${seed}: ${contractId} was bought at the card's price per unit`,
-        purchasePrice,
-        cardPrice * units,
+      // What she paid is a quay price, so it sits inside the band rather than on the reckoning.
+      check(
+        `AI game ${seed}: ${contractId} was bought inside the price band`,
+        purchasePrice >= Math.floor(cardPrice * PRICE_FLOOR) * units - units &&
+          purchasePrice <= Math.ceil(cardPrice * PRICE_CEILING) * units + units,
+        `paid ${purchasePrice} for ${units} against a reckoning of ${cardPrice}`,
       );
+      if (purchasePrice !== cardPrice * units) offReckoningBuys++;
     }
 
     // A spent card must be off the board before anything else happens.
@@ -1063,6 +1079,82 @@ function testDeterminism() {
     'determinism: same seed replays byte-identically',
     a === b,
     a === b ? '' : `diverged at char ${[...a].findIndex((ch, i) => ch !== b[i])}`,
+  );
+}
+
+/**
+ * Per-port prices, and the one property that must not invert.
+ *
+ * A delivery pays on the CARD's reckoned price per unit. If it paid on what the captain actually
+ * handed over, the cheapest quay would earn the least and the correct play would be to always buy at
+ * the dearest one — which is nonsense, and easy to write by accident, since `lot.paid` is right there
+ * on the lot. The margin check below is the guard.
+ */
+function testPortPrices() {
+  const label = 'port prices';
+
+  // The band has to be real, or none of this is a decision.
+  const spread = observedSpread();
+  check(`${label}: quays disagree about price`, spread.min < 1 && spread.max > 1, JSON.stringify(spread));
+  check(`${label}: nothing escapes the floor`, spread.min >= PRICE_FLOOR - 0.02, `${spread.min}`);
+  check(`${label}: nothing escapes the ceiling`, spread.max <= PRICE_CEILING + 0.02, `${spread.max}`);
+
+  // Stable across calls and across games: two players reading the same port table must agree.
+  for (const port of PORTS) {
+    for (const good of port.supplies) {
+      equal(`${label}: ${port.id}/${good} is stable`, priceAt(port.id, good), priceAt(port.id, good));
+      check(`${label}: ${port.id}/${good} is a positive whole number`,
+        Number.isInteger(priceAt(port.id, good)) && priceAt(port.id, good) > 0);
+    }
+  }
+
+  // A good with several sellers, so cheapest and dearest are genuinely different quays.
+  const good = GOODS.map(g => g.id).find(g => {
+    const sellers = cheapestSources(g);
+    return sellers.length >= 2 && priceAt(sellers[0], g) < priceAt(sellers[sellers.length - 1], g);
+  })!;
+  check(`${label}: found a good with a real spread`, good !== undefined, `${good}`);
+
+  const sellers = cheapestSources(good);
+  const cheap = sellers[0];
+  const dear = sellers[sellers.length - 1];
+  check(`${label}: cheapestSources is ordered`, priceAt(cheap, good) < priceAt(dear, good));
+
+  // --- the margin must favour the cheap quay -----------------------------------------------------
+  const margin = (from: PortId): number => {
+    let g = createInitialState('t-price', 'Price', { humanNames: ['A'], aiCount: 1, seed: 'price' });
+    // A card for this good, so the delivery is on the reckoning rather than on what was paid.
+    const destination = PORTS.find(p => p.demands.includes(good) && p.id !== from)!.id;
+    g = {
+      ...g,
+      contracts: [
+        { id: 'cx', good, destination, price: GOOD_BY_ID[good].basePrice, fills: [] },
+        ...g.contracts.slice(1),
+      ],
+    };
+    g = place(g, 's1', from);
+    g = setCash(g, 'p1', 10_000);
+    g = processAction(g, { type: 'ROLL' });
+    const before = cash(g, 'p1');
+    const bought = processAction(g, { type: 'BUY_CARGO', shipId: 's1', good });
+    check(`${label}: she loads at ${from}`, bought !== g);
+    const atDest = place(bought, 's1', destination, shipOf(bought, 's1').hold);
+    const landed = processAction(atDest, { type: 'DELIVER', shipId: 's1', contractId: 'cx' });
+    check(`${label}: she lands it from ${from}`, landed !== atDest);
+    return cash(landed, 'p1') - before;
+  };
+
+  const cheapMargin = margin(cheap);
+  const dearMargin = margin(dear);
+  check(
+    `${label}: buying cheap earns MORE, not less`,
+    cheapMargin > dearMargin,
+    `${cheap} netted ${cheapMargin}, ${dear} netted ${dearMargin} — the incentive is inverted`,
+  );
+  equal(
+    `${label}: and the gap is exactly the price difference`,
+    cheapMargin - dearMargin,
+    priceAt(dear, good) - priceAt(cheap, good),
   );
 }
 
@@ -1324,6 +1416,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testPortPrices();
   testSourcelessCards();
   testWorldEvents();
   testDeterminism();

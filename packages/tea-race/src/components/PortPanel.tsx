@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { priceAt, priceStanding } from '../sim/pricing';
 import { GOOD_BY_ID, PORT_BY_ID, goodName, planRoute, portName } from '../sim/content';
 import { payoutFor } from '../sim/contracts';
 import { HOLD_SLOTS } from '../sim/rules';
@@ -177,16 +178,31 @@ export default function PortPanel({
                 // A live commission wants this good — and since cards name no source, this quay
                 // will do as well as any other that stocks it.
                 const wanted = contracts.some(c => c.good === id && c.fills.length < 2);
-                const afford = captain.cash >= good.basePrice;
+                // What this quay charges, which may sit either side of the card's reckoning.
+                const price = priceAt(port.id, id);
+                const standing = priceStanding(port.id, id);
+                const afford = captain.cash >= price;
                 return (
                   <Button
                     key={id}
                     disabled={!enabled || !afford}
-                    title={afford ? undefined : `${good.name} costs ${money(good.basePrice)}`}
+                    title={
+                      afford
+                        ? `Reckoned at ${money(good.basePrice)} a lot; ${port.name} asks ${money(price)}`
+                        : `${good.name} costs ${money(price)} here`
+                    }
                     onClick={() => dispatch({ type: 'BUY_CARGO', shipId: ship.id, good: id })}
                     style={wanted ? { borderColor: UI.brass, color: UI.brass } : undefined}
                   >
-                    {good.name} {money(good.basePrice)}
+                    {good.name}{' '}
+                    <span
+                      style={{
+                        color:
+                          standing === 'cheap' ? UI.verdigris : standing === 'dear' ? UI.warn : undefined,
+                      }}
+                    >
+                      {money(price)}
+                    </span>
                     {wanted ? ' ★' : ''}
                   </Button>
                 );
