@@ -7,10 +7,15 @@ import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
 
+// Namespaced like the other tearace_* save keys — not tm_guest, which is Thrash Margin's
+// own flag and would falsely mark guest status across every game sharing this origin.
+const GUEST_KEY = 'tearace_guest';
+
 export default function Lobby() {
   const navigate = useNavigate();
   const { saves, error, createGame, loadGame, deleteGame } = useGameHybrid();
   const user = getStoredUser();
+  const [isGuest, setIsGuest] = useState(() => localStorage.getItem(GUEST_KEY) === '1');
 
   const [name, setName] = useState('');
   const [humans, setHumans] = useState(1);
@@ -56,6 +61,33 @@ export default function Lobby() {
     await loadGame(id);
     navigate(`/game/${id}`);
   };
+
+  // Registration is the standard path in; anonymous localStorage play still works, but only
+  // once someone has explicitly chosen it here — matches the same gate on Thrash Margin's Lobby.
+  if (!user && !isGuest) {
+    return (
+      <div style={page}>
+        <PortalNav />
+        <main style={{ ...content, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh' }}>
+          <Panel style={{ width: 380, textAlign: 'center' }}>
+            <h2 style={{ ...dataText, fontSize: '1.3rem', margin: '0 0 0.6rem' }}>The Tea Race</h2>
+            <p style={{ ...bodySmall, color: UI.textSoft, margin: '0 0 1.6rem', lineHeight: 1.5 }}>
+              Sign in to keep your campaigns on your account, or jump straight in as a guest — saved only to this device.
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+              <Button tone="primary" onClick={() => { window.location.href = '/thrash-margin/login'; }}>
+                Sign in / Register →
+              </Button>
+              <Button tone="quiet" onClick={() => { localStorage.setItem(GUEST_KEY, '1'); setIsGuest(true); }}>
+                Continue as guest →
+              </Button>
+            </div>
+          </Panel>
+        </main>
+        <PortalNav variant="footer" />
+      </div>
+    );
+  }
 
   return (
     <div style={page}>

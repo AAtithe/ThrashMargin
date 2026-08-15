@@ -7,6 +7,7 @@ import PortalNav from '../components/PortalNav';
 import { MAP_DEFS, ACHIEVEMENT_DEFS, CAMPAIGN_SCENARIOS } from 'shared/engine-reference';
 import type { GameConfig, Difficulty } from 'shared/types';
 
+const GUEST_KEY = 'tm_guest';
 const SETTINGS_KEY = 'tm_last_settings';
 function loadLastSettings(): Record<string, unknown> | null {
   try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'); }
@@ -43,6 +44,7 @@ export default function Lobby() {
   const { saves, createGame, deleteGame, loading } = useGameHybrid();
   const nav = useNavigate();
   const user = getStoredUser();
+  const [isGuest, setIsGuest] = useState(() => localStorage.getItem(GUEST_KEY) === '1');
 
   // New campaign form
   const [campaignName, setCampaignName] = useState('');
@@ -180,6 +182,32 @@ export default function Lobby() {
 
   const active    = saves.filter(s => s.status === 'active');
   const completed = saves.filter(s => s.status !== 'active');
+
+  // Registration is the standard path in; anonymous localStorage play still works, but only
+  // once someone has explicitly chosen it here — no one falls into guest mode by accident.
+  if (!user && !isGuest) {
+    return (
+      <div style={s.page}>
+        <PortalNav variant="header" />
+        <div style={s.gateWrap}>
+          <div style={s.gateCard}>
+            <span style={s.logo}>⚔ Thrash Margin</span>
+            <p style={s.gateSubtitle}>
+              Sign in to keep your campaigns on your account, or jump straight in as a guest — saved only to this device.
+            </p>
+            <button style={s.gatePrimary} onClick={() => nav('/login')}>Sign in / Register →</button>
+            <button
+              style={s.gateGuest}
+              onClick={() => { localStorage.setItem(GUEST_KEY, '1'); setIsGuest(true); }}
+            >
+              Continue as guest →
+            </button>
+          </div>
+        </div>
+        <PortalNav variant="footer" />
+      </div>
+    );
+  }
 
   return (
     <div style={s.page}>
@@ -837,6 +865,11 @@ const s: Record<string, React.CSSProperties> = {
   authBtn:        { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', padding: '6px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
   logo:           { fontSize: 22, fontWeight: 800, letterSpacing: '-0.01em' },
   content:        { maxWidth: 640, margin: '40px auto', padding: '0 24px', flex: 1, width: '100%', boxSizing: 'border-box' as const },
+  gateWrap:       { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' },
+  gateCard:       { background: '#161b22', border: '1px solid #30363d', borderRadius: 10, padding: '40px 44px', width: 380, textAlign: 'center' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' },
+  gateSubtitle:   { color: '#7d8590', fontSize: 13, lineHeight: 1.5, margin: '10px 0 26px' },
+  gatePrimary:    { width: '100%', background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, padding: '11px 0', cursor: 'pointer' },
+  gateGuest:      { width: '100%', background: 'none', border: 'none', color: '#7d8590', fontSize: 12, padding: '14px 0 0', cursor: 'pointer' },
   footer:         { background: '#161b22', borderTop: '1px solid #21262d', padding: '14px 40px', display: 'flex', alignItems: 'center', gap: 10, color: '#4b5563', fontSize: 12, marginTop: 16 },
   sectionTitle:   { fontSize: 13, fontWeight: 600, color: '#9198a1', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 12px' },
   emptyMsg:       { color: '#4b5563', fontSize: 13, margin: 0 },
