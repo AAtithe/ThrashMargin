@@ -1,7 +1,11 @@
 [
   {
     "id": "julius",
-    "domains": ["credit", "idle"],
+    "domains": [
+      "credit",
+      "idle",
+      "chapter"
+    ],
     "role": "The notary",
     "lines": {
       "credit": [
@@ -11,12 +15,22 @@
       "idle": [
         "{vessel} has been sitting at {city} with an empty hold and {cash}f in the account. Idle capital is the only kind that never earns anything, and the only kind nobody notices.",
         "{vessel} is riding empty at {city} while {cash}f sits in the account. We are paying for the hull whether it carries anything or not."
+      ],
+      "chapter": [
+        "Nobody has closed this out yet: {objective}. Master Gregorio would have put it more carefully. He is not here to.",
+        "{objective} is still open. I raise it because the man whose job it was to raise it no longer can."
       ]
     }
   },
   {
     "id": "gregorio",
-    "domains": ["credit", "chapter"],
+    "domains": [
+      "credit",
+      "chapter",
+      "household_wages",
+      "household_idle",
+      "trade"
+    ],
     "role": "The lawyer",
     "lines": {
       "credit": [
@@ -26,12 +40,26 @@
       "chapter": [
         "There is business still open that the house has committed itself to: {objective}. Whatever else this season is spent on, that will still be waiting.",
         "For the record, since somebody should keep one: {objective} remains unsettled."
+      ],
+      "household_wages": [
+        "Wages next week come to {wages}f. The account holds {cash}f. I record it because somebody in this house used to say it aloud, and no longer can.",
+        "{wages}f owed to the household against {cash}f in hand. I am a lawyer and not a merchant, but even I can subtract."
+      ],
+      "household_idle": [
+        "{name} is carried on the books at a salary and against no work. That was never allowed to run long here, and I do not think it should start.",
+        "The ledger has {name} drawing pay for nothing. I mention it only because the ledger cannot mention it itself."
+      ],
+      "trade": [
+        "The reports on file put {good} at {buyPrice}f in {buyCity} and {sellPrice}f in {sellCity} — a difference of {margin}f the unit. On paper. Paper is what I have.",
+        "{good}: {buyPrice}f at {buyCity}, {sellPrice}f at {sellCity}, {margin}f between them by our own correspondence. I make no promise the correspondence is current."
       ]
     }
   },
   {
     "id": "tobie",
-    "domains": ["risk_health"],
+    "domains": [
+      "risk_health"
+    ],
     "role": "The physician",
     "lines": {
       "risk_health": [
@@ -42,7 +70,10 @@
   },
   {
     "id": "astorre",
-    "domains": ["risk_sabotage", "risk_uninsured"],
+    "domains": [
+      "risk_sabotage",
+      "risk_uninsured"
+    ],
     "role": "The condottiere",
     "lines": {
       "risk_sabotage": [
@@ -57,7 +88,10 @@
   },
   {
     "id": "crackbene",
-    "domains": ["convoy", "seasonal"],
+    "domains": [
+      "convoy",
+      "seasonal"
+    ],
     "role": "The shipmaster",
     "lines": {
       "convoy": [
@@ -72,7 +106,10 @@
   },
   {
     "id": "kathi",
-    "domains": ["intel_stale", "intel_unknown"],
+    "domains": [
+      "intel_stale",
+      "intel_unknown"
+    ],
     "role": "The observer",
     "lines": {
       "intel_stale": [
@@ -87,7 +124,11 @@
   },
   {
     "id": "marian",
-    "domains": ["household_wages", "household_idle", "trade"],
+    "domains": [
+      "household_wages",
+      "household_idle",
+      "trade"
+    ],
     "role": "The house",
     "lines": {
       "trade": [
@@ -106,12 +147,19 @@
   },
   {
     "id": "gelis",
-    "domains": ["houses"],
+    "domains": [
+      "houses",
+      "houses_unmasked"
+    ],
     "role": "The ward",
     "lines": {
       "houses": [
         "{house} is at {relation} with us and holds its own port. That is not a rivalry, it is a standing arrangement to be worse off. An agent inside them costs less than a season of being outbid.",
         "You have no one inside {house}, who stand at {relation}. They almost certainly have someone inside us."
+      ],
+      "houses_unmasked": [
+        "We know what {house} is now, and they do not — they stand at {relation} and think themselves anonymous. That is worth more than the agent it would cost to watch them, and it keeps for exactly as long as we say nothing.",
+        "{house} stands at {relation} and has a name behind it we can prove. Nobody has yet made them answer for it. I would choose the moment carefully."
       ]
     }
   }

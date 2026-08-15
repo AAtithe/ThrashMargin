@@ -227,7 +227,22 @@ Assignment loop: each turn, officers can be posted (manage branch, lead venture,
 
 Deaths and departures are scripted where the novels script them and are not preventable. Marian, Katelina, Godscalc, Umar: the game does not allow the player to save them. This is pillar 3.
 
-> **Phase 20 implementation, confirmed 2026-08-09:** Godscalc's death (Chapter 6) is the **first time this sentence is enforced against an actual `Character` record.** Felix (Chapter 1), Katelina (Chapter 3) and Umar (Chapter 4) were all handled narrative-only, because none of them was ever on the roster — nothing needed to leave `GameState.characters` for their loss to land. Godscalc is a founding officer with a salary, a loyalty score and an assignment, so his death uses `EventEffects.characterDeparts` on a roster member for the first time (it had previously only ever scripted Diniz, a mid-campaign joiner). Both choices at the event kill him; the only thing the player decides is whether his last letter is kept, which is what adds a piece to the parentage dossier. **Marian's own death, the one remaining name on this list, is still unbuilt — she is a `Character` and will need the same treatment whenever the chapter that scripts it is authorized.**
+> **Phase 22 implementation, confirmed 2026-08-15:** **Marian de Charetty now dies, in Chapter 2, and
+> the sentence above is finally true of every name in it.** She was the last of the four still alive —
+> and the only one who is a real `Character` record that had never been scripted out at any point
+> (Katelina and Umar were always narrative-only, since neither is on the roster). Her death sits where
+> the novels put it: a letter that is already eleven weeks old reaches Trebizond, and six weeks later
+> a second letter reports she is gone. Both choices depart her; the player decides only what is done
+> with the will. The latency is doing narrative work here rather than commercial — §6's own
+> information system is what makes "he could never have reached her in time" a mechanical fact rather
+> than a line of prose.
+>
+> This forced a companion change to the counsel system (§7's advisor note): Marian owns the house's
+> voice on wages and on a trade worth making, and losing that for six of the eight chapters would
+> have punished the player for a death this section says they cannot prevent. Counsel now falls to a
+> named successor — Gregorio, in his own words rather than hers.
+>
+> **Phase 20 implementation, confirmed 2026-08-09:** Godscalc's death (Chapter 6) is the **first time this sentence is enforced against an actual `Character` record.** Felix (Chapter 1), Katelina (Chapter 3) and Umar (Chapter 4) were all handled narrative-only, because none of them was ever on the roster — nothing needed to leave `GameState.characters` for their loss to land. Godscalc is a founding officer with a salary, a loyalty score and an assignment, so his death uses `EventEffects.characterDeparts` on a roster member for the first time (it had previously only ever scripted Diniz, a mid-campaign joiner). Both choices at the event kill him; the only thing the player decides is whether his last letter is kept, which is what adds a piece to the parentage dossier. **Marian's own death was the one remaining name on this list; it shipped in Phase 22 — see the note above.**
 
 > **Phase 5 implementation, confirmed 2026-07-19:** the Chapter 1 roster is seeded at campaign start — Marian, Julius, Tobie, Godscalc, Gregorio, Astorre — rather than waiting on the join-date scripting this paragraph describes, since that scripting is Phase 6 (event engine) content that doesn't exist yet. All six are already with the company in the earliest chapters of Book 1; the chapter-script arrival/departure dates for characters who join later are deferred to Phase 6/7 rather than approximated now.
 >

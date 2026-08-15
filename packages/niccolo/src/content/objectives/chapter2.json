@@ -1,10 +1,37 @@
 [
-  { "id": "obj_c2_extraction", "chapterNumber": 2, "label": "Extract the Trebizond agency",
+  {
+    "id": "obj_c2_extraction",
+    "chapterNumber": 2,
+    "label": "Extract the Trebizond agency",
     "description": "People first, then capital, then whatever cargo can still be moved — before the city falls.",
-    "kind": { "type": "flag", "flag": "trebizond_extraction_resolved" },
-    "outcomeFlags": { "positive": "trebizond_extraction_success", "costly": "trebizond_fallen" } },
-
-  { "id": "obj_c2_epilogue", "chapterNumber": 2, "label": "Reckon what Trebizond cost",
+    "kind": {
+      "type": "flag",
+      "flag": "trebizond_extraction_resolved"
+    },
+    "outcomeFlags": {
+      "positive": "trebizond_extraction_success",
+      "costly": "trebizond_fallen"
+    }
+  },
+  {
+    "id": "obj_c2_epilogue",
+    "chapterNumber": 2,
+    "label": "Reckon what Trebizond cost",
     "description": "A formality once Trebizond's fate is settled — the house reckons what the season cost, one way or the other.",
-    "kind": { "type": "flag", "flag": "trebizond_epilogue" } }
+    "kind": {
+      "type": "flag",
+      "flag": "trebizond_epilogue"
+    }
+  },
+  {
+    "id": "obj_c2_marian",
+    "chapterNumber": 2,
+    "label": "Marian de Charetty",
+    "inevitable": true,
+    "description": "She is ill in Bruges and he is four months' sailing from it. The letter saying so is eleven weeks old when it arrives. Nothing in the house's power alters the ending; only what is done with the will.",
+    "kind": {
+      "type": "flag",
+      "flag": "marian_lost"
+    }
+  }
 ]

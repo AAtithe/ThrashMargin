@@ -50,6 +50,7 @@ export type AdviceKind =
   | 'convoy'
   | 'seasonal'
   | 'houses'
+  | 'houses_unmasked'
   | 'chapter';
 
 export type AdviceUrgency = 'urgent' | 'notable' | 'passing';
@@ -76,6 +77,15 @@ interface AdvisorContent {
 // domains, so TS infers a union of narrower shapes rather than the Record — the same cast every
 // other content import in `sim/content.ts` uses for the same reason.
 const ADVISORS = advisorData as unknown as AdvisorContent[];
+
+/** Marian while she lives; Gregorio once she does not. Both are authored for these domains, and the
+ * lines differ — Gregorio says the same things as a man reading a ledger rather than as the woman
+ * whose house it was. */
+const MARIAN_THEN = ['marian', 'gregorio'];
+/** Gregorio keeps the chapter's own open business in view; Julius takes it over if he ever cannot.
+ * Gregorio never departs in shipped content — this is insurance against a later chapter that removes
+ * him, so the succession is authored before it is needed rather than after it is noticed missing. */
+const GREGORIO_THEN = ['gregorio', 'julius'];
 
 const URGENCY_ORDER: Record<AdviceUrgency, number> = { urgent: 0, notable: 1, passing: 2 };
 
@@ -105,14 +115,31 @@ function advisor(id: string): AdvisorContent | undefined {
  * to say it". */
 function speak(
   state: GameState,
-  officerId: string,
+  /**
+   * Who says it — in order of preference. The first officer on the list who is *active* and owns
+   * the domain speaks; if nobody does, the counsel simply isn't given.
+   *
+   * The fallback exists because officers die. Marian founded the house and is its natural voice on
+   * wages and on a trade worth making — and she dies in Chapter 2, six chapters before the campaign
+   * ends. Without a successor the player would lose the house's own counsel for three quarters of
+   * the game, which would punish them for a death §7 says they cannot prevent. So the house keeps
+   * speaking; it just speaks in a different officer's voice, which is what actually happens when a
+   * household loses the person who used to say these things.
+   */
+  officerIds: string | string[],
   kind: AdviceKind,
   urgency: AdviceUrgency,
   seed: string,
   vars: Record<string, string | number>,
 ): Advice | null {
-  const officer = activeCharacters(state.characters).find(c => c.id === officerId);
-  if (!officer) return null;
+  const candidates = typeof officerIds === 'string' ? [officerIds] : officerIds;
+  const active = activeCharacters(state.characters);
+  const officerId = candidates.find(id => {
+    const content = advisor(id);
+    return content?.domains.includes(kind) && active.some(c => c.id === id);
+  });
+  if (!officerId) return null;
+  const officer = active.find(c => c.id === officerId)!;
   const content = advisor(officerId);
   if (!content || !content.domains.includes(kind)) return null;
   const lines = content.lines[kind];
@@ -176,7 +203,7 @@ function bestKnownSpread(state: GameState): Advice | null {
   }
   if (!best) return null;
 
-  return speak(state, 'marian', 'trade', 'passing', `trade:${best.good}:${best.buyCity}:${best.sellCity}`, {
+  return speak(state, MARIAN_THEN, 'trade', 'passing', `trade:${best.good}:${best.buyCity}:${best.sellCity}`, {
     good: findGood(best.good)?.name ?? best.good,
     buyCity: findCity(best.buyCity)?.name ?? best.buyCity,
     sellCity: findCity(best.sellCity)?.name ?? best.sellCity,
@@ -213,11 +240,11 @@ export function adviceFor(state: GameState): Advice[] {
   const roster = activeCharacters(state.characters);
   const wages = roster.reduce((sum, c) => sum + c.salary, 0);
   if (state.flags.chapter0_complete && wages > state.cash) {
-    out.push(speak(state, 'marian', 'household_wages', 'urgent', 'wages', { wages, cash }));
+    out.push(speak(state, MARIAN_THEN, 'household_wages', 'urgent', 'wages', { wages, cash }));
   }
   const idleOfficer = roster.find(c => c.assignment.type === 'idle' && c.id !== 'marian');
   if (idleOfficer) {
-    out.push(speak(state, 'marian', 'household_idle', 'passing', `idle:${idleOfficer.id}`, { name: idleOfficer.name }));
+    out.push(speak(state, MARIAN_THEN, 'household_idle', 'passing', `idle:${idleOfficer.id}`, { name: idleOfficer.name }));
   }
 
   // --- Risk: cargo docked where a hostile house keeps its own people.
@@ -320,6 +347,18 @@ export function adviceFor(state: GameState): Advice[] {
   }
 
   // --- Rival houses: a hostile house with nobody of ours inside it.
+  // A masked house whose backers the player has actually named is a different piece of counsel from
+  // one nobody has looked into — the intelligence work done in Chapter 5 should still be worth
+  // something in Chapter 6 and beyond, rather than being a fact the UI records and no one mentions
+  // again. (The endgame branching on it is Chapter 8's own business.)
+  const unmasked = HOUSES.find(h => h.hiddenBackers && state.flags[h.hiddenBackers.revealedByFlag]);
+  if (unmasked) {
+    out.push(speak(state, 'gelis', 'houses_unmasked', 'passing', `unmasked:${unmasked.id}`, {
+      house: unmasked.name,
+      relation: Math.round(state.houseRelations[unmasked.id] ?? unmasked.baselineRelation),
+    }));
+  }
+
   const unwatched = HOUSES.filter(h => h.disposition === 'hostile').find(
     h => !state.agents.some(a => a.placement.type === 'house' && a.placement.houseId === h.id),
   );
@@ -337,7 +376,7 @@ export function adviceFor(state: GameState): Advice[] {
     p => p.status === 'pending' && !p.objective.optional && !p.objective.inevitable,
   );
   if (openObjective) {
-    out.push(speak(state, 'gregorio', 'chapter', 'passing', `obj:${openObjective.objective.id}`, {
+    out.push(speak(state, GREGORIO_THEN, 'chapter', 'passing', `obj:${openObjective.objective.id}`, {
       objective: openObjective.objective.label,
       amount: 0,
       weeks: 0,
