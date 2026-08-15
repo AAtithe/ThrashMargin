@@ -166,6 +166,8 @@ export interface Hazards {
   piracy: boolean;
   /** The world event deck — strikes, embargoes, gluts, shortages, Admiralty bounties. */
   events?: boolean;
+  /** Hostile bids: buy a share off anyone at an escalating premium, whatever your own holding. */
+  hostileBids?: boolean;
 }
 
 /** The kinds of thing the world does to everybody at once. See sim/events.ts. */
@@ -276,6 +278,11 @@ export interface GameState {
   nextEventSeq?: number;
   /** The last few event kinds dealt, newest first, so the deck does not repeat itself. */
   recentEvents?: WorldEventKind[];
+  /**
+   * Hostile bids made so far, by anyone. Drives the escalating price, and it is global rather than
+   * per-captain on purpose: that is what bounds the total and keeps the game finishing.
+   */
+  hostileBids?: number;
   /** ms epoch, stamped by the caller. The sim itself never reads a clock. */
   createdAt: number;
   rngSeed: number;
@@ -345,6 +352,11 @@ export type GameAction =
   | { type: 'BUY_SHARE' }
   /** Sell a share back to the bank at half price — the way out of having no working capital. */
   | { type: 'SELL_SHARE' }
+  /**
+   * Buy a share off a named captain at a premium, whatever your own holding. The way back in for a
+   * captain who has fallen behind — see `canHostileBid` in rules.ts.
+   */
+  | { type: 'HOSTILE_BID'; targetId: CaptainId }
   | { type: 'DECLARE' }
   | { type: 'END_TURN' }
   | { type: 'ACKNOWLEDGE_HANDOVER' };

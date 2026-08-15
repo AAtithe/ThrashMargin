@@ -10,6 +10,8 @@ import {
   TOTAL_SHARES,
   VICTORY_CASH,
   canBuyOut,
+  canHostileBid,
+  hostileBidPrice,
 } from '../sim/rules';
 import { HOME_PORT, portName } from '../sim/content';
 import { UI, money } from '../theme';
@@ -53,6 +55,26 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
   const canDeclare = captain.shares >= SHARE_MAJORITY && !state.declaration;
   const buyback = shareBuybackFor(state.sharesRemaining);
 
+  /**
+   * The hostile bid, and who it is worth making against.
+   *
+   * Targets the biggest holder: taking one off the leader is a two-share swing, which is the whole
+   * reason to pay this price. This is the panel that used to read "No share to be had" and stop —
+   * stating the dead end without naming the way out of it.
+   */
+  const bidsEnabled = state.hazards?.hostileBids ?? false;
+  const bidsMade = state.hostileBids ?? 0;
+  const bidPrice = hostileBidPrice(bidsMade, captain.shares);
+  const bidTarget = bidsEnabled
+    ? [...state.captains]
+        .filter(c => c.id !== captain.id && c.shares > 0)
+        .sort((a, b) => b.shares - a.shares)[0]
+    : undefined;
+  const canBid =
+    bidsEnabled &&
+    Boolean(bidTarget) &&
+    canHostileBid(captain.shares, captain.cash, bidTarget!.shares, bidsMade);
+
   return (
     <Panel
       title="Counting house"
@@ -75,6 +97,26 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
               ? `Buy out ${buyoutTarget.name} — ${money(sharePrice)}`
               : 'No share to be had'}
         </Button>
+
+        {bidsEnabled && bidTarget && (
+          <Button
+            disabled={!enabled || !canBid}
+            title={
+              captain.shares >= SHARE_MAJORITY
+                ? 'You already hold a majority — declare instead.'
+                : captain.cash < bidPrice
+                  ? `A bid costs ${money(bidPrice)} and you hold ${money(captain.cash)}.`
+                  : `Takes one share off ${bidTarget.name} whatever your own holding. Dearer the ` +
+                    `more you already hold, and every bid anyone makes doubles the price for ` +
+                    `everyone after — both compound, so your next would cost ${money(
+                      hostileBidPrice(bidsMade + 1, captain.shares + 1),
+                    )}.`
+            }
+            onClick={() => dispatch({ type: 'HOSTILE_BID', targetId: bidTarget.id })}
+          >
+            Bid for {bidTarget.name}'s share — {money(bidPrice)}
+          </Button>
+        )}
 
         <Button
           tone="quiet"
@@ -104,6 +146,22 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
           {sabotage
             ? '— and while the countdown runs you may buy one off anyone, including the leader.'
             : 'and can only be bought off a captain holding no more than you do.'}
+          {bidsEnabled && !sabotage && (
+            <>
+              {' '}
+              Falling behind is not the end of it: a <strong style={{ color: UI.text }}>bid</strong>{' '}
+              takes a share off anyone at all, and costs least when you hold least.
+            </>
+          )}
+        </p>
+      )}
+
+      {/* The standing position, so the route to a win is never something you have to work out. */}
+      {bidsEnabled && !canDeclare && (
+        <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
+          You hold {captain.shares} of {TOTAL_SHARES}; {bidTarget?.name ?? 'no rival'} leads on{' '}
+          {bidTarget?.shares ?? 0}. {bidsMade === 0 ? 'No bid' : `${bidsMade} bid${bidsMade === 1 ? '' : 's'}`}{' '}
+          made so far, so the next costs {money(bidPrice)}.
         </p>
       )}
 

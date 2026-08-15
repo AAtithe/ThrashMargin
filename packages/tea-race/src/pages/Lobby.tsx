@@ -20,6 +20,7 @@ export default function Lobby() {
   const [weather, setWeather] = useState(true);
   const [piracy, setPiracy] = useState(true);
   const [events, setEvents] = useState(true);
+  const [bids, setBids] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -43,7 +44,7 @@ export default function Lobby() {
         humanNames: humanNames.slice(0, humans),
         aiCount: ai,
         seed: seed.trim() || undefined,
-        hazards: { weather, piracy, events },
+        hazards: { weather, piracy, events, hostileBids: bids },
       });
       if (id) navigate(`/game/${id}`);
     } finally {
@@ -144,7 +145,8 @@ export default function Lobby() {
                 const active =
                   weather === preset.hazards.weather &&
                   piracy === preset.hazards.piracy &&
-                  events === (preset.hazards.events ?? false);
+                  events === (preset.hazards.events ?? false) &&
+                  bids === (preset.hazards.hostileBids ?? false);
                 return (
                   <Button
                     key={key}
@@ -154,6 +156,7 @@ export default function Lobby() {
                       setWeather(preset.hazards.weather);
                       setPiracy(preset.hazards.piracy);
                       setEvents(preset.hazards.events ?? false);
+                      setBids(preset.hazards.hostileBids ?? false);
                     }}
                   >
                     {preset.label}
@@ -164,9 +167,10 @@ export default function Lobby() {
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
               {weather === PRESETS.board.hazards.weather &&
               piracy === PRESETS.board.hazards.piracy &&
-              events === PRESETS.board.hazards.events
+              events === PRESETS.board.hazards.events &&
+              bids === PRESETS.board.hazards.hostileBids
                 ? PRESETS.board.blurb
-                : weather && piracy && events
+                : weather && piracy && events && bids
                   ? PRESETS.full.blurb
                   : 'A mixture of your own — set the switches below however you like.'}
             </p>
@@ -193,6 +197,15 @@ export default function Lobby() {
               <span>
                 <strong style={{ color: UI.text }}>World events</strong> — dock strikes, embargoes,
                 gluts, shortages and Admiralty bounties. What is worth carrying changes under you.
+              </span>
+            </label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={bids} onChange={e => setBids(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>Hostile bids</strong> — buy a share off anyone, even
+                the leader, whatever your own holding. Cheapest when you hold least, and every bid made
+                by anyone doubles the price for everyone after — so they run out fast. Falling behind
+                stops being fatal.
               </span>
             </label>
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>

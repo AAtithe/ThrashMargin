@@ -28,6 +28,8 @@ import {
   HOLD_SLOTS,
   MAX_SHIPS,
   SHARE_MAJORITY,
+  canHostileBid,
+  hostileBidPrice,
   SHARE_RAID_MULTIPLIER,
   SHIP_PRICE,
   VICTORY_CASH,
@@ -249,6 +251,50 @@ function bestSpeculativeLoad(s: GameState, budget: number, portId: string): stri
 // Investment
 // ---------------------------------------------------------------------------
 
+/**
+ * The rival holding the most shares. The target for a hostile bid, because taking one from the
+ * leader is a two-share swing — you gain one and they lose one — and breaking up the leading block
+ * is the whole reason a trailing captain would pay that price.
+ */
+function biggestRival(s: GameState, captain: Captain): Captain | null {
+  let best: Captain | null = null;
+  for (const c of s.captains) {
+    if (c.id === captain.id) continue;
+    if (!best || c.shares > best.shares) best = c;
+  }
+  return best && best.shares > 0 ? best : null;
+}
+
+/**
+ * Bid for a share at the exchange, whatever this captain's own holding.
+ *
+ * Reached only when the ordinary routes are shut — the bank is empty and the buy-out rule will not
+ * let this captain in — so it stays the expensive last resort it is meant to be. Gated on being
+ * *behind*: a captain already level with or ahead of the field has cheaper ways to concentrate, and
+ * letting the leader use it would turn a comeback mechanic into a runaway one.
+ */
+function hostileBidAction(s: GameState, captain: Captain): GameAction | null {
+  if (!s.hazards?.hostileBids) return null;
+  if (captain.shares >= SHARE_MAJORITY) return null;
+  // The bank is always cheaper while it has any left.
+  if (s.sharesRemaining > 0) return null;
+
+  const target = biggestRival(s, captain);
+  if (!target || target.shares <= captain.shares) return null;
+
+  const made = s.hostileBids ?? 0;
+  if (!canHostileBid(captain.shares, captain.cash, target.shares, made)) return null;
+
+  // What she must still hold afterwards. One share short of a majority she is buying the game
+  // outright, so she has to keep the declaration money too — a bid that wins the shares and loses
+  // the cash bar has bought nothing.
+  const oneShort = captain.shares === SHARE_MAJORITY - 1;
+  const floor = oneShort ? VICTORY_CASH + TRADING_FLOAT : TRADING_FLOAT * 3;
+  if (captain.cash - hostileBidPrice(made, captain.shares) < floor) return null;
+
+  return { type: 'HOSTILE_BID', targetId: target.id };
+}
+
 function investmentAction(s: GameState, captain: Captain): GameAction | null {
   const temperament = temperamentOf(captain);
   const ships = shipsOf(s, captain.id);
@@ -299,6 +345,10 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
       return { type: 'BUY_SHARE' };
     }
   }
+
+  // Every ordinary route shut and still behind: bid at the exchange.
+  const bid = hostileBidAction(s, captain);
+  if (bid) return bid;
 
   if (
     ships.length < MAX_SHIPS &&

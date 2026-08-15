@@ -86,6 +86,122 @@ export function sharePriceFor(sharesRemaining: number): number {
 export const shareBuybackFor = (sharesRemaining: number): number =>
   Math.floor(sharePriceFor(Math.min(TOTAL_SHARES - 1, sharesRemaining)) * SHARE_BUYBACK_FRACTION);
 
+
+// ---------------------------------------------------------------------------
+// The hostile bid
+// ---------------------------------------------------------------------------
+
+/**
+ * AUTHORED — the way back in for a captain who has fallen behind on shares.
+ *
+ * The problem it solves, in the owner's words: "if you fall behind the others in shares, there is
+ * nothing you can do to win?" Very nearly yes. `canBuyOut` below requires the buyer to already hold
+ * at least as many shares as the seller, and nobody holds fewer than zero — so once the bank is
+ * empty a captain on nothing is locked out permanently. Measured across 20 seeds: two captains
+ * finished the bank-emptying round holding nothing, and **neither ever won**. One of them, in the
+ * `levanter` game, ended on £27,623 — the richest on the board and unable to make a single move on
+ * the share market.
+ *
+ * So: **any captain may buy a share from any holder, including the leader, at a steep premium.**
+ * No shareholding requirement. In a trading game the answer to falling behind should be to get rich
+ * and buy your way in.
+ *
+ * The price escalates permanently and globally with every bid anyone makes, and that is not
+ * flavour — it is what keeps the game finishing. See `hostileBidPrice`.
+ */
+export const HOSTILE_BID_PREMIUM = 2;
+
+/**
+ * How much dearer each successive bid is than the last, across the whole table.
+ *
+ * This is the termination argument, and it has to be stated carefully because the ordinary
+ * buy-out's proof (see `canBuyOut`) does not cover this move — a bid from a captain holding fewer
+ * shares than the seller *lowers* the sum of squares, which is exactly the oscillation that once
+ * produced a 10,850-transaction game.
+ *
+ * What replaces it: **every bid doubles the price for everyone after it**, for the rest of the game.
+ * One sentence a player can hold in their head, and a hard bound. Note it compounds with the
+ * buyer's-holding term above, so a captain who bids and thereby gains a share sees their own next
+ * bid go up fourfold, not twofold — £180 then £720. The UI quotes the real figure rather than the
+ * rule of thumb. The cheapest possible bid — a captain
+ * holding nothing — is £180, then £360, £720, £1,440, £2,880, £5,760, £11,520, £23,040. The richest
+ * captain the harness has ever produced finished on £27,623. Measured across 20 seeds it settles at
+ * about five bids a game.
+ *
+ * The rate was chosen by measurement, not taste. At 1.6x the endgame churned harder but games ran
+ * 19% longer (median 99 rounds against an 83 baseline); at 2x the round-30 leader's conversion rate
+ * is lowest *and* the median is back to 89 with a tighter worst case. 1.8x was worse than both,
+ * which is a useful reminder that at 20 seeds these numbers carry about +/-10 points of noise —
+ * 2x was taken because it wins on all three axes at once, not on any single one.
+ *
+ * The full argument: sum-of-squares is non-decreasing on every ordinary buy-out and can only fall on
+ * a hostile bid; hostile bids are bounded by an exponentially rising price against a bounded purse;
+ * therefore total transactions are bounded and the game still terminates. Bounded, not proven at
+ * 100 — which is why the harness asserts the bid count stays small rather than trusting the algebra.
+ */
+export const HOSTILE_BID_ESCALATION = 2;
+
+/**
+ * The slice of a hostile bid that does **not** reach the seller — brokerage, stamp and the
+ * exchange's cut.
+ *
+ * Money leaving the game matters mechanically, not just thematically. The original forced buy-out
+ * moves cash from buyer to seller, so the table's total purse is unchanged and nothing is ever spent
+ * down — which is half of why that rule needed a combinatorial invariant to terminate at all. A bid
+ * that destroys some of its own price makes each one genuinely costly in absolute terms.
+ */
+export const HOSTILE_BID_BROKERAGE = 0.3;
+
+/**
+ * What the next hostile bid costs: **dearer the more the buyer already holds**, and dearer again
+ * with every bid anyone has made.
+ *
+ * The buyer's-holding term is the part that took measurement to get right, and the first version
+ * did not have it. Priced flat, a hostile bid is simply a machine for turning money into shares —
+ * so it is won by whoever has the most money, and the captain who led at round 30 usually leads
+ * because they have been trading well, so they are also the richest. A/B over 20 identical seeds:
+ * the flat version tripled the number of lead changes after round 30 (16 to 49, so the endgame did
+ * get genuinely turbulent) but pushed the round-30 leader's conversion rate *up*, 50% to 65%. An
+ * expensive comeback mechanic favours the rich, and the rich are usually the leader. Exactly
+ * backwards.
+ *
+ * Charging on the buyer's own holding fixes that at the root. A captain with nothing pays a first
+ * share cheaply — that is the way back in the whole move exists to provide — while the captain
+ * going from five to a winning six pays the most anyone pays. It is also the idiom this game
+ * already speaks: `sharePriceFor` charges the bank's shares on exactly this shape.
+ *
+ * The ladder is twice the bank's step, so a hostile bid is never the cheap option when the bank
+ * still has stock.
+ */
+export function hostileBidPrice(bidsAlreadyMade: number, buyerShares: number): number {
+  const ladder = SHARE_BASE_PRICE + Math.max(0, buyerShares) * SHARE_SCARCITY_STEP * 2;
+  return Math.round(
+    ladder * HOSTILE_BID_PREMIUM * Math.pow(HOSTILE_BID_ESCALATION, Math.max(0, bidsAlreadyMade)),
+  );
+}
+
+/** Of that price, what actually reaches the captain whose share is taken. */
+export const hostileBidProceeds = (price: number): number =>
+  Math.round(price * (1 - HOSTILE_BID_BROKERAGE));
+
+/**
+ * AUTHORED — may `buyer` bid for one of `seller`'s shares?
+ *
+ * Deliberately permissive about holdings — that is the entire point of the move — and restrictive
+ * about everything else. A captain already holding a majority is barred: they do not need it, they
+ * have a declaration to make instead, and letting the leader hoover up the board with it would turn
+ * a comeback mechanic into a runaway one.
+ */
+export const canHostileBid = (
+  buyerShares: number,
+  buyerCash: number,
+  sellerShares: number,
+  bidsAlreadyMade: number,
+): boolean =>
+  sellerShares > 0 &&
+  buyerShares < SHARE_MAJORITY &&
+  buyerCash >= hostileBidPrice(bidsAlreadyMade, buyerShares);
+
 /**
  * AUTHORED, and load-bearing: what a share costs once the bank has none left. The seller is
  * whichever OTHER captain holds the FEWEST shares — a forced buy-out of the smallest stake.
@@ -280,13 +396,14 @@ export const PRESETS = {
   board: {
     label: 'The 1988 board',
     blurb: 'The published game exactly: dice, five cards, ten shares, nothing else.',
-    hazards: { weather: false, piracy: false, events: false },
+    hazards: { weather: false, piracy: false, events: false, hostileBids: false },
   },
   full: {
     label: 'Full game',
     blurb:
-      'Everything on — seasonal wind, storms, pirates, guns, copper, insurance and the world event deck.',
-    hazards: { weather: true, piracy: true, events: true },
+      'Everything on — seasonal wind, storms, pirates, guns, copper, insurance, the world event ' +
+      'deck, and hostile bids for the shares.',
+    hazards: { weather: true, piracy: true, events: true, hostileBids: true },
   },
 } as const;
 

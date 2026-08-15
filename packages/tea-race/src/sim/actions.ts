@@ -33,6 +33,9 @@ import {
   LOG_LIMIT,
   MAX_SHIPS,
   PAYOUT_MULTIPLIERS,
+  canHostileBid,
+  hostileBidPrice,
+  hostileBidProceeds,
   HOLD_SLOTS,
   SHARE_MAJORITY,
   SHARE_RAID_MULTIPLIER,
@@ -799,6 +802,45 @@ function doBuyShare(state: GameState): GameState {
   );
 }
 
+/**
+ * Buy a share off a named captain at a premium, whatever your own holding.
+ *
+ * The comeback move. Everything about it is deliberately expensive: it costs twice the bank's top
+ * price to begin with, that price rises for *everyone* each time anyone uses it, and nearly a third
+ * of what is paid vanishes in brokerage rather than reaching the seller. Those three together are
+ * what let it break the `canBuyOut` shareholding rule without breaking the game's termination —
+ * see `hostileBidPrice` in rules.ts for the argument.
+ */
+function doHostileBid(state: GameState, targetId: string): GameState {
+  if (state.phase !== 'act') return state;
+  if (!state.hazards?.hostileBids) return state;
+
+  const buyer = activeCaptain(state);
+  if (targetId === buyer.id) return state;
+  const seller = state.captains.find(c => c.id === targetId);
+  if (!seller) return state;
+
+  const made = state.hostileBids ?? 0;
+  if (!canHostileBid(buyer.shares, buyer.cash, seller.shares, made)) return state;
+
+  const price = hostileBidPrice(made, buyer.shares);
+  const proceeds = hostileBidProceeds(price);
+
+  let s: GameState = { ...state, hostileBids: made + 1 };
+  s = updateCaptain(s, buyer.id, { cash: buyer.cash - price, shares: buyer.shares + 1 });
+  s = updateCaptain(s, seller.id, { cash: seller.cash + proceeds, shares: seller.shares - 1 });
+
+  return log(
+    s,
+    'share',
+    `${buyer.name} bids ${money(price)} at the exchange and takes a share off ${seller.name} — ` +
+      `${buyer.shares + 1} against ${seller.shares - 1}. ${money(price - proceeds)} goes in ` +
+      `brokerage, and her next such bid will cost ${money(hostileBidPrice(made + 1, buyer.shares + 1))}.`,
+    buyer.id,
+    { target: seller.id, price, proceeds, hostileBid: made + 1 },
+  );
+}
+
 function doSellShare(state: GameState): GameState {
   if (state.phase !== 'act') return state;
   const captain = activeCaptain(state);
@@ -915,6 +957,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doBuyShare(state);
     case 'SELL_SHARE':
       return doSellShare(state);
+    case 'HOSTILE_BID':
+      return doHostileBid(state, action.targetId);
     case 'DECLARE':
       return doDeclare(state);
     case 'END_TURN':

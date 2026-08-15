@@ -68,11 +68,20 @@ export default function FleetPanel({
               </span>
 
               <span style={{ ...bodySmall, fontSize: '0.78rem' }}>
-                {ship.location
-                  ? `Tied up at ${portName(ship.location)}`
-                  : dest
-                    ? `At sea — ${pointsToDestination(ship)} pts to ${portName(dest)}`
-                    : 'At sea'}
+                {ship.location ? (
+                  <>
+                    Tied up at {portName(ship.location)}
+                    {/* Rolled for and going nowhere — the wasted roll, said before the turn ends
+                        rather than after. */}
+                    {points > 0 && (
+                      <span style={{ color: UI.warn }}> — awaiting orders</span>
+                    )}
+                  </>
+                ) : dest ? (
+                  `At sea — ${pointsToDestination(ship)} pts to ${portName(dest)}`
+                ) : (
+                  'At sea'
+                )}
               </span>
 
               <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>

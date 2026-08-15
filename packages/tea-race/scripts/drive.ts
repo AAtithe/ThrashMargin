@@ -27,6 +27,9 @@ import {
   HOLD_SLOTS,
   MAX_SHIPS,
   SHARE_MAJORITY,
+  canBuyOut,
+  canHostileBid,
+  hostileBidPrice,
   sharePriceFor,
   SHARE_RAID_MULTIPLIER,
   SHIP_PRICE,
@@ -51,6 +54,7 @@ import {
   priceAt,
 } from '../src/sim/pricing';
 import { buildDeck, parseCardKey } from '../src/sim/contracts';
+import { shipsAwaitingOrders } from '../src/sim/attention';
 import type { Contract, GameState, PortId, Ship, WorldEventKind } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +115,9 @@ function forceContract(state: GameState, contract: Partial<Contract>): GameState
 }
 
 const cash = (s: GameState, id: string) => s.captains.find(c => c.id === id)!.cash;
+const captainShares = (s: GameState, id: string) => s.captains.find(c => c.id === id)!.shares;
+const totalShares = (s: GameState) =>
+  s.captains.reduce((n, c) => n + c.shares, 0) + s.sharesRemaining;
 const shipOf = (s: GameState, id: string) => s.ships.find(x => x.id === id)!;
 
 // ---------------------------------------------------------------------------
@@ -870,6 +877,26 @@ interface GameReport {
   bankEmptyRound: number | null;
   firstDeclareRound: number | null;
   raids: number;
+  /**
+   * Who led on shares at round 30, and whether they went on to win.
+   *
+   * The owner's complaint in one number: "the game is clearly won from round 30". If the share
+   * leader two-thirds of the way through the opening always takes it, the remaining hundred rounds
+   * are ceremony. Measured across the seed set this is the metric the comeback mechanics have to
+   * move.
+   */
+  leaderAt30: string | null;
+  leaderAt30Won: boolean | null;
+  leaderAt30Shares: number;
+  /**
+   * Captains holding nothing when the bank sold its last share, and whether any of them recovered.
+   *
+   * This is the sharper form of the same complaint. Round 30 is arbitrary; the bank emptying is the
+   * moment the door actually shuts, because from then on `canBuyOut` needs the buyer to already hold
+   * at least as many shares as the seller, and nobody holds fewer than zero.
+   */
+  lockedOutAtBankEmpty: number;
+  aLockedOutCaptainWon: boolean | null;
 }
 
 function playAiGame(seed: string, maxRounds = 400): GameReport {
@@ -883,6 +910,9 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
   let bankEmptyRound: number | null = null;
   let firstDeclareRound: number | null = null;
   let raids = 0;
+  let lockedOut: string[] = [];
+  let leaderAt30: string | null = null;
+  let leaderAt30Shares = 0;
   let newsPricedFills = 0;
   let offReckoningBuys = 0;
 
@@ -1030,7 +1060,10 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
       actions[action.type] = (actions[action.type] ?? 0) + 1;
       if (action.type !== 'ROLL') acted++;
       if (action.type === 'BUY_SHARE') {
-        if (bankEmptyRound === null && after.sharesRemaining === 0) bankEmptyRound = after.round;
+        if (bankEmptyRound === null && after.sharesRemaining === 0) {
+          bankEmptyRound = after.round;
+          lockedOut = after.captains.filter(c => c.shares === 0).map(c => c.id);
+        }
         if (bankEmptyRound !== null && after.round >= bankEmptyRound) raids++;
       }
       if (action.type === 'DECLARE' && firstDeclareRound === null) firstDeclareRound = after.round;
@@ -1041,6 +1074,15 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
       idleDockedShipTurns += before.filter(x => x.location !== null).length;
     }
     auditInvariants(s);
+
+    // Snapshot the share leader once, the first time the game reaches round 30.
+    if (leaderAt30 === null && s.round >= 30) {
+      const front = [...s.captains].sort(
+        (a, b) => b.shares - a.shares || assetValue(s, b.id) - assetValue(s, a.id),
+      )[0];
+      leaderAt30 = front.id;
+      leaderAt30Shares = front.shares;
+    }
   }
 
   return {
@@ -1055,6 +1097,12 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
     bankEmptyRound,
     firstDeclareRound,
     raids,
+    leaderAt30: leaderAt30 ? s.captains.find(c => c.id === leaderAt30)!.name : null,
+    leaderAt30Won: leaderAt30 === null || s.winnerId === null ? null : s.winnerId === leaderAt30,
+    leaderAt30Shares,
+    lockedOutAtBankEmpty: lockedOut.length,
+    aLockedOutCaptainWon:
+      lockedOut.length === 0 || s.winnerId === null ? null : lockedOut.includes(s.winnerId),
   };
 }
 
@@ -1079,6 +1127,183 @@ function testDeterminism() {
     'determinism: same seed replays byte-identically',
     a === b,
     a === b ? '' : `diverged at char ${[...a].findIndex((ch, i) => ch !== b[i])}`,
+  );
+}
+
+/**
+ * Ships left standing at a quay with their dice already rolled.
+ *
+ * The judgement, not the dialog, is what is tested here — a warning that fires on a ship with
+ * nothing to do is worse than no warning, because it trains you to click through it.
+ */
+function testAwaitingOrders() {
+  const label = 'awaiting orders';
+
+  let g = createInitialState('t-ao', 'Orders', { humanNames: ['A'], aiCount: 1, seed: 'ao' });
+  g = setCash(g, 'p1', 2000);
+
+  // Before the roll there is nothing to waste yet.
+  equal(`${label}: silent before the roll`, shipsAwaitingOrders(g, 'p1').length, 0);
+
+  g = processAction(g, { type: 'ROLL' });
+  const flagged = shipsAwaitingOrders(g, 'p1');
+  equal(`${label}: a rolled ship standing at her quay is flagged`, flagged.length, 1);
+  equal(`${label}: with her points named`, flagged[0].pointsUnspent, g.sailPoints.s1);
+  check(`${label}: and something to do about it`, flagged[0].hint.length > 0, flagged[0].hint);
+  check(
+    `${label}: which names a good she can afford`,
+    /could load/.test(flagged[0].hint),
+    flagged[0].hint,
+  );
+
+  // Never other captains' ships.
+  equal(`${label}: only your own fleet`, shipsAwaitingOrders(g, 'p2').length, 0);
+
+  // Once she is under way she is not waiting for anything.
+  const sailed = processAction(g, { type: 'SAIL_TO', shipId: 's1', destination: 'london' });
+  check(`${label}: she sails`, sailed !== g);
+  equal(`${label}: a ship at sea is never flagged`, shipsAwaitingOrders(sailed, 'p1').length, 0);
+
+  // A penniless captain gets told why, rather than being told to go shopping.
+  let broke = setCash(g, 'p1', 0);
+  equal(`${label}: a pauper's ship is still flagged`, shipsAwaitingOrders(broke, 'p1').length, 1);
+  check(
+    `${label}: but told she can afford nothing`,
+    /afford/.test(shipsAwaitingOrders(broke, 'p1')[0].hint),
+    shipsAwaitingOrders(broke, 'p1')[0].hint,
+  );
+
+  // A full hold should be running itself in, not shopping.
+  const cargo = { good: 'cloth', paid: 45, boughtAt: 'liverpool', boughtOnTurn: 0 };
+  let full = place(g, 's1', 'liverpool', [cargo, { ...cargo }, { ...cargo }]);
+  full = { ...full, sailPoints: { ...full.sailPoints, s1: 7 } };
+  check(
+    `${label}: a full hold is told to sail, not to load`,
+    /hold is full/.test(shipsAwaitingOrders(full, 'p1')[0].hint),
+    shipsAwaitingOrders(full, 'p1')[0].hint,
+  );
+
+  // A struck port cannot be traded at, and the hint has to say so rather than name a cargo.
+  const struck = {
+    ...g,
+    hazards: { weather: false, piracy: false, events: true },
+    events: [
+      { id: 1, kind: 'strike' as const, port: 'liverpool', from: 1, until: 9, headline: '', detail: '' },
+    ],
+  };
+  check(
+    `${label}: a shut port is named as the reason`,
+    /shut by the strike/.test(shipsAwaitingOrders(struck, 'p1')[0].hint),
+    shipsAwaitingOrders(struck, 'p1')[0].hint,
+  );
+}
+
+/**
+ * The hostile bid — the way back in for a captain who has fallen behind on shares.
+ *
+ * Two things need pinning down: that it actually opens the door `canBuyOut` shuts, and that opening
+ * it does not cost the game its ending. The second is the reason the price doubles.
+ */
+function testHostileBid() {
+  const label = 'hostile bid';
+
+  // --- the price ladder ---------------------------------------------------------------------------
+  equal(`${label}: a captain with nothing pays the least`, hostileBidPrice(0, 0), 180);
+  check(
+    `${label}: holding more costs more`,
+    hostileBidPrice(0, 5) > hostileBidPrice(0, 0),
+    `${hostileBidPrice(0, 5)} vs ${hostileBidPrice(0, 0)}`,
+  );
+  for (let held = 0; held < SHARE_MAJORITY; held++) {
+    check(
+      `${label}: price rises with the buyer's holding at ${held}`,
+      hostileBidPrice(0, held + 1) > hostileBidPrice(0, held),
+    );
+  }
+  // Doubling, globally — the bound.
+  for (let made = 0; made < 8; made++) {
+    equal(
+      `${label}: bid ${made + 1} costs twice bid ${made}`,
+      hostileBidPrice(made + 1, 0),
+      hostileBidPrice(made, 0) * 2,
+    );
+  }
+  check(
+    `${label}: eight bids outrun any purse the game produces`,
+    hostileBidPrice(8, 0) > 27_623,
+    `${hostileBidPrice(8, 0)}`,
+  );
+  // Never a free lunch. A single bid *can* undercut the bank's last and dearest shares, and that is
+  // deliberate — a captain who owns nothing late on is exactly who this move is for. What must not
+  // happen is the bid being the cheap way to a majority, and the doubling is what prevents it.
+  check(
+    `${label}: dearer than the bank's opening price`,
+    hostileBidPrice(0, 0) > sharePriceFor(TOTAL_SHARES),
+    `${hostileBidPrice(0, 0)} vs ${sharePriceFor(TOTAL_SHARES)}`,
+  );
+  const bankSix = Array.from({ length: SHARE_MAJORITY }, (_, i) =>
+    sharePriceFor(TOTAL_SHARES - i),
+  ).reduce((a, b) => a + b, 0);
+  const bidSix = Array.from({ length: SHARE_MAJORITY }, (_, i) => hostileBidPrice(i, i)).reduce(
+    (a, b) => a + b,
+    0,
+  );
+  check(
+    `${label}: buying a majority by bid costs far more than buying it from the bank`,
+    bidSix > bankSix * 4,
+    `${bidSix} against ${bankSix}`,
+  );
+
+  // --- it opens the door canBuyOut shuts -----------------------------------------------------------
+  check(
+    `${label}: canBuyOut still bars a captain holding nothing`,
+    !canBuyOut(0, 3),
+    'the dead end this move exists to fix',
+  );
+  check(`${label}: a hostile bid does not`, canHostileBid(0, 5000, 3, 0));
+  check(`${label}: but a majority holder is barred`, !canHostileBid(SHARE_MAJORITY, 99_999, 3, 0));
+  check(`${label}: and an empty seller cannot be raided`, !canHostileBid(0, 99_999, 0, 0));
+  check(`${label}: nor can it be made without the cash`, !canHostileBid(0, 10, 3, 0));
+
+  // --- the transaction ------------------------------------------------------------------------------
+  let g = createInitialState('t-hb', 'Bid', {
+    humanNames: ['A', 'B'], aiCount: 0, seed: 'hb',
+    hazards: { weather: false, piracy: false, events: false, hostileBids: true },
+  });
+  g = setShares(g, 'p1', 0);
+  g = setShares(g, 'p2', 4);
+  g = setCash(g, 'p1', 5000);
+  g = setCash(g, 'p2', 100);
+  g = processAction(g, { type: 'ROLL' });
+
+  const price = hostileBidPrice(0, 0);
+  const bid = processAction(g, { type: 'HOSTILE_BID', targetId: 'p2' });
+  check(`${label}: a captain with nothing can bid`, bid !== g);
+  equal(`${label}: the buyer gains a share`, captainShares(bid, 'p1'), 1);
+  equal(`${label}: the seller loses one`, captainShares(bid, 'p2'), 3);
+  equal(`${label}: the buyer pays the full price`, cash(bid, 'p1'), 5000 - price);
+  // Brokerage: the seller is compensated, but not with all of it.
+  const proceeds = cash(bid, 'p2') - 100;
+  check(`${label}: the seller is compensated`, proceeds > 0);
+  check(`${label}: but brokerage is destroyed, not paid`, proceeds < price, `${proceeds} of ${price}`);
+  equal(`${label}: ten shares still exist`, totalShares(bid), TOTAL_SHARES);
+  equal(`${label}: the counter advances`, bid.hostileBids, 1);
+
+  // Off means off, so a faithful 1988 game never sees it.
+  let plain = createInitialState('t-hb-off', 'Off', {
+    humanNames: ['A', 'B'], aiCount: 0, seed: 'hb',
+    hazards: { weather: false, piracy: false, events: false, hostileBids: false },
+  });
+  plain = setShares(plain, 'p2', 4);
+  plain = setCash(plain, 'p1', 5000);
+  plain = processAction(plain, { type: 'ROLL' });
+  check(
+    `${label}: refused outright when switched off`,
+    processAction(plain, { type: 'HOSTILE_BID', targetId: 'p2' }) === plain,
+  );
+  check(
+    `${label}: and you cannot bid against yourself`,
+    processAction(bid, { type: 'HOSTILE_BID', targetId: 'p1' }) === bid,
   );
 }
 
@@ -1416,6 +1641,8 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testAwaitingOrders();
+  testHostileBid();
   testPortPrices();
   testSourcelessCards();
   testWorldEvents();
@@ -1455,6 +1682,22 @@ function main() {
   if (slow.length) {
     console.log(`  slow games (>250 rounds): ${slow.map(([seed, r]) => `${seed}:${r.rounds}`).join(', ')}`);
   }
+
+  // The owner's complaint as a number: is the game over by round 30?
+  const judged = reports.filter(([, r]) => r.leaderAt30Won !== null);
+  const held = judged.filter(([, r]) => r.leaderAt30Won).length;
+  console.log(
+    `  round-30 share leader went on to win: ${held}/${judged.length}` +
+      ` (${judged.length ? Math.round((held / judged.length) * 100) : 0}%)`,
+  );
+
+  const shutOut = reports.filter(([, r]) => r.aLockedOutCaptainWon !== null);
+  const recovered = shutOut.filter(([, r]) => r.aLockedOutCaptainWon).length;
+  const totalLockedOut = reports.reduce((n, [, r]) => n + r.lockedOutAtBankEmpty, 0);
+  console.log(
+    `  captains holding nothing when the bank emptied: ${totalLockedOut}` +
+      ` — one of them still won ${recovered}/${shutOut.length} games`,
+  );
 
   const rounds = reports.map(([, r]) => r.rounds).sort((a, b) => a - b);
   console.log(

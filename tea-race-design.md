@@ -536,6 +536,79 @@ Bugs found and fixed during the build, all by measurement rather than by looking
 | Browser play-through | Clicking your own port read "No sea route from Lisbon to Lisbon" |
 | Browser play-through | The sidebar pushed the chart off screen, making "click a port" impossible |
 
+### Session 7 (2026-08-15) — the way back in, and ships left standing
+
+Two owner reports, both about agency.
+
+**"If you fall behind in shares, there is nothing you can do to win?"** Very nearly yes, and the code
+already admitted it: `canBuyOut` requires the buyer to hold at least as many shares as the seller,
+and nobody holds fewer than zero, so once the bank empties a captain on nothing is locked out for
+good. Its own comment called the cost "real and deliberate". Measured: two captains across 20 seeds
+finished the bank-emptying round holding nothing and **neither ever won**; one of them, in
+`levanter`, ended on £27,623 — the richest on the board and unable to make a single share move.
+
+The fix is the **hostile bid**: buy a share off anyone, including the leader, whatever your own
+holding. Priced off two compounding terms — how much the buyer already holds, and how many bids
+anyone has made this game (which doubles each time).
+
+Getting it right needed measurement twice over, and the first version was wrong in an instructive
+way. Priced **flat**, a hostile bid is just a machine for turning money into shares, so it is won by
+whoever has the most money — and the captain leading at round 30 leads because they have been trading
+well, so they are also the richest. A/B over 20 identical seeds:
+
+| | round-30 leader wins | lead changes after r30 | median rounds |
+|---|---|---|---|
+| No hostile bid | 50% | 16 | 83 |
+| Flat price | **65%** | 49 | 78 |
+| Priced on the buyer's holding | **45%** | 155 | 99 |
+| …and doubling per bid (shipped) | **35%** | 97 | 89 |
+
+**An expensive comeback mechanic favours the rich, and the rich are usually the leader.** Charging on
+the buyer's own holding fixes it at the root — a captain with nothing pays £180 for a way in, while
+the captain going from five to a winning six pays the most anyone pays.
+
+The escalation rate was picked the same way. 1.6× churned harder but ran 19% long; 2× is lowest on
+leader-conversion *and* back to a normal median with a tighter worst case. 1.8× was worse than both,
+which is the useful reminder that at 20 seeds these figures carry about ±10 points of noise — 2× was
+taken because it wins on all three axes at once, not on any one of them.
+
+Termination is the thing this move puts at risk, since a bid from a captain holding fewer shares than
+the seller *lowers* the sum of squares that the ordinary buy-out's proof depends on — precisely the
+oscillation that once produced a 10,850-transaction game. What replaces the proof: bids double in
+price globally, so they are bounded by cash and settle at about five a game; sum-of-squares is
+non-decreasing everywhere else. Bounded rather than proven, which is why the harness asserts the
+count stays small instead of trusting the algebra.
+
+Victory stays **share-only** at the owner's direction. The existing rule where a *failed* claim
+resolves on asset value is untouched, because that happens at the close of the countdown — inside the
+sabotage window.
+
+**"There should be a reminder when boats are stuck at port."** `sim/attention.ts`, and the signal
+turns out to be exact: `ROLL` writes `sailPoints` for every ship and sailing spends it down, so a
+docked ship still holding points is precisely one that was rolled for and never sent anywhere. No log
+scanning. The fleet panel marks her "awaiting orders", and `End the turn` becomes one extra
+click naming her and what she could be doing — never a block, because waiting in port for cash or a
+better card is a real move.
+
+The judgement lives in `sim/` rather than the component on purpose: a warning that nags about a ship
+with nothing to do is worse than none, because it trains you to click through. So the *hints* are
+what the harness tests — a full hold is told to sail rather than to shop, a shut port is named as the
+reason, a penniless captain is told she can afford nothing.
+
+One bug worth recording, because typechecking cannot catch it: the new hooks were first placed beside
+the code that used them, which is **after** `GameScreen`'s `if (!state)` bail-out. Hooks after an
+early return render conditionally, React counts them, and the whole screen died with "rendered more
+hooks than during the previous render". Clean `tsc`, clean harness, blank page. Only the browser
+found it.
+
+Verified: 421,554 assertions, 0 failed, all 20 seeds reaching a winner, min 63 / median 89 / max 135.
+Browser-verified end to end: the idle warning fires and clears correctly, and a bid of £180 took a
+share off the leader with £54 destroyed in brokerage.
+
+Still open: the two AI captains who hold nothing when the bank empties still won 0 of 2, because the
+AI only reaches for a bid *after* the bank is dry. A human is not so restricted, but the AI could
+probably use it earlier.
+
 ### Session 6 (2026-08-10) — phase 2: sourcing becomes a decision
 
 Two changes, and the first one turned out to be a discovery rather than a change.

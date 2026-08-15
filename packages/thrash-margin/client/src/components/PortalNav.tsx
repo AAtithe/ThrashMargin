@@ -33,6 +33,12 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>
           💬 Feedback
         </a>
+        <span style={styles.sep}>·</span>
+        {/* Base-relative too. Reaching the page means nothing without a valid admin
+            session — access is gated server-side by ADMIN_USERNAMES, not by hiding this link. */}
+        <a href={`${import.meta.env.BASE_URL}admin`} style={styles.link}>
+          🛠 Admin
+        </a>
       </div>
       <div style={styles.right}>
         {user ? (

@@ -15,6 +15,7 @@ import PortLedger from '../components/PortLedger';
 import RivalFleets from '../components/RivalFleets';
 import EventCards from '../components/EventCards';
 import NewsBanner from '../components/NewsBanner';
+import { shipsAwaitingOrders } from '../sim/attention';
 import CaptainsTable from '../components/CaptainsTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
@@ -51,6 +52,29 @@ export default function GameScreen() {
     setTargetPort(null);
   }, [captain, myShips, selectedShipId]);
 
+  /**
+   * Ships of yours tied up with their dice already rolled and nowhere to go — a wasted roll, and
+   * very easy to miss at a four-ship fleet. See sim/attention.ts; the judgement lives there so the
+   * harness can hold it down.
+   *
+   * Placed above the `if (!state)` bail-out below, not beside the code that uses it: hooks after an
+   * early return render conditionally, and React counts them. Putting it lower crashed the whole
+   * screen with "rendered more hooks than during the previous render" — which typechecks perfectly
+   * and only shows up in a browser.
+   */
+  const awaiting = useMemo(
+    () =>
+      state && captain && state.phase === 'act' && captain.id === state.captains[state.activeIndex]?.id
+        ? shipsAwaitingOrders(state, captain.id)
+        : [],
+    [state, captain],
+  );
+  const [confirmingEnd, setConfirmingEnd] = useState(false);
+  // Never carry a half-pressed confirmation into somebody else's turn.
+  useEffect(() => {
+    setConfirmingEnd(false);
+  }, [state?.turn]);
+
   if (!state) {
     return (
       <div style={{ ...page, alignItems: 'center', justifyContent: 'center' }}>
@@ -69,6 +93,7 @@ export default function GameScreen() {
   const selectedShip = state.ships.find(s => s.id === selectedShipId) ?? null;
   const isHuman = captain?.kind === 'human';
   const canAct = state.phase === 'act' && isHuman;
+
   const mustRoll = state.phase === 'roll' && isHuman;
   const over = state.phase === 'over';
   const season = (state.hazards?.weather ?? false) ? seasonOf(state.round) : null;
@@ -215,13 +240,45 @@ export default function GameScreen() {
               </>
             ) : canAct ? (
               <>
-                <Button onClick={() => dispatch({ type: 'END_TURN' })}>End the turn</Button>
-                <span style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
-                  {selectedShip?.location
-                    ? `${selectedShip.name} lies at ${portName(selectedShip.location)}.`
-                    : selectedShip && destinationOf(selectedShip)
-                      ? `${selectedShip.name} is at sea.`
-                      : 'Give your ships their orders.'}
+                <Button
+                  tone={confirmingEnd ? 'primary' : undefined}
+                  onClick={() => {
+                    // One extra click, never a block: waiting in port for cash or a better card is
+                    // a real move, so the warning must be dismissible by simply repeating yourself.
+                    if (awaiting.length > 0 && !confirmingEnd) {
+                      setConfirmingEnd(true);
+                      return;
+                    }
+                    setConfirmingEnd(false);
+                    dispatch({ type: 'END_TURN' });
+                  }}
+                >
+                  {confirmingEnd ? 'End it anyway' : 'End the turn'}
+                </Button>
+                {confirmingEnd && (
+                  <Button tone="quiet" onClick={() => setConfirmingEnd(false)}>
+                    Wait — give her orders
+                  </Button>
+                )}
+                <span
+                  style={{
+                    ...bodySmall,
+                    fontSize: '0.78rem',
+                    color: awaiting.length > 0 ? UI.warn : UI.textFaint,
+                  }}
+                >
+                  {awaiting.length > 0
+                    ? awaiting
+                        .map(
+                          w =>
+                            `${w.shipName} lies at ${w.portName} with ${w.pointsUnspent} pts unspent — ${w.hint}`,
+                        )
+                        .join('. ') + '.'
+                    : selectedShip?.location
+                      ? `${selectedShip.name} lies at ${portName(selectedShip.location)}.`
+                      : selectedShip && destinationOf(selectedShip)
+                        ? `${selectedShip.name} is at sea.`
+                        : 'Give your ships their orders.'}
                 </span>
               </>
             ) : (
