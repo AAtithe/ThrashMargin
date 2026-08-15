@@ -418,7 +418,15 @@ export function processAction(state: GameState, action: GameAction): GameState {
   // event is already queued in pendingEvents (which it typically is, by design: that event's
   // trigger fires the same tick the previous chapter's flag does), or the card could never be
   // dismissed at all.
-  if (state.pendingEvents.length > 0 && action.type !== 'RESOLVE_EVENT' && action.type !== 'ACKNOWLEDGE_CHAPTER') {
+  // `DISMISS_COUNSEL` joins `ACKNOWLEDGE_CHAPTER` here for the same reason: both are UI bookkeeping
+  // rather than commercial or narrative acts, and a dismiss that silently no-ops leaves a card the
+  // player cannot get rid of.
+  if (
+    state.pendingEvents.length > 0 &&
+    action.type !== 'RESOLVE_EVENT' &&
+    action.type !== 'ACKNOWLEDGE_CHAPTER' &&
+    action.type !== 'DISMISS_COUNSEL'
+  ) {
     return state;
   }
 
@@ -433,6 +441,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return cancelPlannedRoute(state, action.vesselId);
     case 'ACKNOWLEDGE_CHAPTER':
       return acknowledgeChapter(state, action.chapterNumber);
+    case 'DISMISS_COUNSEL':
+      return { ...state, counselDismissedWeek: state.week };
     case 'BUY_GOOD':
       return buyGood(state, action.vesselId, action.goodId, action.quantity, action.grade);
     case 'SELL_GOOD':

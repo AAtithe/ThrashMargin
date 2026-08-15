@@ -206,6 +206,25 @@ Character data model:
 
 Assignment loop: each turn, officers can be posted (manage branch, lead venture, negotiate, investigate). Story events check who is present; sending Tobie to Trebizond matters when plague hits.
 
+> **Phase 21 implementation, confirmed 2026-08-15:** officers now also *advise* — `sim/advisors.ts`
+> and the Counsel screen. Each speaks only in their own domain (Julius and Gregorio on the maturity
+> ladder, Tobie on the fever zone, Astorre on sabotage and uninsured cargo, Crackbene on convoys and
+> seasonal crossings, Kathi on stale reports, Gelis on unwatched rival houses, Marian on wages and on
+> the best spread the player's own reports support), and only while `status: 'active'` — so a
+> departed officer falls silent, which is a real consequence of Chapter 6 rather than a special case.
+>
+> Two rules make this trustworthy rather than a cheat. **Counsel never acts** — it is a pure
+> read-only projection with no button on any row, the same discipline `sim/objectives.ts` uses.
+> And **an advisor may only read what the player can read**: trade tips come from `knownPrices`,
+> the reports that have actually arrived, never from live `scarcity`. An officer quoting the true
+> current price would hand the player omniscience through the back door and quietly undo §6's whole
+> information pillar — the same prohibition `sim/aiTrader.ts` places on its own opponent, applied to
+> the player's own side.
+>
+> Prose is content (`content/advisors/officers.json`) per §0, and — per §13 — written in each
+> officer's own voice in original words. The owner asked for excerpts from the novels; that is what
+> §13 exists to forbid, so the effect was delivered through voice rather than quotation.
+
 Deaths and departures are scripted where the novels script them and are not preventable. Marian, Katelina, Godscalc, Umar: the game does not allow the player to save them. This is pillar 3.
 
 > **Phase 20 implementation, confirmed 2026-08-09:** Godscalc's death (Chapter 6) is the **first time this sentence is enforced against an actual `Character` record.** Felix (Chapter 1), Katelina (Chapter 3) and Umar (Chapter 4) were all handled narrative-only, because none of them was ever on the roster — nothing needed to leave `GameState.characters` for their loss to land. Godscalc is a founding officer with a salary, a loyalty score and an assignment, so his death uses `EventEffects.characterDeparts` on a roster member for the first time (it had previously only ever scripted Diniz, a mid-campaign joiner). Both choices at the event kill him; the only thing the player decides is whether his last letter is kept, which is what adds a piece to the parentage dossier. **Marian's own death, the one remaining name on this list, is still unbuilt — she is a `Character` and will need the same treatment whenever the chapter that scripts it is authorized.**

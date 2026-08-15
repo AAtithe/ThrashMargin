@@ -1,0 +1,118 @@
+[
+  {
+    "id": "julius",
+    "domains": ["credit", "idle"],
+    "role": "The notary",
+    "lines": {
+      "credit": [
+        "{amount}f falls due in {weeks} week{s} and the counting house holds {cash}f. I can draw the paper to postpone it, or you can find the money. I would rather draw the paper than explain a protest.",
+        "There is {amount}f maturing in {weeks} week{s}. Against {cash}f on hand that is not a margin, it is a hope. Discount something before it becomes a matter of record."
+      ],
+      "idle": [
+        "{vessel} has been sitting at {city} with an empty hold and {cash}f in the account. Idle capital is the only kind that never earns anything, and the only kind nobody notices.",
+        "{vessel} is riding empty at {city} while {cash}f sits in the account. We are paying for the hull whether it carries anything or not."
+      ]
+    }
+  },
+  {
+    "id": "gregorio",
+    "domains": ["credit", "chapter"],
+    "role": "The lawyer",
+    "lines": {
+      "credit": [
+        "{amount}f within {weeks} week{s}, against {cash}f. I say only that the house has never yet been asked to explain a missed obligation, and that reputation is the cheapest asset on the books.",
+        "The ladder shows {amount}f due in {weeks} week{s} and the account shows {cash}f. Paper is perfectly drawn and perfectly worthless the day it is not honoured."
+      ],
+      "chapter": [
+        "There is business still open that the house has committed itself to: {objective}. Whatever else this season is spent on, that will still be waiting.",
+        "For the record, since somebody should keep one: {objective} remains unsettled."
+      ]
+    }
+  },
+  {
+    "id": "tobie",
+    "domains": ["risk_health"],
+    "role": "The physician",
+    "lines": {
+      "risk_health": [
+        "{vessel}'s crew is {health} in country that kills Europeans, and I am standing in Bruges. Put me aboard or stop pretending the fever is a matter of luck.",
+        "{vessel}'s crew is {health} and there is no physician with them. I can halve what this costs you, but not from here."
+      ]
+    }
+  },
+  {
+    "id": "astorre",
+    "domains": ["risk_sabotage", "risk_uninsured"],
+    "role": "The condottiere",
+    "lines": {
+      "risk_sabotage": [
+        "{vessel} is lying at {city} with cargo in her, and {house} keeps its own people in that port. Things spoil there. They spoil for a reason.",
+        "{vessel}'s cargo is sitting at {city}, under {house}'s nose. Move it or expect to be short of it."
+      ],
+      "risk_uninsured": [
+        "{vessel} is going out laden and uncovered from a port that would have underwritten her. That is not courage, it is arithmetic nobody did.",
+        "You could insure {vessel}'s cargo in port. At sea you cannot. That is the whole of my advice."
+      ]
+    }
+  },
+  {
+    "id": "crackbene",
+    "domains": ["convoy", "seasonal"],
+    "role": "The shipmaster",
+    "lines": {
+      "convoy": [
+        "You have {count} hulls in {city} and they are not sailing together. Singly they are prizes. Together they are a convoy, and a convoy gets an escort worth paying for.",
+        "{count} ships in {city} and no convoy formed. I have watched stragglers taken. I would rather not watch it again on your wages."
+      ],
+      "seasonal": [
+        "{route} is a seasonal passage and she is going out uncovered and unescorted. I will sail it. I am telling you what it is.",
+        "{route} in this season, with no escort. It can be done. It is done every year by people who then explain the losses afterwards."
+      ]
+    }
+  },
+  {
+    "id": "kathi",
+    "domains": ["intel_stale", "intel_unknown"],
+    "role": "The observer",
+    "lines": {
+      "intel_stale": [
+        "Your newest word from {city} is {age} weeks old and takes {latency} weeks to arrive at best. You are trading there on a letter, not on a price. {cost}f on the courier line would shorten it.",
+        "{city} is {age} weeks stale, at {latency} weeks' carriage. I am not saying the price has moved. I am saying you would not know if it had, and that {cost}f would fix that."
+      ],
+      "intel_unknown": [
+        "There is a city on your own map you have no word from at all: {city}. Somebody is trading it.",
+        "{city} has never once reported to us. Whatever is happening there is happening to somebody else's advantage."
+      ]
+    }
+  },
+  {
+    "id": "marian",
+    "domains": ["household_wages", "household_idle", "trade"],
+    "role": "The house",
+    "lines": {
+      "trade": [
+        "On your own reports: {good} stands at {buyPrice}f in {buyCity} and {sellPrice}f in {sellCity}. That is {margin}f a unit, if the report is still true when you arrive.",
+        "Your papers put {good} at {buyPrice}f in {buyCity} and {sellPrice}f in {sellCity} — {margin}f a unit between them. Papers have been wrong before."
+      ],
+      "household_wages": [
+        "Wages come to {wages}f next week and the account holds {cash}f. The household will notice. It always notices before the ledger does.",
+        "The account holds {cash}f and the household is owed {wages}f. I have kept a house on less, but not for long, and not without somebody leaving."
+      ],
+      "household_idle": [
+        "{name} has been idle a long while, and idleness in this house has historically preceded a resignation. Give them something.",
+        "{name} has had nothing to do for some while. This house has never kept anyone it did not use, and people work that out."
+      ]
+    }
+  },
+  {
+    "id": "gelis",
+    "domains": ["houses"],
+    "role": "The ward",
+    "lines": {
+      "houses": [
+        "{house} is at {relation} with us and holds its own port. That is not a rivalry, it is a standing arrangement to be worse off. An agent inside them costs less than a season of being outbid.",
+        "You have no one inside {house}, who stand at {relation}. They almost certainly have someone inside us."
+      ]
+    }
+  }
+]

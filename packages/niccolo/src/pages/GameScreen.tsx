@@ -19,6 +19,9 @@ import HouseholdPanel from '../components/HouseholdPanel';
 import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
 import ConvoyPanel from '../components/ConvoyPanel';
+import CounselPanel from '../components/CounselPanel';
+import CounselCallout from '../components/CounselCallout';
+import { urgentAdvice } from '../sim/advisors';
 import EvidenceBoardPanel from '../components/EvidenceBoardPanel';
 import DiviningPanel from '../components/DiviningPanel';
 import EstatePanel from '../components/EstatePanel';
@@ -48,6 +51,7 @@ export type SectionId =
   | 'secrets'
   | 'houses'
   | 'dossier'
+  | 'counsel'
   | 'ledger';
 
 const SECTION_TITLES: Record<SectionId, string> = {
@@ -60,6 +64,7 @@ const SECTION_TITLES: Record<SectionId, string> = {
   secrets: 'Secrets',
   houses: 'Houses & Agents',
   dossier: 'Evidence board',
+  counsel: 'Counsel',
   ledger: 'Ledger',
 };
 
@@ -433,6 +438,14 @@ export default function GameScreen() {
   // it — the dossier and the divining gift are both Chapter 5 content, and an always-present tab
   // that reads "nothing pinned here yet" for four chapters is worse than no tab. Same conditional-
   // inclusion pattern the Estate tab already uses, and the same reason.
+  // Counsel (Phase 21): a pure read-only projection, recomputed per render — nothing is stored.
+  // The callout only interrupts for genuinely urgent counsel, only once per week, and never while a
+  // scripted event or the chapter card already owns the screen (this codebase's own recurring
+  // backdrop-swallows-clicks trap — see CounselCallout's header comment).
+  const counselUrgent = urgentAdvice(state);
+  const counselHasUrgent = !!counselUrgent;
+  const counselDismissed = state.counselDismissedWeek === state.week;
+
   const dossierUnlocked =
     (state.evidence?.length ?? 0) > 0 || !!state.flags.divining_unlocked || !!state.flags.chapter4_complete;
 
@@ -446,6 +459,7 @@ export default function GameScreen() {
     { id: 'secrets', glyph: '🔍', label: 'Secrets' },
     { id: 'houses', glyph: '⚜', label: 'Houses' },
     ...(dossierUnlocked ? [{ id: 'dossier', glyph: '✎', label: 'Dossier' }] : []),
+    { id: 'counsel', glyph: '☙', label: 'Counsel', badge: counselHasUrgent },
     { id: 'ledger', glyph: '📖', label: 'Ledger' },
   ];
 
@@ -468,6 +482,16 @@ export default function GameScreen() {
       )}
       {showChronicle && (
         <ChronicleLog chapters={chronicleChapters} onClose={() => setShowChronicle(false)} />
+      )}
+      {counselUrgent && !counselDismissed && !pendingEvent && !showChapterCompleteCard && !showGuidedTour && (
+        <CounselCallout
+          advice={counselUrgent}
+          onDismiss={() => dispatch({ type: 'DISMISS_COUNSEL' })}
+          onOpenCounsel={() => {
+            dispatch({ type: 'DISMISS_COUNSEL' });
+            setActiveSection('counsel');
+          }}
+        />
       )}
       {showTutorial && !showGuidedTour && !pendingEvent && !showChapterCompleteCard && (
         <TutorialOverlay
@@ -847,6 +871,8 @@ export default function GameScreen() {
               <DiviningPanel state={state} onUse={purpose => dispatch({ type: 'USE_DIVINING', purpose })} />
             </>
           )}
+
+          {activeSection === 'counsel' && <CounselPanel state={state} />}
 
           {activeSection === 'ledger' && (
             <>

@@ -731,6 +731,10 @@ export interface GameState {
   convoy?: Convoy | null;
   /** True for the one week a paid escort lapsed for want of cash, so the UI can say so. */
   escortLapsed?: boolean;
+  /** The week whose urgent counsel the player has already dismissed (Phase 21) — so the callout
+   * doesn't re-interrupt on a reload, but does speak up again next week if the situation persists.
+   * Optional: an older save has simply dismissed nothing. */
+  counselDismissedWeek?: number;
   /** The Evidence Board's contents (Chapter 5, Phase 19) — both tracks in one list, filtered by
    * `track` at the read sites. Optional so a save from before this field existed simply has an
    * empty dossier rather than a shape mismatch, the same discipline `expedition`/`objectivesHidden`
@@ -763,6 +767,7 @@ export type GameAction =
   | { type: 'CONTINUE_PLANNED_ROUTE'; vesselId: string; insure?: boolean }
   | { type: 'CANCEL_PLANNED_ROUTE'; vesselId: string }
   | { type: 'ACKNOWLEDGE_CHAPTER'; chapterNumber: number }
+  | { type: 'DISMISS_COUNSEL' }
   | { type: 'BUY_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId }
   | { type: 'SELL_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId }
   | { type: 'INVEST_COURIER'; cityId: string }
