@@ -107,6 +107,11 @@ export interface Ship {
    */
   hold: CargoLot[];
   /**
+   * Which hull she is. Optional, and absent means the 1988 clipper, so every ship in a save written
+   * before classes existed keeps exactly the behaviour she had.
+   */
+  shipClass?: import('./rules').ShipClassId;
+  /**
    * Permanent fittings. Optional so that a save written before hazards existed loads untouched —
    * the same reason every other field added by the hazards work is optional.
    */
@@ -193,6 +198,8 @@ export interface Hazards {
   loans?: boolean;
   /** Commissions expire, and cargo loses value the longer it is carried. */
   deadlines?: boolean;
+  /** Three hulls to choose between when buying, rather than one repeated. */
+  shipClasses?: boolean;
 }
 
 /** The kinds of thing the world does to everybody at once. See sim/events.ts. */
@@ -375,7 +382,7 @@ export type GameAction =
    * alternative to putting it over the side for nothing.
    */
   | { type: 'SELL_CARGO'; shipId: ShipId; good: GoodId }
-  | { type: 'BUY_SHIP' }
+  | { type: 'BUY_SHIP'; shipClass?: import('./rules').ShipClassId }
   /** Fit guns or copper to a docked ship, permanently. */
   | { type: 'BUY_FITTING'; shipId: ShipId; fitting: keyof ShipFittings }
   /** Open or close a ship's standing insurance policy. */

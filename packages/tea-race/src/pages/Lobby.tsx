@@ -30,6 +30,7 @@ export default function Lobby() {
   const [wages, setWages] = useState(true);
   const [loans, setLoans] = useState(true);
   const [clock, setClock] = useState(true);
+  const [classes, setClasses] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -62,6 +63,7 @@ export default function Lobby() {
           wages,
           loans,
           deadlines: clock,
+          shipClasses: classes,
         },
       });
       if (id) navigate(`/game/${id}`);
@@ -195,7 +197,8 @@ export default function Lobby() {
                   sales === (preset.hazards.quaysideSales ?? false) &&
                   wages === (preset.hazards.wages ?? false) &&
                   loans === (preset.hazards.loans ?? false) &&
-                  clock === (preset.hazards.deadlines ?? false);
+                  clock === (preset.hazards.deadlines ?? false) &&
+                  classes === (preset.hazards.shipClasses ?? false);
                 return (
                   <Button
                     key={key}
@@ -210,6 +213,7 @@ export default function Lobby() {
                       setWages(preset.hazards.wages ?? false);
                       setLoans(preset.hazards.loans ?? false);
                       setClock(preset.hazards.deadlines ?? false);
+                      setClasses(preset.hazards.shipClasses ?? false);
                     }}
                   >
                     {preset.label}
@@ -225,9 +229,10 @@ export default function Lobby() {
               sales === PRESETS.board.hazards.quaysideSales &&
               wages === PRESETS.board.hazards.wages &&
               loans === PRESETS.board.hazards.loans &&
-              clock === PRESETS.board.hazards.deadlines
+              clock === PRESETS.board.hazards.deadlines &&
+              classes === PRESETS.board.hazards.shipClasses
                 ? PRESETS.board.blurb
-                : weather && piracy && events && bids && sales && wages && loans && clock
+                : weather && piracy && events && bids && sales && wages && loans && clock && classes
                   ? PRESETS.full.blurb
                   : 'A mixture of your own — set the switches below however you like.'}
             </p>
@@ -295,6 +300,15 @@ export default function Lobby() {
                 <strong style={{ color: UI.text }}>Deadlines</strong> — commissions are withdrawn if
                 nobody fills them, and cargo loses value the longer it sits in the hold. A hull used
                 as a warehouse earns less than one used as a ship.
+              </span>
+            </label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={classes} onChange={e => setClasses(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>Ship classes</strong> — three hulls instead of one.
+                A clipper is the tea ship; a barque carries four slots but is slow with it; an
+                Indiaman comes armed and cheaper than arming a clipper yourself, at a point off every
+                roll. What your fleet is made of becomes a position.
               </span>
             </label>
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>

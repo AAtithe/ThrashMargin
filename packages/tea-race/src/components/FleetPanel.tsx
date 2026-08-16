@@ -1,6 +1,6 @@
 import { freshness } from '../sim/rules';
 import { GOOD_BY_ID, portName } from '../sim/content';
-import { HOLD_SLOTS } from '../sim/rules';
+import { SHIP_CLASSES, slotsOf } from '../sim/rules';
 import { destinationOf, pointsToDestination } from '../sim/movement';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel, Pill, bodySmall, dataText } from './ui';
@@ -74,6 +74,11 @@ export default function FleetPanel({
               </span>
 
               <span style={{ ...bodySmall, fontSize: '0.78rem' }}>
+                {ship.shipClass && ship.shipClass !== 'clipper' && (
+                  <span style={{ color: UI.textFaint }}>
+                    {SHIP_CLASSES[ship.shipClass].name} ·{' '}
+                  </span>
+                )}
                 {ship.location ? (
                   <>
                     Tied up at {portName(ship.location)}
@@ -93,7 +98,7 @@ export default function FleetPanel({
               <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
                 {ship.hold.length === 0 ? (
                   <span style={{ ...dataText, fontSize: '0.68rem', color: UI.textFaint }}>
-                    hold empty — {HOLD_SLOTS} slots
+                    hold empty — {slotsOf(ship.shipClass)} slots
                   </span>
                 ) : (
                   <>
@@ -112,7 +117,7 @@ export default function FleetPanel({
                       );
                     })}
                     <span style={{ ...dataText, fontSize: '0.66rem', color: UI.textFaint }}>
-                      {ship.hold.length}/{HOLD_SLOTS}
+                      {ship.hold.length}/{slotsOf(ship.shipClass)}
                     </span>
                   </>
                 )}

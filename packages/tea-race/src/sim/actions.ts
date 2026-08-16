@@ -16,6 +16,7 @@ import { roll2d6 } from './rng';
 import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
 import { priceAt, priceStanding, quaysidePrice } from './pricing';
+import type { ShipClassId } from './rules';
 import {
   drawEvent,
   expired,
@@ -43,14 +44,16 @@ import {
   loanRateLabel,
   wagesFor,
   hostileBidProceeds,
-  HOLD_SLOTS,
   SHARE_MAJORITY,
   SHARE_RAID_MULTIPLIER,
   TOTAL_SHARES,
   shareBuybackFor,
   sharePriceFor,
   SHIP_NAMES,
-  SHIP_PRICE,
+  SHIP_CLASSES,
+  DEFAULT_SHIP_CLASS,
+  slotsOf,
+  speedOf,
   VICTORY_CASH,
 } from './rules';
 import { activeCaptain, isHotseat, shipsOf } from './state';
@@ -146,7 +149,7 @@ export function assetValue(state: GameState, captain: Captain): number {
   );
   return (
     captain.cash +
-    ships.length * SHIP_PRICE +
+    ships.reduce((n, sh) => n + SHIP_CLASSES[sh.shipClass ?? DEFAULT_SHIP_CLASS].price, 0) +
     captain.shares * sharePriceFor(TOTAL_SHARES - captain.shares) +
     holds -
     // Net of what is owed. A failed declaration is settled on this figure, and a captain who has
@@ -490,7 +493,10 @@ function doRoll(state: GameState): GameState {
     // simplification, so the number shown is the number used.
     const wind = weather ? windForShip(ship, season) : null;
     const copper = ship.fittings?.copper ? COPPER_SPEED_BONUS : 0;
-    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper);
+    // Her class rides on the same roll as wind and copper, rather than being a separate stat, so a
+    // heavy hull is slow in exactly the way a foul wind is slow and the two simply add.
+    const hull = state.hazards?.shipClasses ? speedOf(ship.shipClass) : 0;
+    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull);
     dice[ship.id] = r.dice;
   }
   s = { ...s, rngSeed: seed, sailPoints, dice };
@@ -739,7 +745,7 @@ function doSailTo(
 function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   const ship = ownShip(state, shipId);
   if (!ship || ship.location === null) return state;
-  if (ship.hold.length >= HOLD_SLOTS) return state;
+  if (ship.hold.length >= slotsOf(ship.shipClass)) return state;
   if (!portSupplies(ship.location, good)) return state;
   // A struck port loads nothing and an embargoed good loads nowhere. Cargo already aboard is
   // untouched by both — only lading is stopped, so nobody is ever left holding an unlandable hold.
@@ -762,7 +768,7 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
     'buy',
     `${ship.name} loads ${goodName(good)} at ${portName(ship.location)} for ${money(price)}${
       standing === 'level' ? '' : standing === 'cheap' ? ' — under the reckoning' : ' — over the reckoning'
-    } — ${ship.hold.length + 1} of ${HOLD_SLOTS} slots full.`,
+    } — ${ship.hold.length + 1} of ${slotsOf(ship.shipClass)} slots full.`,
     captain.id,
   );
 }
@@ -895,20 +901,27 @@ function doJettison(state: GameState, shipId: string, good?: string): GameState 
     'missed',
     `${ship.name} puts ${dumped.length} ${
       good ? goodName(good) : 'lot' + (dumped.length === 1 ? '' : 's')
-    } over the side — ${money(lost)} lost outright, ${HOLD_SLOTS - kept.length} slot${
-      HOLD_SLOTS - kept.length === 1 ? '' : 's'
+    } over the side — ${money(lost)} lost outright, ${slotsOf(ship.shipClass) - kept.length} slot${
+      slotsOf(ship.shipClass) - kept.length === 1 ? '' : 's'
     } clear.`,
     captain.id,
     { shipId: ship.id, units: dumped.length, forfeited: lost },
   );
 }
 
-function doBuyShip(state: GameState): GameState {
+function doBuyShip(state: GameState, requested?: ShipClassId): GameState {
   if (state.phase !== 'act') return state;
   const captain = activeCaptain(state);
   const owned = shipsOf(state, captain.id);
   if (owned.length >= MAX_SHIPS) return state;
-  if (captain.cash < SHIP_PRICE) return state;
+
+  // With classes off there is only ever the clipper, whatever was asked for — so a UI that offers
+  // the choice cannot smuggle a barque into a faithful game.
+  const classes = state.hazards?.shipClasses ?? false;
+  const chosen = classes ? (requested ?? DEFAULT_SHIP_CLASS) : DEFAULT_SHIP_CLASS;
+  const hull = SHIP_CLASSES[chosen];
+  if (!hull) return state;
+  if (captain.cash < hull.price) return state;
 
   const ship: Ship = {
     id: `s${state.nextShipSeq}`,
@@ -918,6 +931,8 @@ function doBuyShip(state: GameState): GameState {
     location: HOME_PORT,
     voyage: null,
     hold: [],
+    ...(classes ? { shipClass: chosen } : {}),
+    ...(hull.fittings ? { fittings: { ...hull.fittings } } : {}),
   };
 
   let s: GameState = {
@@ -925,11 +940,13 @@ function doBuyShip(state: GameState): GameState {
     ships: [...state.ships, ship],
     nextShipSeq: state.nextShipSeq + 1,
   };
-  s = updateCaptain(s, captain.id, { cash: captain.cash - SHIP_PRICE });
+  s = updateCaptain(s, captain.id, { cash: captain.cash - hull.price });
   return log(
     s,
     'ship',
-    `${captain.name} buys ${ship.name} for ${money(SHIP_PRICE)}; she fits out at ${portName(
+    `${captain.name} buys ${ship.name}, ${classes ? `a ${hull.name.toLowerCase()}, ` : ''}for ${money(
+      hull.price,
+    )} — ${hull.slots} slots${hull.fittings?.guns ? ', guns aboard' : ''}. She fits out at ${portName(
       HOME_PORT,
     )}.`,
     captain.id,
@@ -1139,7 +1156,7 @@ export function processAction(state: GameState, action: GameAction): GameState {
     case 'JETTISON':
       return doJettison(state, action.shipId, action.good);
     case 'BUY_SHIP':
-      return doBuyShip(state);
+      return doBuyShip(state, action.shipClass);
     case 'BUY_FITTING':
       return doBuyFitting(state, action.shipId, action.fitting as 'guns' | 'copper');
     case 'SET_INSURANCE':

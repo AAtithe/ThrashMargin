@@ -14,7 +14,7 @@
 import { GOOD_BY_ID, PORT_BY_ID, portName } from './content';
 import { goodEmbargoed, portStruck } from './events';
 import { priceAt } from './pricing';
-import { HOLD_SLOTS } from './rules';
+import { slotsOf } from './rules';
 import type { Captain, GameState, PortId, ShipId } from './types';
 
 export interface ShipAwaitingOrders {
@@ -57,7 +57,7 @@ export function shipsAwaitingOrders(state: GameState, captainId: string): ShipAw
       port: ship.location,
       portName: portName(ship.location),
       pointsUnspent: points,
-      hint: hintFor(state, captain, ship.location, ship.hold.length),
+      hint: hintFor(state, captain, ship.location, ship.hold.length, slotsOf(ship.shipClass)),
     });
   }
   return waiting;
@@ -75,8 +75,9 @@ function hintFor(
   captain: Captain,
   port: PortId,
   holdCount: number,
+  slots: number,
 ): string {
-  if (holdCount >= HOLD_SLOTS) return 'her hold is full — she should be running it in';
+  if (holdCount >= slots) return 'her hold is full — she should be running it in';
   if (portStruck(state, port)) return `${portName(port)} is shut by the strike — she can only sail`;
 
   const supplies = PORT_BY_ID[port]?.supplies ?? [];

@@ -25,7 +25,6 @@ import { goodEmbargoed, landedValue, portStruck } from './events';
 import {
   canBuyOut,
   FITTING_PRICES,
-  HOLD_SLOTS,
   MAX_SHIPS,
   LOAN_INTEREST_PER_ROUND,
   LOAN_STEP,
@@ -37,7 +36,8 @@ import {
   wagesFor,
   hostileBidPrice,
   SHARE_RAID_MULTIPLIER,
-  SHIP_PRICE,
+  SHIP_CLASSES,
+  slotsOf,
   VICTORY_CASH,
   sharePriceFor,
 } from './rules';
@@ -46,6 +46,7 @@ import { seasonOf, turnsBetween } from './weather';
 import { piracyRating } from './hazards';
 import { priceAt, quaysidePrice } from './pricing';
 import type { AiProfile, Captain, Contract, GameAction, GameState, PortId, Ship } from './types';
+import type { ShipClassId } from './rules';
 
 /** Average of 2d6 — used to turn sail points into an estimate of turns. */
 const POINTS_PER_TURN = 7;
@@ -396,12 +397,26 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
   const bid = hostileBidAction(s, captain);
   if (bid) return bid;
 
-  if (
-    ships.length < MAX_SHIPS &&
-    captain.shares < SHARE_MAJORITY - 1 &&
-    captain.cash - SHIP_PRICE >= Math.max(TRADING_FLOAT, temperament.shipReserve)
-  ) {
-    return { type: 'BUY_SHIP' };
+  if (ships.length < MAX_SHIPS && captain.shares < SHARE_MAJORITY - 1) {
+    // Which hull, when there is a choice. Not a fixed preference: a captain already running two
+    // fast hulls wants capacity, one with none wants speed, and the Indiaman is only worth her
+    // premium where there are actually pirates to meet.
+    const wantsClasses = s.hazards?.shipClasses ?? false;
+    const slots = ships.reduce((n, sh) => n + slotsOf(sh.shipClass), 0);
+    const preference: ShipClassId[] = !wantsClasses
+      ? ['clipper']
+      : s.hazards?.piracy && ships.length >= 1
+        ? ['indiaman', 'barque', 'clipper']
+        : slots >= 6
+          ? ['clipper', 'barque']
+          : ['barque', 'clipper'];
+
+    for (const id of preference) {
+      const hull = SHIP_CLASSES[id];
+      if (captain.cash - hull.price >= Math.max(TRADING_FLOAT, temperament.shipReserve)) {
+        return { type: 'BUY_SHIP', shipClass: id };
+      }
+    }
   }
 
   return null;
@@ -502,7 +517,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     const run = bestRunForLoadedShip(s, ship);
 
     // Filling spare slots with more of what she is already carrying multiplies the same voyage.
-    if (run && ship.hold.length < HOLD_SLOTS && portSupplies(ship.location!, run.contract.good)) {
+    if (run && ship.hold.length < slotsOf(ship.shipClass) && portSupplies(ship.location!, run.contract.good)) {
       const price = priceAt(ship.location!, run.contract.good);
       if (spendable >= price) {
         return { type: 'BUY_CARGO', shipId: ship.id, good: run.contract.good };
@@ -514,7 +529,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     // longer than when a half-price sale was available — the hull is only worth clearing once the
     // cargo is genuinely dead weight blocking better work.
     const oldest = Math.max(...ship.hold.map(lot => s.turn - lot.boughtOnTurn));
-    if (oldest >= temperament.patience * 2 && ship.hold.length >= HOLD_SLOTS) {
+    if (oldest >= temperament.patience * 2 && ship.hold.length >= slotsOf(ship.shipClass)) {
       // Sell it if the quay will take it — anything beats nothing, and she is standing right there.
       // Sell the single worst lot rather than the lot, so a hull is cleared a slot at a time and one
       // dud does not cost her the two lots that were fine.

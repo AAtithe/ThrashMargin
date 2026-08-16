@@ -1,3 +1,6 @@
+// Type-only import: erased at compile time, so this does not make a runtime cycle with types.ts
+// (which refers to ShipClassId here the same way). rules.ts otherwise stays a leaf module.
+import type { ShipFittings } from './types';
 /**
  * Every tunable number in one place.
  *
@@ -529,6 +532,93 @@ export function freshness(turnsHeld: number): number {
   return Math.max(CARGO_SPOIL_FLOOR, 1 - over * CARGO_SPOIL_PER_TURN);
 }
 
+// ---------------------------------------------------------------------------
+// Ship classes
+// ---------------------------------------------------------------------------
+
+/**
+ * AUTHORED — three hulls to choose between, rather than one hull repeated.
+ *
+ * The 1988 ship is a clipper with three slots and nothing to decide about her. That is fine as a
+ * board game and thin as a fleet: buying a second ship is buying more of the same. Classes make the
+ * composition of a fleet a position rather than a number — a fast two-slot hull is a different
+ * instrument from a slow four-slot one, and knowing which you want depends on whether you are
+ * racing for first money or hauling volume for second.
+ *
+ * Each is a real trade with no dominant option:
+ *
+ *  - the **clipper** is the 1988 ship, and stays the default and the baseline;
+ *  - the **barque** carries a third again but is slower every leg, so she is a poor racer and a good
+ *    freighter — she wants cards where second money is still worth having;
+ *  - the **Indiaman** comes armed, which is the guns fitting bought into the hull, and is dearer for
+ *    it. She earns her keep only where pirates are switched on, which is deliberate: with piracy off
+ *    she is simply a worse clipper and the choice collapses to two, as it should.
+ *
+ * Speed is expressed as a modifier on sail points rather than a separate stat, so it composes with
+ * wind, copper and everything else already acting on a passage.
+ */
+export interface ShipClass {
+  id: ShipClassId;
+  name: string;
+  blurb: string;
+  slots: number;
+  /** Added to every roll. Negative for the heavy hulls. */
+  speed: number;
+  price: number;
+  /** Fittings she is built with. */
+  fittings?: ShipFittings;
+}
+
+export type ShipClassId = 'clipper' | 'barque' | 'indiaman';
+
+export const SHIP_CLASSES: Record<ShipClassId, ShipClass> = {
+  clipper: {
+    id: 'clipper',
+    name: 'Clipper',
+    blurb: 'The tea ship. Three slots and nothing to slow her.',
+    slots: 3,
+    speed: 0,
+    price: SHIP_PRICE,
+  },
+  barque: {
+    id: 'barque',
+    name: 'Barque',
+    blurb: 'Four slots and heavy with it — a freighter, not a racer.',
+    slots: 4,
+    speed: -2,
+    price: Math.round(SHIP_PRICE * 1.3),
+  },
+  indiaman: {
+    id: 'indiaman',
+    name: 'Indiaman',
+    blurb: 'Three slots, built with her guns, and a shade slow for the weight of them.',
+    slots: 3,
+    speed: -1,
+    /**
+     * Priced *below* a clipper plus guns bought separately, which is the only thing that makes her
+     * worth having. The first pass had her at 1.6x a clipper — £400 against £250 — for £120 of guns
+     * and a speed penalty on top, so she was strictly worse than buying a clipper and arming it, in
+     * every game, whatever the toggles. The harness caught it as a dominance check.
+     *
+     * At £300 she is £70 cheaper than the armed clipper she is equivalent to, and pays for that with
+     * a point off every roll. With piracy switched off she is simply a worse clipper and the choice
+     * collapses to two hulls — which is correct, not a flaw.
+     */
+    price: SHIP_PRICE + 50,
+    fittings: { guns: true },
+  },
+};
+
+export const DEFAULT_SHIP_CLASS: ShipClassId = 'clipper';
+
+/** How many slots this ship has. Absent class means the 1988 clipper, so old saves are unchanged. */
+export const slotsOf = (shipClass: ShipClassId | undefined): number =>
+  SHIP_CLASSES[shipClass ?? DEFAULT_SHIP_CLASS].slots;
+
+/** Her speed modifier, applied to every roll. */
+export const speedOf = (shipClass: ShipClassId | undefined): number =>
+  SHIP_CLASSES[shipClass ?? DEFAULT_SHIP_CLASS].speed;
+
 /** AUTHORED — how many entries of the running log to keep. Older lines are dropped from the save. */
 export const LOG_LIMIT = 400;
 
@@ -552,6 +642,7 @@ export const PRESETS = {
       wages: false,
       loans: false,
       deadlines: false,
+      shipClasses: false,
     },
   },
   full: {
@@ -568,6 +659,7 @@ export const PRESETS = {
       wages: true,
       loans: true,
       deadlines: true,
+      shipClasses: true,
     },
   },
 } as const;

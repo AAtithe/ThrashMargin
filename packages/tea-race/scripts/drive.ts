@@ -25,6 +25,10 @@ import {
   CARGO_SPOIL_FLOOR,
   CONTRACT_LIFE_ROUNDS,
   CONTRACT_MAX_DISTANCE,
+  FITTING_PRICES,
+  SHIP_CLASSES,
+  SHIP_PRICE,
+  slotsOf,
   DECLARATION_TURNS,
   freshness,
   LOAN_STEP,
@@ -972,17 +976,22 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         if (payout !== plain) {
           newsPricedFills++;
           const ratio = payout / plain;
+          // Spoilage compounds with the news, so the floor is the glut factor times the freshness
+          // floor. Without that this fires on a perfectly correct payout for a stale cargo landed
+          // into a glut — which is exactly what it did once deadlines went in, at x0.47.
+          const floor = GLUT_FACTOR * CARGO_SPOIL_FLOOR - 0.01;
           check(
             `AI game ${seed}: ${contractId} news pricing is within the table's range`,
-            ratio >= GLUT_FACTOR - 0.01 &&
-              ratio <= SHORTAGE_FACTOR + (BOUNTY_PER_UNIT * units) / plain + 0.01,
+            ratio >= floor && ratio <= SHORTAGE_FACTOR + (BOUNTY_PER_UNIT * units) / plain + 0.01,
             `paid ${payout} against a plain ${plain} (x${ratio.toFixed(2)})`,
           );
         }
       }
+      // Bounded by the largest hull afloat, not by the clipper's three — a barque lands four at once.
+      const biggestHull = Math.max(...Object.values(SHIP_CLASSES).map(c => c.slots));
       check(
-        `AI game ${seed}: ${contractId} landed 1..${HOLD_SLOTS} units`,
-        units >= 1 && units <= HOLD_SLOTS,
+        `AI game ${seed}: ${contractId} landed 1..${biggestHull} units`,
+        units >= 1 && units <= biggestHull,
         `landed ${units}`,
       );
       // What she paid is a quay price, so it sits inside the band rather than on the reckoning.
@@ -1035,10 +1044,11 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         `AI game ${seed}: ${ship.name} is either in port or at sea, never both`,
         (ship.location === null) !== (ship.voyage === null),
       );
+      // Per hull, not a global three: a barque legitimately carries four.
       check(
-        `AI game ${seed}: ${ship.name} never exceeds ${HOLD_SLOTS} slots`,
-        ship.hold.length <= HOLD_SLOTS,
-        `${ship.hold.length} lots aboard`,
+        `AI game ${seed}: ${ship.name} never exceeds her ${slotsOf(ship.shipClass)} slots`,
+        ship.hold.length <= slotsOf(ship.shipClass),
+        `${ship.hold.length} lots aboard a ${ship.shipClass ?? 'clipper'}`,
       );
       for (const lot of ship.hold) {
         check(
@@ -1134,6 +1144,91 @@ function testDeterminism() {
     'determinism: same seed replays byte-identically',
     a === b,
     a === b ? '' : `diverged at char ${[...a].findIndex((ch, i) => ch !== b[i])}`,
+  );
+}
+
+/**
+ * Ship classes — three hulls that are genuinely different, with no dominant one.
+ */
+function testShipClasses() {
+  const label = 'ship classes';
+  const hz = {
+    weather: false, piracy: false, events: false, hostileBids: false,
+    quaysideSales: false, wages: false, loans: false, deadlines: false, shipClasses: true,
+  };
+
+  // --- the classes are a real trade ----------------------------------------------------------------
+  const all = Object.values(SHIP_CLASSES);
+  check(`${label}: the clipper is the 1988 ship`, SHIP_CLASSES.clipper.slots === HOLD_SLOTS);
+  equal(`${label}: and carries no penalty`, SHIP_CLASSES.clipper.speed, 0);
+  check(`${label}: the barque carries more`, SHIP_CLASSES.barque.slots > SHIP_CLASSES.clipper.slots);
+  check(`${label}: and pays for it in speed`, SHIP_CLASSES.barque.speed < 0);
+  check(`${label}: the Indiaman comes armed`, SHIP_CLASSES.indiaman.fittings?.guns === true);
+  // No dominant hull: nothing may be cheaper AND roomier AND faster than another.
+  //
+  // Compared net of the fittings a hull is built with, or the Indiaman reads as dominated purely
+  // because her guns are counted as cost and not as value. That framing is what caught the real bug:
+  // she was first priced at £400 against a clipper's £250 for £120 of guns, so buying a clipper and
+  // arming it was strictly better in every game.
+  const effective = (c: (typeof all)[number]) => c.price - (c.fittings?.guns ? FITTING_PRICES.guns : 0);
+  for (const a of all) {
+    for (const b of all) {
+      if (a.id === b.id) continue;
+      check(
+        `${label}: ${a.id} does not dominate ${b.id}`,
+        !(effective(a) <= effective(b) && a.slots >= b.slots && a.speed >= b.speed &&
+          (effective(a) < effective(b) || a.slots > b.slots || a.speed > b.speed)),
+        `${a.id} beats ${b.id} on every axis, net of fittings`,
+      );
+    }
+  }
+  check(
+    `${label}: an Indiaman undercuts a clipper armed separately`,
+    SHIP_CLASSES.indiaman.price < SHIP_CLASSES.clipper.price + FITTING_PRICES.guns,
+    `${SHIP_CLASSES.indiaman.price} vs ${SHIP_CLASSES.clipper.price + FITTING_PRICES.guns}`,
+  );
+
+  // --- buying one ----------------------------------------------------------------------------------
+  let g = createInitialState('t-cls', 'Classes', { humanNames: ['A'], aiCount: 1, seed: 'cls', hazards: hz });
+  g = setCash(g, 'p1', 10_000);
+  g = processAction(g, { type: 'ROLL' });
+
+  const bought = processAction(g, { type: 'BUY_SHIP', shipClass: 'barque' });
+  check(`${label}: a barque can be bought`, bought !== g);
+  const barque = bought.ships[bought.ships.length - 1];
+  equal(`${label}: and is recorded as one`, barque.shipClass, 'barque');
+  equal(`${label}: at the barque's price`, cash(bought, 'p1'), 10_000 - SHIP_CLASSES.barque.price);
+  equal(`${label}: with four slots`, slotsOf(barque.shipClass), 4);
+
+  const indiaman = processAction(bought, { type: 'BUY_SHIP', shipClass: 'indiaman' });
+  const armed = indiaman.ships[indiaman.ships.length - 1];
+  check(`${label}: an Indiaman is built with her guns`, armed.fittings?.guns === true);
+
+  // --- and the toggle really governs ---------------------------------------------------------------
+  let plain = createInitialState('t-cls-off', 'Off', {
+    humanNames: ['A'], aiCount: 1, seed: 'cls',
+    hazards: { ...hz, shipClasses: false },
+  });
+  plain = setCash(plain, 'p1', 10_000);
+  plain = processAction(plain, { type: 'ROLL' });
+  // Asking for a barque in a faithful game must hand back a clipper, not smuggle one in.
+  const forced = processAction(plain, { type: 'BUY_SHIP', shipClass: 'barque' });
+  const got = forced.ships[forced.ships.length - 1];
+  equal(`${label}: a faithful game gives a clipper whatever is asked for`, got.shipClass, undefined);
+  equal(`${label}: at the clipper's price`, cash(forced, 'p1'), 10_000 - SHIP_PRICE);
+  equal(`${label}: carrying three`, slotsOf(got.shipClass), HOLD_SLOTS);
+
+  // --- a hull's slots are hers, not a global -------------------------------------------------------
+  let loading = bought;
+  loading = place(loading, barque.id, 'foochow');
+  loading = setCash(loading, 'p1', 10_000);
+  for (let i = 0; i < 6; i++) {
+    loading = processAction(loading, { type: 'BUY_CARGO', shipId: barque.id, good: 'tea' });
+  }
+  equal(
+    `${label}: a barque fills four slots and stops`,
+    loading.ships.find(sh => sh.id === barque.id)!.hold.length,
+    4,
   );
 }
 
@@ -1915,6 +2010,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testShipClasses();
   testDeadlines();
   testStandingCosts();
   testQuaysideAndCover();

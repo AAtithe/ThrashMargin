@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { priceAt, priceStanding, quaysidePrice } from '../sim/pricing';
+import { slotsOf } from '../sim/rules';
 import { GOOD_BY_ID, PORT_BY_ID, goodName, planRoute, portName } from '../sim/content';
 import { payoutFor } from '../sim/contracts';
-import { HOLD_SLOTS } from '../sim/rules';
 import { destinationOf, pointsToDestination, reachableAtSea } from '../sim/movement';
 import { UI, money } from '../theme';
 import { planFastestRoute, routeTurns, windFor, type Season } from '../sim/weather';
@@ -106,7 +106,7 @@ export default function PortPanel({
         <p style={{ ...bodySmall, margin: 0 }}>
           {ship.name} is at sea, {pointsToDestination(ship)} sail points off{' '}
           {dest ? portName(dest) : 'her destination'}.
-          {ship.hold.length > 0 && ` She carries ${ship.hold.length} of ${HOLD_SLOTS} slots.`}
+          {ship.hold.length > 0 && ` She carries ${ship.hold.length} of ${slotsOf(ship?.shipClass)} slots.`}
         </p>
         {options.length > 0 && (
           <div style={block}>
@@ -167,10 +167,10 @@ export default function PortPanel({
       )}
 
       {/* --- Buy a cargo -------------------------------------------------------------- */}
-      {ship.hold.length < HOLD_SLOTS && port && (
+      {ship.hold.length < slotsOf(ship?.shipClass) && port && (
         <div style={block}>
           <Label>
-            Load a cargo — {HOLD_SLOTS - ship.hold.length} of {HOLD_SLOTS} slots free
+            Load a cargo — {slotsOf(ship?.shipClass) - ship.hold.length} of {slotsOf(ship?.shipClass)} slots free
           </Label>
           {port.supplies.length === 0 ? (
             <Empty>{port.name} has nothing to sell. She must go elsewhere for a cargo.</Empty>

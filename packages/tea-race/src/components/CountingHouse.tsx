@@ -6,7 +6,7 @@ import {
   shareBuybackFor,
   sharePriceFor,
   SHARE_RAID_MULTIPLIER,
-  SHIP_PRICE,
+  SHIP_CLASSES,
   TOTAL_SHARES,
   VICTORY_CASH,
   canBuyOut,
@@ -23,6 +23,7 @@ import { insurancePremium } from '../sim/hazards';
 import { FONT, UI, money } from '../theme';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
 import type { Captain, GameAction, GameState, Ship } from '../sim/types';
+import type { ShipClassId } from '../sim/rules';
 
 interface Props {
   state: GameState;
@@ -64,6 +65,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
   const debt = captain.debt ?? 0;
   const ceiling = loanCeilingFor(fleetSize, captain.shares);
   const ladenSlots = ships.reduce((n, sh) => n + sh.hold.length, 0);
+  const classesOn = state.hazards?.shipClasses ?? false;
 
   const canDeclare = captain.shares >= SHARE_MAJORITY && !state.declaration;
   const buyback = shareBuybackFor(state.sharesRemaining);
@@ -193,17 +195,37 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
           Surrender a share — {money(buyback)}
         </Button>
 
-        <Button
-          disabled={!enabled || fleetSize >= MAX_SHIPS || captain.cash < SHIP_PRICE}
-          title={
-            fleetSize >= MAX_SHIPS
-              ? `No captain may run more than ${MAX_SHIPS} ships`
-              : `She fits out at ${portName(HOME_PORT)}`
-          }
-          onClick={() => dispatch({ type: 'BUY_SHIP' })}
-        >
-          Buy a clipper — {money(SHIP_PRICE)}
-        </Button>
+        {(classesOn ? (Object.keys(SHIP_CLASSES) as ShipClassId[]) : ['clipper' as ShipClassId]).map(
+          id => {
+            const hull = SHIP_CLASSES[id];
+            return (
+              <Button
+                key={id}
+                disabled={!enabled || fleetSize >= MAX_SHIPS || captain.cash < hull.price}
+                title={
+                  fleetSize >= MAX_SHIPS
+                    ? `No captain may run more than ${MAX_SHIPS} ships`
+                    : `${hull.blurb} ${hull.slots} slots, ${
+                        hull.speed === 0
+                          ? 'no speed penalty'
+                          : `${hull.speed} to every roll`
+                      }${hull.fittings?.guns ? ', built with guns' : ''}. She fits out at ${portName(
+                        HOME_PORT,
+                      )}.`
+                }
+                onClick={() => dispatch({ type: 'BUY_SHIP', shipClass: id })}
+              >
+                {classesOn ? hull.name : 'Buy a clipper'} — {money(hull.price)}
+                {classesOn && (
+                  <span style={{ color: UI.textFaint }}>
+                    {' '}
+                    {hull.slots} slots{hull.speed !== 0 ? `, ${hull.speed}` : ''}
+                  </span>
+                )}
+              </Button>
+            );
+          },
+        )}
       </div>
 
       {!bankHasShares && (
