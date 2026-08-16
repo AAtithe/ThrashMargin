@@ -536,6 +536,50 @@ Bugs found and fixed during the build, all by measurement rather than by looking
 | Browser play-through | Clicking your own port read "No sea route from Lisbon to Lisbon" |
 | Browser play-through | The sidebar pushed the chart off screen, making "click a port" impossible |
 
+### Session 9 (2026-08-16) — the exchange, and how hard the rivals play
+
+**The shipping exchange.** Three companies priced off cargo actually landed in their waters.
+Investments only: the ten shares of a captain's own company remain the sole route to a win, at the
+owner's direction, because a second majority race would put the whole endgame back in play.
+
+The first price model was a decoration — **zero computer trades across 20 games**. Volume is never
+negative, so a price could rise on trade and drift back toward base but never below it; nothing was
+ever cheap and "buy low" could not fire. **A price has to be able to disappoint.** There is now an
+expected volume a company must clear merely to hold its price. Widening the swing from a 0.93–1.14
+band to 0.85–1.86 took it to 98 trades.
+
+**Difficulty.** Every handicap is knowledge or discipline, never dice — asserted, by checking that a
+gentle and a hard table roll identically. Gentle ignores rivals and the wind chart, never fits out or
+bids for shares, clogs her hold, hoards cash instead of buying shares, and overbuys hulls.
+
+The measurement matters more than the feature. One strong captain against three of each level, 150
+seeds: **48% / 45% / 41%**. Monotonic and real, but only a seven-point spread — and seat 0 takes 41%
+against *equal* opponents where parity is 25%, so **turn order is worth more than difficulty is**.
+Pushing the gentle handicaps harder barely moved it.
+
+Two things follow, and they matter more than any further tuning:
+
+- **This game carries a lot of variance** — 2d6 movement, storms, piracy, events, card draws — which
+  caps how far any skill gap can show. Do not expect a difficulty dial to produce a 20-point swing
+  here; the dice will not allow it.
+- **The owner's "the AI wins 95% of the time" needs reframing.** Against three rivals, *some* rival
+  winning is the expected outcome three times in four even at perfect parity. 95% against a 75%
+  baseline is a modest gap, not a wall. **Rival count is a bigger difficulty lever than the dial.**
+
+Difficulty is stored per captain as well as per table, because with one shared setting every seat is
+handicapped identically and the win rates only report seat order.
+
+### The toggle count is now the problem
+
+Eleven independent switches. They interact in ways only measurement reveals — wages starve the hostile
+bid because bids cost money; deadlines *shorten* the games wages lengthened. **Recommendation: curate
+three or four named presets as the front door** (the 1988 board; an economy game; everything on) and
+keep the individual switches as tinkering behind them.
+
+And the honest limit on all of it: **every number in this game has been tuned against AI-versus-AI
+play.** The harness can measure length, termination, win concentration and price bands. It cannot
+measure whether a game is enjoyable, and nothing here has been calibrated against a human yet.
+
 ### Session 8 (2026-08-16) — insurance, and four new systems
 
 Six things, all toggleable, all off in the 1988 preset. The owner's questions were "what does
