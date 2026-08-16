@@ -536,6 +536,56 @@ Bugs found and fixed during the build, all by measurement rather than by looking
 | Browser play-through | Clicking your own port read "No sea route from Lisbon to Lisbon" |
 | Browser play-through | The sidebar pushed the chart off screen, making "click a port" impossible |
 
+### Session 8 (2026-08-16) — insurance, and four new systems
+
+Six things, all toggleable, all off in the 1988 preset. The owner's questions were "what does
+insuring do", "shouldn't insuring have a cost", and "what else can we do to make gameplay dynamic,
+longer and more complex".
+
+**Insurance was a tax.** It had a cost — 4,507 premiums totalling £29,715 over 20 games — and
+returned £8,343. **28p in the pound.** Three causes: the button showed no price and the previous
+session had stripped premium notices out of the event cards as noise, so nothing surfaced the charge
+at all; the minimum premium applied to an *empty hull*, so most of those charges insured nothing;
+and the rate was set by eye rather than against the measured hazard. It is a cargo policy now —
+nothing aboard, nothing to pay, nothing covered — swept against the harness to about 0.9 in the
+pound, deliberately a shade under fair because the reason to buy is variance, not return.
+
+**Quayside sales.** Cargo can be sold off at a loss rather than dumped for nothing. Pricing it off
+`priceAt` at both kinds of port inverted the decision the mechanic exists for, because `priceAt`
+gives a notional price to any port for any good and a port that ships little carries a scarcity
+premium — Callao paid 43 for tea against Foochow's 40, for a good it has no buyer for. A quay that
+deals in the good now quotes locally; one that does not is a flat distress price.
+
+**Crew wages** are the big lever on length, and the first attempt destroyed the game. At £26 a ship
+only 4 of 20 seeds finished, captains ended on £42, and the table spent 38,525 turns in arrears. A
+captain earns about £50 a round; a bill near that is not pressure, it is an ending. At £5 a ship plus
+£2 a laden slot every seed still finishes and the median goes 84 → 126. Arrears rather than
+bankruptcy, because eliminating a player would interact badly with a share market that needs everyone
+to keep holding shares.
+
+**Loans** at 2.5% a round against ships and shares, netted out of asset value. The ceiling needed a
+floor under it: at 60% gearing a single £250 hull is £150 of credit, rounding down to nothing — so
+the captain the facility exists for was the one who could not use it.
+
+**Deadlines** make games *shorter*, which was the surprise. A captain who can see a card will lapse
+before she reaches it just picks a nearer run, so throughput rises: an 18-round life took the median
+from 126 to 97. 24 rounds keeps most of the length the wage bill bought.
+
+**Ship classes.** A dominance check in the harness caught a real bug — the Indiaman was priced at
+£400 for £120 of guns and a speed penalty, strictly worse than arming a clipper yourself. She is £300
+now, undercutting the armed clipper by £70. The check has to compare net of built-in fittings.
+
+Two general lessons:
+
+- **Measure what a mechanic returns before assuming it is balanced.** Insurance had been in the game
+  for four sessions paying 28p in the pound, and nothing about reading the code said so.
+- **Size an economic cost against measured income, never by eye.** Both the wage bill and the
+  insurance rate were an order of magnitude out on the first pass, in opposite directions.
+
+Cumulative effect on the owner's original complaint: the round-30 share leader went from winning 10
+of 20 games to **4 of 20**, and captains shut out of the share market entirely now sometimes recover
+where before they never did.
+
 ### Session 7 (2026-08-15) — the way back in, and ships left standing
 
 Two owner reports, both about agency.
