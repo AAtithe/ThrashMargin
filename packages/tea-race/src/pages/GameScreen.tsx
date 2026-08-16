@@ -325,6 +325,7 @@ export default function GameScreen() {
                 onClearTarget={() => setTargetPort(null)}
                 dispatch={dispatch}
                 enabled={canAct}
+                sellable={state.hazards?.quaysideSales ?? false}
                 season={season}
                 piracyOn={state.hazards?.piracy ?? false}
               />

@@ -116,6 +116,9 @@ export function routeRisk(from: PortId, path: PortId[], season: Season): number 
  * policy still covers ransoms on a ship running light.
  */
 export function insurancePremium(insuredValue: number, risk: number): number {
+  // No cargo, no premium — and correspondingly no cover. It is a cargo policy, and charging the
+  // minimum to insure an empty hull is what made the old numbers a tax rather than a choice.
+  if (insuredValue <= 0) return 0;
   const rate = INSURANCE_BASE_RATE * (1 + risk * INSURANCE_RISK_LOADING);
   return Math.max(INSURANCE_MINIMUM_PREMIUM, Math.round(insuredValue * rate));
 }
@@ -126,6 +129,9 @@ export function insurancePremium(insuredValue: number, risk: number): number {
  * make the policy the only purchase in the game worth making.
  */
 export function indemnityFor(outcome: PiracyOutcome, ship: Ship): number {
+  // Cover follows the premium: an empty hull pays nothing and is therefore covered for nothing.
+  // Without this the policy would be free money on every light passage.
+  if (ship.hold.length === 0) return 0;
   if (outcome.kind === 'ransom') return outcome.amount;
   if (outcome.kind === 'seizure') return ship.hold.reduce((n, lot) => n + lot.paid, 0);
   return 0;

@@ -21,6 +21,17 @@
 import { GOODS, GOOD_BY_ID, PORTS, PORT_BY_ID } from './content';
 import type { GoodId, PortId } from './types';
 
+/**
+ * What a quay pays for cargo sold off the ship, as a fraction of its own asking price.
+ *
+ * Well under 1 in both cases, and deliberately: the faithful rule is that unwanted cargo goes over
+ * the side for nothing, and this is the toggleable mercy on top of it, not a way to trade profitably
+ * without ever landing a commission. Selling at a port that deals in the good still loses you money
+ * against what you paid; it just does not lose you all of it.
+ */
+export const QUAYSIDE_TRADED = 0.65;
+export const QUAYSIDE_UNTRADED = 0.35;
+
 /** The band a quay's price can fall in, as a multiple of the card's reckoned price. */
 export const PRICE_FLOOR = 0.78;
 export const PRICE_CEILING = 1.22;
@@ -78,6 +89,38 @@ export function priceAt(portId: PortId, good: GoodId): number {
 
   const factor = Math.max(PRICE_FLOOR, Math.min(PRICE_CEILING, 1 + volume + local));
   return Math.max(1, Math.round(base * factor));
+}
+
+/**
+ * What a quay will pay for a lot already in the hold — a merchant's price, not a contract's.
+ *
+ * Two rates, and the gap between them is the whole decision. A port that **deals** in the good has a
+ * real buyer for it and pays a solid fraction of its local price; anywhere else you are selling to
+ * whoever will take it, at a fraction of that again. So offloading badly-judged cargo is a routing
+ * problem — run it somewhere that wants it, or take what you can get here.
+ *
+ * Never more than the local price, so this can never be arbitraged against `priceAt` by buying and
+ * selling on the same quay.
+ */
+export function quaysidePrice(portId: PortId, good: GoodId): number {
+  const base = GOOD_BY_ID[good]?.basePrice ?? 0;
+  const port = PORT_BY_ID[portId];
+  if (!port || base <= 0) return 0;
+
+  // A quay that deals in the good has a real market, so it quotes off its own local price. One that
+  // does not has no market to quote — it is a distress sale to whoever is standing there, priced
+  // flat against the card's reckoning.
+  //
+  // Quoting *both* off `priceAt` was the first version and it inverted the decision the mechanic
+  // exists for: `priceAt` hands a notional price to any port for any good, and a port that ships
+  // almost nothing carries a scarcity premium, so Callao paid 43 for tea against Foochow's 40 —
+  // more, for a good it has no buyer for at all. Because the local price never falls below 0.78 of
+  // the reckoning, 0.65 x local is always above 0.35 x base, so a dealing quay now always pays
+  // better. That is the property the test holds down.
+  if (port.demands.includes(good) || port.supplies.includes(good)) {
+    return Math.max(1, Math.floor(priceAt(portId, good) * QUAYSIDE_TRADED));
+  }
+  return Math.max(1, Math.floor(base * QUAYSIDE_UNTRADED));
 }
 
 /** Ports selling this good, cheapest first. Ties broken by id so the order is stable. */

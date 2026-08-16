@@ -38,7 +38,7 @@ import {
 import { activeCaptain, shipsOf } from './state';
 import { seasonOf, turnsBetween } from './weather';
 import { piracyRating } from './hazards';
-import { priceAt } from './pricing';
+import { priceAt, quaysidePrice } from './pricing';
 import type { AiProfile, Captain, Contract, GameAction, GameState, PortId, Ship } from './types';
 
 /** Average of 2d6 — used to turn sail points into an estimate of turns. */
@@ -469,6 +469,20 @@ export function nextAiAction(s: GameState): GameAction | null {
     // cargo is genuinely dead weight blocking better work.
     const oldest = Math.max(...ship.hold.map(lot => s.turn - lot.boughtOnTurn));
     if (oldest >= temperament.patience * 2 && ship.hold.length >= HOLD_SLOTS) {
+      // Sell it if the quay will take it — anything beats nothing, and she is standing right there.
+      // Sell the single worst lot rather than the lot, so a hull is cleared a slot at a time and one
+      // dud does not cost her the two lots that were fine.
+      if (s.hazards?.quaysideSales && ship.location && !portStruck(s, ship.location)) {
+        const worst = [...ship.hold].sort(
+          (a, b) =>
+            quaysidePrice(ship.location!, a.good) - a.paid - (quaysidePrice(ship.location!, b.good) - b.paid),
+        )[0];
+        // Only where the quay deals in it; hawking cargo at a port with no buyer is barely better
+        // than the sea, and holding on for a port that wants it is usually the better play.
+        if (worst && quaysidePrice(ship.location, worst.good) >= worst.paid * 0.5) {
+          return { type: 'SELL_CARGO', shipId: ship.id, good: worst.good };
+        }
+      }
       return { type: 'JETTISON', shipId: ship.id };
     }
   }

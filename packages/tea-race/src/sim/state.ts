@@ -85,7 +85,13 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     id,
     name: name.trim() || 'Voyage',
     rules: 'classic',
-    hazards: opts.hazards ?? { weather: true, piracy: true, events: true, hostileBids: true },
+    hazards: opts.hazards ?? {
+      weather: true,
+      piracy: true,
+      events: true,
+      hostileBids: true,
+      quaysideSales: true,
+    },
     createdAt: opts.createdAt ?? 0,
     rngSeed: dealt.seed,
 

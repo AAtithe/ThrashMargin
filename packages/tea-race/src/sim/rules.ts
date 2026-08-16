@@ -374,13 +374,40 @@ export const RANSOM_BOUNDS = { min: 12, max: 140 } as const;
 export const FITTING_PRICES = { guns: 120, copper: 150 } as const;
 
 /**
- * AUTHORED — an open insurance policy. Set once on a ship and every voyage she makes is covered.
- * The premium is a share of the insured value scaled by the route's real risk; it indemnifies goods
- * taken and ransoms paid, and never lost time.
+ * AUTHORED — an open **cargo** policy. Set once on a ship and every laden voyage she makes is
+ * covered: it indemnifies goods taken and ransoms paid, and never lost time.
+ *
+ * These numbers were recalibrated after measuring what the policy actually returned, and the first
+ * set were badly wrong. Over 20 full games captains paid 4,507 premiums totalling £29,715 and
+ * claimed £8,343 back — **28p in the pound**. Not a decision with a downside, just a tax the AI
+ * paid every game without noticing.
+ *
+ * Two causes. The premium was charged at *every* cast-off including an empty hull, so most of those
+ * 4,507 charges insured nothing at all — the minimum premium applied to a ship with no cargo aboard.
+ * And the base rate was set by eye rather than against the measured hazard: piracy fires on about
+ * 2.75% of voyages for an average loss near £87, so the fair price of a laden passage is nearer 2%
+ * of the cargo than 6%.
+ *
+ * It is now priced as a real policy should be: **nothing to insure means nothing to pay and nothing
+ * covered**, and what you do pay scales with the cargo aboard and the route's own piracy rating, so
+ * covering the Malacca run is worth it and covering an Atlantic hop is not. That is the decision the
+ * mechanic was supposed to offer.
+ *
+ * Calibrated against the harness rather than by eye: swept across rates, a policy now returns
+ * 0.90 / 0.74 / 0.67 in the pound at 0.008 / 0.010 / 0.012, and 0.28 at the rate it shipped with.
+ * The claim count over 20 games is only about thirty, so these carry real noise — the point is the
+ * order of magnitude, not the second digit. 0.008 is taken as roughly fair. Deliberately a shade under fair — the underwriters take
+ * their margin, and the reason to buy is not the expected return but the variance. A seizure takes
+ * the whole hold, and three lots gone can end a game; paying a little over the odds to not lose that
+ * way is exactly what insurance is for.
+ *
+ * The risk loading matters more than the rate. It spreads the premium 4.5x between a calm route and
+ * a piratical one, while the chance of claiming climbs faster still, so the policy is a good buy
+ * precisely where the danger is and a poor one everywhere else.
  */
-export const INSURANCE_BASE_RATE = 0.06;
-export const INSURANCE_RISK_LOADING = 1.8;
-export const INSURANCE_MINIMUM_PREMIUM = 4;
+export const INSURANCE_BASE_RATE = 0.008;
+export const INSURANCE_RISK_LOADING = 3.5;
+export const INSURANCE_MINIMUM_PREMIUM = 1;
 
 /** AUTHORED — how many entries of the running log to keep. Older lines are dropped from the save. */
 export const LOG_LIMIT = 400;
@@ -396,14 +423,26 @@ export const PRESETS = {
   board: {
     label: 'The 1988 board',
     blurb: 'The published game exactly: dice, five cards, ten shares, nothing else.',
-    hazards: { weather: false, piracy: false, events: false, hostileBids: false },
+    hazards: {
+      weather: false,
+      piracy: false,
+      events: false,
+      hostileBids: false,
+      quaysideSales: false,
+    },
   },
   full: {
     label: 'Full game',
     blurb:
       'Everything on — seasonal wind, storms, pirates, guns, copper, insurance, the world event ' +
       'deck, and hostile bids for the shares.',
-    hazards: { weather: true, piracy: true, events: true, hostileBids: true },
+    hazards: {
+      weather: true,
+      piracy: true,
+      events: true,
+      hostileBids: true,
+      quaysideSales: true,
+    },
   },
 } as const;
 

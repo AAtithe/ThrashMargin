@@ -45,13 +45,14 @@ import {
   stormRating,
   windFor,
 } from '../src/sim/weather';
-import { piracyRating, resolvePiracy } from '../src/sim/hazards';
+import { indemnityFor, insurancePremium, piracyRating, resolvePiracy } from '../src/sim/hazards';
 import {
   PRICE_CEILING,
   PRICE_FLOOR,
   cheapestSources,
   observedSpread,
   priceAt,
+  quaysidePrice,
 } from '../src/sim/pricing';
 import { buildDeck, parseCardKey } from '../src/sim/contracts';
 import { shipsAwaitingOrders } from '../src/sim/attention';
@@ -1131,6 +1132,96 @@ function testDeterminism() {
 }
 
 /**
+ * Selling cargo off at the quay, and insurance being worth its premium.
+ *
+ * Both exist because the owner asked the same question twice over: what does this cost me, and what
+ * do I get back? Neither had a defensible answer before.
+ */
+function testQuaysideAndCover() {
+  const label = 'quayside';
+
+  // --- the sale ------------------------------------------------------------------------------------
+  const opts = {
+    humanNames: ['A'], aiCount: 1, seed: 'quay',
+    hazards: { weather: false, piracy: false, events: false, quaysideSales: true },
+  };
+  let g = createInitialState('t-quay', 'Quay', opts);
+  g = setCash(g, 'p1', 3000);
+  g = place(g, 's1', 'foochow');
+  g = processAction(g, { type: 'ROLL' });
+  g = processAction(g, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
+  const paid = shipOf(g, 's1').hold[0].paid;
+
+  const sold = processAction(g, { type: 'SELL_CARGO', shipId: 's1', good: 'tea' });
+  check(`${label}: she can sell off the quay`, sold !== g);
+  equal(`${label}: the slot is cleared`, shipOf(sold, 's1').hold.length, 0);
+  const back = cash(sold, 'p1') - cash(g, 'p1');
+  check(`${label}: she gets something back`, back > 0, `${back}`);
+  check(`${label}: but always less than she paid`, back < paid, `${back} of ${paid}`);
+
+  // The whole point of the mechanic: where you unload matters.
+  // Not just for one pair — a dealing quay must beat a non-dealing one for every good, everywhere.
+  for (const good of GOODS) {
+    const dealers = PORTS.filter(
+      p => p.supplies.includes(good.id) || p.demands.includes(good.id),
+    );
+    const strangers = PORTS.filter(
+      p => !p.supplies.includes(good.id) && !p.demands.includes(good.id),
+    );
+    if (dealers.length === 0 || strangers.length === 0) continue;
+    const worstDealer = Math.min(...dealers.map(p => quaysidePrice(p.id, good.id)));
+    const bestStranger = Math.max(...strangers.map(p => quaysidePrice(p.id, good.id)));
+    check(
+      `${label}: every quay dealing in ${good.id} pays better than any that does not`,
+      worstDealer > bestStranger,
+      `worst dealer ${worstDealer}, best stranger ${bestStranger}`,
+    );
+  }
+  // Never arbitrageable: buy and sell on the same quay must always lose.
+  for (const port of PORTS) {
+    for (const good of port.supplies) {
+      check(
+        `${label}: ${port.id}/${good} cannot be bought and sold at a profit`,
+        quaysidePrice(port.id, good) < priceAt(port.id, good),
+      );
+    }
+  }
+
+  // Off means off — the faithful rule is that it goes over the side for nothing.
+  let strict = createInitialState('t-quay-off', 'Off', {
+    ...opts,
+    hazards: { weather: false, piracy: false, events: false, quaysideSales: false },
+  });
+  strict = setCash(strict, 'p1', 3000);
+  strict = place(strict, 's1', 'foochow');
+  strict = processAction(strict, { type: 'ROLL' });
+  strict = processAction(strict, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
+  check(
+    `${label}: refused outright when switched off`,
+    processAction(strict, { type: 'SELL_CARGO', shipId: 's1', good: 'tea' }) === strict,
+  );
+  // And jettison still forfeits the lot, whatever the toggle says.
+  const dumped = processAction(g, { type: 'JETTISON', shipId: 's1', good: 'tea' });
+  equal(`${label}: jettison still recovers nothing`, cash(dumped, 'p1'), cash(g, 'p1'));
+
+  // --- the cover -----------------------------------------------------------------------------------
+  equal(`${label}: an empty hull costs nothing to insure`, insurancePremium(0, 1), 0);
+  check(`${label}: a laden one does`, insurancePremium(240, 0.5) > 0);
+  check(
+    `${label}: and a piratical route costs more than a calm one`,
+    insurancePremium(240, 1) > insurancePremium(240, 0),
+    `${insurancePremium(240, 1)} vs ${insurancePremium(240, 0)}`,
+  );
+  // Cover follows the premium, or a light passage would be free money.
+  const light = { ...shipOf(g, 's1'), hold: [], insured: true };
+  equal(
+    `${label}: an empty hull is covered for nothing`,
+    indemnityFor({ kind: 'ransom', amount: 200, seed: 0 }, light),
+    0,
+  );
+}
+
+/**
  * Ships left standing at a quay with their dice already rolled.
  *
  * The judgement, not the dialog, is what is tested here — a warning that fires on a ship with
@@ -1582,12 +1673,14 @@ function testWorldEvents() {
     g = processAction(g, { type: 'BUY_CARGO', shipId: 's1', good: 'opium' });
     check(`${label}: the ship is insured and laden`, shipOf(g, 's1').insured === true);
 
-    // Strip her owner to a single pound and order her to sea.
-    g = setCash(g, 'p1', 1);
+    // Strip her owner bare and order her to sea. Zero rather than a token pound: since insurance was
+    // repriced a single lot's premium can be as little as £1, so £1 in hand now covers it and the
+    // lapse path this test exists for would never be reached.
+    g = setCash(g, 'p1', 0);
     const sailed = processAction(g, { type: 'SAIL_TO', shipId: 's1', destination: 'colombo' });
     check(`${label}: a pauper's ship still casts off`, sailed !== g);
     check(`${label}: and her cover has lapsed`, shipOf(sailed, 's1').insured === false);
-    equal(`${label}: with nothing taken for the premium`, cash(sailed, 'p1'), 1);
+    equal(`${label}: with nothing taken for the premium`, cash(sailed, 'p1'), 0);
     check(
       `${label}: the lapse is on the record`,
       sailed.log.some(e => e.kind === 'insurance' && e.data?.lapsed === 1),
@@ -1641,6 +1734,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testQuaysideAndCover();
   testAwaitingOrders();
   testHostileBid();
   testPortPrices();

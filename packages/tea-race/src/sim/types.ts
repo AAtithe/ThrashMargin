@@ -168,6 +168,8 @@ export interface Hazards {
   events?: boolean;
   /** Hostile bids: buy a share off anyone at an escalating premium, whatever your own holding. */
   hostileBids?: boolean;
+  /** Quayside sales: offload unwanted cargo at a loss rather than dumping it for nothing. */
+  quaysideSales?: boolean;
 }
 
 /** The kinds of thing the world does to everybody at once. See sim/events.ts. */
@@ -344,6 +346,11 @@ export type GameAction =
    * purchase price to the bank. Omit `good` to clear the entire hold.
    */
   | { type: 'JETTISON'; shipId: ShipId; good?: GoodId }
+  /**
+   * Sell a lot off the ship at the quay she is tied up to, at a merchant's price. The toggleable
+   * alternative to putting it over the side for nothing.
+   */
+  | { type: 'SELL_CARGO'; shipId: ShipId; good: GoodId }
   | { type: 'BUY_SHIP' }
   /** Fit guns or copper to a docked ship, permanently. */
   | { type: 'BUY_FITTING'; shipId: ShipId; fitting: keyof ShipFittings }

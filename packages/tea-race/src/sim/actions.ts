@@ -15,7 +15,7 @@ import { destinationOf, plotCourse, pointsToDestination, reorderAtSea, sail } fr
 import { roll2d6 } from './rng';
 import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
-import { priceAt, priceStanding } from './pricing';
+import { priceAt, priceStanding, quaysidePrice } from './pricing';
 import {
   drawEvent,
   expired,
@@ -541,7 +541,10 @@ function doSailTo(
   if (ship.insured && state.hazards?.piracy) {
     const risk = routeRisk(ship.location, plotted.voyage!.route, seasonOf(state.round));
     const premium = insurancePremium(ship.hold.reduce((n, l) => n + l.paid, 0), risk);
-    if (captain.cash < premium) {
+    // A light passage costs nothing and is covered for nothing, so there is no bill to write about.
+    if (premium <= 0) {
+      // fall through: no charge, no entry, and the policy simply does not bite this voyage.
+    } else if (captain.cash < premium) {
       hull = { ...plotted, insured: false };
       s = log(
         s,
@@ -690,6 +693,43 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
  * price to the bank — which is what gives the "speculation bottleneck" teeth. An earlier authored
  * rule gave half back at a port that wanted the goods, and made guessing wrong almost free.
  */
+/**
+ * Sell a lot off the ship at the quay she lies at.
+ *
+ * The published rule is that cargo you cannot place goes over the side and the whole purchase is
+ * forfeit, and `doJettison` still does exactly that. This is the toggleable mercy: you take a real
+ * loss rather than a total one, and where you take it matters, because a port that deals in the good
+ * pays nearly twice what one that does not will offer.
+ */
+function doSellCargo(state: GameState, shipId: string, good: string): GameState {
+  if (!state.hazards?.quaysideSales) return state;
+  const ship = ownShip(state, shipId);
+  if (!ship || ship.location === null || ship.hold.length === 0) return state;
+  // A shut port buys nothing, for the same reason it lades nothing.
+  if (portStruck(state, ship.location)) return state;
+
+  const sold = ship.hold.filter(l => l.good === good);
+  if (sold.length === 0) return state;
+  const kept = ship.hold.filter(l => l.good !== good);
+
+  const captain = activeCaptain(state);
+  const unit = quaysidePrice(ship.location, good);
+  const takings = unit * sold.length;
+  const paid = sold.reduce((sum, l) => sum + l.paid, 0);
+
+  let s = updateCaptain(state, captain.id, { cash: captain.cash + takings });
+  s = replaceShip(s, { ...ship, hold: kept });
+  return log(
+    s,
+    'missed',
+    `${ship.name} sells ${sold.length} ${goodName(good)} on the quay at ${portName(
+      ship.location,
+    )} for ${money(takings)} — ${money(paid - takings)} down on what she paid.`,
+    captain.id,
+    { shipId: ship.id, units: sold.length, takings, recovered: takings, forfeited: paid - takings },
+  );
+}
+
 function doJettison(state: GameState, shipId: string, good?: string): GameState {
   const ship = ownShip(state, shipId);
   if (!ship || ship.hold.length === 0) return state;
@@ -945,6 +985,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doBuyCargo(state, action.shipId, action.good);
     case 'DELIVER':
       return doDeliver(state, action.shipId, action.contractId);
+    case 'SELL_CARGO':
+      return doSellCargo(state, action.shipId, action.good);
     case 'JETTISON':
       return doJettison(state, action.shipId, action.good);
     case 'BUY_SHIP':

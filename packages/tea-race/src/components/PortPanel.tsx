@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { priceAt, priceStanding } from '../sim/pricing';
+import { priceAt, priceStanding, quaysidePrice } from '../sim/pricing';
 import { GOOD_BY_ID, PORT_BY_ID, goodName, planRoute, portName } from '../sim/content';
 import { payoutFor } from '../sim/contracts';
 import { HOLD_SLOTS } from '../sim/rules';
@@ -23,6 +23,8 @@ interface Props {
   /** Null when the game is played without weather. */
   season: Season | null;
   piracyOn: boolean;
+  /** Whether cargo may be sold off at the quay rather than only dumped. */
+  sellable: boolean;
 }
 
 /**
@@ -41,6 +43,7 @@ export default function PortPanel({
   enabled,
   season,
   piracyOn,
+  sellable,
 }: Props) {
   const port = ship?.location ? PORT_BY_ID[ship.location] : null;
   const points = ship ? (sailPoints[ship.id] ?? 0) : 0;
@@ -224,21 +227,42 @@ export default function PortPanel({
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
             {[...new Set(ship.hold.map(l => l.good))].map(good => {
               const lots = ship.hold.filter(l => l.good === good);
+              const paid = lots.reduce((n, l) => n + l.paid, 0);
+              const takings = sellable && port ? quaysidePrice(port.id, good) * lots.length : 0;
               return (
-                <Button
-                  key={good}
-                  tone="danger"
-                  disabled={!enabled}
-                  title="Dumping recovers nothing at all — the whole purchase price is forfeit"
-                  onClick={() => dispatch({ type: 'JETTISON', shipId: ship.id, good })}
-                >
-                  Jettison {lots.length} × {goodName(good)}
-                </Button>
+                <span key={good} style={{ display: 'inline-flex', gap: '0.3rem' }}>
+                  {sellable && port && (
+                    <Button
+                      disabled={!enabled}
+                      title={`${port.name} will take them at ${money(
+                        quaysidePrice(port.id, good),
+                      )} a lot — ${money(paid - takings)} down on the ${money(paid)} she paid. ${
+                        PORT_BY_ID[port.id]?.demands.includes(good) ||
+                        PORT_BY_ID[port.id]?.supplies.includes(good)
+                          ? 'This quay deals in it, so the price is fair.'
+                          : 'This quay has no real buyer for it — somewhere that deals in it would pay far more.'
+                      }`}
+                      onClick={() => dispatch({ type: 'SELL_CARGO', shipId: ship.id, good })}
+                    >
+                      Sell {lots.length} × {goodName(good)} — {money(takings)}
+                    </Button>
+                  )}
+                  <Button
+                    tone="danger"
+                    disabled={!enabled}
+                    title="Dumping recovers nothing at all — the whole purchase price is forfeit"
+                    onClick={() => dispatch({ type: 'JETTISON', shipId: ship.id, good })}
+                  >
+                    Jettison {lots.length} × {goodName(good)}
+                  </Button>
+                </span>
               );
             })}
           </div>
           <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-            Over the side. You get nothing back — only do it to free a slot for better work.
+            {sellable
+              ? 'A quay that deals in the good pays best; anywhere else takes it off your hands for little. Over the side gets you nothing at all.'
+              : 'Over the side. You get nothing back — only do it to free a slot for better work.'}
           </p>
         </div>
       )}

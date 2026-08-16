@@ -26,6 +26,7 @@ export default function Lobby() {
   const [piracy, setPiracy] = useState(true);
   const [events, setEvents] = useState(true);
   const [bids, setBids] = useState(true);
+  const [sales, setSales] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -49,7 +50,7 @@ export default function Lobby() {
         humanNames: humanNames.slice(0, humans),
         aiCount: ai,
         seed: seed.trim() || undefined,
-        hazards: { weather, piracy, events, hostileBids: bids },
+        hazards: { weather, piracy, events, hostileBids: bids, quaysideSales: sales },
       });
       if (id) navigate(`/game/${id}`);
     } finally {
@@ -178,7 +179,8 @@ export default function Lobby() {
                   weather === preset.hazards.weather &&
                   piracy === preset.hazards.piracy &&
                   events === (preset.hazards.events ?? false) &&
-                  bids === (preset.hazards.hostileBids ?? false);
+                  bids === (preset.hazards.hostileBids ?? false) &&
+                  sales === (preset.hazards.quaysideSales ?? false);
                 return (
                   <Button
                     key={key}
@@ -189,6 +191,7 @@ export default function Lobby() {
                       setPiracy(preset.hazards.piracy);
                       setEvents(preset.hazards.events ?? false);
                       setBids(preset.hazards.hostileBids ?? false);
+                      setSales(preset.hazards.quaysideSales ?? false);
                     }}
                   >
                     {preset.label}
@@ -200,9 +203,10 @@ export default function Lobby() {
               {weather === PRESETS.board.hazards.weather &&
               piracy === PRESETS.board.hazards.piracy &&
               events === PRESETS.board.hazards.events &&
-              bids === PRESETS.board.hazards.hostileBids
+              bids === PRESETS.board.hazards.hostileBids &&
+              sales === PRESETS.board.hazards.quaysideSales
                 ? PRESETS.board.blurb
-                : weather && piracy && events && bids
+                : weather && piracy && events && bids && sales
                   ? PRESETS.full.blurb
                   : 'A mixture of your own — set the switches below however you like.'}
             </p>
@@ -238,6 +242,14 @@ export default function Lobby() {
                 the leader, whatever your own holding. Cheapest when you hold least, and every bid made
                 by anyone doubles the price for everyone after — so they run out fast. Falling behind
                 stops being fatal.
+              </span>
+            </label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={sales} onChange={e => setSales(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>Quayside sales</strong> — offload cargo you cannot
+                place at a loss instead of dumping it for nothing. A quay that deals in the good pays
+                far better than one that does not, so where you unload is its own decision.
               </span>
             </label>
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>

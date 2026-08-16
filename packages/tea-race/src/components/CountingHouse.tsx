@@ -14,6 +14,7 @@ import {
   hostileBidPrice,
 } from '../sim/rules';
 import { HOME_PORT, portName } from '../sim/content';
+import { insurancePremium } from '../sim/hazards';
 import { UI, money } from '../theme';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
 import type { Captain, GameAction, GameState, Ship } from '../sim/types';
@@ -191,6 +192,8 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
           ) : (
             ships.map(ship => {
               const docked = ship.location !== null;
+              // What the underwriters would be covering, and therefore what they would charge.
+              const holdValue = ship.hold.reduce((n, lot) => n + lot.paid, 0);
               return (
                 <div key={ship.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                   <span style={{ ...dataText, fontSize: '0.7rem', color: UI.textSoft }}>
@@ -219,12 +222,29 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
                         <Button
                           tone={ship.insured ? 'default' : 'quiet'}
                           disabled={!enabled}
-                          title="An open policy: every voyage covered, premium taken at cast-off. Covers goods taken and ransoms paid — never lost time."
+                          title={
+                            `A cargo policy: premium taken at each cast-off, scaled by what she is ` +
+                            `carrying and how piratical the route. Covers goods taken and ransoms ` +
+                            `paid, never lost time. An empty hull costs nothing and is covered for ` +
+                            `nothing.` +
+                            (ship.hold.length === 0
+                              ? ' She is light, so no premium would fall due.'
+                              : ` As laden, a calm passage would cost about ${money(
+                                  insurancePremium(holdValue, 0),
+                                )} and a piratical one about ${money(insurancePremium(holdValue, 1))}.`)
+                          }
                           onClick={() =>
                             dispatch({ type: 'SET_INSURANCE', shipId: ship.id, insured: !ship.insured })
                           }
                         >
                           {ship.insured ? '✓ Insured' : 'Insure her'}
+                          {holdValue > 0 && (
+                            <span style={{ color: UI.textFaint }}>
+                              {' '}
+                              — {money(insurancePremium(holdValue, 0))}–
+                              {money(insurancePremium(holdValue, 1))} a passage
+                            </span>
+                          )}
                         </Button>
                       </>
                     )}
