@@ -19,6 +19,7 @@ import {
   wagesFor,
 } from '../sim/rules';
 import { HOME_PORT, portName } from '../sim/content';
+import { COMPANIES, STOCK_IDS, standing } from '../sim/stocks';
 import { insurancePremium } from '../sim/hazards';
 import { FONT, UI, money } from '../theme';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
@@ -66,6 +67,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
   const ceiling = loanCeilingFor(fleetSize, captain.shares);
   const ladenSlots = ships.reduce((n, sh) => n + sh.hold.length, 0);
   const classesOn = state.hazards?.shipClasses ?? false;
+  const stocksOn = state.hazards?.stocks ?? false;
 
   const canDeclare = captain.shares >= SHARE_MAJORITY && !state.declaration;
   const buyback = shareBuybackFor(state.sharesRemaining);
@@ -103,6 +105,60 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         To carry the company you need {SHARE_MAJORITY} of the {TOTAL_SHARES} shares, then{' '}
         {money(VICTORY_CASH)} and a ship still afloat {DECLARATION_TURNS} turns later.
       </p>
+
+      {/* The shipping exchange. Investments, never a second way to win — the ten shares above stay
+          the only route to the company, so the endgame is untouched. */}
+      {stocksOn && (
+        <div style={ledger}>
+          <span style={{ color: UI.textFaint, letterSpacing: '0.12em', fontSize: '0.6rem' }}>
+            THE SHIPPING EXCHANGE
+          </span>
+          {STOCK_IDS.map(id => {
+            const co = COMPANIES[id];
+            const price = state.stockPrices?.[id] ?? co.base;
+            const held = captain.holdings?.[id] ?? 0;
+            const trend = standing(price, co.base);
+            return (
+              <span key={id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+                <span
+                  style={{ minWidth: '9.5rem', color: UI.text }}
+                  title={`${co.blurb} Opens at ${money(co.base)}; moves with cargo landed in its waters.`}
+                >
+                  {co.name}
+                </span>
+                <span
+                  style={{
+                    color: trend === 'high' ? UI.warn : trend === 'low' ? UI.verdigris : UI.textSoft,
+                    minWidth: '3.2rem',
+                  }}
+                >
+                  {money(price)}
+                  {trend === 'high' ? ' ▲' : trend === 'low' ? ' ▼' : ''}
+                </span>
+                <span style={{ color: UI.textFaint, minWidth: '3.5rem' }}>
+                  {held > 0 ? `${held} held` : '—'}
+                </span>
+                <Button
+                  disabled={!enabled || captain.cash < price}
+                  title={`Buy one at ${money(price)}. It is worth having when the price is under ${money(
+                    co.base,
+                  )} and the cards are about to send everyone that way.`}
+                  onClick={() => dispatch({ type: 'BUY_STOCK', stock: id, lots: 1 })}
+                >
+                  Buy
+                </Button>
+                <Button
+                  tone="quiet"
+                  disabled={!enabled || held <= 0}
+                  onClick={() => dispatch({ type: 'SELL_STOCK', stock: id, lots: held })}
+                >
+                  Sell{held > 1 ? ` all ${held}` : ''}
+                </Button>
+              </span>
+            );
+          })}
+        </div>
+      )}
 
       {/* The running costs, and what can be done about them. Shown above the share market because a
           captain in arrears has no business buying shares. */}

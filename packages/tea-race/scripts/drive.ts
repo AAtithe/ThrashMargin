@@ -25,7 +25,9 @@ import {
   CARGO_SPOIL_FLOOR,
   CONTRACT_LIFE_ROUNDS,
   CONTRACT_MAX_DISTANCE,
+  DIFFICULTIES,
   FITTING_PRICES,
+  type Difficulty,
   SHIP_CLASSES,
   SHIP_PRICE,
   slotsOf,
@@ -66,6 +68,13 @@ import {
 } from '../src/sim/pricing';
 import { buildDeck, parseCardKey } from '../src/sim/contracts';
 import { shipsAwaitingOrders } from '../src/sim/attention';
+import {
+  COMPANIES,
+  companyForPort,
+  nextPrice,
+  STOCK_CEILING,
+  STOCK_FLOOR,
+} from '../src/sim/stocks';
 import type { Contract, GameState, PortId, Ship, WorldEventKind } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
@@ -1148,6 +1157,101 @@ function testDeterminism() {
 }
 
 /**
+ * The shipping exchange, and the difficulty dial.
+ */
+function testExchangeAndDifficulty() {
+  const label = 'exchange';
+  const hz = {
+    weather: false, piracy: false, events: false, hostileBids: false, quaysideSales: false,
+    wages: false, loans: false, deadlines: false, shipClasses: false, stocks: true,
+  };
+
+  // --- the price model -----------------------------------------------------------------------------
+  const base = COMPANIES.eastern.base;
+  check(`${label}: heavy trade lifts a price`, nextPrice(base, base, 5) > base);
+  check(`${label}: a dead round drops it`, nextPrice(base, base, 0) < base);
+  // A market that can only go up is a market nobody buys into — the bug that made the first version
+  // produce literally zero computer trades across 20 games.
+  check(
+    `${label}: prices can fall below base and stay there`,
+    nextPrice(nextPrice(nextPrice(base, base, 0), base, 0), base, 0) < base,
+  );
+  check(`${label}: and are bounded either way`, nextPrice(base, base, 999) <= base * STOCK_CEILING + 1);
+  check(`${label}: including downward`, nextPrice(1, base, 0) >= base * STOCK_FLOOR - 1);
+
+  // Every port belongs to exactly one company, or trade would vanish.
+  for (const port of PORTS) {
+    check(`${label}: ${port.id} trades through a company`, companyForPort(port.id) !== null);
+  }
+
+  // --- buying and selling --------------------------------------------------------------------------
+  let g = createInitialState('t-x', 'Exchange', { humanNames: ['A'], aiCount: 1, seed: 'x', hazards: hz });
+  g = setCash(g, 'p1', 3000);
+  g = processAction(g, { type: 'ROLL' });
+  const price = g.stockPrices?.eastern ?? base;
+
+  const bought = processAction(g, { type: 'BUY_STOCK', stock: 'eastern', lots: 3 });
+  check(`${label}: a captain can buy in`, bought !== g);
+  equal(`${label}: the holding is recorded`, bought.captains.find(c => c.id === 'p1')!.holdings?.eastern, 3);
+  equal(`${label}: at the price on the board`, cash(bought, 'p1'), 3000 - price * 3);
+  check(
+    `${label}: and it counts towards her worth`,
+    assetValue(bought, bought.captains.find(c => c.id === 'p1')!) > 0,
+  );
+
+  const sold = processAction(bought, { type: 'SELL_STOCK', stock: 'eastern', lots: 3 });
+  equal(`${label}: selling straight back is a wash`, cash(sold, 'p1'), 3000);
+  equal(`${label}: and clears the holding`, sold.captains.find(c => c.id === 'p1')!.holdings?.eastern, 0);
+  check(
+    `${label}: cannot sell what she does not hold`,
+    processAction(g, { type: 'SELL_STOCK', stock: 'pacific', lots: 1 }) === g,
+  );
+  check(
+    `${label}: refused outright when switched off`,
+    processAction({ ...g, hazards: { ...hz, stocks: false } }, { type: 'BUY_STOCK', stock: 'eastern' })
+      .captains.find(c => c.id === 'p1')!.holdings === undefined,
+  );
+
+  // The exchange must never become a second way to win.
+  check(
+    `${label}: holdings are not company shares`,
+    bought.captains.find(c => c.id === 'p1')!.shares === 0,
+  );
+
+  // --- the difficulty dial -------------------------------------------------------------------------
+  const d = 'difficulty';
+  const gentle = DIFFICULTIES.gentle;
+  const hard = DIFFICULTIES.hard;
+  check(`${d}: gentle does not watch her rivals`, !gentle.seesRivals && hard.seesRivals);
+  check(`${d}: gentle ignores the wind`, !gentle.usesWind && hard.usesWind);
+  check(`${d}: gentle never bids for shares`, !gentle.usesHostileBids && hard.usesHostileBids);
+  check(`${d}: gentle clogs her hold`, gentle.patienceScale > hard.patienceScale);
+  check(`${d}: and under-buys the only thing that wins`, gentle.shareCaution > hard.shareCaution);
+
+  // The handicaps must be knowledge and discipline, never dice: a gentle table has to replay
+  // byte-identically, and its rolls must match a hard table's, or the AI is cheating in reverse.
+  const rollsOf = (level: Difficulty) => {
+    let t = createInitialState('t-d', 'D', {
+      humanNames: [], aiCount: 4, seed: 'dice', difficulty: level,
+      hazards: { weather: false, piracy: false, events: false },
+    });
+    t = processAction(t, { type: 'ROLL' });
+    return JSON.stringify(t.dice);
+  };
+  equal(`${d}: the dice do not care how well she plays`, rollsOf('gentle'), rollsOf('hard'));
+
+  const play = (level: Difficulty) => {
+    let t = createInitialState('t-dd', 'D', { humanNames: [], aiCount: 4, seed: 'dd', difficulty: level });
+    for (let i = 0; i < 2000 && t.phase !== 'over'; i++) t = runAiTurn(t);
+    return t;
+  };
+  for (const level of ['gentle', 'steady', 'hard'] as Difficulty[]) {
+    const done = play(level);
+    check(`${d}: a ${level} table still reaches a winner`, done.phase === 'over', `${done.round} rounds`);
+  }
+}
+
+/**
  * Ship classes — three hulls that are genuinely different, with no dominant one.
  */
 function testShipClasses() {
@@ -2010,6 +2114,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testExchangeAndDifficulty();
   testShipClasses();
   testDeadlines();
   testStandingCosts();

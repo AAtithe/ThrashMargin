@@ -31,6 +31,7 @@ import {
   loanCeilingFor,
   CONTRACT_LIFE_ROUNDS,
   freshness,
+  difficultyProfile,
   SHARE_MAJORITY,
   canHostileBid,
   wagesFor,
@@ -45,8 +46,15 @@ import { activeCaptain, shipsOf } from './state';
 import { seasonOf, turnsBetween } from './weather';
 import { piracyRating } from './hazards';
 import { priceAt, quaysidePrice } from './pricing';
+import { COMPANIES, STOCK_IDS } from './stocks';
 import type { AiProfile, Captain, Contract, GameAction, GameState, PortId, Ship } from './types';
 import type { ShipClassId } from './rules';
+
+/** This captain's playing strength: her own level if she has one, else the table's. */
+function levelOf(s: GameState, captainId: string) {
+  const captain = s.captains.find(c => c.id === captainId);
+  return difficultyProfile(captain?.aiLevel ?? s.difficulty);
+}
 
 /** Average of 2d6 — used to turn sail points into an estimate of turns. */
 const POINTS_PER_TURN = 7;
@@ -90,7 +98,16 @@ const turnsFor = (points: number) => Math.max(1, points / POINTS_PER_TURN);
  * distance and so keeps choosing the geometrically shortest one — the exact failure the wind-aware
  * pathfinder exists to prevent, just relocated into the opponent's head.
  */
-function passageTurns(s: GameState, from: string, to: string, fallbackDistance: number): number {
+function passageTurns(
+  s: GameState,
+  from: string,
+  to: string,
+  fallbackDistance: number,
+  usesWind = true,
+): number {
+  // A captain who does not read the wind chart simply reckons on the shortest line, and is wrong
+  // about how long half the passages in the year will actually take.
+  if (!usesWind) return Math.max(1, Math.round(fallbackDistance / POINTS_PER_TURN));
   if (!s.hazards?.weather) return turnsFor(fallbackDistance);
   const turns = turnsBetween(from, to, seasonOf(s.round));
   return Number.isFinite(turns) ? Math.max(0.5, turns) : turnsFor(fallbackDistance);
@@ -152,6 +169,7 @@ function rivalsAhead(s: GameState, contract: Contract, mine: string, myDistance:
 
 /** For an empty ship at `from`: sail to the card's source, load, run it in. */
 function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | null {
+  const skill = levelOf(s, owner);
   let best: Run | null = null;
   for (const contract of liveContracts(s)) {
     // An embargo stops her lading the good anywhere, so the card is out whatever the route.
@@ -175,7 +193,7 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
       if (!isFinite(toSource) || !isFinite(toDest)) continue;
 
       // Rivals already loaded and closer will take the paid places before this ship even loads.
-      const contested = rivalsAhead(s, contract, owner, toSource + toDest);
+      const contested = skill.seesRivals ? rivalsAhead(s, contract, owner, toSource + toDest) : 0;
       const takenPlaces = contract.fills.length + contested;
       if (2 - takenPlaces <= 0) continue;
 
@@ -187,8 +205,8 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
       const profit = landedValue(s, contract.good, contract.price, multiplier) - cost;
 
       const turns =
-        passageTurns(s, from, source, toSource) +
-        passageTurns(s, source, contract.destination, toDest);
+        passageTurns(s, from, source, toSource, skill.usesWind) +
+        passageTurns(s, source, contract.destination, toDest, skill.usesWind);
       const drag = piracyDrag(s, source, contract.destination);
       const score = (profit * (1 - drag)) / Math.max(0.5, turns);
       if (!best || score > best.score) best = { contract, source, score };
@@ -200,6 +218,7 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
 /** For a loaded ship at `from`: the card her hold can still fill, ranked by payout per turn. */
 function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
   if (ship.hold.length === 0 || !ship.location) return null;
+  const skill = levelOf(s, ship.ownerId);
   let best: Run | null = null;
   for (const contract of liveContracts(s)) {
     if (!ship.hold.some(lot => lot.good === contract.good)) continue;
@@ -208,12 +227,12 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
 
     // The lot is already paid for, so even second money is worth sailing for — but not if the
     // paid places will all be gone by the time she gets there.
-    const contested = rivalsAhead(s, contract, ship.ownerId, distance);
+    const contested = skill.seesRivals ? rivalsAhead(s, contract, ship.ownerId, distance) : 0;
     if (contract.fills.length + contested >= 2) continue;
 
     // Hoisted above the payout, because what a lot is worth on arrival depends on how old it will be
     // when it gets there, not how old it is now.
-    const turns = passageTurns(s, ship.location, contract.destination, distance);
+    const turns = passageTurns(s, ship.location, contract.destination, distance, skill.usesWind);
 
     // No point steering for a card that will be off the board before she raises the harbour.
     if (s.hazards?.deadlines && contract.postedOn !== undefined) {
@@ -293,6 +312,7 @@ function biggestRival(s: GameState, captain: Captain): Captain | null {
  */
 function hostileBidAction(s: GameState, captain: Captain): GameAction | null {
   if (!s.hazards?.hostileBids) return null;
+  if (!levelOf(s, captain.id).usesHostileBids) return null;
   if (captain.shares >= SHARE_MAJORITY) return null;
   // The bank is always cheaper while it has any left.
   if (s.sharesRemaining > 0) return null;
@@ -311,6 +331,39 @@ function hostileBidAction(s: GameState, captain: Captain): GameAction | null {
   if (captain.cash - hostileBidPrice(made, captain.shares) < floor) return null;
 
   return { type: 'HOSTILE_BID', targetId: target.id };
+}
+
+/**
+ * Trade the shipping exchange: buy what is cheap against its base, sell what has run up.
+ *
+ * Deliberately a plain mean-reversion rule rather than anything cleverer. The market moves off trade
+ * the captains themselves generate, so a smarter AI would be trading against its own influence and
+ * the prices would stop being readable. This keeps the exchange something a human can out-think,
+ * which is the point of adding it — and, being mean-reverting, it does provide a floor and a ceiling
+ * of demand so prices are not purely one captain's plaything.
+ */
+function stockAction(s: GameState, captain: Captain): GameAction | null {
+  if (!s.hazards?.stocks) return null;
+  if (!levelOf(s, captain.id).usesStocks) return null;
+
+  for (const id of STOCK_IDS) {
+    const base = COMPANIES[id].base;
+    const price = s.stockPrices?.[id] ?? base;
+    const held = captain.holdings?.[id] ?? 0;
+
+    // Take a profit once a holding has run above where it was bought.
+    if (held > 0 && price > base * 1.15) return { type: 'SELL_STOCK', stock: id, lots: held };
+
+    // Buy in when it is cheap and the money is genuinely spare — never at the cost of trading, and
+    // never out of the declaration money once a majority is within reach.
+    const closeToWinning = captain.shares >= SHARE_MAJORITY - 1;
+    const keepBack = closeToWinning ? Math.max(VICTORY_CASH, TRADING_FLOAT * 5) : TRADING_FLOAT * 3;
+    const spare = captain.cash - keepBack;
+    if (price < base * 0.95 && spare >= price * 2 && held < 8) {
+      return { type: 'BUY_STOCK', stock: id, lots: 2 };
+    }
+  }
+  return null;
 }
 
 /**
@@ -337,6 +390,7 @@ function loanAction(s: GameState, captain: Captain): GameAction | null {
 
 function investmentAction(s: GameState, captain: Captain): GameAction | null {
   const temperament = temperamentOf(captain);
+  const skill = levelOf(s, captain.id);
   const ships = shipsOf(s, captain.id);
   const bankHasShares = s.sharesRemaining > 0;
   const sharePrice = bankHasShares
@@ -367,13 +421,13 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
   const oneShort = captain.shares === SHARE_MAJORITY - 1;
   if (
     oneShort &&
-    captain.cash - sharePrice >= TRADING_FLOAT &&
+    captain.cash - sharePrice >= TRADING_FLOAT * skill.shareCaution &&
     (bankHasShares || canRaid(s, captain))
   ) {
     return { type: 'BUY_SHARE' };
   }
 
-  if (captain.cash - sharePrice >= Math.max(TRADING_FLOAT, temperament.shareReserve)) {
+  if (captain.cash - sharePrice >= Math.max(TRADING_FLOAT, temperament.shareReserve) * skill.shareCaution) {
     if (bankHasShares) return { type: 'BUY_SHARE' };
 
     // Bank empty: buy out a smaller stake. Deliberately NOT gated on already being close to a
@@ -386,6 +440,10 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
     }
   }
 
+  // The exchange, before hulls and shares: it is the cheapest thing to be right about.
+  const trade = stockAction(s, captain);
+  if (trade) return trade;
+
   // Debt costs interest every round, so clear it whenever the money is genuinely spare. Ahead of
   // the share market on purpose: a captain servicing a loan out of a shrinking purse is losing.
   if (s.hazards?.loans && (captain.debt ?? 0) > 0) {
@@ -397,7 +455,12 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
   const bid = hostileBidAction(s, captain);
   if (bid) return bid;
 
-  if (ships.length < MAX_SHIPS && captain.shares < SHARE_MAJORITY - 1) {
+  // A cautious captain buys her shares first and her hulls after; an incautious one does the
+  // reverse, and with wages running that is how she loses.
+  if (
+    ships.length < MAX_SHIPS &&
+    (skill.overbuysHulls || captain.shares < SHARE_MAJORITY - 1)
+  ) {
     // Which hull, when there is a choice. Not a fixed preference: a captain already running two
     // fast hulls wants capacity, one with none wants speed, and the Indiaman is only worth her
     // premium where there are actually pirates to meet.
@@ -413,7 +476,8 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
 
     for (const id of preference) {
       const hull = SHIP_CLASSES[id];
-      if (captain.cash - hull.price >= Math.max(TRADING_FLOAT, temperament.shipReserve)) {
+      const reserve = skill.overbuysHulls ? TRADING_FLOAT : Math.max(TRADING_FLOAT, temperament.shipReserve);
+      if (captain.cash - hull.price >= reserve) {
         return { type: 'BUY_SHIP', shipClass: id };
       }
     }
@@ -432,6 +496,9 @@ export function nextAiAction(s: GameState): GameAction | null {
   if (s.phase !== 'act') return null;
   const captain = activeCaptain(s);
   if (captain.kind !== 'ai') return null;
+  // How well this table's computer captains play. See DIFFICULTIES in rules.ts — every handicap
+  // is knowledge or discipline, never dice.
+  const skill = levelOf(s, captain.id);
 
   // Winning beats everything else on the board — but only claim it holding the cash the claim
   // actually requires.
@@ -484,7 +551,7 @@ export function nextAiAction(s: GameState): GameAction | null {
       const holdValue = ship.hold.reduce((n, lot) => n + lot.paid, 0);
       const worthInsuring = closingOut ? holdValue > 0 : holdValue >= 90;
       if (worthInsuring && !ship.insured) {
-        return { type: 'SET_INSURANCE', shipId: ship.id, insured: true };
+        if (skill.fitsOut) return { type: 'SET_INSURANCE', shipId: ship.id, insured: true };
       }
       // Deliberately never closed again. A policy only costs anything at cast-off, and an empty
       // hold pays the minimum premium, so churning it open and shut saves almost nothing and
@@ -498,7 +565,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     const surplus = spendable - TRADING_FLOAT - 60;
     for (const ship of docked) {
       if (s.hazards?.weather && !ship.fittings?.copper && surplus >= FITTING_PRICES.copper) {
-        return { type: 'BUY_FITTING', shipId: ship.id, fitting: 'copper' };
+        if (skill.fitsOut) return { type: 'BUY_FITTING', shipId: ship.id, fitting: 'copper' };
       }
       if (
         s.hazards?.piracy &&
@@ -506,7 +573,7 @@ export function nextAiAction(s: GameState): GameAction | null {
         ship.hold.reduce((n, lot) => n + lot.paid, 0) >= 90 &&
         surplus >= FITTING_PRICES.guns
       ) {
-        return { type: 'BUY_FITTING', shipId: ship.id, fitting: 'guns' };
+        if (skill.fitsOut) return { type: 'BUY_FITTING', shipId: ship.id, fitting: 'guns' };
       }
     }
   }
@@ -529,7 +596,7 @@ export function nextAiAction(s: GameState): GameAction | null {
     // longer than when a half-price sale was available — the hull is only worth clearing once the
     // cargo is genuinely dead weight blocking better work.
     const oldest = Math.max(...ship.hold.map(lot => s.turn - lot.boughtOnTurn));
-    if (oldest >= temperament.patience * 2 && ship.hold.length >= slotsOf(ship.shipClass)) {
+    if (oldest >= temperament.patience * 2 * skill.patienceScale && ship.hold.length >= slotsOf(ship.shipClass)) {
       // Sell it if the quay will take it — anything beats nothing, and she is standing right there.
       // Sell the single worst lot rather than the lot, so a hull is cleared a slot at a time and one
       // dud does not cost her the two lots that were fine.

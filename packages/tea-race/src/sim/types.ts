@@ -145,7 +145,21 @@ export interface Captain {
   arrears?: number;
   /** Outstanding principal borrowed against the fleet. */
   debt?: number;
+  /**
+   * Shares held in the other shipping companies. Investments only — the ten shares of this captain's
+   * own company are `shares` above, and remain the only route to a win.
+   */
+  holdings?: Partial<Record<import('./stocks').StockId, number>>;
   aiProfile?: AiProfile;
+  /**
+   * How well this computer captain plays, overriding the table default in `GameState.difficulty`.
+   *
+   * Per captain rather than only per table because that is the only way to measure the dial at all:
+   * with one setting shared by everyone, every seat is handicapped identically and the win rates just
+   * report seat order. Seating one level against another is what shows whether the difficulty does
+   * anything.
+   */
+  aiLevel?: import('./rules').Difficulty;
 }
 
 export interface ContractFill {
@@ -200,6 +214,8 @@ export interface Hazards {
   deadlines?: boolean;
   /** Three hulls to choose between when buying, rather than one repeated. */
   shipClasses?: boolean;
+  /** The shipping exchange: companies whose shares move with the trade in their waters. */
+  stocks?: boolean;
 }
 
 /** The kinds of thing the world does to everybody at once. See sim/events.ts. */
@@ -252,7 +268,8 @@ export type LogKind =
   | 'victory'
   | 'contract'
   | 'event'
-  | 'wages';
+  | 'wages'
+  | 'stock';
 
 export interface LogEntry {
   /**
@@ -309,6 +326,10 @@ export interface GameState {
   events?: WorldEvent[];
   /** Monotonic counter behind WorldEvent.id. */
   nextEventSeq?: number;
+  /** Current price of each company on the shipping exchange. */
+  stockPrices?: Partial<Record<import('./stocks').StockId, number>>;
+  /** Lots landed in each company's waters since prices last moved. */
+  stockVolume?: Partial<Record<import('./stocks').StockId, number>>;
   /** The last few event kinds dealt, newest first, so the deck does not repeat itself. */
   recentEvents?: WorldEventKind[];
   /**
@@ -316,6 +337,11 @@ export interface GameState {
    * per-captain on purpose: that is what bounds the total and keeps the game finishing.
    */
   hostileBids?: number;
+  /**
+   * How well the computer captains play. Optional, absent meaning 'steady', so a save from before
+   * difficulty existed keeps exactly the opponents it had.
+   */
+  difficulty?: import('./rules').Difficulty;
   /** ms epoch, stamped by the caller. The sim itself never reads a clock. */
   createdAt: number;
   rngSeed: number;
@@ -388,6 +414,9 @@ export type GameAction =
   /** Open or close a ship's standing insurance policy. */
   | { type: 'SET_INSURANCE'; shipId: ShipId; insured: boolean }
   /** Draw down another LOAN_STEP against the fleet. */
+  /** Buy or sell shares in one of the other shipping companies, at the current price. */
+  | { type: 'BUY_STOCK'; stock: import('./stocks').StockId; lots?: number }
+  | { type: 'SELL_STOCK'; stock: import('./stocks').StockId; lots?: number }
   | { type: 'TAKE_LOAN' }
   /** Pay down the debt, as much as the captain can afford up to one step. */
   | { type: 'REPAY_LOAN' }

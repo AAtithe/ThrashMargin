@@ -16,6 +16,8 @@ import {
   TOTAL_SHARES,
 } from './rules';
 import type { AiProfile, Captain, GameState, Hazards, Ship } from './types';
+import { DEFAULT_DIFFICULTY } from './rules';
+import type { Difficulty } from './rules';
 
 export interface NewGameOptions {
   /** Seat names for the human captains. One entry per human; empty means a pure AI game. */
@@ -31,6 +33,8 @@ export interface NewGameOptions {
    * existed has no field at all, which reads as off and keeps the pure 1988 rules.
    */
   hazards?: Hazards;
+  /** How well the computer captains play. Defaults to 'steady'. */
+  difficulty?: Difficulty;
 }
 
 /** Profiles are handed out in rotation so a three-rival game always sees all three temperaments. */
@@ -95,7 +99,9 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       loans: true,
       deadlines: true,
       shipClasses: true,
+      stocks: true,
     },
+    difficulty: opts.difficulty ?? DEFAULT_DIFFICULTY,
     createdAt: opts.createdAt ?? 0,
     rngSeed: dealt.seed,
 

@@ -2,7 +2,17 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
-import { MAX_CAPTAINS, PRESETS, SHARE_MAJORITY, TOTAL_SHARES, VICTORY_CASH, type PresetName } from '../sim/rules';
+import {
+  DEFAULT_DIFFICULTY,
+  DIFFICULTIES,
+  MAX_CAPTAINS,
+  PRESETS,
+  SHARE_MAJORITY,
+  TOTAL_SHARES,
+  VICTORY_CASH,
+  type Difficulty,
+  type PresetName,
+} from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
@@ -31,6 +41,8 @@ export default function Lobby() {
   const [loans, setLoans] = useState(true);
   const [clock, setClock] = useState(true);
   const [classes, setClasses] = useState(true);
+  const [stocks, setStocks] = useState(true);
+  const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -53,6 +65,7 @@ export default function Lobby() {
       const id = await createGame(name, {
         humanNames: humanNames.slice(0, humans),
         aiCount: ai,
+        difficulty: level,
         seed: seed.trim() || undefined,
         hazards: {
           weather,
@@ -64,6 +77,7 @@ export default function Lobby() {
           loans,
           deadlines: clock,
           shipClasses: classes,
+          stocks,
         },
       });
       if (id) navigate(`/game/${id}`);
@@ -198,7 +212,8 @@ export default function Lobby() {
                   wages === (preset.hazards.wages ?? false) &&
                   loans === (preset.hazards.loans ?? false) &&
                   clock === (preset.hazards.deadlines ?? false) &&
-                  classes === (preset.hazards.shipClasses ?? false);
+                  classes === (preset.hazards.shipClasses ?? false) &&
+                  stocks === (preset.hazards.stocks ?? false);
                 return (
                   <Button
                     key={key}
@@ -214,6 +229,7 @@ export default function Lobby() {
                       setLoans(preset.hazards.loans ?? false);
                       setClock(preset.hazards.deadlines ?? false);
                       setClasses(preset.hazards.shipClasses ?? false);
+                      setStocks(preset.hazards.stocks ?? false);
                     }}
                   >
                     {preset.label}
@@ -230,9 +246,10 @@ export default function Lobby() {
               wages === PRESETS.board.hazards.wages &&
               loans === PRESETS.board.hazards.loans &&
               clock === PRESETS.board.hazards.deadlines &&
-              classes === PRESETS.board.hazards.shipClasses
+              classes === PRESETS.board.hazards.shipClasses &&
+              stocks === PRESETS.board.hazards.stocks
                 ? PRESETS.board.blurb
-                : weather && piracy && events && bids && sales && wages && loans && clock && classes
+                : weather && piracy && events && bids && sales && wages && loans && clock && classes && stocks
                   ? PRESETS.full.blurb
                   : 'A mixture of your own — set the switches below however you like.'}
             </p>
@@ -240,6 +257,27 @@ export default function Lobby() {
 
           <div style={field}>
             <Label>Or pick your own</Label>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.5rem' }}>
+              <Label>How well the rivals play</Label>
+              <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                {(Object.keys(DIFFICULTIES) as Difficulty[]).map(id => (
+                  <Button
+                    key={id}
+                    tone={level === id ? 'primary' : 'quiet'}
+                    title={DIFFICULTIES[id].blurb}
+                    onClick={() => setLevel(id)}
+                  >
+                    {DIFFICULTIES[id].label}
+                  </Button>
+                ))}
+              </div>
+              <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0, color: UI.textFaint }}>
+                {DIFFICULTIES[level].blurb} Every handicap is knowledge or discipline — the computer
+                captains never roll better than you do. Fewer rivals is the other dial: against three,
+                one of them takes the company three times in four even when everybody plays equally.
+              </p>
+            </div>
+
             <label style={checkRow}>
               <input type="checkbox" checked={weather} onChange={e => setWeather(e.target.checked)} style={{ accentColor: UI.brass }} />
               <span>
@@ -309,6 +347,14 @@ export default function Lobby() {
                 A clipper is the tea ship; a barque carries four slots but is slow with it; an
                 Indiaman comes armed and cheaper than arming a clipper yourself, at a point off every
                 roll. What your fleet is made of becomes a position.
+              </span>
+            </label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={stocks} onChange={e => setStocks(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>The shipping exchange</strong> — three companies
+                whose share prices rise and fall with the cargo actually landed in their waters. Not
+                another way to win: somewhere for money to go, and a market to read.
               </span>
             </label>
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>

@@ -16,6 +16,15 @@ import { roll2d6 } from './rng';
 import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
 import { priceAt, priceStanding, quaysidePrice } from './pricing';
+import {
+  COMPANIES,
+  companyForPort,
+  holdingsValue,
+  nextPrice,
+  openingPrices,
+  STOCK_IDS,
+  type StockId,
+} from './stocks';
 import type { ShipClassId } from './rules';
 import {
   drawEvent,
@@ -155,7 +164,8 @@ export function assetValue(state: GameState, captain: Captain): number {
     // Net of what is owed. A failed declaration is settled on this figure, and a captain who has
     // borrowed their way to the top of the table has not actually got there.
     (captain.debt ?? 0) -
-    (captain.arrears ?? 0)
+    (captain.arrears ?? 0) +
+    holdingsValue(captain.holdings, state.stockPrices)
   );
 }
 
@@ -308,6 +318,80 @@ function turnTheWorld(state: GameState): GameState {
 }
 
 /**
+ * Moves the shipping exchange, then clears the round's trade tally.
+ *
+ * Prices are driven by what captains actually landed, so the market is a readable consequence of
+ * play rather than a random walk: if you can see where the cards are sending everyone, you can see
+ * which company is about to move.
+ */
+function settleExchange(state: GameState): GameState {
+  if (!state.hazards?.stocks) return state;
+
+  const prices = { ...(state.stockPrices ?? openingPrices()) };
+  const volume = state.stockVolume ?? {};
+  const moved: string[] = [];
+
+  for (const id of STOCK_IDS) {
+    const before = prices[id] ?? COMPANIES[id].base;
+    const after = nextPrice(before, COMPANIES[id].base, volume[id] ?? 0);
+    prices[id] = after;
+    if (after !== before) moved.push(`${COMPANIES[id].name} ${after > before ? 'up' : 'down'} to ${money(after)}`);
+  }
+
+  let s: GameState = { ...state, stockPrices: prices, stockVolume: {} };
+  if (moved.length > 0) s = log(s, 'stock', `On the exchange: ${moved.join(', ')}.`, null);
+  return s;
+}
+
+/** Buy into one of the other companies at the price on the board. */
+function doBuyStock(state: GameState, stock: StockId, lots = 1): GameState {
+  if (state.phase !== 'act' || !state.hazards?.stocks) return state;
+  if (!COMPANIES[stock] || lots < 1) return state;
+
+  const captain = activeCaptain(state);
+  const price = state.stockPrices?.[stock] ?? COMPANIES[stock].base;
+  const cost = price * lots;
+  if (captain.cash < cost) return state;
+
+  const holdings = { ...(captain.holdings ?? {}) };
+  holdings[stock] = (holdings[stock] ?? 0) + lots;
+  const s = updateCaptain(state, captain.id, { cash: captain.cash - cost, holdings });
+  return log(
+    s,
+    'stock',
+    `${captain.name} buys ${lots} of ${COMPANIES[stock].name} at ${money(price)} — ${money(cost)}.`,
+    captain.id,
+    { stock, lots, price },
+  );
+}
+
+/** Sell out of a company at the price on the board. No discount: this is a real market. */
+function doSellStock(state: GameState, stock: StockId, lots = 1): GameState {
+  if (state.phase !== 'act' || !state.hazards?.stocks) return state;
+  const captain = activeCaptain(state);
+  const held = captain.holdings?.[stock] ?? 0;
+  const selling = Math.min(held, Math.max(1, lots));
+  if (selling <= 0) return state;
+
+  const price = state.stockPrices?.[stock] ?? COMPANIES[stock].base;
+  const holdings = { ...(captain.holdings ?? {}) };
+  holdings[stock] = held - selling;
+  const s = updateCaptain(state, captain.id, {
+    cash: captain.cash + price * selling,
+    holdings,
+  });
+  return log(
+    s,
+    'stock',
+    `${captain.name} sells ${selling} of ${COMPANIES[stock].name} at ${money(price)} — ${money(
+      price * selling,
+    )}.`,
+    captain.id,
+    { stock, lots: selling, price, sold: 1 },
+  );
+}
+
+/**
  * Crew wages, victualling and interest, charged at the turn of every round.
  *
  * Deliberately not a bankruptcy system. A captain who cannot pay hands over what they have and the
@@ -409,6 +493,7 @@ function advanceSeat(state: GameState): GameState {
   if (nextIndex === 0) {
     s = { ...s, round: s.round + 1 };
     s = chargeStandingCosts(s);
+    s = settleExchange(s);
     s = expireContracts(s);
     s = turnTheWorld(s);
   }
@@ -809,6 +894,17 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
   const fill: ContractFill = { captainId: captain.id, rank, paid: payout, onTurn: state.turn };
 
   let s = updateCaptain(state, captain.id, { cash: captain.cash + payout });
+  // Trade landed here passes through whichever company works these waters, and lifts its price at
+  // the turn of the round.
+  if (s.hazards?.stocks) {
+    const company = companyForPort(ship.location);
+    if (company) {
+      s = {
+        ...s,
+        stockVolume: { ...(s.stockVolume ?? {}), [company]: (s.stockVolume?.[company] ?? 0) + landed.length },
+      };
+    }
+  }
   s = replaceShip(s, { ...ship, hold: ship.hold.filter(lot => lot.good !== contract.good) });
   s = {
     ...s,
@@ -1161,6 +1257,10 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doBuyFitting(state, action.shipId, action.fitting as 'guns' | 'copper');
     case 'SET_INSURANCE':
       return doSetInsurance(state, action.shipId, action.insured);
+    case 'BUY_STOCK':
+      return doBuyStock(state, action.stock, action.lots);
+    case 'SELL_STOCK':
+      return doSellStock(state, action.stock, action.lots);
     case 'TAKE_LOAN':
       return doTakeLoan(state);
     case 'REPAY_LOAN':

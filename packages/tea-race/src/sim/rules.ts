@@ -619,6 +619,108 @@ export const slotsOf = (shipClass: ShipClassId | undefined): number =>
 export const speedOf = (shipClass: ShipClassId | undefined): number =>
   SHIP_CLASSES[shipClass ?? DEFAULT_SHIP_CLASS].speed;
 
+// ---------------------------------------------------------------------------
+// Difficulty
+// ---------------------------------------------------------------------------
+
+/**
+ * How well the computer captains play.
+ *
+ * The owner's report was that the AI wins about 95% of the time. At a four-captain table a human
+ * playing level should take roughly one game in four, so that is not a difficulty curve, it is a
+ * wall — and it is unsurprising: every system added over the last two sessions was wired into the
+ * AI at the same time it was wired into the rules, so the computer captains have never once been
+ * behind on knowing how to use one.
+ *
+ * The handicaps are all **knowledge and discipline**, never dice. A cheating AI that rolls better is
+ * obvious within two turns and feels like a swindle; an AI that does not bother to check whether a
+ * rival is closer to a card, or that ignores the wind chart, is simply a worse captain, and losing
+ * to it later is a fair loss.
+ */
+export type Difficulty = 'gentle' | 'steady' | 'hard';
+
+export interface DifficultyProfile {
+  label: string;
+  blurb: string;
+  /** Does she notice that a rival is already closer to the card she is chasing? */
+  seesRivals: boolean;
+  /** Does she plan around the season's wind, or just take the shortest line? */
+  usesWind: boolean;
+  /** Will she bid at the exchange to claw her way back into the share market? */
+  usesHostileBids: boolean;
+  /** Does she trade the shipping exchange? */
+  usesStocks: boolean;
+  /** Does she fit guns and copper, and insure? */
+  fitsOut: boolean;
+  /**
+   * Multiplier on how long she will sit on cargo nobody wants. Above 1 means she clogs her own hold,
+   * which is the single most costly ordinary mistake in this game.
+   */
+  patienceScale: number;
+  /**
+   * Multiplier on the cash she insists on keeping back before buying a share. Above 1 means she
+   * under-invests in the only thing that actually wins.
+   *
+   * This is the lever that makes the dial mean anything, and it was missing from the first pass.
+   * Handicapping *sailing* — rivals, wind, fittings — barely moved the outcome: a strong captain beat
+   * three gentle ones 57% of the time and three hard ones 45%, a spread of twelve points against a
+   * seat-order advantage worth twenty. Sailing badly costs turns; not buying shares costs the game.
+   */
+  shareCaution: number;
+  /**
+   * Does she keep buying hulls she cannot afford to run?
+   *
+   * The classic beginner mistake once wages are on, and a useful one: a fourth ship looks like more
+   * capacity and is actually a standing bill against the cash she needs for shares.
+   */
+  overbuysHulls: boolean;
+}
+
+export const DIFFICULTIES: Record<Difficulty, DifficultyProfile> = {
+  gentle: {
+    label: 'Gentle',
+    blurb:
+      'Competent, but she does not watch her rivals, ignores the wind chart, never fits out and never bids for shares.',
+    seesRivals: false,
+    usesWind: false,
+    usesHostileBids: false,
+    usesStocks: false,
+    fitsOut: false,
+    patienceScale: 4,
+    shareCaution: 6,
+    overbuysHulls: true,
+  },
+  steady: {
+    label: 'Steady',
+    blurb: 'She watches her rivals and sails the wind, but leaves the sharper instruments alone.',
+    seesRivals: true,
+    usesWind: true,
+    usesHostileBids: false,
+    usesStocks: true,
+    fitsOut: true,
+    patienceScale: 1.3,
+    shareCaution: 1.6,
+    overbuysHulls: false,
+  },
+  hard: {
+    label: 'Hard',
+    blurb: 'Everything she has: rivals, wind, fittings, the exchange, and a bid for your shares.',
+    seesRivals: true,
+    usesWind: true,
+    usesHostileBids: true,
+    usesStocks: true,
+    fitsOut: true,
+    patienceScale: 1,
+    shareCaution: 1,
+    overbuysHulls: false,
+  },
+};
+
+export const DEFAULT_DIFFICULTY: Difficulty = 'steady';
+
+export const difficultyProfile = (d: Difficulty | undefined): DifficultyProfile =>
+  DIFFICULTIES[d ?? DEFAULT_DIFFICULTY];
+
 /** AUTHORED — how many entries of the running log to keep. Older lines are dropped from the save. */
 export const LOG_LIMIT = 400;
 
@@ -643,6 +745,7 @@ export const PRESETS = {
       loans: false,
       deadlines: false,
       shipClasses: false,
+      stocks: false,
     },
   },
   full: {
@@ -660,6 +763,7 @@ export const PRESETS = {
       loans: true,
       deadlines: true,
       shipClasses: true,
+      stocks: true,
     },
   },
 } as const;
