@@ -27,8 +27,12 @@ import {
   FITTING_PRICES,
   HOLD_SLOTS,
   MAX_SHIPS,
+  LOAN_INTEREST_PER_ROUND,
+  LOAN_STEP,
+  loanCeilingFor,
   SHARE_MAJORITY,
   canHostileBid,
+  wagesFor,
   hostileBidPrice,
   SHARE_RAID_MULTIPLIER,
   SHIP_PRICE,
@@ -295,6 +299,28 @@ function hostileBidAction(s: GameState, captain: Captain): GameAction | null {
   return { type: 'HOSTILE_BID', targetId: target.id };
 }
 
+/**
+ * Borrow when the purse will not cover the running costs.
+ *
+ * Only when genuinely squeezed — with wages running, a captain who lets cash reach zero starts
+ * accruing arrears that come off the top of everything they earn afterwards, which is a far worse
+ * position than paying interest on a loan taken in time.
+ */
+function loanAction(s: GameState, captain: Captain): GameAction | null {
+  if (!s.hazards?.loans) return null;
+  const ships = shipsOf(s, captain.id);
+  const laden = ships.reduce((n, sh) => n + sh.hold.length, 0);
+  const nextBill =
+    (s.hazards?.wages ? wagesFor(ships.length, laden) : 0) +
+    Math.ceil((captain.debt ?? 0) * LOAN_INTEREST_PER_ROUND) +
+    (captain.arrears ?? 0);
+
+  // Squeezed means: cannot cover the coming bill and still trade.
+  if (captain.cash >= nextBill + TRADING_FLOAT) return null;
+  if ((captain.debt ?? 0) + LOAN_STEP > loanCeilingFor(ships.length, captain.shares)) return null;
+  return { type: 'TAKE_LOAN' };
+}
+
 function investmentAction(s: GameState, captain: Captain): GameAction | null {
   const temperament = temperamentOf(captain);
   const ships = shipsOf(s, captain.id);
@@ -344,6 +370,13 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
     if (canRaid(s, captain) && captain.cash - sharePrice >= VICTORY_CASH * 0.6) {
       return { type: 'BUY_SHARE' };
     }
+  }
+
+  // Debt costs interest every round, so clear it whenever the money is genuinely spare. Ahead of
+  // the share market on purpose: a captain servicing a loan out of a shrinking purse is losing.
+  if (s.hazards?.loans && (captain.debt ?? 0) > 0) {
+    const spare = captain.cash - Math.max(VICTORY_CASH, TRADING_FLOAT * 4);
+    if (spare >= LOAN_STEP) return { type: 'REPAY_LOAN' };
   }
 
   // Every ordinary route shut and still behind: bid at the exchange.
@@ -486,6 +519,10 @@ export function nextAiAction(s: GameState): GameAction | null {
       return { type: 'JETTISON', shipId: ship.id };
     }
   }
+
+  // 3b. Raise money before the bill falls due, rather than sliding into arrears.
+  const loan = loanAction(s, captain);
+  if (loan) return loan;
 
   // 4. Too poor to buy the cheapest lot anywhere and holding shares? Cash one in.
   //

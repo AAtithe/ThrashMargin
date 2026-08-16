@@ -12,10 +12,15 @@ import {
   canBuyOut,
   canHostileBid,
   hostileBidPrice,
+  loanCeilingFor,
+  loanRateLabel,
+  LOAN_INTEREST_PER_ROUND,
+  LOAN_STEP,
+  wagesFor,
 } from '../sim/rules';
 import { HOME_PORT, portName } from '../sim/content';
 import { insurancePremium } from '../sim/hazards';
-import { UI, money } from '../theme';
+import { FONT, UI, money } from '../theme';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
 import type { Captain, GameAction, GameState, Ship } from '../sim/types';
 
@@ -53,6 +58,13 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
     ? captain.cash >= sharePrice
     : Boolean(buyoutTarget) && captain.cash >= sharePrice;
 
+  const wagesOn = state.hazards?.wages ?? false;
+  const loansOn = state.hazards?.loans ?? false;
+  const arrears = captain.arrears ?? 0;
+  const debt = captain.debt ?? 0;
+  const ceiling = loanCeilingFor(fleetSize, captain.shares);
+  const ladenSlots = ships.reduce((n, sh) => n + sh.hold.length, 0);
+
   const canDeclare = captain.shares >= SHARE_MAJORITY && !state.declaration;
   const buyback = shareBuybackFor(state.sharesRemaining);
 
@@ -89,6 +101,59 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         To carry the company you need {SHARE_MAJORITY} of the {TOTAL_SHARES} shares, then{' '}
         {money(VICTORY_CASH)} and a ship still afloat {DECLARATION_TURNS} turns later.
       </p>
+
+      {/* The running costs, and what can be done about them. Shown above the share market because a
+          captain in arrears has no business buying shares. */}
+      {(wagesOn || loansOn) && (
+        <div style={ledger}>
+          {wagesOn && (
+            <span>
+              Wages next round{' '}
+              <strong style={{ color: UI.text }}>{money(wagesFor(fleetSize, ladenSlots))}</strong>
+              <span style={{ color: UI.textFaint }}>
+                {' '}
+                ({fleetSize} ship{fleetSize === 1 ? '' : 's'}, {ladenSlots} laden)
+              </span>
+            </span>
+          )}
+          {arrears > 0 && (
+            <span style={{ color: UI.bad }}>
+              <strong>{money(arrears)} in arrears</strong> — it comes off the top next round
+            </span>
+          )}
+          {loansOn && debt > 0 && (
+            <span style={{ color: UI.warn }}>
+              {money(debt)} owed, {money(Math.ceil(debt * LOAN_INTEREST_PER_ROUND))} interest a round
+            </span>
+          )}
+        </div>
+      )}
+
+      {loansOn && (
+        <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+          <Button
+            disabled={!enabled || debt + LOAN_STEP > ceiling}
+            title={
+              ceiling === 0
+                ? 'The bank lends against ships and shares, and you have nothing to pledge.'
+                : `Draws ${money(LOAN_STEP)} now against your ships and shares. Interest of ` +
+                  `${loanRateLabel()} a round accrues on the whole ` +
+                  `balance, and the debt counts against you if a claim is settled on assets. ` +
+                  `Your ceiling is ${money(ceiling)}.`
+            }
+            onClick={() => dispatch({ type: 'TAKE_LOAN' })}
+          >
+            Borrow {money(LOAN_STEP)}
+          </Button>
+          <Button
+            tone="quiet"
+            disabled={!enabled || debt <= 0 || captain.cash <= 0}
+            onClick={() => dispatch({ type: 'REPAY_LOAN' })}
+          >
+            Repay {money(Math.min(debt, LOAN_STEP, captain.cash))}
+          </Button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
         <Button disabled={!enabled || !canBuyShare} onClick={() => dispatch({ type: 'BUY_SHARE' })}>
@@ -261,3 +326,15 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
     </Panel>
   );
 }
+
+const ledger: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.2rem',
+  padding: '0.4rem 0.55rem',
+  border: `1px solid ${UI.rule}`,
+  borderRadius: 2,
+  fontFamily: FONT.data,
+  fontSize: '0.7rem',
+  color: UI.textSoft,
+};

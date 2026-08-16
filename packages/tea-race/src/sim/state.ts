@@ -91,6 +91,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       events: true,
       hostileBids: true,
       quaysideSales: true,
+      wages: true,
+      loans: true,
     },
     createdAt: opts.createdAt ?? 0,
     rngSeed: dealt.seed,

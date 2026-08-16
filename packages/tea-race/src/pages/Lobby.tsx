@@ -27,6 +27,8 @@ export default function Lobby() {
   const [events, setEvents] = useState(true);
   const [bids, setBids] = useState(true);
   const [sales, setSales] = useState(true);
+  const [wages, setWages] = useState(true);
+  const [loans, setLoans] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -50,7 +52,15 @@ export default function Lobby() {
         humanNames: humanNames.slice(0, humans),
         aiCount: ai,
         seed: seed.trim() || undefined,
-        hazards: { weather, piracy, events, hostileBids: bids, quaysideSales: sales },
+        hazards: {
+          weather,
+          piracy,
+          events,
+          hostileBids: bids,
+          quaysideSales: sales,
+          wages,
+          loans,
+        },
       });
       if (id) navigate(`/game/${id}`);
     } finally {
@@ -180,7 +190,9 @@ export default function Lobby() {
                   piracy === preset.hazards.piracy &&
                   events === (preset.hazards.events ?? false) &&
                   bids === (preset.hazards.hostileBids ?? false) &&
-                  sales === (preset.hazards.quaysideSales ?? false);
+                  sales === (preset.hazards.quaysideSales ?? false) &&
+                  wages === (preset.hazards.wages ?? false) &&
+                  loans === (preset.hazards.loans ?? false);
                 return (
                   <Button
                     key={key}
@@ -192,6 +204,8 @@ export default function Lobby() {
                       setEvents(preset.hazards.events ?? false);
                       setBids(preset.hazards.hostileBids ?? false);
                       setSales(preset.hazards.quaysideSales ?? false);
+                      setWages(preset.hazards.wages ?? false);
+                      setLoans(preset.hazards.loans ?? false);
                     }}
                   >
                     {preset.label}
@@ -204,9 +218,11 @@ export default function Lobby() {
               piracy === PRESETS.board.hazards.piracy &&
               events === PRESETS.board.hazards.events &&
               bids === PRESETS.board.hazards.hostileBids &&
-              sales === PRESETS.board.hazards.quaysideSales
+              sales === PRESETS.board.hazards.quaysideSales &&
+              wages === PRESETS.board.hazards.wages &&
+              loans === PRESETS.board.hazards.loans
                 ? PRESETS.board.blurb
-                : weather && piracy && events && bids && sales
+                : weather && piracy && events && bids && sales && wages && loans
                   ? PRESETS.full.blurb
                   : 'A mixture of your own — set the switches below however you like.'}
             </p>
@@ -250,6 +266,22 @@ export default function Lobby() {
                 <strong style={{ color: UI.text }}>Quayside sales</strong> — offload cargo you cannot
                 place at a loss instead of dumping it for nothing. A quay that deals in the good pays
                 far better than one that does not, so where you unload is its own decision.
+              </span>
+            </label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={wages} onChange={e => setWages(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>Crew wages</strong> — every ship costs money every
+                round, and a laden one costs more. Cash stops being a score and becomes a constraint;
+                a fleet has to earn its keep. Games run about half as long again.
+              </span>
+            </label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={loans} onChange={e => setLoans(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>Loans</strong> — borrow against your ships and
+                shares at interest. A way through a bad season, and a way to gamble on one good run.
+                What you owe counts against you if a claim is settled on assets.
               </span>
             </label>
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>

@@ -35,6 +35,11 @@ import {
   PAYOUT_MULTIPLIERS,
   canHostileBid,
   hostileBidPrice,
+  LOAN_INTEREST_PER_ROUND,
+  LOAN_STEP,
+  loanCeilingFor,
+  loanRateLabel,
+  wagesFor,
   hostileBidProceeds,
   HOLD_SLOTS,
   SHARE_MAJORITY,
@@ -141,7 +146,11 @@ export function assetValue(state: GameState, captain: Captain): number {
     captain.cash +
     ships.length * SHIP_PRICE +
     captain.shares * sharePriceFor(TOTAL_SHARES - captain.shares) +
-    holds
+    holds -
+    // Net of what is owed. A failed declaration is settled on this figure, and a captain who has
+    // borrowed their way to the top of the table has not actually got there.
+    (captain.debt ?? 0) -
+    (captain.arrears ?? 0)
   );
 }
 
@@ -254,6 +263,99 @@ function turnTheWorld(state: GameState): GameState {
   });
 }
 
+/**
+ * Crew wages, victualling and interest, charged at the turn of every round.
+ *
+ * Deliberately not a bankruptcy system. A captain who cannot pay hands over what they have and the
+ * remainder becomes arrears, which are then taken off the top of anything they earn. That is a real
+ * constraint — a broke captain's next delivery is not their own money — without needing a way to
+ * eliminate a player, which this game has no other use for and which would interact badly with a
+ * share market that requires everyone to keep holding their shares.
+ */
+function chargeStandingCosts(state: GameState): GameState {
+  const wagesOn = state.hazards?.wages ?? false;
+  const loansOn = state.hazards?.loans ?? false;
+  if (!wagesOn && !loansOn) return state;
+
+  let s = state;
+  for (const captain of state.captains) {
+    const ships = s.ships.filter(sh => sh.ownerId === captain.id);
+    const laden = ships.reduce((n, sh) => n + sh.hold.length, 0);
+
+    const wages = wagesOn ? wagesFor(ships.length, laden) : 0;
+    const debt = captain.debt ?? 0;
+    const interest = loansOn && debt > 0 ? Math.ceil(debt * LOAN_INTEREST_PER_ROUND) : 0;
+    const owed = wages + interest + (captain.arrears ?? 0);
+    if (owed <= 0) continue;
+
+    const current = s.captains.find(c => c.id === captain.id)!;
+    const paid = Math.min(current.cash, owed);
+    const short = owed - paid;
+    s = updateCaptain(s, captain.id, {
+      cash: current.cash - paid,
+      ...(short > 0 || current.arrears ? { arrears: short } : {}),
+    });
+
+    s = log(
+      s,
+      'wages',
+      short > 0
+        ? `${captain.name} cannot meet the ${money(owed)} due — ${money(paid)} paid, ${money(
+            short,
+          )} left owing.`
+        : `${captain.name} pays ${money(owed)} in wages${interest > 0 ? ' and interest' : ''}.`,
+      captain.id,
+      { wages, interest, paid, arrears: short },
+    );
+  }
+  return s;
+}
+
+/** Draw down another step against the fleet. */
+function doTakeLoan(state: GameState): GameState {
+  if (state.phase !== 'act' || !state.hazards?.loans) return state;
+  const captain = activeCaptain(state);
+  const debt = captain.debt ?? 0;
+  const fleet = state.ships.filter(sh => sh.ownerId === captain.id).length;
+  if (debt + LOAN_STEP > loanCeilingFor(fleet, captain.shares)) return state;
+
+  let s = updateCaptain(state, captain.id, {
+    cash: captain.cash + LOAN_STEP,
+    debt: debt + LOAN_STEP,
+  });
+  return log(
+    s,
+    'wages',
+    `${captain.name} draws ${money(LOAN_STEP)} against the fleet — ${money(
+      debt + LOAN_STEP,
+    )} outstanding at ${loanRateLabel()} a round.`,
+    captain.id,
+    { borrowed: LOAN_STEP, debt: debt + LOAN_STEP },
+  );
+}
+
+/** Pay down as much of the debt as one step and the purse allow. */
+function doRepayLoan(state: GameState): GameState {
+  if (state.phase !== 'act' || !state.hazards?.loans) return state;
+  const captain = activeCaptain(state);
+  const debt = captain.debt ?? 0;
+  if (debt <= 0) return state;
+  const paying = Math.min(debt, LOAN_STEP, captain.cash);
+  if (paying <= 0) return state;
+
+  const s = updateCaptain(state, captain.id, {
+    cash: captain.cash - paying,
+    debt: debt - paying,
+  });
+  return log(
+    s,
+    'wages',
+    `${captain.name} pays ${money(paying)} off the debt — ${money(debt - paying)} outstanding.`,
+    captain.id,
+    { repaid: paying, debt: debt - paying },
+  );
+}
+
 /** Moves to the next seat, handling the round roll-over and the declaration countdown. */
 function advanceSeat(state: GameState): GameState {
   let s: GameState = { ...state, sailPoints: {}, dice: {}, turn: state.turn + 1, phase: 'roll' };
@@ -262,6 +364,7 @@ function advanceSeat(state: GameState): GameState {
   s = { ...s, activeIndex: nextIndex };
   if (nextIndex === 0) {
     s = { ...s, round: s.round + 1 };
+    s = chargeStandingCosts(s);
     s = turnTheWorld(s);
   }
 
@@ -995,6 +1098,10 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doBuyFitting(state, action.shipId, action.fitting as 'guns' | 'copper');
     case 'SET_INSURANCE':
       return doSetInsurance(state, action.shipId, action.insured);
+    case 'TAKE_LOAN':
+      return doTakeLoan(state);
+    case 'REPAY_LOAN':
+      return doRepayLoan(state);
     case 'BUY_SHARE':
       return doBuyShare(state);
     case 'SELL_SHARE':

@@ -128,6 +128,18 @@ export interface Captain {
   colour: string;
   cash: number;
   shares: number;
+  /**
+   * Wages owed and not yet paid. Optional, absent meaning none, so a save from before standing costs
+   * existed loads untouched.
+   *
+   * There is no bankruptcy in this game and inventing one would need a whole resolution path nothing
+   * else needs, so a captain who cannot meet the wage bill pays what they have and falls into
+   * arrears. Arrears are settled ahead of anything else the moment money comes in, which is a
+   * harsher constraint than it sounds: it means a broke captain's next delivery is not theirs.
+   */
+  arrears?: number;
+  /** Outstanding principal borrowed against the fleet. */
+  debt?: number;
   aiProfile?: AiProfile;
 }
 
@@ -170,6 +182,10 @@ export interface Hazards {
   hostileBids?: boolean;
   /** Quayside sales: offload unwanted cargo at a loss rather than dumping it for nothing. */
   quaysideSales?: boolean;
+  /** Crew wages and victualling, charged every round against every ship afloat. */
+  wages?: boolean;
+  /** Borrowing against the fleet, at interest. */
+  loans?: boolean;
 }
 
 /** The kinds of thing the world does to everybody at once. See sim/events.ts. */
@@ -221,7 +237,8 @@ export type LogKind =
   | 'lapse'
   | 'victory'
   | 'contract'
-  | 'event';
+  | 'event'
+  | 'wages';
 
 export interface LogEntry {
   /**
@@ -356,6 +373,10 @@ export type GameAction =
   | { type: 'BUY_FITTING'; shipId: ShipId; fitting: keyof ShipFittings }
   /** Open or close a ship's standing insurance policy. */
   | { type: 'SET_INSURANCE'; shipId: ShipId; insured: boolean }
+  /** Draw down another LOAN_STEP against the fleet. */
+  | { type: 'TAKE_LOAN' }
+  /** Pay down the debt, as much as the captain can afford up to one step. */
+  | { type: 'REPAY_LOAN' }
   | { type: 'BUY_SHARE' }
   /** Sell a share back to the bank at half price — the way out of having no working capital. */
   | { type: 'SELL_SHARE' }

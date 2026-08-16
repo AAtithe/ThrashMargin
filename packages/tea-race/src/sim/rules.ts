@@ -409,6 +409,86 @@ export const INSURANCE_BASE_RATE = 0.008;
 export const INSURANCE_RISK_LOADING = 3.5;
 export const INSURANCE_MINIMUM_PREMIUM = 1;
 
+// ---------------------------------------------------------------------------
+// Standing costs
+// ---------------------------------------------------------------------------
+
+/**
+ * AUTHORED — crew wages and victualling, charged every round against every ship afloat.
+ *
+ * The purpose is to stop cash being a score and make it a constraint. Without a standing cost, money
+ * only ever goes up: a captain with four ships has strictly more capacity than one with two and
+ * pays nothing for it, so buying hulls is a free good and the £750 victory bar is a formality by the
+ * time anyone has a majority. With wages running, a fleet has to earn its keep, a bad season of
+ * storms genuinely hurts, and the declaration money has to be *held* rather than merely reached.
+ *
+ * Charged per ship rather than per crew member, and a laden ship costs more than a light one —
+ * cargo needs working. The rate is per round, not per turn, so a four-captain table and a
+ * two-captain table cost the same to run.
+ *
+ * The rate is small and that is the whole finding. The first attempt used £26 a ship, sized by eye
+ * against what felt like a plausible wage bill, and it destroyed the game: **4 of 20 seeds finished
+ * at all**, captains ended on an average of £42, and the table spent 38,525 turns in arrears,
+ * because nobody could ever hold the £750 a declaration needs. A captain earns on the order of £50 a
+ * round; a bill anywhere near that is not pressure, it is an ending.
+ *
+ * Swept against the harness: £4 gives a 110-round median, £5 gives 126, £6 gives 150 but stalls one
+ * seed at the round cap, £8 stalls two, £12 stalls nine. £5 with £2 a laden slot is the most that
+ * still finishes every seed — a 50% longer game than the 84-round baseline, with average final cash
+ * down from £2,048 to £1,150 and captains genuinely in arrears about a twentieth of the time.
+ */
+export const WAGES_PER_SHIP = 5;
+/** Extra per occupied cargo slot — a full hull is more work than an empty one. */
+export const WAGES_PER_LADEN_SLOT = 2;
+
+/**
+ * What a captain owes at the turn of the round.
+ *
+ * A captain who cannot pay does not go bankrupt — there is no bankruptcy in this game and inventing
+ * one would need a whole resolution path — they simply pay what they have and fall into arrears,
+ * which is tracked and settled later. See `doWages`.
+ */
+export function wagesFor(shipCount: number, ladenSlots: number): number {
+  return shipCount * WAGES_PER_SHIP + ladenSlots * WAGES_PER_LADEN_SLOT;
+}
+
+/**
+ * AUTHORED — borrowing against the fleet.
+ *
+ * The other half of making cash a constraint: once it can run out, being able to raise it becomes a
+ * real decision. Interest accrues per round on the outstanding principal, and the ceiling is tied to
+ * what the captain could actually be pursued for — ships and shares — so it scales with success
+ * rather than handing a struggling captain unlimited rope.
+ */
+export const LOAN_INTEREST_PER_ROUND = 0.025;
+/** The rate as it should be written for a reader: "2.5%", never a rounded "3%". */
+export const loanRateLabel = (): string =>
+  `${(LOAN_INTEREST_PER_ROUND * 100).toFixed(1).replace(/\.0$/, '')}%`;
+export const LOAN_STEP = 250;
+/** Fraction of a captain's assets the bank will lend against. */
+export const LOAN_MARGIN = 0.6;
+
+/**
+ * The most the bank will advance, measured against what it could actually pursue.
+ *
+ * Takes counts rather than a GameState so it can live here in the rules, where both the reducer and
+ * the AI can reach it — `ai.ts` cannot import from `actions.ts` without a cycle.
+ *
+ * Tied to ships and shares rather than to cash, so the ceiling scales with a captain's standing
+ * instead of handing whoever is most desperate the most rope.
+ */
+export function loanCeilingFor(shipCount: number, shares: number): number {
+  // No ship, no credit: there is nothing to lend against and nothing to pursue.
+  if (shipCount <= 0) return 0;
+  const collateral = shipCount * SHIP_PRICE + shares * sharePriceFor(0);
+  const geared = Math.floor((collateral * LOAN_MARGIN) / LOAN_STEP) * LOAN_STEP;
+  // A going concern can always raise one step, whatever the arithmetic says. Without this the
+  // captain the facility exists for cannot use it: one ship and no shares is £250 of collateral,
+  // which at 60% is £150 and rounds down to a ceiling of nothing. The captain in trouble is exactly
+  // the one with a single hull left.
+  return Math.max(LOAN_STEP, geared);
+}
+
 /** AUTHORED — how many entries of the running log to keep. Older lines are dropped from the save. */
 export const LOG_LIMIT = 400;
 
@@ -429,6 +509,8 @@ export const PRESETS = {
       events: false,
       hostileBids: false,
       quaysideSales: false,
+      wages: false,
+      loans: false,
     },
   },
   full: {
@@ -442,6 +524,8 @@ export const PRESETS = {
       events: true,
       hostileBids: true,
       quaysideSales: true,
+      wages: true,
+      loans: true,
     },
   },
 } as const;

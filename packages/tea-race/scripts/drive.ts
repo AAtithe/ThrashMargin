@@ -23,6 +23,8 @@ import { PORT_BY_ID, GOOD_BY_ID, GOODS, distanceBetween } from '../src/sim/conte
 import {
   CONTRACT_MAX_DISTANCE,
   DECLARATION_TURNS,
+  LOAN_STEP,
+  loanCeilingFor,
   FACE_UP_CONTRACTS,
   HOLD_SLOTS,
   MAX_SHIPS,
@@ -1132,6 +1134,106 @@ function testDeterminism() {
 }
 
 /**
+ * Standing costs and borrowing — the pair that turns cash from a score into a constraint.
+ */
+function testStandingCosts() {
+  const label = 'standing costs';
+  const hz = {
+    weather: false, piracy: false, events: false,
+    hostileBids: false, quaysideSales: false, wages: true, loans: true,
+  };
+
+  // --- wages fall due at the turn of the round -----------------------------------------------------
+  let g = createInitialState('t-wage', 'Wages', { humanNames: ['A'], aiCount: 1, seed: 'wage', hazards: hz });
+  g = setCash(g, 'p1', 3000);
+  const startCash = cash(g, 'p1');
+  const startRound = g.round;
+  // END_TURN is refused before the dice are thrown, so each seat needs its roll first.
+  let guard = 0;
+  while (g.round === startRound && guard++ < 40) {
+    if (g.phase === 'roll') g = processAction(g, { type: 'ROLL' });
+    g = processAction(g, { type: 'END_TURN' });
+  }
+  check(`${label}: the round turns over`, g.round > startRound);
+  check(
+    `${label}: and wages are taken`,
+    cash(g, 'p1') < startCash,
+    `${cash(g, 'p1')} against ${startCash}`,
+  );
+  check(`${label}: it is on the record`, g.log.some(e => e.kind === 'wages'));
+
+  // Off means off — a faithful game has no standing costs at all.
+  let free = createInitialState('t-wage-off', 'Off', {
+    humanNames: ['A'], aiCount: 1, seed: 'wage',
+    hazards: { ...hz, wages: false, loans: false },
+  });
+  free = setCash(free, 'p1', 3000);
+  const freeRound = free.round;
+  guard = 0;
+  while (free.round === freeRound && guard++ < 40) {
+    if (free.phase === 'roll') free = processAction(free, { type: 'ROLL' });
+    free = processAction(free, { type: 'END_TURN' });
+  }
+  equal(`${label}: nothing is charged when switched off`, cash(free, 'p1'), 3000);
+
+  // --- arrears rather than bankruptcy --------------------------------------------------------------
+  let broke = createInitialState('t-arr', 'Arrears', { humanNames: ['A'], aiCount: 1, seed: 'arr', hazards: hz });
+  broke = setCash(broke, 'p1', 0);
+  const brokeRound = broke.round;
+  guard = 0;
+  while (broke.round === brokeRound && guard++ < 40) {
+    if (broke.phase === 'roll') broke = processAction(broke, { type: 'ROLL' });
+    broke = processAction(broke, { type: 'END_TURN' });
+  }
+  const owing = broke.captains.find(c => c.id === 'p1')!.arrears ?? 0;
+  check(`${label}: a captain who cannot pay falls into arrears`, owing > 0, `${owing}`);
+  check(`${label}: and is not eliminated`, broke.captains.some(c => c.id === 'p1'));
+  check(`${label}: cash never goes negative`, broke.captains.every(c => c.cash >= 0));
+
+  // --- borrowing -----------------------------------------------------------------------------------
+  let loan = createInitialState('t-loan', 'Loan', { humanNames: ['A'], aiCount: 1, seed: 'loan', hazards: hz });
+  loan = setCash(loan, 'p1', 100);
+  loan = processAction(loan, { type: 'ROLL' });
+  const ceiling = loanCeilingFor(loan.ships.filter(sh => sh.ownerId === 'p1').length, 0);
+  check(`${label}: a captain with a ship can borrow something`, ceiling >= LOAN_STEP, `${ceiling}`);
+
+  const borrowed = processAction(loan, { type: 'TAKE_LOAN' });
+  check(`${label}: the draw goes through`, borrowed !== loan);
+  equal(`${label}: cash rises by the step`, cash(borrowed, 'p1'), 100 + LOAN_STEP);
+  equal(`${label}: and the debt with it`, borrowed.captains.find(c => c.id === 'p1')!.debt, LOAN_STEP);
+
+  // The ceiling is a ceiling.
+  let maxed = borrowed;
+  for (let i = 0; i < 20; i++) maxed = processAction(maxed, { type: 'TAKE_LOAN' });
+  check(
+    `${label}: never lends past the ceiling`,
+    (maxed.captains.find(c => c.id === 'p1')!.debt ?? 0) <= loanCeilingFor(
+      maxed.ships.filter(sh => sh.ownerId === 'p1').length,
+      maxed.captains.find(c => c.id === 'p1')!.shares,
+    ),
+  );
+
+  // Debt is netted out of a captain's worth, or borrowing would be a way to fake a fortune.
+  const owner = borrowed.captains.find(c => c.id === 'p1')!;
+  const clean = { ...owner, debt: 0 };
+  check(
+    `${label}: debt counts against asset value`,
+    assetValue(borrowed, owner) < assetValue(borrowed, clean),
+  );
+
+  const repaid = processAction(borrowed, { type: 'REPAY_LOAN' });
+  check(`${label}: and it can be paid down`, repaid !== borrowed);
+  equal(`${label}: to nothing`, repaid.captains.find(c => c.id === 'p1')!.debt, 0);
+  check(
+    `${label}: refused outright when loans are switched off`,
+    processAction({ ...loan, hazards: { ...hz, loans: false } }, { type: 'TAKE_LOAN' }) !== undefined &&
+      processAction({ ...loan, hazards: { ...hz, loans: false } }, { type: 'TAKE_LOAN' }).captains.find(
+        c => c.id === 'p1',
+      )!.debt === undefined,
+  );
+}
+
+/**
  * Selling cargo off at the quay, and insurance being worth its premium.
  *
  * Both exist because the owner asked the same question twice over: what does this cost me, and what
@@ -1734,6 +1836,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testStandingCosts();
   testQuaysideAndCover();
   testAwaitingOrders();
   testHostileBid();
