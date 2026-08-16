@@ -21,8 +21,12 @@ import {
 import { assetValue, processAction, runAiTurn } from '../src/sim/actions';
 import { PORT_BY_ID, GOOD_BY_ID, GOODS, distanceBetween } from '../src/sim/content';
 import {
+  CARGO_FRESH_TURNS,
+  CARGO_SPOIL_FLOOR,
+  CONTRACT_LIFE_ROUNDS,
   CONTRACT_MAX_DISTANCE,
   DECLARATION_TURNS,
+  freshness,
   LOAN_STEP,
   loanCeilingFor,
   FACE_UP_CONTRACTS,
@@ -1134,6 +1138,81 @@ function testDeterminism() {
 }
 
 /**
+ * The clock: commissions that lapse, and cargo that goes off.
+ */
+function testDeadlines() {
+  const label = 'deadlines';
+  const hz = {
+    weather: false, piracy: false, events: false,
+    hostileBids: false, quaysideSales: false, wages: false, loans: false, deadlines: true,
+  };
+
+  // --- freshness -----------------------------------------------------------------------------------
+  equal(`${label}: a fresh lot is worth all of itself`, freshness(0), 1);
+  equal(`${label}: and still is at the end of the grace`, freshness(CARGO_FRESH_TURNS), 1);
+  check(
+    `${label}: past it she starts to lose`,
+    freshness(CARGO_FRESH_TURNS + 10) < 1,
+    `${freshness(CARGO_FRESH_TURNS + 10)}`,
+  );
+  check(`${label}: monotonically`, freshness(60) < freshness(40) && freshness(40) < freshness(30));
+  equal(`${label}: but never below the floor`, freshness(10_000), CARGO_SPOIL_FLOOR);
+
+  // --- the delivery is actually discounted ---------------------------------------------------------
+  let g = createInitialState('t-dl', 'Clock', { humanNames: ['A'], aiCount: 1, seed: 'dl', hazards: hz });
+  const card = g.contracts[0];
+  const from = sourcesFor(card.good, card.destination).filter(p => p !== card.destination)[0];
+  g = setCash(g, 'p1', 5000);
+  g = place(g, 's1', from);
+  g = processAction(g, { type: 'ROLL' });
+  g = processAction(g, { type: 'BUY_CARGO', shipId: 's1', good: card.good });
+  const hold = shipOf(g, 's1').hold;
+
+  const landNow = processAction(place(g, 's1', card.destination, hold), {
+    type: 'DELIVER', shipId: 's1', contractId: card.id,
+  });
+  // The same delivery, but the lot has been aboard far longer.
+  const stale = { ...g, turn: g.turn + CARGO_FRESH_TURNS + 30 };
+  const landLate = processAction(place(stale, 's1', card.destination, hold), {
+    type: 'DELIVER', shipId: 's1', contractId: card.id,
+  });
+  const fresh = cash(landNow, 'p1') - cash(g, 'p1');
+  const old = cash(landLate, 'p1') - cash(stale, 'p1');
+  check(`${label}: stale cargo pays less than fresh`, old < fresh, `${old} against ${fresh}`);
+  check(`${label}: but still pays something`, old > 0, `${old}`);
+
+  // With the clock off, age is irrelevant.
+  const noClock = { ...stale, hazards: { ...hz, deadlines: false } };
+  const landedFree = processAction(place(noClock, 's1', card.destination, hold), {
+    type: 'DELIVER', shipId: 's1', contractId: card.id,
+  });
+  equal(
+    `${label}: age costs nothing when switched off`,
+    cash(landedFree, 'p1') - cash(noClock, 'p1'),
+    fresh,
+  );
+
+  // --- cards lapse ---------------------------------------------------------------------------------
+  let board = createInitialState('t-dl2', 'Board', { humanNames: [], aiCount: 4, seed: 'dl2', hazards: hz });
+  const originals = board.contracts.map(c => c.id);
+  check(
+    `${label}: every card is stamped with the round it went up`,
+    board.contracts.every(c => c.postedOn !== undefined),
+  );
+  for (let i = 0; i < 2000 && board.round <= CONTRACT_LIFE_ROUNDS + 2; i++) board = runAiTurn(board);
+  check(
+    `${label}: the board turns over`,
+    board.contracts.some(c => !originals.includes(c.id)),
+    'no card ever changed',
+  );
+  check(
+    `${label}: nothing outlives its posting by more than a round`,
+    board.contracts.every(c => board.round - (c.postedOn ?? board.round) <= CONTRACT_LIFE_ROUNDS),
+  );
+  equal(`${label}: and there are still five`, board.contracts.length, FACE_UP_CONTRACTS);
+}
+
+/**
  * Standing costs and borrowing — the pair that turns cash from a score into a constraint.
  */
 function testStandingCosts() {
@@ -1836,6 +1915,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testDeadlines();
   testStandingCosts();
   testQuaysideAndCover();
   testAwaitingOrders();

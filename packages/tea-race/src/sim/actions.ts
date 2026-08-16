@@ -32,6 +32,8 @@ import {
   FITTING_PRICES,
   LOG_LIMIT,
   MAX_SHIPS,
+  CONTRACT_LIFE_ROUNDS,
+  freshness,
   PAYOUT_MULTIPLIERS,
   canHostileBid,
   hostileBidPrice,
@@ -109,7 +111,7 @@ function replenishContracts(state: GameState): GameState {
   let s = state;
   for (const contract of s.contracts) {
     if (!isContractComplete(contract)) continue;
-    const drawn = drawContract(s.rngSeed, s.deck, s.nextContractSeq, faceUpKeys(s.contracts));
+    const drawn = drawContract(s.rngSeed, s.deck, s.nextContractSeq, faceUpKeys(s.contracts), s.round);
     s = {
       ...s,
       rngSeed: drawn.seed,
@@ -206,6 +208,45 @@ function resolveDeclaration(state: GameState): GameState {
         heir.worth,
       )} in cash, ships and shares — and takes the company.`,
       heir.c.id,
+    );
+  }
+  return s;
+}
+
+/**
+ * Withdraws commissions that have been on the board too long and posts fresh ones.
+ *
+ * Expires a card whatever its state, including one that already has first money taken. Losing the
+ * remaining second place to the clock is the sharpest version of the pressure this exists to create:
+ * a run you were saving for later can simply stop being available.
+ */
+function expireContracts(state: GameState): GameState {
+  if (!state.hazards?.deadlines) return state;
+
+  let s = state;
+  for (const contract of state.contracts) {
+    const posted = contract.postedOn;
+    if (posted === undefined) continue;
+    if (s.round - posted < CONTRACT_LIFE_ROUNDS) continue;
+
+    const drawn = drawContract(s.rngSeed, s.deck, s.nextContractSeq, faceUpKeys(s.contracts), s.round);
+    s = {
+      ...s,
+      rngSeed: drawn.seed,
+      deck: drawn.deck,
+      nextContractSeq: drawn.seq,
+      contracts: s.contracts.map(c => (c.id === contract.id ? drawn.contract : c)),
+    };
+    s = log(
+      s,
+      'contract',
+      `The ${goodName(contract.good)} commission for ${portName(
+        contract.destination,
+      )} is withdrawn unfilled. ${portName(drawn.contract.destination)} wants ${goodName(
+        drawn.contract.good,
+      )} in its place.`,
+      null,
+      { expired: contract.id, good: contract.good },
     );
   }
   return s;
@@ -365,6 +406,7 @@ function advanceSeat(state: GameState): GameState {
   if (nextIndex === 0) {
     s = { ...s, round: s.round + 1 };
     s = chargeStandingCosts(s);
+    s = expireContracts(s);
     s = turnTheWorld(s);
   }
 
@@ -750,10 +792,14 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
   // Paying from `lot.paid` would mean the cheapest quay earned the least, so the correct play would
   // be to always buy at the dearest one — see sim/pricing.ts.
   const plain = landed.length * contract.price * PAYOUT_MULTIPLIERS[rank];
-  const payout = landed.reduce(
-    (sum, lot) => sum + landedValue(state, lot.good, contract.price, PAYOUT_MULTIPLIERS[rank]),
-    0,
-  );
+  // Each lot is paid on its own freshness, so a hull used as a warehouse earns less than one used
+  // as a ship. Per lot rather than per delivery: three lots loaded at different times have
+  // genuinely different ages.
+  const spoils = state.hazards?.deadlines ?? false;
+  const payout = landed.reduce((sum, lot) => {
+    const full = landedValue(state, lot.good, contract.price, PAYOUT_MULTIPLIERS[rank]);
+    return sum + (spoils ? Math.round(full * freshness(state.turn - lot.boughtOnTurn)) : full);
+  }, 0);
   const fill: ContractFill = { captainId: captain.id, rank, paid: payout, onTurn: state.turn };
 
   let s = updateCaptain(state, captain.id, { cash: captain.cash + payout });

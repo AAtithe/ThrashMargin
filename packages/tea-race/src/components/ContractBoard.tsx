@@ -1,4 +1,5 @@
 import { sourcesFor, GOOD_BY_ID, distanceBetween, portName } from '../sim/content';
+import { CONTRACT_LIFE_ROUNDS } from '../sim/rules';
 import { payoutFor } from '../sim/contracts';
 import { FONT, UI, money } from '../theme';
 import { Empty, Label, Panel, bodySmall, dataText } from './ui';
@@ -11,6 +12,9 @@ interface Props {
   reference: Ship | null;
   onFocus: (contract: Contract) => void;
   focusedId: string | null;
+  /** The round now, and whether commissions expire at all, for the countdown on each card. */
+  round: number;
+  deadlines: boolean;
 }
 
 /**
@@ -18,7 +22,15 @@ interface Props {
  * is racing over — so it shows the payout ladder explicitly rather than making anyone remember
  * that the multipliers are four and two.
  */
-export default function ContractBoard({ contracts, captains, reference, onFocus, focusedId }: Props) {
+export default function ContractBoard({
+  contracts,
+  captains,
+  reference,
+  onFocus,
+  focusedId,
+  round,
+  deadlines,
+}: Props) {
   const nameOf = (id: string) => captains.find(c => c.id === id)?.name ?? 'someone';
 
   return (
@@ -74,6 +86,20 @@ export default function ContractBoard({ contracts, captains, reference, onFocus,
 
                 <span style={{ ...bodySmall, color: UI.textSoft }}>
                   wanted at <strong style={{ color: UI.text }}>{portName(contract.destination)}</strong>
+                  {contract.postedOn !== undefined && deadlines && (
+                    <span
+                      style={{
+                        color:
+                          CONTRACT_LIFE_ROUNDS - (round - contract.postedOn) <= 5
+                            ? UI.warn
+                            : UI.textFaint,
+                      }}
+                    >
+                      {' '}
+                      · withdrawn in {Math.max(0, CONTRACT_LIFE_ROUNDS - (round - contract.postedOn))}{' '}
+                      rounds
+                    </span>
+                  )}
                 </span>
 
                 {/* Where it can be had. The card does not dictate a source, so the useful thing to

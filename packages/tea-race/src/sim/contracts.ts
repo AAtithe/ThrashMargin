@@ -77,6 +77,8 @@ export function drawContract(
   deck: CardKey[],
   seq: number,
   exclude: ReadonlySet<CardKey> = new Set(),
+  /** The round the card goes up, so a deadline can be measured from it. */
+  postedOn = 1,
 ): DrawResult {
   let s = seed;
   let pile = deck;
@@ -94,6 +96,7 @@ export function drawContract(
         seq: seq + 1,
         contract: {
           id: `c${seq}`,
+          postedOn,
           good: parsed.good,
           destination: parsed.destination,
           price: GOOD_BY_ID[parsed.good].basePrice,
@@ -111,14 +114,14 @@ export function drawContract(
 }
 
 /** Deals the opening five. */
-export function dealOpeningContracts(seed: number, deck: CardKey[], seq: number) {
+export function dealOpeningContracts(seed: number, deck: CardKey[], seq: number, postedOn = 1) {
   let s = seed;
   let pile = deck;
   let n = seq;
   const contracts: Contract[] = [];
   const seen = new Set<CardKey>();
   for (let i = 0; i < FACE_UP_CONTRACTS; i++) {
-    const drawn = drawContract(s, pile, n, seen);
+    const drawn = drawContract(s, pile, n, seen, postedOn);
     s = drawn.seed;
     pile = drawn.deck;
     n = drawn.seq;

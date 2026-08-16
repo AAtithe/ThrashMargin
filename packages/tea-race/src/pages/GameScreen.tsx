@@ -198,6 +198,8 @@ export default function GameScreen() {
             contracts={state.contracts}
             captains={state.captains}
             reference={selectedShip}
+            round={state.round}
+            deadlines={state.hazards?.deadlines ?? false}
             focusedId={focusedContract?.id ?? null}
             onFocus={contract => {
               setFocusedContract(prev => (prev?.id === contract.id ? null : contract));
@@ -310,6 +312,8 @@ export default function GameScreen() {
                 dice={state.dice}
                 selectedShipId={selectedShipId}
                 rolled={state.phase === 'act'}
+                turn={state.turn}
+                deadlines={state.hazards?.deadlines ?? false}
                 onSelect={shipId => {
                   setSelectedShipId(shipId);
                   setTargetPort(null);

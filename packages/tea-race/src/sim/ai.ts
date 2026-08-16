@@ -30,6 +30,8 @@ import {
   LOAN_INTEREST_PER_ROUND,
   LOAN_STEP,
   loanCeilingFor,
+  CONTRACT_LIFE_ROUNDS,
+  freshness,
   SHARE_MAJORITY,
   canHostileBid,
   wagesFor,
@@ -208,18 +210,29 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
     const contested = rivalsAhead(s, contract, ship.ownerId, distance);
     if (contract.fills.length + contested >= 2) continue;
 
+    // Hoisted above the payout, because what a lot is worth on arrival depends on how old it will be
+    // when it gets there, not how old it is now.
     const turns = passageTurns(s, ship.location, contract.destination, distance);
+
+    // No point steering for a card that will be off the board before she raises the harbour.
+    if (s.hazards?.deadlines && contract.postedOn !== undefined) {
+      const roundsLeft = CONTRACT_LIFE_ROUNDS - (s.round - contract.postedOn);
+      if (turns / Math.max(1, s.captains.length) > roundsLeft) continue;
+    }
+
     const drag = piracyDrag(s, ship.location, contract.destination);
     // Every matching slot lands together and is paid per unit, so three lots are worth three times
     // the trip. That is what makes filling the hull with one good the right move.
     const units = ship.hold.filter(lot => lot.good === contract.good);
     const multiplier = payoutFor(contract) / contract.price;
     // Landed on the card's reckoning per unit, not on what was paid for the lot — the reducer pays
-    // that way and the AI must score it that way or it will chase the wrong cards.
-    const gross = units.reduce(
-      (n, lot) => n + landedValue(s, lot.good, contract.price, multiplier),
-      0,
-    );
+    // that way and the AI must score it that way or it will chase the wrong cards. Discounted for
+    // how long each lot has been aboard, for the same reason.
+    const spoils = s.hazards?.deadlines ?? false;
+    const gross = units.reduce((n, lot) => {
+      const full = landedValue(s, lot.good, contract.price, multiplier);
+      return n + (spoils ? full * freshness(s.turn + turns - lot.boughtOnTurn) : full);
+    }, 0);
     const score = (gross * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, source: null, score };
   }

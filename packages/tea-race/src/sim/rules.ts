@@ -489,6 +489,46 @@ export function loanCeilingFor(shipCount: number, shares: number): number {
   return Math.max(LOAN_STEP, geared);
 }
 
+// ---------------------------------------------------------------------------
+// The clock
+// ---------------------------------------------------------------------------
+
+/**
+ * AUTHORED — how many rounds a commission stays on the board before it is withdrawn and replaced.
+ *
+ * Without a clock the five face-up cards are a standing menu: you can plan a leisurely optimum,
+ * take the best run twice, and nothing you fail to do costs you anything. A deadline turns the board
+ * over, forces a choice between the run in front of you and the better one you might reach, and
+ * means a rival taking first money genuinely closes a door rather than merely halving it.
+ *
+ * Counter-intuitively this makes games **shorter**, not longer, and the length has to be bought back
+ * by choosing the number carefully. A captain who can see a card will lapse before she reaches it
+ * simply picks a nearer run, so throughput per round goes up: at an 18-round life the median fell
+ * from 126 rounds to 97. At 24 it is 112 with about one card a game withdrawn unfilled, and at 30 it
+ * is 115 with the deadline barely biting. 24 keeps most of the length the wage bill bought while
+ * leaving the clock on every card real enough to steer by.
+ */
+export const CONTRACT_LIFE_ROUNDS = 24;
+
+/**
+ * AUTHORED — cargo loses value in the hold.
+ *
+ * This is a tea race. Tea landed a season late is not the same tea, and a hull used as a warehouse
+ * should not be as good as a hull used as a ship. The grace period is generous — a normal run is
+ * well inside it — so this bites only on cargo that has been carried around unsold, which is exactly
+ * the behaviour it is meant to discourage.
+ */
+export const CARGO_FRESH_TURNS = 24;
+export const CARGO_SPOIL_PER_TURN = 0.02;
+/** However long it sits, a lot never becomes completely worthless. */
+export const CARGO_SPOIL_FLOOR = 0.55;
+
+/** What a lot is worth on landing, as a fraction, given how long it has been aboard. */
+export function freshness(turnsHeld: number): number {
+  const over = Math.max(0, turnsHeld - CARGO_FRESH_TURNS);
+  return Math.max(CARGO_SPOIL_FLOOR, 1 - over * CARGO_SPOIL_PER_TURN);
+}
+
 /** AUTHORED — how many entries of the running log to keep. Older lines are dropped from the save. */
 export const LOG_LIMIT = 400;
 
@@ -511,6 +551,7 @@ export const PRESETS = {
       quaysideSales: false,
       wages: false,
       loans: false,
+      deadlines: false,
     },
   },
   full: {
@@ -526,6 +567,7 @@ export const PRESETS = {
       quaysideSales: true,
       wages: true,
       loans: true,
+      deadlines: true,
     },
   },
 } as const;

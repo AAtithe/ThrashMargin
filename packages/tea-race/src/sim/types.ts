@@ -165,6 +165,11 @@ export interface ContractFill {
  */
 export interface Contract {
   id: ContractId;
+  /**
+   * The round this card was posted. Optional, absent meaning it predates the clock, in which case it
+   * simply never expires — a save from before deadlines existed keeps its board.
+   */
+  postedOn?: number;
   good: GoodId;
   destination: PortId;
   price: number;
@@ -186,6 +191,8 @@ export interface Hazards {
   wages?: boolean;
   /** Borrowing against the fleet, at interest. */
   loans?: boolean;
+  /** Commissions expire, and cargo loses value the longer it is carried. */
+  deadlines?: boolean;
 }
 
 /** The kinds of thing the world does to everybody at once. See sim/events.ts. */

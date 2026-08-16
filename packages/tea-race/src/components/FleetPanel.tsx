@@ -1,3 +1,4 @@
+import { freshness } from '../sim/rules';
 import { GOOD_BY_ID, portName } from '../sim/content';
 import { HOLD_SLOTS } from '../sim/rules';
 import { destinationOf, pointsToDestination } from '../sim/movement';
@@ -14,6 +15,9 @@ interface Props {
   onSelect: (shipId: string) => void;
   /** False before the captain has rolled — the wind figures are not known yet. */
   rolled: boolean;
+  /** The turn now, and whether cargo spoils at all, for the freshness marker on each lot. */
+  turn: number;
+  deadlines: boolean;
 }
 
 /** The active captain's ships: where each one is, what she's carrying, what wind she has left. */
@@ -25,6 +29,8 @@ export default function FleetPanel({
   selectedShipId,
   onSelect,
   rolled,
+  turn,
+  deadlines,
 }: Props) {
   return (
     <Panel
@@ -93,9 +99,15 @@ export default function FleetPanel({
                   <>
                     {ship.hold.map((lot, i) => {
                       const g = GOOD_BY_ID[lot.good];
+                      // How much of her value the lot still has. Shown only once it has actually
+                      // started to go off, so a fresh hold stays uncluttered.
+                      const keeps = deadlines ? freshness(turn - lot.boughtOnTurn) : 1;
                       return (
                         <Pill key={i} colour={g?.colour ?? UI.textSoft}>
                           {g?.name ?? lot.good} {money(lot.paid)}
+                          {keeps < 1 && (
+                            <span style={{ color: UI.warn }}> ·{Math.round(keeps * 100)}%</span>
+                          )}
                         </Pill>
                       );
                     })}

@@ -29,6 +29,7 @@ export default function Lobby() {
   const [sales, setSales] = useState(true);
   const [wages, setWages] = useState(true);
   const [loans, setLoans] = useState(true);
+  const [clock, setClock] = useState(true);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
 
@@ -60,6 +61,7 @@ export default function Lobby() {
           quaysideSales: sales,
           wages,
           loans,
+          deadlines: clock,
         },
       });
       if (id) navigate(`/game/${id}`);
@@ -192,7 +194,8 @@ export default function Lobby() {
                   bids === (preset.hazards.hostileBids ?? false) &&
                   sales === (preset.hazards.quaysideSales ?? false) &&
                   wages === (preset.hazards.wages ?? false) &&
-                  loans === (preset.hazards.loans ?? false);
+                  loans === (preset.hazards.loans ?? false) &&
+                  clock === (preset.hazards.deadlines ?? false);
                 return (
                   <Button
                     key={key}
@@ -206,6 +209,7 @@ export default function Lobby() {
                       setSales(preset.hazards.quaysideSales ?? false);
                       setWages(preset.hazards.wages ?? false);
                       setLoans(preset.hazards.loans ?? false);
+                      setClock(preset.hazards.deadlines ?? false);
                     }}
                   >
                     {preset.label}
@@ -220,9 +224,10 @@ export default function Lobby() {
               bids === PRESETS.board.hazards.hostileBids &&
               sales === PRESETS.board.hazards.quaysideSales &&
               wages === PRESETS.board.hazards.wages &&
-              loans === PRESETS.board.hazards.loans
+              loans === PRESETS.board.hazards.loans &&
+              clock === PRESETS.board.hazards.deadlines
                 ? PRESETS.board.blurb
-                : weather && piracy && events && bids && sales && wages && loans
+                : weather && piracy && events && bids && sales && wages && loans && clock
                   ? PRESETS.full.blurb
                   : 'A mixture of your own — set the switches below however you like.'}
             </p>
@@ -282,6 +287,14 @@ export default function Lobby() {
                 <strong style={{ color: UI.text }}>Loans</strong> — borrow against your ships and
                 shares at interest. A way through a bad season, and a way to gamble on one good run.
                 What you owe counts against you if a claim is settled on assets.
+              </span>
+            </label>
+            <label style={checkRow}>
+              <input type="checkbox" checked={clock} onChange={e => setClock(e.target.checked)} style={{ accentColor: UI.brass }} />
+              <span>
+                <strong style={{ color: UI.text }}>Deadlines</strong> — commissions are withdrawn if
+                nobody fills them, and cargo loses value the longer it sits in the hold. A hull used
+                as a warehouse earns less than one used as a ship.
               </span>
             </label>
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
