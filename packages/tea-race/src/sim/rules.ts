@@ -731,10 +731,37 @@ export const LOG_LIMIT = 400;
  * exists so the faithful version is always one click away, which is the whole reason every added
  * rule has been kept behind a switch rather than baked in.
  */
+/**
+ * The four ways to play, and everything each one turns on.
+ *
+ * There are ten independent switches now, and that count is itself a problem: nobody wants to reason
+ * about ten booleans before a game, and they interact in ways only measurement finds — wages starve
+ * the hostile bid because bids cost money, and deadlines shorten the games wages had lengthened.
+ * These presets are the front door; the individual switches stay underneath for anyone who wants to
+ * tinker.
+ *
+ * Each is a **different kind of game**, not just more or less of the same one. That is the whole
+ * point of curating them rather than offering "light / medium / heavy":
+ *
+ *  - the board is the published rules and nothing else;
+ *  - the merchant's game adds only economics, and no new randomness at all beyond the dice;
+ *  - the high seas adds only danger and a changing world, and leaves money simple;
+ *  - the full race is everything at once.
+ *
+ * Ordered easiest-to-hold-in-your-head first.
+ *
+ * Measured over 30 seeds apiece, all four reach a winner every time and they genuinely differ:
+ * the board runs to a median 81 rounds leaving £2,563 a captain, the merchant's game 99 and £1,457,
+ * the high seas 65 and £2,006, the full race 61 and £1,133. Note the last of those — everything on
+ * is the *shortest* game, not the longest, because expiring commissions force turnover far harder
+ * than wages slow it down. The blurbs said the opposite until the numbers were checked.
+ */
 export const PRESETS = {
   board: {
     label: 'The 1988 board',
-    blurb: 'The published game exactly: dice, five cards, ten shares, nothing else.',
+    blurb:
+      'The published game exactly: dice, five cards, ten shares, nothing else. A middling length, ' +
+      'and the most money left in the counting house at the end.',
     hazards: {
       weather: false,
       piracy: false,
@@ -748,11 +775,49 @@ export const PRESETS = {
       stocks: false,
     },
   },
-  full: {
-    label: 'Full game',
+  merchant: {
+    label: "A merchant's game",
     blurb:
-      'Everything on — seasonal wind, storms, pirates, guns, copper, insurance, the world event ' +
-      'deck, and hostile bids for the shares.',
+      'Money, not weather. Crew wages to pay, loans to raise, hulls to choose between, cargo you ' +
+      'can sell off at a loss, and an exchange to read. Nothing random but the dice, and the ' +
+      'longest of the four — wages make every season count.',
+    hazards: {
+      weather: false,
+      piracy: false,
+      events: false,
+      hostileBids: true,
+      quaysideSales: true,
+      wages: true,
+      loans: true,
+      deadlines: false,
+      shipClasses: true,
+      stocks: true,
+    },
+  },
+  highSeas: {
+    label: 'The high seas',
+    blurb:
+      'Weather, not money. A seasonal wind chart, storms, pirates worth arming against, a world ' +
+      'that throws strikes and gluts at you, and commissions that will not wait. Quick and ' +
+      'dangerous — the expiring cards keep everybody moving.',
+    hazards: {
+      weather: true,
+      piracy: true,
+      events: true,
+      hostileBids: false,
+      quaysideSales: true,
+      wages: false,
+      loans: false,
+      deadlines: true,
+      shipClasses: false,
+      stocks: false,
+    },
+  },
+  full: {
+    label: 'The full race',
+    blurb:
+      'Everything at once, and the one with the most to go wrong. Not the longest, though — the ' +
+      'expiring commissions drive it along faster than the merchant\'s game.',
     hazards: {
       weather: true,
       piracy: true,

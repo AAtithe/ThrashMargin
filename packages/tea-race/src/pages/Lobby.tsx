@@ -13,6 +13,7 @@ import {
   type Difficulty,
   type PresetName,
 } from '../sim/rules';
+import type { Hazards } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
@@ -20,6 +21,88 @@ import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
 // Namespaced like the other tearace_* save keys — not tm_guest, which is Thrash Margin's
 // own flag and would falsely mark guest status across every game sharing this origin.
 const GUEST_KEY = 'tearace_guest';
+
+/**
+ * Every optional rule, in the order they are offered. One row here is the whole of a switch: the
+ * checkbox list and the preset comparison are both generated from it.
+ */
+const SWITCHES: { key: keyof Hazards & string; name: string; blurb: string }[] = [
+  {
+    key: 'weather',
+    name: 'Wind and weather',
+    blurb:
+      'A seasonal wind chart, so the fast way round changes through the year, and storms that cost time.',
+  },
+  {
+    key: 'piracy',
+    name: 'Pirates',
+    blurb:
+      'Ransoms and the occasional seizure in piratical waters. Guns and insurance become worth buying.',
+  },
+  {
+    key: 'events',
+    name: 'World events',
+    blurb:
+      'Dock strikes, embargoes, gluts, shortages and Admiralty bounties. What is worth carrying changes under you.',
+  },
+  {
+    key: 'hostileBids',
+    name: 'Hostile bids',
+    blurb:
+      'Buy a share off anyone, even the leader, whatever your own holding. Cheapest when you hold least, and every bid made by anyone doubles the price for everyone after. Falling behind stops being fatal.',
+  },
+  {
+    key: 'quaysideSales',
+    name: 'Quayside sales',
+    blurb:
+      'Offload cargo you cannot place at a loss instead of dumping it for nothing. A quay that deals in the good pays far better than one that does not.',
+  },
+  {
+    key: 'wages',
+    name: 'Crew wages',
+    blurb:
+      'Every ship costs money every round, and a laden one costs more. Cash stops being a score and becomes a constraint. Games run about half as long again.',
+  },
+  {
+    key: 'loans',
+    name: 'Loans',
+    blurb:
+      'Borrow against your ships and shares at interest. A way through a bad season, and a way to gamble on one good run. What you owe counts against you if a claim is settled on assets.',
+  },
+  {
+    key: 'deadlines',
+    name: 'Commissions expire',
+    blurb:
+      'Cards come off the board if nobody fills them, and cargo loses value the longer it sits in the hold. The race gets a clock.',
+  },
+  {
+    key: 'shipClasses',
+    name: 'Ship classes',
+    blurb:
+      'A fast clipper, a roomy barque and an armed Indiaman, instead of one hull repeated. What your fleet is made of becomes a position.',
+  },
+  {
+    key: 'stocks',
+    name: 'The shipping exchange',
+    blurb:
+      'Three companies whose share prices rise and fall with the cargo actually landed in their waters. Not another way to win: somewhere for money to go, and a market to read.',
+  },
+];
+
+/** Hazards with every optional field filled in, so comparisons never trip over undefined. */
+type FullHazards = Required<Hazards>;
+
+const normalise = (h: Hazards): FullHazards =>
+  Object.fromEntries(SWITCHES.map(sw => [sw.key, h[sw.key] ?? false])) as FullHazards;
+
+/** Which preset these settings are, if any. Generic, so a new switch needs no change here. */
+function presetFor(h: FullHazards): PresetName | null {
+  for (const key of Object.keys(PRESETS) as PresetName[]) {
+    const want = normalise(PRESETS[key].hazards);
+    if (SWITCHES.every(sw => want[sw.key] === h[sw.key])) return key;
+  }
+  return null;
+}
 
 export default function Lobby() {
   const navigate = useNavigate();
@@ -32,16 +115,15 @@ export default function Lobby() {
   const [ai, setAi] = useState(3);
   const [seed, setSeed] = useState('');
   const [humanNames, setHumanNames] = useState<string[]>(['You']);
-  const [weather, setWeather] = useState(true);
-  const [piracy, setPiracy] = useState(true);
-  const [events, setEvents] = useState(true);
-  const [bids, setBids] = useState(true);
-  const [sales, setSales] = useState(true);
-  const [wages, setWages] = useState(true);
-  const [loans, setLoans] = useState(true);
-  const [clock, setClock] = useState(true);
-  const [classes, setClasses] = useState(true);
-  const [stocks, setStocks] = useState(true);
+  /**
+   * One object rather than ten booleans.
+   *
+   * The switches were previously ten `useState` calls with the preset comparison hand-written in
+   * three separate places, which meant adding the eleventh meant editing six sites and silently
+   * mis-matching a preset if you missed one. Now a switch is one row of the SWITCHES table below.
+   */
+  const [hazards, setHazards] = useState<FullHazards>(() => normalise(PRESETS.full.hazards));
+  const chosen = presetFor(hazards);
   const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -67,18 +149,7 @@ export default function Lobby() {
         aiCount: ai,
         difficulty: level,
         seed: seed.trim() || undefined,
-        hazards: {
-          weather,
-          piracy,
-          events,
-          hostileBids: bids,
-          quaysideSales: sales,
-          wages,
-          loans,
-          deadlines: clock,
-          shipClasses: classes,
-          stocks,
-        },
+        hazards,
       });
       if (id) navigate(`/game/${id}`);
     } finally {
@@ -203,34 +274,12 @@ export default function Lobby() {
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               {(Object.keys(PRESETS) as PresetName[]).map(key => {
                 const preset = PRESETS[key];
-                const active =
-                  weather === preset.hazards.weather &&
-                  piracy === preset.hazards.piracy &&
-                  events === (preset.hazards.events ?? false) &&
-                  bids === (preset.hazards.hostileBids ?? false) &&
-                  sales === (preset.hazards.quaysideSales ?? false) &&
-                  wages === (preset.hazards.wages ?? false) &&
-                  loans === (preset.hazards.loans ?? false) &&
-                  clock === (preset.hazards.deadlines ?? false) &&
-                  classes === (preset.hazards.shipClasses ?? false) &&
-                  stocks === (preset.hazards.stocks ?? false);
                 return (
                   <Button
                     key={key}
-                    tone={active ? 'primary' : 'default'}
+                    tone={chosen === key ? 'primary' : 'default'}
                     title={preset.blurb}
-                    onClick={() => {
-                      setWeather(preset.hazards.weather);
-                      setPiracy(preset.hazards.piracy);
-                      setEvents(preset.hazards.events ?? false);
-                      setBids(preset.hazards.hostileBids ?? false);
-                      setSales(preset.hazards.quaysideSales ?? false);
-                      setWages(preset.hazards.wages ?? false);
-                      setLoans(preset.hazards.loans ?? false);
-                      setClock(preset.hazards.deadlines ?? false);
-                      setClasses(preset.hazards.shipClasses ?? false);
-                      setStocks(preset.hazards.stocks ?? false);
-                    }}
+                    onClick={() => setHazards(normalise(preset.hazards))}
                   >
                     {preset.label}
                   </Button>
@@ -238,20 +287,9 @@ export default function Lobby() {
               })}
             </div>
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-              {weather === PRESETS.board.hazards.weather &&
-              piracy === PRESETS.board.hazards.piracy &&
-              events === PRESETS.board.hazards.events &&
-              bids === PRESETS.board.hazards.hostileBids &&
-              sales === PRESETS.board.hazards.quaysideSales &&
-              wages === PRESETS.board.hazards.wages &&
-              loans === PRESETS.board.hazards.loans &&
-              clock === PRESETS.board.hazards.deadlines &&
-              classes === PRESETS.board.hazards.shipClasses &&
-              stocks === PRESETS.board.hazards.stocks
-                ? PRESETS.board.blurb
-                : weather && piracy && events && bids && sales && wages && loans && clock && classes && stocks
-                  ? PRESETS.full.blurb
-                  : 'A mixture of your own — set the switches below however you like.'}
+              {chosen
+                ? PRESETS[chosen].blurb
+                : 'A mixture of your own — set the switches below however you like.'}
             </p>
           </div>
 
@@ -278,85 +316,21 @@ export default function Lobby() {
               </p>
             </div>
 
-            <label style={checkRow}>
-              <input type="checkbox" checked={weather} onChange={e => setWeather(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>Wind and weather</strong> — a seasonal wind chart, so
-                the fast way round changes through the year, and storms that cost time.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={piracy} onChange={e => setPiracy(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>Pirates</strong> — ransoms and the occasional seizure
-                in piratical waters. Guns and insurance become worth buying.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={events} onChange={e => setEvents(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>World events</strong> — dock strikes, embargoes,
-                gluts, shortages and Admiralty bounties. What is worth carrying changes under you.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={bids} onChange={e => setBids(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>Hostile bids</strong> — buy a share off anyone, even
-                the leader, whatever your own holding. Cheapest when you hold least, and every bid made
-                by anyone doubles the price for everyone after — so they run out fast. Falling behind
-                stops being fatal.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={sales} onChange={e => setSales(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>Quayside sales</strong> — offload cargo you cannot
-                place at a loss instead of dumping it for nothing. A quay that deals in the good pays
-                far better than one that does not, so where you unload is its own decision.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={wages} onChange={e => setWages(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>Crew wages</strong> — every ship costs money every
-                round, and a laden one costs more. Cash stops being a score and becomes a constraint;
-                a fleet has to earn its keep. Games run about half as long again.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={loans} onChange={e => setLoans(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>Loans</strong> — borrow against your ships and
-                shares at interest. A way through a bad season, and a way to gamble on one good run.
-                What you owe counts against you if a claim is settled on assets.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={clock} onChange={e => setClock(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>Deadlines</strong> — commissions are withdrawn if
-                nobody fills them, and cargo loses value the longer it sits in the hold. A hull used
-                as a warehouse earns less than one used as a ship.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={classes} onChange={e => setClasses(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>Ship classes</strong> — three hulls instead of one.
-                A clipper is the tea ship; a barque carries four slots but is slow with it; an
-                Indiaman comes armed and cheaper than arming a clipper yourself, at a point off every
-                roll. What your fleet is made of becomes a position.
-              </span>
-            </label>
-            <label style={checkRow}>
-              <input type="checkbox" checked={stocks} onChange={e => setStocks(e.target.checked)} style={{ accentColor: UI.brass }} />
-              <span>
-                <strong style={{ color: UI.text }}>The shipping exchange</strong> — three companies
-                whose share prices rise and fall with the cargo actually landed in their waters. Not
-                another way to win: somewhere for money to go, and a market to read.
-              </span>
-            </label>
+            {SWITCHES.map(sw => (
+              <label key={sw.key} style={checkRow}>
+                <input
+                  type="checkbox"
+                  checked={hazards[sw.key]}
+                  onChange={e =>
+                    setHazards((h: FullHazards) => ({ ...h, [sw.key]: e.target.checked }))
+                  }
+                  style={{ accentColor: UI.brass }}
+                />
+                <span>
+                  <strong style={{ color: UI.text }}>{sw.name}</strong> — {sw.blurb}
+                </span>
+              </label>
+            ))}
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
               Three cargo slots a ship, the scaling share price and the twelve-turn countdown are the
               published rules and are always on.

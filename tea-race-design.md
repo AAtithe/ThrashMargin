@@ -569,7 +569,32 @@ Two things follow, and they matter more than any further tuning:
 Difficulty is stored per captain as well as per table, because with one shared setting every seat is
 handicapped identically and the win rates only report seat order.
 
-### The toggle count is now the problem
+### The toggle count was the problem — four named games now (2026-08-16)
+
+**Done.** `PRESETS` in `rules.ts` carries four, each a *different kind* of game rather than more or
+less of the same one:
+
+| | what it adds | median | final cash |
+|---|---|---|---|
+| **The 1988 board** | nothing — the published rules | 81 | £2,563 |
+| **A merchant's game** | economics only; no randomness but the dice | **99** | £1,457 |
+| **The high seas** | danger and a changing world; money stays simple | 65 | £2,006 |
+| **The full race** | everything | **61** | £1,133 |
+
+Measured over 30 seeds apiece; all four reach a winner every time.
+
+Note the last row, because the blurb said the opposite until the numbers were checked: **everything
+on is the *shortest* game, not the longest.** Expiring commissions force turnover far harder than
+wages slow it down. Worth remembering when adding any future switch — "more rules" does not mean
+"longer game", and the two levers pull opposite ways.
+
+The lobby was refactored alongside it. Ten `useState` booleans with the preset comparison hand-written
+in three places became one `hazards` object and a `SWITCHES` table; the checkbox list and the
+preset-matching are both generated from that table, so an eleventh rule is one row rather than six
+edit sites. The harness asserts every preset states every switch explicitly, so a new rule can never
+leak into the faithful game by omission.
+
+### The old note, kept because the reasoning still applies
 
 Eleven independent switches. They interact in ways only measurement reveals — wages starve the hostile
 bid because bids cost money; deadlines *shorten* the games wages lengthened. **Recommendation: curate

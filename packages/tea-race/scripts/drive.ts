@@ -27,6 +27,7 @@ import {
   CONTRACT_MAX_DISTANCE,
   DIFFICULTIES,
   FITTING_PRICES,
+  PRESETS,
   type Difficulty,
   SHIP_CLASSES,
   SHIP_PRICE,
@@ -1157,6 +1158,61 @@ function testDeterminism() {
 }
 
 /**
+ * The presets. Four named games rather than ten booleans, and each one a *different* game.
+ */
+function testPresets() {
+  const label = 'presets';
+  const names = Object.keys(PRESETS) as (keyof typeof PRESETS)[];
+  check(`${label}: there are four`, names.length === 4, `${names.length}`);
+
+  // The published game must stay reachable in one click, and be genuinely bare.
+  const board = PRESETS.board.hazards as Record<string, boolean>;
+  check(
+    `${label}: the 1988 board turns everything off`,
+    Object.values(board).every(v => v === false),
+  );
+  const full = PRESETS.full.hazards as Record<string, boolean>;
+  check(`${label}: the full race turns everything on`, Object.values(full).every(v => v === true));
+
+  // Every switch in the Hazards type must appear in every preset, or a preset silently means
+  // "off by omission" and a new rule leaks into the faithful game the day it is added.
+  const keys = Object.keys(full);
+  for (const name of names) {
+    const h = PRESETS[name].hazards as Record<string, boolean>;
+    for (const k of keys) {
+      check(`${label}: ${name} states ${k} explicitly`, k in h, `missing ${k}`);
+    }
+  }
+
+  // The two middle games have to be genuinely different from each other, not one a subset of the
+  // other — that is the whole reason for curating them rather than offering light/medium/heavy.
+  const merchant = PRESETS.merchant.hazards as Record<string, boolean>;
+  const seas = PRESETS.highSeas.hazards as Record<string, boolean>;
+  check(
+    `${label}: the merchant's game has what the high seas does not`,
+    keys.some(k => merchant[k] && !seas[k]),
+  );
+  check(
+    `${label}: and the high seas has what the merchant's game does not`,
+    keys.some(k => seas[k] && !merchant[k]),
+  );
+  check(`${label}: the merchant's game is the money one`, merchant.wages && merchant.stocks);
+  check(`${label}: and brings no new randomness`, !merchant.weather && !merchant.piracy && !merchant.events);
+  check(`${label}: the high seas is the dangerous one`, seas.weather && seas.piracy && seas.events);
+  check(`${label}: and leaves money simple`, !seas.wages && !seas.loans);
+
+  // Each must actually produce a finishable game.
+  for (const name of names) {
+    let g = createInitialState(`t-p-${name}`, name, {
+      humanNames: [], aiCount: 4, seed: `preset-${name}`,
+      hazards: PRESETS[name].hazards as never,
+    });
+    for (let i = 0; i < 3000 && g.phase !== 'over'; i++) g = runAiTurn(g);
+    check(`${label}: ${name} reaches a winner`, g.phase === 'over', `${g.round} rounds`);
+  }
+}
+
+/**
  * The shipping exchange, and the difficulty dial.
  */
 function testExchangeAndDifficulty() {
@@ -2114,6 +2170,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testPresets();
   testExchangeAndDifficulty();
   testShipClasses();
   testDeadlines();
