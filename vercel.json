@@ -5,7 +5,8 @@
   "rewrites": [
     { "source": "/niccolo/(.*)", "destination": "/niccolo/index.html" },
     { "source": "/tea-race/(.*)", "destination": "/tea-race/index.html" },
-    { "source": "/thrash-margin/(.*)", "destination": "/thrash-margin/index.html" }
+    { "source": "/thrash-margin/(.*)", "destination": "/thrash-margin/index.html" },
+    { "source": "/steady-eddie/(.*)", "destination": "/steady-eddie/index.html" }
   ],
   "env": {
     "NODE_ENV": "production"

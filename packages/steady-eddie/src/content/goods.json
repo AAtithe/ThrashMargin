@@ -1,0 +1,17 @@
+{
+  "$comment": "12 goods, scaled to the smaller UK map (The Tea Race has 19 across 26 ports). basePrice is the purchase price at any supplying depot — the figure the 4x/2x contract payout multiplies.",
+  "goods": [
+    { "id": "tomatoes", "name": "Tomatoes", "basePrice": 20, "colour": "#e0563a" },
+    { "id": "flatpack", "name": "Flat-pack Furniture", "basePrice": 65, "colour": "#c9a06a" },
+    { "id": "steel_coil", "name": "Steel Coil", "basePrice": 70, "colour": "#8a99a6" },
+    { "id": "whisky", "name": "Scotch Whisky", "basePrice": 90, "colour": "#b5804a" },
+    { "id": "ceramics", "name": "Ceramics", "basePrice": 40, "colour": "#e4ded0" },
+    { "id": "chocolate", "name": "Chocolate & Confectionery", "basePrice": 50, "colour": "#6b4226" },
+    { "id": "car_parts", "name": "Cars & Parts", "basePrice": 85, "colour": "#3d4a5c" },
+    { "id": "textiles", "name": "Textiles", "basePrice": 35, "colour": "#7a6a8a" },
+    { "id": "fish", "name": "Fresh Fish", "basePrice": 30, "colour": "#6f9bb8" },
+    { "id": "ale", "name": "Ale", "basePrice": 25, "colour": "#a06b2c" },
+    { "id": "cheese", "name": "Cheese", "basePrice": 45, "colour": "#eec24f" },
+    { "id": "frozen_food", "name": "Frozen Food", "basePrice": 55, "colour": "#a8d0e0" }
+  ]
+}

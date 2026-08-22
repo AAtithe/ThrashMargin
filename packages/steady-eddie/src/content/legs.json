@@ -1,0 +1,26 @@
+{
+  "$comment": "21 road connections over the 14 depots, following the real motorway/trunk-road skeleton (M1/M6/M62/M25/M4/A1 etc). distance is in drive points, not literal miles — scaled roughly 1 point per 12 real road miles so a 2d6 roll (average 7) covers a short hop in one turn and a long haul in two or three, the same pacing The Tea Race tunes its sail points to. weatherRisk (1-3, absent = clear) marks routes genuinely prone to fog, snow or flooding — the Pennine crossings and the Somerset Levels. theft (1-2, absent = safe) marks a handful of known freight-crime corridors, the road equivalent of The Tea Race's authored piracy rating.",
+  "legs": [
+    { "a": "london", "b": "ashford", "distance": 5, "theft": 1 },
+    { "a": "london", "b": "southampton", "distance": 7 },
+    { "a": "london", "b": "bristol", "distance": 10 },
+    { "a": "london", "b": "birmingham", "distance": 11, "theft": 1 },
+    { "a": "london", "b": "nottingham", "distance": 11 },
+    { "a": "birmingham", "b": "bristol", "distance": 7 },
+    { "a": "birmingham", "b": "nottingham", "distance": 4 },
+    { "a": "birmingham", "b": "stoke", "distance": 4 },
+    { "a": "birmingham", "b": "manchester", "distance": 7 },
+    { "a": "nottingham", "b": "sheffield", "distance": 3 },
+    { "a": "sheffield", "b": "leeds", "distance": 3 },
+    { "a": "sheffield", "b": "stoke", "distance": 5, "weatherRisk": 2 },
+    { "a": "stoke", "b": "manchester", "distance": 4, "weatherRisk": 1 },
+    { "a": "stoke", "b": "warrington", "distance": 3 },
+    { "a": "manchester", "b": "warrington", "distance": 2 },
+    { "a": "manchester", "b": "liverpool", "distance": 3 },
+    { "a": "manchester", "b": "leeds", "distance": 4, "weatherRisk": 2 },
+    { "a": "warrington", "b": "liverpool", "distance": 2 },
+    { "a": "leeds", "b": "newcastle", "distance": 8, "theft": 1 },
+    { "a": "newcastle", "b": "glasgow", "distance": 13, "theft": 2, "weatherRisk": 1 },
+    { "a": "bristol", "b": "southampton", "distance": 6, "weatherRisk": 1 }
+  ]
+}

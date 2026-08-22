@@ -17,3 +17,4 @@ coverage/
 # Natural Earth source data cached by the map build scripts
 packages/niccolo/scripts/.cache/
 packages/tea-race/scripts/.cache/
+packages/steady-eddie/scripts/.cache/

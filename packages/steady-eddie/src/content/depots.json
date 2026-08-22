@@ -1,0 +1,160 @@
+{
+  "$comment": "Steady Eddie's depot list — 14 real UK towns/cities, a deliberate fraction of The Tea Race's 26-port globe (a UK-only map should read as small, not as the same-size map redrawn smaller). Real WGS84 lon/lat; screen position is derived by sim/geography.ts, never authored. labelSide/nudge exist only for chart legibility around the crowded North West cluster (Manchester/Warrington/Liverpool/Stoke).",
+  "depots": [
+    {
+      "id": "london",
+      "name": "London",
+      "region": "south_east",
+      "lon": -0.13,
+      "lat": 51.51,
+      "nudge": [10, -12],
+      "labelSide": "e",
+      "home": true,
+      "supplies": [],
+      "demands": ["tomatoes", "whisky", "chocolate", "cheese", "car_parts", "textiles", "frozen_food"]
+    },
+    {
+      "id": "ashford",
+      "name": "Ashford (Tesco RDC)",
+      "region": "south_east",
+      "lon": 0.87,
+      "lat": 51.15,
+      "nudge": [10, 10],
+      "labelSide": "e",
+      "supplies": [],
+      "demands": ["tomatoes", "cheese", "ale", "frozen_food"]
+    },
+    {
+      "id": "southampton",
+      "name": "Southampton",
+      "region": "south",
+      "lon": -1.40,
+      "lat": 50.90,
+      "nudge": [0, 14],
+      "labelSide": "s",
+      "supplies": ["tomatoes", "fish"],
+      "demands": ["flatpack", "whisky", "ceramics"]
+    },
+    {
+      "id": "bristol",
+      "name": "Bristol",
+      "region": "south_west",
+      "lon": -2.58,
+      "lat": 51.45,
+      "nudge": [-14, 6],
+      "labelSide": "w",
+      "supplies": ["chocolate", "cheese"],
+      "demands": ["steel_coil", "car_parts", "textiles"]
+    },
+    {
+      "id": "birmingham",
+      "name": "Birmingham",
+      "region": "midlands",
+      "lon": -1.90,
+      "lat": 52.48,
+      "nudge": [-14, -4],
+      "labelSide": "w",
+      "supplies": ["car_parts"],
+      "demands": ["steel_coil", "ceramics", "whisky", "flatpack", "frozen_food"]
+    },
+    {
+      "id": "nottingham",
+      "name": "Nottingham",
+      "region": "midlands",
+      "lon": -1.15,
+      "lat": 52.95,
+      "nudge": [14, -6],
+      "labelSide": "e",
+      "supplies": ["textiles"],
+      "demands": ["car_parts", "cheese", "ale"]
+    },
+    {
+      "id": "sheffield",
+      "name": "Sheffield",
+      "region": "north",
+      "lon": -1.47,
+      "lat": 53.38,
+      "nudge": [14, 6],
+      "labelSide": "e",
+      "supplies": ["steel_coil"],
+      "demands": ["car_parts", "ceramics", "whisky"]
+    },
+    {
+      "id": "stoke",
+      "name": "Stoke-on-Trent",
+      "region": "midlands",
+      "lon": -2.18,
+      "lat": 53.00,
+      "nudge": [0, 16],
+      "labelSide": "s",
+      "supplies": ["ceramics"],
+      "demands": ["steel_coil", "flatpack", "ale"]
+    },
+    {
+      "id": "manchester",
+      "name": "Manchester",
+      "region": "north_west",
+      "lon": -2.24,
+      "lat": 53.48,
+      "nudge": [16, -8],
+      "labelSide": "e",
+      "supplies": ["textiles"],
+      "demands": ["chocolate", "fish", "whisky", "car_parts"]
+    },
+    {
+      "id": "warrington",
+      "name": "Warrington (IKEA)",
+      "region": "north_west",
+      "lon": -2.60,
+      "lat": 53.39,
+      "nudge": [-16, 12],
+      "labelSide": "w",
+      "supplies": [],
+      "demands": ["flatpack", "steel_coil", "ceramics"]
+    },
+    {
+      "id": "liverpool",
+      "name": "Liverpool",
+      "region": "north_west",
+      "lon": -2.98,
+      "lat": 53.41,
+      "nudge": [-16, -10],
+      "labelSide": "w",
+      "supplies": ["flatpack"],
+      "demands": ["tomatoes", "whisky", "textiles"]
+    },
+    {
+      "id": "leeds",
+      "name": "Leeds",
+      "region": "north",
+      "lon": -1.55,
+      "lat": 53.80,
+      "nudge": [14, -8],
+      "labelSide": "e",
+      "supplies": ["textiles"],
+      "demands": ["steel_coil", "chocolate", "cheese"]
+    },
+    {
+      "id": "newcastle",
+      "name": "Newcastle",
+      "region": "north_east",
+      "lon": -1.61,
+      "lat": 54.98,
+      "nudge": [14, -6],
+      "labelSide": "e",
+      "supplies": ["ale", "frozen_food"],
+      "demands": ["fish", "steel_coil", "car_parts"]
+    },
+    {
+      "id": "glasgow",
+      "name": "Glasgow",
+      "region": "scotland",
+      "lon": -4.25,
+      "lat": 55.86,
+      "nudge": [-14, -10],
+      "labelSide": "w",
+      "supplies": ["whisky"],
+      "demands": ["fish", "textiles", "chocolate"]
+    }
+  ]
+}

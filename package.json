@@ -6,10 +6,13 @@
     "dev:tm": "npm run dev --workspace=packages/thrash-margin",
     "dev:niccolo": "npm run dev --workspace=packages/niccolo",
     "dev:tea": "npm run dev --workspace=packages/tea-race",
+    "dev:se": "npm run dev --workspace=packages/steady-eddie",
     "build:tm": "npm run build --workspace=packages/thrash-margin",
     "build:niccolo": "npm run build --workspace=packages/niccolo",
     "build:tea": "npm run build --workspace=packages/tea-race",
+    "build:se": "npm run build --workspace=packages/steady-eddie",
     "drive:tea": "npm run drive --workspace=packages/tea-race",
+    "drive:se": "npm run drive --workspace=packages/steady-eddie",
     "build:portal": "bash scripts/build-portal.sh"
   }
 }

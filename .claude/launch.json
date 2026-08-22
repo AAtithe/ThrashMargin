@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "tea-race"],
       "port": 5175
+    },
+    {
+      "name": "steady-eddie",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "steady-eddie"],
+      "port": 5176
     }
   ]
 }

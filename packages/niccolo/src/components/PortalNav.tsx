@@ -26,6 +26,10 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
           ⛵ The Tea Race
         </a>
         <span style={styles.sep}>·</span>
+        <a href="/steady-eddie/" style={styles.link}>
+          🚚 Steady Eddie
+        </a>
+        <span style={styles.sep}>·</span>
         <a href="/thrash-margin/feedback" style={styles.link}>
           💬 Feedback
         </a>
