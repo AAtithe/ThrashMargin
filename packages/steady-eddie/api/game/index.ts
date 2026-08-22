@@ -14,6 +14,48 @@ import { createInitialState } from '../../src/sim/state';
 const GAME_KIND = 'steady_eddie';
 
 /**
+ * These read the request body, so they trust none of it.
+ *
+ * Until they existed the endpoint took a name, a seat count and a seed and dropped the rest, so a
+ * signed-in player's chosen hazards and difficulty never reached the sim. Unrecognised values fall
+ * back to the default rather than being passed through, and hazards is rebuilt key by key from an
+ * explicit list, so nothing unknown can reach the game state.
+ */
+const DIFFICULTIES = ['gentle', 'steady', 'hard'] as const;
+
+const HAZARD_KEYS = [
+  'weather',
+  'theft',
+  'events',
+  'hostileBids',
+  'depotSales',
+  'wages',
+  'loans',
+  'deadlines',
+  'vehicleClasses',
+  'stocks',
+] as const;
+
+function readDifficulty(raw: unknown): 'gentle' | 'steady' | 'hard' | undefined {
+  return typeof raw === 'string' && (DIFFICULTIES as readonly string[]).includes(raw)
+    ? (raw as 'gentle' | 'steady' | 'hard')
+    : undefined;
+}
+
+function readHazards(
+  raw: unknown,
+): ({ weather: boolean; theft: boolean } & Record<string, boolean>) | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const body = raw as Record<string, unknown>;
+  const out: Record<string, boolean> = {};
+  for (const key of HAZARD_KEYS) {
+    if (typeof body[key] === 'boolean') out[key] = body[key] as boolean;
+  }
+  return { weather: false, theft: false, ...out };
+}
+
+
+/**
  * One Vercel function covering both `/api/steady-eddie/game` (list/create) and
  * `/api/steady-eddie/game?id=:id` (load/save/delete) as a single function — the two were separate
  * functions until a 4th game's own pair would have pushed the Hobby-plan function count past
@@ -51,6 +93,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         humanNames,
         aiCount,
         seed,
+        hazards: readHazards(req.body?.hazards),
+        difficulty: readDifficulty(req.body?.difficulty),
         createdAt: Date.now(),
       });
 

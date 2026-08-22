@@ -57,11 +57,17 @@ export function useGameCloud() {
         const res = await fetch(`${API}/api/steady-eddie/game`, {
           method: 'POST',
           headers: authHeaders(),
+          // The lobby collects hazards and difficulty too, and this used to send neither — so for
+          // any signed-in player (which the sign-in gate makes everybody) every game came out with
+          // default rules at default difficulty however the settings screen was left. The Tea Race
+          // had the identical bug; see its commit for the full account.
           body: JSON.stringify({
             name,
             humanNames: opts?.humanNames,
             aiCount: opts?.aiCount,
             seed: opts?.seed,
+            hazards: opts?.hazards,
+            difficulty: opts?.difficulty,
           }),
         });
         if (res.status === 401) {
