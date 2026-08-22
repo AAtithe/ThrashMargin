@@ -21,7 +21,6 @@
     "@types/pg": "^8.10.9",
     "@types/uuid": "^9.0.7",
     "@vercel/node": "^3.0.0",
-    "concurrently": "^8.2.2",
     "typescript": "^5.3.2",
     "vercel": "^33.0.0"
   }

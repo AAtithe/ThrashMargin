@@ -73,6 +73,15 @@ import { buildDeck, parseCardKey } from '../src/sim/contracts';
 import { shipsAwaitingOrders } from '../src/sim/attention';
 import { AGENT_LADING_DISCOUNT, AGENT_PRICE, MAX_AGENTS, canPlaceAgent } from '../src/sim/agents';
 import {
+  applyTrade,
+  bestSpreads,
+  livePrice,
+  recoverPrices,
+  VOYAGE_CEILING,
+  VOYAGE_ROUNDS,
+  VOYAGE_SUPPLY_DISCOUNT,
+} from '../src/sim/voyage';
+import {
   COMPANIES,
   companyForPort,
   nextPrice,
@@ -1163,6 +1172,112 @@ function testDeterminism() {
 }
 
 /**
+ * Voyage mode — free play on a living market.
+ *
+ * The properties that matter are the ones that keep it a *different* game without disturbing the
+ * classic one: no cards, no declaration, and a market that actually responds to trade.
+ */
+function testVoyage() {
+  const label = 'voyage';
+  const hz = { weather: false, piracy: false, events: false, quaysideSales: false };
+
+  let g = createInitialState('t-v', 'Voyage', {
+    humanNames: ['A'], aiCount: 1, seed: 'v', rules: 'voyage', hazards: hz,
+  });
+  equal(`${label}: the ruleset is recorded`, g.rules, 'voyage');
+  equal(`${label}: no commissions are dealt`, g.contracts.length, 0);
+  equal(`${label}: and no deck is kept`, g.deck.length, 0);
+
+  // Nothing to declare, whatever a captain holds.
+  let rich = setShares(g, 'p1', TOTAL_SHARES);
+  rich = setCash(rich, 'p1', 99_999);
+  rich = processAction(rich, { type: 'ROLL' });
+  check(`${label}: declaring is refused outright`, processAction(rich, { type: 'DECLARE' }) === rich);
+
+  // The structural spread is what makes trade possible at all — without it buying and selling are
+  // the same number and a season ends poorer than it began.
+  let anySpread = false;
+  for (const good of GOODS) {
+    const sellers = PORTS.filter(p => p.supplies.includes(good.id));
+    const buyers = PORTS.filter(p => p.demands.includes(good.id) && !p.supplies.includes(good.id));
+    if (sellers.length === 0 || buyers.length === 0) continue;
+    anySpread = true;
+    const cheapest = Math.min(...sellers.map(p => livePrice(g, p.id, good.id)));
+    const dearest = Math.max(...buyers.map(p => livePrice(g, p.id, good.id)));
+    check(
+      `${label}: ${good.id} is dearer where it is wanted than where it is grown`,
+      dearest > cheapest,
+      `${dearest} vs ${cheapest}`,
+    );
+  }
+  check(`${label}: at least one good is tradeable`, anySpread);
+  check(`${label}: and the board offers a positive spread`, bestSpreads(g, null, 1)[0].margin > 0);
+
+  // Trade moves the price, and the move decays.
+  g = setCash(g, 'p1', 5000);
+  g = place(g, 's1', 'foochow');
+  g = processAction(g, { type: 'ROLL' });
+  const before = livePrice(g, 'foochow', 'tea');
+  const bought = processAction(g, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
+  check(`${label}: buying lifts the price`, livePrice(bought, 'foochow', 'tea') > before);
+  equal(`${label}: she paid the pre-trade price`, shipOf(bought, 's1').hold[0].paid, before);
+
+  // Selling into a port that wants it pays the going rate, not a distress price — and depresses it.
+  const landed = place(bought, 's1', 'london', shipOf(bought, 's1').hold);
+  const wanted = livePrice(landed, 'london', 'tea');
+  const sold = processAction(landed, { type: 'SELL_CARGO', shipId: 's1', good: 'tea' });
+  check(`${label}: she can land it without quayside sales switched on`, sold !== landed);
+  equal(`${label}: at the going rate`, cash(sold, 'p1') - cash(landed, 'p1'), wanted);
+  check(`${label}: and landing depresses it`, livePrice(sold, 'london', 'tea') < wanted);
+  check(`${label}: which is a real profit`, wanted > shipOf(bought, 's1').hold[0].paid);
+
+  // Drift is bounded and self-cleaning, or the table grows to every pair on the chart.
+  let pushed = bought;
+  for (let i = 0; i < 60; i++) pushed = applyTrade(pushed, 'foochow', 'tea', 3, 'bought');
+  check(
+    `${label}: drift is bounded above`,
+    livePrice(pushed, 'foochow', 'tea') <= Math.ceil(priceAt('foochow', 'tea') * VOYAGE_CEILING) + 1,
+  );
+  let eased = pushed;
+  for (let i = 0; i < 80; i++) eased = recoverPrices(eased);
+  // Back to standing means back to the *structural* price — Foochow grows tea, so it sells below
+  // the reckoning even with no drift at all.
+  equal(
+    `${label}: and eases back to standing`,
+    livePrice(eased, 'foochow', 'tea'),
+    Math.round(priceAt('foochow', 'tea') * VOYAGE_SUPPLY_DISCOUNT),
+  );
+  equal(`${label}: cleaning up after itself`, Object.keys(eased.priceDrift ?? {}).length, 0);
+
+  // Full games: they must end, and end on worth.
+  for (const seed of ['v1', 'v2', 'v3', 'v4', 'v5']) {
+    let t = createInitialState('t-vv', 'V', {
+      humanNames: [], aiCount: 4, seed, rules: 'voyage',
+      hazards: { weather: true, piracy: true, events: true, wages: true, loans: true, stocks: true, agents: true },
+    });
+    for (let i = 0; i < 3000 && t.phase !== 'over'; i++) t = runAiTurn(t);
+    check(`${label}: ${seed} reaches the reckoning`, t.phase === 'over', `${t.round} rounds`);
+    check(`${label}: ${seed} ends within the season`, t.round <= VOYAGE_ROUNDS + 1, `${t.round}`);
+    check(`${label}: ${seed} crowns somebody`, t.winnerId !== null);
+    // Settled on worth: nobody with a smaller fortune may have won.
+    const winner = t.captains.find(c => c.id === t.winnerId)!;
+    for (const other of t.captains) {
+      check(
+        `${label}: ${seed} the richest captain won`,
+        assetValue(t, winner) >= assetValue(t, other),
+        `${other.name} was worth more`,
+      );
+    }
+    equal(`${label}: ${seed} never deals a card`, t.contracts.length, 0);
+  }
+
+  // And the classic game is untouched by any of it.
+  let classic = createInitialState('t-vc', 'C', { humanNames: [], aiCount: 4, seed: 'vc' });
+  equal(`${label}: classic still deals its cards`, classic.contracts.length, FACE_UP_CONTRACTS);
+  equal(`${label}: and keeps prices still`, livePrice(classic, 'foochow', 'tea'), priceAt('foochow', 'tea'));
+}
+
+/**
  * Port agents — a permanent man on the ground at one quay.
  */
 function testAgents() {
@@ -2246,6 +2361,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testVoyage();
   testAgents();
   testPresets();
   testExchangeAndDifficulty();

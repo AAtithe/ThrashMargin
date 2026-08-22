@@ -28,7 +28,10 @@ const statusOf = (s: GameState): SaveMeta['status'] => (s.winnerId ? 'victory' :
 function isCurrentShape(parsed: unknown): parsed is GameState {
   const s = parsed as Partial<GameState> | null;
   if (!s || typeof s !== 'object') return false;
-  if (s.rules !== 'classic') return false;
+  // Both rulesets are current. This read `!== 'classic'` while 'voyage' was still hypothetical, which
+  // meant the day free play arrived every voyage save was rejected on load as "from an older version
+  // of the game" — the save was fine, the guard was out of date.
+  if (s.rules !== 'classic' && s.rules !== 'voyage') return false;
   if (typeof s.rngSeed !== 'number' || typeof s.round !== 'number') return false;
   if (!Array.isArray(s.captains) || !Array.isArray(s.ships)) return false;
   if (!Array.isArray(s.contracts) || !Array.isArray(s.deck)) return false;

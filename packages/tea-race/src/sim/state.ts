@@ -33,6 +33,8 @@ export interface NewGameOptions {
    * existed has no field at all, which reads as off and keeps the pure 1988 rules.
    */
   hazards?: Hazards;
+  /** 'classic' is the 1988 board; 'voyage' is free play on a living market. */
+  rules?: 'classic' | 'voyage';
   /** How well the computer captains play. Defaults to 'steady'. */
   difficulty?: Difficulty;
 }
@@ -83,12 +85,19 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
 
   const seed0 = seedFromString(opts.seed?.trim() || id);
   const shuffled = shuffledDeck(seed0);
-  const dealt = dealOpeningContracts(shuffled.seed, shuffled.deck, 1);
+  // Free play has no commission deck at all: you trade on the spread between ports. The deck is
+  // still *shuffled* so the rng stream is identical either way and a seed means the same thing in
+  // both modes; it is simply never dealt from.
+  const rules = opts.rules ?? 'classic';
+  const dealt =
+    rules === 'voyage'
+      ? { seed: shuffled.seed, deck: [] as string[], seq: 1, contracts: [] }
+      : dealOpeningContracts(shuffled.seed, shuffled.deck, 1);
 
   return {
     id,
     name: name.trim() || 'Voyage',
-    rules: 'classic',
+    rules,
     hazards: opts.hazards ?? {
       weather: true,
       piracy: true,

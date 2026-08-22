@@ -17,6 +17,7 @@ import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
 import { ladingPrice, priceStanding, saleProceeds } from './pricing';
 import { AGENT_PRICE, agentInstalledText, canPlaceAgent } from './agents';
+import { applyTrade, isVoyageOver, livePrice, recoverPrices, sellsFor } from './voyage';
 import {
   COMPANIES,
   companyForPort,
@@ -503,6 +504,33 @@ function doRepayLoan(state: GameState): GameState {
   );
 }
 
+/**
+ * The close of a free-play voyage: no declaration, no majority, largest fortune takes it.
+ *
+ * Settled on `assetValue`, which already nets out debt and arrears and counts hulls, holds and any
+ * exchange holdings — so a captain who borrowed their way to a big cash pile has not actually won.
+ */
+function reckonVoyage(state: GameState): GameState {
+  const ranked = [...state.captains]
+    .map(c => ({ c, worth: assetValue(state, c) }))
+    .sort((a, b) => b.worth - a.worth || a.c.id.localeCompare(b.c.id));
+  const winner = ranked[0];
+
+  let s: GameState = { ...state, phase: 'over', winnerId: winner.c.id };
+  s = log(
+    s,
+    'victory',
+    `The season closes. ${winner.c.name} finishes worth ${money(winner.worth)} — ` +
+      `${ranked
+        .slice(1)
+        .map(r => `${r.c.name} ${money(r.worth)}`)
+        .join(', ')} — and takes the honours.`,
+    winner.c.id,
+    { worth: winner.worth },
+  );
+  return s;
+}
+
 /** Moves to the next seat, handling the round roll-over and the declaration countdown. */
 function advanceSeat(state: GameState): GameState {
   let s: GameState = { ...state, sailPoints: {}, dice: {}, turn: state.turn + 1, phase: 'roll' };
@@ -512,7 +540,9 @@ function advanceSeat(state: GameState): GameState {
   if (nextIndex === 0) {
     s = { ...s, round: s.round + 1 };
     s = chargeStandingCosts(s);
+    s = recoverPrices(s);
     s = settleExchange(s);
+    if (isVoyageOver(s)) return reckonVoyage(s);
     s = expireContracts(s);
     s = turnTheWorld(s);
   }
@@ -859,11 +889,16 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   const captain = activeCaptain(state);
   // The quay's price, not the card's — see sim/pricing.ts for why those are different numbers, less
   // whatever this captain's own agent here can knock off it.
-  const price = ladingPrice(state, activeCaptain(state).id, ship.location, good);
+  const price =
+    state.rules === 'voyage'
+      ? livePrice(state, ship.location, good)
+      : ladingPrice(state, activeCaptain(state).id, ship.location, good);
   if (price <= 0 || captain.cash < price) return state;
 
   const standing = priceStanding(ship.location, good);
   let s = updateCaptain(state, captain.id, { cash: captain.cash - price });
+  // In free play the market notices. Buying here lifts this port's price for this good.
+  s = applyTrade(s, ship.location, good, 1, 'bought');
   s = replaceShip(s, {
     ...ship,
     hold: [...ship.hold, { good, paid: price, boughtAt: ship.location, boughtOnTurn: s.turn }],
@@ -973,7 +1008,9 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
  * pays nearly twice what one that does not will offer.
  */
 function doSellCargo(state: GameState, shipId: string, good: string): GameState {
-  if (!state.hazards?.quaysideSales) return state;
+  // Free play has no commissions, so selling to a port IS the trade rather than a consolation for a
+  // bad buy — and a port that genuinely wants the good pays the going rate, not a distress price.
+  if (state.rules !== 'voyage' && !state.hazards?.quaysideSales) return state;
   const ship = ownShip(state, shipId);
   if (!ship || ship.location === null || ship.hold.length === 0) return state;
   // A shut port buys nothing, for the same reason it lades nothing.
@@ -984,18 +1021,26 @@ function doSellCargo(state: GameState, shipId: string, good: string): GameState 
   const kept = ship.hold.filter(l => l.good !== good);
 
   const captain = activeCaptain(state);
-  const unit = saleProceeds(state, captain.id, ship.location, good);
+  const voyageRate = state.rules === 'voyage' ? sellsFor(state, ship.location, good) : null;
+  const unit = voyageRate ?? saleProceeds(state, captain.id, ship.location, good);
   const takings = unit * sold.length;
   const paid = sold.reduce((sum, l) => sum + l.paid, 0);
 
   let s = updateCaptain(state, captain.id, { cash: captain.cash + takings });
   s = replaceShip(s, { ...ship, hold: kept });
+  // Landing cargo here depresses this port's price for it — the reason a rival getting there first
+  // actually costs you something.
+  s = applyTrade(s, ship.location, good, sold.length, 'sold');
   return log(
     s,
     'missed',
-    `${ship.name} sells ${sold.length} ${goodName(good)} on the quay at ${portName(
-      ship.location,
-    )} for ${money(takings)} — ${money(paid - takings)} down on what she paid.`,
+    voyageRate !== null
+      ? `${ship.name} lands ${sold.length} ${goodName(good)} at ${portName(ship.location)} for ${money(
+          takings,
+        )} — ${takings >= paid ? `${money(takings - paid)} clear` : `${money(paid - takings)} down`}.`
+      : `${ship.name} sells ${sold.length} ${goodName(good)} on the quay at ${portName(
+          ship.location,
+        )} for ${money(takings)} — ${money(paid - takings)} down on what she paid.`,
     captain.id,
     { shipId: ship.id, units: sold.length, takings, recovered: takings, forfeited: paid - takings },
   );
@@ -1226,6 +1271,8 @@ function doSetInsurance(state: GameState, shipId: string, insured: boolean): Gam
 }
 
 function doDeclare(state: GameState): GameState {
+  // Free play has nothing to declare — it runs to the season's close and settles on worth.
+  if (state.rules === 'voyage') return state;
   if (state.phase !== 'act' || state.declaration) return state;
   const captain = activeCaptain(state);
   if (captain.shares < SHARE_MAJORITY) return state;

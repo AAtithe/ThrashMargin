@@ -15,6 +15,9 @@ import PortLedger from '../components/PortLedger';
 import RivalFleets from '../components/RivalFleets';
 import EventCards from '../components/EventCards';
 import NewsBanner from '../components/NewsBanner';
+import MarketBoard from '../components/MarketBoard';
+import { livePrice, sellsFor } from '../sim/voyage';
+import { ladingPrice, saleProceeds } from '../sim/pricing';
 import { shipsAwaitingOrders } from '../sim/attention';
 import CaptainsTable from '../components/CaptainsTable';
 import ChronicleLog from '../components/ChronicleLog';
@@ -194,6 +197,13 @@ export default function GameScreen() {
       <main style={board} className="tr-board">
         {/* Left: what everyone is racing over. Narrow on purpose — it is reference, not controls. */}
         <aside style={exchangeColumn}>
+          {state.rules === 'voyage' ? (
+            <MarketBoard
+              state={state}
+              reference={selectedShip}
+              onPortClick={port => setTargetPort(port as PortId)}
+            />
+          ) : (
           <ContractBoard
             contracts={state.contracts}
             captains={state.captains}
@@ -206,6 +216,7 @@ export default function GameScreen() {
               setTargetPort(null);
             }}
           />
+          )}
           <CaptainsTable state={state} />
         </aside>
 
@@ -331,6 +342,15 @@ export default function GameScreen() {
                 enabled={canAct}
                 sellable={state.hazards?.quaysideSales ?? false}
                 agentsOn={state.hazards?.agents ?? false}
+                priceFor={(port, good) =>
+                  state.rules === 'voyage'
+                    ? livePrice(state, port, good)
+                    : ladingPrice(state, captain?.id ?? '', port, good)
+                }
+                paysFor={(port, good) =>
+                  (state.rules === 'voyage' ? sellsFor(state, port, good) : null) ??
+                  saleProceeds(state, captain?.id ?? '', port, good)
+                }
                 season={season}
                 piracyOn={state.hazards?.piracy ?? false}
               />

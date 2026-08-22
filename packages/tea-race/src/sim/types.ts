@@ -316,11 +316,19 @@ export interface GameState {
   id: string;
   name: string;
   /**
-   * Ruleset discriminator. 'classic' is the 1988 board rules and is the only value today;
-   * 'voyage' (the Niccolo-style continuous simulation) is designed in tea-race-design.md but
-   * deliberately not implemented — see that document before adding it.
+   * Ruleset discriminator.
+   *
+   * 'classic' is the 1988 board game: five commissions, first-two-home multipliers, and a share
+   * majority to win. 'voyage' is free play on a living market — no cards, no declaration, prices that
+   * drift and respond to trade, and the largest fortune at the close. See sim/voyage.ts, and note it
+   * is deliberately *not* the full continuous simulation §7 of the design document specs.
    */
-  rules: 'classic';
+  rules: 'classic' | 'voyage';
+  /**
+   * Voyage mode only: how far each port's price for each good has been pushed from its standing
+   * value, as a multiplier keyed "port|good". Absent or empty means every price is at standing.
+   */
+  priceDrift?: Record<string, number>;
   /**
    * Which hazards this game plays with. Optional, and **absent means off** — so a save written
    * before hazards existed keeps playing the pure 1988 rules, and the faithful-versus-authored line

@@ -47,6 +47,7 @@ import { seasonOf, turnsBetween } from './weather';
 import { piracyRating } from './hazards';
 import { priceAt, quaysidePrice } from './pricing';
 import { COMPANIES, STOCK_IDS } from './stocks';
+import { bestSpreads, buyersFor, livePrice } from './voyage';
 import { AGENT_PRICE, canPlaceAgent } from './agents';
 import type { AiProfile, Captain, Contract, GameAction, GameState, PortId, Ship } from './types';
 import type { ShipClassId } from './rules';
@@ -513,6 +514,78 @@ const canRaid = (s: GameState, captain: Captain): boolean =>
 
 // ---------------------------------------------------------------------------
 
+/**
+ * A computer captain in free play.
+ *
+ * Classic mode's whole brain is "which of the five cards pays best per turn", and in free play there
+ * are no cards, so none of it applies — exactly as §7 of the design document predicted. This is the
+ * replacement, and it is deliberately simple: find the best margin per turn between a port that
+ * sells and a port that buys, go and do it.
+ *
+ * It reasons only from `bestSpreads`, which is the same function the player's own panel is drawn
+ * from. That is a rule worth keeping: a human should never lose to information they could not have
+ * looked up.
+ */
+function voyageAction(s: GameState, captain: Captain): GameAction | null {
+  const ships = shipsOf(s, captain.id).filter(sh => sh.location !== null);
+  const skill = levelOf(s, captain.id);
+
+  for (const ship of ships) {
+    const at = ship.location!;
+
+    // Carrying something: take it to whoever pays best, allowing for the passage.
+    if (ship.hold.length > 0) {
+      const good = ship.hold[0].good;
+
+      // Top up first. Three slots of one good is three times the voyage for one passage, and the
+      // first cut of this bought a single lot and sailed — leaving two thirds of every hull empty
+      // and two thirds of the profit on the quay.
+      if (ship.hold.length < slotsOf(ship.shipClass) && PORT_BY_ID[at]?.supplies.includes(good)) {
+        const cost = livePrice(s, at, good);
+        const best = buyersFor(s, good)[0];
+        if (best && best.price > cost && captain.cash - cost >= TRADING_FLOAT) {
+          return { type: 'BUY_CARGO', shipId: ship.id, good };
+        }
+      }
+
+      const buyers = buyersFor(s, good);
+      let best: { port: string; score: number; price: number } | null = null;
+      for (const buyer of buyers) {
+        const turns = passageTurns(s, at, buyer.port, distanceBetween(at, buyer.port), skill.usesWind);
+        const score = (buyer.price * ship.hold.filter(l => l.good === good).length) / Math.max(1, turns);
+        if (!best || score > best.score) best = { port: buyer.port, score, price: buyer.price };
+      }
+      if (best?.port === at) return { type: 'SELL_CARGO', shipId: ship.id, good };
+      if (best) return { type: 'SAIL_TO', shipId: ship.id, destination: best.port };
+      // Nobody on the chart wants it — cut the loss rather than carry it for ever.
+      return { type: 'JETTISON', shipId: ship.id, good };
+    }
+
+    // Empty: the best round trip she can start from here or reach.
+    const here = bestSpreads(s, at, 3).filter(sp => sp.margin > 0);
+    if (here.length > 0 && ship.hold.length < slotsOf(ship.shipClass)) {
+      const pick = here[0];
+      if (captain.cash - pick.buy >= TRADING_FLOAT) {
+        return { type: 'BUY_CARGO', shipId: ship.id, good: pick.good };
+      }
+    }
+
+    // Nothing worth lading here: go where the margin is, scored per turn so she does not cross the
+    // world for a shilling.
+    let target: { port: string; score: number } | null = null;
+    for (const sp of bestSpreads(s, null, 12)) {
+      if (sp.margin <= 0 || sp.from === at) continue;
+      const turns = passageTurns(s, at, sp.from, distanceBetween(at, sp.from), skill.usesWind);
+      const score = sp.margin / Math.max(1, turns);
+      if (!target || score > target.score) target = { port: sp.from, score };
+    }
+    if (target) return { type: 'SAIL_TO', shipId: ship.id, destination: target.port };
+  }
+
+  // Nothing to sail: put the money to work exactly as she would in a classic game.
+  return investmentAction(s, captain);
+}
+
 export function nextAiAction(s: GameState): GameAction | null {
   if (s.phase !== 'act') return null;
   const captain = activeCaptain(s);
@@ -520,6 +593,11 @@ export function nextAiAction(s: GameState): GameAction | null {
   // How well this table's computer captains play. See DIFFICULTIES in rules.ts — every handicap
   // is knowledge or discipline, never dice.
   const skill = levelOf(s, captain.id);
+
+  // Free play is a different game and shares none of the card reasoning below. This guard has to sit
+  // here in nextAiAction and nowhere else: it first went into investmentAction, which voyageAction
+  // itself falls back to, and the two called each other until the stack gave out.
+  if (s.rules === 'voyage') return voyageAction(s, captain);
 
   // Winning beats everything else on the board — but only claim it holding the cash the claim
   // actually requires.

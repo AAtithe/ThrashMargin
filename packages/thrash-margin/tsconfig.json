@@ -13,5 +13,5 @@
     }
   },
   "include": ["api/**/*", "shared/**/*"],
-  "exclude": ["client", "server", "node_modules"]
+  "exclude": ["client", "node_modules"]
 }

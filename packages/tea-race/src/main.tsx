@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Lobby from './pages/Lobby';
+import Tutorial from './pages/Tutorial';
 import GameScreen from './pages/GameScreen';
 import { UI } from './theme';
 import './styles.css';
@@ -18,6 +19,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     <BrowserRouter basename={import.meta.env.BASE_URL}>
       <Routes>
         <Route path="/" element={<Lobby />} />
+        <Route path="/how-to-play" element={<Tutorial />} />
         <Route path="/game/:id" element={<GameScreen />} />
       </Routes>
     </BrowserRouter>

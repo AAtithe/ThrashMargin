@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
 import {
   DEFAULT_DIFFICULTY,
   DIFFICULTIES,
+  FACE_UP_CONTRACTS,
   MAX_CAPTAINS,
+  PAYOUT_MULTIPLIERS,
   PRESETS,
   SHARE_MAJORITY,
   TOTAL_SHARES,
@@ -14,6 +16,7 @@ import {
   type PresetName,
 } from '../sim/rules';
 import type { Hazards } from '../sim/types';
+import { VOYAGE_ROUNDS } from '../sim/voyage';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
@@ -154,6 +157,7 @@ export default function Lobby() {
    * The presets are the front door — showing ten switches and three difficulty buttons before anyone
    * has picked a game is how the screen became unreadable in the first place.
    */
+  const [mode, setMode] = useState<'classic' | 'voyage'>('classic');
   const [tinkering, setTinkering] = useState(false);
   const [openGroup, setOpenGroup] = useState<SwitchGroup | null>(null);
   const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
@@ -179,6 +183,7 @@ export default function Lobby() {
       const id = await createGame(name, {
         humanNames: humanNames.slice(0, humans),
         aiCount: ai,
+        rules: mode,
         difficulty: level,
         seed: seed.trim() || undefined,
         hazards,
@@ -224,13 +229,19 @@ export default function Lobby() {
         <header style={{ marginBottom: '2rem' }}>
           <p style={eyebrow}>After Ocean Trader, Clipper Games, 1988</p>
           <h1 style={title}>The Tea Race</h1>
+          {/* Kept honest: a commission names the buyer and the price, never a source port — that
+              stopped being true when cards lost their source, and this paragraph still claimed it. */}
           <p style={{ ...bodySmall, maxWidth: '58ch', margin: 0 }}>
-            Five commissions are posted on the exchange at all times, each naming a cargo, the port
-            that sells it and the port that wants it. Only the first two ships home are paid — four
-            times the purchase price, then twice, then nothing. Carry {SHARE_MAJORITY} of the{' '}
+            {FACE_UP_CONTRACTS} commissions are posted on the exchange at all times, each naming a
+            cargo, the port that wants it and the price it is reckoned at — load it wherever you can
+            get it. Only the first two ships home are paid: {PAYOUT_MULTIPLIERS[1]}× the commission
+            price a lot, then {PAYOUT_MULTIPLIERS[2]}×, then nothing. Carry {SHARE_MAJORITY} of the{' '}
             {TOTAL_SHARES} company shares, {money(VICTORY_CASH)} and a ship still afloat, and the
             company is yours.
           </p>
+          <Link to="/how-to-play" style={{ textDecoration: 'none', alignSelf: 'flex-start' }}>
+            <Button tone="quiet">How to play →</Button>
+          </Link>
         </header>
 
         {error && (
@@ -240,6 +251,31 @@ export default function Lobby() {
         )}
 
         <Panel title="A new voyage" style={{ marginBottom: '1.5rem' }}>
+          <div style={field}>
+            <Label>Which game</Label>
+            <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+              <Button
+                tone={mode === 'classic' ? 'primary' : 'quiet'}
+                title="The 1988 board game: five commissions, first two ships home paid, a share majority to win."
+                onClick={() => setMode('classic')}
+              >
+                The tea race
+              </Button>
+              <Button
+                tone={mode === 'voyage' ? 'primary' : 'quiet'}
+                title="Free play: no commissions, no declaration. Buy where a good is grown, sell where it is wanted, and be worth the most when the season closes."
+                onClick={() => setMode('voyage')}
+              >
+                Free play
+              </Button>
+            </div>
+            <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
+              {mode === 'classic'
+                ? `The published game. ${FACE_UP_CONTRACTS} commissions, only the first two ships home paid, and ${SHARE_MAJORITY} of the ${TOTAL_SHARES} shares to take the company.`
+                : `No commissions and nothing to declare. Every port has its own price for every good, producing ports are cheap and consuming ports are dear, and the market moves as cargo actually changes hands — your own trade included. ${VOYAGE_ROUNDS} rounds, and the largest fortune at the close takes the honours.`}
+            </p>
+          </div>
+
           <div style={field}>
             <Label>Name this voyage</Label>
             <input

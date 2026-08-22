@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { priceAt, priceStanding, quaysidePrice } from '../sim/pricing';
+import { priceStanding } from '../sim/pricing';
 import { AGENT_LADING_DISCOUNT, AGENT_PRICE, AGENT_SALE_UPLIFT, MAX_AGENTS } from '../sim/agents';
 import { slotsOf } from '../sim/rules';
 import { GOOD_BY_ID, PORT_BY_ID, goodName, planRoute, portName } from '../sim/content';
@@ -9,7 +9,7 @@ import { UI, money } from '../theme';
 import { planFastestRoute, routeTurns, windFor, type Season } from '../sim/weather';
 import { insurancePremium, piracyRating, routeRisk } from '../sim/hazards';
 import { Button, Empty, Label, Panel, bodySmall, dataText } from './ui';
-import type { Captain, Contract, GameAction, PortId, Ship } from '../sim/types';
+import type { GoodId, Captain, Contract, GameAction, PortId, Ship } from '../sim/types';
 
 interface Props {
   ship: Ship | null;
@@ -28,6 +28,15 @@ interface Props {
   sellable: boolean;
   /** Whether port agents are in play. */
   agentsOn: boolean;
+  /**
+   * What a lot costs here, and what this quay pays for one, as the *game* reckons it.
+   *
+   * Passed in rather than looked up, because free play prices every port from a living market while
+   * the classic game reads a fixed table — and a panel that computed it itself quoted £52 for cargo
+   * the reducer then sold for £42.
+   */
+  priceFor: (port: PortId, good: GoodId) => number;
+  paysFor: (port: PortId, good: GoodId) => number;
 }
 
 /**
@@ -48,6 +57,8 @@ export default function PortPanel({
   piracyOn,
   sellable,
   agentsOn,
+  priceFor,
+  paysFor,
 }: Props) {
   const port = ship?.location ? PORT_BY_ID[ship.location] : null;
   const mine = agentsOn && port ? (captain.agents ?? []).includes(port.id) : false;
@@ -191,7 +202,7 @@ export default function PortPanel({
                 // will do as well as any other that stocks it.
                 const wanted = contracts.some(c => c.good === id && c.fills.length < 2);
                 // What this quay charges, which may sit either side of the card's reckoning.
-                const price = priceAt(port.id, id);
+                const price = priceFor(port.id, id);
                 const standing = priceStanding(port.id, id);
                 const afford = captain.cash >= price;
                 return (
@@ -268,14 +279,14 @@ export default function PortPanel({
             {[...new Set(ship.hold.map(l => l.good))].map(good => {
               const lots = ship.hold.filter(l => l.good === good);
               const paid = lots.reduce((n, l) => n + l.paid, 0);
-              const takings = sellable && port ? quaysidePrice(port.id, good) * lots.length : 0;
+              const takings = sellable && port ? paysFor(port.id, good) * lots.length : 0;
               return (
                 <span key={good} style={{ display: 'inline-flex', gap: '0.3rem' }}>
                   {sellable && port && (
                     <Button
                       disabled={!enabled}
                       title={`${port.name} will take them at ${money(
-                        quaysidePrice(port.id, good),
+                        paysFor(port.id, good),
                       )} a lot — ${money(paid - takings)} down on the ${money(paid)} she paid. ${
                         PORT_BY_ID[port.id]?.demands.includes(good) ||
                         PORT_BY_ID[port.id]?.supplies.includes(good)
