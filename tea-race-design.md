@@ -559,6 +559,43 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
+### Session 11 (2026-08-22) — free play made reachable, and a silent transport bug
+
+Voyage mode was built the session before. Checking whether it was actually *playable* found something
+much larger.
+
+**`useGameCloud.createGame` sent four fields and dropped three.** name, humanNames, aiCount and seed
+went over the wire; `rules`, `hazards` and `difficulty` did not. Because the sign-in gate means every
+real player takes the cloud path, that means free play was unreachable, all eleven rule toggles were
+ignored, all four presets were ignored, and the difficulty dial did nothing. **The settings screen
+worked perfectly and changed nothing.** Everything built behind a toggle across several sessions had
+never once applied for a signed-in player.
+
+**Steady Eddie had the identical bug** — its lobby was passing hazards and difficulty and its cloud
+path was discarding both. Niccolò is clean.
+
+The general lesson, and it is the important part of this session:
+
+> A settings screen wired end to end in the local path and truncated in the remote one fails
+> **completely silently**. Nothing errors, nothing logs, the UI reflects the choice back at you, and
+> the game ignores it. **The harness cannot catch this class of bug at all**, because it calls
+> `createInitialState` directly — the gap is in the transport, not the sim. The only thing that finds
+> it is following a setting from the click to the state it produces.
+
+Both endpoints now validate rather than trust the body: enumerated values for `rules` and
+`difficulty`, and `hazards` rebuilt key by key from an explicit switch list, so nothing unrecognised
+reaches the sim and anything malformed falls back to the default. Checked directly — unknown strings,
+numbers, objects and null all yield an ordinary game, and a body carrying `__proto__`, a bogus key and
+`wages: 'yes'` sanitises to the booleans it actually set.
+
+With that fixed, free play needed finishing rather than building. It had been offering a company that
+does not exist in it: the counting house sold shares and invited a declaration the reducer silently
+refused, under a headline telling you to collect six of them; the top bar and standings reported a
+share count permanently at zero; the end screen announced somebody had carried the company. All of it
+now reads **worth** — the same `assetValue` the reckoning settles on — and the share machinery is
+hidden rather than disabled.
+
+
 Kept here rather than in `PROGRESS.md`, which is Banco di Niccolò's own record and titled as such.
 
 ### Session 1 (2026-08-02) — the vertical slice
