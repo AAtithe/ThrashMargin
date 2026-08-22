@@ -321,6 +321,7 @@ export default function GameScreen() {
               />
 
               <DepotPanel
+                state={state}
                 vehicle={selectedVehicle}
                 haulier={haulier}
                 contracts={state.contracts}

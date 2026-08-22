@@ -7,10 +7,14 @@ import { destinationOf, pointsToDestination, reachableOnRoad } from '../sim/move
 import { UI, money } from '../theme';
 import { planFastestRoute, routeTurns, delayRating, type Season } from '../sim/weather';
 import { insurancePremium, theftRating, routeRisk } from '../sim/hazards';
+import { depotStruck, goodEmbargoed } from '../sim/events';
 import { Button, Empty, Label, Panel, bodySmall, dataText } from './ui';
-import type { Haulier, Contract, GameAction, DepotId, Vehicle } from '../sim/types';
+import type { Haulier, Contract, GameAction, GameState, DepotId, Vehicle } from '../sim/types';
 
 interface Props {
+  /** For depotStruck/goodEmbargoed checks only — a struck depot or embargoed good silently
+      rejects BUY_CARGO/DELIVER in the reducer, so the UI has to know before offering the button. */
+  state: GameState;
   vehicle: Vehicle | null;
   haulier: Haulier;
   contracts: Contract[];
@@ -33,6 +37,7 @@ interface Props {
  * collapsible sections would be filing rather than designing.
  */
 export default function DepotPanel({
+  state,
   vehicle,
   haulier,
   contracts,
@@ -46,6 +51,7 @@ export default function DepotPanel({
   sellable,
 }: Props) {
   const depot = vehicle?.location ? DEPOT_BY_ID[vehicle.location] : null;
+  const struck = vehicle?.location ? depotStruck(state, vehicle.location) : false;
   const points = vehicle ? (miles[vehicle.id] ?? 0) : 0;
 
   /** Commissions this vehicle could land right here, right now, and how many slots each would take. */
@@ -148,14 +154,24 @@ export default function DepotPanel({
       {landable.length > 0 && (
         <div style={block}>
           <Label>Land her cargo</Label>
+          {struck && (
+            <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.bad }}>
+              {depot?.name} is struck — no landing here until it lifts. The reducer already refuses
+              this silently; these buttons are disabled so the refusal is visible instead.
+            </p>
+          )}
           {landable.map(({ contract: c, units }) => {
             const rank = c.fills.length + 1;
             return (
               <Button
                 key={c.id}
                 tone="primary"
-                disabled={!enabled}
-                title={`Every matching slot lands at once and is paid per unit`}
+                disabled={!enabled || struck}
+                title={
+                  struck
+                    ? `${depot?.name} is struck — landing is refused here until the strike lifts`
+                    : `Every matching slot lands at once and is paid per unit`
+                }
                 onClick={() => dispatch({ type: 'DELIVER', vehicleId: vehicle.id, contractId: c.id })}
               >
                 Land {units} × {goodName(c.good)} — {rank === 1 ? 'first home' : 'second home'},{' '}
@@ -172,7 +188,9 @@ export default function DepotPanel({
           <Label>
             Load a cargo — {slotsOf(vehicle?.vehicleClass) - vehicle.hold.length} of {slotsOf(vehicle?.vehicleClass)} slots free
           </Label>
-          {depot.supplies.length === 0 ? (
+          {struck ? (
+            <Empty>{depot.name} is struck — no lading here until it lifts.</Empty>
+          ) : depot.supplies.length === 0 ? (
             <Empty>{depot.name} has nothing to sell. She must go elsewhere for a cargo.</Empty>
           ) : (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
@@ -185,14 +203,17 @@ export default function DepotPanel({
                 const price = priceAt(depot.id, id);
                 const standing = priceStanding(depot.id, id);
                 const afford = haulier.cash >= price;
+                const embargoed = goodEmbargoed(state, id);
                 return (
                   <Button
                     key={id}
-                    disabled={!enabled || !afford}
+                    disabled={!enabled || !afford || embargoed}
                     title={
-                      afford
-                        ? `Reckoned at ${money(good.basePrice)} a lot; ${depot.name} asks ${money(price)}`
-                        : `${good.name} costs ${money(price)} here`
+                      embargoed
+                        ? `${good.name} is under embargo — nowhere will load it until it lifts`
+                        : afford
+                          ? `Reckoned at ${money(good.basePrice)} a lot; ${depot.name} asks ${money(price)}`
+                          : `${good.name} costs ${money(price)} here`
                     }
                     onClick={() => dispatch({ type: 'BUY_CARGO', vehicleId: vehicle.id, good: id })}
                     style={wanted ? { borderColor: UI.brass, color: UI.brass } : undefined}
@@ -207,6 +228,7 @@ export default function DepotPanel({
                       {money(price)}
                     </span>
                     {wanted ? ' ★' : ''}
+                    {embargoed ? ' 🚫' : ''}
                   </Button>
                 );
               })}
