@@ -63,7 +63,7 @@ export function useGameCloud() {
   const loadGame = useCallback(async (gameId: string) => {
     setError(null);
     try {
-      const res = await fetch(`${API}/api/niccolo/game/${gameId}`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/niccolo/game?id=${gameId}`, { headers: authHeaders() });
       if (res.status === 401) { setError(SESSION_EXPIRED); return; }
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to load campaign'); return; }
@@ -86,7 +86,7 @@ export function useGameCloud() {
       setError(null);
       // Fire-and-forget sync — the UI already has the new state; a failed sync just means
       // this particular week's progress stays local until the next successful sync.
-      fetch(`${API}/api/niccolo/game/${next.id}`, {
+      fetch(`${API}/api/niccolo/game?id=${next.id}`, {
         method: 'PUT',
         headers: authHeaders(),
         body: JSON.stringify({ state: next }),
@@ -99,7 +99,7 @@ export function useGameCloud() {
 
   const deleteGame = useCallback(async (gameId: string) => {
     try {
-      await fetch(`${API}/api/niccolo/game/${gameId}`, { method: 'DELETE', headers: authHeaders() });
+      await fetch(`${API}/api/niccolo/game?id=${gameId}`, { method: 'DELETE', headers: authHeaders() });
       setSaves(prev => prev.filter(s => s.id !== gameId));
     } catch { /* ignore */ }
   }, []);

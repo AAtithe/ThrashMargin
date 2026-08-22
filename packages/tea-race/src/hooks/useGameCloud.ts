@@ -87,7 +87,7 @@ export function useGameCloud() {
   const loadGame = useCallback(async (gameId: string) => {
     setError(null);
     try {
-      const res = await fetch(`${API}/api/tea-race/game/${gameId}`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/tea-race/game?id=${gameId}`, { headers: authHeaders() });
       if (res.status === 401) {
         setError(SESSION_EXPIRED);
         return;
@@ -118,7 +118,7 @@ export function useGameCloud() {
         setError(null);
         // Fire-and-forget sync — the UI already has the new state; a failed sync just means this
         // turn's progress stays local until the next successful one.
-        fetch(`${API}/api/tea-race/game/${next.id}`, {
+        fetch(`${API}/api/tea-race/game?id=${next.id}`, {
           method: 'PUT',
           headers: authHeaders(),
           body: JSON.stringify({ state: next }),
@@ -138,7 +138,7 @@ export function useGameCloud() {
 
   const deleteGame = useCallback(async (gameId: string) => {
     try {
-      await fetch(`${API}/api/tea-race/game/${gameId}`, {
+      await fetch(`${API}/api/tea-race/game?id=${gameId}`, {
         method: 'DELETE',
         headers: authHeaders(),
       });

@@ -64,7 +64,7 @@ export function useGame() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/api/game/${gameId}`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/game?id=${gameId}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to load game'); return; }
       setState(data.state);
@@ -107,7 +107,7 @@ export function useGame() {
 
   const deleteGame = useCallback(async (gameId: string) => {
     try {
-      await fetch(`${API}/api/game/${gameId}`, { method: 'DELETE', headers: authHeaders() });
+      await fetch(`${API}/api/game?id=${gameId}`, { method: 'DELETE', headers: authHeaders() });
       setSaves(prev => prev.filter(s => s.id !== gameId));
     } catch { /* ignore */ }
   }, []);
