@@ -324,11 +324,33 @@ export default function MapView({
   );
 
   return (
-    <div style={{ position: 'relative', background: CHART.sea, border: `1px solid ${CHART.coast}` }}>
+    <div
+      style={{
+        position: 'relative',
+        background: CHART.sea,
+        border: `1px solid ${CHART.coast}`,
+        alignSelf: 'center',
+        maxWidth: '100%',
+      }}
+    >
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
-        style={{ display: 'block', width: '100%', height: 'auto', touchAction: 'none', cursor: drag ? 'grabbing' : 'grab' }}
+        style={{
+          display: 'block',
+          // Height-driven, not width-driven: this map's viewBox is portrait (taller than it is
+          // wide, to match Britain's own shape), unlike The Tea Race's landscape world chart. A
+          // width:100% map in a wide desktop column came out taller than the whole viewport —
+          // the fleet/orders panels below it were only reachable by scrolling. Capping by height
+          // and letting width follow from the aspect ratio keeps the whole board on screen;
+          // maxWidth still shrinks it to fit a narrow (mobile-stacked) column instead of
+          // overflowing sideways.
+          height: 'min(68vh, 820px)',
+          width: 'auto',
+          maxWidth: '100%',
+          touchAction: 'none',
+          cursor: drag ? 'grabbing' : 'grab',
+        }}
         onPointerDown={e => {
           if (e.button !== 0) return;
           setDrag({ x: e.clientX, y: e.clientY, panX: view.panX, panY: view.panY });
