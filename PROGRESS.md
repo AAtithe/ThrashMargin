@@ -1054,3 +1054,13 @@ The audit verdict (sibling app, no shared engine) is recorded in `AUDIT.md` for 
 - **Verification.** New driver, 35/35 over three runs: both branches of her death depart her and pin the same evidence; the death is on a relative clock, not a calendar date; she is alive when the illness letter arrives and does not die before the six weeks are up; she leaves the roster holding no assignment; Chapter 2's finale trigger is byte-identical to before; her objective reads `inevitable` and resolves; both branches of Godscalc's death pin his letter; at least two parentage pieces sit on unavoidable events; a player taking every ungenerous branch still ends with a dossier; the wage counsel and the trade tip both survive her in Gregorio's voice and in *different prose*; Marian falls entirely silent; with both gone the counsel is dropped rather than crashing while the rest of the household still speaks; and Gelis says nothing about the mask until it is off. Phase 21's own driver re-run green at 31/31 after its fixtures were extended. Live in the browser: played the letter and the death through the real UI on a Chapter 2 campaign, confirmed `status: 'departed'`, the indenture on the Evidence Board, the objective reading "occurred", and the Counsel panel showing Gregorio giving both the household line and the trade tip ("The reports on file put Spices at 31f in Bruges and 110f in Lyon — a difference of 79f the unit. On paper. Paper is what I have.") with Marian absent. Zero console errors. `tsc --noEmit` (client + api) and `vite build` clean. Test campaign abandoned.
 - **Not fixed here, deliberately.** The fourth debt in the plan — `vesselIdAt` pinned to `ship_1`, which `SELL_VESSEL` would break — stays open, because it must be settled *in the same change as fleet growth* rather than guessed at now. It is recorded in the plan and in Phase 20's own entry.
 - **Next: Phase 23, cycling market events**, ahead of Chapter 7 because that chapter's Burgundy repricing needs the demand layer and a bespoke shock would build the same machinery twice.
+
+## Accounts — no guest path
+
+**A signed-in account is required to play. There is no guest route and none is to be added back** —
+one existed and was deliberately removed. The lobby's `if (!user)` check is *presentational* (it
+reads `tm_user` from localStorage and can be satisfied from the browser console); the real boundary is
+`getUser(req)` in the API's `_lib/auth.ts`, which verifies a Bearer JWT against `JWT_SECRET` and 401s
+without one. Do not weaken either half for local development — set `tm_user` in the console instead.
+
+See `CLAUDE.md` at the repo root, and §4a of `tea-race-design.md` for the full reasoning.

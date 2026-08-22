@@ -165,3 +165,13 @@ before this needs revisiting.
 After *Ocean Trader* (Clipper Games Ltd, 1988), by way of **The Tea Race** — see
 `tea-race-design.md` for that game's own design history, which this one inherits rather than
 repeats.
+
+## Accounts — no guest path
+
+**A signed-in account is required to play. There is no guest route and none is to be added back** —
+one existed and was deliberately removed. The lobby's `if (!user)` check is *presentational* (it
+reads `tm_user` from localStorage and can be satisfied from the browser console); the real boundary is
+`getUser(req)` in the API's `_lib/auth.ts`, which verifies a Bearer JWT against `JWT_SECRET` and 401s
+without one. Do not weaken either half for local development — set `tm_user` in the console instead.
+
+See `CLAUDE.md` at the repo root, and §4a of `tea-race-design.md` for the full reasoning.

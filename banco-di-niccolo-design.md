@@ -442,3 +442,13 @@ Chapters 1 to 3 are the game. Build those to full quality before any Chapter 4+ 
 > **Phase 11, confirmed 2026-07-22:** Phases 0-10 shipped Chapters 1-3 complete, at which point Section 12's own phase list (which implies Phase 11 continues into Chapter 4, "Scales of Gold") directly conflicts with this section. Flagged before starting; the owner confirmed this section governs — Phase 11 became a Chapters 1-3 quality pass (cargo insurance/voyage risk per §4, the map SVG height regression noted since Phase 7, the api tsconfig JSX noise noted since Phase 10) rather than Chapter 4 content. Chapter 4+ work stays paused until explicitly requested, regardless of what Section 12's phase numbering would otherwise suggest comes next.
 >
 > **Standing position as of Phase 19, 2026-07-30:** the Phase 11 hold was lifted for Chapter 4 (Phase 13) and again for Chapter 5 (Phase 19), each time by the owner asking for that chapter by name. The rule this section establishes still holds in the form every chapter phase since has restated: **reaching a chapter is not authorization for the next one.** Chapters 6, 7 and 8 are unbuilt and stay unbuilt until asked for.
+
+## Accounts — no guest path
+
+**A signed-in account is required to play. There is no guest route and none is to be added back** —
+one existed and was deliberately removed. The lobby's `if (!user)` check is *presentational* (it
+reads `tm_user` from localStorage and can be satisfied from the browser console); the real boundary is
+`getUser(req)` in the API's `_lib/auth.ts`, which verifies a Bearer JWT against `JWT_SECRET` and 401s
+without one. Do not weaken either half for local development — set `tm_user` in the console instead.
+
+See `CLAUDE.md` at the repo root, and §4a of `tea-race-design.md` for the full reasoning.

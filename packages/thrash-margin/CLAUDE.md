@@ -2,6 +2,29 @@
 
 This file tells Claude Code exactly what this project is, what has been built, and what to build next.
 
+## Accounts — no guest path (portal-wide invariant)
+
+**A signed-in account is required to play, on every game on this portal. There is no guest route and
+none is to be added back** — one existed and was deliberately removed. Do not relax the gate to make
+local development, testing, or a screenshot easier.
+
+Two checks, and only one is a security boundary:
+
+- `client/src/pages/Lobby.tsx`'s `if (!user)` is **presentational** — it reads `tm_user` from
+  localStorage, so anyone can satisfy it from the browser console. It protects nothing by itself, and
+  stays because it is what stops the app inviting somebody to start a game they cannot save.
+- `api/_lib/auth.ts`'s `getUser(req)` is **the real boundary** — a Bearer JWT verified against
+  `JWT_SECRET`, with every endpoint returning 401 without one. No bypass, no dev-mode escape hatch,
+  no unauthenticated read path.
+
+To check the UI locally, satisfy the presentational half from the console:
+
+```js
+localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 'local-dev' }))
+```
+
+See `CLAUDE.md` at the repo root for the portal-wide version of this.
+
 ## What this is
 
 Thrash Margin is a browser-based territory strategy game combining Settlers-style settlement building with Risk-style military conquest. The name reflects the core tension: warfare (thrash) and economics (margin) are inseparable.

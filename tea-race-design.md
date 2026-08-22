@@ -262,6 +262,35 @@ often than they landed it** — 185 sell-offs against 132 deliveries in one game
 
 ---
 
+## 4a. Accounts — no guest path, and why the two checks are different
+
+**A signed-in account is required to play, on every game on the portal. There is no guest route and
+none is to be added back.** One existed and was deliberately removed. If a future session finds the
+gate inconvenient — for local development, for a screenshot, for a test — the answer is never to
+weaken it. See `CLAUDE.md` at the repo root, which carries the same invariant for all four games.
+
+The important part is that there are *two* checks and only one of them is a security boundary:
+
+| | Where | What it is |
+|---|---|---|
+| The lobby check | `src/pages/Lobby.tsx`, `if (!user)` | **Presentational.** Reads `tm_user` from localStorage via `lib/portalAuth.ts` and decides what to render. Anyone can satisfy it from the browser console; it protects nothing by itself. It stays because it is what stops the app inviting somebody to start a game they cannot save. |
+| The API check | `api/_lib/auth.ts`, `getUser(req)` | **The real boundary.** Requires `Authorization: Bearer <jwt>` and verifies it against `JWT_SECRET`. The game endpoint calls it and returns 401 otherwise. This is what protects the data. |
+
+Confusing the two is the failure mode to guard against — the lobby check *looks* like
+authentication and is not, so hardening it would be wasted work and relaxing it would look harmless.
+
+**Checking the UI locally.** Satisfy the presentational check from the console rather than touching
+either check:
+
+```js
+localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 'local-dev' }))
+```
+
+That renders the lobby and grants no server access — cloud saves correctly 401, and local saves are
+the only ones that work, which is exactly the honest local-dev state.
+
+---
+
 ## 5. Verification
 
 `npm run drive:tea` — around 300,000 assertions in a couple of seconds.

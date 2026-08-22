@@ -1,5 +1,12 @@
 // Duplicated from packages/thrash-margin/api/_lib/auth.ts — see db.ts's comment for why.
 // Same JWT_SECRET env var, so a token issued by Thrash Margin's login verifies here too.
+//
+// **This file is the portal's authorisation boundary.** The lobbies' `if (!user)` checks are
+// presentational only — they read localStorage and can be satisfied by anyone. `getUser` below is
+// what actually protects the data, and every game endpoint must call it and 401 on failure.
+//
+// Do not add a bypass, a dev-mode escape hatch, an env-var override, or an "unauthenticated read"
+// path. There is deliberately no guest access to this portal; see CLAUDE.md at the repo root.
 import jwt from 'jsonwebtoken';
 import type { VercelRequest } from '@vercel/node';
 

@@ -181,7 +181,18 @@ export default function Lobby() {
   const active    = saves.filter(s => s.status === 'active');
   const completed = saves.filter(s => s.status !== 'active');
 
-  // Every game on the portal now requires a real account — there is no anonymous/guest path in.
+  /**
+   * Every game on the portal requires a real account. **There is no guest path, and none is to be
+   * added back** — one existed and was deliberately removed. See CLAUDE.md at the repo root.
+   *
+   * This check is presentational: it reads `tm_user` from localStorage and decides what to render, so
+   * it is trivially satisfied client-side and protects nothing on its own. It still has to stay — it
+   * is what stops the app inviting somebody to start a game they cannot save.
+   *
+   * The real boundary is server-side, in `api/_lib/auth.ts`: `getUser(req)` requires a Bearer JWT
+   * verified against JWT_SECRET, and every game endpoint 401s without one. Do not relax either half
+   * to make local work easier — to check the UI, set `tm_user` in the browser console instead.
+   */
   if (!user) {
     return (
       <div style={s.page}>
