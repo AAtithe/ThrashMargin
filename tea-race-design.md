@@ -472,13 +472,37 @@ The rules change the owner cares most about, and the one that makes the map matt
 - **Multiple stocks** — several shipping companies whose prices move with the trade flowing through
   their regions, so shares become a market to read rather than a counter to fill.
 
-## 7. Voyage mode — designed, not built
+## 7. Voyage mode — free play built, full simulation still not
 
 The classic ruleset is a dice-and-cards board game. Voyage mode would be the same world run as a
 continuous simulation, in the manner of Banco di Niccolò.
 
-**Do not start building this without being asked.** It is recorded here so the intent is not lost,
-and so that `GameState.rules` has a documented reason to exist.
+**Free play shipped 2026-08-22** (`sim/voyage.ts`, `rules: 'voyage'`). The full continuous
+simulation below is still *not* built, and the distinction matters:
+
+| §7 pillar | status |
+|---|---|
+| Cards replaced by a live market | ✅ built — no deck is dealt; you trade the spread between ports |
+| Prices that drift and respond to trade | ✅ built — every purchase lifts a port's price, every landing depresses it, easing back over following rounds |
+| Standing costs | ✅ already existed — wages, loans, insurance |
+| The race becomes implicit | ✅ built — no first-home multiplier; a rival landing ahead of you moves the price against you |
+| Victory by reckoning, not majority | ✅ built — 120 rounds, largest fortune on `assetValue` |
+| **Weeks instead of dice** | ❌ **not built** — movement is still 2d6 |
+| **Courier-latency news** | ❌ **not built** — prices are known exactly, everywhere |
+| **A rewritten AI** | ⚠️ partly — `voyageAction` is a spread-trader, not a market model |
+
+Movement was deliberately left on the dice. Changing it would invalidate every pacing measurement in
+this document and every weather figure in §5a, for a mode that already plays as a different game
+without it.
+
+**The finding that mattered most.** Free play did not work at all until producing ports were made
+cheap and consuming ports dear. `priceAt` prices every port within ±22% of the reckoning whether it
+grows a good or craves it, so buying and selling were the same number give or take noise: computer
+captains sailed twenty times per trade hunting a spread that was not there and finished a 120-round
+season *poorer* than they started — median £258 against £600 of starting capital. With the structural
+spread, £927; with the AI also filling its hold rather than carrying one lot, £1,849. **Supply cheap
+and demand dear is not a balance knob, it is what trade is**, and its absence is invisible until you
+measure the outcome rather than the mechanism.
 
 What would change:
 
