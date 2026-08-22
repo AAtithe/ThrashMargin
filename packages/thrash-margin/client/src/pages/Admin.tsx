@@ -11,7 +11,7 @@ interface AdminUser {
   email: string;
   registeredAt: number;
   lastLoginAt: number | null;
-  gamesByTitle: { thrash_margin: number; niccolo: number; tea_race: number };
+  gamesByTitle: { thrash_margin: number; niccolo: number; tea_race: number; steady_eddie: number };
   activeGames: number;
   wins: number;
 }
@@ -28,6 +28,7 @@ interface FeedbackItem {
 
 const GAME_LABELS: Record<string, string> = {
   general: 'General', thrash_margin: 'Thrash Margin', niccolo: 'Banco di Niccolo', tea_race: 'The Tea Race',
+  steady_eddie: 'Steady Eddie',
 };
 const TYPE_ICONS: Record<string, string> = { bug: '🐛', idea: '💡', comment: '💬' };
 
@@ -123,7 +124,7 @@ export default function Admin() {
             <table style={s.table}>
               <thead>
                 <tr>
-                  {['Username', 'Email', 'Registered', 'Last login', 'TM', 'Niccolo', 'Tea Race', 'Active', 'Wins'].map(h => (
+                  {['Username', 'Email', 'Registered', 'Last login', 'TM', 'Niccolo', 'Tea Race', 'Steady Eddie', 'Active', 'Wins'].map(h => (
                     <th key={h} style={s.th}>{h}</th>
                   ))}
                 </tr>
@@ -138,12 +139,13 @@ export default function Admin() {
                     <td style={s.tdNum}>{u.gamesByTitle.thrash_margin}</td>
                     <td style={s.tdNum}>{u.gamesByTitle.niccolo}</td>
                     <td style={s.tdNum}>{u.gamesByTitle.tea_race}</td>
+                    <td style={s.tdNum}>{u.gamesByTitle.steady_eddie}</td>
                     <td style={s.tdNum}>{u.activeGames}</td>
                     <td style={s.tdNum}>{u.wins}</td>
                   </tr>
                 ))}
                 {!users?.length && (
-                  <tr><td style={s.td} colSpan={9}>No registered users yet.</td></tr>
+                  <tr><td style={s.td} colSpan={10}>No registered users yet.</td></tr>
                 )}
               </tbody>
             </table>

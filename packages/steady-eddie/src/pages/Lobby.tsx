@@ -18,9 +18,11 @@ import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
 
-// Namespaced like the other tearace_* save keys — not tm_guest, which is Thrash Margin's
-// own flag and would falsely mark guest status across every game sharing this origin.
-const GUEST_KEY = 'tearace_guest';
+// Namespaced like the other steadyeddie_* save keys — not tm_guest or tearace_guest, which are
+// the other games' own flags and would falsely mark guest status across every game sharing this
+// origin (this key was itself `tearace_guest` until caught: anyone who had ever used guest mode
+// on The Tea Race was silently already "signed in as guest" here too, bypassing this gate).
+const GUEST_KEY = 'steadyeddie_guest';
 
 /**
  * Every optional rule, in the order they are offered. One row here is the whole of a switch: the

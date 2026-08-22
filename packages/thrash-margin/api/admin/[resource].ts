@@ -18,6 +18,7 @@ async function listUsers(res: VercelResponse) {
          COUNT(g.id) FILTER (WHERE g.game = 'thrash_margin')            AS tm_games,
          COUNT(g.id) FILTER (WHERE g.game = 'niccolo')                  AS niccolo_games,
          COUNT(g.id) FILTER (WHERE g.game = 'tea_race')                 AS tearace_games,
+         COUNT(g.id) FILTER (WHERE g.game = 'steady_eddie')             AS steadyeddie_games,
          COUNT(g.id) FILTER (WHERE g.status = 'active')                 AS active_games,
          COUNT(g.id) FILTER (WHERE g.status = 'victory')                AS wins
        FROM users u
@@ -35,6 +36,7 @@ async function listUsers(res: VercelResponse) {
         thrash_margin: Number(r.tm_games),
         niccolo: Number(r.niccolo_games),
         tea_race: Number(r.tearace_games),
+        steady_eddie: Number(r.steadyeddie_games),
       },
       activeGames: Number(r.active_games),
       wins: Number(r.wins),
