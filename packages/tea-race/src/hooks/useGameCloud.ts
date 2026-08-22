@@ -57,11 +57,19 @@ export function useGameCloud() {
         const res = await fetch(`${API}/api/tea-race/game`, {
           method: 'POST',
           headers: authHeaders(),
+          // Every field the lobby can set has to go over the wire. This sent only the first four
+          // for a long time, which meant that for any signed-in player — and the sign-in gate makes
+          // that everybody — the presets, all eleven rule toggles, the difficulty dial and the
+          // choice of ruleset were silently discarded and every game came out as the default. The
+          // settings screen worked perfectly and changed nothing.
           body: JSON.stringify({
             name,
             humanNames: opts?.humanNames,
             aiCount: opts?.aiCount,
             seed: opts?.seed,
+            rules: opts?.rules,
+            hazards: opts?.hazards,
+            difficulty: opts?.difficulty,
           }),
         });
         if (res.status === 401) {

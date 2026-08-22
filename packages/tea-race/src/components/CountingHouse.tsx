@@ -20,6 +20,7 @@ import {
 } from '../sim/rules';
 import { HOME_PORT, portName } from '../sim/content';
 import { COMPANIES, STOCK_IDS, standing } from '../sim/stocks';
+import { assetValue } from '../sim/actions';
 import { insurancePremium } from '../sim/hazards';
 import { FONT, UI, money } from '../theme';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
@@ -60,6 +61,14 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
     ? captain.cash >= sharePrice
     : Boolean(buyoutTarget) && captain.cash >= sharePrice;
 
+  /**
+   * Free play has no company to carry: no majority, no declaration, and the ten shares are not a win
+   * condition. Offering the controls anyway was worse than useless — the buttons were live, the
+   * declaration was silently refused by the reducer, and the panel's headline still told you to
+   * collect six shares in a mode where that achieves nothing.
+   */
+  const freePlay = state.rules === 'voyage';
+  const worth = assetValue(state, captain);
   const wagesOn = state.hazards?.wages ?? false;
   const loansOn = state.hazards?.loans ?? false;
   const arrears = captain.arrears ?? 0;
@@ -97,13 +106,22 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
       title="Counting house"
       aside={
         <Label>
-          {captain.shares}/{TOTAL_SHARES} shares
+          {freePlay ? `worth ${money(worth)}` : `${captain.shares}/${TOTAL_SHARES} shares`}
         </Label>
       }
     >
       <p style={{ ...bodySmall, margin: 0 }}>
-        To carry the company you need {SHARE_MAJORITY} of the {TOTAL_SHARES} shares, then{' '}
-        {money(VICTORY_CASH)} and a ship still afloat {DECLARATION_TURNS} turns later.
+        {freePlay ? (
+          <>
+            No company to carry in free play — be worth the most when the season closes. Cash, cargo,
+            hulls and holdings all count; debts come off.
+          </>
+        ) : (
+          <>
+            To carry the company you need {SHARE_MAJORITY} of the {TOTAL_SHARES} shares, then{' '}
+            {money(VICTORY_CASH)} and a ship still afloat {DECLARATION_TURNS} turns later.
+          </>
+        )}
       </p>
 
       {/* The shipping exchange. Investments, never a second way to win — the ten shares above stay
@@ -214,6 +232,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
       )}
 
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+        {!freePlay && (
         <Button disabled={!enabled || !canBuyShare} onClick={() => dispatch({ type: 'BUY_SHARE' })}>
           {bankHasShares
             ? `Take up a share — ${money(sharePrice)}`
@@ -221,8 +240,9 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
               ? `Buy out ${buyoutTarget.name} — ${money(sharePrice)}`
               : 'No share to be had'}
         </Button>
+        )}
 
-        {bidsEnabled && bidTarget && (
+        {!freePlay && bidsEnabled && bidTarget && (
           <Button
             disabled={!enabled || !canBid}
             title={
@@ -242,6 +262,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
           </Button>
         )}
 
+        {!freePlay && (
         <Button
           tone="quiet"
           disabled={!enabled || captain.shares === 0}
@@ -250,6 +271,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         >
           Surrender a share — {money(buyback)}
         </Button>
+        )}
 
         {(classesOn ? (Object.keys(SHIP_CLASSES) as ShipClassId[]) : ['clipper' as ShipClassId]).map(
           id => {
@@ -284,7 +306,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         )}
       </div>
 
-      {!bankHasShares && (
+      {!freePlay && !bankHasShares && (
         <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
           The bank's ten are all out. A share now costs {SHARE_RAID_MULTIPLIER}×{' '}
           {sabotage
@@ -301,7 +323,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
       )}
 
       {/* The standing position, so the route to a win is never something you have to work out. */}
-      {bidsEnabled && !canDeclare && (
+      {!freePlay && bidsEnabled && !canDeclare && (
         <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
           You hold {captain.shares} of {TOTAL_SHARES}; {bidTarget?.name ?? 'no rival'} leads on{' '}
           {bidTarget?.shares ?? 0}. {bidsMade === 0 ? 'No bid' : `${bidsMade} bid${bidsMade === 1 ? '' : 's'}`}{' '}
@@ -309,7 +331,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
         </p>
       )}
 
-      {canDeclare && (
+      {!freePlay && canDeclare && (
         <div style={{ borderTop: `1px solid ${UI.rule}`, paddingTop: '0.55rem' }}>
           <Button tone="primary" disabled={!enabled} onClick={() => dispatch({ type: 'DECLARE' })}>
             Declare a majority

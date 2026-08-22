@@ -17,6 +17,7 @@ import EventCards from '../components/EventCards';
 import NewsBanner from '../components/NewsBanner';
 import MarketBoard from '../components/MarketBoard';
 import { livePrice, sellsFor } from '../sim/voyage';
+import { assetValue } from '../sim/actions';
 import { ladingPrice, saleProceeds } from '../sim/pricing';
 import { shipsAwaitingOrders } from '../sim/attention';
 import CaptainsTable from '../components/CaptainsTable';
@@ -151,7 +152,9 @@ export default function GameScreen() {
             </span>
             <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass }}>{money(captain.cash)}</span>
             <span style={{ ...dataText, fontSize: '0.8rem', color: UI.verdigris }}>
-              {captain.shares} share{captain.shares === 1 ? '' : 's'}
+              {state.rules === 'voyage'
+                ? `worth ${money(assetValue(state, captain))}`
+                : `${captain.shares} share${captain.shares === 1 ? '' : 's'}`}
             </span>
           </div>
         )}
@@ -240,7 +243,12 @@ export default function GameScreen() {
           <div style={turnBar}>
             {over ? (
               <span style={{ ...bodySmall, color: UI.brass }}>
-                {winner ? `${winner.name} carried the company.` : 'The voyage is over.'}
+                {/* Free play closes with a reckoning, not a company changing hands. */}
+                {winner
+                  ? state.rules === 'voyage'
+                    ? `The season closes. ${winner.name} finishes richest.`
+                    : `${winner.name} carried the company.`
+                  : 'The voyage is over.'}
               </span>
             ) : mustRoll ? (
               <>
@@ -390,12 +398,26 @@ export default function GameScreen() {
               ROUND {state.round}
             </span>
             <h2 style={{ fontFamily: FONT.display, fontSize: '1.9rem', margin: 0, color: winner.colour }}>
-              {winner.name} carries the company
+              {state.rules === 'voyage'
+                ? `${winner.name} finishes richest`
+                : `${winner.name} carries the company`}
             </h2>
             <p style={{ ...bodySmall, margin: 0 }}>
-              {winner.shares} shares, {money(winner.cash)} in hand and{' '}
-              {state.ships.filter(s => s.ownerId === winner.id).length} ship
-              {state.ships.filter(s => s.ownerId === winner.id).length === 1 ? '' : 's'} still afloat.
+              {state.rules === 'voyage' ? (
+                <>
+                  Worth {money(assetValue(state, winner))} at the close — {money(winner.cash)} in
+                  hand, {state.ships.filter(s => s.ownerId === winner.id).length} ship
+                  {state.ships.filter(s => s.ownerId === winner.id).length === 1 ? '' : 's'} and
+                  whatever was still in the holds.
+                </>
+              ) : (
+                <>
+                  {winner.shares} shares, {money(winner.cash)} in hand and{' '}
+                  {state.ships.filter(s => s.ownerId === winner.id).length} ship
+                  {state.ships.filter(s => s.ownerId === winner.id).length === 1 ? '' : 's'} still
+                  afloat.
+                </>
+              )}
             </p>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               <Button tone="primary" onClick={() => navigate('/')}>

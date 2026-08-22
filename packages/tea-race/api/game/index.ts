@@ -14,6 +14,61 @@ import { createInitialState } from '../../src/sim/state';
 const GAME_KIND = 'tea_race';
 
 /**
+ * Everything below reads the request body, so nothing below trusts it.
+ *
+ * These three fields carry the whole of the lobby's settings screen, and until they were added here
+ * the endpoint accepted a game's name, seat count and seed and silently dropped the rest — so for
+ * any signed-in player every game came out with the default ruleset, the default hazards and the
+ * default difficulty no matter what they had chosen. Anything unrecognised falls back to the default
+ * rather than being passed through, so a malformed or hostile body can only ever produce an ordinary
+ * game.
+ */
+const RULESETS = ['classic', 'voyage'] as const;
+const DIFFICULTIES = ['gentle', 'steady', 'hard'] as const;
+
+/** The optional-rule switches, listed explicitly so an unknown key cannot reach the sim. */
+const HAZARD_KEYS = [
+  'weather',
+  'piracy',
+  'events',
+  'hostileBids',
+  'quaysideSales',
+  'wages',
+  'loans',
+  'deadlines',
+  'shipClasses',
+  'stocks',
+  'agents',
+] as const;
+
+function readRules(raw: unknown): 'classic' | 'voyage' | undefined {
+  return typeof raw === 'string' && (RULESETS as readonly string[]).includes(raw)
+    ? (raw as 'classic' | 'voyage')
+    : undefined;
+}
+
+function readDifficulty(raw: unknown): 'gentle' | 'steady' | 'hard' | undefined {
+  return typeof raw === 'string' && (DIFFICULTIES as readonly string[]).includes(raw)
+    ? (raw as 'gentle' | 'steady' | 'hard')
+    : undefined;
+}
+
+function readHazards(
+  raw: unknown,
+): ({ weather: boolean; piracy: boolean } & Record<string, boolean>) | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const body = raw as Record<string, unknown>;
+  const out: Record<string, boolean> = {};
+  for (const key of HAZARD_KEYS) {
+    if (typeof body[key] === 'boolean') out[key] = body[key] as boolean;
+  }
+  // weather and piracy are required by the Hazards type. Defaulted off rather than guessed, and
+  // spread *before* the sanitised values so a body that does set them still wins.
+  return { weather: false, piracy: false, ...out };
+}
+
+
+/**
  * One Vercel function covering both `/api/tea-race/game` (list/create) and
  * `/api/tea-race/game?id=:id` (load/save/delete) as a single function — the two were separate
  * functions until a 4th game's own pair would have pushed the Hobby-plan function count past
@@ -51,6 +106,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         humanNames,
         aiCount,
         seed,
+        rules: readRules(req.body?.rules),
+        hazards: readHazards(req.body?.hazards),
+        difficulty: readDifficulty(req.body?.difficulty),
         createdAt: Date.now(),
       });
 

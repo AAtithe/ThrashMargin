@@ -1,6 +1,7 @@
 import { SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel } from './ui';
+import { assetValue } from '../sim/actions';
 import type { GameState } from '../sim/types';
 
 /**
@@ -10,7 +11,15 @@ import type { GameState } from '../sim/types';
  */
 export default function CaptainsTable({ state }: { state: GameState }) {
   const active = state.captains[state.activeIndex];
-  const leader = Math.max(...state.captains.map(c => c.shares));
+  /**
+   * Free play has no share race, so the column that matters is worth. Showing "0 shares" beside every
+   * captain for a hundred rounds tells a player nothing about who is winning.
+   */
+  const freePlay = state.rules === 'voyage';
+  const worthOf = (c: (typeof state.captains)[number]) => assetValue(state, c);
+  const leader = freePlay
+    ? Math.max(...state.captains.map(worthOf))
+    : Math.max(...state.captains.map(c => c.shares));
 
   return (
     <Panel title="The table" aside={<Label>{`round ${state.round}`}</Label>}>
@@ -19,7 +28,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
           <tr>
             <th style={{ ...th, textAlign: 'left' }}>Captain</th>
             <th style={th}>Cash</th>
-            <th style={th}>Shares</th>
+            <th style={th}>{freePlay ? 'Worth' : 'Shares'}</th>
             <th style={th}>Ships</th>
           </tr>
         </thead>
@@ -52,14 +61,14 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                   style={{
                     ...td,
                     color:
-                      captain.shares >= SHARE_MAJORITY
+                      !freePlay && captain.shares >= SHARE_MAJORITY
                         ? UI.brass
-                        : captain.shares === leader && leader > 0
+                        : (freePlay ? worthOf(captain) : captain.shares) === leader && leader > 0
                           ? UI.text
                           : UI.textSoft,
                   }}
                 >
-                  {captain.shares}
+                  {freePlay ? money(worthOf(captain)) : captain.shares}
                 </td>
                 <td style={{ ...td, color: UI.textSoft }}>{ships}</td>
               </tr>
@@ -68,7 +77,10 @@ export default function CaptainsTable({ state }: { state: GameState }) {
         </tbody>
       </table>
       <p style={{ fontFamily: FONT.data, fontSize: '0.66rem', color: UI.textFaint, margin: 0 }}>
-        A dot after a name marks a human captain. Cash turns green past {money(VICTORY_CASH)}.
+        A dot after a name marks a human captain.{' '}
+        {freePlay
+          ? 'Worth counts cash, cargo, hulls and holdings, less anything owed.'
+          : `Cash turns green past ${money(VICTORY_CASH)}.`}
       </p>
     </Panel>
   );
