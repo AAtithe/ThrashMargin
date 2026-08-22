@@ -4,7 +4,7 @@ import { CITIES, findCity, findGood, findHouse, findRouteById, marketGoodsAt } f
 import { convoyEligible } from './convoy';
 import { HOUSES } from './content';
 import { canInsureAt } from './insurance';
-import { cargoTotal } from './market';
+import { cargoTotal, priceAt } from './market';
 import { currentLatencyFor, courierInvestmentCost, canInvestFurther } from './news';
 import { currentChapterNumber, objectivesForChapter } from './objectives';
 import { EXPEDITION_ZONE_CITIES } from './expedition';
@@ -162,9 +162,11 @@ function readablePrices(state: GameState, cityId: string): { prices: Record<stri
   if (docked) {
     const prices: Record<string, number> = {};
     for (const goodId of marketGoodsAt(cityId)) {
-      const scarcity = state.scarcity[cityId]?.[goodId] ?? 1;
-      const base = findCity(cityId)?.market?.[goodId]?.base;
-      if (base != null) prices[goodId] = Math.round(base * scarcity);
+      // Through `priceAt` with the market events, not a hand-rolled `base * scarcity`: an officer
+      // standing on the quay must quote the number the quay will actually honour, demand layer and
+      // all. An earlier version recomputed it by hand and would have under-quoted a festival.
+      const price = priceAt(state.scarcity, cityId, goodId, state.marketEvents);
+      if (price !== null) prices[goodId] = price;
     }
     return { prices, ageWeeks: 0 };
   }

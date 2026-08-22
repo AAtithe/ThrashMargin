@@ -227,6 +227,43 @@ export interface DiviningEvent {
   restWeeks: number;
 }
 
+/**
+ * Cycling market events (Phase 23) — which cities want which goods, shifting over time.
+ *
+ * `festival_demand` a city wants one good badly for a few weeks; `harvest_glut` the opposite;
+ * `guild_embargo` a good cannot legally be traded at that city at all for a while; `war_scare`
+ * a whole city's prices swing at once.
+ */
+export type MarketEventKind = 'festival_demand' | 'harvest_glut' | 'guild_embargo' | 'war_scare';
+
+/**
+ * One market event currently running. Lives on `GameState.marketEvents` and is applied as a
+ * **separate demand layer** on top of scarcity — `priceAt` computes `base × scarcity × demand` —
+ * rather than being written into `MarketScarcity` itself. That separation is load-bearing:
+ * `driftScarcity` mean-reverts every scarcity multiplier toward 1.0 by 30% a week, so a demand
+ * shift stored there would be almost entirely gone inside four weeks and could never last a season.
+ */
+export interface ActiveMarketEvent {
+  /** Instance id, unique per occurrence — not the template's id (which can recur). */
+  id: string;
+  templateId: string;
+  kind: MarketEventKind;
+  cityId: string;
+  /** The affected good, or null for a whole-city event (`war_scare`). */
+  goodId: string | null;
+  /** Multiplied into the price. 1 = no price effect (an embargo's whole effect is `blocksTrade`). */
+  multiplier: number;
+  /** True when the good simply cannot be bought or sold here while this runs. Deliberately separate
+   * from `multiplier`: a multiplier of 0 would mean a price of zero, which reads as "free" to every
+   * display and valuation path in the game rather than "closed". */
+  blocksTrade: boolean;
+  startedWeek: number;
+  endsWeek: number;
+  /** Resolved narration, placeholders already filled — stored rather than recomputed so the text a
+   * player was shown when it began is the text they keep seeing. */
+  headline: string;
+}
+
 /** cityId -> goodId -> scarcity multiplier (1 = base price, >1 = scarce/dear, <1 = glut/cheap) */
 export type MarketScarcity = Record<string, Record<string, number>>;
 
@@ -251,8 +288,11 @@ export interface NewsItem {
  * reason a stale report can already be wrong, now given a name. `settling`: the price is decaying
  * back toward its base rate (`market.ts`'s `driftScarcity`), the natural end of any prior spike or
  * crash (including the player's own selling — see `sim/actions.ts`'s `buyGood` for why buying no
- * longer causes one). */
-export type PriceCauseKind = 'house_trade' | 'unknown_flows' | 'settling';
+ * longer causes one). `demand_shift`: a market event started or ended at that city (Phase 23) — a
+ * doge's wedding, a glut, an embargo, a war scare. Unlike the other three this is not a scarcity
+ * move at all, which is exactly why it needs its own kind: `deriveMarketCauses` compares scarcity
+ * stages and would see nothing. */
+export type PriceCauseKind = 'house_trade' | 'unknown_flows' | 'settling' | 'demand_shift';
 
 export interface PriceCauseNote {
   goodId: string;
@@ -725,6 +765,10 @@ export interface GameState {
    * card appears at creation; optional/undefined on an older save just means "acknowledge nothing
    * yet," which at worst re-shows one already-seen card once, never crashes. */
   lastAcknowledgedChapter?: number;
+  /** Market events currently running (Phase 23). Optional/absent on a save from before this field
+   * existed, which simply means no event is running — the same discipline every field since
+   * `expedition` has used. */
+  marketEvents?: ActiveMarketEvent[];
   /** The convoy currently sailing together, if any (Chapter 6, Phase 20). Optional/null so a save
    * from before this field existed simply has no convoy, not a shape mismatch — the same discipline
    * `expedition` and `evidence` already use. */

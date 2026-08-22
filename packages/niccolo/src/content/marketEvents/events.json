@@ -1,0 +1,84 @@
+[
+  {
+    "id": "me_doge_wedding",
+    "kind": "festival_demand",
+    "scope": "good",
+    "multiplier": 1.45,
+    "durationWeeks": [5, 9],
+    "goodIds": ["spices", "silk", "glass", "sugar"],
+    "cityIds": ["venice", "florence", "genoa", "milan"],
+    "headline": "A wedding in {city} that the whole city is expected to notice — {good} is dear while it lasts, and nobody is haggling."
+  },
+  {
+    "id": "me_court_mourning",
+    "kind": "festival_demand",
+    "scope": "good",
+    "multiplier": 1.4,
+    "durationWeeks": [4, 7],
+    "goodIds": ["cloth", "wine"],
+    "headline": "A death in the household that governs {city}. Black cloth, funeral wine, and a great deal of it: {good} will fetch what it is asked for until the mourning is done."
+  },
+  {
+    "id": "me_pilgrim_season",
+    "kind": "festival_demand",
+    "scope": "good",
+    "multiplier": 1.35,
+    "durationWeeks": [6, 10],
+    "goodIds": ["wine", "salt", "stockfish"],
+    "headline": "The pilgrim season has come to {city} early and heavy. {good} goes at whatever the innkeepers will pay, which is more than usual."
+  },
+  {
+    "id": "me_harvest_glut",
+    "kind": "harvest_glut",
+    "scope": "good",
+    "multiplier": 0.62,
+    "durationWeeks": [5, 9],
+    "goodIds": ["wine", "wool", "madder", "salt", "sugar"],
+    "headline": "A harvest at {city} better than anyone had room for. {good} is cheap, and will stay cheap until the surplus is drunk or spoiled."
+  },
+  {
+    "id": "me_fleet_arrival",
+    "kind": "harvest_glut",
+    "scope": "good",
+    "multiplier": 0.58,
+    "durationWeeks": [3, 6],
+    "goodIds": ["spices", "silk", "stockfish", "furs", "ivory"],
+    "headline": "A fleet has come into {city} carrying nothing but {good}, and the quays cannot absorb it. The price is on the floor and everyone knows why."
+  },
+  {
+    "id": "me_guild_embargo",
+    "kind": "guild_embargo",
+    "scope": "good",
+    "multiplier": 1,
+    "blocksTrade": true,
+    "durationWeeks": [4, 8],
+    "goodIds": ["cloth", "glass", "silk", "wool"],
+    "headline": "The guild at {city} has closed {good} to foreign houses — not taxed, not restricted, closed. Nothing moves in or out of that trade here until they say otherwise."
+  },
+  {
+    "id": "me_customs_dispute",
+    "kind": "guild_embargo",
+    "scope": "good",
+    "multiplier": 1,
+    "blocksTrade": true,
+    "durationWeeks": [3, 6],
+    "goodIds": ["spices", "sugar", "stockfish", "malaguetta"],
+    "headline": "A customs quarrel at {city} nobody will explain in writing. {good} is impounded on the quay and the house's factor has been advised, politely, to trade something else."
+  },
+  {
+    "id": "me_war_scare",
+    "kind": "war_scare",
+    "scope": "city",
+    "multiplier": 1.5,
+    "durationWeeks": [4, 8],
+    "headline": "Word at {city} of an army on the move, and nobody has yet said whose. Every price in the city has come off its hinges at once."
+  },
+  {
+    "id": "me_plague_rumour",
+    "kind": "war_scare",
+    "scope": "city",
+    "multiplier": 0.6,
+    "durationWeeks": [4, 7],
+    "headline": "Sickness reported in {city}, or reported to have been reported. The quays are half-manned, buyers have gone inland, and everything is going cheap to whoever is still willing to stand there."
+  }
+]

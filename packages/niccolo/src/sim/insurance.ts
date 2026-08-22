@@ -1,6 +1,6 @@
 import { ESCORT_RISK_MULTIPLIER } from './convoy';
 import { priceAt } from './market';
-import type { Cargo, GameState, Insurance, MarketScarcity, Route, Vessel, VoyageLossEvent } from './types';
+import type { ActiveMarketEvent, Cargo, GameState, Insurance, MarketScarcity, Route, Vessel, VoyageLossEvent } from './types';
 
 /** Design doc §4: "Insurance is purchasable in Bruges/Venice/Genoa." */
 export const UNDERWRITING_CITIES = ['bruges', 'venice', 'genoa'];
@@ -10,11 +10,11 @@ export function canInsureAt(cityId: string): boolean {
 }
 
 /** Florin value of a cargo manifest at the prices of the city it's currently sitting in. */
-export function cargoValue(scarcity: MarketScarcity, cargo: Cargo, cityId: string): number {
+export function cargoValue(scarcity: MarketScarcity, cargo: Cargo, cityId: string, events?: ActiveMarketEvent[]): number {
   let total = 0;
   for (const [goodId, qty] of Object.entries(cargo)) {
     if (qty <= 0) continue;
-    const price = priceAt(scarcity, cityId, goodId);
+    const price = priceAt(scarcity, cityId, goodId, events);
     if (price !== null) total += price * qty;
   }
   return total;
@@ -39,7 +39,7 @@ export interface InsuranceQuote {
 }
 
 export function quoteInsurance(state: GameState, vessel: Vessel, route: Route, destinationId: string): InsuranceQuote {
-  const coverage = cargoValue(state.scarcity, vessel.cargo, vessel.location);
+  const coverage = cargoValue(state.scarcity, vessel.cargo, vessel.location, state.marketEvents);
   const baseRate = route.type === 'sea' ? SEA_PREMIUM_RATE : LAND_PREMIUM_RATE;
   const seasonalSurcharge = route.seasonal ? SEASONAL_PREMIUM_SURCHARGE : 0;
   const report = state.knownPrices[destinationId];

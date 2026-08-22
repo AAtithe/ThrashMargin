@@ -773,6 +773,7 @@ export default function GameScreen() {
                   week={state.week}
                   scarcity={state.scarcity}
                   liveCauses={state.lastMarketCauses?.[previewCity.id]}
+                  marketEvents={state.marketEvents}
                   vessel={selectedVessel}
                   insureNext={insureNext}
                   onInsureChange={setInsureNext}
@@ -791,6 +792,7 @@ export default function GameScreen() {
                   capacity={selectedVessel.capacity}
                   scarcity={state.scarcity}
                   causes={state.lastMarketCauses?.[selectedVessel.location]}
+                  marketEvents={state.marketEvents}
                   onBuy={(goodId, quantity, grade) =>
                     dispatch({ type: 'BUY_GOOD', vesselId: selectedVessel.id, goodId, quantity, grade })
                   }

@@ -1,9 +1,10 @@
 import { marketGoodsAt, reachableFrom, findGood, findCity, findRouteById, otherEndOfRoute, planRoute } from '../sim/content';
 import type { PlannedRoute } from '../sim/content';
 import { priceAt } from '../sim/market';
+import { eventsAffecting, marketEventTag } from '../sim/marketEvents';
 import { canInsureAt } from '../sim/insurance';
 import { describeMarketCause } from './marketCauseText';
-import type { City, MarketScarcity, NewsItem, PriceCauseNote, Vessel } from '../sim/types';
+import type { ActiveMarketEvent, City, MarketScarcity, NewsItem, PriceCauseNote, Vessel } from '../sim/types';
 
 /** Turns a computed path into "Bruges (1wk) → Venice (8wk) → Trebizond (6wk)" — the per-leg
  * arrival nature is spelled out in the surrounding copy (see below), not implied by this string
@@ -63,6 +64,10 @@ interface CityPreviewPanelProps {
    * branch) — a stale-report city instead reads its causes off `report.causes`, which already
    * travels through the normal courier-latency pipeline. */
   liveCauses?: PriceCauseNote[];
+  /** Phase 23: only meaningful on the `isLive` branch — a market event's own authored narration is
+   * local knowledge, so a city the player can only read about by letter gets the vaguer
+   * `demand_shift` cause note from its report instead, not the gossip verbatim. */
+  marketEvents?: ActiveMarketEvent[];
   vessel: Vessel | null;
   insureNext: boolean;
   onInsureChange: (value: boolean) => void;
@@ -86,6 +91,7 @@ export default function CityPreviewPanel({
   week,
   scarcity,
   liveCauses,
+  marketEvents,
   vessel,
   insureNext,
   onInsureChange,
@@ -126,12 +132,27 @@ export default function CityPreviewPanel({
       ) : isLive ? (
         <>
           <p style={{ fontSize: '0.72rem', color: '#3a6b5a', margin: '0 0 0.3rem' }}>You are here — prices are true.</p>
-          {goods.map(goodId => (
-            <div key={goodId} style={ROW}>
-              <span>{findGood(goodId)?.name ?? goodId}</span>
-              <span style={{ color: '#e8d5a3' }}>{priceAt(scarcity, city.id, goodId)}f</span>
-            </div>
+          {(marketEvents ?? []).filter(e => e.cityId === city.id).map(e => (
+            <p key={e.id} style={{ fontSize: '0.7rem', color: e.blocksTrade ? '#b5451a' : '#c9a24a', margin: '0 0 0.3rem', fontStyle: 'italic' }}>
+              {e.headline}
+            </p>
           ))}
+          {goods.map(goodId => {
+            const rowEvents = eventsAffecting(marketEvents, city.id, goodId);
+            return (
+              <div key={goodId} style={ROW}>
+                <span>
+                  {findGood(goodId)?.name ?? goodId}
+                  {rowEvents.length > 0 && (
+                    <span style={{ color: rowEvents[0].blocksTrade ? '#b5451a' : '#c9a24a', fontSize: '0.68rem' }}>
+                      {' '}[{marketEventTag(rowEvents[0])}]
+                    </span>
+                  )}
+                </span>
+                <span style={{ color: '#e8d5a3' }}>{priceAt(scarcity, city.id, goodId, marketEvents)}f</span>
+              </div>
+            );
+          })}
           {liveCauses && liveCauses.length > 0 && (
             <p style={{ fontSize: '0.68rem', color: '#8a7a5a', margin: '0.3rem 0 0' }}>
               {liveCauses.map(cause => describeMarketCause(cause, city.name)).join(' ')}

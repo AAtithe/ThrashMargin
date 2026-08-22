@@ -1,6 +1,7 @@
 import { CITIES, HOME_CITY, ROUTES, marketGoodsAt } from './content';
 import { investigateLatencyBonus } from './characters';
 import { priceAt } from './market';
+import type { ActiveMarketEvent } from './types';
 import type { Character, CourierInvestment, MarketScarcity, NewsItem, PriceCauseNote } from './types';
 
 /** A report can never arrive faster than this, however much courier investment is put in — someone still has to carry it. */
@@ -93,11 +94,14 @@ export function generateNews(
   courierInvestment: CourierInvestment,
   characters: Character[] = [],
   causesByCity?: Record<string, PriceCauseNote[]>,
+  /** Phase 23: a report must quote the demand-affected price, or the letter says one thing and the
+   * quay charges another. */
+  marketEvents?: ActiveMarketEvent[],
 ): NewsItem[] {
   return CITIES.filter(c => c.market).map(c => {
     const prices: Record<string, number> = {};
     for (const goodId of marketGoodsAt(c.id)) {
-      prices[goodId] = priceAt(scarcity, c.id, goodId) ?? 0;
+      prices[goodId] = priceAt(scarcity, c.id, goodId, marketEvents) ?? 0;
     }
     const causes = causesByCity?.[c.id];
     return {

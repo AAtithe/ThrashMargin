@@ -2,7 +2,7 @@ import { findCity, HOME_CITY } from './content';
 import { applyConscienceCost, CONSCIENCE_COST_PRINCE_LOAN, negotiateDiscount } from './characters';
 import { toFlorins } from './currency';
 import { adjustScarcity, priceAt } from './market';
-import type { ExchangeRates, GameState, MarketScarcity, Obligation, Vessel } from './types';
+import type { ActiveMarketEvent, ExchangeRates, GameState, MarketScarcity, Obligation, Vessel } from './types';
 
 export const MIN_TERM_WEEKS = 2;
 export const MAX_TERM_WEEKS = 26;
@@ -151,6 +151,9 @@ function liquidateForShortfall(
   vessels: Vessel[],
   scarcity: MarketScarcity,
   shortfallFlorins: number,
+  /** Phase 23: a distress sale realises the demand-affected price like any other — a glut at that
+   * port makes a forced sale worse, which is exactly the sort of bad week this mechanic is for. */
+  marketEvents?: ActiveMarketEvent[],
 ): { vessels: Vessel[]; scarcity: MarketScarcity; raised: number } {
   let raised = 0;
   let workingScarcity = scarcity;
@@ -162,7 +165,7 @@ function liquidateForShortfall(
       if (raised >= shortfallFlorins) break;
       const held = vessel.cargo[goodId] ?? 0;
       if (held <= 0) continue;
-      const price = priceAt(workingScarcity, vessel.location, goodId);
+      const price = priceAt(workingScarcity, vessel.location, goodId, marketEvents);
       if (!price) continue;
       const unitValue = price * LIQUIDATION_HAIRCUT;
       if (unitValue <= 0) continue;
@@ -228,7 +231,7 @@ export function resolveMaturingObligations(
       continue;
     }
     const shortfall = owedFlorins - cash;
-    const liquidation = liquidateForShortfall(vessels, scarcity, shortfall);
+    const liquidation = liquidateForShortfall(vessels, scarcity, shortfall, state.marketEvents);
     vessels = liquidation.vessels;
     scarcity = liquidation.scarcity;
     const available = cash + liquidation.raised;

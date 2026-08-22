@@ -105,6 +105,7 @@ export function createInitialState(id: string, name?: string, options?: CreateIn
     lastSabotageEvent: null,
     expedition: null,
     lastExpeditionEvent: null,
+    marketEvents: [],
     convoy: null,
     escortLapsed: false,
     evidence: [],

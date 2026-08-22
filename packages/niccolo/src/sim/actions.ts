@@ -29,9 +29,10 @@ import {
 import { canInsureAt, clearArrivedInsurance, quoteInsurance, resolveVoyageRisk } from './insurance';
 import { addGrade, gradeBuyMultiplier, gradeHeld, gradeSellMultiplier, reconcileVesselCargoGrades, removeGrade } from './grades';
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, driftScarcity, priceAt } from './market';
+import { resolveWeeklyMarketEvents, tradeBlockedAt } from './marketEvents';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
 import { resolveSecretExpiry, useSecret } from './secrets';
-import type { GameState, GameAction, GradeId, HotseatDecision, Vessel } from './types';
+import type { GameState, GameAction, GradeId, HotseatDecision, PriceCauseNote, Vessel } from './types';
 
 function tickVessel(v: Vessel): Vessel {
   if (!v.destination || v.weeksRemaining <= 0) return v;
@@ -200,7 +201,9 @@ function buyGood(
   if (vessel.capacity <= 0) throw new Error(`${vessel.name} has no cargo hold`);
 
   const city = findCity(vessel.location);
-  const price = priceAt(state.scarcity, vessel.location, goodId);
+  const blocked = tradeBlockedAt(state.marketEvents, vessel.location, goodId);
+  if (blocked) throw new Error(`That trade is closed at ${city?.name ?? vessel.location}: ${blocked.headline}`);
+  const price = priceAt(state.scarcity, vessel.location, goodId, state.marketEvents);
   if (price === null) throw new Error(`${city?.name ?? vessel.location} has no market for that good`);
 
   const spaceLeft = vessel.capacity - cargoTotal(vessel.cargo);
@@ -252,7 +255,9 @@ function sellGood(
   if (quantity > held) throw new Error(`${vessel.name} is not carrying that much of that grade`);
 
   const city = findCity(vessel.location);
-  const price = priceAt(state.scarcity, vessel.location, goodId);
+  const blockedSale = tradeBlockedAt(state.marketEvents, vessel.location, goodId);
+  if (blockedSale) throw new Error(`That trade is closed at ${city?.name ?? vessel.location}: ${blockedSale.headline}`);
+  const price = priceAt(state.scarcity, vessel.location, goodId, state.marketEvents);
   if (price === null) throw new Error(`${city?.name ?? vessel.location} has no market for that good`);
 
   const qualityMarket = city?.market?.[goodId]?.qualityMarket ?? false;
@@ -309,6 +314,9 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   const afterDrift = driftScarcity(afterBackgroundFlows);
   const houseFootprint = applyHouseTradeFootprint(afterDrift, manualTrade);
   const scarcity = houseFootprint.scarcity;
+  // Market events resolve before news is generated, so this week's reports quote the prices the
+  // demand layer has actually produced rather than last week's.
+  const marketEventResolution = resolveWeeklyMarketEvents(state.marketEvents, week);
   const houseRelations = driftHouseRelations(state.houseRelations, state.flags);
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
@@ -329,8 +337,21 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     week,
   );
 
-  const marketCauses = deriveMarketCauses(maturity.scarcity, afterBackgroundFlows, afterDrift, scarcity, houseFootprint.trades);
-  const rawNews = generateNews(scarcity, week, state.courierInvestment, upkeep.characters, marketCauses);
+  const scarcityCauses = deriveMarketCauses(maturity.scarcity, afterBackgroundFlows, afterDrift, scarcity, houseFootprint.trades);
+  // Demand shifts are the one price move `deriveMarketCauses` structurally cannot see (it compares
+  // scarcity stages, and demand is not scarcity), so they are merged in here rather than derived.
+  const marketCauses: Record<string, PriceCauseNote[]> = { ...scarcityCauses };
+  for (const [cityId, notes] of Object.entries(marketEventResolution.causes)) {
+    marketCauses[cityId] = [...(marketCauses[cityId] ?? []), ...notes];
+  }
+  const rawNews = generateNews(
+    scarcity,
+    week,
+    state.courierInvestment,
+    upkeep.characters,
+    marketCauses,
+    marketEventResolution.events,
+  );
   const newNews = corruptNews(rawNews, state.agents, HOME_CITY, manualPlant);
   const { arrived, stillPending } = resolveArrivals([...state.pendingNews, ...newNews], week);
   const knownPrices = { ...state.knownPrices };
@@ -377,6 +398,7 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     knownPrices,
     lastMarketCauses: marketCauses,
     estate,
+    marketEvents: marketEventResolution.events,
     convoy: convoyResolution.convoy,
     escortLapsed: convoyResolution.escortLapsed,
     insurance,

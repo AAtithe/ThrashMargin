@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "drive": "esbuild scripts/drive-counsel.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-counsel.cjs --log-level=error && node .drive-counsel.cjs && esbuild scripts/drive-market-events.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-market.cjs --log-level=error && node .drive-market.cjs"
   },
   "dependencies": {
     "@repo/engine": "*",

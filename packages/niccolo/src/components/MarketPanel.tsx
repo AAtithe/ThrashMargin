@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { findCity, findGood, marketGoodsAt } from '../sim/content';
 import { gradeBreakdown, gradeBuyMultiplier, gradeSellMultiplier, isPilotGood } from '../sim/grades';
 import { cargoTotal, priceAt } from '../sim/market';
+import { eventsAffecting, marketEventTag } from '../sim/marketEvents';
 import { describeMarketCause } from './marketCauseText';
-import type { Cargo, GradeId, MarketScarcity, PriceCauseNote, Vessel } from '../sim/types';
+import type { ActiveMarketEvent, Cargo, GradeId, MarketScarcity, PriceCauseNote, Vessel } from '../sim/types';
 
 const GRADE_LABEL: Record<GradeId, string> = { common: 'common', fine: 'fine', excellent: 'excellent' };
 
@@ -54,11 +55,13 @@ interface MarketRowProps {
   /** Only set for pilot goods (`sim/grades.ts`) — undefined means "not a graded good," so this
    * row renders exactly as it always has, with no grade selector at all. */
   grades?: { breakdown: Record<GradeId, number>; qualityMarket: boolean };
+  /** Phase 23: a short market-event marker on this row ('in demand' / 'glut' / 'closed'). */
+  tag?: string;
   onBuy: (quantity: number, grade?: GradeId) => void;
   onSell: (quantity: number, grade?: GradeId) => void;
 }
 
-function MarketRow({ goodId, price, held, canBuy, canSell, grades, onBuy, onSell }: MarketRowProps) {
+function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, onBuy, onSell }: MarketRowProps) {
   const [qty, setQty] = useState(1);
   const [grade, setGrade] = useState<GradeId>('common');
   const good = findGood(goodId);
@@ -74,6 +77,11 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, onBuy, onSell
         {grades?.qualityMarket && (
           <span style={{ color: '#c9a24a' }} title="Pays a real premium for fine/excellent lots here">
             {' '}★
+          </span>
+        )}
+        {tag && (
+          <span style={{ color: tag === 'closed' ? '#b5451a' : '#c9a24a', fontSize: '0.68rem' }}>
+            {' '}[{tag}]
           </span>
         )}
         {held > 0 && (
@@ -139,6 +147,8 @@ interface MarketPanelProps {
   /** Phase 16: this week's causes at the vessel's own (always-live) location — the highest-value
    * spot to explain a price, since it's the exact moment the player is deciding whether to trade. */
   causes?: PriceCauseNote[];
+  /** Phase 23: market events running at this city — priced into every row, and announced above them. */
+  marketEvents?: ActiveMarketEvent[];
   onBuy: (goodId: string, quantity: number, grade?: GradeId) => void;
   onSell: (goodId: string, quantity: number, grade?: GradeId) => void;
 }
@@ -152,12 +162,14 @@ export default function MarketPanel({
   capacity,
   scarcity,
   causes,
+  marketEvents,
   onBuy,
   onSell,
 }: MarketPanelProps) {
   const goods = marketGoodsAt(cityId);
   const used = cargoTotal(cargo);
   const city = findCity(cityId);
+  const localEvents = (marketEvents ?? []).filter(e => e.cityId === cityId);
 
   if (goods.length === 0) {
     return <p style={{ fontSize: '0.8rem', color: '#8a7a5a' }}>No market at {cityName}.</p>;
@@ -171,14 +183,26 @@ export default function MarketPanel({
         {' · '}
         Hold: {used}/{capacity}
       </p>
+      {localEvents.length > 0 && (
+        <div style={{ margin: '0 0 0.6rem' }}>
+          {localEvents.map(e => (
+            <p key={e.id} style={{ fontSize: '0.74rem', color: e.blocksTrade ? '#b5451a' : '#c9a24a', margin: '0 0 0.3rem', fontStyle: 'italic' }}>
+              {e.headline}
+            </p>
+          ))}
+        </div>
+      )}
       {causes && causes.length > 0 && (
         <p style={{ fontSize: '0.7rem', color: '#8a7a5a', margin: '0 0 0.5rem' }}>
           {causes.map(cause => describeMarketCause(cause, cityName)).join(' ')}
         </p>
       )}
       {goods.map(goodId => {
-        const price = priceAt(scarcity, cityId, goodId) ?? 0;
+        const price = priceAt(scarcity, cityId, goodId, marketEvents) ?? 0;
         const held = cargo[goodId] ?? 0;
+        const rowEvents = eventsAffecting(marketEvents, cityId, goodId);
+        const blocked = rowEvents.some(e => e.blocksTrade);
+        const tag = rowEvents.length > 0 ? marketEventTag(rowEvents[0]) : undefined;
         const grades = isPilotGood(goodId)
           ? {
               breakdown: gradeBreakdown(cargo, cargoGrades, goodId),
@@ -192,8 +216,9 @@ export default function MarketPanel({
             price={price}
             held={held}
             grades={grades}
-            canBuy={capacity > used}
-            canSell={held > 0}
+            canBuy={capacity > used && !blocked}
+            canSell={held > 0 && !blocked}
+            tag={tag}
             onBuy={(quantity, grade) => onBuy(goodId, quantity, grade)}
             onSell={(quantity, grade) => onSell(goodId, quantity, grade)}
           />

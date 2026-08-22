@@ -17,6 +17,11 @@ export function describeMarketCause(cause: PriceCauseNote, cityName: string): st
       } ${good} in ${cityName}.`;
     case 'settling':
       return `${good} prices in ${cityName} are settling back toward the old rate.`;
+    case 'demand_shift':
+      // Deliberately vague about the cause: the *event* carries its own authored narration, which
+      // the player sees in full only at a city they can actually see into. A report from three
+      // weeks away should tell them the demand moved, not hand over the local gossip verbatim.
+      return `Something in ${cityName} has changed what ${good} is worth there — demand, not trade.`;
     case 'unknown_flows':
     default:
       return `Merchants unknown to you have been trading ${good} hard in ${cityName}.`;

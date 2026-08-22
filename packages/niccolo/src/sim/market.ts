@@ -1,5 +1,6 @@
 import { CITIES, findCity } from './content';
-import type { HouseTradeNote, MarketScarcity, PriceCauseKind, PriceCauseNote } from './types';
+import { demandFactor } from './marketEvents';
+import type { ActiveMarketEvent, HouseTradeNote, MarketScarcity, PriceCauseKind, PriceCauseNote } from './types';
 
 /** How sharply one unit traded moves the local price. */
 const SCARCITY_STEP = 0.03;
@@ -29,12 +30,28 @@ export function initialScarcity(): MarketScarcity {
   return out;
 }
 
-/** Current price of a good at a city, or null if that city has no market for it. */
-export function priceAt(scarcity: MarketScarcity, cityId: string, goodId: string): number | null {
+/**
+ * Current price of a good at a city, or null if that city has no market for it.
+ *
+ * `base × scarcity × demand` (Phase 23). `events` is optional and defaults to no demand at all, so
+ * every pre-existing call site kept working unchanged — but **any path a price is actually shown or
+ * transacted at must pass it**, or the player will be quoted one number and charged another. The
+ * paths that do: buying and selling (`actions.ts`), the market and city panels, report generation
+ * (`news.ts`), insurance coverage (`insurance.ts`) and forced liquidation (`credit.ts`). The one
+ * deliberate omission is `sim/aiTrader.ts`, which is not wired into any game mode yet — see
+ * `finishing-the-campaign-plan.md`; whoever wires it must thread demand through `resolveAiWeek`
+ * too, or the opponent will trade on prices nobody else has.
+ */
+export function priceAt(
+  scarcity: MarketScarcity,
+  cityId: string,
+  goodId: string,
+  events?: ActiveMarketEvent[],
+): number | null {
   const base = findCity(cityId)?.market?.[goodId]?.base;
   if (base === undefined) return null;
   const multiplier = scarcity[cityId]?.[goodId] ?? 1;
-  return Math.round(base * multiplier);
+  return Math.round(base * multiplier * demandFactor(events, cityId, goodId));
 }
 
 /** A positive `quantityBought` raises the local price, negative depresses it — generic in
@@ -118,6 +135,11 @@ const NOTABILITY_FRACTION = 0.05;
  * (unseen trade) and 'settling' (reverting toward base) — an approximation, not a perfect
  * attribution, since the two stages can partly offset each other; good enough for flavor text
  * that's never used to make a mechanical decision.
+ *
+ * Deliberately does **not** take market events: demand is identical across all four scarcity stages
+ * it compares, so it would cancel out of every delta and contribute nothing. A price move caused by
+ * an event starting or ending is narrated by `resolveWeeklyMarketEvents` instead, which is the only
+ * place that knows an event changed at all.
  */
 export function deriveMarketCauses(
   before: MarketScarcity,
