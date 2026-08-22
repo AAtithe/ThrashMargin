@@ -352,49 +352,80 @@ export default function Lobby() {
           </div>
         </Panel>
 
-        <Panel title="Your runs">
+        <Panel title="Your runs" aside={saves.length > 0 ? <Label>{saves.length}</Label> : undefined}>
           {saves.length === 0 ? (
             <p style={{ ...bodySmall, margin: 0, color: UI.textFaint }}>
               No runs yet. These are saved to your account.
             </p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              {saves.map(save => (
-                <div key={save.id} style={saveRow}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: FONT.display, fontSize: '0.95rem', color: UI.text }}>
-                      {save.name}
-                    </div>
-                    <div style={{ ...dataText, fontSize: '0.7rem', color: UI.textFaint }}>
-                      round {save.turn}
-                      {save.status === 'victory' ? ' · finished' : ''}
-                    </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+              {/* Split, because a finished run and one waiting for your next turn are different
+                  things and this list is read to find the second. Matches the pattern Thrash Margin
+                  and Niccolo already use; these two games were the ones still lumping them together. */}
+              {([
+                ['In progress', saves.filter(v => v.status === 'active')],
+                ['Finished', saves.filter(v => v.status !== 'active')],
+              ] as const).map(([heading, group]) =>
+                group.length === 0 ? null : (
+                  <div key={heading} style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                    <Label>
+                      {heading} · {group.length}
+                    </Label>
+                    {group.map(save => {
+                      const confirming = confirmDelete === save.id;
+                      return (
+                        <div key={save.id} style={saveRow}>
+                          {/* The whole row opens it — hunting a button in a list you are scanning is
+                              friction, and it lets the row be one line instead of two. */}
+                          <button
+                            type="button"
+                            style={saveOpen}
+                            onClick={() => open(save.id)}
+                            title={`Open ${save.name}`}
+                          >
+                            <span style={saveName}>{save.name}</span>
+                            <span style={saveMeta}>
+                              round {save.turn} · {relTime(save.savedAt)}
+                              {save.status !== 'active' && (
+                                <span style={{ color: UI.brass }}> · finished</span>
+                              )}
+                            </span>
+                          </button>
+                          {confirming ? (
+                            <span style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
+                              <span style={{ ...dataText, fontSize: '0.62rem', color: UI.bad }}>
+                                Delete?
+                              </span>
+                              <Button
+                                tone="danger"
+                                onClick={() => {
+                                  deleteGame(save.id);
+                                  setConfirmDelete(null);
+                                }}
+                              >
+                                Yes
+                              </Button>
+                              <Button tone="quiet" onClick={() => setConfirmDelete(null)}>
+                                No
+                              </Button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              style={saveDelete}
+                              title={`Delete ${save.name}`}
+                              aria-label={`Delete ${save.name}`}
+                              onClick={() => setConfirmDelete(save.id)}
+                            >
+                              ✕
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                  <div style={{ display: 'flex', gap: '0.35rem' }}>
-                    <Button onClick={() => open(save.id)}>Open</Button>
-                    {confirmDelete === save.id ? (
-                      <>
-                        <Button
-                          tone="danger"
-                          onClick={() => {
-                            deleteGame(save.id);
-                            setConfirmDelete(null);
-                          }}
-                        >
-                          Really delete
-                        </Button>
-                        <Button tone="quiet" onClick={() => setConfirmDelete(null)}>
-                          Keep
-                        </Button>
-                      </>
-                    ) : (
-                      <Button tone="quiet" onClick={() => setConfirmDelete(save.id)}>
-                        Delete
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                ),
+              )}
             </div>
           )}
         </Panel>
@@ -415,6 +446,20 @@ export default function Lobby() {
       <PortalNav variant="footer" />
     </div>
   );
+}
+
+/**
+ * "3h ago" beats a timestamp for the one question this list is read to answer: which run was I in
+ * the middle of? The saves already carried `savedAt` and nothing was showing it.
+ */
+function relTime(ts: number): string {
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? 'yesterday' : `${days}d ago`;
 }
 
 function Counter({
@@ -501,12 +546,54 @@ const input: React.CSSProperties = {
 const saveRow: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '0.7rem',
-  flexWrap: 'wrap',
+  gap: '0.4rem',
   border: `1px solid ${UI.rule}`,
   borderRadius: 2,
-  padding: '0.5rem 0.6rem',
+  // Tighter than it was: one line rather than a two-line block with two full-size buttons.
+  padding: '0.15rem 0.3rem 0.15rem 0.5rem',
+};
+
+/** The row itself is the open button, so it fills the space and needs no separate control. */
+const saveOpen: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: '0.5rem',
+  flexWrap: 'wrap',
+  flex: 1,
+  minWidth: 0,
+  background: 'transparent',
+  border: 'none',
+  padding: '0.32rem 0',
+  cursor: 'pointer',
+  textAlign: 'left',
+};
+
+const saveName: React.CSSProperties = {
+  fontFamily: FONT.display,
+  fontSize: '0.92rem',
+  color: UI.text,
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  maxWidth: '14rem',
+};
+
+const saveMeta: React.CSSProperties = {
+  fontFamily: FONT.data,
+  fontSize: '0.66rem',
+  color: UI.textFaint,
+  letterSpacing: '0.04em',
+};
+
+const saveDelete: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: UI.textFaint,
+  fontSize: '0.8rem',
+  lineHeight: 1,
+  padding: '0.3rem 0.35rem',
+  cursor: 'pointer',
+  flex: '0 0 auto',
 };
 
 const checkRow: React.CSSProperties = {

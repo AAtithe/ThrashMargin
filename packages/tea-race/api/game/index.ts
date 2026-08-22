@@ -128,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       try {
         const { rows } = await db.query(
-          `SELECT id, status, turn, state->>'name' AS name,
+          `SELECT id, status, turn, state->>'name' AS name, state->>'rules' AS rules,
                   EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
            FROM games WHERE owner_id = $1 AND game = $2 ORDER BY updated_at DESC LIMIT 50`,
           [user.userId, GAME_KIND],
@@ -138,6 +138,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           name: r.name ?? 'Voyage',
           turn: Number(r.turn) ?? 0,
           status: r.status,
+          // Which game it is, so the lobby can say so rather than making you open it to find out.
+          // Read out of the stored state rather than a new column, so no migration is needed.
+          rules: r.rules === 'voyage' ? 'voyage' : 'classic',
           savedAt: Math.round(parseFloat(r.saved_at)),
         }));
         return res.json({ saves });

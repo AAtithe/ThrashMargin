@@ -13,6 +13,8 @@ export interface SaveMeta {
   turn: number;
   status: 'active' | 'victory';
   savedAt: number;
+  /** Which ruleset, so the lobby can distinguish a free-play save from a tea race at a glance. */
+  rules?: 'classic' | 'voyage';
 }
 
 const statusOf = (s: GameState): SaveMeta['status'] => (s.winnerId ? 'victory' : 'active');
@@ -64,6 +66,7 @@ function upsertIndex(s: GameState): SaveMeta[] {
     name: s.name ?? existing?.name ?? 'Voyage',
     turn: s.round,
     status: statusOf(s),
+    rules: s.rules,
     savedAt: Date.now(),
   };
   const next = existing ? idx.map(e => (e.id === s.id ? meta : e)) : [meta, ...idx];
