@@ -93,7 +93,7 @@ export function useGame() {
         const current = latestStateRef.current;
         if (!current) return;
         try {
-          await fetch(`${API}/api/game/${gameId}/state`, {
+          await fetch(`${API}/api/game?id=${gameId}`, {
             method: 'PUT',
             headers: authHeaders(),
             body: JSON.stringify({ state: current }),

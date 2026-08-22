@@ -1,1 +1,1 @@
-export { default } from '../../../packages/tea-race/api/game/[[...id]]';
+export { default } from '../../../packages/tea-race/api/game/index';

@@ -15,10 +15,13 @@ const GAME_KIND = 'steady_eddie';
 
 /**
  * One Vercel function covering both `/api/steady-eddie/game` (list/create) and
- * `/api/steady-eddie/game/:id` (load/save/delete) via an optional catch-all route — the two were
- * separate functions until a 4th game's own pair would have pushed the Hobby-plan function count
- * past its 12-function ceiling. `req.query.id` is `undefined` on the collection route and a
- * one-element array on the item route.
+ * `/api/steady-eddie/game?id=:id` (load/save/delete) as a single function — the two were separate
+ * functions until a 4th game's own pair would have pushed the Hobby-plan function count past
+ * its 12-function ceiling. A path-based `[[...id]].ts` catch-all doesn't work here: that's a
+ * Next.js routing convention, not something plain Vercel Functions understand, so it silently
+ * 404s on every request in production even though it looks fine locally. Query-string `id` on a
+ * single plain `index.ts` sidesteps that entirely. `req.query.id` is `undefined` on the
+ * collection route and a plain string (or one-element array, if the key is repeated) otherwise.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
