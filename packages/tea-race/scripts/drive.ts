@@ -65,10 +65,13 @@ import {
   cheapestSources,
   observedSpread,
   priceAt,
+  ladingPrice,
   quaysidePrice,
+  saleProceeds,
 } from '../src/sim/pricing';
 import { buildDeck, parseCardKey } from '../src/sim/contracts';
 import { shipsAwaitingOrders } from '../src/sim/attention';
+import { AGENT_LADING_DISCOUNT, AGENT_PRICE, MAX_AGENTS, canPlaceAgent } from '../src/sim/agents';
 import {
   COMPANIES,
   companyForPort,
@@ -1004,10 +1007,12 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         units >= 1 && units <= biggestHull,
         `landed ${units}`,
       );
-      // What she paid is a quay price, so it sits inside the band rather than on the reckoning.
+      // What she paid is a quay price, so it sits inside the band rather than on the reckoning — and
+      // the floor has to allow for a port agent knocking his cut off the asking price too.
+      const floor = Math.floor(cardPrice * PRICE_FLOOR * (1 - AGENT_LADING_DISCOUNT)) * units - units;
       check(
         `AI game ${seed}: ${contractId} was bought inside the price band`,
-        purchasePrice >= Math.floor(cardPrice * PRICE_FLOOR) * units - units &&
+        purchasePrice >= floor &&
           purchasePrice <= Math.ceil(cardPrice * PRICE_CEILING) * units + units,
         `paid ${purchasePrice} for ${units} against a reckoning of ${cardPrice}`,
       );
@@ -1154,6 +1159,77 @@ function testDeterminism() {
     'determinism: same seed replays byte-identically',
     a === b,
     a === b ? '' : `diverged at char ${[...a].findIndex((ch, i) => ch !== b[i])}`,
+  );
+}
+
+/**
+ * Port agents — a permanent man on the ground at one quay.
+ */
+function testAgents() {
+  const label = 'agents';
+  const hz = {
+    weather: false, piracy: false, events: false, hostileBids: false, quaysideSales: true,
+    wages: false, loans: false, deadlines: false, shipClasses: false, stocks: false, agents: true,
+  };
+  let g = createInitialState('t-ag', 'Agents', { humanNames: ['A'], aiCount: 1, seed: 'ag', hazards: hz });
+  g = setCash(g, 'p1', 5000);
+  g = place(g, 's1', 'foochow');
+  g = processAction(g, { type: 'ROLL' });
+
+  const market = priceAt('foochow', 'tea');
+  const hired = processAction(g, { type: 'HIRE_AGENT', port: 'foochow' });
+  check(`${label}: she can install one`, hired !== g);
+  equal(`${label}: it costs the stated price`, cash(hired, 'p1'), 5000 - AGENT_PRICE);
+  equal(`${label}: and is recorded`, hired.captains.find(c => c.id === 'p1')!.agents?.length, 1);
+  check(`${label}: never twice at the same quay`, !canPlaceAgent(hired, 'p1', 'foochow'));
+
+  // Cheaper lading is the whole point.
+  check(
+    `${label}: he lades under the asking price`,
+    ladingPrice(hired, 'p1', 'foochow', 'tea') < market,
+    `${ladingPrice(hired, 'p1', 'foochow', 'tea')} vs ${market}`,
+  );
+  equal(
+    `${label}: and only at his own quay`,
+    ladingPrice(hired, 'p1', 'shanghai', 'tea'),
+    priceAt('shanghai', 'tea'),
+  );
+  equal(
+    `${label}: and only for his own captain`,
+    ladingPrice(hired, 'p2', 'foochow', 'tea'),
+    market,
+  );
+  // The real purchase must actually use it.
+  const bought = processAction(hired, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
+  equal(`${label}: a real purchase pays his price`, shipOf(bought, 's1').hold[0].paid, ladingPrice(hired, 'p1', 'foochow', 'tea'));
+
+  // Better on the way out, but never enough to buy and sell on the spot at a profit.
+  check(
+    `${label}: he sells over the quayside price`,
+    saleProceeds(hired, 'p1', 'foochow', 'tea') > quaysidePrice('foochow', 'tea'),
+  );
+  for (const port of PORTS) {
+    for (const good of port.supplies) {
+      check(
+        `${label}: ${port.id}/${good} still cannot be turned round at a profit`,
+        saleProceeds(hired, 'p1', port.id, good) < ladingPrice(hired, 'p1', port.id, good),
+        `sells ${saleProceeds(hired, 'p1', port.id, good)}, lades ${ladingPrice(hired, 'p1', port.id, good)}`,
+      );
+    }
+  }
+
+  // Bounded, or a rich captain simply buys the chart.
+  let many = setCash(hired, 'p1', 99_999);
+  for (const p of ['shanghai', 'hong_kong', 'calcutta', 'bombay']) {
+    many = processAction(many, { type: 'HIRE_AGENT', port: p });
+  }
+  equal(`${label}: capped at ${MAX_AGENTS}`, many.captains.find(c => c.id === 'p1')!.agents?.length, MAX_AGENTS);
+
+  // Off means off.
+  const strict = { ...g, hazards: { ...hz, agents: false } };
+  check(
+    `${label}: refused outright when switched off`,
+    processAction(strict, { type: 'HIRE_AGENT', port: 'foochow' }) === strict,
   );
 }
 
@@ -2170,6 +2246,7 @@ function main() {
   testWeather();
   testPiracy();
   testHazardsOff();
+  testAgents();
   testPresets();
   testExchangeAndDifficulty();
   testShipClasses();

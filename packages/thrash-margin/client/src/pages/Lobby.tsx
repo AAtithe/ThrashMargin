@@ -7,7 +7,6 @@ import PortalNav from '../components/PortalNav';
 import { MAP_DEFS, ACHIEVEMENT_DEFS, CAMPAIGN_SCENARIOS } from 'shared/engine-reference';
 import type { GameConfig, Difficulty } from 'shared/types';
 
-const GUEST_KEY = 'tm_guest';
 const SETTINGS_KEY = 'tm_last_settings';
 function loadLastSettings(): Record<string, unknown> | null {
   try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'); }
@@ -44,7 +43,6 @@ export default function Lobby() {
   const { saves, createGame, deleteGame, loading } = useGameHybrid();
   const nav = useNavigate();
   const user = getStoredUser();
-  const [isGuest, setIsGuest] = useState(() => localStorage.getItem(GUEST_KEY) === '1');
 
   // New campaign form
   const [campaignName, setCampaignName] = useState('');
@@ -183,9 +181,8 @@ export default function Lobby() {
   const active    = saves.filter(s => s.status === 'active');
   const completed = saves.filter(s => s.status !== 'active');
 
-  // Registration is the standard path in; anonymous localStorage play still works, but only
-  // once someone has explicitly chosen it here — no one falls into guest mode by accident.
-  if (!user && !isGuest) {
+  // Every game on the portal now requires a real account — there is no anonymous/guest path in.
+  if (!user) {
     return (
       <div style={s.page}>
         <PortalNav variant="header" />
@@ -193,15 +190,9 @@ export default function Lobby() {
           <div style={s.gateCard}>
             <span style={s.logo}>⚔ Thrash Margin</span>
             <p style={s.gateSubtitle}>
-              Sign in to keep your campaigns on your account, or jump straight in as a guest — saved only to this device.
+              Sign in to keep your campaigns on your account.
             </p>
             <button style={s.gatePrimary} onClick={() => nav('/login')}>Sign in / Register →</button>
-            <button
-              style={s.gateGuest}
-              onClick={() => { localStorage.setItem(GUEST_KEY, '1'); setIsGuest(true); }}
-            >
-              Continue as guest →
-            </button>
           </div>
         </div>
         <PortalNav variant="footer" />
@@ -502,7 +493,7 @@ export default function Lobby() {
       <footer style={s.footer}>
         <span>⚔ Thrash Margin</span>
         <span style={{ color: '#30363d' }}>·</span>
-        <span>{saves.length} campaign{saves.length !== 1 ? 's' : ''} saved {user ? 'in cloud' : 'locally'}</span>
+        <span>{saves.length} campaign{saves.length !== 1 ? 's' : ''} saved in cloud</span>
         <span style={{ flex: 1 }} />
         <span>v0.1 · open source hobby project</span>
       </footer>

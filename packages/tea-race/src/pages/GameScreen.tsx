@@ -330,6 +330,7 @@ export default function GameScreen() {
                 dispatch={dispatch}
                 enabled={canAct}
                 sellable={state.hazards?.quaysideSales ?? false}
+                agentsOn={state.hazards?.agents ?? false}
                 season={season}
                 piracyOn={state.hazards?.piracy ?? false}
               />

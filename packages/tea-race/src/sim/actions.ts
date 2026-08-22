@@ -15,7 +15,8 @@ import { destinationOf, plotCourse, pointsToDestination, reorderAtSea, sail } fr
 import { roll2d6 } from './rng';
 import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
-import { priceAt, priceStanding, quaysidePrice } from './pricing';
+import { ladingPrice, priceStanding, saleProceeds } from './pricing';
+import { AGENT_PRICE, agentInstalledText, canPlaceAgent } from './agents';
 import {
   COMPANIES,
   companyForPort,
@@ -439,6 +440,24 @@ function chargeStandingCosts(state: GameState): GameState {
   return s;
 }
 
+/** Install a permanent agent at a port. */
+function doHireAgent(state: GameState, port: string): GameState {
+  if (state.phase !== 'act' || !state.hazards?.agents) return state;
+  const captain = activeCaptain(state);
+  if (!canPlaceAgent(state, captain.id, port)) return state;
+
+  const held = [...(captain.agents ?? []), port];
+  const s = updateCaptain(state, captain.id, {
+    cash: captain.cash - AGENT_PRICE,
+    agents: held,
+  });
+  return log(s, 'agent', agentInstalledText(captain.name, port, held.length), captain.id, {
+    port,
+    price: AGENT_PRICE,
+    agents: held.length,
+  });
+}
+
 /** Draw down another step against the fleet. */
 function doTakeLoan(state: GameState): GameState {
   if (state.phase !== 'act' || !state.hazards?.loans) return state;
@@ -838,8 +857,9 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   if (goodEmbargoed(state, good)) return state;
 
   const captain = activeCaptain(state);
-  // The quay's price, not the card's — see sim/pricing.ts for why those are different numbers.
-  const price = priceAt(ship.location, good);
+  // The quay's price, not the card's — see sim/pricing.ts for why those are different numbers, less
+  // whatever this captain's own agent here can knock off it.
+  const price = ladingPrice(state, activeCaptain(state).id, ship.location, good);
   if (price <= 0 || captain.cash < price) return state;
 
   const standing = priceStanding(ship.location, good);
@@ -964,7 +984,7 @@ function doSellCargo(state: GameState, shipId: string, good: string): GameState 
   const kept = ship.hold.filter(l => l.good !== good);
 
   const captain = activeCaptain(state);
-  const unit = quaysidePrice(ship.location, good);
+  const unit = saleProceeds(state, captain.id, ship.location, good);
   const takings = unit * sold.length;
   const paid = sold.reduce((sum, l) => sum + l.paid, 0);
 
@@ -1261,6 +1281,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doBuyStock(state, action.stock, action.lots);
     case 'SELL_STOCK':
       return doSellStock(state, action.stock, action.lots);
+    case 'HIRE_AGENT':
+      return doHireAgent(state, action.port);
     case 'TAKE_LOAN':
       return doTakeLoan(state);
     case 'REPAY_LOAN':

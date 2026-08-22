@@ -160,6 +160,11 @@ export interface Captain {
    * anything.
    */
   aiLevel?: import('./rules').Difficulty;
+  /**
+   * Ports where this captain keeps a standing agent. Optional and absent meaning none, so a save
+   * from before agents existed loads untouched.
+   */
+  agents?: PortId[];
 }
 
 export interface ContractFill {
@@ -216,6 +221,8 @@ export interface Hazards {
   shipClasses?: boolean;
   /** The shipping exchange: companies whose shares move with the trade in their waters. */
   stocks?: boolean;
+  /** Port agents: a permanent man on the ground at one quay, for cheaper lading and early word. */
+  agents?: boolean;
 }
 
 /** The kinds of thing the world does to everybody at once. See sim/events.ts. */
@@ -269,7 +276,8 @@ export type LogKind =
   | 'contract'
   | 'event'
   | 'wages'
-  | 'stock';
+  | 'stock'
+  | 'agent';
 
 export interface LogEntry {
   /**
@@ -417,6 +425,8 @@ export type GameAction =
   /** Buy or sell shares in one of the other shipping companies, at the current price. */
   | { type: 'BUY_STOCK'; stock: import('./stocks').StockId; lots?: number }
   | { type: 'SELL_STOCK'; stock: import('./stocks').StockId; lots?: number }
+  /** Install a permanent agent at a port. */
+  | { type: 'HIRE_AGENT'; port: PortId }
   | { type: 'TAKE_LOAN' }
   /** Pay down the debt, as much as the captain can afford up to one step. */
   | { type: 'REPAY_LOAN' }

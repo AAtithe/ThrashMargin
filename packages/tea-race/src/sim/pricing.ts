@@ -152,3 +152,40 @@ export function observedSpread(): { min: number; max: number } {
   }
   return { min, max };
 }
+
+// ---------------------------------------------------------------------------
+// Agent-aware prices
+// ---------------------------------------------------------------------------
+//
+// The reducer buys and sells through these rather than through `priceAt` and `quaysidePrice`
+// directly, so a port agent's discount applies everywhere money changes hands without any of the
+// call sites needing to know agents exist. The bare functions above stay honest about the *market*
+// price, which is what the port table and the AI's route scoring want.
+
+import { AGENT_LADING_DISCOUNT, AGENT_SALE_UPLIFT, hasAgent } from './agents';
+import type { GameState } from './types';
+
+/** What this captain actually pays for a lot here. */
+export function ladingPrice(
+  state: GameState,
+  captainId: string,
+  port: PortId,
+  good: GoodId,
+): number {
+  const market = priceAt(port, good);
+  if (!hasAgent(state, captainId, port)) return market;
+  return Math.max(1, Math.round(market * (1 - AGENT_LADING_DISCOUNT)));
+}
+
+/** What this captain actually gets for selling a lot off here. */
+export function saleProceeds(
+  state: GameState,
+  captainId: string,
+  port: PortId,
+  good: GoodId,
+): number {
+  const market = quaysidePrice(port, good);
+  if (!hasAgent(state, captainId, port)) return market;
+  // Capped at the market asking price, so an agent can never make buy-and-sell-on-the-spot pay.
+  return Math.max(1, Math.min(priceAt(port, good) - 1, Math.round(market * (1 + AGENT_SALE_UPLIFT))));
+}

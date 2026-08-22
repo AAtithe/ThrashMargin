@@ -100,6 +100,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       deadlines: true,
       shipClasses: true,
       stocks: true,
+      agents: true,
     },
     difficulty: opts.difficulty ?? DEFAULT_DIFFICULTY,
     createdAt: opts.createdAt ?? 0,

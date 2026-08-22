@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { priceAt, priceStanding, quaysidePrice } from '../sim/pricing';
+import { AGENT_LADING_DISCOUNT, AGENT_PRICE, AGENT_SALE_UPLIFT, MAX_AGENTS } from '../sim/agents';
 import { slotsOf } from '../sim/rules';
 import { GOOD_BY_ID, PORT_BY_ID, goodName, planRoute, portName } from '../sim/content';
 import { payoutFor } from '../sim/contracts';
@@ -25,6 +26,8 @@ interface Props {
   piracyOn: boolean;
   /** Whether cargo may be sold off at the quay rather than only dumped. */
   sellable: boolean;
+  /** Whether port agents are in play. */
+  agentsOn: boolean;
 }
 
 /**
@@ -44,8 +47,14 @@ export default function PortPanel({
   season,
   piracyOn,
   sellable,
+  agentsOn,
 }: Props) {
   const port = ship?.location ? PORT_BY_ID[ship.location] : null;
+  const mine = agentsOn && port ? (captain.agents ?? []).includes(port.id) : false;
+  const canHire =
+    agentsOn && port
+      ? (captain.agents?.length ?? 0) < MAX_AGENTS && !mine && captain.cash >= AGENT_PRICE
+      : false;
   const points = ship ? (sailPoints[ship.id] ?? 0) : 0;
 
   /** Commissions this ship could land right here, right now, and how many slots each would take. */
@@ -212,6 +221,37 @@ export default function PortPanel({
               })}
             </div>
           )}
+          {/* An agent is a relationship with a place, so he is hired where you are standing. */}
+          {agentsOn && port && (
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem', flexWrap: 'wrap' }}>
+              {mine ? (
+                <span style={{ ...bodySmall, fontSize: '0.75rem', color: UI.verdigris }}>
+                  Your agent is established at {port.name} — he lades{' '}
+                  {Math.round(AGENT_LADING_DISCOUNT * 100)}% under the asking price and sells{' '}
+                  {Math.round(AGENT_SALE_UPLIFT * 100)}% over it.
+                </span>
+              ) : (
+                <Button
+                  disabled={!enabled || !canHire}
+                  title={
+                    (captain.agents?.length ?? 0) >= MAX_AGENTS
+                      ? `No captain keeps more than ${MAX_AGENTS} agents.`
+                      : captain.cash < AGENT_PRICE
+                        ? `An agent costs ${money(AGENT_PRICE)}.`
+                        : `A permanent man at ${port.name}: ${Math.round(
+                            AGENT_LADING_DISCOUNT * 100,
+                          )}% off everything you lade here, ${Math.round(
+                            AGENT_SALE_UPLIFT * 100,
+                          )}% more for anything you sell off here, and word ahead of the market. He stays for the rest of the game.`
+                  }
+                  onClick={() => dispatch({ type: 'HIRE_AGENT', port: port.id })}
+                >
+                  Set up an agent — {money(AGENT_PRICE)}
+                </Button>
+              )}
+            </div>
+          )}
+
           <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
             ★ marks a good some face-up commission wants. No card names a source port, so this quay
             will serve as well as any other that stocks it. Anything unstarred is a gamble on a card

@@ -7,10 +7,6 @@ import PortalNav from '../components/PortalNav';
 import TutorialOverlay from '../components/TutorialOverlay';
 import type { SaveMeta } from '../hooks/useGameLocal';
 
-// Namespaced like the other niccolo_* save keys — not tm_guest, which is Thrash Margin's
-// own flag and would falsely mark guest status across every game sharing this origin.
-const GUEST_KEY = 'niccolo_guest';
-
 const STYLE: React.CSSProperties = {
   minHeight: '100vh',
   display: 'flex',
@@ -101,7 +97,6 @@ export default function Lobby() {
   const { saves, error, createGame, deleteGame } = useGameHybrid();
   const nav = useNavigate();
   const user = getStoredUser();
-  const [isGuest, setIsGuest] = useState(() => localStorage.getItem(GUEST_KEY) === '1');
   const [name, setName] = useState('');
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
@@ -122,9 +117,8 @@ export default function Lobby() {
   const active = saves.filter(s => s.status === 'active');
   const finished = saves.filter(s => s.status !== 'active');
 
-  // Registration is the standard path in; anonymous localStorage play still works, but only
-  // once someone has explicitly chosen it here — matches the same gate on the other two games.
-  if (!user && !isGuest) {
+  // Every game on the portal now requires a real account — there is no anonymous/guest path in.
+  if (!user) {
     return (
       <div style={STYLE}>
         <PortalNav variant="header" />
@@ -132,19 +126,13 @@ export default function Lobby() {
           <div style={{ ...CARD, flexDirection: 'column', alignItems: 'stretch', maxWidth: 360, padding: '2rem 2.2rem' }}>
             <h1 style={{ ...TITLE, textAlign: 'center' }}>Banco di Niccolo</h1>
             <p style={{ ...SUBTITLE, textAlign: 'center', margin: '0 0 1.6rem' }}>
-              Sign in to keep your campaigns on your account, or jump straight in as a guest — saved only to this device.
+              Sign in to keep your campaigns on your account.
             </p>
             <button
               style={{ ...BUTTON, background: '#3a2e18', borderColor: '#8a6d3a', color: '#e8d5a3', marginBottom: '0.6rem' }}
               onClick={() => { window.location.href = '/thrash-margin/login'; }}
             >
               Sign in / Register →
-            </button>
-            <button
-              style={{ ...BUTTON, background: 'transparent' }}
-              onClick={() => { localStorage.setItem(GUEST_KEY, '1'); setIsGuest(true); }}
-            >
-              Continue as guest →
             </button>
           </div>
         </div>
@@ -249,7 +237,7 @@ export default function Lobby() {
         )}
       </div>
       <div style={{ padding: '0.8rem 1.5rem', borderTop: '1px solid #2a2117', fontSize: '0.75rem', color: '#6a5a40' }}>
-        {saves.length} campaign{saves.length === 1 ? '' : 's'} saved {user ? 'in cloud' : 'locally'}
+        {saves.length} campaign{saves.length === 1 ? '' : 's'} saved in cloud
       </div>
       <PortalNav variant="footer" />
     </div>

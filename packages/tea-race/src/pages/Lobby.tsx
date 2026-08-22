@@ -18,71 +18,96 @@ import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
 
-// Namespaced like the other tearace_* save keys — not tm_guest, which is Thrash Margin's
-// own flag and would falsely mark guest status across every game sharing this origin.
-const GUEST_KEY = 'tearace_guest';
-
 /**
  * Every optional rule, in the order they are offered. One row here is the whole of a switch: the
  * checkbox list and the preset comparison are both generated from it.
  */
-const SWITCHES: { key: keyof Hazards & string; name: string; blurb: string }[] = [
+/**
+ * The optional rules, grouped. Each group becomes a collapsible section in the lobby.
+ *
+ * Grouping is not decoration: ten switches in one flat list is a wall of text nobody reads before a
+ * game, and the groups are the same three axes the presets are built along — the world, money, and
+ * the shape of the race. Reading the headings tells you what kind of game you are setting up without
+ * opening any of them.
+ */
+type SwitchGroup = 'The world' | 'Money' | 'The race';
+
+export const SWITCH_GROUPS: SwitchGroup[] = ['The world', 'Money', 'The race'];
+
+const SWITCHES: { key: keyof Hazards & string; group: SwitchGroup; name: string; blurb: string }[] = [
   {
     key: 'weather',
+    group: 'The world',
     name: 'Wind and weather',
     blurb:
       'A seasonal wind chart, so the fast way round changes through the year, and storms that cost time.',
   },
   {
     key: 'piracy',
+    group: 'The world',
     name: 'Pirates',
     blurb:
       'Ransoms and the occasional seizure in piratical waters. Guns and insurance become worth buying.',
   },
   {
     key: 'events',
+    group: 'The world',
     name: 'World events',
     blurb:
       'Dock strikes, embargoes, gluts, shortages and Admiralty bounties. What is worth carrying changes under you.',
   },
   {
     key: 'hostileBids',
+    group: 'The race',
     name: 'Hostile bids',
     blurb:
       'Buy a share off anyone, even the leader, whatever your own holding. Cheapest when you hold least, and every bid made by anyone doubles the price for everyone after. Falling behind stops being fatal.',
   },
   {
     key: 'quaysideSales',
+    group: 'Money',
     name: 'Quayside sales',
     blurb:
       'Offload cargo you cannot place at a loss instead of dumping it for nothing. A quay that deals in the good pays far better than one that does not.',
   },
   {
     key: 'wages',
+    group: 'Money',
     name: 'Crew wages',
     blurb:
       'Every ship costs money every round, and a laden one costs more. Cash stops being a score and becomes a constraint. Games run about half as long again.',
   },
   {
     key: 'loans',
+    group: 'Money',
     name: 'Loans',
     blurb:
       'Borrow against your ships and shares at interest. A way through a bad season, and a way to gamble on one good run. What you owe counts against you if a claim is settled on assets.',
   },
   {
     key: 'deadlines',
+    group: 'The race',
     name: 'Commissions expire',
     blurb:
       'Cards come off the board if nobody fills them, and cargo loses value the longer it sits in the hold. The race gets a clock.',
   },
   {
     key: 'shipClasses',
+    group: 'The race',
     name: 'Ship classes',
     blurb:
       'A fast clipper, a roomy barque and an armed Indiaman, instead of one hull repeated. What your fleet is made of becomes a position.',
   },
   {
+    key: 'agents',
+    group: 'Money',
+    name: 'Port agents',
+    blurb:
+      'A permanent man on the ground at one quay: cheaper lading, a better price for cargo sold off, and word ahead of the market. Where you trade becomes a position you hold.',
+  },
+  {
     key: 'stocks',
+    group: 'Money',
     name: 'The shipping exchange',
     blurb:
       'Three companies whose share prices rise and fall with the cargo actually landed in their waters. Not another way to win: somewhere for money to go, and a market to read.',
@@ -108,7 +133,6 @@ export default function Lobby() {
   const navigate = useNavigate();
   const { saves, error, createGame, loadGame, deleteGame } = useGameHybrid();
   const user = getStoredUser();
-  const [isGuest, setIsGuest] = useState(() => localStorage.getItem(GUEST_KEY) === '1');
 
   const [name, setName] = useState('');
   const [humans, setHumans] = useState(1);
@@ -124,6 +148,14 @@ export default function Lobby() {
    */
   const [hazards, setHazards] = useState<FullHazards>(() => normalise(PRESETS.full.hazards));
   const chosen = presetFor(hazards);
+  /**
+   * The tinkering area is shut on arrival and only one rule group opens at a time.
+   *
+   * The presets are the front door — showing ten switches and three difficulty buttons before anyone
+   * has picked a game is how the screen became unreadable in the first place.
+   */
+  const [tinkering, setTinkering] = useState(false);
+  const [openGroup, setOpenGroup] = useState<SwitchGroup | null>(null);
   const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -162,9 +194,8 @@ export default function Lobby() {
     navigate(`/game/${id}`);
   };
 
-  // Registration is the standard path in; anonymous localStorage play still works, but only
-  // once someone has explicitly chosen it here — matches the same gate on Thrash Margin's Lobby.
-  if (!user && !isGuest) {
+  // Every game on the portal now requires a real account — there is no anonymous/guest path in.
+  if (!user) {
     return (
       <div style={page}>
         <PortalNav />
@@ -172,14 +203,11 @@ export default function Lobby() {
           <Panel style={{ width: 380, textAlign: 'center' }}>
             <h2 style={{ ...dataText, fontSize: '1.3rem', margin: '0 0 0.6rem' }}>The Tea Race</h2>
             <p style={{ ...bodySmall, color: UI.textSoft, margin: '0 0 1.6rem', lineHeight: 1.5 }}>
-              Sign in to keep your campaigns on your account, or jump straight in as a guest — saved only to this device.
+              Sign in to keep your campaigns on your account.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               <Button tone="primary" onClick={() => { window.location.href = '/thrash-margin/login'; }}>
                 Sign in / Register →
-              </Button>
-              <Button tone="quiet" onClick={() => { localStorage.setItem(GUEST_KEY, '1'); setIsGuest(true); }}>
-                Continue as guest →
               </Button>
             </div>
           </Panel>
@@ -294,7 +322,23 @@ export default function Lobby() {
           </div>
 
           <div style={field}>
-            <Label>Or pick your own</Label>
+            <button
+              type="button"
+              onClick={() => setTinkering(t => !t)}
+              style={{ ...sectionHead, borderBottom: 'none', paddingLeft: 0 }}
+              aria-expanded={tinkering}
+            >
+              <span style={{ color: UI.textFaint, width: '0.8rem', display: 'inline-block' }}>
+                {tinkering ? '\u2013' : '+'}
+              </span>
+              <span style={{ color: UI.text }}>Rivals and individual rules</span>
+              <span style={{ color: UI.textFaint, marginLeft: 'auto' }}>
+                {DIFFICULTIES[level].label}, {SWITCHES.filter(sw => hazards[sw.key]).length} of{' '}
+                {SWITCHES.length} rules
+              </span>
+            </button>
+            {tinkering && (
+            <>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.5rem' }}>
               <Label>How well the rivals play</Label>
               <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
@@ -316,25 +360,55 @@ export default function Lobby() {
               </p>
             </div>
 
-            {SWITCHES.map(sw => (
-              <label key={sw.key} style={checkRow}>
-                <input
-                  type="checkbox"
-                  checked={hazards[sw.key]}
-                  onChange={e =>
-                    setHazards((h: FullHazards) => ({ ...h, [sw.key]: e.target.checked }))
-                  }
-                  style={{ accentColor: UI.brass }}
-                />
-                <span>
-                  <strong style={{ color: UI.text }}>{sw.name}</strong> — {sw.blurb}
-                </span>
-              </label>
-            ))}
+            {SWITCH_GROUPS.map(group => {
+              const inGroup = SWITCHES.filter(sw => sw.group === group);
+              const on = inGroup.filter(sw => hazards[sw.key]).length;
+              const isOpen = openGroup === group;
+              return (
+                <div key={group} style={{ width: '100%' }}>
+                  <button
+                    type="button"
+                    onClick={() => setOpenGroup(isOpen ? null : group)}
+                    style={sectionHead}
+                    aria-expanded={isOpen}
+                  >
+                    <span style={{ color: UI.textFaint, width: '0.8rem', display: 'inline-block' }}>
+                      {isOpen ? '\u2013' : '+'}
+                    </span>
+                    <span style={{ color: UI.text }}>{group}</span>
+                    {/* The count is what makes a closed section still worth reading. */}
+                    <span style={{ color: on > 0 ? UI.brass : UI.textFaint, marginLeft: 'auto' }}>
+                      {on} of {inGroup.length}
+                    </span>
+                  </button>
+                  {isOpen && (
+                    <div style={sectionBody}>
+                      {inGroup.map(sw => (
+                        <label key={sw.key} style={checkRow}>
+                          <input
+                            type="checkbox"
+                            checked={hazards[sw.key]}
+                            onChange={e =>
+                              setHazards((h: FullHazards) => ({ ...h, [sw.key]: e.target.checked }))
+                            }
+                            style={{ accentColor: UI.brass }}
+                          />
+                          <span>
+                            <strong style={{ color: UI.text }}>{sw.name}</strong> — {sw.blurb}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
               Three cargo slots a ship, the scaling share price and the twelve-turn countdown are the
               published rules and are always on.
             </p>
+            </>
+            )}
           </div>
 
           {tooMany && (
@@ -354,7 +428,7 @@ export default function Lobby() {
           {saves.length === 0 ? (
             <p style={{ ...bodySmall, margin: 0, color: UI.textFaint }}>
               No voyages yet.{' '}
-              {user ? 'These are saved to your account.' : 'These save in this browser only — sign in to keep them.'}
+              These are saved to your account.
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
@@ -526,4 +600,28 @@ const errorBanner: React.CSSProperties = {
   marginBottom: '1.2rem',
   fontSize: '0.85rem',
   borderRadius: 2,
+};
+
+const sectionHead: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: '0.4rem',
+  width: '100%',
+  background: 'transparent',
+  border: 'none',
+  borderBottom: `1px solid ${UI.rule}`,
+  padding: '0.35rem 0.1rem',
+  fontFamily: FONT.data,
+  fontSize: '0.66rem',
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase',
+  cursor: 'pointer',
+  textAlign: 'left',
+};
+
+const sectionBody: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.45rem',
+  padding: '0.5rem 0 0.6rem 1.2rem',
 };

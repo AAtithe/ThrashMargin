@@ -47,6 +47,7 @@ import { seasonOf, turnsBetween } from './weather';
 import { piracyRating } from './hazards';
 import { priceAt, quaysidePrice } from './pricing';
 import { COMPANIES, STOCK_IDS } from './stocks';
+import { AGENT_PRICE, canPlaceAgent } from './agents';
 import type { AiProfile, Captain, Contract, GameAction, GameState, PortId, Ship } from './types';
 import type { ShipClassId } from './rules';
 
@@ -454,6 +455,26 @@ function investmentAction(s: GameState, captain: Captain): GameAction | null {
   // Every ordinary route shut and still behind: bid at the exchange.
   const bid = hostileBidAction(s, captain);
   if (bid) return bid;
+
+  /*
+   * An agent, at a quay she is standing on.
+   *
+   * Deliberately only where a ship of hers is actually docked: an agent is a relationship, and
+   * "somewhere I keep going" is a far better rule of thumb than any static ranking of ports. It also
+   * means a computer captain's agents end up spread along the routes she really sails, which is what
+   * makes them legible to a human watching her.
+   */
+  if (s.hazards?.agents && skill.fitsOut) {
+    const here = ships.find(sh => sh.location !== null)?.location ?? null;
+    if (
+      here &&
+      (PORT_BY_ID[here]?.supplies.length ?? 0) >= 2 &&
+      captain.cash - AGENT_PRICE >= Math.max(VICTORY_CASH * 0.5, TRADING_FLOAT * 3) &&
+      canPlaceAgent(s, captain.id, here)
+    ) {
+      return { type: 'HIRE_AGENT', port: here };
+    }
+  }
 
   // A cautious captain buys her shares first and her hulls after; an incautious one does the
   // reverse, and with wages running that is how she loses.

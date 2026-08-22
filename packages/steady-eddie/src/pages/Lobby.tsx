@@ -18,12 +18,6 @@ import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
 
-// Namespaced like the other steadyeddie_* save keys — not tm_guest or tearace_guest, which are
-// the other games' own flags and would falsely mark guest status across every game sharing this
-// origin (this key was itself `tearace_guest` until caught: anyone who had ever used guest mode
-// on The Tea Race was silently already "signed in as guest" here too, bypassing this gate).
-const GUEST_KEY = 'steadyeddie_guest';
-
 /**
  * Every optional rule, in the order they are offered. One row here is the whole of a switch: the
  * checkbox list and the preset comparison are both generated from it.
@@ -110,7 +104,6 @@ export default function Lobby() {
   const navigate = useNavigate();
   const { saves, error, createGame, loadGame, deleteGame } = useGameHybrid();
   const user = getStoredUser();
-  const [isGuest, setIsGuest] = useState(() => localStorage.getItem(GUEST_KEY) === '1');
 
   const [name, setName] = useState('');
   const [humans, setHumans] = useState(1);
@@ -164,9 +157,8 @@ export default function Lobby() {
     navigate(`/game/${id}`);
   };
 
-  // Registration is the standard path in; anonymous localStorage play still works, but only
-  // once someone has explicitly chosen it here — matches the same gate on Thrash Margin's Lobby.
-  if (!user && !isGuest) {
+  // Every game on the portal now requires a real account — there is no anonymous/guest path in.
+  if (!user) {
     return (
       <div style={page}>
         <PortalNav />
@@ -174,14 +166,11 @@ export default function Lobby() {
           <Panel style={{ width: 380, textAlign: 'center' }}>
             <h2 style={{ ...dataText, fontSize: '1.3rem', margin: '0 0 0.6rem' }}>Steady Eddie</h2>
             <p style={{ ...bodySmall, color: UI.textSoft, margin: '0 0 1.6rem', lineHeight: 1.5 }}>
-              Sign in to keep your campaigns on your account, or jump straight in as a guest — saved only to this device.
+              Sign in to keep your campaigns on your account.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
               <Button tone="primary" onClick={() => { window.location.href = '/thrash-margin/login'; }}>
                 Sign in / Register →
-              </Button>
-              <Button tone="quiet" onClick={() => { localStorage.setItem(GUEST_KEY, '1'); setIsGuest(true); }}>
-                Continue as guest →
               </Button>
             </div>
           </Panel>
@@ -355,8 +344,7 @@ export default function Lobby() {
         <Panel title="Your runs">
           {saves.length === 0 ? (
             <p style={{ ...bodySmall, margin: 0, color: UI.textFaint }}>
-              No runs yet.{' '}
-              {user ? 'These are saved to your account.' : 'These save in this browser only — sign in to keep them.'}
+              No runs yet. These are saved to your account.
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

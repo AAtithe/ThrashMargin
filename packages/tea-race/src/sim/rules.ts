@@ -773,6 +773,7 @@ export const PRESETS = {
       deadlines: false,
       shipClasses: false,
       stocks: false,
+      agents: false,
     },
   },
   merchant: {
@@ -792,6 +793,7 @@ export const PRESETS = {
       deadlines: false,
       shipClasses: true,
       stocks: true,
+      agents: true,
     },
   },
   highSeas: {
@@ -811,6 +813,7 @@ export const PRESETS = {
       deadlines: true,
       shipClasses: false,
       stocks: false,
+      agents: false,
     },
   },
   full: {
@@ -829,6 +832,7 @@ export const PRESETS = {
       deadlines: true,
       shipClasses: true,
       stocks: true,
+      agents: true,
     },
   },
 } as const;
