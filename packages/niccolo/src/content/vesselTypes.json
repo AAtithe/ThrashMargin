@@ -1,0 +1,42 @@
+[
+  {
+    "id": "cog",
+    "name": "Cog",
+    "kind": "ship",
+    "capacity": 20,
+    "cost": 220,
+    "upkeepPerWeek": 3,
+    "speed": 1,
+    "note": "The northern workhorse. One mast, a broad hold, and nothing clever about her. What the house already sails."
+  },
+  {
+    "id": "carrack",
+    "name": "Carrack",
+    "kind": "ship",
+    "capacity": 40,
+    "cost": 520,
+    "upkeepPerWeek": 8,
+    "speed": 1.35,
+    "note": "Twice the hold and half again the time to get anywhere. Worth it on a long run with a market that can absorb the cargo; dead weight on a short one."
+  },
+  {
+    "id": "galley",
+    "name": "Galley",
+    "kind": "ship",
+    "capacity": 10,
+    "cost": 340,
+    "upkeepPerWeek": 6,
+    "speed": 0.7,
+    "note": "Oars as well as sail. Small, dear, and quick — she is for being somewhere before the news is, not for carrying much once you are."
+  },
+  {
+    "id": "courier",
+    "name": "Courier",
+    "kind": "courier",
+    "capacity": 0,
+    "cost": 90,
+    "upkeepPerWeek": 2,
+    "speed": 0.8,
+    "note": "A rider and a remount, not a hull. Carries nothing but word, and travels by land only — which is often the faster road."
+  }
+]

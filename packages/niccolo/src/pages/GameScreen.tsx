@@ -29,6 +29,7 @@ import DiviningPanel from '../components/DiviningPanel';
 import EstatePanel from '../components/EstatePanel';
 import WarehousePanel from '../components/WarehousePanel';
 import StandingsPanel from '../components/StandingsPanel';
+import ShipyardPanel from '../components/ShipyardPanel';
 import { FREEPLAY_TARGET_NET_WORTH, isFreeplay, playerNetWorth, standings } from '../sim/freeplay';
 import ObjectivesPanel from '../components/ObjectivesPanel';
 import ChapterCompleteCard from '../components/ChapterCompleteCard';
@@ -52,6 +53,7 @@ export type SectionId =
   | 'city'
   | 'estate'
   | 'warehouse'
+  | 'shipyard'
   | 'standings'
   | 'dispatches'
   | 'household'
@@ -67,6 +69,7 @@ const SECTION_TITLES: Record<SectionId, string> = {
   city: 'City & Market',
   estate: 'Estate',
   warehouse: 'Warehouses',
+  shipyard: 'Shipyard',
   standings: 'Standings',
   dispatches: 'Dispatches',
   household: 'Household',
@@ -454,6 +457,11 @@ export default function GameScreen() {
     ...(dossierUnlocked ? [{ id: 'dossier', glyph: '✎', label: 'Dossier', group: 'Story' }] : []),
     { id: 'fleet', glyph: '⚓', label: 'Fleet', badge: fleetHasNews, group: 'Trade' },
     { id: 'city', glyph: '⚖', label: 'Market', group: 'Trade' },
+    // Its own tab rather than nested in Fleet, for the same reason Storage has one: a shipyard is a
+    // standing concern that quietly draws money every week, and Fleet is about where everything is
+    // and who is aboard it. Cheap now that the rail is grouped — an extra tab inside a labelled
+    // cluster costs far less than it did when the rail was one flat run of twelve.
+    { id: 'shipyard', glyph: '⚒', label: 'Shipyard', group: 'Trade' },
     ...(estateUnlocked ? [{ id: 'estate', glyph: '⚘', label: 'Estate', group: 'Trade' }] : []),
     ...(warehousingUnlocked
       ? [{ id: 'warehouse', glyph: '▤', label: 'Storage', badge: warehouseHasNews, group: 'Trade' }]
@@ -847,6 +855,14 @@ export default function GameScreen() {
               onWithdraw={(vesselId, goodId, quantity, grade) =>
                 dispatch({ type: 'WITHDRAW_GOOD', vesselId, goodId, quantity, grade })
               }
+            />
+          )}
+
+          {activeSection === 'shipyard' && (
+            <ShipyardPanel
+              state={state}
+              onBuy={(typeId, vesselName) => dispatch({ type: 'BUY_VESSEL', typeId, name: vesselName })}
+              onSell={vesselId => dispatch({ type: 'SELL_VESSEL', vesselId })}
             />
           )}
 

@@ -3,6 +3,7 @@ import { CAMPAIGN_START, findCity } from '../sim/content';
 import { readParentage } from '../sim/dossier';
 import { cargoValue } from '../sim/insurance';
 import { warehousesValue } from '../sim/warehouse';
+import { resaleValue } from '../sim/shipyard';
 import { toFlorins } from '../sim/currency';
 import type { GameState } from '../sim/types';
 import { UI, FONT } from '../theme';
@@ -109,6 +110,9 @@ function netWorth(state: GameState): { assets: number; liabilities: number; net:
   // player who ended the campaign with four full sheds would be reported poorer than one who had
   // dumped the same stock at a crashed price, which is precisely backwards.
   assets += warehousesValue(state);
+  // And the hulls themselves (Phase 28) — a house that ended with four carracks is not poorer than
+  // one that never bought a ship, which is what omitting them would report.
+  for (const v of state.vessels) assets += resaleValue(v);
   let liabilities = 0;
   for (const o of state.obligations) {
     if (o.settled) continue;

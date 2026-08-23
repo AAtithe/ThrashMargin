@@ -2,6 +2,7 @@ import { CITIES, findCity } from './content';
 import { cargoValue } from './insurance';
 import { AI_PROFILES, aiNetWorth, createAiTrader, resolveAiWeek, seedHomeKnowledge } from './aiTrader';
 import { warehousesValue } from './warehouse';
+import { resaleValue } from './shipyard';
 import type { AiTradeNote, AiTrader, GameState, MarketScarcity, ActiveMarketEvent } from './types';
 
 /**
@@ -73,6 +74,10 @@ export function playerNetWorth(state: GameState): number {
     total += cargoValue(state.scarcity, v.cargo, v.location, state.marketEvents);
   }
   total += warehousesValue(state);
+  // Hulls count, at what the yard would actually pay. Without this, converting cash into a carrack
+  // reads as a 520f loss in the standings, which would make the mode punish fleet growth — and the
+  // rival side counts its hulls the same way, so the comparison stays honest.
+  for (const v of state.vessels) total += resaleValue(v);
   for (const o of state.obligations) {
     if (o.settled) continue;
     // Deliberately florin-face-value rather than `toFlorins`: the standings must be comparable

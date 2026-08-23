@@ -32,6 +32,7 @@ import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, d
 import { cityBarred, resolveWeeklyMarketEvents, tradeBlockedAt } from './marketEvents';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
 import { checkFreeplayWin, resolveFreeplayWeek } from './freeplay';
+import { buyVessel, resolveWeeklyFleet, sellVessel, vesselSpeed } from './shipyard';
 import {
   expandWarehouse,
   leaseWarehouse,
@@ -111,6 +112,15 @@ function dispatchVessel(
     }
   }
 
+  // Vessel class changes the passage time (Phase 28): a galley is quick, a carrack slow, and an
+  // untyped hull sails at exactly the speed it always did. A convoy moves at its **slowest**
+  // member's pace — the whole point of sailing together is arriving together, and letting members
+  // arrive on different weeks would silently undo `Convoy`'s own reason to exist.
+  const convoySpeed = Math.max(
+    ...state.vessels.filter(v => sailingWith.has(v.id)).map(vesselSpeed),
+  );
+  const weeksRemaining = Math.max(1, Math.ceil(route.distanceWeeks * convoySpeed));
+
   return {
     ...state,
     cash,
@@ -121,7 +131,7 @@ function dispatchVessel(
             ...v,
             destination: destinationId,
             routeId: route.id,
-            weeksRemaining: route.distanceWeeks,
+            weeksRemaining,
             // Always set explicitly (undefined if not passed) — a manual redispatch away from a
             // queued journey correctly drops the stale plan rather than leaving a "Continue to X?"
             // prompt pointing at a city the vessel is no longer chained toward.
@@ -321,7 +331,12 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   // week" test every other `last*Event` uses, and stamping the old week would make it invisible.
   // Prices for the distress sale are deliberately last week's — the landlord's agent sold when the
   // rent came due, before this week's drift and demand shifts resolve further down.
-  const warehouseResolution = resolveWeeklyWarehouses({ ...state, cash: convoyResolution.cash, week });
+  // Per-vessel upkeep (Phase 28), drawn in the same run of weekly commitments as the wages, the
+  // retainer, the escort and the warehouse rent. A hull that cannot be paid for is laid up rather
+  // than repossessed — see `resolveWeeklyFleet` for why losing the hull would be the wrong
+  // consequence, and why it is only ever one hull a week.
+  const fleetResolution = resolveWeeklyFleet({ ...state, cash: convoyResolution.cash }, week);
+  const warehouseResolution = resolveWeeklyWarehouses({ ...state, cash: fleetResolution.cash, week });
   // A hotseat house's own weekly decision (Phase 14) replaces that one house's dice at each of the
   // three points below — every other house still rolls, exactly as before.
   const hotseatHouseId = state.hotseatHouseId ?? null;
@@ -355,8 +370,14 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   const secretsAfterExpiry = resolveSecretExpiry(state.secrets, week);
   const secrets = resolveWeeklyAgentIntelligence(state.agents, secretsAfterExpiry, week);
   const evidence = resolveWeeklyAgentEvidence(state.agents, state.evidence ?? [], week);
+  // `fleetResolution.vessels` rather than `maturity.vessels`: a hull laid up this week has had its
+  // class cleared, and every later stage must see that rather than a stale copy.
+  const laidUpApplied = maturity.vessels.map(v => {
+    const after = fleetResolution.vessels.find(f => f.id === v.id);
+    return after && after.typeId !== v.typeId ? { ...v, typeId: after.typeId } : v;
+  });
   const risk = resolveVoyageRisk(
-    maturity.vessels,
+    laidUpApplied,
     state.insurance ?? [],
     ROUTES,
     week,
@@ -450,6 +471,7 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     escortLapsed: convoyResolution.escortLapsed,
     warehouses: warehouseResolution.warehouses,
     lastWarehouseLapses: warehouseResolution.lapses,
+    vesselLaidUp: fleetResolution.laidUp,
     aiTraders: freeplayResolution.aiTraders,
     lastAiNotes: freeplayResolution.notes,
     insurance,
@@ -570,6 +592,10 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return storeGood(state, action.vesselId, action.goodId, action.quantity, action.grade);
     case 'WITHDRAW_GOOD':
       return withdrawGood(state, action.vesselId, action.goodId, action.quantity, action.grade);
+    case 'BUY_VESSEL':
+      return buyVessel(state, action.typeId, action.name);
+    case 'SELL_VESSEL':
+      return sellVessel(state, action.vesselId);
     default:
       return state;
   }

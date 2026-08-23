@@ -56,7 +56,19 @@ function triggerMatches(state: GameState, trigger: EventTrigger): boolean {
   }
   if (trigger.vesselIdAt) {
     const { vesselId, location } = trigger.vesselIdAt;
-    const satisfied = state.vessels.some(v => !v.destination && v.location === location && v.id === vesselId);
+    // **Degrades when the named hull no longer exists (Phase 28).** Four triggers across Chapters 4,
+    // 5 and 7 name `ship_1` by id, which was itself the fix for an earlier regression where a kind
+    // check fired on the wrong hull. Fleet growth makes it possible to sell that ship, and a
+    // by-id-only check would then make those beats permanently unsatisfiable — the chapter could
+    // never close. So a missing vessel falls back to "any docked vessel of the same kind is here",
+    // which is exactly the check these triggers replaced and is correct once the specific hull is
+    // gone. Same "degrade rather than block forever" reasoning `weeksAfterFlag` records: a stuck
+    // deadline soft-locks a chapter, a loosened one merely resolves it. `sellVessel` guards the
+    // in-flight cases separately, so this only ever catches a hull sold long after its own chapter.
+    const named = state.vessels.find(v => v.id === vesselId);
+    const satisfied = named
+      ? !named.destination && named.location === location
+      : state.vessels.some(v => !v.destination && v.location === location && v.kind === 'ship');
     if (!satisfied) return false;
   }
   if (trigger.combinedCargoAtLeast) {

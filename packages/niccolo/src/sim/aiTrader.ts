@@ -1,6 +1,7 @@
 import { CITIES, findCity, marketGoodsAt, otherEndOfRoute, planRoute, findRouteById } from './content';
 import { SCARCITY_STEP, adjustScarcity, cargoTotal, priceAt, sellProceeds } from './market';
 import { tradeBlockedAt } from './marketEvents';
+import { resaleValue } from './shipyard';
 import type {
   ActiveMarketEvent,
   AiTradeNote,
@@ -581,6 +582,10 @@ export function aiNetWorth(trader: AiTrader, scarcity: MarketScarcity, events?: 
   let total = trader.cash;
   for (const vessel of trader.vessels) {
     total += cargoValueAt(vessel.cargo, scarcity, vessel.location, events);
+    // Hulls counted the same way the player's are (Phase 28), so neither side of the standings is
+    // measured on a different balance sheet. A rival's hull is untyped, so this is the cog's resale
+    // value — which is exactly what an untyped player hull is worth too.
+    total += resaleValue(vessel);
   }
   return Math.round(total);
 }

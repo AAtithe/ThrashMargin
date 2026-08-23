@@ -18,6 +18,7 @@ import {
 } from '../src/sim/freeplay';
 import { describeMarketCause } from '../src/components/marketCauseText';
 import { CITIES } from '../src/sim/content';
+import { findVesselType } from '../src/sim/shipyard';
 import type { ActiveMarketEvent, AiTrader, GameState } from '../src/sim/types';
 
 let pass = 0, fail = 0;
@@ -272,14 +273,24 @@ console.log('\n5. Standings and the win condition');
     standings({ ...s, name: undefined }).find(r => r.isPlayer)!.name.length > 0);
   check('ordering is stable across repeat calls', JSON.stringify(standings(s)) === JSON.stringify(standings(s)));
 
-  // The player's own figure: cash, cargo, stored goods, and obligations both ways.
-  check('net worth starts at the starting capital', playerNetWorth(s) === FREEPLAY_START_CASH);
+  // The player's own figure: cash, cargo, stored goods, the hulls, and obligations both ways.
+  // Asserted as *deltas* from the opening figure rather than against a literal, so Phase 28 adding
+  // hull value to the balance sheet does not make four arithmetic assertions read as failures when
+  // the arithmetic is fine.
+  const opening = playerNetWorth(s);
+  check('net worth opens above the starting cash, because the hulls count',
+    opening > FREEPLAY_START_CASH, `${opening} vs ${FREEPLAY_START_CASH} cash`);
   const owing = { ...s, obligations: [{ id: 'o', kind: 'bill' as const, direction: 'payable' as const, amount: 100, currency: 'florin', dueWeek: 20, settled: false, counterparty: 'x' }] } as GameState;
-  check('a payable subtracts', playerNetWorth(owing) === FREEPLAY_START_CASH - 100);
+  check('a payable subtracts', playerNetWorth(owing) === opening - 100);
   const owed = { ...owing, obligations: owing.obligations.map(o => ({ ...o, direction: 'receivable' as const })) };
-  check('a receivable adds', playerNetWorth(owed) === FREEPLAY_START_CASH + 100);
+  check('a receivable adds', playerNetWorth(owed) === opening + 100);
   check('a settled obligation counts for nothing',
-    playerNetWorth({ ...owing, obligations: owing.obligations.map(o => ({ ...o, settled: true })) }) === FREEPLAY_START_CASH);
+    playerNetWorth({ ...owing, obligations: owing.obligations.map(o => ({ ...o, settled: true })) }) === opening);
+  // And buying a hull must not read as a loss — the reason hulls are counted at all.
+  const withHull = processAction(s, { type: 'BUY_VESSEL', typeId: 'cog' });
+  check('converting cash into a hull is not a fall in the standings',
+    playerNetWorth(withHull) > opening - findVesselType('cog')!.cost,
+    `${playerNetWorth(withHull)} vs ${opening}`);
 
   // Win condition.
   check('nobody has won at week zero', checkFreeplayWin(s).winners.length === 0 && !checkFreeplayWin(s).playerWon);

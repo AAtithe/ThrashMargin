@@ -99,6 +99,14 @@ export interface Vessel {
    * dispatches the next leg via `CONTINUE_PLANNED_ROUTE` — each leg remains its own real,
    * individually insured `dispatchVessel` call; nothing sails through a city without stopping. */
   plannedRoute?: string[];
+  /**
+   * Which entry in `content/vesselTypes.json` this hull is, if it was bought at a shipyard
+   * (Phase 28). **Optional on purpose, and absent is meaningful**: `ship_1`, `courier_1` and every
+   * vessel handed over by an `EventEffects.grantVessel` have no type, and read as the default
+   * class — so every existing save keeps the exact speed and upkeep it already had, and a chapter
+   * that grants a hull does not have to know the shipyard exists.
+   */
+  typeId?: string;
   /** Non-`common` grade breakdown for pilot goods only (`sim/grades.ts`) — goodId -> the `fine`/
    * `excellent` units held; `common` held is always derived as `cargo[goodId]` minus these, never
    * stored. Absent entirely on any vessel that has never held a graded lot. */
@@ -905,6 +913,19 @@ export interface GameState {
    * used. Keyed by city rather than a list because a city can hold at most one lease, and every
    * read site starts from "is there one *here*". */
   warehouses?: Record<string, Warehouse>;
+  /**
+   * High-water mark of hull ids issued in this campaign (Phase 28). Optional/absent on any older
+   * save, where it is seeded from the fleet on first use.
+   *
+   * It exists so an id is **never reused after a hull is sold**. `EventTrigger.vesselIdAt` names ids
+   * in content, so a recycled id would let a hull that never made the voyage satisfy another
+   * chapter's trigger — reintroducing, from the other direction, the exact bug that pinning ids was
+   * introduced to fix.
+   */
+  vesselSeq?: number;
+  /** True for the one week a vessel was laid up for want of upkeep (Phase 28), so the UI can say
+   * so — the same shape `escortLapsed` uses, and for the same reason. */
+  vesselLaidUp?: { week: number; vesselName: string } | null;
   /** Leases lost to unpaid rent in the week just resolved. Recomputed fresh every ADVANCE_WEEK and
    * never accumulated, like `lastMarketCauses` — this is a report on one week, not a history. */
   lastWarehouseLapses?: WarehouseLapse[];
@@ -938,4 +959,6 @@ export type GameAction =
   | { type: 'LEASE_WAREHOUSE'; cityId: string }
   | { type: 'EXPAND_WAREHOUSE'; cityId: string }
   | { type: 'STORE_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId }
-  | { type: 'WITHDRAW_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId };
+  | { type: 'WITHDRAW_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId }
+  | { type: 'BUY_VESSEL'; typeId: string; name?: string }
+  | { type: 'SELL_VESSEL'; vesselId: string };

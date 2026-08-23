@@ -4,10 +4,10 @@ Companion to `banco-di-niccolo-design.md`. Written 2026-07-30, in response to: *
 out both, we should also start thinking about an AI to play against in a non story mode, as well as
 being able to add extra ships and grow your fleet."*
 
-**Status, updated 2026-08-23.** Part 1 is **built** (Phase 27) — free-play mode, rivals wired into
-`advanceWeek`, standings, a win condition. Part 2 is **built** (Phase 26). Part 3 was built as
-Phase 23. **Part 4 (fleet growth) remains a spec, and still carries the `vesselKindAt` regression
-warning below, which must be fixed in the same change.**
+**Status, updated 2026-08-23. All four parts are built.** Part 1 as Phase 27 (free play, rivals
+wired into `advanceWeek`, standings, a win condition), Part 2 as Phase 26 (warehousing), Part 3 as
+Phase 23 (cycling market events), Part 4 as Phase 28 (fleet growth). This document is now a build
+record rather than a plan.
 
 Read the Phase 27 note under Part 1 before touching the opponent: wiring it required threading the
 demand layer and `sellProceeds` through every price it reads, and the driver then found — and the
@@ -243,7 +243,56 @@ priceAt = base × scarcity × demand
 - Free: `resolveVoyageRisk`, `resolveHouseSabotage` and `resolveWeeklyExpedition` all iterate vessels
   generically, so extra ships need no changes there.
 
+> **Phase 28 implementation, confirmed 2026-08-23.** Built as specified. Four classes in
+> `content/vesselTypes.json`, `SHIPYARD_CITY_IDS` following the `canInsureAt` precedent this section
+> asks for by name, and the speed multiplier applied in `dispatchVessel`. The "Free:" line above held
+> exactly — a five-hull fleet run for a year through the real pipeline needed no change to any of
+> those three resolvers.
+>
+> **`Vessel.typeId` is optional, and absent is meaningful.** `ship_1`, `courier_1` and every hull an
+> `EventEffects.grantVessel` hands over have no class: they sail at exactly the speed they always
+> did and cost no upkeep. That is what makes this additive rather than a migration, and it means a
+> chapter can keep granting hulls without knowing the shipyard exists.
+>
+> **A convoy sails at its slowest member's pace.** Without that, mixing a galley and a carrack would
+> have them arrive on different weeks — silently undoing the only reason `Convoy` exists.
+>
+> **Unpaid upkeep lays a hull up rather than repossessing it**, and only one hull a week, dearest
+> first. Losing a 520f carrack over an 8f shortfall would be a punishment out of all proportion, and
+> it would remove the player's ability to earn it back. Laying up clears the class: she still sails
+> and still carries, at ordinary speed, and costs nothing. A real, legible loss that cannot spiral.
+>
+> **Two bugs worth recording.** The driver caught that deriving a new hull's id from the *current*
+> fleet recycles ids after a sale — and `vesselIdAt` names ids in content, so a recycled id would
+> let a hull that never made the voyage satisfy another chapter's trigger, reintroducing the very
+> bug pinning ids was meant to fix. A high-water mark (`GameState.vesselSeq`) fixes it. And reading
+> the live panel caught that pricing every untyped hull off the cog valued the house's dispatch
+> rider at 132f when a new courier costs 90f — free money, so untyped hulls are now valued as the
+> cheapest class of their **own kind**.
+>
+> **Hulls count as assets** in the free-play standings, on both sides, and in the epilogue. Without
+> that, converting cash into a carrack read as a 520f loss and the mode would have punished the
+> exact growth this section adds.
+
 ### ⚠ Fleet growth introduces a live regression — fix it in the same change
+
+> **RESOLVED, and the warning below was already out of date when Phase 28 came to it.** Every
+> `vesselKindAt` trigger had been migrated to `vesselIdAt` back in Phase 20, so the specific bug
+> described here could no longer happen — a driver assertion now holds that line (zero
+> `vesselKindAt` triggers remain in content, checked against `EVENTS` rather than a hardcoded list).
+>
+> **The live hazard was the mirror image of it.** Four triggers across Chapters 4, 5 and 7 name
+> `ship_1` *by id*, precisely because pinning the hull was the fix for the bug below. Fleet growth
+> makes that hull sellable — and a by-id-only check would then leave three chapters permanently
+> unsatisfiable. Fixed twice over, because a soft-lock is the worst class of bug this game can have:
+> `sellVessel` refuses any hull carrying live scripted business (under way, loaded, in convoy,
+> insured, on the expedition, or the last hull that can carry goods), **and** `vesselIdAt` degrades
+> to a kind check when the named vessel no longer exists — the same "degrade rather than block
+> forever" discipline `weeksAfterFlag` records, and it still will not fire on the ever-present home
+> courier. The driver walks all four states: right hull right port, right hull wrong port, hull sold
+> with a later ship there, and courier only.
+>
+> Kept below as written, because the reasoning is still the reason those triggers are pinned.
 
 Chapter 4's homecoming event `ev_c4_022` triggers on
 `vesselKindAt: { kind: 'ship', location: 'bruges' }`. That is correct **only while the player owns
