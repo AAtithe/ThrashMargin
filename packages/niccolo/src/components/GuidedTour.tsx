@@ -94,12 +94,13 @@ interface TourStep {
    * single target and instead show a manual button. */
   targetId: string | null;
   isComplete: (state: GameState, selectedVesselId: string | null, previewCityId: string | null) => boolean;
-  /** Phase 17 follow-up: only set for a step whose target lives inside a popup menu section
-   * rather than the header or the map, which are always visible — `GameScreen.tsx`'s
+  /** Only set for a step whose target lives inside a popup drawer section rather than the header,
+   * the map, or one of the always-visible sidebars (Fleet, Orders) — `GameScreen.tsx`'s
    * `onStepChange` forces the right popup open whenever this step becomes current, the same way
    * it already forces the Ledger/Counting-House split for the "write a bill" step specifically.
-   * (Formerly named `requiresPhase`, tied to the now-removed phase-tab grouping this superseded.) */
-  requiresSection?: 'fleet' | 'city' | 'household' | 'dispatches' | 'ledger';
+   * Fleet- and Orders-targeting steps no longer need an entry here: both panels are permanent
+   * chrome now, not a menu to open first. */
+  requiresSection?: 'household' | 'dispatches' | 'ledger';
 }
 
 const STEPS: TourStep[] = [
@@ -111,17 +112,15 @@ const STEPS: TourStep[] = [
   },
   {
     title: 'Select your ship',
-    body: 'Open the Fleet menu, then click "The Charetty ship" in the Vessels list.',
+    body: 'Click "The Charetty ship" in the Fleet panel, on the right.',
     targetId: `vessel-button-${SHIP_ID}`,
     isComplete: (_state, selectedVesselId) => selectedVesselId === SHIP_ID,
-    requiresSection: 'fleet',
   },
   {
     title: 'Buy some cloth',
-    body: 'Open the Market menu — Bruges weaves fine cloth. Click Buy to load a bale aboard.',
+    body: "Bruges weaves fine cloth — it's in the Orders panel below Fleet. Click Buy to load a bale aboard.",
     targetId: `market-buy-${FIRST_HOP_GOOD}`,
     isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) > 0,
-    requiresSection: 'city',
   },
   {
     title: 'Look at Antwerp',
@@ -146,7 +145,6 @@ const STEPS: TourStep[] = [
       const ship = state.vessels.find(v => v.id === SHIP_ID);
       return ship?.destination === FIRST_HOP_CITY || ship?.location === FIRST_HOP_CITY;
     },
-    requiresSection: 'city',
   },
   {
     title: 'Advance the clock',
@@ -159,7 +157,6 @@ const STEPS: TourStep[] = [
     body: 'Antwerp pays more for cloth than Bruges did. Click Sell to close the loop.',
     targetId: `market-sell-${FIRST_HOP_GOOD}`,
     isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) === 0,
-    requiresSection: 'city',
   },
   {
     title: 'Assign an officer',

@@ -59,10 +59,11 @@ const DISMISS: React.CSSProperties = {
 interface CounselCalloutProps {
   advice: Advice;
   onDismiss: () => void;
-  onOpenCounsel: () => void;
 }
 
-export default function CounselCallout({ advice, onDismiss, onOpenCounsel }: CounselCalloutProps) {
+/** No "hear the rest" button any more — the full Counsel panel is permanent chrome in the left
+ * sidebar now, not a menu this card used to open. Dismissing is the only action left to take. */
+export default function CounselCallout({ advice, onDismiss }: CounselCalloutProps) {
   return (
     <div style={CARD} id="counsel-callout">
       <div style={HEAD}>
@@ -72,22 +73,6 @@ export default function CounselCallout({ advice, onDismiss, onOpenCounsel }: Cou
         </button>
       </div>
       <AdviceRow advice={advice} />
-      <button
-        id="counsel-callout-open"
-        style={{
-          background: UI.panel,
-          border: `1px solid ${UI.rule}`,
-          color: UI.text,
-          fontFamily: 'inherit',
-          fontSize: '0.7rem',
-          padding: '0.2rem 0.5rem',
-          marginTop: '0.5rem',
-          cursor: 'pointer',
-        }}
-        onClick={onOpenCounsel}
-      >
-        Hear the rest
-      </button>
     </div>
   );
 }

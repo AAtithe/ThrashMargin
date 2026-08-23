@@ -6,20 +6,18 @@ import { useGameHybrid } from '../hooks/useGameHybrid';
 import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood, findHouse, findRouteById, otherEndOfRoute } from '../sim/content';
 import type { PlannedRoute } from '../sim/content';
 import { cargoTotal } from '../sim/market';
-import { activeCharacters, assignmentSummary } from '../sim/characters';
 import { currentChapterNumber, objectivesForChapter, CHAPTER_TITLES } from '../sim/objectives';
-import { canInsureAt } from '../sim/insurance';
-import type { Character } from '../sim/types';
+import type { GradeId } from '../sim/types';
 import MapView from '../components/MapView';
-import MarketPanel from '../components/MarketPanel';
-import CityPreviewPanel from '../components/CityPreviewPanel';
+import FleetPanel from '../components/FleetPanel';
+import OrdersPanel from '../components/OrdersPanel';
+import { Panel } from '../components/ui';
 import DispatchesPanel from '../components/DispatchesPanel';
 import LedgerPanel from '../components/LedgerPanel';
 import CountingHousePanel from '../components/CountingHousePanel';
 import HouseholdPanel from '../components/HouseholdPanel';
 import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
-import ConvoyPanel from '../components/ConvoyPanel';
 import EpilogueScreen from '../components/EpilogueScreen';
 import CounselPanel from '../components/CounselPanel';
 import CounselCallout from '../components/CounselCallout';
@@ -29,7 +27,6 @@ import DiviningPanel from '../components/DiviningPanel';
 import EstatePanel from '../components/EstatePanel';
 import WarehousePanel from '../components/WarehousePanel';
 import StandingsPanel from '../components/StandingsPanel';
-import ShipyardPanel from '../components/ShipyardPanel';
 import { freeplayGoalLabel, isFreeplay, playerNetWorth, standings } from '../sim/freeplay';
 import ObjectivesPanel from '../components/ObjectivesPanel';
 import ChapterCompleteCard from '../components/ChapterCompleteCard';
@@ -44,39 +41,35 @@ import TutorialOverlay, { hasSeenTutorial, hasSeenChapter0Tutorial } from '../co
 import GuidedTour from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
 
-/** One entry per popup section (Phase 17 follow-up: menu redesign). `'city'` covers both
- * `CityPreviewPanel` and, when the selected vessel is docked there, `MarketPanel` — they're shown
- * together exactly as they already sat stacked-and-adjacent before this redesign. */
+/**
+ * One entry per popup section. Fleet selection, giving a vessel her orders (the old 'city' section
+ * — city info, dispatch, buy/sell), chapter objectives and the household's counsel are no longer
+ * among them: those four are always-visible sidebars now (`FleetPanel`/`OrdersPanel` on the right,
+ * `ObjectivesPanel`/`CounselPanel` on the left), the same "assign and move ships without opening a
+ * menu first" layout Tea Race already used. Everything left here is the lower-frequency,
+ * more-bureaucratic half of the game — Estate, Storage, the Ledger and so on — where a drawer that
+ * has to be explicitly opened is still the right amount of ceremony.
+ */
 export type SectionId =
-  | 'objectives'
-  | 'fleet'
-  | 'city'
   | 'estate'
   | 'warehouse'
-  | 'shipyard'
   | 'standings'
   | 'dispatches'
   | 'household'
   | 'secrets'
   | 'houses'
   | 'dossier'
-  | 'counsel'
   | 'ledger';
 
 const SECTION_TITLES: Record<SectionId, string> = {
-  objectives: 'Chapter objectives',
-  fleet: 'Fleet & Household',
-  city: 'City & Market',
   estate: 'Estate',
   warehouse: 'Warehouses',
-  shipyard: 'Shipyard',
   standings: 'Standings',
   dispatches: 'Dispatches',
   household: 'Household',
   secrets: 'Secrets',
   houses: 'Houses & Agents',
   dossier: 'Evidence board',
-  counsel: 'Counsel',
   ledger: 'Ledger',
 };
 
@@ -122,12 +115,64 @@ const BODY: React.CSSProperties = {
   position: 'relative',
 };
 
+/**
+ * Reference column (left): read-only — chapter objectives and the household's counsel, always
+ * visible rather than tabs to open, the same role Tea Race gives its own left column ("reference,
+ * not controls"). The section drawer's own `left:0` absolute positioning (see `SectionPopup.tsx`)
+ * docks against `BODY`'s edge and so slides out *over* this column when a drawer section is open —
+ * deliberate: it leaves the map (the thing you actually need to keep seeing) untouched.
+ */
+const LEFT_SIDEBAR: React.CSSProperties = {
+  flex: '0 0 260px',
+  minWidth: 0,
+  overflowY: 'auto',
+  padding: '0.6rem',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.6rem',
+  borderRight: `1px solid ${UI.rule}`,
+};
+
 const MAP_PANE: React.CSSProperties = {
   flex: 1,
+  minWidth: 0,
   padding: '0.5rem',
   // Anchors MapView's absolutely-positioned "Reset view" control to this pane's own corner,
   // independent of the map's internal pan/zoom transform.
   position: 'relative',
+};
+
+/** Action column (right): everything you actually do to a ship — select her, then give her orders.
+ * Tea Race's own `FleetPanel` + `PortPanel` pair, permanently on screen instead of behind a menu. */
+const RIGHT_SIDEBAR: React.CSSProperties = {
+  flex: '0 0 340px',
+  minWidth: 0,
+  overflowY: 'auto',
+  padding: '0.6rem',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.6rem',
+  borderLeft: `1px solid ${UI.rule}`,
+};
+
+/** Either sidebar collapsed to a bare toggle strip — the map behind it gets the reclaimed width
+ * (both `LEFT_SIDEBAR`/`RIGHT_SIDEBAR` are `flex: 0 0 <width>`, so shrinking just this one number
+ * is all `MAP_PANE`'s own `flex: 1` needs to fill the rest). Kept as a real width rather than
+ * `display: none` so the toggle button itself never disappears — the one way back is always visible.
+ */
+const SIDEBAR_COLLAPSED_WIDTH = 34;
+
+const SIDEBAR_TOGGLE: React.CSSProperties = {
+  alignSelf: 'flex-start',
+  flexShrink: 0,
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.textSoft,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: '0.85rem',
+  lineHeight: 1,
+  padding: '0.35rem 0.5rem',
 };
 
 const BUTTON: React.CSSProperties = {
@@ -146,28 +191,10 @@ const BUTTON_ACTIVE: React.CSSProperties = {
   ...BUTTON,
   // Override the full `border` shorthand, not just `borderColor` — mixing a shorthand and a
   // longhand for the same property across renders of the same element (toggling between BUTTON
-  // and BUTTON_ACTIVE, as the vessel selector and the Ledger/Counting House tabs both do) is a
-  // real React warning ("Removing borderColor border"), not just a lint nag.
+  // and BUTTON_ACTIVE, as the Ledger/Counting House tabs do) is a real React warning ("Removing
+  // borderColor border"), not just a lint nag.
   border: `1px solid ${UI.brass}`,
   color: UI.brass,
-};
-
-const SMALL_BUTTON: React.CSSProperties = {
-  background: UI.panel,
-  border: `1px solid ${UI.rule}`,
-  color: UI.text,
-  padding: '0.2rem 0.5rem',
-  fontFamily: 'inherit',
-  fontSize: '0.7rem',
-  cursor: 'pointer',
-};
-
-const SECTION_LABEL: React.CSSProperties = {
-  fontSize: '0.75rem',
-  letterSpacing: '0.15em',
-  textTransform: 'uppercase',
-  color: UI.textSoft,
-  margin: '0 0 0.5rem',
 };
 
 function CenteredMessage({ children }: { children: React.ReactNode }) {
@@ -191,18 +218,21 @@ export default function GameScreen() {
   const [insureNext, setInsureNext] = useState(false);
   // Phase 15: whether to insure the next leg of a *queued* journey, keyed per vessel since more
   // than one vessel could have a plan queued at once — separate from `insureNext` above, which is
-  // scoped to the CityPreviewPanel's own direct-dispatch flow and would otherwise carry a stale
+  // scoped to the Orders panel's own direct-dispatch flow and would otherwise carry a stale
   // checked/unchecked value across an unrelated vessel's "Continue?" prompt.
   const [continueInsure, setContinueInsure] = useState<Record<string, boolean>>({});
   const [showTutorial, setShowTutorial] = useState(false);
   const [showGuidedTour, setShowGuidedTour] = useState(false);
   const [showChronicle, setShowChronicle] = useState(false);
   const [ledgerTab, setLedgerTab] = useState<'ledger' | 'countingHouse'>('ledger');
-  // Phase 17 follow-up: which section's popup (if any) is open — replaces the old always-stacked
-  // scrolling sidebar entirely (and the "multi-step turns" phase-tab grouping it grew, which this
-  // supersedes rather than layers alongside).
+  // Which drawer section (if any) is open — Fleet/Orders/Objectives/Counsel are no longer among
+  // these; see the SectionId comment above.
   const [activeSection, setActiveSection] = useState<SectionId | null>(null);
   const [showHotseatModal, setShowHotseatModal] = useState(false);
+  // Either sidebar can be tucked away to give the map the room back — a preference for this visit,
+  // not campaign state, so it isn't persisted to the save.
+  const [leftCollapsed, setLeftCollapsed] = useState(false);
+  const [rightCollapsed, setRightCollapsed] = useState(false);
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -214,8 +244,8 @@ export default function GameScreen() {
 
   useEffect(() => {
     setInsureNext(false);
-    // Default the preview to wherever the newly-selected vessel actually is, so opening the City
-    // popup shows something useful immediately rather than starting empty until the map is clicked.
+    // Default the preview to wherever the newly-selected vessel actually is, so the Orders panel
+    // shows something useful immediately rather than starting empty until the map is clicked.
     setPreviewCityId(state?.vessels.find(v => v.id === selectedVesselId)?.location ?? null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedVesselId]);
@@ -265,20 +295,17 @@ export default function GameScreen() {
     cityInfoAge[c.id] = dockedCityIds.has(c.id) ? 0 : report ? state.week - report.trueAsOfWeek : null;
   }
 
-  // Clicking a city (reachable or not) only previews it — see CityPreviewPanel — so the player
-  // can check prices before committing. Dispatch is a separate, explicit confirmation. Opens the
-  // City popup directly, per the redesign's own concept ("opened directly from the map").
+  // Clicking a city (reachable or not) only previews it — so the player can check prices before
+  // committing. Dispatch is a separate, explicit confirmation.
   const handlePreviewCity = (cityId: string) => {
     setPreviewCityId(cityId);
-    setActiveSection('city');
   };
 
-  // Mirrors handlePreviewCity: clicking a vessel's own marker on the map selects it and opens the
-  // Fleet popup directly, the same shortcut the map already gives a city — previously a vessel was
-  // only selectable from inside that popup, one extra step for what a click on the chart should do.
+  // Clicking a vessel's own marker on the map selects it, mirroring the city-click shortcut above —
+  // both panels reacting to it (Fleet's highlighted row, Orders' contents) are always on screen, so
+  // there's no popup left to open.
   const handleSelectVessel = (vesselId: string) => {
     setSelectedVesselId(vesselId);
-    setActiveSection('fleet');
   };
 
   const handleConfirmDispatch = () => {
@@ -307,6 +334,18 @@ export default function GameScreen() {
     setInsureNext(false);
   };
 
+  const handleSetContinueInsure = (vesselId: string, checked: boolean) =>
+    setContinueInsure(prev => ({ ...prev, [vesselId]: checked }));
+  const handleSetSailNow = (vesselId: string, insure: boolean) =>
+    dispatch({ type: 'CONTINUE_PLANNED_ROUTE', vesselId, insure });
+  const handleCancelRoute = (vesselId: string) => dispatch({ type: 'CANCEL_PLANNED_ROUTE', vesselId });
+  const handleBuyGood = (vesselId: string, goodId: string, quantity: number, grade?: GradeId) =>
+    dispatch({ type: 'BUY_GOOD', vesselId, goodId, quantity, grade });
+  const handleSellGood = (vesselId: string, goodId: string, quantity: number, grade?: GradeId) =>
+    dispatch({ type: 'SELL_GOOD', vesselId, goodId, quantity, grade });
+  const handleBuyVessel = (typeId: string, name?: string) => dispatch({ type: 'BUY_VESSEL', typeId, name });
+  const handleSellVessel = (vesselId: string) => dispatch({ type: 'SELL_VESSEL', vesselId });
+
   // The guided tour's trade-loop steps need the ship to actually exist and be free to dispatch —
   // true once Chapter 0 hands it over (or immediately, for a skip-prologue campaign). It's no
   // longer tied to week 0: Chapter 0 itself now owns the player's very first moves, and this tour
@@ -315,9 +354,7 @@ export default function GameScreen() {
   const ship = state.vessels.find(v => v.id === 'ship_1');
   const canGuidedTour = !!state.flags.chapter0_complete && !!ship && !ship.destination;
 
-  const activePolicy = selectedVessel ? state.insurance.find(i => i.vesselId === selectedVessel.id) : undefined;
   const previewCity = previewCityId ? findCity(previewCityId) : undefined;
-  const expeditionVessel = state.expedition ? state.vessels.find(v => v.id === state.expedition!.vesselId) : undefined;
 
   // Hotseat house experiment (Phase 14): if a house is seated this campaign, "Advance one week"
   // opens a decision prompt instead of dispatching immediately — see HotseatDecisionModal.
@@ -395,24 +432,6 @@ export default function GameScreen() {
 
   const pendingEvent = state.pendingEvents[0] ? findEvent(state.pendingEvents[0]) : null;
 
-  // Fleet & Household: one combined "who is where" list replacing the old plain Vessels list —
-  // every officer nested under whichever vessel they're aboard, or listed with their own plain
-  // assignment line below. At most ~6 characters and 3 vessels ever exist, so a partition pass is
-  // simplest — no need for a Map keyed by vessel id.
-  const activeRoster = activeCharacters(state.characters);
-  const aboardRoster = activeRoster.filter(
-    (c): c is Character & { assignment: { type: 'aboard'; vesselId: string } } => c.assignment.type === 'aboard',
-  );
-  const notAboardRoster = activeRoster.filter(c => c.assignment.type !== 'aboard');
-
-  // A vessel with a queued plan still waiting to continue — worth flagging on the Fleet tab even
-  // when its own popup isn't open, since it's easy to forget a ship is mid-journey otherwise.
-  const fleetHasNews =
-    state.vessels.some(v => !v.destination && v.plannedRoute && v.plannedRoute.length > 0) ||
-    state.lastVoyageEvent?.week === state.week ||
-    state.lastSabotageEvent?.week === state.week ||
-    state.lastExpeditionEvent?.week === state.week;
-
   const estateUnlocked = !!state.estate || !!state.flags.kouklia_estate_available;
 
   // Warehousing is a standing commercial system rather than chapter content, so it is gated only on
@@ -433,41 +452,26 @@ export default function GameScreen() {
   // it — the dossier and the divining gift are both Chapter 5 content, and an always-present tab
   // that reads "nothing pinned here yet" for four chapters is worse than no tab. Same conditional-
   // inclusion pattern the Estate tab already uses, and the same reason.
-  // Counsel (Phase 21): a pure read-only projection, recomputed per render — nothing is stored.
-  // The callout only interrupts for genuinely urgent counsel, only once per week, and never while a
+  // Counsel (Phase 21): a pure read-only projection, recomputed per render — nothing is stored. The
+  // callout only interrupts for genuinely urgent counsel, only once per week, and never while a
   // scripted event or the chapter card already owns the screen (this codebase's own recurring
   // backdrop-swallows-clicks trap — see CounselCallout's header comment).
   const counselUrgent = urgentAdvice(state);
-  const counselHasUrgent = !!counselUrgent;
   const counselDismissed = state.counselDismissedWeek === state.week;
 
   const dossierUnlocked =
     (state.evidence?.length ?? 0) > 0 || !!state.flags.divining_unlocked || !!state.flags.chapter4_complete;
 
-  // Grouped (Story / Trade / House) rather than one flat run of up to twelve tabs — same idea as
-  // Tea Race folding its eleven toggles into three named clusters. Grouping only clusters and
-  // labels consecutive tabs (see SectionRail's own comment on why it deliberately doesn't
-  // collapse), so every entry in a group must sit next to its own kind here.
+  // Grouped (Trade / House, plus a lone Dossier under its own "Story" label) rather than one flat
+  // run of tabs — same idea as Tea Race folding its eleven toggles into three named clusters.
   const SECTIONS: SectionDef[] = [
-    // Objectives are *chapter* objectives, and free play has no chapters — the tab would list
-    // Chapter 1's threads, none of which can ever resolve because the scripted layer never runs.
-    // Counsel stays: the household's trade and credit advice is just as useful in a sandbox.
-    ...(freeplayMode ? [] : [{ id: 'objectives' as const, glyph: '✦', label: 'Objectives', group: 'Story' }]),
-    { id: 'counsel', glyph: '☙', label: 'Counsel', badge: counselHasUrgent, group: 'Story' },
-    ...(dossierUnlocked ? [{ id: 'dossier', glyph: '✎', label: 'Dossier', group: 'Story' }] : []),
-    { id: 'fleet', glyph: '⚓', label: 'Fleet', badge: fleetHasNews, group: 'Trade' },
-    { id: 'city', glyph: '⚖', label: 'Market', group: 'Trade' },
-    // Its own tab rather than nested in Fleet, for the same reason Storage has one: a shipyard is a
-    // standing concern that quietly draws money every week, and Fleet is about where everything is
-    // and who is aboard it. Cheap now that the rail is grouped — an extra tab inside a labelled
-    // cluster costs far less than it did when the rail was one flat run of twelve.
-    { id: 'shipyard', glyph: '⚒', label: 'Shipyard', group: 'Trade' },
-    ...(estateUnlocked ? [{ id: 'estate', glyph: '⚘', label: 'Estate', group: 'Trade' }] : []),
+    ...(dossierUnlocked ? [{ id: 'dossier' as const, glyph: '✎', label: 'Dossier', group: 'Story' }] : []),
+    ...(estateUnlocked ? [{ id: 'estate' as const, glyph: '⚘', label: 'Estate', group: 'Trade' }] : []),
     ...(warehousingUnlocked
-      ? [{ id: 'warehouse', glyph: '▤', label: 'Storage', badge: warehouseHasNews, group: 'Trade' }]
+      ? [{ id: 'warehouse' as const, glyph: '▤', label: 'Storage', badge: warehouseHasNews, group: 'Trade' }]
       : []),
     ...(freeplayMode
-      ? [{ id: 'standings', glyph: '⚑', label: 'Standings', badge: state.freeplayWonWeek !== undefined, group: 'Trade' }]
+      ? [{ id: 'standings' as const, glyph: '⚑', label: 'Standings', badge: state.freeplayWonWeek !== undefined, group: 'Trade' }]
       : []),
     { id: 'dispatches', glyph: '✉', label: 'Dispatches', group: 'Trade' },
     { id: 'household', glyph: '⌂', label: 'Household', group: 'House' },
@@ -497,14 +501,7 @@ export default function GameScreen() {
         <ChronicleLog chapters={chronicleChapters} onClose={() => setShowChronicle(false)} />
       )}
       {counselUrgent && !counselDismissed && !pendingEvent && !showChapterCompleteCard && !showGuidedTour && (
-        <CounselCallout
-          advice={counselUrgent}
-          onDismiss={() => dispatch({ type: 'DISMISS_COUNSEL' })}
-          onOpenCounsel={() => {
-            dispatch({ type: 'DISMISS_COUNSEL' });
-            setActiveSection('counsel');
-          }}
-        />
+        <CounselCallout advice={counselUrgent} onDismiss={() => dispatch({ type: 'DISMISS_COUNSEL' })} />
       )}
       {showTutorial && !showGuidedTour && !pendingEvent && !showChapterCompleteCard && (
         <TutorialOverlay
@@ -625,6 +622,29 @@ export default function GameScreen() {
       />
 
       <div style={BODY}>
+        <aside style={leftCollapsed ? { ...LEFT_SIDEBAR, flex: `0 0 ${SIDEBAR_COLLAPSED_WIDTH}px`, padding: '0.6rem 0.4rem' } : LEFT_SIDEBAR}>
+          <button
+            style={SIDEBAR_TOGGLE}
+            onClick={() => setLeftCollapsed(v => !v)}
+            aria-label={leftCollapsed ? 'Show objectives and counsel' : 'Hide objectives and counsel'}
+            title={leftCollapsed ? 'Show objectives and counsel' : 'Hide objectives and counsel'}
+          >
+            {leftCollapsed ? '›' : '‹'}
+          </button>
+          {!leftCollapsed && (
+            <>
+              {!freeplayMode && (
+                <Panel title={`Chapter ${objectiveChapter} objectives`}>
+                  <ObjectivesPanel chapterNumber={objectiveChapter} progress={objectiveProgress} />
+                </Panel>
+              )}
+              <Panel title="Counsel">
+                <CounselPanel state={state} />
+              </Panel>
+            </>
+          )}
+        </aside>
+
         <div style={MAP_PANE}>
           <MapView
             key={state.id}
@@ -635,349 +655,190 @@ export default function GameScreen() {
             cityInfoAge={cityInfoAge}
             previewedCityId={previewCityId}
           />
+
+          {activeSection && (
+            <SectionPopup title={SECTION_TITLES[activeSection]} onClose={() => setActiveSection(null)}>
+              {activeSection === 'estate' && (
+                <EstatePanel
+                  estate={state.estate}
+                  flags={state.flags}
+                  cash={state.cash}
+                  selectedVessel={selectedVessel}
+                  onEstablish={() => dispatch({ type: 'ESTABLISH_ESTATE' })}
+                  onHarvest={() => dispatch({ type: 'HARVEST_ESTATE' })}
+                  onShip={(vesselId, quantity) => dispatch({ type: 'SHIP_ESTATE_GOODS', vesselId, quantity })}
+                />
+              )}
+
+              {activeSection === 'warehouse' && (
+                <WarehousePanel
+                  state={state}
+                  selectedVessel={selectedVessel}
+                  onLease={cityId => dispatch({ type: 'LEASE_WAREHOUSE', cityId })}
+                  onExpand={cityId => dispatch({ type: 'EXPAND_WAREHOUSE', cityId })}
+                  onStore={(vesselId, goodId, quantity, grade) =>
+                    dispatch({ type: 'STORE_GOOD', vesselId, goodId, quantity, grade })
+                  }
+                  onWithdraw={(vesselId, goodId, quantity, grade) =>
+                    dispatch({ type: 'WITHDRAW_GOOD', vesselId, goodId, quantity, grade })
+                  }
+                />
+              )}
+
+              {activeSection === 'standings' && (
+                <StandingsPanel
+                  state={state}
+                  onPlaceAgent={traderId => dispatch({ type: 'PLACE_AGENT', placement: { type: 'rival', traderId } })}
+                />
+              )}
+
+              {activeSection === 'dispatches' && (
+                <DispatchesPanel
+                  week={state.week}
+                  cash={state.cash}
+                  knownPrices={state.knownPrices}
+                  pendingNews={state.pendingNews}
+                  courierInvestment={state.courierInvestment}
+                  characters={state.characters}
+                  dockedCityIds={dockedCityIds}
+                  onInvest={cityId => dispatch({ type: 'INVEST_COURIER', cityId })}
+                />
+              )}
+
+              {activeSection === 'household' && (
+                <>
+                  {!state.flags.chapter0_complete && (
+                    <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>
+                      Wages are suspended while Claes remains an apprentice, not yet the house's factor.
+                    </p>
+                  )}
+                  <HouseholdPanel
+                    characters={state.characters}
+                    vessels={state.vessels}
+                    cash={state.cash}
+                    conscience={state.conscience}
+                    condotta={state.condotta}
+                    wagesSuspended={!state.flags.chapter0_complete}
+                    onAssign={(characterId, assignment) => dispatch({ type: 'ASSIGN_CHARACTER', characterId, assignment })}
+                  />
+                </>
+              )}
+
+              {activeSection === 'secrets' && (
+                <SecretsPanel
+                  secrets={state.secrets}
+                  week={state.week}
+                  onUse={secretId => dispatch({ type: 'USE_SECRET', secretId })}
+                />
+              )}
+
+              {activeSection === 'houses' && (
+                <HousesPanel
+                  houses={HOUSES}
+                  houseRelations={state.houseRelations}
+                  agents={state.agents}
+                  cash={state.cash}
+                  flags={state.flags}
+                  onPlaceAgent={(placement, name) => dispatch({ type: 'PLACE_AGENT', placement, name })}
+                />
+              )}
+
+              {activeSection === 'dossier' && (
+                <>
+                  <EvidenceBoardPanel evidence={state.evidence ?? []} houses={HOUSES} flags={state.flags} />
+                  <DiviningPanel state={state} onUse={purpose => dispatch({ type: 'USE_DIVINING', purpose })} />
+                </>
+              )}
+
+              {activeSection === 'ledger' && (
+                <>
+                  {!state.flags.chapter0_complete ? (
+                    <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>
+                      Not available yet — credit isn't Claes's to extend until he's formally made the house's factor.
+                    </p>
+                  ) : (
+                    <div>
+                      <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.8rem' }}>
+                        <button style={ledgerTab === 'ledger' ? BUTTON_ACTIVE : BUTTON} onClick={() => setLedgerTab('ledger')}>
+                          Ledger
+                        </button>
+                        <button
+                          style={ledgerTab === 'countingHouse' ? BUTTON_ACTIVE : BUTTON}
+                          onClick={() => setLedgerTab('countingHouse')}
+                        >
+                          Counting House
+                        </button>
+                      </div>
+                      <div style={{ display: ledgerTab === 'ledger' ? 'block' : 'none' }}>
+                        <LedgerPanel
+                          week={state.week}
+                          cash={state.cash}
+                          exchangeRates={state.exchangeRates}
+                          obligations={state.obligations}
+                          flags={state.flags}
+                          onDiscount={obligationId => dispatch({ type: 'DISCOUNT_OBLIGATION', obligationId })}
+                        />
+                      </div>
+                      <div style={{ display: ledgerTab === 'countingHouse' ? 'block' : 'none' }}>
+                        <CountingHousePanel
+                          flags={state.flags}
+                          onWriteBill={(cityId, florins, termWeeks) => dispatch({ type: 'WRITE_BILL', cityId, florins, termWeeks })}
+                          onTakeDeposit={(florins, termWeeks) => dispatch({ type: 'TAKE_DEPOSIT', florins, termWeeks })}
+                          onWriteLoan={(kind, florins, termWeeks) => dispatch({ type: 'WRITE_LOAN', kind, florins, termWeeks })}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </SectionPopup>
+          )}
         </div>
 
-      {activeSection && (
-        <SectionPopup title={SECTION_TITLES[activeSection]} onClose={() => setActiveSection(null)}>
-          {activeSection === 'objectives' && (
-            <ObjectivesPanel chapterNumber={objectiveChapter} progress={objectiveProgress} />
-          )}
-
-          {activeSection === 'fleet' && (
+        <aside
+          style={rightCollapsed ? { ...RIGHT_SIDEBAR, flex: `0 0 ${SIDEBAR_COLLAPSED_WIDTH}px`, padding: '0.6rem 0.4rem' } : RIGHT_SIDEBAR}
+          id="game-sidebar"
+        >
+          <button
+            style={{ ...SIDEBAR_TOGGLE, alignSelf: 'flex-end' }}
+            onClick={() => setRightCollapsed(v => !v)}
+            aria-label={rightCollapsed ? 'Show fleet and orders' : 'Hide fleet and orders'}
+            title={rightCollapsed ? 'Show fleet and orders' : 'Hide fleet and orders'}
+          >
+            {rightCollapsed ? '‹' : '›'}
+          </button>
+          {!rightCollapsed && (
             <>
-              <div>
-                <p style={SECTION_LABEL}>Vessels</p>
-                {state.vessels.map(v => {
-                  const at = findCity(v.location);
-                  const to = v.destination ? findCity(v.destination) : null;
-                  const held = cargoTotal(v.cargo);
-                  const crew = aboardRoster.filter(c => c.assignment.vesselId === v.id);
-                  return (
-                    <div key={v.id}>
-                      <button
-                        id={`vessel-button-${v.id}`}
-                        style={v.id === selectedVesselId ? BUTTON_ACTIVE : BUTTON}
-                        onClick={() => setSelectedVesselId(v.id)}
-                      >
-                        {v.name}
-                        <br />
-                        <span style={{ fontSize: '0.75rem', color: UI.textSoft }}>
-                          {to
-                            ? `en route to ${to.name} — ${v.weeksRemaining} week${v.weeksRemaining === 1 ? '' : 's'} left`
-                            : `docked at ${at?.name ?? v.location}`}
-                          {v.capacity > 0 && ` · hold ${held}/${v.capacity}`}
-                        </span>
-                      </button>
-                      {crew.map(c => (
-                        <p key={c.id} style={{ fontSize: '0.72rem', color: UI.textSoft, margin: '0.15rem 0 0.4rem 0.9rem' }}>
-                          {c.name} — aboard
-                        </p>
-                      ))}
-                      {!v.destination && v.plannedRoute && v.plannedRoute.length > 0 && (() => {
-                        const nextRoute = findRouteById(v.plannedRoute[0]);
-                        if (!nextRoute) return null;
-                        const nextCity = findCity(otherEndOfRoute(nextRoute, v.location));
-                        // Real bug, confirmed live: EventOverlay/ChapterCompleteCard are
-                        // full-viewport backdrops (position:fixed, inset:0) that sit visually on
-                        // top of this whole popup but only darken it (rgba, not opaque) — the
-                        // Continue/Cancel buttons still render at normal-looking brightness
-                        // underneath, so a click here is silently swallowed by the backdrop with
-                        // zero feedback. Fix: don't render a clickable-looking control that can't
-                        // actually be clicked; explain why instead.
-                        if (pendingEvent || showChapterCompleteCard) {
-                          return (
-                            <p style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem', color: UI.textFaint, fontStyle: 'italic' }}>
-                              Continuing on to {nextCity?.name ?? nextRoute.id} waits on the matter above being resolved first.
-                            </p>
-                          );
-                        }
-                        const canInsureNextLeg = canInsureAt(v.location) && held > 0;
-                        return (
-                          <div style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem' }}>
-                            <p style={{ color: UI.textSoft, margin: '0 0 0.3rem' }}>
-                              Continuing on to {nextCity?.name ?? nextRoute.id} next week — {v.plannedRoute.length} leg
-                              {v.plannedRoute.length === 1 ? '' : 's'} remaining.
-                            </p>
-                            {canInsureNextLeg && (
-                              <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-start', color: UI.textSoft, margin: '0 0 0.3rem' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={!!continueInsure[v.id]}
-                                  onChange={e => setContinueInsure(prev => ({ ...prev, [v.id]: e.target.checked }))}
-                                />
-                                <span>Insure this cargo for this leg, and set sail now.</span>
-                              </label>
-                            )}
-                            <div style={{ display: 'flex', gap: '0.4rem' }}>
-                              {canInsureNextLeg && (
-                                <button
-                                  style={SMALL_BUTTON}
-                                  onClick={() =>
-                                    dispatch({ type: 'CONTINUE_PLANNED_ROUTE', vesselId: v.id, insure: !!continueInsure[v.id] })
-                                  }
-                                >
-                                  Set sail now
-                                </button>
-                              )}
-                              <button style={SMALL_BUTTON} onClick={() => dispatch({ type: 'CANCEL_PLANNED_ROUTE', vesselId: v.id })}>
-                                Cancel journey
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  );
-                })}
-                {notAboardRoster.map(c => (
-                  <p key={c.id} style={{ fontSize: '0.78rem', color: UI.text, margin: '0.3rem 0' }}>
-                    {c.name} <span style={{ color: UI.textSoft }}>— {assignmentSummary(c, state.vessels)}</span>
-                  </p>
-                ))}
-              </div>
-
-              {state.lastVoyageEvent && (
-                <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
-                  Week {state.lastVoyageEvent.week}: storm struck {state.lastVoyageEvent.vesselName} — lost{' '}
-                  {state.lastVoyageEvent.quantityLost} {state.lastVoyageEvent.goodId}.{' '}
-                  {state.lastVoyageEvent.insured
-                    ? <span style={{ color: UI.good }}>Insurance paid {state.lastVoyageEvent.payout}f.</span>
-                    : <span style={{ color: UI.bad }}>Uninsured — a total loss.</span>}
-                </p>
-              )}
-
-              {state.lastSabotageEvent && (
-                <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
-                  Week {state.lastSabotageEvent.week}: {state.lastSabotageEvent.houseName} got to{' '}
-                  {state.lastSabotageEvent.vesselName}'s cargo at {findCity(state.lastSabotageEvent.cityId)?.name ?? state.lastSabotageEvent.cityId} —
-                  lost {state.lastSabotageEvent.quantityLost} {state.lastSabotageEvent.goodId}.
-                </p>
-              )}
-
-              {state.lastExpeditionEvent && (
-                <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
-                  Week {state.lastExpeditionEvent.week}: {state.lastExpeditionEvent.vesselName}'s crew turn{' '}
-                  {state.lastExpeditionEvent.healthStatus} — {state.lastExpeditionEvent.cashCost}f spent on physicians and delay.
-                </p>
-              )}
-
-              {state.expedition && (
-                <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
-                  {expeditionVessel?.name ?? 'The vessel'} is {state.expedition.weeksUpriver} week
-                  {state.expedition.weeksUpriver === 1 ? '' : 's'} into the Gambia's interior — crew health:{' '}
-                  {state.expedition.healthStatus}.
-                </p>
-              )}
-
-              <ConvoyPanel
+              <FleetPanel
                 state={state}
-                onForm={vesselIds => dispatch({ type: 'FORM_CONVOY', vesselIds })}
-                onDisband={() => dispatch({ type: 'DISBAND_CONVOY' })}
+                selectedVesselId={selectedVesselId}
+                onSelect={setSelectedVesselId}
+                blocked={!!pendingEvent || showChapterCompleteCard}
+                continueInsure={continueInsure}
+                onSetContinueInsure={handleSetContinueInsure}
+                onSetSailNow={handleSetSailNow}
+                onCancelRoute={handleCancelRoute}
+                onFormConvoy={vesselIds => dispatch({ type: 'FORM_CONVOY', vesselIds })}
+                onDisbandConvoy={() => dispatch({ type: 'DISBAND_CONVOY' })}
                 onHireEscort={escortName => dispatch({ type: 'HIRE_ESCORT', escortName })}
+                onBuyVessel={handleBuyVessel}
+                onSellVessel={handleSellVessel}
+              />
+              <OrdersPanel
+                state={state}
+                selectedVessel={selectedVessel}
+                previewCity={previewCity}
+                dockedCityIds={dockedCityIds}
+                insureNext={insureNext}
+                onInsureChange={setInsureNext}
+                onConfirmDispatch={handleConfirmDispatch}
+                onQueueRoute={handleQueueRoute}
+                onBuy={handleBuyGood}
+                onSell={handleSellGood}
               />
             </>
           )}
-
-          {activeSection === 'city' && (
-            <>
-              <p style={{ fontSize: '0.8rem', color: UI.textSoft, margin: 0 }}>
-                {selectedVessel
-                  ? selectedVessel.destination
-                    ? `${selectedVessel.name} cannot be redirected while under way.`
-                    : "Click any city on the map to see what's known about it."
-                  : 'Select a vessel from the Fleet menu.'}
-              </p>
-
-              {activePolicy && (
-                <p style={{ fontSize: '0.75rem', color: UI.good, margin: 0 }}>
-                  Insured for {Math.round(activePolicy.coverage)}f this voyage (premium {activePolicy.premiumPaid}f paid).
-                </p>
-              )}
-
-              {previewCity && (
-                <CityPreviewPanel
-                  city={previewCity}
-                  isLive={dockedCityIds.has(previewCity.id)}
-                  report={state.knownPrices[previewCity.id]}
-                  week={state.week}
-                  scarcity={state.scarcity}
-                  liveCauses={state.lastMarketCauses?.[previewCity.id]}
-                  marketEvents={state.marketEvents}
-                  vessel={selectedVessel}
-                  insureNext={insureNext}
-                  onInsureChange={setInsureNext}
-                  onConfirmDispatch={handleConfirmDispatch}
-                  onQueueRoute={handleQueueRoute}
-                />
-              )}
-
-              {selectedVessel && !selectedVessel.destination && selectedVessel.capacity > 0 && (
-                <MarketPanel
-                  cityId={selectedVessel.location}
-                  cityName={findCity(selectedVessel.location)?.name ?? selectedVessel.location}
-                  cash={state.cash}
-                  cargo={selectedVessel.cargo}
-                  cargoGrades={selectedVessel.cargoGrades}
-                  capacity={selectedVessel.capacity}
-                  scarcity={state.scarcity}
-                  causes={state.lastMarketCauses?.[selectedVessel.location]}
-                  marketEvents={state.marketEvents}
-                  onBuy={(goodId, quantity, grade) =>
-                    dispatch({ type: 'BUY_GOOD', vesselId: selectedVessel.id, goodId, quantity, grade })
-                  }
-                  onSell={(goodId, quantity, grade) =>
-                    dispatch({ type: 'SELL_GOOD', vesselId: selectedVessel.id, goodId, quantity, grade })
-                  }
-                />
-              )}
-            </>
-          )}
-
-          {activeSection === 'estate' && (
-            <EstatePanel
-              estate={state.estate}
-              flags={state.flags}
-              cash={state.cash}
-              selectedVessel={selectedVessel}
-              onEstablish={() => dispatch({ type: 'ESTABLISH_ESTATE' })}
-              onHarvest={() => dispatch({ type: 'HARVEST_ESTATE' })}
-              onShip={(vesselId, quantity) => dispatch({ type: 'SHIP_ESTATE_GOODS', vesselId, quantity })}
-            />
-          )}
-
-          {activeSection === 'warehouse' && (
-            <WarehousePanel
-              state={state}
-              selectedVessel={selectedVessel}
-              onLease={cityId => dispatch({ type: 'LEASE_WAREHOUSE', cityId })}
-              onExpand={cityId => dispatch({ type: 'EXPAND_WAREHOUSE', cityId })}
-              onStore={(vesselId, goodId, quantity, grade) =>
-                dispatch({ type: 'STORE_GOOD', vesselId, goodId, quantity, grade })
-              }
-              onWithdraw={(vesselId, goodId, quantity, grade) =>
-                dispatch({ type: 'WITHDRAW_GOOD', vesselId, goodId, quantity, grade })
-              }
-            />
-          )}
-
-          {activeSection === 'shipyard' && (
-            <ShipyardPanel
-              state={state}
-              onBuy={(typeId, vesselName) => dispatch({ type: 'BUY_VESSEL', typeId, name: vesselName })}
-              onSell={vesselId => dispatch({ type: 'SELL_VESSEL', vesselId })}
-            />
-          )}
-
-          {activeSection === 'standings' && (
-            <StandingsPanel
-              state={state}
-              onPlaceAgent={traderId => dispatch({ type: 'PLACE_AGENT', placement: { type: 'rival', traderId } })}
-            />
-          )}
-
-          {activeSection === 'dispatches' && (
-            <DispatchesPanel
-              week={state.week}
-              cash={state.cash}
-              knownPrices={state.knownPrices}
-              pendingNews={state.pendingNews}
-              courierInvestment={state.courierInvestment}
-              characters={state.characters}
-              dockedCityIds={dockedCityIds}
-              onInvest={cityId => dispatch({ type: 'INVEST_COURIER', cityId })}
-            />
-          )}
-
-          {activeSection === 'household' && (
-            <>
-              {!state.flags.chapter0_complete && (
-                <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>
-                  Wages are suspended while Claes remains an apprentice, not yet the house's factor.
-                </p>
-              )}
-              <HouseholdPanel
-                characters={state.characters}
-                vessels={state.vessels}
-                cash={state.cash}
-                conscience={state.conscience}
-                condotta={state.condotta}
-                wagesSuspended={!state.flags.chapter0_complete}
-                onAssign={(characterId, assignment) => dispatch({ type: 'ASSIGN_CHARACTER', characterId, assignment })}
-              />
-            </>
-          )}
-
-          {activeSection === 'secrets' && (
-            <SecretsPanel
-              secrets={state.secrets}
-              week={state.week}
-              onUse={secretId => dispatch({ type: 'USE_SECRET', secretId })}
-            />
-          )}
-
-          {activeSection === 'houses' && (
-            <HousesPanel
-              houses={HOUSES}
-              houseRelations={state.houseRelations}
-              agents={state.agents}
-              cash={state.cash}
-              flags={state.flags}
-              onPlaceAgent={(placement, name) => dispatch({ type: 'PLACE_AGENT', placement, name })}
-            />
-          )}
-
-          {activeSection === 'dossier' && (
-            <>
-              <EvidenceBoardPanel evidence={state.evidence ?? []} houses={HOUSES} flags={state.flags} />
-              <DiviningPanel state={state} onUse={purpose => dispatch({ type: 'USE_DIVINING', purpose })} />
-            </>
-          )}
-
-          {activeSection === 'counsel' && <CounselPanel state={state} />}
-
-          {activeSection === 'ledger' && (
-            <>
-              {!state.flags.chapter0_complete ? (
-                <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>
-                  Not available yet — credit isn't Claes's to extend until he's formally made the house's factor.
-                </p>
-              ) : (
-                <div>
-                  <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.8rem' }}>
-                    <button style={ledgerTab === 'ledger' ? BUTTON_ACTIVE : BUTTON} onClick={() => setLedgerTab('ledger')}>
-                      Ledger
-                    </button>
-                    <button
-                      style={ledgerTab === 'countingHouse' ? BUTTON_ACTIVE : BUTTON}
-                      onClick={() => setLedgerTab('countingHouse')}
-                    >
-                      Counting House
-                    </button>
-                  </div>
-                  <div style={{ display: ledgerTab === 'ledger' ? 'block' : 'none' }}>
-                    <LedgerPanel
-                      week={state.week}
-                      cash={state.cash}
-                      exchangeRates={state.exchangeRates}
-                      obligations={state.obligations}
-                      flags={state.flags}
-                      onDiscount={obligationId => dispatch({ type: 'DISCOUNT_OBLIGATION', obligationId })}
-                    />
-                  </div>
-                  <div style={{ display: ledgerTab === 'countingHouse' ? 'block' : 'none' }}>
-                    <CountingHousePanel
-                      flags={state.flags}
-                      onWriteBill={(cityId, florins, termWeeks) => dispatch({ type: 'WRITE_BILL', cityId, florins, termWeeks })}
-                      onTakeDeposit={(florins, termWeeks) => dispatch({ type: 'TAKE_DEPOSIT', florins, termWeeks })}
-                      onWriteLoan={(kind, florins, termWeeks) => dispatch({ type: 'WRITE_LOAN', kind, florins, termWeeks })}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </SectionPopup>
-      )}
+        </aside>
       </div>
 
       <PortalNav variant="footer" />
