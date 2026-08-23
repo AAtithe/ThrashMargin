@@ -4,6 +4,7 @@ import { getDb } from '../_lib/db';
 import { getUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
 import { createInitialState } from '../../src/sim/state';
+import type { RivalCount } from '../../src/sim/freeplay';
 
 /**
  * Same `games` table Thrash Margin and The Tea Race use (same Postgres/Supabase instance, same
@@ -43,8 +44,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const hideObjectives = req.body?.hideObjectives === true;
       const hotseatHouseId: string | null =
         typeof req.body?.hotseatHouseId === 'string' ? req.body.hotseatHouseId : null;
+      const freeplay = req.body?.freeplay === true;
+      // Clamped rather than trusted: this arrives over the wire, and `createRivals` slices a fixed
+      // seat list by it, so a nonsense value would silently produce a game with no opponents.
+      const rawRivals = Number(req.body?.rivals);
+      const rivals = (Number.isInteger(rawRivals) && rawRivals >= 0 && rawRivals <= 3 ? rawRivals : 2) as RivalCount;
       const newId = uuid();
-      const state = createInitialState(newId, name, { skipPrologue, hideObjectives, hotseatHouseId });
+      const state = createInitialState(newId, name, { skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals });
 
       try {
         await db.query(

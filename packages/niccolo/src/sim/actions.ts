@@ -31,6 +31,7 @@ import { addGrade, gradeBuyMultiplier, gradeHeld, gradeSellMultiplier, reconcile
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, driftScarcity, priceAt, sellProceeds } from './market';
 import { cityBarred, resolveWeeklyMarketEvents, tradeBlockedAt } from './marketEvents';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
+import { checkFreeplayWin, resolveFreeplayWeek } from './freeplay';
 import {
   expandWarehouse,
   leaseWarehouse,
@@ -341,7 +342,12 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   const afterBackgroundFlows = applyBackgroundFlows(maturity.scarcity);
   const afterDrift = driftScarcity(afterBackgroundFlows);
   const houseFootprint = applyHouseTradeFootprint(afterDrift, manualTrade);
-  const scarcity = houseFootprint.scarcity;
+  // Free-play rivals trade last in the scarcity chain (Phase 27), so they act on the market the
+  // background flows, drift and house footprints have already produced — the same market the player
+  // will read this week. Their trades are threaded through each rival in turn inside
+  // `resolveFreeplayWeek`, and returns the input untouched in a campaign, where there are none.
+  const freeplayResolution = resolveFreeplayWeek({ ...state, scarcity: houseFootprint.scarcity }, week);
+  const scarcity = freeplayResolution.scarcity;
   // Market events resolve before news is generated, so this week's reports quote the prices the
   // demand layer has actually produced rather than last week's.
   const marketEventResolution = resolveWeeklyMarketEvents(state.marketEvents, week);
@@ -365,7 +371,10 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     week,
   );
 
-  const scarcityCauses = deriveMarketCauses(maturity.scarcity, afterBackgroundFlows, afterDrift, scarcity, houseFootprint.trades);
+  const scarcityCauses = deriveMarketCauses(
+    maturity.scarcity, afterBackgroundFlows, afterDrift, scarcity, houseFootprint.trades,
+    freeplayResolution.notes,
+  );
   // Demand shifts are the one price move `deriveMarketCauses` structurally cannot see (it compares
   // scarcity stages, and demand is not scarcity), so they are merged in here rather than derived.
   const marketCauses: Record<string, PriceCauseNote[]> = { ...scarcityCauses };
@@ -410,7 +419,12 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   // down to what `cargo` actually still holds, rather than patching all three files individually.
   const vessels = sabotage.vessels.map(reconcileVesselCargoGrades);
 
-  return checkTriggers({
+  // Free play has no scripted layer at all (Phase 27), so the trigger check is skipped rather than
+  // suppressed. This is load-bearing and was nearly missed: a free-play game is created with
+  // `chapter0_complete` set — that flag is what unlocks wages, warehousing and the other standing
+  // systems — and Chapter 1's opening event triggers on exactly that flag. Without this branch the
+  // sandbox would open with Marian handing Claes a dyeworks contract.
+  const resolved: GameState = {
     ...state,
     week,
     cash: expeditionResolution.cash,
@@ -436,12 +450,24 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     escortLapsed: convoyResolution.escortLapsed,
     warehouses: warehouseResolution.warehouses,
     lastWarehouseLapses: warehouseResolution.lapses,
+    aiTraders: freeplayResolution.aiTraders,
+    lastAiNotes: freeplayResolution.notes,
     insurance,
     lastVoyageEvent: risk.event ?? state.lastVoyageEvent,
     lastSabotageEvent: sabotage.event ?? state.lastSabotageEvent ?? null,
     expedition: expeditionResolution.expedition,
     lastExpeditionEvent: expeditionResolution.event ?? state.lastExpeditionEvent ?? null,
-  });
+  };
+  if (resolved.mode === 'freeplay') {
+    // The sandbox's own "ending": recorded once and never cleared, and deliberately not a freeze —
+    // see `checkFreeplayWin` for why taking the board away the week a rival crosses the line would
+    // be the wrong call in a mode with no story to conclude.
+    if (resolved.freeplayWonWeek === undefined && checkFreeplayWin(resolved).winners.length > 0) {
+      return { ...resolved, freeplayWonWeek: week };
+    }
+    return resolved;
+  }
+  return checkTriggers(resolved);
 }
 
 function investCourier(state: GameState, cityId: string): GameState {

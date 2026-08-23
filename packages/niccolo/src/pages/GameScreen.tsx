@@ -28,6 +28,8 @@ import EvidenceBoardPanel from '../components/EvidenceBoardPanel';
 import DiviningPanel from '../components/DiviningPanel';
 import EstatePanel from '../components/EstatePanel';
 import WarehousePanel from '../components/WarehousePanel';
+import StandingsPanel from '../components/StandingsPanel';
+import { FREEPLAY_TARGET_NET_WORTH, isFreeplay, playerNetWorth, standings } from '../sim/freeplay';
 import ObjectivesPanel from '../components/ObjectivesPanel';
 import ChapterCompleteCard from '../components/ChapterCompleteCard';
 import CampaignProgress from '../components/CampaignProgress';
@@ -50,6 +52,7 @@ export type SectionId =
   | 'city'
   | 'estate'
   | 'warehouse'
+  | 'standings'
   | 'dispatches'
   | 'household'
   | 'secrets'
@@ -64,6 +67,7 @@ const SECTION_TITLES: Record<SectionId, string> = {
   city: 'City & Market',
   estate: 'Estate',
   warehouse: 'Warehouses',
+  standings: 'Standings',
   dispatches: 'Dispatches',
   household: 'Household',
   secrets: 'Secrets',
@@ -413,6 +417,9 @@ export default function GameScreen() {
   // draws for wages. From Chapter 1 the tab is always there, because "should I be storing this
   // instead of dumping it?" is a question the player should be able to ask at any port.
   const warehousingUnlocked = !!state.flags.chapter0_complete;
+  // Free play only (Phase 27). The campaign has no rivals to stand against and no target to reach,
+  // and an always-present Standings tab there would be exactly the ambient score §11 rules out.
+  const freeplayMode = isFreeplay(state);
   // A lease lost this week, or rent being paid on an empty shed — both are money leaving quietly,
   // which is exactly what a badge is for.
   const warehouseHasNews =
@@ -439,7 +446,10 @@ export default function GameScreen() {
   // labels consecutive tabs (see SectionRail's own comment on why it deliberately doesn't
   // collapse), so every entry in a group must sit next to its own kind here.
   const SECTIONS: SectionDef[] = [
-    { id: 'objectives', glyph: '✦', label: 'Objectives', group: 'Story' },
+    // Objectives are *chapter* objectives, and free play has no chapters — the tab would list
+    // Chapter 1's threads, none of which can ever resolve because the scripted layer never runs.
+    // Counsel stays: the household's trade and credit advice is just as useful in a sandbox.
+    ...(freeplayMode ? [] : [{ id: 'objectives' as const, glyph: '✦', label: 'Objectives', group: 'Story' }]),
     { id: 'counsel', glyph: '☙', label: 'Counsel', badge: counselHasUrgent, group: 'Story' },
     ...(dossierUnlocked ? [{ id: 'dossier', glyph: '✎', label: 'Dossier', group: 'Story' }] : []),
     { id: 'fleet', glyph: '⚓', label: 'Fleet', badge: fleetHasNews, group: 'Trade' },
@@ -447,6 +457,9 @@ export default function GameScreen() {
     ...(estateUnlocked ? [{ id: 'estate', glyph: '⚘', label: 'Estate', group: 'Trade' }] : []),
     ...(warehousingUnlocked
       ? [{ id: 'warehouse', glyph: '▤', label: 'Storage', badge: warehouseHasNews, group: 'Trade' }]
+      : []),
+    ...(freeplayMode
+      ? [{ id: 'standings', glyph: '⚑', label: 'Standings', badge: state.freeplayWonWeek !== undefined, group: 'Trade' }]
       : []),
     { id: 'dispatches', glyph: '✉', label: 'Dispatches', group: 'Trade' },
     { id: 'household', glyph: '⌂', label: 'Household', group: 'House' },
@@ -528,7 +541,20 @@ export default function GameScreen() {
             &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
             &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
           </span>
-          <CampaignProgress chapterNumber={objectiveChapter} title={CHAPTER_TITLES[objectiveChapter] ?? `Chapter ${objectiveChapter}`} />
+          {/* Free play has no chapters, so it gets the standings instead of a chapter title — the
+              header should always say what the player is actually playing toward. Without this the
+              sandbox announced "Chapter 1 — Niccolo Rising" above a game with no story in it. */}
+          {freeplayMode ? (
+            <span style={{ ...CLOCK, fontSize: '0.8rem', color: UI.brass }}>
+              {(() => {
+                const table = standings(state);
+                const me = table.findIndex(r => r.isPlayer) + 1;
+                return `${me} of ${table.length} · ${playerNetWorth(state).toLocaleString()}f of ${FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f`;
+              })()}
+            </span>
+          ) : (
+            <CampaignProgress chapterNumber={objectiveChapter} title={CHAPTER_TITLES[objectiveChapter] ?? `Chapter ${objectiveChapter}`} />
+          )}
           <button
             id="advance-week-button"
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
@@ -823,6 +849,8 @@ export default function GameScreen() {
               }
             />
           )}
+
+          {activeSection === 'standings' && <StandingsPanel state={state} />}
 
           {activeSection === 'dispatches' && (
             <DispatchesPanel

@@ -15,6 +15,14 @@ export function describeMarketCause(cause: PriceCauseNote, cityName: string): st
       return `${cause.houseName ?? 'A rival house'}'s factors have reportedly been ${
         cause.direction === 1 ? 'buying' : 'selling'
       } ${good} in ${cityName}.`;
+    case 'rival_trade':
+      // Named, and phrased as a competitor rather than as scenery. `house_trade` says "reportedly"
+      // because `sim/houses.ts`'s houses are a reduced-fidelity footprint the player only ever hears
+      // about; a free-play rival has real cash, a real hull and a real cargo, and its trades are a
+      // fact about the market rather than a rumour about a house.
+      return `${cause.houseName ?? 'A rival'} has been ${
+        cause.direction === 1 ? 'buying' : 'selling'
+      } ${good} in ${cityName} — you are bidding against them.`;
     case 'settling':
       return `${good} prices in ${cityName} are settling back toward the old rate.`;
     case 'demand_shift':

@@ -3,6 +3,7 @@ import { processAction } from '../sim/actions';
 import { withAllCurrencies } from '../sim/currency';
 import { API, authHeaders } from '../lib/api';
 import type { GameAction, GameState } from '../sim/types';
+import type { RivalCount } from '../sim/freeplay';
 import type { SaveMeta } from './useGameLocal';
 
 /** The `tm_token` JWT this hook sends (see api/_lib/auth.ts) expires after 7 days by default —
@@ -40,13 +41,15 @@ export function useGameCloud() {
     skipPrologue?: boolean,
     hideObjectives?: boolean,
     hotseatHouseId?: string | null,
+    freeplay?: boolean,
+    rivals?: RivalCount,
   ): Promise<string | null> => {
     setError(null);
     try {
       const res = await fetch(`${API}/api/niccolo/game`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({ name, skipPrologue, hideObjectives, hotseatHouseId }),
+        body: JSON.stringify({ name, skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals }),
       });
       if (res.status === 401) { setError(SESSION_EXPIRED); return null; }
       const data = await res.json();

@@ -293,14 +293,17 @@ export interface NewsItem {
  * doge's wedding, a glut, an embargo, a war scare. Unlike the other three this is not a scarcity
  * move at all, which is exactly why it needs its own kind: `deriveMarketCauses` compares scarcity
  * stages and would see nothing. */
-export type PriceCauseKind = 'house_trade' | 'unknown_flows' | 'settling' | 'demand_shift';
+export type PriceCauseKind = 'house_trade' | 'unknown_flows' | 'settling' | 'demand_shift' | 'rival_trade';
 
 export interface PriceCauseNote {
   goodId: string;
   kind: PriceCauseKind;
   /** 1 = price rose, -1 = price fell — the real observed direction, independent of kind. */
   direction: 1 | -1;
-  /** Only set for `kind: 'house_trade'`. */
+  /** Set for `kind: 'house_trade'` and for `kind: 'rival_trade'` (a free-play rival's name, Phase
+   * 27) — the same field for both, because the narration reads identically either way: somebody
+   * named moved this price. Kept separate as a *kind* so the text can distinguish scenery from a
+   * competitor the player is actually racing. */
   houseName?: string;
 }
 
@@ -732,6 +735,46 @@ export interface WarehouseLapse {
   proceeds: number;
 }
 
+/**
+ * The AI rival's own state (Phase 27, `sim/aiTrader.ts`).
+ *
+ * Defined here rather than in `aiTrader.ts` because `GameState` references it, and every type
+ * `GameState` references lives in this file — `types.ts` deliberately has no imports at all, which
+ * is what keeps it the one place with no cycles to reason about. `aiTrader.ts` imports these like
+ * every other sim module imports its own types.
+ */
+/** What an AI trader currently believes a city's prices were, and when it learnt that. */
+export interface RememberedPrices {
+  week: number;
+  prices: Record<string, number>;
+}
+
+export interface AiTrader {
+  id: string;
+  name: string;
+  cash: number;
+  /** Reuses the player's own `Vessel` shape, so movement/capacity/cargo behave identically. */
+  vessels: Vessel[];
+  /**
+   * How many weeks behind live this trader's price knowledge runs — the difficulty dial. 0 would
+   * be omniscient (deliberately not used by any shipped profile); higher is a weaker opponent
+   * that acts on staler information, exactly as a real distant merchant would.
+   */
+  reportLagWeeks: number;
+  /** Per-city price memory. A city absent from here has never been visited or reported on. */
+  remembered: Record<string, RememberedPrices>;
+}
+
+export interface AiTradeNote {
+  traderId: string;
+  traderName: string;
+  cityId: string;
+  goodId: string;
+  /** +1 bought here, -1 sold here — matches `HouseTradeNote.direction`'s convention. */
+  direction: 1 | -1;
+  quantity: number;
+}
+
 export interface GameState {
   id: string;
   /** Player-chosen campaign name, shown in the lobby's save list. Optional only because saves
@@ -837,6 +880,26 @@ export interface GameState {
    * player isn't currently at instead gets its causes via the normal courier-latency `NewsItem`
    * pipeline (`NewsItem.causes`), same as prices already work. */
   lastMarketCauses?: Record<string, PriceCauseNote[]>;
+  /**
+   * Which game this is (Phase 27). `'campaign'` — or the field being absent, which is every save
+   * written before free play existed — is the eight-chapter story. `'freeplay'` is the open sandbox:
+   * no chapter content, no objectives, no freeze, the whole map from week one, and rival traders.
+   *
+   * Deliberately a mode flag on the state rather than a separate reducer. Free play is the *same*
+   * simulation with the scripted layer switched off, and a second `processAction` would immediately
+   * start drifting from the first — every market fix since Phase 16 would have to be made twice.
+   */
+  mode?: 'campaign' | 'freeplay';
+  /** The rival houses actually trading against the player in free play (Phase 27). Optional/absent
+   * in a campaign and in any older save, so nothing migrates. */
+  aiTraders?: AiTrader[];
+  /** Every rival trade from the week just resolved, for the standings panel to report. Recomputed
+   * fresh each ADVANCE_WEEK and never accumulated, like `lastMarketCauses`. */
+  lastAiNotes?: AiTradeNote[];
+  /** Set the week a free-play game's win condition is met, and never cleared — the sandbox's
+   * equivalent of `chapter8_complete`, except that it does not stop the clock (see
+   * `freeplay.ts` for why a sandbox should be allowed to keep going after it is won). */
+  freeplayWonWeek?: number;
   /** Leased warehouses by city id (Phase 26). Optional so a save from before this field existed
    * simply leases nothing — the same zero-migration discipline every field since `expedition` has
    * used. Keyed by city rather than a list because a city can hold at most one lease, and every

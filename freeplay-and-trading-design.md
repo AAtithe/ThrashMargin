@@ -4,11 +4,14 @@ Companion to `banco-di-niccolo-design.md`. Written 2026-07-30, in response to: *
 out both, we should also start thinking about an AI to play against in a non story mode, as well as
 being able to add extra ships and grow your fleet."*
 
-**Status.** Part 1's AI trading engine is **built and driver-verified** (`packages/niccolo/src/sim/aiTrader.ts`)
-but **not wired into any game mode** — it is a walking skeleton, deliberately self-contained. Parts
-2–4 are **build-ready specs, not built**. Nothing here changed `GameState`, `sim/actions.ts` or
-`sim/state.ts`, because a concurrent session was mid-build on Chapter 5 in exactly those files; the
-sequencing note at the end matters.
+**Status, updated 2026-08-23.** Part 1 is **built** (Phase 27) — free-play mode, rivals wired into
+`advanceWeek`, standings, a win condition. Part 2 is **built** (Phase 26). Part 3 was built as
+Phase 23. **Part 4 (fleet growth) remains a spec, and still carries the `vesselKindAt` regression
+warning below, which must be fixed in the same change.**
+
+Read the Phase 27 note under Part 1 before touching the opponent: wiring it required threading the
+demand layer and `sellProceeds` through every price it reads, and the driver then found — and the
+code now fixes — an inversion where *staler* information beat fresher information 23 seeds out of 24.
 
 ---
 
@@ -94,6 +97,52 @@ flows and drift running exactly as `advanceWeek` applies them) established, 11/1
   so it doesn't read as quietly overturning a prior call.
 - Suggested win conditions, pick one: first to N florins; highest net worth at a fixed year; or last
   house solvent.
+
+> **Phase 27 implementation, confirmed 2026-08-23.** Free play ships as a mode flag on the same
+> reducer, not a second one (`GameState.mode`): the scripted layer is *absent* rather than
+> suppressed — `advanceWeek` skips `checkTriggers` entirely, so no chapter event can enter
+> `pendingEvents`. That branch is load-bearing: a free-play game is created with
+> `chapter0_complete` set, because that flag is what unlocks wages and warehousing, and Chapter 1's
+> opening event triggers on exactly that flag. Without it the sandbox opened with Marian handing
+> Claes a dyeworks contract.
+>
+> **The three fairness rules are now true rather than merely claimed.** They were not, before this
+> phase. `aiTrader.ts` called `priceAt` without `events`, so it remembered and traded on
+> `base × scarcity` — prices with the demand layer omitted, which **no player can transact at** —
+> and it sold at snapshot-times-quantity, which after Phase 26 was a systematically *better* price
+> than the player gets for the identical trade. Both are threaded through now, embargoes included,
+> and each is pinned by a driver assertion that compares the rival's realised proceeds against
+> `sellProceeds` directly.
+>
+> **The difficulty model needed two real fixes, and one claim did not survive.** Measured over 150
+> seeds:
+> - *Fresher information alone wins* — **116/150**. But only after two fixes. `bestPlanFor` scored
+>   runs at a flat believed sell price it could no longer realise, so thin margins became
+>   loss-making and a sharper-informed trader, seeing *more* of those, over-traded on them
+>   (`SALE_IMPACT_FACTOR` now prices the trader's own impact from `SCARCITY_STEP`). And, more
+>   surprising: with exploration as the only fallback, a well-informed trader that had just crushed
+>   its own market saw that accurately, found no positive margin, and **sat**, while an ignorant one
+>   still believed the old price and traded anyway. **Staler information won 23 of 24 seeds** —
+>   accuracy punished with idleness. `sailTowardBestKnownMarket` is the fix: relocate toward a market
+>   you *know* is better rather than idling.
+> - *The three shipped profiles are ordered in strength* — ruthless > steady **150/150**, all three
+>   ordered **149/150**. This is what the player actually meets, and it holds cleanly.
+> - *A bigger ship is an upgrade* — **does not survive honest pricing.** The old figure (10/12) was
+>   measured when a large load sold at one untouched snapshot price. Hull beyond what a market can
+>   absorb and what cash can fill now buys mostly time in port; a 30-unit hull merely stays within
+>   25% of a 12-unit one (60/60). The same diminishing return shows in capital — the cautious trader
+>   compounds at a *higher multiple* than the ruthless one and still never catches it in absolute
+>   terms. Recorded as a known limit rather than quietly re-asserted.
+>
+> **On the visible score.** §11 and Phase 15 rejected an ambient net-worth readout, and Phase 25
+> deferred the real figure to the epilogue. The standings panel is gated on `mode === 'freeplay'`
+> and the campaign's rule is untouched — different context, not a reversal, exactly as this section
+> asked to have stated when built.
+>
+> **The win condition does not stop the clock.** First past 8,000f is recorded in `freeplayWonWeek`
+> and announced; play continues. A campaign ends because its story has; a sandbox has no story to
+> end, and freezing it the week a rival crosses the line would take the board away from a player
+> 200f behind and about to pass them.
 
 ### Deliberately out of scope
 

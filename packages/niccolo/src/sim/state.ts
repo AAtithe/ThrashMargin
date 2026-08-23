@@ -5,6 +5,8 @@ import { checkTriggers } from './events';
 import { initialHouseRelations } from './houses';
 import { initialScarcity } from './market';
 import { generateNews, resolveArrivals } from './news';
+import { FREEPLAY_START_CASH, createRivals } from './freeplay';
+import type { RivalCount } from './freeplay';
 import type { GameState } from './types';
 
 /** Starting stake: small and dangerous, as the design pillar demands — the stake Chapter 0's own
@@ -58,10 +60,20 @@ export interface CreateInitialStateOptions {
   /** Lobby "hotseat house" toggle (Phase 14) — which house, if any, a seated human plays this
    * campaign instead of `sim/houses.ts`'s own formulas. Default (undefined/null) is no house. */
   hotseatHouseId?: string | null;
+  /** Free play (Phase 27): the open sandbox instead of the eight-chapter campaign. Default
+   * (false/omitted) is the campaign, so every existing call site is unchanged. */
+  freeplay?: boolean;
+  /** How many rival houses trade against the player in free play. Ignored in a campaign. */
+  rivals?: RivalCount;
 }
 
 export function createInitialState(id: string, name?: string, options?: CreateInitialStateOptions): GameState {
-  const skipPrologue = options?.skipPrologue ?? false;
+  const freeplay = options?.freeplay ?? false;
+  // A free-play game is always "past the prologue": there is no Chapter 0 to play, and the flag is
+  // what unlocks wages, warehousing and the rest of the standing systems. Set through the same
+  // variable rather than a parallel branch, so every field below that reads `skipPrologue` keeps
+  // one meaning — "is this a going concern with a ship and money" — in both modes.
+  const skipPrologue = freeplay || (options?.skipPrologue ?? false);
   const objectivesHidden = options?.hideObjectives ?? false;
   const hotseatHouseId = options?.hotseatHouseId ?? null;
   const scarcity = initialScarcity();
@@ -121,5 +133,17 @@ export function createInitialState(id: string, name?: string, options?: CreateIn
     vessels: skipPrologue ? [newShip(), newCourier()] : [newCourier()],
   };
 
-  return checkTriggers(state);
+  if (!freeplay) return checkTriggers(state);
+
+  // Free play (Phase 27). Note what is *not* done here: `checkTriggers` is never called, so no
+  // chapter event ever enters `pendingEvents` and the scripted layer is simply absent rather than
+  // suppressed. `objectivesHidden` is forced true because the objectives are chapter objectives and
+  // there are no chapters; the rail hides the tab accordingly.
+  return {
+    ...state,
+    mode: 'freeplay',
+    cash: FREEPLAY_START_CASH,
+    objectivesHidden: true,
+    aiTraders: createRivals(options?.rivals ?? 2, state.scarcity, state.marketEvents),
+  };
 }

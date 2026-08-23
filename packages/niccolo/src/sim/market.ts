@@ -1,9 +1,12 @@
 import { CITIES, findCity } from './content';
 import { demandFactor } from './marketEvents';
-import type { ActiveMarketEvent, HouseTradeNote, MarketScarcity, PriceCauseKind, PriceCauseNote } from './types';
+import type { ActiveMarketEvent, AiTradeNote, HouseTradeNote, MarketScarcity, PriceCauseKind, PriceCauseNote } from './types';
 
 /** How sharply one unit traded moves the local price. */
-const SCARCITY_STEP = 0.03;
+/** How far one traded unit moves a city-good's scarcity multiplier. Exported since Phase 27 so
+ * `sim/aiTrader.ts` can price its *own* expected market impact from the same constant rather than
+ * hard-coding a second copy of it — see `SALE_IMPACT_FACTOR` there. */
+export const SCARCITY_STEP = 0.03;
 const SCARCITY_MIN = 0.5;
 const SCARCITY_MAX = 2;
 /** Fraction of the gap back to 1.0 (base price) that closes each week. Tuned so a full dump's
@@ -195,9 +198,19 @@ export function deriveMarketCauses(
   afterDrift: MarketScarcity,
   final: MarketScarcity,
   houseTrades: HouseTradeNote[],
+  /** Free-play rivals' actual trades this week (Phase 27). A rival's buying and selling really move
+   * `scarcity`, so without this they would be derived as anonymous "unknown flows" — the player
+   * would see the price move and never learn they were bidding against somebody. Optional, so the
+   * campaign's own call site is unchanged. */
+  rivalTrades: AiTradeNote[] = [],
 ): Record<string, PriceCauseNote[]> {
   const houseTradeByKey = new Map<string, HouseTradeNote>();
   for (const trade of houseTrades) houseTradeByKey.set(`${trade.cityId}:${trade.goodId}`, trade);
+  // A rival outranks a house footprint at the same city-good: the house is a reduced-fidelity
+  // scarcity nudge, the rival is a hull that really arrived and really traded. If both moved the
+  // same price the same way, the real one is the truer explanation.
+  const rivalTradeByKey = new Map<string, AiTradeNote>();
+  for (const trade of rivalTrades) rivalTradeByKey.set(`${trade.cityId}:${trade.goodId}`, trade);
 
   const out: Record<string, PriceCauseNote[]> = {};
   for (const cityId of Object.keys(final)) {
@@ -211,9 +224,12 @@ export function deriveMarketCauses(
       if (delta < 1 || delta < priceBefore * NOTABILITY_FRACTION) continue;
       const direction: 1 | -1 = priceFinal > priceBefore ? 1 : -1;
 
+      const rivalTrade = rivalTradeByKey.get(`${cityId}:${goodId}`);
       const houseTrade = houseTradeByKey.get(`${cityId}:${goodId}`);
       let note: PriceCauseNote;
-      if (houseTrade && houseTrade.direction === direction) {
+      if (rivalTrade && rivalTrade.direction === direction) {
+        note = { goodId, kind: 'rival_trade', direction, houseName: rivalTrade.traderName };
+      } else if (houseTrade && houseTrade.direction === direction) {
         note = { goodId, kind: 'house_trade', direction, houseName: houseTrade.houseName };
       } else {
         const backgroundDelta = Math.abs((afterBackground[cityId]?.[goodId] ?? 1) - (before[cityId]?.[goodId] ?? 1));

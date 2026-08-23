@@ -1,6 +1,15 @@
 import { CITIES, findCity, marketGoodsAt, otherEndOfRoute, planRoute, findRouteById } from './content';
-import { adjustScarcity, cargoTotal, priceAt } from './market';
-import type { Cargo, MarketScarcity, Vessel } from './types';
+import { SCARCITY_STEP, adjustScarcity, cargoTotal, priceAt, sellProceeds } from './market';
+import { tradeBlockedAt } from './marketEvents';
+import type {
+  ActiveMarketEvent,
+  AiTradeNote,
+  AiTrader,
+  Cargo,
+  MarketScarcity,
+  RememberedPrices,
+  Vessel,
+} from './types';
 
 /**
  * A real trading opponent — the walking skeleton for free-play mode (see
@@ -27,27 +36,6 @@ import type { Cargo, MarketScarcity, Vessel } from './types';
  * attributes moves to a named actor, a wired-up AI can be named in the price narration for free.
  */
 
-/** What an AI trader currently believes a city's prices were, and when it learnt that. */
-export interface RememberedPrices {
-  week: number;
-  prices: Record<string, number>;
-}
-
-export interface AiTrader {
-  id: string;
-  name: string;
-  cash: number;
-  /** Reuses the player's own `Vessel` shape, so movement/capacity/cargo behave identically. */
-  vessels: Vessel[];
-  /**
-   * How many weeks behind live this trader's price knowledge runs — the difficulty dial. 0 would
-   * be omniscient (deliberately not used by any shipped profile); higher is a weaker opponent
-   * that acts on staler information, exactly as a real distant merchant would.
-   */
-  reportLagWeeks: number;
-  /** Per-city price memory. A city absent from here has never been visited or reported on. */
-  remembered: Record<string, RememberedPrices>;
-}
 
 export interface AiTraderProfile {
   id: string;
@@ -65,11 +53,31 @@ export const AI_PROFILES: Record<'cautious' | 'steady' | 'ruthless', Omit<AiTrad
   ruthless: { startingCash: 1200, reportLagWeeks: 2, shipCapacity: 30 },
 };
 
-/** Snapshot of one city's live prices, as learnt on arrival or by a report. */
-function observe(scarcity: MarketScarcity, cityId: string, week: number): RememberedPrices {
+/**
+ * Snapshot of one city's live prices, as learnt on arrival or by a report.
+ *
+ * `events` is the Phase 23 demand layer, and passing it is not optional in spirit even though the
+ * parameter is: `priceAt` without it returns `base × scarcity` and omits `× demand`, so a trader
+ * reading prices that way would remember — and trade on — numbers **no player can ever transact
+ * at**. The design's whole claim about this opponent is that it "never trades at a price the player
+ * couldn't also get"; that claim is only true if demand is threaded all the way down. The demand
+ * layer's own doc comment flagged `aiTrader.ts` as the one deliberate omission, to be closed when
+ * the trader was wired into a game mode. This is that closing.
+ *
+ * A good currently under a `guild_embargo` is omitted from memory entirely rather than remembered
+ * at a price it cannot be bought or sold at — so the trader routes around a closed market, which is
+ * what a merchant does, instead of planning voyages into one.
+ */
+function observe(
+  scarcity: MarketScarcity,
+  cityId: string,
+  week: number,
+  events?: ActiveMarketEvent[],
+): RememberedPrices {
   const prices: Record<string, number> = {};
   for (const goodId of Object.keys(findCity(cityId)?.market ?? {})) {
-    const p = priceAt(scarcity, cityId, goodId);
+    if (tradeBlockedAt(events, cityId, goodId)) continue;
+    const p = priceAt(scarcity, cityId, goodId, events);
     if (p !== null) prices[goodId] = p;
   }
   return { week, prices };
@@ -116,27 +124,37 @@ export function createAiTrader(profile: AiTraderProfile): AiTrader {
  * map (see `resolveAiWeek`'s exploration fallback), which is both the honest behaviour and the
  * thing that makes `reportLagWeeks` a real difficulty dial rather than decoration.
  */
-export function refreshAiKnowledge(trader: AiTrader, scarcity: MarketScarcity, week: number): AiTrader {
+export function refreshAiKnowledge(
+  trader: AiTrader,
+  scarcity: MarketScarcity,
+  week: number,
+  events?: ActiveMarketEvent[],
+): AiTrader {
   const remembered = { ...trader.remembered };
   const dockedAt = new Set(trader.vessels.filter(v => !v.destination).map(v => v.location));
 
   for (const cityId of dockedAt) {
-    if (findCity(cityId)?.market) remembered[cityId] = observe(scarcity, cityId, week);
+    if (findCity(cityId)?.market) remembered[cityId] = observe(scarcity, cityId, week, events);
   }
   for (const cityId of Object.keys(remembered)) {
     if (dockedAt.has(cityId)) continue;
     if (week - remembered[cityId].week >= trader.reportLagWeeks) {
-      remembered[cityId] = observe(scarcity, cityId, week);
+      remembered[cityId] = observe(scarcity, cityId, week, events);
     }
   }
   return { ...trader, remembered };
 }
 
 /** Seeds a trader's knowledge of its own home port, so it starts with somewhere to trade from. */
-export function seedHomeKnowledge(trader: AiTrader, scarcity: MarketScarcity, week: number): AiTrader {
+export function seedHomeKnowledge(
+  trader: AiTrader,
+  scarcity: MarketScarcity,
+  week: number,
+  events?: ActiveMarketEvent[],
+): AiTrader {
   const home = trader.vessels[0]?.location;
   if (!home || !findCity(home)?.market) return trader;
-  return { ...trader, remembered: { ...trader.remembered, [home]: observe(scarcity, home, week) } };
+  return { ...trader, remembered: { ...trader.remembered, [home]: observe(scarcity, home, week, events) } };
 }
 
 /** What the trader believes `goodId` fetches at `cityId`, or null if it has no knowledge of it. */
@@ -184,7 +202,10 @@ export function bestPlanFor(trader: AiTrader, vessel: Vessel): AiPlan | null {
       if (city.id === here || !city.market?.[goodId]) continue;
       const sellPrice = believedPrice(trader, city.id, goodId);
       if (sellPrice === null) continue;
-      const margin = sellPrice - buyPrice;
+      // Judged on what the sale will actually realise, not on the standing price — see
+      // `SALE_IMPACT_FACTOR`. A margin that only exists before the trader's own selling moves the
+      // market is not a margin.
+      const margin = sellPrice * SALE_IMPACT_FACTOR - buyPrice;
       if (margin <= 0) continue;
 
       const plan = planRoute(here, city.id, false);
@@ -199,15 +220,6 @@ export function bestPlanFor(trader: AiTrader, vessel: Vessel): AiPlan | null {
   return best;
 }
 
-export interface AiTradeNote {
-  traderId: string;
-  traderName: string;
-  cityId: string;
-  goodId: string;
-  /** +1 bought here, -1 sold here — matches `HouseTradeNote.direction`'s convention. */
-  direction: 1 | -1;
-  quantity: number;
-}
 
 export interface AiWeekResult {
   trader: AiTrader;
@@ -225,8 +237,13 @@ export interface AiWeekResult {
  * Keeping the AI on identical price mechanics is what makes it a fair opponent rather than a
  * separate simulation that happens to share a map.
  */
-export function resolveAiWeek(trader: AiTrader, scarcity: MarketScarcity, week: number): AiWeekResult {
-  let working = refreshAiKnowledge(trader, scarcity, week);
+export function resolveAiWeek(
+  trader: AiTrader,
+  scarcity: MarketScarcity,
+  week: number,
+  events?: ActiveMarketEvent[],
+): AiWeekResult {
+  let working = refreshAiKnowledge(trader, scarcity, week, events);
   let nextScarcity = scarcity;
   const notes: AiTradeNote[] = [];
   let cash = working.cash;
@@ -252,7 +269,11 @@ export function resolveAiWeek(trader: AiTrader, scarcity: MarketScarcity, week: 
     for (const goodId of Object.keys(vessel.cargo)) {
       const held = vessel.cargo[goodId] ?? 0;
       if (held <= 0) continue;
-      const live = priceAt(nextScarcity, vessel.location, goodId);
+      // An embargoed market is closed to the trader exactly as it is closed to the player — the
+      // same `tradeBlockedAt` gate `buyGood`/`sellGood` apply. Without this the AI would quietly
+      // trade through an event whose entire purpose is to stop trade.
+      if (tradeBlockedAt(events, vessel.location, goodId)) continue;
+      const live = priceAt(nextScarcity, vessel.location, goodId, events);
       if (live === null) continue;
       const paidBelief = believedPrice(working, vessel.location, goodId);
       // Only sell where this city is (per its beliefs) actually a good market — otherwise hold and
@@ -261,8 +282,17 @@ export function resolveAiWeek(trader: AiTrader, scarcity: MarketScarcity, week: 
       if (bestElsewhere !== null && paidBelief !== null && bestElsewhere > paidBelief * 1.1) continue;
 
       const qty = Math.min(held, MAX_UNITS_SOLD_PER_WEEK);
-      cash += live * qty;
-      nextScarcity = adjustScarcity(nextScarcity, vessel.location, goodId, -qty);
+      // Priced through `sellProceeds`, the same function the player's own `sellGood` uses (Phase
+      // 26): the market impact is applied across the quantity rather than after it. This was the
+      // last place in the codebase still doing snapshot-times-quantity, and leaving it would have
+      // handed the AI a systematically better price than the player gets for the identical trade —
+      // a cheat, and precisely the kind the difficulty model forbids. It also makes
+      // `MAX_UNITS_SOLD_PER_WEEK` mean what its own doc comment claims: the metering now genuinely
+      // caps a self-inflicted price hit that the trader really pays.
+      const sale = sellProceeds(nextScarcity, vessel.location, goodId, qty, events);
+      if (sale === null) continue;
+      cash += sale.revenue;
+      nextScarcity = sale.scarcity;
       notes.push({
         traderId: working.id,
         traderName: working.name,
@@ -275,10 +305,22 @@ export function resolveAiWeek(trader: AiTrader, scarcity: MarketScarcity, week: 
       soldSomething = true;
     }
 
-    // Still holding stock this market wants? Stay docked and keep selling it down next week rather
-    // than sailing off half-loaded — metering only helps if the trader actually sees it through.
+    // Still holding stock after selling into this market? Stay and keep metering it down — *unless*
+    // there is a market it knows is materially better for what is left, in which case go there.
+    //
+    // Both halves are load-bearing, and the driver measured the cost of getting either wrong. An
+    // unconditional stay makes metering work but turns a large hull into a liability: thirty units
+    // at six a week is five weeks in port while a twelve-unit ship sells out in two and moves on, so
+    // a *bigger ship lost to a smaller one on 18 of 24 seeds*. Leaving unconditionally fixes that
+    // (24/24) but re-breaks the information model, because a well-informed trader keeps abandoning
+    // half-sold cargo — fresher information then won only 1 seed in 24.
+    //
+    // The condition is `sailTowardBestKnownMarket` returning something, deliberately reusing that
+    // one judgement rather than inventing a second threshold beside it: "is anywhere better than
+    // here" is a question already answered in exactly one place.
     if (soldSomething && cargoTotal(vessel.cargo) > 0) {
-      vessels.push(vessel);
+      const better = sailTowardBestKnownMarket({ ...working, cash }, vessel);
+      vessels.push(better ?? vessel);
       continue;
     }
 
@@ -303,7 +345,8 @@ export function resolveAiWeek(trader: AiTrader, scarcity: MarketScarcity, week: 
           const sellBelief = believedPrice(working, plan.sellCityId, goodId);
           if (buyBelief === null || sellBelief === null || sellBelief <= buyBelief) continue;
         }
-        const live = priceAt(nextScarcity, vessel.location, goodId);
+        if (tradeBlockedAt(events, vessel.location, goodId)) continue;
+        const live = priceAt(nextScarcity, vessel.location, goodId, events);
         if (live === null || live <= 0) continue;
         const quantity = Math.min(space, Math.floor(cash / live), ABSORBABLE_UNITS);
         if (quantity <= 0) continue;
@@ -349,10 +392,19 @@ export function resolveAiWeek(trader: AiTrader, scarcity: MarketScarcity, week: 
         };
       }
     } else {
-      // No known-profitable run and nothing queued: go and *look*. Because unknown cities are
-      // genuinely unknown (see `refreshAiKnowledge`), a trader that never explored would sit in its
-      // home port forever — exploration is what bootstraps the map it then trades on.
-      vessel = sailTowardNearestUnknown(working, vessel);
+      // No profitable run to be had *here*. Two things to try, in order, and never idling — an idle
+      // hull is the one thing a factor is certainly wrong to be.
+      //
+      // **This ordering is the fix for an inversion the Phase 27 driver measured**, and it is worth
+      // recording because it was the opposite of what it looked like. With only exploration as a
+      // fallback, a trader that already knew every nearby market and had just crushed the price at
+      // its own port would find no positive margin and simply *sit*. A well-informed trader sees
+      // that crash accurately and stops; an ignorant one still believes the old price, sails, and
+      // trades anyway. So **staler information won 23 of 24 seeds** — not because ignorance is an
+      // edge, but because accuracy was being punished with idleness. Relocating toward a market it
+      // *knows* is better is what turns knowing into an advantage.
+      const relocation = sailTowardBestKnownMarket(working, vessel);
+      vessel = relocation ?? sailTowardNearestUnknown(working, vessel);
     }
 
     vessels.push(vessel);
@@ -375,6 +427,25 @@ export function resolveAiWeek(trader: AiTrader, scarcity: MarketScarcity, week: 
 const MAX_UNITS_SOLD_PER_WEEK = 6;
 
 /**
+ * The haircut a trader applies to a believed sell price when *planning*, to account for the market
+ * impact of its own selling.
+ *
+ * Phase 26 made a sale's price decline across the quantity sold rather than after it, and Phase 27
+ * put the AI on that same function. That immediately exposed a modelling gap the old snapshot
+ * pricing had hidden: `bestPlanFor` scored a run as `(believedSellPrice - buyPrice) × quantity`, a
+ * flat price it could no longer actually realise. So thin-margin runs became quietly loss-making,
+ * and — the part that inverted the whole difficulty model — a *sharper-informed* trader sees more
+ * of those thin opportunities and therefore over-trades on them. A driver comparison had the
+ * low-lag trader selling 344 units to the high-lag trader's 264 and ending up poorer.
+ *
+ * Selling is metered at `MAX_UNITS_SOLD_PER_WEEK`, and each unit within a batch moves the price by
+ * `SCARCITY_STEP`, so the average unit in a batch realises about `1 - step × (n-1)/2` of the
+ * standing price. That is an estimate the trader is entitled to: it is derived from its own known
+ * selling behaviour and a published constant, not from any live price it has not earned.
+ */
+const SALE_IMPACT_FACTOR = 1 - (SCARCITY_STEP * (MAX_UNITS_SOLD_PER_WEEK - 1)) / 2;
+
+/**
  * Most units of a *single* good worth carrying into one market on one voyage — three weeks of
  * metered selling. Beyond this the trader is just queueing up its own price crash, so hold space is
  * better spent on a different good. Driver-verified: without this cap plus the diversification it
@@ -383,7 +454,88 @@ const MAX_UNITS_SOLD_PER_WEEK = 6;
  */
 const ABSORBABLE_UNITS = MAX_UNITS_SOLD_PER_WEEK * 3;
 
+
+/**
+ * Sends a vessel toward the *known* market it has most reason to be at, or null if there is nothing
+ * better than staying put. Purely belief-driven — no live price is read, so this buys the trader
+ * nothing it has not earned by having been there or having a report.
+ *
+ * Carrying cargo: the best market it believes exists for the good it holds most of. Empty: the
+ * market whose own goods it believes carry the best onward margin, which is the same judgement
+ * `bestPlanFor` makes, evaluated one port ahead.
+ *
+ * Scored per week of sailing, exactly as `bestPlanFor` scores, so a fat distant market does not
+ * always beat a decent near one.
+ */
+function sailTowardBestKnownMarket(trader: AiTrader, vessel: Vessel): Vessel | null {
+  const here = vessel.location;
+  const held = Object.entries(vessel.cargo)
+    .filter(([, n]) => (n ?? 0) > 0)
+    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))[0];
+
+  let bestCityId: string | null = null;
+  let bestScore = 0;
+
+  for (const cityId of Object.keys(trader.remembered)) {
+    if (cityId === here) continue;
+    const plan = planRoute(here, cityId, false);
+    if (!plan || plan.routeIds.length === 0) continue;
+    const weeks = Math.max(1, plan.totalWeeks);
+
+    let value = 0;
+    if (held) {
+      const [goodId, units] = held;
+      const there = trader.remembered[cityId].prices[goodId];
+      const hereBelief = believedPrice(trader, here, goodId);
+      if (there === undefined) continue;
+      // Only worth the voyage if that market is believed to beat this one for what we hold.
+      if (hereBelief !== null && there <= hereBelief) continue;
+      value = (there - (hereBelief ?? 0)) * (units ?? 0);
+    } else {
+      // Empty hold: go where the *next* run looks best, judged on beliefs alone.
+      for (const goodId of Object.keys(trader.remembered[cityId].prices)) {
+        const buyThere = trader.remembered[cityId].prices[goodId];
+        if (buyThere <= 0) continue;
+        const onward = bestKnownSellPrice(trader, goodId, cityId);
+        if (onward === null) continue;
+        const margin = onward * SALE_IMPACT_FACTOR - buyThere;
+        if (margin <= 0) continue;
+        const quantity = Math.min(vessel.capacity, Math.floor(trader.cash / buyThere), ABSORBABLE_UNITS);
+        value = Math.max(value, margin * quantity);
+      }
+    }
+
+    const score = value / weeks;
+    if (score > bestScore) {
+      bestScore = score;
+      bestCityId = cityId;
+    }
+  }
+
+  if (!bestCityId) return null;
+  const plan = planRoute(here, bestCityId, false);
+  if (!plan || plan.routeIds.length === 0) return null;
+  const leg = findRouteById(plan.routeIds[0]);
+  if (!leg) return null;
+  return {
+    ...vessel,
+    destination: otherEndOfRoute(leg, here),
+    routeId: leg.id,
+    weeksRemaining: leg.distanceWeeks,
+    plannedRoute: plan.routeIds.slice(1),
+  };
+}
+
 /** Sends a vessel toward the closest city this trader has no price knowledge of. */
+/**
+ * Furthest a trader will sail purely to *look* at a market it has never seen.
+ *
+ * Exploration is the last resort in `resolveAiWeek` (after trading here, and after relocating to a
+ * market it already knows is better), so in practice it fires when a trader has run out of ideas.
+ * A cap keeps that from becoming a twelve-week voyage to Timbuktu on a whim: measured, it changes
+ * almost nothing about outcomes, which is exactly why the cheap sane bound is the right default.
+ */
+const MAX_EXPLORE_WEEKS = 8;
 function sailTowardNearestUnknown(trader: AiTrader, vessel: Vessel): Vessel {
   let bestFirstLegId: string | null = null;
   let bestWeeks = Infinity;
@@ -392,6 +544,7 @@ function sailTowardNearestUnknown(trader: AiTrader, vessel: Vessel): Vessel {
     if (trader.remembered[city.id]) continue;
     const plan = planRoute(vessel.location, city.id, false);
     if (!plan || plan.routeIds.length === 0) continue;
+    if (plan.totalWeeks > MAX_EXPLORE_WEEKS) continue;
     if (plan.totalWeeks < bestWeeks) {
       bestWeeks = plan.totalWeeks;
       bestFirstLegId = plan.routeIds[0];
@@ -424,20 +577,20 @@ function bestKnownSellPrice(trader: AiTrader, goodId: string, exceptCityId: stri
 /** Total florin worth of a trader — cash plus cargo valued at live local prices. The free-play
  * standings figure; see the design doc on why a visible score is right here and wrong in the
  * story campaign. */
-export function aiNetWorth(trader: AiTrader, scarcity: MarketScarcity): number {
+export function aiNetWorth(trader: AiTrader, scarcity: MarketScarcity, events?: ActiveMarketEvent[]): number {
   let total = trader.cash;
   for (const vessel of trader.vessels) {
-    total += cargoValueAt(vessel.cargo, scarcity, vessel.location);
+    total += cargoValueAt(vessel.cargo, scarcity, vessel.location, events);
   }
   return Math.round(total);
 }
 
-function cargoValueAt(cargo: Cargo, scarcity: MarketScarcity, cityId: string): number {
+function cargoValueAt(cargo: Cargo, scarcity: MarketScarcity, cityId: string, events?: ActiveMarketEvent[]): number {
   let total = 0;
   for (const goodId of Object.keys(cargo)) {
     const qty = cargo[goodId] ?? 0;
     if (qty <= 0) continue;
-    const p = priceAt(scarcity, cityId, goodId);
+    const p = priceAt(scarcity, cityId, goodId, events);
     if (p !== null) total += p * qty;
   }
   return total;
