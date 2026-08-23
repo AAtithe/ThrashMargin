@@ -21,6 +21,9 @@ export interface Currency {
  * debasement is real history, and §5 names "Scottish/English pounds" as two things); the Mamluk
  * `dinar` is the strongest coin on the map, since a gold ashrafi genuinely was — the sultan's own
  * mint is the reason Alexandria could dictate spice terms to every European house that came to it.
+ * `tanga` (Chapter 7, Phase 24) is Tabriz's, pegged a little under par: Uzun Hasan's silver was sound
+ * enough, but a coin from a court the Ottomans had already beaten in the field does not command a
+ * premium in Venice, whatever the court itself thinks.
  */
 export const CURRENCIES: Currency[] = [
   { id: 'florin', name: 'Florentine florin', symbol: 'f' },
@@ -33,6 +36,7 @@ export const CURRENCIES: Currency[] = [
   { id: 'cruzado', name: 'Portuguese cruzado', symbol: 'c' },
   { id: 'scots_pound', name: 'Scots pound', symbol: '£s' },
   { id: 'dinar', name: 'Mamluk dinar', symbol: 'δ' },
+  { id: 'tanga', name: 'Tabriz tanga', symbol: 'τ' },
 ];
 
 const PEG: ExchangeRates = {
@@ -46,6 +50,7 @@ const PEG: ExchangeRates = {
   cruzado: 1.1,
   scots_pound: 0.55,
   dinar: 1.45,
+  tanga: 0.85,
 };
 
 /** Largest random walk step an exchange rate can take in a week, as a fraction of its peg. */

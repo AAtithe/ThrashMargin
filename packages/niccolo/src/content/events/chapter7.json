@@ -1,0 +1,719 @@
+[
+  {
+    "id": "ev_c7_001",
+    "chapter": 7,
+    "trigger": {
+      "flag": "chapter6_complete"
+    },
+    "title": "Caprice and Rondo",
+    "body": "The Burgundian court does not banish a foreign banker. It simply lets it be understood that his presence in Flanders has become inconvenient, that the customs will be attentive, and that the matter would be eased by an absence of a year or two. Master Gregorio reads the letter twice and observes that it is not signed by anyone who could be sued for it.",
+    "choices": [
+      {
+        "text": "Go, and take the house's movable business with you",
+        "effects": {
+          "flags": [
+            "chapter7_open",
+            "exiled_from_flanders"
+          ]
+        }
+      },
+      {
+        "text": "Go, and leave the Bruges books open in Julius's name",
+        "effects": {
+          "cash": -25,
+          "flags": [
+            "chapter7_open",
+            "exiled_from_flanders",
+            "bruges_books_left_open"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_002",
+    "chapter": 7,
+    "trigger": {
+      "flag": "chapter7_open",
+      "location": "danzig"
+    },
+    "title": "The exile winter",
+    "body": "Danzig in winter is not a punishment so much as a demonstration: the Baltic freezes, the Hanse are civil in the way of men who have already won an argument, and there is nothing whatever to do for four months but read correspondence and think. It is the first time in fifteen years the house has had no port it could call its own.",
+    "choices": [
+      {
+        "text": "Take lodgings and set the couriers to work",
+        "effects": {
+          "cash": -18,
+          "flag": "wintering_danzig"
+        }
+      },
+      {
+        "text": "Take lodgings and spend the winter on the ledgers instead",
+        "effects": {
+          "conscience": 1,
+          "flag": "wintering_danzig"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_003",
+    "chapter": 7,
+    "trigger": {
+      "flag": "wintering_danzig"
+    },
+    "title": "A chaplain nobody sent for",
+    "body": "Father Moriz arrives from Cologne with no letter of introduction, an unhelpfully accurate idea of what the house has been doing for a decade, and the settled manner of a man who has decided to be useful whether or not he is wanted. He does not mention Father Godscalc. He does not need to.",
+    "choices": [
+      {
+        "text": "Take him on, and let him be as inconvenient as the last one",
+        "effects": {
+          "joinCharacter": "moriz",
+          "conscience": 3,
+          "flag": "moriz_joined"
+        }
+      },
+      {
+        "text": "Take him on, and keep him to the correspondence",
+        "effects": {
+          "joinCharacter": "moriz",
+          "flag": "moriz_joined"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_004",
+    "chapter": 7,
+    "trigger": {
+      "flag": "moriz_joined"
+    },
+    "title": "What the winter was actually for",
+    "body": "By the thaw the house has done something it has never had the leisure to do: read four years of its own correspondence in one sitting. What comes out of it is not a trade but a shape — the Black Sea trade is closing, the Persian one has never been open, and both facts are worth more to a man who knows them a season early than any cargo.",
+    "choices": [
+      {
+        "text": "Act on it while the ice is still going out",
+        "effects": {
+          "flag": "exile_winter_resolved"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_005",
+    "chapter": 7,
+    "trigger": {
+      "flag": "exile_winter_resolved"
+    },
+    "title": "The Genoese in the Crimea, while it lasts",
+    "body": "Caffa has been Genoa's for two hundred years and is, on the evidence of every letter out of it, about to stop being anybody's. The Ottoman fleet wintered at the Bosphorus. The consuls are writing to Genoa about walls and to their own families about ships. Everything in the city's warehouses is consequently available at a price that would be absurd anywhere with a future.",
+    "choices": [
+      {
+        "text": "Send a hull east and buy what the frightened are selling",
+        "effects": {
+          "cash": -15,
+          "flag": "caffa_bound"
+        }
+      },
+      {
+        "text": "Send a hull east, and instruct the factor to take people as well as cargo",
+        "effects": {
+          "cash": -30,
+          "conscience": 3,
+          "flags": [
+            "caffa_bound",
+            "caffa_passage_offered"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_006",
+    "chapter": 7,
+    "trigger": {
+      "flag": "caffa_bound",
+      "location": "caffa"
+    },
+    "title": "Landfall at Caffa",
+    "body": "The city is larger than Trebizond was and considerably better walled, which is what its consuls keep saying. The Genoese quarter is doing brisk business in furs, salt and silk out of the steppe, and a quieter business in passages west for anyone who can pay. Both trades are busy for the same reason.",
+    "choices": [
+      {
+        "text": "Open the house's business at the quay and ask what the season looks like",
+        "effects": {
+          "flags": [
+            "reached_caffa",
+            "caffa_window_open"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_007",
+    "chapter": 7,
+    "trigger": {
+      "flag": "reached_caffa"
+    },
+    "title": "The consul's arithmetic",
+    "body": "The Genoese consul is neither a fool nor in any doubt. He knows the fleet is coming, he knows the walls are good for a fortnight and not a season, and he knows Genoa will not relieve him because Genoa cannot. What he wants is a foreign house's honest estimate of how long he has, in exchange for what he knows about the fleet.",
+    "choices": [
+      {
+        "text": "Tell him the truth as the house reads it, and take what he knows in return",
+        "effects": {
+          "conscience": 3,
+          "secret": {
+            "id": "secret_caffa_fleet",
+            "name": "When the fleet sails for Caffa",
+            "description": "The Genoese consul's own count of the Ottoman squadron wintering at the Bosphorus, its victualling, and the week it can be expected in the Crimea — worth a fortune to anyone with goods still in the city and nothing at all once it arrives.",
+            "value": 90,
+            "expiresInWeeks": 14
+          }
+        }
+      },
+      {
+        "text": "Tell him what will keep him buying, and buy his cargo cheap",
+        "effects": {
+          "cash": 55,
+          "conscience": -6,
+          "flag": "caffa_consul_deceived"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_008",
+    "chapter": 7,
+    "trigger": {
+      "flag": "reached_caffa"
+    },
+    "title": "The Ochoa thread",
+    "body": "A Basque shipmaster named Ochoa is in the port with a cargo he will not describe, a Portuguese bill he cannot cash, and an interest in the house's Guinea papers that is a great deal too specific to be idle. Somewhere behind him is gold that came out of Africa by a route nobody has written down, and a question about who financed it.",
+    "choices": [
+      {
+        "text": "Buy his bill at a discount and keep him talking",
+        "effects": {
+          "cash": -35,
+          "flag": "ochoa_engaged",
+          "evidence": {
+            "id": "par_ochoa_manifest",
+            "name": "Ochoa's undescribed manifest",
+            "description": "A Basque shipmaster's own cargo book, bought with his bad Portuguese bill — and, four pages in, a passenger's name written in a Bruges notary's hand that has no business being on a Guinea voyage at all.",
+            "track": "parentage",
+            "kind": "document"
+          }
+        }
+      },
+      {
+        "text": "Let him and his cargo be somebody else's difficulty",
+        "effects": {
+          "conscience": 1,
+          "flag": "ochoa_declined"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_009",
+    "chapter": 7,
+    "trigger": {
+      "flag": "reached_caffa"
+    },
+    "title": "East, to a court that has already lost",
+    "body": "Tabriz is six weeks overland and the reason to go is arithmetic, not diplomacy: raw silk there costs a fraction of what Venice pays for it, because the men who bring it out have nowhere else to sell. Uzun Hasan has been beaten in the field by the Ottomans and is still writing to Venice for the army Venice has been promising him for four years and has never once sent.",
+    "choices": [
+      {
+        "text": "Go, and trade only",
+        "effects": {
+          "flag": "tabriz_bound"
+        }
+      },
+      {
+        "text": "Go, and carry Venice's letters as well, for the fee",
+        "effects": {
+          "cash": 40,
+          "conscience": -2,
+          "flags": [
+            "tabriz_bound",
+            "carrying_venetian_letters"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_010",
+    "chapter": 7,
+    "trigger": {
+      "flag": "tabriz_bound",
+      "location": "tabriz"
+    },
+    "title": "The court at Tabriz",
+    "body": "The court is magnificent, informed, and entirely aware of its own position, which is what makes the audience uncomfortable rather than impressive. Uzun Hasan asks after the Venetian galleys with the patience of a man who has asked before. His silk is the cheapest in the world for exactly the reason he would rather discuss something else.",
+    "choices": [
+      {
+        "text": "Answer honestly about what Venice will actually send",
+        "effects": {
+          "conscience": 4,
+          "flags": [
+            "reached_tabriz",
+            "tabriz_truth_told"
+          ]
+        }
+      },
+      {
+        "text": "Say what a merchant says, and buy silk at the price on offer",
+        "effects": {
+          "cash": 25,
+          "conscience": -3,
+          "flag": "reached_tabriz"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_011",
+    "chapter": 7,
+    "trigger": {
+      "flag": "reached_tabriz"
+    },
+    "title": "What the Persian trade is actually worth",
+    "body": "The silk is real and the price is real and the road is six weeks of country nobody guarantees. The house can carry a hold of it west and make a great deal, once, and everyone in the counting room understands that the second voyage is the one that matters and that there may not be one.",
+    "choices": [
+      {
+        "text": "Take the licence, load, and be honest that it is a single throw",
+        "effects": {
+          "flag": "persia_licence_taken",
+          "secret": {
+            "id": "secret_venetian_promises",
+            "name": "What Venice has actually promised Persia",
+            "description": "The terms of the alliance Venice has been dangling in front Uzun Hasan for four years — the galleys, the timing, and the internal correspondence showing none of it was ever going to sail.",
+            "value": 100,
+            "expiresInWeeks": 16
+          }
+        }
+      },
+      {
+        "text": "Take the licence and say nothing about second voyages",
+        "effects": {
+          "cash": 20,
+          "conscience": -2,
+          "flag": "persia_licence_taken"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_012",
+    "chapter": 7,
+    "trigger": {
+      "flag": "persia_licence_taken"
+    },
+    "title": "The Persian account, closed",
+    "body": "Whatever came west from Tabriz, the trade itself does not survive the year: the Ottomans hold the roads that matter, the court that licensed it is beaten and will shortly be dead, and Venice's alliance was always a letter rather than a fleet. What the house keeps is one cargo's profit and an unusually exact understanding of how a great power lies to a smaller one.",
+    "choices": [
+      {
+        "text": "Close the Persian account and write down what it taught",
+        "effects": {
+          "flag": "persia_resolved"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_013",
+    "chapter": 7,
+    "trigger": {
+      "flag": "caffa_window_open",
+      "vesselIdAt": {
+        "vesselId": "ship_1",
+        "location": "danzig"
+      },
+      "flagAbsent": "caffa_resolved"
+    },
+    "title": "Out of the Crimea before the fleet",
+    "body": "The hull comes back west through the Baltic with furs, salt and whatever else Caffa's frightened were selling, and — if the factor was told to take them — with families aboard who had no other way out. Six weeks later the Ottoman squadron stands into the roads, the walls hold for exactly as long as the consul said they would, and two hundred years of Genoese Crimea end in a fortnight.",
+    "choices": [
+      {
+        "text": "Land the cargo and count what came out",
+        "effects": {
+          "cash": 110,
+          "flags": [
+            "caffa_extraction_success",
+            "caffa_resolved"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_014",
+    "chapter": 7,
+    "trigger": {
+      "weeksAfterFlag": {
+        "flag": "caffa_window_open",
+        "weeks": 34
+      },
+      "flagAbsent": "caffa_resolved"
+    },
+    "title": "The fleet arrives first",
+    "body": "There is no ambiguity about the date afterwards, only about what was still in the city on it. The squadron came in June, the walls held the fortnight the consul had promised and not the season Genoa had assumed, and everything the house had not moved by then belonged to somebody else by the end of the month — including, it turns out, the factor.",
+    "choices": [
+      {
+        "text": "Write off the Crimea and whoever was in it",
+        "effects": {
+          "cash": -80,
+          "conscience": -4,
+          "flags": [
+            "caffa_extraction_failed",
+            "caffa_resolved"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_015",
+    "chapter": 7,
+    "trigger": {
+      "flag": "caffa_extraction_success"
+    },
+    "title": "What came out of Caffa",
+    "body": "The ledger reads well and the rest of it does not reduce to a column: a consul who was told the truth or was not, a shipmaster's manifest bought for the wrong reasons, and however many people are alive in Danzig this winter who would not otherwise be.",
+    "choices": [
+      {
+        "text": "Reckon the Black Sea account closed",
+        "effects": {
+          "flag": "caffa_epilogue"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_016",
+    "chapter": 7,
+    "trigger": {
+      "flag": "caffa_extraction_failed"
+    },
+    "title": "What stayed in Caffa",
+    "body": "The house has taken worse losses in money and none worse in the manner of taking them: the date was knowable, was known, and was not acted on in time. Master Gregorio's minute on the affair is one sentence long and does not name anybody, which is somehow worse than if it had.",
+    "choices": [
+      {
+        "text": "Reckon the Black Sea account closed",
+        "effects": {
+          "flag": "caffa_epilogue"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_017",
+    "chapter": 7,
+    "trigger": {
+      "flag": "ochoa_engaged"
+    },
+    "title": "The name in the notary's hand",
+    "body": "Ochoa is drunk and expansive and entirely willing to explain the manifest, which he has plainly explained to other people before: the passenger four pages in was carried out of Bruges on somebody else's account, at a date the house can match against three other papers it already holds, and the notary who wrote the entry has been dead since sixty-eight.",
+    "choices": [
+      {
+        "text": "Write down everything he says while he is still saying it",
+        "effects": {
+          "conscience": 1,
+          "flag": "ochoa_resolved",
+          "evidence": {
+            "id": "par_ochoa_testimony",
+            "name": "What Ochoa said, while drunk",
+            "description": "A Basque shipmaster's account of who paid for a passage out of Bruges and why, taken down in Danzig at two in the morning and signed by nobody — worth exactly as much as the three papers it happens to agree with.",
+            "track": "parentage",
+            "kind": "testimony"
+          }
+        }
+      },
+      {
+        "text": "Pay him to say it again sober, in front of a notary",
+        "effects": {
+          "cash": -45,
+          "conscience": 2,
+          "flag": "ochoa_resolved",
+          "evidence": {
+            "id": "par_ochoa_testimony",
+            "name": "Ochoa's deposition",
+            "description": "The same account the shipmaster gave drunk, repeated sober before a Danzig notary and sealed — which makes it evidence rather than gossip, and cost rather more than the gossip did.",
+            "track": "parentage",
+            "kind": "testimony"
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_018",
+    "chapter": 7,
+    "trigger": {
+      "flag": "ochoa_declined"
+    },
+    "title": "The thread let go",
+    "body": "Ochoa sails in the spring with his cargo still undescribed and his bill still uncashed, and the house never does learn what was in either. Some months later a Genoese factor mentions, in passing and for no reason, that the Basque had been asking after a Bruges christening.",
+    "choices": [
+      {
+        "text": "Note it, and let it stay noted",
+        "effects": {
+          "conscience": -1,
+          "flag": "ochoa_resolved"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_019",
+    "chapter": 7,
+    "trigger": {
+      "flags": [
+        "ochoa_resolved",
+        "moriz_joined"
+      ]
+    },
+    "title": "Jordan de Ribérac, in writing",
+    "body": "Father Moriz, who has been quietly assembling what the house already had, sets it out in one sitting: the christening, the indenture and its reverse, Godscalc's letter, the Sinai deposit, and now a shipmaster's manifest — five papers from five countries, none of which proves anything on its own, all of which name or imply the same man. He does not say the name. He puts the papers in date order and lets the house say it.",
+    "choices": [
+      {
+        "text": "Say it aloud, once, and then say nothing to anybody",
+        "effects": {
+          "conscience": 2,
+          "flags": [
+            "jordan_named",
+            "jordan_revelations_resolved"
+          ]
+        }
+      },
+      {
+        "text": "Have Moriz burn the summary and keep the papers",
+        "effects": {
+          "conscience": -3,
+          "flags": [
+            "jordan_revelations_resolved",
+            "jordan_summary_burned"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_020",
+    "chapter": 7,
+    "trigger": {
+      "flag": "chapter7_open"
+    },
+    "title": "The duke goes to war again",
+    "body": "Burgundy has been at war with the Swiss for two years on the theory that the Swiss are peasants. Reports from Grandson and Morat suggest otherwise, in terms the Flanders money market has been reading very carefully indeed. Every house with Burgundian paper is now doing the same sum and hoping to be the first to finish it.",
+    "choices": [
+      {
+        "text": "Have Julius total the house's Burgundian exposure, honestly",
+        "effects": {
+          "flag": "burgundy_exposure_counted"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_021",
+    "chapter": 7,
+    "trigger": {
+      "flag": "burgundy_exposure_counted"
+    },
+    "title": "What to do about Flanders, from four hundred miles away",
+    "body": "The house is banished from the market it is most exposed to, which is either the worst possible position or the only honest one: it cannot trade on rumour because it is not there to hear any. What it can do is decide, now, whether it believes the duke survives the winter.",
+    "choices": [
+      {
+        "text": "Sell the Burgundian paper down at whatever it currently fetches",
+        "effects": {
+          "cash": -60,
+          "flags": [
+            "burgundy_paper_sold",
+            "flanders_position_set"
+          ]
+        }
+      },
+      {
+        "text": "Hold, and buy more of it while everyone else is frightened",
+        "effects": {
+          "cash": -110,
+          "conscience": -1,
+          "flags": [
+            "burgundy_paper_doubled",
+            "flanders_position_set"
+          ]
+        }
+      },
+      {
+        "text": "Hold exactly what the house has and do nothing",
+        "effects": {
+          "flags": [
+            "burgundy_paper_held",
+            "flanders_position_set"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_022",
+    "chapter": 7,
+    "trigger": {
+      "weeksAfterFlag": {
+        "flag": "flanders_position_set",
+        "weeks": 12
+      }
+    },
+    "title": "Nancy, the fifth of January",
+    "body": "The duke is killed in the snow outside Nancy with most of his army, and the Burgundian state — which was a person rather than an institution, as everyone now discovers at once — stops existing in any form its creditors can sue. In Bruges, Ghent and Antwerp every price comes off its moorings in the same week: what a thing is worth is suddenly a question about who will be governing in the spring, and nobody knows.",
+    "choices": [
+      {
+        "text": "Read the news, and let Flanders reprice itself without the house in it",
+        "effects": {
+          "flag": "nancy_news",
+          "marketShock": {
+            "cityIds": [
+              "bruges",
+              "ghent",
+              "antwerp",
+              "calais"
+            ],
+            "multiplier": 1.55,
+            "weeks": 14,
+            "headline": "Every price here has come off its moorings since Nancy — nobody knows who will be governing Flanders in the spring, and everything is being bid accordingly."
+          }
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_023",
+    "chapter": 7,
+    "trigger": {
+      "flags": [
+        "nancy_news",
+        "burgundy_paper_sold"
+      ]
+    },
+    "title": "The paper the house sold in time",
+    "body": "Selling early cost real money and looked, for three months, like the act of a man who had lost his nerve at four hundred miles. It is now the reason the house is solvent and eleven others are not. Nobody in the counting room says so. Master Gregorio writes it down.",
+    "choices": [
+      {
+        "text": "Record it, and resist the temptation to be pleased in public",
+        "effects": {
+          "cash": 90,
+          "flags": [
+            "burgundy_trap_survived",
+            "flanders_resolved"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_024",
+    "chapter": 7,
+    "trigger": {
+      "flag": "nancy_news",
+      "flagAbsent": "burgundy_paper_sold"
+    },
+    "title": "The paper the house still holds",
+    "body": "It is not worthless, quite. It is a claim on revenues belonging to a duchy that currently has no duke, a nineteen-year-old duchess, a French army on the border, and no institution capable of honouring anything. What the house holds is a lawsuit with a hundred years to run, and it is carrying it at a value nobody will confirm in writing.",
+    "choices": [
+      {
+        "text": "Write it down to what it will actually fetch and take the loss now",
+        "effects": {
+          "cash": -140,
+          "flags": [
+            "burgundy_written_down",
+            "flanders_resolved"
+          ]
+        }
+      },
+      {
+        "text": "Carry it at cost and hope for a Habsburg marriage",
+        "effects": {
+          "conscience": -2,
+          "flags": [
+            "burgundy_carried_at_cost",
+            "flanders_resolved"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_025",
+    "chapter": 7,
+    "trigger": {
+      "flag": "flanders_resolved"
+    },
+    "title": "The ban, quietly not renewed",
+    "body": "Nobody rescinds it, because nobody signed it. The customs simply stop being attentive, a Ghent correspondent writes as though nothing had happened, and it becomes apparent that the arrangement had depended entirely on a duke who is now dead in the snow at Nancy. The house may go home.",
+    "choices": [
+      {
+        "text": "Go back to Bruges",
+        "effects": {
+          "flags": [
+            "exile_lifted",
+            "chapter7_homeward"
+          ]
+        }
+      },
+      {
+        "text": "Go back to Bruges, and keep the Danzig house open regardless",
+        "effects": {
+          "cash": -30,
+          "flags": [
+            "exile_lifted",
+            "chapter7_homeward",
+            "danzig_house_kept"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_026",
+    "chapter": 7,
+    "trigger": {
+      "flag": "chapter7_homeward",
+      "location": "bruges"
+    },
+    "title": "The slow turn home",
+    "body": "Bruges is the same and is not: the same quays, the same guildsmen, a different question behind every conversation about who the city now belongs to. The house comes back richer than it left in ways the ledger shows and poorer in ways it does not, which is by now a pattern rather than a surprise.",
+    "choices": [
+      {
+        "text": "Open the Bruges books again in the house's own name",
+        "effects": {
+          "flag": "returned_to_bruges"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c7_027",
+    "chapter": 7,
+    "trigger": {
+      "flags": [
+        "exile_winter_resolved",
+        "caffa_epilogue",
+        "persia_resolved",
+        "jordan_revelations_resolved",
+        "flanders_resolved",
+        "returned_to_bruges"
+      ]
+    },
+    "title": "Caprice and Rondo, concluded",
+    "body": "Three years out of Flanders, and the house has traded in a city that no longer exists, licensed silk from a court that no longer exists, and outlived a duke who was a state. It has five papers in date order that name a man nobody has yet accused of anything, a chaplain who assembled them without being asked, and a home port it is permitted to use again because the person who forbade it died in the snow.",
+    "choices": [
+      {
+        "text": "Close Caprice and Rondo's own books",
+        "effects": {
+          "flag": "chapter7_complete"
+        }
+      }
+    ]
+  }
+]

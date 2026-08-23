@@ -204,3 +204,19 @@ export function marketEventTag(event: ActiveMarketEvent): string {
   if (event.multiplier > 1) return 'in demand';
   return 'glut';
 }
+
+/**
+ * Exile (Chapter 7, Phase 24). While `EXILE_FLAG` is set the house cannot send a vessel into
+ * Flanders at all — the whole point of the chapter's opening arc, and the first time the courier
+ * network exists for defence rather than profit: cut off from home, information is all the house has.
+ *
+ * Lives here rather than in its own module because it is three lines and one list; a `sim/exile.ts`
+ * holding this much would be ceremony. If a later chapter needs a second, differently-scoped
+ * banishment, that is the moment to give it a home of its own.
+ */
+export const EXILE_FLAG = 'exiled_from_flanders';
+export const EXILED_CITY_IDS = ['bruges', 'ghent', 'antwerp', 'calais'];
+
+export function cityBarred(flags: Record<string, boolean>, cityId: string): boolean {
+  return !!flags[EXILE_FLAG] && EXILED_CITY_IDS.includes(cityId);
+}

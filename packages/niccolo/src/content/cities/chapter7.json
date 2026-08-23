@@ -1,0 +1,6 @@
+[
+  { "id": "caffa", "name": "Caffa", "region": "crimea", "power": "genoa", "lon": 35.38, "lat": 45.03, "port": true, "currency": "ducat", "labelSide": "e",
+    "market": { "furs": { "base": 14 }, "salt": { "base": 12 }, "silk": { "base": 30 } } },
+  { "id": "tabriz", "name": "Tabriz", "region": "persia", "power": "aqqoyunlu", "lon": 46.29, "lat": 38.08, "port": false, "currency": "tanga", "labelSide": "e",
+    "market": { "silk": { "base": 12 }, "spices": { "base": 24 }, "glass": { "base": 44 } } }
+]

@@ -29,7 +29,7 @@ import {
 import { canInsureAt, clearArrivedInsurance, quoteInsurance, resolveVoyageRisk } from './insurance';
 import { addGrade, gradeBuyMultiplier, gradeHeld, gradeSellMultiplier, reconcileVesselCargoGrades, removeGrade } from './grades';
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, driftScarcity, priceAt } from './market';
-import { resolveWeeklyMarketEvents, tradeBlockedAt } from './marketEvents';
+import { cityBarred, resolveWeeklyMarketEvents, tradeBlockedAt } from './marketEvents';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
 import { resolveSecretExpiry, useSecret } from './secrets';
 import type { GameState, GameAction, GradeId, HotseatDecision, PriceCauseNote, Vessel } from './types';
@@ -53,6 +53,12 @@ function dispatchVessel(
   const vessel = state.vessels.find(v => v.id === vesselId);
   if (!vessel) throw new Error(`No such vessel: ${vesselId}`);
   if (vessel.destination) throw new Error(`${vessel.name} is already under way`);
+
+  // Exile (Chapter 7): Flanders is closed to the house until the ban lifts. Checked here rather
+  // than in the UI alone so it holds for a queued journey's own auto-continued legs too.
+  if (cityBarred(state.flags, destinationId)) {
+    throw new Error(`${findCity(destinationId)?.name ?? destinationId} is closed to the house while the ban stands`);
+  }
 
   const landOnly = vessel.kind === 'courier';
   const route = findRoute(vessel.location, destinationId);
@@ -430,11 +436,11 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
-  // chapter1_complete through chapter5_complete no longer freeze play — each is a mid-campaign
+  // chapter1_complete through chapter6_complete no longer freeze play — each is a mid-campaign
   // flag the next chapter's own events trigger on (design doc §12, "Phase 9 onward: one chapter
-  // content pack per phase"). Only the true end of the shipped content (chapter6_complete) stops
+  // content pack per phase"). Only the true end of the shipped content (chapter7_complete) stops
   // the clock now.
-  if (state.flags.chapter6_complete) return state;
+  if (state.flags.chapter7_complete) return state;
   // ACKNOWLEDGE_CHAPTER is UI bookkeeping (dismissing the "Chapter N complete" card), not a
   // commercial/narrative action — it must go through even while the next chapter's own opening
   // event is already queued in pendingEvents (which it typically is, by design: that event's

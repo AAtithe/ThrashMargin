@@ -1,5 +1,5 @@
 import { dateForWeek } from './clock';
-import { CAMPAIGN_START, EVENTS, findCharacter, findEvent } from './content';
+import { CAMPAIGN_START, EVENTS, findCharacter, findEvent, marketGoodsAt } from './content';
 import { addEvidence } from './dossier';
 import { addSecret } from './secrets';
 import { startCondotta } from './condotta';
@@ -131,6 +131,29 @@ export function resolveEvent(state: GameState, eventId: string, choiceIndex: num
     next = { ...next, conscience: clamp(next.conscience + effects.conscience, 0, 100) };
   }
   if (effects.secret) next = { ...next, secrets: addSecret(next.secrets, next.week, effects.secret) };
+  if (effects.marketShock) {
+    // Whole-city demand events, one per named city, installed alongside whatever is already running.
+    // `blocksTrade: false` throughout: a repricing is not an embargo — the point is that the house's
+    // Flanders positions are suddenly worth something different, not that it cannot trade them.
+    const { cityIds, multiplier, weeks, headline } = effects.marketShock;
+    const shocks = cityIds
+      .filter(cityId => marketGoodsAt(cityId).length > 0)
+      .map((cityId, i) => ({
+        id: `shock_${next.week}_${i}_${cityId}`,
+        templateId: 'event_shock',
+        kind: 'war_scare' as const,
+        cityId,
+        goodId: null,
+        multiplier,
+        blocksTrade: false,
+        startedWeek: next.week,
+        endsWeek: next.week + weeks,
+        headline,
+      }));
+    // Replace any running event at a shocked city rather than compounding multipliers on top of it.
+    const untouched = (next.marketEvents ?? []).filter(e => !cityIds.includes(e.cityId));
+    next = { ...next, marketEvents: [...untouched, ...shocks] };
+  }
   if (effects.evidence) {
     next = { ...next, evidence: addEvidence(next.evidence ?? [], next.week, effects.evidence) };
   }

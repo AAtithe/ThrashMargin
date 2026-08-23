@@ -366,37 +366,36 @@ export default function GameScreen() {
     );
   }
 
-  if (state.flags.chapter6_complete) {
+  if (state.flags.chapter7_complete) {
     const secretsUsed = state.secrets.filter(s => s.used).length;
     const secretsExpired = state.secrets.filter(s => s.expired).length;
     const departed = state.characters.filter(c => c.status === 'departed');
-    const icelandSucceeded = !!state.flags.iceland_venture_success;
-    const volterraRuin = !!state.flags.volterra_ruin;
-    const stayedClearOfBurgundy = !!state.flags.burgundy_stayed_clear;
-    const tookTheRefugees = !!state.flags.iceland_refugees_taken;
+    const caffaOut = !!state.flags.caffa_extraction_success;
+    const survivedBurgundy = !!state.flags.burgundy_trap_survived;
+    const jordanNamed = !!state.flags.jordan_named;
+    const tookPassengers = !!state.flags.caffa_passage_offered;
     const parentagePieces = (state.evidence ?? []).filter(e => e.track === 'parentage').length;
     return (
       <div style={STYLE}>
         <PortalNav variant="header" />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-          <h1 style={TITLE}>Chapter 6 — To Lie with Lions</h1>
+          <h1 style={TITLE}>Chapter 7 — Caprice and Rondo</h1>
           <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {icelandSucceeded
-              ? 'Three hulls came up the Zwin together with more dried fish aboard than Bruges had seen out of one Flemish house, and the northern trade stopped being a speculation and became the house\'s own.'
-              : 'The season shut in the north with the holds part-full, and what the venture proved was only how much tonnage the trade actually needs.'}
+            {caffaOut
+              ? `The hull came west out of the Crimea ahead of the Ottoman squadron${tookPassengers ? ', with families aboard who had no other way out' : ''}. Six weeks later two hundred years of Genoese Caffa ended in a fortnight.`
+              : 'The squadron reached Caffa first. The date was knowable, was known, and was not acted on in time — which is a worse way to lose money than losing it.'}
           </p>
           <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {volterraRuin
-              ? 'Volterra was taken in two days by seven thousand men, and every florin the house had standing in the alum went with it — a position perfectly priced, perfectly documented, and gone.'
-              : 'Volterra was taken in two days by seven thousand men, and the house\'s money was standing somewhere else. Three houses it deals with weekly were not so placed.'}
+            {survivedBurgundy
+              ? 'The Burgundian paper was sold down before Nancy, at a loss that looked for three months like a loss of nerve. It is the reason the house is solvent and eleven others are not.'
+              : 'The duke died in the snow outside Nancy and the house was still holding his paper — a claim on revenues belonging to a duchy with no duke, and a lawsuit with a hundred years to run.'}
           </p>
           <p style={{ color: '#8a7a5a', maxWidth: '30rem', textAlign: 'center', fontSize: '0.9rem' }}>
             Concluded in {formatWeekDate(state.week, CAMPAIGN_START)}, {Math.round(state.cash)}f on hand, conscience{' '}
             {Math.round(state.conscience)}.{' '}
-            {stayedClearOfBurgundy
-              ? 'The house lent Burgundy nothing, and was unpopular in Flanders for it.'
-              : 'The house is a creditor of a duke who went to Trier for a crown and came home without one.'}{' '}
-            {tookTheRefugees ? 'A hold that should have carried fish carried families out from under the ash.' : ''}{' '}
+            {jordanNamed
+              ? 'Five papers from five countries lie in date order, and the house has said the name aloud exactly once.'
+              : 'The papers exist. Nobody in the house has yet put them in an order that would require saying anything.'}{' '}
             Parentage dossier: {parentagePieces} piece{parentagePieces === 1 ? '' : 's'} pinned. Secrets used: {secretsUsed},
             expired unused: {secretsExpired}.
             {departed.length > 0

@@ -34,7 +34,8 @@ export type CurrencyId =
   | 'bezant'
   | 'cruzado'
   | 'scots_pound'
-  | 'dinar';
+  | 'dinar'
+  | 'tanga';
 
 /** Which side of its own icon a city's label sits on. Borrowed from tea-race's `Port.labelSide`,
  * which solves the same problem far better than a binary "flip it left" set did: in a tight cluster
@@ -487,6 +488,13 @@ export interface EventEffects {
    * the named vessel doesn't exist (a replayed event, or a skip-prologue save that never has it
    * pending in the first place). */
   grantCargo?: { vesselId: string; goodId: string; quantity: number };
+  /**
+   * Chapter 7 (Phase 24): installs a whole-city demand event at each named city — the mechanism for
+   * §9's "every player position in Flanders reprices" when Charles the Bold dies. Reuses Phase 23's
+   * demand layer rather than inventing a second one, which is exactly why market events were built
+   * before this chapter: a bespoke shock would have been the same machinery twice.
+   */
+  marketShock?: { cityIds: string[]; multiplier: number; weeks: number; headline: string };
   /** Chapter 5 (Phase 19): pins one item to the Evidence Board (design doc §11 screen 7). Mirrors
    * `secret`'s own shape — an inline spec, idempotent on id — because an event is the only way a
    * document or a testimony enters the dossier from the story side; the other way in is a placed

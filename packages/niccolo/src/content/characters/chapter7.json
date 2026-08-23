@@ -1,0 +1,5 @@
+[
+  { "id": "moriz", "name": "Father Moriz", "role": "chaplain",
+    "skills": { "law": 3, "trade": 1, "combat": 1, "intrigue": 3 },
+    "loyalty": 70, "salary": 2, "location": "danzig", "status": "pending", "assignment": { "type": "idle" } }
+]

@@ -1,0 +1,6 @@
+[
+  { "id": "trebizond-caffa", "from": "trebizond", "to": "caffa", "distanceWeeks": 3, "type": "sea", "seasonal": true },
+  { "id": "danzig-caffa", "from": "danzig", "to": "caffa", "distanceWeeks": 6, "type": "land", "seasonal": true },
+  { "id": "trebizond-tabriz", "from": "trebizond", "to": "tabriz", "distanceWeeks": 4, "type": "land", "seasonal": true },
+  { "id": "caffa-tabriz", "from": "caffa", "to": "tabriz", "distanceWeeks": 6, "type": "land", "seasonal": true }
+]
