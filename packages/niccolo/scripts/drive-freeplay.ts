@@ -457,11 +457,28 @@ console.log('\n6b. Planting false news on a rival — §6\'s last deferred verb'
   check('and no agent means no plant, ever',
     !resolveWeeklyRivalPlants(base, 12).plant);
 
-  // The rival’s home market is never lied to it about — it is standing in it. Same rule
-  // `corruptNews` applies to the player's own home city.
-  const home = base.aiTraders!.find(t => t.id === rivalId)!.vessels[0].location;
-  check('a rival is never deceived about the market it is standing in', changedCity !== home,
-    `${changedCity} vs home ${home}`);
+  // The port the rival is *standing in* is never lied to it about — it would see the truth out of
+  // its own window. Deliberately the current port rather than the home port: once the hull sails on,
+  // its own home market is fair game again, because by then the rival is reading reports about it
+  // like anybody else. Asserted both ways round, since the distinction is easy to lose.
+  const where = base.aiTraders!.find(t => t.id === rivalId)!.vessels[0].location;
+  check('a rival is never deceived about the port it is standing in', changedCity !== where,
+    `${changedCity} vs ${where}`);
+  const sailedOn: GameState = {
+    ...withAgent,
+    aiTraders: withAgent.aiTraders!.map(t => t.id === rivalId
+      ? { ...t, vessels: [{ ...t.vessels[0], location: 'london' }] }
+      : t),
+  };
+  const realRng = Math.random;
+  let moved: ReturnType<typeof resolveWeeklyRivalPlants> | null = null;
+  try { Math.random = () => 0.01; moved = resolveWeeklyRivalPlants(sailedOn, 12); }
+  finally { Math.random = realRng; }
+  const movedBefore = sailedOn.aiTraders!.find(t => t.id === rivalId)!.remembered;
+  const movedAfter = moved!.aiTraders.find(t => t.id === rivalId)!.remembered;
+  const movedCity = Object.keys(movedAfter).find(c => JSON.stringify(movedAfter[c]) !== JSON.stringify(movedBefore[c]));
+  check('but once it has sailed on, the market it came from is fair game',
+    movedCity === where, `${movedCity} vs ${where}`);
 
   // **The property that makes this fair.** The lie is stamped fresh so it survives, but only for
   // that rival's own report lag — so a sharper opponent shakes it off sooner. The difficulty dial

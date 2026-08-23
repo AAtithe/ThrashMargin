@@ -11,12 +11,18 @@ import type { GameState } from '../sim/types';
 /**
  * The shipyard (`freeplay-and-trading-design.md` Part 4, Phase 28).
  *
- * Its own rail tab in the Trade cluster, next to Fleet — the same shape Storage has, and for the
- * same reason: a shipyard is a standing concern that draws money every week, while Fleet is about
- * where everything is and who is aboard it. (First drafted nested inside the Fleet section; a
- * concurrent refactor was extracting that section into its own `FleetPanel`, which would have
- * silently dropped this from the UI while every driver still passed. The separate tab is both the
- * better division and the one that does not depend on somebody else's in-flight work.)
+ * Belongs at the head of whatever view lists the fleet, above the vessels themselves — the yard
+ * sits directly above the hulls it sells you, and the player should not have to go looking to find
+ * out what their fleet costs to keep.
+ *
+ * It has had three homes in a day, and the reasoning is worth keeping because each move was for a
+ * different reason. First drafted nested in the Fleet *drawer section*. Moved to its own rail tab
+ * when a concurrent refactor was extracting that section into a `FleetPanel` sidebar — an
+ * extraction that would (and briefly did) drop this from the UI while every driver still passed.
+ * Then back into the fleet view once that landed, because a permanent sidebar removes the original
+ * objection entirely: the tab was there to survive a drawer being dismantled, and there is no
+ * drawer left to survive. The separate tab was removed rather than left as a second entry point to
+ * one panel.
  *
  * Every class shows cost, upkeep, hold **and passage**, because passage is the whole reason class is
  * a decision — Phase 27 measured that hold beyond what a market can absorb mostly buys time in port,

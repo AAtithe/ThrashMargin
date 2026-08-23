@@ -238,9 +238,13 @@ export function resolveWeeklyRivalPlants(state: GameState, week: number): RivalP
     if (!trader) continue;
 
     // Only a market the rival actually has an opinion about can be lied to it about — you cannot
-    // corrupt a report that was never going to arrive. Its home port is excluded: the rival is
-    // standing in that market and would see the truth out of its own window, which is exactly the
-    // rule `corruptNews` applies to the player's own home city.
+    // corrupt a report that was never going to arrive.
+    //
+    // The port it is *currently* in is excluded — not its home port, which is the looser thing this
+    // comment used to claim. The rival would see the truth out of its own window, so that is the
+    // market a lie cannot touch; once its hull has sailed on, its own home market is fair game
+    // again, because by then it is reading reports about Genoa like anybody else. Same principle as
+    // `corruptNews`'s exclusion of the player's home city, applied to a fleet that moves.
     const home = trader.vessels[0]?.location;
     const candidates = Object.keys(trader.remembered).filter(c => c !== home);
     if (candidates.length === 0) continue;
