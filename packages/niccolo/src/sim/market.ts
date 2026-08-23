@@ -74,6 +74,54 @@ export function adjustScarcity(
   };
 }
 
+/**
+ * What a sale of `quantity` units actually fetches, and the scarcity it leaves behind.
+ *
+ * **Why this exists (Phase 26).** `sellGood` used to read one price and multiply it by the whole
+ * quantity, then depress scarcity afterwards. That is the *same* mistake `buyGood`'s own comment
+ * records fixing on the buy side — a single pre-trade snapshot priced against a quantity large
+ * enough to move the market — and on the sell side it had two consequences that were exactly
+ * backwards from the design's intent:
+ *
+ *   - **Dumping a full hold was free.** Sixteen units all sold at the untouched base price; the
+ *     crash only ever landed on the *next* sale. The warehousing spec's whole premise (store the
+ *     cargo, meter the sale out, don't be forced to dump) was therefore worthless — metering
+ *     returned to the florin exactly what dumping did, which is how the Phase 26 driver found this.
+ *   - **Splitting a sale was punished.** Two sales of eight in one week fetched 24f then 18f, while
+ *     one sale of sixteen fetched 24f throughout. The player was rewarded for issuing one big order
+ *     and penalised for the identical trade expressed in two — a pure artefact of where the
+ *     snapshot was taken.
+ *
+ * So the impact is applied *as the units go out*: each unit sells at the price standing when it is
+ * sold, and drives the next one down. A large sale now gets a declining average, splitting a sale
+ * within a week is exactly neutral, and waiting for `driftScarcity` to recover between batches is
+ * what actually earns more — which is precisely the lever a warehouse is for.
+ *
+ * Walked unit by unit rather than solved in closed form on purpose: `adjustScarcity` owns the curve
+ * (including its clamps), and a closed form would be a second, silently divergent copy of it.
+ * Quantities here are bounded by a hull or a shed, so this is tens of iterations, not thousands.
+ *
+ * Deliberately NOT used by `credit.ts`'s forced liquidation, which keeps its own snapshot-plus-
+ * haircut pricing: there the quantity is chosen by the engine to cover a shortfall rather than by
+ * the player, so there is no dump-vs-meter decision to get wrong and nothing to exploit.
+ */
+export function sellProceeds(
+  scarcity: MarketScarcity,
+  cityId: string,
+  goodId: string,
+  quantity: number,
+  events?: ActiveMarketEvent[],
+): { revenue: number; scarcity: MarketScarcity } | null {
+  if (priceAt(scarcity, cityId, goodId, events) === null) return null;
+  let working = scarcity;
+  let revenue = 0;
+  for (let i = 0; i < quantity; i++) {
+    revenue += priceAt(working, cityId, goodId, events)!;
+    working = adjustScarcity(working, cityId, goodId, -1);
+  }
+  return { revenue, scarcity: working };
+}
+
 /** Each week, every price drifts back a step toward its base (1.0 multiplier). */
 export function driftScarcity(scarcity: MarketScarcity): MarketScarcity {
   const next: MarketScarcity = {};

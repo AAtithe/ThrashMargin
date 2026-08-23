@@ -706,6 +706,32 @@ export interface Estate {
   stockpile: number;
 }
 
+/**
+ * A leased warehouse at one city (`freeplay-and-trading-design.md` Part 2, Phase 26).
+ *
+ * `cargo` + `grades` are deliberately the **exact same shape** as `Vessel.cargo` +
+ * `Vessel.cargoGrades`, not a parallel design that happens to look similar. That is what lets
+ * `gradeHeld`/`addGrade`/`removeGrade`/`gradeBreakdown` from `sim/grades.ts` operate on a warehouse
+ * with no changes at all, and it is why `common` stays derived here too rather than stored.
+ */
+export interface Warehouse {
+  cityId: string;
+  /** Total units the shed holds, grown by `EXPAND_WAREHOUSE` up to `WAREHOUSE_MAX_CAPACITY`. */
+  capacity: number;
+  cargo: Cargo;
+  /** Same shape as `Vessel.cargoGrades`, and same rule: `common` is never stored, only derived. */
+  grades?: Record<string, Partial<Record<'fine' | 'excellent', number>>>;
+}
+
+/** A lease lost for want of rent, kept for the one week the UI needs to report it. */
+export interface WarehouseLapse {
+  week: number;
+  cityId: string;
+  unitsLost: number;
+  /** What the landlord's distress sale returned — 0 if the goods had no market to be sold into. */
+  proceeds: number;
+}
+
 export interface GameState {
   id: string;
   /** Player-chosen campaign name, shown in the lobby's save list. Optional only because saves
@@ -811,6 +837,14 @@ export interface GameState {
    * player isn't currently at instead gets its causes via the normal courier-latency `NewsItem`
    * pipeline (`NewsItem.causes`), same as prices already work. */
   lastMarketCauses?: Record<string, PriceCauseNote[]>;
+  /** Leased warehouses by city id (Phase 26). Optional so a save from before this field existed
+   * simply leases nothing — the same zero-migration discipline every field since `expedition` has
+   * used. Keyed by city rather than a list because a city can hold at most one lease, and every
+   * read site starts from "is there one *here*". */
+  warehouses?: Record<string, Warehouse>;
+  /** Leases lost to unpaid rent in the week just resolved. Recomputed fresh every ADVANCE_WEEK and
+   * never accumulated, like `lastMarketCauses` — this is a report on one week, not a history. */
+  lastWarehouseLapses?: WarehouseLapse[];
 }
 
 export type GameAction =
@@ -837,4 +871,8 @@ export type GameAction =
   | { type: 'HIRE_ESCORT'; escortName?: string }
   | { type: 'ESTABLISH_ESTATE' }
   | { type: 'HARVEST_ESTATE' }
-  | { type: 'SHIP_ESTATE_GOODS'; vesselId: string; quantity: number };
+  | { type: 'SHIP_ESTATE_GOODS'; vesselId: string; quantity: number }
+  | { type: 'LEASE_WAREHOUSE'; cityId: string }
+  | { type: 'EXPAND_WAREHOUSE'; cityId: string }
+  | { type: 'STORE_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId }
+  | { type: 'WITHDRAW_GOOD'; vesselId: string; goodId: string; quantity: number; grade?: GradeId };

@@ -9,7 +9,7 @@
  */
 import { createInitialState } from '../src/sim/state';
 import { processAction } from '../src/sim/actions';
-import { adviceFor, urgentAdvice, MAX_ADVICE_SHOWN } from '../src/sim/advisors';
+import { adviceFor, urgentAdvice, ADVICE_KINDS, MAX_ADVICE_SHOWN } from '../src/sim/advisors';
 import { objectivesForChapter } from '../src/sim/objectives';
 import { EVENTS, findEvent } from '../src/sim/content';
 import advisorContent from '../src/content/advisors/officers.json';
@@ -69,6 +69,17 @@ console.log('\n— Counsel structure');
     for (const d of o.domains) if (!o.lines[d]) mismatch.push(`${o.id}.${d} has no lines`);
   }
   check('declared domains and authored lines agree', mismatch.length === 0, mismatch.join(', '));
+
+  // Content and code must agree about which domains exist. Renaming a kind in officers.json but not
+  // in advisors.ts makes `speak` return null for that domain forever, and no "some counsel appeared"
+  // assertion notices, because another officer's counsel appears in its place. A dead domain hid
+  // that way once already; this is the guard that would have caught it.
+  const authored = new Set(officers.flatMap(o => o.domains));
+  const declared = new Set<string>(ADVICE_KINDS);
+  check('every kind the code knows about is authored by someone',
+    [...declared].every(k => authored.has(k)), [...declared].filter(k => !authored.has(k)).join(', '));
+  check('and every authored domain is a kind the code knows about',
+    [...authored].every(k => declared.has(k)), [...authored].filter(k => !declared.has(k)).join(', '));
 }
 
 console.log('\n— An advisor only reads what the player can read');

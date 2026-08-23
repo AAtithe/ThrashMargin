@@ -2,6 +2,7 @@ import { formatWeekDate } from '../sim/clock';
 import { CAMPAIGN_START, findCity } from '../sim/content';
 import { readParentage } from '../sim/dossier';
 import { cargoValue } from '../sim/insurance';
+import { warehousesValue } from '../sim/warehouse';
 import { toFlorins } from '../sim/currency';
 import type { GameState } from '../sim/types';
 
@@ -103,6 +104,10 @@ function netWorth(state: GameState): { assets: number; liabilities: number; net:
   for (const v of state.vessels) {
     assets += cargoValue(state.scarcity, v.cargo, v.location, state.marketEvents);
   }
+  // Goods in a leased warehouse (Phase 26) count exactly like goods in a hold. Without this a
+  // player who ended the campaign with four full sheds would be reported poorer than one who had
+  // dumped the same stock at a crashed price, which is precisely backwards.
+  assets += warehousesValue(state);
   let liabilities = 0;
   for (const o of state.obligations) {
     if (o.settled) continue;

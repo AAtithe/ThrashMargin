@@ -135,6 +135,31 @@ interface Warehouse {
 - Deliberately deferred: warehouse sabotage. `resolveHouseSabotage` targets docked vessels; a
   warehouse at a hostile house's home city is a natural future target, not a v1 concern.
 
+> **Phase 26 implementation, confirmed 2026-08-23.** Built as specified, and grade-aware from the
+> first line as this section asks — `Warehouse` reuses `Vessel`'s exact `cargo` + `grades` shape, so
+> `sim/grades.ts` operates on a shed unchanged. 30f to lease, 20 units, 2f/week, three 15-unit bays
+> to a hard ceiling of 65. Store/withdraw touch `adjustScarcity` in neither direction, and a driver
+> shuffles one lot in and out thirty times to prove it. Unpaid rent lapses the lease (the
+> `resolveWeeklyUpkeep`/`resolveWeeklyConvoy` precedent) with the contents sold at half price, which
+> is always worse than selling properly — **except** for a good under a `guild_embargo`, which
+> returns nothing, or a deliberate lapse would be a way to sell into a market an event had closed.
+>
+> **This section's stated purpose could not be delivered without an engine fix it did not anticipate.**
+> "Instead of being forced to dump a full hold at once" assumed dumping was punished. It was not:
+> `sellGood` priced the whole quantity at one pre-trade snapshot and applied the scarcity hit
+> afterwards, so sixteen units all sold at the untouched price and the crash only landed on the
+> *next* sale. Metering returned exactly what dumping did, to the florin — which is how the driver
+> found it. The same snapshot also *punished* splitting a sale (two eights fetched less than one
+> sixteen), which is the identical mistake `buyGood` records fixing on the buy side in the Phase 16
+> era; nobody had looked at the sell side. `market.ts`'s new `sellProceeds` applies the impact across
+> the quantity, unit by unit. **Anything added here that prices a quantity must go through it** —
+> including `resolveAiWeek` when Part 1 is finally wired, or the opponent will be trading in a market
+> model the player no longer plays in.
+>
+> Deferred as this section says: warehouse sabotage. Storing goods does currently dodge
+> `resolveHouseSabotage`, which only targets docked vessels — a real asymmetry, and the natural shape
+> of that future feature.
+
 ## Part 3 — Cycling market events (spec, not built)
 
 **Purpose.** Which cities want which goods should shift over time, "Ocean Trader" style, without

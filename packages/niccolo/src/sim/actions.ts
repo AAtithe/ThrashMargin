@@ -28,9 +28,16 @@ import {
 } from './houses';
 import { canInsureAt, clearArrivedInsurance, quoteInsurance, resolveVoyageRisk } from './insurance';
 import { addGrade, gradeBuyMultiplier, gradeHeld, gradeSellMultiplier, reconcileVesselCargoGrades, removeGrade } from './grades';
-import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, driftScarcity, priceAt } from './market';
+import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, driftScarcity, priceAt, sellProceeds } from './market';
 import { cityBarred, resolveWeeklyMarketEvents, tradeBlockedAt } from './marketEvents';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
+import {
+  expandWarehouse,
+  leaseWarehouse,
+  resolveWeeklyWarehouses,
+  storeGood,
+  withdrawGood,
+} from './warehouse';
 import { resolveSecretExpiry, useSecret } from './secrets';
 import type { GameState, GameAction, GradeId, HotseatDecision, PriceCauseNote, Vessel } from './types';
 
@@ -263,16 +270,22 @@ function sellGood(
   const city = findCity(vessel.location);
   const blockedSale = tradeBlockedAt(state.marketEvents, vessel.location, goodId);
   if (blockedSale) throw new Error(`That trade is closed at ${city?.name ?? vessel.location}: ${blockedSale.headline}`);
-  const price = priceAt(state.scarcity, vessel.location, goodId, state.marketEvents);
-  if (price === null) throw new Error(`${city?.name ?? vessel.location} has no market for that good`);
+
+  // The market impact is applied *across* the quantity rather than after it (Phase 26): each unit
+  // sells at the price standing when it goes out and pushes the next one down. Before this, the
+  // whole lot was priced at one pre-trade snapshot, which made dumping a full hold free and made
+  // splitting a sale in two a penalty — see `sellProceeds` for the full account, and for why the
+  // warehousing feature was worthless without this fix.
+  const sale = sellProceeds(state.scarcity, vessel.location, goodId, quantity, state.marketEvents);
+  if (sale === null) throw new Error(`${city?.name ?? vessel.location} has no market for that good`);
 
   const qualityMarket = city?.market?.[goodId]?.qualityMarket ?? false;
-  const revenue = price * quantity * gradeSellMultiplier(grade, qualityMarket) * (1 + tradeBonus(state.characters, vesselId));
+  const revenue = sale.revenue * gradeSellMultiplier(grade, qualityMarket) * (1 + tradeBonus(state.characters, vesselId));
 
   return {
     ...state,
     cash: state.cash + revenue,
-    scarcity: adjustScarcity(state.scarcity, vessel.location, goodId, -quantity),
+    scarcity: sale.scarcity,
     vessels: state.vessels.map(v =>
       v.id === vesselId
         ? {
@@ -299,6 +312,15 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   // A hired escort draws its weekly pay here, alongside the household's own wages and the condotta's
   // retainer — and lapses if it can't be met, rather than accruing a debt the ladder never sees.
   const convoyResolution = resolveWeeklyConvoy({ ...state, cash: condottaResolution.cash });
+  // Warehouse rent (Phase 26) is drawn here, in the same run of weekly commitments as the
+  // household's wages, the condotta's retainer and the escort's pay — storage is an ongoing cost or
+  // it is not a decision. Unpaid rent lapses the lease rather than accruing hidden arrears; see
+  // `resolveWeeklyWarehouses` for why, and for why the fullest shed is paid first.
+  // `week` (the new one), not `state.week`: a lapse is reported by the same "did this happen this
+  // week" test every other `last*Event` uses, and stamping the old week would make it invisible.
+  // Prices for the distress sale are deliberately last week's — the landlord's agent sold when the
+  // rent came due, before this week's drift and demand shifts resolve further down.
+  const warehouseResolution = resolveWeeklyWarehouses({ ...state, cash: convoyResolution.cash, week });
   // A hotseat house's own weekly decision (Phase 14) replaces that one house's dice at each of the
   // three points below — every other house still rolls, exactly as before.
   const hotseatHouseId = state.hotseatHouseId ?? null;
@@ -339,7 +361,7 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   const sabotage = resolveHouseSabotage(tickedVessels, week, manualSabotage);
   const estate = resolveWeeklyEstate(state.estate);
   const expeditionResolution = resolveWeeklyExpedition(
-    { ...state, cash: convoyResolution.cash + risk.cashDelta, vessels: sabotage.vessels, characters: upkeep.characters },
+    { ...state, cash: warehouseResolution.cash + risk.cashDelta, vessels: sabotage.vessels, characters: upkeep.characters },
     week,
   );
 
@@ -412,6 +434,8 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     marketEvents: marketEventResolution.events,
     convoy: convoyResolution.convoy,
     escortLapsed: convoyResolution.escortLapsed,
+    warehouses: warehouseResolution.warehouses,
+    lastWarehouseLapses: warehouseResolution.lapses,
     insurance,
     lastVoyageEvent: risk.event ?? state.lastVoyageEvent,
     lastSabotageEvent: sabotage.event ?? state.lastSabotageEvent ?? null,
@@ -512,6 +536,14 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return harvestEstate(state);
     case 'SHIP_ESTATE_GOODS':
       return shipEstateGoods(state, action.vesselId, action.quantity);
+    case 'LEASE_WAREHOUSE':
+      return leaseWarehouse(state, action.cityId);
+    case 'EXPAND_WAREHOUSE':
+      return expandWarehouse(state, action.cityId);
+    case 'STORE_GOOD':
+      return storeGood(state, action.vesselId, action.goodId, action.quantity, action.grade);
+    case 'WITHDRAW_GOOD':
+      return withdrawGood(state, action.vesselId, action.goodId, action.quantity, action.grade);
     default:
       return state;
   }

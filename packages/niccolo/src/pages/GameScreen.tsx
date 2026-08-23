@@ -27,6 +27,7 @@ import { urgentAdvice } from '../sim/advisors';
 import EvidenceBoardPanel from '../components/EvidenceBoardPanel';
 import DiviningPanel from '../components/DiviningPanel';
 import EstatePanel from '../components/EstatePanel';
+import WarehousePanel from '../components/WarehousePanel';
 import ObjectivesPanel from '../components/ObjectivesPanel';
 import ChapterCompleteCard from '../components/ChapterCompleteCard';
 import CampaignProgress from '../components/CampaignProgress';
@@ -48,6 +49,7 @@ export type SectionId =
   | 'fleet'
   | 'city'
   | 'estate'
+  | 'warehouse'
   | 'dispatches'
   | 'household'
   | 'secrets'
@@ -61,6 +63,7 @@ const SECTION_TITLES: Record<SectionId, string> = {
   fleet: 'Fleet & Household',
   city: 'City & Market',
   estate: 'Estate',
+  warehouse: 'Warehouses',
   dispatches: 'Dispatches',
   household: 'Household',
   secrets: 'Secrets',
@@ -397,6 +400,17 @@ export default function GameScreen() {
 
   const estateUnlocked = !!state.estate || !!state.flags.kouklia_estate_available;
 
+  // Warehousing is a standing commercial system rather than chapter content, so it is gated only on
+  // the prologue: an apprentice does not sign leases, which is the same line `resolveWeeklyUpkeep`
+  // draws for wages. From Chapter 1 the tab is always there, because "should I be storing this
+  // instead of dumping it?" is a question the player should be able to ask at any port.
+  const warehousingUnlocked = !!state.flags.chapter0_complete;
+  // A lease lost this week, or rent being paid on an empty shed — both are money leaving quietly,
+  // which is exactly what a badge is for.
+  const warehouseHasNews =
+    (state.lastWarehouseLapses ?? []).some(l => l.week === state.week) ||
+    Object.values(state.warehouses ?? {}).some(w => Object.values(w.cargo).every(n => n <= 0));
+
   // The Evidence board (design doc §11 screen 7) only appears in the rail once there is something on
   // it — the dossier and the divining gift are both Chapter 5 content, and an always-present tab
   // that reads "nothing pinned here yet" for four chapters is worse than no tab. Same conditional-
@@ -417,6 +431,7 @@ export default function GameScreen() {
     { id: 'fleet', glyph: '⚓', label: 'Fleet', badge: fleetHasNews },
     { id: 'city', glyph: '⚖', label: 'Market' },
     ...(estateUnlocked ? [{ id: 'estate', glyph: '⚘', label: 'Estate' }] : []),
+    ...(warehousingUnlocked ? [{ id: 'warehouse', glyph: '▤', label: 'Storage', badge: warehouseHasNews }] : []),
     { id: 'dispatches', glyph: '✉', label: 'Dispatches' },
     { id: 'household', glyph: '⌂', label: 'Household' },
     { id: 'secrets', glyph: '🔍', label: 'Secrets' },
@@ -776,6 +791,21 @@ export default function GameScreen() {
               onEstablish={() => dispatch({ type: 'ESTABLISH_ESTATE' })}
               onHarvest={() => dispatch({ type: 'HARVEST_ESTATE' })}
               onShip={(vesselId, quantity) => dispatch({ type: 'SHIP_ESTATE_GOODS', vesselId, quantity })}
+            />
+          )}
+
+          {activeSection === 'warehouse' && (
+            <WarehousePanel
+              state={state}
+              selectedVessel={selectedVessel}
+              onLease={cityId => dispatch({ type: 'LEASE_WAREHOUSE', cityId })}
+              onExpand={cityId => dispatch({ type: 'EXPAND_WAREHOUSE', cityId })}
+              onStore={(vesselId, goodId, quantity, grade) =>
+                dispatch({ type: 'STORE_GOOD', vesselId, goodId, quantity, grade })
+              }
+              onWithdraw={(vesselId, goodId, quantity, grade) =>
+                dispatch({ type: 'WITHDRAW_GOOD', vesselId, goodId, quantity, grade })
+              }
             />
           )}
 

@@ -5,6 +5,7 @@ import { convoyEligible } from './convoy';
 import { HOUSES } from './content';
 import { canInsureAt } from './insurance';
 import { cargoTotal, priceAt } from './market';
+import { warehouseRentPerWeek, warehouseSpaceLeft } from './warehouse';
 import { currentLatencyFor, courierInvestmentCost, canInvestFurther } from './news';
 import { currentChapterNumber, objectivesForChapter } from './objectives';
 import { EXPEDITION_ZONE_CITIES } from './expedition';
@@ -47,11 +48,29 @@ export type AdviceKind =
   | 'intel_unknown'
   | 'household_wages'
   | 'household_idle'
+  | 'storage_idle'
+  | 'storage_meter'
   | 'convoy'
   | 'seasonal'
   | 'houses'
   | 'houses_unmasked'
   | 'chapter';
+
+/**
+ * The same list as `AdviceKind`, as a value.
+ *
+ * It exists so a driver can assert that content and code still agree about which domains exist.
+ * The failure this guards against has happened here: renaming a kind in `officers.json` without
+ * renaming it in this file makes `speak` return null for that domain *forever*, and no test that
+ * merely asserts counsel appears will notice, because some other officer's counsel appears instead.
+ * `satisfies` ties the two together, so adding a kind to the type without adding it here is a
+ * compile error rather than a silent hole.
+ */
+export const ADVICE_KINDS = [
+  'trade', 'credit', 'idle', 'risk_sabotage', 'risk_uninsured', 'risk_health',
+  'intel_stale', 'intel_unknown', 'household_wages', 'household_idle',
+  'storage_idle', 'storage_meter', 'convoy', 'seasonal', 'houses', 'houses_unmasked', 'chapter',
+] as const satisfies readonly AdviceKind[];
 
 export type AdviceUrgency = 'urgent' | 'notable' | 'passing';
 
@@ -320,6 +339,42 @@ export function adviceFor(state: GameState): Advice[] {
       vessel: idleHull.name,
       city: findCity(idleHull.location)?.name ?? idleHull.location,
       cash,
+    }));
+  }
+
+  // --- Storage (Phase 26): two counsels, and both are about money leaking rather than money made.
+  //
+  // The first teaches the lever the warehouse exists for. A player who has just sold into a port has
+  // depressed it, and the natural next move — sell the rest too — is now the expensive one. So the
+  // house speaks up exactly there: cargo still aboard, at a city whose price the house's own selling
+  // has pushed below base, with a shed on hand to put it in. Gated on there actually being a lease
+  // here, because advice the player cannot act on this week is noise.
+  const dockedWithCargo = state.vessels.find(
+    v => !v.destination && cargoTotal(v.cargo) > 0 && !!state.warehouses?.[v.location],
+  );
+  if (dockedWithCargo) {
+    const shed = state.warehouses![dockedWithCargo.location];
+    const glutted = Object.entries(dockedWithCargo.cargo)
+      .filter(([, units]) => units > 0)
+      .map(([goodId, units]) => ({ goodId, units, scarcity: state.scarcity[dockedWithCargo.location]?.[goodId] ?? 1 }))
+      .filter(g => g.scarcity < 0.9)
+      .sort((a, b) => a.scarcity - b.scarcity)[0];
+    if (glutted && warehouseSpaceLeft(shed) > 0) {
+      out.push(speak(state, MARIAN_THEN, 'storage_meter', 'notable', `store:${dockedWithCargo.location}:${glutted.goodId}`, {
+        units: glutted.units,
+        good: findGood(glutted.goodId)?.name ?? glutted.goodId,
+        city: findCity(dockedWithCargo.location)?.name ?? dockedWithCargo.location,
+      }));
+    }
+  }
+
+  // The second is a straight leak: rent drawn every week on a shed with nothing in it. The Storage
+  // tab badges this too, but a badge only speaks to a player already looking at the rail.
+  const emptyShed = Object.values(state.warehouses ?? {}).find(w => cargoTotal(w.cargo) === 0);
+  if (emptyShed) {
+    out.push(speak(state, 'julius', 'storage_idle', 'passing', `shed:${emptyShed.cityId}`, {
+      city: findCity(emptyShed.cityId)?.name ?? emptyShed.cityId,
+      rent: warehouseRentPerWeek(emptyShed.capacity),
     }));
   }
 
