@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { UI } from '../theme';
 import { CITIES, HOME_CITY } from '../sim/content';
 import { findCurrency } from '../sim/currency';
 import { MAX_TERM_WEEKS, MIN_TERM_WEEKS } from '../sim/credit';
@@ -7,23 +8,23 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0.9rem 0 0.4rem',
 };
 
 const FIELD: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.75rem',
   padding: '0.2rem 0.3rem',
 };
 
 const SMALL_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.2rem 0.5rem',
   fontFamily: 'inherit',
   fontSize: '0.7rem',

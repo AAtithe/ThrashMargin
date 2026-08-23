@@ -1,15 +1,17 @@
+import { UI } from '../theme';
+
 const WRAP: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '0.4rem',
   fontSize: '0.78rem',
-  color: '#8a7a5a',
+  color: UI.textSoft,
 };
 
 const SEGMENT: React.CSSProperties = {
   width: '0.5rem',
   height: '0.5rem',
-  background: '#e8d5a3',
+  background: UI.brass,
   display: 'inline-block',
 };
 

@@ -2,12 +2,13 @@ import { useState } from 'react';
 import { CITIES, findCity } from '../sim/content';
 import { agentPlacementCost } from '../sim/houses';
 import type { Agent, AgentPlacement, House } from '../sim/types';
+import { UI } from '../theme';
 
 const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0.9rem 0 0.4rem',
 };
 
@@ -17,14 +18,14 @@ const ROW: React.CSSProperties = {
   justifyContent: 'space-between',
   gap: '0.5rem',
   padding: '0.4rem 0',
-  borderBottom: '1px solid #2a2117',
+  borderBottom: `1px solid ${UI.rule}`,
   fontSize: '0.8rem',
 };
 
 const FIELD: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.7rem',
   padding: '0.2rem 0.3rem',
@@ -33,9 +34,9 @@ const FIELD: React.CSSProperties = {
 };
 
 const SMALL_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.2rem 0.5rem',
   fontFamily: 'inherit',
   fontSize: '0.7rem',
@@ -44,9 +45,9 @@ const SMALL_BUTTON: React.CSSProperties = {
 };
 
 function dispositionColor(disposition: House['disposition']): string {
-  if (disposition === 'ally') return '#3a6b5a';
-  if (disposition === 'hostile') return '#b5451a';
-  return '#a08040';
+  if (disposition === 'ally') return UI.good;
+  if (disposition === 'hostile') return UI.bad;
+  return UI.warn;
 }
 
 interface HousesPanelProps {
@@ -89,7 +90,7 @@ export default function HousesPanel({ houses, houseRelations, agents, cash, flag
                   ({house.disposition})
                 </span>
               </div>
-              <div style={{ fontSize: '0.7rem', color: '#8a7a5a' }}>
+              <div style={{ fontSize: '0.7rem', color: UI.textSoft }}>
                 Seat: {findCity(house.homeCity)?.name ?? house.homeCity} · relation {relation}/100
                 {placed.length > 0 && ` · ${placed.map(a => a.name).join(', ')} inside`}
               </div>
@@ -99,7 +100,7 @@ export default function HousesPanel({ houses, houseRelations, agents, cash, flag
       })}
 
       {agents.filter(a => a.placement.type === 'city').length > 0 && (
-        <p style={{ fontSize: '0.7rem', color: '#8a7a5a', margin: '0.4rem 0 0' }}>
+        <p style={{ fontSize: '0.7rem', color: UI.textSoft, margin: '0.4rem 0 0' }}>
           Shielding cities:{' '}
           {agents
             .filter(a => a.placement.type === 'city')

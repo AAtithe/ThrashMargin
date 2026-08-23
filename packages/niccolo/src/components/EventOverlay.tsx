@@ -1,9 +1,10 @@
 import type { ScriptedEvent } from '../sim/types';
+import { UI, FONT } from '../theme';
 
 const BACKDROP: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(8, 6, 4, 0.78)',
+  background: 'rgba(13, 20, 25, 0.78)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -12,19 +13,19 @@ const BACKDROP: React.CSSProperties = {
 };
 
 const CARD: React.CSSProperties = {
-  background: '#17130d',
-  border: '1px solid #4a3d28',
-  boxShadow: '0 0 0 1px #0e0b07, 0 8px 40px rgba(0,0,0,0.6)',
+  background: UI.panelRaised,
+  border: `1px solid ${UI.rule}`,
+  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px rgba(0,0,0,0.6)`,
   maxWidth: '32rem',
   padding: '1.8rem',
-  fontFamily: '"Georgia", "Times New Roman", serif',
-  color: '#c9b88a',
+  fontFamily: FONT.body,
+  color: UI.text,
 };
 
 const TITLE: React.CSSProperties = {
   fontSize: '1.3rem',
   letterSpacing: '0.05em',
-  color: '#e8d5a3',
+  color: UI.brass,
   margin: '0 0 1rem',
 };
 
@@ -32,16 +33,16 @@ const BODY: React.CSSProperties = {
   fontSize: '0.95rem',
   lineHeight: 1.6,
   margin: '0 0 1.5rem',
-  color: '#c9b88a',
+  color: UI.text,
 };
 
 const CHOICE_BUTTON: React.CSSProperties = {
   display: 'block',
   width: '100%',
   textAlign: 'left',
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.6rem 0.9rem',
   fontFamily: 'inherit',
   fontSize: '0.85rem',

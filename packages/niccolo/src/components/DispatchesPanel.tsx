@@ -1,3 +1,4 @@
+import { UI } from '../theme';
 import { CITIES, HOME_CITY, findGood } from '../sim/content';
 import { activeCharacters } from '../sim/characters';
 import { baseLatencyFor, canInvestFurther, courierInvestmentCost, currentLatencyFor } from '../sim/news';
@@ -8,7 +9,7 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.4rem',
 };
 
@@ -24,14 +25,14 @@ const ROW: React.CSSProperties = {
   justifyContent: 'space-between',
   gap: '0.5rem',
   padding: '0.4rem 0',
-  borderBottom: '1px solid #2a2117',
+  borderBottom: `1px solid ${UI.rule}`,
   fontSize: '0.8rem',
 };
 
 const SMALL_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.2rem 0.5rem',
   fontFamily: 'inherit',
   fontSize: '0.65rem',
@@ -84,9 +85,9 @@ export default function DispatchesPanel({
               <div style={{ flex: 1 }}>
                 <div>
                   {c.name}
-                  {live && <span style={{ color: '#3a6b5a' }}> · live</span>}
+                  {live && <span style={{ color: UI.good }}> · live</span>}
                 </div>
-                <div style={{ fontSize: '0.7rem', color: '#8a7a5a' }}>
+                <div style={{ fontSize: '0.7rem', color: UI.textSoft }}>
                   {live
                     ? 'You are here — prices are true.'
                     : report
@@ -97,14 +98,14 @@ export default function DispatchesPanel({
                   {!live && investigator && ` · ${investigator.name} investigating`}
                 </div>
                 {!live && report && (
-                  <div style={{ fontSize: '0.7rem', color: '#c9b88a', marginTop: '0.15rem' }}>
+                  <div style={{ fontSize: '0.7rem', color: UI.text, marginTop: '0.15rem' }}>
                     {Object.entries(report.prices)
                       .map(([goodId, price]) => `${findGood(goodId)?.name ?? goodId} ${price}f`)
                       .join(' · ')}
                   </div>
                 )}
                 {!live && report?.causes && report.causes.length > 0 && (
-                  <div style={{ fontSize: '0.68rem', color: '#8a7a5a', marginTop: '0.15rem' }}>
+                  <div style={{ fontSize: '0.68rem', color: UI.textSoft, marginTop: '0.15rem' }}>
                     {report.causes.map(cause => describeMarketCause(cause, c.name)).join(' ')}
                   </div>
                 )}

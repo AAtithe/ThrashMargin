@@ -266,6 +266,14 @@ export default function GameScreen() {
     setActiveSection('city');
   };
 
+  // Mirrors handlePreviewCity: clicking a vessel's own marker on the map selects it and opens the
+  // Fleet popup directly, the same shortcut the map already gives a city — previously a vessel was
+  // only selectable from inside that popup, one extra step for what a click on the chart should do.
+  const handleSelectVessel = (vesselId: string) => {
+    setSelectedVesselId(vesselId);
+    setActiveSection('fleet');
+  };
+
   const handleConfirmDispatch = () => {
     if (!selectedVessel || !previewCityId) return;
     dispatch({ type: 'DISPATCH_VESSEL', vesselId: selectedVessel.id, destinationId: previewCityId, insure: insureNext });
@@ -426,19 +434,25 @@ export default function GameScreen() {
   const dossierUnlocked =
     (state.evidence?.length ?? 0) > 0 || !!state.flags.divining_unlocked || !!state.flags.chapter4_complete;
 
+  // Grouped (Story / Trade / House) rather than one flat run of up to twelve tabs — same idea as
+  // Tea Race folding its eleven toggles into three named clusters. Grouping only clusters and
+  // labels consecutive tabs (see SectionRail's own comment on why it deliberately doesn't
+  // collapse), so every entry in a group must sit next to its own kind here.
   const SECTIONS: SectionDef[] = [
-    { id: 'objectives', glyph: '✦', label: 'Objectives' },
-    { id: 'fleet', glyph: '⚓', label: 'Fleet', badge: fleetHasNews },
-    { id: 'city', glyph: '⚖', label: 'Market' },
-    ...(estateUnlocked ? [{ id: 'estate', glyph: '⚘', label: 'Estate' }] : []),
-    ...(warehousingUnlocked ? [{ id: 'warehouse', glyph: '▤', label: 'Storage', badge: warehouseHasNews }] : []),
-    { id: 'dispatches', glyph: '✉', label: 'Dispatches' },
-    { id: 'household', glyph: '⌂', label: 'Household' },
-    { id: 'secrets', glyph: '🔍', label: 'Secrets' },
-    { id: 'houses', glyph: '⚜', label: 'Houses' },
-    ...(dossierUnlocked ? [{ id: 'dossier', glyph: '✎', label: 'Dossier' }] : []),
-    { id: 'counsel', glyph: '☙', label: 'Counsel', badge: counselHasUrgent },
-    { id: 'ledger', glyph: '📖', label: 'Ledger' },
+    { id: 'objectives', glyph: '✦', label: 'Objectives', group: 'Story' },
+    { id: 'counsel', glyph: '☙', label: 'Counsel', badge: counselHasUrgent, group: 'Story' },
+    ...(dossierUnlocked ? [{ id: 'dossier', glyph: '✎', label: 'Dossier', group: 'Story' }] : []),
+    { id: 'fleet', glyph: '⚓', label: 'Fleet', badge: fleetHasNews, group: 'Trade' },
+    { id: 'city', glyph: '⚖', label: 'Market', group: 'Trade' },
+    ...(estateUnlocked ? [{ id: 'estate', glyph: '⚘', label: 'Estate', group: 'Trade' }] : []),
+    ...(warehousingUnlocked
+      ? [{ id: 'warehouse', glyph: '▤', label: 'Storage', badge: warehouseHasNews, group: 'Trade' }]
+      : []),
+    { id: 'dispatches', glyph: '✉', label: 'Dispatches', group: 'Trade' },
+    { id: 'household', glyph: '⌂', label: 'Household', group: 'House' },
+    { id: 'secrets', glyph: '🔍', label: 'Secrets', group: 'House' },
+    { id: 'houses', glyph: '⚜', label: 'Houses', group: 'House' },
+    { id: 'ledger', glyph: '📖', label: 'Ledger', group: 'House' },
   ];
 
   return (
@@ -581,6 +595,7 @@ export default function GameScreen() {
             vessels={state.vessels}
             selectedVesselId={selectedVesselId}
             onSelectCity={handlePreviewCity}
+            onSelectVessel={handleSelectVessel}
             cityInfoAge={cityInfoAge}
             previewedCityId={previewCityId}
           />

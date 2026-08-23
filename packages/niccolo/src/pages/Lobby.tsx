@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { UI, FONT } from '../theme';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
 import { HOUSES } from '../sim/content';
@@ -11,9 +12,9 @@ const STYLE: React.CSSProperties = {
   minHeight: '100vh',
   display: 'flex',
   flexDirection: 'column',
-  background: '#0e0b07',
-  color: '#c9b88a',
-  fontFamily: '"Georgia", "Times New Roman", serif',
+  background: UI.ground,
+  color: UI.text,
+  fontFamily: FONT.body,
 };
 
 const CONTENT: React.CSSProperties = {
@@ -28,12 +29,12 @@ const CONTENT: React.CSSProperties = {
 const TITLE: React.CSSProperties = {
   fontSize: '2rem',
   letterSpacing: '0.1em',
-  color: '#e8d5a3',
+  color: UI.brass,
   margin: '0 0 0.2rem',
 };
 
 const SUBTITLE: React.CSSProperties = {
-  color: '#8a7a5a',
+  color: UI.textSoft,
   fontSize: '0.85rem',
   margin: '0 0 2rem',
 };
@@ -42,13 +43,13 @@ const SECTION_LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.6rem',
 };
 
 const CARD: React.CSSProperties = {
-  border: '1px solid #4a3d28',
-  background: '#161009',
+  border: `1px solid ${UI.rule}`,
+  background: UI.panelRaised,
   padding: '0.8rem 1rem',
   marginBottom: '0.6rem',
   display: 'flex',
@@ -58,9 +59,9 @@ const CARD: React.CSSProperties = {
 };
 
 const BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.5rem 0.9rem',
   fontFamily: 'inherit',
   fontSize: '0.85rem',
@@ -69,9 +70,9 @@ const BUTTON: React.CSSProperties = {
 };
 
 const FIELD: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.85rem',
   padding: '0.5rem 0.7rem',
@@ -79,9 +80,9 @@ const FIELD: React.CSSProperties = {
 };
 
 function statusBadge(status: SaveMeta['status']): { text: string; color: string } {
-  if (status === 'victory') return { text: 'Partnership converted', color: '#3a6b5a' };
-  if (status === 'defeated') return { text: 'Insolvent', color: '#b5451a' };
-  return { text: 'In progress', color: '#a08040' };
+  if (status === 'victory') return { text: 'Partnership converted', color: UI.good };
+  if (status === 'defeated') return { text: 'Insolvent', color: UI.bad };
+  return { text: 'In progress', color: UI.warn };
 }
 
 function relTime(ts: number): string {
@@ -140,7 +141,7 @@ export default function Lobby() {
               Sign in to keep your campaigns on your account.
             </p>
             <button
-              style={{ ...BUTTON, background: '#3a2e18', borderColor: '#8a6d3a', color: '#e8d5a3', marginBottom: '0.6rem' }}
+              style={{ ...BUTTON, background: UI.panelRaised, borderColor: UI.brass, color: UI.brass, marginBottom: '0.6rem' }}
               onClick={() => { window.location.href = '/thrash-margin/login'; }}
             >
               Sign in / Register →
@@ -168,7 +169,7 @@ export default function Lobby() {
         </p>
 
         {error && (
-          <p style={{ fontSize: '0.8rem', color: '#b5451a', border: '1px solid #4a2a1a', background: '#1a0f0a', padding: '0.6rem 0.8rem', margin: '0 0 1.2rem' }}>
+          <p style={{ fontSize: '0.8rem', color: UI.bad, border: '1px solid rgba(194, 96, 106, 0.4)', background: 'rgba(194, 96, 106, 0.12)', padding: '0.6rem 0.8rem', margin: '0 0 1.2rem' }}>
             {error}
           </p>
         )}
@@ -186,7 +187,7 @@ export default function Lobby() {
             {starting ? '…' : 'Begin →'}
           </button>
         </div>
-        <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+        <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
           <input type="checkbox" checked={skipPrologue} onChange={e => setSkipPrologue(e.target.checked)} />
           <span>
             Skip the prologue — start straight in as a merchant with a ship, a courier, and 40f,
@@ -194,7 +195,7 @@ export default function Lobby() {
           </span>
         </label>
 
-        <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+        <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
           <input type="checkbox" checked={hideObjectives} onChange={e => setHideObjectives(e.target.checked)} />
           <span>
             Hide chapter objectives — track your own progress without a checklist naming which
@@ -202,7 +203,7 @@ export default function Lobby() {
           </span>
         </label>
 
-        <label style={{ fontSize: '0.75rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '2rem' }}>
+        <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '2rem' }}>
           <span style={{ whiteSpace: 'nowrap' }}>Let a friend run a rival house this campaign:</span>
           <select
             style={{ ...FIELD, flex: 'none', width: 'auto', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
@@ -218,7 +219,7 @@ export default function Lobby() {
 
         <p style={SECTION_LABEL}>Active campaigns</p>
         {active.length === 0 && (
-          <p style={{ color: '#6a5a40', fontSize: '0.85rem' }}>No active campaigns — start one above.</p>
+          <p style={{ color: UI.textFaint, fontSize: '0.85rem' }}>No active campaigns — start one above.</p>
         )}
         {active.map(save => (
           <SaveCard
@@ -247,7 +248,7 @@ export default function Lobby() {
           </>
         )}
       </div>
-      <div style={{ padding: '0.8rem 1.5rem', borderTop: '1px solid #2a2117', fontSize: '0.75rem', color: '#6a5a40' }}>
+      <div style={{ padding: '0.8rem 1.5rem', borderTop: `1px solid ${UI.rule}`, fontSize: '0.75rem', color: UI.textFaint }}>
         {saves.length} campaign{saves.length === 1 ? '' : 's'} saved in cloud
       </div>
       <PortalNav variant="footer" />
@@ -267,15 +268,15 @@ function SaveCard({ save, confirmDelete, setConfirmDelete, onContinue, onDelete 
   return (
     <div style={CARD}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: '#e8d5a3', fontSize: '0.9rem' }}>{save.name}</div>
-        <div style={{ fontSize: '0.72rem', color: '#8a7a5a' }}>
+        <div style={{ color: UI.brass, fontSize: '0.9rem' }}>{save.name}</div>
+        <div style={{ fontSize: '0.72rem', color: UI.textSoft }}>
           Week {save.turn} · <span style={{ color: badge.color }}>{badge.text}</span> · {relTime(save.savedAt)}
         </div>
       </div>
       <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
         {isConfirming ? (
           <>
-            <span style={{ color: '#b5451a', fontSize: '0.75rem', alignSelf: 'center' }}>Delete?</span>
+            <span style={{ color: UI.bad, fontSize: '0.75rem', alignSelf: 'center' }}>Delete?</span>
             <button style={BUTTON} onClick={onDelete}>Yes</button>
             <button style={BUTTON} onClick={() => setConfirmDelete(null)}>No</button>
           </>

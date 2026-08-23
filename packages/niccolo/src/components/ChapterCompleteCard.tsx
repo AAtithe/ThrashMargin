@@ -1,10 +1,11 @@
 import { ObjectiveRow } from './ObjectivesPanel';
 import type { ObjectiveProgress } from '../sim/objectives';
+import { UI, FONT } from '../theme';
 
 const BACKDROP: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(8, 6, 4, 0.78)',
+  background: 'rgba(13, 20, 25, 0.78)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -13,35 +14,35 @@ const BACKDROP: React.CSSProperties = {
 };
 
 const CARD: React.CSSProperties = {
-  background: '#17130d',
-  border: '1px solid #4a3d28',
-  boxShadow: '0 0 0 1px #0e0b07, 0 8px 40px rgba(0,0,0,0.6)',
+  background: UI.panelRaised,
+  border: `1px solid ${UI.rule}`,
+  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px rgba(0,0,0,0.6)`,
   maxWidth: '32rem',
   width: '100%',
   padding: '1.8rem',
-  fontFamily: '"Georgia", "Times New Roman", serif',
-  color: '#c9b88a',
+  fontFamily: FONT.body,
+  color: UI.text,
 };
 
 const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.4rem',
 };
 
 const TITLE: React.CSSProperties = {
   fontSize: '1.3rem',
   letterSpacing: '0.05em',
-  color: '#e8d5a3',
+  color: UI.brass,
   margin: '0 0 1rem',
 };
 
 const BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #e8d5a3',
-  color: '#e8d5a3',
+  background: UI.panel,
+  border: `1px solid ${UI.brass}`,
+  color: UI.brass,
   padding: '0.6rem 1.2rem',
   fontFamily: 'inherit',
   fontSize: '0.85rem',
@@ -82,7 +83,7 @@ export default function ChapterCompleteCard({ chapterNumber, title, progress, on
             {progress.map(p => (
               <ObjectiveRow key={p.objective.id} p={p} />
             ))}
-            <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: '0.6rem 0 0' }}>
+            <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: '0.6rem 0 0' }}>
               {resolved} of {counted.length} threads resolved
             </p>
           </>

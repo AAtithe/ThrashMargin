@@ -5,6 +5,7 @@ import { cargoValue } from '../sim/insurance';
 import { warehousesValue } from '../sim/warehouse';
 import { toFlorins } from '../sim/currency';
 import type { GameState } from '../sim/types';
+import { UI, FONT } from '../theme';
 
 /**
  * The epilogue (Chapter 8, Phase 25) — *"prices the whole campaign: net worth, people kept,
@@ -26,9 +27,9 @@ import type { GameState } from '../sim/types';
 const WRAP: React.CSSProperties = {
   height: '100vh',
   overflowY: 'auto',
-  background: '#0e0b07',
-  color: '#c9b88a',
-  fontFamily: '"Georgia", "Times New Roman", serif',
+  background: UI.ground,
+  color: UI.text,
+  fontFamily: FONT.body,
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -38,7 +39,7 @@ const WRAP: React.CSSProperties = {
 const TITLE: React.CSSProperties = {
   fontSize: '1.9rem',
   letterSpacing: '0.12em',
-  color: '#e8d5a3',
+  color: UI.brass,
   margin: '0 0 0.2rem',
   textAlign: 'center',
 };
@@ -47,14 +48,14 @@ const SUB: React.CSSProperties = {
   fontSize: '0.85rem',
   letterSpacing: '0.16em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 1.8rem',
 };
 
 const PROSE: React.CSSProperties = {
   maxWidth: '34rem',
   textAlign: 'center',
-  color: '#e8d5a3',
+  color: UI.brass,
   lineHeight: 1.65,
   margin: '0 0 1.1rem',
 };
@@ -62,8 +63,8 @@ const PROSE: React.CSSProperties = {
 const LEDGER: React.CSSProperties = {
   maxWidth: '34rem',
   width: '100%',
-  borderTop: '1px solid #4a3d28',
-  borderBottom: '1px solid #4a3d28',
+  borderTop: `1px solid ${UI.rule}`,
+  borderBottom: `1px solid ${UI.rule}`,
   padding: '1rem 0',
   margin: '0.8rem 0 1.4rem',
 };
@@ -79,16 +80,16 @@ const ROW: React.CSSProperties = {
 const NOTE: React.CSSProperties = {
   maxWidth: '34rem',
   fontSize: '0.78rem',
-  color: '#6a5a40',
+  color: UI.textFaint,
   textAlign: 'center',
   fontStyle: 'italic',
   margin: '0 0 1.4rem',
 };
 
 const BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.6rem 1.1rem',
   fontFamily: 'inherit',
   fontSize: '0.85rem',
@@ -161,45 +162,45 @@ export default function EpilogueScreen({ state, onReturn }: { state: GameState; 
 
       <div style={LEDGER}>
         <div style={ROW}>
-          <span style={{ color: '#8a7a5a' }}>What the house is worth</span>
-          <span style={{ color: '#e8d5a3' }}>{worth.net.toLocaleString()}f</span>
+          <span style={{ color: UI.textSoft }}>What the house is worth</span>
+          <span style={{ color: UI.brass }}>{worth.net.toLocaleString()}f</span>
         </div>
-        <div style={{ ...ROW, fontSize: '0.76rem', color: '#6a5a40' }}>
+        <div style={{ ...ROW, fontSize: '0.76rem', color: UI.textFaint }}>
           <span>assets {worth.assets.toLocaleString()}f, less {worth.liabilities.toLocaleString()}f owed</span>
           <span />
         </div>
         <div style={ROW}>
-          <span style={{ color: '#8a7a5a' }}>Conscience</span>
-          <span style={{ color: state.conscience >= 60 ? '#3a6b5a' : state.conscience >= 30 ? '#a08040' : '#b5451a' }}>
+          <span style={{ color: UI.textSoft }}>Conscience</span>
+          <span style={{ color: state.conscience >= 60 ? UI.good : state.conscience >= 30 ? UI.warn : UI.bad }}>
             {Math.round(state.conscience)} of 100
           </span>
         </div>
         <div style={ROW}>
-          <span style={{ color: '#8a7a5a' }}>People kept</span>
-          <span style={{ color: '#e8d5a3' }}>
+          <span style={{ color: UI.textSoft }}>People kept</span>
+          <span style={{ color: UI.brass }}>
             {active.length} of {active.length + departed.length}
           </span>
         </div>
         <div style={ROW}>
-          <span style={{ color: '#8a7a5a' }}>Secrets sold</span>
-          <span style={{ color: '#e8d5a3' }}>{secretsSold}</span>
+          <span style={{ color: UI.textSoft }}>Secrets sold</span>
+          <span style={{ color: UI.brass }}>{secretsSold}</span>
         </div>
         <div style={ROW}>
-          <span style={{ color: '#8a7a5a' }}>Secrets never sold</span>
-          <span style={{ color: '#e8d5a3' }}>
+          <span style={{ color: UI.textSoft }}>Secrets never sold</span>
+          <span style={{ color: UI.brass }}>
             {secretsKept}
-            {secretsExpired > 0 && <span style={{ color: '#6a5a40' }}> ({secretsExpired} let lapse)</span>}
+            {secretsExpired > 0 && <span style={{ color: UI.textFaint }}> ({secretsExpired} let lapse)</span>}
           </span>
         </div>
         <div style={ROW}>
-          <span style={{ color: '#8a7a5a' }}>The parentage dossier</span>
-          <span style={{ color: '#e8d5a3' }}>
+          <span style={{ color: UI.textSoft }}>The parentage dossier</span>
+          <span style={{ color: UI.brass }}>
             {dossier} piece{dossier === 1 ? '' : 's'} · {parentage.confidence}
           </span>
         </div>
         <div style={ROW}>
-          <span style={{ color: '#8a7a5a' }}>Weeks played</span>
-          <span style={{ color: '#e8d5a3' }}>{state.week}</span>
+          <span style={{ color: UI.textSoft }}>Weeks played</span>
+          <span style={{ color: UI.brass }}>{state.week}</span>
         </div>
       </div>
 
@@ -216,7 +217,7 @@ export default function EpilogueScreen({ state, onReturn }: { state: GameState; 
         </p>
       )}
 
-      <p style={{ ...NOTE, color: '#8a7a5a', fontStyle: 'normal' }}>
+      <p style={{ ...NOTE, color: UI.textSoft, fontStyle: 'normal' }}>
         Begun at Bruges, {formatWeekDate(0, CAMPAIGN_START)}. Ended at{' '}
         {findCity(state.vessels.find(v => v.kind === 'ship')?.location ?? 'bruges')?.name ?? 'Bruges'}.
       </p>

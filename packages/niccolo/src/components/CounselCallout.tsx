@@ -1,5 +1,6 @@
 import { AdviceRow } from './CounselPanel';
 import type { Advice } from '../sim/advisors';
+import { FONT, UI } from '../theme';
 
 /**
  * The "popping up" half of the counsel feature (Phase 21): when an officer has something genuinely
@@ -21,12 +22,12 @@ const CARD: React.CSSProperties = {
   bottom: '2.6rem',
   zIndex: 60,
   width: 'min(22rem, calc(100vw - 2.2rem))',
-  background: '#161009',
-  border: '1px solid #4a3d28',
-  borderLeft: '3px solid #b5451a',
+  background: UI.panelRaised,
+  border: `1px solid ${UI.rule}`,
+  borderLeft: `3px solid ${UI.bad}`,
   padding: '0.7rem 0.9rem',
   boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
-  fontFamily: '"Georgia", "Times New Roman", serif',
+  fontFamily: FONT.body,
 };
 
 const HEAD: React.CSSProperties = {
@@ -41,13 +42,13 @@ const TITLE: React.CSSProperties = {
   fontSize: '0.68rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
 };
 
 const DISMISS: React.CSSProperties = {
   background: 'none',
   border: 'none',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   fontFamily: 'inherit',
   fontSize: '0.85rem',
   cursor: 'pointer',
@@ -74,9 +75,9 @@ export default function CounselCallout({ advice, onDismiss, onOpenCounsel }: Cou
       <button
         id="counsel-callout-open"
         style={{
-          background: '#1a1510',
-          border: '1px solid #4a3d28',
-          color: '#c9b88a',
+          background: UI.panel,
+          border: `1px solid ${UI.rule}`,
+          color: UI.text,
           fontFamily: 'inherit',
           fontSize: '0.7rem',
           padding: '0.2rem 0.5rem',

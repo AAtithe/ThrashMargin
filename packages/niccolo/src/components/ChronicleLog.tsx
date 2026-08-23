@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { ObjectiveRow } from './ObjectivesPanel';
 import type { ObjectiveProgress } from '../sim/objectives';
+import { UI, FONT } from '../theme';
 
 const BACKDROP: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(8, 6, 4, 0.78)',
+  background: 'rgba(13, 20, 25, 0.78)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -14,22 +15,22 @@ const BACKDROP: React.CSSProperties = {
 };
 
 const CARD: React.CSSProperties = {
-  background: '#17130d',
-  border: '1px solid #4a3d28',
-  boxShadow: '0 0 0 1px #0e0b07, 0 8px 40px rgba(0,0,0,0.6)',
+  background: UI.panelRaised,
+  border: `1px solid ${UI.rule}`,
+  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px rgba(0,0,0,0.6)`,
   maxWidth: '34rem',
   width: '100%',
   maxHeight: '80vh',
   overflowY: 'auto',
   padding: '1.8rem',
-  fontFamily: '"Georgia", "Times New Roman", serif',
-  color: '#c9b88a',
+  fontFamily: FONT.body,
+  color: UI.text,
 };
 
 const TITLE: React.CSSProperties = {
   fontSize: '1.15rem',
   letterSpacing: '0.03em',
-  color: '#e8d5a3',
+  color: UI.brass,
   margin: '0 0 1rem',
 };
 
@@ -40,8 +41,8 @@ const CHAPTER_HEADER: React.CSSProperties = {
   width: '100%',
   background: 'transparent',
   border: 'none',
-  borderBottom: '1px solid #2a2117',
-  color: '#e8d5a3',
+  borderBottom: `1px solid ${UI.rule}`,
+  color: UI.brass,
   fontFamily: 'inherit',
   fontSize: '0.9rem',
   padding: '0.6rem 0',
@@ -50,9 +51,9 @@ const CHAPTER_HEADER: React.CSSProperties = {
 };
 
 const CLOSE_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.5rem 1rem',
   fontFamily: 'inherit',
   fontSize: '0.82rem',
@@ -106,14 +107,14 @@ export default function ChronicleLog({ chapters, onClose }: ChronicleLogProps) {
                 <span>
                   {isOpen ? '▾' : '▸'} Chapter {chapter.chapterNumber} — {chapter.title}
                 </span>
-                <span style={{ fontSize: '0.75rem', color: '#8a7a5a' }}>
+                <span style={{ fontSize: '0.75rem', color: UI.textSoft }}>
                   {resolved} of {counted.length} resolved
                 </span>
               </button>
               {isOpen && (
                 <div style={{ padding: '0.4rem 0 0.6rem' }}>
                   {chapter.progress.length === 0 ? (
-                    <p style={{ fontSize: '0.78rem', color: '#8a7a5a', margin: 0 }}>No objectives recorded for this chapter.</p>
+                    <p style={{ fontSize: '0.78rem', color: UI.textSoft, margin: 0 }}>No objectives recorded for this chapter.</p>
                   ) : (
                     chapter.progress.map(p => <ObjectiveRow key={p.objective.id} p={p} />)
                   )}

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { CITIES, ROUTES, findCity } from '../sim/content';
+import { CHART, FONT, GEO, UI } from '../theme';
+import { CITIES, ROUTES, findCity, findRouteById, otherEndOfRoute } from '../sim/content';
 import {
-  CHART,
+  CHART as BACKDROP,
   CITY_POINTS,
   VB_HEIGHT,
   VB_WIDTH,
@@ -13,77 +14,35 @@ import {
 } from '../sim/geography';
 import type { City, LabelSide, Vessel } from '../sim/types';
 
-const INK = '#4a3d28';
-const PARCHMENT = '#c9b88a';
-const GOLD = '#e8d5a3';
-const SHIP_COLOR = '#b5451a';
-const COURIER_COLOR = '#3a6b5a';
-const VOID_COLOR = '#0e0b07';
-const SEA_COLOR = '#182430';
-/**
- * Land's own ground tone, under the hachure: a dark olive.
- *
- * Green rather than the earlier brown so land and sea read as a coordinated pair — olive sits about
- * 130 degrees from the sea's blue on the wheel, where the brown sat nearly opposite it and fought.
- *
- * Chosen by measurement, not by eye. An early brown (`#2b2418`) looked right but was 1.03:1 against
- * the sea — identical lightness, so anyone who does not discriminate warm from cool would have seen
- * no coastline at all. This olive separates on BOTH axes: 1.32:1 against the sea (better than the
- * brown it replaced, at 1.22:1) while parchment labels on land stay at 6.1:1, well clear of the
- * 4.5:1 readability threshold. The hachure is the third, non-colour cue: land is textured, water
- * never is.
- */
-const LAND_COLOR = '#313a22';
-
-/** Chart palette, kept from the previous backdrop so the map still reads as this game's own dark
- * parchment rather than tea-race's printed board. Only the projection underneath changed. */
-const GEO_COAST = '#998965';
-const GEO_COAST_GHOST = '#716347';
-const GEO_HATCH = '#695c40';
-const GEO_RELIEF = '#817253';
-const GEO_WATER = '#747c82';
+const SHIP_COLOR = UI.ensign;
+const COURIER_COLOR = UI.good;
 
 /**
  * Marker and text sizes are authored as their approximate on-screen PIXEL size, because every one
  * of them is counter-scaled by 1/zoom at draw time (see `inv` in the component). A glyph therefore
- * ends up at roughly `size * contentScale` screen pixels whatever the zoom.
- *
- * That is the one thing here that could not be copied from tea-race, and it is what makes a
- * real-geography chart usable for this game. Tea-race authors its port marks in world units, which
- * is fine when the nearest two ports are an ocean apart. Bruges and Ghent are 40km apart — half a
- * degree, about 2 viewBox units out of 1600 — so a world-unit marker of any legible size overlaps
- * its neighbours by construction AND STAYS overlapped however far you zoom, because the gap and the
- * marker grow together. Counter-scaling breaks that tie: the gap grows with zoom, the marker does
- * not, so zooming into a cluster genuinely separates it.
+ * ends up at roughly `size * contentScale` screen pixels whatever the zoom — the one thing that
+ * could not be copied from Tea Race, since Bruges and Ghent sit 40km apart (half a degree, ~2
+ * viewBox units of 1600) and a world-unit marker of any legible size would overlap its neighbours
+ * at every zoom.
  */
 const ZOOM_MIN = 1;
-/** Far above tea-race's 6, because this game's cities are packed into ~57 degrees of longitude
- * rather than spread round the globe. Measured live: the Flanders cluster is fully separated, with
- * every label showing and zero overlaps of any kind, at about 21x. */
+/** Measured live: the Flanders cluster fully separates, every label showing, zero overlaps, at
+ * about 21x — this is set well above that. */
 const ZOOM_MAX = 60;
 const ZOOM_STEP = 1.12;
 
-/** Castle glyphs are authored around a 24x28 box; this scales that to final screen pixels. */
-const CASTLE_SCALE = 1.0;
-const PORT_CASTLE_PATH =
-  'M -12,14 L -12,-4 L -8,-4 L -8,-9 L -4,-9 L -4,-4 L -1,-4 L -1,-14 L 1,-14 L 1,-4 L 4,-4 L 4,-9 L 8,-9 L 8,-4 L 12,-4 L 12,14 Z';
-const INLAND_CASTLE_PATH =
-  'M -8,10 L -8,-4 L -5,-4 L -5,-10 L -2,-10 L -2,-4 L 2,-4 L 2,-10 L 5,-10 L 5,-4 L 8,-4 L 8,10 Z';
-const PORT_CASTLE_DOOR = { x: -3, y: 2, width: 6, height: 12 };
-const INLAND_CASTLE_DOOR = { x: -2, y: 3, width: 4, height: 7 };
-const PORT_CASTLE_FLAG = 'M 0,-14 L 0,-20 M 0,-20 L 6,-18 L 0,-16';
+/** A port's filled dot; an inland city is the same dot left open (see `CityMark` below). Replaces
+ * the previous turreted-castle glyph — a plain, larger click target reads at a glance and needs no
+ * door/flag detail to stay legible at small sizes. */
+const PORT_RADIUS = 9;
+const INLAND_RADIUS = 6;
+const MARKER_STROKE = 1.8;
 
-/** Half-extent of each castle glyph in chart units, used to clear labels and fan docked vessels.
- * A port's height counts the pennant (which reaches y=-20 in glyph units), not just the towers —
- * otherwise a label tucked above a port sits straight through its flag. */
-const CASTLE_HALF = {
-  port: { w: 12 * CASTLE_SCALE, h: 20 * CASTLE_SCALE },
-  inland: { w: 8 * CASTLE_SCALE, h: 10 * CASTLE_SCALE },
-};
+/** Half-extent of each marker in chart units, used to clear labels and fan docked vessels. */
+const MARKER_HALF = { port: PORT_RADIUS, inland: INLAND_RADIUS };
 
 /** Halo half-width, in chart units before counter-scaling. Collision boxes have to include it:
- * the painted extent of a haloed label is wider than its glyphs, which is exactly the discrepancy
- * that made `getBoundingClientRect` and `getBBox` disagree when this was measured live. */
+ * the painted extent of a haloed label is wider than its glyphs. */
 const LABEL_HALO = 3;
 
 // Font sizes are pre-counter-scale, so these are close to their final on-screen pixel size.
@@ -93,12 +52,11 @@ const VESSEL_FONT = 12;
 /** How far a route's week-count sits off its own line, in screen pixels. */
 const ROUTE_LABEL_NUDGE = 7;
 
-/** Label placement, from tea-race's chart. Offsets are in chart units. */
 const LABEL_OFFSET: Record<LabelSide, [number, number]> = {
   n: [0, -17],
-  s: [0, 23],
-  e: [15, 4],
-  w: [-15, 4],
+  s: [0, 18],
+  e: [13, 4],
+  w: [-13, 4],
 };
 type TextAnchor = 'start' | 'middle' | 'end';
 const LABEL_ANCHOR: Record<LabelSide, TextAnchor> = { n: 'middle', s: 'middle', e: 'start', w: 'end' };
@@ -110,8 +68,8 @@ const DOCK_SLOT_ANGLES_DEG: Record<number, number[]> = {
 };
 
 const DOCK_RADIUS = {
-  port: Math.hypot(CASTLE_HALF.port.w, CASTLE_HALF.port.h) + 8,
-  inland: Math.hypot(CASTLE_HALF.inland.w, CASTLE_HALF.inland.h) + 8,
+  port: MARKER_HALF.port + 9,
+  inland: MARKER_HALF.inland + 9,
 };
 
 const cityPoint = (c: City) => CITY_POINTS[c.id];
@@ -133,25 +91,46 @@ const NEAREST_NEIGHBOUR: Record<string, number> = (() => {
 })();
 
 /** Smallest a crowded marker is allowed to shrink to. Below this it stops reading as a place. */
-const MIN_MARKER_SCALE = 0.42;
+const MIN_MARKER_SCALE = 0.5;
+
+/** A port's on-screen radius at `ZOOM_MIN`, in the same pixel terms as every other size constant
+ * here — see the file-level note on counter-scaling. */
+const PORT_RADIUS_AT_MIN_ZOOM = PORT_RADIUS;
+/** Where a port's marker grows to once there's room for it — about the size the old castle glyph
+ * drew at, and comfortably above the ~24px a mouse or fingertip actually wants to land on. */
+const PORT_RADIUS_AT_MAX_GROWTH = 16;
+/** Zoom level by which a marker has grown to its full size. Chosen well short of `ZOOM_MAX` (60):
+ * the top of the range exists to separate the tightest clusters (Bruges/Ghent), not to keep
+ * growing an already-comfortable target. */
+const MARKER_GROWTH_ZOOM = 10;
 
 /**
- * How large to draw a city's marker at this zoom, as a fraction of full size.
+ * How large to draw a city's marker at this zoom, as a multiple of its base radius.
  *
- * Full-size markers are ~24px wide, but Bruges and Ghent are half a degree apart — under 5px at the
- * default framing — so at wide zooms a whole cluster would be one unreadable heap of castles. Rather
- * than aggregate them behind a "3 cities here" badge (which would hide real, clickable places), each
- * marker simply shrinks toward its neighbour's distance and grows back to full size as zoom opens
- * the gap. It is continuous, so nothing pops as you scroll.
+ * This used to cap out at exactly 1 (full size) and stay there — full-size ports are ~18px wide,
+ * fine as a click target on their own, but fixed at that size forever meant zooming in bought you
+ * a bigger *map* without ever buying a bigger, easier-to-click *marker*, which read as the icons
+ * shrinking relative to everything else that did grow. Now the target itself grows with zoom, up
+ * to `PORT_RADIUS_AT_MAX_GROWTH`, and only the crowding check below still holds it back.
+ *
+ * The crowding check is unchanged in spirit: Bruges and Ghent are half a degree apart — under 5px
+ * at the default framing — so at wide zooms a whole cluster would be one unreadable heap of dots.
+ * Rather than aggregate them behind a "3 cities here" badge (which would hide real, clickable
+ * places), each marker's growth is capped by its neighbour's own distance and catches up once zoom
+ * opens the gap. Both curves are continuous, so nothing pops as you scroll or zoom.
  */
 function markerScale(c: City, inv: number): number {
+  const zoom = 1 / inv;
+  const growth = Math.min(1, Math.max(0, (zoom - ZOOM_MIN) / (MARKER_GROWTH_ZOOM - ZOOM_MIN)));
+  const desiredRadius = PORT_RADIUS_AT_MIN_ZOOM + (PORT_RADIUS_AT_MAX_GROWTH - PORT_RADIUS_AT_MIN_ZOOM) * growth;
   const gap = NEAREST_NEIGHBOUR[c.id] ?? Infinity;
-  const fullWidth = 24 * CASTLE_SCALE * inv;
-  if (!Number.isFinite(gap) || fullWidth <= 0) return 1;
-  return Math.max(MIN_MARKER_SCALE, Math.min(1, (gap * 0.9) / fullWidth));
+  // The gap is in world units; at this zoom two neighbours can each claim up to 0.45 of it
+  // (screen-pixel terms, same convention as `ring` below) before their full extents would touch.
+  const crowdCap = Number.isFinite(gap) ? gap * 0.45 * zoom : Infinity;
+  return Math.max(MIN_MARKER_SCALE, Math.min(desiredRadius, crowdCap) / PORT_RADIUS);
 }
 
-/** Rough text box in chart units; 0.55em per character is deliberately generous for Georgia. */
+/** Rough text box in chart units. */
 function textBox(text: string, fontSize: number, x: number, y: number, anchor: TextAnchor) {
   const w = text.length * fontSize * 0.55;
   const h = fontSize * 1.1;
@@ -165,8 +144,7 @@ const boxesOverlap = (a: Box, b: Box) =>
 /**
  * Default view: frames every city currently in the game rather than the whole globe, which at
  * zoom 1 would leave the playable area a sliver. Computed from `CITIES`, so a future chapter that
- * adds a city updates this with no code change. Longitudes are unwrapped first, so a game that one
- * day spans the dateline still frames the short way round.
+ * adds a city updates this with no code change.
  */
 const DEFAULT_VIEW = (() => {
   const pts = unwrapRun((CITIES as City[]).map(cityPoint));
@@ -193,14 +171,14 @@ const DEFAULT_VIEW = (() => {
 /**
  * Where each route's sailing-time label goes, and whether it can be drawn at all. Nudged
  * perpendicular to its own leg so it sits beside the line rather than on it, then dropped if it
- * would still land on a city's icon or name — a route label is decoration, a city name is not.
+ * would still land on a city's icon or name.
  */
 const ROUTE_LABELS = (() => {
   const cityBoxes: Box[] = [];
   for (const c of CITIES as City[]) {
     const p = cityPoint(c);
-    const half = c.port ? CASTLE_HALF.port : CASTLE_HALF.inland;
-    cityBoxes.push({ left: p.x - half.w, right: p.x + half.w, top: p.y - half.h, bottom: p.y + half.h });
+    const half = c.port ? MARKER_HALF.port : MARKER_HALF.inland;
+    cityBoxes.push({ left: p.x - half, right: p.x + half, top: p.y - half, bottom: p.y + half });
     const side: LabelSide = c.labelSide ?? 'e';
     const [dx, dy] = LABEL_OFFSET[side];
     cityBoxes.push(textBox(c.name, CITY_FONT, p.x + dx, p.y + dy, LABEL_ANCHOR[side]));
@@ -214,17 +192,12 @@ const ROUTE_LABELS = (() => {
     const dx = wrapDx(a.x, b.x);
     const dy = b.y - a.y;
     const len = Math.hypot(dx, dy) || 1;
-    // Midpoint plus a perpendicular UNIT vector. The actual nudge is applied at draw time scaled by
-    // 1/zoom — baking a fixed world-unit offset in here would leave the label drifting further and
-    // further off its own line the more you zoomed in, the same mistake that beached docked vessels.
     const sign = dy > 0 ? -1 : 1;
     const mx = a.x + dx / 2;
     const my = a.y + dy / 2;
     const nx = (-dy / len) * sign;
     const ny = (dx / len) * sign;
     const text = `${r.distanceWeeks}w`;
-    // Suppression is judged at full marker size, which is the crowded case — so a label kept here
-    // is clear at every zoom, not just wide ones.
     if (cityBoxes.some(cb => boxesOverlap(textBox(text, ROUTE_FONT, mx + nx * ROUTE_LABEL_NUDGE, my + ny * ROUTE_LABEL_NUDGE, 'middle'), cb))) {
       return [];
     }
@@ -242,10 +215,6 @@ interface VesselRender {
 /**
  * Docked vessels fan out to a small ring of slots so they never cover the city's own marker; a
  * vessel under way is interpolated along its leg the short way round the globe.
- *
- * `inv` is required, not optional: `DOCK_RADIUS` is authored in screen pixels like every other
- * size here, and applying it in world units instead put a ship docked at Bruges 4.6 degrees north
- * of it — 500km out in the North Sea. Counter-scaling keeps the fan a constant distance on screen.
  */
 function computeVesselRenders(vessels: Vessel[], inv: number): VesselRender[] {
   const dockedGroups = new Map<string, Vessel[]>();
@@ -299,29 +268,59 @@ interface MapViewProps {
   vessels: Vessel[];
   selectedVesselId: string | null;
   onSelectCity: (cityId: string) => void;
+  onSelectVessel: (vesselId: string) => void;
   cityInfoAge: Record<string, number | null>;
   previewedCityId?: string | null;
 }
 
 /** Fog by information age: fresh news reads solid, old or absent news fades the city out. */
 function fogOpacity(age: number | null): number {
-  if (age === null) return 0.35;
+  if (age === null) return 0.4;
   if (age <= 2) return 1;
-  return Math.max(0.5, 1 - age * 0.04);
+  return Math.max(0.55, 1 - age * 0.035);
+}
+
+/** A one-line hover summary — what the city popup would otherwise make you click to find out. */
+function cityTooltip(c: City, age: number | null, reachable: boolean, hasSelection: boolean): string {
+  const report =
+    age === null ? 'no report yet' : age <= 2 ? 'prices are fresh' : `report is ${age} week${age === 1 ? '' : 's'} stale`;
+  const reach = hasSelection ? (reachable ? ' — reachable in one hop' : ' — not directly reachable') : '';
+  return `${c.name} (${report})${reach}`;
 }
 
 function CompassRose({ x, y }: { x: number; y: number }) {
   return (
-    <g transform={`translate(${x},${y}) scale(0.55)`} opacity={0.55} pointerEvents="none">
-      <circle r={26} fill="none" stroke={GOLD} strokeWidth={1.4} />
-      <circle r={2} fill={GOLD} />
-      <line x1={0} y1={-24} x2={0} y2={24} stroke={GOLD} strokeWidth={1.4} />
-      <line x1={-24} y1={0} x2={24} y2={0} stroke={GOLD} strokeWidth={1.4} />
-      <path d="M 0,-24 L 5,-9 L 0,0 L -5,-9 Z" fill={GOLD} />
-      <text y={-30} textAnchor="middle" fontSize={11} fill={GOLD} fontFamily="Georgia, serif">
+    <g transform={`translate(${x},${y}) scale(0.55)`} opacity={0.6} pointerEvents="none">
+      <circle r={26} fill="none" stroke={CHART.label} strokeWidth={1.4} />
+      <circle r={2} fill={CHART.label} />
+      <line x1={0} y1={-24} x2={0} y2={24} stroke={CHART.label} strokeWidth={1.4} />
+      <line x1={-24} y1={0} x2={24} y2={0} stroke={CHART.label} strokeWidth={1.4} />
+      <path d="M 0,-24 L 5,-9 L 0,0 L -5,-9 Z" fill={CHART.label} />
+      <text y={-30} textAnchor="middle" fontSize={11} fill={CHART.label} fontFamily={FONT.body}>
         N
       </text>
     </g>
+  );
+}
+
+/**
+ * A city's mark: a filled dot for a port, the same dot left open for an inland city — Tea Race's
+ * own marker, unchanged, since both games' charts now share one visual language. `fill` carries
+ * whatever state colour applies (reachable highlight vs. the plain chart colour); an inland city
+ * always draws with `fill="none"` so "port vs. inland" reads as filled-vs-open at any zoom, the one
+ * distinction the previous castle/tower glyphs existed to make.
+ */
+function CityMark({ port, fill, opacity }: { port: boolean; fill: string; opacity: number }) {
+  const r = port ? PORT_RADIUS : INLAND_RADIUS;
+  return (
+    <circle
+      r={r}
+      fill={port ? fill : 'none'}
+      stroke={fill}
+      strokeWidth={MARKER_STROKE}
+      fillOpacity={opacity}
+      strokeOpacity={opacity}
+    />
   );
 }
 
@@ -329,6 +328,7 @@ export default function MapView({
   vessels,
   selectedVesselId,
   onSelectCity,
+  onSelectVessel,
   cityInfoAge,
   previewedCityId,
 }: MapViewProps) {
@@ -358,8 +358,6 @@ export default function MapView({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const scale = contentScale();
-      // A momentarily zero-sized SVG (it happens behind a modal) would make this NaN, and once NaN
-      // is in the view state nothing recovers it.
       if (!Number.isFinite(scale) || scale <= 0) return;
       const rect = svg.getBoundingClientRect();
       const vbX = (e.clientX - rect.left - (rect.width - VB_WIDTH * scale) / 2) / scale;
@@ -376,9 +374,7 @@ export default function MapView({
   }, []);
 
   // Drag listeners live on the window, not the SVG: a fast drag can leave the map pane, and an
-  // SVG-scoped listener would leave the drag stuck mid-pan. Pointer events cover mouse, touch and
-  // pen from one path; `pointercancel` matters because the browser fires it (and no `pointerup`)
-  // when it steals a gesture.
+  // SVG-scoped listener would leave the drag stuck mid-pan.
   useEffect(() => {
     if (!isDragging) return;
     const scale = contentScale();
@@ -417,18 +413,49 @@ export default function MapView({
       };
     });
 
-  /** Counter-scale for markers and text, so they hold a constant screen size at any zoom. See the
-   * note on the size constants at the top of this file for why that is load-bearing here. */
+  /** Counter-scale for markers and text, so they hold a constant screen size at any zoom. */
   const inv = 1 / view.zoom;
 
   const vesselRenders = useMemo(() => computeVesselRenders(vessels, inv), [vessels, inv]);
 
   /**
+   * The selected vessel's own path, current leg plus every queued leg after it — Tea Race draws
+   * its selected ship's route the same way. Without this, "where is this vessel actually headed"
+   * only exists in the Fleet popup's text; a queued multi-hop plan (Phase 15) had no visual trace
+   * on the chart at all. Starts from the vessel's own live position (mid-leg if under way), not
+   * just its origin port, so the line always begins exactly where the ship marker is drawn.
+   */
+  const plannedPath = useMemo(() => {
+    if (!selected) return null;
+    const startRender = vesselRenders.find(r => r.vessel.id === selected.id);
+    const start = startRender ? { x: startRender.x, y: startRender.y } : cityPoint(findCity(selected.location)!);
+    const stops = [start];
+    let cursorId = selected.location;
+    if (selected.destination) {
+      const dest = findCity(selected.destination);
+      if (!dest) return null;
+      stops.push(cityPoint(dest));
+      cursorId = selected.destination;
+    }
+    for (const routeId of selected.plannedRoute ?? []) {
+      const route = findRouteById(routeId);
+      if (!route) break;
+      const nextId = otherEndOfRoute(route, cursorId);
+      const nextCity = findCity(nextId);
+      if (!nextCity) break;
+      stops.push(cityPoint(nextCity));
+      cursorId = nextId;
+    }
+    if (stops.length < 2) return null;
+    return unwrapRun(stops)
+      .map((p, i) => `${i ? 'L' : 'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+      .join('');
+  }, [selected, vesselRenders]);
+
+  /**
    * Which city labels to draw at this zoom. Every label is a constant screen size, so in world
    * units it covers `size / zoom` — shrinking as you zoom in. Labels are placed greedily in
-   * priority order and any that would collide with one already placed is dropped, so a dense
-   * cluster shows a few names when far out and all of them once you zoom in. The city under the
-   * cursor, and the one open in the sidebar, always win a slot.
+   * priority order and any that would collide with one already placed is dropped.
    */
   const visibleLabels = useMemo(() => {
     const ranked = [...(CITIES as City[])].sort((a, b) => {
@@ -442,14 +469,10 @@ export default function MapView({
       const p = cityPoint(c);
       const side: LabelSide = c.labelSide ?? 'e';
       const [dx, dy] = LABEL_OFFSET[side];
-      // Same geometry as the drawn label, expressed in world units at this zoom.
       const ms = markerScale(c, inv);
       const raw = textBox(c.name, CITY_FONT * inv, p.x + dx * inv * ms, p.y + dy * inv * ms, LABEL_ANCHOR[side]);
       const pad = LABEL_HALO * inv;
       const box = { left: raw.left - pad, right: raw.right + pad, top: raw.top - pad, bottom: raw.bottom + pad };
-      // The city in the sidebar and the one under the cursor are shown come what may — but they
-      // must still RESERVE their space, or a later label is placed straight on top of them. (That
-      // was a real bug: Bruges is previewed by default, so Antwerp's label landed over it.)
       const forced = c.id === previewedCityId || c.id === hoveredCityId;
       const clashes =
         !forced &&
@@ -457,11 +480,11 @@ export default function MapView({
           (CITIES as City[]).some(o => {
             if (o.id === c.id) return false;
             const op = cityPoint(o);
-            const oh = o.port ? CASTLE_HALF.port : CASTLE_HALF.inland;
+            const oh = o.port ? MARKER_HALF.port : MARKER_HALF.inland;
             const os = markerScale(o, inv);
             return boxesOverlap(box, {
-              left: op.x - oh.w * inv * os, right: op.x + oh.w * inv * os,
-              top: op.y - oh.h * inv * os, bottom: op.y + oh.h * inv * os,
+              left: op.x - oh * inv * os, right: op.x + oh * inv * os,
+              top: op.y - oh * inv * os, bottom: op.y + oh * inv * os,
             });
           }));
       if (!clashes) {
@@ -476,28 +499,28 @@ export default function MapView({
    * side is what makes panning round the world seamless. */
   const worldCopy = (offset: number) => (
     <g key={offset} transform={offset ? `translate(${offset} 0)` : undefined}>
-      <path d={CHART.graticule} fill="none" stroke={PARCHMENT} strokeWidth={0.25} opacity={0.12} vectorEffect="non-scaling-stroke" />
-      <path d={CHART.equator} fill="none" stroke={PARCHMENT} strokeWidth={0.4} opacity={0.2} strokeDasharray="6 4" vectorEffect="non-scaling-stroke" />
+      <path d={BACKDROP.graticule} fill="none" stroke={CHART.graticule} strokeWidth={0.5} vectorEffect="non-scaling-stroke" />
+      <path d={BACKDROP.equator} fill="none" stroke={CHART.equator} strokeWidth={0.7} strokeDasharray="8 5" vectorEffect="non-scaling-stroke" />
 
-      {CHART.land.map((d, i) => (
+      {BACKDROP.land.map((d, i) => (
         <path
           key={`l${i}`}
           d={d}
           fill="url(#geo-hatch)"
-          stroke={GEO_COAST}
-          strokeWidth={0.55}
+          stroke={GEO.hatch}
+          strokeWidth={0.7}
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
         />
       ))}
-      {CHART.seas.map((d, i) => (
-        <path key={`s${i}`} d={d} fill={SEA_COLOR} stroke={GEO_COAST} strokeWidth={0.45} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+      {BACKDROP.seas.map((d, i) => (
+        <path key={`s${i}`} d={d} fill={CHART.sea} stroke={GEO.hatch} strokeWidth={0.55} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
       ))}
 
-      <path d={CHART.rivers} fill="none" stroke={GEO_WATER} strokeWidth={0.35} strokeLinecap="round" opacity={0.8} vectorEffect="non-scaling-stroke" />
-      <path d={CHART.mountains} fill="none" stroke={GEO_RELIEF} strokeWidth={0.4} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <path d={BACKDROP.rivers} fill="none" stroke={GEO.water} strokeWidth={0.4} strokeLinecap="round" opacity={0.85} vectorEffect="non-scaling-stroke" />
+      <path d={BACKDROP.mountains} fill="none" stroke={GEO.relief} strokeWidth={0.45} strokeLinecap="round" vectorEffect="non-scaling-stroke" />
 
-      {CHART.labels.map((lb, i) => (
+      {BACKDROP.labels.map((lb, i) => (
         <text
           key={i}
           x={lb.x}
@@ -505,9 +528,9 @@ export default function MapView({
           textAnchor="middle"
           fontStyle="italic"
           fontSize={(lb.kind === 'sea' ? 14 : 12) * inv}
-          fill={lb.kind === 'sea' ? GEO_WATER : PARCHMENT}
-          fillOpacity={lb.kind === 'sea' ? 0.5 : 0.45}
-          fontFamily="Georgia, serif"
+          fill={lb.kind === 'sea' ? GEO.water : CHART.label}
+          fillOpacity={lb.kind === 'sea' ? 0.55 : 0.4}
+          fontFamily={FONT.body}
           pointerEvents="none"
         >
           {lb.text}
@@ -528,14 +551,18 @@ export default function MapView({
             y1={a.y}
             x2={a.x + dx}
             y2={b.y}
-            stroke={GOLD}
-            strokeWidth={0.5}
+            stroke={CHART.route}
+            strokeWidth={0.7}
             strokeDasharray={r.type === 'sea' ? '2 1.6' : r.type === 'river' ? '0.8 0.8' : undefined}
-            opacity={0.5}
+            opacity={0.75}
             vectorEffect="non-scaling-stroke"
           />
         );
       })}
+
+      {offset === 0 && plannedPath && (
+        <path d={plannedPath} stroke={CHART.routeLive} strokeWidth={2.2} fill="none" strokeLinecap="round" vectorEffect="non-scaling-stroke" opacity={0.85} pointerEvents="none" />
+      )}
 
       {offset === 0 &&
         ROUTE_LABELS.map(rl => (
@@ -546,11 +573,10 @@ export default function MapView({
             textAnchor="middle"
             dominantBaseline="middle"
             fontSize={ROUTE_FONT * inv}
-            fill={GOLD}
-            fillOpacity={0.65}
-            fontFamily="Georgia, serif"
-            stroke={VOID_COLOR}
-            strokeWidth={2.5 * inv}
+            fill={CHART.distance}
+            fontFamily={FONT.data}
+            stroke={CHART.labelHalo}
+            strokeWidth={3 * inv}
             paintOrder="stroke"
             strokeLinejoin="round"
             pointerEvents="none"
@@ -570,14 +596,12 @@ export default function MapView({
         const opacity = fogOpacity(cityInfoAge[c.id] ?? null);
         const isPreviewed = c.id === previewedCityId;
         const isHovered = c.id === hoveredCityId;
-        const fill = reachable ? GOLD : PARCHMENT;
-        const half = c.port ? CASTLE_HALF.port : CASTLE_HALF.inland;
+        const fill = reachable ? CHART.routeLive : CHART.port;
+        const half = c.port ? MARKER_HALF.port : MARKER_HALF.inland;
         const mScale = markerScale(c, inv);
-        const ring = Math.hypot(half.w, half.h) * mScale + 4;
+        const ring = half * mScale + 5;
         const side: LabelSide = c.labelSide ?? 'e';
         const [ldx, ldy] = LABEL_OFFSET[side];
-        // Only the centre copy carries ids/labels; the wrapped copies are pure decoration, so a
-        // duplicate of every label does not fight the real one for space.
         const showLabel = offset === 0 && (visibleLabels.has(c.id) || isPreviewed || isHovered);
         return (
           <g
@@ -588,20 +612,25 @@ export default function MapView({
             onPointerLeave={() => setHoveredCityId(id => (id === c.id ? null : id))}
             style={{ cursor: 'pointer' }}
           >
+            <title>{cityTooltip(c, cityInfoAge[c.id] ?? null, reachable, !!selected)}</title>
             {isPreviewed && (
-              <circle cx={p.x} cy={p.y} r={ring * inv} fill="none" stroke={GOLD} strokeWidth={1.4 * inv} />
+              <circle cx={p.x} cy={p.y} r={ring * inv} fill="none" stroke={CHART.routeLive} strokeWidth={1.6 * inv} />
             )}
             {isHovered && !isPreviewed && (
               <circle
                 cx={p.x} cy={p.y} r={ring * inv}
-                fill="none" stroke={GOLD} strokeWidth={1 * inv} opacity={0.55}
+                fill="none" stroke={CHART.routeLive} strokeWidth={1.2 * inv} opacity={0.6}
                 pointerEvents="none"
               />
             )}
-            <g transform={`translate(${p.x},${p.y}) scale(${CASTLE_SCALE * inv * mScale})`} fillOpacity={opacity}>
-              <path d={c.port ? PORT_CASTLE_PATH : INLAND_CASTLE_PATH} fill={fill} stroke={INK} strokeWidth={1.5} />
-              <rect {...(c.port ? PORT_CASTLE_DOOR : INLAND_CASTLE_DOOR)} fill={INK} />
-              {c.port && <path d={PORT_CASTLE_FLAG} fill="none" stroke={fill} strokeWidth={1.5} />}
+            {/* The real click/tap target — deliberately bigger than the visible mark and always
+                filled, even for an inland city's own open ring. Without this, an inland city (fill
+                "none") is only clickable on its thin 1.8px stroke, and even a filled port is no
+                easier to hit than its plain visual radius. Invisible, so it never changes what the
+                chart looks like. */}
+            <circle cx={p.x} cy={p.y} r={Math.max(half * mScale, 11) * inv} fill="transparent" pointerEvents="all" />
+            <g transform={`translate(${p.x},${p.y}) scale(${inv * mScale})`} pointerEvents="none">
+              <CityMark port={c.port} fill={fill} opacity={opacity} />
             </g>
             {showLabel && (
               <text
@@ -609,10 +638,10 @@ export default function MapView({
                 y={p.y + ldy * inv * mScale}
                 textAnchor={LABEL_ANCHOR[side]}
                 fontSize={CITY_FONT * inv}
-                fill={isHovered ? GOLD : PARCHMENT}
+                fill={isHovered ? CHART.routeLive : CHART.label}
                 fillOpacity={opacity}
-                fontFamily="Georgia, serif"
-                stroke={VOID_COLOR}
+                fontFamily={FONT.body}
+                stroke={CHART.labelHalo}
                 strokeWidth={3 * inv}
                 paintOrder="stroke"
                 strokeLinejoin="round"
@@ -631,26 +660,33 @@ export default function MapView({
         const color = v.kind === 'ship' ? SHIP_COLOR : COURIER_COLOR;
         const isSelected = v.id === selectedVesselId;
         const showLabel = isSelected || v.id === hoveredVesselId;
+        const at = findCity(v.location);
+        const to = v.destination ? findCity(v.destination) : null;
         return (
           <g
             key={v.id}
+            onClick={() => onSelectVessel(v.id)}
             onPointerEnter={() => setHoveredVesselId(v.id)}
             onPointerLeave={() => setHoveredVesselId(id => (id === v.id ? null : id))}
-            style={{ cursor: 'default' }}
+            style={{ cursor: 'pointer' }}
           >
+            <title>{`${v.name} — ${to ? `en route to ${to.name}` : `docked at ${at?.name ?? v.location}`}`}</title>
+            {/* Same fixed-minimum invisible hit target as a city mark — a selected ship's own
+                triangle is only ~12px and a docked courier's dot smaller still. */}
+            <circle cx={x} cy={y} r={11 * inv} fill="transparent" pointerEvents="all" />
             {v.kind === 'ship' ? (
               <path
                 d="M 0,-7 L 6,6 L -6,6 Z"
                 transform={`translate(${x},${y}) scale(${1.0 * inv})`}
                 fill={color}
-                stroke={isSelected ? GOLD : '#000'}
+                stroke={isSelected ? CHART.routeLive : CHART.labelHalo}
                 strokeWidth={isSelected ? 2 : 1}
               />
             ) : (
               <g transform={`translate(${x},${y}) scale(${0.42 * inv})`}>
-                <circle r={isSelected ? 6 : 5} fill={color} stroke={isSelected ? GOLD : '#000'} strokeWidth={isSelected ? 2 : 1} />
+                <circle r={isSelected ? 6 : 5} fill={color} stroke={isSelected ? CHART.routeLive : CHART.labelHalo} strokeWidth={isSelected ? 2 : 1} />
                 {rotationDeg !== null && (
-                  <path d="M 5,0 L -3,-4 L -3,4 Z" transform={`rotate(${rotationDeg})`} fill={color} stroke="#000" strokeWidth={0.75} />
+                  <path d="M 5,0 L -3,-4 L -3,4 Z" transform={`rotate(${rotationDeg})`} fill={color} stroke={CHART.labelHalo} strokeWidth={0.75} />
                 )}
               </g>
             )}
@@ -659,9 +695,9 @@ export default function MapView({
                 x={x + 10 * inv}
                 y={y + 4 * inv}
                 fontSize={VESSEL_FONT * inv}
-                fill={GOLD}
-                fontFamily="Georgia, serif"
-                stroke={VOID_COLOR}
+                fill={CHART.label}
+                fontFamily={FONT.body}
+                stroke={CHART.labelHalo}
                 strokeWidth={3 * inv}
                 paintOrder="stroke"
                 pointerEvents="none"
@@ -683,7 +719,7 @@ export default function MapView({
         style={{
           width: '100%',
           height: '100%',
-          background: VOID_COLOR,
+          background: GEO.void,
           cursor: isDragging ? 'grabbing' : 'grab',
           touchAction: 'none',
         }}
@@ -706,28 +742,21 @@ export default function MapView({
             patternUnits="userSpaceOnUse"
             patternTransform={`rotate(35) scale(${inv})`}
           >
-            {/* Opaque ground inside the tile. Without it the land paths were hachure strokes over
-                nothing, so the ocean showed through the gaps and land and sea read as the same
-                tone — the reason the two were hard to tell apart. Slightly oversized so the
-                rotated tiles cannot leave hairline seams between them. */}
-            <rect x={-0.5} y={-0.5} width={4.2} height={4.2} fill={LAND_COLOR} />
-            <line x1={0} y1={0} x2={0} y2={3.2} stroke={GEO_HATCH} strokeWidth={0.35 * inv} />
+            {/* Opaque ground inside the tile, slightly oversized so rotated tiles leave no seams. */}
+            <rect x={-0.5} y={-0.5} width={4.2} height={4.2} fill={GEO.landGround} />
+            <line x1={0} y1={0} x2={0} y2={3.2} stroke={GEO.hatch} strokeWidth={0.35 * inv} opacity={0.5} />
           </pattern>
         </defs>
 
         {/* Outside the transformed group on purpose: inside it, the sea would pan away and leave
-            bare void at the sheet's edges.
-            Deliberately drawn far larger than the viewBox. The pane's aspect ratio won't generally
-            match the viewBox's, so `preserveAspectRatio`'s default letterboxes the chart — and the
-            wrapped world copies happily draw coastline into those letterbox bars, while a
-            viewBox-sized sea rect does not, leaving bare void stripes down both edges with land
-            floating in them. Overdrawing costs nothing and covers the bars at any pane shape. */}
+            bare ground at the sheet's edges. Deliberately drawn far larger than the viewBox to
+            cover the pane's letterbox bars at any aspect ratio. */}
         <rect
           x={-VB_WIDTH}
           y={-VB_HEIGHT}
           width={VB_WIDTH * 3}
           height={VB_HEIGHT * 3}
-          fill={SEA_COLOR}
+          fill={CHART.sea}
         />
 
         <g transform={`translate(${view.panX},${view.panY}) scale(${view.zoom})`}>
@@ -765,13 +794,15 @@ const ZOOM_CONTROLS: React.CSSProperties = {
   gap: 6,
 };
 
+/* Driven by the chart palette, not hardcoded — these sit on the sea, so they have to change with
+   it (a dark-chart button over a pale printed board would be a black box floating in the water). */
 const ZOOM_BUTTON: React.CSSProperties = {
   width: 44,
   height: 44,
-  background: '#1a1510',
-  border: `1px solid ${INK}`,
-  color: PARCHMENT,
-  fontFamily: 'Georgia, serif',
+  background: CHART.sea,
+  border: `1px solid ${CHART.coast}`,
+  color: CHART.coast,
+  fontFamily: FONT.data,
   fontSize: '1.1rem',
   lineHeight: 1,
   cursor: 'pointer',

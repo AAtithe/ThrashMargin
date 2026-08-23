@@ -1,3 +1,4 @@
+import { UI } from '../theme';
 import { findCity } from '../sim/content';
 import { CURRENCIES, findCurrency, toFlorins } from '../sim/currency';
 import type { ExchangeRates, Obligation, ObligationKind } from '../sim/types';
@@ -6,7 +7,7 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0.9rem 0 0.4rem',
 };
 
@@ -22,14 +23,14 @@ const ROW: React.CSSProperties = {
   justifyContent: 'space-between',
   gap: '0.5rem',
   padding: '0.3rem 0',
-  borderBottom: '1px solid #2a2117',
+  borderBottom: `1px solid ${UI.rule}`,
   fontSize: '0.75rem',
 };
 
 const SMALL_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.2rem 0.5rem',
   fontFamily: 'inherit',
   fontSize: '0.7rem',
@@ -83,14 +84,14 @@ export default function LedgerPanel({ week, cash, exchangeRates, obligations, fl
   return (
     <div>
       <p style={LABEL}>Ledger</p>
-      <p style={{ fontSize: '0.75rem', margin: 0, color: '#8a7a5a' }}>
-        Owed to others: <span style={{ color: '#b5451a' }}>{payableTotal}f</span>
+      <p style={{ fontSize: '0.75rem', margin: 0, color: UI.textSoft }}>
+        Owed to others: <span style={{ color: UI.bad }}>{payableTotal}f</span>
         {' · '}
-        Owed to you: <span style={{ color: '#3a6b5a' }}>{receivableTotal}f</span>
+        Owed to you: <span style={{ color: UI.good }}>{receivableTotal}f</span>
       </p>
 
       <p style={LABEL}>Exchange rates (florins per unit)</p>
-      <div style={{ fontSize: '0.7rem', color: '#8a7a5a', display: 'flex', gap: '0.7rem', flexWrap: 'wrap' }}>
+      <div style={{ fontSize: '0.7rem', color: UI.textSoft, display: 'flex', gap: '0.7rem', flexWrap: 'wrap' }}>
         {CURRENCIES.filter(c => c.id !== 'florin').map(c => (
           <span key={c.id}>
             {c.symbol} {c.name}: {exchangeRates[c.id].toFixed(2)}f
@@ -100,14 +101,14 @@ export default function LedgerPanel({ week, cash, exchangeRates, obligations, fl
 
       <p style={LABEL}>Maturity ladder{beyond.length > 0 ? ` — next 12 weeks (+${beyond.length} later)` : ''}</p>
       <div style={LIST}>
-        {dueSoon.length === 0 && <p style={{ fontSize: '0.75rem', color: '#8a7a5a' }}>Nothing due soon.</p>}
+        {dueSoon.length === 0 && <p style={{ fontSize: '0.75rem', color: UI.textSoft }}>Nothing due soon.</p>}
         {dueSoon.map(o => {
           const currency = findCurrency(o.currency);
           const city = findCity(o.cityId);
           return (
             <div key={o.id} style={ROW}>
               <div style={{ flex: 1 }}>
-                <span style={{ color: o.direction === 'payable' ? '#b5451a' : '#3a6b5a' }}>
+                <span style={{ color: o.direction === 'payable' ? UI.bad : UI.good }}>
                   {o.direction === 'payable' ? '−' : '+'}
                   {o.florinValue}f
                 </span>
@@ -124,7 +125,7 @@ export default function LedgerPanel({ week, cash, exchangeRates, obligations, fl
           );
         })}
       </div>
-      <p style={{ fontSize: '0.65rem', color: '#6a5a40', margin: '0.3rem 0 0' }}>Cash on hand: {Math.round(cash)}f</p>
+      <p style={{ fontSize: '0.65rem', color: UI.textFaint, margin: '0.3rem 0 0' }}>Cash on hand: {Math.round(cash)}f</p>
     </div>
   );
 }

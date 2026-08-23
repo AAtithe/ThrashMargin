@@ -1,6 +1,7 @@
 import { findCity } from '../sim/content';
 import { UNMASK_EVIDENCE_THRESHOLD, evidenceOnTrack } from '../sim/dossier';
 import type { EvidenceItem, EvidenceTrack, House } from '../sim/types';
+import { UI } from '../theme';
 
 /**
  * The Evidence Board (design doc §11 screen 7, and Section 12's own named system for Chapter 5:
@@ -20,13 +21,13 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0.9rem 0 0.4rem',
 };
 
 const ROW: React.CSSProperties = {
   padding: '0.4rem 0',
-  borderBottom: '1px solid #2a2117',
+  borderBottom: `1px solid ${UI.rule}`,
   fontSize: '0.78rem',
 };
 
@@ -39,7 +40,7 @@ const KIND_LABEL: Record<EvidenceItem['kind'], string> = {
 function EvidenceRows({ items }: { items: EvidenceItem[] }) {
   if (items.length === 0) {
     return (
-      <p style={{ fontSize: '0.75rem', color: '#6a5a40', margin: '0 0 0.3rem', fontStyle: 'italic' }}>
+      <p style={{ fontSize: '0.75rem', color: UI.textFaint, margin: '0 0 0.3rem', fontStyle: 'italic' }}>
         Nothing pinned here yet.
       </p>
     );
@@ -50,9 +51,9 @@ function EvidenceRows({ items }: { items: EvidenceItem[] }) {
         <div key={e.id} style={ROW}>
           <div>
             {e.name}{' '}
-            <span style={{ fontSize: '0.68rem', color: '#8a7a5a' }}>({KIND_LABEL[e.kind]}, week {e.discoveredWeek})</span>
+            <span style={{ fontSize: '0.68rem', color: UI.textSoft }}>({KIND_LABEL[e.kind]}, week {e.discoveredWeek})</span>
           </div>
-          <div style={{ fontSize: '0.7rem', color: '#8a7a5a' }}>{e.description}</div>
+          <div style={{ fontSize: '0.7rem', color: UI.textSoft }}>{e.description}</div>
         </div>
       ))}
     </>
@@ -74,7 +75,7 @@ export default function EvidenceBoardPanel({ evidence, houses, flags }: Evidence
   return (
     <div>
       <p style={{ ...LABEL, marginTop: 0 }}>The parentage dossier</p>
-      <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: '0 0 0.4rem' }}>
+      <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: '0 0 0.4rem' }}>
         Assembled a piece at a time, across years. Nothing here answers the question yet.
       </p>
       <EvidenceRows items={evidenceOnTrack(evidence, 'parentage')} />
@@ -86,17 +87,17 @@ export default function EvidenceBoardPanel({ evidence, houses, flags }: Evidence
         return (
           <div key={house.id}>
             <p style={LABEL}>{house.name} — who stands behind it</p>
-            <p style={{ fontSize: '0.75rem', color: unmasked ? '#3a6b5a' : '#a08040', margin: '0 0 0.4rem' }}>
+            <p style={{ fontSize: '0.75rem', color: unmasked ? UI.good : UI.warn, margin: '0 0 0.4rem' }}>
               {unmasked
                 ? 'Named.'
                 : `${held.length} of ${UNMASK_EVIDENCE_THRESHOLD} pieces in hand — not yet enough to name anybody.`}
             </p>
             {unmasked && (
-              <p style={{ fontSize: '0.78rem', color: '#e8d5a3', margin: '0 0 0.5rem' }}>{hidden.text}</p>
+              <p style={{ fontSize: '0.78rem', color: UI.brass, margin: '0 0 0.5rem' }}>{hidden.text}</p>
             )}
             <EvidenceRows items={held} />
             {!unmasked && (
-              <p style={{ fontSize: '0.7rem', color: '#6a5a40', margin: '0.4rem 0 0', fontStyle: 'italic' }}>
+              <p style={{ fontSize: '0.7rem', color: UI.textFaint, margin: '0.4rem 0 0', fontStyle: 'italic' }}>
                 An agent placed inside the company may send more. So, for a price, may a notary.
                 Seat: {findCity(house.homeCity)?.name ?? house.homeCity}.
               </p>

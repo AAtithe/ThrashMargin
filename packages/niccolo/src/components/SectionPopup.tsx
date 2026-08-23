@@ -19,10 +19,12 @@
  *   `elementFromPoint`, and the third time this codebase has been bitten by a translucent overlay
  *   quietly eating clicks. Keep them scoped here.
  */
+import { UI } from '../theme';
+
 const SCRIM: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
-  background: 'rgba(8, 6, 4, 0.35)',
+  background: 'rgba(13, 20, 25, 0.35)',
   zIndex: 55,
 };
 
@@ -34,8 +36,8 @@ const DRAWER: React.CSSProperties = {
   width: 'min(460px, 92vw)',
   display: 'flex',
   flexDirection: 'column',
-  background: '#161009',
-  borderRight: '1px solid #4a3d28',
+  background: UI.panelRaised,
+  borderRight: `1px solid ${UI.rule}`,
   boxShadow: '8px 0 32px rgba(0,0,0,0.55)',
   zIndex: 60,
   animation: 'niccolo-drawer-in 160ms ease-out',
@@ -58,14 +60,14 @@ const HEAD: React.CSSProperties = {
   justifyContent: 'space-between',
   alignItems: 'baseline',
   padding: '0.9rem 1.2rem 0.7rem',
-  borderBottom: '1px solid #2a2117',
+  borderBottom: `1px solid ${UI.rule}`,
   flexShrink: 0,
 };
 
 const TITLE: React.CSSProperties = {
   fontSize: '1.05rem',
   letterSpacing: '0.04em',
-  color: '#e8d5a3',
+  color: UI.brass,
   margin: 0,
   fontWeight: 'normal',
 };
@@ -73,7 +75,7 @@ const TITLE: React.CSSProperties = {
 const CLOSE: React.CSSProperties = {
   background: 'none',
   border: 'none',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   fontSize: '1.1rem',
   lineHeight: 1,
   cursor: 'pointer',

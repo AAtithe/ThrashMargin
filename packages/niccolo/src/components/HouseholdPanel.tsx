@@ -1,12 +1,13 @@
 import { CITIES, HOME_CITY } from '../sim/content';
 import { activeCharacters, assignmentSummary } from '../sim/characters';
 import type { Character, CharacterAssignment, CondottaContract, Vessel } from '../sim/types';
+import { UI } from '../theme';
 
 const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0.9rem 0 0.4rem',
 };
 
@@ -18,14 +19,14 @@ const LIST: React.CSSProperties = {
 
 const ROW: React.CSSProperties = {
   padding: '0.4rem 0',
-  borderBottom: '1px solid #2a2117',
+  borderBottom: `1px solid ${UI.rule}`,
   fontSize: '0.8rem',
 };
 
 const FIELD: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.7rem',
   padding: '0.2rem 0.3rem',
@@ -34,9 +35,9 @@ const FIELD: React.CSSProperties = {
 };
 
 function loyaltyColor(loyalty: number): string {
-  if (loyalty <= 20) return '#b5451a';
-  if (loyalty <= 50) return '#a08040';
-  return '#3a6b5a';
+  if (loyalty <= 20) return UI.bad;
+  if (loyalty <= 50) return UI.warn;
+  return UI.good;
 }
 
 function assignmentKey(assignment: CharacterAssignment): string {
@@ -90,24 +91,24 @@ export default function HouseholdPanel({
   return (
     <div>
       <p style={LABEL}>Household</p>
-      <p style={{ fontSize: '0.75rem', margin: 0, color: '#8a7a5a' }}>
-        Conscience: <span style={{ color: conscience <= 40 ? '#b5451a' : '#e8d5a3' }}>{Math.round(conscience)}</span>
+      <p style={{ fontSize: '0.75rem', margin: 0, color: UI.textSoft }}>
+        Conscience: <span style={{ color: conscience <= 40 ? UI.bad : UI.brass }}>{Math.round(conscience)}</span>
         {' · '}
         {wagesSuspended ? (
           <>Wages: not yet owed — no one draws a salary until you're formally made factor</>
         ) : (
           <>
             Wages due next week: {totalSalary}f{' '}
-            <span style={{ color: canPayNext ? '#3a6b5a' : '#b5451a' }}>
+            <span style={{ color: canPayNext ? UI.good : UI.bad }}>
               {canPayNext ? '(covered)' : '(cannot pay — loyalty will fall)'}
             </span>
           </>
         )}
       </p>
-      <p style={{ fontSize: '0.75rem', margin: '0.3rem 0 0', color: '#8a7a5a' }}>
+      <p style={{ fontSize: '0.75rem', margin: '0.3rem 0 0', color: UI.textSoft }}>
         Astorre's company:{' '}
         {condotta ? (
-          <span style={{ color: '#3a6b5a' }}>
+          <span style={{ color: UI.good }}>
             on campaign at Naples, {condotta.weeksRemaining} week{condotta.weeksRemaining === 1 ? '' : 's'} left ·{' '}
             {condotta.retainerPerWeek}f/wk retainer
           </span>
@@ -121,15 +122,15 @@ export default function HouseholdPanel({
           <div key={c.id} style={ROW}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span>
-                {c.name} <span style={{ color: '#8a7a5a' }}>— {c.role}</span>
+                {c.name} <span style={{ color: UI.textSoft }}>— {c.role}</span>
               </span>
               <span style={{ color: loyaltyColor(c.loyalty) }}>loyalty {Math.round(c.loyalty)}</span>
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#8a7a5a' }}>
+            <div style={{ fontSize: '0.7rem', color: UI.textSoft }}>
               law {c.skills.law} · trade {c.skills.trade} · combat {c.skills.combat} · intrigue {c.skills.intrigue}
               {c.salary > 0 && ` · ${c.salary}f/wk`}
             </div>
-            <div style={{ fontSize: '0.7rem', color: '#c9b88a' }}>{assignmentSummary(c, vessels)}</div>
+            <div style={{ fontSize: '0.7rem', color: UI.text }}>{assignmentSummary(c, vessels)}</div>
             <select
               id={`household-assign-${c.id}`}
               style={FIELD}
@@ -158,7 +159,7 @@ export default function HouseholdPanel({
       </div>
 
       {departed.length > 0 && (
-        <p style={{ fontSize: '0.7rem', color: '#6a5a40', margin: '0.4rem 0 0' }}>
+        <p style={{ fontSize: '0.7rem', color: UI.textFaint, margin: '0.4rem 0 0' }}>
           Left the company: {departed.map(c => c.name).join(', ')}.
         </p>
       )}

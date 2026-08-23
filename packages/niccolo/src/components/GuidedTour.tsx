@@ -1,19 +1,20 @@
 import { useEffect, useState } from 'react';
 import type { GameState } from '../sim/types';
+import { UI, FONT } from '../theme';
 
-const GOLD = '#e8d5a3';
-const INK = '#4a3d28';
+const GOLD = UI.brass;
+const INK = UI.rule;
 
 const CARD: React.CSSProperties = {
   position: 'fixed',
   zIndex: 102,
   width: '20rem',
-  background: '#17130d',
+  background: UI.panelRaised,
   border: `1px solid ${INK}`,
-  boxShadow: '0 0 0 1px #0e0b07, 0 8px 40px rgba(0,0,0,0.6)',
+  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px rgba(0,0,0,0.6)`,
   padding: '1.1rem',
-  fontFamily: '"Georgia", "Times New Roman", serif',
-  color: '#c9b88a',
+  fontFamily: FONT.body,
+  color: UI.text,
   transition: 'top 0.2s ease, left 0.2s ease',
 };
 
@@ -21,7 +22,7 @@ const STEP_LABEL: React.CSSProperties = {
   fontSize: '0.65rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.4rem',
 };
 
@@ -46,9 +47,9 @@ const FOOTER: React.CSSProperties = {
 };
 
 const BUTTON: React.CSSProperties = {
-  background: '#1a1510',
+  background: UI.panel,
   border: `1px solid ${INK}`,
-  color: '#c9b88a',
+  color: UI.text,
   padding: '0.4rem 0.7rem',
   fontFamily: 'inherit',
   fontSize: '0.75rem',
@@ -59,7 +60,7 @@ const BUTTON: React.CSSProperties = {
 // for the same property across renders of the same element is a real React warning ("Removing
 // borderColor border"), not just a lint nag.
 const PRIMARY_BUTTON: React.CSSProperties = { ...BUTTON, border: `1px solid ${GOLD}`, color: GOLD };
-const GHOST_BUTTON: React.CSSProperties = { ...BUTTON, border: 'none', color: '#6a5a40', padding: '0.4rem 0.2rem' };
+const GHOST_BUTTON: React.CSSProperties = { ...BUTTON, border: 'none', color: UI.textFaint, padding: '0.4rem 0.2rem' };
 
 /**
  * Fixed vessel id `createInitialState` always assigns the player's ship — stable enough for a
@@ -302,7 +303,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
         height: rect.height + PADDING * 2,
         borderRadius: 6,
         border: `2px solid ${GOLD}`,
-        boxShadow: '0 0 0 9999px rgba(8, 6, 4, 0.78)',
+        boxShadow: '0 0 0 9999px rgba(13, 20, 25, 0.78)',
         pointerEvents: 'none',
         transition: 'all 0.2s ease',
       }
@@ -336,7 +337,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
             position: 'fixed',
             inset: 0,
             zIndex: 101,
-            background: 'rgba(8, 6, 4, 0.6)',
+            background: 'rgba(13, 20, 25, 0.6)',
           }}
         />
       )}

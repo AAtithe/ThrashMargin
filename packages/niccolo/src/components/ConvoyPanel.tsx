@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { UI } from '../theme';
 import { findCity } from '../sim/content';
 import {
   ESCORT_HIRE_COST,
@@ -23,14 +24,14 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '1.1rem 0 0.4rem',
 };
 
 const SMALL_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.2rem 0.5rem',
   fontFamily: 'inherit',
   fontSize: '0.7rem',
@@ -39,9 +40,9 @@ const SMALL_BUTTON: React.CSSProperties = {
 };
 
 const FIELD: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.7rem',
   padding: '0.2rem 0.3rem',
@@ -77,12 +78,12 @@ export default function ConvoyPanel({ state, onForm, onDisband, onHireEscort }: 
       <div>
         <p style={LABEL}>Convoy</p>
         <p style={{ fontSize: '0.8rem', margin: '0 0 0.3rem' }}>{convoySummary(state)}</p>
-        <p style={{ fontSize: '0.72rem', color: '#8a7a5a', margin: '0 0 0.4rem' }}>
+        <p style={{ fontSize: '0.72rem', color: UI.textSoft, margin: '0 0 0.4rem' }}>
           Combined hold {carried}/{totalHold} · {members.map(v => v.name).join(', ')}. Sending any one of
           them sends them all.
         </p>
         {convoy.escorted ? (
-          <p style={{ fontSize: '0.75rem', color: '#3a6b5a', margin: '0 0 0.4rem' }}>
+          <p style={{ fontSize: '0.75rem', color: UI.good, margin: '0 0 0.4rem' }}>
             Under escort{convoy.escortName ? ` — ${convoy.escortName}` : ''} · {ESCORT_UPKEEP_PER_WEEK}f a week.
             Storm and piracy losses run well under half their usual chance.
           </p>
@@ -109,7 +110,7 @@ export default function ConvoyPanel({ state, onForm, onDisband, onHireEscort }: 
           </>
         )}
         {state.escortLapsed && (
-          <p style={{ fontSize: '0.72rem', color: '#b5451a', margin: '0 0 0.4rem' }}>
+          <p style={{ fontSize: '0.72rem', color: UI.bad, margin: '0 0 0.4rem' }}>
             The escort was paid off this week — there was nothing to pay it with.
           </p>
         )}
@@ -130,7 +131,7 @@ export default function ConvoyPanel({ state, onForm, onDisband, onHireEscort }: 
   return (
     <div>
       <p style={LABEL}>Convoy</p>
-      <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: '0 0 0.4rem' }}>
+      <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: '0 0 0.4rem' }}>
         Two or more vessels in the same port can sail as one, and share an escort.
       </p>
       {eligible.map(v => (
@@ -141,7 +142,7 @@ export default function ConvoyPanel({ state, onForm, onDisband, onHireEscort }: 
           <input type="checkbox" checked={picked.includes(v.id)} onChange={() => toggle(v.id)} />
           <span>
             {v.name}{' '}
-            <span style={{ color: '#8a7a5a' }}>
+            <span style={{ color: UI.textSoft }}>
               — {v.destination ? 'at sea' : `in port at ${findCity(v.location)?.name ?? v.location}`}
             </span>
           </span>

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { UI } from '../theme';
 import { findCity, findGood } from '../sim/content';
 import { ESTATE_CITY, ESTATE_ESTABLISH_COST, ESTATE_GOOD } from '../sim/estates';
 import { cargoTotal } from '../sim/market';
@@ -8,14 +9,14 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.4rem',
 };
 
 const SMALL_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.2rem 0.5rem',
   fontFamily: 'inherit',
   fontSize: '0.7rem',
@@ -24,9 +25,9 @@ const SMALL_BUTTON: React.CSSProperties = {
 
 const QTY_INPUT: React.CSSProperties = {
   width: '2.6rem',
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.75rem',
   padding: '0.15rem',
@@ -108,10 +109,10 @@ export default function EstatePanel({ estate, flags, cash, selectedVessel, onEst
             </button>
           </div>
         ) : (
-          <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>Nothing in store yet to load.</p>
+          <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>Nothing in store yet to load.</p>
         )
       ) : (
-        <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+        <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
           Dock a vessel at {cityName} to load its store.
         </p>
       )}

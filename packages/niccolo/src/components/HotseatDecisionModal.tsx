@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { CITIES, HOME_CITY, findGood, marketGoodsAt } from '../sim/content';
 import type { House, HotseatDecision } from '../sim/types';
+import { UI, FONT } from '../theme';
 
 const BACKDROP: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(8, 6, 4, 0.78)',
+  background: 'rgba(13, 20, 25, 0.78)',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -14,26 +15,26 @@ const BACKDROP: React.CSSProperties = {
 };
 
 const CARD: React.CSSProperties = {
-  background: '#17130d',
-  border: '1px solid #4a3d28',
-  boxShadow: '0 0 0 1px #0e0b07, 0 8px 40px rgba(0,0,0,0.6)',
+  background: UI.panelRaised,
+  border: `1px solid ${UI.rule}`,
+  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px rgba(0,0,0,0.6)`,
   maxWidth: '28rem',
   width: '100%',
   padding: '1.6rem',
-  fontFamily: '"Georgia", "Times New Roman", serif',
-  color: '#c9b88a',
+  fontFamily: FONT.body,
+  color: UI.text,
 };
 
 const TITLE: React.CSSProperties = {
   fontSize: '1.15rem',
   letterSpacing: '0.03em',
-  color: '#e8d5a3',
+  color: UI.brass,
   margin: '0 0 0.3rem',
 };
 
 const SUB: React.CSSProperties = {
   fontSize: '0.8rem',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 1.3rem',
 };
 
@@ -41,14 +42,14 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.72rem',
   letterSpacing: '0.1em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.4rem',
 };
 
 const FIELD: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.82rem',
   padding: '0.4rem 0.5rem',
@@ -63,16 +64,16 @@ const ROW: React.CSSProperties = {
 };
 
 const BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.5rem 0.9rem',
   fontFamily: 'inherit',
   fontSize: '0.82rem',
   cursor: 'pointer',
 };
 
-const PRIMARY_BUTTON: React.CSSProperties = { ...BUTTON, border: '1px solid #e8d5a3', color: '#e8d5a3' };
+const PRIMARY_BUTTON: React.CSSProperties = { ...BUTTON, border: `1px solid ${UI.brass}`, color: UI.brass };
 
 interface HotseatDecisionModalProps {
   house: House;

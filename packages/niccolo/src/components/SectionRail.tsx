@@ -1,3 +1,5 @@
+import { UI } from '../theme';
+
 export interface SectionDef {
   id: string;
   glyph: string;
@@ -6,6 +8,11 @@ export interface SectionDef {
    * "something changed" signal (see callers for exactly what each section checks), not true
    * per-item read/unread tracking. */
   badge?: boolean;
+  /** Which cluster this tab sits in (e.g. "Voyage", "House", "Story"). Tabs are still one flat,
+   * always-visible row — grouping is a label plus a divider, not a collapse — see the file header
+   * comment for why an actually-collapsing rail was rejected. Consecutive same-group entries in
+   * the `sections` array render together; an ungrouped tab (no `group`) stands alone. */
+  group?: string;
 }
 
 /**
@@ -20,8 +27,8 @@ export interface SectionDef {
  */
 const RAIL: React.CSSProperties = {
   flexShrink: 0,
-  background: '#161009',
-  borderBottom: '1px solid #2a2117',
+  background: UI.panelRaised,
+  borderBottom: `1px solid ${UI.rule}`,
   display: 'flex',
   flexDirection: 'row',
   flexWrap: 'wrap',
@@ -41,7 +48,7 @@ const TAB: React.CSSProperties = {
   borderRight: 'none',
   borderLeft: 'none',
   borderBottom: '2px solid transparent',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   fontFamily: 'inherit',
   padding: '0.5rem 0.7rem',
   cursor: 'pointer',
@@ -54,9 +61,9 @@ const TAB: React.CSSProperties = {
 
 const TAB_ACTIVE: React.CSSProperties = {
   ...TAB,
-  color: '#e8d5a3',
-  borderBottom: '2px solid #c9a24a',
-  background: 'rgba(201,162,74,0.09)',
+  color: UI.brass,
+  borderBottom: `2px solid ${UI.brass}`,
+  background: 'rgba(208,154,78,0.09)',
 };
 
 const GLYPH: React.CSSProperties = { fontSize: '0.95rem', lineHeight: 1 };
@@ -71,8 +78,34 @@ const BADGE: React.CSSProperties = {
   width: '6px',
   height: '6px',
   borderRadius: '50%',
-  background: '#c9a24a',
+  background: UI.brass,
   flexShrink: 0,
+};
+
+const CLUSTER: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'row',
+  alignItems: 'center',
+};
+
+/** A thin rule between clusters — height-fixed rather than `alignItems: 'stretch'`-driven, since
+ * the rail wraps to a second line at narrow widths and a stretched divider would then span however
+ * tall that wrapped row happens to be. */
+const DIVIDER: React.CSSProperties = {
+  width: 1,
+  height: '1.3rem',
+  background: UI.rule,
+  margin: '0 0.5rem',
+  flexShrink: 0,
+};
+
+const GROUP_LABEL: React.CSSProperties = {
+  fontSize: '0.56rem',
+  letterSpacing: '0.1em',
+  textTransform: 'uppercase',
+  color: UI.textFaint,
+  marginRight: '0.35rem',
+  whiteSpace: 'nowrap',
 };
 
 interface SectionRailProps {
@@ -81,21 +114,37 @@ interface SectionRailProps {
   onSelect: (id: string) => void;
 }
 
+/**
+ * Grouping is a label plus a divider, not a collapse. Every tab stays clickable in one flat row —
+ * an accordion that shows only one cluster's tabs at a time would reintroduce the exact bug this
+ * rail was built to fix (see the file header comment): a section a player needs sitting one click
+ * further away, easy to mistake for "not there at all". Consecutive entries sharing a `group` are
+ * simply visually clustered together; an ungrouped tab stands alone with no label or divider of
+ * its own.
+ */
 export default function SectionRail({ sections, active, onSelect }: SectionRailProps) {
+  let lastGroup: string | undefined;
   return (
     <div id="section-rail" style={RAIL}>
-      {sections.map(s => (
-        <button
-          key={s.id}
-          id={`section-tab-${s.id}`}
-          style={s.id === active ? TAB_ACTIVE : TAB}
-          onClick={() => onSelect(s.id)}
-        >
-          <span style={GLYPH}>{s.glyph}</span>
-          <span style={LABEL}>{s.label}</span>
-          {s.badge && <span style={BADGE} />}
-        </button>
-      ))}
+      {sections.map((s, i) => {
+        const startsNewGroup = s.group !== lastGroup;
+        lastGroup = s.group;
+        return (
+          <div key={s.id} style={CLUSTER}>
+            {startsNewGroup && i > 0 && <span style={DIVIDER} />}
+            {startsNewGroup && s.group && <span style={GROUP_LABEL}>{s.group}</span>}
+            <button
+              id={`section-tab-${s.id}`}
+              style={s.id === active ? TAB_ACTIVE : TAB}
+              onClick={() => onSelect(s.id)}
+            >
+              <span style={GLYPH}>{s.glyph}</span>
+              <span style={LABEL}>{s.label}</span>
+              {s.badge && <span style={BADGE} />}
+            </button>
+          </div>
+        );
+      })}
     </div>
   );
 }
