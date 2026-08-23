@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { UI } from '../theme';
 import { findCity, findGood, marketGoodsAt } from '../sim/content';
 import { gradeBreakdown, gradeBuyMultiplier, gradeSellMultiplier, isPilotGood } from '../sim/grades';
 import { cargoTotal, priceAt } from '../sim/market';
@@ -12,7 +13,7 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.4rem',
 };
 
@@ -22,24 +23,24 @@ const ROW: React.CSSProperties = {
   justifyContent: 'space-between',
   gap: '0.5rem',
   padding: '0.35rem 0',
-  borderBottom: '1px solid #2a2117',
+  borderBottom: `1px solid ${UI.rule}`,
   fontSize: '0.8rem',
 };
 
 const QTY_INPUT: React.CSSProperties = {
   width: '2.6rem',
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.75rem',
   padding: '0.15rem',
 };
 
 const SMALL_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.2rem 0.5rem',
   fontFamily: 'inherit',
   fontSize: '0.7rem',
@@ -75,17 +76,17 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, onBuy, o
       <span style={{ flex: 1 }}>
         {good?.name ?? goodId}
         {grades?.qualityMarket && (
-          <span style={{ color: '#c9a24a' }} title="Pays a real premium for fine/excellent lots here">
+          <span style={{ color: UI.brass }} title="Pays a real premium for fine/excellent lots here">
             {' '}★
           </span>
         )}
         {tag && (
-          <span style={{ color: tag === 'closed' ? '#b5451a' : '#c9a24a', fontSize: '0.68rem' }}>
+          <span style={{ color: tag === 'closed' ? UI.bad : UI.brass, fontSize: '0.68rem' }}>
             {' '}[{tag}]
           </span>
         )}
         {held > 0 && (
-          <span style={{ color: '#8a7a5a' }}>
+          <span style={{ color: UI.textSoft }}>
             {' '}
             ({grades
               ? `${held} held: ${(['common', 'fine', 'excellent'] as GradeId[])
@@ -107,12 +108,12 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, onBuy, o
             <option value="fine">fine</option>
             <option value="excellent">excellent</option>
           </select>
-          <span style={{ color: '#e8d5a3', fontSize: '0.72rem' }}>
+          <span style={{ color: UI.brass, fontSize: '0.72rem' }}>
             buy {buyPrice}f / sell {sellPrice}f
           </span>
         </>
       ) : (
-        <span style={{ color: '#e8d5a3' }}>{price}f</span>
+        <span style={{ color: UI.brass }}>{price}f</span>
       )}
       <input
         type="number"
@@ -172,28 +173,28 @@ export default function MarketPanel({
   const localEvents = (marketEvents ?? []).filter(e => e.cityId === cityId);
 
   if (goods.length === 0) {
-    return <p style={{ fontSize: '0.8rem', color: '#8a7a5a' }}>No market at {cityName}.</p>;
+    return <p style={{ fontSize: '0.8rem', color: UI.textSoft }}>No market at {cityName}.</p>;
   }
 
   return (
     <div>
       <p style={LABEL}>Market — {cityName}</p>
       <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem' }}>
-        Cash: <strong style={{ color: '#e8d5a3' }}>{Math.round(cash)}f</strong>
+        Cash: <strong style={{ color: UI.brass }}>{Math.round(cash)}f</strong>
         {' · '}
         Hold: {used}/{capacity}
       </p>
       {localEvents.length > 0 && (
         <div style={{ margin: '0 0 0.6rem' }}>
           {localEvents.map(e => (
-            <p key={e.id} style={{ fontSize: '0.74rem', color: e.blocksTrade ? '#b5451a' : '#c9a24a', margin: '0 0 0.3rem', fontStyle: 'italic' }}>
+            <p key={e.id} style={{ fontSize: '0.74rem', color: e.blocksTrade ? UI.bad : UI.brass, margin: '0 0 0.3rem', fontStyle: 'italic' }}>
               {e.headline}
             </p>
           ))}
         </div>
       )}
       {causes && causes.length > 0 && (
-        <p style={{ fontSize: '0.7rem', color: '#8a7a5a', margin: '0 0 0.5rem' }}>
+        <p style={{ fontSize: '0.7rem', color: UI.textSoft, margin: '0 0 0.5rem' }}>
           {causes.map(cause => describeMarketCause(cause, cityName)).join(' ')}
         </p>
       )}

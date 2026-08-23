@@ -1,0 +1,679 @@
+[
+  {
+    "id": "ev_c8_001",
+    "chapter": 8,
+    "trigger": {
+      "flag": "chapter7_complete"
+    },
+    "title": "Gemini",
+    "body": "Twenty-three years from a dyeworks yard in Bruges, and the house is one of the four or five in Europe that a prince writes to rather than about. What is left is not commercial. It is a boy who has a name and has never been in the same room as his father, a man in Scotland who has spent two decades arranging otherwise, and a folder of five papers in date order that nobody has yet been made to answer for.",
+    "choices": [
+      {
+        "text": "Settle it. All of it, in the order it can be settled",
+        "effects": {
+          "flag": "chapter8_open"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_002",
+    "chapter": 8,
+    "trigger": {
+      "flag": "chapter8_open"
+    },
+    "title": "Scotland again, and for the last time",
+    "body": "The invitation is from the king's own household and is not really an invitation: James III wants money, wants it from a house that has lent to him before, and has a brother in France who has begun signing himself in ways that no reigning monarch enjoys reading. Demoiselle Katelijne, who knows that court better than anyone the house employs, advises going and advises being extremely careful about the security.",
+    "choices": [
+      {
+        "text": "Go north, and take the household with you",
+        "effects": {
+          "flag": "scotland_bound_final"
+        }
+      },
+      {
+        "text": "Go north alone, and leave the family in Flanders",
+        "effects": {
+          "conscience": -1,
+          "flags": [
+            "scotland_bound_final",
+            "family_left_behind"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_003",
+    "chapter": 8,
+    "trigger": {
+      "flag": "scotland_bound_final",
+      "location": "edinburgh"
+    },
+    "title": "The Treaty of Fotheringhay",
+    "body": "It is done in England in June and known in Edinburgh within the fortnight: the king's brother Albany has sworn homage to Edward IV, declared himself king of Scotland, and been promised an army to make it stick. Every Scottish obligation the house holds is now paper issued by a government that may not exist by Michaelmas.",
+    "choices": [
+      {
+        "text": "Call in what can be called in, at whatever discount",
+        "effects": {
+          "cash": -40,
+          "flags": [
+            "reached_scotland_final",
+            "scots_paper_called_in"
+          ]
+        }
+      },
+      {
+        "text": "Hold, and back the king who is actually crowned",
+        "effects": {
+          "flags": [
+            "reached_scotland_final",
+            "scots_paper_held"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_004",
+    "chapter": 8,
+    "trigger": {
+      "flag": "reached_scotland_final"
+    },
+    "title": "Lauder Bridge",
+    "body": "The army musters at Lauder in July and does not march. What happens instead is that the lords who were supposed to lead it arrest the king in his own council, hang six of his favourites from the bridge over the course of an afternoon, and send him back to Edinburgh Castle under guard. The Duke of Gloucester crosses the border a week later against a kingdom that has just imprisoned its own commander.",
+    "choices": [
+      {
+        "text": "Get the household out of the burgh and the books into the castle vaults",
+        "effects": {
+          "cash": -25,
+          "flag": "lauder_survived"
+        }
+      },
+      {
+        "text": "Stay put, keep trading, and be seen to be unafraid",
+        "effects": {
+          "cash": 30,
+          "conscience": -2,
+          "flags": [
+            "lauder_survived",
+            "stayed_through_lauder"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_005",
+    "chapter": 8,
+    "trigger": {
+      "flag": "lauder_survived"
+    },
+    "title": "Berwick, and what a customs contract is worth",
+    "body": "Berwick castle surrenders in August and stays English, which it will remain. The burgh customs the house has held since the Nativity play are suddenly a contract with a crown that is under guard, in a kingdom with an English army in it and a claimant in the baggage train. Nobody in the counting house pretends the number in the ledger means anything this month.",
+    "choices": [
+      {
+        "text": "Write the Scottish book down to what it will fetch and stop arguing",
+        "effects": {
+          "cash": -70,
+          "flags": [
+            "scotland_crisis_resolved",
+            "scots_book_written_down"
+          ]
+        }
+      },
+      {
+        "text": "Carry it at cost and wait for the kingdom to decide what it is",
+        "effects": {
+          "conscience": -1,
+          "flags": [
+            "scotland_crisis_resolved",
+            "scots_book_carried"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_006",
+    "chapter": 8,
+    "trigger": {
+      "flag": "chapter8_open"
+    },
+    "title": "The boy, and the terms",
+    "body": "Gelis names the terms herself, as she has named everything since Bruges first heard of her: the child is in Scotland, has been for two years, and will meet his father in her presence or not at all. She is not bargaining. She is telling the house what the arrangement is, and it is the first thing in eight chapters that no amount of money adjusts.",
+    "choices": [
+      {
+        "text": "Accept her terms exactly as she sets them",
+        "effects": {
+          "conscience": 4,
+          "flag": "family_terms_accepted"
+        }
+      },
+      {
+        "text": "Accept, and have Gregorio draw something to protect the boy's inheritance",
+        "effects": {
+          "cash": -20,
+          "flags": [
+            "family_terms_accepted",
+            "jodi_settlement_drawn"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_007",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "family_terms_accepted",
+        "reached_scotland_final"
+      ]
+    },
+    "title": "Jordan de St Pol, who is nine years old",
+    "body": "He is called Jordan, which is either the cruellest joke of the whole business or Gelis's way of settling it in advance, and nobody asks which. He has his mother's directness and an entirely reasonable suspicion of a man he has heard about for years and met for the first time this morning. The meeting is not a reconciliation. It is a beginning, conducted mostly in questions about ships.",
+    "choices": [
+      {
+        "text": "Answer the questions about ships, and nothing else, all afternoon",
+        "effects": {
+          "conscience": 5,
+          "flag": "family_restored"
+        }
+      },
+      {
+        "text": "Try to explain the last nine years to a nine-year-old",
+        "effects": {
+          "conscience": 1,
+          "flags": [
+            "family_restored",
+            "explained_too_much"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_008",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "chapter8_open",
+        "parentage_incontestable"
+      ]
+    },
+    "title": "The dossier, complete",
+    "body": "Seven papers and more, from Bruges, Cairo, Sinai, Danzig and a Genoese notary's register, and the thing about a complete file is that it stops being an argument. The christening, the fee paid for an apprenticeship, the passage bought out of Bruges, a chaplain's deathbed testimony and a shipmaster's sworn one: they do not suggest a conclusion, they compel it. Vicomte de Ribérac is the boy's grandfather and always was.",
+    "choices": [
+      {
+        "text": "Have it notarised in three cities at once, so it cannot be suppressed",
+        "effects": {
+          "cash": -60,
+          "flags": [
+            "parentage_resolved",
+            "parentage_proved"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_009",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "chapter8_open",
+        "parentage_documented"
+      ],
+      "flagAbsent": "parentage_resolved"
+    },
+    "title": "The dossier, sufficient",
+    "body": "Five papers agree and none of them can be waved away, which is enough for any court that wants to be convinced and not quite enough for one that does not. The conclusion is plain to everyone in the room: Ribérac is the boy's grandfather, and Nicholas is what the whole quarrel has always been about. Whether that survives a determined denial in front of a judge is a different question, and one Master Gregorio declines to answer cheerfully.",
+    "choices": [
+      {
+        "text": "Have it notarised anyway, and accept that it can be fought",
+        "effects": {
+          "cash": -35,
+          "flags": [
+            "parentage_resolved",
+            "parentage_proved"
+          ]
+        }
+      },
+      {
+        "text": "Keep it unnotarised and use it as a threat rather than a fact",
+        "effects": {
+          "conscience": -2,
+          "flags": [
+            "parentage_resolved",
+            "parentage_held_back"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_010",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "chapter8_open",
+        "parentage_circumstantial"
+      ],
+      "flagAbsent": "parentage_resolved"
+    },
+    "title": "The dossier, such as it is",
+    "body": "Three or four papers that point the same way and prove nothing on their own. Read together by anyone willing to be persuaded they are damning; read by Jordan de Ribérac's own lawyers they are a coincidence of dates and a dead chaplain's hearsay. The house knows the answer. It cannot make anybody else know it.",
+    "choices": [
+      {
+        "text": "Say it to the household, and to nobody outside it",
+        "effects": {
+          "conscience": 2,
+          "flags": [
+            "parentage_resolved",
+            "parentage_unproved"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_011",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "chapter8_open",
+        "parentage_unproven"
+      ],
+      "flagAbsent": "parentage_resolved"
+    },
+    "title": "The dossier that was never assembled",
+    "body": "There is a folder. It has almost nothing in it, because at every point where a paper could have been bought, copied, sworn or simply kept, the house had something more pressing to do with the money or the afternoon. The question of who Nicholas is remains exactly as open as it was in the dyeworks yard, and the man who could answer it has no reason on earth to.",
+    "choices": [
+      {
+        "text": "Close the folder and let it be the one account that never balances",
+        "effects": {
+          "conscience": -1,
+          "flags": [
+            "parentage_resolved",
+            "parentage_unproved"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_012",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "parentage_resolved",
+        "reached_scotland_final"
+      ],
+      "flag": "vatachino_named"
+    },
+    "title": "The Vatachino, called by its name",
+    "body": "It ends in a room in Edinburgh with four people in it and no raised voices. The house lays out what it knows: who capitalised the Vatachino, which crown officer never appeared in its papers, and whose hand is on the third signature. Ribérac has spent nine years being an opponent nobody could name and discovers, in about four minutes, what it costs to be named. He does not deny it. He asks what the house wants.",
+    "choices": [
+      {
+        "text": "The boy's position secured, in writing, and nothing else",
+        "effects": {
+          "conscience": 5,
+          "flags": [
+            "stpol_endgame_resolved",
+            "stpol_settled_for_the_boy"
+          ]
+        }
+      },
+      {
+        "text": "Everything — the company, the papers, and him finished in Flanders",
+        "effects": {
+          "cash": 200,
+          "conscience": -6,
+          "flags": [
+            "stpol_endgame_resolved",
+            "stpol_destroyed"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_013",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "parentage_resolved",
+        "reached_scotland_final"
+      ],
+      "flagAbsent": "vatachino_named"
+    },
+    "title": "The opponent who was never named",
+    "body": "Ribérac comes to Edinburgh because the king's business requires it and treats the house with the elaborate courtesy of a man who knows exactly how little can be proved about him. The Vatachino are mentioned once, in passing, as a company he has heard of. The conversation is perfectly civil and settles nothing at all, which is a victory for whoever needed nothing settled.",
+    "choices": [
+      {
+        "text": "Let it go, and take what can be had without leverage",
+        "effects": {
+          "conscience": 1,
+          "flags": [
+            "stpol_endgame_resolved",
+            "stpol_unfinished"
+          ]
+        }
+      },
+      {
+        "text": "Threaten him with what cannot actually be proved",
+        "effects": {
+          "cash": 40,
+          "conscience": -5,
+          "flags": [
+            "stpol_endgame_resolved",
+            "stpol_bluffed"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_014",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "scotland_crisis_resolved",
+        "family_restored",
+        "stpol_endgame_resolved"
+      ]
+    },
+    "title": "What the house is for, now",
+    "body": "The commercial question is the last one left and it is genuinely open. The Scottish crisis has shown what a contract with a crown is worth; Nancy showed the same about a duchy; Volterra showed it about a hillside. What the house has instead is officers who are getting old, a boy who will inherit something, and more capital than any single trade can sensibly absorb. Master Gregorio asks the question nobody has asked in twenty-three years: what is this *for*.",
+    "choices": [
+      {
+        "text": "Put it into Scottish land, and become a family that owns ground",
+        "effects": {
+          "flags": [
+            "final_shape_chosen",
+            "shape_scottish_house"
+          ]
+        }
+      },
+      {
+        "text": "Move the whole thing to Venice and be a bank properly",
+        "effects": {
+          "flags": [
+            "final_shape_chosen",
+            "shape_venetian_bank"
+          ]
+        }
+      },
+      {
+        "text": "Break it up — settle the officers, close the agencies, keep the name",
+        "effects": {
+          "flags": [
+            "final_shape_chosen",
+            "shape_dissolution"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_015",
+    "chapter": 8,
+    "trigger": {
+      "flag": "shape_scottish_house"
+    },
+    "title": "Land, which does not reprice",
+    "body": "The purchases take a year and are unglamorous in a way that is plainly the point: ground near the burgh, a house that will need work, tenancies, and an entry in a Scottish register that will outlast every ledger the company ever kept. Master Julius calls it the least intelligent use of capital he has ever drafted and signs it anyway.",
+    "choices": [
+      {
+        "text": "Sign it, and mean it",
+        "effects": {
+          "flag": "chapter8_complete"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_016",
+    "chapter": 8,
+    "trigger": {
+      "flag": "shape_venetian_bank"
+    },
+    "title": "A bank, properly, in the city that invented them",
+    "body": "Venice takes eighteen months of lawyers and produces something the company has never quite been: an institution rather than a man. Deposits, branches, a constitution that survives its founder, and a name on a door in the Rialto that will be honoured by clerks who never met anybody in this room. It is the most durable thing the house has ever built and the least like itself.",
+    "choices": [
+      {
+        "text": "Constitute it, and step back from it",
+        "effects": {
+          "flag": "chapter8_complete"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_017",
+    "chapter": 8,
+    "trigger": {
+      "flag": "shape_dissolution"
+    },
+    "title": "Wound up, deliberately, while it is still worth something",
+    "body": "It takes four months and is the only one of the three that requires no lawyers to argue about the future. The agencies close in order, every officer is settled generously and in person, the ships are sold to men who will sail them, and what is left is a name, a boy, and a quantity of money that will never again be at risk from a prince. Father Moriz, who has watched the whole thing, observes that it is the first time the house has ever chosen its own ending.",
+    "choices": [
+      {
+        "text": "Wind it up, and be the one who decided",
+        "effects": {
+          "conscience": 4,
+          "flag": "chapter8_complete"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_018",
+    "chapter": 8,
+    "trigger": {
+      "flag": "reached_scotland_final"
+    },
+    "title": "Anselm Adorne, who is not an enemy",
+    "body": "He is in Scotland on the king's business and has been for years, holds a Scottish lordship, and is the one man in Europe who has competed with the house honestly for two decades without either side ever quite deciding they were rivals. He asks after the boy before he asks after the ledger. The conversation is the most comfortable and least useful of the entire chapter.",
+    "choices": [
+      {
+        "text": "Tell him the truth about the Scottish paper, and let him act on it",
+        "effects": {
+          "conscience": 4,
+          "cash": -30,
+          "flag": "adorne_warned"
+        }
+      },
+      {
+        "text": "Say nothing, and let his own factors work it out",
+        "effects": {
+          "conscience": -3,
+          "flag": "adorne_not_warned"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_019",
+    "chapter": 8,
+    "trigger": {
+      "flag": "reached_scotland_final"
+    },
+    "title": "Katelijne Sersanders, at the end of it",
+    "body": "She has been ill for years in a way nobody in the house has ever been allowed to make a fuss about, and she is the reason the company understood the Scottish court at all. She would like it recorded that she was never anybody's ward, agent or convenience, and that she intends to spend whatever is left doing exactly as she pleases.",
+    "choices": [
+      {
+        "text": "Have it recorded, in writing, in the house's own book",
+        "effects": {
+          "conscience": 4,
+          "flag": "kathi_acknowledged"
+        }
+      },
+      {
+        "text": "Tell her she is talking nonsense and that she is indispensable",
+        "effects": {
+          "conscience": 1,
+          "flag": "kathi_acknowledged"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_020",
+    "chapter": 8,
+    "trigger": {
+      "flag": "chapter8_open"
+    },
+    "title": "Master Tobie, on the subject of himself",
+    "body": "He is sixty-odd, has buried two of this household and treated all of it, and diagnoses himself with the same brutal economy he has always used on everyone else: some years left, fewer useful ones, and no intention whatever of spending them at sea. He would like a house near a university and an argument to have every day.",
+    "choices": [
+      {
+        "text": "Buy him the house and the argument",
+        "effects": {
+          "cash": -55,
+          "conscience": 4,
+          "flag": "tobie_settled"
+        }
+      },
+      {
+        "text": "Ask him for three more years first",
+        "effects": {
+          "conscience": -2,
+          "flag": "tobie_settled"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_021",
+    "chapter": 8,
+    "trigger": {
+      "flag": "chapter8_open"
+    },
+    "title": "Astorre's last contract",
+    "body": "The company of lances has been the house's oldest asset and its least examined one: twenty-three years of retainers, campaign bonuses and men whose names nobody in the counting room ever learned. Astorre is too old for a field and entirely unwilling to say so, and proposes one more contract in terms that make it clear he expects to be refused and would like to be asked properly.",
+    "choices": [
+      {
+        "text": "Refuse it, and pension the company off man by man",
+        "effects": {
+          "cash": -80,
+          "conscience": 5,
+          "flag": "astorre_pensioned"
+        }
+      },
+      {
+        "text": "Take the contract, and let him have the field he wants",
+        "effects": {
+          "cash": 60,
+          "conscience": -3,
+          "flags": [
+            "astorre_last_contract",
+            "astorre_pensioned"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_022",
+    "chapter": 8,
+    "trigger": {
+      "flag": "family_restored"
+    },
+    "title": "The rods, in a child's hands",
+    "body": "Nobody teaches him. He picks up a pair of hazel rods in a Scottish field because they are lying there, and something happens to his face that his father recognises instantly and would have given a great deal not to. Gelis sees it too. Neither of them says anything at all for some time.",
+    "choices": [
+      {
+        "text": "Take the rods away and never mention it again",
+        "effects": {
+          "conscience": -1,
+          "flags": [
+            "jodi_gift_seen",
+            "jodi_gift_suppressed"
+          ]
+        }
+      },
+      {
+        "text": "Tell him the truth about what it costs, while he is young enough to hear it",
+        "effects": {
+          "conscience": 5,
+          "flag": "jodi_gift_seen"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_023",
+    "chapter": 8,
+    "trigger": {
+      "flag": "chapter8_open"
+    },
+    "title": "Master Julius, and the last bill of exchange",
+    "body": "He has drawn every instrument the house has ever signed, has been reckless exactly twice in twenty-three years, and asks — with the air of a man who has rehearsed it — to be allowed to draw the last one himself, whatever it turns out to be. It is not a request about money. Master Gregorio, who understands him better than either of them admits, says nothing and slides the paper across.",
+    "choices": [
+      {
+        "text": "Let him draw it",
+        "effects": {
+          "conscience": 3,
+          "flag": "julius_last_bill"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_024",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "scotland_crisis_resolved",
+        "stpol_endgame_resolved"
+      ]
+    },
+    "title": "The Genoese consortium, settling up",
+    "body": "Whoever the Vatachino actually belonged to, the Genoese half of it has a very Genoese attitude to the aftermath: the venture is over, the accounts should be closed cleanly, and there is no reason two houses that have cost each other a fortune cannot do business again next year. It is the least emotional conversation of the chapter and the most instructive.",
+    "choices": [
+      {
+        "text": "Close the accounts cleanly and take the offer of next year",
+        "effects": {
+          "cash": 70,
+          "rep": {
+            "genoese": 15
+          },
+          "flag": "genoese_settled"
+        }
+      },
+      {
+        "text": "Close the accounts and decline ever to deal with them again",
+        "effects": {
+          "conscience": 1,
+          "rep": {
+            "genoese": -10
+          },
+          "flag": "genoese_settled"
+        }
+      }
+    ]
+  },
+  {
+    "id": "ev_c8_025",
+    "chapter": 8,
+    "trigger": {
+      "flags": [
+        "family_restored",
+        "parentage_resolved"
+      ]
+    },
+    "title": "Bruges, from the quay the house owns",
+    "body": "The Zwin is silting and everyone knows what that means for the city eventually, and none of it matters this afternoon. What is on the quay is a name that started as a dyeworks apprentice's, a boy asking about ships again, and the plain fact that the ledger has never once had a column for any of this and has been the wrong instrument for measuring it from the very first week.",
+    "choices": [
+      {
+        "text": "Stand on the quay a while longer before deciding anything",
+        "effects": {
+          "conscience": 3,
+          "flag": "bruges_reckoning"
+        }
+      }
+    ]
+  }
+]

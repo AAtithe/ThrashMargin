@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { UI, FONT } from '../theme';
 import { formatWeekDate } from '../sim/clock';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood, findHouse, findRouteById, otherEndOfRoute } from '../sim/content';
@@ -19,6 +20,7 @@ import HouseholdPanel from '../components/HouseholdPanel';
 import HousesPanel from '../components/HousesPanel';
 import SecretsPanel from '../components/SecretsPanel';
 import ConvoyPanel from '../components/ConvoyPanel';
+import EpilogueScreen from '../components/EpilogueScreen';
 import CounselPanel from '../components/CounselPanel';
 import CounselCallout from '../components/CounselCallout';
 import { urgentAdvice } from '../sim/advisors';
@@ -73,9 +75,9 @@ const STYLE: React.CSSProperties = {
   overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
-  background: '#0e0b07',
-  color: '#c9b88a',
-  fontFamily: '"Georgia", "Times New Roman", serif',
+  background: UI.ground,
+  color: UI.text,
+  fontFamily: FONT.body,
 };
 
 const HEADER: React.CSSProperties = {
@@ -83,20 +85,20 @@ const HEADER: React.CSSProperties = {
   alignItems: 'baseline',
   justifyContent: 'space-between',
   padding: '1.2rem 2rem',
-  borderBottom: '1px solid #4a3d28',
+  borderBottom: `1px solid ${UI.rule}`,
 };
 
 const TITLE: React.CSSProperties = {
   fontSize: '1.6rem',
   letterSpacing: '0.1em',
-  color: '#e8d5a3',
+  color: UI.brass,
   margin: 0,
 };
 
 const CLOCK: React.CSSProperties = {
   fontSize: '1rem',
   letterSpacing: '0.08em',
-  color: '#8a7a5a',
+  color: UI.textSoft,
 };
 
 const BODY: React.CSSProperties = {
@@ -119,9 +121,9 @@ const MAP_PANE: React.CSSProperties = {
 };
 
 const BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.5rem 0.9rem',
   fontFamily: 'inherit',
   fontSize: '0.85rem',
@@ -136,14 +138,14 @@ const BUTTON_ACTIVE: React.CSSProperties = {
   // longhand for the same property across renders of the same element (toggling between BUTTON
   // and BUTTON_ACTIVE, as the vessel selector and the Ledger/Counting House tabs both do) is a
   // real React warning ("Removing borderColor border"), not just a lint nag.
-  border: '1px solid #e8d5a3',
-  color: '#e8d5a3',
+  border: `1px solid ${UI.brass}`,
+  color: UI.brass,
 };
 
 const SMALL_BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.2rem 0.5rem',
   fontFamily: 'inherit',
   fontSize: '0.7rem',
@@ -154,7 +156,7 @@ const SECTION_LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.5rem',
 };
 
@@ -163,7 +165,7 @@ function CenteredMessage({ children }: { children: React.ReactNode }) {
     <div style={STYLE}>
       <PortalNav variant="header" />
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: '#8a7a5a' }}>{children}</p>
+        <p style={{ color: UI.textSoft }}>{children}</p>
       </div>
       <PortalNav variant="footer" />
     </div>
@@ -353,7 +355,7 @@ export default function GameScreen() {
         <PortalNav variant="header" />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
           <h1 style={TITLE}>The house is insolvent</h1>
-          <p style={{ color: '#8a7a5a', maxWidth: '28rem', textAlign: 'center' }}>
+          <p style={{ color: UI.textSoft, maxWidth: '28rem', textAlign: 'center' }}>
             A matured obligation could not be met, even after a forced sale of every docked cargo.
             The company is ruined in {formatWeekDate(state.week, CAMPAIGN_START)}.
           </p>
@@ -366,49 +368,11 @@ export default function GameScreen() {
     );
   }
 
-  if (state.flags.chapter7_complete) {
-    const secretsUsed = state.secrets.filter(s => s.used).length;
-    const secretsExpired = state.secrets.filter(s => s.expired).length;
-    const departed = state.characters.filter(c => c.status === 'departed');
-    const caffaOut = !!state.flags.caffa_extraction_success;
-    const survivedBurgundy = !!state.flags.burgundy_trap_survived;
-    const jordanNamed = !!state.flags.jordan_named;
-    const tookPassengers = !!state.flags.caffa_passage_offered;
-    const parentagePieces = (state.evidence ?? []).filter(e => e.track === 'parentage').length;
-    return (
-      <div style={STYLE}>
-        <PortalNav variant="header" />
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem' }}>
-          <h1 style={TITLE}>Chapter 7 — Caprice and Rondo</h1>
-          <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {caffaOut
-              ? `The hull came west out of the Crimea ahead of the Ottoman squadron${tookPassengers ? ', with families aboard who had no other way out' : ''}. Six weeks later two hundred years of Genoese Caffa ended in a fortnight.`
-              : 'The squadron reached Caffa first. The date was knowable, was known, and was not acted on in time — which is a worse way to lose money than losing it.'}
-          </p>
-          <p style={{ color: '#e8d5a3', maxWidth: '30rem', textAlign: 'center' }}>
-            {survivedBurgundy
-              ? 'The Burgundian paper was sold down before Nancy, at a loss that looked for three months like a loss of nerve. It is the reason the house is solvent and eleven others are not.'
-              : 'The duke died in the snow outside Nancy and the house was still holding his paper — a claim on revenues belonging to a duchy with no duke, and a lawsuit with a hundred years to run.'}
-          </p>
-          <p style={{ color: '#8a7a5a', maxWidth: '30rem', textAlign: 'center', fontSize: '0.9rem' }}>
-            Concluded in {formatWeekDate(state.week, CAMPAIGN_START)}, {Math.round(state.cash)}f on hand, conscience{' '}
-            {Math.round(state.conscience)}.{' '}
-            {jordanNamed
-              ? 'Five papers from five countries lie in date order, and the house has said the name aloud exactly once.'
-              : 'The papers exist. Nobody in the house has yet put them in an order that would require saying anything.'}{' '}
-            Parentage dossier: {parentagePieces} piece{parentagePieces === 1 ? '' : 's'} pinned. Secrets used: {secretsUsed},
-            expired unused: {secretsExpired}.
-            {departed.length > 0
-              ? ` Left the company along the way: ${departed.map(c => c.name).join(', ')}.`
-              : ' The household is intact.'}
-          </p>
-          <button style={BUTTON} onClick={() => nav('/')}>
-            Return to campaigns
-          </button>
-        </div>
-        <PortalNav variant="footer" />
-      </div>
-    );
+  // Chapter 8 ends the campaign rather than freezing it, so it gets the epilogue rather than
+  // another "chapter complete" card — see EpilogueScreen for why the net-worth figure belongs here
+  // and only here.
+  if (state.flags.chapter8_complete) {
+    return <EpilogueScreen state={state} onReturn={() => nav('/')} />;
   }
 
   const pendingEvent = state.pendingEvents[0] ? findEvent(state.pendingEvents[0]) : null;
@@ -566,13 +530,13 @@ export default function GameScreen() {
             </button>
           )}
           <button
-            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: '#6a5a40' }}
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textFaint }}
             onClick={() => nav('/')}
           >
             ← Back to campaigns
           </button>
           <button
-            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: '#6a5a40' }}
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textFaint }}
             onClick={abandonAndReturn}
           >
             Abandon this campaign
@@ -581,7 +545,7 @@ export default function GameScreen() {
       </header>
 
       {error && (
-        <p style={{ fontSize: '0.8rem', color: '#b5451a', margin: 0, padding: '0.5rem 2rem', borderBottom: '1px solid #2a2117' }}>
+        <p style={{ fontSize: '0.8rem', color: UI.bad, margin: 0, padding: '0.5rem 2rem', borderBottom: `1px solid ${UI.rule}` }}>
           {error}
         </p>
       )}
@@ -631,7 +595,7 @@ export default function GameScreen() {
                       >
                         {v.name}
                         <br />
-                        <span style={{ fontSize: '0.75rem', color: '#8a7a5a' }}>
+                        <span style={{ fontSize: '0.75rem', color: UI.textSoft }}>
                           {to
                             ? `en route to ${to.name} — ${v.weeksRemaining} week${v.weeksRemaining === 1 ? '' : 's'} left`
                             : `docked at ${at?.name ?? v.location}`}
@@ -639,7 +603,7 @@ export default function GameScreen() {
                         </span>
                       </button>
                       {crew.map(c => (
-                        <p key={c.id} style={{ fontSize: '0.72rem', color: '#8a7a5a', margin: '0.15rem 0 0.4rem 0.9rem' }}>
+                        <p key={c.id} style={{ fontSize: '0.72rem', color: UI.textSoft, margin: '0.15rem 0 0.4rem 0.9rem' }}>
                           {c.name} — aboard
                         </p>
                       ))}
@@ -656,7 +620,7 @@ export default function GameScreen() {
                         // actually be clicked; explain why instead.
                         if (pendingEvent || showChapterCompleteCard) {
                           return (
-                            <p style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem', color: '#6a5a40', fontStyle: 'italic' }}>
+                            <p style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem', color: UI.textFaint, fontStyle: 'italic' }}>
                               Continuing on to {nextCity?.name ?? nextRoute.id} waits on the matter above being resolved first.
                             </p>
                           );
@@ -664,12 +628,12 @@ export default function GameScreen() {
                         const canInsureNextLeg = canInsureAt(v.location) && held > 0;
                         return (
                           <div style={{ margin: '0.15rem 0 0.5rem 0.9rem', fontSize: '0.72rem' }}>
-                            <p style={{ color: '#8a7a5a', margin: '0 0 0.3rem' }}>
+                            <p style={{ color: UI.textSoft, margin: '0 0 0.3rem' }}>
                               Continuing on to {nextCity?.name ?? nextRoute.id} next week — {v.plannedRoute.length} leg
                               {v.plannedRoute.length === 1 ? '' : 's'} remaining.
                             </p>
                             {canInsureNextLeg && (
-                              <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-start', color: '#8a7a5a', margin: '0 0 0.3rem' }}>
+                              <label style={{ display: 'flex', gap: '0.4rem', alignItems: 'flex-start', color: UI.textSoft, margin: '0 0 0.3rem' }}>
                                 <input
                                   type="checkbox"
                                   checked={!!continueInsure[v.id]}
@@ -700,24 +664,24 @@ export default function GameScreen() {
                   );
                 })}
                 {notAboardRoster.map(c => (
-                  <p key={c.id} style={{ fontSize: '0.78rem', color: '#c9b88a', margin: '0.3rem 0' }}>
-                    {c.name} <span style={{ color: '#8a7a5a' }}>— {assignmentSummary(c, state.vessels)}</span>
+                  <p key={c.id} style={{ fontSize: '0.78rem', color: UI.text, margin: '0.3rem 0' }}>
+                    {c.name} <span style={{ color: UI.textSoft }}>— {assignmentSummary(c, state.vessels)}</span>
                   </p>
                 ))}
               </div>
 
               {state.lastVoyageEvent && (
-                <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+                <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
                   Week {state.lastVoyageEvent.week}: storm struck {state.lastVoyageEvent.vesselName} — lost{' '}
                   {state.lastVoyageEvent.quantityLost} {state.lastVoyageEvent.goodId}.{' '}
                   {state.lastVoyageEvent.insured
-                    ? <span style={{ color: '#3a6b5a' }}>Insurance paid {state.lastVoyageEvent.payout}f.</span>
-                    : <span style={{ color: '#b5451a' }}>Uninsured — a total loss.</span>}
+                    ? <span style={{ color: UI.good }}>Insurance paid {state.lastVoyageEvent.payout}f.</span>
+                    : <span style={{ color: UI.bad }}>Uninsured — a total loss.</span>}
                 </p>
               )}
 
               {state.lastSabotageEvent && (
-                <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+                <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
                   Week {state.lastSabotageEvent.week}: {state.lastSabotageEvent.houseName} got to{' '}
                   {state.lastSabotageEvent.vesselName}'s cargo at {findCity(state.lastSabotageEvent.cityId)?.name ?? state.lastSabotageEvent.cityId} —
                   lost {state.lastSabotageEvent.quantityLost} {state.lastSabotageEvent.goodId}.
@@ -725,14 +689,14 @@ export default function GameScreen() {
               )}
 
               {state.lastExpeditionEvent && (
-                <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+                <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
                   Week {state.lastExpeditionEvent.week}: {state.lastExpeditionEvent.vesselName}'s crew turn{' '}
                   {state.lastExpeditionEvent.healthStatus} — {state.lastExpeditionEvent.cashCost}f spent on physicians and delay.
                 </p>
               )}
 
               {state.expedition && (
-                <p style={{ fontSize: '0.75rem', color: '#8a7a5a', margin: 0 }}>
+                <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>
                   {expeditionVessel?.name ?? 'The vessel'} is {state.expedition.weeksUpriver} week
                   {state.expedition.weeksUpriver === 1 ? '' : 's'} into the Gambia's interior — crew health:{' '}
                   {state.expedition.healthStatus}.
@@ -750,7 +714,7 @@ export default function GameScreen() {
 
           {activeSection === 'city' && (
             <>
-              <p style={{ fontSize: '0.8rem', color: '#8a7a5a', margin: 0 }}>
+              <p style={{ fontSize: '0.8rem', color: UI.textSoft, margin: 0 }}>
                 {selectedVessel
                   ? selectedVessel.destination
                     ? `${selectedVessel.name} cannot be redirected while under way.`
@@ -759,7 +723,7 @@ export default function GameScreen() {
               </p>
 
               {activePolicy && (
-                <p style={{ fontSize: '0.75rem', color: '#3a6b5a', margin: 0 }}>
+                <p style={{ fontSize: '0.75rem', color: UI.good, margin: 0 }}>
                   Insured for {Math.round(activePolicy.coverage)}f this voyage (premium {activePolicy.premiumPaid}f paid).
                 </p>
               )}
@@ -831,7 +795,7 @@ export default function GameScreen() {
           {activeSection === 'household' && (
             <>
               {!state.flags.chapter0_complete && (
-                <p style={{ fontSize: '0.78rem', color: '#6a5a40', margin: 0 }}>
+                <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>
                   Wages are suspended while Claes remains an apprentice, not yet the house's factor.
                 </p>
               )}
@@ -878,7 +842,7 @@ export default function GameScreen() {
           {activeSection === 'ledger' && (
             <>
               {!state.flags.chapter0_complete ? (
-                <p style={{ fontSize: '0.78rem', color: '#6a5a40', margin: 0 }}>
+                <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>
                   Not available yet — credit isn't Claes's to extend until he's formally made the house's factor.
                 </p>
               ) : (

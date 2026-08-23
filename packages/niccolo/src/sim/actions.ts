@@ -13,7 +13,7 @@ import {
   resolveWeeklyConvoy,
 } from './convoy';
 import { useDivining } from './divining';
-import { resolveUnmasking } from './dossier';
+import { readParentage, resolveUnmasking } from './dossier';
 import { establishEstate, harvestEstate, resolveWeeklyEstate, shipEstateGoods } from './estates';
 import { checkTriggers, resolveEvent, withFlagsSet } from './events';
 import { resolveWeeklyExpedition } from './expedition';
@@ -375,6 +375,11 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   // post-agent `evidence` above, not `state.evidence`, or an agent's final lead would sit unread
   // for a week.
   engineFlags.push(...resolveUnmasking({ ...state, evidence }));
+  // The parentage reading is re-derived every week and its flag re-set, so Chapter 8's own content
+  // can branch on it without the resolution needing to be hard-coded anywhere. Setting it early and
+  // often is harmless — flags are permanent, and a dossier only ever grows, so the highest band the
+  // player has ever reached is the one that stays set.
+  engineFlags.push(readParentage({ ...state, evidence }).flag);
   const { flags, flagWeeks } = withFlagsSet(state.flags, state.flagWeeks, week, engineFlags);
 
   // Storm/piracy loss, sabotage, and forced liquidation (maturity.vessels, above) each just remove
@@ -436,11 +441,11 @@ function investCourier(state: GameState, cityId: string): GameState {
 
 export function processAction(state: GameState, action: GameAction): GameState {
   if (state.insolvent) return state;
-  // chapter1_complete through chapter6_complete no longer freeze play — each is a mid-campaign
+  // chapter1_complete through chapter7_complete no longer freeze play — each is a mid-campaign
   // flag the next chapter's own events trigger on (design doc §12, "Phase 9 onward: one chapter
-  // content pack per phase"). Only the true end of the shipped content (chapter7_complete) stops
+  // content pack per phase"). Only the true end of the shipped content (chapter8_complete) stops
   // the clock now.
-  if (state.flags.chapter7_complete) return state;
+  if (state.flags.chapter8_complete) return state;
   // ACKNOWLEDGE_CHAPTER is UI bookkeeping (dismissing the "Chapter N complete" card), not a
   // commercial/narrative action — it must go through even while the next chapter's own opening
   // event is already queued in pendingEvents (which it typically is, by design: that event's

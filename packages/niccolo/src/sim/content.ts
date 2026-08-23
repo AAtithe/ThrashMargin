@@ -34,6 +34,7 @@ import cities7Data from '../content/cities/chapter7.json';
 import routes7Data from '../content/routes/chapter7.json';
 import characters7Data from '../content/characters/chapter7.json';
 import events7Data from '../content/events/chapter7.json';
+import events8Data from '../content/events/chapter8.json';
 import objectives1Data from '../content/objectives/chapter1.json';
 import objectives2Data from '../content/objectives/chapter2.json';
 import objectives3Data from '../content/objectives/chapter3.json';
@@ -41,6 +42,7 @@ import objectives4Data from '../content/objectives/chapter4.json';
 import objectives5Data from '../content/objectives/chapter5.json';
 import objectives6Data from '../content/objectives/chapter6.json';
 import objectives7Data from '../content/objectives/chapter7.json';
+import objectives8Data from '../content/objectives/chapter8.json';
 import type { City, Route, Good, Character, ScriptedEvent, House, Objective } from './types';
 
 export const CAMPAIGN_START = new Date(1460, 2, 14); // 14 March 1460
@@ -108,6 +110,7 @@ export const EVENTS: ScriptedEvent[] = [
   ...(events5Data as unknown as ScriptedEvent[]),
   ...(events6Data as unknown as ScriptedEvent[]),
   ...(events7Data as unknown as ScriptedEvent[]),
+  ...(events8Data as unknown as ScriptedEvent[]),
 ];
 export const HOUSES: House[] = [
   ...(housesData as unknown as House[]),
@@ -126,6 +129,7 @@ export const OBJECTIVES: Objective[] = [
   ...(objectives5Data as Objective[]),
   ...(objectives6Data as Objective[]),
   ...(objectives7Data as Objective[]),
+  ...(objectives8Data as Objective[]),
 ];
 
 export function findCity(id: string): City | undefined {

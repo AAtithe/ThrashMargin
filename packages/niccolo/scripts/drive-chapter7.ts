@@ -95,11 +95,18 @@ console.log('\n1a. The chapter chain is consistent end to end');
   check('every shipped chapter has a title', Array.from({ length: 8 }, (_, n) => n).every(n => !!CHAPTER_TITLES[n]),
     JSON.stringify(CHAPTER_TITLES));
   check('chapter 7 is titled', CHAPTER_TITLES[7] === 'Caprice and Rondo', CHAPTER_TITLES[7]);
-  // The freeze must sit on the last shipped chapter, no earlier: an earlier freeze silently ends the
-  // campaign one chapter short.
-  const frozen: GameState = { ...seed(), flags: { ...seed().flags, chapter7_complete: true } };
-  check('chapter7_complete freezes the campaign', processAction(frozen, { type: 'ADVANCE_WEEK' }).week === frozen.week);
-  check('chapter6_complete does NOT', processAction(seven, { type: 'ADVANCE_WEEK' }).week === seven.week + 1);
+  // The freeze must sit on the LAST shipped chapter, derived from content rather than hard-coded —
+  // an earlier freeze silently ends the campaign a chapter short, and a hard-coded assertion here
+  // goes stale the moment another chapter ships (which is exactly what happened when Chapter 8
+  // landed and this check still named chapter 7).
+  const lastChapter = Math.max(...EVENTS.map(e => e.chapter));
+  const base = seed();
+  const frozen: GameState = { ...base, flags: { ...base.flags, [`chapter${lastChapter}_complete`]: true } };
+  check(`chapter${lastChapter}_complete freezes the campaign`,
+    processAction(frozen, { type: 'ADVANCE_WEEK' }).week === frozen.week);
+  const penultimate: GameState = { ...base, flags: { ...base.flags, [`chapter${lastChapter - 1}_complete`]: true } };
+  check(`chapter${lastChapter - 1}_complete does NOT`,
+    processAction(penultimate, { type: 'ADVANCE_WEEK' }).week === penultimate.week + 1);
 }
 
 console.log('\n1b. The dossier has enough material for Chapter 8 to resolve');
@@ -193,16 +200,23 @@ let s = seed();
   check('the failure branch did NOT also fire', !s.firedEvents.includes('ev_c7_014'));
   check('caffa_epilogue set', !!s.flags.caffa_epilogue);
 
-  s = tick(s, 14, best);
-  check('Nancy fired', !!s.flags.nancy_news);
-  check('and Flanders repriced through the demand layer',
-    (s.marketEvents ?? []).filter(e => EXILED_CITY_IDS.includes(e.cityId)).length > 0,
-    `${(s.marketEvents ?? []).length} events running`);
-  const brugesShock = (s.marketEvents ?? []).find(e => e.cityId === 'bruges');
+  // Step week by week and capture the state the week Nancy actually fires: the shock it installs
+  // expires after 14 weeks, so asserting on it at a fixed offset is a timing coin-flip. An earlier
+  // version of this check ticked 14 weeks first and then found nothing running.
+  let atNancy: GameState | null = null;
+  for (let i = 0; i < 20 && !atNancy; i++) {
+    s = tick(s, 1, best);
+    if (s.flags.nancy_news) atNancy = s;
+  }
+  check('Nancy fired', !!atNancy);
+  const shockEvents = (atNancy?.marketEvents ?? []).filter(e => EXILED_CITY_IDS.includes(e.cityId));
+  check('and Flanders repriced through the demand layer', shockEvents.length > 0,
+    `${(atNancy?.marketEvents ?? []).length} events running`);
+  const brugesShock = shockEvents.find(e => e.cityId === 'bruges');
   check('the shock is a whole-city event', !!brugesShock && brugesShock.goodId === null);
   check('it does not block trade — a repricing is not an embargo', !!brugesShock && !brugesShock.blocksTrade);
-  check('and it really moves the price', demandFactor(s.marketEvents, 'bruges', 'cloth') > 1,
-    `factor ${demandFactor(s.marketEvents, 'bruges', 'cloth')}`);
+  check('and it really moves the price', demandFactor(atNancy?.marketEvents, 'bruges', 'cloth') > 1,
+    `factor ${demandFactor(atNancy?.marketEvents, 'bruges', 'cloth')}`);
   check('the paper sold in time paid off', !!s.flags.burgundy_trap_survived && !!s.flags.flanders_resolved);
 
   s = tick(s, 2, best);
@@ -212,7 +226,11 @@ let s = seed();
   check('returned to Bruges', !!s.flags.returned_to_bruges);
   s = tick(s, 2, best);
   check('chapter7_complete reached', !!s.flags.chapter7_complete, `week ${s.week}`);
-  check('the campaign freezes there', processAction(s, { type: 'ADVANCE_WEEK' }).week === s.week);
+  // No longer the end of the campaign — Chapter 8 shipped, so this is a handoff like every other
+  // chapter flag before it. What matters is that play continues and Chapter 8 picks it up.
+  check('play continues into Chapter 8 rather than freezing',
+    processAction(s, { type: 'ADVANCE_WEEK' }).week === s.week + 1);
+  check('and the chapter badge advances to 8', currentChapterNumber(s) === 8, `${currentChapterNumber(s)}`);
   console.log(`  (success path completed at week ${s.week}, ${Math.round(s.cash)}f, conscience ${Math.round(s.conscience)})`);
 }
 

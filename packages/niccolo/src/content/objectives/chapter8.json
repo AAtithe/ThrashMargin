@@ -1,0 +1,33 @@
+[
+  { "id": "obj_c8_scotland", "chapterNumber": 8, "label": "Come out of the Scottish crisis with a house left",
+    "description": "The king's brother has sworn homage to England and declared himself king. Everything the house holds in Scotland is paper issued by a government that may not exist by Michaelmas.",
+    "kind": { "type": "flag", "flag": "scotland_crisis_resolved" },
+    "outcomeFlags": { "positive": "scots_paper_called_in", "costly": "scots_book_written_down" } },
+
+  { "id": "obj_c8_family", "chapterNumber": 8, "label": "Meet your son", "inevitable": true,
+    "description": "Gelis sets the terms and there is no version of this that money adjusts. It is not a reconciliation; it is a beginning, conducted mostly in questions about ships.",
+    "kind": { "type": "flag", "flag": "family_restored" } },
+
+  { "id": "obj_c8_parentage", "chapterNumber": 8, "label": "Answer the question the campaign opened with",
+    "description": "Whatever the dossier holds by now is what the answer will be worth. A full file compels a conclusion; a thin one is a coincidence of dates and a dead chaplain's hearsay.",
+    "kind": { "type": "flag", "flag": "parentage_resolved" },
+    "outcomeFlags": { "positive": "parentage_proved", "costly": "parentage_unproved" } },
+
+  { "id": "obj_c8_stpol", "chapterNumber": 8, "label": "Finish it with Jordan de Ribérac",
+    "description": "Nine years of an opponent nobody could name. Whether he can be made to answer for it depends entirely on whether the Vatachino were ever unmasked.",
+    "kind": { "type": "flag", "flag": "stpol_endgame_resolved" },
+    "outcomeFlags": { "positive": "stpol_settled_for_the_boy", "costly": "stpol_unfinished" } },
+
+  { "id": "obj_c8_shape", "chapterNumber": 8, "label": "Decide what the house is for",
+    "description": "Scottish land, a Venetian bank, or a deliberate winding-up. The last choice the campaign asks, and the first one that closes rather than opens.",
+    "revealFlag": "stpol_endgame_resolved",
+    "kind": { "type": "flag", "flag": "final_shape_chosen" } },
+
+  { "id": "obj_c8_officers", "chapterNumber": 8, "label": "Settle the household", "optional": true,
+    "description": "Tobie wants a house near a university and an argument a day. Astorre wants one more field. Julius wants to draw the last instrument himself. None of it gates the ending.",
+    "kind": { "type": "flag", "flag": "tobie_settled" } },
+
+  { "id": "obj_c8_gift", "chapterNumber": 8, "label": "The rods, in a child's hands", "optional": true,
+    "description": "Nobody teaches him. He picks them up because they are lying there.",
+    "kind": { "type": "flag", "flag": "jodi_gift_seen" } }
+]

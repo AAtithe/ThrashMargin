@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "drive": "esbuild scripts/drive-counsel.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-counsel.cjs --log-level=error && node .drive-counsel.cjs && esbuild scripts/drive-market-events.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-market.cjs --log-level=error && node .drive-market.cjs && esbuild scripts/drive-chapter7.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-ch7.cjs --log-level=error && node .drive-ch7.cjs"
+    "drive": "esbuild scripts/drive-counsel.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-counsel.cjs --log-level=error && node .drive-counsel.cjs && esbuild scripts/drive-market-events.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-market-events.cjs --log-level=error && node .drive-market-events.cjs && esbuild scripts/drive-chapter7.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-chapter7.cjs --log-level=error && node .drive-chapter7.cjs && esbuild scripts/drive-chapter8.ts --bundle --platform=node --format=cjs --loader:.json=json --outfile=.drive-chapter8.cjs --log-level=error && node .drive-chapter8.cjs"
   },
   "dependencies": {
     "@repo/engine": "*",

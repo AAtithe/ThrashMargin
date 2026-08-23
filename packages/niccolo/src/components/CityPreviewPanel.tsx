@@ -1,3 +1,4 @@
+import { UI } from '../theme';
 import { marketGoodsAt, reachableFrom, findGood, findCity, findRouteById, otherEndOfRoute, planRoute } from '../sim/content';
 import type { PlannedRoute } from '../sim/content';
 import { priceAt } from '../sim/market';
@@ -26,7 +27,7 @@ const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
   letterSpacing: '0.15em',
   textTransform: 'uppercase',
-  color: '#8a7a5a',
+  color: UI.textSoft,
   margin: '0 0 0.3rem',
 };
 
@@ -38,9 +39,9 @@ const ROW: React.CSSProperties = {
 };
 
 const BUTTON: React.CSSProperties = {
-  background: '#1a1510',
-  border: '1px solid #4a3d28',
-  color: '#c9b88a',
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  color: UI.text,
   padding: '0.4rem 0.7rem',
   fontFamily: 'inherit',
   fontSize: '0.8rem',
@@ -52,7 +53,7 @@ const BUTTON: React.CSSProperties = {
 // for the same property across renders of the same element is a real React warning ("Removing
 // borderColor border"), not just a lint nag. This button toggles in and out with `isLive`/
 // reachability on every vessel/preview-city change, so it hits this path often.
-const PRIMARY_BUTTON: React.CSSProperties = { ...BUTTON, border: '1px solid #e8d5a3', color: '#e8d5a3' };
+const PRIMARY_BUTTON: React.CSSProperties = { ...BUTTON, border: `1px solid ${UI.brass}`, color: UI.brass };
 
 interface CityPreviewPanelProps {
   city: City;
@@ -122,18 +123,18 @@ export default function CityPreviewPanel({
       : null;
 
   return (
-    <div style={{ border: '1px solid #2a2117', padding: '0.6rem 0.7rem' }}>
+    <div style={{ border: `1px solid ${UI.rule}`, padding: '0.6rem 0.7rem' }}>
       <p style={LABEL}>
         {city.name} — {city.region}
       </p>
 
       {goods.length === 0 ? (
-        <p style={{ fontSize: '0.78rem', color: '#6a5a40', margin: 0 }}>No market here.</p>
+        <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>No market here.</p>
       ) : isLive ? (
         <>
-          <p style={{ fontSize: '0.72rem', color: '#3a6b5a', margin: '0 0 0.3rem' }}>You are here — prices are true.</p>
+          <p style={{ fontSize: '0.72rem', color: UI.good, margin: '0 0 0.3rem' }}>You are here — prices are true.</p>
           {(marketEvents ?? []).filter(e => e.cityId === city.id).map(e => (
-            <p key={e.id} style={{ fontSize: '0.7rem', color: e.blocksTrade ? '#b5451a' : '#c9a24a', margin: '0 0 0.3rem', fontStyle: 'italic' }}>
+            <p key={e.id} style={{ fontSize: '0.7rem', color: e.blocksTrade ? UI.bad : UI.brass, margin: '0 0 0.3rem', fontStyle: 'italic' }}>
               {e.headline}
             </p>
           ))}
@@ -144,40 +145,40 @@ export default function CityPreviewPanel({
                 <span>
                   {findGood(goodId)?.name ?? goodId}
                   {rowEvents.length > 0 && (
-                    <span style={{ color: rowEvents[0].blocksTrade ? '#b5451a' : '#c9a24a', fontSize: '0.68rem' }}>
+                    <span style={{ color: rowEvents[0].blocksTrade ? UI.bad : UI.brass, fontSize: '0.68rem' }}>
                       {' '}[{marketEventTag(rowEvents[0])}]
                     </span>
                   )}
                 </span>
-                <span style={{ color: '#e8d5a3' }}>{priceAt(scarcity, city.id, goodId, marketEvents)}f</span>
+                <span style={{ color: UI.brass }}>{priceAt(scarcity, city.id, goodId, marketEvents)}f</span>
               </div>
             );
           })}
           {liveCauses && liveCauses.length > 0 && (
-            <p style={{ fontSize: '0.68rem', color: '#8a7a5a', margin: '0.3rem 0 0' }}>
+            <p style={{ fontSize: '0.68rem', color: UI.textSoft, margin: '0.3rem 0 0' }}>
               {liveCauses.map(cause => describeMarketCause(cause, city.name)).join(' ')}
             </p>
           )}
         </>
       ) : report ? (
         <>
-          <p style={{ fontSize: '0.72rem', color: '#8a7a5a', margin: '0 0 0.3rem' }}>
+          <p style={{ fontSize: '0.72rem', color: UI.textSoft, margin: '0 0 0.3rem' }}>
             As of week {report.trueAsOfWeek} ({week - report.trueAsOfWeek} wk{week - report.trueAsOfWeek === 1 ? '' : 's'} old)
           </p>
           {goods.map(goodId => (
             <div key={goodId} style={ROW}>
               <span>{findGood(goodId)?.name ?? goodId}</span>
-              <span style={{ color: '#e8d5a3' }}>{report.prices[goodId] ?? '—'}f</span>
+              <span style={{ color: UI.brass }}>{report.prices[goodId] ?? '—'}f</span>
             </div>
           ))}
           {report.causes && report.causes.length > 0 && (
-            <p style={{ fontSize: '0.68rem', color: '#8a7a5a', margin: '0.3rem 0 0' }}>
+            <p style={{ fontSize: '0.68rem', color: UI.textSoft, margin: '0.3rem 0 0' }}>
               {report.causes.map(cause => describeMarketCause(cause, city.name)).join(' ')}
             </p>
           )}
         </>
       ) : (
-        <p style={{ fontSize: '0.78rem', color: '#6a5a40', margin: 0 }}>No report yet for this city.</p>
+        <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>No report yet for this city.</p>
       )}
 
       {vessel && !selectedVesselHere && (
@@ -185,7 +186,7 @@ export default function CityPreviewPanel({
           {reachable ? (
             <>
               {canInsureHere && vessel.capacity > 0 && (
-                <label style={{ fontSize: '0.72rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginTop: '0.5rem' }}>
+                <label style={{ fontSize: '0.72rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginTop: '0.5rem' }}>
                   <input type="checkbox" checked={insureNext} onChange={e => onInsureChange(e.target.checked)} />
                   <span>Insure this cargo before it departs — underwritten at the ship's current port.</span>
                 </label>
@@ -196,14 +197,14 @@ export default function CityPreviewPanel({
             </>
           ) : plan ? (
             <>
-              <p style={{ fontSize: '0.72rem', color: '#6a5a40', margin: '0.5rem 0 0.3rem' }}>
+              <p style={{ fontSize: '0.72rem', color: UI.textFaint, margin: '0.5rem 0 0.3rem' }}>
                 Not reachable directly. Nearest path: {describePath(vessel.location, plan)} —{' '}
                 {plan.routeIds.length} dispatch{plan.routeIds.length === 1 ? '' : 'es'}, {plan.totalWeeks} weeks of
                 sailing. {vessel.name} will dock — and can trade — at each stop, then carry on toward{' '}
                 {city.name} automatically; cancel any time before the next stop if you'd rather stay.
               </p>
               {canInsureHere && vessel.capacity > 0 && (
-                <label style={{ fontSize: '0.72rem', color: '#8a7a5a', display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
+                <label style={{ fontSize: '0.72rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
                   <input type="checkbox" checked={insureNext} onChange={e => onInsureChange(e.target.checked)} />
                   <span>Insure this cargo for the first leg only — underwritten at the ship's current port.</span>
                 </label>
@@ -213,7 +214,7 @@ export default function CityPreviewPanel({
               </button>
             </>
           ) : (
-            <p style={{ fontSize: '0.72rem', color: '#6a5a40', margin: '0.5rem 0 0' }}>
+            <p style={{ fontSize: '0.72rem', color: UI.textFaint, margin: '0.5rem 0 0' }}>
               {vessel.kind === 'courier'
                 ? `No all-land route connects ${vessel.name}'s position to ${city.name} — try a ship.`
                 : `No route connects ${vessel.name}'s position to ${city.name}.`}

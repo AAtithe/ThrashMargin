@@ -62,3 +62,51 @@ export function resolveUnmasking(state: GameState): string[] {
   }
   return out;
 }
+
+/**
+ * The parentage resolution (Chapter 8, Phase 25).
+ *
+ * **Scales, never gates.** §8 promises "a hidden dossier the player assembles across all 8 chapters
+ * … the resolution follows the novels' answer and fires in Chapter 8." The obvious implementation —
+ * a threshold, like the Vatachino's — would be wrong here in a way that matters: every parentage
+ * piece before Phase 22 sat behind an optional branch, and a player who declined them all would
+ * arrive at the finale with nothing to resolve and a chapter that could not close. Phase 22
+ * guaranteed a floor of two, but the right shape is still a *reading* rather than a pass mark: a
+ * full dossier names the answer outright, a thin one gets something Jordan can still deny.
+ *
+ * That also makes fifty hours of optional diligence visibly worth something, which a threshold
+ * cannot — under a threshold the fourth piece and the eighth are identical.
+ */
+export type ParentageConfidence = 'unproven' | 'circumstantial' | 'documented' | 'incontestable';
+
+/** Piece counts at which the reading changes. Deliberately reachable: two is the guaranteed floor
+ * (Marian's indenture and Godscalc's letter), and the top band needs real work across three
+ * chapters rather than a lucky run. */
+export const PARENTAGE_BANDS: { min: number; confidence: ParentageConfidence }[] = [
+  { min: 7, confidence: 'incontestable' },
+  { min: 5, confidence: 'documented' },
+  { min: 3, confidence: 'circumstantial' },
+  { min: 0, confidence: 'unproven' },
+];
+
+export interface ParentageReading {
+  pieces: number;
+  confidence: ParentageConfidence;
+  /** The flag Chapter 8's content branches on, so the resolution is authored as content like every
+   * other outcome rather than hard-coded into a component. */
+  flag: string;
+  /** True once the dossier is strong enough that the answer can be asserted rather than suspected —
+   * the line between "we believe" and "we can prove", which is the whole of the St Pol endgame. */
+  provable: boolean;
+}
+
+export function readParentage(state: GameState): ParentageReading {
+  const pieces = evidenceOnTrack(state.evidence ?? [], 'parentage').length;
+  const confidence = PARENTAGE_BANDS.find(b => pieces >= b.min)!.confidence;
+  return {
+    pieces,
+    confidence,
+    flag: `parentage_${confidence}`,
+    provable: confidence === 'documented' || confidence === 'incontestable',
+  };
+}
