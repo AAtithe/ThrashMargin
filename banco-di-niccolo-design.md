@@ -361,7 +361,49 @@ Chapter 6: To Lie with Lions (1471 to 1473). The Iceland venture (stockfish, the
 
 Chapter 7: Caprice and Rondo (1474 to 1477). Exile winter in Danzig/Poland, the Caffa mission as the Black Sea closes, Persia and Uzum Hasan, the Ochoa gold thread, Jordan revelations, and the slow turn home. Charles the Bold dies on schedule January 1477 and the Burgundian financial world convulses: every player position in Flanders reprices.
 
+> **Phase 24 implementation, confirmed 2026-08-22:** 27 events in `content/events/chapter7.json`. Caffa
+> and Tabriz (both in §3's own list), four routes, `tanga` as an eleventh currency, Father Moriz as the
+> joiner, no new goods. Two mechanics: **exile** (a flag-driven bar on the Flanders ports, enforced in
+> `dispatchVessel` so it holds for auto-continued queued legs too — and the first time the courier
+> network exists for defence rather than profit), and **the Burgundy repricing**, which is the whole
+> reason cycling market events were built one phase earlier: `EventEffects.marketShock` installs a
+> whole-city demand event at each Flanders port, so "every player position reprices" reuses that layer
+> instead of a bespoke shock built twice.
+>
+> Historical spine checked, not guessed: the Ottomans took Caffa in **June 1475**; Uzun Hasan had
+> already been beaten at Otlukbeli in 1473 and died 6 January 1478, having spent four years being
+> promised Venetian galleys that never sailed; **Charles the Bold was killed outside Nancy on 5 January
+> 1477**. All three carried in prose, all deadlines relative.
+
 Chapter 8: Gemini (1477 to 1483). Scotland. The full parentage resolution from the assembled dossier, the St Pol endgame, family restored, the bank's final shape chosen by the player: Scottish landed house, Venetian bank, or dissolution into legacy. Epilogue screen prices the whole campaign: net worth, people kept, Conscience, secrets never sold.
+
+> **Phase 25 implementation, confirmed 2026-08-22 — this completes the campaign.** 25 events, seven
+> objectives, and deliberately **no new cities**: a finale resolves rather than expands. Spine: the
+> Treaty of Fotheringhay (11 June 1482), the Lauder Bridge coup (22 July), Gloucester crossing, and
+> Berwick castle surrendering 24 August and staying English.
+>
+> **The parentage resolution scales rather than gates.** `readParentage` returns a reading —
+> `unproven` / `circumstantial` / `documented` / `incontestable` — and `advanceWeek` sets the matching
+> flag, so the four dossier events are content branching on content. A threshold would have made the
+> fourth piece and the eighth identical, and (before Phase 22 guaranteed a floor) would have let an
+> uncooperative player reach the finale with nothing to resolve and a chapter that could not close.
+> **The St Pol endgame branches on `vatachino_named`**: the Chapter 5 intelligence work is what buys
+> the leverage to make Ribérac answer.
+>
+> **Three endings**, each with its own epilogue reading, and `chapter8_complete` renders the epilogue
+> *in place of* the game screen — the first chapter flag that ends the campaign rather than moving a
+> freeze forward. The epilogue prices net worth, Conscience, people kept, secrets sold and never sold,
+> the dossier's confidence and weeks played. **The net-worth figure appearing here honours rather than
+> reverses Phase 15's decision**: that phase rejected an *ambient* readout because a permanently
+> visible number becomes a de facto score, and deferred the real figure to precisely this screen. A
+> single reckoning after the campaign is over cannot be optimised against.
+>
+> **One compromise the epilogue makes visible.** The clock runs continuously with no per-chapter reset,
+> so a briskly-played campaign can reach this ending well before 1477-83. Chapters 2, 3 and 4 each
+> recorded that trade-off when they chose reachable deadlines over exact dates; the epilogue is simply
+> the first screen to print the in-game date prominently, so the mismatch is now seeable. The
+> alternative is padding every chapter with dead weeks, which is what Phase 19's relative deadlines
+> exist to prevent.
 
 Each chapter ships as a content pack: cities activated, goods, characters, 25 to 40 scripted events, 2 to 3 secrets, 1 extraction or logistics set piece, exit conditions.
 
@@ -440,6 +482,13 @@ Rule for every phase: content in JSON, logic in code, and the owner must be able
 Chapters 1 to 3 are the game. Build those to full quality before any Chapter 4+ content. If only Chapter 1 ever exists at high polish, the project has succeeded. Do not scaffold all 8 chapters thinly.
 
 > **Phase 11, confirmed 2026-07-22:** Phases 0-10 shipped Chapters 1-3 complete, at which point Section 12's own phase list (which implies Phase 11 continues into Chapter 4, "Scales of Gold") directly conflicts with this section. Flagged before starting; the owner confirmed this section governs — Phase 11 became a Chapters 1-3 quality pass (cargo insurance/voyage risk per §4, the map SVG height regression noted since Phase 7, the api tsconfig JSX noise noted since Phase 10) rather than Chapter 4 content. Chapter 4+ work stays paused until explicitly requested, regardless of what Section 12's phase numbering would otherwise suggest comes next.
+>
+> **Standing position as of Phase 25, 2026-08-22: the campaign is finished.** All eight chapters ship,
+> Chapter 0's prologue included. Section 14's original worry — thin scaffolding across eight chapters
+> instead of depth in three — did not materialise: each chapter shipped complete, with its own content
+> pack, its own verification driver, and a system the design doc actually asked of it. What remains is
+> systems work, not story: warehousing, free-play with AI rivals, and fleet growth. This section's
+> discipline has done its job and no longer gates anything.
 >
 > **Standing position as of Phase 19, 2026-07-30:** the Phase 11 hold was lifted for Chapter 4 (Phase 13) and again for Chapter 5 (Phase 19), each time by the owner asking for that chapter by name. The rule this section establishes still holds in the form every chapter phase since has restated: **reaching a chapter is not authorization for the next one.** Chapters 6, 7 and 8 are unbuilt and stay unbuilt until asked for.
 
