@@ -14,7 +14,7 @@ import { applyBackgroundFlows, deriveMarketCauses, driftScarcity, priceAt, sellP
 import { AI_PROFILES, aiNetWorth, createAiTrader, refreshAiKnowledge, resolveAiWeek, seedHomeKnowledge } from '../src/sim/aiTrader';
 import {
   FREEPLAY_START_CASH, FREEPLAY_TARGET_NET_WORTH, checkFreeplayWin, createRivals,
-  isFreeplay, playerNetWorth, resolveFreeplayWeek, standings,
+  isFreeplay, playerNetWorth, resolveFreeplayWeek, resolveWeeklyRivalPlants, standings,
 } from '../src/sim/freeplay';
 import { describeMarketCause } from '../src/components/marketCauseText';
 import { CITIES } from '../src/sim/content';
@@ -399,6 +399,88 @@ console.log('\n6. The difficulty model, re-measured after the Phase 27 rewiring'
   console.log(`       measured: a 30-unit hull holds within 25% of a 12-unit hull on ${biggerNotWorseByMuch}/${HULL_SEEDS}`);
   check('a larger hull is at least not a serious handicap',
     biggerNotWorseByMuch >= HULL_SEEDS * 0.7, `${biggerNotWorseByMuch}/${HULL_SEEDS}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n6b. Planting false news on a rival — §6\'s last deferred verb');
+// ---------------------------------------------------------------------------
+{
+  const base = freeplay(2);
+  const rivalId = base.aiTraders![0].id;
+
+  // Placement is validated against the rivals actually in this game — buying an agent against a
+  // trader that is not there would be money spent on something that could never act.
+  check('an agent can be placed inside a rival',
+    processAction({ ...base, cash: 900 }, { type: 'PLACE_AGENT', placement: { type: 'rival', traderId: rivalId }, name: 'A clerk' })
+      .agents.some(a => a.placement.type === 'rival'));
+  check('but not inside a rival that is not in this game',
+    (() => { try { processAction({ ...base, cash: 900 }, { type: 'PLACE_AGENT', placement: { type: 'rival', traderId: 'rival_nowhere' } }); return false; } catch (e) { return /no such rival/i.test((e as Error).message); } })());
+  const once = processAction({ ...base, cash: 900 }, { type: 'PLACE_AGENT', placement: { type: 'rival', traderId: rivalId } });
+  check('and never twice inside the same one',
+    (() => { try { processAction({ ...once, cash: 900 }, { type: 'PLACE_AGENT', placement: { type: 'rival', traderId: rivalId } }); return false; } catch (e) { return /already has somebody/i.test((e as Error).message); } })());
+  check('a campaign has no rivals to place against',
+    (() => { try { processAction({ ...createInitialState('c', 'C', { skipPrologue: true }), cash: 900, pendingEvents: [] }, { type: 'PLACE_AGENT', placement: { type: 'rival', traderId: 'rival_venice' } }); return false; } catch { return true; } })());
+
+  // The lie itself. Forced to land, and forced to miss, rather than hoping the dice cooperate.
+  const withAgent: GameState = {
+    ...base,
+    agents: [{ id: 'a1', name: 'A clerk in Venice', placement: { type: 'rival', traderId: rivalId }, placedWeek: 0 }],
+    aiTraders: base.aiTraders!.map(t => t.id === rivalId
+      ? { ...t, remembered: { ...t.remembered, london: { week: 0, prices: { cloth: 100, wool: 50 } } } }
+      : t),
+  };
+  const real = Math.random;
+  let landed: ReturnType<typeof resolveWeeklyRivalPlants> | null = null;
+  let missed: ReturnType<typeof resolveWeeklyRivalPlants> | null = null;
+  try {
+    Math.random = () => 0.01; // below the chance, and picks the first candidate city
+    landed = resolveWeeklyRivalPlants(withAgent, 12);
+    Math.random = () => 0.99; // above the chance
+    missed = resolveWeeklyRivalPlants(withAgent, 12);
+  } finally { Math.random = real; }
+
+  check('a landed plant is reported', !!landed!.plant, JSON.stringify(landed!.plant));
+  check('and names the rival, the city and the agent',
+    !!landed!.plant && landed!.plant.traderName.length > 0 && landed!.plant.cityName.length > 0
+      && landed!.plant.agentName === 'A clerk in Venice');
+  const before = withAgent.aiTraders!.find(t => t.id === rivalId)!.remembered;
+  const after = landed!.aiTraders.find(t => t.id === rivalId)!.remembered;
+  const changedCity = Object.keys(after).find(c => JSON.stringify(after[c]) !== JSON.stringify(before[c]))!;
+  check('exactly one city’s books are corrupted',
+    Object.keys(after).filter(c => JSON.stringify(after[c]) !== JSON.stringify(before[c])).length === 1);
+  check('the prices there really moved',
+    Object.keys(after[changedCity].prices).some(g => after[changedCity].prices[g] !== before[changedCity].prices[g]));
+  check('and no price is ever bent to zero or below',
+    Object.values(after[changedCity].prices).every(p => p >= 1));
+  check('a missed roll changes nothing at all',
+    !missed!.plant && JSON.stringify(missed!.aiTraders) === JSON.stringify(withAgent.aiTraders));
+  check('and no agent means no plant, ever',
+    !resolveWeeklyRivalPlants(base, 12).plant);
+
+  // The rival’s home market is never lied to it about — it is standing in it. Same rule
+  // `corruptNews` applies to the player's own home city.
+  const home = base.aiTraders!.find(t => t.id === rivalId)!.vessels[0].location;
+  check('a rival is never deceived about the market it is standing in', changedCity !== home,
+    `${changedCity} vs home ${home}`);
+
+  // **The property that makes this fair.** The lie is stamped fresh so it survives, but only for
+  // that rival's own report lag — so a sharper opponent shakes it off sooner. The difficulty dial
+  // doing the work in a third place, with no special case.
+  check('the lie is stamped with the current week, so it is not refreshed away on the same tick',
+    after[changedCity].week === 12, `${after[changedCity].week}`);
+  const trader = landed!.aiTraders.find(t => t.id === rivalId)!;
+  const stillLying = refreshAiKnowledge(trader, base.scarcity, 12 + trader.reportLagWeeks - 1, base.marketEvents);
+  const washedOut = refreshAiKnowledge(trader, base.scarcity, 12 + trader.reportLagWeeks, base.marketEvents);
+  check('it survives inside the rival’s report lag',
+    JSON.stringify(stillLying.remembered[changedCity]) === JSON.stringify(after[changedCity]));
+  check('and washes out the week that lag expires',
+    JSON.stringify(washedOut.remembered[changedCity]) !== JSON.stringify(after[changedCity]));
+
+  // Wired into the real pipeline, not merely callable.
+  const stepped = processAction({ ...withAgent, cash: 900 }, { type: 'ADVANCE_WEEK' });
+  check('ADVANCE_WEEK runs the plant step without throwing', stepped.week === withAgent.week + 1);
+  check('and a campaign runs it for nothing',
+    processAction({ ...createInitialState('c2', 'C', { skipPrologue: true }), pendingEvents: [] }, { type: 'ADVANCE_WEEK' }).lastRivalPlant == null);
 }
 
 // ---------------------------------------------------------------------------

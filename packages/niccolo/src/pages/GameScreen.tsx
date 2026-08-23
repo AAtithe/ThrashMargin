@@ -866,7 +866,12 @@ export default function GameScreen() {
             />
           )}
 
-          {activeSection === 'standings' && <StandingsPanel state={state} />}
+          {activeSection === 'standings' && (
+            <StandingsPanel
+              state={state}
+              onPlaceAgent={traderId => dispatch({ type: 'PLACE_AGENT', placement: { type: 'rival', traderId } })}
+            />
+          )}
 
           {activeSection === 'dispatches' && (
             <DispatchesPanel

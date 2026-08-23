@@ -77,7 +77,7 @@ flows and drift running exactly as `advanceWeek` applies them) established, 11/1
   line moved fresher-information from 8/12 to **12/12** seeds and capacity from 3/12 to **10/12**.
   Worth remembering: a single quantity bug can make a whole design model look wrong.
 
-### Free-play mode (not built)
+### Free-play mode — built, Phase 27
 
 - `createInitialState` gains a mode: `'campaign' | 'freeplay'`. Free-play skips all chapter content —
   no events, no objectives, no chapter freeze in `processAction` — opens the whole map from week one,
@@ -152,7 +152,7 @@ are the player's own settled mechanics.
 
 ---
 
-## Part 2 — City warehousing (spec, not built)
+## Part 2 — City warehousing — built, Phase 26
 
 **Purpose.** Decouple buying from selling *in time*: store goods and sell when the price recovers,
 instead of being forced to dump a full hold at once. Also relieves "my hold is full."
@@ -209,7 +209,7 @@ interface Warehouse {
 > `resolveHouseSabotage`, which only targets docked vessels — a real asymmetry, and the natural shape
 > of that future feature.
 
-## Part 3 — Cycling market events (spec, not built)
+## Part 3 — Cycling market events — built, Phase 23
 
 **Purpose.** Which cities want which goods should shift over time, "Ocean Trader" style, without
 losing the campaign's voice.
@@ -232,7 +232,7 @@ priceAt = base × scarcity × demand
 - Must be visible somewhere the player looks: a market-news line plus a marker on the affected row,
   or it reads as unexplained numbers moving.
 
-## Part 4 — Fleet growth (spec, not built)
+## Part 4 — Fleet growth — built, Phase 28
 
 - `BUY_VESSEL` / `SELL_VESSEL` at named shipyards — reuse the `canInsureAt` precedent (a short list of
   cities) rather than allowing it at every port.

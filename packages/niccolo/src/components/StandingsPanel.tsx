@@ -6,6 +6,7 @@ import {
   rivalSeat,
   standings,
 } from '../sim/freeplay';
+import { agentPlacementCost } from '../sim/houses';
 import type { GameState } from '../sim/types';
 
 /**
@@ -18,7 +19,11 @@ import type { GameState } from '../sim/types';
  * competitive sandbox with a stated target, where hiding the score would make the mode unplayable
  * rather than principled. A campaign save has no rivals to stand against and never reaches here.
  *
- * Read-only, like `ObjectivesPanel` and the Evidence Board. Nothing on this screen is an action.
+ * One action lives here (Phase 29): placing an agent inside a rival's counting house. It sits on
+ * this panel rather than with the other agent placements in `HousesPanel` because the target is a
+ * *rival*, and this is the screen where the player is already looking at rivals — and because a
+ * rival is a free-play object, so an entry point in the campaign's own Houses panel would be dead
+ * there. Everything else on this screen stays read-only.
  */
 
 const LABEL: React.CSSProperties = {
@@ -39,7 +44,12 @@ const ROW: React.CSSProperties = {
   fontSize: '0.82rem',
 };
 
-export default function StandingsPanel({ state }: { state: GameState }) {
+interface StandingsPanelProps {
+  state: GameState;
+  onPlaceAgent: (traderId: string) => void;
+}
+
+export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelProps) {
   const table = standings(state);
   const leader = table[0]?.netWorth ?? 0;
   const win = checkFreeplayWin(state);
@@ -86,6 +96,45 @@ export default function StandingsPanel({ state }: { state: GameState }) {
           </div>
         );
       })}
+
+      <p style={LABEL}>Agents inside their houses</p>
+      {state.lastRivalPlant?.week === state.week && (
+        <p style={{ fontSize: '0.78rem', color: UI.verdigris, margin: '0 0 0.4rem' }}>
+          {state.lastRivalPlant.agentName} has got a false price into {state.lastRivalPlant.traderName}
+          {"'"}s books for {state.lastRivalPlant.cityName}. They will trade on it until their own next
+          report from there contradicts it.
+        </p>
+      )}
+      {(state.aiTraders ?? []).map(t => {
+        const inside = state.agents.some(a => a.placement.type === 'rival' && a.placement.traderId === t.id);
+        const cost = agentPlacementCost(state.agents);
+        return (
+          <div key={t.id} style={{ ...ROW, borderBottom: 'none', padding: '0.25rem 0' }}>
+            <span style={{ flex: 1 }}>
+              {t.name}
+              {inside && <span style={{ color: UI.verdigris, fontSize: '0.72rem' }}> — we have a man inside</span>}
+            </span>
+            {!inside && (
+              <button
+                style={{
+                  background: UI.panel, border: `1px solid ${UI.rule}`, color: UI.text,
+                  fontFamily: 'inherit', fontSize: '0.7rem', padding: '0.15rem 0.45rem',
+                  cursor: 'pointer', whiteSpace: 'nowrap',
+                }}
+                disabled={cost > state.cash}
+                onClick={() => onPlaceAgent(t.id)}
+              >
+                Place an agent — {cost}f{cost > state.cash && ' (short)'}
+              </button>
+            )}
+          </div>
+        );
+      })}
+      <p style={{ fontSize: '0.72rem', color: UI.textFaint, margin: '0.3rem 0 0', fontStyle: 'italic' }}>
+        A man inside feeds their counting house a false price now and then. It holds only until their
+        own next report from that city arrives — so the better-informed the rival, the shorter the lie
+        lasts.
+      </p>
 
       <p style={LABEL}>What the rivals did this week</p>
       {notes.length === 0 ? (

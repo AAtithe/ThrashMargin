@@ -183,3 +183,95 @@ export function rivalSeat(traderId: string): string | null {
   const seat = RIVAL_SEATS.find(s => s.id === traderId);
   return seat ? findCity(seat.homeCity)?.name ?? seat.homeCity : null;
 }
+
+/**
+ * Chance per week, per agent placed inside a rival, that the agent gets a lie into that rival's
+ * books. Set just above the 15% insider-secret roll a house agent gets: a rival's price cache is a
+ * softer target than the secret a masked company guards hardest.
+ */
+const RIVAL_PLANT_CHANCE_PER_WEEK = 0.18;
+
+/** How far a planted price is bent. Deliberately both directions — a lie that only ever said
+ * "cheaper than it is" would be a single predictable trick, and half the value of a false report is
+ * making a rival sail somewhere worthless. */
+const PLANT_LOW = 0.45;
+const PLANT_HIGH = 1.9;
+
+export interface RivalPlantResolution {
+  aiTraders: AiTrader[];
+  plant: { week: number; traderName: string; cityName: string; agentName: string } | null;
+}
+
+/**
+ * Runs every ADVANCE_WEEK: an agent inside a rival feeds its counting house a false price
+ * (design doc §6, "can plant false news" — the last verb in that section, deferred since Phase 8).
+ *
+ * **The mirror of what the hostile houses already do to the player.** `corruptNews` distorts the
+ * player's incoming reports; this distorts a rival's. §3's information pillar is supposed to cut
+ * both ways, and until now it only cut one.
+ *
+ * **It does not break the fairness model, and it interacts with it beautifully.** The rival still
+ * never reads a price it has not reached and still never trades at a price the player could not get
+ * — it is simply *wrong* about one, exactly as the player is wrong when a house plants on them. And
+ * because `refreshAiKnowledge` overwrites a memory once it is older than `reportLagWeeks`, **a lie
+ * washes out of a sharper opponent's books sooner**: the plant is stamped with the current week so
+ * it survives its full lag, which means it lasts 2 weeks against the ruthless profile and 6 against
+ * the cautious one. The harder rival is harder to deceive, for the same reason it is harder to beat.
+ * That is the difficulty dial doing the work in a third place, without a special case.
+ *
+ * One lie per week at most, like `resolveHouseSabotage` and the voyage-risk roll — a week where
+ * three agents all land at once would read as a bug.
+ */
+export function resolveWeeklyRivalPlants(state: GameState, week: number): RivalPlantResolution {
+  const traders = state.aiTraders ?? [];
+  if (traders.length === 0) return { aiTraders: traders, plant: null };
+
+  const planted = state.agents.filter(a => a.placement.type === 'rival');
+  if (planted.length === 0) return { aiTraders: traders, plant: null };
+
+  for (const agent of planted) {
+    const placement = agent.placement;
+    if (placement.type !== 'rival') continue;
+    if (Math.random() >= RIVAL_PLANT_CHANCE_PER_WEEK) continue;
+
+    const trader = traders.find(t => t.id === placement.traderId);
+    if (!trader) continue;
+
+    // Only a market the rival actually has an opinion about can be lied to it about — you cannot
+    // corrupt a report that was never going to arrive. Its home port is excluded: the rival is
+    // standing in that market and would see the truth out of its own window, which is exactly the
+    // rule `corruptNews` applies to the player's own home city.
+    const home = trader.vessels[0]?.location;
+    const candidates = Object.keys(trader.remembered).filter(c => c !== home);
+    if (candidates.length === 0) continue;
+
+    const cityId = candidates[Math.floor(Math.random() * candidates.length)];
+    const entry = trader.remembered[cityId];
+    const goods = Object.keys(entry.prices);
+    if (goods.length === 0) continue;
+
+    const prices: Record<string, number> = {};
+    for (const goodId of goods) {
+      const factor = Math.random() < 0.5 ? PLANT_LOW : PLANT_HIGH;
+      prices[goodId] = Math.max(1, Math.round(entry.prices[goodId] * factor));
+    }
+
+    const index = traders.indexOf(trader);
+    const next = [...traders];
+    // Stamped with the current week on purpose: an entry that still looked stale would be refreshed
+    // to the truth on this very tick. Stamping it fresh is what makes the lie last exactly as long
+    // as that rival's own report lag, and no longer.
+    next[index] = { ...trader, remembered: { ...trader.remembered, [cityId]: { week, prices } } };
+    return {
+      aiTraders: next,
+      plant: {
+        week,
+        traderName: trader.name,
+        cityName: findCity(cityId)?.name ?? cityId,
+        agentName: agent.name,
+      },
+    };
+  }
+
+  return { aiTraders: traders, plant: null };
+}

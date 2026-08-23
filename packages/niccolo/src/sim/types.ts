@@ -611,7 +611,20 @@ export interface House {
  * from being planted by a hostile house; a house agent has a weekly chance of surfacing that
  * house's insider secret via the existing Secret system.
  */
-export type AgentPlacement = { type: 'city'; cityId: string } | { type: 'house'; houseId: string };
+export type AgentPlacement =
+  | { type: 'city'; cityId: string }
+  | { type: 'house'; houseId: string }
+  /**
+   * An agent inside a free-play rival's own counting house (Phase 29) — §6's "can plant false news",
+   * the last verb in that section still deferred.
+   *
+   * It was deferred for a stated reason: `sim/houses.ts`'s rival houses are a reduced-fidelity
+   * scarcity footprint with no news feed of their own, so there was literally nothing for the verb
+   * to act on. Phase 27's rivals do have one — `AiTrader.remembered`, a real per-city price cache
+   * they actually trade on — so the verb has a target at last, and needed no new intelligence model
+   * invented for it.
+   */
+  | { type: 'rival'; traderId: string };
 
 /**
  * The hotseat house experiment (Phase 14, design doc §10's "reduced fidelity" model kept exactly
@@ -923,6 +936,9 @@ export interface GameState {
    * introduced to fix.
    */
   vesselSeq?: number;
+  /** The most recent lie an agent fed a rival (Phase 29), for the UI to report. Optional/null like
+   * every other `last*Event` field, and never accumulated. */
+  lastRivalPlant?: { week: number; traderName: string; cityName: string; agentName: string } | null;
   /** True for the one week a vessel was laid up for want of upkeep (Phase 28), so the UI can say
    * so — the same shape `escortLapsed` uses, and for the same reason. */
   vesselLaidUp?: { week: number; vesselName: string } | null;

@@ -139,6 +139,17 @@ export function placeAgent(state: GameState, placement: AgentPlacement, name?: s
   if (placement.type === 'house' && !findHouse(placement.houseId)) {
     throw new Error(`No such house: ${placement.houseId}`);
   }
+  // A rival placement (Phase 29) is validated against the rivals actually in this game, not against
+  // content — rivals exist only in free play, and an agent bought against a trader that is not
+  // there would be money spent on something that could never act.
+  if (placement.type === 'rival') {
+    if (!(state.aiTraders ?? []).some(t => t.id === placement.traderId)) {
+      throw new Error('There is no such rival house in this game');
+    }
+    if (state.agents.some(a => a.placement.type === 'rival' && a.placement.traderId === placement.traderId)) {
+      throw new Error('The house already has somebody inside that company');
+    }
+  }
   const cost = agentPlacementCost(state.agents);
   if (cost > state.cash) throw new Error(`Not enough cash (need ${cost}, have ${Math.round(state.cash)})`);
 

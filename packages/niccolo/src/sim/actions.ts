@@ -31,7 +31,7 @@ import { addGrade, gradeBuyMultiplier, gradeHeld, gradeSellMultiplier, reconcile
 import { adjustScarcity, applyBackgroundFlows, cargoTotal, deriveMarketCauses, driftScarcity, priceAt, sellProceeds } from './market';
 import { cityBarred, resolveWeeklyMarketEvents, tradeBlockedAt } from './marketEvents';
 import { canInvestFurther, courierInvestmentCost, generateNews, resolveArrivals } from './news';
-import { checkFreeplayWin, resolveFreeplayWeek } from './freeplay';
+import { checkFreeplayWin, resolveFreeplayWeek, resolveWeeklyRivalPlants } from './freeplay';
 import { buyVessel, resolveWeeklyFleet, sellVessel, vesselSpeed } from './shipyard';
 import {
   expandWarehouse,
@@ -361,7 +361,14 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   // background flows, drift and house footprints have already produced — the same market the player
   // will read this week. Their trades are threaded through each rival in turn inside
   // `resolveFreeplayWeek`, and returns the input untouched in a campaign, where there are none.
-  const freeplayResolution = resolveFreeplayWeek({ ...state, scarcity: houseFootprint.scarcity }, week);
+  // An agent inside a rival feeds it a lie *before* it trades this week (Phase 29), so the rival
+  // acts on the corrupted books rather than being handed them after the fact — which would make the
+  // whole feature a week late and invisible.
+  const rivalPlants = resolveWeeklyRivalPlants(state, week);
+  const freeplayResolution = resolveFreeplayWeek(
+    { ...state, scarcity: houseFootprint.scarcity, aiTraders: rivalPlants.aiTraders },
+    week,
+  );
   const scarcity = freeplayResolution.scarcity;
   // Market events resolve before news is generated, so this week's reports quote the prices the
   // demand layer has actually produced rather than last week's.
@@ -474,6 +481,7 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
     vesselLaidUp: fleetResolution.laidUp,
     aiTraders: freeplayResolution.aiTraders,
     lastAiNotes: freeplayResolution.notes,
+    lastRivalPlant: rivalPlants.plant ?? state.lastRivalPlant ?? null,
     insurance,
     lastVoyageEvent: risk.event ?? state.lastVoyageEvent,
     lastSabotageEvent: sabotage.event ?? state.lastSabotageEvent ?? null,
