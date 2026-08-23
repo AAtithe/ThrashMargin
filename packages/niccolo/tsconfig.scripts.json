@@ -1,0 +1,9 @@
+{
+  "//": "The verification drivers were invisible to `tsc` for six phases: tsconfig.json includes only `src`, and `esbuild` strips types without checking them. That let a driver keep passing a removed field (`shipCapacity`) to `createAiTrader` — so the difficulty measurements in drive-freeplay silently compared three identical hulls. Drivers are verification; unchecked verification is not verification.",
+  "extends": "./tsconfig.json",
+  "include": ["scripts", "src"],
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"]
+  }
+}

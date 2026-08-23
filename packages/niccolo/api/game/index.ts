@@ -4,7 +4,7 @@ import { getDb } from '../_lib/db';
 import { getUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
 import { createInitialState } from '../../src/sim/state';
-import type { RivalCount } from '../../src/sim/freeplay';
+import type { FreeplayGoal, RivalCount } from '../../src/sim/freeplay';
 
 /**
  * Same `games` table Thrash Margin and The Tea Race use (same Postgres/Supabase instance, same
@@ -49,8 +49,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // seat list by it, so a nonsense value would silently produce a game with no opponents.
       const rawRivals = Number(req.body?.rivals);
       const rivals = (Number.isInteger(rawRivals) && rawRivals >= 0 && rawRivals <= 3 ? rawRivals : 2) as RivalCount;
+      // Validated against the three known goals rather than trusted — this arrives over the wire and
+      // `checkFreeplayWin` switches on it, so an unrecognised value would silently pick the default
+      // and the player would be playing a game they did not choose.
+      const rawGoal = req.body?.freeplayGoal;
+      const freeplayGoal: FreeplayGoal =
+        rawGoal === 'by_year' || rawGoal === 'survivor' ? rawGoal : 'target';
       const newId = uuid();
-      const state = createInitialState(newId, name, { skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals });
+      const state = createInitialState(newId, name, { skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals, freeplayGoal });
 
       try {
         await db.query(

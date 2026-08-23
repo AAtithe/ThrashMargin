@@ -275,24 +275,41 @@ console.log('\n5. Upkeep: an overlarge fleet genuinely hurts');
   // punishment out of all proportion, and would remove the player's ability to earn it back.
   const broke = resolveWeeklyFleet({ ...two, cash: 0 }, 5);
   check('a shortfall lays a hull up rather than taking it', broke.vessels.length === two.vessels.length);
-  check('and says which', broke.laidUp?.vesselName === two.vessels.find(v => v.typeId === 'carrack')!.name,
-    broke.laidUp?.vesselName);
+  // Derived, not named. An earlier version asserted the carrack was the dearest hull; Phase 30's
+  // rebalance cut her upkeep to 5f and the galley's 6f overtook her, so three assertions failed on a
+  // content change that was not a bug. The same class of staleness the Chapter 7/8 drivers taught.
+  const dearestOwned = [...two.vessels].sort((a, b) => vesselUpkeep(b) - vesselUpkeep(a))[0];
+  check('and says which', broke.laidUp?.vesselName === dearestOwned.name, broke.laidUp?.vesselName);
   check('the dearest hull is the one laid up', broke.laidUp?.week === 5);
   const laid = broke.vessels.find(v => v.name === broke.laidUp!.vesselName)!;
-  check('a laid-up hull loses its class', laid.typeId === undefined);
+  // **Mothballed, not declassed.** The first version cleared `typeId`, which looked like a penalty
+  // and was the opposite: a carrack without its class keeps all forty units of hold, loses its 35%
+  // speed penalty, and costs nothing — strictly better than the ship you paid 520f for. A live
+  // free-play run made it obvious (both rivals laid up and none the worse for it). She now keeps her
+  // class and simply cannot sail, which is a real cost that can never be a reward.
+  check('a laid-up hull is mothballed', laid.laidUp === true);
+  check('and keeps its class, so lay-up is never a speed upgrade', laid.typeId === dearestOwned.typeId);
   check('so it costs nothing further', vesselUpkeep(laid) === 0);
-  check('and sails at the default speed again', vesselSpeed(laid) === 1);
-  check('but keeps its hold — it is unmaintained, not scuttled', laid.capacity === findVesselType('carrack')!.capacity);
-  check('only one hull is laid up per week', broke.vessels.filter(v => v.typeId === undefined).length
-    === two.vessels.filter(v => v.typeId === undefined).length + 1);
+  check('while still being the same ship underneath', vesselSpeed(laid) === vesselSpeed(dearestOwned));
+  check('and keeps its hold — unmaintained, not scuttled', laid.capacity === dearestOwned.capacity);
+  check('only one hull is laid up per week', broke.vessels.filter(v => v.laidUp).length === 1);
   check('cash never goes negative', broke.cash >= 0);
 
   // Through the real pipeline, and reported for exactly one week.
   const laidThroughWeek = act({ ...two, cash: 0 }, { type: 'ADVANCE_WEEK' });
   check('ADVANCE_WEEK reports the lay-up with the new week',
     laidThroughWeek.vesselLaidUp?.week === laidThroughWeek.week, `${laidThroughWeek.vesselLaidUp?.week}`);
-  check('and the next week clears the report',
-    !act({ ...laidThroughWeek, cash: 5000 }, { type: 'ADVANCE_WEEK' }).vesselLaidUp);
+  const mothballedId = laidThroughWeek.vessels.find(v => v.laidUp)!.id;
+  check('a mothballed hull refuses to sail',
+    threw(() => act(laidThroughWeek, { type: 'DISPATCH_VESSEL', vesselId: mothballedId, destinationId: 'calais' }))
+      ?.includes('laid up') === true);
+  const recommissioned = act({ ...laidThroughWeek, cash: 5000 }, { type: 'ADVANCE_WEEK' });
+  check('and the next week clears the report', !recommissioned.vesselLaidUp);
+  check('a hull is recommissioned once the house can afford her again',
+    !recommissioned.vessels.some(v => v.laidUp));
+  check('and sails again after that',
+    !!act(recommissioned, { type: 'DISPATCH_VESSEL', vesselId: mothballedId, destinationId: 'calais' })
+      .vessels.find(v => v.id === mothballedId)!.destination);
 }
 
 // ---------------------------------------------------------------------------

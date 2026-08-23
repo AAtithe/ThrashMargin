@@ -1,8 +1,12 @@
 import { UI } from '../theme';
 import { findCity } from '../sim/content';
 import {
+  FREEPLAY_DEADLINE_WEEKS,
   FREEPLAY_TARGET_NET_WORTH,
   checkFreeplayWin,
+  freeplayGoal,
+  freeplayGoalLabel,
+  houseIsOut,
   rivalSeat,
   standings,
 } from '../sim/freeplay';
@@ -52,6 +56,7 @@ interface StandingsPanelProps {
 export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelProps) {
   const table = standings(state);
   const leader = table[0]?.netWorth ?? 0;
+  const goal = freeplayGoal(state);
   const win = checkFreeplayWin(state);
   const notes = (state.lastAiNotes ?? []).filter(() => true);
 
@@ -60,25 +65,34 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
       {state.freeplayWonWeek !== undefined && (
         <p style={{ fontSize: '0.8rem', color: win.playerWon ? UI.good : UI.warn, margin: '0 0 0.6rem' }}>
           {win.playerWon
-            ? `The house passed ${FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f in week ${state.freeplayWonWeek}. You have won — and nothing stops you carrying on.`
-            : `${win.winners[0]?.name ?? 'A rival'} passed ${FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f in week ${state.freeplayWonWeek}. The board is still open if you want it back.`}
+            ? `Won in week ${state.freeplayWonWeek} — ${freeplayGoalLabel(state)}. Nothing stops you carrying on.`
+            : `${win.winners[0]?.name ?? 'A rival'} won in week ${state.freeplayWonWeek} — ${freeplayGoalLabel(state)}. The board is still open if you want it back.`}
         </p>
       )}
 
-      <p style={{ ...LABEL, marginTop: 0 }}>Standing — first to {FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f</p>
+      <p style={{ ...LABEL, marginTop: 0 }}>Standing — {freeplayGoalLabel(state)}</p>
+      {goal === 'by_year' && state.freeplayWonWeek === undefined && (
+        <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: '0 0 0.4rem' }}>
+          {Math.max(0, FREEPLAY_DEADLINE_WEEKS - state.week)} weeks left. Nobody has won anything yet.
+        </p>
+      )}
       {table.map((row, i) => {
         // A bar against the leader rather than against the target: early on every bar would be a
         // sliver, and the question the player is actually asking is "how far behind am I".
         const share = leader > 0 ? Math.max(0, Math.min(1, row.netWorth / leader)) : 0;
         const seat = row.isPlayer ? null : rivalSeat(row.id);
+        const out = houseIsOut(state, row.id);
         return (
           <div key={row.id} style={ROW}>
             <span style={{ flex: 1 }}>
               <span style={{ color: UI.textFaint, fontSize: '0.72rem' }}>{i + 1}. </span>
               <span style={{ color: row.isPlayer ? UI.brass : UI.text }}>{row.name}</span>
               {seat && <span style={{ color: UI.textSoft, fontSize: '0.7rem' }}> — out of {seat}</span>}
-              {row.netWorth >= FREEPLAY_TARGET_NET_WORTH && (
+              {goal === 'target' && row.netWorth >= FREEPLAY_TARGET_NET_WORTH && (
                 <span style={{ color: UI.good, fontSize: '0.7rem' }}> · past the post</span>
+              )}
+              {goal === 'survivor' && out && (
+                <span style={{ color: UI.bad, fontSize: '0.7rem' }}> · out</span>
               )}
               <span
                 style={{

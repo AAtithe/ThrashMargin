@@ -98,6 +98,14 @@ flows and drift running exactly as `advanceWeek` applies them) established, 11/1
 - Suggested win conditions, pick one: first to N florins; highest net worth at a fixed year; or last
   house solvent.
 
+> **Phase 30 built all three**, rather than the one Phase 27 picked — they are genuinely different
+> games rather than difficulty settings, and once `standings` existed each additional one was a
+> predicate rather than a system. Chosen in the lobby: `target` (a race you can see), `by_year`
+> (five years, undecided until the bell), `survivor` (the trade you decline matters more than the one
+> you take — the mode Phase 27 dismissed for "rewarding sitting still", which is true and is exactly
+> why it belongs as an explicit choice rather than a default). "Solvent" means the same thing on both
+> sides of the table: the player's own insolvency ladder, and a rival with nothing left to sell.
+
 > **Phase 27 implementation, confirmed 2026-08-23.** Free play ships as a mode flag on the same
 > reducer, not a second one (`GameState.mode`): the scripted layer is *absent* rather than
 > suppressed — `advanceWeek` skips `checkTriggers` entirely, so no chapter event can enter
@@ -149,6 +157,44 @@ flows and drift running exactly as `advanceWeek` applies them) established, 11/1
 Networked multiplayer (still explicitly scoped out). AI houses gaining ledgers/loans/agents — the
 opponent trades; it does not bank or run intelligence. AI use of grades or warehousing until those
 are the player's own settled mechanics.
+
+> **Phase 30, 2026-08-23.** That last clause was a precondition, not a permanent exclusion, and
+> Phases 26 and 28 met it — so the rivals now use **grades, warehousing and hull classes**, through
+> the player's own functions rather than parallel copies. Ledgers, loans and agents stay out: the
+> opponent trades; it does not bank or run intelligence. Networked multiplayer stays out.
+>
+> Each profile now differs in capital, information lag, hull class *and* whether it warehouses — and
+> in nothing else. A rival buys a graded lot only when the destination is the city that pays the
+> premium (the "route it to the market that wants it" rule, applied by the opponent rather than
+> merely available to the player), lands its surplus in a shed and sails on rather than sitting in
+> port metering six units a week, and pays weekly upkeep it can be mothballed for missing.
+>
+> **Two real findings, and one correction to Phase 28.**
+>
+> *The correction.* Laying up a hull cleared its class, which looked like a penalty and was the
+> opposite: a carrack stripped of its class kept all forty units of hold, lost its 35% speed penalty
+> and cost nothing — strictly better than the ship the player paid for. A live free-play run made it
+> obvious, with both rivals laid up and thriving. A laid-up hull is now **mothballed**: it keeps its
+> class, draws no upkeep, **cannot sail**, and is recommissioned automatically the first week the
+> whole bill is affordable again.
+>
+> *Storage beats tonnage.* A shed pays on 57 of 60 seeds. Hold does not: measured at matched capital
+> and with sheds, a cog beat a carrack at 600f, 1,200f and 2,500f. The cause is structural rather
+> than a tuning miss — a market absorbs about `ABSORBABLE_UNITS` of one good before the sale crushes
+> its own price, and most cities trade two to four goods, so hold beyond roughly one market's
+> appetite cannot be arbitraged at any price. Phase 30 cut the carrack to 460f/5f/×1.2, which
+> narrows the gap from 10-17% to about 5-7% and makes her a real cost rather than a trap. **Her hold
+> earns its keep where a single consignment must move at once** — Chapter 6's `combinedCargoAtLeast`
+> delivery checks — which is a campaign use a free-play arbitrage measurement structurally cannot
+> see, and the class note now tells the player exactly that. Recorded so a fourth phase does not
+> chase "a bigger ship is an upgrade" again.
+>
+> **A verification gap closed, which mattered more than any of it.** `tsconfig.json` includes only
+> `src`, and `esbuild` strips types without checking them — so the drivers had **never been
+> typechecked**, for six phases. That was hiding a live bug: `drive-freeplay` still passed the
+> removed `shipCapacity` to `createAiTrader`, so every "profile" in the difficulty section was really
+> the same default hull with no sheds, and those measurements compared cash and lag alone. There is
+> now a `tsconfig.scripts.json`, and `npm run drive` typechecks the drivers before running them.
 
 ---
 

@@ -18,7 +18,7 @@ import { cargoValue } from '../src/sim/insurance';
 import { adviceFor } from '../src/sim/advisors';
 import { EVENTS } from '../src/sim/content';
 import templates from '../src/content/marketEvents/events.json';
-import type { ActiveMarketEvent, GameState } from '../src/sim/types';
+import type { ActiveMarketEvent, GameState, MarketScarcity } from '../src/sim/types';
 
 let pass = 0, fail = 0;
 function check(label: string, cond: boolean, detail?: string) {
@@ -92,7 +92,7 @@ console.log('\n2. Demand survives drift — the whole reason it is not scarcity'
   check('and still raises it after ten weeks of drift', stillDear === dear, `${dear} -> ${stillDear}`);
 
   // Contrast: the same size of move written into scarcity is almost entirely gone.
-  let asScarcity = { ...s.scarcity, bruges: { ...s.scarcity.bruges, cloth: 1.5 } };
+  let asScarcity: MarketScarcity = { ...s.scarcity, bruges: { ...s.scarcity.bruges, cloth: 1.5 } };
   for (let i = 0; i < 10; i++) asScarcity = driftScarcity(asScarcity);
   check('whereas a scarcity-based shift of the same size has decayed away',
     Math.abs((asScarcity.bruges.cloth ?? 1) - 1) < 0.05,

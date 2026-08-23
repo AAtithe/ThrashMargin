@@ -1,12 +1,14 @@
 import { CITIES, findCity, marketGoodsAt, otherEndOfRoute, planRoute, findRouteById } from './content';
 import { SCARCITY_STEP, adjustScarcity, cargoTotal, priceAt, sellProceeds } from './market';
 import { tradeBlockedAt } from './marketEvents';
-import { resaleValue } from './shipyard';
+import { addGrade, gradeBuyMultiplier, gradeHeld, gradeSellMultiplier, isPilotGood, removeGrade } from './grades';
+import { findVesselType, resaleValue, vesselSpeed, vesselUpkeep } from './shipyard';
 import type {
   ActiveMarketEvent,
   AiTradeNote,
   AiTrader,
   Cargo,
+  GradeId,
   MarketScarcity,
   RememberedPrices,
   Vessel,
@@ -44,14 +46,39 @@ export interface AiTraderProfile {
   startingCash: number;
   reportLagWeeks: number;
   homeCity: string;
-  shipCapacity: number;
+  /**
+   * Which entry in `content/vesselTypes.json` this rival sails (Phase 30). Capacity, weekly upkeep
+   * and passage time all come from the class, exactly as they do for a hull the player bought — so
+   * a rival's hull is not a separate stat block that happens to look similar.
+   */
+  vesselTypeId: string;
+  /**
+   * How much shed space this rival leases at each city it trades into (Phase 30). Zero means it does
+   * not warehouse at all, which is how the difficulty dial expresses the mechanic: the weakest rival
+   * simply has not thought of it.
+   */
+  warehouseCapacity: number;
 }
 
-/** Three profiles differing only in capital and information quality — never in the rules they play by. */
+/**
+ * The three profiles. They differ in **capital, information quality, hull class and whether they
+ * warehouse** — and in nothing else. Every rule they play by is the player's own.
+ *
+ * Phase 30 gave the last two of those four. Before it, `shipCapacity` was a bare number on the
+ * profile and rivals sailed at a flat speed with no upkeep and no storage: the opponent was playing
+ * a strictly simpler game than the player, which the spec permitted only "until those are the
+ * player's own settled mechanics". Phases 26 and 28 settled them.
+ */
 export const AI_PROFILES: Record<'cautious' | 'steady' | 'ruthless', Omit<AiTraderProfile, 'id' | 'name' | 'homeCity'>> = {
-  cautious: { startingCash: 300, reportLagWeeks: 6, shipCapacity: 15 },
-  steady: { startingCash: 600, reportLagWeeks: 4, shipCapacity: 20 },
-  ruthless: { startingCash: 1200, reportLagWeeks: 2, shipCapacity: 30 },
+  // A cog, no shed, and the staleest reports. Trades the way a rival did before Phase 30.
+  cautious: { startingCash: 300, reportLagWeeks: 6, vesselTypeId: 'cog', warehouseCapacity: 0 },
+  // A cog and a small shed: it has worked out that landing a hold and sailing on beats sitting in
+  // port selling six units a week.
+  steady: { startingCash: 600, reportLagWeeks: 4, vesselTypeId: 'cog', warehouseCapacity: 20 },
+  // A carrack — slower, but twice the hold, and the sheds to make that hold mean something. The
+  // combination is the point: Phase 27 measured that extra hull alone mostly buys time in port, so
+  // capacity is only an advantage to a trader that can *put the cargo down*.
+  ruthless: { startingCash: 1200, reportLagWeeks: 2, vesselTypeId: 'carrack', warehouseCapacity: 40 },
 };
 
 /**
@@ -85,6 +112,9 @@ function observe(
 }
 
 export function createAiTrader(profile: AiTraderProfile): AiTrader {
+  // Capacity comes from the class rather than being stated twice — a rival's hull is the *same*
+  // object as a hull the player bought, so it must be described the same way or the two will drift.
+  const type = findVesselType(profile.vesselTypeId);
   return {
     id: profile.id,
     name: profile.name,
@@ -99,9 +129,13 @@ export function createAiTrader(profile: AiTraderProfile): AiTrader {
         routeId: null,
         weeksRemaining: 0,
         cargo: {},
-        capacity: profile.shipCapacity,
+        capacity: type?.capacity ?? 20,
+        typeId: profile.vesselTypeId,
       },
     ],
+    vesselTypeId: profile.vesselTypeId,
+    warehouses: {},
+    warehouseCapacity: profile.warehouseCapacity,
     reportLagWeeks: profile.reportLagWeeks,
     // Knows its own home market only. Everywhere else must be *reached* before it can be traded
     // against — see `refreshAiKnowledge` for why that restriction is the whole point.
@@ -250,6 +284,31 @@ export function resolveAiWeek(
   let cash = working.cash;
   const vessels: Vessel[] = [];
 
+  // Hull upkeep (Phase 30), drawn from the same `vesselUpkeep` the player's fleet pays and covering
+  // the sheds too — see `AiTrader.warehouses` on why rent is folded in here rather than tracked per
+  // shed. A rival that cannot pay is laid up exactly as the player's hull is: the class is cleared,
+  // so it keeps sailing and carrying at ordinary speed and costs nothing further. That is what stops
+  // the carrack profile being a free upgrade — its 40 units of hold cost 8f every week it owns them.
+  // Recommission anything mothballed if the whole bill is affordable again, exactly as
+  // `resolveWeeklyFleet` does for the player.
+  if (working.vessels.some(v => v.laidUp)) {
+    const restored = working.vessels.map(v => ({ ...v, laidUp: false }));
+    if (restored.reduce((sum, v) => sum + vesselUpkeep(v), 0) <= cash) {
+      working = { ...working, vessels: restored };
+    }
+  }
+  const upkeepDue = working.vessels.reduce((sum, v) => sum + vesselUpkeep(v), 0);
+  if (upkeepDue > 0) {
+    if (upkeepDue <= cash) {
+      cash -= upkeepDue;
+    } else {
+      // Mothballed, not declassed — the same correction the player's fleet got. Clearing the class
+      // would have handed a struggling rival a *faster, free* carrack with all forty units of hold,
+      // which a live free-play run showed happening to both rivals inside forty weeks.
+      working = { ...working, vessels: working.vessels.map(v => ({ ...v, laidUp: true })) };
+    }
+  }
+
   for (const original of working.vessels) {
     let vessel = original;
 
@@ -264,6 +323,33 @@ export function resolveAiWeek(
       vessels.push(vessel);
       continue;
     }
+
+    // Warehousing, half one (Phase 30): standing in a city where it has stock stored, so bring what
+    // will fit back aboard before deciding anything. This is what makes a shed useful rather than a
+    // hole goods fall into — the trader's whole reason to route back here is sitting in it.
+    if ((working.warehouseCapacity ?? 0) > 0) {
+      const stored = working.warehouses?.[vessel.location];
+      if (stored && cargoTotal(stored) > 0) {
+        let room = vessel.capacity - cargoTotal(vessel.cargo);
+        let cargo = vessel.cargo;
+        const remaining: Cargo = { ...stored };
+        for (const goodId of Object.keys(stored)) {
+          if (room <= 0) break;
+          const units = Math.min(stored[goodId] ?? 0, room);
+          if (units <= 0) continue;
+          cargo = { ...cargo, [goodId]: (cargo[goodId] ?? 0) + units };
+          remaining[goodId] = (remaining[goodId] ?? 0) - units;
+          room -= units;
+        }
+        vessel = { ...vessel, cargo };
+        working = { ...working, warehouses: { ...working.warehouses, [vessel.location]: remaining } };
+      }
+    }
+
+    // A mothballed hull sells what it is carrying but goes nowhere — the same rule
+    // `dispatchVessel` applies to the player's. Marked here rather than skipping the vessel
+    // entirely, because a rival that could not even unload would be stuck for good.
+    const mothballed = !!vessel.laidUp;
 
     // Docked: sell into this market, but *metered* — see MAX_UNITS_SOLD_PER_WEEK.
     let soldSomething = false;
@@ -283,6 +369,20 @@ export function resolveAiWeek(
       if (bestElsewhere !== null && paidBelief !== null && bestElsewhere > paidBelief * 1.1) continue;
 
       const qty = Math.min(held, MAX_UNITS_SOLD_PER_WEEK);
+      // Quality grades (Phase 30), through `sim/grades.ts` — the player's own functions, not a
+      // parallel copy. **Which grade goes out matters, and this is the whole point of grades:** at a
+      // `qualityMarket` the trader sells its graded lots first, because that is the only place the
+      // premium is actually paid; anywhere else it sells `common` first and keeps the fine cloth for
+      // a city that wants it. Selling a fine lot at an ordinary port recovers exactly its premium
+      // and no more, so doing it in the wrong order is not a loss — it is a wasted opportunity, and
+      // an opponent that wasted it would be playing a simpler game than the player.
+      const qualityHere = findCity(vessel.location)?.market?.[goodId]?.qualityMarket ?? false;
+      const order: GradeId[] = qualityHere
+        ? ['excellent', 'fine', 'common']
+        : ['common', 'fine', 'excellent'];
+      let toSell = qty;
+      let revenue = 0;
+      let grades = vessel.cargoGrades;
       // Priced through `sellProceeds`, the same function the player's own `sellGood` uses (Phase
       // 26): the market impact is applied across the quantity rather than after it. This was the
       // last place in the codebase still doing snapshot-times-quantity, and leaving it would have
@@ -292,7 +392,19 @@ export function resolveAiWeek(
       // caps a self-inflicted price hit that the trader really pays.
       const sale = sellProceeds(nextScarcity, vessel.location, goodId, qty, events);
       if (sale === null) continue;
-      cash += sale.revenue;
+      // `sellProceeds` gives the base take for the quantity; each grade's own multiplier is then
+      // applied to its share of it, which is exactly how `sellGood` composes the two.
+      const perUnit = sale.revenue / qty;
+      for (const grade of order) {
+        if (toSell <= 0) break;
+        const atGrade = gradeHeld(vessel.cargo, grades, goodId, grade);
+        if (atGrade <= 0) continue;
+        const take = Math.min(atGrade, toSell);
+        revenue += perUnit * take * gradeSellMultiplier(grade, qualityHere);
+        grades = removeGrade(grades, goodId, grade, take);
+        toSell -= take;
+      }
+      cash += revenue;
       nextScarcity = sale.scarcity;
       notes.push({
         traderId: working.id,
@@ -302,7 +414,7 @@ export function resolveAiWeek(
         direction: -1,
         quantity: qty,
       });
-      vessel = { ...vessel, cargo: { ...vessel.cargo, [goodId]: held - qty } };
+      vessel = { ...vessel, cargo: { ...vessel.cargo, [goodId]: held - qty }, cargoGrades: grades };
       soldSomething = true;
     }
 
@@ -320,13 +432,44 @@ export function resolveAiWeek(
     // one judgement rather than inventing a second threshold beside it: "is anywhere better than
     // here" is a question already answered in exactly one place.
     if (soldSomething && cargoTotal(vessel.cargo) > 0) {
-      const better = sailTowardBestKnownMarket({ ...working, cash }, vessel);
-      vessels.push(better ?? vessel);
-      continue;
+      // Warehousing, half two (Phase 30), and the reason a rival wants a shed at all: rather than
+      // sit here selling six units a week, land what is left and go and earn with the hull.
+      //
+      // **This is what finally makes a large hull worth having.** Phase 27 measured that capacity
+      // beyond what a market can absorb mostly buys time in port — thirty units at six a week is
+      // five weeks alongside while a twelve-unit ship sells out in two and leaves. A shed turns that
+      // dead time back into voyages, which is exactly the lever the player got in Phase 26 and the
+      // reason the carrack profile is paired with sheds rather than given hold alone.
+      const shed = working.warehouseCapacity ?? 0;
+      if (shed > 0) {
+        const existing = working.warehouses?.[vessel.location] ?? {};
+        let room = shed - cargoTotal(existing);
+        if (room > 0) {
+          let cargo = vessel.cargo;
+          const stored: Cargo = { ...existing };
+          for (const goodId of Object.keys(vessel.cargo)) {
+            if (room <= 0) break;
+            const units = Math.min(vessel.cargo[goodId] ?? 0, room);
+            if (units <= 0) continue;
+            stored[goodId] = (stored[goodId] ?? 0) + units;
+            cargo = { ...cargo, [goodId]: (cargo[goodId] ?? 0) - units };
+            room -= units;
+          }
+          // Storing touches no scarcity, in either direction — the same rule the player's own
+          // `storeGood` follows, and the rule that keeps buy-store-sell-later from being free money.
+          vessel = { ...vessel, cargo };
+          working = { ...working, warehouses: { ...working.warehouses, [vessel.location]: stored } };
+        }
+      }
+      if (cargoTotal(vessel.cargo) > 0) {
+        const better = sailTowardBestKnownMarket({ ...working, cash }, vessel);
+        vessels.push(better ?? vessel);
+        continue;
+      }
     }
 
-    // Then look for the next run.
-    const plan = bestPlanFor({ ...working, cash }, vessel);
+    // Then look for the next run — unless she is mothballed, in which case there is no run to be had.
+    const plan = mothballed ? null : bestPlanFor({ ...working, cash }, vessel);
     if (plan) {
       // Load the chosen good, then fill any remaining hold with *other* goods the same destination
       // also pays a margin on. One good per voyage would leave a large ship permanently
@@ -349,12 +492,24 @@ export function resolveAiWeek(
         if (tradeBlockedAt(events, vessel.location, goodId)) continue;
         const live = priceAt(nextScarcity, vessel.location, goodId, events);
         if (live === null || live <= 0) continue;
-        const quantity = Math.min(space, Math.floor(cash / live), ABSORBABLE_UNITS);
+        // Quality grades on the buy side (Phase 30). A grade is only ever worth its premium if the
+        // *destination* is the city that pays for it — buying fine cloth to sell at an ordinary port
+        // recovers exactly the premium and nothing more, so the trader buys up a grade only when it
+        // already intends to sell somewhere that wants it. That is precisely the "the only real
+        // profit in grade comes from routing it to the city that actually wants it" rule
+        // `sim/grades.ts` states, applied by the opponent rather than only available to the player.
+        const grade: GradeId =
+          isPilotGood(goodId) && (findCity(plan.sellCityId)?.market?.[goodId]?.qualityMarket ?? false)
+            ? 'fine'
+            : 'common';
+        const unitCost = live * gradeBuyMultiplier(grade);
+        const quantity = Math.min(space, Math.floor(cash / unitCost), ABSORBABLE_UNITS);
         if (quantity <= 0) continue;
-        cash -= live * quantity;
+        cash -= unitCost * quantity;
         vessel = {
           ...vessel,
           cargo: { ...vessel.cargo, [goodId]: (vessel.cargo[goodId] ?? 0) + quantity },
+          cargoGrades: addGrade(vessel.cargoGrades, goodId, grade, quantity),
         };
         notes.push({
           traderId: working.id,
@@ -375,7 +530,7 @@ export function resolveAiWeek(
             ...vessel,
             destination,
             routeId: firstLeg.id,
-            weeksRemaining: firstLeg.distanceWeeks,
+            weeksRemaining: legWeeks(vessel, firstLeg.distanceWeeks),
             plannedRoute: routePlan.routeIds.slice(1),
           };
         }
@@ -388,7 +543,7 @@ export function resolveAiWeek(
           ...vessel,
           destination: otherEndOfRoute(leg, vessel.location),
           routeId: leg.id,
-          weeksRemaining: leg.distanceWeeks,
+          weeksRemaining: legWeeks(vessel, leg.distanceWeeks),
           plannedRoute: vessel.plannedRoute.slice(1),
         };
       }
@@ -404,8 +559,10 @@ export function resolveAiWeek(
       // trades anyway. So **staler information won 23 of 24 seeds** — not because ignorance is an
       // edge, but because accuracy was being punished with idleness. Relocating toward a market it
       // *knows* is better is what turns knowing into an advantage.
-      const relocation = sailTowardBestKnownMarket(working, vessel);
-      vessel = relocation ?? sailTowardNearestUnknown(working, vessel);
+      if (!mothballed) {
+        const relocation = sailTowardBestKnownMarket(working, vessel);
+        vessel = relocation ?? sailTowardNearestUnknown(working, vessel);
+      }
     }
 
     vessels.push(vessel);
@@ -483,7 +640,20 @@ function sailTowardBestKnownMarket(trader: AiTrader, vessel: Vessel): Vessel | n
     if (!plan || plan.routeIds.length === 0) continue;
     const weeks = Math.max(1, plan.totalWeeks);
 
+    // Goods the trader has left in a shed there are a reason to go back (Phase 30) — valued at what
+    // it believes that market pays, since that is where it chose to land them. Without this the
+    // trader would store cargo and then have no notion that it was owed anything, which would make
+    // a warehouse a hole rather than a lever.
     let value = 0;
+    const stored = trader.warehouses?.[cityId];
+    if (stored) {
+      for (const goodId of Object.keys(stored)) {
+        const units = stored[goodId] ?? 0;
+        if (units <= 0) continue;
+        const there = trader.remembered[cityId].prices[goodId];
+        if (there !== undefined) value += there * units * SALE_IMPACT_FACTOR;
+      }
+    }
     if (held) {
       const [goodId, units] = held;
       const there = trader.remembered[cityId].prices[goodId];
@@ -522,9 +692,23 @@ function sailTowardBestKnownMarket(trader: AiTrader, vessel: Vessel): Vessel | n
     ...vessel,
     destination: otherEndOfRoute(leg, here),
     routeId: leg.id,
-    weeksRemaining: leg.distanceWeeks,
+    weeksRemaining: legWeeks(vessel, leg.distanceWeeks),
     plannedRoute: plan.routeIds.slice(1),
   };
+}
+
+
+/**
+ * How long a leg takes this rival, from its hull's class — the same `vesselSpeed` the player's own
+ * `dispatchVessel` applies (Phase 30).
+ *
+ * Before this, every rival sailed at a flat `distanceWeeks` regardless of hull, which meant the
+ * carrack the ruthless profile now sails would have had 40 units of hold and *no* speed penalty for
+ * it — a strictly better ship than any the player can buy. Routing it through the same function is
+ * what keeps "never trades at a price the player couldn't get" true of time as well as money.
+ */
+function legWeeks(vessel: Vessel, distanceWeeks: number): number {
+  return Math.max(1, Math.ceil(distanceWeeks * vesselSpeed(vessel)));
 }
 
 /** Sends a vessel toward the closest city this trader has no price knowledge of. */
@@ -558,7 +742,7 @@ function sailTowardNearestUnknown(trader: AiTrader, vessel: Vessel): Vessel {
     ...vessel,
     destination: otherEndOfRoute(leg, vessel.location),
     routeId: leg.id,
-    weeksRemaining: leg.distanceWeeks,
+    weeksRemaining: legWeeks(vessel, leg.distanceWeeks),
   };
 }
 
@@ -586,6 +770,13 @@ export function aiNetWorth(trader: AiTrader, scarcity: MarketScarcity, events?: 
     // measured on a different balance sheet. A rival's hull is untyped, so this is the cog's resale
     // value — which is exactly what an untyped player hull is worth too.
     total += resaleValue(vessel);
+  }
+  // Goods left in a shed (Phase 30) count exactly as the player's warehoused goods do in
+  // `playerNetWorth`. Without this a rival that had just landed forty units would read as poorer for
+  // having done the clever thing, and the standings would be comparing two different balance sheets
+  // — the specific asymmetry Phase 28 had to fix for hulls.
+  for (const [cityId, cargo] of Object.entries(trader.warehouses ?? {})) {
+    total += cargoValueAt(cargo, scarcity, cityId, events);
   }
   return Math.round(total);
 }

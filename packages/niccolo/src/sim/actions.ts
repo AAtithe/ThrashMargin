@@ -62,6 +62,11 @@ function dispatchVessel(
   const vessel = state.vessels.find(v => v.id === vesselId);
   if (!vessel) throw new Error(`No such vessel: ${vesselId}`);
   if (vessel.destination) throw new Error(`${vessel.name} is already under way`);
+  // A mothballed hull stays put until the house can pay for her again (Phase 30). This is the half
+  // of laying up that makes it a real cost — without it, being unable to pay upkeep was a saving.
+  if (vessel.laidUp) {
+    throw new Error(`${vessel.name} is laid up for want of upkeep and cannot sail`);
+  }
 
   // Exile (Chapter 7): Flanders is closed to the house until the ban lifts. Checked here rather
   // than in the UI alone so it holds for a queued journey's own auto-continued legs too.
@@ -381,7 +386,12 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
   // class cleared, and every later stage must see that rather than a stale copy.
   const laidUpApplied = maturity.vessels.map(v => {
     const after = fleetResolution.vessels.find(f => f.id === v.id);
-    return after && after.typeId !== v.typeId ? { ...v, typeId: after.typeId } : v;
+    if (!after) return v;
+    // `laidUp` as well as `typeId`: the flag is now what lay-up actually changes, and threading only
+    // the class would have left every later stage this week seeing a hull still in service.
+    return after.typeId !== v.typeId || !!after.laidUp !== !!v.laidUp
+      ? { ...v, typeId: after.typeId, laidUp: after.laidUp }
+      : v;
   });
   const risk = resolveVoyageRisk(
     laidUpApplied,

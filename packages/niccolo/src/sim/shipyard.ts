@@ -59,10 +59,14 @@ export function isShipyard(cityId: string): boolean {
  * knowing the shipyard exists. Only hulls the player actually bought carry a class.
  */
 export function vesselUpkeep(vessel: Vessel): number {
+  // A mothballed hull costs nothing to keep — that is what mothballing *is*. It also cannot sail;
+  // see `Vessel.laidUp` for why that pairing is the penalty and clearing the class was not.
+  if (vessel.laidUp) return 0;
   return findVesselType(vessel.typeId)?.upkeepPerWeek ?? 0;
 }
 
 export function vesselSpeed(vessel: Vessel): number {
+  // Unchanged by lay-up: it is the same hull, and a mothballed one is not sailing anywhere anyway.
   return findVesselType(vessel.typeId)?.speed ?? 1;
 }
 
@@ -222,6 +226,19 @@ export interface FleetResolution {
  * Only ever one hull per week, the dearest first, so a bad week is a setback rather than a wipeout.
  */
 export function resolveWeeklyFleet(state: GameState, week: number): FleetResolution {
+  // Recommission first: if the house can now afford the whole bill *including* the hulls it had to
+  // mothball, they go back into service the same week. Automatic on purpose — a laid-up hull is a
+  // consequence of being short of money, not a decision to be undone by a button the player has to
+  // find, and leaving it mothballed while the money sat there would just be a trap.
+  const mothballed = state.vessels.filter(v => v.laidUp);
+  if (mothballed.length > 0) {
+    const withAll = state.vessels.map(v => ({ ...v, laidUp: false }));
+    const fullBill = withAll.reduce((sum, v) => sum + vesselUpkeep(v), 0);
+    if (fullBill <= state.cash) {
+      return { cash: state.cash - fullBill, vessels: withAll, laidUp: null };
+    }
+  }
+
   const due = fleetUpkeepPerWeek(state);
   if (due === 0) return { cash: state.cash, vessels: state.vessels, laidUp: null };
   if (due <= state.cash) return { cash: state.cash - due, vessels: state.vessels, laidUp: null };
@@ -231,11 +248,10 @@ export function resolveWeeklyFleet(state: GameState, week: number): FleetResolut
     .sort((a, b) => vesselUpkeep(b) - vesselUpkeep(a) || a.id.localeCompare(b.id))[0];
   if (!dearest) return { cash: state.cash, vessels: state.vessels, laidUp: null };
 
-  const vessels = state.vessels.map(v => {
-    if (v.id !== dearest.id) return v;
-    const { typeId: _dropped, ...laid } = v;
-    return laid as Vessel;
-  });
+  // Mothballed, not declassed. She keeps her class and her hold and stops costing anything, and
+  // `dispatchVessel` will not send her anywhere until the house can afford her again — see
+  // `Vessel.laidUp` for why the earlier version of this was a reward dressed as a punishment.
+  const vessels = state.vessels.map(v => (v.id === dearest.id ? { ...v, laidUp: true } : v));
   // What is left of the bill is still paid if it can be — the other hulls' crews do not go unpaid
   // because one ship was laid up.
   const remaining = vessels.reduce((sum, v) => sum + vesselUpkeep(v), 0);

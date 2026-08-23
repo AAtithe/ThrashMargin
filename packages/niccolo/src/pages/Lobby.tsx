@@ -4,8 +4,8 @@ import { UI, FONT } from '../theme';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
 import { HOUSES } from '../sim/content';
-import { FREEPLAY_START_CASH, FREEPLAY_TARGET_NET_WORTH } from '../sim/freeplay';
-import type { RivalCount } from '../sim/freeplay';
+import { FREEPLAY_DEADLINE_WEEKS, FREEPLAY_START_CASH, FREEPLAY_TARGET_NET_WORTH } from '../sim/freeplay';
+import type { FreeplayGoal, RivalCount } from '../sim/freeplay';
 import PortalNav from '../components/PortalNav';
 import TutorialOverlay from '../components/TutorialOverlay';
 import type { SaveMeta } from '../hooks/useGameLocal';
@@ -109,11 +109,12 @@ export default function Lobby() {
   const [hotseatHouseId, setHotseatHouseId] = useState('');
   const [freeplay, setFreeplay] = useState(false);
   const [rivals, setRivals] = useState<RivalCount>(2);
+  const [goal, setGoal] = useState<FreeplayGoal>('target');
 
   const handleNew = async () => {
     setStarting(true);
     const id = await Promise.resolve(
-      createGame(name.trim() || undefined, skipPrologue, hideObjectives, hotseatHouseId || null, freeplay, rivals),
+      createGame(name.trim() || undefined, skipPrologue, hideObjectives, hotseatHouseId || null, freeplay, rivals, goal),
     );
     setStarting(false);
     if (id) nav(`/game/${id}`);
@@ -196,8 +197,7 @@ export default function Lobby() {
           <span>
             <strong style={{ color: UI.brass, fontWeight: 'normal' }}>Free play instead of the story</strong> — the
             whole map open from the first week, {FREEPLAY_START_CASH}f, and rival houses trading against you for real.
-            No chapters, no scripted events, and a target to reach: first house past{' '}
-            {FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f wins.
+            No chapters and no scripted events — just the market, and somebody else in it.
           </span>
         </label>
 
@@ -213,6 +213,27 @@ export default function Lobby() {
               <option value={1}>One — the Grimani of Venice</option>
               <option value={2}>Two — Venice and the Doria consortium</option>
               <option value={3}>Three — and the Hanse factory at London</option>
+            </select>
+          </label>
+        )}
+
+        {freeplay && (
+          <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '0.8rem', paddingLeft: '1.4rem' }}>
+            <span style={{ whiteSpace: 'nowrap' }}>Winning means:</span>
+            <select
+              style={{ ...FIELD, flex: 'none', width: 'auto', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+              value={goal}
+              onChange={e => setGoal(e.target.value as FreeplayGoal)}
+            >
+              <option value="target">
+                First house past {FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f — a race, and you can see who is winning
+              </option>
+              <option value="by_year">
+                Richest in week {FREEPLAY_DEADLINE_WEEKS} — five years, and nobody knows until the end
+              </option>
+              <option value="survivor">
+                Last house solvent — the trade you decline matters more than the one you take
+              </option>
             </select>
           </label>
         )}

@@ -30,7 +30,7 @@ import EstatePanel from '../components/EstatePanel';
 import WarehousePanel from '../components/WarehousePanel';
 import StandingsPanel from '../components/StandingsPanel';
 import ShipyardPanel from '../components/ShipyardPanel';
-import { FREEPLAY_TARGET_NET_WORTH, isFreeplay, playerNetWorth, standings } from '../sim/freeplay';
+import { freeplayGoalLabel, isFreeplay, playerNetWorth, standings } from '../sim/freeplay';
 import ObjectivesPanel from '../components/ObjectivesPanel';
 import ChapterCompleteCard from '../components/ChapterCompleteCard';
 import CampaignProgress from '../components/CampaignProgress';
@@ -557,7 +557,9 @@ export default function GameScreen() {
               {(() => {
                 const table = standings(state);
                 const me = table.findIndex(r => r.isPlayer) + 1;
-                return `${me} of ${table.length} · ${playerNetWorth(state).toLocaleString()}f of ${FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f`;
+                // Says what winning means in *this* game (Phase 30), not always the florin target —
+                // in a `by_year` game the target is meaningless and in `survivor` it is misleading.
+                return `${me} of ${table.length} · ${playerNetWorth(state).toLocaleString()}f · ${freeplayGoalLabel(state)}`;
               })()}
             </span>
           ) : (

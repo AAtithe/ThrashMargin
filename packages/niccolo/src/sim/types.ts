@@ -107,6 +107,18 @@ export interface Vessel {
    * that grants a hull does not have to know the shipyard exists.
    */
   typeId?: string;
+  /**
+   * Mothballed for want of upkeep (Phase 30 correction). A laid-up hull draws no upkeep and
+   * **cannot sail**; it is recommissioned automatically the first week the house can afford the
+   * whole bill including it.
+   *
+   * The first version of laying up cleared `typeId` instead, which looked like a penalty and was
+   * the opposite of one: a carrack stripped of its class kept all forty units of hold, lost its 35%
+   * speed penalty, and cost nothing — strictly better than the ship the player paid 520f for. A live
+   * free-play run made it obvious, with both rivals laid up and none the worse for it. Keeping the
+   * class and idling the hull is a real cost (capital doing nothing) that can never be a reward.
+   */
+  laidUp?: boolean;
   /** Non-`common` grade breakdown for pilot goods only (`sim/grades.ts`) — goodId -> the `fine`/
    * `excellent` units held; `common` held is always derived as `cargo[goodId]` minus these, never
    * stored. Absent entirely on any vessel that has never held a graded lot. */
@@ -784,6 +796,22 @@ export interface AiTrader {
   reportLagWeeks: number;
   /** Per-city price memory. A city absent from here has never been visited or reported on. */
   remembered: Record<string, RememberedPrices>;
+  /**
+   * Sheds this rival leases, by city (Phase 30) — the same lever the player's own `Warehouse` is,
+   * reduced to what a rival actually needs: goods and a capacity, no grades and no rent ledger.
+   *
+   * Deliberately thinner than the player's `Warehouse`, in the reduced-fidelity spirit §10 applies
+   * to every rival system: the *decision* a warehouse creates (land the hold, sail on, come back for
+   * it) is what makes the opponent better, and that decision needs somewhere to put goods and a
+   * limit on it. Rent is folded into the hull's weekly upkeep rather than tracked per shed, because
+   * a second cash line the player can never see would be bookkeeping nobody reads.
+   */
+  warehouses?: Record<string, Cargo>;
+  /** How much each shed holds. 0 for a rival that does not warehouse at all. */
+  warehouseCapacity?: number;
+  /** Which `content/vesselTypes.json` class this rival sails, so capacity, upkeep and passage all
+   * come from the same place the player's do. Absent on a save from before Phase 30. */
+  vesselTypeId?: string;
 }
 
 export interface AiTradeNote {
@@ -911,6 +939,9 @@ export interface GameState {
    * start drifting from the first — every market fix since Phase 16 would have to be made twice.
    */
   mode?: 'campaign' | 'freeplay';
+  /** Which of the three free-play win conditions this game is playing to (Phase 30). Absent means
+   * `'target'`, which is what every game created before this field existed was playing. */
+  freeplayGoal?: 'target' | 'by_year' | 'survivor';
   /** The rival houses actually trading against the player in free play (Phase 27). Optional/absent
    * in a campaign and in any older save, so nothing migrates. */
   aiTraders?: AiTrader[];

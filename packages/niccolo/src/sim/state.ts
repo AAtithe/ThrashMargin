@@ -6,7 +6,7 @@ import { initialHouseRelations } from './houses';
 import { initialScarcity } from './market';
 import { generateNews, resolveArrivals } from './news';
 import { FREEPLAY_START_CASH, createRivals } from './freeplay';
-import type { RivalCount } from './freeplay';
+import type { FreeplayGoal, RivalCount } from './freeplay';
 import type { GameState } from './types';
 
 /** Starting stake: small and dangerous, as the design pillar demands — the stake Chapter 0's own
@@ -65,6 +65,8 @@ export interface CreateInitialStateOptions {
   freeplay?: boolean;
   /** How many rival houses trade against the player in free play. Ignored in a campaign. */
   rivals?: RivalCount;
+  /** Which of the three win conditions a free-play game plays to (Phase 30). Default `'target'`. */
+  freeplayGoal?: FreeplayGoal;
 }
 
 export function createInitialState(id: string, name?: string, options?: CreateInitialStateOptions): GameState {
@@ -142,6 +144,7 @@ export function createInitialState(id: string, name?: string, options?: CreateIn
   return {
     ...state,
     mode: 'freeplay',
+    freeplayGoal: options?.freeplayGoal ?? 'target',
     cash: FREEPLAY_START_CASH,
     objectivesHidden: true,
     aiTraders: createRivals(options?.rivals ?? 2, state.scarcity, state.marketEvents),

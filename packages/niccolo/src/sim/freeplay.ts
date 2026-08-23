@@ -58,6 +58,28 @@ export function createRivals(count: RivalCount, scarcity: MarketScarcity, events
 export const FREEPLAY_TARGET_NET_WORTH = 8000;
 
 /**
+ * All three win conditions the spec offers, rather than the one Phase 27 picked (Phase 30).
+ *
+ * They are genuinely different games, not difficulty settings, which is why all three were worth
+ * building once the first existed — the whole apparatus (`standings`, `playerNetWorth`) is shared,
+ * so each additional one is a predicate rather than a system.
+ *
+ *  - `target` — first past `FREEPLAY_TARGET_NET_WORTH`. Legible from week one, and rewards a fast
+ *    compounding start. The default, and what Phase 27 shipped.
+ *  - `by_year` — richest when the clock runs out. Hides who has won until the end, which makes the
+ *    last months genuinely tense rather than a formality, and rewards a long build.
+ *  - `survivor` — last house solvent. Rewards not dying, so it plays completely differently: the
+ *    correct move is often *not* to take the trade. Phase 27 dismissed this one for "rewarding
+ *    sitting still" — which is true, and is exactly why it is worth having as an explicit choice
+ *    rather than the default nobody asked for.
+ */
+export type FreeplayGoal = 'target' | 'by_year' | 'survivor';
+
+/** Weeks a `by_year` game runs. Five years — long enough that a single lucky voyage cannot decide
+ * it, short enough to finish. */
+export const FREEPLAY_DEADLINE_WEEKS = 260;
+
+/**
  * **On showing a net-worth figure at all.** `banco-di-niccolo-design.md` §11 and Phase 15 both
  * rejected an ambient wealth readout, because a permanently visible number in the story campaign
  * becomes a de facto score and quietly undermines "no scripted victory" — and Phase 25 deferred the
@@ -164,10 +186,61 @@ export interface WinCheck {
  * play continues for anyone who wants to keep going. That also means the standings stay honest
  * afterwards rather than frozen at the moment of the announcement.
  */
+export function freeplayGoal(state: GameState): FreeplayGoal {
+  return state.freeplayGoal ?? 'target';
+}
+
+/** True once a `by_year` game's clock has run out. */
+export function freeplayDeadlineReached(state: GameState): boolean {
+  return freeplayGoal(state) === 'by_year' && state.week >= FREEPLAY_DEADLINE_WEEKS;
+}
+
+/**
+ * A house is out of the running once it is insolvent — the player through the existing insolvency
+ * ladder in `credit.ts`, a rival when it has no cash and nothing left to sell. Deliberately reusing
+ * the player's own definition rather than inventing a second one: "solvent" has to mean the same
+ * thing on both sides of the table or `survivor` is not a fair race.
+ */
+export function houseIsOut(state: GameState, id: string): boolean {
+  if (id === 'player') return state.insolvent;
+  const trader = (state.aiTraders ?? []).find(t => t.id === id);
+  if (!trader) return true;
+  return aiNetWorth(trader, state.scarcity, state.marketEvents) <= 0;
+}
+
 export function checkFreeplayWin(state: GameState): WinCheck {
   const table = standings(state);
+  const goal = freeplayGoal(state);
+
+  if (goal === 'survivor') {
+    const standing = table.filter(r => !houseIsOut(state, r.id));
+    // Only a win once everyone else is out — and with nobody left at all, nobody won.
+    const winners = standing.length === 1 && table.length > 1 ? standing : [];
+    return { winners, playerWon: winners.some(r => r.isPlayer) };
+  }
+
+  if (goal === 'by_year') {
+    // Nobody has won until the clock runs out; then the leader has, outright.
+    if (!freeplayDeadlineReached(state)) return { winners: [], playerWon: false };
+    const top = table[0]?.netWorth ?? 0;
+    const winners = table.filter(r => r.netWorth === top);
+    return { winners, playerWon: winners.some(r => r.isPlayer) };
+  }
+
   const winners = table.filter(r => r.netWorth >= FREEPLAY_TARGET_NET_WORTH);
   return { winners, playerWon: winners.some(r => r.isPlayer) };
+}
+
+/** One line describing what winning means in this game, for the header and the standings panel. */
+export function freeplayGoalLabel(state: GameState): string {
+  switch (freeplayGoal(state)) {
+    case 'by_year':
+      return `richest in week ${FREEPLAY_DEADLINE_WEEKS}`;
+    case 'survivor':
+      return 'last house solvent';
+    default:
+      return `first to ${FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f`;
+  }
 }
 
 /** Where a free-play player starts. Named so the lobby copy and the sim cannot disagree. */

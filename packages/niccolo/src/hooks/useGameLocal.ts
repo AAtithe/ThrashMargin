@@ -3,7 +3,7 @@ import { createInitialState } from '../sim/state';
 import { processAction } from '../sim/actions';
 import { withAllCurrencies } from '../sim/currency';
 import type { GameAction, GameState } from '../sim/types';
-import type { RivalCount } from '../sim/freeplay';
+import type { FreeplayGoal, RivalCount } from '../sim/freeplay';
 
 const INDEX_KEY = 'niccolo_saves';
 const stateKey = (id: string) => `niccolo_save_${id}`;
@@ -103,11 +103,12 @@ export function useGameLocal() {
     hotseatHouseId?: string | null,
     freeplay?: boolean,
     rivals?: RivalCount,
+    freeplayGoal?: FreeplayGoal,
   ): string => {
     const idx = readIndex();
     const id = crypto.randomUUID();
     const campaignName = name?.trim() || `Campaign #${idx.length + 1}`;
-    const fresh = createInitialState(id, campaignName, { skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals });
+    const fresh = createInitialState(id, campaignName, { skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals, freeplayGoal });
     localStorage.setItem(stateKey(id), JSON.stringify(fresh));
     setSaves(upsertIndex(fresh));
     setState(fresh);

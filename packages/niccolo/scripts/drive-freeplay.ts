@@ -14,11 +14,14 @@ import { applyBackgroundFlows, deriveMarketCauses, driftScarcity, priceAt, sellP
 import { AI_PROFILES, aiNetWorth, createAiTrader, refreshAiKnowledge, resolveAiWeek, seedHomeKnowledge } from '../src/sim/aiTrader';
 import {
   FREEPLAY_START_CASH, FREEPLAY_TARGET_NET_WORTH, checkFreeplayWin, createRivals,
+  FREEPLAY_DEADLINE_WEEKS, freeplayDeadlineReached, freeplayGoal, freeplayGoalLabel, houseIsOut,
   isFreeplay, playerNetWorth, resolveFreeplayWeek, resolveWeeklyRivalPlants, standings,
 } from '../src/sim/freeplay';
 import { describeMarketCause } from '../src/components/marketCauseText';
 import { CITIES } from '../src/sim/content';
-import { findVesselType } from '../src/sim/shipyard';
+import { cargoTotal } from '../src/sim/market';
+import { gradeHeld } from '../src/sim/grades';
+import { findVesselType, vesselSpeed, vesselUpkeep } from '../src/sim/shipyard';
 import type { ActiveMarketEvent, AiTrader, GameState } from '../src/sim/types';
 
 let pass = 0, fail = 0;
@@ -169,14 +172,20 @@ console.log('\n3. The three fairness rules, re-pinned after the Phase 27 rewirin
   const sold = (result.notes.find(n => n.direction === -1)?.quantity) ?? 0;
   if (sold > 0) {
     const playerWouldGet = sellProceeds(base.scarcity, 'venice', 'silk', sold, base.marketEvents)!.revenue;
-    check('the rival realises exactly what the player would for the same sale',
-      Math.abs((result.trader.cash - before) - playerWouldGet) < 0.001,
-      `${(result.trader.cash - before).toFixed(3)} vs ${playerWouldGet.toFixed(3)}`);
+    // Net of the hull's weekly upkeep (Phase 30), which `resolveAiWeek` now draws before it trades —
+    // the same `vesselUpkeep` the player's own fleet pays. The driver caught the omission the moment
+    // upkeep landed, reporting 186 against 189: exactly the cog's 3f.
+    const upkeep = loaded.vessels.reduce((sum, v) => sum + vesselUpkeep(v), 0);
+    check('the rival pays hull upkeep like the player does', upkeep > 0, `${upkeep}f`);
+    check('the rival realises exactly what the player would for the same sale, net of upkeep',
+      Math.abs((result.trader.cash - before + upkeep) - playerWouldGet) < 0.001,
+      `${(result.trader.cash - before + upkeep).toFixed(3)} vs ${playerWouldGet.toFixed(3)}`);
     const snapshot = priceAt(base.scarcity, 'venice', 'silk')! * sold;
     check('which is strictly less than the snapshot price it used to get',
       playerWouldGet < snapshot, `${playerWouldGet.toFixed(1)} vs ${snapshot}`);
   } else {
-    check('the rival realises exactly what the player would for the same sale', false, 'it did not sell');
+    check('the rival pays hull upkeep like the player does', false, 'it did not sell');
+    check('the rival realises exactly what the player would for the same sale, net of upkeep', false, 'it did not sell');
     check('which is strictly less than the snapshot price it used to get', false, 'it did not sell');
   }
 
@@ -280,7 +289,16 @@ console.log('\n5. Standings and the win condition');
   const opening = playerNetWorth(s);
   check('net worth opens above the starting cash, because the hulls count',
     opening > FREEPLAY_START_CASH, `${opening} vs ${FREEPLAY_START_CASH} cash`);
-  const owing = { ...s, obligations: [{ id: 'o', kind: 'bill' as const, direction: 'payable' as const, amount: 100, currency: 'florin', dueWeek: 20, settled: false, counterparty: 'x' }] } as GameState;
+  // A real `Obligation`, not an approximation of one: the previous literal had `dueWeek` and
+  // `counterparty`, neither of which exists on the type. It passed only because `playerNetWorth`
+  // reads four fields — another thing the new scripts typecheck caught.
+  const owing: GameState = {
+    ...s,
+    obligations: [{
+      id: 'o', kind: 'bill_payable', direction: 'payable', currency: 'florin', cityId: 'bruges',
+      amount: 100, issuedWeek: 0, matureWeek: 20, settled: false,
+    }],
+  };
   check('a payable subtracts', playerNetWorth(owing) === opening - 100);
   const owed = { ...owing, obligations: owing.obligations.map(o => ({ ...o, direction: 'receivable' as const })) };
   check('a receivable adds', playerNetWorth(owed) === opening + 100);
@@ -327,11 +345,17 @@ console.log('\n6. The difficulty model, re-measured after the Phase 27 rewiring'
   // `resolveAiWeek` never calls Math.random itself, so the market has to be moved between weeks the
   // way `advanceWeek` moves it, or every "seed" is the same deterministic run. That mistake made
   // the first attempt at this section report 0/12 from what was really a sample of one.
-  const runTrader = (lag: number, capacity: number, cash: number, seed: number): number =>
+  // Takes a whole profile now rather than three loose numbers. Phase 30 replaced `shipCapacity`
+  // with `vesselTypeId` + `warehouseCapacity`, and because `scripts/` was outside `tsconfig.json`'s
+  // `include`, this call site kept passing the removed field and compiling — so every "profile"
+  // below was really the same default hull with no sheds, and section 6 was measuring cash and lag
+  // alone. `tsconfig.scripts.json` exists so that cannot happen again.
+  type Profile = { reportLagWeeks: number; startingCash: number; vesselTypeId: string; warehouseCapacity: number };
+  const runTrader = (profile: Profile, seed: number): number =>
     withSeed(seed, () => {
       const base = freeplay(0);
       let t = seedHomeKnowledge(
-        createAiTrader({ startingCash: cash, reportLagWeeks: lag, shipCapacity: capacity, id: 't', name: 'T', homeCity: 'bruges' }),
+        createAiTrader({ ...profile, id: 't', name: 'T', homeCity: 'bruges' }),
         base.scarcity, 0, base.marketEvents,
       );
       let scarcity = base.scarcity;
@@ -352,7 +376,8 @@ console.log('\n6. The difficulty model, re-measured after the Phase 27 rewiring'
   const SEEDS = 150;
   let sharper = 0;
   for (let i = 1; i <= SEEDS; i++) {
-    if (runTrader(2, 20, 600, i * 977) > runTrader(10, 20, 600, i * 977)) sharper++;
+    const lagOnly = { startingCash: 600, vesselTypeId: 'cog', warehouseCapacity: 0 };
+    if (runTrader({ ...lagOnly, reportLagWeeks: 2 }, i * 977) > runTrader({ ...lagOnly, reportLagWeeks: 10 }, i * 977)) sharper++;
   }
   console.log(`       measured: fresher information (lag 2 vs lag 10) wins ${sharper}/${SEEDS}`);
   check(`fresher information alone wins ${SEEDS} seeds`, sharper >= SEEDS * 0.7, `${sharper}/${SEEDS}`);
@@ -370,9 +395,9 @@ console.log('\n6. The difficulty model, re-measured after the Phase 27 rewiring'
   let ordered = 0, ruthlessOverSteady = 0;
   for (let i = 1; i <= PROFILE_SEEDS; i++) {
     const seed = i * 613;
-    const c = runTrader(AI_PROFILES.cautious.reportLagWeeks, AI_PROFILES.cautious.shipCapacity, AI_PROFILES.cautious.startingCash, seed);
-    const st = runTrader(AI_PROFILES.steady.reportLagWeeks, AI_PROFILES.steady.shipCapacity, AI_PROFILES.steady.startingCash, seed);
-    const r = runTrader(AI_PROFILES.ruthless.reportLagWeeks, AI_PROFILES.ruthless.shipCapacity, AI_PROFILES.ruthless.startingCash, seed);
+    const c = runTrader(AI_PROFILES.cautious, seed);
+    const st = runTrader(AI_PROFILES.steady, seed);
+    const r = runTrader(AI_PROFILES.ruthless, seed);
     if (r > st) ruthlessOverSteady++;
     if (r > st && st > c) ordered++;
   }
@@ -382,23 +407,230 @@ console.log('\n6. The difficulty model, re-measured after the Phase 27 rewiring'
   check('and the three profiles come out fully ordered', ordered >= PROFILE_SEEDS * 0.9,
     `${ordered}/${PROFILE_SEEDS}`);
 
-  // CLAIM 3, recorded as a KNOWN LIMIT rather than asserted as a win. Extra hull beyond what a
-  // market can absorb and what cash can fill is worth very little in this economy: a single good is
-  // capped at ABSORBABLE_UNITS and selling is metered, so a large hull mostly buys time in port. The
-  // old driver's "a bigger ship is an upgrade, 10/12" was measured when a big load sold at one
-  // untouched snapshot price; it does not survive honest pricing, and the same diminishing return
-  // shows up in capital (the cautious trader compounds at a *higher multiple* than the ruthless one
-  // and still never catches it in absolute terms). Asserted only as "not catastrophic", which is
-  // what the game actually needs — the profiles are ordered by capital, and capital does work.
-  let biggerNotWorseByMuch = 0;
+  // CLAIM 3 — capacity. Phase 27 had to record this as a **failed** claim: extra hull beyond what a
+  // market can absorb bought mostly time in port (thirty units at six a week is five weeks
+  // alongside), so a big hull merely held level with a small one. Phase 30's warehousing is the
+  // direct answer — a shed turns that dead time back into voyages — so the claim is re-measured
+  // here rather than left as a standing limitation, in both the pairing that ships and in isolation.
   const HULL_SEEDS = 60;
+  let shedsPay = 0, carrackOnCarrackMoney = 0, carrackOnCogMoney = 0;
   for (let i = 1; i <= HULL_SEEDS; i++) {
     const seed = i * 811;
-    if (runTrader(4, 30, 600, seed) > runTrader(4, 12, 600, seed) * 0.75) biggerNotWorseByMuch++;
+    const cogShed = { reportLagWeeks: 4, startingCash: 600, vesselTypeId: 'cog', warehouseCapacity: 40 };
+    const cogBare = { reportLagWeeks: 4, startingCash: 600, vesselTypeId: 'cog', warehouseCapacity: 0 };
+    // A carrack costs 8f a week against a cog's 3f. Compared at the capital each hull actually
+    // needs, and then deliberately at capital it does *not*.
+    const richCarrack = { reportLagWeeks: 4, startingCash: 1200, vesselTypeId: 'carrack', warehouseCapacity: 40 };
+    const richCog = { reportLagWeeks: 4, startingCash: 1200, vesselTypeId: 'cog', warehouseCapacity: 40 };
+    const poorCarrack = { reportLagWeeks: 4, startingCash: 600, vesselTypeId: 'carrack', warehouseCapacity: 40 };
+    if (runTrader(cogShed, seed) > runTrader(cogBare, seed)) shedsPay++;
+    if (runTrader(richCarrack, seed) > runTrader(richCog, seed)) carrackOnCarrackMoney++;
+    if (runTrader(poorCarrack, seed) > runTrader(cogShed, seed)) carrackOnCogMoney++;
   }
-  console.log(`       measured: a 30-unit hull holds within 25% of a 12-unit hull on ${biggerNotWorseByMuch}/${HULL_SEEDS}`);
-  check('a larger hull is at least not a serious handicap',
-    biggerNotWorseByMuch >= HULL_SEEDS * 0.7, `${biggerNotWorseByMuch}/${HULL_SEEDS}`);
+  console.log(`       measured: sheds alone pay ${shedsPay}/${HULL_SEEDS}; a carrack beats a cog on carrack money ${carrackOnCarrackMoney}/${HULL_SEEDS}, on cog money ${carrackOnCogMoney}/${HULL_SEEDS}`);
+  check('a warehouse is worth leasing at all', shedsPay >= HULL_SEEDS * 0.6, `${shedsPay}/${HULL_SEEDS}`);
+  // **What capacity is actually worth in this economy, stated truthfully.** Three phases have now
+  // taken a run at "a bigger ship is an upgrade" and the answer is no — but for a structural reason
+  // rather than a tuning one, and that is worth pinning so a fourth phase does not chase it again.
+  //
+  // A single market absorbs about `ABSORBABLE_UNITS` of one good before the sale crushes its own
+  // price, and most cities trade two to four goods. So hold beyond roughly one market's appetite
+  // cannot be *arbitraged*, whatever it costs to keep: measured at matched capital and with sheds,
+  // a cog beat a carrack at every capital level tried (600f, 1,200f, 2,500f). Phase 30 narrowed the
+  // gap from 10-17% to about 5-7% by cutting the carrack's upkeep and speed penalty, which makes her
+  // a real cost rather than a trap — but she does not overtake, and the honest reading is that her
+  // hold earns its keep where a *single consignment* must move at once. That is a campaign use
+  // (Chapter 6's `combinedCargoAtLeast` delivery checks) which a free-play arbitrage measurement
+  // structurally cannot see, and the class note now tells the player exactly that.
+  // Asserted as a *band* on the carrack's own win rate, not as a comparison between two figures that
+  // both sit around a fifth — at that level the two are noise apart, and an earlier version of this
+  // assertion failed on exactly that. She should lose more often than she wins (hold cannot be
+  // arbitraged) without being dominated (she is not a trap). Roughly one seed in five is that.
+  const carrackWins = Math.max(carrackOnCarrackMoney, carrackOnCogMoney);
+  check('a carrack loses to a cog more often than she wins — hold is not an arbitrage advantage',
+    carrackWins < HULL_SEEDS * 0.5, `${carrackWins}/${HULL_SEEDS}`);
+  check('but she is a real cost rather than a trap, winning a meaningful share of seeds',
+    carrackWins >= HULL_SEEDS * 0.1, `${carrackWins}/${HULL_SEEDS}`);
+  // The lever that *does* pay, unambiguously, and the one this phase added.
+  check('while a shed pays at nearly every seed — storage beats tonnage in this economy',
+    shedsPay >= HULL_SEEDS * 0.85, `${shedsPay}/${HULL_SEEDS}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n5b. All three win conditions, not just the one Phase 27 picked');
+// ---------------------------------------------------------------------------
+{
+  const at = (goal: 'target' | 'by_year' | 'survivor', over: Partial<GameState> = {}): GameState =>
+    ({ ...createInitialState('g', 'Mine', { freeplay: true, rivals: 2, freeplayGoal: goal }), ...over });
+
+  check('a game records the goal it was created with',
+    at('by_year').freeplayGoal === 'by_year' && at('survivor').freeplayGoal === 'survivor');
+  check('and an older save with no goal plays the original one', freeplayGoal({ ...at('target'), freeplayGoal: undefined }) === 'target');
+  check('each goal describes itself differently',
+    new Set((['target', 'by_year', 'survivor'] as const).map(g => freeplayGoalLabel(at(g)))).size === 3);
+
+  // TARGET — unchanged behaviour, re-asserted so the new branches cannot break the old one.
+  check('target: crossing the line wins', checkFreeplayWin(at('target', { cash: FREEPLAY_TARGET_NET_WORTH + 500 })).playerWon);
+  check('target: below it, nobody has', !checkFreeplayWin(at('target')).playerWon);
+
+  // BY_YEAR — nobody wins until the clock runs out, then the leader does outright. The point of the
+  // mode is that it stays undecided, so "rich but early" must NOT win.
+  const richEarly = at('by_year', { cash: FREEPLAY_TARGET_NET_WORTH * 5, week: FREEPLAY_DEADLINE_WEEKS - 1 });
+  check('by_year: being far ahead early wins nothing', checkFreeplayWin(richEarly).winners.length === 0);
+  check('and the deadline is not reached', !freeplayDeadlineReached(richEarly));
+  const atTheBell = { ...richEarly, week: FREEPLAY_DEADLINE_WEEKS };
+  check('by_year: the leader wins the week the clock runs out', checkFreeplayWin(atTheBell).playerWon);
+  check('and the deadline reads as reached', freeplayDeadlineReached(atTheBell));
+  const behindAtTheBell = at('by_year', {
+    week: FREEPLAY_DEADLINE_WEEKS,
+    aiTraders: at('by_year').aiTraders!.map((t, i) => (i === 0 ? { ...t, cash: 90_000 } : t)),
+  });
+  const bellResult = checkFreeplayWin(behindAtTheBell);
+  check('by_year: and it is the actual leader, not the player by default',
+    bellResult.winners.length === 1 && !bellResult.playerWon, JSON.stringify(bellResult.winners));
+  check('by_year never applies its deadline to another goal', !freeplayDeadlineReached({ ...atTheBell, freeplayGoal: 'target' }));
+
+  // SURVIVOR — nobody wins while anybody else is standing, and the *reason* a house is out has to
+  // be the player's own definition of solvency or it is not a fair race.
+  check('survivor: nobody wins while all three are standing', checkFreeplayWin(at('survivor')).winners.length === 0);
+  const brokeRivals = at('survivor', {
+    aiTraders: at('survivor').aiTraders!.map(t => ({ ...t, cash: 0, vessels: [], warehouses: {} })),
+  });
+  const lastStanding = checkFreeplayWin(brokeRivals);
+  check('survivor: last house standing wins', lastStanding.playerWon && lastStanding.winners.length === 1);
+  check('a rival with nothing left is out', houseIsOut(brokeRivals, brokeRivals.aiTraders![0].id));
+  check('a rival still trading is not', !houseIsOut(at('survivor'), at('survivor').aiTraders![0].id));
+  check('the player is out on the same insolvency the campaign uses',
+    houseIsOut({ ...at('survivor'), insolvent: true }, 'player')
+      && !houseIsOut(at('survivor'), 'player'));
+  const playerGone = { ...brokeRivals, insolvent: true };
+  check('survivor: with nobody solvent at all, nobody has won', checkFreeplayWin(playerGone).winners.length === 0);
+  // A solo game cannot be "won" by outlasting nobody.
+  check('survivor: a game with no rivals is not won by default',
+    checkFreeplayWin(createInitialState('s', 'S', { freeplay: true, rivals: 0, freeplayGoal: 'survivor' })).winners.length === 0);
+
+  // All three stamp through the real pipeline.
+  const stamped = processAction(at('target', { cash: FREEPLAY_TARGET_NET_WORTH + 500 }), { type: 'ADVANCE_WEEK' });
+  check('a win is stamped by ADVANCE_WEEK whatever the goal', stamped.freeplayWonWeek === stamped.week);
+  const yearStamped = processAction({ ...atTheBell, week: FREEPLAY_DEADLINE_WEEKS - 1 }, { type: 'ADVANCE_WEEK' });
+  check('and by_year stamps on the tick that reaches the deadline',
+    yearStamped.freeplayWonWeek === FREEPLAY_DEADLINE_WEEKS, `${yearStamped.freeplayWonWeek}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n5c. The rivals now play with the player\'s own tools');
+// ---------------------------------------------------------------------------
+{
+  const base = freeplay(3);
+  const traders = base.aiTraders!;
+
+  // Hull classes, from the same content the player's shipyard sells.
+  check('every rival sails a real class', traders.every(t => !!findVesselType(t.vesselTypeId)));
+  check('and its hull capacity comes from that class',
+    traders.every(t => t.vessels[0].capacity === findVesselType(t.vesselTypeId)!.capacity));
+  check('the classes differ across profiles', new Set(traders.map(t => t.vesselTypeId)).size > 1);
+  check('so upkeep is real money', traders.every(t => vesselUpkeep(t.vessels[0]) > 0));
+  check('and passage differs by class',
+    new Set(traders.map(t => vesselSpeed(t.vessels[0]))).size > 1);
+
+  // A rival that cannot pay upkeep is laid up, exactly as the player's hull is — not repossessed.
+  const skint = { ...traders[0], cash: 0 };
+  const laid = resolveAiWeek(skint, base.scarcity, 1, base.marketEvents);
+  // Mothballed, not declassed — and that distinction is the whole point. Clearing the class looked
+  // like a penalty and was a reward: a carrack stripped of its class keeps forty units of hold, is
+  // 35% *faster*, and costs nothing. A live free-play run had both rivals laid up and thriving on it.
+  check('a rival that cannot pay upkeep is laid up, not stripped of its hull',
+    laid.trader.vessels.length === 1 && laid.trader.vessels[0].laidUp === true);
+  check('it keeps its class, so lay-up can never be a speed upgrade',
+    laid.trader.vessels[0].typeId === skint.vessels[0].typeId);
+  check('and then costs nothing further', vesselUpkeep(laid.trader.vessels[0]) === 0);
+  check('but keeps its hold', laid.trader.vessels[0].capacity === skint.vessels[0].capacity);
+  check('a mothballed hull goes nowhere', !laid.trader.vessels[0].destination);
+  // ...and comes back into service the moment the money is there.
+  const flush = resolveAiWeek({ ...laid.trader, cash: 5000 }, base.scarcity, 2, base.marketEvents);
+  check('and is recommissioned once the house can afford her again', !flush.trader.vessels[0].laidUp);
+
+  // Warehousing: profiles differ in whether they have thought of it, which is the dial expressing
+  // the mechanic rather than a fourth stat.
+  check('the profiles differ in whether they warehouse',
+    new Set(traders.map(t => t.warehouseCapacity ?? 0)).size > 1,
+    traders.map(t => t.warehouseCapacity).join('/'));
+  check('and at least one does not warehouse at all', traders.some(t => (t.warehouseCapacity ?? 0) === 0));
+
+  // Landing surplus: a rival with a shed should put cargo down rather than sit in port with it.
+  const shedded: AiTrader = {
+    ...traders.find(t => (t.warehouseCapacity ?? 0) > 0)!,
+    vessels: [{ ...traders[0].vessels[0], location: 'bruges', cargo: { cloth: 18 }, destination: null }],
+    remembered: { bruges: { week: 0, prices: { cloth: 1 } } },
+    warehouses: {},
+  };
+  const landed = resolveAiWeek(shedded, base.scarcity, 1, base.marketEvents);
+  const stored = landed.trader.warehouses?.bruges ?? {};
+  check('a rival with a shed lands its surplus rather than sitting on it',
+    (stored.cloth ?? 0) > 0, JSON.stringify(stored));
+  // Storing is not a market transaction, in either direction — the same rule the player's own
+  // `storeGood` follows, and the rule that keeps buy-store-sell-later from being free money. Tested
+  // by running the identical rival with and without a shed: both meter the same six units into the
+  // market, so if landing the remaining twelve moved anything, the two would diverge.
+  // (The first version of this assertion ended in `|| true` and tested nothing at all.)
+  const noShedRun = resolveAiWeek({ ...shedded, warehouseCapacity: 0 }, base.scarcity, 1, base.marketEvents);
+  check('storing the remainder moves no price',
+    JSON.stringify(landed.scarcity) === JSON.stringify(noShedRun.scarcity));
+  check('and both sold the same amount into the market',
+    JSON.stringify(landed.notes.map(n => [n.goodId, n.direction, n.quantity]))
+      === JSON.stringify(noShedRun.notes.map(n => [n.goodId, n.direction, n.quantity])));
+  check('and it does not sit in port with a full hold once it has a shed',
+    cargoTotal(landed.trader.vessels[0].cargo) < 18);
+
+  // ...and takes it back aboard when it returns.
+  const returning: AiTrader = {
+    ...shedded,
+    vessels: [{ ...shedded.vessels[0], cargo: {} }],
+    warehouses: { bruges: { cloth: 10 } },
+  };
+  const collected = resolveAiWeek(returning, base.scarcity, 1, base.marketEvents);
+  check('a rival collects what it left in a shed',
+    (collected.trader.warehouses?.bruges?.cloth ?? 10) < 10,
+    JSON.stringify(collected.trader.warehouses));
+
+  // A rival with no shed allowance must never store anything, whatever else happens.
+  const noShed = resolveAiWeek({ ...shedded, warehouseCapacity: 0, warehouses: {} }, base.scarcity, 1, base.marketEvents);
+  check('a rival without a shed allowance never stores anything',
+    Object.values(noShed.trader.warehouses ?? {}).every(c => cargoTotal(c) === 0));
+
+  // Stored goods must count in the standings, or landing cargo would read as losing it.
+  const withStock: AiTrader = { ...traders[0], warehouses: { bruges: { cloth: 20 } } };
+  check('a rival’s stored goods count toward its net worth',
+    aiNetWorth(withStock, base.scarcity, base.marketEvents)
+      > aiNetWorth({ ...traders[0], warehouses: {} }, base.scarcity, base.marketEvents));
+
+  // Grades: bought only when the destination is the city that pays the premium.
+  const buyer: AiTrader = {
+    ...traders[0],
+    cash: 4000,
+    vessels: [{ ...traders[0].vessels[0], location: 'bruges', cargo: {}, destination: null }],
+    // London pays a quality premium for cloth; Calais does not.
+    remembered: {
+      bruges: { week: 1, prices: { cloth: 20 } },
+      london: { week: 1, prices: { cloth: 200 } },
+    },
+  };
+  const gradedRun = resolveAiWeek(buyer, base.scarcity, 1, base.marketEvents);
+  const hold = gradedRun.trader.vessels[0];
+  check('a rival buys a graded lot when the destination pays a premium for it',
+    gradeHeld(hold.cargo, hold.cargoGrades, 'cloth', 'fine') > 0,
+    JSON.stringify(hold.cargoGrades));
+  const plainBuyer: AiTrader = {
+    ...buyer,
+    remembered: { bruges: { week: 1, prices: { cloth: 20 } }, calais: { week: 1, prices: { cloth: 200 } } },
+  };
+  const plainRun = resolveAiWeek(plainBuyer, base.scarcity, 1, base.marketEvents);
+  const plainHold = plainRun.trader.vessels[0];
+  check('and buys common when the destination does not',
+    gradeHeld(plainHold.cargo, plainHold.cargoGrades, 'cloth', 'fine') === 0,
+    JSON.stringify(plainHold.cargoGrades));
+  check('a graded purchase really costs the premium',
+    gradedRun.trader.cash < buyer.cash);
 }
 
 // ---------------------------------------------------------------------------
