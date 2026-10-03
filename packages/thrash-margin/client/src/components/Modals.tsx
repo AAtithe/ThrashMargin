@@ -302,7 +302,7 @@ export function coachStep(state: GameState, selected: number | null, target: num
 export function Coach({ state, selected, target }: { state: GameState; selected: number | null; target: number | null }) {
   const s = coachStep(state, selected, target);
   return (
-    <div style={{ background: '#16261c', border: `1px solid #3b6b48`, borderRadius: 8, padding: 12 }}>
+    <div style={{ background: UI.goodBg, border: `1px solid ${UI.goodRule}`, borderRadius: 8, padding: 12 }}>
       <Label style={{ color: UI.good, marginBottom: 4 }}>Tutorial</Label>
       <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 3 }}>{s.title}</div>
       <Muted>{s.text}</Muted>

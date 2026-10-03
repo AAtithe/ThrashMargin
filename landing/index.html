@@ -4,10 +4,53 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Games</title>
+    <script src="/theme-init.js"></script>
     <script src="/portal.js" data-part="session"></script>
     <style>
+      /* Light or dark: the same tm_theme choice every game reads (each game's src/lib/colorScheme.ts). */
       :root {
+        color-scheme: light;
+        --ground: #f4f2ee;
+        --text: #2a2d33;
+        --heading: #15171b;
+        --soft: #6b6659;
+        --card-text: #555b64;
+        --card-rule: #d8d3c8;
+        --card-hover: #a9a294;
+        --card-a: #ffffff;
+        --card-b: #f3f0ea;
+        --tag: #5f6670;
+        --tag-rule: #c3bdb0;
+        --bar-rule: #d6d1c6;
+        --btn: #4a4639;
+        --btn-rule: #c3bdb0;
+        --tm-tag: #b4471f; --tm-rule: #e6c3b3;
+        --nc-tag: #7f6320; --nc-rule: #dccfae; --nc-a: #fdf9ef; --nc-b: #f5eedd; --nc-edge: #e6dcc4; --nc-hover: #c9b788;
+        --nr-tag: #9a3a33; --nr-rule: #e3c0bc; --nr-a: #fdf6f5; --nr-b: #f5e9e7; --nr-edge: #e8d3d0; --nr-hover: #cf9f99;
+        --tr-tag: #2c6f66; --tr-rule: #b9d8d2; --tr-a: #f4fbf9; --tr-b: #e6f2ef; --tr-edge: #cfe3de; --tr-hover: #8fbfb6;
+        --se-tag: #8b5e17; --se-rule: #e0caa4; --se-a: #fdf8ef; --se-b: #f6ecda; --se-edge: #e7d8bd; --se-hover: #cfae73;
+      }
+      :root[data-theme="dark"] {
         color-scheme: dark;
+        --ground: #0b0c10;
+        --text: #d7dae0;
+        --heading: #f2f3f5;
+        --soft: #7a7f8a;
+        --card-text: #9198a3;
+        --card-rule: #262a33;
+        --card-hover: #454b58;
+        --card-a: #14151a;
+        --card-b: #0f1013;
+        --tag: #8a92a3;
+        --tag-rule: #333a48;
+        --bar-rule: #1c1f26;
+        --btn: #9198a3;
+        --btn-rule: #262a33;
+        --tm-tag: #ff9d7a; --tm-rule: #4a3226;
+        --nc-tag: #e8d5a3; --nc-rule: #4a3d28; --nc-a: #16130d; --nc-b: #0f0d09; --nc-edge: #2a2117; --nc-hover: #4a3d28;
+        --nr-tag: #e3a6a0; --nr-rule: #4a2a28; --nr-a: #171010; --nr-b: #0f0a0a; --nr-edge: #2c1b1a; --nr-hover: #5a3330;
+        --tr-tag: #8fd0c4; --tr-rule: #24443f; --tr-a: #0c1618; --tr-b: #080f11; --tr-edge: #172a2c; --tr-hover: #2d5450;
+        --se-tag: #e0a94e; --se-rule: #4a3a1a; --se-a: #181209; --se-b: #100c07; --se-edge: #2f2414; --se-hover: #5a4622;
       }
       * {
         box-sizing: border-box;
@@ -17,8 +60,8 @@
         margin: 0;
         padding: 0;
         min-height: 100%;
-        background: #0b0c10;
-        color: #d7dae0;
+        background: var(--ground);
+        color: var(--text);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
       }
       body {
@@ -35,13 +78,13 @@
       h1 {
         font-size: 1.4rem;
         letter-spacing: 0.04em;
-        color: #f2f3f5;
+        color: var(--heading);
         margin: 0 0 0.4rem;
         text-align: center;
       }
       p.subtitle {
         text-align: center;
-        color: #7a7f8a;
+        color: var(--soft);
         margin: 0 0 2.4rem;
         font-size: 0.95rem;
       }
@@ -55,12 +98,12 @@
         text-decoration: none;
         border-radius: 10px;
         padding: 1.6rem;
-        border: 1px solid #262a33;
-        background: linear-gradient(160deg, #14151a 0%, #0f1013 100%);
+        border: 1px solid var(--card-rule);
+        background: linear-gradient(160deg, var(--card-a) 0%, var(--card-b) 100%);
         transition: border-color 0.15s ease, transform 0.15s ease;
       }
       a.card:hover {
-        border-color: #454b58;
+        border-color: var(--card-hover);
         transform: translateY(-2px);
       }
       .tag {
@@ -68,8 +111,8 @@
         font-size: 0.65rem;
         letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: #8a92a3;
-        border: 1px solid #333a48;
+        color: var(--tag);
+        border: 1px solid var(--tag-rule);
         border-radius: 4px;
         padding: 0.15rem 0.5rem;
         margin-bottom: 0.9rem;
@@ -77,61 +120,13 @@
       .card h2 {
         margin: 0 0 0.5rem;
         font-size: 1.15rem;
-        color: #f2f3f5;
+        color: var(--heading);
       }
       .card p {
         margin: 0;
         font-size: 0.85rem;
         line-height: 1.5;
-        color: #9198a3;
-      }
-      .card.thrash-margin .tag {
-        color: #ff9d7a;
-        border-color: #4a3226;
-      }
-      .card.niccolo .tag {
-        color: #e8d5a3;
-        border-color: #4a3d28;
-      }
-      .card.niccolo {
-        background: linear-gradient(160deg, #16130d 0%, #0f0d09 100%);
-        border-color: #2a2117;
-      }
-      .card.niccolo:hover {
-        border-color: #4a3d28;
-      }
-      .card.rising .tag {
-        color: #e3a6a0;
-        border-color: #4a2a28;
-      }
-      .card.rising {
-        background: linear-gradient(160deg, #171010 0%, #0f0a0a 100%);
-        border-color: #2c1b1a;
-      }
-      .card.rising:hover {
-        border-color: #5a3330;
-      }
-      .card.tea-race .tag {
-        color: #8fd0c4;
-        border-color: #24443f;
-      }
-      .card.tea-race {
-        background: linear-gradient(160deg, #0c1618 0%, #080f11 100%);
-        border-color: #172a2c;
-      }
-      .card.tea-race:hover {
-        border-color: #2d5450;
-      }
-      .card.steady-eddie .tag {
-        color: #e0a94e;
-        border-color: #4a3a1a;
-      }
-      .card.steady-eddie {
-        background: linear-gradient(160deg, #181209 0%, #100c07 100%);
-        border-color: #2f2414;
-      }
-      .card.steady-eddie:hover {
-        border-color: #5a4622;
+        color: var(--card-text);
       }
       .footer {
         text-align: center;
@@ -139,8 +134,21 @@
         font-size: 0.8rem;
       }
       .footer a {
-        color: #6b7280;
+        color: var(--soft);
       }
+      .card.thrash-margin .tag { color: var(--tm-tag); border-color: var(--tm-rule); }
+      .card.niccolo .tag { color: var(--nc-tag); border-color: var(--nc-rule); }
+      .card.niccolo { background: linear-gradient(160deg, var(--nc-a) 0%, var(--nc-b) 100%); border-color: var(--nc-edge); }
+      .card.niccolo:hover { border-color: var(--nc-hover); }
+      .card.rising .tag { color: var(--nr-tag); border-color: var(--nr-rule); }
+      .card.rising { background: linear-gradient(160deg, var(--nr-a) 0%, var(--nr-b) 100%); border-color: var(--nr-edge); }
+      .card.rising:hover { border-color: var(--nr-hover); }
+      .card.tea-race .tag { color: var(--tr-tag); border-color: var(--tr-rule); }
+      .card.tea-race { background: linear-gradient(160deg, var(--tr-a) 0%, var(--tr-b) 100%); border-color: var(--tr-edge); }
+      .card.tea-race:hover { border-color: var(--tr-hover); }
+      .card.steady-eddie .tag { color: var(--se-tag); border-color: var(--se-rule); }
+      .card.steady-eddie { background: linear-gradient(160deg, var(--se-a) 0%, var(--se-b) 100%); border-color: var(--se-edge); }
+      .card.steady-eddie:hover { border-color: var(--se-hover); }
       .account {
         position: fixed;
         top: 0;
@@ -152,30 +160,31 @@
         gap: 1rem;
         padding: 0.6rem 1.2rem;
         font-size: 0.8rem;
-        color: #7a7f8a;
-        border-bottom: 1px solid #1c1f26;
-        background: #0b0c10;
+        color: var(--soft);
+        border-bottom: 1px solid var(--bar-rule);
+        background: var(--ground);
       }
       .account a,
       .account button {
-        color: #9198a3;
+        color: var(--btn);
         text-decoration: none;
         background: none;
-        border: 1px solid #262a33;
+        border: 1px solid var(--btn-rule);
         border-radius: 6px;
         padding: 0.25rem 0.7rem;
         font: inherit;
         cursor: pointer;
       }
       .account a.admin {
-        color: #e0a94e;
-        border-color: #4a3a1a;
+        color: var(--se-tag);
+        border-color: var(--se-rule);
       }
     </style>
   </head>
   <body>
     <div class="account">
       <span id="signed-in-as"></span>
+      <button id="theme-toggle" type="button"></button>
       <a class="admin" id="admin-link" href="/thrash-margin/admin" hidden>Admin</a>
       <a href="/thrash-margin/profile">Profile</a>
       <button id="sign-out" type="button">Sign out</button>

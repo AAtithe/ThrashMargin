@@ -2,19 +2,135 @@
  * The few things inline styles cannot do: resets, media queries, pseudo-classes, keyframes and
  * scrollbars. Everything else lives in theme.ts and the components.
  */
+/*
+ * The palette, one set per mode. theme.ts hands out var(--…) references to these; the dark set is
+ * the original war-room-after-dark look, the light set is the same room by daylight. The selector
+ * is `data-theme` on <html>, set before first paint by index.html (see lib/colorScheme.ts).
+ */
+:root {
+  --ui-ground: #f1ece2;
+  --ui-panel: #fbf8f2;
+  --ui-panel-raised: #ebe5d8;
+  --ui-panel-sunk: #e6e0d3;
+  --ui-rule: #d8d0bf;
+  --ui-rule-strong: #b6ab95;
+  --ui-text: #221e17;
+  --ui-text-soft: #575245;
+  --ui-text-faint: #857d6b;
+  --ui-accent: #9a6f1c;
+  --ui-accent-ink: #fffaf0;
+  --ui-gold: #9a6a10;
+  --ui-food: #45792d;
+  --ui-mat: #6a52a6;
+  --ui-influence: #a6426a;
+  --ui-pop: #27758c;
+  --ui-troops: #5a4b2c;
+  --ui-ap: #9a6f1c;
+  --ui-good: #3d7530;
+  --ui-warn: #95650d;
+  --ui-bad: #b0372f;
+  --ui-move: #1d8072;
+  --ui-attack: #b4501f;
+  --ui-annex: #a6426a;
+  --ui-danger-bg: #f7e1dd;
+  --ui-danger-text: #7d1f19;
+  --ui-move-bg: #dcf0ec;
+  --ui-move-text: #0f4c43;
+  --ui-attack-bg: #f8e3d6;
+  --ui-attack-text: #6e2c0c;
+  --ui-good-bg: #e2efdc;
+  --ui-good-rule: #8fb882;
+  --ui-accent-bg: #f4e8cc;
+  --ui-scrim: rgba(40, 34, 24, 0.45);
+  --ui-shadow: rgba(60, 45, 20, 0.2);
+
+  --map-sea: #c4d3da;
+  --map-sea-deep: #afc2cb;
+  --map-land: #e3dccb;
+  --map-coast: #5d7f93;
+  --map-label: #221e17;
+  --map-label-halo: #f6f2e8;
+  --map-fog: #d7d2c6;
+  --map-fog-edge: #c3bcad;
+  --map-neutral-edge: #a59d8c;
+  --map-neutral-fill: #8a8478;
+  --map-neutral-ring: #6c665b;
+  --map-control: rgba(251, 248, 242, 0.92);
+  --map-terrain-plains: #cfc8a8;
+  --map-terrain-forest: #a3bb92;
+  --map-terrain-mountain: #b7ad9c;
+  --map-terrain-coast: #a6c2cf;
+  --map-terrain-desert: #e3cd92;
+}
+:root[data-theme="dark"] {
+  --ui-ground: #0e1115;
+  --ui-panel: #151a20;
+  --ui-panel-raised: #1c232b;
+  --ui-panel-sunk: #11151a;
+  --ui-rule: #28313b;
+  --ui-rule-strong: #3a4653;
+  --ui-text: #ebe5d6;
+  --ui-text-soft: #a7afb9;
+  --ui-text-faint: #6e7782;
+  --ui-accent: #e3c27a;
+  --ui-accent-ink: #1a1408;
+  --ui-gold: #d9a64a;
+  --ui-food: #82b366;
+  --ui-mat: #a891d9;
+  --ui-influence: #d97f9f;
+  --ui-pop: #6fb2c6;
+  --ui-troops: #e8dcc0;
+  --ui-ap: #e3c27a;
+  --ui-good: #7fb069;
+  --ui-warn: #d9a441;
+  --ui-bad: #d0605a;
+  --ui-move: #5cc0b0;
+  --ui-attack: #e07a4f;
+  --ui-annex: #d97f9f;
+  --ui-danger-bg: #2e1d1b;
+  --ui-danger-text: #f3c6c1;
+  --ui-move-bg: #163330;
+  --ui-move-text: #c8efe9;
+  --ui-attack-bg: #3a2316;
+  --ui-attack-text: #f6d6c4;
+  --ui-good-bg: #16261c;
+  --ui-good-rule: #3b6b48;
+  --ui-accent-bg: #2a2414;
+  --ui-scrim: rgba(5, 7, 10, 0.72);
+  --ui-shadow: rgba(0, 0, 0, 0.5);
+
+  --map-sea: #0b1420;
+  --map-sea-deep: #070c14;
+  --map-land: #1a1f24;
+  --map-coast: #6f8fa3;
+  --map-label: #e9e2cf;
+  --map-label-halo: #0b0f14;
+  --map-fog: #141a21;
+  --map-fog-edge: #232b35;
+  --map-neutral-edge: #2b3036;
+  --map-neutral-fill: #2a2e33;
+  --map-neutral-ring: #5b6068;
+  --map-control: rgba(21, 26, 32, 0.9);
+  --map-terrain-plains: #4a4d45;
+  --map-terrain-forest: #2f4a33;
+  --map-terrain-mountain: #5a5650;
+  --map-terrain-coast: #36586a;
+  --map-terrain-desert: #7a6640;
+}
+
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
 body {
   margin: 0;
-  background: #0e1115;
-  color: #ebe5d6;
+  background: var(--ui-ground);
+  color: var(--ui-text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 button { font: inherit; color: inherit; }
 input, select { font: inherit; }
 
-:focus-visible { outline: 2px solid #e3c27a; outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--ui-accent); outline-offset: 2px; }
 button:focus:not(:focus-visible) { outline: none; }
 
 .tm-num { font-variant-numeric: tabular-nums; }
@@ -23,9 +139,9 @@ button:focus:not(:focus-visible) { outline: none; }
 .tm-btn:not(:disabled):hover { filter: brightness(1.15); }
 .tm-btn:disabled { cursor: not-allowed; opacity: 0.45; }
 
-.tm-row-hover:hover { background: #1c232b; }
+.tm-row-hover:hover { background: var(--ui-panel-raised); }
 
-input[type="range"].tm-range { width: 100%; accent-color: #e3c27a; }
+input[type="range"].tm-range { width: 100%; accent-color: var(--ui-accent); }
 
 @keyframes tm-flash { 0% { opacity: 0.9; } 100% { opacity: 0; } }
 @keyframes tm-ants { to { stroke-dashoffset: -20; } }
@@ -49,7 +165,7 @@ input[type="range"].tm-range { width: 100%; accent-color: #e3c27a; }
     position: fixed !important; left: 0; right: 0; bottom: 0;
     width: 100% !important; height: 55vh; max-height: 55vh;
     transform: translateY(calc(100% - 52px)); transition: transform 0.25s ease;
-    border-left: none !important; border-top: 1px solid #3a4653;
+    border-left: none !important; border-top: 1px solid var(--ui-rule-strong);
     border-radius: 14px 14px 0 0; z-index: 50;
   }
   .tm-sidebar.open { transform: none; }
@@ -69,11 +185,14 @@ input[type="range"].tm-range { width: 100%; accent-color: #e3c27a; }
   .tm-map-grid { grid-template-columns: 1fr !important; }
 }
 
-* { scrollbar-width: thin; scrollbar-color: #3a4653 transparent; }
+* { scrollbar-width: thin; scrollbar-color: var(--ui-rule-strong) transparent; }
 *::-webkit-scrollbar { width: 9px; height: 9px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: #3a4653; border-radius: 5px; }
+*::-webkit-scrollbar-thumb { background: var(--ui-rule-strong); border-radius: 5px; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* Brightening a pale button does nothing visible; darken it slightly in light mode instead. */
+:root:not([data-theme="dark"]) .tm-btn:not(:disabled):hover { filter: brightness(0.95); }

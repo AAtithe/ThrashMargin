@@ -55,6 +55,22 @@
           }
         })
         .catch(function () {});
+      // Light or dark, shared with every game through the same tm_theme key (theme-init.js).
+      var toggle = document.getElementById('theme-toggle');
+      function label() {
+        var next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+        toggle.textContent = next === 'light' ? 'Light mode' : 'Dark mode';
+        toggle.title = 'Switch to ' + next + ' mode';
+        return next;
+      }
+      label();
+      toggle.addEventListener('click', function () {
+        var next = label();
+        try { localStorage.setItem('tm_theme', next); } catch (e) {}
+        document.documentElement.dataset.theme = next;
+        document.documentElement.style.colorScheme = next;
+        label();
+      });
       document.getElementById('sign-out').addEventListener('click', function () {
         ['tm_token', 'tm_user', 'tm_last_active'].forEach(function (k) { localStorage.removeItem(k); });
         window.location.replace('/thrash-margin/login?next=/');

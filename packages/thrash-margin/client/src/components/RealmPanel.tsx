@@ -42,7 +42,7 @@ function Overview({ state, onJump }: { state: GameState; onJump: (id: number) =>
         <div><div style={{ fontSize: 10.5, color: UI.textFaint }}>Upkeep</div><div className="tm-num" style={{ fontFamily: FONT.data, fontSize: 18, fontWeight: 700, color: UI.food }}>{inc.upkeep}</div></div>
       </div>
       {turnsOfFood !== null && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10, padding: 8, borderRadius: 6, background: '#2e1d1b', border: `1px solid ${UI.bad}`, fontSize: 12, color: '#f3c6c1' }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 10, padding: 8, borderRadius: 6, background: UI.dangerBg, border: `1px solid ${UI.bad}`, fontSize: 12, color: UI.dangerText }}>
           <Icon name="warn" color={UI.bad} />
           <span>Your troops eat {-inc.foodNet} more food than you grow. {turnsOfFood > 0 ? `Stores last ${turnsOfFood} turn${turnsOfFood === 1 ? '' : 's'}` : 'Stores are empty'}; then troops starve. Build farms, take fertile land, or trade.</span>
         </div>

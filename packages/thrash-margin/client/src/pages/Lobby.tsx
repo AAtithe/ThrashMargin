@@ -106,7 +106,7 @@ export default function Lobby() {
       </header>
 
       <main style={{ maxWidth: 1080, margin: '0 auto', padding: '12px 20px 40px', display: 'grid', gap: 26 }}>
-        {error && <div role="alert" style={{ background: '#2e1d1b', border: `1px solid ${UI.bad}`, color: '#f3c6c1', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{error}</div>}
+        {error && <div role="alert" style={{ background: UI.dangerBg, border: `1px solid ${UI.bad}`, color: UI.dangerText, padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{error}</div>}
 
         {active.length > 0 && (
           <Section title="Continue">
@@ -121,7 +121,7 @@ export default function Lobby() {
 
         <Section title="New campaign">
           <div style={{ display: 'grid', gap: 16 }}>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: '#16261c', border: '1px solid #3b6b48', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: UI.goodBg, border: `1px solid ${UI.goodRule}`, flexWrap: 'wrap' }}>
               <div style={{ flex: 1, minWidth: 220 }}>
                 <div style={{ fontWeight: 700, fontSize: 14 }}>New here?</div>
                 <Muted>Eight territories, one rival and a coach that walks you through your first turns.</Muted>
@@ -144,7 +144,7 @@ export default function Lobby() {
               <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                 {(Object.keys(PRESETS) as Difficulty[]).map(d => (
                   <button key={d} type="button" className="tm-btn" onClick={() => setSetup(s => ({ ...s, diff: d, overrides: {} }))}
-                    style={{ textAlign: 'left', padding: 12, borderRadius: 10, cursor: 'pointer', background: setup.diff === d ? '#2a2414' : UI.panel, border: `1px solid ${setup.diff === d ? UI.accent : UI.rule}` }}>
+                    style={{ textAlign: 'left', padding: 12, borderRadius: 10, cursor: 'pointer', background: setup.diff === d ? UI.accentBg : UI.panel, border: `1px solid ${setup.diff === d ? UI.accent : UI.rule}` }}>
                     <div style={{ fontFamily: FONT.display, fontSize: 17, fontWeight: 600, color: setup.diff === d ? UI.accent : UI.text }}>{DIFFICULTY[d].label}</div>
                     <div style={{ fontSize: 11.5, color: UI.textSoft, marginTop: 4, lineHeight: 1.45 }}>{PRESET_BLURB[d]}</div>
                   </button>
@@ -324,10 +324,10 @@ function MapCard({ id, active, diff, onClick }: { id: string; active: boolean; d
       style={{ textAlign: 'left', padding: 0, borderRadius: 10, overflow: 'hidden', cursor: 'pointer', background: UI.panel, border: `1px solid ${active ? UI.accent : UI.rule}`, boxShadow: active ? `0 0 0 1px ${UI.accent}` : 'none' }}>
       <svg viewBox={`${vx} ${vy} ${vw} ${vh}`} style={{ width: '100%', height: 110, display: 'block', background: MAP.sea }}>
         {preview.edges.map(([a, b], i) => (
-          <line key={i} x1={preview.nodes[a].x} y1={preview.nodes[a].y} x2={preview.nodes[b].x} y2={preview.nodes[b].y} stroke="#3a4653" strokeWidth={3} />
+          <line key={i} x1={preview.nodes[a].x} y1={preview.nodes[a].y} x2={preview.nodes[b].x} y2={preview.nodes[b].y} stroke={UI.ruleStrong} strokeWidth={3} />
         ))}
         {preview.nodes.map(n => (
-          <circle key={n.id} cx={n.x} cy={n.y} r={n.capital ? 16 : 11} fill={FACTION_COLORS[n.owner].fill} stroke={n.capital ? UI.accent : '#0b0f14'} strokeWidth={n.capital ? 4 : 2} />
+          <circle key={n.id} cx={n.x} cy={n.y} r={n.capital ? 16 : 11} fill={FACTION_COLORS[n.owner].fill} stroke={n.capital ? UI.accent : MAP.labelHalo} strokeWidth={n.capital ? 4 : 2} />
         ))}
       </svg>
       <div style={{ padding: '9px 11px' }}>
@@ -378,7 +378,7 @@ function CampaignActs({ saves, onStart }: { saves: SaveMeta[]; onStart: (s: Camp
         const unlocked = sc.index <= best + 1;
         const done = sc.index <= best;
         return (
-          <div key={sc.index} style={{ background: UI.panel, border: `1px solid ${done ? '#3b6b48' : UI.rule}`, borderRadius: 10, padding: 14, opacity: unlocked ? 1 : 0.5, display: 'grid', gap: 6, alignContent: 'start' }}>
+          <div key={sc.index} style={{ background: UI.panel, border: `1px solid ${done ? UI.goodRule : UI.rule}`, borderRadius: 10, padding: 14, opacity: unlocked ? 1 : 0.5, display: 'grid', gap: 6, alignContent: 'start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontFamily: FONT.display, fontSize: 16, fontWeight: 600, flex: 1 }}>{sc.title}</span>
               {done && <Icon name="check" color={UI.good} />}
@@ -406,7 +406,7 @@ function Achievements({ saves }: { saves: SaveMeta[] }) {
         {ACHIEVEMENTS.map(a => {
           const got = earned.has(a.id);
           return (
-            <div key={a.id} style={{ padding: '9px 11px', borderRadius: 8, background: got ? '#2a2414' : UI.panel, border: `1px solid ${got ? UI.accent : UI.rule}`, opacity: got ? 1 : 0.6 }}>
+            <div key={a.id} style={{ padding: '9px 11px', borderRadius: 8, background: got ? UI.accentBg : UI.panel, border: `1px solid ${got ? UI.accent : UI.rule}`, opacity: got ? 1 : 0.6 }}>
               <div style={{ fontWeight: 700, fontSize: 12.5, color: got ? UI.accent : UI.text, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {got && <Icon name="check" size={12} />}{a.name}
               </div>

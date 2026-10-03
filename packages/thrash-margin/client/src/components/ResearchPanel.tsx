@@ -24,7 +24,7 @@ export default function ResearchPanel({ state, act }: { state: GameState; act: (
               const why = done ? null : explain(state, a);
               const locked = !done && !!t.prereq && !me.research.includes(t.prereq);
               return (
-                <div key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 9px', borderRadius: 6, background: done ? '#1a2a1e' : UI.panel, border: `1px solid ${done ? '#34573c' : UI.rule}`, opacity: locked ? 0.55 : 1 }}>
+                <div key={id} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '7px 9px', borderRadius: 6, background: done ? UI.goodBg : UI.panel, border: `1px solid ${done ? UI.goodRule : UI.rule}`, opacity: locked ? 0.55 : 1 }}>
                   <span style={{ fontFamily: FONT.data, fontSize: 10.5, color: UI.textFaint, width: 14 }}>{t.tier}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}>

@@ -9,20 +9,23 @@
 // (FUNCTION_INVOCATION_FAILED, see PROGRESS.md). Each game therefore keeps its own files and
 // deploys exactly as before; this script makes sure they are all the same file, so a change is
 // made once, in shared/portal/, and cannot be missed in one game.
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = ['auth.ts', 'cors.ts', 'db.ts', 'rateLimit.ts', 'saves.ts', 'schema.ts'];
-const CLIENT = ['session.ts', 'saveQueue.ts'];
+const CLIENT = ['session.ts', 'saveQueue.ts', 'colorScheme.ts'];
 const GAMES = [
-  { server: 'packages/thrash-margin/api/_lib', client: 'packages/thrash-margin/client/src/lib' },
-  { server: 'packages/niccolo/api/_lib', client: 'packages/niccolo/src/lib' },
-  { server: 'packages/niccolo-rising/api/_lib', client: 'packages/niccolo-rising/src/lib' },
-  { server: 'packages/tea-race/api/_lib', client: 'packages/tea-race/src/lib' },
-  { server: 'packages/steady-eddie/api/_lib', client: 'packages/steady-eddie/src/lib' },
+  { server: 'packages/thrash-margin/api/_lib', client: 'packages/thrash-margin/client/src/lib', public: 'packages/thrash-margin/client/public' },
+  { server: 'packages/niccolo/api/_lib', client: 'packages/niccolo/src/lib', public: 'packages/niccolo/public' },
+  { server: 'packages/niccolo-rising/api/_lib', client: 'packages/niccolo-rising/src/lib', public: 'packages/niccolo-rising/public' },
+  { server: 'packages/tea-race/api/_lib', client: 'packages/tea-race/src/lib', public: 'packages/tea-race/public' },
+  { server: 'packages/steady-eddie/api/_lib', client: 'packages/steady-eddie/src/lib', public: 'packages/steady-eddie/public' },
 ];
+// Served as a plain file (index.html loads it before first paint), so it goes in each game's Vite
+// public folder and beside the landing page rather than into src/.
+const PUBLIC = ['theme-init.js'];
 
 const check = process.argv.includes('--check');
 const banner = src =>
@@ -33,7 +36,9 @@ const jobs = [];
 for (const g of GAMES) {
   for (const f of SERVER) jobs.push([`shared/portal/server/${f}`, `${g.server}/${f}`]);
   for (const f of CLIENT) jobs.push([`shared/portal/client/${f}`, `${g.client}/${f}`]);
+  for (const f of PUBLIC) jobs.push([`shared/portal/client/${f}`, `${g.public}/${f}`]);
 }
+for (const f of PUBLIC) jobs.push([`shared/portal/client/${f}`, `landing/${f}`]);
 
 const stale = [];
 for (const [src, dest] of jobs) {
@@ -42,7 +47,10 @@ for (const [src, dest] of jobs) {
   const have = existsSync(destPath) ? readFileSync(destPath, 'utf8') : null;
   if (have === want) continue;
   if (check) stale.push(dest);
-  else writeFileSync(destPath, want);
+  else {
+    mkdirSync(path.dirname(destPath), { recursive: true });
+    writeFileSync(destPath, want);
+  }
 }
 
 if (check && stale.length) {

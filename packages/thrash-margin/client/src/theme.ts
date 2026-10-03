@@ -1,39 +1,57 @@
 /**
  * Thrash Margin's visual identity in one place.
  *
- * A war room after dark: charcoal ground, parchment text, and one colour per resource so the
- * ledger reads at a glance (brass for gold, field green for food, slate violet for materials).
- * Faction colours live with the factions in shared/sim/content.ts so the map and the sim agree.
+ * A war room, after dark or by daylight: charcoal or parchment ground, and one colour per resource
+ * so the ledger reads at a glance (brass for gold, field green for food, slate violet for
+ * materials). Faction colours live with the factions in shared/sim/content.ts so the map and the
+ * sim agree, and are the same in both modes.
+ *
+ * Every value here is a CSS variable reference. The actual colours, one set per mode, are in
+ * styles.css; lib/colorScheme.ts picks the mode. Because these are strings like `var(--ui-bad)`,
+ * never append hex alpha to them (`${UI.bad}55`): add a token instead.
  */
 export const UI = {
-  ground: '#0e1115',
-  panel: '#151a20',
-  panelRaised: '#1c232b',
-  panelSunk: '#11151a',
-  rule: '#28313b',
-  ruleStrong: '#3a4653',
+  ground: 'var(--ui-ground)',
+  panel: 'var(--ui-panel)',
+  panelRaised: 'var(--ui-panel-raised)',
+  panelSunk: 'var(--ui-panel-sunk)',
+  rule: 'var(--ui-rule)',
+  ruleStrong: 'var(--ui-rule-strong)',
 
-  text: '#ebe5d6',
-  textSoft: '#a7afb9',
-  textFaint: '#6e7782',
+  text: 'var(--ui-text)',
+  textSoft: 'var(--ui-text-soft)',
+  textFaint: 'var(--ui-text-faint)',
 
-  accent: '#e3c27a',
-  accentInk: '#1a1408',
+  accent: 'var(--ui-accent)',
+  accentInk: 'var(--ui-accent-ink)',
 
-  gold: '#d9a64a',
-  food: '#82b366',
-  mat: '#a891d9',
-  influence: '#d97f9f',
-  pop: '#6fb2c6',
-  troops: '#e8dcc0',
-  ap: '#e3c27a',
+  gold: 'var(--ui-gold)',
+  food: 'var(--ui-food)',
+  mat: 'var(--ui-mat)',
+  influence: 'var(--ui-influence)',
+  pop: 'var(--ui-pop)',
+  troops: 'var(--ui-troops)',
+  ap: 'var(--ui-ap)',
 
-  good: '#7fb069',
-  warn: '#d9a441',
-  bad: '#d0605a',
-  move: '#5cc0b0',
-  attack: '#e07a4f',
-  annex: '#d97f9f',
+  good: 'var(--ui-good)',
+  warn: 'var(--ui-warn)',
+  bad: 'var(--ui-bad)',
+  move: 'var(--ui-move)',
+  attack: 'var(--ui-attack)',
+  annex: 'var(--ui-annex)',
+
+  /** Tinted surfaces behind the coloured button tones, alerts and completed items. */
+  dangerBg: 'var(--ui-danger-bg)',
+  dangerText: 'var(--ui-danger-text)',
+  moveBg: 'var(--ui-move-bg)',
+  moveText: 'var(--ui-move-text)',
+  attackBg: 'var(--ui-attack-bg)',
+  attackText: 'var(--ui-attack-text)',
+  goodBg: 'var(--ui-good-bg)',
+  goodRule: 'var(--ui-good-rule)',
+  accentBg: 'var(--ui-accent-bg)',
+  scrim: 'var(--ui-scrim)',
+  shadow: 'var(--ui-shadow)',
 } as const;
 
 export const FONT = {
@@ -43,20 +61,25 @@ export const FONT = {
 } as const;
 
 export const MAP = {
-  sea: '#0b1420',
-  seaDeep: '#070c14',
-  land: '#1a1f24',
-  coast: '#6f8fa3',
-  label: '#e9e2cf',
-  labelHalo: '#0b0f14',
-  fog: '#141a21',
-  fogEdge: '#232b35',
+  sea: 'var(--map-sea)',
+  seaDeep: 'var(--map-sea-deep)',
+  land: 'var(--map-land)',
+  coast: 'var(--map-coast)',
+  label: 'var(--map-label)',
+  labelHalo: 'var(--map-label-halo)',
+  fog: 'var(--map-fog)',
+  fogEdge: 'var(--map-fog-edge)',
+  /** Unowned territory: its outline, its troop disc, and that disc's ring. */
+  neutralEdge: 'var(--map-neutral-edge)',
+  neutralFill: 'var(--map-neutral-fill)',
+  neutralRing: 'var(--map-neutral-ring)',
+  control: 'var(--map-control)',
   terrain: {
-    plains: '#4a4d45',
-    forest: '#2f4a33',
-    mountain: '#5a5650',
-    coast: '#36586a',
-    desert: '#7a6640',
+    plains: 'var(--map-terrain-plains)',
+    forest: 'var(--map-terrain-forest)',
+    mountain: 'var(--map-terrain-mountain)',
+    coast: 'var(--map-terrain-coast)',
+    desert: 'var(--map-terrain-desert)',
   } as Record<string, string>,
 } as const;
 

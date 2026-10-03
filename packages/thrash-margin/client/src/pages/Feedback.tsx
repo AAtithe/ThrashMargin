@@ -57,14 +57,14 @@ export default function Feedback() {
 
           {!signedIn ? (
             <div style={s.signInPrompt}>
-              <p style={{ margin: '0 0 12px', color: '#7d8590', fontSize: 13 }}>
+              <p style={{ margin: '0 0 12px', color: 'var(--portal-soft)', fontSize: 13 }}>
                 Sign in first so we know who to credit for the idea (or blame for the bug report).
               </p>
               <Link to="/login" style={s.signInLink}>Sign in →</Link>
             </div>
           ) : sent ? (
             <div style={s.sentBox}>
-              <p style={{ margin: 0, color: '#3fb950', fontSize: 14, fontWeight: 600 }}>✓ Thanks — that's been sent.</p>
+              <p style={{ margin: 0, color: 'var(--portal-good)', fontSize: 14, fontWeight: 600 }}>✓ Thanks — that's been sent.</p>
               <button style={s.linkBtn} onClick={() => setSent(false)}>Submit another</button>
             </div>
           ) : (
@@ -104,18 +104,18 @@ export default function Feedback() {
 
 const s: Record<string, React.CSSProperties> = {
   outer:    { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  page:     { flex: 1, background: '#0d1117', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: '32px 16px' },
-  card:     { background: '#161b22', border: '1px solid #30363d', borderRadius: 10, padding: '36px 40px', width: 420, maxWidth: '100%', boxSizing: 'border-box' },
-  title:    { color: '#e6edf3', fontSize: 24, fontWeight: 700, margin: '0 0 6px', letterSpacing: -0.5 },
-  subtitle: { color: '#7d8590', margin: '0 0 24px', fontSize: 13, lineHeight: 1.5 },
+  page:     { flex: 1, background: 'var(--portal-ground)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: '32px 16px' },
+  card:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: '36px 40px', width: 420, maxWidth: '100%', boxSizing: 'border-box' },
+  title:    { color: 'var(--portal-text)', fontSize: 24, fontWeight: 700, margin: '0 0 6px', letterSpacing: -0.5 },
+  subtitle: { color: 'var(--portal-soft)', margin: '0 0 24px', fontSize: 13, lineHeight: 1.5 },
   form:     { display: 'flex', flexDirection: 'column', gap: 14 },
-  label:    { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9198a1', fontWeight: 600 },
-  select:   { padding: '9px 10px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 13, outline: 'none' },
-  textarea: { padding: '10px 12px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit' },
-  error:    { color: '#f85149', fontSize: 12, margin: 0 },
-  btn:      { marginTop: 4, padding: '10px 0', background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
+  label:    { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--portal-softer)', fontWeight: 600 },
+  select:   { padding: '9px 10px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none' },
+  textarea: { padding: '10px 12px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit' },
+  error:    { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
+  btn:      { marginTop: 4, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
   signInPrompt: { textAlign: 'center', padding: '8px 0' },
-  signInLink: { color: '#1f6feb', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
+  signInLink: { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
   sentBox:  { textAlign: 'center', padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' },
-  linkBtn:  { background: 'none', border: 'none', color: '#7d8590', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' },
+  linkBtn:  { background: 'none', border: 'none', color: 'var(--portal-soft)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' },
 };

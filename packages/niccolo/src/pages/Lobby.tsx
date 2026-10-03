@@ -174,7 +174,7 @@ export default function Lobby() {
         </p>
 
         {error && (
-          <p style={{ fontSize: '0.8rem', color: UI.bad, border: '1px solid rgba(194, 96, 106, 0.4)', background: 'rgba(194, 96, 106, 0.12)', padding: '0.6rem 0.8rem', margin: '0 0 1.2rem' }}>
+          <p style={{ fontSize: '0.8rem', color: UI.bad, border: `1px solid ${UI.badRule}`, background: UI.tintBad, padding: '0.6rem 0.8rem', margin: '0 0 1.2rem' }}>
             {error}
           </p>
         )}

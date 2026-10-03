@@ -717,7 +717,7 @@ const checkRow: React.CSSProperties = {
 
 const errorBanner: React.CSSProperties = {
   border: `1px solid ${UI.bad}`,
-  background: 'rgba(194, 96, 106, 0.1)',
+  background: UI.tintBad,
   color: UI.bad,
   padding: '0.6rem 0.8rem',
   marginBottom: '1.2rem',
