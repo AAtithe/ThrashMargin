@@ -13,6 +13,7 @@
     "build:se": "npm run build --workspace=packages/steady-eddie",
     "drive:tea": "npm run drive --workspace=packages/tea-race",
     "drive:se": "npm run drive --workspace=packages/steady-eddie",
+    "drive:tm": "npm run drive --workspace=packages/thrash-margin",
     "build:portal": "bash scripts/build-portal.sh"
   }
 }
