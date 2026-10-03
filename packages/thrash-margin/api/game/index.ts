@@ -7,7 +7,7 @@ import { createInitialState, DEFAULT_CONFIG } from '../../shared/engine-referenc
 import type { GameConfig } from '../../shared/types';
 
 /**
- * Same `games` table Niccolo and The Tea Race use (same Postgres/Supabase instance, same
+ * Same `games` table Niccolo and The Tea Race use (same Postgres (Neon) instance, same
  * users/auth), discriminated by the `game` column so no app's list or lookup queries see
  * another's rows.
  */

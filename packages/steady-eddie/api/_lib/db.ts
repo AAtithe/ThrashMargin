@@ -3,7 +3,7 @@
 // cross-package original in the deployment bundle (confirmed via a diagnostic endpoint — the file
 // was simply missing from /var/task at runtime, a FUNCTION_INVOCATION_FAILED with no useful
 // error). Keeping each game's API routes self-contained inside its own package avoids depending on
-// that tracing behaviour. Same Postgres/Supabase instance for all three games — same env vars,
+// that tracing behaviour. Same Postgres (Neon) instance for all three games — same env vars,
 // same connection, discriminated by the `game` column.
 import { Pool } from 'pg';
 

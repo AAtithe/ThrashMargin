@@ -6,7 +6,7 @@ import { handleCors } from '../_lib/cors';
 import { createInitialState } from '../../src/sim/state';
 
 /**
- * The same `games` table Thrash Margin and Niccolo use — one Postgres/Supabase instance, one
+ * The same `games` table Thrash Margin and Niccolo use — one Postgres (Neon) instance, one
  * users/auth setup — discriminated by the `game` column so no app's list or lookup queries ever
  * see another's rows. The column is VARCHAR(16), which 'tea_race' fits, and carries no CHECK
  * constraint, so adding a third game needed no migration.

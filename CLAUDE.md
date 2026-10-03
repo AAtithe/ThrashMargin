@@ -1,6 +1,6 @@
 # The Thrash Margin portal — working notes
 
-Four games served from one deployment, one Postgres/Supabase instance, and one account system:
+Four games served from one deployment, one Postgres instance (Neon; schema in `db/schema.sql`), and one account system:
 `packages/thrash-margin`, `packages/niccolo`, `packages/steady-eddie`, `packages/tea-race`.
 Each game's design document is at the repo root (`tea-race-design.md`, and so on) and carries its own
 build log; read the relevant one before changing a game's rules.

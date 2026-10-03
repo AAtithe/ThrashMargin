@@ -3,7 +3,7 @@
 // cross-package original in this function's deployment bundle (confirmed via a diagnostic
 // endpoint — the file was simply missing from /var/task at runtime, a FUNCTION_INVOCATION_FAILED
 // with no useful error). Keeping Niccolo's API routes self-contained within its own package
-// avoids depending on that tracing behaviour. Same Postgres/Supabase instance either way — same
+// avoids depending on that tracing behaviour. Same Postgres (Neon) instance either way — same
 // env vars, same connection.
 import { Pool } from 'pg';
 

@@ -7,7 +7,7 @@ import { createInitialState } from '../../src/sim/state';
 import type { FreeplayGoal, RivalCount } from '../../src/sim/freeplay';
 
 /**
- * Same `games` table Thrash Margin and The Tea Race use (same Postgres/Supabase instance, same
+ * Same `games` table Thrash Margin and The Tea Race use (same Postgres (Neon) instance, same
  * users/auth), discriminated by the `game` column so no app's list or lookup queries see another's
  * rows.
  */

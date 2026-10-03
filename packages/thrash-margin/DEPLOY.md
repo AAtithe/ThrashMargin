@@ -6,21 +6,46 @@
 |----------|------------|-------------------|
 | Frontend | Vercel     | Free tier         |
 | API      | Vercel     | Free tier (serverless functions) |
-| Database | Supabase   | Free tier (500MB) |
+| Database | Neon       | Free tier         |
 | Domain   | Cloudflare | ~£10/yr (optional)|
 
 ---
 
-## 1. Supabase — run the schema
+## 1. Neon — run the schema
 
-1. Go to your Supabase project → **SQL Editor**
-2. Paste the contents of `server/src/db/schema.sql` and run it
-3. Go to **Settings → Database → Connection string → Transaction mode**
-4. Copy the URL — it looks like:
+Neon replaced Supabase in October 2026. Supabase's free tier pauses a project after a week without
+traffic and it stays down until someone restores it by hand; Neon suspends idle compute too, but
+the next query wakes it automatically in well under a second, so a quiet week never takes the site
+down.
+
+1. Create a project at [neon.tech](https://neon.tech) (pick the region closest to the Vercel functions, e.g. London / `eu-west-2`)
+2. From the repo root, apply the schema with the **direct** connection string (Connect → pooling off):
    ```
-   postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
+   psql "<direct url>" -f db/schema.sql
    ```
-   This is your `DATABASE_URL`.
+   The schema is idempotent, so re-running it is harmless.
+3. Copy the **pooled** connection string (Connect → pooling on). It looks like:
+   ```
+   postgresql://[user]:[password]@ep-[name]-pooler.[region].aws.neon.tech/neondb?sslmode=require
+   ```
+   This is your `DATABASE_URL`. Use the pooled one for the app: every Vercel function invocation
+   opens its own connection and the pooler absorbs that.
+
+### Moving existing data off Supabase (one-off)
+
+```
+SOURCE_URL="<Supabase session-mode URL, port 5432>" \
+TARGET_URL="<Neon direct URL>" \
+bash scripts/migrate-to-neon.sh
+```
+
+It applies the schema, refuses to run if the target already holds users, copies the five app
+tables in one transaction, and compares row counts table by table. Only after it prints `Done`,
+change `DATABASE_URL` in Vercel and redeploy. Keep the Supabase project until a signed-in save
+and load has been confirmed on the live site; it is the rollback.
+
+Passwords are bcrypt hashes in the `users` table and JWTs are signed with `JWT_SECRET`, neither of
+which depends on the database host, so existing accounts and sessions carry over unchanged.
 
 ---
 
@@ -35,7 +60,7 @@
 
    | Key              | Value                                      |
    |------------------|--------------------------------------------|
-   | `DATABASE_URL`   | Your Supabase Transaction mode URL (above) |
+   | `DATABASE_URL`   | Your Neon pooled URL (above)               |
    | `JWT_SECRET`     | Run `openssl rand -base64 32` to generate  |
    | `JWT_EXPIRES_IN` | `7d`                                       |
    | `CORS_ORIGIN`    | Your Vercel deployment URL (add after first deploy, e.g. `https://thrash-margin.vercel.app`) |
@@ -74,7 +99,7 @@ On first run, `vercel dev` will ask you to link to your Vercel project.
 ## Environment variable summary
 
 ```
-DATABASE_URL=postgresql://postgres.[ref]:[pw]@aws-0-[region].pooler.supabase.com:6543/postgres
+DATABASE_URL=postgresql://[user]:[pw]@ep-[name]-pooler.[region].aws.neon.tech/neondb?sslmode=require
 JWT_SECRET=<32+ char random string>
 JWT_EXPIRES_IN=7d
 CORS_ORIGIN=https://your-domain.vercel.app
