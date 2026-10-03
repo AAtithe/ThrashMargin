@@ -33,7 +33,7 @@ export function useGameCloud() {
 
   const fetchSaves = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/steady-eddie/game`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/play/steady-eddie`, { headers: authHeaders() });
       if (res.status === 401) {
         setError(SESSION_EXPIRED);
         return;
@@ -54,7 +54,7 @@ export function useGameCloud() {
     async (name?: string, opts?: NewGameOptions): Promise<string | null> => {
       setError(null);
       try {
-        const res = await fetch(`${API}/api/steady-eddie/game`, {
+        const res = await fetch(`${API}/api/play/steady-eddie`, {
           method: 'POST',
           headers: authHeaders(),
           // The lobby collects hazards and difficulty too, and this used to send neither — so for
@@ -93,7 +93,7 @@ export function useGameCloud() {
   const loadGame = useCallback(async (gameId: string) => {
     setError(null);
     try {
-      const res = await fetch(`${API}/api/steady-eddie/game?id=${gameId}`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/play/steady-eddie?id=${gameId}`, { headers: authHeaders() });
       if (res.status === 401) {
         setError(SESSION_EXPIRED);
         return;
@@ -124,7 +124,7 @@ export function useGameCloud() {
         setError(null);
         // Fire-and-forget sync — the UI already has the new state; a failed sync just means this
         // turn's progress stays local until the next successful one.
-        fetch(`${API}/api/steady-eddie/game?id=${next.id}`, {
+        fetch(`${API}/api/play/steady-eddie?id=${next.id}`, {
           method: 'PUT',
           headers: authHeaders(),
           body: JSON.stringify({ state: next }),
@@ -144,7 +144,7 @@ export function useGameCloud() {
 
   const deleteGame = useCallback(async (gameId: string) => {
     try {
-      await fetch(`${API}/api/steady-eddie/game?id=${gameId}`, {
+      await fetch(`${API}/api/play/steady-eddie?id=${gameId}`, {
         method: 'DELETE',
         headers: authHeaders(),
       });

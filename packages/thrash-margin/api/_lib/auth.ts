@@ -2,7 +2,10 @@ import jwt from 'jsonwebtoken';
 import type { VercelRequest } from '@vercel/node';
 
 const SECRET = process.env.JWT_SECRET!;
-const EXPIRES = process.env.JWT_EXPIRES_IN || '7d';
+// Sessions last 12 hours from sign-in, then the user signs in again. Fixed here rather than read
+// from JWT_EXPIRES_IN, and enforced on verify through maxAge (measured from the token's iat), so a
+// token issued under an older, longer setting stops working too.
+const SESSION_MAX_AGE = '12h';
 
 export interface TokenPayload {
   userId: string;
@@ -10,11 +13,11 @@ export interface TokenPayload {
 }
 
 export function signToken(payload: TokenPayload): string {
-  return jwt.sign(payload, SECRET, { expiresIn: EXPIRES } as jwt.SignOptions);
+  return jwt.sign(payload, SECRET, { expiresIn: SESSION_MAX_AGE } as jwt.SignOptions);
 }
 
 export function verifyToken(token: string): TokenPayload {
-  return jwt.verify(token, SECRET) as TokenPayload;
+  return jwt.verify(token, SECRET, { maxAge: SESSION_MAX_AGE }) as TokenPayload;
 }
 
 export function getUser(req: VercelRequest): TokenPayload {

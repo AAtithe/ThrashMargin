@@ -9,7 +9,8 @@ const SAVE_DELAY_MS = 700;
 
 /**
  * Cloud persistence for signed-in players, on the same `games` table the other three games use
- * (discriminated by `game = 'thrash_margin'`, see api/game/index.ts). The client stays
+ * (discriminated by `game = 'thrash_margin'`, see api/game/index.ts), reached at
+ * /api/play/thrash-margin through the shared api/play/[kind].ts. The client stays
  * authoritative, as in every game on the portal; this hook mirrors state to the server.
  *
  * The prototype only saved on End Turn, so a reload mid-turn silently threw away every action
@@ -27,7 +28,7 @@ export function useGameCloud(): GameHook {
 
   const fetchSaves = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/game`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/play/thrash-margin`, { headers: authHeaders() });
       if (res.status === 401) { setError(SESSION_EXPIRED); return; }
       if (!res.ok) return;
       const data = await res.json();
@@ -58,7 +59,7 @@ export function useGameCloud(): GameHook {
     const body = JSON.stringify({ state: s });
     const run = (async () => {
       try {
-        const res = await fetch(`${API}/api/game?id=${encodeURIComponent(s.id)}`, {
+        const res = await fetch(`${API}/api/play/thrash-margin?id=${encodeURIComponent(s.id)}`, {
           method: 'PUT',
           headers: authHeaders(),
           body,
@@ -99,7 +100,7 @@ export function useGameCloud(): GameHook {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/game`, {
+      const res = await fetch(`${API}/api/play/thrash-margin`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ config, name, seed: newSeed() }),
@@ -125,7 +126,7 @@ export function useGameCloud(): GameHook {
     setError(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API}/api/game?id=${encodeURIComponent(id)}`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/play/thrash-margin?id=${encodeURIComponent(id)}`, { headers: authHeaders() });
       if (res.status === 401) { setError(SESSION_EXPIRED); return; }
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Could not load the campaign.'); return; }
@@ -160,7 +161,7 @@ export function useGameCloud(): GameHook {
 
   const deleteGame = useCallback(async (id: string) => {
     try {
-      await fetch(`${API}/api/game?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
+      await fetch(`${API}/api/play/thrash-margin?id=${encodeURIComponent(id)}`, { method: 'DELETE', headers: authHeaders() });
       setSaves(prev => prev.filter(s => s.id !== id));
     } catch {
       /* ignore */

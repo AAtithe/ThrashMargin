@@ -4,6 +4,7 @@ import { getDb } from './_lib/db';
 import { getUser } from './_lib/auth';
 import { handleCors } from './_lib/cors';
 import { isAdmin } from './_lib/admin';
+import { countsByGame, GAMES_BY_TITLE_SQL } from '../shared/games';
 
 // /api/profile — a signed-in user's own account. Unlike /api/admin/users, this only ever
 // reads or writes the row matching the caller's own JWT userId; there is no way to pass a
@@ -21,10 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { rows } = await db.query(
         `SELECT
            u.id, u.username, u.email, u.created_at, u.last_login_at,
-           COUNT(g.id) FILTER (WHERE g.game = 'thrash_margin') AS tm_games,
-           COUNT(g.id) FILTER (WHERE g.game = 'niccolo')       AS niccolo_games,
-           COUNT(g.id) FILTER (WHERE g.game = 'tea_race')      AS tearace_games,
-           COUNT(g.id) FILTER (WHERE g.game = 'steady_eddie')  AS steadyeddie_games,
+           ${GAMES_BY_TITLE_SQL} AS by_game,
            COUNT(g.id) FILTER (WHERE g.status = 'active')      AS active_games,
            COUNT(g.id) FILTER (WHERE g.status = 'victory')     AS wins
          FROM users u
@@ -41,12 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         email: r.email,
         registeredAt: new Date(r.created_at).getTime(),
         lastLoginAt: r.last_login_at ? new Date(r.last_login_at).getTime() : null,
-        gamesByTitle: {
-          thrash_margin: Number(r.tm_games),
-          niccolo: Number(r.niccolo_games),
-          tea_race: Number(r.tearace_games),
-          steady_eddie: Number(r.steadyeddie_games),
-        },
+        gamesByTitle: countsByGame(r.by_game),
         activeGames: Number(r.active_games),
         wins: Number(r.wins),
         isAdmin: await isAdmin(db, user.userId),

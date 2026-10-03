@@ -4,6 +4,36 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Games</title>
+    <script>
+      // Sign-in is required for the whole portal. This runs before anything renders: no valid
+      // session, straight to the sign-in page, which returns here afterwards. The same rules as the
+      // games' session helper (packages/*/src/lib/portalAuth.ts): 12 hours from sign-in, 60 minutes
+      // idle, and a session from before those limits counts as expired.
+      (function () {
+        var TOKEN = 'tm_token', USER = 'tm_user', ACTIVE = 'tm_last_active';
+        function expired() {
+          try {
+            var token = localStorage.getItem(TOKEN);
+            if (!token) return true;
+            var payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            if (typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now()) return true;
+            var last = Number(localStorage.getItem(ACTIVE));
+            if (!last || Date.now() - last > 60 * 60 * 1000) return true;
+            var u = JSON.parse(localStorage.getItem(USER) || 'null');
+            return !u || typeof u.isAdmin !== 'boolean';
+          } catch (e) {
+            return true;
+          }
+        }
+        if (expired()) {
+          try { [TOKEN, USER, ACTIVE].forEach(function (k) { localStorage.removeItem(k); }); } catch (e) {}
+          window.location.replace('/thrash-margin/login?next=/');
+          return;
+        }
+        try { localStorage.setItem(ACTIVE, String(Date.now())); } catch (e) {}
+        window.__portalUser = JSON.parse(localStorage.getItem(USER));
+      })();
+    </script>
     <style>
       :root {
         color-scheme: dark;
@@ -99,6 +129,17 @@
       .card.niccolo:hover {
         border-color: #4a3d28;
       }
+      .card.rising .tag {
+        color: #e3a6a0;
+        border-color: #4a2a28;
+      }
+      .card.rising {
+        background: linear-gradient(160deg, #171010 0%, #0f0a0a 100%);
+        border-color: #2c1b1a;
+      }
+      .card.rising:hover {
+        border-color: #5a3330;
+      }
       .card.tea-race .tag {
         color: #8fd0c4;
         border-color: #24443f;
@@ -121,28 +162,48 @@
       .card.steady-eddie:hover {
         border-color: #5a4622;
       }
-      .utility {
-        text-align: center;
-        margin-top: 2rem;
-      }
-      .utility a {
-        color: #6b7280;
+      .account {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        gap: 1rem;
+        padding: 0.6rem 1.2rem;
         font-size: 0.8rem;
+        color: #7a7f8a;
+        border-bottom: 1px solid #1c1f26;
+        background: #0b0c10;
+      }
+      .account a,
+      .account button {
+        color: #9198a3;
         text-decoration: none;
+        background: none;
         border: 1px solid #262a33;
         border-radius: 6px;
-        padding: 0.35rem 0.9rem;
+        padding: 0.25rem 0.7rem;
+        font: inherit;
+        cursor: pointer;
       }
-      .utility a:hover {
-        color: #9198a3;
-        border-color: #454b58;
+      .account a.admin {
+        color: #e0a94e;
+        border-color: #4a3a1a;
       }
     </style>
   </head>
   <body>
+    <div class="account">
+      <span id="signed-in-as"></span>
+      <a class="admin" id="admin-link" href="/thrash-margin/admin" hidden>Admin</a>
+      <a href="/thrash-margin/profile">Profile</a>
+      <button id="sign-out" type="button">Sign out</button>
+    </div>
     <main>
       <h1>Choose a game</h1>
-      <p class="subtitle">Four separate builds, one address.</p>
+      <p class="subtitle">Five separate builds, one address.</p>
       <div class="cards">
         <a class="card thrash-margin" href="/thrash-margin/">
           <span class="tag">Territory strategy</span>
@@ -153,6 +214,14 @@
           <span class="tag">Trading &amp; banking</span>
           <h2>Banco di Niccolo</h2>
           <p>Trade, credit and intelligence across 15th-century Europe and the Levant.</p>
+        </a>
+        <a class="card rising" href="/rising/">
+          <span class="tag">Real-time RPG</span>
+          <h2>Niccolò Rising</h2>
+          <p>
+            Bruges, 1460, in the shape of Torn. Train, scheme, study and trade while the clock refills
+            your bars, and one day put Simon de St Pol on his back.
+          </p>
         </a>
         <a class="card tea-race" href="/tea-race/">
           <span class="tag">Clipper racing</span>
@@ -171,17 +240,33 @@
           </p>
         </a>
       </div>
-      <p class="utility" id="admin-link" hidden>
-        <a href="/thrash-margin/admin">🛠 Admin</a>
-      </p>
     </main>
     <script>
-      // Admin link for admins only, from the stored session the games write. A courtesy, not a
-      // control: the admin endpoints check users.role on every request.
-      try {
-        var u = JSON.parse(localStorage.getItem('tm_user') || 'null');
-        if (u && u.isAdmin === true) document.getElementById('admin-link').hidden = false;
-      } catch (e) {}
+      (function () {
+        var u = window.__portalUser;
+        if (!u) return;
+        document.getElementById('signed-in-as').textContent = 'Signed in as ' + u.username;
+        // Shown to admins only, as a courtesy: the admin endpoints check users.role on every request.
+        var adminLink = document.getElementById('admin-link');
+        adminLink.hidden = u.isAdmin !== true;
+        // Re-asked of the server on every visit, so a role granted or removed since sign-in shows
+        // here without signing out and back in.
+        fetch('/api/profile', { headers: { Authorization: 'Bearer ' + localStorage.getItem('tm_token') } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (p) {
+            if (!p || typeof p.isAdmin !== 'boolean') return;
+            adminLink.hidden = !p.isAdmin;
+            if (p.isAdmin !== u.isAdmin) {
+              u.isAdmin = p.isAdmin;
+              localStorage.setItem('tm_user', JSON.stringify(u));
+            }
+          })
+          .catch(function () {});
+        document.getElementById('sign-out').addEventListener('click', function () {
+          ['tm_token', 'tm_user', 'tm_last_active'].forEach(function (k) { localStorage.removeItem(k); });
+          window.location.replace('/thrash-margin/login?next=/');
+        });
+      })();
     </script>
   </body>
 </html>

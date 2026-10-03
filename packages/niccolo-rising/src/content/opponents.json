@@ -1,0 +1,22 @@
+[
+  { "id": "drunk", "name": "A drunk Scots archer", "level": 1, "stats": { "strength": 12, "defence": 10, "speed": 8, "dexterity": 8 }, "health": 120, "weapon": 1.1, "armour": 0.0, "groats": [5, 25], "xp": 4,
+    "blurb": "Far from home, and taking it out on Flanders." },
+  { "id": "bully", "name": "A dockside bully at Sluys", "level": 2, "stats": { "strength": 28, "defence": 22, "speed": 18, "dexterity": 16 }, "health": 160, "weapon": 1.15, "armour": 0.05, "groats": [15, 60], "xp": 7,
+    "blurb": "Collects a toll nobody authorised from barges nobody watches." },
+  { "id": "sergeant", "name": "A Watch sergeant on the take", "level": 4, "stats": { "strength": 70, "defence": 80, "speed": 50, "dexterity": 55 }, "health": 210, "weapon": 1.3, "armour": 0.08, "groats": [40, 140], "xp": 12,
+    "blurb": "Paid by the town, and by everyone else as well." },
+  { "id": "felix", "name": "Felix de Charetty", "level": 5, "stats": { "strength": 90, "defence": 70, "speed": 120, "dexterity": 90 }, "health": 230, "weapon": 1.3, "armour": 0.08, "groats": [60, 180], "xp": 16,
+    "blurb": "Marian's son and heir, quick-tempered and quicker on his feet. He has been waiting to put Claes on his back." },
+  { "id": "loppe", "name": "Lopez, the Guinea pilot", "level": 8, "stats": { "strength": 230, "defence": 260, "speed": 210, "dexterity": 260 }, "health": 310, "weapon": 1.6, "armour": 0.16, "groats": [120, 360], "xp": 24,
+    "blurb": "A man with more reason than most to be dangerous, and more sense than most not to show it." },
+  { "id": "thomas", "name": "Thomas, Astorre's lieutenant", "level": 11, "stats": { "strength": 520, "defence": 480, "speed": 360, "dexterity": 380 }, "health": 380, "weapon": 1.95, "armour": 0.26, "groats": [250, 700], "xp": 34,
+    "blurb": "An Englishman who learned his trade in France and has never forgiven either country." },
+  { "id": "doria", "name": "Pagano Doria", "level": 14, "stats": { "strength": 700, "defence": 800, "speed": 950, "dexterity": 1000 }, "health": 450, "weapon": 1.95, "armour": 0.26, "groats": [500, 1400], "xp": 46,
+    "blurb": "A Genoese with a charming smile and a ship for every occasion. Do not turn your back." },
+  { "id": "simon", "name": "Simon de St Pol", "level": 18, "stats": { "strength": 1500, "defence": 1400, "speed": 1600, "dexterity": 1500 }, "health": 550, "weapon": 1.95, "armour": 0.38, "groats": [1000, 3000], "xp": 64,
+    "blurb": "Golden, vain and murderous when slighted. He has every reason, he believes, to wish you dead." },
+  { "id": "astorre", "name": "Captain Astorre", "level": 22, "stats": { "strength": 2600, "defence": 2800, "speed": 1800, "dexterity": 2300 }, "health": 650, "weapon": 2.4, "armour": 0.38, "groats": [1500, 4000], "xp": 82,
+    "blurb": "He will enjoy it, which is the worrying part." },
+  { "id": "jordan", "name": "Jordan de Ribérac", "level": 30, "stats": { "strength": 5200, "defence": 5600, "speed": 3600, "dexterity": 4400 }, "health": 850, "weapon": 2.4, "armour": 0.38, "groats": [4000, 10000], "xp": 130,
+    "blurb": "The vicomte de Ribérac: vast, patient and cruel, and Simon's father. Nobody should fight him early. Somebody eventually has to." }
+]

@@ -1,0 +1,19 @@
+[
+  {"id": "first_prank", "name": "The goose affair", "text": "Your first scheme came off. Bruges will be talking about the goose for a week."},
+  {"id": "first_duel", "name": "Blood on the cobbles", "text": "Your first duel won."},
+  {"id": "first_voyage", "name": "Beyond the Zwin", "text": "Your first journey abroad."},
+  {"id": "first_course", "name": "A lettered man", "text": "Your first course completed."},
+  {"id": "first_promotion", "name": "Up the ladder", "text": "Your first promotion."},
+  {"id": "level_5", "name": "Somebody's name", "text": "Level 5. People in the Waterhalle have started to know your face."},
+  {"id": "level_10", "name": "A man of Bruges", "text": "Level 10. The Charetty household no longer calls you a boy."},
+  {"id": "level_20", "name": "A man of Europe", "text": "Level 20. Venice keeps a file on you."},
+  {"id": "groats_10k", "name": "Ten thousand", "text": "Ten thousand groats in hand."},
+  {"id": "groats_100k", "name": "A fortune", "text": "A hundred thousand groats in hand. Marian would not believe it."},
+  {"id": "felix", "name": "Felix put down", "text": "Felix de Charetty, on his back at last. He laughed, which you did not expect."},
+  {"id": "simon", "name": "St Pol humbled", "text": "Simon de St Pol beaten in the street. The vendetta will not end here."},
+  {"id": "jordan", "name": "The vicomte", "text": "Jordan de Ribérac beaten. Nobody in Bruges believes it, and nobody says so to your face."},
+  {"id": "house_owner", "name": "A key of your own", "text": "Lodging that is yours."},
+  {"id": "steen", "name": "Guest of the Steen", "text": "Your first night in the town prison."},
+  {"id": "nicholas", "name": "Nicholas vander Poele", "text": "Claes the apprentice is gone. Married to the demoiselle de Charetty, master of the company."},
+  {"id": "first_mission", "name": "Running errands", "text": "Your first mission completed."}
+]

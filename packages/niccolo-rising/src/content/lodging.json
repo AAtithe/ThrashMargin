@@ -1,0 +1,7 @@
+[
+  { "id": "loft", "name": "A pallet in the dyeworks loft", "cost": 0, "spiritsMax": 100, "blurb": "Warm from the vats below and smelling of them." },
+  { "id": "room", "name": "A rented room by the Minnewater", "cost": 2000, "spiritsMax": 250, "blurb": "A door that locks and a window onto the swans." },
+  { "id": "house", "name": "A narrow house on the Spinolarei", "cost": 12000, "spiritsMax": 500, "blurb": "Three storeys, one room wide, with a stepped gable you can point at." },
+  { "id": "merchant", "name": "A merchant's house on the Spiegelrei", "cost": 60000, "spiritsMax": 1000, "blurb": "A courtyard, a counting room, a kitchen with a cook in it." },
+  { "id": "hotel", "name": "A hôtel near the Prinsenhof", "cost": 250000, "spiritsMax": 2500, "blurb": "Within sight of the Duke's own windows. The Gruuthuse send a card." }
+]

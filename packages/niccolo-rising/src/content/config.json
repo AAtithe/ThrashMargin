@@ -1,0 +1,63 @@
+{
+  "startGroats": 250,
+  "startCity": "bruges",
+  "bars": {
+    "energy": {
+      "max": 100,
+      "tickMinutes": 10,
+      "perTick": 5
+    },
+    "nerve": {
+      "baseMax": 10,
+      "perTwoLevels": 1,
+      "cap": 60,
+      "tickMinutes": 5,
+      "perTick": 1
+    },
+    "spirits": {
+      "tickMinutes": 15,
+      "perTick": 5
+    },
+    "health": {
+      "baseMax": 100,
+      "perLevel": 25,
+      "tickMinutes": 5,
+      "pctPerTick": 6
+    }
+  },
+  "duel": {
+    "energyCost": 25,
+    "maxRounds": 25,
+    "opponentRecoveryMinutes": 60
+  },
+  "levels": {
+    "xpBase": 60,
+    "xpGrowth": 1.3,
+    "maxLevel": 50
+  },
+  "steen": {
+    "bribePerLevel": 120,
+    "bribeBase": 80
+  },
+  "carryBase": 5,
+  "restockMinutes": 60,
+  "spiritsDrainPerEnergy": 0.5,
+  "bank": {
+    "terms": [
+      {
+        "days": 1,
+        "pct": 0.3
+      },
+      {
+        "days": 3,
+        "pct": 1
+      },
+      {
+        "days": 7,
+        "pct": 2.8
+      }
+    ],
+    "minDeposit": 100
+  },
+  "dailyMarketSwing": 0.3
+}

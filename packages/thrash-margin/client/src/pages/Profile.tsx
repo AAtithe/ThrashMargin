@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getToken, getStoredUser, setStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
+import { GAMES } from 'shared/games';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
@@ -11,7 +12,7 @@ interface ProfileData {
   email: string;
   registeredAt: number;
   lastLoginAt: number | null;
-  gamesByTitle: { thrash_margin: number; niccolo: number; tea_race: number; steady_eddie: number };
+  gamesByTitle: Record<string, number>;
   activeGames: number;
   wins: number;
 }
@@ -129,10 +130,9 @@ export default function Profile() {
             <div style={s.statGrid}>
               <Stat label="Registered" value={fmtDate(profile.registeredAt)} />
               <Stat label="Last login" value={fmtDate(profile.lastLoginAt)} />
-              <Stat label="Thrash Margin" value={String(profile.gamesByTitle.thrash_margin)} />
-              <Stat label="Banco di Niccolo" value={String(profile.gamesByTitle.niccolo)} />
-              <Stat label="The Tea Race" value={String(profile.gamesByTitle.tea_race)} />
-              <Stat label="Steady Eddie" value={String(profile.gamesByTitle.steady_eddie)} />
+              {GAMES.map(g => (
+                <Stat key={g.key} label={g.label} value={String(profile.gamesByTitle[g.key] ?? 0)} />
+              ))}
               <Stat label="Wins" value={String(profile.wins)} />
             </div>
           </section>

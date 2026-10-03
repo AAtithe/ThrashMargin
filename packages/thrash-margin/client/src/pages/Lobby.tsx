@@ -83,7 +83,7 @@ export default function Lobby() {
           <div style={{ background: UI.panel, border: `1px solid ${UI.rule}`, borderRadius: 12, padding: '32px 28px', maxWidth: 400, width: '100%', textAlign: 'center' }}>
             <h1 style={{ fontFamily: FONT.display, fontSize: 32, margin: '0 0 6px', fontWeight: 600 }}>Thrash Margin</h1>
             <Muted style={{ fontSize: 13.5, marginBottom: 20 }}>Sign in to keep your campaigns on your account.</Muted>
-            <Button tone="primary" onClick={() => nav('/login')}>Sign in or register</Button>
+            <Button tone="primary" onClick={() => nav('/login?next=/thrash-margin/')}>Sign in or register</Button>
           </div>
         </div>
         <PortalNav variant="footer" />

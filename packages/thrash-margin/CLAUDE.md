@@ -43,7 +43,7 @@ troop costs gold to raise and food to keep, and food is the hard ceiling on the 
 | `client/src/game/plan.ts` | Pure helpers: highlights, suggested assault columns, what is undoable. |
 | `client/src/hooks/` | `useGameCloud` (API, debounced saves) and `useGameLocal`, switched by `useGameHybrid`. |
 | `client/src/theme.ts`, `styles.css` | Palette, fonts, the few things inline styles cannot do. |
-| `api/game/index.ts` | List, create, load, save, delete; the `games` table with `game = 'thrash_margin'`. |
+| `api/game/index.ts` | List, create, load, save, delete; the `games` table with `game = 'thrash_margin'`. Served at `/api/play/thrash-margin` through the shared `api/play/[kind].ts`. Schema: `db/schema.sql` at the repo root. |
 
 ## Engine invariants
 

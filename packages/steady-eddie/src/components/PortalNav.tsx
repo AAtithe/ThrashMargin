@@ -36,6 +36,10 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
           ⛵ The Tea Race
         </a>
         <span style={styles.sep}>·</span>
+        <a href="/rising/" style={styles.link}>
+          🗡 Niccolò Rising
+        </a>
+        <span style={styles.sep}>·</span>
         <a href="/thrash-margin/feedback" style={styles.link}>
           💬 Feedback
         </a>
@@ -70,7 +74,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
             </button>
           </>
         ) : (
-          <a href="/thrash-margin/login" style={styles.link}>
+          <a href="/thrash-margin/login?next=/steady-eddie/" style={styles.link}>
             Sign in
           </a>
         )}

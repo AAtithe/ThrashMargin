@@ -1,9 +1,26 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { getToken, setToken, setStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
+
+/**
+ * Where to go after signing in: the page that sent you here (`?next=/niccolo/`), else the portal's
+ * welcome page. Same-site paths only, so the parameter cannot bounce a fresh session elsewhere.
+ */
+function destination(): string {
+  const next = new URLSearchParams(window.location.search).get('next');
+  // A backslash is refused too: browsers read '/\\evil.example' as '//evil.example'.
+  return next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\') ? next : '/';
+}
+
+/** The game a sign-in is for, so the card names it rather than always saying Thrash Margin. */
+const GAME_TITLES: { prefix: string; title: string; subtitle: string }[] = [
+  { prefix: '/rising/', title: 'Niccolò Rising', subtitle: 'Bruges · 1460 · in real time' },
+  { prefix: '/niccolo/', title: 'Banco di Niccolo', subtitle: 'Trade · Credit · Intelligence' },
+  { prefix: '/tea-race/', title: 'The Tea Race', subtitle: 'Clippers · Cargo · First home' },
+  { prefix: '/steady-eddie/', title: 'Steady Eddie', subtitle: 'Haulage · Loads · First to the depot' },
+];
 
 export default function Login() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -12,11 +29,11 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const nav = useNavigate();
+  const game = GAME_TITLES.find(g => destination().startsWith(g.prefix));
 
   useEffect(() => {
-    if (getToken()) nav('/');
-  }, [nav]);
+    if (getToken()) window.location.replace(destination());
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +52,8 @@ export default function Login() {
       if (!res.ok) { setError(data.message ?? 'Failed'); return; }
       setToken(data.token);
       setStoredUser({ userId: data.userId, username: data.username, isAdmin: data.isAdmin === true });
-      nav('/');
+      // A full page load, not a router push: the destination is usually another app on the portal.
+      window.location.assign(destination());
     } catch {
       setError('Network error — try again');
     } finally {
@@ -48,8 +66,8 @@ export default function Login() {
       <PortalNav variant="header" />
       <div style={s.page}>
         <div style={s.card}>
-        <h1 style={s.title}>Thrash Margin</h1>
-        <p style={s.subtitle}>Territory · Economy · Conquest</p>
+        <h1 style={s.title}>{game?.title ?? 'Thrash Margin'}</h1>
+        <p style={s.subtitle}>{game?.subtitle ?? 'Territory · Economy · Conquest'}</p>
 
         <div style={s.tabs}>
           {(['login', 'register'] as const).map(m => (
@@ -76,7 +94,7 @@ export default function Login() {
           />
           {error && <p style={s.error}>{error}</p>}
           <button style={s.btn} type="submit" disabled={loading}>
-            {loading ? '…' : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
+            {loading ? '…' : game ? (mode === 'login' ? 'Sign in →' : 'Create account →') : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
           </button>
         </form>
         </div>

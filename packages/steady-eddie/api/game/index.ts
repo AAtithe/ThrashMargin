@@ -56,8 +56,10 @@ function readHazards(
 
 
 /**
- * One Vercel function covering both `/api/steady-eddie/game` (list/create) and
- * `/api/steady-eddie/game?id=:id` (load/save/delete) as a single function — the two were separate
+ * Served at /api/play/<game> through api/play/[kind].ts, which all five games now share.
+ *
+ * Originally one Vercel function of its own, covering both `/api/play/steady-eddie` (list/create) and
+ * `/api/play/steady-eddie?id=:id` (load/save/delete) as a single function — the two were separate
  * functions until a 4th game's own pair would have pushed the Hobby-plan function count past
  * its 12-function ceiling. A path-based `[[...id]].ts` catch-all doesn't work here: that's a
  * Next.js routing convention, not something plain Vercel Functions understand, so it silently

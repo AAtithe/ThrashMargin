@@ -1,0 +1,10 @@
+[
+  { "id": "drill_yard", "name": "Astorre's drill yard", "minLevel": 1, "energy": 5, "dots": 1.0, "cost": 0,
+    "blurb": "A beaten-earth square behind the Charetty dyeworks where Astorre's men pass the slack weeks. Nobody charges a dyer's lad to be knocked down." },
+  { "id": "fencing_school", "name": "The fencing school on the Kraanplein", "minLevel": 4, "energy": 10, "dots": 1.6, "cost": 300,
+    "blurb": "A master from Milan, a sanded floor, and wooden swords weighted with lead. The fee keeps the street out." },
+  { "id": "archers_butts", "name": "The archers' butts of St Sebastian", "minLevel": 9, "energy": 10, "dots": 2.2, "cost": 1500,
+    "blurb": "The crossbowmen's guild trains here between feasts. Membership is bought, and sponsorship is everything." },
+  { "id": "tiltyard", "name": "The Burgundian tiltyard", "minLevel": 16, "energy": 25, "dots": 3.4, "cost": 6000,
+    "blurb": "Where the Duke's household runs at the ring. To be let in at all is a statement about who you have become." }
+]

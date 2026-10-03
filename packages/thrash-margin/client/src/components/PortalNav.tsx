@@ -33,6 +33,10 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
           🚚 Steady Eddie
         </a>
         <span style={styles.sep}>·</span>
+        <a href="/rising/" style={styles.link}>
+          🗡 Niccolò Rising
+        </a>
+        <span style={styles.sep}>·</span>
         {/* Base-relative, like the Sign in link below — this is Thrash Margin's own route. */}
         <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>
           💬 Feedback
