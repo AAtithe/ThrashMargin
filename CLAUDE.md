@@ -1,7 +1,8 @@
 # The Thrash Margin portal — working notes
 
-Four games served from one deployment, one Postgres/Supabase instance, and one account system:
-`packages/thrash-margin`, `packages/niccolo`, `packages/steady-eddie`, `packages/tea-race`.
+Five games served from one deployment, one Postgres/Supabase instance, and one account system:
+`packages/thrash-margin`, `packages/niccolo`, `packages/niccolo-rising`, `packages/steady-eddie`,
+`packages/tea-race`.
 Each game's design document is at the repo root (`tea-race-design.md`, and so on) and carries its own
 build log; read the relevant one before changing a game's rules.
 
@@ -11,7 +12,7 @@ build log; read the relevant one before changing a game's rules.
 
 ### 1. Every game requires a signed-in account. There is no guest path.
 
-All four lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
+All five lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
 demo, or "try it without an account" route back in**, and do not relax the gate to make local
 development or testing easier. A guest path existed once and was deliberately removed
 (`7c0e0a0`); it is not an oversight and it is not a TODO.
@@ -22,6 +23,7 @@ The gate lives at:
 |---|---|
 | Thrash Margin | `packages/thrash-margin/client/src/pages/Lobby.tsx` |
 | Banco di Niccolò | `packages/niccolo/src/pages/Lobby.tsx` |
+| Niccolò Rising | `packages/niccolo-rising/src/pages/Lobby.tsx` |
 | Steady Eddie | `packages/steady-eddie/src/pages/Lobby.tsx` |
 | The Tea Race | `packages/tea-race/src/pages/Lobby.tsx` |
 
@@ -47,11 +49,13 @@ localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 
 Use that for local UI checks. Never change the gate, add an env-var escape hatch, or stub
 `getUser` to make a test pass.
 
-### 2. `packages/tea-race/src/sim/` is pure
+### 2. `packages/tea-race/src/sim/` and `packages/niccolo-rising/src/sim/` are pure
 
 No `Math.random`, no clock. Dice come from `rng.ts` against the persisted `rngSeed`, and
-`createdAt` is passed in by the caller. This is what makes a game replay byte-identically and what
-makes `scripts/drive.ts` a real test rather than a smoke test.
+`createdAt` is passed in by the caller. Niccolò Rising runs in real time, so every one of its
+actions carries its own `at` timestamp and the reducer never reads a clock either. This is what
+makes a game replay byte-identically and what makes `scripts/drive.ts` a real test rather than a
+smoke test.
 
 An **illegal action returns the same state object** (reference equality). The AI loop uses that to
 detect a rejected move and the save hooks use it to skip a pointless write.

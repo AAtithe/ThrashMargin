@@ -1,15 +1,12 @@
-import { getStoredUser, clearToken } from '../lib/token';
+import { getStoredUser, clearToken } from '../lib/portalAuth';
 
 interface PortalNavProps {
   variant?: 'header' | 'footer';
 }
 
-/**
- * Chrome for moving between the three games and managing the account that's shared
- * across them (same tm_token/tm_user localStorage keys the other games' PortalNavs read).
- * Deliberately not rendered on the in-game screen (Game.tsx) — that header is already
- * dense with live gameplay state and this adds nothing useful mid-turn.
- */
+/** Chrome for moving between the portal's games and managing the shared account session. Niccolò
+ * Rising has no accounts of its own; this reflects and controls the same tm_token/tm_user
+ * localStorage keys every other game's PortalNav writes. */
 export default function PortalNav({ variant = 'header' }: PortalNavProps) {
   const user = getStoredUser();
   const isFooter = variant === 'footer';
@@ -19,6 +16,10 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
       <div style={styles.links}>
         <a href="/" style={styles.link}>
           🏠 Home
+        </a>
+        <span style={styles.sep}>·</span>
+        <a href="/thrash-margin/" style={styles.link}>
+          🎮 Thrash Margin
         </a>
         <span style={styles.sep}>·</span>
         <a href="/niccolo/" style={styles.link}>
@@ -33,18 +34,15 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
           🚚 Steady Eddie
         </a>
         <span style={styles.sep}>·</span>
-        <a href="/rising/" style={styles.link}>
-          🗡 Niccolò Rising
-        </a>
-        <span style={styles.sep}>·</span>
-        {/* Base-relative, like the Sign in link below — this is Thrash Margin's own route. */}
-        <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>
+        <a href="/thrash-margin/feedback" style={styles.link}>
           💬 Feedback
         </a>
         <span style={styles.sep}>·</span>
-        {/* Base-relative too. Reaching the page means nothing without a valid admin
-            session — access is gated server-side by ADMIN_USERNAMES, not by hiding this link. */}
-        <a href={`${import.meta.env.BASE_URL}admin`} style={styles.link}>
+        {/* Absolute, not base-relative: the admin panel only exists as a route inside Thrash
+            Margin's own client, same as feedback/profile/login above. Reaching the page means
+            nothing without a valid admin session — access is gated server-side by
+            ADMIN_USERNAMES, not by hiding this link. */}
+        <a href="/thrash-margin/admin" style={styles.link}>
           🛠 Admin
         </a>
       </div>
@@ -52,7 +50,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         {user ? (
           <>
             <span>Signed in as {user.username}</span>
-            <a href={`${import.meta.env.BASE_URL}profile`} style={styles.link}>
+            <a href="/thrash-margin/profile" style={styles.link}>
               Profile
             </a>
             <button
@@ -66,11 +64,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
             </button>
           </>
         ) : (
-          // Base-relative, unlike the cross-app links above: this points at Thrash Margin's
-          // own login route, so it must resolve under whatever base this app is served from
-          // (`/` in local dev, `/thrash-margin/` in the portal build) rather than a hardcoded
-          // production path.
-          <a href={`${import.meta.env.BASE_URL}login`} style={styles.link}>
+          <a href="/thrash-margin/login" style={styles.link}>
             Sign in
           </a>
         )}
