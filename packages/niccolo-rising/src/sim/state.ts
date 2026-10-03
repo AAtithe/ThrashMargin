@@ -50,6 +50,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     abroad: {},
     opponents: {},
     honours: [],
+    missions: { active: null, done: [] },
     counters: { schemes: 0, schemesWon: 0, duelsWon: 0, duelsLost: 0, voyages: 0 },
     lastFight: null,
     log: [],
@@ -66,11 +67,19 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
 }
 
 /**
- * Brings an older save up to the current shape. Nothing has changed shape yet; this is where the
- * first migration goes, and the cloud and local loaders both call it already.
+ * Brings an older save up to the current shape. The cloud and local loaders both call it before the
+ * shape check, so every migration here runs for every save, every load.
+ *
+ * Phase 5 added `missions`. A character created before then has none, and would crash the first
+ * time anything read `s.missions.active`. It gains an empty record: no mission in hand, none done,
+ * so the chain starts at the beginning whatever level the character has reached.
  */
 export function migrateState(raw: unknown): GameState {
-  return raw as GameState;
+  if (!raw || typeof raw !== 'object') return raw as GameState;
+  const s = raw as GameState & { missions?: GameState['missions'] };
+  if (s.rules !== 'rising-1') return s;
+  if (!s.missions || typeof s.missions !== 'object') return { ...s, missions: { active: null, done: [] } };
+  return s;
 }
 
 /** Top-level shape check for the local loader. Also used by the driver. */
@@ -82,5 +91,6 @@ export function isCurrentShape(parsed: unknown): parsed is GameState {
   if (!s.bars || !s.battle || !s.work || !s.status || !s.inventory || !s.equipped) return false;
   if (!Array.isArray(s.log) || !Array.isArray(s.coursesDone) || !Array.isArray(s.lodgings) || !Array.isArray(s.yards)) return false;
   if (!s.abroad || !s.opponents || !s.counters || !Array.isArray(s.honours)) return false;
+  if (!s.missions || !Array.isArray(s.missions.done) || !('active' in s.missions)) return false;
   return true;
 }

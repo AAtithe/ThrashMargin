@@ -139,6 +139,24 @@ Withdrawable only at maturity. The interest is the only income that needs no bar
 Milestones (first scheme, first duel won, first voyage, a level, a fortune) logged in the
 Chronicle. They are a record, not a currency.
 
+### 3.12 Missions (Phase 5)
+Thirteen missions in one unbroken chain, told from the first novel: the goose and the
+burgomaster, Astorre's yard, the Scots at Sluys, the woad run to Ghent, the snowball that puts
+Simon de St Pol in a fountain (and the player in the Infirmary for it), the Geneva courier run, the
+Medici cipher, Felix leaving for the war, Spanish alum, silk from Florence, the news of Felix's
+death, the marriage to Marian that makes Claes into Nicholas vander Poele, and finally beating
+Simon in the street. All content in `content/missions.json`; the logic is `sim/missions.ts` plus
+three verbs in `actions.ts`.
+
+One mission in hand at a time, from whoever gives it in the story. Objectives come in two kinds.
+**Counting** objectives (schemes, duels, training gains, arrivals) count only what happens after
+accepting, as Torn's do; the reducer emits an event for each and the mission tracks it, capped at
+the target. **Holding** objectives (goods, groats, a course, a post, a level, a working stat) are
+read live and checked when the player reports back in Bruges; goods and groats are handed over
+then. A mission may carry a deadline in real hours; if it passes, the mission fails and can be
+taken up again from the start. Rewards are groats, experience, standing, items, lodging and
+honours, and once a scripted consequence: Simon's men put the player in the Infirmary.
+
 ---
 
 ## 4. Architecture
@@ -170,7 +188,7 @@ be revisited before any player-versus-player feature ships (see §6).
 | 2 | Pure sim: bars, regen, gym, schemes, jobs, courses, travel, market, lodging, duels, infirmary, Steen, bank, honours | Done |
 | 3 | Game screen: status rail with live bars, one panel per place, the Chronicle | Done |
 | 4 | Driver: many seeds, months of compressed time, invariants and determinism | Done |
-| 5 | Missions: a Dunnett story spine told as Torn-style missions (the first novel's arc) | Not started |
+| 5 | Missions: a Dunnett story spine told as Torn-style missions (the first novel's arc) | Done |
 | 6 | Houses (factions): join Charetty, Medici, St Pol or Doria; house perks and chain duels | Not started |
 | 7 | Player versus player: server-authoritative clock and combat resolution in the API | Not started |
 
@@ -222,3 +240,41 @@ earned), and a keen player can afford the top lodging inside a month, after whic
 left to buy. The fix is more sinks rather than a weaker trade loop: lodging upkeep, better kit
 tiers, and the house dues Phase 6 brings. Courses are all done by day 14 for an active player,
 which is faster than Torn's months; that is a content gap (more courses) more than a tuning one.
+
+### Phase 5, missions, 2026-10-03
+Built as §3.12 describes. A new `missions` field on the save; `migrateState` gives a character
+created before Phase 5 an empty record, so it loads and starts the chain at the beginning whatever
+its level. Checked in the browser by deleting the field from a real save and reloading it.
+
+**What the driver adds.** Mission invariants after every action (no mission done before the one it
+follows, progress never over target, holding objectives never counting); a content check that every
+id a mission names exists, that the chain is one unbroken line, and that every item a mission asks
+for is sold somewhere; the migration of a pre-Phase-5 save; the three new verbs in the fuzz; and a
+bot that plays the story (keeps goods it must deliver, travels where the mission sends it, prefers
+the opponent and the scheme the mission names). A table of how many characters finish each
+mission within 30 days, and on which day, per play rhythm.
+
+**A design fault the table caught on its first run.** The Geneva courier run had a 24-hour
+deadline. A twice-a-day player needs three sessions for it (accept and set out; buy and sail home;
+report back), which is exactly 24 hours, so it failed on the boundary every time and no casual
+character ever got past it. Nothing in the code was wrong; the number was. Geneva is now 48 hours
+and the Florence run 72. The rule worth keeping: **a deadline must fit the slowest rhythm the game
+means to support, with a session to spare.**
+
+**Where the story falls, 40 seeds, median day of completion:**
+
+| Mission | Keen (every 2h) | Steady (4 a day) | Casual (twice a day) |
+|---|---|---|---|
+| The goose and the burgomaster | day 1 | day 1 | day 2 |
+| Woad from Ghent | day 2 | day 3 | day 5 |
+| Courier to Geneva | day 4 | day 7 | day 14 |
+| Felix goes for a soldier | day 6 | day 8 | day 16 |
+| Silk from Florence | day 8 | day 11 | day 23 |
+| News from the south | day 10 | day 15 | day 28 (73% by day 30) |
+| Marian | day 14 | day 19 | not within 30 days |
+| The vendetta (Simon) | not within 30 days | not within 30 days | not within 30 days |
+
+The first book takes two to three weeks of active play and most of a month of casual play, which
+is the pace intended. Beating Simon is deliberately a long goal: at day 30 a keen character's
+battle stats (6,000) only just match his. Mission rewards are story, not income: about 0.2% of
+all groats earned, against about two-thirds from trade.

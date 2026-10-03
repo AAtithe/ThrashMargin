@@ -12,6 +12,7 @@ import Chronicle from '../components/Chronicle';
 import { Button, Panel } from '../components/ui';
 import ActButton from '../components/places/ActButton';
 import Home from '../components/places/Home';
+import Missions from '../components/places/Missions';
 import Yards from '../components/places/Yards';
 import Schemes from '../components/places/Schemes';
 import Work from '../components/places/Work';
@@ -25,6 +26,7 @@ import type { PlaceProps, Verb } from '../components/types';
 
 const PLACES = [
   { id: 'home', name: 'Home', Panel: Home },
+  { id: 'missions', name: 'Missions', Panel: Missions },
   { id: 'yard', name: 'Training yard', Panel: Yards },
   { id: 'schemes', name: 'Schemes', Panel: Schemes },
   { id: 'duels', name: 'Duels', Panel: Duels },

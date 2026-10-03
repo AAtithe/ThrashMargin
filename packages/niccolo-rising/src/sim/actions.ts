@@ -17,6 +17,7 @@ import {
   DAY,
   DESTINATION,
   HONOUR,
+  HOUR,
   ITEM,
   JOB,
   LODGING,
@@ -37,9 +38,10 @@ import {
   xpToNext,
 } from './content';
 import { simulateDuel } from './combat';
+import { MISSION, availableMissions, missionReady, trackEvents } from './missions';
 import { next, nextInt } from './rng';
 import { BAR_IDS, BATTLE_STATS, WORK_STATS } from './types';
-import type { BarId, GameAction, GameState, LogEntry } from './types';
+import type { BarId, GameAction, GameState, LogEntry, MissionEvent } from './types';
 
 const LOG_CAP = 200;
 const MAX_QTY = 500;
@@ -116,6 +118,7 @@ function setHealth(d: GameState, hp: number, at: number) {
 /** Mutates `d` forward to `now`. Returns whether anything changed. */
 function advanceDraft(d: GameState, now: number): boolean {
   let changed = false;
+  const events: MissionEvent[] = [];
 
   // Status timers.
   const st = d.status;
@@ -126,6 +129,7 @@ function advanceDraft(d: GameState, now: number): boolean {
     } else {
       d.status = { kind: 'abroad', city: st.to };
       d.counters.voyages++;
+      events.push({ kind: 'arrive', city: st.to });
       log(d, st.arrives, `Arrived in ${DESTINATION[st.to]?.name ?? st.to}.`);
       award(d, st.arrives, 'first_voyage');
     }
@@ -191,6 +195,17 @@ function advanceDraft(d: GameState, now: number): boolean {
     const used = Math.min(ticks, toFill);
     b.cur = Math.min(max, b.cur + used * tick.amount);
     b.anchor += used * tick.ms;
+    changed = true;
+  }
+
+  // Missions: count this advance's arrivals, then fail a mission whose deadline has passed. An
+  // arrival in the same advance as a passed deadline is counted and then lost with the mission,
+  // which is the same result advancing in small steps would give.
+  if (trackEvents(d, events)) changed = true;
+  const m = d.missions.active;
+  if (m && m.deadline !== null && now >= m.deadline) {
+    log(d, m.deadline, `Mission failed: ${MISSION[m.id]?.title ?? m.id}. The time ran out. It can be taken up again.`, 'bad');
+    d.missions.active = null;
     changed = true;
   }
 
@@ -265,7 +280,7 @@ function steenMinutes(d: GameState, minutes: number): number {
   return Math.max(1, Math.round(minutes * (1 - Math.min(80, perks(d).steenPct) / 100)));
 }
 
-function applyVerb(d: GameState, a: GameAction, at: number) {
+function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent[]) {
   switch (a.type) {
     case 'TICK':
       return;
@@ -300,6 +315,7 @@ function applyVerb(d: GameState, a: GameAction, at: number) {
       }
       d.battle[a.stat] = Math.round(d.battle[a.stat] * 100) / 100;
       const gained = d.battle[a.stat] - before;
+      events.push({ kind: 'train', stat: a.stat, gain: gained });
       log(d, at, `${a.times} × ${a.stat} at ${yard.name}: +${gained.toFixed(2)}.`);
       return;
     }
@@ -319,6 +335,7 @@ function applyVerb(d: GameState, a: GameAction, at: number) {
         d.counters.schemesWon++;
         d.standing += Math.floor(scheme.difficulty / 40);
         log(d, at, `${scheme.name}: it comes off. ${gr.toLocaleString('en-GB')} gr.`, 'good');
+        events.push({ kind: 'scheme', schemeId: scheme.id });
         award(d, at, 'first_prank');
         gainXp(d, scheme.xp, at);
         return;
@@ -538,6 +555,7 @@ function applyVerb(d: GameState, a: GameAction, at: number) {
         d.opponents[opp.id] = at + CONFIG.duel.opponentRecoveryMinutes * MINUTE;
         log(d, at, `You beat ${opp.name} in ${result.rounds} rounds and take ${gr.toLocaleString('en-GB')} gr from them.`, 'good');
         award(d, at, 'first_duel');
+        events.push({ kind: 'duel', opponentId: opp.id });
         if (opp.id === 'felix' || opp.id === 'simon' || opp.id === 'jordan') award(d, at, opp.id);
         gainXp(d, opp.xp, at);
       } else if (result.outcome === 'lost') {
@@ -574,6 +592,68 @@ function applyVerb(d: GameState, a: GameAction, at: number) {
       log(d, at, `The gaoler finds a key for ${cost.toLocaleString('en-GB')} gr.`);
       return;
     }
+
+    case 'ACCEPT_MISSION': {
+      needFree(d, 'take on a mission');
+      if (d.missions.active) reject('Finish or abandon your current mission first.');
+      const m = availableMissions(d).find(x => x.id === a.missionId) ?? reject('That mission is not open to you.');
+      if (d.level < m.minLevel) reject(`Level ${m.minLevel} required.`);
+      d.missions.active = {
+        id: m.id,
+        accepted: at,
+        deadline: m.hours ? at + m.hours * HOUR : null,
+        progress: m.objectives.map(() => 0),
+      };
+      log(d, at, `Mission accepted from ${m.giver}: ${m.title}.`);
+      return;
+    }
+
+    case 'COMPLETE_MISSION': {
+      needFree(d, 'report back');
+      const active = d.missions.active ?? reject('No mission in hand.');
+      const m = MISSION[active.id] ?? reject('No such mission.');
+      if (!missionReady(d)) reject('Not every objective is met yet.');
+      // Hand over what was asked for.
+      for (const o of m.objectives) {
+        if (o.kind === 'deliver') {
+          d.inventory[o.itemId] -= o.qty;
+          if (d.inventory[o.itemId] === 0) delete d.inventory[o.itemId];
+        } else if (o.kind === 'pay') {
+          d.groats -= o.groats;
+        }
+      }
+      d.missions.active = null;
+      d.missions.done.push(m.id);
+      const r = m.reward;
+      log(d, at, `${m.title}. ${m.done}`, 'good');
+      if (r.groats) d.groats += r.groats;
+      if (r.standing) d.standing += r.standing;
+      for (const [id, qty] of Object.entries(r.items ?? {})) {
+        if (ITEM[id]) d.inventory[id] = (d.inventory[id] ?? 0) + qty;
+      }
+      if (r.lodging && LODGING[r.lodging] && !d.lodgings.includes(r.lodging)) {
+        rebaseIfFull(d, 'spirits', at);
+        d.lodgings.push(r.lodging);
+        log(d, at, `${LODGING[r.lodging].name} is yours now.`, 'good');
+      }
+      award(d, at, 'first_mission');
+      if (r.honour) award(d, at, r.honour);
+      if (r.xp) gainXp(d, r.xp, at);
+      if (r.infirmaryMinutes) {
+        const mins = infirmaryMinutes(d, r.infirmaryMinutes);
+        setHealth(d, Math.min(d.bars.health.cur, barMax(d, 'health') * 0.25), at);
+        d.status = { kind: 'infirmary', until: at + mins * MINUTE, reason: m.title.toLowerCase() };
+        log(d, at, `${mins} minutes in the Infirmary.`, 'bad');
+      }
+      return;
+    }
+
+    case 'ABANDON_MISSION': {
+      const active = d.missions.active ?? reject('No mission in hand.');
+      d.missions.active = null;
+      log(d, at, `Mission abandoned: ${MISSION[active.id]?.title ?? active.id}. It can be taken up again.`);
+      return;
+    }
   }
 }
 
@@ -583,7 +663,7 @@ export function whyIllegal(s: GameState, a: GameAction): string | null {
   const d = clone(s);
   advanceDraft(d, at);
   try {
-    applyVerb(d, a, at);
+    applyVerb(d, a, at, []);
     return null;
   } catch (e) {
     if (e instanceof Illegal) return e.message;
@@ -600,12 +680,14 @@ export function processAction(s: GameState, a: GameAction): GameState {
     moneyHonours(d, at);
     return d;
   }
+  const events: MissionEvent[] = [];
   try {
-    applyVerb(d, a, at);
+    applyVerb(d, a, at, events);
   } catch (e) {
     if (e instanceof Illegal) return s;
     throw e;
   }
+  trackEvents(d, events);
   moneyHonours(d, at);
   d.clock = at;
   return d;

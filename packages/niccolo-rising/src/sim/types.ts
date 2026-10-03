@@ -113,6 +113,15 @@ export interface GameState {
   opponents: Record<string, number>;
 
   honours: string[];
+  /**
+   * The story spine (Phase 5). One mission active at a time. `progress` holds a running count for
+   * each counting objective (schemes, duels, training, arrivals) since the mission was accepted;
+   * holding objectives (an item, a course, a level) are read live and their slot stays 0.
+   */
+  missions: {
+    active: { id: string; accepted: number; deadline: number | null; progress: number[] } | null;
+    done: string[];
+  };
   counters: { schemes: number; schemesWon: number; duelsWon: number; duelsLost: number; voyages: number };
   lastFight: FightReport | null;
 
@@ -140,7 +149,10 @@ export type GameAction =
   | { type: 'BUY_LODGING'; at: number; lodgingId: string }
   | { type: 'DUEL'; at: number; opponentId: string }
   | { type: 'DEPOSIT'; at: number; amount: number; days: number }
-  | { type: 'BRIBE'; at: number };
+  | { type: 'BRIBE'; at: number }
+  | { type: 'ACCEPT_MISSION'; at: number; missionId: string }
+  | { type: 'COMPLETE_MISSION'; at: number }
+  | { type: 'ABANDON_MISSION'; at: number };
 
 // ---------------------------------------------------------------------------------------------
 // Content shapes (the JSON files in src/content)
@@ -291,3 +303,53 @@ export interface Honour {
   name: string;
   text: string;
 }
+
+/**
+ * What a mission asks for. Counting objectives (scheme, duel, train, arrive) count only what happens
+ * after the mission is accepted. Holding objectives (deliver, pay, course, job, level, work) are
+ * checked at the moment of completion; deliver and pay are consumed by it.
+ */
+export type Objective =
+  | { kind: 'scheme'; schemeId?: string; count: number }
+  | { kind: 'duel'; opponentId?: string; count: number }
+  | { kind: 'train'; amount: number; stat?: BattleStat }
+  | { kind: 'arrive'; city: string }
+  | { kind: 'deliver'; itemId: string; qty: number }
+  | { kind: 'pay'; groats: number }
+  | { kind: 'course'; courseId: string }
+  | { kind: 'job'; jobId: string; rank: number }
+  | { kind: 'level'; level: number }
+  | { kind: 'work'; stat: WorkStat; value: number };
+
+export interface MissionReward {
+  groats?: number;
+  xp?: number;
+  standing?: number;
+  items?: Record<string, number>;
+  lodging?: string;
+  honour?: string;
+  /** A scripted consequence: the story puts the player in the Infirmary for this long. */
+  infirmaryMinutes?: number;
+}
+
+export interface Mission {
+  id: string;
+  title: string;
+  giver: string;
+  /** The mission that must be completed first. Absent for the first in the chain. */
+  after?: string;
+  minLevel: number;
+  /** Real hours to complete once accepted. Absent means no deadline. */
+  hours?: number;
+  brief: string;
+  done: string;
+  objectives: Objective[];
+  reward: MissionReward;
+}
+
+/** Something that happened, as missions count it. Emitted by the reducer, consumed by `missions.ts`. */
+export type MissionEvent =
+  | { kind: 'scheme'; schemeId: string }
+  | { kind: 'duel'; opponentId: string }
+  | { kind: 'train'; stat: BattleStat; gain: number }
+  | { kind: 'arrive'; city: string };

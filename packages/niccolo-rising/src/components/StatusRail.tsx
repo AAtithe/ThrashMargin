@@ -1,4 +1,5 @@
 import { CONFIG, DESTINATION, barMax, barTick, currentLodging, xpToNext } from '../sim/content';
+import { MISSION, missionReady } from '../sim/missions';
 import { BAR_IDS } from '../sim/types';
 import type { BarId, GameState } from '../sim/types';
 import { BAR_COLOURS, FONT, UI } from '../theme';
@@ -74,6 +75,12 @@ export default function StatusRail({ s, now }: { s: GameState; now: number }) {
       <div style={{ fontSize: '0.7rem', color: UI.textFaint, marginTop: '0.8rem', lineHeight: 1.4 }}>
         Lodging: {currentLodging(s).name}
         {s.course && <div style={{ marginTop: 4 }}>Studying, {duration(s.course.ends - now)} left</div>}
+        {s.missions.active && (
+          <div style={{ marginTop: 4, color: missionReady(s) ? UI.good : UI.textFaint }}>
+            Mission: {MISSION[s.missions.active.id]?.title}
+            {missionReady(s) ? ', ready to report' : s.missions.active.deadline !== null ? `, ${duration(s.missions.active.deadline - now)} left` : ''}
+          </div>
+        )}
       </div>
     </aside>
   );
