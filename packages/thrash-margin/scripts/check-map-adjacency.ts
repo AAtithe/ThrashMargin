@@ -9,7 +9,7 @@
  *   npx tsx packages/thrash-margin/scripts/check-map-adjacency.ts
  * Re-run only if a map's node positions or edges change.
  */
-import { MAP_DEFS, DEFAULT_CONFIG, createInitialState } from '../shared/engine-reference';
+import { MAP_DEFS, DEFAULT_CONFIG, createInitialState } from '../shared/sim';
 import { computeMapGeometry } from '../client/src/map/regionGeometry';
 
 function edgeKey(a: number, b: number): string {
@@ -17,7 +17,7 @@ function edgeKey(a: number, b: number): string {
 }
 
 for (const def of MAP_DEFS) {
-  const state = createInitialState('report', { ...DEFAULT_CONFIG, mapId: def.id });
+  const state = createInitialState('report', { ...DEFAULT_CONFIG, mapId: def.id }, { seed: 1, createdAt: 0 });
   const { nodes, edges } = state;
   const geometry = computeMapGeometry(nodes, edges, def.viewBox);
 

@@ -3,8 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { getUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
-import { createInitialState, DEFAULT_CONFIG } from '../../shared/engine-reference';
-import type { GameConfig } from '../../shared/types';
+import { createInitialState, sanitizeConfig } from '../../shared/sim';
 
 /**
  * Same `games` table Niccolo and The Tea Race use (same Postgres/Supabase instance, same
@@ -35,16 +34,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (id === undefined) {
     if (req.method === 'POST') {
-      const config: Partial<GameConfig> = req.body?.config ?? {};
-      const name: string = ((req.body?.name as string | undefined) ?? 'Campaign').trim();
+      // sanitizeConfig copies only known keys through a clamp, so the body cannot smuggle in an
+      // out-of-range or unknown setting.
+      const config = sanitizeConfig(req.body?.config ?? {});
+      const name = String(req.body?.name ?? '').trim().slice(0, 40) || 'Campaign';
+      const rawSeed = Number(req.body?.seed);
+      const seed = Number.isFinite(rawSeed) ? rawSeed >>> 0 : Math.floor(Math.random() * 0xffffffff) >>> 0;
       const newId = uuid();
-      const mergedConfig = { ...DEFAULT_CONFIG, ...config };
-      const state = createInitialState(newId, mergedConfig);
-      (state as unknown as Record<string, unknown>).name = name;
+      const state = createInitialState(newId, config, { seed, createdAt: Date.now(), name });
       try {
         await db.query(
           'INSERT INTO games (id, owner_id, game, mode, status, turn, state, config) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [newId, user.userId, GAME_KIND, 'single', state.status, state.turn, JSON.stringify(state), JSON.stringify(mergedConfig)],
+          [newId, user.userId, GAME_KIND, 'single', state.status, state.turn, JSON.stringify(state), JSON.stringify(state.config)],
         );
         return res.status(201).json({ gameId: newId, state });
       } catch (err) {
@@ -59,6 +60,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           `SELECT id, status, turn,
                   state->>'name' AS name,
                   config->>'diff' AS diff,
+                  config->>'mapId' AS map_id,
                   (config->>'campaignScenario')::int AS campaign_scenario,
                   state->'achievements' AS achievements,
                   EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
@@ -68,9 +70,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const saves = rows.map(r => ({
           id: r.id,
           name: r.name ?? 'Campaign',
-          turn: Number(r.turn) ?? 1,
+          turn: Number(r.turn) || 1,
           status: r.status,
           diff: r.diff ?? 'normal',
+          ...(r.map_id ? { mapId: r.map_id } : {}),
           savedAt: Math.round(parseFloat(r.saved_at)),
           ...(r.campaign_scenario != null && { campaignScenario: Number(r.campaign_scenario) }),
           ...(Array.isArray(r.achievements) && r.achievements.length && { achievements: r.achievements }),

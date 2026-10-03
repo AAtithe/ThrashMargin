@@ -1,38 +1,38 @@
-import React, { useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useGameHybrid } from '../hooks/useGameHybrid';
-import type { SaveMeta } from '../hooks/useGameLocal';
-import { getStoredUser, clearToken } from '../lib/token';
+import {
+  ACHIEVEMENTS, CAMPAIGN_SCENARIOS, DEFAULT_CONFIG, DIFFICULTY, FACTION_COLORS, MAP_BY_ID, MAP_DEFS, PRESETS,
+  PRESET_BLURB, UNLIMITED_AP, createInitialState, presetConfig,
+  type CampaignScenario, type Difficulty, type GameConfig,
+} from 'shared/sim';
+import Icon from '../components/Icon';
 import PortalNav from '../components/PortalNav';
-import { MAP_DEFS, ACHIEVEMENT_DEFS, CAMPAIGN_SCENARIOS } from 'shared/engine-reference';
-import type { GameConfig, Difficulty } from 'shared/types';
+import { Button, Label, Modal, ModalHeader, Muted } from '../components/ui';
+import { useGameHybrid } from '../hooks/useGameHybrid';
+import type { SaveMeta } from '../hooks/types';
+import { clearToken, getStoredUser } from '../lib/token';
+import { FONT, MAP, UI } from '../theme';
 
-const SETTINGS_KEY = 'tm_last_settings';
-function loadLastSettings(): Record<string, unknown> | null {
-  try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null'); }
-  catch { return null; }
+const SETTINGS_KEY = 'tm_last_settings_v2';
+
+interface Setup {
+  name: string;
+  mapId: string;
+  diff: Difficulty;
+  overrides: Partial<GameConfig>;
 }
-function saveLastSettings(s: Record<string, unknown>) {
-  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+
+function loadSetup(): Setup {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? 'null');
+    if (raw && typeof raw === 'object' && MAP_BY_ID[raw.mapId] && raw.diff in PRESETS) return { name: '', mapId: raw.mapId, diff: raw.diff, overrides: raw.overrides ?? {} };
+  } catch { /* fall through */ }
+  return { name: '', mapId: 'heartlands', diff: 'normal', overrides: {} };
 }
-
-const DIFF_PRESETS: Record<Difficulty, Partial<GameConfig>> = {
-  easy:   { diff: 'easy',   playerBonus: 0.25, neutralStr: 2, aggro: 0.65, growth: 1, enemyTerritories: 1, enemyTroopScale: 0.5,  enemyStartBuildings: false, apPerTurn: 99, fogOfWar: false, enableEvents: false, enemyFactions: 1, enableDiplomacy: false, enableTechTree: false, enableAltVictory: false, enableStrongholds: false, enableSpies: false },
-  normal: { diff: 'normal', playerBonus: 0,    neutralStr: 3, aggro: 0.80, growth: 2, enemyTerritories: 2, enemyTroopScale: 0.75, enemyStartBuildings: false, apPerTurn: 4,  fogOfWar: false, enableEvents: true,  enemyFactions: 1, enableDiplomacy: false, enableTechTree: true,  enableAltVictory: false, enableStrongholds: false, enableSpies: false },
-  hard:   { diff: 'hard',   playerBonus: -0.1, neutralStr: 4, aggro: 0.90, growth: 3, enemyTerritories: 4, enemyTroopScale: 1.0,  enemyStartBuildings: true,  apPerTurn: 4,  fogOfWar: true,  enableEvents: true,  enemyFactions: 2, enableDiplomacy: true,  enableTechTree: true,  enableAltVictory: true,  enableStrongholds: true,  enableSpies: true  },
-  brutal: { diff: 'brutal', playerBonus: -0.2, neutralStr: 5, aggro: 0.95, growth: 4, enemyTerritories: 4, enemyTroopScale: 1.5,  enemyStartBuildings: true,  apPerTurn: 3,  fogOfWar: true,  enableEvents: true,  enemyFactions: 3, enableDiplomacy: true,  enableTechTree: true,  enableAltVictory: true,  enableStrongholds: true,  enableSpies: true  },
-};
-
-const DIFF_DESC: Record<Difficulty, string> = {
-  easy:   '1 enemy faction, half troops, unlimited AP, no fog, no events — learning the ropes',
-  normal: '1 enemy faction, reduced troops, 4 AP/turn — balanced for most players',
-  hard:   '2 enemy factions, full troops + buildings, fog of war, diplomacy & strongholds',
-  brutal: '3 enemy factions, 1.5× troops, fog, only 3 AP/turn — relentless',
-};
 
 function relTime(ts: number): string {
   const m = Math.floor((Date.now() - ts) / 60000);
-  if (m < 1)  return 'just now';
+  if (m < 1) return 'just now';
   if (m < 60) return `${m}m ago`;
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
@@ -40,146 +40,28 @@ function relTime(ts: number): string {
 }
 
 export default function Lobby() {
-  const { saves, createGame, deleteGame, loading } = useGameHybrid();
+  const { saves, createGame, deleteGame, loading, error } = useGameHybrid();
   const nav = useNavigate();
   const user = getStoredUser();
-
-  // New campaign form
-  const [campaignName, setCampaignName] = useState('');
-  const [showSettings, setShowSettings] = useState(true);
-  const [difficulty, setDifficulty] = useState<Difficulty>(() => {
-    const last = loadLastSettings();
-    return (last?.difficulty as Difficulty) ?? 'normal';
-  });
-  const [startGold, setStartGold] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.startGold as number) ?? 25;
-  });
-  const [startFood, setStartFood] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.startFood as number) ?? 20;
-  });
-  const [startMat, setStartMat] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.startMat as number) ?? 12;
-  });
-  const [recruitCost, setRecruitCost] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.recruitCost as number) ?? 4;
-  });
-  const [upkeep, setUpkeep] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.upkeep as number) ?? 1;
-  });
-  const [enemyTerritories, setEnemyTerritories] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.enemyTerritories as number) ?? 2;
-  });
-  const [enemyTroopScale, setEnemyTroopScale] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.enemyTroopScale as number) ?? 0.75;
-  });
-  const [enemyStartBuildings, setEnemyStartBuildings] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.enemyStartBuildings as boolean) ?? false;
-  });
-  const [apPerTurn, setApPerTurn] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.apPerTurn as number) ?? 4;
-  });
-  const [fogOfWar, setFogOfWar] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.fogOfWar as boolean) ?? false;
-  });
-  const [enableEvents, setEnableEvents] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.enableEvents as boolean) ?? true;
-  });
-  const [enemyFactions, setEnemyFactions] = useState<number>(() => {
-    const last = loadLastSettings();
-    return (last?.enemyFactions as number) ?? 1;
-  });
-  const [enableDiplomacy, setEnableDiplomacy] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.enableDiplomacy as boolean) ?? false;
-  });
-  const [enableTechTree, setEnableTechTree] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.enableTechTree as boolean) ?? true;
-  });
-  const [enableAltVictory, setEnableAltVictory] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.enableAltVictory as boolean) ?? false;
-  });
-  const [enableStrongholds, setEnableStrongholds] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.enableStrongholds as boolean) ?? false;
-  });
-  const [hotseat, setHotseat] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.hotseat as boolean) ?? false;
-  });
-  const [enableSpies, setEnableSpies] = useState<boolean>(() => {
-    const last = loadLastSettings();
-    return (last?.enableSpies as boolean) ?? false;
-  });
-
-  const [selectedMap, setSelectedMap] = useState<string>(() => {
-    const last = loadLastSettings();
-    return (last?.selectedMap as string) ?? 'heartlands';
-  });
-  const [showConfirm, setShowConfirm] = useState(false);
-
-  // Delete confirmation
+  const [setup, setSetup] = useState<Setup>(loadSetup);
+  const [advanced, setAdvanced] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [review, setReview] = useState(false);
 
-  const applyDifficulty = (d: Difficulty) => {
-    setDifficulty(d);
-    const p = DIFF_PRESETS[d];
-    if (p.enemyTerritories    !== undefined) setEnemyTerritories(p.enemyTerritories);
-    if (p.enemyTroopScale     !== undefined) setEnemyTroopScale(p.enemyTroopScale);
-    if (p.enemyStartBuildings !== undefined) setEnemyStartBuildings(p.enemyStartBuildings);
-    if (p.apPerTurn           !== undefined) setApPerTurn(p.apPerTurn);
-    if (p.fogOfWar            !== undefined) setFogOfWar(p.fogOfWar);
-    if (p.enableEvents        !== undefined) setEnableEvents(p.enableEvents);
-    if (p.enemyFactions       !== undefined) setEnemyFactions(p.enemyFactions);
-    if (p.enableDiplomacy     !== undefined) setEnableDiplomacy(p.enableDiplomacy);
-    if (p.enableTechTree      !== undefined) setEnableTechTree(p.enableTechTree);
-    if (p.enableAltVictory    !== undefined) setEnableAltVictory(p.enableAltVictory);
-    if (p.enableStrongholds   !== undefined) setEnableStrongholds(p.enableStrongholds);
-    if (p.enableSpies         !== undefined) setEnableSpies(p.enableSpies);
-  };
+  const config = useMemo(() => presetConfig(setup.diff, { mapId: setup.mapId, ...setup.overrides }), [setup]);
 
-  const handleNew = async () => {
-    saveLastSettings({
-      difficulty, selectedMap,
-      startGold, startFood, startMat, recruitCost, upkeep,
-      enemyTerritories, enemyTroopScale, enemyStartBuildings,
-      apPerTurn, fogOfWar, enableEvents,
-      enemyFactions, enableDiplomacy, enableTechTree, enableAltVictory, enableStrongholds,
-      hotseat, enableSpies,
-    });
-    const config: Partial<GameConfig> = {
-      ...DIFF_PRESETS[difficulty],
-      startGold, startFood, startMat, recruitCost, upkeep,
-      enemyTerritories, enemyTroopScale, enemyStartBuildings,
-      apPerTurn, fogOfWar, enableEvents,
-      mapId: selectedMap,
-      enemyFactions, enableDiplomacy, enableTechTree, enableAltVictory, enableStrongholds,
-      hotseat, enableSpies,
-    };
-    const name = campaignName.trim() || undefined;
-    const id = await Promise.resolve(createGame(config, name));
+  const start = async (cfg: Partial<GameConfig>, name?: string) => {
+    const id = await createGame(cfg, name);
     if (id) nav(`/game/${id}`);
   };
 
-  const handleDelete = (id: string) => {
-    deleteGame(id);
-    setConfirmDelete(null);
+  const startNew = () => {
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify({ mapId: setup.mapId, diff: setup.diff, overrides: setup.overrides })); } catch { /* ignore */ }
+    void start(config, setup.name.trim() || undefined);
   };
 
-  const active    = saves.filter(s => s.status === 'active');
-  const completed = saves.filter(s => s.status !== 'active');
+  const active = saves.filter(s => s.status === 'active');
+  const finished = saves.filter(s => s.status !== 'active');
 
   /**
    * Every game on the portal requires a real account. **There is no guest path, and none is to be
@@ -195,15 +77,13 @@ export default function Lobby() {
    */
   if (!user) {
     return (
-      <div style={s.page}>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground }}>
         <PortalNav variant="header" />
-        <div style={s.gateWrap}>
-          <div style={s.gateCard}>
-            <span style={s.logo}>⚔ Thrash Margin</span>
-            <p style={s.gateSubtitle}>
-              Sign in to keep your campaigns on your account.
-            </p>
-            <button style={s.gatePrimary} onClick={() => nav('/login')}>Sign in / Register →</button>
+        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: UI.panel, border: `1px solid ${UI.rule}`, borderRadius: 12, padding: '32px 28px', maxWidth: 400, width: '100%', textAlign: 'center' }}>
+            <h1 style={{ fontFamily: FONT.display, fontSize: 32, margin: '0 0 6px', fontWeight: 600 }}>Thrash Margin</h1>
+            <Muted style={{ fontSize: 13.5, marginBottom: 20 }}>Sign in to keep your campaigns on your account.</Muted>
+            <Button tone="primary" onClick={() => nav('/login')}>Sign in or register</Button>
           </div>
         </div>
         <PortalNav variant="footer" />
@@ -212,429 +92,325 @@ export default function Lobby() {
   }
 
   return (
-    <div style={s.page}>
+    <div style={{ minHeight: '100vh', background: UI.ground }}>
       <PortalNav variant="header" />
-      <header style={s.header}>
-        <div style={s.headerInner}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 14 }}>
-            <span style={s.logo}>⚔ Thrash Margin</span>
-            <span style={{ color: '#4b5563', fontSize: 13 }}>Turn-based territory strategy</span>
-          </div>
-          <p style={{ color: '#4b5563', fontSize: 11, margin: '6px 0 0', letterSpacing: '0.04em' }}>
-            EXPAND · CONQUER · DEVELOP
-          </p>
+      <header style={{ maxWidth: 1080, margin: '0 auto', padding: '28px 20px 8px', display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <h1 style={{ fontFamily: FONT.display, fontSize: 38, margin: 0, fontWeight: 600, letterSpacing: '-0.01em' }}>Thrash Margin</h1>
+          <p style={{ margin: '4px 0 0', color: UI.textSoft, fontSize: 14 }}>Every border is a balance sheet. Take land, feed the army, out-earn your rivals.</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          {user ? (
-            <>
-              <span style={{ color: '#7d8590', fontSize: 12 }}>⚙ {user.username}</span>
-              <button style={s.authBtn} onClick={() => { clearToken(); window.location.reload(); }}>
-                Sign out
-              </button>
-            </>
-          ) : (
-            <button style={{ ...s.authBtn, background: '#1f6feb', color: '#fff' }} onClick={() => nav('/login')}>
-              Sign in
-            </button>
-          )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5, color: UI.textSoft }}>
+          <span>{user.username}</span>
+          <Button small tone="quiet" onClick={() => { clearToken(); window.location.reload(); }}>Sign out</Button>
         </div>
       </header>
 
-      <div style={s.content}>
+      <main style={{ maxWidth: 1080, margin: '0 auto', padding: '12px 20px 40px', display: 'grid', gap: 26 }}>
+        {error && <div role="alert" style={{ background: '#2e1d1b', border: `1px solid ${UI.bad}`, color: '#f3c6c1', padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{error}</div>}
 
-        {/* ── Active campaigns ── */}
-        <Section title="Active Campaigns" empty={active.length === 0} emptyMsg="No active campaigns — start one below.">
-          {active.map(save => (
-            <SaveCard key={save.id} save={save}
-              confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
-              onContinue={() => nav(`/game/${save.id}`)}
-              onDelete={() => handleDelete(save.id)} />
-          ))}
-        </Section>
-
-        {/* ── History ── */}
-        {completed.length > 0 && (
-          <Section title="History">
-            {completed.map(save => (
-              <SaveCard key={save.id} save={save}
-                confirmDelete={confirmDelete} setConfirmDelete={setConfirmDelete}
-                onContinue={() => nav(`/game/${save.id}`)}
-                onDelete={() => handleDelete(save.id)} />
-            ))}
+        {active.length > 0 && (
+          <Section title="Continue">
+            <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 10 }}>
+              {active.map(s => (
+                <SaveCard key={s.id} save={s} confirming={confirmDelete === s.id} onConfirm={setConfirmDelete}
+                  onOpen={() => nav(`/game/${s.id}`)} onDelete={() => { void deleteGame(s.id); setConfirmDelete(null); }} />
+              ))}
+            </div>
           </Section>
         )}
 
-        {/* ── Achievements ── */}
-        <AchievementsSection saves={saves} />
-
-        {/* ── Campaign ── */}
-        <CampaignSection saves={saves} createGame={createGame} nav={nav} />
-
-        {/* ── How to Play ── */}
-        <HowToPlay />
-
-        {/* ── New campaign ── */}
-        <Section title="New Campaign">
-          {/* Name input */}
-          <div style={s.nameRow}>
-            <label style={s.nameLabel}>Campaign name</label>
-            <input
-              style={s.nameInput}
-              value={campaignName}
-              onChange={e => setCampaignName(e.target.value)}
-              placeholder={`Campaign #${saves.length + 1}`}
-              maxLength={32}
-            />
-          </div>
-
-          {/* Tutorial quick-start */}
-          <div style={{ background: '#0f2a1a', border: '1px solid #15803d', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <p style={{ color: '#3fb950', fontSize: 13, fontWeight: 700, margin: '0 0 3px' }}>🎓 New to the game?</p>
-                <p style={{ color: '#6b9f7a', fontSize: 11, margin: 0 }}>Play the guided tutorial — 8 territories, unlimited actions, step-by-step hints.</p>
+        <Section title="New campaign">
+          <div style={{ display: 'grid', gap: 16 }}>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 14px', borderRadius: 10, background: '#16261c', border: '1px solid #3b6b48', flexWrap: 'wrap' }}>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>New here?</div>
+                <Muted>Eight territories, one rival and a coach that walks you through your first turns.</Muted>
               </div>
-              <button
-                onClick={() => { setSelectedMap('tutorial'); applyDifficulty('easy'); }}
-                style={{ background: '#15803d', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 700, fontSize: 12, padding: '8px 14px', cursor: 'pointer', whiteSpace: 'nowrap', marginLeft: 12 }}
-              >
-                Start Tutorial →
-              </button>
+              <Button tone="primary" onClick={() => void start(presetConfig('easy', { mapId: 'tutorial' }), 'Tutorial')} disabled={loading}>Play the tutorial</Button>
             </div>
-          </div>
 
-          {/* Map selection */}
-          <div style={{ marginBottom: 14 }}>
-            <p style={{ ...s.sLabel, marginBottom: 8 }}>Choose map</p>
-            <div style={s.mapGrid}>
-              {MAP_DEFS.map(m => {
-                const isActive = selectedMap === m.id;
-                return (
-                  <button key={m.id} style={{ ...s.mapCard, ...(isActive ? s.mapCardActive : {}) }}
-                    onClick={() => setSelectedMap(m.id)}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: isActive ? '#e6edf3' : '#c9d1d9' }}>{m.name}</span>
-                      <span style={{ ...s.styleTag, ...(isActive ? s.styleTagActive : {}) }}>{m.style}</span>
-                    </div>
-                    <p style={{ fontSize: 11, color: isActive ? '#9198a1' : '#6b7280', margin: '0 0 5px', lineHeight: 1.4, textAlign: 'left' }}>{m.desc}</p>
-                    <p style={{ fontSize: 10, color: isActive ? '#58a6ff' : '#4b5563', margin: 0, textAlign: 'left' }}>{m.territories} territories</p>
+            <div>
+              <Label style={{ marginBottom: 8 }}>Map</Label>
+              <div className="tm-map-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+                {MAP_DEFS.filter(m => m.id !== 'tutorial').map(m => (
+                  <MapCard key={m.id} id={m.id} active={setup.mapId === m.id} diff={setup.diff}
+                    onClick={() => setSetup(s => ({ ...s, mapId: m.id, overrides: { ...s.overrides, enemyFactions: Math.min(s.overrides.enemyFactions ?? PRESETS[s.diff].enemyFactions, m.maxRivals) } }))} />
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <Label style={{ marginBottom: 8 }}>Difficulty</Label>
+              <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
+                {(Object.keys(PRESETS) as Difficulty[]).map(d => (
+                  <button key={d} type="button" className="tm-btn" onClick={() => setSetup(s => ({ ...s, diff: d, overrides: {} }))}
+                    style={{ textAlign: 'left', padding: 12, borderRadius: 10, cursor: 'pointer', background: setup.diff === d ? '#2a2414' : UI.panel, border: `1px solid ${setup.diff === d ? UI.accent : UI.rule}` }}>
+                    <div style={{ fontFamily: FONT.display, fontSize: 17, fontWeight: 600, color: setup.diff === d ? UI.accent : UI.text }}>{DIFFICULTY[d].label}</div>
+                    <div style={{ fontSize: 11.5, color: UI.textSoft, marginTop: 4, lineHeight: 1.45 }}>{PRESET_BLURB[d]}</div>
                   </button>
-                );
-              })}
+                ))}
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <label style={{ display: 'grid', gap: 4, flex: '1 1 220px' }}>
+                <Label>Name</Label>
+                <input value={setup.name} maxLength={40} placeholder={`Campaign ${saves.length + 1}`}
+                  onChange={e => setSetup(s => ({ ...s, name: e.target.value }))}
+                  style={{ background: UI.panelSunk, border: `1px solid ${UI.ruleStrong}`, borderRadius: 7, padding: '8px 10px', color: UI.text, fontSize: 13.5 }} />
+              </label>
+              <Segment label="Rivals" value={config.enemyFactions} options={Array.from({ length: MAP_BY_ID[setup.mapId].maxRivals }, (_, i) => [i + 1, String(i + 1)] as [number, string])}
+                onChange={v => setSetup(s => ({ ...s, overrides: { ...s.overrides, enemyFactions: v } }))} />
+              <Segment label="Players" value={config.hotseat ? 2 : 1} options={[[1, 'Solo'], [2, 'Hot seat']]}
+                onChange={v => setSetup(s => ({ ...s, overrides: { ...s.overrides, hotseat: v === 2 } }))} />
+            </div>
+
+            <div>
+              <button type="button" onClick={() => setAdvanced(v => !v)} style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', padding: 0, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ display: 'inline-flex', transform: advanced ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}><Icon name="next" size={12} /></span>
+                Advanced rules
+              </button>
+              {advanced && <Advanced config={config} onChange={patch => setSetup(s => ({ ...s, overrides: { ...s.overrides, ...patch } }))} onReset={() => setSetup(s => ({ ...s, overrides: {} }))} />}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+              <Button tone="quiet" onClick={() => setReview(true)}>Review settings</Button>
+              <Button tone="primary" icon="next" onClick={startNew} disabled={loading}>{loading ? 'Starting…' : 'Start campaign'}</Button>
             </div>
           </div>
-
-          {/* Settings toggle */}
-          <button style={s.settingsToggle} onClick={() => setShowSettings(v => !v)}>
-            {showSettings ? '▾' : '▸'} Game settings
-          </button>
-
-          {showSettings && (
-            <div style={s.settingsPanel}>
-
-              {/* Difficulty */}
-              <div style={s.sSection}>
-                <p style={s.sLabel}>Difficulty</p>
-                <div style={s.diffRow}>
-                  {(Object.keys(DIFF_PRESETS) as Difficulty[]).map(d => (
-                    <button key={d} style={{ ...s.diffBtn, ...(difficulty === d ? s.diffActive : {}) }}
-                      onClick={() => applyDifficulty(d)}>
-                      {d.charAt(0).toUpperCase() + d.slice(1)}
-                    </button>
-                  ))}
-                </div>
-                <p style={s.diffDesc}>{DIFF_DESC[difficulty]}</p>
-              </div>
-
-              {/* Starting resources */}
-              <div style={s.sSection}>
-                <p style={s.sLabel}>Starting resources</p>
-                <div style={s.sGrid}>
-                  <SettingNum label="⚙ Gold"  value={startGold} min={5}  max={100} onChange={setStartGold} />
-                  <SettingNum label="🌾 Food"  value={startFood} min={5}  max={100} onChange={setStartFood} />
-                  <SettingNum label="⛏ Mat"   value={startMat}  min={5}  max={100} onChange={setStartMat}  />
-                </div>
-              </div>
-
-              {/* Economy */}
-              <div style={s.sSection}>
-                <p style={s.sLabel}>Economy</p>
-                <div style={s.sGrid}>
-                  <SettingNum label="Recruit cost (g)" value={recruitCost} min={1} max={12} onChange={setRecruitCost} />
-                  <SettingNum label="Troop upkeep (g)" value={upkeep}      min={0} max={4}  onChange={setUpkeep}      />
-                </div>
-              </div>
-
-              {/* Mechanics */}
-              <div style={s.sSection}>
-                <p style={s.sLabel}>Mechanics</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div>
-                    <p style={s.subLabel}>Action points per turn (Off = unlimited — lower = harder)</p>
-                    <div style={s.diffRow}>
-                      {([['Off', 99], [2, 2], [3, 3], [4, 4], [5, 5], [6, 6]] as [string | number, number][]).map(([label, val]) => (
-                        <button key={val}
-                          style={{ ...s.diffBtn, ...(apPerTurn === val ? s.diffActive : {}) }}
-                          onClick={() => setApPerTurn(val)}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    <p style={s.diffDesc}>Attack costs 2 AP · Recruit / Build / Move / Upgrade / Annex / Research cost 1 AP each</p>
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Fog of war (hide troop counts beyond your borders)</p>
-                    <ToggleRow value={fogOfWar} onChange={setFogOfWar} />
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Random turn events (supply windfalls, plagues, unrest)</p>
-                    <ToggleRow value={enableEvents} onChange={setEnableEvents} />
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Tech tree (12 techs across 3 branches — research for bonuses and victory)</p>
-                    <ToggleRow value={enableTechTree} onChange={setEnableTechTree} />
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Diplomacy (influence resource + peaceful annexation of neutral territories)</p>
-                    <ToggleRow value={enableDiplomacy} onChange={setEnableDiplomacy} />
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Alternative victories (economic: 400g, research: complete a full tech branch)</p>
-                    <ToggleRow value={enableAltVictory} onChange={setEnableAltVictory} />
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Neutral strongholds (fortified neutral territories with high production)</p>
-                    <ToggleRow value={enableStrongholds} onChange={setEnableStrongholds} />
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Hot Seat — two players alternate turns on the same device</p>
-                    <ToggleRow value={hotseat} onChange={v => { setHotseat(v); if (v && enemyFactions < 1) setEnemyFactions(1); }} />
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Spies (spend influence to reveal or sabotage enemy territories — requires Diplomacy)</p>
-                    <ToggleRow value={enableSpies} onChange={setEnableSpies} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Enemy setup */}
-              <div style={s.sSection}>
-                <p style={s.sLabel}>Enemy Setup</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  <div>
-                    <p style={s.subLabel}>Enemy factions (1 = classic, 2-3 = multi-faction chaos)</p>
-                    <div style={s.diffRow}>
-                      {[1, 2, 3].map(n => (
-                        <button key={n}
-                          style={{ ...s.diffBtn, ...(enemyFactions === n ? s.diffActive : {}) }}
-                          onClick={() => setEnemyFactions(n)}>
-                          {n}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Starting territories per faction (1 = easier, 4 = hardest)</p>
-                    <div style={s.diffRow}>
-                      {[1, 2, 3, 4].map(n => (
-                        <button key={n}
-                          style={{ ...s.diffBtn, ...(enemyTerritories === n ? s.diffActive : {}) }}
-                          onClick={() => setEnemyTerritories(n)}>
-                          {n}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Starting troop strength</p>
-                    <div style={s.diffRow}>
-                      {([['Weak', 0.5], ['Normal', 1.0], ['Strong', 1.5], ['Brutal', 2.0]] as [string, number][]).map(([label, val]) => (
-                        <button key={label}
-                          style={{ ...s.diffBtn, ...(enemyTroopScale === val ? s.diffActive : {}) }}
-                          onClick={() => setEnemyTroopScale(val)}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p style={s.subLabel}>Enemy starts with pre-built buildings</p>
-                    <ToggleRow value={enemyStartBuildings} onChange={setEnemyStartBuildings} />
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          )}
-
-          <button style={s.newBtn} onClick={() => setShowConfirm(true)} disabled={loading}>
-            Review &amp; start →
-          </button>
         </Section>
 
-      </div>
+        <Section title="The campaign">
+          <Muted style={{ marginBottom: 10 }}>Three linked acts of rising difficulty. Win an act to unlock the next, with gold and technologies carried forward.</Muted>
+          <CampaignActs saves={saves} onStart={sc => void start(presetConfig(sc.diff, {
+            mapId: sc.mapId, campaignScenario: sc.index, campaignBonusGold: sc.bonusGold, campaignBonusTechs: sc.bonusTechs,
+          }), sc.title)} />
+        </Section>
 
-      {showConfirm && (
-        <ConfirmModal
-          campaignName={campaignName.trim() || `Campaign #${saves.length + 1}`}
-          mapId={selectedMap}
-          difficulty={difficulty}
-          enemyFactions={enemyFactions}
-          enemyTerritories={enemyTerritories}
-          enemyTroopScale={enemyTroopScale}
-          enemyStartBuildings={enemyStartBuildings}
-          apPerTurn={apPerTurn}
-          fogOfWar={fogOfWar}
-          enableEvents={enableEvents}
-          enableDiplomacy={enableDiplomacy}
-          enableTechTree={enableTechTree}
-          enableAltVictory={enableAltVictory}
-          enableStrongholds={enableStrongholds}
-          hotseat={hotseat}
-          startGold={startGold}
-          startFood={startFood}
-          startMat={startMat}
-          recruitCost={recruitCost}
-          upkeep={upkeep}
-          onBack={() => setShowConfirm(false)}
-          onConfirm={() => { setShowConfirm(false); handleNew(); }}
-        />
+        <Section title="Achievements">
+          <Achievements saves={saves} />
+        </Section>
+
+        {finished.length > 0 && (
+          <Section title="Finished">
+            <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 10 }}>
+              {finished.map(s => (
+                <SaveCard key={s.id} save={s} confirming={confirmDelete === s.id} onConfirm={setConfirmDelete}
+                  onOpen={() => nav(`/game/${s.id}`)} onDelete={() => { void deleteGame(s.id); setConfirmDelete(null); }} />
+              ))}
+            </div>
+          </Section>
+        )}
+      </main>
+
+      {review && (
+        <Modal onClose={() => setReview(false)} label="Review settings" width={480}>
+          <ModalHeader kicker={`${MAP_BY_ID[config.mapId].name} · ${DIFFICULTY[config.diff].label}`} title={setup.name.trim() || `Campaign ${saves.length + 1}`} onClose={() => setReview(false)} />
+          <div style={{ padding: 18, display: 'grid', gap: 6, fontSize: 12.5 }}>
+            {summary(config).map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', borderBottom: `1px solid ${UI.rule}`, padding: '4px 0' }}>
+                <span style={{ color: UI.textSoft }}>{k}</span><span>{v}</span>
+              </div>
+            ))}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+              <Button tone="quiet" onClick={() => setReview(false)}>Back</Button>
+              <Button tone="primary" icon="next" onClick={() => { setReview(false); startNew(); }}>Start campaign</Button>
+            </div>
+          </div>
+        </Modal>
       )}
-
-      <footer style={s.footer}>
-        <span>⚔ Thrash Margin</span>
-        <span style={{ color: '#30363d' }}>·</span>
-        <span>{saves.length} campaign{saves.length !== 1 ? 's' : ''} saved in cloud</span>
-        <span style={{ flex: 1 }} />
-        <span>v0.1 · open source hobby project</span>
-      </footer>
       <PortalNav variant="footer" />
     </div>
   );
 }
 
-/* ── Sub-components ── */
+function summary(c: GameConfig): Array<[string, string]> {
+  const on = (b: boolean) => (b ? 'On' : 'Off');
+  return [
+    ['Rivals', `${c.enemyFactions}, starting on ${c.enemyTerritories} territor${c.enemyTerritories === 1 ? 'y' : 'ies'} each`],
+    ['Rival income', `${Math.round(DIFFICULTY[c.diff].incomeMult * 100)}% of yours`],
+    ['Players', c.hotseat ? 'Two, hot seat' : 'One'],
+    ['Actions per turn', c.apPerTurn >= UNLIMITED_AP ? 'Unlimited' : String(c.apPerTurn)],
+    ['Starting treasury', `${c.startGold} gold, ${c.startFood} food, ${c.startMat} materials`],
+    ['Recruit cost / upkeep', `${c.recruitCost} gold / ${c.upkeep} food per troop`],
+    ['Your attack bonus', `${c.playerBonus >= 0 ? '+' : ''}${Math.round(c.playerBonus * 100)}%`],
+    ['Neutral garrisons', String(c.neutralStr)],
+    ['Fog of war', on(c.fogOfWar)],
+    ['Events', on(c.enableEvents)],
+    ['Tech tree', on(c.enableTechTree)],
+    ['Diplomacy', on(c.enableDiplomacy)],
+    ['Spies', on(c.enableSpies)],
+    ['Strongholds', on(c.enableStrongholds)],
+    ['Alternative victories', c.enableAltVictory ? `On (${c.altVictoryGold} gold)` : 'Off'],
+  ];
+}
 
-function AchievementsSection({ saves }: { saves: SaveMeta[] }) {
-  const [open, setOpen] = React.useState(false);
-  const allAchievements = React.useMemo(() => {
-    const ids = new Set<string>();
-    saves.forEach(save => {
-      // Primary: use SaveMeta.achievements (works for cloud saves — the API returns this
-      // straight from state->'achievements', same pattern as campaignScenario below).
-      if (save.achievements?.length) {
-        save.achievements.forEach(id => ids.add(id));
-        return;
-      }
-      // Fallback: localStorage for old pre-fix local saves that predate this field.
-      try {
-        const raw = localStorage.getItem(`tm_save_${save.id}`);
-        if (raw) {
-          const st = JSON.parse(raw) as { achievements?: string[] };
-          (st.achievements ?? []).forEach(id => ids.add(id));
-        }
-      } catch {}
-    });
-    return ids;
-  }, [saves]);
-
+function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div style={{ marginBottom: 24 }}>
-      <button onClick={() => setOpen(v => !v)}
-        style={{ background:'none', border:'none', color:'#e6edf3', fontSize:14, fontWeight:700, cursor:'pointer', padding:0, marginBottom: open ? 10 : 0, display:'flex', alignItems:'center', gap:6 }}>
-        {open ? '▾' : '▸'} 🏅 Achievements ({allAchievements.size}/{ACHIEVEMENT_DEFS.length})
-      </button>
-      {open && (
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
-          {ACHIEVEMENT_DEFS.map(def => {
-            const unlocked = allAchievements.has(def.id);
-            return (
-              <div key={def.id} title={def.desc} style={{ background:'#0d1117', border:`1px solid ${unlocked ? '#30363d' : '#161b22'}`, borderRadius:6, padding:'8px 10px', opacity: unlocked ? 1 : 0.32 }}>
-                <div style={{ fontSize:15, marginBottom:2 }}>{def.icon}</div>
-                <div style={{ color:'#e6edf3', fontSize:11, fontWeight:600 }}>{def.name}</div>
-                <div style={{ color:'#6b7280', fontSize:10 }}>{def.desc}</div>
-              </div>
-            );
-          })}
+    <section>
+      <h2 style={{ fontFamily: FONT.display, fontSize: 21, fontWeight: 600, margin: '0 0 12px', borderBottom: `1px solid ${UI.rule}`, paddingBottom: 8 }}>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+function Segment<T extends number>({ label, value, options, onChange }: { label: string; value: T; options: Array<[T, string]>; onChange: (v: T) => void }) {
+  return (
+    <div style={{ display: 'grid', gap: 4 }}>
+      <Label>{label}</Label>
+      <div style={{ display: 'flex', border: `1px solid ${UI.ruleStrong}`, borderRadius: 7, overflow: 'hidden' }}>
+        {options.map(([v, l]) => (
+          <button key={v} type="button" onClick={() => onChange(v)}
+            style={{ padding: '7px 12px', fontSize: 13, background: value === v ? UI.accent : UI.panelSunk, color: value === v ? UI.accentInk : UI.textSoft, border: 'none', borderRight: `1px solid ${UI.rule}`, cursor: 'pointer', fontWeight: value === v ? 700 : 500 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Advanced({ config, onChange, onReset }: { config: GameConfig; onChange: (p: Partial<GameConfig>) => void; onReset: () => void }) {
+  const num = (key: keyof GameConfig, label: string, min: number, max: number, step = 1) => (
+    <label key={key} style={{ display: 'grid', gap: 3 }}>
+      <span style={{ fontSize: 11.5, color: UI.textSoft }}>{label}</span>
+      <input type="number" min={min} max={max} step={step} value={config[key] as number}
+        onChange={e => onChange({ [key]: Number(e.target.value) } as Partial<GameConfig>)}
+        style={{ background: UI.panelSunk, border: `1px solid ${UI.ruleStrong}`, borderRadius: 6, padding: '6px 8px', color: UI.text, width: '100%' }} />
+    </label>
+  );
+  const tog = (key: keyof GameConfig, label: string, desc: string) => (
+    <label key={key} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
+      <input type="checkbox" checked={config[key] as boolean} onChange={e => onChange({ [key]: e.target.checked } as Partial<GameConfig>)} style={{ marginTop: 3 }} />
+      <span><span style={{ fontSize: 13, fontWeight: 600 }}>{label}</span><br /><span style={{ fontSize: 11.5, color: UI.textSoft }}>{desc}</span></span>
+    </label>
+  );
+  return (
+    <div style={{ marginTop: 12, padding: 14, borderRadius: 10, background: UI.panel, border: `1px solid ${UI.rule}`, display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10 }}>
+        {num('startGold', 'Starting gold', 0, 500)}
+        {num('startFood', 'Starting food', 0, 500)}
+        {num('startMat', 'Starting materials', 0, 500)}
+        {num('recruitCost', 'Gold per recruit', 1, 20)}
+        {num('upkeep', 'Food per troop per turn', 0, 4)}
+        {num('apPerTurn', 'Actions per turn (99 = unlimited)', 2, 99)}
+        {num('neutralStr', 'Neutral garrison', 1, 12)}
+        {num('enemyTerritories', 'Rival starting territories', 1, 4)}
+        {num('enemyTroopScale', 'Rival garrison scale', 0.25, 3, 0.25)}
+        {num('playerBonus', 'Your attack bonus (0.25 = +25%)', -0.5, 1, 0.05)}
+        {num('altVictoryGold', 'Economic victory gold', 100, 5000, 50)}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 12 }}>
+        {tog('fogOfWar', 'Fog of war', 'Only see garrisons next to your land.')}
+        {tog('enableEvents', 'Events', 'Windfalls, plagues and decisions at the start of your turn.')}
+        {tog('enableTechTree', 'Tech tree', 'Twelve technologies in three branches.')}
+        {tog('enableDiplomacy', 'Diplomacy', 'Influence buys ceasefires and peaceful annexation.')}
+        {tog('enableSpies', 'Spies', 'Influence buys reveals and sabotage.')}
+        {tog('enableStrongholds', 'Strongholds', 'Fortified neutrals worth +3 gold a turn.')}
+        {tog('enableAltVictory', 'Alternative victories', 'Win on gold, or by completing a tech branch. Rivals can too.')}
+        {tog('enemyStartBuildings', 'Rivals start built up', 'Rival capitals begin with two buildings.')}
+      </div>
+      <div><Button small tone="quiet" icon="reset" onClick={onReset}>Back to the preset</Button></div>
+    </div>
+  );
+}
+
+function MapCard({ id, active, diff, onClick }: { id: string; active: boolean; diff: Difficulty; onClick: () => void }) {
+  const def = MAP_BY_ID[id];
+  const preview = useMemo(() => createInitialState('preview', { ...DEFAULT_CONFIG, ...PRESETS[diff], mapId: id, enemyFactions: def.maxRivals }, { seed: 1, createdAt: 0 }), [id, diff, def.maxRivals]);
+  const [vx, vy, vw, vh] = def.viewBox.split(' ').map(Number);
+  return (
+    <button type="button" className="tm-btn" onClick={onClick}
+      style={{ textAlign: 'left', padding: 0, borderRadius: 10, overflow: 'hidden', cursor: 'pointer', background: UI.panel, border: `1px solid ${active ? UI.accent : UI.rule}`, boxShadow: active ? `0 0 0 1px ${UI.accent}` : 'none' }}>
+      <svg viewBox={`${vx} ${vy} ${vw} ${vh}`} style={{ width: '100%', height: 110, display: 'block', background: MAP.sea }}>
+        {preview.edges.map(([a, b], i) => (
+          <line key={i} x1={preview.nodes[a].x} y1={preview.nodes[a].y} x2={preview.nodes[b].x} y2={preview.nodes[b].y} stroke="#3a4653" strokeWidth={3} />
+        ))}
+        {preview.nodes.map(n => (
+          <circle key={n.id} cx={n.x} cy={n.y} r={n.capital ? 16 : 11} fill={FACTION_COLORS[n.owner].fill} stroke={n.capital ? UI.accent : '#0b0f14'} strokeWidth={n.capital ? 4 : 2} />
+        ))}
+      </svg>
+      <div style={{ padding: '9px 11px' }}>
+        <div style={{ fontWeight: 700, fontSize: 13.5, color: active ? UI.accent : UI.text }}>{def.name}</div>
+        <div style={{ fontSize: 11, color: UI.textFaint }}>{def.style} · {def.territories} territories · up to {def.maxRivals} rival{def.maxRivals === 1 ? '' : 's'}</div>
+        <div style={{ fontSize: 11.5, color: UI.textSoft, marginTop: 3, lineHeight: 1.4 }}>{def.desc}</div>
+      </div>
+    </button>
+  );
+}
+
+function SaveCard({ save, confirming, onConfirm, onOpen, onDelete }: {
+  save: SaveMeta; confirming: boolean; onConfirm: (id: string | null) => void; onOpen: () => void; onDelete: () => void;
+}) {
+  const map = save.mapId ? MAP_BY_ID[save.mapId]?.name : undefined;
+  const statusColor = save.status === 'victory' ? UI.good : save.status === 'defeated' ? UI.bad : UI.accent;
+  return (
+    <div style={{ background: UI.panel, border: `1px solid ${UI.rule}`, borderRadius: 10, padding: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{save.name}</div>
+        <div style={{ fontSize: 11.5, color: UI.textSoft, marginTop: 3 }}>
+          <span style={{ color: statusColor }}>{save.status === 'active' ? `Turn ${save.turn}` : save.status === 'victory' ? 'Won' : 'Lost'}</span>
+          {map ? ` · ${map}` : ''} · {DIFFICULTY[save.diff as Difficulty]?.label ?? save.diff} · {relTime(save.savedAt)}
         </div>
+      </div>
+      {confirming ? (
+        <>
+          <Button small tone="danger" onClick={onDelete}>Delete</Button>
+          <Button small tone="quiet" onClick={() => onConfirm(null)}>Keep</Button>
+        </>
+      ) : (
+        <>
+          <Button small tone={save.status === 'active' ? 'primary' : 'default'} onClick={onOpen}>{save.status === 'active' ? 'Continue' : 'View'}</Button>
+          <button type="button" aria-label={`Delete ${save.name}`} title="Delete" onClick={() => onConfirm(save.id)} style={{ background: 'none', border: 'none', color: UI.textFaint, cursor: 'pointer', padding: 4 }}>
+            <Icon name="close" size={14} />
+          </button>
+        </>
       )}
     </div>
   );
 }
 
-function CampaignSection({ saves, createGame, nav }: {
-  saves: SaveMeta[];
-  createGame: (c: Partial<GameConfig>, name?: string) => string | null | Promise<string | null>;
-  nav: (path: string) => void;
-}) {
-  const highestComplete = React.useMemo(() => {
-    let best = -1;
-    saves.filter(s => s.status === 'victory').forEach(save => {
-      // campaignScenario is now in SaveMeta directly (from server or local index)
-      if (save.campaignScenario !== undefined && save.campaignScenario > best) {
-        best = save.campaignScenario;
-        return;
-      }
-      // Fallback: read full state from localStorage for older local saves that
-      // were persisted before campaignScenario was added to the index.
-      try {
-        const raw = localStorage.getItem(`tm_save_${save.id}`);
-        if (raw) {
-          const st = JSON.parse(raw) as { config?: { campaignScenario?: number } };
-          const idx = st.config?.campaignScenario ?? -1;
-          if (idx > best) best = idx;
-        }
-      } catch {}
-    });
-    return best;
-  }, [saves]);
-
-  const startScenario = async (scenario: typeof CAMPAIGN_SCENARIOS[number]) => {
-    const id = await Promise.resolve(createGame({
-      ...DIFF_PRESETS[scenario.diff],
-      mapId: scenario.mapId,
-      enemyTerritories: 3,
-      enableTechTree: true,
-      enableEvents: true,
-      campaignScenario: scenario.index,
-      campaignBonusGold: scenario.bonusGold,
-      campaignBonusTechs: scenario.bonusTechs,
-    }, scenario.title));
-    if (id) nav(`/game/${id}`);
-  };
-
+function CampaignActs({ saves, onStart }: { saves: SaveMeta[]; onStart: (s: CampaignScenario) => void }) {
+  const best = saves.filter(s => s.status === 'victory' && s.campaignScenario !== undefined).reduce((m, s) => Math.max(m, s.campaignScenario!), -1);
   return (
-    <div style={{ marginBottom: 24 }}>
-      <h3 style={{ color:'#e6edf3', fontSize:14, fontWeight:700, margin:'0 0 6px' }}>⚔ Campaign</h3>
-      <p style={{ color:'#7d8590', fontSize:12, margin:'0 0 12px', lineHeight:1.5 }}>Three linked acts of escalating difficulty. Win each to unlock the next with carry-over bonuses.</p>
-      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-        {CAMPAIGN_SCENARIOS.map(scenario => {
-          const unlocked = scenario.index === 0 || highestComplete >= scenario.index - 1;
-          const completed = highestComplete >= scenario.index;
+    <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+      {CAMPAIGN_SCENARIOS.map(sc => {
+        const unlocked = sc.index <= best + 1;
+        const done = sc.index <= best;
+        return (
+          <div key={sc.index} style={{ background: UI.panel, border: `1px solid ${done ? '#3b6b48' : UI.rule}`, borderRadius: 10, padding: 14, opacity: unlocked ? 1 : 0.5, display: 'grid', gap: 6, alignContent: 'start' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{ fontFamily: FONT.display, fontSize: 16, fontWeight: 600, flex: 1 }}>{sc.title}</span>
+              {done && <Icon name="check" color={UI.good} />}
+            </div>
+            <div style={{ fontSize: 11.5, color: UI.textFaint }}>{MAP_BY_ID[sc.mapId].name} · {DIFFICULTY[sc.diff].label}</div>
+            <Muted>{sc.desc}</Muted>
+            {sc.bonusGold > 0 && <div style={{ fontSize: 11.5, color: UI.gold }}>Carried forward: {sc.bonusGold} gold{sc.bonusTechs.length ? ` and ${sc.bonusTechs.length} technolog${sc.bonusTechs.length === 1 ? 'y' : 'ies'}` : ''}</div>}
+            <div style={{ marginTop: 4 }}>
+              {unlocked ? <Button small tone={done ? 'default' : 'primary'} onClick={() => onStart(sc)}>{done ? 'Replay' : 'Begin'}</Button>
+                : <span style={{ fontSize: 11.5, color: UI.textFaint }}>Win the previous act to unlock.</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Achievements({ saves }: { saves: SaveMeta[] }) {
+  const earned = new Set(saves.flatMap(s => s.achievements ?? []));
+  return (
+    <div>
+      <Muted style={{ marginBottom: 10 }}>{earned.size} of {ACHIEVEMENTS.length} earned across your campaigns.</Muted>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+        {ACHIEVEMENTS.map(a => {
+          const got = earned.has(a.id);
           return (
-            <div key={scenario.index} style={{ background:'#0d1117', border:`1px solid ${completed ? '#3fb950' : unlocked ? '#21262d' : '#161b22'}`, borderRadius:8, padding:'12px 14px', opacity: unlocked ? 1 : 0.45 }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start' }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
-                    <span style={{ color: completed ? '#3fb950' : '#e6edf3', fontWeight:700, fontSize:13 }}>
-                      {completed ? '✓ ' : ''}{scenario.title}
-                    </span>
-                    <span style={{ background:'#21262d', borderRadius:4, padding:'1px 6px', fontSize:10, color:'#9198a1' }}>{scenario.diff}</span>
-                  </div>
-                  <p style={{ color:'#7d8590', fontSize:11, margin:'0 0 4px' }}>{scenario.desc}</p>
-                  {scenario.bonusGold > 0 && (
-                    <p style={{ color:'#f59e0b', fontSize:10, margin:0 }}>
-                      Carryover: +{scenario.bonusGold}g{scenario.bonusTechs.length ? ` + ${scenario.bonusTechs.length} free tech${scenario.bonusTechs.length > 1 ? 's' : ''}` : ''}
-                    </p>
-                  )}
-                </div>
-                {unlocked && (
-                  <button onClick={() => startScenario(scenario)}
-                    style={{ background: completed ? '#1a3a1a' : '#1f6feb', border:`1px solid ${completed ? '#3fb950' : '#1f6feb'}`, borderRadius:6, color:'#fff', fontWeight:700, fontSize:12, padding:'7px 14px', cursor:'pointer', flexShrink:0, marginLeft:10, whiteSpace:'nowrap' }}>
-                    {completed ? 'Replay' : 'Start →'}
-                  </button>
-                )}
+            <div key={a.id} style={{ padding: '9px 11px', borderRadius: 8, background: got ? '#2a2414' : UI.panel, border: `1px solid ${got ? UI.accent : UI.rule}`, opacity: got ? 1 : 0.6 }}>
+              <div style={{ fontWeight: 700, fontSize: 12.5, color: got ? UI.accent : UI.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+                {got && <Icon name="check" size={12} />}{a.name}
               </div>
+              <div style={{ fontSize: 11, color: UI.textSoft, marginTop: 2 }}>{a.desc}</div>
             </div>
           );
         })}
@@ -642,275 +418,3 @@ function CampaignSection({ saves, createGame, nav }: {
     </div>
   );
 }
-
-function HowToPlay() {
-  const [open, setOpen] = React.useState<string | null>(null);
-  const toggle = (k: string) => setOpen(v => v === k ? null : k);
-
-  const sections = [
-    {
-      key: 'basics',
-      title: '⚔ The Basics',
-      content: `Thrash Margin is a turn-based territory strategy game. Each turn you spend Action Points (AP) on attacks, recruiting, building, and research. When you run out of AP, end your turn — then the enemy factions take theirs.\n\nYour goal is to conquer all enemy capitals, accumulate enough gold for an Economic Victory, or complete a full Tech Tree branch for a Research Victory.`,
-    },
-    {
-      key: 'combat',
-      title: '🗡 Combat',
-      content: `Select one of your territories, then click an adjacent enemy or neutral territory to set it as your target. A combat preview shows whether you'll win or lose before you commit.\n\nThe attack ratio determines outcome — sending twice as many effective troops as the defender's defence strength guarantees a win with minimal losses. Techs like Siege Craft (+25% attack) and Iron Will (attack costs 1 AP instead of 2) can tilt the odds in your favour.`,
-    },
-    {
-      key: 'economy',
-      title: '💰 Resources',
-      content: `Gold funds recruiting and research. Food feeds your troops — if food runs out, troops starve. Materials are needed for building and upgrades.\n\nEach territory produces resources each turn based on its level and buildings. Build Farms for food, Mines for materials, Markets for gold, Barracks to raise troop cap, and Towers for defence.\n\nInfluence (when Diplomacy is enabled) lets you peacefully annex neutral territories instead of fighting for them.`,
-    },
-    {
-      key: 'techtree',
-      title: '🔬 Tech Tree',
-      content: `The Research panel (▸ in the sidebar) gives access to 12 technologies across three branches:\n\n• Military — cheaper attacks, stronger offence, reduced losses\n• Economic — more gold, better food security, stronger markets\n• Expansion — fog lifted, cheaper annexation, stronger towers, +1 AP/turn\n\nComplete all 4 tiers of any branch for a Research Victory. Each tech costs 1 AP and some gold + materials.`,
-    },
-    {
-      key: 'terrain',
-      title: '🌍 Terrain',
-      content: `Territories have terrain types that affect their stats:\n\n• Plains — no modifiers (default)\n• Forest — +1 food/turn, -1 defence (easier to attack, productive)\n• Mountain — +3 defence, -1 gold/turn (hard to crack, poor income)\n• Coast — +2 gold/turn (rich trade routes)\n• Desert — +1 mat/turn, -1 food/turn (good for materials)\n\nTerrain is shown as a small label below each territory name on the map.`,
-    },
-  ];
-
-  return (
-    <div style={{ marginBottom: 24 }}>
-      <h3 style={{ color: '#e6edf3', fontSize: 14, fontWeight: 700, margin: '0 0 10px' }}>How to Play</h3>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        {sections.map(sec => (
-          <div key={sec.key} style={{ background: '#0d1117', border: '1px solid #21262d', borderRadius: 6, overflow: 'hidden' }}>
-            <button
-              onClick={() => toggle(sec.key)}
-              style={{ width: '100%', textAlign: 'left', background: 'none', border: 'none', color: '#e6edf3', padding: '10px 14px', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-            >
-              {sec.title}
-              <span style={{ color: '#7d8590', fontSize: 11 }}>{open === sec.key ? '▲' : '▼'}</span>
-            </button>
-            {open === sec.key && (
-              <div style={{ padding: '0 14px 12px', color: '#7d8590', fontSize: 12, lineHeight: 1.7, whiteSpace: 'pre-line' }}>
-                {sec.content}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function Section({ title, children, empty, emptyMsg }: {
-  title: string; children?: React.ReactNode;
-  empty?: boolean; emptyMsg?: string;
-}) {
-  return (
-    <div style={{ marginBottom: 32 }}>
-      <h2 style={s.sectionTitle}>{title}</h2>
-      {empty ? (
-        <p style={s.emptyMsg}>{emptyMsg}</p>
-      ) : children}
-    </div>
-  );
-}
-
-function SaveCard({ save, confirmDelete, setConfirmDelete, onContinue, onDelete }: {
-  save: SaveMeta;
-  confirmDelete: string | null;
-  setConfirmDelete: (id: string | null) => void;
-  onContinue: () => void;
-  onDelete: () => void;
-}) {
-  const isConfirming = confirmDelete === save.id;
-  const diff = save.diff.charAt(0).toUpperCase() + save.diff.slice(1);
-
-  return (
-    <div style={s.saveCard}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={s.saveName}>{save.name}</p>
-        <p style={s.saveMeta}>
-          {diff} · Turn {save.turn} · {relTime(save.savedAt)}
-          {save.status === 'victory'  && <span style={{ color: '#3fb950' }}> · 🏆 Victory</span>}
-          {save.status === 'defeated' && <span style={{ color: '#f85149' }}> · 💀 Defeated</span>}
-        </p>
-      </div>
-      <div style={s.saveActions}>
-        {isConfirming ? (
-          <>
-            <span style={{ color: '#f85149', fontSize: 11, marginRight: 4 }}>Delete?</span>
-            <button style={s.deleteConfirmBtn} onClick={onDelete}>Yes</button>
-            <button style={s.cancelBtn} onClick={() => setConfirmDelete(null)}>No</button>
-          </>
-        ) : (
-          <>
-            <button style={s.continueBtn} onClick={onContinue}>
-              {save.status === 'active' ? 'Continue →' : 'View'}
-            </button>
-            <button style={s.deleteBtn} onClick={() => setConfirmDelete(save.id)}>🗑</button>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SettingNum({ label, value, min, max, onChange }: {
-  label: string; value: number; min: number; max: number; onChange: (n: number) => void;
-}) {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-      <label style={{ color: '#7d8590', fontSize: 11 }}>{label}</label>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <button style={s.nudge} onClick={() => onChange(Math.max(min, value - 1))}>−</button>
-        <span style={{ color: '#e6edf3', fontWeight: 700, fontSize: 14, minWidth: 28, textAlign: 'center' }}>{value}</span>
-        <button style={s.nudge} onClick={() => onChange(Math.min(max, value + 1))}>+</button>
-      </div>
-    </div>
-  );
-}
-
-function ToggleRow({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
-  return (
-    <div style={{ ...s.diffRow, width: 'fit-content' }}>
-      {([['On', true], ['Off', false]] as [string, boolean][]).map(([label, val]) => (
-        <button key={label}
-          style={{ ...s.diffBtn, minWidth: 60, ...(value === val ? s.diffActive : {}) }}
-          onClick={() => onChange(val)}>
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function ConfirmModal({ campaignName, mapId, difficulty, enemyFactions, enemyTerritories, enemyTroopScale,
-  enemyStartBuildings, apPerTurn, fogOfWar, enableEvents, enableDiplomacy, enableTechTree,
-  enableAltVictory, enableStrongholds, hotseat, startGold, startFood, startMat,
-  recruitCost, upkeep, onBack, onConfirm }: {
-  campaignName: string; mapId: string; difficulty: Difficulty;
-  enemyFactions: number; enemyTerritories: number; enemyTroopScale: number; enemyStartBuildings: boolean;
-  apPerTurn: number; fogOfWar: boolean; enableEvents: boolean;
-  enableDiplomacy: boolean; enableTechTree: boolean; enableAltVictory: boolean; enableStrongholds: boolean;
-  hotseat: boolean;
-  startGold: number; startFood: number; startMat: number;
-  recruitCost: number; upkeep: number;
-  onBack: () => void; onConfirm: () => void;
-}) {
-  const map = MAP_DEFS.find(m => m.id === mapId) ?? MAP_DEFS[0];
-  const troopLabel = ({ 0.5: 'Weak', 0.75: 'Reduced', 1.0: 'Normal', 1.5: 'Strong', 2.0: 'Brutal' } as Record<number, string>)[enemyTroopScale] ?? `${enemyTroopScale}×`;
-  const diffLabel = difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
-
-  const Row = ({ label, value }: { label: string; value: string }) => (
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '5px 0', borderBottom: '1px solid #21262d' }}>
-      <span style={{ color: '#7d8590', fontSize: 12 }}>{label}</span>
-      <span style={{ color: '#e6edf3', fontSize: 12, fontWeight: 600 }}>{value}</span>
-    </div>
-  );
-
-  return (
-    <div style={s.modalBackdrop} onClick={onBack}>
-      <div style={s.modal} onClick={e => e.stopPropagation()}>
-        <h2 style={{ color: '#e6edf3', fontSize: 16, fontWeight: 700, margin: '0 0 4px' }}>Ready to start?</h2>
-        <p style={{ color: '#7d8590', fontSize: 12, margin: '0 0 18px' }}>Review your settings before launching.</p>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-
-          <div>
-            <p style={s.sLabel}>Campaign</p>
-            <Row label="Name"   value={campaignName} />
-            <Row label="Map"    value={`${map.name} — ${map.style} (${map.territories} territories)`} />
-            <Row label="Difficulty" value={diffLabel} />
-          </div>
-
-          <div>
-            <p style={s.sLabel}>Enemy Setup</p>
-            <Row label="Enemy factions"       value={String(enemyFactions)} />
-            <Row label="Starting territories" value={String(enemyTerritories)} />
-            <Row label="Troop strength"        value={troopLabel} />
-            <Row label="Pre-built buildings"   value={enemyStartBuildings ? 'Yes' : 'No'} />
-          </div>
-
-          <div>
-            <p style={s.sLabel}>Mechanics</p>
-            <Row label="Action points / turn" value={apPerTurn >= 99 ? 'Unlimited' : String(apPerTurn)} />
-            <Row label="Fog of war"           value={fogOfWar ? 'On' : 'Off'} />
-            <Row label="Random events"        value={enableEvents ? 'On' : 'Off'} />
-            <Row label="Tech tree"            value={enableTechTree ? 'On' : 'Off'} />
-            <Row label="Diplomacy"            value={enableDiplomacy ? 'On' : 'Off'} />
-            <Row label="Alt. victories"       value={enableAltVictory ? 'On' : 'Off'} />
-            <Row label="Strongholds"          value={enableStrongholds ? 'On' : 'Off'} />
-            {hotseat && <Row label="Mode" value="Hot Seat (2 players)" />}
-          </div>
-
-          <div>
-            <p style={s.sLabel}>Starting Resources &amp; Economy</p>
-            <Row label="Gold / Food / Mat"  value={`${startGold} / ${startFood} / ${startMat}`} />
-            <Row label="Recruit cost"       value={`${recruitCost}g per troop`} />
-            <Row label="Troop upkeep"       value={`${upkeep}f per troop / turn`} />
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
-          <button style={s.backBtn} onClick={onBack}>← Back</button>
-          <button style={{ ...s.newBtn, flex: 1 }} onClick={onConfirm}>Start campaign →</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Styles ── */
-const s: Record<string, React.CSSProperties> = {
-  page:           { minHeight: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'system-ui,sans-serif', display: 'flex', flexDirection: 'column' },
-  header:         { background: '#161b22', borderBottom: '1px solid #30363d', padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' },
-  headerInner:    { padding: '24px 0 20px' },
-  authBtn:        { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', padding: '6px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
-  logo:           { fontSize: 22, fontWeight: 800, letterSpacing: '-0.01em' },
-  content:        { maxWidth: 640, margin: '40px auto', padding: '0 24px', flex: 1, width: '100%', boxSizing: 'border-box' as const },
-  gateWrap:       { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0 24px' },
-  gateCard:       { background: '#161b22', border: '1px solid #30363d', borderRadius: 10, padding: '40px 44px', width: 380, textAlign: 'center' as const, display: 'flex', flexDirection: 'column' as const, alignItems: 'center' },
-  gateSubtitle:   { color: '#7d8590', fontSize: 13, lineHeight: 1.5, margin: '10px 0 26px' },
-  gatePrimary:    { width: '100%', background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, padding: '11px 0', cursor: 'pointer' },
-  gateGuest:      { width: '100%', background: 'none', border: 'none', color: '#7d8590', fontSize: 12, padding: '14px 0 0', cursor: 'pointer' },
-  footer:         { background: '#161b22', borderTop: '1px solid #21262d', padding: '14px 40px', display: 'flex', alignItems: 'center', gap: 10, color: '#4b5563', fontSize: 12, marginTop: 16 },
-  sectionTitle:   { fontSize: 13, fontWeight: 600, color: '#9198a1', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 12px' },
-  emptyMsg:       { color: '#4b5563', fontSize: 13, margin: 0 },
-
-  saveCard:       { background: '#161b22', border: '1px solid #30363d', borderRadius: 8, padding: '12px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 },
-  saveName:       { color: '#e6edf3', fontSize: 14, fontWeight: 600, margin: '0 0 3px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-  saveMeta:       { color: '#7d8590', fontSize: 11, margin: 0 },
-  saveActions:    { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
-  continueBtn:    { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', padding: '6px 14px', borderRadius: 6, cursor: 'pointer', fontSize: 12, whiteSpace: 'nowrap' },
-  deleteBtn:      { background: 'none', border: '1px solid #30363d', color: '#7d8590', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
-  deleteConfirmBtn:{ background: '#b91c1c', border: 'none', color: '#fff', padding: '6px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
-  cancelBtn:      { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', padding: '6px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12 },
-
-  nameRow:        { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 },
-  nameLabel:      { color: '#7d8590', fontSize: 12, whiteSpace: 'nowrap' },
-  nameInput:      { flex: 1, background: '#161b22', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', padding: '7px 12px', fontSize: 13, outline: 'none' },
-
-  settingsToggle: { background: 'none', border: 'none', color: '#7d8590', cursor: 'pointer', fontSize: 13, padding: '4px 0', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 },
-  settingsPanel:  { background: '#161b22', border: '1px solid #30363d', borderRadius: 8, padding: '16px 20px', marginBottom: 12, display: 'flex', flexDirection: 'column', gap: 16 },
-
-  sSection:       { display: 'flex', flexDirection: 'column', gap: 8 },
-  sLabel:         { color: '#9198a1', fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5, margin: 0 },
-  subLabel:       { color: '#6b7280', fontSize: 11, margin: '0 0 5px' },
-  sGrid:          { display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px 16px' },
-  diffRow:        { display: 'flex', gap: 6 },
-  diffBtn:        { flex: 1, background: '#0d1117', border: '1px solid #30363d', color: '#7d8590', borderRadius: 5, padding: '6px 0', cursor: 'pointer', fontSize: 12 },
-  diffActive:     { background: '#1f3a5f', border: '1px solid #1f6feb', color: '#e6edf3', fontWeight: 600 },
-  diffDesc:       { color: '#6b7280', fontSize: 11, margin: '4px 0 0', fontStyle: 'italic' },
-  nudge:          { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', width: 22, height: 22, borderRadius: 4, cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0 },
-
-  newBtn:         { background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, padding: '10px 22px', cursor: 'pointer', fontSize: 14 },
-
-  mapGrid:        { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 },
-  mapCard:        { background: '#0d1117', border: '1px solid #30363d', borderRadius: 8, padding: '10px 12px', cursor: 'pointer', textAlign: 'left' as const, transition: 'border-color 0.15s' },
-  mapCardActive:  { background: '#0f1f38', border: '1px solid #1f6feb' },
-  styleTag:       { fontSize: 9, background: '#21262d', color: '#7d8590', padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' as const },
-  styleTagActive: { background: '#1f3a5f', color: '#58a6ff' },
-
-  modalBackdrop:  { position: 'fixed' as const, inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '16px' },
-  modal:          { background: '#161b22', border: '1px solid #30363d', borderRadius: 12, padding: '24px', width: '100%', maxWidth: 480, maxHeight: '90vh', overflowY: 'auto' as const },
-  backBtn:        { background: '#21262d', border: '1px solid #30363d', color: '#e6edf3', borderRadius: 6, padding: '10px 18px', cursor: 'pointer', fontSize: 13 },
-};

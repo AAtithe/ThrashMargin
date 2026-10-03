@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Feedback from './pages/Feedback';
 import Profile from './pages/Profile';
 import Admin from './pages/Admin';
+import './styles.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
