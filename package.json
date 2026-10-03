@@ -18,6 +18,7 @@
     "drive:se": "npm run drive --workspace=packages/steady-eddie",
     "build:portal": "bash scripts/build-portal.sh",
     "check": "bash scripts/check.sh",
+    "sync-shared": "node scripts/sync-shared.mjs",
     "test:api": "tsx scripts/api-test.ts"
   }
 }

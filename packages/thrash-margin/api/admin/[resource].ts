@@ -3,7 +3,7 @@ import type { PoolClient } from 'pg';
 import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import { getDb } from '../_lib/db';
-import { getUser } from '../_lib/auth';
+import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
 import { isAdmin, recordAudit } from '../_lib/admin';
 import { countsByGame, GAMES_BY_TITLE_SQL } from '../../shared/games';
@@ -139,7 +139,8 @@ async function resetPassword(req: VercelRequest, res: VercelResponse, callerId: 
       const target = names.get(id);
       if (!target) return 'not_found' as const;
       if (target.role === 'admin') return 'admin' as const;
-      await c.query('UPDATE users SET password = $1 WHERE id = $2', [hash, id]);
+      // Also signs the player out everywhere (api/_lib/auth.ts), in case the account was taken over.
+      await c.query('UPDATE users SET password = $1, password_changed_at = NOW() WHERE id = $2', [hash, id]);
       await c.query('DELETE FROM login_failures WHERE username_key = LOWER($1)', [target.username]);
       await recordAudit(c, {
         actorId: callerId,
@@ -229,8 +230,8 @@ async function updateFeedback(req: VercelRequest, res: VercelResponse) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
 
-  let user;
-  try { user = getUser(req); } catch { return res.status(401).json({ message: 'Unauthorized' }); }
+  const user = await requireUser(req, res);
+  if (!user) return;
   if (!(await isAdmin(getDb(), user.userId))) return res.status(403).json({ message: 'Admin access only' });
 
   const resource = req.query.resource;

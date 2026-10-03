@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getToken, getStoredUser, setStoredUser } from '../lib/token';
+import { getToken, getStoredUser, setStoredUser, setToken, clearToken } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 import { GAMES } from 'shared/games';
 
@@ -38,6 +38,9 @@ export default function Profile() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const signedIn = !!getToken();
 
@@ -64,6 +67,29 @@ export default function Profile() {
 
   useEffect(() => { if (signedIn) load(); else setLoading(false); }, [signedIn, load]);
 
+  const deleteAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDeleteError(null);
+    if (!deletePassword) { setDeleteError('Enter your password to confirm.'); return; }
+    if (!window.confirm('Delete your account and every saved game in every game? This cannot be undone.')) return;
+    setDeleting(true);
+    try {
+      const res = await fetch(`${API}/api/profile`, {
+        method: 'DELETE',
+        headers: authHeaders(),
+        body: JSON.stringify({ password: deletePassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setDeleteError(data.message ?? 'Could not delete the account'); return; }
+      clearToken();
+      window.location.replace('/thrash-margin/login?deleted=1');
+    } catch {
+      setDeleteError('Network error, try again');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
@@ -85,6 +111,9 @@ export default function Profile() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) { setFormError(data.message ?? 'Failed to update'); return; }
+      // A password change signs out every other session, this one included; the server sends a
+      // fresh token so this tab carries on.
+      if (typeof data.token === 'string') setToken(data.token);
       setSaved(true);
       setCurrentPassword('');
       setNewPassword('');
@@ -155,6 +184,24 @@ export default function Profile() {
               {formError && <p style={s.error}>{formError}</p>}
               {saved && <p style={s.success}>✓ Saved.</p>}
               <button style={s.btn} type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
+            </form>
+          </section>
+
+          <section style={{ ...s.card, borderColor: '#5a1e1e' }}>
+            <h2 style={s.h2}>Delete account</h2>
+            <p style={{ color: '#9198a1', fontSize: 13, lineHeight: 1.5, margin: '0 0 14px' }}>
+              Permanently deletes your account and every saved game in every game. Feedback you sent is kept
+              without your name. See the <a href="/privacy.html" style={{ color: '#58a6ff' }}>privacy notice</a>.
+            </p>
+            <form onSubmit={deleteAccount} style={s.form}>
+              <label style={s.label}>
+                Password
+                <input style={s.input} type="password" autoComplete="current-password" value={deletePassword} onChange={e => setDeletePassword(e.target.value)} />
+              </label>
+              {deleteError && <p style={s.error}>{deleteError}</p>}
+              <button style={{ ...s.btn, background: '#b62324' }} type="submit" disabled={deleting}>
+                {deleting ? 'Deleting…' : 'Delete my account'}
+              </button>
             </form>
           </section>
         </div>

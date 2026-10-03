@@ -28,6 +28,9 @@
    the portal's Admin page.
 6. Backups: in Supabase, **Database → Backups**, confirm daily backups are listed. The table
    definitions are in `db/schema.sql`, but the data exists only in Supabase and its backups.
+7. Uptime: point a free uptime monitor (for example UptimeRobot or Better Stack) at
+   `https://<your domain>/api/health`, checking every 5 minutes. It answers 200 only when the
+   database is reachable and 503 otherwise, so the monitor emails you when the site is down.
 
 ---
 
@@ -44,7 +47,7 @@
    |------------------|--------------------------------------------|
    | `DATABASE_URL`   | Your Supabase Transaction mode URL (above) |
    | `JWT_SECRET`     | Run `openssl rand -base64 32` to generate  |
-   | `CORS_ORIGIN`    | Your Vercel deployment URL (add after first deploy, e.g. `https://thrash-margin.vercel.app`) |
+   | `CORS_ORIGIN`    | Leave unset. The pages and API share one origin, so no other site is allowed to call the API. Set it only to let a local dev server on another port call a deployed API. |
 
 5. Deploy — Vercel runs `scripts/build-portal.sh` (builds Niccolo and this client under their own subpaths, assembles the landing page) and deploys the root-level `api/` functions automatically.
 

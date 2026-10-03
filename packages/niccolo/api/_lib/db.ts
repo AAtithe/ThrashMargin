@@ -1,25 +1,18 @@
-// Deliberately duplicated from packages/thrash-margin/api/_lib/db.ts rather than imported
-// across the package boundary: Vercel's per-function file tracing did not include the
-// cross-package original in this function's deployment bundle (confirmed via a diagnostic
-// endpoint — the file was simply missing from /var/task at runtime, a FUNCTION_INVOCATION_FAILED
-// with no useful error). Keeping Niccolo's API routes self-contained within its own package
-// avoids depending on that tracing behaviour. Same Postgres/Supabase instance either way — same
-// env vars, same connection.
+// GENERATED from shared/portal/server/db.ts by scripts/sync-shared.mjs. Do not edit this copy: edit the original,
+// then run `npm run sync-shared`. `npm run check` fails while any copy differs.
 import { Pool } from 'pg';
 
+// One lazily created pool per server instance. All five games use the same Postgres/Supabase
+// database and the same environment variables; rows are told apart by games.game.
 let pool: Pool | null = null;
 
 export function getDb(): Pool {
   if (!pool) {
     const connectionString =
-      process.env.DATABASE_URL ||
-      process.env.POSTGRES_URL ||
-      process.env.SUPABASE_DB_URL;
-
+      process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.SUPABASE_DB_URL;
     if (!connectionString) {
       throw new Error('No database connection string found in environment variables');
     }
-
     pool = new Pool({
       connectionString,
       ssl: { rejectUnauthorized: false },

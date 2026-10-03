@@ -3,13 +3,55 @@
   "outputDirectory": "dist",
   "installCommand": "npm ci",
   "rewrites": [
-    { "source": "/niccolo/(.*)", "destination": "/niccolo/index.html" },
-    { "source": "/rising/(.*)", "destination": "/rising/index.html" },
-    { "source": "/tea-race/(.*)", "destination": "/tea-race/index.html" },
-    { "source": "/thrash-margin/(.*)", "destination": "/thrash-margin/index.html" },
-    { "source": "/steady-eddie/(.*)", "destination": "/steady-eddie/index.html" }
+    {
+      "source": "/niccolo/(.*)",
+      "destination": "/niccolo/index.html"
+    },
+    {
+      "source": "/rising/(.*)",
+      "destination": "/rising/index.html"
+    },
+    {
+      "source": "/tea-race/(.*)",
+      "destination": "/tea-race/index.html"
+    },
+    {
+      "source": "/thrash-margin/(.*)",
+      "destination": "/thrash-margin/index.html"
+    },
+    {
+      "source": "/steady-eddie/(.*)",
+      "destination": "/steady-eddie/index.html"
+    }
   ],
   "env": {
     "NODE_ENV": "production"
-  }
+  },
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+        }
+      ]
+    }
+  ]
 }

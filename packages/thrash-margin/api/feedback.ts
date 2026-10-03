@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from './_lib/db';
-import { getUser } from './_lib/auth';
+import { requireUser } from './_lib/auth';
 import { handleCors } from './_lib/cors';
 import { FEEDBACK_TOPICS } from '../shared/games';
+import { isOverLimit, LIMITS, recordEvent } from './_lib/rateLimit';
 
 const VALID_GAMES = new Set(FEEDBACK_TOPICS.map(t => t.key));
 const VALID_TYPES = new Set(['bug', 'idea', 'comment']);
@@ -15,8 +16,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).end();
 
-  let user;
-  try { user = getUser(req); } catch { return res.status(401).json({ message: 'Unauthorized' }); }
+  const user = await requireUser(req, res);
+  if (!user) return;
 
   const { game, type, message } = req.body ?? {};
   const g = typeof game === 'string' && VALID_GAMES.has(game) ? game : 'general';
@@ -26,11 +27,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (msg.length > MAX_MESSAGE_LEN) return res.status(400).json({ message: `message must be under ${MAX_MESSAGE_LEN} characters` });
 
   const db = getDb();
+  // At most 10 a hour per account, so the list cannot be flooded.
+  if (await isOverLimit(db, LIMITS.feedback, user.userId)) {
+    return res.status(429).json({ message: 'You have sent a lot of feedback this hour. Try again later.' });
+  }
   try {
     await db.query(
       'INSERT INTO feedback (user_id, game, type, message) VALUES ($1, $2, $3, $4)',
       [user.userId, g, t, msg],
     );
+    await recordEvent(db, LIMITS.feedback, user.userId);
     return res.status(201).json({ success: true });
   } catch (err) {
     console.error('submit feedback error', err);
