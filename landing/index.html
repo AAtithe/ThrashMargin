@@ -228,7 +228,21 @@
         if (!u) return;
         document.getElementById('signed-in-as').textContent = 'Signed in as ' + u.username;
         // Shown to admins only, as a courtesy: the admin endpoints check users.role on every request.
-        if (u.isAdmin === true) document.getElementById('admin-link').hidden = false;
+        var adminLink = document.getElementById('admin-link');
+        adminLink.hidden = u.isAdmin !== true;
+        // Re-asked of the server on every visit, so a role granted or removed since sign-in shows
+        // here without signing out and back in.
+        fetch('/api/profile', { headers: { Authorization: 'Bearer ' + localStorage.getItem('tm_token') } })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (p) {
+            if (!p || typeof p.isAdmin !== 'boolean') return;
+            adminLink.hidden = !p.isAdmin;
+            if (p.isAdmin !== u.isAdmin) {
+              u.isAdmin = p.isAdmin;
+              localStorage.setItem('tm_user', JSON.stringify(u));
+            }
+          })
+          .catch(function () {});
         document.getElementById('sign-out').addEventListener('click', function () {
           ['tm_token', 'tm_user', 'tm_last_active'].forEach(function (k) { localStorage.removeItem(k); });
           window.location.replace('/thrash-margin/login?next=/');
