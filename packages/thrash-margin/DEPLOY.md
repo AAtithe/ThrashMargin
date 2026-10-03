@@ -21,6 +21,9 @@
    postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
    ```
    This is your `DATABASE_URL`.
+5. Run each file in `db/migrations/` in date order. `2026-10-03_user_roles.sql` adds the admin
+   role and sets the first admin: edit the username in it before running. After that, admins are
+   granted and removed on the portal's Admin page, not in config.
 
 ---
 

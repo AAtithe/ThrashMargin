@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { signToken } from '../_lib/auth';
+import { isAdmin } from '../_lib/admin';
 import { handleCors } from '../_lib/cors';
 
 // Combines what were two separate functions (login.ts, register.ts) into one, dispatching on
@@ -33,7 +34,9 @@ async function login(req: VercelRequest, res: VercelResponse) {
     );
 
     const token = signToken({ userId: user.id, username: user.username });
-    return res.json({ token, userId: user.id, username: user.username });
+    // For the nav's Admin link only. Presentational: every admin endpoint re-checks the role.
+    const admin = await isAdmin(db, user.id);
+    return res.json({ token, userId: user.id, username: user.username, isAdmin: admin });
   } catch (err) {
     console.error('login error', err);
     return res.status(500).json({ message: 'Server error' });
@@ -69,7 +72,7 @@ async function register(req: VercelRequest, res: VercelResponse) {
     );
     await db.query('INSERT INTO player_stats (user_id) VALUES ($1)', [id]);
     const token = signToken({ userId: id, username });
-    return res.status(201).json({ token, userId: id, username });
+    return res.status(201).json({ token, userId: id, username, isAdmin: false });
   } catch (err: any) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'Username or email already taken' });

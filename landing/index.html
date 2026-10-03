@@ -171,9 +171,17 @@
           </p>
         </a>
       </div>
-      <p class="utility">
+      <p class="utility" id="admin-link" hidden>
         <a href="/thrash-margin/admin">🛠 Admin</a>
       </p>
     </main>
+    <script>
+      // Admin link for admins only, from the stored session the games write. A courtesy, not a
+      // control: the admin endpoints check users.role on every request.
+      try {
+        var u = JSON.parse(localStorage.getItem('tm_user') || 'null');
+        if (u && u.isAdmin === true) document.getElementById('admin-link').hidden = false;
+      } catch (e) {}
+    </script>
   </body>
 </html>

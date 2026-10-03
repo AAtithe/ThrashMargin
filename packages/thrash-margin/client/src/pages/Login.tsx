@@ -34,7 +34,7 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed'); return; }
       setToken(data.token);
-      setStoredUser({ userId: data.userId, username: data.username });
+      setStoredUser({ userId: data.userId, username: data.username, isAdmin: data.isAdmin === true });
       nav('/');
     } catch {
       setError('Network error — try again');

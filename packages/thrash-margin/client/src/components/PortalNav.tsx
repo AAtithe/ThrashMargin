@@ -37,12 +37,16 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>
           💬 Feedback
         </a>
-        <span style={styles.sep}>·</span>
-        {/* Base-relative too. Reaching the page means nothing without a valid admin
-            session — access is gated server-side by ADMIN_USERNAMES, not by hiding this link. */}
-        <a href={`${import.meta.env.BASE_URL}admin`} style={styles.link}>
-          🛠 Admin
-        </a>
+        {/* Base-relative too. Shown to admins only, as a courtesy: hiding it protects nothing.
+            Access is enforced server-side, where every admin endpoint checks users.role. */}
+        {user?.isAdmin && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href={`${import.meta.env.BASE_URL}admin`} style={styles.link}>
+              🛠 Admin
+            </a>
+          </>
+        )}
       </div>
       <div style={styles.right}>
         {user ? (

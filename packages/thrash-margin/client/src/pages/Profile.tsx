@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getToken } from '../lib/token';
+import { getToken, getStoredUser, setStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -48,6 +48,11 @@ export default function Profile() {
       if (!res.ok) { setLoadError(true); return; }
       const data = await res.json();
       setProfile(data);
+      // Keeps the nav's Admin link in step with a role granted or removed since sign-in.
+      const stored = getStoredUser();
+      if (stored && stored.isAdmin !== (data.isAdmin === true)) {
+        setStoredUser({ ...stored, isAdmin: data.isAdmin === true });
+      }
       setNewEmail(data.email);
     } catch {
       setLoadError(true);

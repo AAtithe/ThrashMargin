@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getToken } from '../lib/token';
+import { getToken, getStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -9,6 +9,7 @@ interface AdminUser {
   id: string;
   username: string;
   email: string;
+  role: 'user' | 'admin';
   registeredAt: number;
   lastLoginAt: number | null;
   gamesByTitle: { thrash_margin: number; niccolo: number; tea_race: number; steady_eddie: number };
@@ -48,7 +49,9 @@ export default function Admin() {
   const [deniedReason, setDeniedReason] = useState<'unauthorized' | 'forbidden' | null>(null);
   const [loading, setLoading] = useState(true);
   const [feedbackFilter, setFeedbackFilter] = useState<'all' | 'open' | 'resolved'>('open');
+  const [roleError, setRoleError] = useState<string | null>(null);
   const signedIn = !!getToken();
+  const myId = getStoredUser()?.userId;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -83,6 +86,30 @@ export default function Admin() {
         body: JSON.stringify({ id: item.id, status: nextStatus }),
       });
     } catch { /* optimistic update stands; a manual refresh will resync if this failed */ }
+  };
+
+  // Not optimistic, unlike feedback status: a role change is a permission change, so the table
+  // only shows it once the server has confirmed it.
+  const changeRole = async (u: AdminUser) => {
+    const role = u.role === 'admin' ? 'user' : 'admin';
+    const verb = role === 'admin' ? 'Make' : 'Remove';
+    if (!window.confirm(`${verb} ${u.username} ${role === 'admin' ? 'an admin' : 'as admin'}?`)) return;
+    setRoleError(null);
+    try {
+      const res = await fetch(`${API}/api/admin/users`, {
+        method: 'PATCH',
+        headers: authHeaders(),
+        body: JSON.stringify({ id: u.id, role }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setRoleError(data.message ?? 'Could not change role');
+        return;
+      }
+      setUsers(prev => prev?.map(x => x.id === u.id ? { ...x, role } : x) ?? null);
+    } catch {
+      setRoleError('Network error, try again');
+    }
   };
 
   if (!signedIn) {
@@ -120,11 +147,12 @@ export default function Admin() {
 
         <section style={s.section}>
           <h2 style={s.h2}>Users ({users?.length ?? 0})</h2>
+          {roleError && <p style={{ color: '#f85149', fontSize: 13, margin: '0 0 10px' }}>{roleError}</p>}
           <div style={s.tableWrap}>
             <table style={s.table}>
               <thead>
                 <tr>
-                  {['Username', 'Email', 'Registered', 'Last login', 'TM', 'Niccolo', 'Tea Race', 'Steady Eddie', 'Active', 'Wins'].map(h => (
+                  {['Username', 'Email', 'Role', 'Registered', 'Last login', 'TM', 'Niccolo', 'Tea Race', 'Steady Eddie', 'Active', 'Wins'].map(h => (
                     <th key={h} style={s.th}>{h}</th>
                   ))}
                 </tr>
@@ -134,6 +162,16 @@ export default function Admin() {
                   <tr key={u.id}>
                     <td style={s.tdStrong}>{u.username}</td>
                     <td style={s.td}>{u.email}</td>
+                    <td style={s.td}>
+                      <span style={u.role === 'admin' ? s.roleAdmin : s.roleUser}>{u.role}</span>
+                      {u.id === myId ? (
+                        <span style={{ fontSize: 11, color: '#4b5563', marginLeft: 8 }}>you</span>
+                      ) : (
+                        <button onClick={() => changeRole(u)} style={s.roleBtn}>
+                          {u.role === 'admin' ? 'Remove admin' : 'Make admin'}
+                        </button>
+                      )}
+                    </td>
                     <td style={s.td}>{fmtDate(u.registeredAt)}</td>
                     <td style={s.td}>{fmtDate(u.lastLoginAt)}</td>
                     <td style={s.tdNum}>{u.gamesByTitle.thrash_margin}</td>
@@ -145,7 +183,7 @@ export default function Admin() {
                   </tr>
                 ))}
                 {!users?.length && (
-                  <tr><td style={s.td} colSpan={10}>No registered users yet.</td></tr>
+                  <tr><td style={s.td} colSpan={11}>No registered users yet.</td></tr>
                 )}
               </tbody>
             </table>
@@ -227,5 +265,8 @@ const s: Record<string, React.CSSProperties> = {
   badgeMuted: { fontSize: 11, color: '#7d8590', background: '#0d1117', border: '1px solid #21262d', borderRadius: 4, padding: '2px 8px' },
   resolveBtn: { background: 'none', border: '1px solid #2ea043', color: '#3fb950', borderRadius: 5, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
   reopenBtn:  { background: 'none', border: '1px solid #30363d', color: '#7d8590', borderRadius: 5, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
+  roleAdmin:  { fontSize: 11, fontWeight: 700, color: '#d29922', textTransform: 'uppercase', letterSpacing: 0.4 },
+  roleUser:   { fontSize: 11, color: '#7d8590', textTransform: 'uppercase', letterSpacing: 0.4 },
+  roleBtn:    { marginLeft: 8, background: 'none', border: '1px solid #30363d', color: '#9198a1', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer' },
   signInLink: { color: '#1f6feb', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
 };

@@ -4,6 +4,8 @@ const USER_KEY = 'tm_user';
 export interface StoredUser {
   userId: string;
   username: string;
+  /** Shows or hides the Admin link. Presentational only; the server re-checks every request. */
+  isAdmin?: boolean;
 }
 
 export const getToken = (): string | null => localStorage.getItem(KEY);
