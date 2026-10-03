@@ -10,6 +10,7 @@ const GAMES = [
   { value: 'thrash_margin', label: 'Thrash Margin' },
   { value: 'niccolo',       label: 'Banco di Niccolo' },
   { value: 'tea_race',      label: 'The Tea Race' },
+  { value: 'steady_eddie',  label: 'Steady Eddie' },
 ] as const;
 
 const TYPES = [

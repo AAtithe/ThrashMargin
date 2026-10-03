@@ -48,9 +48,19 @@ async function register(req: VercelRequest, res: VercelResponse) {
   if (typeof username !== 'string' || username.length < 3 || username.length > 32) {
     return res.status(400).json({ message: 'username must be 3–32 characters' });
   }
+  // Same floor as /api/profile's password change, which previously was the only place it applied.
+  // The type check also stops a non-string body value reaching bcrypt and surfacing as a 500.
+  if (typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ message: 'password must be at least 6 characters' });
+  }
 
   const db = getDb();
   try {
+    // The UNIQUE constraint on users.username is case-sensitive, so 'Tom' and 'tom' could both
+    // register and pass for each other in feedback, the admin list and anywhere a name is shown.
+    const { rowCount } = await db.query('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)', [username]);
+    if (rowCount) return res.status(409).json({ message: 'Username or email already taken' });
+
     const hash = await bcrypt.hash(password, 12);
     const id = uuid();
     await db.query(
