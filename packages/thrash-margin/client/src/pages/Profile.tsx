@@ -11,7 +11,7 @@ interface ProfileData {
   email: string;
   registeredAt: number;
   lastLoginAt: number | null;
-  gamesByTitle: { thrash_margin: number; niccolo: number; tea_race: number };
+  gamesByTitle: { thrash_margin: number; niccolo: number; tea_race: number; steady_eddie: number; niccolo_rising: number };
   activeGames: number;
   wins: number;
 }
@@ -126,7 +126,9 @@ export default function Profile() {
               <Stat label="Last login" value={fmtDate(profile.lastLoginAt)} />
               <Stat label="Thrash Margin" value={String(profile.gamesByTitle.thrash_margin)} />
               <Stat label="Banco di Niccolo" value={String(profile.gamesByTitle.niccolo)} />
+              <Stat label="Niccolò Rising" value={String(profile.gamesByTitle.niccolo_rising ?? 0)} />
               <Stat label="The Tea Race" value={String(profile.gamesByTitle.tea_race)} />
+              <Stat label="Steady Eddie" value={String(profile.gamesByTitle.steady_eddie ?? 0)} />
               <Stat label="Wins" value={String(profile.wins)} />
             </div>
           </section>

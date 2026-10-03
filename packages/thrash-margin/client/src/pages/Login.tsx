@@ -1,9 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getToken, setToken, setStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
+
+/**
+ * Every game in the portal signs in here, and each lobby's sign-in button passes `?next=` with its
+ * own path so the player lands back in the game they came from rather than in Thrash Margin's lobby.
+ *
+ * `next` is only ever followed when it is a same-origin absolute path: it must start with a single
+ * '/', so '//evil.example' and 'https://...' are refused and the page falls back to its own lobby.
+ */
+function safeNext(): string | null {
+  const raw = new URLSearchParams(window.location.search).get('next');
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return null;
+  return raw;
+}
+
+const GAME_TITLES: { prefix: string; title: string; subtitle: string }[] = [
+  { prefix: '/rising/', title: 'Niccolò Rising', subtitle: 'Bruges · 1460 · in real time' },
+  { prefix: '/niccolo/', title: 'Banco di Niccolo', subtitle: 'Trade · Credit · Intelligence' },
+  { prefix: '/tea-race/', title: 'The Tea Race', subtitle: 'Clippers · Cargo · First home' },
+  { prefix: '/steady-eddie/', title: 'Steady Eddie', subtitle: 'Haulage · Loads · First to the depot' },
+];
 
 export default function Login() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -13,10 +33,18 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const nav = useNavigate();
+  const next = safeNext();
+  const game = next ? GAME_TITLES.find(g => next.startsWith(g.prefix)) : undefined;
+
+  // Another game is a separate build, so leaving for it is a full page load, not a router push.
+  const leave = useCallback(() => {
+    if (next) window.location.assign(next);
+    else nav('/');
+  }, [next, nav]);
 
   useEffect(() => {
-    if (getToken()) nav('/');
-  }, [nav]);
+    if (getToken()) leave();
+  }, [leave]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +63,7 @@ export default function Login() {
       if (!res.ok) { setError(data.message ?? 'Failed'); return; }
       setToken(data.token);
       setStoredUser({ userId: data.userId, username: data.username });
-      nav('/');
+      leave();
     } catch {
       setError('Network error — try again');
     } finally {
@@ -48,8 +76,8 @@ export default function Login() {
       <PortalNav variant="header" />
       <div style={s.page}>
         <div style={s.card}>
-        <h1 style={s.title}>Thrash Margin</h1>
-        <p style={s.subtitle}>Territory · Economy · Conquest</p>
+        <h1 style={s.title}>{game?.title ?? 'Thrash Margin'}</h1>
+        <p style={s.subtitle}>{game?.subtitle ?? 'Territory · Economy · Conquest'}</p>
 
         <div style={s.tabs}>
           {(['login', 'register'] as const).map(m => (
@@ -76,7 +104,7 @@ export default function Login() {
           />
           {error && <p style={s.error}>{error}</p>}
           <button style={s.btn} type="submit" disabled={loading}>
-            {loading ? '…' : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
+            {loading ? '…' : game ? (mode === 'login' ? 'Sign in →' : 'Create account →') : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
           </button>
         </form>
         </div>

@@ -11,7 +11,7 @@ interface AdminUser {
   email: string;
   registeredAt: number;
   lastLoginAt: number | null;
-  gamesByTitle: { thrash_margin: number; niccolo: number; tea_race: number; steady_eddie: number };
+  gamesByTitle: { thrash_margin: number; niccolo: number; tea_race: number; steady_eddie: number; niccolo_rising: number };
   activeGames: number;
   wins: number;
 }
@@ -124,7 +124,7 @@ export default function Admin() {
             <table style={s.table}>
               <thead>
                 <tr>
-                  {['Username', 'Email', 'Registered', 'Last login', 'TM', 'Niccolo', 'Tea Race', 'Steady Eddie', 'Active', 'Wins'].map(h => (
+                  {['Username', 'Email', 'Registered', 'Last login', 'TM', 'Niccolo', 'Rising', 'Tea Race', 'Steady Eddie', 'Active', 'Wins'].map(h => (
                     <th key={h} style={s.th}>{h}</th>
                   ))}
                 </tr>
@@ -138,6 +138,7 @@ export default function Admin() {
                     <td style={s.td}>{fmtDate(u.lastLoginAt)}</td>
                     <td style={s.tdNum}>{u.gamesByTitle.thrash_margin}</td>
                     <td style={s.tdNum}>{u.gamesByTitle.niccolo}</td>
+                    <td style={s.tdNum}>{u.gamesByTitle.niccolo_rising ?? 0}</td>
                     <td style={s.tdNum}>{u.gamesByTitle.tea_race}</td>
                     <td style={s.tdNum}>{u.gamesByTitle.steady_eddie}</td>
                     <td style={s.tdNum}>{u.activeGames}</td>

@@ -147,7 +147,7 @@ export default function Lobby() {
             </p>
             <button
               style={{ ...BUTTON, background: UI.panelRaised, borderColor: UI.brass, color: UI.brass, marginBottom: '0.6rem' }}
-              onClick={() => { window.location.href = '/thrash-margin/login'; }}
+              onClick={() => { window.location.href = `/thrash-margin/login?next=${encodeURIComponent(window.location.pathname)}`; }}
             >
               Sign in / Register →
             </button>

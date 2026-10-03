@@ -7,6 +7,7 @@ import type { GameAction } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { duration, gr } from '../lib/format';
 import StatusRail from '../components/StatusRail';
+import PortalNav from '../components/PortalNav';
 import Chronicle from '../components/Chronicle';
 import { Button, Panel } from '../components/ui';
 import ActButton from '../components/places/ActButton';
@@ -79,13 +80,20 @@ export default function GameScreen() {
 
   if (error && !state) {
     return (
-      <div style={{ padding: '2rem', color: UI.bad, background: UI.ground, minHeight: '100vh', fontFamily: FONT.body }}>
-        {error} <Link to="/" style={{ color: UI.brass }}>Back to your characters</Link>
-      </div>
+      <Holding>
+        <p style={{ color: UI.bad, fontSize: '0.88rem', margin: '0 0 1rem', lineHeight: 1.5 }}>{error}</p>
+        <Link to="/" style={{ color: UI.brass, fontSize: '0.85rem' }}>← Back to your characters</Link>
+      </Holding>
     );
   }
   if (!view) {
-    return <div style={{ padding: '2rem', color: UI.textSoft, background: UI.ground, minHeight: '100vh', fontFamily: FONT.body }}>Loading…</div>;
+    return (
+      <Holding>
+        <p style={{ color: UI.textSoft, fontSize: '0.85rem', margin: 0, fontStyle: 'italic' }}>
+          The bells of the Belfort ring the hour. Fetching your character…
+        </p>
+      </Holding>
+    );
   }
 
   const props: PlaceProps = { s: view, now, act, why };
@@ -132,6 +140,24 @@ export default function GameScreen() {
         <Current {...props} />
       </main>
       <Chronicle s={view} />
+    </div>
+  );
+}
+
+/** The portal chrome and a titled card, for the moments before a character is on screen. */
+function Holding({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, color: UI.text, fontFamily: FONT.body }}>
+      <PortalNav variant="header" />
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1.5rem' }}>
+        <div style={{ border: `1px solid ${UI.rule}`, background: UI.panelRaised, padding: '2rem 2.2rem', maxWidth: 420, textAlign: 'center' }}>
+          <h1 style={{ fontFamily: FONT.display, fontSize: '1.8rem', letterSpacing: '0.08em', color: UI.brass, margin: '0 0 0.8rem', fontWeight: 'normal' }}>
+            Niccolò Rising
+          </h1>
+          {children}
+        </div>
+      </div>
+      <PortalNav variant="footer" />
     </div>
   );
 }
