@@ -38,6 +38,7 @@ export function checkEliminations(state: GameState, by?: FactionId): GameState {
       delete cf[f.id];
       factions[other.id] = { ...other, ceasefires: cf };
     }
+    if (by !== undefined && factions[by]) factions[by] = { ...factions[by], stats: { ...factions[by].stats, eliminations: factions[by].stats.eliminations + 1 } };
     next = { ...next, factions };
     const who = by !== undefined && by !== NEUTRAL ? ` by ${factionName(next, by)}` : '';
     const text = `${factionName(next, f.id)} has been wiped from the map${who}.`;
@@ -61,8 +62,11 @@ export function economicTarget(state: GameState, faction: FactionId): number {
 function finish(state: GameState, winner: FactionId, type: VictoryType, branch?: TechBranch): GameState {
   const human = state.factions[winner]?.human ?? false;
   const how = type === 'conquest' ? 'by conquest' : type === 'economic' ? 'by economic dominance' : `by mastering ${branch} research`;
+  // The game can end in the middle of an AI turn; hand the view back to a human either way.
+  const viewer = human ? winner : (Object.values(state.factions).find(f => f.human && !f.eliminated)?.id ?? PLAYER);
   const next: GameState = {
     ...state,
+    activeFaction: viewer,
     status: human ? 'victory' : 'defeated',
     winner,
     victoryType: type,

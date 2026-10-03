@@ -52,6 +52,8 @@ export function upgradeCost(t: Territory): { gold: number; mat: number; pop: num
 }
 
 const int = (n: unknown) => typeof n === 'number' && Number.isInteger(n);
+/** Own-key lookup, so 'constructor' or '__proto__' is never mistaken for content. */
+const own = (o: object, k: unknown) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
 
 function shortfall(have: Resources, need: Partial<Resources>): string | null {
   const parts: string[] = [];
@@ -112,7 +114,7 @@ export function explain(state: GameState, action: GameAction): string | null {
     }
     case 'BUILD': {
       const t = node(action.nodeId);
-      const b = BUILDINGS[action.building];
+      const b = own(BUILDINGS, action.building) ? BUILDINGS[action.building] : undefined;
       if (!t || !b) return 'No such building or territory.';
       if (t.owner !== fid) return 'You can only build in your own territory.';
       const prereq = BUILDING_PREREQ[action.building];
@@ -146,7 +148,7 @@ export function explain(state: GameState, action: GameAction): string | null {
     }
     case 'RESEARCH': {
       if (!cfg.enableTechTree) return 'The tech tree is off in this game.';
-      const tech = TECH_BY_ID[action.techId];
+      const tech = own(TECH_BY_ID, action.techId) ? TECH_BY_ID[action.techId] : undefined;
       if (!tech) return 'No such technology.';
       if (f.research.includes(tech.id)) return `${tech.name} is already researched.`;
       if (tech.prereq && !f.research.includes(tech.prereq)) return `Research ${TECH_BY_ID[tech.prereq].name} first.`;
@@ -261,7 +263,7 @@ function recordAttack(state: GameState, by: FactionId, target: Territory, victim
 
 /** Every column of an attack, main column first. */
 export function attackColumns(a: Extract<GameAction, { type: 'ATTACK' }>): Array<{ fromId: number; troops: number }> {
-  return [{ fromId: a.fromId, troops: a.troops }, ...(a.support ?? [])];
+  return [{ fromId: a.fromId, troops: a.troops }, ...(Array.isArray(a.support) ? a.support : [])];
 }
 
 function attack(state: GameState, a: Extract<GameAction, { type: 'ATTACK' }>): GameState {

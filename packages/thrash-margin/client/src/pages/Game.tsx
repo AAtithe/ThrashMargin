@@ -25,8 +25,16 @@ import { FONT, UI } from '../theme';
 
 type Tab = 'command' | 'realm' | 'research' | 'log';
 
-export default function Game() {
+/**
+ * Keyed on the game id so moving to another game (the campaign's next act) starts from a clean
+ * screen: no undo history, selection or dismissed dialogs carried over from the last game.
+ */
+export default function GameRoute() {
   const { id } = useParams<{ id: string }>();
+  return <Game key={id} id={id} />;
+}
+
+function Game({ id }: { id: string | undefined }) {
   const nav = useNavigate();
   const game = useGameHybrid();
   const { state, loadGame } = game;
@@ -47,6 +55,8 @@ export default function Game() {
   const prevOwners = useRef<number[] | null>(null);
 
   useEffect(() => { if (id) void loadGame(id); }, [id, loadGame]);
+  // Keys must not reach a board the player cannot see (hot seat hand-over, the dispatch, the end).
+  const keysBlocked = useRef(false);
 
   // Territories that changed hands since the last render flash once.
   useEffect(() => {
@@ -90,14 +100,12 @@ export default function Game() {
   }, [state, game, selected, clear]);
 
   const undo = useCallback(() => {
-    setUndoStack(s => {
-      if (!s.length) return s;
-      game.restore(s[s.length - 1]);
-      return s.slice(0, -1);
-    });
+    if (!undoStack.length || state?.status !== 'active') return;
+    game.restore(undoStack[undoStack.length - 1]);
+    setUndoStack(undoStack.slice(0, -1));
     setTarget(null);
     setColumns(new Map());
-  }, [game]);
+  }, [game, undoStack, state]);
 
   const endTurn = useCallback(() => act({ type: 'END_TURN' }), [act]);
 
@@ -142,9 +150,10 @@ export default function Game() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (keysBlocked.current && e.key !== 'Escape') return;
       if (e.key === 'Escape') { if (!modal) clear(); }
-      else if (e.key === 'e' || e.key === 'E') { if (!modal && state?.status === 'active' && !state.pendingEvent) endTurn(); }
-      else if (e.key === 'z' || e.key === 'Z') undo();
+      else if (e.key === 'e' || e.key === 'E') { if (!modal && !e.repeat && state?.status === 'active' && !state.pendingEvent) endTurn(); }
+      else if (e.key === 'z' || e.key === 'Z') { if (!modal) undo(); }
       else if (e.key === 'l' || e.key === 'L') setModal(m => (m === 'ledger' ? null : 'ledger'));
       else if (e.key === '?') setModal(m => (m === 'help' ? null : 'help'));
     };
@@ -183,6 +192,7 @@ export default function Game() {
   const needPass = hotseat && !over && readyFor !== turnKey && (state.turn > 1 || me !== 1);
   const report = state.reports[me];
   const showDispatch = !needPass && !over && !state.pendingEvent && seenDispatch !== turnKey && reportHasNews(report);
+  keysBlocked.current = needPass || showDispatch || over;
   const kind = orderKind(state, selected, target);
   const marks: MapMarks = { ...marksFor(state, selected, target, columns), hit: new Set(report?.attacksSuffered.map(a => a.target) ?? []) };
   const sel = selected !== null ? state.nodes[selected] : null;

@@ -30,7 +30,7 @@ export const ACHIEVEMENTS: AchievementDef[] = [
   { id: 'regicide',          name: 'Regicide',          desc: 'Take a rival capital.',                      check: s => me(s).stats.capitalsTaken >= 1 },
   { id: 'speed_run',         name: 'Blitz',             desc: 'Win in 15 turns or fewer.',                  check: s => won(s) && s.turn <= 15 },
   { id: 'tech_savant',       name: 'Tech Savant',       desc: 'Research all 12 technologies.',              check: s => me(s).research.length >= TECH_TREE.length },
-  { id: 'warmonger',         name: 'Warmonger',         desc: 'Eliminate 2 rival factions.',                check: s => Object.values(s.factions).filter(f => f.id !== PLAYER && f.eliminated).length >= 2 },
+  { id: 'warmonger',         name: 'Warmonger',         desc: 'Eliminate 2 rival factions.',                check: s => me(s).stats.eliminations >= 2 },
   { id: 'economic_victory',  name: 'Merchant Prince',   desc: 'Win an economic victory.',                   check: s => won(s) && s.victoryType === 'economic' },
   { id: 'research_victory',  name: 'Renaissance',       desc: 'Win a research victory.',                    check: s => won(s) && s.victoryType === 'research' },
   { id: 'brutal_win',        name: 'Ironclad',          desc: 'Win on Brutal.',                             check: s => won(s) && s.config.diff === 'brutal' && !s.config.hotseat },

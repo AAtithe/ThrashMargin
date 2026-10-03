@@ -96,6 +96,8 @@ export interface FactionStats {
   troopsLost: number;
   capitalsTaken: number;
   starved: number;
+  /** Factions this one finished off. */
+  eliminations: number;
 }
 
 export interface FactionState {

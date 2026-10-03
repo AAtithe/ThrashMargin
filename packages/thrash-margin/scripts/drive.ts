@@ -291,6 +291,7 @@ section('capital falls: plunder, relocation, elimination, victory');
   const won = processAction(fin, { type: 'ATTACK', fromId: from, toId: other.id, troops: 39 });
   check(won.factions[2].eliminated, 'last territory taken: eliminated');
   check(won.status === 'victory' && won.winner === PLAYER && won.victoryType === 'conquest', 'conquest victory');
+  check(won.factions[PLAYER].stats.eliminations === 1, 'the finishing blow is credited');
   check(won.achievements.includes('first_blood') && won.achievements.includes('regicide'), 'achievements awarded');
   check(rejected(won, { type: 'END_TURN' }), 'nothing happens after the end');
 }
@@ -383,7 +384,16 @@ section('illegal actions return the same state object');
     { type: 'CHOICE', choiceIndex: 0 },
     { type: 'TRADE', resource: 'gold', side: 'buy', lots: 1 },
     { type: 'NOPE' },
+    { type: 'RESEARCH', techId: 'constructor' },
+    { type: 'BUILD', nodeId: 0, building: '__proto__' },
   ] as unknown as GameAction[]) check(rejected(s, a), `${a.type} rejected by reference`);
+  // Malformed support must not throw: it is treated as no support.
+  let t = patchNode(s, s.nodes.find(n => n.owner === PLAYER)!.id, { troops: 8 });
+  const cap = t.nodes.find(n => n.owner === PLAYER)!;
+  const nb = neighboursOf(t, cap.id)[0];
+  let threw = false;
+  try { t = processAction(t, { type: 'ATTACK', fromId: cap.id, toId: nb, troops: 6, support: {} } as unknown as GameAction); } catch { threw = true; }
+  check(!threw, 'a non-array support list does not throw');
 }
 
 section('version 1 saves migrate');
@@ -446,6 +456,7 @@ function invariants(s: GameState, where: string) {
       if (s.factions[Number(o)]?.ceasefires[f.id] !== t) { check(false, `${where}: one-sided ceasefire ${f.id}/${o}`); return; }
     }
   }
+  if (!s.factions[s.activeFaction]?.human) { check(false, `${where}: AI faction ${s.activeFaction} left as the viewer`); return; }
   if (s.status === 'active') {
     if (!s.factions[s.activeFaction]?.human) { check(false, `${where}: AI faction ${s.activeFaction} left active`); return; }
     if (s.actionsLeft < 0) { check(false, `${where}: negative AP`); return; }

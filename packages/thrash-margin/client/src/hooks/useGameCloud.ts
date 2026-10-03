@@ -40,26 +40,44 @@ export function useGameCloud(): GameHook {
   // useGameHybrid mounts this hook for signed-out sessions too; an unauthenticated list only 401s.
   useEffect(() => { if (getToken()) void fetchSaves(); }, [fetchSaves]);
 
-  const flush = useCallback(async (keepalive = false) => {
+  // One PUT at a time, always carrying the newest state. Two in flight could land out of order and
+  // leave the server holding the older one.
+  const inFlight = useRef<Promise<void> | null>(null);
+
+  const flush = useCallback(async (closing = false): Promise<void> => {
     if (timer.current) { window.clearTimeout(timer.current); timer.current = null; }
+    if (inFlight.current && !closing) {
+      await inFlight.current;
+      // Another flush may have started while this one waited.
+      if ((inFlight.current as Promise<void> | null) !== null) return flush(closing);
+    }
     const s = pending.current;
     if (!s) return;
     pending.current = null;
     setSaveStatus('saving');
-    try {
-      const res = await fetch(`${API}/api/game?id=${encodeURIComponent(s.id)}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({ state: s }),
-        keepalive,
-      });
-      if (res.status === 401) { setError(SESSION_EXPIRED); setSaveStatus('error'); return; }
-      setSaveStatus(res.ok ? 'saved' : 'error');
-    } catch {
-      setSaveStatus('error');
-      // Keep it queued so the next change or End Turn retries.
-      if (!pending.current) pending.current = s;
-    }
+    const body = JSON.stringify({ state: s });
+    const run = (async () => {
+      try {
+        const res = await fetch(`${API}/api/game?id=${encodeURIComponent(s.id)}`, {
+          method: 'PUT',
+          headers: authHeaders(),
+          body,
+          // Browsers refuse keepalive bodies over 64 KB; a long game's state can pass that.
+          keepalive: closing && body.length < 60_000,
+        });
+        if (res.status === 401) { setError(SESSION_EXPIRED); setSaveStatus('error'); }
+        else if (!res.ok) throw new Error(String(res.status));
+        else setSaveStatus(pending.current ? 'saving' : 'saved');
+      } catch {
+        setSaveStatus('error');
+        // Keep it queued so the next change or End Turn retries, unless something newer is waiting.
+        if (!pending.current) pending.current = s;
+      }
+    })();
+    inFlight.current = run;
+    await run;
+    inFlight.current = null;
+    if (pending.current && !timer.current && !closing) void flush();
   }, []);
 
   const queueSave = useCallback((s: GameState, now: boolean) => {

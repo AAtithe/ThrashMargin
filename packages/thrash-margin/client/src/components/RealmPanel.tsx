@@ -79,7 +79,7 @@ function Standings({ state, act }: { state: GameState; act: (a: GameAction) => v
                 </span>
                 <span className="tm-num" style={{ textAlign: 'right', fontFamily: FONT.data }}>{state.nodes.filter(n => n.owner === f.id).length}</span>
                 <span className="tm-num" style={{ textAlign: 'right', fontFamily: FONT.data }}>{fog && f.id !== me ? '?' : troopsOf(state, f.id)}</span>
-                <span className="tm-num" style={{ textAlign: 'right', fontFamily: FONT.data, color: UI.textSoft }}>{scoreOf(state, f.id)}</span>
+                <span className="tm-num" style={{ textAlign: 'right', fontFamily: FONT.data, color: UI.textSoft }}>{fog && f.id !== me ? '?' : scoreOf(state, f.id)}</span>
               </div>
               {why !== undefined && peace === 0 && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 4 }}>

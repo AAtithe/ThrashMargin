@@ -78,7 +78,7 @@ export function presetConfig(diff: Difficulty, overrides: Partial<GameConfig> = 
 // ---------------------------------------------------------------------------
 
 export const emptyStats = (): FactionStats => ({
-  battlesWon: 0, battlesLost: 0, captures: 0, annexed: 0, ceasefires: 0, troopsLost: 0, capitalsTaken: 0, starved: 0,
+  battlesWon: 0, battlesLost: 0, captures: 0, annexed: 0, ceasefires: 0, troopsLost: 0, capitalsTaken: 0, starved: 0, eliminations: 0,
 });
 
 function newFaction(id: FactionId, human: boolean, resources: Resources, research: string[]): FactionState {

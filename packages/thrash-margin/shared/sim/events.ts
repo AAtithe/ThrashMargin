@@ -118,12 +118,14 @@ export const EVENTS: EventDef[] = [
     text: 'Deserters from a rival army offer their swords, for a price.',
     choices: [
       {
-        label: 'Hire them', desc: '20 gold for 5 troops at your capital', cost: { gold: 20 },
+        label: 'Hire them', desc: '20 gold for 5 troops at your capital (less if it is nearly full)', cost: { gold: 20 },
         apply: (s, f) => {
           const cap = s.nodes.find(n => n.owner === f && n.capital);
           if (!cap) return s;
           const room = Math.max(0, troopCapOf(cap) - cap.troops);
-          return changeTroops(addResources(s, f, { gold: -20 }), cap.id, Math.min(5, room), 0);
+          // No room at the capital, no deal: nobody pays for deserters with nowhere to stand.
+          if (room === 0) return s;
+          return changeTroops(addResources(s, f, { gold: -Math.ceil(20 * Math.min(5, room) / 5) }), cap.id, Math.min(5, room), 0);
         },
       },
       { label: 'Decline', desc: 'No effect', apply: s => s },
