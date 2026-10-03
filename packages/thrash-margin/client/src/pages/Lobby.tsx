@@ -203,7 +203,7 @@ export default function Lobby() {
             <p style={s.gateSubtitle}>
               Sign in to keep your campaigns on your account.
             </p>
-            <button style={s.gatePrimary} onClick={() => nav('/login')}>Sign in / Register →</button>
+            <button style={s.gatePrimary} onClick={() => nav('/login?next=/thrash-margin/')}>Sign in / Register →</button>
           </div>
         </div>
         <PortalNav variant="footer" />
@@ -233,7 +233,7 @@ export default function Lobby() {
               </button>
             </>
           ) : (
-            <button style={{ ...s.authBtn, background: '#1f6feb', color: '#fff' }} onClick={() => nav('/login')}>
+            <button style={{ ...s.authBtn, background: '#1f6feb', color: '#fff' }} onClick={() => nav('/login?next=/thrash-margin/')}>
               Sign in
             </button>
           )}

@@ -1,9 +1,17 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { getToken, setToken, setStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
+
+/**
+ * Where to go after signing in: the page that sent you here (`?next=/niccolo/`), else the portal's
+ * welcome page. Same-site paths only, so the parameter cannot bounce a fresh session elsewhere.
+ */
+function destination(): string {
+  const next = new URLSearchParams(window.location.search).get('next');
+  return next && next.startsWith('/') && !next.startsWith('//') ? next : '/';
+}
 
 export default function Login() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -12,11 +20,10 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const nav = useNavigate();
 
   useEffect(() => {
-    if (getToken()) nav('/');
-  }, [nav]);
+    if (getToken()) window.location.replace(destination());
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +42,8 @@ export default function Login() {
       if (!res.ok) { setError(data.message ?? 'Failed'); return; }
       setToken(data.token);
       setStoredUser({ userId: data.userId, username: data.username, isAdmin: data.isAdmin === true });
-      nav('/');
+      // A full page load, not a router push: the destination is usually another app on the portal.
+      window.location.assign(destination());
     } catch {
       setError('Network error — try again');
     } finally {

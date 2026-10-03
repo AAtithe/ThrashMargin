@@ -70,7 +70,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
             </button>
           </>
         ) : (
-          <a href="/thrash-margin/login" style={styles.link}>
+          <a href="/thrash-margin/login?next=/steady-eddie/" style={styles.link}>
             Sign in
           </a>
         )}
