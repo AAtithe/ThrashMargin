@@ -26,7 +26,7 @@ const CARD: React.CSSProperties = {
   border: `1px solid ${UI.rule}`,
   borderLeft: `3px solid ${UI.bad}`,
   padding: '0.7rem 0.9rem',
-  boxShadow: '0 6px 20px rgba(0,0,0,0.5)',
+  boxShadow: `0 6px 20px ${UI.shadow}`,
   fontFamily: FONT.body,
 };
 

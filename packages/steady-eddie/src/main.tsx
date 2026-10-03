@@ -3,15 +3,13 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Lobby from './pages/Lobby';
 import GameScreen from './pages/GameScreen';
-import { UI } from './theme';
+import { applyScheme, initialScheme } from './lib/colorScheme';
+import './portal.css';
 import './styles.css';
 
-// The game commits to one dark, warm palette rather than following the OS theme — it is a chart
-// room, not a document. Setting it on the document root keeps the browser's own scrollbars and
-// form controls in step with it.
-document.documentElement.style.colorScheme = 'dark';
-document.body.style.margin = '0';
-document.body.style.background = UI.ground;
+// Light or dark is the player's choice, shared across the portal (lib/colorScheme.ts). index.html
+// has already set it before first paint; this keeps the two in step if that script was skipped.
+applyScheme(initialScheme());
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

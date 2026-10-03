@@ -63,7 +63,7 @@ const TAB_ACTIVE: React.CSSProperties = {
   ...TAB,
   color: UI.brass,
   borderBottom: `2px solid ${UI.brass}`,
-  background: 'rgba(208,154,78,0.09)',
+  background: UI.tintBrass,
 };
 
 const GLYPH: React.CSSProperties = { fontSize: '0.95rem', lineHeight: 1 };

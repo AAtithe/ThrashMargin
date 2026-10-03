@@ -11,7 +11,7 @@ const CARD: React.CSSProperties = {
   width: '20rem',
   background: UI.panelRaised,
   border: `1px solid ${INK}`,
-  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px rgba(0,0,0,0.6)`,
+  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px ${UI.shadow}`,
   padding: '1.1rem',
   fontFamily: FONT.body,
   color: UI.text,
@@ -300,7 +300,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
         height: rect.height + PADDING * 2,
         borderRadius: 6,
         border: `2px solid ${GOLD}`,
-        boxShadow: '0 0 0 9999px rgba(13, 20, 25, 0.78)',
+        boxShadow: `0 0 0 9999px ${UI.scrim}`,
         pointerEvents: 'none',
         transition: 'all 0.2s ease',
       }
@@ -334,7 +334,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
             position: 'fixed',
             inset: 0,
             zIndex: 101,
-            background: 'rgba(13, 20, 25, 0.6)',
+            background: UI.scrim,
           }}
         />
       )}

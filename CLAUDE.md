@@ -94,5 +94,11 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   three difficulty levels once read as non-monotonic purely from sampling.
 - **Load the page after adding a React hook.** Hooks placed after an early return render
   conditionally; `tsc` and the harness both pass and the screen is blank.
+- **Light and dark mode: colours are CSS variables.** Each game's `theme.ts` hands out
+  `var(--…)` strings; the values, one block per mode, are in that game's `styles.css` (portal
+  chrome in `portal.css`, identical in every package). `lib/colorScheme.ts` stores the choice under
+  `tm_theme`, shared by all five games and the landing page, and each `index.html` applies it before
+  first paint. A new colour is a token in both blocks, never a hex literal in a component, and never
+  hex alpha appended to a token (`${UI.bad}55` is invalid CSS). Check both modes in the browser.
 - **Never `git add -A` without reading `git status` first.** A commit in this repo once swept four
   other games' uncommitted lobby changes in under an unrelated message. Stage deliberately.

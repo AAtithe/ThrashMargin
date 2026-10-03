@@ -163,20 +163,20 @@ export default function Admin() {
     return (
       <Shell>
         <Centered>
-          <p style={{ color: '#7d8590', fontSize: 14 }}>Sign in to continue.</p>
+          <p style={{ color: 'var(--portal-soft)', fontSize: 14 }}>Sign in to continue.</p>
           <Link to="/login" style={s.signInLink}>Sign in →</Link>
         </Centered>
       </Shell>
     );
   }
 
-  if (loading) return <Shell><Centered><p style={{ color: '#7d8590' }}>Loading…</p></Centered></Shell>;
+  if (loading) return <Shell><Centered><p style={{ color: 'var(--portal-soft)' }}>Loading…</p></Centered></Shell>;
 
   if (deniedReason) {
     return (
       <Shell>
         <Centered>
-          <p style={{ color: '#f85149', fontSize: 14, fontWeight: 600 }}>
+          <p style={{ color: 'var(--portal-bad)', fontSize: 14, fontWeight: 600 }}>
             {deniedReason === 'forbidden' ? 'Admin access only.' : 'Session expired — sign in again.'}
           </p>
           {deniedReason === 'unauthorized' && <Link to="/login" style={s.signInLink}>Sign in →</Link>}
@@ -194,14 +194,14 @@ export default function Admin() {
 
         <section style={s.section}>
           <h2 style={s.h2}>Users ({users?.length ?? 0})</h2>
-          {roleError && <p style={{ color: '#f85149', fontSize: 13, margin: '0 0 10px' }}>{roleError}</p>}
+          {roleError && <p style={{ color: 'var(--portal-bad)', fontSize: 13, margin: '0 0 10px' }}>{roleError}</p>}
           {tempPassword && (
             <div style={s.notice}>
               <div>
                 Temporary password for <strong>{tempPassword.username}</strong>:{' '}
                 <code style={s.code}>{tempPassword.password}</code>
               </div>
-              <div style={{ color: '#7d8590', marginTop: 4 }}>
+              <div style={{ color: 'var(--portal-soft)', marginTop: 4 }}>
                 Shown once. Pass it on privately; they should change it on their Profile page after signing in.
               </div>
               <button onClick={() => setTempPassword(null)} style={{ ...s.roleBtn, marginLeft: 0, marginTop: 8 }}>Done</button>
@@ -224,7 +224,7 @@ export default function Admin() {
                     <td style={s.td}>
                       <span style={u.role === 'admin' ? s.roleAdmin : s.roleUser}>{u.role}</span>
                       {u.id === myId ? (
-                        <span style={{ fontSize: 11, color: '#4b5563', marginLeft: 8 }}>you</span>
+                        <span style={{ fontSize: 11, color: 'var(--portal-faint)', marginLeft: 8 }}>you</span>
                       ) : (
                         <>
                           <button onClick={() => changeRole(u)} style={s.roleBtn}>
@@ -261,9 +261,9 @@ export default function Admin() {
                     <tr key={e.id}>
                       <td style={s.td}>{fmtDate(e.at)}</td>
                       <td style={s.td}>
-                        <span style={{ color: '#e6edf3', fontWeight: 600 }}>{e.actor}</span>{' '}
+                        <span style={{ color: 'var(--portal-text)', fontWeight: 600 }}>{e.actor}</span>{' '}
                         {AUDIT_VERBS[e.action] ?? e.action}{' '}
-                        <span style={{ color: '#e6edf3', fontWeight: 600 }}>{e.target}</span>
+                        <span style={{ color: 'var(--portal-text)', fontWeight: 600 }}>{e.target}</span>
                       </td>
                     </tr>
                   ))}
@@ -271,7 +271,7 @@ export default function Admin() {
               </table>
             </div>
           ) : (
-            <p style={{ color: '#7d8590', fontSize: 13 }}>No access changes recorded yet.</p>
+            <p style={{ color: 'var(--portal-soft)', fontSize: 13 }}>No access changes recorded yet.</p>
           )}
         </section>
 
@@ -293,17 +293,17 @@ export default function Admin() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                   <span style={s.badge}>{TYPE_ICONS[item.type] ?? ''} {item.type}</span>
                   <span style={s.badgeMuted}>{GAME_LABELS[item.game] ?? item.game}</span>
-                  <span style={{ fontSize: 12, color: '#7d8590' }}>by {item.username}</span>
-                  <span style={{ fontSize: 11, color: '#4b5563', marginLeft: 'auto' }}>{fmtDate(item.createdAt)}</span>
+                  <span style={{ fontSize: 12, color: 'var(--portal-soft)' }}>by {item.username}</span>
+                  <span style={{ fontSize: 11, color: 'var(--portal-faint)', marginLeft: 'auto' }}>{fmtDate(item.createdAt)}</span>
                 </div>
-                <p style={{ margin: '0 0 8px', color: '#e6edf3', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{item.message}</p>
+                <p style={{ margin: '0 0 8px', color: 'var(--portal-text)', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{item.message}</p>
                 <button onClick={() => toggleStatus(item)} style={item.status === 'open' ? s.resolveBtn : s.reopenBtn}>
                   {item.status === 'open' ? '✓ Mark resolved' : '↺ Reopen'}
                 </button>
               </div>
             ))}
             {!visibleFeedback.length && (
-              <p style={{ color: '#7d8590', fontSize: 13 }}>Nothing here.</p>
+              <p style={{ color: 'var(--portal-soft)', fontSize: 13 }}>Nothing here.</p>
             )}
           </div>
         </section>
@@ -324,7 +324,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ flex: 1, background: '#0d1117', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, fontFamily: 'system-ui,sans-serif', minHeight: '60vh' }}>
+    <div style={{ flex: 1, background: 'var(--portal-ground)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, fontFamily: 'system-ui,sans-serif', minHeight: '60vh' }}>
       {children}
     </div>
   );
@@ -332,28 +332,28 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 const s: Record<string, React.CSSProperties> = {
   outer:   { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  page:    { flex: 1, background: '#0d1117', fontFamily: 'system-ui,sans-serif', padding: '32px 40px', color: '#e6edf3' },
+  page:    { flex: 1, background: 'var(--portal-ground)', fontFamily: 'system-ui,sans-serif', padding: '32px 40px', color: 'var(--portal-text)' },
   title:   { fontSize: 24, fontWeight: 700, margin: '0 0 24px', letterSpacing: -0.5 },
   section: { marginBottom: 40 },
-  h2:      { fontSize: 15, fontWeight: 700, color: '#9198a1', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 12px' },
-  tableWrap: { overflowX: 'auto', border: '1px solid #30363d', borderRadius: 8 },
+  h2:      { fontSize: 15, fontWeight: 700, color: 'var(--portal-softer)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 12px' },
+  tableWrap: { overflowX: 'auto', border: '1px solid var(--portal-rule)', borderRadius: 8 },
   table:   { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
-  th:      { textAlign: 'left', padding: '9px 12px', background: '#161b22', color: '#7d8590', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid #30363d', whiteSpace: 'nowrap' },
-  td:      { padding: '9px 12px', borderBottom: '1px solid #21262d', color: '#c9d1d9', whiteSpace: 'nowrap' },
-  tdStrong:{ padding: '9px 12px', borderBottom: '1px solid #21262d', color: '#e6edf3', fontWeight: 600, whiteSpace: 'nowrap' },
-  tdNum:   { padding: '9px 12px', borderBottom: '1px solid #21262d', color: '#c9d1d9', textAlign: 'center' },
-  filterRow: { display: 'flex', gap: 4, background: '#161b22', borderRadius: 6, padding: 3 },
-  filterOn:  { padding: '5px 12px', border: 'none', background: '#21262d', color: '#e6edf3', borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
-  filterOff: { padding: '5px 12px', border: 'none', background: 'transparent', color: '#7d8590', borderRadius: 4, fontSize: 12, cursor: 'pointer' },
-  feedbackCard: { background: '#161b22', border: '1px solid #30363d', borderRadius: 8, padding: '14px 16px' },
-  badge:      { fontSize: 11, fontWeight: 700, color: '#e6edf3', background: '#21262d', border: '1px solid #30363d', borderRadius: 4, padding: '2px 8px', textTransform: 'capitalize' },
-  badgeMuted: { fontSize: 11, color: '#7d8590', background: '#0d1117', border: '1px solid #21262d', borderRadius: 4, padding: '2px 8px' },
-  resolveBtn: { background: 'none', border: '1px solid #2ea043', color: '#3fb950', borderRadius: 5, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-  reopenBtn:  { background: 'none', border: '1px solid #30363d', color: '#7d8590', borderRadius: 5, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-  roleAdmin:  { fontSize: 11, fontWeight: 700, color: '#d29922', textTransform: 'uppercase', letterSpacing: 0.4 },
-  roleUser:   { fontSize: 11, color: '#7d8590', textTransform: 'uppercase', letterSpacing: 0.4 },
-  roleBtn:    { marginLeft: 8, background: 'none', border: '1px solid #30363d', color: '#9198a1', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer' },
-  notice:     { background: '#161b22', border: '1px solid #d29922', borderRadius: 8, padding: '12px 14px', fontSize: 13, marginBottom: 12, color: '#e6edf3' },
-  code:       { fontFamily: 'ui-monospace, monospace', fontSize: 14, background: '#0d1117', border: '1px solid #30363d', borderRadius: 4, padding: '2px 6px', userSelect: 'all' },
-  signInLink: { color: '#1f6feb', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
+  th:      { textAlign: 'left', padding: '9px 12px', background: 'var(--portal-panel)', color: 'var(--portal-soft)', fontWeight: 600, fontSize: 11, textTransform: 'uppercase', letterSpacing: 0.4, borderBottom: '1px solid var(--portal-rule)', whiteSpace: 'nowrap' },
+  td:      { padding: '9px 12px', borderBottom: '1px solid var(--portal-raised)', color: 'var(--portal-text-mid)', whiteSpace: 'nowrap' },
+  tdStrong:{ padding: '9px 12px', borderBottom: '1px solid var(--portal-raised)', color: 'var(--portal-text)', fontWeight: 600, whiteSpace: 'nowrap' },
+  tdNum:   { padding: '9px 12px', borderBottom: '1px solid var(--portal-raised)', color: 'var(--portal-text-mid)', textAlign: 'center' },
+  filterRow: { display: 'flex', gap: 4, background: 'var(--portal-panel)', borderRadius: 6, padding: 3 },
+  filterOn:  { padding: '5px 12px', border: 'none', background: 'var(--portal-raised)', color: 'var(--portal-text)', borderRadius: 4, fontSize: 12, fontWeight: 600, cursor: 'pointer' },
+  filterOff: { padding: '5px 12px', border: 'none', background: 'transparent', color: 'var(--portal-soft)', borderRadius: 4, fontSize: 12, cursor: 'pointer' },
+  feedbackCard: { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 8, padding: '14px 16px' },
+  badge:      { fontSize: 11, fontWeight: 700, color: 'var(--portal-text)', background: 'var(--portal-raised)', border: '1px solid var(--portal-rule)', borderRadius: 4, padding: '2px 8px', textTransform: 'capitalize' },
+  badgeMuted: { fontSize: 11, color: 'var(--portal-soft)', background: 'var(--portal-ground)', border: '1px solid var(--portal-raised)', borderRadius: 4, padding: '2px 8px' },
+  resolveBtn: { background: 'none', border: '1px solid var(--portal-good-rule)', color: 'var(--portal-good)', borderRadius: 5, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
+  reopenBtn:  { background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-soft)', borderRadius: 5, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
+  roleAdmin:  { fontSize: 11, fontWeight: 700, color: 'var(--portal-warn)', textTransform: 'uppercase', letterSpacing: 0.4 },
+  roleUser:   { fontSize: 11, color: 'var(--portal-soft)', textTransform: 'uppercase', letterSpacing: 0.4 },
+  roleBtn:    { marginLeft: 8, background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-softer)', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer' },
+  notice:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-warn)', borderRadius: 8, padding: '12px 14px', fontSize: 13, marginBottom: 12, color: 'var(--portal-text)' },
+  code:       { fontFamily: 'ui-monospace, monospace', fontSize: 14, background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 4, padding: '2px 6px', userSelect: 'all' },
+  signInLink: { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
 };

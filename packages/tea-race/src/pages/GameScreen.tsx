@@ -25,6 +25,7 @@ import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
 import type { Contract, PortId } from '../sim/types';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function GameScreen() {
   const { id } = useParams();
@@ -159,6 +160,7 @@ export default function GameScreen() {
           </div>
         )}
 
+        <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
         <Button tone="quiet" onClick={() => navigate('/')}>
           Lobby
         </Button>
@@ -458,13 +460,13 @@ const seasonBanner: React.CSSProperties = {
   flexWrap: 'wrap',
   padding: '0.4rem 1rem',
   borderBottom: `1px solid ${UI.rule}`,
-  background: 'rgba(111, 176, 164, 0.07)',
+  background: UI.tintVerdigris,
 };
 
 const declarationBanner: React.CSSProperties = {
   padding: '0.5rem 1rem',
   borderBottom: `1px solid ${UI.rule}`,
-  background: 'rgba(217, 164, 65, 0.09)',
+  background: UI.tintWarn,
   fontFamily: FONT.body,
   fontSize: '0.82rem',
   color: UI.textSoft,
@@ -521,7 +523,7 @@ const turnBar: React.CSSProperties = {
 const backdrop: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(6, 11, 14, 0.92)',
+  background: UI.cover,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

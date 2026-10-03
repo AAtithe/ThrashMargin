@@ -23,6 +23,7 @@ import Lodging from '../components/places/Lodging';
 import Duels from '../components/places/Duels';
 import Bank from '../components/places/Bank';
 import type { PlaceProps, Verb } from '../components/types';
+import ThemeToggle from '../components/ThemeToggle';
 
 const PLACES = [
   { id: 'home', name: 'Home', Panel: Home },
@@ -110,6 +111,7 @@ export default function GameScreen() {
           <Link to="/" style={{ color: UI.textSoft, fontSize: '0.78rem', marginRight: '0.6rem', textDecoration: 'none' }}>
             ← Characters
           </Link>
+          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
           {PLACES.map(p => (
             <Button key={p.id} tone={p.id === place ? 'primary' : 'quiet'} onClick={() => setPlace(p.id)}>
               {p.name}

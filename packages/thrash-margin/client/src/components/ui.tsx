@@ -20,10 +20,10 @@ type Tone = 'primary' | 'default' | 'danger' | 'quiet' | 'move' | 'attack';
 const TONES: Record<Tone, CSSProperties> = {
   primary: { background: UI.accent, color: UI.accentInk, border: `1px solid ${UI.accent}`, fontWeight: 700 },
   default: { background: UI.panelRaised, color: UI.text, border: `1px solid ${UI.ruleStrong}` },
-  danger: { background: '#3a1d1b', color: '#f3c6c1', border: `1px solid ${UI.bad}` },
+  danger: { background: UI.dangerBg, color: UI.dangerText, border: `1px solid ${UI.bad}` },
   quiet: { background: 'transparent', color: UI.textSoft, border: `1px solid ${UI.rule}` },
-  move: { background: '#163330', color: '#c8efe9', border: `1px solid ${UI.move}` },
-  attack: { background: '#3a2316', color: '#f6d6c4', border: `1px solid ${UI.attack}` },
+  move: { background: UI.moveBg, color: UI.moveText, border: `1px solid ${UI.move}` },
+  attack: { background: UI.attackBg, color: UI.attackText, border: `1px solid ${UI.attack}` },
 };
 
 export function Button({ children, onClick, disabled, tone = 'default', title, icon, small, full, style }: {
@@ -163,11 +163,11 @@ export function Modal({ children, onClose, width = 460, label }: { children: Rea
     <div
       role="dialog" aria-modal="true" aria-label={label}
       onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(5,7,10,0.72)', zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+      style={{ position: 'fixed', inset: 0, background: UI.scrim, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
     >
       <div
         className="tm-modal" onClick={e => e.stopPropagation()}
-        style={{ background: UI.panel, border: `1px solid ${UI.ruleStrong}`, borderRadius: 12, width: '100%', maxWidth: width, maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 24px 60px rgba(0,0,0,0.5)' }}
+        style={{ background: UI.panel, border: `1px solid ${UI.ruleStrong}`, borderRadius: 12, width: '100%', maxWidth: width, maxHeight: '88vh', overflowY: 'auto', boxShadow: `0 24px 60px ${UI.shadow}` }}
       >
         {children}
       </div>

@@ -100,20 +100,20 @@ export default function Profile() {
     return (
       <Shell>
         <Centered>
-          <p style={{ color: '#7d8590', fontSize: 14 }}>Sign in to view your profile.</p>
+          <p style={{ color: 'var(--portal-soft)', fontSize: 14 }}>Sign in to view your profile.</p>
           <Link to="/login" style={s.link}>Sign in →</Link>
         </Centered>
       </Shell>
     );
   }
 
-  if (loading) return <Shell><Centered><p style={{ color: '#7d8590' }}>Loading…</p></Centered></Shell>;
+  if (loading) return <Shell><Centered><p style={{ color: 'var(--portal-soft)' }}>Loading…</p></Centered></Shell>;
 
   if (loadError || !profile) {
     return (
       <Shell>
         <Centered>
-          <p style={{ color: '#f85149', fontSize: 14, fontWeight: 600 }}>Session expired — sign in again.</p>
+          <p style={{ color: 'var(--portal-bad)', fontSize: 14, fontWeight: 600 }}>Session expired — sign in again.</p>
           <Link to="/login" style={s.link}>Sign in →</Link>
         </Centered>
       </Shell>
@@ -145,11 +145,11 @@ export default function Profile() {
                 <input style={s.input} type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} />
               </label>
               <label style={s.label}>
-                New password <span style={{ color: '#4b5563', fontWeight: 400 }}>(leave blank to keep current)</span>
+                New password <span style={{ color: 'var(--portal-faint)', fontWeight: 400 }}>(leave blank to keep current)</span>
                 <input style={s.input} type="password" autoComplete="new-password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
               </label>
               <label style={s.label}>
-                Current password <span style={{ color: '#4b5563', fontWeight: 400 }}>(required to save any change)</span>
+                Current password <span style={{ color: 'var(--portal-faint)', fontWeight: 400 }}>(required to save any change)</span>
                 <input style={s.input} type="password" autoComplete="current-password" value={currentPassword} onChange={e => setCurrentPassword(e.target.value)} />
               </label>
               {formError && <p style={s.error}>{formError}</p>}
@@ -166,8 +166,8 @@ export default function Profile() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ color: '#4b5563', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
-      <div style={{ color: '#e6edf3', fontSize: 16, fontWeight: 700 }}>{value}</div>
+      <div style={{ color: 'var(--portal-faint)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>{label}</div>
+      <div style={{ color: 'var(--portal-text)', fontSize: 16, fontWeight: 700 }}>{value}</div>
     </div>
   );
 }
@@ -184,7 +184,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (
-    <div style={{ flex: 1, background: '#0d1117', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, fontFamily: 'system-ui,sans-serif', minHeight: '60vh' }}>
+    <div style={{ flex: 1, background: 'var(--portal-ground)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, fontFamily: 'system-ui,sans-serif', minHeight: '60vh' }}>
       {children}
     </div>
   );
@@ -192,18 +192,18 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 const s: Record<string, React.CSSProperties> = {
   outer:    { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  page:     { flex: 1, background: '#0d1117', display: 'flex', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: '32px 16px' },
+  page:     { flex: 1, background: 'var(--portal-ground)', display: 'flex', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: '32px 16px' },
   col:      { display: 'flex', flexDirection: 'column', gap: 20, width: 420, maxWidth: '100%' },
-  card:     { background: '#161b22', border: '1px solid #30363d', borderRadius: 10, padding: '28px 32px' },
-  title:    { color: '#e6edf3', fontSize: 22, fontWeight: 700, margin: '0 0 2px', letterSpacing: -0.5 },
-  subtitle: { color: '#7d8590', margin: '0 0 20px', fontSize: 13 },
-  h2:       { fontSize: 13, fontWeight: 700, color: '#9198a1', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 18px' },
+  card:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: '28px 32px' },
+  title:    { color: 'var(--portal-text)', fontSize: 22, fontWeight: 700, margin: '0 0 2px', letterSpacing: -0.5 },
+  subtitle: { color: 'var(--portal-soft)', margin: '0 0 20px', fontSize: 13 },
+  h2:       { fontSize: 13, fontWeight: 700, color: 'var(--portal-softer)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 18px' },
   statGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px 20px' },
   form:     { display: 'flex', flexDirection: 'column', gap: 14 },
-  label:    { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: '#9198a1', fontWeight: 600 },
-  input:    { padding: '9px 12px', background: '#0d1117', border: '1px solid #30363d', borderRadius: 6, color: '#e6edf3', fontSize: 13, outline: 'none', fontWeight: 400 },
-  error:    { color: '#f85149', fontSize: 12, margin: 0 },
-  success:  { color: '#3fb950', fontSize: 12, margin: 0, fontWeight: 600 },
-  btn:      { marginTop: 4, padding: '10px 0', background: '#1f6feb', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
-  link:     { color: '#1f6feb', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
+  label:    { display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--portal-softer)', fontWeight: 600 },
+  input:    { padding: '9px 12px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none', fontWeight: 400 },
+  error:    { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
+  success:  { color: 'var(--portal-good)', fontSize: 12, margin: 0, fontWeight: 600 },
+  btn:      { marginTop: 4, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
+  link:     { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
 };

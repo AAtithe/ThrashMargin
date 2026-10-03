@@ -22,6 +22,7 @@ import { Button, Chip } from '../components/ui';
 import { marksFor, orderKind, suggestColumns, undoable } from '../game/plan';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { FONT, UI } from '../theme';
+import ThemeToggle from '../components/ThemeToggle';
 
 type Tab = 'command' | 'realm' | 'research' | 'log';
 
@@ -222,6 +223,7 @@ function Game({ id }: { id: string | undefined }) {
           {(f.resources.population > 0 || inc.population > 0) && <Chip kind="pop" value={f.resources.population} rate={inc.population} />}
         </div>
         <span className="tm-spacer" />
+        <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
         <SaveBadge status={game.saveStatus} />
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <IconButton icon="ledger" label="Ledger (L)" onClick={() => setModal('ledger')} />
@@ -291,7 +293,7 @@ function Game({ id }: { id: string | undefined }) {
         </div>
       )}
       {game.error && state && (
-        <div role="alert" style={{ position: 'fixed', left: 12, bottom: 12, background: '#2e1d1b', border: `1px solid ${UI.bad}`, color: '#f3c6c1', padding: '8px 12px', borderRadius: 8, fontSize: 12.5, zIndex: 250, maxWidth: 420 }}>{game.error}</div>
+        <div role="alert" style={{ position: 'fixed', left: 12, bottom: 12, background: UI.dangerBg, border: `1px solid ${UI.bad}`, color: UI.dangerText, padding: '8px 12px', borderRadius: 8, fontSize: 12.5, zIndex: 250, maxWidth: 420 }}>{game.error}</div>
       )}
 
       {needPass && <PassScreen state={state} onReady={() => setReadyFor(turnKey)} />}
@@ -342,7 +344,7 @@ function HoverCard({ state, id, x, y, seen }: { state: GameState; id: number; x:
   const fc = FACTION_COLORS[n.owner] ?? FACTION_COLORS[0];
   const left = Math.min(x + 14, window.innerWidth - 220);
   return (
-    <div className="tm-hide-mobile" style={{ position: 'fixed', left, top: y + 14, zIndex: 120, pointerEvents: 'none', background: UI.panel, border: `1px solid ${UI.ruleStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12, minWidth: 160, boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+    <div className="tm-hide-mobile" style={{ position: 'fixed', left, top: y + 14, zIndex: 120, pointerEvents: 'none', background: UI.panel, border: `1px solid ${UI.ruleStrong}`, borderRadius: 8, padding: '8px 10px', fontSize: 12, minWidth: 160, boxShadow: `0 8px 24px ${UI.shadow}` }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700 }}>
         <span style={{ width: 8, height: 8, borderRadius: 2, background: fc.fill }} />{n.name}
       </div>

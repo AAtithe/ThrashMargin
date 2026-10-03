@@ -206,7 +206,7 @@ export default function MapView({ state, visible, selected, target, marks, flash
       <div style={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', flexDirection: 'column', gap: 6 }} className="tm-zoom">
         {([['plus', () => zoomAt(1.25), 'Zoom in'], ['reset', fit, 'Reset view'], ['minus', () => zoomAt(0.8), 'Zoom out']] as const).map(([icon, fn, label]) => (
           <button key={icon} type="button" onClick={fn} aria-label={label} title={label}
-            style={{ width: 32, height: 32, borderRadius: 7, background: 'rgba(21,26,32,0.9)', border: `1px solid ${UI.ruleStrong}`, color: UI.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            style={{ width: 32, height: 32, borderRadius: 7, background: MAP.control, border: `1px solid ${UI.ruleStrong}`, color: UI.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={icon} size={14} />
           </button>
         ))}
@@ -286,14 +286,14 @@ const Region = memo(function Region({ n, path, c, seen, sel, tgt, attack, move, 
       <path d={path} fill={seen ? `url(#tm-${terrain})` : 'url(#tm-fog)'} />
       <path d={path} fill={fc.fill} opacity={neutral ? 0.12 : seen ? 0.5 : 0.28} />
       {flash && <path d={path} fill={fc.edge} style={{ animation: 'tm-flash 1.1s ease-out forwards', pointerEvents: 'none' }} />}
-      <path d={path} fill="none" stroke={neutral ? '#2b3036' : fc.edge} strokeWidth={neutral ? 1 : 1.6} strokeOpacity={neutral ? 1 : 0.85} />
+      <path d={path} fill="none" stroke={neutral ? MAP.neutralEdge : fc.edge} strokeWidth={neutral ? 1 : 1.6} strokeOpacity={neutral ? 1 : 0.85} />
       {plan && <path d={path} fill={plan} fillOpacity={0.12} stroke={plan} strokeWidth={2} strokeDasharray="6 4" style={{ animation: 'tm-ants 0.9s linear infinite' }} />}
       {ring && <path d={path} fill={ring} fillOpacity={0.18} stroke={ring} strokeWidth={3} />}
       {sel && <path d={path} fill="#fff" fillOpacity={0.08} stroke="#fff" strokeWidth={2.6} />}
       {column !== undefined && !sel && <path d={path} fill="none" stroke={UI.attack} strokeWidth={2} strokeOpacity={0.8} />}
 
       {/* Troop badge */}
-      <circle cx={c.x} cy={c.y} r={r} fill={neutral ? '#2a2e33' : fc.fill} stroke={n.capital ? UI.accent : neutral ? '#5b6068' : fc.edge} strokeWidth={n.capital ? 2.2 : 1.4} />
+      <circle cx={c.x} cy={c.y} r={r} fill={neutral ? MAP.neutralFill : fc.fill} stroke={n.capital ? UI.accent : neutral ? MAP.neutralRing : fc.edge} strokeWidth={n.capital ? 2.2 : 1.4} />
       <text x={c.x} y={c.y + 0.5} textAnchor="middle" dominantBaseline="middle" fontSize={seen ? (n.troops > 99 ? 8 : n.troops > 9 ? 10 : 11.5) : 11} fontWeight={800} fill={seen ? '#fff' : '#8b939c'} style={{ pointerEvents: 'none' }}>
         {seen ? n.troops : '?'}
       </text>
