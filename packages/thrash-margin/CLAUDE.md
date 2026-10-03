@@ -66,7 +66,7 @@ The game engine is pure TypeScript with no side effects. It takes a GameState an
 
 ### Phase 1 — Server foundation
 1. Set up Express server with TypeScript (server/src/index.ts)
-2. Connect to Postgres using the schema in server/src/db/schema.sql
+2. Connect to Postgres using the schema in db/schema.sql (repo root)
 3. Implement JWT auth: POST /api/auth/register, POST /api/auth/login
 4. Implement game CRUD: POST /api/game (create), GET /api/game/:id (fetch state)
 5. Implement POST /api/game/:id/action (validate + process + persist)
@@ -102,7 +102,7 @@ Port the game engine from shared/engine-reference.ts into server/src/engine/:
 |------|---------|
 | shared/types.ts | All shared TypeScript types |
 | shared/engine-reference.ts | Complete game engine from prototype |
-| server/src/db/schema.sql | Postgres schema |
+| ../../db/schema.sql | Postgres schema (repo root) |
 | server/.env.example | Environment variable template |
 | docker-compose.yml | Local Postgres setup |
 

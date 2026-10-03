@@ -69,6 +69,19 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 
 ## Working practices that have earned their place
 
+- **`npm run check` before pushing.** Every typecheck and every game's test suite in one command.
+  The Vercel build runs it first and does not deploy on failure; GitHub Actions runs it on every
+  push (`.github/workflows/ci.yml`).
+- **`npm run test:api` after touching anything under `api/`.** The server code against a real
+  Postgres that includes Supabase's own `auth.users` table, built from `db/schema.sql`, plus a second
+  pass on a pre-existing database to test the API's automatic setup. Needs
+  `API_TEST_DATABASE_URL` pointing at a local database (it is wiped). An admin bug once passed every
+  test and failed live because the test database lacked Supabase's tables.
+- **Adding a game:** one entry in `packages/thrash-margin/shared/games.ts` (feedback, profile and
+  admin read it), one line in `api/play/[kind].ts` (its saves endpoint), and its build in
+  `scripts/build-portal.sh` and `scripts/check.sh`. No new Vercel function.
+- **Schema changes** go in `db/schema.sql` and, for the live database, in
+  `packages/thrash-margin/api/_lib/schema.ts`, which applies them automatically on first use.
 - **`npm run drive` before trusting anything.** ~370,000 assertions over 20 seeds in a couple of
   seconds. Use a wide seed set: pathologies in this codebase's history showed up in some seeds and
   not others, and a five-seed run once reported two bugs fixed while they were still there.

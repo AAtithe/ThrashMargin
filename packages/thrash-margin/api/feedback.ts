@@ -2,12 +2,13 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from './_lib/db';
 import { getUser } from './_lib/auth';
 import { handleCors } from './_lib/cors';
+import { FEEDBACK_TOPICS } from '../shared/games';
 
-const VALID_GAMES = new Set(['general', 'thrash_margin', 'niccolo', 'tea_race', 'steady_eddie']);
+const VALID_GAMES = new Set(FEEDBACK_TOPICS.map(t => t.key));
 const VALID_TYPES = new Set(['bug', 'idea', 'comment']);
 const MAX_MESSAGE_LEN = 4000;
 
-// POST /api/feedback — any signed-in user, against any of the four games (or 'general' for
+// POST /api/feedback — any signed-in user, against any of the portal's games (or 'general' for
 // portal-wide notes). Read access is admin-only (see api/admin/feedback.ts) — submitters can't
 // list or see other people's feedback through this endpoint.
 export default async function handler(req: VercelRequest, res: VercelResponse) {

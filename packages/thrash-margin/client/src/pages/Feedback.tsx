@@ -2,16 +2,10 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getToken } from '../lib/token';
 import PortalNav from '../components/PortalNav';
+import { FEEDBACK_TOPICS } from 'shared/games';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
-const GAMES = [
-  { value: 'general',       label: 'General / Portal' },
-  { value: 'thrash_margin', label: 'Thrash Margin' },
-  { value: 'niccolo',       label: 'Banco di Niccolo' },
-  { value: 'tea_race',      label: 'The Tea Race' },
-  { value: 'steady_eddie',  label: 'Steady Eddie' },
-] as const;
 
 const TYPES = [
   { value: 'bug',     label: '🐛 Bug report' },
@@ -78,7 +72,7 @@ export default function Feedback() {
               <label style={s.label}>
                 Which game?
                 <select style={s.select} value={game} onChange={e => setGame(e.target.value)}>
-                  {GAMES.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+                  {FEEDBACK_TOPICS.map(g => <option key={g.key} value={g.key}>{g.label}</option>)}
                 </select>
               </label>
               <label style={s.label}>

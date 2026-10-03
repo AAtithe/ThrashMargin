@@ -16,6 +16,8 @@
     "drive:tea": "npm run drive --workspace=packages/tea-race",
     "drive:rising": "npm run drive --workspace=packages/niccolo-rising",
     "drive:se": "npm run drive --workspace=packages/steady-eddie",
-    "build:portal": "bash scripts/build-portal.sh"
+    "build:portal": "bash scripts/build-portal.sh",
+    "check": "bash scripts/check.sh",
+    "test:api": "tsx scripts/api-test.ts"
   }
 }

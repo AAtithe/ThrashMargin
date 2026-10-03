@@ -13,8 +13,8 @@ import { createInitialState } from '../../src/sim/state';
 const GAME_KIND = 'niccolo_rising';
 
 /**
- * One function for `/api/niccolo-rising/game` (list, create) and `?id=` (load, save, delete), for
- * the reason Steady Eddie's records: the Hobby plan's 12-function ceiling. This is the tenth.
+ * One function for `/api/play/niccolo-rising` (list, create) and `?id=` (load, save, delete), for
+ * the reason Steady Eddie's records: the Hobby plan's 12-function ceiling. All five games now share one function, api/play/[kind].ts.
  *
  * Every route calls getUser first and 401s without a verified token. That is the portal's real
  * sign-in boundary (CLAUDE.md, invariant 1) and must never be made optional.

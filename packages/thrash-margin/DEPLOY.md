@@ -14,17 +14,20 @@
 ## 1. Supabase — run the schema
 
 1. Go to your Supabase project → **SQL Editor**
-2. Paste the contents of `server/src/db/schema.sql` and run it
+2. Paste the contents of `db/schema.sql` (repo root) and run it
 3. Go to **Settings → Database → Connection string → Transaction mode**
 4. Copy the URL — it looks like:
    ```
    postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
    ```
    This is your `DATABASE_URL`.
-5. Admins: nothing to run. The `users.role` column is added automatically on first use. On a
-   database with no admin yet, the first sign-in whose username is listed exactly in
-   `ADMIN_USERNAMES` becomes admin; after that the variable is ignored and can be removed, and
-   admins are granted and removed on the portal's Admin page.
+5. Admins: nothing to run. The role column and the `login_failures` and `admin_audit` tables
+   are added automatically on first use. On a database with no admin yet, the first admin is the
+   first sign-in matching `ADMIN_USERNAMES` (capitals ignored), or failing that the oldest account;
+   after that the variable is ignored and can be removed, and admins are granted and removed on
+   the portal's Admin page.
+6. Backups: in Supabase, **Database → Backups**, confirm daily backups are listed. The table
+   definitions are in `db/schema.sql`, but the data exists only in Supabase and its backups.
 
 ---
 

@@ -9,7 +9,7 @@ import type { SaveMeta } from './useGameLocal';
 const SESSION_EXPIRED =
   'Your sign-in has expired. Use "Sign out" above, then sign in again to reach your characters.';
 
-const ENDPOINT = `${API}/api/niccolo-rising/game`;
+const ENDPOINT = `${API}/api/play/niccolo-rising`;
 
 /**
  * Cloud persistence for signed-in players, in the shared `games` table (`game = 'niccolo_rising'`).

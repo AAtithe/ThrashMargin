@@ -1,14 +1,50 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
+import type { Pool } from 'pg';
 import { getDb } from '../_lib/db';
 import { signToken } from '../_lib/auth';
 import { isAdmin } from '../_lib/admin';
+import { ensureSchema } from '../_lib/schema';
 import { handleCors } from '../_lib/cors';
 
 // Combines what were two separate functions (login.ts, register.ts) into one, dispatching on
 // the [mode] route param — Vercel's Hobby plan caps a deployment at 12 serverless functions.
 // URLs are unchanged: /api/auth/login and /api/auth/register still resolve here.
+
+// Sign-in attempt limit: after 10 wrong passwords for one username within 15 minutes, that
+// username is refused for the rest of the window, even with the right password. Keyed on the
+// lower-cased username whether or not the account exists, so the response does not reveal which
+// usernames are real. An admin's password reset clears the count.
+//
+// Fails open: if the count cannot be read, sign-in proceeds. Locking every player out because the
+// limiter's own table is unavailable would be the worse failure.
+const MAX_FAILURES = 10;
+const WINDOW = '15 minutes';
+
+async function tooManyFailures(db: Pool, key: string): Promise<boolean> {
+  try {
+    await ensureSchema(db);
+    const { rows } = await db.query(
+      `SELECT COUNT(*)::int AS n FROM login_failures WHERE username_key = $1 AND at > NOW() - $2::interval`,
+      [key, WINDOW],
+    );
+    return rows[0].n >= MAX_FAILURES;
+  } catch (err) {
+    console.error('login limiter read failed', err);
+    return false;
+  }
+}
+
+async function recordFailure(db: Pool, key: string): Promise<void> {
+  try {
+    await db.query('INSERT INTO login_failures (username_key) VALUES ($1)', [key]);
+    // Keeps the table small; nothing older than the window is ever read.
+    await db.query(`DELETE FROM login_failures WHERE at < NOW() - INTERVAL '1 day'`);
+  } catch (err) {
+    console.error('login limiter write failed', err);
+  }
+}
 
 async function login(req: VercelRequest, res: VercelResponse) {
   const { username, password } = req.body ?? {};
@@ -17,16 +53,29 @@ async function login(req: VercelRequest, res: VercelResponse) {
   }
 
   const db = getDb();
+  const key = String(username).toLowerCase().slice(0, 64);
+  if (await tooManyFailures(db, key)) {
+    return res.status(429).json({
+      message: 'Too many failed sign-in attempts. Try again in 15 minutes, or ask an admin to reset your password.',
+    });
+  }
   try {
     const { rows } = await db.query(
       'SELECT id, username, password FROM users WHERE username = $1',
       [username],
     );
     const user = rows[0];
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!user) {
+      await recordFailure(db, key);
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
     const match = await bcrypt.compare(String(password), user.password);
-    if (!match) return res.status(401).json({ message: 'Invalid credentials' });
+    if (!match) {
+      await recordFailure(db, key);
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    db.query('DELETE FROM login_failures WHERE username_key = $1', [key]).catch(() => {});
 
     // Non-blocking: a failed timestamp update shouldn't fail the login itself.
     db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]).catch(err =>

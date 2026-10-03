@@ -1,7 +1,7 @@
 {
   "buildCommand": "bash scripts/build-portal.sh",
   "outputDirectory": "dist",
-  "installCommand": "npm install",
+  "installCommand": "npm ci",
   "rewrites": [
     { "source": "/niccolo/(.*)", "destination": "/niccolo/index.html" },
     { "source": "/rising/(.*)", "destination": "/rising/index.html" },

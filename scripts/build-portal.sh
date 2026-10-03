@@ -9,6 +9,17 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+# The Thrash Margin client has its own lockfile outside the workspaces. `npm ci` installs exactly
+# what the lockfile records and fails if it is out of date, so a deploy cannot pick up different
+# library versions from the last one.
+echo "==> Installing Thrash Margin client dependencies"
+(cd packages/thrash-margin/client && npm ci --no-audit --no-fund)
+
+# Every typecheck and every game's test suite. A failure here stops the build, and a failed build
+# is never deployed: Vercel keeps serving the last good version.
+echo "==> Running checks"
+bash scripts/check.sh
+
 echo "==> Building Niccolo (base /niccolo/)"
 npm run build --workspace=packages/niccolo -- --base=/niccolo/
 
@@ -22,7 +33,7 @@ echo "==> Building Steady Eddie (base /steady-eddie/)"
 npm run build --workspace=packages/steady-eddie -- --base=/steady-eddie/
 
 echo "==> Building Thrash Margin client (base /thrash-margin/)"
-(cd packages/thrash-margin/client && npm install && npm run build -- --base=/thrash-margin/)
+(cd packages/thrash-margin/client && npm run build -- --base=/thrash-margin/)
 
 echo "==> Assembling dist/"
 rm -rf dist

@@ -26,7 +26,7 @@ export function useGame() {
 
   const fetchSaves = useCallback(async () => {
     try {
-      const res = await fetch(`${API}/api/game`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/play/thrash-margin`, { headers: authHeaders() });
       if (!res.ok) return;
       const data = await res.json();
       setSaves(data.saves ?? []);
@@ -34,14 +34,14 @@ export function useGame() {
   }, []);
 
   // Skip the fetch entirely when signed out — useGameHybrid mounts this hook unconditionally
-  // even for local-only players, and an unauthenticated /api/game call only ever 401s.
+  // even for local-only players, and an unauthenticated /api/play/thrash-margin call only ever 401s.
   useEffect(() => { if (getToken()) fetchSaves(); }, [fetchSaves]);
 
   const createGame = useCallback(async (config?: Partial<GameConfig>, name?: string): Promise<string | null> => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/api/game`, {
+      const res = await fetch(`${API}/api/play/thrash-margin`, {
         method: 'POST',
         headers: authHeaders(),
         body: JSON.stringify({ config, name }),
@@ -64,7 +64,7 @@ export function useGame() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API}/api/game?id=${gameId}`, { headers: authHeaders() });
+      const res = await fetch(`${API}/api/play/thrash-margin?id=${gameId}`, { headers: authHeaders() });
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to load game'); return; }
       setState(data.state);
@@ -93,7 +93,7 @@ export function useGame() {
         const current = latestStateRef.current;
         if (!current) return;
         try {
-          await fetch(`${API}/api/game?id=${gameId}`, {
+          await fetch(`${API}/api/play/thrash-margin?id=${gameId}`, {
             method: 'PUT',
             headers: authHeaders(),
             body: JSON.stringify({ state: current }),
@@ -107,7 +107,7 @@ export function useGame() {
 
   const deleteGame = useCallback(async (gameId: string) => {
     try {
-      await fetch(`${API}/api/game?id=${gameId}`, { method: 'DELETE', headers: authHeaders() });
+      await fetch(`${API}/api/play/thrash-margin?id=${gameId}`, { method: 'DELETE', headers: authHeaders() });
       setSaves(prev => prev.filter(s => s.id !== gameId));
     } catch { /* ignore */ }
   }, []);

@@ -14,7 +14,9 @@ import type { FreeplayGoal, RivalCount } from '../../src/sim/freeplay';
 const GAME_KIND = 'niccolo';
 
 /**
- * One Vercel function covering both `/api/niccolo/game` (list/create) and `/api/niccolo/game?id=:id`
+ * Served at /api/play/<game> through api/play/[kind].ts, which all five games now share.
+ *
+ * Originally one Vercel function of its own, covering both `/api/play/niccolo` (list/create) and `/api/play/niccolo?id=:id`
  * (load/save/delete) as a single function — the two were separate functions until a 4th
  * game's own pair would have pushed the Hobby-plan function count past its 12-function ceiling.
  * A path-based `[[...id]].ts` catch-all doesn't work here — that's a Next.js routing

@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { ensureSchema } from './schema';
 
 // Admin access is a role on the user's own row (`users.role`, 'user' | 'admin'), granted and
 // removed from the portal's Admin page by an existing admin.
@@ -6,8 +7,8 @@ import type { Pool } from 'pg';
 // Looked up by userId on every request, not read from the JWT: a token lives for up to 12 hours,
 // and a removed admin must lose access on their next request, not when their token expires.
 //
-// Nothing has to be run by hand. The first time this is called on a database without the column,
-// it adds it. While no account is an admin yet, the first admin is set automatically when they
+// Nothing has to be run by hand: the role column is added by ensureSchema (./schema.ts).
+// While no account is an admin yet, the first admin is set automatically when they
 // sign in (or load the welcome page), if either:
 //   - their username is in the old ADMIN_USERNAMES setting, ignoring capitals, and no other
 //     account shares that name ignoring capitals (so 'Tom' and 'tom' can never both qualify), or
@@ -15,31 +16,6 @@ import type { Pool } from 'pg';
 // Once any admin exists neither rule is ever used again, and the setting can be deleted.
 //
 // Fails closed. Any error means "not an admin".
-
-let schemaReady = false;
-
-async function ensureRoleColumn(db: Pool): Promise<void> {
-  if (schemaReady) return;
-  // Checked first because ALTER TABLE takes a table lock even when IF NOT EXISTS makes it a no-op.
-  // Must be scoped to our own schema: Supabase has its own auth.users table, which already has a
-  // `role` column. Unscoped, this check found that one, skipped adding ours, and every admin
-  // lookup then failed closed.
-  const { rowCount } = await db.query(
-    `SELECT 1 FROM information_schema.columns
-     WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'role'`,
-  );
-  if (!rowCount) {
-    await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'user'`);
-    await db.query(`
-      DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint
-                       WHERE conname = 'users_role_check' AND conrelid = 'users'::regclass) THEN
-          ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin'));
-        END IF;
-      END $$;`);
-  }
-  schemaReady = true;
-}
 
 // Old setting, lower-cased for the handover below.
 function legacyAdminNames(): string[] {
@@ -51,7 +27,7 @@ function legacyAdminNames(): string[] {
 
 export async function isAdmin(db: Pool, userId: string): Promise<boolean> {
   try {
-    await ensureRoleColumn(db);
+    await ensureSchema(db);
     const { rows } = await db.query('SELECT username, role FROM users WHERE id = $1', [userId]);
     const row = rows[0];
     if (!row) return false;
@@ -76,4 +52,24 @@ export async function isAdmin(db: Pool, userId: string): Promise<boolean> {
     console.error('admin role lookup failed', err);
     return false;
   }
+}
+
+export interface AuditEntry {
+  actorId: string;
+  actorUsername: string;
+  targetId: string;
+  targetUsername: string;
+  action: 'grant_admin' | 'remove_admin' | 'reset_password';
+  detail?: string;
+}
+
+// The permanent record of who changed whose access, shown on the Admin page. Written in the same
+// request as the change it records; a change whose audit row cannot be written is not made (the
+// callers run both in one transaction).
+export async function recordAudit(db: { query: Pool['query'] }, e: AuditEntry): Promise<void> {
+  await db.query(
+    `INSERT INTO admin_audit (actor_id, actor_username, target_id, target_username, action, detail)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [e.actorId, e.actorUsername, e.targetId, e.targetUsername, e.action, e.detail ?? null],
+  );
 }
