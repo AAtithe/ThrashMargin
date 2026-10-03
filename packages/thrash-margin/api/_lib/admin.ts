@@ -21,14 +21,19 @@ let schemaReady = false;
 async function ensureRoleColumn(db: Pool): Promise<void> {
   if (schemaReady) return;
   // Checked first because ALTER TABLE takes a table lock even when IF NOT EXISTS makes it a no-op.
+  // Must be scoped to our own schema: Supabase has its own auth.users table, which already has a
+  // `role` column. Unscoped, this check found that one, skipped adding ours, and every admin
+  // lookup then failed closed.
   const { rowCount } = await db.query(
-    `SELECT 1 FROM information_schema.columns WHERE table_name = 'users' AND column_name = 'role'`,
+    `SELECT 1 FROM information_schema.columns
+     WHERE table_schema = current_schema() AND table_name = 'users' AND column_name = 'role'`,
   );
   if (!rowCount) {
     await db.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'user'`);
     await db.query(`
       DO $$ BEGIN
-        IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_role_check') THEN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                       WHERE conname = 'users_role_check' AND conrelid = 'users'::regclass) THEN
           ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('user', 'admin'));
         END IF;
       END $$;`);
