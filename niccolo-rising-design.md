@@ -157,6 +157,24 @@ then. A mission may carry a deadline in real hours; if it passes, the mission fa
 taken up again from the start. Rewards are groats, experience, standing, items, lodging and
 honours, and once a scripted consequence: Simon's men put the player in the Infirmary.
 
+### 3.13 Houses (Phase 6)
+Four houses, from the novels: Charetty (Marian), the Medici bank (Portinari), St Pol and Ribérac
+(Jordan), and the Doria company (Pagano). Each has a level and standing to join, an entry fee, a
+rival, five ranks, and four repeatable contracts. All content in `content/houses.json`.
+
+- **Rank comes from favour**, and is derived rather than stored, so the two cannot disagree.
+  Favour comes from contracts, from gifts (50 groats a favour), and from duel wins.
+- **Perks** are the rank's totals, folded into the same perk sum courses use, so every existing verb
+  picks them up with no new code. Two are new: Medici interest and a Doria discount abroad.
+- **Dues** fall daily at the hour of joining. Three missed in a row and the house is done with you;
+  no house will take you for 24 hours after leaving one, by choice or not.
+- **Chains.** Duel wins each inside 30 minutes of the last build a chain: ×1.5 favour from 10,
+  ×2 from 25, ×3 from 50. A win against the house's rival counts double.
+- **Loyalty.** Members cannot fight their own house's people, unless their mission or contract
+  names that person (see the build log for why that exception exists).
+- **Contracts** are missions in miniature on the same objective machinery: one at a time, a
+  cooldown between, deadlines on some. An event counts for the mission and the contract at once.
+
 ---
 
 ## 4. Architecture
@@ -189,7 +207,7 @@ be revisited before any player-versus-player feature ships (see §6).
 | 3 | Game screen: status rail with live bars, one panel per place, the Chronicle | Done |
 | 4 | Driver: many seeds, months of compressed time, invariants and determinism | Done |
 | 5 | Missions: a Dunnett story spine told as Torn-style missions (the first novel's arc) | Done |
-| 6 | Houses (factions): join Charetty, Medici, St Pol or Doria; house perks and chain duels | Not started |
+| 6 | Houses (factions): join Charetty, Medici, St Pol or Doria; house perks and chain duels | Done |
 | 7 | Player versus player: server-authoritative clock and combat resolution in the API | Not started |
 
 ---
@@ -278,3 +296,41 @@ The first book takes two to three weeks of active play and most of a month of ca
 is the pace intended. Beating Simon is deliberately a long goal: at day 30 a keen character's
 battle stats (6,000) only just match his. Mission rewards are story, not income: about 0.2% of
 all groats earned, against about two-thirds from trade.
+
+### Phase 6, houses, 2026-10-03
+Built as §3.13 describes. Two new fields on the save (`house`, `houseLeftAt`), added by
+`migrateState` for older characters; checked by the driver and in the browser.
+
+**The risk designed for before writing code.** Dues and pay both fall daily, and whether a day's
+dues can be met depends on whether that day's pay came first. Processing all paydays and then all
+dues, as the code was shaped to do, would have made a purse depend on how often the player looked.
+Money is now settled in one pass in strict time order, credits before debits at the same moment
+(`settleMoney`). The driver tests it directly: dues set one minute before pay, an empty purse, five
+days in one step against five days in hourly steps. 117 runs, all identical.
+
+**Two faults found on the way, both by the driver's tables, neither by a failed assertion:**
+
+1. *A story soft-lock.* Felix belongs to Charetty and members cannot fight their own house, so
+   anyone who joined Charetty before the Phase 5 mission "Felix goes for a soldier" could never
+   finish the story: 25% of characters stuck. Fixed by allowing a fight with your own house's
+   people when your mission or contract names them. The content check now also refuses any house
+   contract that asks members to fight their own house.
+2. *A bug in the test bot itself* (`house !== house` with both undefined) hid fault 1 at first, by
+   stopping the bot fighting anyone houseless. The game's rule was right; the bot's copy of it was
+   wrong. A reminder that a test harness is code and can be wrong in exactly the ways the code
+   under test can.
+
+**The economy, which was the point.** Phase 4 left money with nothing to buy after a month.
+Median net worth at day 30, 40 seeds:
+
+| Rhythm | Before houses | With houses | Median rank at day 30 |
+|---|---|---|---|
+| Keen (every 2h) | 364,361 gr | 107,780 gr | 3 of 4 |
+| Steady (4 a day) | 224,859 gr | 101,614 gr | 3 |
+| Casual (twice a day) | 59,031 gr | 52,182 gr | 0 |
+
+Gifts to houses are now the largest sink. The top rank (12,000 favour) was raised from 6,000 after
+the first run showed keen players reaching it inside a month; it is meant to be a long goal, as
+Simon is. The cost: casual players reach "News from the south" a little less often by day 30
+(55%, from 73%), because dues and fees take money that went into travel. Worth watching, not
+fixing yet.

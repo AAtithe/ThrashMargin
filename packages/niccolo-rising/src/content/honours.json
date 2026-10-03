@@ -15,5 +15,8 @@
   {"id": "house_owner", "name": "A key of your own", "text": "Lodging that is yours."},
   {"id": "steen", "name": "Guest of the Steen", "text": "Your first night in the town prison."},
   {"id": "nicholas", "name": "Nicholas vander Poele", "text": "Claes the apprentice is gone. Married to the demoiselle de Charetty, master of the company."},
-  {"id": "first_mission", "name": "Running errands", "text": "Your first mission completed."}
+  {"id": "first_mission", "name": "Running errands", "text": "Your first mission completed."},
+  {"id": "house_join", "name": "Sworn to a house", "text": "You joined one of the great houses of Bruges."},
+  {"id": "house_top", "name": "At the head's right hand", "text": "The highest rank a house can give."},
+  {"id": "chain_25", "name": "A chain of twenty-five", "text": "Twenty-five duels won for your house, each inside half an hour of the last."}
 ]

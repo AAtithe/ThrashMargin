@@ -1,0 +1,142 @@
+[
+  {
+    "id": "charetty",
+    "name": "The house of Charetty",
+    "head": "Marian de Charetty",
+    "rival": "stpol",
+    "minLevel": 3,
+    "minStanding": 0,
+    "fee": 500,
+    "blurb": "Dyers, couriers and the employers of Astorre's company. A widow's business that the whole of Bruges underestimates, which is exactly how she likes it.",
+    "ranks": [
+      { "name": "Courier", "favour": 0, "dues": 15, "perks": { "travelPct": 3 } },
+      { "name": "Factor", "favour": 150, "dues": 50, "perks": { "travelPct": 6, "carry": 1, "payPct": 5 } },
+      { "name": "Agent", "favour": 800, "dues": 140, "perks": { "travelPct": 9, "carry": 2, "payPct": 10 } },
+      { "name": "Partner", "favour": 3000, "dues": 380, "perks": { "travelPct": 12, "carry": 3, "payPct": 15 } },
+      { "name": "Heir of the company", "favour": 12000, "dues": 950, "perks": { "travelPct": 15, "carry": 4, "payPct": 20 } }
+    ],
+    "contracts": [
+      { "id": "ch_london", "title": "The London letters", "minRank": 0, "hours": 12,
+        "brief": "A satchel of letters for the Lombard Street bankers, and three sacks of English wool on the way back.",
+        "objectives": [{ "kind": "arrive", "city": "london" }, { "kind": "deliver", "itemId": "wool", "qty": 3 }],
+        "reward": { "favour": 30, "groats": 150 } },
+      { "id": "ch_sluys", "title": "Clear the Sluys road", "minRank": 0,
+        "brief": "The dockside bullies at Sluys have been taxing the Charetty barges. Remind them whose barges they are.",
+        "objectives": [{ "kind": "duel", "opponentId": "bully", "count": 2 }],
+        "reward": { "favour": 25, "groats": 100 } },
+      { "id": "ch_kermes", "title": "Scarlet for the vats", "minRank": 1, "hours": 24,
+        "brief": "A Flemish lord wants scarlet for a wedding, and he wants it by Sunday. Two pots of Geneva kermes.",
+        "objectives": [{ "kind": "deliver", "itemId": "kermes", "qty": 2 }],
+        "reward": { "favour": 60, "groats": 300 } },
+      { "id": "ch_lances", "title": "Drill the lances", "minRank": 2,
+        "brief": "Astorre's company is idle between wars and idleness costs money. Put in the hours alongside them.",
+        "objectives": [{ "kind": "train", "amount": 150 }],
+        "reward": { "favour": 90, "groats": 0 } }
+    ]
+  },
+  {
+    "id": "medici",
+    "name": "The Medici bank",
+    "head": "Tommaso Portinari",
+    "rival": "doria",
+    "minLevel": 4,
+    "minStanding": 5,
+    "fee": 1500,
+    "blurb": "The Bruges branch of the greatest bank in Christendom, run by a man who lends to dukes against the advice of Florence. Membership is a seat at the green baize.",
+    "ranks": [
+      { "name": "Messenger", "favour": 0, "dues": 25, "perks": { "depositPct": 10 } },
+      { "name": "Clerk", "favour": 150, "dues": 70, "perks": { "depositPct": 20, "schemePct": 2 } },
+      { "name": "Correspondent", "favour": 800, "dues": 180, "perks": { "depositPct": 35, "schemePct": 4, "payPct": 5 } },
+      { "name": "Factor", "favour": 3000, "dues": 450, "perks": { "depositPct": 50, "schemePct": 6, "payPct": 10 } },
+      { "name": "Governor of the branch", "favour": 12000, "dues": 1100, "perks": { "depositPct": 75, "schemePct": 8, "payPct": 15 } }
+    ],
+    "contracts": [
+      { "id": "md_florence", "title": "Letters for the Via Larga", "minRank": 0, "hours": 24,
+        "brief": "Sealed letters for Cosimo's own counting house. Nobody opens them, nobody is late with them.",
+        "objectives": [{ "kind": "arrive", "city": "florence" }],
+        "reward": { "favour": 40, "groats": 250 } },
+      { "id": "md_cipher", "title": "Read the Genoese post", "minRank": 1,
+        "brief": "The Doria write to their Bruges factor in cipher. Portinari would like to know what they say.",
+        "objectives": [{ "kind": "scheme", "schemeId": "cipher", "count": 2 }],
+        "reward": { "favour": 70, "groats": 400 } },
+      { "id": "md_gold", "title": "Gold for the exchange", "minRank": 2, "hours": 48,
+        "brief": "The exchange at Bruges is short of specie. Two pouches of gold dust from beyond the desert would ease it considerably.",
+        "objectives": [{ "kind": "deliver", "itemId": "gold_dust", "qty": 2 }],
+        "reward": { "favour": 120, "groats": 800 } },
+      { "id": "md_capital", "title": "Capital for the branch", "minRank": 0,
+        "brief": "Portinari has lent the Duke more than Florence knows. Put money into the branch, quietly.",
+        "objectives": [{ "kind": "pay", "groats": 2000 }],
+        "reward": { "favour": 45 } }
+    ]
+  },
+  {
+    "id": "stpol",
+    "name": "St Pol and Ribérac",
+    "head": "Jordan de Ribérac",
+    "rival": "charetty",
+    "minLevel": 6,
+    "minStanding": 10,
+    "fee": 2500,
+    "blurb": "The vicomte de Ribérac's household and his son Simon's: Scottish lands, French titles, and a talent for violence that passes in their circle for honour. They reward those who are useful, and only for as long as they are.",
+    "ranks": [
+      { "name": "Man-at-arms", "favour": 0, "dues": 30, "perks": { "gymPct": 3 } },
+      { "name": "Bravo", "favour": 150, "dues": 80, "perks": { "gymPct": 6, "infirmaryPct": 5 } },
+      { "name": "Retainer", "favour": 800, "dues": 200, "perks": { "gymPct": 9, "infirmaryPct": 10, "steenPct": 10 } },
+      { "name": "Captain of the household", "favour": 3000, "dues": 500, "perks": { "gymPct": 12, "infirmaryPct": 15, "steenPct": 20 } },
+      { "name": "The vicomte's right hand", "favour": 12000, "dues": 1200, "perks": { "gymPct": 15, "infirmaryPct": 20, "steenPct": 30 } }
+    ],
+    "contracts": [
+      { "id": "sp_street", "title": "Teach the street manners", "minRank": 0,
+        "brief": "Simon has been laughed at in the Waterhalle. Find three people to make an example of.",
+        "objectives": [{ "kind": "duel", "count": 3 }],
+        "reward": { "favour": 35, "groats": 120 } },
+      { "id": "sp_toll", "title": "The Damme toll", "minRank": 0,
+        "brief": "The vicomte's barges pay no tolls. See that they continue not to.",
+        "objectives": [{ "kind": "scheme", "schemeId": "toll", "count": 3 }],
+        "reward": { "favour": 40, "groats": 200 } },
+      { "id": "sp_yard", "title": "Fit to serve", "minRank": 1,
+        "brief": "Jordan de Ribérac does not keep soft men. Two hundred points in the yards, and he will look at you twice.",
+        "objectives": [{ "kind": "train", "amount": 200 }],
+        "reward": { "favour": 80 } },
+      { "id": "sp_astorre", "title": "Astorre's men", "minRank": 2, "hours": 24,
+        "brief": "The Charetty's mercenaries have grown proud. Beat Thomas, Astorre's lieutenant, before the day is out.",
+        "objectives": [{ "kind": "duel", "opponentId": "thomas", "count": 1 }],
+        "reward": { "favour": 120, "groats": 600 } }
+    ]
+  },
+  {
+    "id": "doria",
+    "name": "The Doria company",
+    "head": "Pagano Doria",
+    "rival": "medici",
+    "minLevel": 5,
+    "minStanding": 5,
+    "fee": 2000,
+    "blurb": "Genoese shipowners with a galley in every harbour and a smile for every customs officer. Pagano Doria trades in anything, including people's trust.",
+    "ranks": [
+      { "name": "Deckhand", "favour": 0, "dues": 25, "perks": { "abroadPct": 3 } },
+      { "name": "Purser", "favour": 150, "dues": 70, "perks": { "abroadPct": 6, "carry": 1 } },
+      { "name": "Supercargo", "favour": 800, "dues": 180, "perks": { "abroadPct": 9, "carry": 2, "travelPct": 3 } },
+      { "name": "Master of a galley", "favour": 3000, "dues": 450, "perks": { "abroadPct": 12, "carry": 3, "travelPct": 6 } },
+      { "name": "Doria's partner", "favour": 12000, "dues": 1100, "perks": { "abroadPct": 15, "carry": 4, "travelPct": 9 } }
+    ],
+    "contracts": [
+      { "id": "dr_sugar", "title": "Sugar from Kouklia", "minRank": 0, "hours": 24,
+        "brief": "The Lusignan cane fields are selling cheap while Cyprus has two kings. Two loaves, before the price recovers.",
+        "objectives": [{ "kind": "deliver", "itemId": "sugar", "qty": 2 }],
+        "reward": { "favour": 40, "groats": 200 } },
+      { "id": "dr_galley", "title": "A second set of papers", "minRank": 1,
+        "brief": "A Florentine galley is in port with more silk than its papers admit to. Pagano would like the difference.",
+        "objectives": [{ "kind": "scheme", "schemeId": "galley", "count": 1 }],
+        "reward": { "favour": 70, "groats": 500 } },
+      { "id": "dr_medici", "title": "Embarrass the Medici", "minRank": 2, "hours": 24,
+        "brief": "Portinari's couriers carry more than letters. Win two fights in the street and the Medici look careless.",
+        "objectives": [{ "kind": "duel", "count": 2 }],
+        "reward": { "favour": 90, "groats": 300 } },
+      { "id": "dr_trebizond", "title": "The last Greek empire", "minRank": 3, "hours": 48,
+        "brief": "Trebizond is falling to the Turk and selling everything on its way down. Three bolts of silk from the last market in the empire.",
+        "objectives": [{ "kind": "arrive", "city": "trebizond" }, { "kind": "deliver", "itemId": "silk", "qty": 3 }],
+        "reward": { "favour": 160, "groats": 900 } }
+    ]
+  }
+]

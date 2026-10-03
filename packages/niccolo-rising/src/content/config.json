@@ -59,5 +59,28 @@
     ],
     "minDeposit": 100
   },
-  "dailyMarketSwing": 0.3
+  "dailyMarketSwing": 0.3,
+  "house": {
+    "chainMinutes": 30,
+    "chainTiers": [
+      {
+        "count": 10,
+        "mult": 1.5
+      },
+      {
+        "count": 25,
+        "mult": 2
+      },
+      {
+        "count": 50,
+        "mult": 3
+      }
+    ],
+    "rivalMult": 2,
+    "rejoinHours": 24,
+    "groatsPerFavour": 50,
+    "maxMissedDues": 3,
+    "contractCooldownMinutes": 60,
+    "duelFavourPerLevel": 1
+  }
 }

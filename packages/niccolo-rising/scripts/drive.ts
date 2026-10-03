@@ -37,8 +37,8 @@ import {
   xpToNext,
 } from '../src/sim/content';
 import { createInitialState, isCurrentShape, migrateState } from '../src/sim/state';
-import { MISSION, MISSIONS, activeStatus, availableMissions, isCounting, missionReady } from '../src/sim/missions';
-import { COURSE, DESTINATION, HONOUR, JOB as JOB_BY_ID, LODGING, OPPONENT, SCHEME } from '../src/sim/content';
+import { MISSION, MISSIONS, activeStatus, availableMissions, contractReady, contractStatus, isCounting, missionReady, objectiveCap } from '../src/sim/missions';
+import { CONTRACT, COURSE, DESTINATION, HONOUR, HOUSE, HOUSES, JOB as JOB_BY_ID, LODGING, OPPONENT, SCHEME, houseOf } from '../src/sim/content';
 import { next } from '../src/sim/rng';
 import { BAR_IDS, BATTLE_STATS, WORK_STATS } from '../src/sim/types';
 import type { BattleStat, GameAction, GameState } from '../src/sim/types';
@@ -95,7 +95,10 @@ function invariants(s: GameState, tag: string) {
   if (s.job) check(!!JOB[s.job.id] && s.job.rank >= 0 && s.job.rank < JOB[s.job.id].ranks.length, `${tag}: job`);
   check(new Set(s.honours).size === s.honours.length, `${tag}: duplicate honours`);
   check(new Set(s.coursesDone).size === s.coursesDone.length, `${tag}: duplicate courses`);
-  check(s.tripBought >= 0 && s.tripBought <= carryCapacity(s), `${tag}: tripBought ${s.tripBought}`);
+  // The limit is checked when buying, against the capacity at that moment. Capacity can fall
+  // afterwards (leaving a house whose rank carried more), so the counter is not bounded by it.
+  check(Number.isInteger(s.tripBought) && s.tripBought >= 0, `${tag}: tripBought ${s.tripBought}`);
+  if (s.status.kind === 'free') check(s.tripBought === 0, `${tag}: tripBought ${s.tripBought} left over at home`);
   for (const city of Object.keys(s.abroad))
     for (const m of DESTINATIONS.find(d => d.id === city)?.market ?? [])
       check(abroadStock(s, city, m.item) >= 0, `${tag}: stock`);
@@ -128,6 +131,29 @@ function invariants(s: GameState, tag: string) {
       check(a.deadline === null || a.deadline > a.accepted, `${tag}: deadline`);
     }
   }
+
+  // Houses.
+  check(s.houseLeftAt === null || typeof s.houseLeftAt === 'number', `${tag}: houseLeftAt`);
+  const h = s.house;
+  if (h) {
+    check(!!HOUSE[h.id], `${tag}: unknown house ${h.id}`);
+    check(Number.isInteger(h.favour) && h.favour >= 0, `${tag}: favour ${h.favour}`);
+    check(h.missedDues >= 0 && h.missedDues < CONFIG.house.maxMissedDues, `${tag}: missed dues ${h.missedDues}`);
+    check(h.duesDays >= 0 && h.chain.count >= 0, `${tag}: house counters`);
+    check(h.contractsDone >= 0, `${tag}: contractsDone`);
+    if (h.contract) {
+      const c = CONTRACT[h.contract.id];
+      check(!!c && c.house.id === h.id, `${tag}: contract ${h.contract.id} not offered by ${h.id}`);
+      if (c) {
+        check(h.contract.progress.length === c.contract.objectives.length, `${tag}: contract progress length`);
+        c.contract.objectives.forEach((o, i) => {
+          const p = h.contract!.progress[i];
+          check(p >= 0 && p <= objectiveCap(o), `${tag}: contract progress ${p}`);
+          if (!isCounting(o)) check(p === 0, `${tag}: contract holding objective with a count`);
+        });
+      }
+    }
+  }
 }
 
 /** Every id a mission names must exist, and the chain must be one unbroken line from the first. */
@@ -156,10 +182,67 @@ function checkMissionContent() {
   });
 }
 
+/** Every house is complete: ranks ascend from zero, contracts name real things, rivals exist. */
+function checkHouseContent() {
+  const ids = new Set<string>();
+  for (const h of HOUSES) {
+    check(!!HOUSE[h.rival] && h.rival !== h.id, `content: ${h.id} rival ${h.rival}`);
+    check(h.ranks[0]?.favour === 0, `content: ${h.id} first rank must need no favour`);
+    h.ranks.forEach((r, i) => {
+      if (i > 0) check(r.favour > h.ranks[i - 1].favour && r.dues >= h.ranks[i - 1].dues, `content: ${h.id} rank ${i} out of order`);
+    });
+    check(h.contracts.some(c => c.minRank === 0), `content: ${h.id} has nothing for a new member`);
+    for (const c of h.contracts) {
+      check(!ids.has(c.id), `content: duplicate contract ${c.id}`);
+      ids.add(c.id);
+      check(c.minRank < h.ranks.length && c.reward.favour > 0, `content: ${c.id} rank or reward`);
+      for (const o of c.objectives) {
+        if (o.kind === 'scheme' && o.schemeId) check(!!SCHEME[o.schemeId], `content: ${c.id} scheme`);
+        if (o.kind === 'duel' && o.opponentId) {
+          check(!!OPPONENT[o.opponentId], `content: ${c.id} opponent`);
+          check(OPPONENT[o.opponentId]?.house !== h.id, `content: ${c.id} asks members to fight their own house`);
+        }
+        if (o.kind === 'arrive') check(!!DESTINATION[o.city], `content: ${c.id} city`);
+        if (o.kind === 'deliver') check(DESTINATIONS.some(d => d.market.some(x => x.item === o.itemId)), `content: ${c.id} ${o.itemId} sold nowhere`);
+      }
+    }
+  }
+  for (const o of OPPONENTS) if (o.house) check(!!HOUSE[o.house], `content: ${o.id} house ${o.house}`);
+}
+
+/**
+ * The risk Phase 6 brought: dues and pay both fall daily, and whether dues can be paid depends on
+ * whether that day's pay arrived first. Set each day's dues one minute before its pay, with an empty
+ * purse, then compare five days in one step against five days in hourly steps.
+ */
+function checkMoneyOrder(s: GameState) {
+  if (!s.house || !s.job) return;
+  const d = JSON.parse(JSON.stringify(s)) as GameState;
+  const t0 = d.clock;
+  d.groats = 0;
+  d.deposit = null;
+  d.job!.since = t0 - DAY + MINUTE;
+  d.job!.paidDays = 0;
+  d.house!.joined = t0 - DAY;
+  d.house!.duesDays = 0;
+  d.house!.missedDues = 0;
+  d.house!.contract = null;
+  d.missions.active = null;
+  const big = processAction(d, { type: 'TICK', at: t0 + 5 * DAY });
+  let small = d;
+  for (let t = t0 + HOUR; t < t0 + 5 * DAY; t += HOUR) small = processAction(small, { type: 'TICK', at: t });
+  small = processAction(small, { type: 'TICK', at: t0 + 5 * DAY });
+  check(strip(big) === strip(small), `money order: one step and hourly steps disagree (${big.groats} vs ${small.groats})`);
+  moneyOrderChecks++;
+}
+let moneyOrderChecks = 0;
+
 /** A character saved before Phase 5 has no `missions`. It must load, pass the shape check, and play. */
 function checkMigration(s: GameState) {
   const old = JSON.parse(JSON.stringify(s)) as Record<string, unknown>;
   delete old.missions;
+  delete old.house;
+  delete old.houseLeftAt;
   check(!isCurrentShape(old), 'migration: an old save should fail the shape check before migrating');
   const migrated = migrateState(old);
   check(isCurrentShape(migrated), 'migration: migrated save fails the shape check');
@@ -173,8 +256,12 @@ function checkMigration(s: GameState) {
 // A recorded game
 // ---------------------------------------------------------------------------------------------
 
+let expulsions = 0;
+
 class Game {
   s: GameState;
+  /** The house this bot wants, so the four are all exercised across seeds. */
+  pref = 'charetty';
   actions: GameAction[] = [];
   constructor(public id: string, public seed: string, public createdAt: number) {
     this.s = createInitialState(id, 'Claes', { seed, createdAt });
@@ -192,6 +279,7 @@ class Game {
     } else {
       check((next === prev) === (why !== null), `${this.seed}: whyIllegal disagrees with processAction on ${a.type} (${why})`);
     }
+    if (next !== prev && prev.house && !next.house && a.type !== 'LEAVE_HOUSE') expulsions++;
     if (next !== prev) {
       const key = a.type === 'SELL' ? `SELL ${ITEM[(a as { itemId: string }).itemId]?.kind}` : a.type;
       income[key] = (income[key] ?? 0) + (next.groats - prev.groats);
@@ -227,9 +315,12 @@ function session(g: Game, at: number) {
     const dest = DESTINATIONS.find(d => d.id === city)!;
     // Fill the pack with whatever sells best per item at home.
     const active = g.s.missions.active ? MISSION[g.s.missions.active.id] : null;
-    for (const o of active?.objectives ?? []) {
+    const held = g.s.house?.contract ? CONTRACT[g.s.house.contract.id]?.contract : null;
+    const wantedHere = [...(active?.objectives ?? []), ...(held?.objectives ?? [])];
+    for (const o of wantedHere) {
       if (o.kind !== 'deliver') continue;
-      const need = o.qty - (g.s.inventory[o.itemId] ?? 0);
+      const total = wantedHere.reduce((n, x) => n + (x.kind === 'deliver' && x.itemId === o.itemId ? x.qty : 0), 0);
+      const need = Math.min(total - (g.s.inventory[o.itemId] ?? 0), carryCapacity(g.s) - g.s.tripBought);
       if (need > 0 && dest.market.some(x => x.item === o.itemId)) g.act({ type: 'BUY_ABROAD', at, itemId: o.itemId, qty: need });
     }
     const lines = [...dest.market].sort((a, b) => ITEM[b.item].value - b.cost - (ITEM[a.item].value - a.cost));
@@ -251,11 +342,21 @@ function session(g: Game, at: number) {
     const m = availableMissions(g.s)[0];
     if (m) g.act({ type: 'ACCEPT_MISSION', at, missionId: m.id });
   }
+  // Houses: join the preferred one when eligible, hand in and take contracts.
+  if (!g.s.house && g.s.groats > (HOUSE[g.pref]?.fee ?? 0) * 3) g.act({ type: 'JOIN_HOUSE', at, houseId: g.pref });
+  if (g.s.house?.contract && contractReady(g.s)) g.act({ type: 'COMPLETE_CONTRACT', at });
+  if (g.s.house && !g.s.house.contract) {
+    const h = houseOf(g.s)!;
+    const open = h.house.contracts.filter(c => c.minRank <= h.index).reverse();
+    for (const c of open) if (g.act({ type: 'ACCEPT_CONTRACT', at, contractId: c.id })) break;
+  }
+  if (g.s.status.kind !== 'free') return;
+
   const mission = g.s.missions.active ? MISSION[g.s.missions.active.id] : null;
+  const contract = g.s.house?.contract ? CONTRACT[g.s.house.contract.id]?.contract : null;
+  const wantedObjectives = [...(mission?.objectives ?? []), ...(contract?.objectives ?? [])];
   const keep = (itemId: string) =>
-    mission?.objectives.find(o => o.kind === 'deliver' && o.itemId === itemId)?.kind === 'deliver'
-      ? (mission.objectives.find(o => o.kind === 'deliver' && o.itemId === itemId) as { qty: number }).qty
-      : 0;
+    wantedObjectives.reduce((n, o) => n + (o.kind === 'deliver' && o.itemId === itemId ? o.qty : 0), 0);
 
   // Sell trade goods, keeping whatever the mission asks to be delivered.
   for (const item of ITEMS.filter(i => i.kind === 'trade')) {
@@ -273,7 +374,8 @@ function session(g: Game, at: number) {
   if (!g.s.course) for (const c of COURSES) if (g.act({ type: 'ENROL', at, courseId: c.id })) break;
 
   // Yards, lodging and kit, when there is a comfortable surplus over anything the mission will cost.
-  const reserve = mission?.objectives.reduce((n, o) => n + (o.kind === 'pay' ? o.groats : 0), 0) ?? 0;
+  const reserve = wantedObjectives.reduce((n, o) => n + (o.kind === 'pay' ? o.groats : 0), 0)
+    + (houseOf(g.s)?.rank.dues ?? 0) * 3;
   for (const y of YARDS) if (g.s.groats - reserve > y.cost * 2) g.act({ type: 'BUY_YARD', at, yardId: y.id });
   for (const l of LODGINGS) if (g.s.groats - reserve > l.cost * 2) g.act({ type: 'BUY_LODGING', at, lodgingId: l.id });
   for (const kind of ['weapon', 'armour'] as const) {
@@ -294,9 +396,16 @@ function session(g: Game, at: number) {
   s = g.s;
   if (s.bars.health.cur > barMax(s, 'health') * 0.7 && s.bars.energy.cur >= CONFIG.duel.energyCost) {
     const total = BATTLE_STATS.reduce((n, k) => n + s.battle[k], 0);
-    const wanted = mission?.objectives.find(o => o.kind === 'duel' && o.opponentId);
-    const beatable = (o: (typeof OPPONENTS)[number]) => BATTLE_STATS.reduce((n, k) => n + o.stats[k], 0) * 1.3 < total && (s.opponents[o.id] ?? 0) <= at;
-    const missionTarget = wanted?.kind === 'duel' ? OPPONENTS.find(o => o.id === wanted.opponentId && beatable(o)) : undefined;
+    // Own house: only when the player has one AND the opponent belongs to it. Comparing the two
+    // possibly-undefined houses directly treats every houseless opponent as the player's own.
+    const ownHouse = (oppHouse: string | undefined) => !!s.house && oppHouse === s.house.id;
+    const wanted = wantedObjectives.find(o => o.kind === 'duel' && o.opponentId);
+    const beatable = (o: (typeof OPPONENTS)[number]) =>
+      BATTLE_STATS.reduce((n, k) => n + o.stats[k], 0) * 1.3 < total && (s.opponents[o.id] ?? 0) <= at && !ownHouse(o.house);
+    // A named opponent may be from the player's own house: the sim allows that fight.
+    const namedBeatable = (o: (typeof OPPONENTS)[number]) =>
+      BATTLE_STATS.reduce((n, k) => n + o.stats[k], 0) * 1.3 < total && (s.opponents[o.id] ?? 0) <= at;
+    const missionTarget = wanted?.kind === 'duel' ? OPPONENTS.find(o => o.id === wanted.opponentId && namedBeatable(o)) : undefined;
     const target = missionTarget ?? [...OPPONENTS].reverse().find(beatable);
     if (target) g.act({ type: 'DUEL', at, opponentId: target.id });
   }
@@ -312,7 +421,7 @@ function session(g: Game, at: number) {
   // Nerve on the best scheme with even odds or better.
   for (let guard = 0; guard < 30 && g.s.status.kind === 'free'; guard++) {
     s = g.s;
-    const wantedScheme = mission?.objectives.find(o => o.kind === 'scheme' && o.schemeId);
+    const wantedScheme = wantedObjectives.find(o => o.kind === 'scheme' && o.schemeId);
     const usable = (x: (typeof SCHEMES)[number], floor: number) =>
       (!x.requiresCourse || s.coursesDone.includes(x.requiresCourse)) && schemeChance(s, x) >= floor && s.bars.nerve.cur >= x.nerve;
     const scheme =
@@ -320,6 +429,9 @@ function session(g: Game, at: number) {
       [...SCHEMES].reverse().find(x => usable(x, 0.5));
     if (!scheme || !g.act({ type: 'SCHEME', at, schemeId: scheme.id })) break;
   }
+
+  // Give a large surplus to the house: the money sink Phase 6 exists to provide.
+  if (g.s.house && g.s.groats - reserve > 60_000) g.act({ type: 'DONATE', at, amount: Math.floor((g.s.groats - reserve) * 0.3) });
 
   // Bank a surplus.
   if (g.s.status.kind === 'free' && !g.s.deposit && g.s.groats > 20_000) {
@@ -329,8 +441,14 @@ function session(g: Game, at: number) {
   // Then fly while the bars refill: the furthest destination the purse and the courses allow.
   if (g.s.status.kind === 'free') {
     const st = activeStatus(g.s);
-    const city = mission?.objectives.find((o, i) => o.kind === 'arrive' && !st[i]?.met);
-    const dest = (city?.kind === 'arrive' ? DESTINATIONS.find(d => d.id === city.city && g.s.groats >= d.fare) : undefined) ??
+    const cst = contractStatus(g.s);
+    const city = mission?.objectives.find((o, i) => o.kind === 'arrive' && !st[i]?.met)
+      ?? contract?.objectives.find((o, i) => o.kind === 'arrive' && !cst[i]?.met)
+      ?? wantedObjectives.find(o => o.kind === 'deliver' && keep(o.itemId) > (g.s.inventory[o.itemId] ?? 0)
+        && !DESTINATIONS.find(dd => dd.market.some(x => x.item === o.itemId))?.requiresCourse);
+    const cityId = city?.kind === 'arrive' ? city.city
+      : city?.kind === 'deliver' ? DESTINATIONS.find(dd => dd.market.some(x => x.item === city.itemId))?.id : undefined;
+    const dest = (cityId ? DESTINATIONS.find(d => d.id === cityId && g.s.groats >= d.fare) : undefined) ??
       [...DESTINATIONS].reverse().find(d =>
         (!d.requiresCourse || g.s.coursesDone.includes(d.requiresCourse)) && g.s.groats > d.fare * 4);
     if (dest) g.act({ type: 'TRAVEL', at, to: dest.id });
@@ -371,7 +489,7 @@ function fuzz(g: Game, at: number, rngSeed: number) {
   const ids = [
     ...ITEMS.map(i => i.id), ...SCHEMES.map(x => x.id), ...JOBS.map(x => x.id), ...COURSES.map(x => x.id),
     ...DESTINATIONS.map(x => x.id), ...LODGINGS.map(x => x.id), ...OPPONENTS.map(x => x.id), ...YARDS.map(x => x.id),
-    ...MISSIONS.map(x => x.id),
+    ...MISSIONS.map(x => x.id), ...HOUSES.map(x => x.id), ...Object.keys(CONTRACT),
     'bruges', 'nonsense', '', '__proto__',
   ];
   const nums = [0, -1, 1, 2, 3, 7, 50, 1.5, 1e9, NaN];
@@ -385,13 +503,14 @@ function fuzz(g: Game, at: number, rngSeed: number) {
     'BUY_YARD', 'TRAIN', 'SCHEME', 'JOIN_JOB', 'LEAVE_JOB', 'PROMOTE', 'ENROL', 'TRAVEL', 'BUY_ABROAD',
     'BUY', 'SELL', 'USE_ITEM', 'EQUIP', 'UNEQUIP', 'BUY_LODGING', 'DUEL', 'DEPOSIT', 'BRIBE',
     'ACCEPT_MISSION', 'COMPLETE_MISSION', 'ABANDON_MISSION',
+    'JOIN_HOUSE', 'LEAVE_HOUSE', 'DONATE', 'ACCEPT_CONTRACT', 'COMPLETE_CONTRACT', 'ABANDON_CONTRACT',
   ];
   for (let i = 0; i < 60; i++) {
     const a = {
       type: pick(types), at,
       yardId: pick(ids), stat: pick([...BATTLE_STATS, 'luck']), times: pick(nums), schemeId: pick(ids),
       jobId: pick(ids), courseId: pick(ids), to: pick(ids), itemId: pick(ids), qty: pick(nums),
-      slot: pick(['weapon', 'armour']), lodgingId: pick(ids), missionId: pick(ids), opponentId: pick(ids), amount: pick(nums), days: pick(nums),
+      slot: pick(['weapon', 'armour']), lodgingId: pick(ids), missionId: pick(ids), houseId: pick(ids), contractId: pick(ids), opponentId: pick(ids), amount: pick(nums), days: pick(nums),
     } as unknown as GameAction;
     let threw = false;
     try {
@@ -425,9 +544,11 @@ const DAYS = Number(process.env.DAYS ?? 30);
 const T0 = Date.UTC(2026, 0, 5, 7, 0, 0);
 
 const report: Record<string, { day: number; level: number[]; stats: number[]; groats: number[]; schemeSkill: number[]; courses: number[]; duels: number[]; honours: number[]; missions: number[] }[]> = {};
+const houseReport: Record<string, { house: string | null; rank: number; favour: number; contracts: number; chainBest: number }[]> = {};
 /** Day each mission was first completed, per rhythm, across seeds. */
 const missionDays: Record<string, Record<string, number[]>> = {};
 checkMissionContent();
+checkHouseContent();
 
 const started = Date.now();
 for (const rhythm of RHYTHMS) {
@@ -435,6 +556,7 @@ for (const rhythm of RHYTHMS) {
   for (let i = 0; i < SEEDS; i++) {
     const seed = `seed-${i}`;
     const g = new Game(`game-${rhythm.name}-${i}`, seed, T0);
+    g.pref = HOUSES[i % HOUSES.length].id;
     const days = (missionDays[rhythm.name] ??= {});
     const seen = new Set<string>();
     for (let day = 0; day < DAYS; day++) {
@@ -468,6 +590,9 @@ for (const rhythm of RHYTHMS) {
     }
     checkReplay(g);
     checkMigration(g.s);
+    checkMoneyOrder(g.s);
+    const hh = houseOf(g.s);
+    (houseReport[rhythm.name] ??= []).push({ house: hh?.house.id ?? null, rank: hh?.index ?? -1, favour: g.s.house?.favour ?? 0, contracts: g.s.house?.contractsDone ?? 0, chainBest: 0 });
     // Fuzz a copy so the replayed history above stays a real game.
     const f = new Game(`fuzz-${i}`, `fuzz-${i}`, T0);
     f.s = g.s;
@@ -501,6 +626,14 @@ for (const m of MISSIONS) {
   });
   console.log(`${m.id.padEnd(10)} ${cells.join('')}`);
 }
+console.log('');
+console.log(`Houses at day ${DAYS}: share in a house, median rank (0 to 4), median favour, median contracts done`);
+for (const r of RHYTHMS) {
+  const rows = houseReport[r.name] ?? [];
+  const inHouse = rows.filter(x => x.house);
+  console.log(`  ${r.name.padEnd(30)} ${Math.round((inHouse.length / Math.max(1, rows.length)) * 100)}% · rank ${median(inHouse.map(x => x.rank))} · favour ${median(inHouse.map(x => x.favour))} · contracts ${median(inHouse.map(x => x.contracts))}`);
+}
+console.log(`  expulsions for unpaid dues: ${expulsions}; money-order checks run: ${moneyOrderChecks}`);
 console.log('');
 console.log('Net groats by action, all games:');
 for (const [k, v] of Object.entries(income).sort((a, b) => b[1] - a[1])) console.log(`  ${k.padEnd(16)} ${Math.round(v).toLocaleString('en-GB').padStart(14)}`);

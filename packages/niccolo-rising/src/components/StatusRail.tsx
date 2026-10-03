@@ -1,4 +1,4 @@
-import { CONFIG, DESTINATION, barMax, barTick, currentLodging, xpToNext } from '../sim/content';
+import { CONFIG, DESTINATION, barMax, barTick, currentLodging, houseOf, xpToNext } from '../sim/content';
 import { MISSION, missionReady } from '../sim/missions';
 import { BAR_IDS } from '../sim/types';
 import type { BarId, GameState } from '../sim/types';
@@ -75,6 +75,17 @@ export default function StatusRail({ s, now }: { s: GameState; now: number }) {
       <div style={{ fontSize: '0.7rem', color: UI.textFaint, marginTop: '0.8rem', lineHeight: 1.4 }}>
         Lodging: {currentLodging(s).name}
         {s.course && <div style={{ marginTop: 4 }}>Studying, {duration(s.course.ends - now)} left</div>}
+        {(() => {
+          const h = houseOf(s);
+          if (!h || !s.house) return null;
+          const chain = s.house.chain.expires > now ? s.house.chain.count : 0;
+          return (
+            <div style={{ marginTop: 4 }}>
+              {h.rank.name}, {h.house.name}
+              {chain ? <span style={{ color: UI.good }}>; chain {chain}, {duration(s.house.chain.expires - now)}</span> : null}
+            </div>
+          );
+        })()}
         {s.missions.active && (
           <div style={{ marginTop: 4, color: missionReady(s) ? UI.good : UI.textFaint }}>
             Mission: {MISSION[s.missions.active.id]?.title}

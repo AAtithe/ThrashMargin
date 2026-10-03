@@ -16,8 +16,10 @@ import {
   COURSE,
   DAY,
   DESTINATION,
+  CONTRACT,
   HONOUR,
   HOUR,
+  HOUSE,
   ITEM,
   JOB,
   LODGING,
@@ -25,11 +27,14 @@ import {
   OPPONENT,
   SCHEME,
   YARD,
+  abroadPrice,
   abroadStock,
   barMax,
   barTick,
   bribeCost,
   carryCapacity,
+  chainMult,
+  houseOf,
   journeyMs,
   perks,
   saleValue,
@@ -38,10 +43,10 @@ import {
   xpToNext,
 } from './content';
 import { simulateDuel } from './combat';
-import { MISSION, availableMissions, missionReady, trackEvents } from './missions';
+import { MISSION, availableMissions, contractReady, missionReady, trackEvents } from './missions';
 import { next, nextInt } from './rng';
 import { BAR_IDS, BATTLE_STATS, WORK_STATS } from './types';
-import type { BarId, GameAction, GameState, LogEntry, MissionEvent } from './types';
+import type { BarId, GameAction, GameState, LogEntry, MissionEvent, Objective } from './types';
 
 const LOG_CAP = 200;
 const MAX_QTY = 500;
@@ -115,6 +120,75 @@ function setHealth(d: GameState, hp: number, at: number) {
 // Advance: everything time does on its own
 // ---------------------------------------------------------------------------------------------
 
+type MoneyEvent = { at: number; order: number; kind: 'deposit' | 'pay' | 'dues'; day: number };
+
+/** Deposit maturity, paydays and house dues up to `now`, in time order. Returns whether any fell due. */
+function settleMoney(d: GameState, now: number): boolean {
+  const events: MoneyEvent[] = [];
+  if (d.deposit && now >= d.deposit.matures) events.push({ at: d.deposit.matures, order: 0, kind: 'deposit', day: 0 });
+  if (d.job && JOB[d.job.id]) {
+    const days = Math.floor((now - d.job.since) / DAY);
+    for (let k = d.job.paidDays + 1; k <= days; k++) events.push({ at: d.job.since + k * DAY, order: 0, kind: 'pay', day: k });
+  }
+  if (d.house && HOUSE[d.house.id]) {
+    const days = Math.floor((now - d.house.joined) / DAY);
+    for (let k = d.house.duesDays + 1; k <= days; k++) events.push({ at: d.house.joined + k * DAY, order: 1, kind: 'dues', day: k });
+  }
+  if (events.length === 0) return false;
+  events.sort((a, b) => a.at - b.at || a.order - b.order);
+
+  let payTotal = 0;
+  let payDays = 0;
+  let payAt = 0;
+  let duesTotal = 0;
+  let duesDays = 0;
+  let duesAt = 0;
+  for (const e of events) {
+    if (e.kind === 'deposit' && d.deposit) {
+      const dep = d.deposit;
+      const payout = Math.round(dep.amount * (1 + dep.pct / 100));
+      d.groats += payout;
+      d.deposit = null;
+      log(d, dep.matures, `Your Medici deposit matured: ${payout.toLocaleString('en-GB')} gr returned, ${(payout - dep.amount).toLocaleString('en-GB')} of it interest.`, 'good');
+    } else if (e.kind === 'pay' && d.job) {
+      const job = JOB[d.job.id];
+      const rank = job.ranks[d.job.rank];
+      const pay = Math.round(rank.pay * (1 + perks(d).payPct / 100));
+      d.groats += pay;
+      for (const stat of WORK_STATS) d.work[stat] += rank.gains[stat];
+      d.job.paidDays = e.day;
+      payTotal += pay;
+      payDays++;
+      payAt = e.at;
+    } else if (e.kind === 'dues' && d.house) {
+      const h = houseOf(d);
+      if (!h) continue;
+      d.house.duesDays = e.day;
+      if (d.groats >= h.rank.dues) {
+        d.groats -= h.rank.dues;
+        d.house.missedDues = 0;
+        duesTotal += h.rank.dues;
+        duesDays++;
+        duesAt = e.at;
+      } else {
+        d.house.missedDues++;
+        log(d, e.at, `You cannot meet the day's dues to ${h.house.name} (${h.rank.dues} gr). ${CONFIG.house.maxMissedDues - d.house.missedDues} more and they will be done with you.`, 'bad');
+        if (d.house.missedDues >= CONFIG.house.maxMissedDues) {
+          log(d, e.at, `${h.house.head} has no use for a member who does not pay. You are out of ${h.house.name}.`, 'bad');
+          d.house = null;
+          d.houseLeftAt = e.at;
+        }
+      }
+    }
+  }
+  if (payDays && d.job) {
+    const job = JOB[d.job.id];
+    log(d, payAt, `${payDays === 1 ? 'A day' : `${payDays} days`} at ${job.name} as ${job.ranks[d.job.rank].name}: ${payTotal.toLocaleString('en-GB')} gr.`);
+  }
+  if (duesDays) log(d, duesAt, `${duesDays === 1 ? 'A day' : `${duesDays} days`} of house dues: ${duesTotal.toLocaleString('en-GB')} gr.`);
+  return true;
+}
+
 /** Mutates `d` forward to `now`. Returns whether anything changed. */
 function advanceDraft(d: GameState, now: number): boolean {
   let changed = false;
@@ -125,6 +199,7 @@ function advanceDraft(d: GameState, now: number): boolean {
   if (st.kind === 'travelling' && now >= st.arrives) {
     if (st.to === 'bruges') {
       d.status = { kind: 'free' };
+      d.tripBought = 0;
       log(d, st.arrives, 'Home through the Ezelpoort, with the smell of the Reie to tell you so.');
     } else {
       d.status = { kind: 'abroad', city: st.to };
@@ -155,31 +230,12 @@ function advanceDraft(d: GameState, now: number): boolean {
     changed = true;
   }
 
-  // A deposit maturing.
-  if (d.deposit && now >= d.deposit.matures) {
-    const dep = d.deposit;
-    const payout = Math.round(dep.amount * (1 + dep.pct / 100));
-    d.groats += payout;
-    d.deposit = null;
-    log(d, dep.matures, `Your Medici deposit matured: ${payout.toLocaleString('en-GB')} gr returned, ${(payout - dep.amount).toLocaleString('en-GB')} of it interest.`, 'good');
-    changed = true;
-  }
-
-  // Paydays.
-  if (d.job) {
-    const job = JOB[d.job.id];
-    const days = Math.floor((now - d.job.since) / DAY);
-    if (job && days > d.job.paidDays) {
-      const rank = job.ranks[d.job.rank];
-      const due = days - d.job.paidDays;
-      const pay = Math.round(rank.pay * (1 + perks(d).payPct / 100));
-      d.groats += pay * due;
-      for (const stat of WORK_STATS) d.work[stat] += rank.gains[stat] * due;
-      d.job.paidDays = days;
-      log(d, d.job.since + days * DAY, `${due === 1 ? 'A day' : `${due} days`} at ${job.name} as ${rank.name}: ${(pay * due).toLocaleString('en-GB')} gr.`);
-      changed = true;
-    }
-  }
+  // Money that time moves: a deposit maturing, paydays, and house dues. These are applied in strict
+  // time order, credits before debits at the same moment, because whether a day's dues can be paid
+  // depends on whether that morning's pay has arrived. Processing them by kind instead would make a
+  // player's purse depend on how often they looked, which the driver's path-independence check
+  // exists to catch.
+  if (settleMoney(d, now)) changed = true;
 
   // Bars.
   for (const bar of BAR_IDS) {
@@ -206,6 +262,13 @@ function advanceDraft(d: GameState, now: number): boolean {
   if (m && m.deadline !== null && now >= m.deadline) {
     log(d, m.deadline, `Mission failed: ${MISSION[m.id]?.title ?? m.id}. The time ran out. It can be taken up again.`, 'bad');
     d.missions.active = null;
+    changed = true;
+  }
+  const c = d.house?.contract;
+  if (d.house && c && c.deadline !== null && now >= c.deadline) {
+    log(d, c.deadline, `House contract failed: ${CONTRACT[c.id]?.contract.title ?? c.id}. The time ran out.`, 'bad');
+    d.house.contract = null;
+    d.house.contractReadyAt = Math.max(d.house.contractReadyAt, c.deadline + CONFIG.house.contractCooldownMinutes * MINUTE);
     changed = true;
   }
 
@@ -245,6 +308,30 @@ function gainXp(d: GameState, xp: number, at: number) {
     if (d.level === 5) award(d, at, 'level_5');
     if (d.level === 10) award(d, at, 'level_10');
     if (d.level === 20) award(d, at, 'level_20');
+  }
+}
+
+/** Adds favour with the player's house, logging any rank it earns. */
+function addFavour(d: GameState, amount: number, at: number) {
+  if (!d.house || amount <= 0) return;
+  const before = houseOf(d);
+  d.house.favour += amount;
+  const after = houseOf(d);
+  if (before && after && after.index > before.index) {
+    log(d, at, `${after.house.head} raises you to ${after.rank.name} of ${after.house.name}.`, 'good');
+    if (after.index === after.house.ranks.length - 1) award(d, at, 'house_top');
+  }
+}
+
+/** Takes the goods and groats a mission or contract asked for. Called only once every objective is met. */
+function handOver(d: GameState, objectives: Objective[]) {
+  for (const o of objectives) {
+    if (o.kind === 'deliver') {
+      d.inventory[o.itemId] -= o.qty;
+      if (d.inventory[o.itemId] === 0) delete d.inventory[o.itemId];
+    } else if (o.kind === 'pay') {
+      d.groats -= o.groats;
+    }
   }
 }
 
@@ -428,7 +515,7 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
       const line = DESTINATION[city]?.market.find(m => m.item === a.itemId) ?? reject('Not sold here.');
       if (abroadStock(d, city, a.itemId) < a.qty) reject('Not enough in stock.');
       if (d.tripBought + a.qty > carryCapacity(d)) reject('You cannot carry that much home.');
-      const cost = line.cost * a.qty;
+      const cost = abroadPrice(d, line.cost) * a.qty;
       if (d.groats < cost) reject('Not enough groats.');
       d.groats -= cost;
       d.tripBought += a.qty;
@@ -528,6 +615,16 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
       needFree(d, 'fight');
       const opp = OPPONENT[a.opponentId] ?? reject('No such opponent.');
       if ((d.opponents[opp.id] ?? 0) > at) reject(`${opp.name} is still recovering.`);
+      // Members do not fight their own house, unless the story or the house itself asks for that
+      // person by name: Felix is Charetty, and the mission that has Claes beat him before the war
+      // must stay reachable for a player who joined Charetty first.
+      if (d.house && opp.house === d.house.id) {
+        const named = [
+          ...(d.missions.active ? MISSION[d.missions.active.id]?.objectives ?? [] : []),
+          ...(d.house.contract ? CONTRACT[d.house.contract.id]?.contract.objectives ?? [] : []),
+        ].some(o => o.kind === 'duel' && o.opponentId === opp.id);
+        if (!named) reject(`${opp.name} is one of your own house.`);
+      }
       spend(d, 'energy', CONFIG.duel.energyCost, at);
       const weapon = d.equipped.weapon ? ITEM[d.equipped.weapon] : null;
       const armour = d.equipped.armour ? ITEM[d.equipped.armour] : null;
@@ -556,6 +653,20 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
         log(d, at, `You beat ${opp.name} in ${result.rounds} rounds and take ${gr.toLocaleString('en-GB')} gr from them.`, 'good');
         award(d, at, 'first_duel');
         events.push({ kind: 'duel', opponentId: opp.id });
+        const h = houseOf(d);
+        if (d.house && h) {
+          const chain = d.house.chain;
+          chain.count = chain.expires > at ? chain.count + 1 : 1;
+          chain.expires = at + CONFIG.house.chainMinutes * MINUTE;
+          const rival = opp.house === h.house.rival ? CONFIG.house.rivalMult : 1;
+          const favour = Math.round(opp.level * CONFIG.house.duelFavourPerLevel * chainMult(chain.count) * rival);
+          if (rival > 1) log(d, at, `A blow against ${HOUSE[h.house.rival]?.name ?? 'your rivals'}. ${h.house.head} will hear of it.`);
+          if (CONFIG.house.chainTiers.some(tier => tier.count === chain.count)) {
+            log(d, at, `A chain of ${chain.count} for ${h.house.name}: every win in it now counts ×${chainMult(chain.count)}.`, 'good');
+          }
+          if (chain.count >= 25) award(d, at, 'chain_25');
+          addFavour(d, favour, at);
+        }
         if (opp.id === 'felix' || opp.id === 'simon' || opp.id === 'jordan') award(d, at, opp.id);
         gainXp(d, opp.xp, at);
       } else if (result.outcome === 'lost') {
@@ -578,8 +689,9 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
       if (!Number.isInteger(a.amount) || a.amount < CONFIG.bank.minDeposit) reject(`At least ${CONFIG.bank.minDeposit} gr.`);
       if (a.amount > d.groats) reject('Not enough groats.');
       d.groats -= a.amount;
-      d.deposit = { amount: a.amount, pct: term.pct, matures: at + term.days * DAY };
-      log(d, at, `Deposited ${a.amount.toLocaleString('en-GB')} gr with the Medici for ${term.days} day${term.days === 1 ? '' : 's'} at ${term.pct}%.`);
+      const pct = Math.round(term.pct * (1 + perks(d).depositPct / 100) * 100) / 100;
+      d.deposit = { amount: a.amount, pct, matures: at + term.days * DAY };
+      log(d, at, `Deposited ${a.amount.toLocaleString('en-GB')} gr with the Medici for ${term.days} day${term.days === 1 ? '' : 's'} at ${pct}%.`);
       return;
     }
 
@@ -613,15 +725,7 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
       const active = d.missions.active ?? reject('No mission in hand.');
       const m = MISSION[active.id] ?? reject('No such mission.');
       if (!missionReady(d)) reject('Not every objective is met yet.');
-      // Hand over what was asked for.
-      for (const o of m.objectives) {
-        if (o.kind === 'deliver') {
-          d.inventory[o.itemId] -= o.qty;
-          if (d.inventory[o.itemId] === 0) delete d.inventory[o.itemId];
-        } else if (o.kind === 'pay') {
-          d.groats -= o.groats;
-        }
-      }
+      handOver(d, m.objectives);
       d.missions.active = null;
       d.missions.done.push(m.id);
       const r = m.reward;
@@ -652,6 +756,96 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
       const active = d.missions.active ?? reject('No mission in hand.');
       d.missions.active = null;
       log(d, at, `Mission abandoned: ${MISSION[active.id]?.title ?? active.id}. It can be taken up again.`);
+      return;
+    }
+
+    case 'JOIN_HOUSE': {
+      needFree(d, 'join a house');
+      if (d.house) reject('Leave your house first.');
+      const house = HOUSE[a.houseId] ?? reject('No such house.');
+      if (d.level < house.minLevel) reject(`Level ${house.minLevel} required.`);
+      if (d.standing < house.minStanding) reject(`Standing ${house.minStanding} required.`);
+      if (d.houseLeftAt !== null && at < d.houseLeftAt + CONFIG.house.rejoinHours * HOUR)
+        reject(`No house will take you yet. Wait ${CONFIG.house.rejoinHours} hours after leaving one.`);
+      if (d.groats < house.fee) reject(`The entry fee is ${house.fee.toLocaleString('en-GB')} gr.`);
+      d.groats -= house.fee;
+      d.house = {
+        id: house.id,
+        joined: at,
+        favour: 0,
+        duesDays: 0,
+        missedDues: 0,
+        chain: { count: 0, expires: 0 },
+        contract: null,
+        contractsDone: 0,
+        contractReadyAt: at,
+      };
+      log(d, at, `${house.head} accepts you into ${house.name} as ${house.ranks[0].name}. Dues are ${house.ranks[0].dues} gr a day.`, 'good');
+      award(d, at, 'house_join');
+      return;
+    }
+
+    case 'LEAVE_HOUSE': {
+      const h = houseOf(d) ?? reject('You belong to no house.');
+      d.house = null;
+      d.houseLeftAt = at;
+      log(d, at, `You leave ${h.house.name}. Your favour there goes with you, and no house will take you for ${CONFIG.house.rejoinHours} hours.`);
+      return;
+    }
+
+    case 'DONATE': {
+      needFree(d, 'give to your house');
+      const h = houseOf(d) ?? reject('You belong to no house.');
+      const per = CONFIG.house.groatsPerFavour;
+      if (!Number.isInteger(a.amount) || a.amount < per) reject(`At least ${per} gr.`);
+      if (a.amount > d.groats) reject('Not enough groats.');
+      d.groats -= a.amount;
+      log(d, at, `You give ${a.amount.toLocaleString('en-GB')} gr to ${h.house.name}.`);
+      addFavour(d, Math.floor(a.amount / per), at);
+      return;
+    }
+
+    case 'ACCEPT_CONTRACT': {
+      needFree(d, 'take a contract');
+      const h = houseOf(d) ?? reject('You belong to no house.');
+      const house = d.house!;
+      if (house.contract) reject('Finish or abandon the contract in hand first.');
+      if (at < house.contractReadyAt) reject('Your house has nothing more for you yet.');
+      const c = h.house.contracts.find(x => x.id === a.contractId) ?? reject('Your house offers no such contract.');
+      if (c.minRank > h.index) reject(`Rank of ${h.house.ranks[c.minRank].name} required.`);
+      house.contract = {
+        id: c.id,
+        accepted: at,
+        deadline: c.hours ? at + c.hours * HOUR : null,
+        progress: c.objectives.map(() => 0),
+      };
+      log(d, at, `House contract from ${h.house.head}: ${c.title}.`);
+      return;
+    }
+
+    case 'COMPLETE_CONTRACT': {
+      needFree(d, 'report to your house');
+      const h = houseOf(d) ?? reject('You belong to no house.');
+      const house = d.house!;
+      const held = house.contract ?? reject('No contract in hand.');
+      const c = CONTRACT[held.id]?.contract ?? reject('No such contract.');
+      if (!contractReady(d)) reject('Not every objective is met yet.');
+      handOver(d, c.objectives);
+      house.contract = null;
+      house.contractsDone++;
+      house.contractReadyAt = at + CONFIG.house.contractCooldownMinutes * MINUTE;
+      if (c.reward.groats) d.groats += c.reward.groats;
+      log(d, at, `${c.title}: done, to ${h.house.head}'s satisfaction.${c.reward.groats ? ` ${c.reward.groats.toLocaleString('en-GB')} gr.` : ''}`, 'good');
+      addFavour(d, c.reward.favour, at);
+      return;
+    }
+
+    case 'ABANDON_CONTRACT': {
+      const house = d.house ?? reject('You belong to no house.');
+      const held = house.contract ?? reject('No contract in hand.');
+      house.contract = null;
+      house.contractReadyAt = Math.max(house.contractReadyAt, at + CONFIG.house.contractCooldownMinutes * MINUTE);
+      log(d, at, `You give up the house contract: ${CONTRACT[held.id]?.contract.title ?? held.id}.`);
       return;
     }
   }

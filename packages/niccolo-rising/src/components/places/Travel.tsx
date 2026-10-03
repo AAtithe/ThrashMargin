@@ -1,4 +1,4 @@
-import { COURSE, DESTINATION, DESTINATIONS, ITEM, abroadStock, carryCapacity, journeyMs, saleValue } from '../../sim/content';
+import { COURSE, DESTINATION, DESTINATIONS, ITEM, abroadPrice, abroadStock, carryCapacity, journeyMs, saleValue } from '../../sim/content';
 import { UI } from '../../theme';
 import { duration, gr } from '../../lib/format';
 import { Blurb, Meta, Panel, Row } from '../ui';
@@ -37,12 +37,12 @@ export default function Travel(p: PlaceProps) {
                 <div style={{ fontSize: '0.88rem' }}>{item?.name}</div>
                 <Blurb>{item?.blurb}</Blurb>
                 <Meta>
-                  {gr(m.cost)} here · {stock} in stock · {item?.kind === 'trade' ? `the Waterhalle pays ${gr(home)} today` : `worth ${gr(home)} at home`}
+                  {gr(abroadPrice(s, m.cost))} here · {stock} in stock · {item?.kind === 'trade' ? `the Waterhalle pays ${gr(home)} today` : `worth ${gr(home)} at home`}
                 </Meta>
               </div>
               <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: 1 }}>Buy 1</ActButton>
-              <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: Math.max(1, Math.min(room, stock, Math.floor(s.groats / m.cost))) }}>
-                Buy {Math.max(1, Math.min(room, stock, Math.floor(s.groats / m.cost)))}
+              <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: Math.max(1, Math.min(room, stock, Math.floor(s.groats / abroadPrice(s, m.cost)))) }}>
+                Buy {Math.max(1, Math.min(room, stock, Math.floor(s.groats / abroadPrice(s, m.cost))))}
               </ActButton>
             </Row>
           );

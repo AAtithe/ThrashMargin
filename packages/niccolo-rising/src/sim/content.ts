@@ -15,6 +15,7 @@ import destinationsJson from '../content/destinations.json';
 import lodgingJson from '../content/lodging.json';
 import opponentsJson from '../content/opponents.json';
 import honoursJson from '../content/honours.json';
+import housesJson from '../content/houses.json';
 import type {
   BarId,
   Config,
@@ -22,6 +23,9 @@ import type {
   Destination,
   GameState,
   Honour,
+  House,
+  HouseContract,
+  HouseRank,
   Item,
   Job,
   Lodging,
@@ -41,6 +45,7 @@ export const DESTINATIONS = destinationsJson as Destination[];
 export const LODGINGS = lodgingJson as Lodging[];
 export const OPPONENTS = opponentsJson as Opponent[];
 export const HONOURS = honoursJson as Honour[];
+export const HOUSES = housesJson as House[];
 
 function index<T extends { id: string }>(list: T[]): Record<string, T> {
   const out: Record<string, T> = {};
@@ -57,6 +62,11 @@ export const DESTINATION = index(DESTINATIONS);
 export const LODGING = index(LODGINGS);
 export const OPPONENT = index(OPPONENTS);
 export const HONOUR = index(HONOURS);
+export const HOUSE = index(HOUSES);
+
+/** Every house contract by id, with the house that offers it. Contract ids are unique across houses. */
+export const CONTRACT: Record<string, { house: House; contract: HouseContract }> = {};
+for (const house of HOUSES) for (const contract of house.contracts) CONTRACT[contract.id] = { house, contract };
 
 export const MINUTE = 60_000;
 export const HOUR = 60 * MINUTE;
@@ -74,13 +84,37 @@ export interface PerkTotals {
   infirmaryPct: number;
   steenPct: number;
   payPct: number;
+  depositPct: number;
+  abroadPct: number;
 }
 
-/** Sum of every completed course's standing perks. One-off grants (workGains, battle) excluded. */
+/** The rank a house's favour has earned: the highest whose threshold it meets. */
+export function houseRankIndex(house: House, favour: number): number {
+  let r = 0;
+  house.ranks.forEach((rank, i) => {
+    if (favour >= rank.favour) r = i;
+  });
+  return r;
+}
+
+/** The player's house, its current rank and that rank's index, or null outside every house. */
+export function houseOf(s: GameState): { house: House; rank: HouseRank; index: number } | null {
+  const h = s.house ? HOUSE[s.house.id] : null;
+  if (!h || !s.house) return null;
+  const index = houseRankIndex(h, s.house.favour);
+  return { house: h, rank: h.ranks[index], index };
+}
+
+/**
+ * Sum of every completed course's standing perks and the house rank's perks. One-off grants
+ * (workGains, battle) excluded. House perks are the rank's totals, not added up rank by rank.
+ */
 export function perks(s: GameState): PerkTotals {
-  const t: PerkTotals = { gymPct: 0, schemePct: 0, travelPct: 0, carry: 0, infirmaryPct: 0, steenPct: 0, payPct: 0 };
-  for (const id of s.coursesDone) {
-    const p: Perks = COURSE[id]?.perks ?? {};
+  const t: PerkTotals = { gymPct: 0, schemePct: 0, travelPct: 0, carry: 0, infirmaryPct: 0, steenPct: 0, payPct: 0, depositPct: 0, abroadPct: 0 };
+  const sources: Perks[] = s.coursesDone.map(id => COURSE[id]?.perks ?? {});
+  const h = houseOf(s);
+  if (h) sources.push(h.rank.perks);
+  for (const p of sources) {
     t.gymPct += p.gymPct ?? 0;
     t.schemePct += p.schemePct ?? 0;
     t.travelPct += p.travelPct ?? 0;
@@ -88,8 +122,22 @@ export function perks(s: GameState): PerkTotals {
     t.infirmaryPct += p.infirmaryPct ?? 0;
     t.steenPct += p.steenPct ?? 0;
     t.payPct += p.payPct ?? 0;
+    t.depositPct += p.depositPct ?? 0;
+    t.abroadPct += p.abroadPct ?? 0;
   }
   return t;
+}
+
+/** What one of an abroad market's goods costs this player, after a Doria discount. */
+export function abroadPrice(s: GameState, baseCost: number): number {
+  return Math.max(1, Math.round(baseCost * (1 - Math.min(50, perks(s).abroadPct) / 100)));
+}
+
+/** The chain multiplier a win at this chain length earns: the highest tier reached. */
+export function chainMult(count: number): number {
+  let m = 1;
+  for (const tier of CONFIG.house.chainTiers) if (count >= tier.count) m = tier.mult;
+  return m;
 }
 
 /** Items that can be brought home from one trip abroad. Kit stacks: a satchel and a mule both count. */

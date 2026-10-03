@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CONFIG } from '../../sim/content';
+import { CONFIG, perks } from '../../sim/content';
 import { FONT, UI } from '../../theme';
 import { duration, gr } from '../../lib/format';
 import { Blurb, Meta, Panel, Row } from '../ui';
@@ -40,14 +40,18 @@ export default function Bank(p: PlaceProps) {
               All
             </button>
           </Row>
-          {CONFIG.bank.terms.map(t => (
+          {CONFIG.bank.terms.map(t => {
+            // The same rounding the sim applies, so the quote is what the deposit will pay.
+            const pct = Math.round(t.pct * (1 + perks(s).depositPct / 100) * 100) / 100;
+            return (
             <Row key={t.days}>
               <Meta>
-                {t.days} day{t.days === 1 ? '' : 's'} at {t.pct}%{n > 0 ? `: returns ${gr(n * (1 + t.pct / 100))}` : ''}
+                {t.days} day{t.days === 1 ? '' : 's'} at {pct}%{n > 0 ? `: returns ${gr(n * (1 + pct / 100))}` : ''}
               </Meta>
               <ActButton p={p} verb={{ type: 'DEPOSIT', amount: n, days: t.days }}>Deposit</ActButton>
             </Row>
-          ))}
+            );
+          })}
         </>
       )}
     </Panel>

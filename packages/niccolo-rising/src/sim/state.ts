@@ -51,6 +51,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     opponents: {},
     honours: [],
     missions: { active: null, done: [] },
+    house: null,
+    houseLeftAt: null,
     counters: { schemes: 0, schemesWon: 0, duelsWon: 0, duelsLost: 0, voyages: 0 },
     lastFight: null,
     log: [],
@@ -73,13 +75,21 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
  * Phase 5 added `missions`. A character created before then has none, and would crash the first
  * time anything read `s.missions.active`. It gains an empty record: no mission in hand, none done,
  * so the chain starts at the beginning whatever level the character has reached.
+ *
+ * Phase 6 added `house` and `houseLeftAt`. A character from before then belongs to no house and has
+ * never left one.
+ *
+ * Returns the same object when nothing needed adding, so a current save passes through untouched.
  */
 export function migrateState(raw: unknown): GameState {
   if (!raw || typeof raw !== 'object') return raw as GameState;
-  const s = raw as GameState & { missions?: GameState['missions'] };
-  if (s.rules !== 'rising-1') return s;
-  if (!s.missions || typeof s.missions !== 'object') return { ...s, missions: { active: null, done: [] } };
-  return s;
+  const s = raw as Partial<GameState> & { rules?: string };
+  if (s.rules !== 'rising-1') return s as GameState;
+  const patch: Partial<GameState> = {};
+  if (!s.missions || typeof s.missions !== 'object') patch.missions = { active: null, done: [] };
+  if (!('house' in s)) patch.house = null;
+  if (!('houseLeftAt' in s)) patch.houseLeftAt = null;
+  return Object.keys(patch).length ? ({ ...s, ...patch } as GameState) : (s as GameState);
 }
 
 /** Top-level shape check for the local loader. Also used by the driver. */
@@ -92,5 +102,7 @@ export function isCurrentShape(parsed: unknown): parsed is GameState {
   if (!Array.isArray(s.log) || !Array.isArray(s.coursesDone) || !Array.isArray(s.lodgings) || !Array.isArray(s.yards)) return false;
   if (!s.abroad || !s.opponents || !s.counters || !Array.isArray(s.honours)) return false;
   if (!s.missions || !Array.isArray(s.missions.done) || !('active' in s.missions)) return false;
+  if (!('house' in s) || !('houseLeftAt' in s)) return false;
+  if (s.house && (typeof s.house.favour !== 'number' || !s.house.chain || !('contract' in s.house))) return false;
   return true;
 }

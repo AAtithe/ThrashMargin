@@ -34,6 +34,23 @@ export type Status =
   | { kind: 'travelling'; to: string; departs: number; arrives: number }
   | { kind: 'abroad'; city: string };
 
+export interface HouseState {
+  id: string;
+  joined: number;
+  /** Rank is derived from favour, never stored, so the two cannot disagree. */
+  favour: number;
+  /** Daily dues fall at whole days after `joined`; this many have been settled, paid or missed. */
+  duesDays: number;
+  /** Dues missed in a row. Reaching the limit in config ends the membership. */
+  missedDues: number;
+  /** Duel wins in a row, each inside the chain window of the last. Dead once `expires` passes. */
+  chain: { count: number; expires: number };
+  contract: { id: string; accepted: number; deadline: number | null; progress: number[] } | null;
+  contractsDone: number;
+  /** A new contract may be taken from this time. */
+  contractReadyAt: number;
+}
+
 export interface JobState {
   id: string;
   rank: number;
@@ -122,6 +139,10 @@ export interface GameState {
     active: { id: string; accepted: number; deadline: number | null; progress: number[] } | null;
     done: string[];
   };
+  /** Phase 6: membership of one house at a time. Null outside every house. */
+  house: HouseState | null;
+  /** When the player last left or was thrown out of a house, for the rejoin wait. */
+  houseLeftAt: number | null;
   counters: { schemes: number; schemesWon: number; duelsWon: number; duelsLost: number; voyages: number };
   lastFight: FightReport | null;
 
@@ -152,7 +173,13 @@ export type GameAction =
   | { type: 'BRIBE'; at: number }
   | { type: 'ACCEPT_MISSION'; at: number; missionId: string }
   | { type: 'COMPLETE_MISSION'; at: number }
-  | { type: 'ABANDON_MISSION'; at: number };
+  | { type: 'ABANDON_MISSION'; at: number }
+  | { type: 'JOIN_HOUSE'; at: number; houseId: string }
+  | { type: 'LEAVE_HOUSE'; at: number }
+  | { type: 'DONATE'; at: number; amount: number }
+  | { type: 'ACCEPT_CONTRACT'; at: number; contractId: string }
+  | { type: 'COMPLETE_CONTRACT'; at: number }
+  | { type: 'ABANDON_CONTRACT'; at: number };
 
 // ---------------------------------------------------------------------------------------------
 // Content shapes (the JSON files in src/content)
@@ -174,6 +201,16 @@ export interface Config {
   restockMinutes: number;
   spiritsDrainPerEnergy: number;
   bank: { terms: { days: number; pct: number }[]; minDeposit: number };
+  house: {
+    chainMinutes: number;
+    chainTiers: { count: number; mult: number }[];
+    rivalMult: number;
+    rejoinHours: number;
+    groatsPerFavour: number;
+    maxMissedDues: number;
+    contractCooldownMinutes: number;
+    duelFavourPerLevel: number;
+  };
   dailyMarketSwing: number;
 }
 
@@ -224,6 +261,9 @@ export interface Perks {
   infirmaryPct?: number;
   steenPct?: number;
   payPct?: number;
+  /** House perks: more interest from the Medici, and cheaper goods abroad. */
+  depositPct?: number;
+  abroadPct?: number;
   /** One-off additions to working stats, granted on completion. */
   workGains?: Partial<Record<WorkStat, number>>;
   /** One-off additions to battle stats, granted on completion. */
@@ -296,6 +336,8 @@ export interface Opponent {
   groats: [number, number];
   xp: number;
   blurb: string;
+  /** The house the opponent belongs to, if any. Members cannot fight their own; rivals pay double. */
+  house?: string;
 }
 
 export interface Honour {
@@ -353,3 +395,33 @@ export type MissionEvent =
   | { kind: 'duel'; opponentId: string }
   | { kind: 'train'; stat: BattleStat; gain: number }
   | { kind: 'arrive'; city: string };
+
+export interface HouseRank {
+  name: string;
+  favour: number;
+  dues: number;
+  perks: Perks;
+}
+
+export interface HouseContract {
+  id: string;
+  title: string;
+  minRank: number;
+  hours?: number;
+  brief: string;
+  objectives: Objective[];
+  reward: { favour: number; groats?: number };
+}
+
+export interface House {
+  id: string;
+  name: string;
+  head: string;
+  rival: string;
+  minLevel: number;
+  minStanding: number;
+  fee: number;
+  blurb: string;
+  ranks: HouseRank[];
+  contracts: HouseContract[];
+}

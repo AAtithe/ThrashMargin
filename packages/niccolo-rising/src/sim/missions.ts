@@ -7,7 +7,7 @@
  * which missions can be taken now, how far along each objective is, and what an event counts for.
  */
 import missionsJson from '../content/missions.json';
-import { COURSE, DESTINATION, ITEM, JOB, OPPONENT, SCHEME } from './content';
+import { CONTRACT, COURSE, DESTINATION, ITEM, JOB, OPPONENT, SCHEME } from './content';
 import type { GameState, Mission, MissionEvent, Objective } from './types';
 
 export const MISSIONS = missionsJson as Mission[];
@@ -42,6 +42,11 @@ export interface ObjectiveStatus {
   met: boolean;
 }
 
+/** "Bolt of Lucchese silk" reads "bolt of Lucchese silk": only the first letter drops, so proper names survive. */
+function lowerFirst(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
+}
+
 /** Where one objective of the active mission stands. `progress` is the stored count for its slot. */
 export function objectiveStatus(s: GameState, o: Objective, progress: number): ObjectiveStatus {
   const out = (label: string, have: number, need: number): ObjectiveStatus => ({
@@ -53,7 +58,7 @@ export function objectiveStatus(s: GameState, o: Objective, progress: number): O
   switch (o.kind) {
     case 'scheme':
       return out(
-        o.schemeId ? `Pull off ${SCHEME[o.schemeId]?.name.toLowerCase() ?? o.schemeId}` : 'Pull off schemes of any kind',
+        o.schemeId ? `Pull off ${(SCHEME[o.schemeId] ? lowerFirst(SCHEME[o.schemeId].name) : undefined) ?? o.schemeId}` : 'Pull off schemes of any kind',
         progress,
         o.count,
       );
@@ -64,7 +69,7 @@ export function objectiveStatus(s: GameState, o: Objective, progress: number): O
     case 'arrive':
       return out(`Travel to ${DESTINATION[o.city]?.name ?? o.city}`, progress, 1);
     case 'deliver':
-      return out(`Bring ${ITEM[o.itemId]?.name.toLowerCase() ?? o.itemId}`, s.inventory[o.itemId] ?? 0, o.qty);
+      return out(`Bring ${(ITEM[o.itemId] ? lowerFirst(ITEM[o.itemId].name) : undefined) ?? o.itemId}`, s.inventory[o.itemId] ?? 0, o.qty);
     case 'pay':
       return out('Put groats into it', s.groats, o.groats);
     case 'course':
@@ -95,16 +100,28 @@ export function missionReady(s: GameState): boolean {
   return st.length > 0 && st.every(x => x.met);
 }
 
-/**
- * Counts events against the active mission's counting objectives. Mutates the draft; returns whether
- * any count moved. Counts stop at the objective's target, so a stored count never exceeds it.
- */
-export function trackEvents(d: GameState, events: MissionEvent[]): boolean {
-  const a = d.missions.active;
-  const m = a ? MISSION[a.id] : null;
-  if (!a || !m || events.length === 0) return false;
+/** The same, for the house contract in hand (Phase 6). Contracts reuse the mission objectives. */
+export function contractStatus(s: GameState): ObjectiveStatus[] {
+  const c = s.house?.contract;
+  const def = c ? CONTRACT[c.id]?.contract : null;
+  if (!c || !def) return [];
+  return def.objectives.map((o, i) => objectiveStatus(s, o, c.progress[i] ?? 0));
+}
+
+export function contractReady(s: GameState): boolean {
+  const st = contractStatus(s);
+  return st.length > 0 && st.every(x => x.met);
+}
+
+/** The cap a counting objective's stored count stops at; zero for holding objectives. */
+export function objectiveCap(o: Objective): number {
+  return o.kind === 'train' ? o.amount : o.kind === 'arrive' ? 1 : o.kind === 'scheme' || o.kind === 'duel' ? o.count : 0;
+}
+
+/** Counts events against one list of objectives, mutating `progress`. Returns whether any count moved. */
+function trackObjectives(objectives: Objective[], progress: number[], events: MissionEvent[]): boolean {
   let changed = false;
-  m.objectives.forEach((o, i) => {
+  objectives.forEach((o, i) => {
     let add = 0;
     for (const e of events) {
       if (o.kind === 'scheme' && e.kind === 'scheme' && (!o.schemeId || o.schemeId === e.schemeId)) add += 1;
@@ -113,13 +130,29 @@ export function trackEvents(d: GameState, events: MissionEvent[]): boolean {
       else if (o.kind === 'arrive' && e.kind === 'arrive' && o.city === e.city) add += 1;
     }
     if (add === 0) return;
-    const cap = o.kind === 'train' ? o.amount : o.kind === 'arrive' ? 1 : o.kind === 'scheme' || o.kind === 'duel' ? o.count : 0;
-    const before = a.progress[i] ?? 0;
-    const after = Math.min(cap, Math.round((before + add) * 100) / 100);
+    const before = progress[i] ?? 0;
+    const after = Math.min(objectiveCap(o), Math.round((before + add) * 100) / 100);
     if (after !== before) {
-      a.progress[i] = after;
+      progress[i] = after;
       changed = true;
     }
   });
+  return changed;
+}
+
+/**
+ * Counts events against the active mission's and the house contract's counting objectives. Mutates
+ * the draft; returns whether any count moved. One event can count for both: a duel won for a
+ * mission is still a duel won for the house. Counts stop at each objective's target.
+ */
+export function trackEvents(d: GameState, events: MissionEvent[]): boolean {
+  if (events.length === 0) return false;
+  let changed = false;
+  const a = d.missions.active;
+  const m = a ? MISSION[a.id] : null;
+  if (a && m && trackObjectives(m.objectives, a.progress, events)) changed = true;
+  const c = d.house?.contract;
+  const def = c ? CONTRACT[c.id]?.contract : null;
+  if (c && def && trackObjectives(def.objectives, c.progress, events)) changed = true;
   return changed;
 }
