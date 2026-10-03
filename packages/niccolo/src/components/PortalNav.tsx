@@ -37,14 +37,18 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         <a href="/thrash-margin/feedback" style={styles.link}>
           💬 Feedback
         </a>
-        <span style={styles.sep}>·</span>
         {/* Absolute, not base-relative: the admin panel only exists as a route inside Thrash
-            Margin's own client, same as feedback/profile/login above. Reaching the page means
-            nothing without a valid admin session — access is gated server-side by
-            ADMIN_USERNAMES, not by hiding this link. */}
-        <a href="/thrash-margin/admin" style={styles.link}>
-          🛠 Admin
-        </a>
+            Margin's own client, same as feedback/profile/login above. Shown to admins only, as a
+            courtesy: hiding it protects nothing. Access is enforced server-side, where every
+            admin endpoint checks users.role. */}
+        {user?.isAdmin && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href="/thrash-margin/admin" style={styles.link}>
+              🛠 Admin
+            </a>
+          </>
+        )}
       </div>
       <div style={styles.right}>
         {user ? (
@@ -64,7 +68,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
             </button>
           </>
         ) : (
-          <a href="/thrash-margin/login" style={styles.link}>
+          <a href="/thrash-margin/login?next=/niccolo/" style={styles.link}>
             Sign in
           </a>
         )}

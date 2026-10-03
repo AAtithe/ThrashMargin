@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { signToken } from '../_lib/auth';
+import { isAdmin } from '../_lib/admin';
 import { handleCors } from '../_lib/cors';
 
 // Combines what were two separate functions (login.ts, register.ts) into one, dispatching on
@@ -33,7 +34,9 @@ async function login(req: VercelRequest, res: VercelResponse) {
     );
 
     const token = signToken({ userId: user.id, username: user.username });
-    return res.json({ token, userId: user.id, username: user.username });
+    // For the nav's Admin link only. Presentational: every admin endpoint re-checks the role.
+    const admin = await isAdmin(db, user.id);
+    return res.json({ token, userId: user.id, username: user.username, isAdmin: admin });
   } catch (err) {
     console.error('login error', err);
     return res.status(500).json({ message: 'Server error' });
@@ -48,9 +51,19 @@ async function register(req: VercelRequest, res: VercelResponse) {
   if (typeof username !== 'string' || username.length < 3 || username.length > 32) {
     return res.status(400).json({ message: 'username must be 3–32 characters' });
   }
+  // Same floor as /api/profile's password change, which previously was the only place it applied.
+  // The type check also stops a non-string body value reaching bcrypt and surfacing as a 500.
+  if (typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ message: 'password must be at least 6 characters' });
+  }
 
   const db = getDb();
   try {
+    // The UNIQUE constraint on users.username is case-sensitive, so 'Tom' and 'tom' could both
+    // register and pass for each other in feedback, the admin list and anywhere a name is shown.
+    const { rowCount } = await db.query('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)', [username]);
+    if (rowCount) return res.status(409).json({ message: 'Username or email already taken' });
+
     const hash = await bcrypt.hash(password, 12);
     const id = uuid();
     await db.query(
@@ -59,7 +72,7 @@ async function register(req: VercelRequest, res: VercelResponse) {
     );
     await db.query('INSERT INTO player_stats (user_id) VALUES ($1)', [id]);
     const token = signToken({ userId: id, username });
-    return res.status(201).json({ token, userId: id, username });
+    return res.status(201).json({ token, userId: id, username, isAdmin: false });
   } catch (err: any) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'Username or email already taken' });

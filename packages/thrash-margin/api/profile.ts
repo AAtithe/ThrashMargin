@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { getDb } from './_lib/db';
 import { getUser } from './_lib/auth';
 import { handleCors } from './_lib/cors';
+import { isAdmin } from './_lib/admin';
 
 // /api/profile — a signed-in user's own account. Unlike /api/admin/users, this only ever
 // reads or writes the row matching the caller's own JWT userId; there is no way to pass a
@@ -50,6 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         },
         activeGames: Number(r.active_games),
         wins: Number(r.wins),
+        isAdmin: await isAdmin(db, user.userId),
       });
     } catch (err) {
       console.error('get profile error', err);

@@ -222,7 +222,7 @@ export default function Lobby() {
               Sign in to keep your campaigns on your account.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              <Button tone="primary" onClick={() => { window.location.href = `/thrash-margin/login?next=${encodeURIComponent(window.location.pathname)}`; }}>
+              <Button tone="primary" onClick={() => { window.location.href = '/thrash-margin/login?next=/tea-race/'; }}>
                 Sign in / Register →
               </Button>
             </div>

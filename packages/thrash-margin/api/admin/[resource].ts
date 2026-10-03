@@ -2,19 +2,21 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { getDb } from '../_lib/db';
 import { getUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
-import { isAdminUsername } from '../_lib/admin';
+import { isAdmin } from '../_lib/admin';
 
 // Combines what were two separate functions (users.ts, feedback.ts) into one, dispatching on
 // the [resource] route param — Vercel's Hobby plan caps a deployment at 12 serverless
 // functions, and the portal's three games plus this admin surface were pushing past it.
 // URLs are unchanged: /api/admin/users and /api/admin/feedback still resolve here.
 
+const ROLES = ['user', 'admin'] as const;
+
 async function listUsers(res: VercelResponse) {
   const db = getDb();
   try {
     const { rows } = await db.query(
       `SELECT
-         u.id, u.username, u.email, u.created_at, u.last_login_at,
+         u.id, u.username, u.email, u.role, u.created_at, u.last_login_at,
          COUNT(g.id) FILTER (WHERE g.game = 'thrash_margin')            AS tm_games,
          COUNT(g.id) FILTER (WHERE g.game = 'niccolo')                  AS niccolo_games,
          COUNT(g.id) FILTER (WHERE g.game = 'tea_race')                 AS tearace_games,
@@ -31,6 +33,7 @@ async function listUsers(res: VercelResponse) {
       id: r.id,
       username: r.username,
       email: r.email,
+      role: r.role === 'admin' ? 'admin' : 'user',
       registeredAt: new Date(r.created_at).getTime(),
       lastLoginAt: r.last_login_at ? new Date(r.last_login_at).getTime() : null,
       gamesByTitle: {
@@ -46,6 +49,31 @@ async function listUsers(res: VercelResponse) {
     return res.json({ users });
   } catch (err) {
     console.error('admin list users error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// PATCH /api/admin/users { id, role } — grant or remove admin.
+//
+// An admin cannot change their own role. That one rule is what keeps the portal from ever being
+// left with no admin: the caller is always an admin and always stays one, so demoting anyone else
+// can never remove the last. It also stops an admin locking themselves out by a mis-click.
+async function updateUserRole(req: VercelRequest, res: VercelResponse, callerId: string) {
+  const { id, role } = req.body ?? {};
+  if (typeof id !== 'string' || !id || !(ROLES as readonly unknown[]).includes(role)) {
+    return res.status(400).json({ message: 'id and role (user|admin) required' });
+  }
+  if (id === callerId) {
+    return res.status(400).json({ message: 'You cannot change your own role. Ask another admin.' });
+  }
+  const db = getDb();
+  try {
+    const { rowCount } = await db.query('UPDATE users SET role = $1 WHERE id = $2', [role, id]);
+    if (!rowCount) return res.status(404).json({ message: 'User not found' });
+    console.log(`admin role change: ${callerId} set ${id} to ${role}`);
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('admin update role error', err);
     return res.status(500).json({ message: 'Server error' });
   }
 }
@@ -97,11 +125,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let user;
   try { user = getUser(req); } catch { return res.status(401).json({ message: 'Unauthorized' }); }
-  if (!isAdminUsername(user.username)) return res.status(403).json({ message: 'Admin access only' });
+  if (!(await isAdmin(getDb(), user.userId))) return res.status(403).json({ message: 'Admin access only' });
 
   const resource = req.query.resource;
 
   if (resource === 'users' && req.method === 'GET') return listUsers(res);
+  if (resource === 'users' && req.method === 'PATCH') return updateUserRole(req, res, user.userId);
   if (resource === 'feedback' && req.method === 'GET') return listFeedback(res);
   if (resource === 'feedback' && req.method === 'PATCH') return updateFeedback(req, res);
 

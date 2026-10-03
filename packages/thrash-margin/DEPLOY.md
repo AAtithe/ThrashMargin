@@ -21,6 +21,10 @@
    postgresql://postgres.[ref]:[password]@aws-0-[region].pooler.supabase.com:6543/postgres
    ```
    This is your `DATABASE_URL`.
+5. Admins: nothing to run. The `users.role` column is added automatically on first use. On a
+   database with no admin yet, the first sign-in whose username is listed exactly in
+   `ADMIN_USERNAMES` becomes admin; after that the variable is ignored and can be removed, and
+   admins are granted and removed on the portal's Admin page.
 
 ---
 
@@ -37,7 +41,6 @@
    |------------------|--------------------------------------------|
    | `DATABASE_URL`   | Your Supabase Transaction mode URL (above) |
    | `JWT_SECRET`     | Run `openssl rand -base64 32` to generate  |
-   | `JWT_EXPIRES_IN` | `7d`                                       |
    | `CORS_ORIGIN`    | Your Vercel deployment URL (add after first deploy, e.g. `https://thrash-margin.vercel.app`) |
 
 5. Deploy — Vercel runs `scripts/build-portal.sh` (builds Niccolo and this client under their own subpaths, assembles the landing page) and deploys the root-level `api/` functions automatically.
@@ -76,6 +79,5 @@ On first run, `vercel dev` will ask you to link to your Vercel project.
 ```
 DATABASE_URL=postgresql://postgres.[ref]:[pw]@aws-0-[region].pooler.supabase.com:6543/postgres
 JWT_SECRET=<32+ char random string>
-JWT_EXPIRES_IN=7d
 CORS_ORIGIN=https://your-domain.vercel.app
 ```

@@ -1,23 +1,20 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useEffect } from 'react';
 import { getToken, setToken, setStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
 
 /**
- * Every game in the portal signs in here, and each lobby's sign-in button passes `?next=` with its
- * own path so the player lands back in the game they came from rather than in Thrash Margin's lobby.
- *
- * `next` is only ever followed when it is a same-origin absolute path: it must start with a single
- * '/', so '//evil.example' and 'https://...' are refused and the page falls back to its own lobby.
+ * Where to go after signing in: the page that sent you here (`?next=/niccolo/`), else the portal's
+ * welcome page. Same-site paths only, so the parameter cannot bounce a fresh session elsewhere.
  */
-function safeNext(): string | null {
-  const raw = new URLSearchParams(window.location.search).get('next');
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\')) return null;
-  return raw;
+function destination(): string {
+  const next = new URLSearchParams(window.location.search).get('next');
+  // A backslash is refused too: browsers read '/\\evil.example' as '//evil.example'.
+  return next && next.startsWith('/') && !next.startsWith('//') && !next.includes('\\') ? next : '/';
 }
 
+/** The game a sign-in is for, so the card names it rather than always saying Thrash Margin. */
 const GAME_TITLES: { prefix: string; title: string; subtitle: string }[] = [
   { prefix: '/rising/', title: 'Niccolò Rising', subtitle: 'Bruges · 1460 · in real time' },
   { prefix: '/niccolo/', title: 'Banco di Niccolo', subtitle: 'Trade · Credit · Intelligence' },
@@ -32,19 +29,11 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const nav = useNavigate();
-  const next = safeNext();
-  const game = next ? GAME_TITLES.find(g => next.startsWith(g.prefix)) : undefined;
-
-  // Another game is a separate build, so leaving for it is a full page load, not a router push.
-  const leave = useCallback(() => {
-    if (next) window.location.assign(next);
-    else nav('/');
-  }, [next, nav]);
+  const game = GAME_TITLES.find(g => destination().startsWith(g.prefix));
 
   useEffect(() => {
-    if (getToken()) leave();
-  }, [leave]);
+    if (getToken()) window.location.replace(destination());
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,8 +51,9 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed'); return; }
       setToken(data.token);
-      setStoredUser({ userId: data.userId, username: data.username });
-      leave();
+      setStoredUser({ userId: data.userId, username: data.username, isAdmin: data.isAdmin === true });
+      // A full page load, not a router push: the destination is usually another app on the portal.
+      window.location.assign(destination());
     } catch {
       setError('Network error — try again');
     } finally {

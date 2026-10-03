@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { getToken } from '../lib/token';
+import { getToken, getStoredUser, setStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -48,6 +48,11 @@ export default function Profile() {
       if (!res.ok) { setLoadError(true); return; }
       const data = await res.json();
       setProfile(data);
+      // Keeps the nav's Admin link in step with a role granted or removed since sign-in.
+      const stored = getStoredUser();
+      if (stored && stored.isAdmin !== (data.isAdmin === true)) {
+        setStoredUser({ ...stored, isAdmin: data.isAdmin === true });
+      }
       setNewEmail(data.email);
     } catch {
       setLoadError(true);
@@ -128,7 +133,7 @@ export default function Profile() {
               <Stat label="Banco di Niccolo" value={String(profile.gamesByTitle.niccolo)} />
               <Stat label="Niccolò Rising" value={String(profile.gamesByTitle.niccolo_rising ?? 0)} />
               <Stat label="The Tea Race" value={String(profile.gamesByTitle.tea_race)} />
-              <Stat label="Steady Eddie" value={String(profile.gamesByTitle.steady_eddie ?? 0)} />
+              <Stat label="Steady Eddie" value={String(profile.gamesByTitle.steady_eddie)} />
               <Stat label="Wins" value={String(profile.wins)} />
             </div>
           </section>
