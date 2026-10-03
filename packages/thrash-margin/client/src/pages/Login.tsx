@@ -92,11 +92,17 @@ export default function Login() {
             style={s.input} type="password" placeholder="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             value={password} onChange={e => setPassword(e.target.value)} required
           />
+          {new URLSearchParams(window.location.search).get('deleted') === '1' && !error && (
+            <p style={{ color: '#3fb950', fontSize: 13, margin: 0 }}>Your account and saved games have been deleted.</p>
+          )}
           {error && <p style={s.error}>{error}</p>}
           <button style={s.btn} type="submit" disabled={loading}>
             {loading ? '…' : game ? (mode === 'login' ? 'Sign in →' : 'Create account →') : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
           </button>
         </form>
+        <p style={{ fontSize: 12, color: '#7d8590', textAlign: 'center', margin: '14px 0 0' }}>
+          What we keep about you, and how to delete it: <a href="/privacy.html" style={{ color: '#58a6ff' }}>privacy notice</a>
+        </p>
         </div>
       </div>
       <PortalNav variant="footer" />

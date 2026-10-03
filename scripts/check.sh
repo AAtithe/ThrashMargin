@@ -13,6 +13,9 @@ TSC="$ROOT_DIR/node_modules/.bin/tsc"
 
 step() { echo; echo "==> $*"; }
 
+step "Shared code: every game's copy matches shared/portal/"
+node scripts/sync-shared.mjs --check
+
 step "Typecheck: /api entry points"
 "$TSC" -p tsconfig.api.json
 
@@ -31,6 +34,9 @@ for game in tea-race steady-eddie; do
   "$TSC" --noEmit -p "packages/$game/tsconfig.json"
   "$TSC" --noEmit -p "packages/$game/api/tsconfig.json"
 done
+
+step "Test: browser save queue"
+"$ROOT_DIR/node_modules/.bin/tsx" scripts/savequeue-test.ts | tail -1
 
 for game in thrash-margin tea-race steady-eddie niccolo niccolo-rising; do
   step "Test suite: $game"

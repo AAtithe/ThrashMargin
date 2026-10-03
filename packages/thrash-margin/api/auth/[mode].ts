@@ -6,6 +6,8 @@ import { getDb } from '../_lib/db';
 import { signToken } from '../_lib/auth';
 import { isAdmin } from '../_lib/admin';
 import { ensureSchema } from '../_lib/schema';
+import { isEmail } from '../_lib/validate';
+import { clientAddress, isOverLimit, LIMITS, recordEvent } from '../_lib/rateLimit';
 import { handleCors } from '../_lib/cors';
 
 // Combines what were two separate functions (login.ts, register.ts) into one, dispatching on
@@ -105,8 +107,15 @@ async function register(req: VercelRequest, res: VercelResponse) {
   if (typeof password !== 'string' || password.length < 6) {
     return res.status(400).json({ message: 'password must be at least 6 characters' });
   }
+  if (!isEmail(email)) return res.status(400).json({ message: 'Enter a valid email address' });
 
   const db = getDb();
+  // At most 5 new accounts per network address per hour, so a script cannot fill the portal with
+  // accounts. Counted only on success, so typos and taken names do not use up the allowance.
+  const address = clientAddress(req);
+  if (await isOverLimit(db, LIMITS.register, address)) {
+    return res.status(429).json({ message: 'Too many new accounts from this network. Try again in an hour.' });
+  }
   try {
     // The UNIQUE constraint on users.username is case-sensitive, so 'Tom' and 'tom' could both
     // register and pass for each other in feedback, the admin list and anywhere a name is shown.
@@ -115,11 +124,14 @@ async function register(req: VercelRequest, res: VercelResponse) {
 
     const hash = await bcrypt.hash(password, 12);
     const id = uuid();
+    // One statement, so an account is either fully created or not at all. It used to be followed
+    // by a second insert into player_stats (a table nothing read); if that failed, the player was
+    // told "Server error" while the account already existed, and their retry was refused as taken.
     await db.query(
       'INSERT INTO users (id, username, email, password) VALUES ($1, $2, $3, $4)',
-      [id, username, String(email).toLowerCase(), hash],
+      [id, username, email.toLowerCase(), hash],
     );
-    await db.query('INSERT INTO player_stats (user_id) VALUES ($1)', [id]);
+    await recordEvent(db, LIMITS.register, address);
     const token = signToken({ userId: id, username });
     return res.status(201).json({ token, userId: id, username, isAdmin: false });
   } catch (err: any) {

@@ -52,11 +52,21 @@ function ok(cond: unknown, label: string) {
 interface Out {
   status: number;
   body: any;
+  headers: Record<string, string>;
 }
-async function call(h: Handler, method: string, query: Record<string, string>, body?: unknown, token?: string): Promise<Out> {
-  const out: Out = { status: 200, body: undefined };
+async function call(
+  h: Handler,
+  method: string,
+  query: Record<string, string>,
+  body?: unknown,
+  token?: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<Out> {
+  const out: Out = { status: 200, body: undefined, headers: {} };
   const res: any = {
-    setHeader() {},
+    setHeader(k: string, v: string) {
+      out.headers[k.toLowerCase()] = v;
+    },
     status(s: number) {
       out.status = s;
       return res;
@@ -69,12 +79,13 @@ async function call(h: Handler, method: string, query: Record<string, string>, b
       return res;
     },
   };
-  const headers: Record<string, string> = token ? { authorization: `Bearer ${token}` } : {};
+  const headers: Record<string, string> = { ...extraHeaders, ...(token ? { authorization: `Bearer ${token}` } : {}) };
   await h({ method, query, body, headers }, res);
   return out;
 }
 
-const auth = (mode: string, body: unknown) => call(handlers.auth, 'POST', { mode }, body);
+const auth = (mode: string, body: unknown, ip = '10.0.0.1') =>
+  call(handlers.auth, 'POST', { mode }, body, undefined, { 'x-forwarded-for': ip });
 const adminApi = (method: string, resource: string, token: string, body?: unknown) =>
   call(handlers.admin, method, { resource }, body, token);
 const play = (method: string, kind: string, token: string | undefined, id?: string, body?: unknown) =>
@@ -91,10 +102,21 @@ async function resetDatabase(mode: 'fresh' | 'legacy') {
     INSERT INTO auth.users VALUES (gen_random_uuid(), 'authenticated', 'someone@example.com');`);
   await admin.query(readFileSync(path.join(ROOT, 'db/schema.sql'), 'utf8'));
   if (mode === 'legacy') {
+    // As the live database was before these rounds: none of the later columns or tables, and the
+    // original server's two unused tables still present (player_stats with default-only rows).
     await admin.query(`
       ALTER TABLE users DROP COLUMN role;
+      ALTER TABLE users DROP COLUMN password_changed_at;
+      ALTER TABLE games DROP COLUMN version;
       DROP TABLE login_failures;
-      DROP TABLE admin_audit;`);
+      DROP TABLE admin_audit;
+      DROP TABLE rate_events;
+      CREATE TABLE player_stats (user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        games_played INTEGER NOT NULL DEFAULT 0, games_won INTEGER NOT NULL DEFAULT 0,
+        games_lost INTEGER NOT NULL DEFAULT 0, avg_turns NUMERIC(6,2));
+      CREATE TABLE game_actions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE, user_id UUID NOT NULL REFERENCES users(id),
+        turn INTEGER NOT NULL, action JSONB NOT NULL);`);
   }
 }
 
@@ -110,6 +132,7 @@ async function suite(mode: 'fresh' | 'legacy') {
     profile: require(path.join(ROOT, 'api/profile')).default,
     feedback: require(path.join(ROOT, 'api/feedback')).default,
     play: require(path.join(ROOT, 'api/play/[kind]')).default,
+    health: require(path.join(ROOT, 'api/health')).default,
   };
   const { GAMES } = require(path.join(ROOT, 'packages/thrash-margin/shared/games'));
 
@@ -123,6 +146,20 @@ async function suite(mode: 'fresh' | 'legacy') {
   ok((await auth('register', { username: 'tom', email: 't2@x.test', password: 'secret1' })).status === 409, 'register: case-variant of Tom refused');
   ok((await auth('register', { username: 'bob', email: 'b@x.test', password: '123' })).status === 400, 'register: short password refused');
   ok((await auth('register', { username: 'bob', email: 'b@x.test', password: 12345678 })).status === 400, 'register: non-string password refused');
+  ok((await auth('register', { username: 'bob', email: 'not-an-email', password: 'secret1' })).status === 400, 'register: invalid email refused');
+  if (mode === 'legacy') {
+    const left = await admin.query(`SELECT to_regclass('public.player_stats') AS p, to_regclass('public.game_actions') AS g`);
+    ok(!left.rows[0].p && !left.rows[0].g, 'schema: unused player_stats and game_actions dropped while empty');
+  }
+  for (let i = 0; i < 5; i++) {
+    await auth('register', { username: `spam${i}`, email: `spam${i}@x.test`, password: 'secret1' }, '10.9.9.9');
+  }
+  const sixth = await auth('register', { username: 'spam5', email: 'spam5@x.test', password: 'secret1' }, '10.9.9.9');
+  ok(sixth.status === 429, 'limit: 6th account from one network address in an hour refused');
+  ok((await auth('register', { username: 'carol', email: 'c@x.test', password: 'secret1' }, '10.7.7.7')).status === 201, 'limit: other addresses unaffected');
+  ok(!('access-control-allow-origin' in tom.headers), 'cors: no cross-site permission sent by default');
+  const health = await call(handlers.health, 'GET', {});
+  ok(health.status === 200 && health.body.database === 'ok', 'health: reports the database reachable');
 
   // --- Sign-in and first admin ----------------------------------------------------------------
   const tomLogin = await auth('login', { username: 'Tom', password: 'secret1' });
@@ -186,7 +223,14 @@ async function suite(mode: 'fresh' | 'legacy') {
     ok(list.status === 200 && list.body.saves.some((s: { id: string }) => s.id === id), `${g.slug}: listed`);
     const loaded = await play('GET', g.slug, A2, id);
     ok(loaded.status === 200 && loaded.body.state, `${g.slug}: load`);
-    ok((await play('PUT', g.slug, A2, id, { state: loaded.body.state })).status === 200, `${g.slug}: save`);
+    ok(created.body.version === 0 && loaded.body.version === 0, `${g.slug}: new game at version 0`);
+    const s1 = await play('PUT', g.slug, A2, id, { state: loaded.body.state, version: 0 });
+    ok(s1.status === 200 && s1.body.version === 1, `${g.slug}: save bumps version to 1`);
+    const stale = await play('PUT', g.slug, A2, id, { state: loaded.body.state, version: 0 });
+    ok(stale.status === 409, `${g.slug}: save from a stale tab refused (409)`);
+    ok((await play('PUT', g.slug, A2, id, { state: loaded.body.state })).status === 200, `${g.slug}: save without a version still accepted`);
+    ok((await play('PUT', g.slug, A2, '00000000-0000-4000-8000-000000000000', { state: loaded.body.state, version: 0 })).status === 404, `${g.slug}: save to a missing game is 404, not success`);
+    ok((await play('GET', g.slug, A2, 'not-a-uuid')).status === 404, `${g.slug}: malformed id is 404, not a server error`);
     ok((await play('GET', g.slug, T, id)).status === 404, `${g.slug}: another player cannot load it`);
     const others = (GAMES as { slug: string }[]).filter(o => o.slug !== g.slug);
     ok((await play('GET', others[0].slug, A2, id)).status === 404, `${g.slug}: not visible through another game's endpoint`);
@@ -209,6 +253,9 @@ async function suite(mode: 'fresh' | 'legacy') {
     (GAMES as { key: string }[]).every(g => filed.has(g.key)) && !filed.has('general'),
     `feedback: filed under each game, none dropped to general (got ${JSON.stringify([...filed])})`,
   );
+  for (let i = 0; i < 5; i++) await call(handlers.feedback, 'POST', {}, { game: 'general', message: `more ${i}` }, A2);
+  const tooMuch = await call(handlers.feedback, 'POST', {}, { game: 'general', message: 'eleventh' }, A2);
+  ok(tooMuch.status === 429, 'limit: 11th feedback in an hour refused');
   const users = await adminApi('GET', 'users', T);
   ok(
     (users.body.users as { username: string; gamesByTitle: Record<string, number> }[]).find(u => u.username === 'ann')
@@ -222,6 +269,37 @@ async function suite(mode: 'fresh' | 'legacy') {
     for (const s of list.body.saves as { id: string }[]) await play('DELETE', g.slug, A2, s.id);
     ok((await play('GET', g.slug, A2)).body.saves.length === 0, `${g.slug}: delete`);
   }
+  // --- Password change signs out other sessions -------------------------------------------------
+  const carolLogin = await auth('login', { username: 'carol', password: 'secret1' });
+  const C1 = carolLogin.body.token as string;
+  await new Promise(r => setTimeout(r, 1100)); // tokens carry whole seconds; make the change strictly later
+  const changed = await call(handlers.profile, 'PATCH', {}, { currentPassword: 'secret1', newPassword: 'secret2' }, C1);
+  ok(changed.status === 200 && typeof changed.body.token === 'string', 'password change: returns a fresh token');
+  ok((await call(handlers.profile, 'GET', {}, undefined, C1)).status === 401, 'password change: older session signed out');
+  ok((await call(handlers.profile, 'GET', {}, undefined, changed.body.token)).status === 200, 'password change: fresh token works');
+  ok((await call(handlers.profile, 'PATCH', {}, { currentPassword: 'secret2', newEmail: 'nope' }, changed.body.token)).status === 400, 'profile: invalid email refused');
+  await new Promise(r => setTimeout(r, 1100));
+  const reset2 = await adminApi('POST', 'reset-password', T, { id: carolLogin.body.userId });
+  ok(reset2.status === 200, 'reset: carol reset by admin');
+  ok((await call(handlers.profile, 'GET', {}, undefined, changed.body.token)).status === 401, 'reset: signs the player out everywhere');
+
+  // --- Account deletion -------------------------------------------------------------------------------
+  const tomSelf = await call(handlers.profile, 'DELETE', {}, { password: 'secret1' }, T);
+  ok(tomSelf.status === 409, 'delete: the only admin cannot delete their account');
+  const annDel = await auth('login', { username: 'ann', password: reset.body.temporaryPassword });
+  const AD = annDel.body.token as string;
+  await play('POST', 'tea-race', AD, undefined, { name: 'doomed' });
+  ok((await call(handlers.profile, 'DELETE', {}, { password: 'wrong' }, AD)).status === 403, 'delete: wrong password refused');
+  const gone = await call(handlers.profile, 'DELETE', {}, { password: reset.body.temporaryPassword }, AD);
+  ok(gone.status === 200, 'delete: account deleted');
+  ok((await call(handlers.profile, 'GET', {}, undefined, AD)).status === 401, 'delete: its session stops working at once');
+  const leftovers = await admin.query(`SELECT COUNT(*)::int AS n FROM games g JOIN users u ON u.id = g.owner_id WHERE u.username = 'ann'`);
+  const orphans = await admin.query(`SELECT COUNT(*)::int AS n FROM games WHERE owner_id NOT IN (SELECT id FROM users)`);
+  ok(leftovers.rows[0].n === 0 && orphans.rows[0].n === 0, 'delete: every saved game removed');
+  const fbKept = await admin.query(`SELECT COUNT(*)::int AS n FROM feedback WHERE user_id IS NULL`);
+  ok(fbKept.rows[0].n > 0, 'delete: feedback kept without the name');
+  ok((await auth('login', { username: 'ann', password: reset.body.temporaryPassword })).status === 401, 'delete: cannot sign in again');
+
   delete process.env.ADMIN_USERNAMES;
 }
 

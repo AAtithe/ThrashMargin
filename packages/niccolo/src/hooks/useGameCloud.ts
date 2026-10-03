@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { processAction } from '../sim/actions';
 import { withAllCurrencies } from '../sim/currency';
 import { API, authHeaders } from '../lib/api';
 import type { GameAction, GameState } from '../sim/types';
 import type { FreeplayGoal, RivalCount } from '../sim/freeplay';
 import type { SaveMeta } from './useGameLocal';
+import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/saveQueue';
 
 /** The `tm_token` JWT this hook sends (see api/_lib/auth.ts) expires after 7 days by default —
  * every endpoint here 401s once that happens, and without this distinct message the player just
@@ -24,6 +25,22 @@ export function useGameCloud() {
   const [saves, setSaves] = useState<SaveMeta[]>([]);
   const [error, setError] = useState<string | null>(null);
 
+  // Saves go through one queue: one request in flight, always the latest state, carrying the
+  // version the game was loaded at, so another tab's newer progress is never overwritten
+  // (lib/saveQueue.ts). Kept in a ref so every render shares it.
+  const afterSave = useRef<() => void>(() => {});
+  const saver = useRef<Saver | null>(null);
+  if (!saver.current) {
+    saver.current = createSaver(`${API}/api/play/niccolo`, authHeaders, outcome => {
+      if (outcome === 'saved') {
+        setError(prev => (prev && SAVE_ERRORS.has(prev) ? null : prev));
+        afterSave.current();
+      } else {
+        setError(outcome === 'expired' ? SESSION_EXPIRED : SAVE_MESSAGES[outcome]);
+      }
+    });
+  }
+
   const fetchSaves = useCallback(async () => {
     try {
       const res = await fetch(`${API}/api/play/niccolo`, { headers: authHeaders() });
@@ -33,6 +50,8 @@ export function useGameCloud() {
       setSaves(data.saves ?? []);
     } catch { /* non-fatal — the lobby just shows what it already has */ }
   }, []);
+
+  afterSave.current = fetchSaves;
 
   useEffect(() => { fetchSaves(); }, [fetchSaves]);
 
@@ -56,6 +75,7 @@ export function useGameCloud() {
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to start campaign'); return null; }
       setState(data.state);
+      saver.current?.reset(data.gameId, data.version);
       await fetchSaves();
       return data.gameId as string;
     } catch {
@@ -71,6 +91,7 @@ export function useGameCloud() {
       if (res.status === 401) { setError(SESSION_EXPIRED); return; }
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed to load campaign'); return; }
+      saver.current?.reset(gameId, data.version);
       setState({ ...data.state, exchangeRates: withAllCurrencies(data.state.exchangeRates) });
     } catch {
       setError('Network error — failed to load campaign');
@@ -88,15 +109,7 @@ export function useGameCloud() {
         return prev;
       }
       setError(null);
-      // Fire-and-forget sync — the UI already has the new state; a failed sync just means
-      // this particular week's progress stays local until the next successful sync.
-      fetch(`${API}/api/play/niccolo?id=${next.id}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({ state: next }),
-      })
-        .then(res => { if (res.status === 401) setError(SESSION_EXPIRED); else return fetchSaves(); })
-        .catch(() => { /* non-fatal */ });
+      saver.current?.save(next.id, next);
       return next;
     });
   }, [fetchSaves]);

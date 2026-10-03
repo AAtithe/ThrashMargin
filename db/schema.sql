@@ -5,8 +5,8 @@
 -- db/schema.sql`. Every statement is idempotent, so it is also safe to run against the live
 -- database: it only adds what is missing.
 --
--- The live database does not need it run by hand. The API adds the role column, login_failures and
--- admin_audit itself on first use (packages/thrash-margin/api/_lib/schema.ts); keep both in step.
+-- The live database does not need it run by hand. The API adds every later column and table itself on first
+-- use (shared/portal/server/schema.ts); keep both in step.
 -- The CI API tests build their database from this file, so a table missing here fails CI.
 
 -- Users
@@ -17,6 +17,8 @@ CREATE TABLE IF NOT EXISTS users (
   password       VARCHAR(255) NOT NULL,
   last_login_at  TIMESTAMPTZ,
   role           VARCHAR(16) NOT NULL DEFAULT 'user' CONSTRAINT users_role_check CHECK (role IN ('user', 'admin')),
+  -- Sessions issued before this are refused, so a password change signs out every device.
+  password_changed_at  TIMESTAMPTZ,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -25,6 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
 -- below for why this pattern is used instead of a separate numbered migration file.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'user';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
                  WHERE conname = 'users_role_check' AND conrelid = 'users'::regclass) THEN
@@ -45,6 +48,7 @@ CREATE TABLE IF NOT EXISTS games (
   mode        VARCHAR(16) NOT NULL DEFAULT 'single',  -- 'single' | 'pvp'
   status      VARCHAR(16) NOT NULL DEFAULT 'active',  -- 'active' | 'victory' | 'defeated'
   turn        INTEGER NOT NULL DEFAULT 1,
+  version     INTEGER NOT NULL DEFAULT 0,                -- bumped on every save; see api/_lib/saves.ts
   state       JSONB NOT NULL,                          -- full GameState blob
   config      JSONB NOT NULL,                          -- GameConfig snapshot
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -55,27 +59,7 @@ CREATE TABLE IF NOT EXISTS games (
 -- already-deployed Supabase instance) — running this file again against a fresh install is a
 -- harmless no-op since the column is already in the CREATE TABLE above.
 ALTER TABLE games ADD COLUMN IF NOT EXISTS game VARCHAR(16) NOT NULL DEFAULT 'thrash_margin';
-
--- Action log (for replay and audit)
-CREATE TABLE IF NOT EXISTS game_actions (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  game_id     UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
-  user_id     UUID NOT NULL REFERENCES users(id),
-  turn        INTEGER NOT NULL,
-  action      JSONB NOT NULL,    -- GameAction payload
-  result      JSONB,             -- optional result snapshot
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Player stats (denormalised for leaderboard)
-CREATE TABLE IF NOT EXISTS player_stats (
-  user_id       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  games_played  INTEGER NOT NULL DEFAULT 0,
-  games_won     INTEGER NOT NULL DEFAULT 0,
-  games_lost    INTEGER NOT NULL DEFAULT 0,
-  avg_turns     NUMERIC(6,2),
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+ALTER TABLE games ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 0;
 
 -- Feedback / bug reports / ideas, submitted by any signed-in user against any of the portal's
 -- games (or 'general' for portal-wide feedback). Admin-only to read; any signed-in user can
@@ -112,14 +96,24 @@ CREATE TABLE IF NOT EXISTS admin_audit (
   detail           TEXT
 );
 
+-- Registration and feedback limits: one row per counted event, pruned after a day.
+CREATE TABLE IF NOT EXISTS rate_events (
+  id      BIGSERIAL PRIMARY KEY,
+  bucket  VARCHAR(32) NOT NULL,   -- 'register' (key: network address) | 'feedback' (key: user id)
+  key     VARCHAR(128) NOT NULL,
+  at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- player_stats and game_actions, from the original single-game server, were never read by this API
+-- and are no longer created. The API drops them from an existing database while they are empty.
+
 -- Indexes
+CREATE INDEX IF NOT EXISTS idx_rate_events ON rate_events (bucket, key, at);
 CREATE INDEX IF NOT EXISTS idx_login_failures_key_at ON login_failures (username_key, at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit (at DESC);
 CREATE INDEX IF NOT EXISTS idx_games_owner    ON games(owner_id);
 CREATE INDEX IF NOT EXISTS idx_games_status   ON games(status);
 CREATE INDEX IF NOT EXISTS idx_games_owner_game ON games(owner_id, game);
-CREATE INDEX IF NOT EXISTS idx_actions_game   ON game_actions(game_id);
-CREATE INDEX IF NOT EXISTS idx_actions_turn   ON game_actions(game_id, turn);
 CREATE INDEX IF NOT EXISTS idx_feedback_game   ON feedback(game);
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
 CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback(created_at DESC);

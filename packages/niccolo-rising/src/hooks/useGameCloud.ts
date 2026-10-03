@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { processAction } from '../sim/actions';
 import { isCurrentShape, migrateState } from '../sim/state';
 import { API, authHeaders } from '../lib/api';
 import type { GameAction, GameState } from '../sim/types';
 import type { SaveMeta } from './useGameLocal';
+import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/saveQueue';
 
 /** See Steady Eddie's useGameCloud for why an expired token is reported rather than cleared. */
 const SESSION_EXPIRED =
@@ -20,6 +21,22 @@ export function useGameCloud() {
   const [state, setState] = useState<GameState | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  // Saves go through one queue: one request in flight, always the latest state, carrying the
+  // version the game was loaded at, so another tab's newer progress is never overwritten
+  // (lib/saveQueue.ts). Kept in a ref so every render shares it.
+  const afterSave = useRef<() => void>(() => {});
+  const saver = useRef<Saver | null>(null);
+  if (!saver.current) {
+    saver.current = createSaver(ENDPOINT, authHeaders, outcome => {
+      if (outcome === 'saved') {
+        setError(prev => (prev && SAVE_ERRORS.has(prev) ? null : prev));
+        afterSave.current();
+      } else {
+        setError(outcome === 'expired' ? SESSION_EXPIRED : SAVE_MESSAGES[outcome]);
+      }
+    });
+  }
 
   const fetchSaves = useCallback(async () => {
     try {
@@ -55,6 +72,7 @@ export function useGameCloud() {
           return null;
         }
         setState(data.state);
+        saver.current?.reset(data.gameId, data.version);
         await fetchSaves();
         return data.gameId as string;
       } catch {
@@ -83,6 +101,7 @@ export function useGameCloud() {
         setError('That character is from an older version of the game');
         return;
       }
+      saver.current?.reset(gameId, data.version);
       setState(migrated);
     } catch {
       setError('Network error: failed to load the character');
@@ -100,17 +119,7 @@ export function useGameCloud() {
         return prev;
       }
       if (next === prev) return prev;
-      fetch(`${ENDPOINT}?id=${encodeURIComponent(next.id)}`, {
-        method: 'PUT',
-        headers: authHeaders(),
-        body: JSON.stringify({ state: next }),
-      })
-        .then(res => {
-          if (res.status === 401) setError(SESSION_EXPIRED);
-        })
-        .catch(() => {
-          /* non-fatal: the next accepted action writes the whole state again */
-        });
+      saver.current?.save(next.id, next);
       return next;
     });
   }, []);

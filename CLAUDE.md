@@ -77,6 +77,11 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   pass on a pre-existing database to test the API's automatic setup. Needs
   `API_TEST_DATABASE_URL` pointing at a local database (it is wiped). An admin bug once passed every
   test and failed live because the test database lacked Supabase's tables.
+- **Shared portal code lives once, in `shared/portal/`** (server: auth, database, CORS, schema,
+  saves, rate limits; browser: session, save queue). Each game gets a generated copy in its own
+  `api/_lib/` and `src/lib/`; never edit a copy. Edit the original, run `npm run sync-shared`, and
+  `npm run check` fails while any copy differs. Copies, not imports, because a cross-package import
+  once broke production: Vercel left the file out of the deployed function (see PROGRESS.md).
 - **Adding a game:** one entry in `packages/thrash-margin/shared/games.ts` (feedback, profile and
   admin read it), one line in `api/play/[kind].ts` (its saves endpoint), and its build in
   `scripts/build-portal.sh` and `scripts/check.sh`. No new Vercel function.

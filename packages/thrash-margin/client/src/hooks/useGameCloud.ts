@@ -4,6 +4,7 @@ import type { GameAction, GameConfig, GameState } from 'shared/sim';
 import { API, SESSION_EXPIRED, authHeaders } from '../lib/api';
 import { getToken } from '../lib/token';
 import { newSeed, type GameHook, type SaveMeta, type SaveStatus } from './types';
+import { SAVE_MESSAGES } from '../lib/saveQueue';
 
 const SAVE_DELAY_MS = 700;
 
@@ -25,6 +26,12 @@ export function useGameCloud(): GameHook {
   const ref = useRef<GameState | null>(null);
   const timer = useRef<number | null>(null);
   const pending = useRef<GameState | null>(null);
+  // The version the server holds for the open game (api/_lib/saves.ts). Each save sends it, so a
+  // save from a tab that has fallen behind another tab or device is refused (409) rather than
+  // overwriting newer progress. After a refusal, or if the game has been deleted (404), this tab
+  // stops saving and says why.
+  const version = useRef<number | undefined>(undefined);
+  const halted = useRef(false);
 
   const fetchSaves = useCallback(async () => {
     try {
@@ -56,7 +63,7 @@ export function useGameCloud(): GameHook {
     if (!s) return;
     pending.current = null;
     setSaveStatus('saving');
-    const body = JSON.stringify({ state: s });
+    const body = JSON.stringify({ state: s, version: version.current });
     const run = (async () => {
       try {
         const res = await fetch(`${API}/api/play/thrash-margin?id=${encodeURIComponent(s.id)}`, {
@@ -67,12 +74,22 @@ export function useGameCloud(): GameHook {
           keepalive: closing && body.length < 60_000,
         });
         if (res.status === 401) { setError(SESSION_EXPIRED); setSaveStatus('error'); }
+        else if (res.status === 409 || res.status === 404) {
+          halted.current = true;
+          pending.current = null;
+          setError(res.status === 409 ? SAVE_MESSAGES.conflict : SAVE_MESSAGES.missing);
+          setSaveStatus('error');
+        }
         else if (!res.ok) throw new Error(String(res.status));
-        else setSaveStatus(pending.current ? 'saving' : 'saved');
+        else {
+          const data = await res.json().catch(() => ({}));
+          if (typeof data.version === 'number' && ref.current?.id === s.id) version.current = data.version;
+          setSaveStatus(pending.current ? 'saving' : 'saved');
+        }
       } catch {
         setSaveStatus('error');
         // Keep it queued so the next change or End Turn retries, unless something newer is waiting.
-        if (!pending.current) pending.current = s;
+        if (!pending.current && !halted.current) pending.current = s;
       }
     })();
     inFlight.current = run;
@@ -82,6 +99,7 @@ export function useGameCloud(): GameHook {
   }, []);
 
   const queueSave = useCallback((s: GameState, now: boolean) => {
+    if (halted.current) return;
     pending.current = s;
     setSaveStatus('saving');
     if (timer.current) window.clearTimeout(timer.current);
@@ -110,6 +128,8 @@ export function useGameCloud(): GameHook {
       if (!res.ok) { setError(data.message ?? 'Could not start the campaign.'); return null; }
       const s = migrateState(data.state);
       ref.current = s;
+      version.current = typeof data.version === 'number' ? data.version : undefined;
+      halted.current = false;
       setState(s);
       setSaveStatus('saved');
       void fetchSaves();
@@ -132,6 +152,8 @@ export function useGameCloud(): GameHook {
       if (!res.ok) { setError(data.message ?? 'Could not load the campaign.'); return; }
       const s = migrateState(data.state);
       ref.current = s;
+      version.current = typeof data.version === 'number' ? data.version : undefined;
+      halted.current = false;
       setState(s);
       setSaveStatus('saved');
     } catch {

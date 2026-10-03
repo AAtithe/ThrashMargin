@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
-import { getUser } from '../_lib/auth';
+import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
+import { isGameId, saveState, sendSaveResult } from '../_lib/saves';
 import { createInitialState } from '../../src/sim/state';
 
 /**
@@ -70,16 +71,14 @@ function readHazards(
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
 
-  let user;
-  try {
-    user = getUser(req);
-  } catch {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
+  const user = await requireUser(req, res);
+  if (!user) return;
 
   const db = getDb();
   const idParam = req.query.id;
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  // A malformed id cannot exist; answered here rather than as a database error.
+  if (id !== undefined && !isGameId(id)) return res.status(404).json({ message: 'Game not found' });
 
   if (id === undefined) {
     if (req.method === 'POST') {
@@ -106,7 +105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
            VALUES ($1, $2, $3, 'single', 'active', $4, $5, '{}')`,
           [newId, user.userId, GAME_KIND, state.round, JSON.stringify(state)],
         );
-        return res.status(201).json({ gameId: newId, state });
+        return res.status(201).json({ gameId: newId, state, version: 0 });
       } catch (err) {
         console.error('create steady-eddie game error', err);
         return res.status(500).json({ message: 'Server error' });
@@ -141,11 +140,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     try {
       const { rows } = await db.query(
-        'SELECT state FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
+        'SELECT state, version FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
         [id, user.userId, GAME_KIND],
       );
       if (!rows[0]) return res.status(404).json({ message: 'Game not found' });
-      return res.json({ state: rows[0].state });
+      return res.json({ state: rows[0].state, version: rows[0].version });
     } catch (err) {
       console.error('get steady-eddie game error', err);
       return res.status(500).json({ message: 'Server error' });
@@ -162,12 +161,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // The Tea Race has no losing state of its own — a haulier who runs out of money can always
       // sell a share back and carry on — so a game is either won or still being played.
       const status = state.winnerId ? 'victory' : 'active';
-      await db.query(
-        `UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW()
-         WHERE id = $4 AND owner_id = $5 AND game = $6`,
-        [JSON.stringify(state), status, state.round ?? 0, id, user.userId, GAME_KIND],
-      );
-      return res.json({ success: true });
+      const result = await saveState(db, {
+        id, ownerId: user.userId, game: GAME_KIND, state, status: status, turn: state.round ?? 0,
+        version: req.body?.version,
+      });
+      return sendSaveResult(res, result);
     } catch (err) {
       console.error('save steady-eddie state error', err);
       return res.status(500).json({ message: 'Server error' });
