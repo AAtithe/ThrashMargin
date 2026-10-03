@@ -1,89 +1,36 @@
 # Thrash Margin
 
-> Build fast. Fight harder. Hold the margin.
+> Every border is a balance sheet.
 
-A territory strategy game combining settlement development with military conquest. Every border is a balance sheet.
+A turn-based territory strategy game on the portal: take land, feed the army, out-earn your rivals.
+Settlers-style economy against Risk-style conquest, deterministic combat, up to three AI rivals or a
+second player in hot seat.
+
+- **Play:** `/thrash-margin/` on the portal. A signed-in account is required.
+- **Rules and build log:** `thrash-margin-design.md` at the repo root.
+- **Working notes for contributors:** `CLAUDE.md` in this folder.
 
 ## Stack
 
-- **Frontend**: React + Vite + TypeScript
-- **Backend**: Node.js + Express + TypeScript
-- **Database**: PostgreSQL (via `pg`)
-- **Auth**: JWT + bcrypt
-- **Deploy**: Railway (backend + db) / Vercel (frontend)
+React + Vite + TypeScript client, Vercel functions for the API, the portal's shared Postgres
+`games` table, JWT auth. The engine (`shared/sim/`) is pure TypeScript and runs in the browser;
+the server creates games and stores state.
 
-## Project structure
-
-```
-thrash-margin/
-├── client/          # React/Vite frontend
-│   └── src/
-│       ├── components/   # UI components
-│       ├── game/         # Game rendering (canvas)
-│       ├── hooks/        # React hooks
-│       └── pages/        # Route pages
-├── server/          # Express backend
-│   └── src/
-│       ├── db/           # Database client + migrations
-│       ├── engine/       # Game logic (pure TypeScript)
-│       ├── middleware/    # Auth, error handling
-│       └── routes/       # API route handlers
-├── shared/          # Types shared between client and server
-└── docker-compose.yml
-```
-
-## Getting started locally
-
-### Prerequisites
-- Node.js 18+
-- Docker (for local Postgres) or a Postgres instance
-
-### 1. Clone and install
+## Develop
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/thrash-margin.git
-cd thrash-margin
-npm install
-cd client && npm install
-cd ../server && npm install
+npm install                              # repo root
+npm run drive:tm                         # repo root: rules harness, a few seconds
+cd packages/thrash-margin/client && npm install && npm run dev   # http://localhost:5173
 ```
 
-### 2. Start local database
+To see the UI without the API, set the stored user in the browser console (client-side only; it
+grants no server access and cloud saves will 401, so the game falls back to browser saves):
 
-```bash
-docker-compose up -d
+```js
+localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 'local-dev' }))
 ```
 
-### 3. Set up environment variables
+## Deploy
 
-```bash
-cp server/.env.example server/.env
-# Edit server/.env with your values
-```
-
-### 4. Run migrations
-
-```bash
-cd server
-npm run migrate
-```
-
-### 5. Start dev servers
-
-```bash
-# From root — runs both client and server
-npm run dev
-```
-
-Client runs on http://localhost:5173  
-Server runs on http://localhost:3001
-
-## Claude Code instructions
-
-When opening this project in Claude Code, say:
-
-> "This is Thrash Margin, a territory strategy game. The game engine lives in server/src/engine/. The client sends action payloads to the REST API at /api/game/:id/action and renders the returned game state. Continue building from CLAUDE.md."
-
-## Deployment
-
-See `DEPLOY.md` for Railway + Vercel deployment instructions.
+Built as part of the portal by `scripts/build-portal.sh`; see `DEPLOY.md`.

@@ -68,6 +68,9 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **`npm run drive` before trusting anything.** ~370,000 assertions over 20 seeds in a couple of
   seconds. Use a wide seed set: pathologies in this codebase's history showed up in some seeds and
   not others, and a five-seed run once reported two bugs fixed while they were still there.
+- **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and
+  difficulty). Its engine (`packages/thrash-margin/shared/sim/`) follows the same purity rule as the
+  Tea Race's `sim/`: no `Math.random`, no clock, illegal actions return the same state object.
 - **Typecheck before trusting any measurement taken mid-refactor.** `tsx` transpiles without
   typechecking, so a half-finished rename makes every game look broken and can cost half a session.
 - **Win-rate comparisons need 150+ seeds.** At 20 the noise is about ±10 points and at 40 about ±8;
