@@ -4,6 +4,7 @@
  * same object.
  */
 import { HOME_PORT } from './content';
+import { dealOpeningCharters } from './charters';
 import { dealOpeningContracts, shuffledDeck } from './contracts';
 import { seedFromString } from './rng';
 import {
@@ -94,7 +95,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       ? { seed: shuffled.seed, deck: [] as string[], seq: 1, contracts: [] }
       : dealOpeningContracts(shuffled.seed, shuffled.deck, 1);
 
-  return {
+  return dealOpeningCharters({
     id,
     name: name.trim() || 'Voyage',
     rules,
@@ -113,6 +114,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       teaRace: true,
       pressSail: true,
       encounters: true,
+      charters: true,
+      renown: true,
     },
     difficulty: opts.difficulty ?? DEFAULT_DIFFICULTY,
     createdAt: opts.createdAt ?? 0,
@@ -151,7 +154,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
         }. Five commissions are posted on the exchange.`,
       },
     ],
-  };
+  });
 }
 
 /**

@@ -17,6 +17,8 @@ const KIND_COLOUR: Partial<Record<LogKind, string>> = {
   encounter: UI.verdigris,
   crackOn: UI.textSoft,
   repair: UI.textSoft,
+  charter: UI.brass,
+  renown: UI.brass,
 };
 
 export default function ChronicleLog({

@@ -53,6 +53,7 @@ import { COMPANIES, STOCK_IDS } from './stocks';
 import { bestSpreads, buyersFor, livePrice } from './voyage';
 import { AGENT_PRICE, canPlaceAgent } from './agents';
 import { RACE_FINISH, canCrackOn, openRace, raceLots } from './seamanship';
+import { charterValue } from './charters';
 import { pointsToDestination } from './movement';
 import type { AiProfile, Captain, CargoLot, Contract, Encounter, GameAction, GameState, PortId, Ship } from './types';
 import type { ShipClassId } from './rules';
@@ -242,7 +243,16 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
       // Paid at this quay's price, landed at the card's reckoning: the margin is the whole reason to
       // sail past a nearer supplier for a cheaper one, so it has to be in the score.
       const cost = priceAt(source, contract.good);
-      const profit = landedValue(s, contract.good, contract.price, multiplier) - cost;
+      // Plus whatever this run is worth to her owners' charters — the private reason to prefer one
+      // card over another that pays the same, which is what pulls the table's plans apart.
+      const charter = charterValue(
+        s.captains.find(c => c.id === owner),
+        contract.destination,
+        contract.good,
+        1,
+        multiplier === 4,
+      );
+      const profit = landedValue(s, contract.good, contract.price, multiplier) - cost + charter;
 
       const turns =
         passageTurns(s, from, source, toSource, skill.usesWind) +
@@ -298,7 +308,14 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
       const full = landedValue(s, lot.good, contract.price, multiplier);
       return n + (spoils ? full * freshness(s.turn + turns - lot.boughtOnTurn) : full);
     }, 0);
-    const score = (gross * (1 - drag)) / Math.max(0.5, turns);
+    const charter = charterValue(
+      s.captains.find(c => c.id === ship.ownerId),
+      contract.destination,
+      contract.good,
+      units.length,
+      multiplier === 4,
+    );
+    const score = ((gross + charter) * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, source: null, score };
   }
   return best;

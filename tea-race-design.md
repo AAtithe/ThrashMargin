@@ -560,6 +560,49 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
+### Session 14 (2026-10-24) — charters, renown and the Gazette
+
+The owner asked to make the game more interesting still. Three things were flat. Every captain
+wanted the same card every turn, so the table converged on one plan. Ships were interchangeable.
+And rival turns resolved in an instant, so the race was hard to follow.
+
+**Owners' charters** (`charters`, `sim/charters.ts`). Two personal objectives per captain: land six
+lots in a named region, be first home on three cards, land five lots of one good, trade into five
+regions, place in a tea race, run a fleet of three. Paid on completion and replaced at once with a
+kind she does not already hold. Progress is recorded by the reducer at the moment of the event,
+never rebuilt from the trimmed log. Charters are public, so reading a rival's is part of the game.
+The AI adds a charter's share of value to its run scoring (`charterValue`), so captains' plans pull
+apart.
+
+Two measurements shaped them:
+
+- **Rewards were cut twice.** At £120–£200, captains completed eleven or twelve a game (about £2,000
+  of new money), the merchant's game fell from a median of 101 rounds to 69, and one full race was
+  won in ten. Now £45–£75. Cutting further barely moved length, so the remaining shortening comes
+  from captains steering better, not from cash.
+- **Flat rewards favoured the leader.** Over 300 seeds, the round-30 share leader won 44.8% with
+  the new rules against 40.0% without, and charters alone were the cause (renown alone matched the
+  baseline). They pay whoever trades most, and the leader trades most: the hostile bid's lesson
+  again. A charter now pays £20 more for every share its holder trails the leader by
+  (`charterReward`). Re-measured over 282 games: **39.7% against 40.0%**, neutralised.
+
+**Ship renown** (`renown`). First home on a card +1, a tea race win +3, second +1, capped at 15. A
+smart ship (6) sails a point faster every roll, a famous clipper (12) two. Stars on the fleet panel
+and over the ship on the chart. On its own it leaves pacing and the leader's edge where they were.
+
+**The Shipping Gazette** (`components/ShippingGazette.tsx`, presentation only). At the top of each
+human turn, everything the rest of the table did since your last turn as a front page: an editor's
+headline and news in brief, weighted (a tea race win outranks a claim, which outranks the biggest
+delivery). The pop-up cards now stand aside for anything the paper prints, so a rival's turn is
+reported once, not twice.
+
+Pacing, 100 seeds per preset: the 1988 board 73 (unchanged), merchant 90, high seas 69, full race
+86. All 400 finish. Both new rules are off in the 1988 board; merchant and full have both, high
+seas has renown.
+
+Verified: `npm run check` green (tea race 685,602 checks, 0 failed), `npm run test:api` 233 passed,
+browser play-through in both modes and at phone width.
+
 ### Session 13 (2026-10-24) — the arrears trap, and finishing seamanship
 
 Worked from an explicit list of eleven items, all closed.

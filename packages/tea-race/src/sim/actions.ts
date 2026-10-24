@@ -71,8 +71,14 @@ import {
   TEA_RACE_PREMIUM,
   TEA_RACE_PURSE,
   shipSalePrice,
+  RENOWN_CAP,
+  RENOWN_FOR,
+  renownSpeed,
+  renownTitle,
+  charterReward,
 } from './rules';
 import { activeCaptain, isHotseat, shipsOf } from './state';
+import { advance, charterText, chartersOn, drawCharter, isComplete, type CharterEvent } from './charters';
 import {
   RACE_FINISH,
   canCrackOn,
@@ -659,7 +665,9 @@ function doRoll(state: GameState): GameState {
     const hull = state.hazards?.shipClasses ? speedOf(ship.shipClass) : 0;
     // A damaged ship pays for it on every roll until she is made good.
     const damage = ship.damaged ? DAMAGE_SPEED_PENALTY : 0;
-    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull - damage);
+    // A famous ship ships the best hands, and it shows on every roll.
+    const crew = state.hazards?.renown ? renownSpeed(ship.renown) : 0;
+    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull + crew - damage);
     dice[ship.id] = r.dice;
   }
   s = { ...s, rngSeed: seed, sailPoints, dice };
@@ -883,7 +891,7 @@ function landNewSeasonTea(state: GameState, shipId: string): GameState {
   ];
   const closed = placings.length >= 2;
   s = { ...s, teaRace: { ...race, placings, closed } };
-  return log(
+  s = log(
     s,
     'teaRace',
     `${ship.name} ${prize.rank === 1 ? 'wins the Great Tea Race' : 'is second home in the tea race'} — ` +
@@ -892,6 +900,84 @@ function landNewSeasonTea(state: GameState, shipId: string): GameState {
     captain.id,
     { shipId: ship.id, rank: prize.rank, payout: paid, purse: prize.purse, units: lots.length, year: race.year },
   );
+  s = earnRenown(s, ship.id, prize.rank === 1 ? RENOWN_FOR.raceWin : RENOWN_FOR.raceSecond);
+  s = charterEvent(s, captain.id, { kind: 'landed', port: RACE_FINISH, good: 'tea', units: lots.length, rank: null });
+  return charterEvent(s, captain.id, { kind: 'racePlaced' });
+}
+
+
+// ---------------------------------------------------------------------------
+// Owners' charters and ship renown. See sim/charters.ts and the foot of rules.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Advances a captain's charters by something that just happened, paying and replacing any that
+ * complete. A completed charter is replaced at once, so a captain always holds the full hand.
+ */
+function charterEvent(state: GameState, captainId: string, e: CharterEvent): GameState {
+  if (!chartersOn(state)) return state;
+  const captain = state.captains.find(c => c.id === captainId);
+  if (!captain?.charters?.length) return state;
+
+  const advanced = captain.charters.map(c => advance(c, e));
+  if (advanced.every((c, i) => c === captain.charters![i])) return state;
+
+  let s = updateCaptain(state, captainId, { charters: advanced });
+  for (const done of advanced.filter(isComplete)) {
+    const now = s.captains.find(c => c.id === captainId)!;
+    const remaining = (now.charters ?? []).filter(c => c.id !== done.id);
+    const leader = Math.max(...s.captains.map(c => c.shares));
+    const paid = charterReward(done.reward, now.shares, leader);
+    s = updateCaptain(s, captainId, {
+      cash: now.cash + paid,
+      chartersDone: (now.chartersDone ?? 0) + 1,
+      charters: remaining,
+    });
+    s = log(
+      s,
+      'charter',
+      `${now.name} completes a charter for the owners — ${charterText(done).toLowerCase()} — and is paid ${money(paid)}${
+        paid > done.reward ? `, sweetened by ${money(paid - done.reward)} to a captain behind on shares` : ''
+      }.`,
+      captainId,
+      { charterId: done.id, kind: done.kind, reward: paid, base: done.reward },
+    );
+    // A replacement, of a kind she does not already hold.
+    const after = s.captains.find(c => c.id === captainId)!;
+    const drawn = drawCharter(s, after);
+    s = { ...s, rngSeed: drawn.seed, nextCharterSeq: drawn.nextSeq };
+    if (drawn.charter) {
+      s = updateCaptain(s, captainId, { charters: [...(after.charters ?? []), drawn.charter] });
+      s = log(s, 'charter', `The owners send ${now.name} a new charter: ${charterText(drawn.charter).toLowerCase()}, for ${money(drawn.charter.reward)}.`, captainId, {
+        charterId: drawn.charter.id,
+        kind: drawn.charter.kind,
+        dealt: 1,
+      });
+    }
+  }
+  return s;
+}
+
+/** Adds renown to a ship, capped, and says so when she earns a new name for herself. */
+function earnRenown(state: GameState, shipId: string, points: number): GameState {
+  if (!state.hazards?.renown || points <= 0) return state;
+  const ship = state.ships.find(x => x.id === shipId);
+  if (!ship) return state;
+  const before = ship.renown ?? 0;
+  const after = Math.min(RENOWN_CAP, before + points);
+  if (after === before) return state;
+  let s = replaceShip(state, { ...ship, renown: after });
+  const title = renownTitle(after);
+  if (title && title !== renownTitle(before)) {
+    s = log(
+      s,
+      'renown',
+      `${ship.name} is spoken of in every port as ${title}. The best hands sign on with her, and she sails ${renownSpeed(after)} point${renownSpeed(after) === 1 ? '' : 's'} faster for it.`,
+      ship.ownerId,
+      { shipId: ship.id, renown: after },
+    );
+  }
+  return s;
 }
 
 /** Everything that happens the moment a ship ties up, wherever the arrival came from. */
@@ -1325,6 +1411,8 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
       cardPrice: contract.price,
     },
   );
+  if (rank === 1) s = earnRenown(s, ship.id, RENOWN_FOR.firstHome);
+  s = charterEvent(s, captain.id, { kind: 'landed', port: contract.destination, good: contract.good, units: landed.length, rank });
   return replenishContracts(s);
 }
 
@@ -1480,7 +1568,7 @@ function doBuyShip(state: GameState, requested?: ShipClassId): GameState {
     nextShipSeq: state.nextShipSeq + 1,
   };
   s = updateCaptain(s, captain.id, { cash: captain.cash - hull.price });
-  return log(
+  s = log(
     s,
     'ship',
     `${captain.name} buys ${ship.name}, ${classes ? `a ${hull.name.toLowerCase()}, ` : ''}for ${money(
@@ -1490,6 +1578,7 @@ function doBuyShip(state: GameState, requested?: ShipClassId): GameState {
     )}.`,
     captain.id,
   );
+  return charterEvent(s, captain.id, { kind: 'fleet', ships: owned.length + 1 });
 }
 
 function doBuyShare(state: GameState): GameState {

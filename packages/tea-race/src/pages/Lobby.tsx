@@ -131,6 +131,20 @@ const SWITCHES: { key: keyof Hazards & string; group: SwitchGroup; name: string;
       'Derelicts to salvage, castaways to take off, country traders with cargo going cheap, and pilots who know the reefs. Each one a choice: the ground it costs against what it brings.',
   },
   {
+    key: 'charters',
+    group: 'The race',
+    name: "Owners' charters",
+    blurb:
+      'Two personal objectives each from your owners: land cargo in a region, be first home three times, trade into five regions, place in the tea race. Paid on completion and replaced. Public, so you can read what a rival is working towards.',
+  },
+  {
+    key: 'renown',
+    group: 'The race',
+    name: 'Ship renown',
+    blurb:
+      'A ship that keeps winning earns a name, and the best hands sign on with her: a smart ship sails a point faster, a famous clipper two. Your fleet stops being interchangeable.',
+  },
+  {
     key: 'stocks',
     group: 'Money',
     name: 'The shipping exchange',

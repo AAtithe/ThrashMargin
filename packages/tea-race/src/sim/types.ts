@@ -137,6 +137,11 @@ export interface Ship {
    * She sails slower on every roll until repaired in port. Absent means sound.
    */
   damaged?: boolean;
+  /**
+   * Renown earned by winning: first home on a card, a place in the tea race. A famous ship ships a
+   * better crew and sails faster for it. Absent meaning none.
+   */
+  renown?: number;
 }
 
 export type AiProfile = 'racer' | 'speculator' | 'financier';
@@ -186,6 +191,10 @@ export interface Captain {
    */
   teaRaceWins?: number;
   teaRaceSeconds?: number;
+  /** Owners' charters in hand. Absent meaning none. */
+  charters?: Charter[];
+  /** Charters completed so far. */
+  chartersDone?: number;
 }
 
 export interface ContractFill {
@@ -253,6 +262,31 @@ export interface Hazards {
   pressSail?: boolean;
   /** Encounters at sea: derelicts, castaways, country traders and pilots, each a choice. */
   encounters?: boolean;
+  /** Owners' charters: two personal objectives per captain, paid on completion and replaced. */
+  charters?: boolean;
+  /** Ship renown: a ship that wins earns a crew to match, and sails faster for it. */
+  renown?: boolean;
+}
+
+export type CharterKind = 'regionTrade' | 'firstHome' | 'goodTrade' | 'spread' | 'teaRace' | 'fleet';
+
+/**
+ * A personal objective from the captain's owners. Public, like everything else on this board: you
+ * can see what a rival is working towards, which is half the interest.
+ */
+export interface Charter {
+  id: number;
+  kind: CharterKind;
+  /** Lots, first-homes, regions or ships needed. */
+  target: number;
+  progress: number;
+  reward: number;
+  /** For regionTrade: the region the lots must land in. */
+  region?: string;
+  /** For goodTrade: the good. */
+  good?: GoodId;
+  /** For spread: the regions already traded into. */
+  regions?: string[];
 }
 
 /** One placing in a year's Great Tea Race. */
@@ -357,7 +391,9 @@ export type LogKind =
   | 'teaRace'
   | 'encounter'
   | 'crackOn'
-  | 'repair';
+  | 'repair'
+  | 'charter'
+  | 'renown';
 
 export interface LogEntry {
   /**
@@ -480,6 +516,8 @@ export interface GameState {
   encounters?: Record<ShipId, Encounter>;
   /** This year's Great Tea Race, or the last one run. Absent until the first race opens. */
   teaRace?: TeaRace;
+  /** Monotonic counter behind Charter.id. */
+  nextCharterSeq?: number;
 
   log: LogEntry[];
 }

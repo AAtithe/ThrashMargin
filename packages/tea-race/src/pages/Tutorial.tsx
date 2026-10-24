@@ -34,6 +34,10 @@ import {
   REPAIR_PRICE,
   TEA_RACE_PREMIUM,
   TEA_RACE_PURSE,
+  CHARTER_TERMS,
+  RENOWN_FAMOUS,
+  RENOWN_FOR,
+  RENOWN_SMART,
 } from '../sim/rules';
 import { AGENT_LADING_DISCOUNT, AGENT_PRICE } from '../sim/agents';
 import { GLUT_FACTOR, SHORTAGE_FACTOR } from '../sim/events';
@@ -224,6 +228,20 @@ export default function Tutorial() {
             only. A derelict to salvage for the ground it costs, castaways whose owners pay to have
             them taken off, a country trader with a lot going cheap, a pilot who will take her through
             the reefs for a fee (most of them know the way). Holding your course is always an answer.
+          </Rule>
+          <Rule name="Owners' charters" art="contract">
+            Your owners hand you two charters: land {CHARTER_TERMS.regionTrade.target} lots in a named
+            region, be first home on {CHARTER_TERMS.firstHome.target} commissions, land{' '}
+            {CHARTER_TERMS.goodTrade.target} lots of one good, trade into {CHARTER_TERMS.spread.target}{' '}
+            different regions, place in a tea race, or run a fleet of three. Each pays{' '}
+            {money(CHARTER_TERMS.fleet.reward)} to {money(CHARTER_TERMS.firstHome.reward)} when done and is
+            replaced at once. They are public: read a rival's and you can guess where she is going.
+          </Rule>
+          <Rule name="Ship renown" art="crackOn">
+            A ship earns renown for being first home on a card (+{RENOWN_FOR.firstHome}) and in the tea race
+            (+{RENOWN_FOR.raceWin} for a win, +{RENOWN_FOR.raceSecond} for second). At {RENOWN_SMART} she is a
+            smart ship and sails a point faster every roll; at {RENOWN_FAMOUS}, a famous clipper, two. Sell
+            her and her name goes with her.
           </Rule>
           <Rule name="The shipping exchange" art="event">
             Three companies whose prices rise and fall with the cargo actually landed in their waters.

@@ -12,6 +12,7 @@
  */
 import { createInitialState } from '../src/sim/state';
 import { newRace, nextRaceRound, openRace } from '../src/sim/seamanship';
+import { advance, isComplete } from '../src/sim/charters';
 import {
   BOUNTY_PER_UNIT,
   GLUT_FACTOR,
@@ -57,6 +58,14 @@ import {
   TEA_RACE_PURSE,
   TEA_RACE_ROUNDS,
   shipSalePrice,
+  CHARTERS_HELD,
+  CHARTER_TERMS,
+  RENOWN_CAP,
+  RENOWN_FAMOUS,
+  RENOWN_FOR,
+  RENOWN_SMART,
+  renownSpeed,
+  CHARTER_CATCH_UP,
 } from '../src/sim/rules';
 import { LEGS, PORTS, planRoute, sourcesFor } from '../src/sim/content';
 import {
@@ -892,7 +901,7 @@ function testHazardsOff() {
   const b = play();
   check(`${label}: replays byte-identically`, JSON.stringify(a) === JSON.stringify(b));
 
-  const hazardKinds = new Set(['storm', 'piracy', 'insurance', 'fitting', 'teaRace', 'encounter', 'crackOn', 'repair']);
+  const hazardKinds = new Set(['storm', 'piracy', 'insurance', 'fitting', 'teaRace', 'encounter', 'crackOn', 'repair', 'charter', 'renown']);
   const leaked = a.log.filter(e => hazardKinds.has(e.kind));
   equal(`${label}: emits no hazard events at all`, leaked.length, 0);
   check(
@@ -943,6 +952,7 @@ interface GameReport {
   teaPlacings: number;
   seaLanded: number;
   crackOns: number;
+  chartersPaid: number;
   spars: number;
   offersSeen: number;
 }
@@ -966,6 +976,7 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
   let seaLanded = 0;
   let teaPlacings = 0;
   let crackOns = 0;
+  let chartersPaid = 0;
   let spars = 0;
   let offersSeen = 0;
   const racePlaces = new Map<number, number>();
@@ -1002,6 +1013,17 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
           `round ${entry.round}, window ${opened}-${opened + TEA_RACE_ROUNDS - 1}`,
         );
         continue;
+      }
+      if (entry.kind === 'charter' && entry.data?.reward !== undefined) {
+        chartersPaid++;
+        const kind = String(entry.data.kind) as keyof typeof CHARTER_TERMS;
+        equal(`AI game ${seed}: a ${kind} charter is reckoned on its terms`, entry.data.base, CHARTER_TERMS[kind]?.reward);
+        check(
+          `AI game ${seed}: and pays at least its terms, sweetened only in whole shares behind`,
+          Number(entry.data.reward) >= Number(entry.data.base) &&
+            (Number(entry.data.reward) - Number(entry.data.base)) % CHARTER_CATCH_UP === 0,
+          `paid ${entry.data.reward} on terms of ${entry.data.base}`,
+        );
       }
       if (entry.kind === 'crackOn') {
         crackOns++;
@@ -1121,6 +1143,13 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         state.ships.filter(x => x.ownerId === captain.id).length <= MAX_SHIPS,
       );
       check(`AI game ${seed}: ${captain.name} is never overdrawn`, captain.cash >= 0, `${captain.cash}`);
+      if (state.hazards?.charters) {
+        check(
+          `AI game ${seed}: ${captain.name} holds at most ${CHARTERS_HELD} charters, none already finished`,
+          (captain.charters?.length ?? 0) <= CHARTERS_HELD && (captain.charters ?? []).every(c => c.progress < c.target),
+          JSON.stringify(captain.charters),
+        );
+      }
     }
     for (const ship of state.ships) {
       check(
@@ -1133,6 +1162,7 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         ship.hold.length <= slotsOf(ship.shipClass),
         `${ship.hold.length} lots aboard a ${ship.shipClass ?? 'clipper'}`,
       );
+      check(`AI game ${seed}: ${ship.name}'s renown within its cap`, (ship.renown ?? 0) <= RENOWN_CAP, `${ship.renown}`);
       for (const lot of ship.hold) {
         check(
           `AI game ${seed}: ${ship.name}'s cargo is a real good`,
@@ -1206,6 +1236,7 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
     teaPlacings,
     seaLanded,
     crackOns,
+    chartersPaid,
     spars,
     offersSeen,
   };
@@ -2613,6 +2644,79 @@ function testShipSale() {
   check(`${label}: never a ship at sea`, processAction(sailing, { type: 'SELL_SHIP', shipId: fleet[0].id }) === sailing);
 }
 
+/**
+ * Owners' charters and ship renown.
+ */
+function testChartersAndRenown() {
+  const label = 'charters';
+  const off = {
+    weather: false, piracy: false, events: false, hostileBids: false, quaysideSales: false,
+    wages: false, loans: false, deadlines: false, shipClasses: false, stocks: false, agents: false,
+  };
+  const on = { ...off, charters: true, renown: true };
+
+  const bare = createInitialState('t-ch0', 'C', { humanNames: ['A'], aiCount: 1, seed: 'ch', hazards: off });
+  check(`${label}: none dealt with the switch off`, bare.captains.every(c => !c.charters));
+
+  let g = createInitialState('t-ch', 'C', { humanNames: ['A'], aiCount: 1, seed: 'ch', hazards: on });
+  for (const c of g.captains) {
+    equal(`${label}: ${c.name} holds ${CHARTERS_HELD}`, c.charters?.length, CHARTERS_HELD);
+    check(`${label}: ${c.name}'s are different kinds`, new Set(c.charters!.map(x => x.kind)).size === c.charters!.length);
+  }
+  const replay = createInitialState('t-ch', 'C', { humanNames: ['A'], aiCount: 1, seed: 'ch', hazards: on });
+  check(`${label}: dealt from the seed`, JSON.stringify(replay.captains) === JSON.stringify(g.captains));
+
+  // Advance and complete one through a real delivery: a first-home charter one short of done.
+  const nearly = { id: 999, kind: 'firstHome' as const, target: 3, progress: 2, reward: CHARTER_TERMS.firstHome.reward };
+  const other = g.captains[0].charters!.find(c => c.kind !== 'firstHome')!;
+  g = { ...g, captains: g.captains.map(c => (c.id === 'p1' ? { ...c, charters: [nearly, other], cash: 1000 } : c)) };
+  const price = GOOD_BY_ID.tea.basePrice;
+  g = forceContract(g, { id: 'ch-card', good: 'tea', destination: 'liverpool', price });
+  g = place(g, 's1', 'liverpool', [{ good: 'tea', paid: price, boughtAt: 'foochow', boughtOnTurn: 0 }]);
+  g = processAction(g, { type: 'ROLL' });
+  const before = cash(g, 'p1');
+  const landed = processAction(g, { type: 'DELIVER', shipId: 's1', contractId: 'ch-card' });
+  const p1 = landed.captains.find(c => c.id === 'p1')!;
+  equal(`${label}: completion pays the reward on top of the card`, cash(landed, 'p1') - before, price * 4 + nearly.reward);
+  equal(`${label}: and is counted`, p1.chartersDone, 1);
+  check(`${label}: the finished charter is gone`, !p1.charters!.some(c => c.id === 999));
+  equal(`${label}: and replaced, so the hand stays full`, p1.charters!.length, CHARTERS_HELD);
+  check(`${label}: replacement is a new kind`, new Set(p1.charters!.map(c => c.kind)).size === CHARTERS_HELD);
+
+  // Renown came with that first home.
+  equal(`renown: first home earns ${RENOWN_FOR.firstHome}`, shipOf(landed, 's1').renown, RENOWN_FOR.firstHome);
+
+  // The pure progress rules.
+  const spread = { id: 1, kind: 'spread' as const, target: 3, progress: 0, reward: 10, regions: [] as string[] };
+  const once = advance(spread, { kind: 'landed', port: 'london', good: 'tea', units: 3, rank: 1 });
+  equal(`${label}: spread counts a region once per region`, once.progress, 1);
+  const twice = advance(once, { kind: 'landed', port: 'liverpool', good: 'tea', units: 1, rank: null });
+  check(`${label}: and not again for another port in it`, twice === once);
+  const region = { id: 2, kind: 'regionTrade' as const, target: 5, progress: 4, reward: 10, region: 'britain' };
+  equal(`${label}: region trade counts units, capped at the target`, advance(region, { kind: 'landed', port: 'london', good: 'tea', units: 3, rank: 2 }).progress, 5);
+  check(`${label}: and ignores other regions`, advance(region, { kind: 'landed', port: 'bombay', good: 'tea', units: 3, rank: 2 }) === region);
+  const race = { id: 3, kind: 'teaRace' as const, target: 1, progress: 0, reward: 10 };
+  check(`${label}: a race placing completes the race charter`, isComplete(advance(race, { kind: 'racePlaced' })));
+
+  // A fleet charter through a real purchase.
+  let f = createInitialState('t-chf', 'F', { humanNames: ['A'], aiCount: 1, seed: 'chf', hazards: on });
+  const fleet = { id: 7, kind: 'fleet' as const, target: 2, progress: 1, reward: 50 };
+  f = { ...f, captains: f.captains.map(c => (c.id === 'p1' ? { ...c, charters: [fleet], cash: 1000 } : c)) };
+  f = processAction(f, { type: 'ROLL' });
+  const bought = processAction(f, { type: 'BUY_SHIP' });
+  equal(`${label}: a fleet charter completes on the purchase`, bought.captains.find(c => c.id === 'p1')!.chartersDone, 1);
+
+  // Renown: capped, and worth speed only at its thresholds.
+  equal('renown: nothing below a smart ship', renownSpeed(RENOWN_SMART - 1), 0);
+  equal('renown: a smart ship sails a point faster', renownSpeed(RENOWN_SMART), 1);
+  equal('renown: a famous clipper two', renownSpeed(RENOWN_FAMOUS), 2);
+  const fast = { ...bare, hazards: { ...off, renown: true }, ships: bare.ships.map(x => (x.id === 's1' ? { ...x, renown: RENOWN_FAMOUS } : x)) };
+  const plain = { ...bare, hazards: { ...off, renown: true } };
+  equal('renown: a famous ship rolls two points further', processAction(fast, { type: 'ROLL' }).sailPoints.s1, processAction(plain, { type: 'ROLL' }).sailPoints.s1 + 2);
+  const switchedOff = { ...fast, hazards: off };
+  equal('renown: and nothing with the switch off', processAction(switchedOff, { type: 'ROLL' }).sailPoints.s1, processAction(plain, { type: 'ROLL' }).sailPoints.s1);
+}
+
 function main() {
   testPayoutLadder();
   testCargoRules();
@@ -2637,6 +2741,7 @@ function main() {
   testWorldEvents();
   testSeamanship();
   testShipSale();
+  testChartersAndRenown();
   testDeterminism();
 
   const reports: [string, GameReport][] = [];
@@ -2687,6 +2792,8 @@ function main() {
   const sparRate = sum(r => r.spars) / Math.max(1, sum(r => r.crackOns));
   check('seamanship: spars go at a plausible rate', sparRate > 0.1 && sparRate < 0.3, `${(sparRate * 100).toFixed(1)}%`);
   check('seamanship: ships meet things at sea', sum(r => r.offersSeen) > 0);
+  console.log(`  charters: ${sum(r => r.chartersPaid)} completed across the seed set`);
+  check('charters: captains complete them in play', sum(r => r.chartersPaid) >= reports.length);
 
   // The owner's complaint as a number: is the game over by round 30?
   const judged = reports.filter(([, r]) => r.leaderAt30Won !== null);
