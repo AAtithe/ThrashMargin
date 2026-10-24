@@ -12,7 +12,7 @@
 import { HOME_PORT, goodName, portName, portSupplies } from './content';
 import { drawContract, faceUpKeys, isContractComplete, nextRank } from './contracts';
 import { destinationOf, plotCourse, pointsToDestination, reorderAtSea, sail } from './movement';
-import { roll2d6 } from './rng';
+import { roll2d6, rollDie } from './rng';
 import { planFastestRoute, seasonOf, windForShip, resolveStorm } from './weather';
 import { indemnityFor, insurancePremium, resolvePiracy, routeRisk } from './hazards';
 import { ladingPrice, priceStanding, saleProceeds } from './pricing';
@@ -66,8 +66,25 @@ import {
   slotsOf,
   speedOf,
   VICTORY_CASH,
+  DAMAGE_SPEED_PENALTY,
+  REPAIR_PRICE,
+  TEA_RACE_PREMIUM,
+  TEA_RACE_PURSE,
+  shipSalePrice,
 } from './rules';
 import { activeCaptain, isHotseat, shipsOf } from './state';
+import {
+  RACE_FINISH,
+  canCrackOn,
+  drawEncounter,
+  isNewSeasonLading,
+  newRace,
+  openRace,
+  raceLots,
+  racePrize,
+  raceOpensOn,
+  sparRisk,
+} from './seamanship';
 import { nextAiAction } from './ai';
 import type {
   Captain,
@@ -533,7 +550,16 @@ function reckonVoyage(state: GameState): GameState {
 
 /** Moves to the next seat, handling the round roll-over and the declaration countdown. */
 function advanceSeat(state: GameState): GameState {
-  let s: GameState = { ...state, sailPoints: {}, dice: {}, turn: state.turn + 1, phase: 'roll' };
+  let s: GameState = {
+    ...state,
+    sailPoints: {},
+    dice: {},
+    // Only written when present, so a game with seamanship off keeps exactly the shape it had.
+    ...(state.crackedOn ? { crackedOn: {} } : {}),
+    ...(state.encounters ? { encounters: {} } : {}),
+    turn: state.turn + 1,
+    phase: 'roll',
+  };
 
   const nextIndex = (s.activeIndex + 1) % s.captains.length;
   s = { ...s, activeIndex: nextIndex };
@@ -545,6 +571,7 @@ function advanceSeat(state: GameState): GameState {
     if (isVoyageOver(s)) return reckonVoyage(s);
     s = expireContracts(s);
     s = turnTheWorld(s);
+    s = turnTheTeaSeason(s);
   }
 
   // Every individual turn, not once per completed round — see DECLARATION_TURNS. Read as rounds it
@@ -630,7 +657,9 @@ function doRoll(state: GameState): GameState {
     // Her class rides on the same roll as wind and copper, rather than being a separate stat, so a
     // heavy hull is slow in exactly the way a foul wind is slow and the two simply add.
     const hull = state.hazards?.shipClasses ? speedOf(ship.shipClass) : 0;
-    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull);
+    // A damaged ship pays for it on every roll until she is made good.
+    const damage = ship.damaged ? DAMAGE_SPEED_PENALTY : 0;
+    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull - damage);
     dice[ship.id] = r.dice;
   }
   s = { ...s, rngSeed: seed, sailPoints, dice };
@@ -644,6 +673,10 @@ function doRoll(state: GameState): GameState {
     })
     .join(', ');
   s = log(s, 'roll', `${captain.name} takes the wind — ${rolls}.`, captain.id);
+
+  // A ship already lying in London with the new season's tea lands it now — she may have arrived
+  // during a strike, or before the race opened.
+  for (const ship of shipsOf(s, captain.id)) if (ship.location) s = onArrival(s, ship.id);
 
   // Ships already at sea have no decision to make; advance them now.
   for (const ship of shipsOf(s, captain.id)) {
@@ -672,6 +705,7 @@ function doRoll(state: GameState): GameState {
     s = { ...s, sailPoints: { ...s.sailPoints, [ship.id]: left } };
     if (outcome.arrivedAt) {
       s = log(s, 'arrive', `${ship.name} ties up at ${portName(outcome.arrivedAt)}.`, captain.id);
+      s = onArrival(s, ship.id);
     } else if (outcome.spent > 0) {
       const dest = destinationOf(outcome.ship);
       s = log(
@@ -689,6 +723,18 @@ function doRoll(state: GameState): GameState {
     if (weather && afloat.voyage) s = applyStorm(s, afloat, season, captain.id);
     const stillAfloat = s.ships.find(x => x.id === ship.id)!;
     if (piracy && stillAfloat.voyage) s = applyPiracy(s, stillAfloat, captain.id);
+
+    // Last, something met at sea that asks for a decision.
+    const underWay = s.ships.find(x => x.id === ship.id)!;
+    if (s.hazards?.encounters && underWay.voyage) {
+      const drawn = drawEncounter(s.rngSeed, underWay);
+      s = { ...s, rngSeed: drawn.seed };
+      if (drawn.encounter) {
+        const e = drawn.encounter;
+        s = { ...s, encounters: { ...(s.encounters ?? {}), [ship.id]: e } };
+        s = log(s, 'encounter', `${e.headline}. ${e.detail}`, captain.id, { shipId: ship.id, kind: e.kind, offered: 1 });
+      }
+    }
   }
   return s;
 }
@@ -762,6 +808,282 @@ function applyPiracy(state: GameState, ship: Ship, captainId: string): GameState
     );
   }
   return s;
+}
+
+// ---------------------------------------------------------------------------
+// Seamanship — the Great Tea Race, cracking on, encounters. See sim/seamanship.ts.
+// ---------------------------------------------------------------------------
+
+/**
+ * Opens this year's race on its round and closes last year's when its time is up. Deterministic —
+ * the race is a fixed date in the calendar, never a draw — so it runs straight through a
+ * declaration: everybody could see it coming.
+ */
+function turnTheTeaSeason(state: GameState): GameState {
+  if (!state.hazards?.teaRace || state.rules !== 'classic' || state.phase === 'over') return state;
+  let s = state;
+  const race = s.teaRace;
+
+  if (race && !race.closed && s.round > race.closesOn) {
+    s = { ...s, teaRace: { ...race, closed: true } };
+    s = log(
+      s,
+      'teaRace',
+      race.placings.length === 0
+        ? `The year ${race.year} tea race goes unclaimed — nobody landed the new season's tea in London.`
+        : `The tea race closes with only one ship home. Second money goes unclaimed.`,
+      null,
+      { closed: 1, year: race.year },
+    );
+  }
+
+  if (raceOpensOn(s.round)) {
+    const fresh = newRace(s.round);
+    s = { ...s, teaRace: fresh };
+    s = log(
+      s,
+      'teaRace',
+      `The new season's tea is coming down to Foochow, Shanghai and Hong Kong. The Great Tea Race is ` +
+        `on: first ship to land it in London takes a ${money(TEA_RACE_PURSE[1])} purse and ` +
+        `${TEA_RACE_PREMIUM[1]}x for every lot, second ${money(TEA_RACE_PURSE[2])} and ${TEA_RACE_PREMIUM[2]}x. Tea loaded at a China port from now counts.`,
+      null,
+      { opened: 1, year: fresh.year, closesOn: fresh.closesOn },
+    );
+  }
+  return s;
+}
+
+/**
+ * Lands a ship's new-season tea if she is lying in London with the race still open. Called on every
+ * arrival and at the top of her owner's roll, so a ship that arrives during a strike lands it the
+ * moment the quay reopens.
+ */
+function landNewSeasonTea(state: GameState, shipId: string): GameState {
+  const race = openRace(state);
+  if (!race) return state;
+  const ship = state.ships.find(x => x.id === shipId);
+  if (!ship || ship.location !== RACE_FINISH) return state;
+  if (portStruck(state, RACE_FINISH)) return state;
+  const lots = raceLots(ship, race);
+  const prize = racePrize(race, lots.length);
+  if (!prize) return state;
+
+  const captain = state.captains.find(c => c.id === ship.ownerId)!;
+  const paid = prize.purse + prize.premium;
+  let s = updateCaptain(state, captain.id, {
+    cash: captain.cash + paid,
+    ...(prize.rank === 1
+      ? { teaRaceWins: (captain.teaRaceWins ?? 0) + 1 }
+      : { teaRaceSeconds: (captain.teaRaceSeconds ?? 0) + 1 }),
+  });
+  s = replaceShip(s, { ...ship, hold: ship.hold.filter(lot => !lots.includes(lot)) });
+  const placings = [
+    ...race.placings,
+    { captainId: captain.id, shipId: ship.id, shipName: ship.name, round: s.round, rank: prize.rank, paid, units: lots.length },
+  ];
+  const closed = placings.length >= 2;
+  s = { ...s, teaRace: { ...race, placings, closed } };
+  return log(
+    s,
+    'teaRace',
+    `${ship.name} ${prize.rank === 1 ? 'wins the Great Tea Race' : 'is second home in the tea race'} — ` +
+      `${lots.length} lot${lots.length === 1 ? '' : 's'} of the new season landed in London for ` +
+      `${money(prize.premium)}, and the ${money(prize.purse)} purse. ${money(paid)} in all.`,
+    captain.id,
+    { shipId: ship.id, rank: prize.rank, payout: paid, purse: prize.purse, units: lots.length, year: race.year },
+  );
+}
+
+/** Everything that happens the moment a ship ties up, wherever the arrival came from. */
+function onArrival(state: GameState, shipId: string): GameState {
+  return landNewSeasonTea(state, shipId);
+}
+
+/** Pushes a ship back along her leg, never past its start. Shared by storms' kin: heaving to. */
+function loseGround(state: GameState, ship: Ship, points: number): GameState {
+  if (!ship.voyage) return state;
+  const v = ship.voyage;
+  return replaceShip(state, {
+    ...ship,
+    voyage: { ...v, legRemaining: Math.min(v.legDistance, v.legRemaining + points) },
+  });
+}
+
+/** Runs a ship on by `points` now, logging and handling an arrival. */
+function runOn(state: GameState, ship: Ship, points: number, captainId: string, why: string): GameState {
+  const outcome = sail(ship, points);
+  let s = replaceShip(state, outcome.ship);
+  if (outcome.arrivedAt) {
+    s = { ...s, sailPoints: { ...s.sailPoints, [ship.id]: 0 } };
+    s = log(s, 'arrive', `${ship.name} ${why} and ties up at ${portName(outcome.arrivedAt)}.`, captainId, {
+      shipId: ship.id,
+    });
+    return onArrival(s, ship.id);
+  }
+  const dest = destinationOf(outcome.ship);
+  return log(
+    s,
+    'sail',
+    `${ship.name} ${why} — ${outcome.spent} points made good, ${pointsToDestination(outcome.ship)} still to run to ${
+      dest ? portName(dest) : 'her destination'
+    }.`,
+    captainId,
+    { shipId: ship.id },
+  );
+}
+
+/**
+ * Crack on: one extra die for a ship, once a turn. At sea she runs it straight away; in port it is
+ * added to the wind she has yet to sail on. A throw at or under her spar risk and she carries
+ * something away instead — nothing gained, and slower until repaired.
+ */
+function doCrackOn(state: GameState, shipId: string): GameState {
+  const ship = ownShip(state, shipId);
+  if (!ship || !canCrackOn(state, ship)) return state;
+
+  const captain = activeCaptain(state);
+  const risk = sparRisk(ship, state.hazards?.weather ?? false);
+  const die = rollDie(state.rngSeed);
+  let s: GameState = { ...state, rngSeed: die.seed, crackedOn: { ...(state.crackedOn ?? {}), [ship.id]: die.value } };
+
+  if (die.value <= risk) {
+    s = replaceShip(s, { ...ship, damaged: true });
+    return log(
+      s,
+      'crackOn',
+      `${ship.name} is driven too hard and carries away her fore-topmast — threw a ${die.value}. ` +
+        `She makes nothing more this turn and sails ${DAMAGE_SPEED_PENALTY} points slower until repaired.`,
+      captain.id,
+      { shipId: ship.id, die: die.value, damaged: 1 },
+    );
+  }
+
+  if (!ship.voyage) {
+    s = { ...s, sailPoints: { ...s.sailPoints, [ship.id]: (s.sailPoints[ship.id] ?? 0) + die.value } };
+    return log(
+      s,
+      'crackOn',
+      `${ship.name} crowds on every stitch for the passage out — threw a ${die.value}, ${s.sailPoints[ship.id]} points to sail.`,
+      captain.id,
+      { shipId: ship.id, die: die.value },
+    );
+  }
+  s = log(s, 'crackOn', `${ship.name} cracks on — threw a ${die.value}.`, captain.id, {
+    shipId: ship.id,
+    die: die.value,
+  });
+  return runOn(s, ship, die.value, captain.id, 'cracks on');
+}
+
+/** Make good a damaged ship at the quay. */
+function doRepairShip(state: GameState, shipId: string): GameState {
+  const ship = ownShip(state, shipId);
+  if (!ship || !ship.damaged || ship.location === null) return state;
+  if (portStruck(state, ship.location)) return state;
+  const captain = activeCaptain(state);
+  if (captain.cash < REPAIR_PRICE) return state;
+  let s = updateCaptain(state, captain.id, { cash: captain.cash - REPAIR_PRICE });
+  s = replaceShip(s, { ...ship, damaged: false });
+  return log(
+    s,
+    'repair',
+    `${ship.name} is made good at ${portName(ship.location)} — new spars and her seams paid, ${money(REPAIR_PRICE)}.`,
+    captain.id,
+    { shipId: ship.id, price: REPAIR_PRICE },
+  );
+}
+
+/** Take up, or pass by, what a ship met at sea this turn. */
+function doResolveEncounter(state: GameState, shipId: string, accept: boolean): GameState {
+  const ship = ownShip(state, shipId);
+  const enc = state.encounters?.[shipId];
+  if (!ship || !enc) return state;
+  const captain = activeCaptain(state);
+  const rest = { ...(state.encounters ?? {}) };
+  delete rest[shipId];
+  let s: GameState = { ...state, encounters: rest };
+
+  if (!accept) {
+    return log(s, 'encounter', `${ship.name} holds her course and leaves it astern.`, captain.id, {
+      shipId: ship.id,
+      kind: enc.kind,
+      declined: 1,
+    });
+  }
+  // Re-ordered back into port since? Every kind needs her at sea.
+  if (!ship.voyage) return state;
+  const roomy = ship.hold.length < slotsOf(ship.shipClass);
+  const from = ship.voyage.legFrom;
+
+  switch (enc.kind) {
+    case 'derelict': {
+      if (!roomy || !enc.good) return state;
+      s = loseGround(s, ship, enc.points ?? 0);
+      const after = s.ships.find(x => x.id === ship.id)!;
+      s = replaceShip(s, {
+        ...after,
+        hold: [...after.hold, { good: enc.good, paid: 0, boughtAt: from, boughtOnTurn: s.turn, atSea: 'derelict' }],
+      });
+      return log(
+        s,
+        'encounter',
+        `${ship.name} heaves to and boards the derelict — a lot of ${goodName(enc.good)} swung across for nothing, ${enc.points} points lost.`,
+        captain.id,
+        { shipId: ship.id, kind: enc.kind, good: enc.good },
+      );
+    }
+    case 'castaways': {
+      const reward = enc.reward ?? 0;
+      s = loseGround(s, ship, enc.points ?? 0);
+      s = updateCaptain(s, captain.id, { cash: captain.cash + reward });
+      return log(
+        s,
+        'encounter',
+        `${ship.name} stands in and takes the castaways off. Their owners pay ${money(reward)}; ${enc.points} points lost.`,
+        captain.id,
+        { shipId: ship.id, kind: enc.kind, reward },
+      );
+    }
+    case 'trader': {
+      const price = enc.price ?? 0;
+      if (!roomy || !enc.good || captain.cash < price) return state;
+      s = updateCaptain(s, captain.id, { cash: captain.cash - price });
+      s = replaceShip(s, {
+        ...ship,
+        hold: [...ship.hold, { good: enc.good, paid: price, boughtAt: from, boughtOnTurn: s.turn, atSea: 'trader' }],
+      });
+      return log(
+        s,
+        'encounter',
+        `${ship.name} takes a lot of ${goodName(enc.good)} off the country ship for ${money(price)}.`,
+        captain.id,
+        { shipId: ship.id, kind: enc.kind, good: enc.good, price },
+      );
+    }
+    case 'pilot': {
+      const price = enc.price ?? 0;
+      if (captain.cash < price) return state;
+      s = updateCaptain(s, captain.id, { cash: captain.cash - price });
+      const die = rollDie(s.rngSeed);
+      s = { ...s, rngSeed: die.seed };
+      if (die.value === 1) {
+        s = replaceShip(s, { ...ship, damaged: true });
+        return log(
+          s,
+          'encounter',
+          `The pilot puts ${ship.name} on a reef. She is warped off with her hull strained — ${money(price)} for nothing, and slower until repaired.`,
+          captain.id,
+          { shipId: ship.id, kind: enc.kind, price, damaged: 1 },
+        );
+      }
+      s = log(s, 'encounter', `${ship.name} takes the pilot for ${money(price)}.`, captain.id, {
+        shipId: ship.id,
+        kind: enc.kind,
+        price,
+      });
+      return runOn(s, ship, enc.points ?? 0, captain.id, 'threads the inshore passage');
+    }
+  }
 }
 
 function doSailTo(
@@ -863,6 +1185,7 @@ function doSailTo(
       `${ship.name} runs to ${portName(outcome.arrivedAt)} and ties up.`,
       captain.id,
     );
+    s = onArrival(s, ship.id);
   } else {
     s = log(
       s,
@@ -901,7 +1224,16 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
   s = applyTrade(s, ship.location, good, 1, 'bought');
   s = replaceShip(s, {
     ...ship,
-    hold: [...ship.hold, { good, paid: price, boughtAt: ship.location, boughtOnTurn: s.turn }],
+    hold: [
+      ...ship.hold,
+      {
+        good,
+        paid: price,
+        boughtAt: ship.location,
+        boughtOnTurn: s.turn,
+        ...(isNewSeasonLading(state, ship.location, good) ? { season: openRace(state)!.year } : {}),
+      },
+    ],
   });
   return log(
     s,
@@ -986,6 +1318,8 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
       plain,
       units: landed.length,
       purchasePrice: landed.reduce((sum, lot) => sum + lot.paid, 0),
+      /** Lots taken aboard at sea, whose price is not a quay's. The driver's price-band audit skips them. */
+      seaLots: landed.filter(lot => lot.atSea).length,
       /** Profit after what the quays actually charged — the number the sourcing decision moves. */
       margin: payout - landed.reduce((sum, lot) => sum + lot.paid, 0),
       cardPrice: contract.price,
@@ -1067,6 +1401,50 @@ function doJettison(state: GameState, shipId: string, good?: string): GameState 
     } clear.`,
     captain.id,
     { shipId: ship.id, units: dumped.length, forfeited: lost },
+  );
+}
+
+/**
+ * Sell a docked hull back to the yard. Whatever she carries goes with her. The money pays off any
+ * arrears first, exactly as earnings do at the turn of the round, so a captain in the hole cannot
+ * sell a ship and spend the proceeds while still owing her crew.
+ */
+function doSellShip(state: GameState, shipId: string): GameState {
+  if (!state.hazards?.wages && !state.hazards?.loans) return state;
+  const ship = ownShip(state, shipId);
+  if (!ship || ship.location === null) return state;
+  const captain = activeCaptain(state);
+  if (shipsOf(state, captain.id).length <= 1) return state;
+
+  const price = shipSalePrice(ship.shipClass);
+  const arrears = captain.arrears ?? 0;
+  const settled = Math.min(arrears, price);
+  const strip = <T,>(r: Record<string, T> | undefined) => {
+    if (!r || !(ship.id in r)) return r;
+    const out = { ...r };
+    delete out[ship.id];
+    return out;
+  };
+  let s: GameState = {
+    ...state,
+    ships: state.ships.filter(x => x.id !== ship.id),
+    sailPoints: strip(state.sailPoints) ?? {},
+    dice: strip(state.dice) ?? {},
+    ...(state.crackedOn ? { crackedOn: strip(state.crackedOn) } : {}),
+    ...(state.encounters ? { encounters: strip(state.encounters) } : {}),
+  };
+  s = updateCaptain(s, captain.id, {
+    cash: captain.cash + price - settled,
+    ...(arrears > 0 ? { arrears: arrears - settled } : {}),
+  });
+  return log(
+    s,
+    'ship',
+    `${captain.name} sells ${ship.name} to the yard at ${portName(ship.location)} for ${money(price)}` +
+      `${ship.hold.length ? `, ${ship.hold.length} lot${ship.hold.length === 1 ? '' : 's'} aboard going with her` : ''}` +
+      `${settled > 0 ? ` — ${money(settled)} of it straight to the crew owed` : ''}.`,
+    captain.id,
+    { shipId: ship.id, sold: price, arrearsPaid: settled },
   );
 }
 
@@ -1320,6 +1698,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doJettison(state, action.shipId, action.good);
     case 'BUY_SHIP':
       return doBuyShip(state, action.shipClass);
+    case 'SELL_SHIP':
+      return doSellShip(state, action.shipId);
     case 'BUY_FITTING':
       return doBuyFitting(state, action.shipId, action.fitting as 'guns' | 'copper');
     case 'SET_INSURANCE':
@@ -1342,6 +1722,12 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doHostileBid(state, action.targetId);
     case 'DECLARE':
       return doDeclare(state);
+    case 'CRACK_ON':
+      return doCrackOn(state, action.shipId);
+    case 'REPAIR_SHIP':
+      return doRepairShip(state, action.shipId);
+    case 'RESOLVE_ENCOUNTER':
+      return doResolveEncounter(state, action.shipId, action.accept);
     case 'END_TURN':
       // Rolling is not optional — ending a turn without it would silently skip the wind.
       return state.phase === 'act' ? endTurn(state) : state;

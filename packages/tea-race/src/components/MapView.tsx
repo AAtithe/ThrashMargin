@@ -28,6 +28,8 @@ interface MapViewProps {
   showPiracy: boolean;
   /** Whose ships are "mine" — everyone else's get their captain's name on the chart. */
   viewerId: string | null;
+  /** The Great Tea Race, when one is running: its ports are marked and its runners fly a pennant. */
+  race?: { ports: PortId[]; finish: PortId; runners: Set<string> } | null;
 }
 
 const ZOOM_MIN = 1;
@@ -56,6 +58,7 @@ export default function MapView({
   season,
   showPiracy,
   viewerId,
+  race = null,
 }: MapViewProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
@@ -221,6 +224,8 @@ export default function MapView({
   /** One full copy of the world's in-map content, offset east or west. */
   const worldCopy = (offset: number) => (
     <g key={offset} transform={`translate(${offset} 0)`}>
+      {/* A faint engraved swell, so the sea reads as water rather than a flat fill. */}
+      <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill="url(#tr-swell)" pointerEvents="none" />
       {BACKDROP.graticule.map((d, i) => (
         <path key={`g${i}`} d={d} stroke={CHART.graticule} strokeWidth={0.7} fill="none" />
       ))}
@@ -342,6 +347,8 @@ export default function MapView({
         );
       })}
 
+      {race && <RaceMarks race={race} />}
+
       {ships.map(ship => (
         <ShipMarker
           key={ship.id}
@@ -350,6 +357,7 @@ export default function MapView({
           selected={ship.id === selectedShipId}
           captainName={nameOf[ship.ownerId] ?? ''}
           isRival={ship.ownerId !== viewerId}
+          racing={race?.runners.has(ship.id) ?? false}
         />
       ))}
     </g>
@@ -368,12 +376,22 @@ export default function MapView({
         role="img"
         aria-label="World chart of trading ports and sea routes"
       >
+        <defs>
+          <pattern id="tr-swell" width={36} height={22} patternUnits="userSpaceOnUse">
+            <path d="M2 8 q4 -3 8 0 t8 0" fill="none" stroke={CHART.graticule} strokeWidth={0.8} opacity={0.75} />
+            <path d="M20 19 q4 -3 8 0 t8 0" fill="none" stroke={CHART.graticule} strokeWidth={0.8} opacity={0.5} />
+          </pattern>
+        </defs>
         {/* Outside the transformed group on purpose: inside it, it would pan away. */}
         <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill={CHART.sea} />
 
         <g transform={`translate(${view.panX} ${view.panY}) scale(${view.zoom})`}>
           {WORLD_COPIES.map(worldCopy)}
         </g>
+
+        {/* Fixed to the sheet, not the world: a compass rose and the chart's cartouche. */}
+        <CompassRose x={58} y={VB_HEIGHT - 70} />
+        <Cartouche x={VB_WIDTH - 230} y={18} />
       </svg>
 
       <div style={zoomControls}>
@@ -453,13 +471,136 @@ function ShipMarker({
   selected,
   captainName,
   isRival,
+  racing,
 }: {
   ship: Ship;
   colour: string;
   selected: boolean;
   captainName: string;
   isRival: boolean;
+  racing: boolean;
 }) {
+  const pos = shipPosition(ship);
+  // Where she was drawn last time, so a move can glide rather than jump. Skipped on the first draw
+  // and on a Pacific crossing, where the chart wraps and a glide would sweep across the whole world.
+  const last = useRef<{ x: number; y: number } | null>(null);
+  const glide = pos !== null && last.current !== null && Math.abs(pos.x - last.current.x) < VB_WIDTH / 3;
+  useEffect(() => {
+    if (pos) last.current = { x: pos.x, y: pos.y };
+  });
+  if (!pos) return null;
+  const { x, y, heading, wake } = pos;
+
+  const dest = destinationOf(ship);
+  const laden = ship.hold.length > 0;
+  const size = selected ? 15 : 12;
+
+  return (
+    <g pointerEvents="none">
+      {/* Where she has come from on this leg, so a rival's direction is readable at a glance. */}
+      {wake && (
+        <line
+          x1={wake.x}
+          y1={wake.y}
+          x2={x}
+          y2={y}
+          stroke={colour}
+          strokeWidth={selected ? 2.4 : 1.6}
+          strokeDasharray="3 4"
+          opacity={0.55}
+        />
+      )}
+      <g
+        style={{
+          transform: `translate(${x}px, ${y}px)`,
+          transition: glide ? 'transform 700ms cubic-bezier(0.33, 0, 0.2, 1)' : 'none',
+        }}
+      >
+      <g transform={`rotate(${heading})`}>
+        {selected && (
+          <circle cx={0} cy={0} r={size + 7} fill="none" stroke={colour} strokeWidth={2} opacity={0.9} />
+        )}
+        {/* A dark keel under the hull so a pale colour still reads on pale sea. */}
+        <path d={hullPath(size)} fill={CHART.labelHalo} opacity={0.85} transform="translate(0 1.5)" />
+        {/* A clipper seen from aloft: a long fine hull, pointed bow, and her yards braced across. */}
+        <path
+          d={hullPath(size)}
+          fill={colour}
+          fillOpacity={laden ? 1 : 0.55}
+          stroke={CHART.port}
+          strokeWidth={0.9}
+          strokeLinejoin="round"
+        />
+        {[-0.42, 0.02, 0.44].map((f, i) => {
+          const half = size * (0.62 - Math.abs(f) * 0.28);
+          const broken = ship.damaged && i === 0;
+          return (
+            <path
+              key={f}
+              d={`M${-half} ${size * f} Q0 ${size * f - size * 0.22} ${half} ${size * f}`}
+              fill="none"
+              stroke={broken ? CHART.damage : CHART.labelHalo}
+              strokeWidth={broken ? 1.4 : 2.1}
+              strokeLinecap="round"
+              strokeDasharray={broken ? '2 2' : undefined}
+              opacity={0.95}
+            />
+          );
+        })}
+        {/* Cargo pips along her centreline: how full she is, without needing a panel. */}
+        {laden &&
+          ship.hold.map((lot, i) => (
+            <rect
+              key={i}
+              x={-1.4}
+              y={size * 0.62 - i * 3.2}
+              width={2.8}
+              height={2.4}
+              fill={racing && lot.good === 'tea' ? CHART.tea : CHART.port}
+              opacity={0.9}
+            />
+          ))}
+        {racing && (
+          <path d={`M0 ${-size * 0.2} l${size * 0.75} ${-size * 0.35} l${-size * 0.75} ${-size * 0.2} Z`} fill={CHART.tea} stroke={CHART.port} strokeWidth={0.5} />
+        )}
+      </g>
+      {ship.damaged && (
+        <path
+          d={`M${size * 0.7} ${-size * 0.9} l5 5 m0 -5 l-5 5`}
+          stroke={CHART.damage}
+          strokeWidth={1.8}
+          strokeLinecap="round"
+        />
+      )}
+      <text
+        x={0}
+        y={size + 13}
+        fill={colour}
+        fontFamily={FONT.data}
+        fontSize={10}
+        textAnchor="middle"
+        paintOrder="stroke"
+        stroke={CHART.labelHalo}
+        strokeWidth={3}
+        strokeLinejoin="round"
+        opacity={isRival ? 0.95 : 0.75}
+      >
+        {isRival ? captainName : ship.name}
+      </text>
+      </g>
+      <title>
+        {`${ship.name} — ${captainName}. ${
+          ship.hold.length ? `${ship.hold.length} of 3 slots full` : 'running light'
+        }${dest ? `, bound for ${PORT_BY_ID[dest]?.name ?? dest}` : ', in port'}`}
+      </title>
+    </g>
+  );
+}
+
+/** Where a ship is drawn, which way she heads, and the start of her leg for the wake. */
+function shipPosition(
+  ship: Ship,
+): { x: number; y: number; heading: number; wake: { x: number; y: number } | null } | null {
   let x: number;
   let y: number;
   let heading = 0;
@@ -485,78 +626,86 @@ function ShipMarker({
   } else {
     return null;
   }
+  return { x, y, heading, wake };
+}
 
-  const dest = destinationOf(ship);
-  const laden = ship.hold.length > 0;
-  const size = selected ? 15 : 12;
+/** A clipper hull from above, bow up: fine entry, full quarters, a square transom. */
+const hullPath = (s: number) =>
+  `M0 ${-s} C${s * 0.42} ${-s * 0.55} ${s * 0.48} ${s * 0.35} ${s * 0.3} ${s * 0.86} L${-s * 0.3} ${s * 0.86} C${-s * 0.48} ${s * 0.35} ${-s * 0.42} ${-s * 0.55} 0 ${-s} Z`;
 
+/**
+ * The race on the chart: a tea chest at each port the new season comes down to, and a chequered
+ * flag over London. Only while a race is running, so the chart is not carrying furniture for a
+ * contest that is not on.
+ */
+function RaceMarks({ race }: { race: { ports: PortId[]; finish: PortId } }) {
+  const finish = PORT_POINTS[race.finish];
   return (
     <g pointerEvents="none">
-      {/* Where she has come from on this leg, so a rival's direction is readable at a glance. */}
-      {wake && (
-        <line
-          x1={wake.x}
-          y1={wake.y}
-          x2={x}
-          y2={y}
-          stroke={colour}
-          strokeWidth={selected ? 2.4 : 1.6}
-          strokeDasharray="3 4"
-          opacity={0.55}
-        />
-      )}
-      <g transform={`translate(${x} ${y}) rotate(${heading})`}>
-        {selected && (
-          <circle cx={0} cy={0} r={size + 7} fill="none" stroke={colour} strokeWidth={2} opacity={0.9} />
-        )}
-        {/* A dark keel under the hull so a pale colour still reads on pale sea. */}
-        <path
-          d={`M0 ${-size} L${size * 0.62} ${size * 0.7} L0 ${size * 0.34} L${-size * 0.62} ${size * 0.7} Z`}
-          fill={CHART.labelHalo}
-          opacity={0.85}
-          transform="translate(0 1.5)"
-        />
-        <path
-          d={`M0 ${-size} L${size * 0.62} ${size * 0.7} L0 ${size * 0.34} L${-size * 0.62} ${size * 0.7} Z`}
-          fill={colour}
-          fillOpacity={laden ? 1 : 0.5}
-          stroke={colour}
-          strokeWidth={1.8}
-          strokeLinejoin="round"
-        />
-        {/* Cargo pips: how full she is, without needing a panel. */}
-        {laden &&
-          ship.hold.map((_, i) => (
-            <circle
-              key={i}
-              cx={(i - (ship.hold.length - 1) / 2) * 4.4}
-              cy={size * 0.16}
-              r={1.5}
-              fill={CHART.labelHalo}
-              opacity={0.9}
-            />
+      {race.ports.map(id => {
+        const p = PORT_POINTS[id];
+        if (!p) return null;
+        return (
+          <g key={id} transform={`translate(${p.x - 19} ${p.y - 8})`}>
+            <rect x={0} y={0} width={9} height={7.5} fill={CHART.labelHalo} stroke={CHART.tea} strokeWidth={1.2} />
+            <path d="M0 2.6 H9 M4.5 0 V7.5" stroke={CHART.tea} strokeWidth={0.7} />
+            <title>New-season tea is loading here</title>
+          </g>
+        );
+      })}
+      {finish && (
+        <g transform={`translate(${finish.x - 4} ${finish.y - 30})`}>
+          <line x1={0} y1={0} x2={0} y2={24} stroke={CHART.port} strokeWidth={1.4} />
+          <rect x={0} y={0} width={14} height={9} fill={CHART.labelHalo} stroke={CHART.port} strokeWidth={0.8} />
+          {[0, 1, 2, 3].map(i => (
+            <rect key={i} x={(i % 2) * 7 + (i > 1 ? 3.5 : 0)} y={i > 1 ? 4.5 : 0} width={3.5} height={4.5} fill={CHART.tea} />
           ))}
+          <title>The tea race finishes in London</title>
+        </g>
+      )}
+    </g>
+  );
+}
+
+/** An eight-point compass rose, engraved in the chart's own coast colour. */
+function CompassRose({ x, y }: { x: number; y: number }) {
+  const r = 36;
+  const point = (angle: number, long: boolean) => {
+    const len = long ? r : r * 0.55;
+    const w = long ? 7 : 5;
+    return (
+      <g key={angle} transform={`rotate(${angle})`}>
+        <path d={`M0 ${-len} L${w} 0 L0 0 Z`} fill={CHART.coast} opacity={0.85} />
+        <path d={`M0 ${-len} L${-w} 0 L0 0 Z`} fill={CHART.land} stroke={CHART.coast} strokeWidth={0.7} />
       </g>
-      <text
-        x={x}
-        y={y + size + 13}
-        fill={colour}
-        fontFamily={FONT.data}
-        fontSize={10}
-        textAnchor="middle"
-        paintOrder="stroke"
-        stroke={CHART.labelHalo}
-        strokeWidth={3}
-        strokeLinejoin="round"
-        opacity={isRival ? 0.95 : 0.75}
-      >
-        {isRival ? captainName : ship.name}
+    );
+  };
+  return (
+    <g transform={`translate(${x} ${y})`} pointerEvents="none" opacity={0.9}>
+      <circle r={r * 0.78} fill="none" stroke={CHART.coast} strokeWidth={0.8} />
+      <circle r={r * 0.7} fill="none" stroke={CHART.coast} strokeWidth={0.4} strokeDasharray="1.5 2.5" />
+      {[45, 135, 225, 315].map(a => point(a, false))}
+      {[0, 90, 180, 270].map(a => point(a, true))}
+      <circle r={3} fill={CHART.coast} />
+      <text y={-r - 6} textAnchor="middle" fontFamily={FONT.body} fontSize={13} fontWeight={700} fill={CHART.label}>
+        N
       </text>
-      <title>
-        {`${ship.name} — ${captainName}. ${
-          ship.hold.length ? `${ship.hold.length} of 3 slots full` : 'running light'
-        }${dest ? `, bound for ${PORT_BY_ID[dest]?.name ?? dest}` : ', in port'}`}
-      </title>
+    </g>
+  );
+}
+
+/** The chart's title block, after the cartouches on Admiralty sheets. */
+function Cartouche({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y})`} pointerEvents="none">
+      <rect x={0} y={0} width={212} height={54} fill={CHART.land} stroke={CHART.coast} strokeWidth={1.2} opacity={0.92} />
+      <rect x={4} y={4} width={204} height={46} fill="none" stroke={CHART.coast} strokeWidth={0.5} />
+      <text x={106} y={24} textAnchor="middle" fontFamily={FONT.display} fontSize={15} fill={CHART.label} letterSpacing="0.06em">
+        THE TEA RACE
+      </text>
+      <text x={106} y={40} textAnchor="middle" fontFamily={FONT.body} fontSize={10} fontStyle="italic" fill={CHART.distance}>
+        A chart of the clipper routes, 1860s
+      </text>
     </g>
   );
 }

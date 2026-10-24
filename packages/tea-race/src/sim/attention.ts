@@ -95,3 +95,25 @@ function hintFor(
   const pick = wanted ?? loadable[0];
   return `she could load ${GOOD_BY_ID[pick]?.name ?? pick} here${wanted ? ' for a live commission' : ' on spec'}`;
 }
+
+export interface OfferAwaiting {
+  shipId: ShipId;
+  shipName: string;
+  headline: string;
+}
+
+/**
+ * Encounters at sea still unanswered this turn. They lapse when the turn ends, and lapsing is the
+ * same as declining — a legitimate answer, so this is one more line on the confirmation, never a
+ * block. Only the active captain's own offers, and only while they can still be answered.
+ */
+export function offersAwaiting(state: GameState, captainId: string): OfferAwaiting[] {
+  if (state.phase !== 'act' || !state.encounters) return [];
+  const out: OfferAwaiting[] = [];
+  for (const ship of state.ships) {
+    if (ship.ownerId !== captainId) continue;
+    const enc = state.encounters[ship.id];
+    if (enc) out.push({ shipId: ship.id, shipName: ship.name, headline: enc.headline });
+  }
+  return out;
+}

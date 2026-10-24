@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Hero } from '../components/Art';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
 import {
@@ -107,6 +108,27 @@ const SWITCHES: { key: keyof Hazards & string; group: SwitchGroup; name: string;
     name: 'Port agents',
     blurb:
       'A permanent man on the ground at one quay: cheaper lading, a better price for cargo sold off, and word ahead of the market. Where you trade becomes a position you hold.',
+  },
+  {
+    key: 'teaRace',
+    group: 'The race',
+    name: 'The Great Tea Race',
+    blurb:
+      'Every summer the new season\'s tea comes down to Foochow, Shanghai and Hong Kong, and the first two ships to land it in London take a purse and a premium. One contest a year the whole table can see coming.',
+  },
+  {
+    key: 'pressSail',
+    group: 'The race',
+    name: 'Cracking on',
+    blurb:
+      'Drive any ship for one more die of distance, once a turn. A bad throw carries away a spar: nothing gained, and slower until repaired. Ships at sea finally have a decision of their own.',
+  },
+  {
+    key: 'encounters',
+    group: 'The world',
+    name: 'Encounters at sea',
+    blurb:
+      'Derelicts to salvage, castaways to take off, country traders with cargo going cheap, and pilots who know the reefs. Each one a choice: the ground it costs against what it brings.',
   },
   {
     key: 'stocks',
@@ -238,7 +260,8 @@ export default function Lobby() {
       <PortalNav />
       <main style={content}>
         <header style={{ marginBottom: '2rem' }}>
-          <p style={eyebrow}>After Ocean Trader, Clipper Games, 1988</p>
+          <Hero />
+          <p style={{ ...eyebrow, marginTop: '1rem' }}>After Ocean Trader, Clipper Games, 1988</p>
           <h1 style={title}>The Tea Race</h1>
           {/* Kept honest: a commission names the buyer and the price, never a source port — that
               stopped being true when cards lost their source, and this paragraph still claimed it. */}

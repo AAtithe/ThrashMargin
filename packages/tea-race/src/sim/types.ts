@@ -70,6 +70,16 @@ export interface CargoLot {
   paid: number;
   boughtAt: PortId;
   boughtOnTurn: number;
+  /**
+   * The Great Tea Race: the year of the race this lot was loaded for, when it is new-season tea
+   * taken aboard at a China port while that year's race was open. Absent on everything else.
+   */
+  season?: number;
+  /**
+   * Taken aboard at sea — salvaged from a derelict or bought off a country ship — rather than at a
+   * quay, so `paid` is not a quay price and sits outside the port price band. Absent otherwise.
+   */
+  atSea?: 'derelict' | 'trader';
 }
 
 export interface Voyage {
@@ -122,6 +132,11 @@ export interface Ship {
    * decision, a modal on every dispatch is a chore.
    */
   insured?: boolean;
+  /**
+   * A sprung spar or a strained hull, from cracking on too hard or a pilot who ran her aground.
+   * She sails slower on every roll until repaired in port. Absent means sound.
+   */
+  damaged?: boolean;
 }
 
 export type AiProfile = 'racer' | 'speculator' | 'financier';
@@ -165,6 +180,12 @@ export interface Captain {
    * from before agents existed loads untouched.
    */
   agents?: PortId[];
+  /**
+   * Great Tea Race honours: first and second places across every year of the game. Kept here rather
+   * than read from the log, which is trimmed. Absent meaning none.
+   */
+  teaRaceWins?: number;
+  teaRaceSeconds?: number;
 }
 
 export interface ContractFill {
@@ -223,6 +244,61 @@ export interface Hazards {
   stocks?: boolean;
   /** Port agents: a permanent man on the ground at one quay, for cheaper lading and early word. */
   agents?: boolean;
+  /**
+   * The Great Tea Race: once a year the new season's tea comes down to the China ports, and the
+   * first two ships to land it in London take a purse and a premium.
+   */
+  teaRace?: boolean;
+  /** Cracking on: drive a ship for an extra die of distance, at the risk of carrying away a spar. */
+  pressSail?: boolean;
+  /** Encounters at sea: derelicts, castaways, country traders and pilots, each a choice. */
+  encounters?: boolean;
+}
+
+/** One placing in a year's Great Tea Race. */
+export interface TeaRacePlacing {
+  captainId: CaptainId;
+  shipId: ShipId;
+  shipName: string;
+  round: number;
+  rank: 1 | 2;
+  /** Purse plus the premium on the lots landed. */
+  paid: number;
+  units: number;
+}
+
+/**
+ * The state of this year's Great Tea Race. Kept after it closes, so the UI can show who won it,
+ * until the next year's race replaces it.
+ */
+export interface TeaRace {
+  year: number;
+  opensOn: number;
+  /** Inclusive: the race runs while `round <= closesOn` and fewer than two ships have placed. */
+  closesOn: number;
+  placings: TeaRacePlacing[];
+  closed: boolean;
+}
+
+export type EncounterKind = 'derelict' | 'castaways' | 'trader' | 'pilot';
+
+/**
+ * Something met at sea that asks for a decision. Offered at the roll, good for the rest of that
+ * turn only; ignoring it is the same as declining.
+ */
+export interface Encounter {
+  kind: EncounterKind;
+  shipId: ShipId;
+  /** The good aboard a derelict, or offered by a trader. */
+  good?: GoodId;
+  /** What a trader asks for the lot, or a pilot for the passage. */
+  price?: number;
+  /** Points lost heaving to (derelict, castaways), or gained through the pilot's passage. */
+  points?: number;
+  /** The reward for taking castaways off. */
+  reward?: number;
+  headline: string;
+  detail: string;
 }
 
 /** The kinds of thing the world does to everybody at once. See sim/events.ts. */
@@ -277,7 +353,11 @@ export type LogKind =
   | 'event'
   | 'wages'
   | 'stock'
-  | 'agent';
+  | 'agent'
+  | 'teaRace'
+  | 'encounter'
+  | 'crackOn'
+  | 'repair';
 
 export interface LogEntry {
   /**
@@ -391,6 +471,15 @@ export interface GameState {
   sailPoints: Record<ShipId, number>;
   /** The two dice behind each entry in `sailPoints`, so the UI can show them. */
   dice: Record<ShipId, [number, number]>;
+  /**
+   * Ships driven hard this turn, and the extra die each rolled. Once per ship per turn. Cleared when
+   * the turn ends. Optional, absent meaning none.
+   */
+  crackedOn?: Record<ShipId, number>;
+  /** Encounters at sea awaiting a decision this turn. Cleared when the turn ends. */
+  encounters?: Record<ShipId, Encounter>;
+  /** This year's Great Tea Race, or the last one run. Absent until the first race opens. */
+  teaRace?: TeaRace;
 
   log: LogEntry[];
 }
@@ -425,6 +514,8 @@ export type GameAction =
    */
   | { type: 'SELL_CARGO'; shipId: ShipId; good: GoodId }
   | { type: 'BUY_SHIP'; shipClass?: import('./rules').ShipClassId }
+  /** Sell a docked hull back to the yard at a loss. Only with wages or loans in play; never the last. */
+  | { type: 'SELL_SHIP'; shipId: ShipId }
   /** Fit guns or copper to a docked ship, permanently. */
   | { type: 'BUY_FITTING'; shipId: ShipId; fitting: keyof ShipFittings }
   /** Open or close a ship's standing insurance policy. */
@@ -446,6 +537,12 @@ export type GameAction =
    * captain who has fallen behind — see `canHostileBid` in rules.ts.
    */
   | { type: 'HOSTILE_BID'; targetId: CaptainId }
+  /** Drive her hard for one extra die: on a bad throw she carries away a spar instead. */
+  | { type: 'CRACK_ON'; shipId: ShipId }
+  /** Make good a damaged ship at the quay she is tied up to. */
+  | { type: 'REPAIR_SHIP'; shipId: ShipId }
+  /** Take up, or pass by, what a ship has met at sea this turn. */
+  | { type: 'RESOLVE_ENCOUNTER'; shipId: ShipId; accept: boolean }
   | { type: 'DECLARE' }
   | { type: 'END_TURN' }
   | { type: 'ACKNOWLEDGE_HANDOVER' };

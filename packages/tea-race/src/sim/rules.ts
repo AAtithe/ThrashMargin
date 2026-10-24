@@ -774,14 +774,17 @@ export const PRESETS = {
       shipClasses: false,
       stocks: false,
       agents: false,
+      teaRace: false,
+      pressSail: false,
+      encounters: false,
     },
   },
   merchant: {
     label: "A merchant's game",
     blurb:
       'Money, not weather. Crew wages to pay, loans to raise, hulls to choose between, cargo you ' +
-      'can sell off at a loss, and an exchange to read. Nothing random but the dice, and the ' +
-      'longest of the four — wages make every season count.',
+      'can sell off at a loss, an exchange to read, and a tea race every summer. Nothing random ' +
+      'but the dice, and the longest of the four — wages make every season count.',
     hazards: {
       weather: false,
       piracy: false,
@@ -794,14 +797,17 @@ export const PRESETS = {
       shipClasses: true,
       stocks: true,
       agents: true,
+      teaRace: true,
+      pressSail: true,
+      encounters: false,
     },
   },
   highSeas: {
     label: 'The high seas',
     blurb:
-      'Weather, not money. A seasonal wind chart, storms, pirates worth arming against, a world ' +
-      'that throws strikes and gluts at you, and commissions that will not wait. Quick and ' +
-      'dangerous — the expiring cards keep everybody moving.',
+      'Weather, not money. A seasonal wind chart, storms, pirates worth arming against, derelicts ' +
+      'and castaways to stop for, a world that throws strikes and gluts at you, and commissions ' +
+      'that will not wait. Quick and dangerous — the expiring cards keep everybody moving.',
     hazards: {
       weather: true,
       piracy: true,
@@ -814,6 +820,9 @@ export const PRESETS = {
       shipClasses: false,
       stocks: false,
       agents: false,
+      teaRace: true,
+      pressSail: true,
+      encounters: true,
     },
   },
   full: {
@@ -833,6 +842,9 @@ export const PRESETS = {
       shipClasses: true,
       stocks: true,
       agents: true,
+      teaRace: true,
+      pressSail: true,
+      encounters: true,
     },
   },
 } as const;
@@ -883,3 +895,67 @@ export const SHIP_NAMES = [
   'Deerfoot',
   'Ellen Rodger',
 ];
+
+// ---------------------------------------------------------------------------
+// Seamanship: the Great Tea Race, cracking on, and encounters at sea
+//
+// All AUTHORED. The 1988 board has none of them, and all three are off in its preset. They exist
+// because the owner found the turn itself one-dimensional: roll, click a port, watch the ship go.
+// Each adds a decision to the part of the turn that had none — what to do with a ship already at
+// sea — and the race gives the whole table one contest everybody can see coming.
+// ---------------------------------------------------------------------------
+
+/**
+ * AUTHORED — the round of each 24-round year on which the new season's tea comes down to the China
+ * ports: the first round of summer, as the real races loaded at Foochow in late May and June.
+ */
+export const TEA_RACE_OPENS_IN_YEAR = 7;
+
+/** AUTHORED — how many rounds a year's race stays open if two ships have not placed. */
+export const TEA_RACE_ROUNDS = 18;
+
+/** AUTHORED — where the race finishes. The real ones docked in the Thames. */
+export const TEA_RACE_FINISH = 'london';
+
+/** AUTHORED — the purse for first and second home, on top of the premium on the tea itself. */
+export const TEA_RACE_PURSE: Record<1 | 2, number> = { 1: 150, 2: 75 };
+
+/**
+ * AUTHORED — what the new season's tea fetches per lot on the day it lands, as a multiple of tea's
+ * reckoned price. First home with three lots takes about what a first-place card pays, plus the
+ * purse; the point is not a bigger number but a contest the whole table can see coming.
+ */
+export const TEA_RACE_PREMIUM: Record<1 | 2, number> = { 1: 3, 2: 2 };
+
+/**
+ * AUTHORED — cracking on. A ship driven hard throws one extra die; on this value or below she
+ * carries away a spar instead and gains nothing. One worse rounding a great cape.
+ */
+export const SPAR_CARRIED_ON = 1;
+
+/** AUTHORED — sail points a damaged ship loses on every roll until repaired. */
+export const DAMAGE_SPEED_PENALTY = 2;
+
+/** AUTHORED — the price of making her good at a quay. */
+export const REPAIR_PRICE = 40;
+
+/**
+ * AUTHORED — chance per ship per turn at sea of meeting something that asks for a decision. About
+ * one in seven: often enough that a long passage usually has one, rare enough to stay an event.
+ */
+export const ENCOUNTER_CHANCE = 0.14;
+
+/**
+ * AUTHORED — a hull sold back to the yard fetches this fraction of her new price, fittings and any
+ * cargo aboard thrown in for nothing.
+ *
+ * The softlock escape for standing costs, on the same reasoning as selling a share back (§2.2).
+ * With wages and loans on, a captain with no cash and nothing aboard cannot buy a lot, so cannot
+ * earn, so falls further into arrears every round. The harness found whole tables stuck there for
+ * three hundred rounds. Only offered when wages or loans are in play, since those are what make the
+ * trap, and never for a captain's last ship — a fleet of none cannot trade or win.
+ */
+export const SHIP_SALE_FRACTION = 0.5;
+
+export const shipSalePrice = (shipClass: ShipClassId | undefined): number =>
+  Math.round(SHIP_CLASSES[shipClass ?? DEFAULT_SHIP_CLASS].price * SHIP_SALE_FRACTION);

@@ -1,6 +1,7 @@
 import { FONT, UI, money } from '../theme';
 import { Button } from './ui';
 import type { Captain, GameState } from '../sim/types';
+import { ShipProfile } from './Art';
 
 /**
  * Hotseat pause between two human captains.
@@ -24,6 +25,7 @@ export default function HandoverCard({
   return (
     <div style={backdrop}>
       <div style={{ ...card, borderColor: next.colour }}>
+        <ShipProfile shipClass={ships[0]?.shipClass} colour={next.colour} width={110} />
         <span style={eyebrow}>Round {state.round}</span>
         <h2 style={{ ...title, color: next.colour }}>Pass to {next.name}</h2>
         <p style={body}>

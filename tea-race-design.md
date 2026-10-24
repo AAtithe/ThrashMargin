@@ -500,6 +500,7 @@ The rules change the owner cares most about, and the one that makes the map matt
   money a use besides shares and makes where you trade matter over time.
 - **Multiple stocks** — several shipping companies whose prices move with the trade flowing through
   their regions, so shares become a market to read rather than a counter to fill.
+- ✅ **Seamanship** (2026-10-24): the Great Tea Race, cracking on, encounters at sea. See session 12.
 
 ## 7. Voyage mode — free play built, full simulation still not
 
@@ -558,6 +559,113 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 ---
 
 ## 8. Build log
+
+### Session 13 (2026-10-24) — the arrears trap, and finishing seamanship
+
+Worked from an explicit list of eleven items, all closed.
+
+**The stall was a debt spiral, not the share market.** Session 12 recorded the three unfinished
+full-race games as the share-market endgame. Tracing them showed every stalled table had captains on
+£0 with three ships and thousands in arrears. Two causes compounded. The AI borrowed to pay the
+interest on what it had already borrowed: one captain carried £2,000 against a single ship, whose
+interest alone outran anything that ship could earn. And the rules had no exit: with nothing aboard
+and nothing in hand a captain cannot buy a lot, so cannot earn, so falls further behind every round.
+**A human could reach that state too**, so the fix is partly a rule.
+
+- **`SELL_SHIP`** (authored, §2.2's reasoning applied to hulls): a docked ship sold to the yard at
+  half her price, fittings and cargo thrown in, the proceeds paying arrears first. Only when wages or
+  loans are on, since those make the trap, so the 1988 board is untouched. Never the last ship.
+- **AI borrowing cap:** never more than a hull's price per hull.
+- **AI distress rule:** in arrears, broke and nothing under way, sell the least valuable docked hull,
+  or a share if she has only one ship.
+
+100 seeds per preset, all AI, before and after:
+
+| Preset | unfinished | median | p90 |
+|---|---|---|---|
+| The 1988 board | 0 → 0 | 73 → 73 | 108 → 108 |
+| A merchant's game | 0 → 0 | 98 → 101 | 152 → 156 |
+| The high seas | 0 → 0 | 70 → 70 | 102 → 102 |
+| The full race | **3 → 0** | 95 → 107 | 166 → 167 |
+
+**Free-play captains now use seamanship** (they had ignored it). The first cut cost them money: the
+racer temperament drove every laden ship every turn, about one throw in six cost a £40 repair, and
+median final cash fell from about £300 to £247. Cracking on is now only for a ship one die from port
+or in the race, which also applies to the classic game. Free play is back to £316. Note the design
+log's older £1,849 free-play figure predates wages being on by default; with wages the baseline is
+about £300.
+
+**Fairness, 150 seeds each, full race:** round-30 share leader wins 44% with seamanship on and 41%
+with it off; seat 0 wins 31% and 34%. Both differences are inside the ±8-point noise, so the new rules
+do not measurably favour the leader. A captain who won a tea race went on to take the company about
+half the time against a 25% baseline, which most likely means strong captains win races rather than
+races making winners. Worth watching once humans play it.
+
+Also: an end-of-turn warning for unanswered encounters (`offersAwaiting` in `attention.ts`); tea race
+honours stored on each captain (`teaRaceWins`, `teaRaceSeconds`, since the log is trimmed) and shown
+in the table and on a victory screen that now carries final standings; ships glide along their legs
+on the chart (skipped on the Pacific seam, off under reduced motion); a banner on the lobby, a ship
+on the handover card and a vignette beside every optional rule in how-to-play; chronicle colours for
+the new log kinds. The harness now asserts the new rules actually happen in AI play (races
+contested, spar rate 10–30%, encounters offered), that every race placing falls inside its window,
+and covers the ship sale. A pre-existing phone-width overflow in the shipping exchange rows is fixed.
+
+Verified: `npm run check` green (tea race 486,252 checks, 0 failed; fewer than session 12 only
+because games are shorter now that none stall). Browser-checked at 390, 820 and 1400 wide in both
+modes with no horizontal scroll. No `api/` change this session.
+
+### Session 12 (2026-10-24) — seamanship: the turn gets a second dimension
+
+The owner's report: "game play currently feels quite one-dimensional", plus a request for more
+graphics. The diagnosis was structural, not a missing rule. **A ship at sea had no decisions at all.**
+`ROLL` advanced her and that was her whole turn, so most of a fleet spent most of a game as spectators,
+and every turn collapsed to "roll, click a port". Three switches, all off in the 1988 board
+(`sim/seamanship.ts`, constants at the foot of `rules.ts`):
+
+| Switch | What it adds | Presets |
+|---|---|---|
+| `teaRace` | Every summer (round 7 of each 24-round year) tea loaded at Foochow, Shanghai or Hong Kong is the new season's. First ship to tie up in London with it takes £150 and 3x tea's reckoning a lot; second £75 and 2x. Lands itself on arrival. Open 18 rounds or until two have placed. | merchant, high seas, full |
+| `pressSail` | `CRACK_ON`: any ship, once a turn, throws one more die. At sea she runs it at once; in port it adds to her wind. A 1 (1–2 rounding a cape) carries away a spar instead: nothing gained, −2 every roll until `REPAIR_SHIP` (£40 at a quay). | merchant, high seas, full |
+| `encounters` | About one ship-turn at sea in seven meets a derelict, castaways, a country trader or a pilot. Each is a choice (`RESOLVE_ENCOUNTER`) that lapses at the end of the turn. | high seas, full |
+
+The race is the namesake made literal: the one contest a year the whole table can see coming and
+plan towards. It is deterministic, a date in the calendar and never a draw, so it keeps running
+through a declaration. The AI reasons about it as a virtual card (`raceCard` in `ai.ts`), so its one
+scoring routine weighs the race against the five face-up commissions with no second brain. A lot
+carries `season` and only that year's tea answers that year's race.
+
+**What the harness caught, and it was not in the new rules.** With encounters on, 8 games in 100
+spiralled into wage arrears and never finished. The cause was an old AI blind spot that salvage made
+common: a ship holding *one* unwanted lot was neither empty enough for the "go hunting" branch nor
+full enough for the "clear the hold" branch, so she sat in port for the rest of the game. One trace
+showed three ships idle from round 20 to round 120. Fixed in the AI, not the rule: a ship with spare
+slots and nothing aboard worth steering for now hunts work for the empty ones. That also fixed the
+baseline. With all three new switches off, 100 seeds went from 1 unfinished, median 64, to
+**0 unfinished, median 89, max 190**. The AI also now declines salvage nobody would pay for.
+
+Pacing, 100 seeds per preset, all AI:
+
+| Preset | unfinished | median | p90 |
+|---|---|---|---|
+| The 1988 board | 0 | 73 | 108 |
+| A merchant's game | 0 | 98 | 152 |
+| The high seas | 0 | 70 | 102 |
+| The full race | 3 | 95 | 166 |
+
+**Still open at the time:** the full race's three unfinished games. Diagnosed and fixed in session 13.
+
+**Graphics** (`components/Art.tsx`, all inline SVG, line work in `currentColor` so every piece
+follows light and dark mode): real dice faces for every roll and the crack-on die; ship profiles
+per hull class, with a broken topmast when damaged and a gold pennant when racing; engraved
+vignettes on every event card (the emoji glyphs are gone); a Tea Race panel with a race-course
+graphic placing every runner by her distance from London; a Seamanship panel for encounters,
+cracking on and repairs; and on the chart a sea swell texture, a compass rose, a title cartouche,
+top-down clipper hulls with braced yards and cargo pips, tea chests on the China ports and a
+chequered flag over London while a race runs.
+
+Verified: `npm run check` green (tea race 543,686 checks, 0 failed); `npm run test:api` 233 passed;
+browser play-through in both modes. The pilot put Cutty Sark on a reef and she still came second
+home for £435.
 
 ### Session 11 (2026-08-22) — free play made reachable, and a silent transport bug
 

@@ -37,6 +37,10 @@ export interface ChartPalette {
   windFoul: string;
   /** Waters that carry a piracy rating. */
   piracy: string;
+  /** The Great Tea Race: the tea ports, the finish, a ship carrying the new season. */
+  tea: string;
+  /** Ships damaged by driving or a reef. */
+  damage: string;
 }
 
 export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
@@ -58,6 +62,8 @@ export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
     windFair: '#7fb069',
     windFoul: '#c2606a',
     piracy: '#c2606a',
+    tea: '#e0ae55',
+    damage: '#e0707a',
   },
   // Pale, like a printed board on a table.
   printed: {
@@ -77,6 +83,8 @@ export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
     windFair: '#2f6b3a',
     windFoul: '#a8342f',
     piracy: '#8c2b26',
+    tea: '#9a6b12',
+    damage: '#b3261e',
   },
 };
 

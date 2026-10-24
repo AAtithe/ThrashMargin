@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { priceStanding } from '../sim/pricing';
 import { AGENT_LADING_DISCOUNT, AGENT_PRICE, AGENT_SALE_UPLIFT, MAX_AGENTS } from '../sim/agents';
-import { slotsOf } from '../sim/rules';
+import { shipSalePrice, slotsOf } from '../sim/rules';
 import { GOOD_BY_ID, PORT_BY_ID, goodName, planRoute, portName } from '../sim/content';
 import { payoutFor } from '../sim/contracts';
 import { destinationOf, pointsToDestination, reachableAtSea } from '../sim/movement';
@@ -28,6 +28,9 @@ interface Props {
   sellable: boolean;
   /** Whether port agents are in play. */
   agentsOn: boolean;
+  /** Whether a hull may be sold back to the yard (wages or loans in play), and the fleet's size. */
+  shipSaleOn?: boolean;
+  fleetSize?: number;
   /**
    * What a lot costs here, and what this quay pays for one, as the *game* reckons it.
    *
@@ -57,6 +60,8 @@ export default function PortPanel({
   piracyOn,
   sellable,
   agentsOn,
+  shipSaleOn = false,
+  fleetSize = 1,
   priceFor,
   paysFor,
 }: Props) {
@@ -263,6 +268,15 @@ export default function PortPanel({
             </div>
           )}
 
+          {shipSaleOn && ship && fleetSize > 1 && (
+            <ConfirmSale
+              label={`Sell ${ship.name} to the yard — ${money(shipSalePrice(ship.shipClass))}`}
+              detail={`Half her price${ship.hold.length ? `, and the ${ship.hold.length} lot${ship.hold.length === 1 ? '' : 's'} aboard go with her` : ''}. Pays any arrears first. One less hull on the wage bill.`}
+              disabled={!enabled}
+              onConfirm={() => dispatch({ type: 'SELL_SHIP', shipId: ship.id })}
+            />
+          )}
+
           <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
             ★ marks a good some face-up commission wants. No card names a source port, so this quay
             will serve as well as any other that stocks it. Anything unstarred is a gamble on a card
@@ -455,3 +469,33 @@ const block: React.CSSProperties = {
   gap: '0.35rem',
   alignItems: 'flex-start',
 };
+
+/** Selling a hull cannot be undone, so it takes a second click. */
+function ConfirmSale({
+  label,
+  detail,
+  disabled,
+  onConfirm,
+}: {
+  label: string;
+  detail: string;
+  disabled: boolean;
+  onConfirm: () => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+      <span style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+        <Button tone={armed ? 'danger' : 'quiet'} disabled={disabled} title={detail} onClick={() => (armed ? (setArmed(false), onConfirm()) : setArmed(true))}>
+          {armed ? 'Yes, sell her' : label}
+        </Button>
+        {armed && (
+          <Button tone="quiet" onClick={() => setArmed(false)}>
+            Keep her
+          </Button>
+        )}
+      </span>
+      {armed && <span style={{ ...bodySmall, fontSize: '0.72rem', color: UI.warn }}>{detail}</span>}
+    </div>
+  );
+}

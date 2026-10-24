@@ -1,6 +1,7 @@
 import { SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel } from './ui';
+import { TeaChest } from './Art';
 import { assetValue } from '../sim/actions';
 import type { GameState } from '../sim/types';
 
@@ -47,6 +48,16 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                       {captain.kind === 'ai' ? '' : ' ·'}
                     </span>
                     {isDeclarer && <span style={{ color: UI.warn, fontSize: '0.7rem' }}>claimed</span>}
+                    {(captain.teaRaceWins ?? 0) + (captain.teaRaceSeconds ?? 0) > 0 && (
+                      <span
+                        title={`Tea race: ${captain.teaRaceWins ?? 0} won, ${captain.teaRaceSeconds ?? 0} second`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem', color: UI.brass, fontSize: '0.66rem' }}
+                      >
+                        <TeaChest size={11} />
+                        {captain.teaRaceWins ?? 0}
+                        {captain.teaRaceSeconds ? `/${captain.teaRaceSeconds}` : ''}
+                      </span>
+                    )}
                   </span>
                 </td>
                 <td
@@ -81,6 +92,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
         {freePlay
           ? 'Worth counts cash, cargo, hulls and holdings, less anything owed.'
           : `Cash turns green past ${money(VICTORY_CASH)}.`}
+        {state.hazards?.teaRace && !freePlay ? ' A tea chest counts tea races won, then seconds.' : ''}
       </p>
     </Panel>
   );
