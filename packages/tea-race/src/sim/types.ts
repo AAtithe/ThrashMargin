@@ -195,6 +195,10 @@ export interface Captain {
   charters?: Charter[];
   /** Charters completed so far. */
   chartersDone?: number;
+  /** Captain careers: experience earned. Absent meaning none. */
+  xp?: number;
+  /** Skills learned, in the order they were taken. */
+  skills?: import('./career').SkillId[];
 }
 
 export interface ContractFill {
@@ -266,6 +270,10 @@ export interface Hazards {
   charters?: boolean;
   /** Ship renown: a ship that wins earns a crew to match, and sails faster for it. */
   renown?: boolean;
+  /** Captain careers: experience, levels and a skill tree. */
+  career?: boolean;
+  /** Eras: the world's dangers and contests arrive in stages as the game goes on. */
+  ramp?: boolean;
 }
 
 export type CharterKind = 'regionTrade' | 'firstHome' | 'goodTrade' | 'spread' | 'teaRace' | 'fleet';
@@ -393,7 +401,9 @@ export type LogKind =
   | 'crackOn'
   | 'repair'
   | 'charter'
-  | 'renown';
+  | 'renown'
+  | 'career'
+  | 'era';
 
 export interface LogEntry {
   /**
@@ -518,6 +528,13 @@ export interface GameState {
   teaRace?: TeaRace;
   /** Monotonic counter behind Charter.id. */
   nextCharterSeq?: number;
+  /**
+   * Eras: the rules this game was set up with. `hazards` holds the ones in force now; the era turn
+   * switches the staged ones on from this plan as their time comes. Absent unless eras are on.
+   */
+  rampPlan?: Hazards;
+  /** Eras: the era now in force, 1-based. */
+  era?: number;
 
   log: LogEntry[];
 }
@@ -581,6 +598,8 @@ export type GameAction =
   | { type: 'REPAIR_SHIP'; shipId: ShipId }
   /** Take up, or pass by, what a ship has met at sea this turn. */
   | { type: 'RESOLVE_ENCOUNTER'; shipId: ShipId; accept: boolean }
+  /** Spend a skill point from the captain's career. */
+  | { type: 'LEARN_SKILL'; skill: import('./career').SkillId }
   | { type: 'DECLARE' }
   | { type: 'END_TURN' }
   | { type: 'ACKNOWLEDGE_HANDOVER' };

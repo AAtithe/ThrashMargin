@@ -54,6 +54,7 @@ import { bestSpreads, buyersFor, livePrice } from './voyage';
 import { AGENT_PRICE, canPlaceAgent } from './agents';
 import { RACE_FINISH, canCrackOn, openRace, raceLots } from './seamanship';
 import { charterValue } from './charters';
+import { canLearn, careerOn, type SkillId } from './career';
 import { pointsToDestination } from './movement';
 import type { AiProfile, Captain, CargoLot, Contract, Encounter, GameAction, GameState, PortId, Ship } from './types';
 import type { ShipClassId } from './rules';
@@ -98,6 +99,17 @@ const TEMPERAMENTS: Record<AiProfile, Temperament> = {
 };
 
 const temperamentOf = (c: Captain): Temperament => TEMPERAMENTS[c.aiProfile ?? 'racer'];
+
+/**
+ * Which skills each temperament reaches for, in order. A racer wants speed, a speculator margin, a
+ * financier a cheaper, safer fleet. Each list holds every skill, so no captain ever banks a point
+ * for want of something on her list; `canLearn` enforces the tree's order.
+ */
+const SKILL_ORDER: Record<AiProfile, SkillId[]> = {
+  racer: ['weatherEye', 'driver', 'navigator', 'bosun', 'gunner', 'commodore', 'haggler', 'factor', 'merchantPrince'],
+  speculator: ['haggler', 'factor', 'merchantPrince', 'weatherEye', 'driver', 'navigator', 'bosun', 'gunner', 'commodore'],
+  financier: ['bosun', 'haggler', 'gunner', 'factor', 'commodore', 'merchantPrince', 'weatherEye', 'driver', 'navigator'],
+};
 
 const turnsFor = (points: number) => Math.max(1, points / POINTS_PER_TURN);
 
@@ -731,6 +743,13 @@ export function nextAiAction(s: GameState): GameAction | null {
   // here in nextAiAction and nowhere else: it first went into investmentAction, which voyageAction
   // itself falls back to, and the two called each other until the stack gave out.
   if (s.rules === 'voyage') return voyageAction(s, captain);
+
+  // A skill point is never worth sitting on: spend it the moment she has it, down the branch that
+  // suits her temperament, taking the next skill she can actually learn.
+  if (careerOn(s)) {
+    const pick = SKILL_ORDER[captain.aiProfile ?? 'racer'].find(id => canLearn(captain, id));
+    if (pick) return { type: 'LEARN_SKILL', skill: pick };
+  }
 
   // Winning beats everything else on the board — but only claim it holding the cash the claim
   // actually requires.

@@ -779,15 +779,17 @@ export const PRESETS = {
       encounters: false,
       charters: false,
       renown: false,
+      career: false,
+      ramp: false,
     },
   },
   merchant: {
     label: "A merchant's game",
     blurb:
       'Money, not weather. Crew wages to pay, loans to raise, hulls to choose between, cargo you ' +
-      'can sell off at a loss, an exchange to read, owners with charters to fill, and a tea race ' +
-      'every summer. Nothing random but the dice, and the longest of the four — wages make every ' +
-      'season count.',
+      'can sell off at a loss, an exchange to read, owners with charters to fill, a captain\'s ' +
+      'career to build, and a tea race every summer. Nothing random but the dice, and the longest ' +
+      'of the four — wages make every season count.',
     hazards: {
       weather: false,
       piracy: false,
@@ -805,6 +807,8 @@ export const PRESETS = {
       encounters: false,
       charters: true,
       renown: true,
+      career: true,
+      ramp: false,
     },
   },
   highSeas: {
@@ -812,8 +816,8 @@ export const PRESETS = {
     blurb:
       'Weather, not money. A seasonal wind chart, storms, pirates worth arming against, derelicts ' +
       'and castaways to stop for, ships that make a name for themselves, a world that throws ' +
-      'strikes and gluts at you, and commissions that will not wait. Quick and dangerous — the ' +
-      'expiring cards keep everybody moving.',
+      'strikes and gluts at you, and commissions that will not wait — arriving in eras, so the ' +
+      'sea gets rougher as the game goes on.',
     hazards: {
       weather: true,
       piracy: true,
@@ -831,13 +835,15 @@ export const PRESETS = {
       encounters: true,
       charters: false,
       renown: true,
+      career: false,
+      ramp: true,
     },
   },
   full: {
     label: 'The full race',
     blurb:
-      'Everything at once, and the one with the most to go wrong. Not the longest, though — the ' +
-      'expiring commissions drive it along faster than the merchant\'s game.',
+      'Everything, ramping up in eras: trade and the wind first, then pirates and the world, then ' +
+      'the tea race and the clock. Your captain levels up and learns skills as it goes.',
     hazards: {
       weather: true,
       piracy: true,
@@ -855,6 +861,8 @@ export const PRESETS = {
       encounters: true,
       charters: true,
       renown: true,
+      career: true,
+      ramp: true,
     },
   },
 } as const;

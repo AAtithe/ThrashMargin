@@ -57,6 +57,12 @@ function story(e: LogEntry, nameOf: (id: string | null) => string): Omit<Story, 
       return d.reward !== undefined
         ? { weight: 25, art: 'contract', headline: `${who}'s owners are pleased`, text: e.text, colour: UI.brass }
         : null;
+    case 'era':
+      return { weight: 110, art: 'event', headline: e.text.split('.')[0].replace('A new era: ', 'A new era — '), text: e.text, colour: UI.brass };
+    case 'career':
+      return d.level !== undefined
+        ? { weight: 28, art: 'declare', headline: `${who} rises to level ${d.level}`, text: e.text, colour: UI.verdigris }
+        : null;
     case 'renown':
       return { weight: 35, art: 'crackOn', headline: `${who}'s ship makes her name`, text: e.text, colour: UI.brass };
     case 'crackOn':

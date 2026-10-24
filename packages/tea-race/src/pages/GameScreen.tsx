@@ -30,6 +30,8 @@ import TeaRacePanel from '../components/TeaRacePanel';
 import SeamanshipPanel from '../components/SeamanshipPanel';
 import ChartersPanel from '../components/ChartersPanel';
 import ShippingGazette, { frontPage } from '../components/ShippingGazette';
+import CareerPanel from '../components/CareerPanel';
+import EraBanner from '../components/EraBanner';
 import { TeaChest, Vignette } from '../components/Art';
 import { RACE_FINISH, TEA_RACE_PORTS, openRace, raceLots } from '../sim/seamanship';
 
@@ -204,6 +206,9 @@ export default function GameScreen() {
         </div>
       )}
 
+      {/* --- The era, when the game ramps up over time ----------------------------------- */}
+      {!over && <EraBanner state={state} />}
+
       {/* --- Declaration clock ----------------------------------------------------------- */}
       {/* --- The news ---------------------------------------------------------------------- */}
       {!over && <NewsBanner events={state.events ?? []} round={state.round} />}
@@ -376,6 +381,8 @@ export default function GameScreen() {
                   setTargetPort(null);
                 }}
               />
+
+              <CareerPanel state={state} captain={captain} dispatch={dispatch} enabled={isHuman && (state.phase === 'act' || state.phase === 'roll')} />
 
               <ChartersPanel state={state} captain={captain} />
 

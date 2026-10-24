@@ -243,6 +243,20 @@ export default function Tutorial() {
             smart ship and sails a point faster every roll; at {RENOWN_FAMOUS}, a famous clipper, two. Sell
             her and her name goes with her.
           </Rule>
+          <Rule name="Captain careers" art="declare">
+            Experience comes from landing cargo, being first home, the tea race, charters, encounters
+            taken up, and storms and pirates weathered. Each level brings a skill point for the tree:
+            Seamanship (Weather eye, Driver, Navigator), Trade (Haggler, Factor, Merchant prince) and
+            Command (Bosun, Gunner, Commodore), each branch learned in order. Most captains reach level
+            four or five by the close, so the top of a branch is a late-game prize. A captain behind
+            on shares earns experience faster.
+          </Rule>
+          <Rule name="Eras" art="storm">
+            The game ramps up. Era I is trade and the wind. Era II, from round 13, brings pirates,
+            encounters, cracking on and world events. Era III, from round 31, brings the Great Tea
+            Race, the commission clock and hostile bids. Only the rules you chose in the lobby arrive;
+            the banner under the season shows what is coming next.
+          </Rule>
           <Rule name="The shipping exchange" art="event">
             Three companies whose prices rise and fall with the cargo actually landed in their waters.
             Not another way to win — somewhere for money to go, and a market to read. If you can see

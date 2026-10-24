@@ -78,7 +78,20 @@ import {
   charterReward,
 } from './rules';
 import { activeCaptain, isHotseat, shipsOf } from './state';
+import { eraFor, hazardsForEra } from './eras';
 import { advance, charterText, chartersOn, drawCharter, isComplete, type CharterEvent } from './charters';
+import {
+  SKILL_BY_ID,
+  SKILL_EFFECT,
+  XP_FOR,
+  canLearn,
+  careerOn,
+  hasSkill,
+  levelFor,
+  repairPriceFor,
+  xpEarned,
+  type SkillId,
+} from './career';
 import {
   RACE_FINISH,
   canCrackOn,
@@ -435,7 +448,8 @@ function chargeStandingCosts(state: GameState): GameState {
     const ships = s.ships.filter(sh => sh.ownerId === captain.id);
     const laden = ships.reduce((n, sh) => n + sh.hold.length, 0);
 
-    const wages = wagesOn ? wagesFor(ships.length, laden) : 0;
+    const bosun = careerOn(state) && hasSkill(captain, 'bosun') ? SKILL_EFFECT.bosunWagesPerShip * ships.length : 0;
+    const wages = wagesOn ? Math.max(0, wagesFor(ships.length, laden) - bosun) : 0;
     const debt = captain.debt ?? 0;
     const interest = loansOn && debt > 0 ? Math.ceil(debt * LOAN_INTEREST_PER_ROUND) : 0;
     const owed = wages + interest + (captain.arrears ?? 0);
@@ -554,6 +568,46 @@ function reckonVoyage(state: GameState): GameState {
   return s;
 }
 
+const RULE_NAMES: Partial<Record<keyof import('./types').Hazards, string>> = {
+  piracy: 'pirates',
+  encounters: 'encounters at sea',
+  pressSail: 'cracking on',
+  events: 'world events',
+  teaRace: 'the Great Tea Race',
+  deadlines: 'commissions on a clock',
+  hostileBids: 'hostile bids',
+};
+
+/**
+ * Eras: at the turn of the round, put in force whatever the new era brings from the game's plan.
+ *
+ * Commissions already face-up when the clock arrives are restamped to today. Without that they
+ * would all carry their posting date from round one, and the first round of the era would withdraw
+ * the entire board at once.
+ */
+function turnTheEra(state: GameState): GameState {
+  const plan = state.rampPlan;
+  if (!plan || state.phase === 'over') return state;
+  const era = eraFor(state.round);
+  if (era.era <= (state.era ?? 1)) return state;
+
+  const hazards = hazardsForEra(plan, era.era);
+  let s: GameState = { ...state, hazards, era: era.era };
+  if (hazards.deadlines && !state.hazards?.deadlines) {
+    s = { ...s, contracts: s.contracts.map(c => ({ ...c, postedOn: s.round })) };
+  }
+  const arrived = era.brings.filter(k => hazards[k]).map(k => RULE_NAMES[k] ?? k);
+  return log(
+    s,
+    'era',
+    `A new era: ${era.name}. ${
+      arrived.length ? `${arrived[0].charAt(0).toUpperCase()}${arrived.join(', ').slice(1)} ${arrived.length === 1 ? 'comes' : 'come'} into play.` : era.blurb
+    }`,
+    null,
+    { era: era.era },
+  );
+}
+
 /** Moves to the next seat, handling the round roll-over and the declaration countdown. */
 function advanceSeat(state: GameState): GameState {
   let s: GameState = {
@@ -571,6 +625,7 @@ function advanceSeat(state: GameState): GameState {
   s = { ...s, activeIndex: nextIndex };
   if (nextIndex === 0) {
     s = { ...s, round: s.round + 1 };
+    s = turnTheEra(s);
     s = chargeStandingCosts(s);
     s = recoverPrices(s);
     s = settleExchange(s);
@@ -667,7 +722,8 @@ function doRoll(state: GameState): GameState {
     const damage = ship.damaged ? DAMAGE_SPEED_PENALTY : 0;
     // A famous ship ships the best hands, and it shows on every roll.
     const crew = state.hazards?.renown ? renownSpeed(ship.renown) : 0;
-    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull + crew - damage);
+    const nav = careerOn(state) && hasSkill(captain, 'navigator') ? SKILL_EFFECT.navigatorBonus : 0;
+    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull + crew + nav - damage);
     dice[ship.id] = r.dice;
   }
   s = { ...s, rngSeed: seed, sailPoints, dice };
@@ -749,9 +805,14 @@ function doRoll(state: GameState): GameState {
 
 /** Weather on a ship at sea. Costs time and nothing else — never a ship, never a cargo. */
 function applyStorm(state: GameState, ship: Ship, season: ReturnType<typeof seasonOf>, captainId: string): GameState {
-  const outcome = resolveStorm(state.rngSeed, ship, season);
+  const rolled = resolveStorm(state.rngSeed, ship, season);
+  const eye = careerOn(state) && hasSkill(state.captains.find(c => c.id === captainId), 'weatherEye');
+  const outcome = eye && rolled.setback > 0
+    ? { ...rolled, setback: Math.max(1, Math.round(rolled.setback * SKILL_EFFECT.weatherEyeStorm)) }
+    : rolled;
   let s: GameState = { ...state, rngSeed: outcome.seed };
   if (outcome.setback <= 0 || !ship.voyage) return s;
+  s = gainXp(s, captainId, XP_FOR.weathered);
 
   s = replaceShip(s, {
     ...ship,
@@ -773,9 +834,13 @@ function applyStorm(state: GameState, ship: Ship, season: ReturnType<typeof seas
 /** Pirates on a ship at sea, in waters that carry a rating. Ransom is the common outcome. */
 function applyPiracy(state: GameState, ship: Ship, captainId: string): GameState {
   const captain = state.captains.find(c => c.id === captainId)!;
-  const outcome = resolvePiracy(state.rngSeed, ship, captain.cash);
+  // A gunner's ships all sail as if armed.
+  const armed =
+    careerOn(state) && hasSkill(captain, 'gunner') ? { ...ship, fittings: { ...(ship.fittings ?? {}), guns: true } } : ship;
+  const outcome = resolvePiracy(state.rngSeed, armed, captain.cash);
   let s: GameState = { ...state, rngSeed: outcome.seed };
   if (outcome.kind === 'none') return s;
+  s = gainXp(s, captainId, XP_FOR.weathered);
 
   const covered = ship.insured ? indemnityFor(outcome, ship) : 0;
 
@@ -901,6 +966,7 @@ function landNewSeasonTea(state: GameState, shipId: string): GameState {
     { shipId: ship.id, rank: prize.rank, payout: paid, purse: prize.purse, units: lots.length, year: race.year },
   );
   s = earnRenown(s, ship.id, prize.rank === 1 ? RENOWN_FOR.raceWin : RENOWN_FOR.raceSecond);
+  s = gainXp(s, captain.id, prize.rank === 1 ? XP_FOR.raceWin : XP_FOR.raceSecond);
   s = charterEvent(s, captain.id, { kind: 'landed', port: RACE_FINISH, good: 'tea', units: lots.length, rank: null });
   return charterEvent(s, captain.id, { kind: 'racePlaced' });
 }
@@ -927,7 +993,8 @@ function charterEvent(state: GameState, captainId: string, e: CharterEvent): Gam
     const now = s.captains.find(c => c.id === captainId)!;
     const remaining = (now.charters ?? []).filter(c => c.id !== done.id);
     const leader = Math.max(...s.captains.map(c => c.shares));
-    const paid = charterReward(done.reward, now.shares, leader);
+    const factor = careerOn(s) && hasSkill(now, 'factor') ? SKILL_EFFECT.factorBonus : 0;
+    const paid = charterReward(done.reward, now.shares, leader) + factor;
     s = updateCaptain(s, captainId, {
       cash: now.cash + paid,
       chartersDone: (now.chartersDone ?? 0) + 1,
@@ -940,8 +1007,9 @@ function charterEvent(state: GameState, captainId: string, e: CharterEvent): Gam
         paid > done.reward ? `, sweetened by ${money(paid - done.reward)} to a captain behind on shares` : ''
       }.`,
       captainId,
-      { charterId: done.id, kind: done.kind, reward: paid, base: done.reward },
+      { charterId: done.id, kind: done.kind, reward: paid, base: done.reward, factor },
     );
+    s = gainXp(s, captainId, XP_FOR.charter);
     // A replacement, of a kind she does not already hold.
     const after = s.captains.find(c => c.id === captainId)!;
     const drawn = drawCharter(s, after);
@@ -976,6 +1044,50 @@ function earnRenown(state: GameState, shipId: string, points: number): GameState
       ship.ownerId,
       { shipId: ship.id, renown: after },
     );
+  }
+  return s;
+}
+
+/**
+ * Experience for a captain, with the comeback term, and a line in the log when it brings a level.
+ */
+function gainXp(state: GameState, captainId: string, base: number): GameState {
+  if (!careerOn(state) || base <= 0) return state;
+  const captain = state.captains.find(c => c.id === captainId);
+  if (!captain) return state;
+  const leader = Math.max(...state.captains.map(c => c.shares));
+  const before = captain.xp ?? 0;
+  const after = before + xpEarned(base, captain.shares, leader);
+  let s = updateCaptain(state, captainId, { xp: after });
+  const from = levelFor(before);
+  const to = levelFor(after);
+  if (to > from) {
+    s = log(
+      s,
+      'career',
+      `${captain.name} rises to level ${to} — ${to - from === 1 ? 'a skill point' : `${to - from} skill points`} to spend.`,
+      captainId,
+      { level: to, xp: after },
+    );
+  }
+  return s;
+}
+
+/** Learn a skill with a point earned. Any time in the captain's own turn. */
+function doLearnSkill(state: GameState, skill: SkillId): GameState {
+  if (!careerOn(state) || (state.phase !== 'act' && state.phase !== 'roll')) return state;
+  const captain = activeCaptain(state);
+  if (!canLearn(captain, skill)) return state;
+  let s = updateCaptain(state, captain.id, { skills: [...(captain.skills ?? []), skill] });
+  s = log(s, 'career', `${captain.name} learns ${SKILL_BY_ID[skill].name}: ${SKILL_BY_ID[skill].blurb}`, captain.id, {
+    skill,
+  });
+  // A commodore's owners send a third charter at once.
+  if (skill === 'commodore' && chartersOn(s)) {
+    const now = s.captains.find(c => c.id === captain.id)!;
+    const drawn = drawCharter(s, now);
+    s = { ...s, rngSeed: drawn.seed, nextCharterSeq: drawn.nextSeq };
+    if (drawn.charter) s = updateCaptain(s, captain.id, { charters: [...(now.charters ?? []), drawn.charter] });
   }
   return s;
 }
@@ -1028,7 +1140,9 @@ function doCrackOn(state: GameState, shipId: string): GameState {
   if (!ship || !canCrackOn(state, ship)) return state;
 
   const captain = activeCaptain(state);
-  const risk = sparRisk(ship, state.hazards?.weather ?? false);
+  const driver = careerOn(state) && hasSkill(activeCaptain(state), 'driver');
+  const risk = sparRisk(ship, state.hazards?.weather ?? false, driver);
+  const extra = driver ? SKILL_EFFECT.driverBonus : 0;
   const die = rollDie(state.rngSeed);
   let s: GameState = { ...state, rngSeed: die.seed, crackedOn: { ...(state.crackedOn ?? {}), [ship.id]: die.value } };
 
@@ -1045,7 +1159,7 @@ function doCrackOn(state: GameState, shipId: string): GameState {
   }
 
   if (!ship.voyage) {
-    s = { ...s, sailPoints: { ...s.sailPoints, [ship.id]: (s.sailPoints[ship.id] ?? 0) + die.value } };
+    s = { ...s, sailPoints: { ...s.sailPoints, [ship.id]: (s.sailPoints[ship.id] ?? 0) + die.value + extra } };
     return log(
       s,
       'crackOn',
@@ -1058,7 +1172,7 @@ function doCrackOn(state: GameState, shipId: string): GameState {
     shipId: ship.id,
     die: die.value,
   });
-  return runOn(s, ship, die.value, captain.id, 'cracks on');
+  return runOn(s, ship, die.value + extra, captain.id, 'cracks on');
 }
 
 /** Make good a damaged ship at the quay. */
@@ -1067,15 +1181,16 @@ function doRepairShip(state: GameState, shipId: string): GameState {
   if (!ship || !ship.damaged || ship.location === null) return state;
   if (portStruck(state, ship.location)) return state;
   const captain = activeCaptain(state);
-  if (captain.cash < REPAIR_PRICE) return state;
-  let s = updateCaptain(state, captain.id, { cash: captain.cash - REPAIR_PRICE });
+  const price = careerOn(state) ? repairPriceFor(captain, REPAIR_PRICE) : REPAIR_PRICE;
+  if (captain.cash < price) return state;
+  let s = updateCaptain(state, captain.id, { cash: captain.cash - price });
   s = replaceShip(s, { ...ship, damaged: false });
   return log(
     s,
     'repair',
-    `${ship.name} is made good at ${portName(ship.location)} — new spars and her seams paid, ${money(REPAIR_PRICE)}.`,
+    `${ship.name} is made good at ${portName(ship.location)} — new spars and her seams paid, ${money(price)}.`,
     captain.id,
-    { shipId: ship.id, price: REPAIR_PRICE },
+    { shipId: ship.id, price },
   );
 }
 
@@ -1098,6 +1213,9 @@ function doResolveEncounter(state: GameState, shipId: string, accept: boolean): 
   }
   // Re-ordered back into port since? Every kind needs her at sea.
   if (!ship.voyage) return state;
+  // Experience for taking it up. Kept only when the answer goes through: every refusal below
+  // returns the untouched `state`, not `s`.
+  s = gainXp(s, captain.id, XP_FOR.encounter);
   const roomy = ship.hold.length < slotsOf(ship.shipClass);
   const from = ship.voyage.legFrom;
 
@@ -1412,6 +1530,15 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
     },
   );
   if (rank === 1) s = earnRenown(s, ship.id, RENOWN_FOR.firstHome);
+  s = gainXp(s, captain.id, XP_FOR.lotLanded * landed.length + (rank === 1 ? XP_FOR.firstHome : 0));
+  // Paid on its own line rather than folded into the delivery, so the card's payout stays exactly
+  // what the card says and the harness can audit it as it always has.
+  if (rank === 1 && careerOn(s) && hasSkill(captain, 'merchantPrince')) {
+    const bonus = SKILL_EFFECT.merchantPrincePerLot * landed.length;
+    const now = s.captains.find(c => c.id === captain.id)!;
+    s = updateCaptain(s, captain.id, { cash: now.cash + bonus });
+    s = log(s, 'career', `The merchants of ${portName(contract.destination)} pay ${captain.name} ${money(bonus)} over the card for a merchant prince's cargo.`, captain.id, { bonus });
+  }
   s = charterEvent(s, captain.id, { kind: 'landed', port: contract.destination, good: contract.good, units: landed.length, rank });
   return replenishContracts(s);
 }
@@ -1817,6 +1944,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doRepairShip(state, action.shipId);
     case 'RESOLVE_ENCOUNTER':
       return doResolveEncounter(state, action.shipId, action.accept);
+    case 'LEARN_SKILL':
+      return doLearnSkill(state, action.skill);
     case 'END_TURN':
       // Rolling is not optional — ending a turn without it would silently skip the wind.
       return state.phase === 'act' ? endTurn(state) : state;

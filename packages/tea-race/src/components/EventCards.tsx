@@ -39,7 +39,11 @@ function isNotable(entry: LogEntry): boolean {
     // The race is the table's one shared contest, so every turn of it is news.
     case 'teaRace':
     case 'renown':
+    case 'era':
       return true;
+    // A level is news; the skill learned with it is the player's own click.
+    case 'career':
+      return entry.data?.level !== undefined;
     // A charter completed is news; a new one dealt is paperwork and shows in the charters panel.
     case 'charter':
       return entry.data?.reward !== undefined;
@@ -68,6 +72,8 @@ const PRESENTATION: Partial<Record<LogKind, { title: string; colour: string; art
   encounter: { title: 'On the reef', colour: UI.bad, art: 'pilot' },
   charter: { title: 'The owners are pleased', colour: UI.brass, art: 'contract' },
   renown: { title: 'A name in every port', colour: UI.brass, art: 'crackOn' },
+  era: { title: 'A new era', colour: UI.brass, art: 'event' },
+  career: { title: 'Promotion', colour: UI.verdigris, art: 'declare' },
 };
 
 const MAX_ON_SCREEN = 4;

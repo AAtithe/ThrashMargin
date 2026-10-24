@@ -5,6 +5,7 @@
  */
 import { HOME_PORT } from './content';
 import { dealOpeningCharters } from './charters';
+import { hazardsForEra } from './eras';
 import { dealOpeningContracts, shuffledDeck } from './contracts';
 import { seedFromString } from './rng';
 import {
@@ -95,28 +96,33 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       ? { seed: shuffled.seed, deck: [] as string[], seq: 1, contracts: [] }
       : dealOpeningContracts(shuffled.seed, shuffled.deck, 1);
 
+  const planned: Hazards = opts.hazards ?? {
+    weather: true,
+    piracy: true,
+    events: true,
+    hostileBids: true,
+    quaysideSales: true,
+    wages: true,
+    loans: true,
+    deadlines: true,
+    shipClasses: true,
+    stocks: true,
+    agents: true,
+    teaRace: true,
+    pressSail: true,
+    encounters: true,
+    charters: true,
+    renown: true,
+    career: true,
+    ramp: true,
+  };
+
   return dealOpeningCharters({
     id,
     name: name.trim() || 'Voyage',
     rules,
-    hazards: opts.hazards ?? {
-      weather: true,
-      piracy: true,
-      events: true,
-      hostileBids: true,
-      quaysideSales: true,
-      wages: true,
-      loans: true,
-      deadlines: true,
-      shipClasses: true,
-      stocks: true,
-      agents: true,
-      teaRace: true,
-      pressSail: true,
-      encounters: true,
-      charters: true,
-      renown: true,
-    },
+    // With eras on, the plan is kept whole and only the first era's rules are put in force.
+    ...(planned.ramp ? { rampPlan: planned, hazards: hazardsForEra(planned, 1), era: 1 } : { hazards: planned }),
     difficulty: opts.difficulty ?? DEFAULT_DIFFICULTY,
     createdAt: opts.createdAt ?? 0,
     rngSeed: dealt.seed,
