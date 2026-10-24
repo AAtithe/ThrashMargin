@@ -14,6 +14,7 @@ import {
 import { destinationOf } from '../sim/movement';
 import { windFor, type Season } from '../sim/weather';
 import { piracyRating } from '../sim/hazards';
+import { RENOWN_FAMOUS, RENOWN_SMART } from '../sim/rules';
 import type { Captain, Contract, PortId, Ship } from '../sim/types';
 
 interface MapViewProps {
@@ -564,6 +565,18 @@ function ShipMarker({
           <path d={`M0 ${-size * 0.2} l${size * 0.75} ${-size * 0.35} l${-size * 0.75} ${-size * 0.2} Z`} fill={CHART.tea} stroke={CHART.port} strokeWidth={0.5} />
         )}
       </g>
+      {/* Renown, as stars over a ship that has earned it. Unrotated, so they always read upright. */}
+      {(ship.renown ?? 0) >= RENOWN_SMART &&
+        Array.from({ length: (ship.renown ?? 0) >= RENOWN_FAMOUS ? 2 : 1 }, (_, i) => (
+          <path
+            key={i}
+            d="M0 -3.2 L0.9 -1 L3.2 -1 L1.4 0.4 L2 2.7 L0 1.4 L-2 2.7 L-1.4 0.4 L-3.2 -1 L-0.9 -1 Z"
+            transform={`translate(${-size * 0.9 - i * 6.5} ${-size * 0.9})`}
+            fill={CHART.tea}
+            stroke={CHART.port}
+            strokeWidth={0.4}
+          />
+        ))}
       {ship.damaged && (
         <path
           d={`M${size * 0.7} ${-size * 0.9} l5 5 m0 -5 l-5 5`}

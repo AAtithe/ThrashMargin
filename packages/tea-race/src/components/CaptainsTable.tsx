@@ -2,6 +2,7 @@ import { SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel } from './ui';
 import { TeaChest } from './Art';
+import { careerOn, levelFor } from '../sim/career';
 import { assetValue } from '../sim/actions';
 import type { GameState } from '../sim/types';
 
@@ -31,6 +32,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
             <th style={th}>Cash</th>
             <th style={th}>{freePlay ? 'Worth' : 'Shares'}</th>
             <th style={th}>Ships</th>
+            {careerOn(state) && <th style={th}>Lvl</th>}
           </tr>
         </thead>
         <tbody>
@@ -82,6 +84,11 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                   {freePlay ? money(worthOf(captain)) : captain.shares}
                 </td>
                 <td style={{ ...td, color: UI.textSoft }}>{ships}</td>
+                {careerOn(state) && (
+                  <td style={{ ...td, color: UI.verdigris }} title={`${captain.xp ?? 0} experience; ${(captain.skills ?? []).length} skills`}>
+                    {levelFor(captain.xp)}
+                  </td>
+                )}
               </tr>
             );
           })}

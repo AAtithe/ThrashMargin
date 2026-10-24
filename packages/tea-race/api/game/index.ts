@@ -43,6 +43,10 @@ const HAZARD_KEYS = [
   'teaRace',
   'pressSail',
   'encounters',
+  'charters',
+  'renown',
+  'career',
+  'ramp',
 ] as const;
 
 function readRules(raw: unknown): 'classic' | 'voyage' | undefined {

@@ -2,6 +2,7 @@ import { portName } from '../sim/content';
 import { destinationOf, pointsToDestination } from '../sim/movement';
 import { DAMAGE_SPEED_PENALTY, REPAIR_PRICE, slotsOf } from '../sim/rules';
 import { canCrackOn, openRace, raceLots, sparRisk } from '../sim/seamanship';
+import { careerOn, hasSkill } from '../sim/career';
 import { FONT, UI, money } from '../theme';
 import { Die, ShipProfile, Vignette } from './Art';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
@@ -64,7 +65,7 @@ export default function SeamanshipPanel({ state, captain, ships, dispatch, enabl
         {hz.pressSail &&
           [...new Set([...driveable, ...driven])].map(ship => {
             const thrown = state.crackedOn?.[ship.id];
-            const risk = sparRisk(ship, weather);
+            const risk = sparRisk(ship, weather, careerOn(state) && hasSkill(captain, 'driver'));
             const dest = destinationOf(ship);
             const racing = race && raceLots(ship, race).length > 0;
             return (

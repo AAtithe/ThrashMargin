@@ -4,7 +4,8 @@ import { SHIP_CLASSES, slotsOf } from '../sim/rules';
 import { destinationOf, pointsToDestination } from '../sim/movement';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel, Pill, bodySmall, dataText } from './ui';
-import { Die, ShipProfile, TeaChest } from './Art';
+import { Die, RenownStars, ShipProfile, TeaChest } from './Art';
+import { RENOWN_FAMOUS, RENOWN_SMART, renownSpeed, renownTitle } from '../sim/rules';
 import type { Captain, Ship } from '../sim/types';
 
 interface Props {
@@ -23,6 +24,8 @@ interface Props {
   raceYear?: number | null;
   /** The extra die each ship threw cracking on this turn. */
   crackedOn?: Record<string, number>;
+  /** Whether ships earn renown in this game. */
+  renownOn?: boolean;
 }
 
 /** The active captain's ships: where each one is, what she's carrying, what wind she has left. */
@@ -38,6 +41,7 @@ export default function FleetPanel({
   deadlines,
   raceYear = null,
   crackedOn = {},
+  renownOn = false,
 }: Props) {
   return (
     <Panel
@@ -99,6 +103,16 @@ export default function FleetPanel({
                 </span>
               </span>
 
+              {renownOn && (
+                <span
+                  style={{ ...dataText, fontSize: '0.66rem', color: UI.brass, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                  title={`Renown ${ship.renown ?? 0}. First home on a card earns 1, a tea race win 3. A smart ship at ${RENOWN_SMART} sails a point faster, a famous clipper at ${RENOWN_FAMOUS} two.`}
+                >
+                  <RenownStars level={renownSpeed(ship.renown) as 0 | 1 | 2} />
+                  {renownTitle(ship.renown) ?? `renown ${ship.renown ?? 0} of ${RENOWN_SMART}`}
+                  {renownSpeed(ship.renown) > 0 && <span style={{ color: UI.good }}>+{renownSpeed(ship.renown)} a roll</span>}
+                </span>
+              )}
               <span style={{ ...bodySmall, fontSize: '0.78rem' }}>
                 {ship.shipClass && ship.shipClass !== 'clipper' && (
                   <span style={{ color: UI.textFaint }}>

@@ -560,6 +560,99 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
+### Session 15 (2026-10-24) — captain careers and eras: a game that ramps up
+
+The owner asked for an RPG element and for play that ramps up over time. Read both ways: the
+captain grows in power, and the world grows more demanding. Both optional, both off in the 1988
+board.
+
+**Captain careers** (`career`, `sim/career.ts`). Experience from landing lots (2 each), first home
+(+3), the tea race (10 / 5), charters (6), encounters taken up (2), storms and pirates weathered
+(1). Levels at 25, 60, 110, 175, 255, 350, 460, 590, each with a skill point. Nine skills in three
+branches, each learned in order:
+
+| Seamanship | Trade | Command |
+|---|---|---|
+| Weather eye: storm setback halved | Haggler: lading 4% cheaper | Bosun: repairs half price, wages £1 a ship less |
+| Driver: cracking on +1, no cape risk | Factor: charters pay £20 more | Gunner: every ship sails as if armed |
+| Navigator: +1 point every ship every roll | Merchant prince: first home pays £8 more a lot | Commodore: a third charter |
+
+Merchant prince's bonus is paid on its own log line, never folded into the delivery, so the card's
+payout stays exactly what the card says and the harness audits it as it always has. Computer
+captains spend every point at once down the branch that suits their temperament.
+
+Three measurements shaped it:
+
+- **Levelling was too fast.** The first thresholds had captains at level 3.5 by round 30 and 6.2
+  by the close, so most owned all of Seamanship, a point of speed everywhere, long before the late
+  game. Doubled: now **2.3 at round 30, 4.3 at the close**, so the top of a branch is a late prize.
+- **The money skills shorten games.** With no skills learned, careers left the merchant's game at
+  90 rounds; Haggler alone took it to 84, Bosun to 86, everything to 78. Trimmed Haggler 6% → 4%,
+  Factor £30 → £20, Merchant prince £12 → £8: now 82 (150 seeds), full race 81 against 88.
+- **Levelling did not hand the leader a runaway.** Learning from the charters session, the comeback
+  term went in from the start: experience is worth 15% more per share behind the leader. Over 293
+  games each, round-30 leader wins **38.2% with careers, 36.9% without**, inside the noise.
+
+**Eras** (`ramp`, `sim/eras.ts`). The game's chosen rules are kept as `rampPlan`; `hazards` holds
+only those in force. Era I (rounds 1–12), *Fair winds*: trade and the wind. Era II from round 13,
+*Rough seas*: pirates, encounters, cracking on, world events. Era III from round 31, *The race is
+on*: the tea race (its year-two race opens the same round), the commission clock, hostile bids. The
+economy rules are in force from the start, since they carry state from round one. Only rules in the
+plan ever arrive. Cards face up when the clock arrives are restamped to that round; otherwise the
+first round of Era III would have withdrawn the whole board at once. On its own, eras lengthen the
+high seas game slightly (69 → 73), as holding dangers back should.
+
+**Interface:** a career panel with a ship's-wheel level badge, experience bar and an illustrated
+skill tree you click to learn; an era timeline under the season banner saying what arrives next; a
+level column in the table; era and promotion cards; both in the Gazette.
+
+Pacing, 100–150 seeds: the 1988 board 73, merchant 82, high seas 73, full race 81. All finish.
+Verified: `npm run check` green (tea race 450,229 checks, 0 failed), `npm run test:api` 233 passed,
+browser in both modes and at phone width, a skill learned by clicking the tree.
+
+### Session 14 (2026-10-24) — charters, renown and the Gazette
+
+The owner asked to make the game more interesting still. Three things were flat. Every captain
+wanted the same card every turn, so the table converged on one plan. Ships were interchangeable.
+And rival turns resolved in an instant, so the race was hard to follow.
+
+**Owners' charters** (`charters`, `sim/charters.ts`). Two personal objectives per captain: land six
+lots in a named region, be first home on three cards, land five lots of one good, trade into five
+regions, place in a tea race, run a fleet of three. Paid on completion and replaced at once with a
+kind she does not already hold. Progress is recorded by the reducer at the moment of the event,
+never rebuilt from the trimmed log. Charters are public, so reading a rival's is part of the game.
+The AI adds a charter's share of value to its run scoring (`charterValue`), so captains' plans pull
+apart.
+
+Two measurements shaped them:
+
+- **Rewards were cut twice.** At £120–£200, captains completed eleven or twelve a game (about £2,000
+  of new money), the merchant's game fell from a median of 101 rounds to 69, and one full race was
+  won in ten. Now £45–£75. Cutting further barely moved length, so the remaining shortening comes
+  from captains steering better, not from cash.
+- **Flat rewards favoured the leader.** Over 300 seeds, the round-30 share leader won 44.8% with
+  the new rules against 40.0% without, and charters alone were the cause (renown alone matched the
+  baseline). They pay whoever trades most, and the leader trades most: the hostile bid's lesson
+  again. A charter now pays £20 more for every share its holder trails the leader by
+  (`charterReward`). Re-measured over 282 games: **39.7% against 40.0%**, neutralised.
+
+**Ship renown** (`renown`). First home on a card +1, a tea race win +3, second +1, capped at 15. A
+smart ship (6) sails a point faster every roll, a famous clipper (12) two. Stars on the fleet panel
+and over the ship on the chart. On its own it leaves pacing and the leader's edge where they were.
+
+**The Shipping Gazette** (`components/ShippingGazette.tsx`, presentation only). At the top of each
+human turn, everything the rest of the table did since your last turn as a front page: an editor's
+headline and news in brief, weighted (a tea race win outranks a claim, which outranks the biggest
+delivery). The pop-up cards now stand aside for anything the paper prints, so a rival's turn is
+reported once, not twice.
+
+Pacing, 100 seeds per preset: the 1988 board 73 (unchanged), merchant 90, high seas 69, full race
+86. All 400 finish. Both new rules are off in the 1988 board; merchant and full have both, high
+seas has renown.
+
+Verified: `npm run check` green (tea race 685,602 checks, 0 failed), `npm run test:api` 233 passed,
+browser play-through in both modes and at phone width.
+
 ### Session 13 (2026-10-24) — the arrears trap, and finishing seamanship
 
 Worked from an explicit list of eleven items, all closed.

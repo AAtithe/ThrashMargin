@@ -28,6 +28,10 @@ import type { Contract, PortId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
 import TeaRacePanel from '../components/TeaRacePanel';
 import SeamanshipPanel from '../components/SeamanshipPanel';
+import ChartersPanel from '../components/ChartersPanel';
+import ShippingGazette, { frontPage } from '../components/ShippingGazette';
+import CareerPanel from '../components/CareerPanel';
+import EraBanner from '../components/EraBanner';
 import { TeaChest, Vignette } from '../components/Art';
 import { RACE_FINISH, TEA_RACE_PORTS, openRace, raceLots } from '../sim/seamanship';
 
@@ -202,6 +206,9 @@ export default function GameScreen() {
         </div>
       )}
 
+      {/* --- The era, when the game ramps up over time ----------------------------------- */}
+      {!over && <EraBanner state={state} />}
+
       {/* --- Declaration clock ----------------------------------------------------------- */}
       {/* --- The news ---------------------------------------------------------------------- */}
       {!over && <NewsBanner events={state.events ?? []} round={state.round} />}
@@ -249,6 +256,8 @@ export default function GameScreen() {
 
         {/* Centre: the chart, given the room. */}
         <div style={mapColumn}>
+          {/* What the rest of the table did while you waited, at the top of your own turn. */}
+          {isHuman && captain && !over && <ShippingGazette key={captain.id} state={state} viewer={captain} />}
           <MapView
             ships={state.ships}
             captains={state.captains}
@@ -366,11 +375,16 @@ export default function GameScreen() {
                 deadlines={state.hazards?.deadlines ?? false}
                 raceYear={race?.year ?? null}
                 crackedOn={state.crackedOn}
+                renownOn={state.hazards?.renown ?? false}
                 onSelect={shipId => {
                   setSelectedShipId(shipId);
                   setTargetPort(null);
                 }}
               />
+
+              <CareerPanel state={state} captain={captain} dispatch={dispatch} enabled={isHuman && (state.phase === 'act' || state.phase === 'roll')} />
+
+              <ChartersPanel state={state} captain={captain} />
 
               <SeamanshipPanel
                 state={state}
@@ -423,7 +437,12 @@ export default function GameScreen() {
       </main>
 
       {/* Notable events pop as cards so the game can be watched rather than read. */}
-      <EventCards log={state.log} captains={state.captains} viewerId={captain?.id ?? null} />
+      <EventCards
+        log={state.log}
+        captains={state.captains}
+        viewerId={captain?.id ?? null}
+        inGazette={isHuman && captain && !over ? new Set(frontPage(state, captain).map(st => st.seq)) : undefined}
+      />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
       {state.phase === 'handover' && captain && (

@@ -90,9 +90,10 @@ export const RACE_FINISH = TEA_RACE_FINISH;
  * The extra die at or below which she carries away a spar. One worse rounding a great cape with the
  * weather in play: driving a ship hard off the Horn is a different proposition from the trades.
  */
-export function sparRisk(ship: Ship, weather: boolean): number {
+export function sparRisk(ship: Ship, weather: boolean, driver = false): number {
   const v = ship.voyage;
-  if (!weather || !v) return SPAR_CARRIED_ON;
+  // A driver knows how hard a ship can be pushed off a cape as well as anywhere else.
+  if (!weather || !v || driver) return SPAR_CARRIED_ON;
   return legBetween(v.legFrom, v.route[0])?.cape ? SPAR_CARRIED_ON + 1 : SPAR_CARRIED_ON;
 }
 

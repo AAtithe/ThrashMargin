@@ -38,7 +38,15 @@ function isNotable(entry: LogEntry): boolean {
       return entry.data?.indemnity !== undefined;
     // The race is the table's one shared contest, so every turn of it is news.
     case 'teaRace':
+    case 'renown':
+    case 'era':
       return true;
+    // A level is news; the skill learned with it is the player's own click.
+    case 'career':
+      return entry.data?.level !== undefined;
+    // A charter completed is news; a new one dealt is paperwork and shows in the charters panel.
+    case 'charter':
+      return entry.data?.reward !== undefined;
     // Driving a ship or taking a pilot is only news when it goes wrong; the choice itself happened
     // in the orders panel, in front of whoever made it.
     case 'crackOn':
@@ -62,6 +70,10 @@ const PRESENTATION: Partial<Record<LogKind, { title: string; colour: string; art
   teaRace: { title: 'The Great Tea Race', colour: UI.brass, art: 'teaRace' },
   crackOn: { title: 'Carried away', colour: UI.bad, art: 'spar' },
   encounter: { title: 'On the reef', colour: UI.bad, art: 'pilot' },
+  charter: { title: 'The owners are pleased', colour: UI.brass, art: 'contract' },
+  renown: { title: 'A name in every port', colour: UI.brass, art: 'crackOn' },
+  era: { title: 'A new era', colour: UI.brass, art: 'event' },
+  career: { title: 'Promotion', colour: UI.verdigris, art: 'declare' },
 };
 
 const MAX_ON_SCREEN = 4;
@@ -70,10 +82,16 @@ export default function EventCards({
   log,
   captains,
   viewerId,
+  inGazette,
 }: {
   log: LogEntry[];
   captains: Captain[];
   viewerId: string | null;
+  /**
+   * Entries the Shipping Gazette is already printing. The cards stand aside for those: a rival's
+   * turn reported twice, once as a card and once in the paper, is noise.
+   */
+  inGazette?: Set<number>;
 }) {
   const [queue, setQueue] = useState<LogEntry[]>([]);
 
@@ -92,11 +110,13 @@ export default function EventCards({
       seen.current = highest;
       return;
     }
-    const fresh = log.filter(e => e.seq > seen.current! && isNotable(e));
+    const fresh = log.filter(e => e.seq > seen.current! && isNotable(e) && !inGazette?.has(e.seq));
     seen.current = highest;
     if (fresh.length === 0) return;
     // Newest on top, and never more than a handful — a bad turn can fire several at once.
     setQueue(prev => [...fresh.reverse(), ...prev].slice(0, MAX_ON_SCREEN));
+    // inGazette is derived from the same log, so watching the log alone is enough.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [log]);
 
   if (queue.length === 0) return null;

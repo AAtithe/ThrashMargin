@@ -468,3 +468,15 @@ export function Hero({ height = 132 }: { height?: number }) {
     </div>
   );
 }
+
+/** A ship's renown: two stars, filled as she becomes a smart ship, then a famous one. */
+export function RenownStars({ level, size = 11 }: { level: 0 | 1 | 2; size?: number }) {
+  const star = 'M6 0.6 L7.6 4.2 L11.5 4.5 L8.5 7 L9.5 10.9 L6 8.8 L2.5 10.9 L3.5 7 L0.5 4.5 L4.4 4.2 Z';
+  return (
+    <svg width={size * 2 + 2} height={size} viewBox="0 0 26 12" style={{ display: 'inline-block', verticalAlign: 'middle' }} aria-label={['no renown yet', 'a smart ship', 'a famous clipper'][level]}>
+      {[0, 1].map(i => (
+        <path key={i} d={star} transform={`translate(${i * 13} 0)`} fill={i < level ? UI.brass : 'none'} stroke={UI.brass} strokeWidth={0.9} />
+      ))}
+    </svg>
+  );
+}

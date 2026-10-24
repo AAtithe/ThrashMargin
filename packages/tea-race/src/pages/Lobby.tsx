@@ -131,6 +131,34 @@ const SWITCHES: { key: keyof Hazards & string; group: SwitchGroup; name: string;
       'Derelicts to salvage, castaways to take off, country traders with cargo going cheap, and pilots who know the reefs. Each one a choice: the ground it costs against what it brings.',
   },
   {
+    key: 'charters',
+    group: 'The race',
+    name: "Owners' charters",
+    blurb:
+      'Two personal objectives each from your owners: land cargo in a region, be first home three times, trade into five regions, place in the tea race. Paid on completion and replaced. Public, so you can read what a rival is working towards.',
+  },
+  {
+    key: 'renown',
+    group: 'The race',
+    name: 'Ship renown',
+    blurb:
+      'A ship that keeps winning earns a name, and the best hands sign on with her: a smart ship sails a point faster, a famous clipper two. Your fleet stops being interchangeable.',
+  },
+  {
+    key: 'career',
+    group: 'The race',
+    name: 'Captain careers',
+    blurb:
+      'Experience from everything you do well, levels, and a skill tree of nine: Seamanship, Trade and Command. Choose a build and grow into it. A captain behind on shares learns faster.',
+  },
+  {
+    key: 'ramp',
+    group: 'The world',
+    name: 'Eras',
+    blurb:
+      'The game ramps up as it goes. Era I is trade and the wind; pirates, encounters and world events arrive in Era II at round 13; the tea race, the commission clock and hostile bids in Era III at round 31. Only rules you have switched on ever arrive.',
+  },
+  {
     key: 'stocks',
     group: 'Money',
     name: 'The shipping exchange',
