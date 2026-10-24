@@ -40,6 +40,9 @@ const HAZARD_KEYS = [
   'shipClasses',
   'stocks',
   'agents',
+  'teaRace',
+  'pressSail',
+  'encounters',
 ] as const;
 
 function readRules(raw: unknown): 'classic' | 'voyage' | undefined {

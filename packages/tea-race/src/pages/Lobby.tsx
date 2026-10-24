@@ -109,6 +109,27 @@ const SWITCHES: { key: keyof Hazards & string; group: SwitchGroup; name: string;
       'A permanent man on the ground at one quay: cheaper lading, a better price for cargo sold off, and word ahead of the market. Where you trade becomes a position you hold.',
   },
   {
+    key: 'teaRace',
+    group: 'The race',
+    name: 'The Great Tea Race',
+    blurb:
+      'Every summer the new season\'s tea comes down to Foochow, Shanghai and Hong Kong, and the first two ships to land it in London take a purse and a premium. One contest a year the whole table can see coming.',
+  },
+  {
+    key: 'pressSail',
+    group: 'The race',
+    name: 'Cracking on',
+    blurb:
+      'Drive any ship for one more die of distance, once a turn. A bad throw carries away a spar: nothing gained, and slower until repaired. Ships at sea finally have a decision of their own.',
+  },
+  {
+    key: 'encounters',
+    group: 'The world',
+    name: 'Encounters at sea',
+    blurb:
+      'Derelicts to salvage, castaways to take off, country traders with cargo going cheap, and pilots who know the reefs. Each one a choice: the ground it costs against what it brings.',
+  },
+  {
     key: 'stocks',
     group: 'Money',
     name: 'The shipping exchange',

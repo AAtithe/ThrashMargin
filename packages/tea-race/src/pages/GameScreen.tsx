@@ -26,6 +26,9 @@ import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
 import type { Contract, PortId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
+import TeaRacePanel from '../components/TeaRacePanel';
+import SeamanshipPanel from '../components/SeamanshipPanel';
+import { RACE_FINISH, TEA_RACE_PORTS, openRace, raceLots } from '../sim/seamanship';
 
 export default function GameScreen() {
   const { id } = useParams();
@@ -132,6 +135,16 @@ export default function GameScreen() {
 
   const winner = state.winnerId ? state.captains.find(c => c.id === state.winnerId) : null;
 
+  // The race, if one is running. Plain values, not a hook — this is below the early return.
+  const race = openRace(state);
+  const chartRace = race
+    ? {
+        ports: TEA_RACE_PORTS,
+        finish: RACE_FINISH,
+        runners: new Set(state.ships.filter(sh => raceLots(sh, race).length > 0).map(sh => sh.id)),
+      }
+    : null;
+
   return (
     <div style={page}>
       {/* --- Header ------------------------------------------------------------------- */}
@@ -202,6 +215,8 @@ export default function GameScreen() {
       <main style={board} className="tr-board">
         {/* Left: what everyone is racing over. Narrow on purpose — it is reference, not controls. */}
         <aside style={exchangeColumn}>
+          {/* While the race is on it is the most important thing on the board, so it leads. */}
+          {race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
           {state.rules === 'voyage' ? (
             <MarketBoard
               state={state}
@@ -222,6 +237,7 @@ export default function GameScreen() {
             }}
           />
           )}
+          {!race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
           <CaptainsTable state={state} />
         </aside>
 
@@ -236,6 +252,7 @@ export default function GameScreen() {
             viewerId={captain?.id ?? null}
             season={season}
             showPiracy={state.hazards?.piracy ?? false}
+            race={chartRace}
             onPortClick={portId => {
               setTargetPort(portId);
               setFocusedContract(null);
@@ -258,7 +275,8 @@ export default function GameScreen() {
                   Take the wind — roll for {myShips.length === 1 ? 'her' : 'the fleet'}
                 </Button>
                 <span style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
-                  2d6 per ship. Ships already at sea sail on the moment you roll.
+                  2d6 per ship. Ships already at sea sail on the moment you roll
+                  {state.hazards?.pressSail ? ', and may then be driven for one more die' : ''}.
                 </span>
               </>
             ) : canAct ? (
@@ -335,10 +353,20 @@ export default function GameScreen() {
                 rolled={state.phase === 'act'}
                 turn={state.turn}
                 deadlines={state.hazards?.deadlines ?? false}
+                raceYear={race?.year ?? null}
+                crackedOn={state.crackedOn}
                 onSelect={shipId => {
                   setSelectedShipId(shipId);
                   setTargetPort(null);
                 }}
+              />
+
+              <SeamanshipPanel
+                state={state}
+                captain={captain}
+                ships={myShips}
+                dispatch={dispatch}
+                enabled={canAct}
               />
 
               <PortPanel

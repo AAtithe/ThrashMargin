@@ -500,6 +500,7 @@ The rules change the owner cares most about, and the one that makes the map matt
   money a use besides shares and makes where you trade matter over time.
 - **Multiple stocks** — several shipping companies whose prices move with the trade flowing through
   their regions, so shares become a market to read rather than a counter to fill.
+- ✅ **Seamanship** (2026-10-24): the Great Tea Race, cracking on, encounters at sea. See session 12.
 
 ## 7. Voyage mode — free play built, full simulation still not
 
@@ -558,6 +559,61 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 ---
 
 ## 8. Build log
+
+### Session 12 (2026-10-24) — seamanship: the turn gets a second dimension
+
+The owner's report: "game play currently feels quite one-dimensional", plus a request for more
+graphics. The diagnosis was structural, not a missing rule. **A ship at sea had no decisions at all.**
+`ROLL` advanced her and that was her whole turn, so most of a fleet spent most of a game as spectators,
+and every turn collapsed to "roll, click a port". Three switches, all off in the 1988 board
+(`sim/seamanship.ts`, constants at the foot of `rules.ts`):
+
+| Switch | What it adds | Presets |
+|---|---|---|
+| `teaRace` | Every summer (round 7 of each 24-round year) tea loaded at Foochow, Shanghai or Hong Kong is the new season's. First ship to tie up in London with it takes £150 and 3x tea's reckoning a lot; second £75 and 2x. Lands itself on arrival. Open 18 rounds or until two have placed. | merchant, high seas, full |
+| `pressSail` | `CRACK_ON`: any ship, once a turn, throws one more die. At sea she runs it at once; in port it adds to her wind. A 1 (1–2 rounding a cape) carries away a spar instead: nothing gained, −2 every roll until `REPAIR_SHIP` (£40 at a quay). | merchant, high seas, full |
+| `encounters` | About one ship-turn at sea in seven meets a derelict, castaways, a country trader or a pilot. Each is a choice (`RESOLVE_ENCOUNTER`) that lapses at the end of the turn. | high seas, full |
+
+The race is the namesake made literal: the one contest a year the whole table can see coming and
+plan towards. It is deterministic, a date in the calendar and never a draw, so it keeps running
+through a declaration. The AI reasons about it as a virtual card (`raceCard` in `ai.ts`), so its one
+scoring routine weighs the race against the five face-up commissions with no second brain. A lot
+carries `season` and only that year's tea answers that year's race.
+
+**What the harness caught, and it was not in the new rules.** With encounters on, 8 games in 100
+spiralled into wage arrears and never finished. The cause was an old AI blind spot that salvage made
+common: a ship holding *one* unwanted lot was neither empty enough for the "go hunting" branch nor
+full enough for the "clear the hold" branch, so she sat in port for the rest of the game. One trace
+showed three ships idle from round 20 to round 120. Fixed in the AI, not the rule: a ship with spare
+slots and nothing aboard worth steering for now hunts work for the empty ones. That also fixed the
+baseline. With all three new switches off, 100 seeds went from 1 unfinished, median 64, to
+**0 unfinished, median 89, max 190**. The AI also now declines salvage nobody would pay for.
+
+Pacing, 100 seeds per preset, all AI:
+
+| Preset | unfinished | median | p90 |
+|---|---|---|---|
+| The 1988 board | 0 | 73 | 108 |
+| A merchant's game | 0 | 98 | 152 |
+| The high seas | 0 | 70 | 102 |
+| The full race | 3 | 95 | 166 |
+
+**Still open:** the full race's three unfinished games are the known share-market endgame stall: a
+majority holder too poor to reach £750 while rich captains with no shares cannot bid their way in.
+It predates this session (1 in 100 before it) and needs its own fix.
+
+**Graphics** (`components/Art.tsx`, all inline SVG, line work in `currentColor` so every piece
+follows light and dark mode): real dice faces for every roll and the crack-on die; ship profiles
+per hull class, with a broken topmast when damaged and a gold pennant when racing; engraved
+vignettes on every event card (the emoji glyphs are gone); a Tea Race panel with a race-course
+graphic placing every runner by her distance from London; a Seamanship panel for encounters,
+cracking on and repairs; and on the chart a sea swell texture, a compass rose, a title cartouche,
+top-down clipper hulls with braced yards and cargo pips, tea chests on the China ports and a
+chequered flag over London while a race runs.
+
+Verified: `npm run check` green (tea race 543,686 checks, 0 failed); `npm run test:api` 233 passed;
+browser play-through in both modes. The pilot put Cutty Sark on a reef and she still came second
+home for £435.
 
 ### Session 11 (2026-08-22) — free play made reachable, and a silent transport bug
 

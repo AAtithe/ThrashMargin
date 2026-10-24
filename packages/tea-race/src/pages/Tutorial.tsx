@@ -30,6 +30,10 @@ import {
   WAGES_PER_SHIP,
   hostileBidPrice,
   sharePriceFor,
+  DAMAGE_SPEED_PENALTY,
+  REPAIR_PRICE,
+  TEA_RACE_PREMIUM,
+  TEA_RACE_PURSE,
 } from '../sim/rules';
 import { AGENT_LADING_DISCOUNT, AGENT_PRICE } from '../sim/agents';
 import { GLUT_FACTOR, SHORTAGE_FACTOR } from '../sim/events';
@@ -196,6 +200,27 @@ export default function Tutorial() {
           <Rule name="Commissions expire">
             Cards come off the board if nobody fills them, and cargo loses value the longer it sits in
             the hold. Counter-intuitively this makes for the <em>shortest</em> games.
+          </Rule>
+          <Rule name="The Great Tea Race">
+            Every summer the new season's tea comes down to Foochow, Shanghai and Hong Kong. Tea
+            loaded there while the race is open is marked as the new season's; land it in London and
+            the first ship home takes {money(TEA_RACE_PURSE[1])} and {TEA_RACE_PREMIUM[1]}x a lot, the
+            second {money(TEA_RACE_PURSE[2])} and {TEA_RACE_PREMIUM[2]}x. It lands itself the moment
+            she ties up. Everybody can see it coming, which is the point: it is the one contest the
+            whole table plans towards.
+          </Rule>
+          <Rule name="Cracking on">
+            Once a turn, any ship may be driven for one more die: at sea she runs it at once, in port
+            it is added to the wind she has yet to sail on. Throw a 1 (a 1 or 2 rounding a great cape)
+            and she carries away a spar instead: nothing gained, {DAMAGE_SPEED_PENALTY} points slower
+            every roll, and {money(REPAIR_PRICE)} at a quay to make her good. Worth it to win a race
+            or make port this turn; a poor habit on a long, quiet passage.
+          </Rule>
+          <Rule name="Encounters at sea">
+            A ship under way sometimes meets something that asks for a decision, good for that turn
+            only. A derelict to salvage for the ground it costs, castaways whose owners pay to have
+            them taken off, a country trader with a lot going cheap, a pilot who will take her through
+            the reefs for a fee (most of them know the way). Holding your course is always an answer.
           </Rule>
           <Rule name="The shipping exchange">
             Three companies whose prices rise and fall with the cargo actually landed in their waters.

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FONT, UI } from '../theme';
+import { Vignette, type VignetteKind } from './Art';
 import type { Captain, LogEntry, LogKind } from '../sim/types';
 
 /**
@@ -35,21 +36,32 @@ function isNotable(entry: LogEntry): boolean {
       return true;
     case 'insurance':
       return entry.data?.indemnity !== undefined;
+    // The race is the table's one shared contest, so every turn of it is news.
+    case 'teaRace':
+      return true;
+    // Driving a ship or taking a pilot is only news when it goes wrong; the choice itself happened
+    // in the orders panel, in front of whoever made it.
+    case 'crackOn':
+    case 'encounter':
+      return entry.data?.damaged !== undefined;
     default:
       return false;
   }
 }
 
 /** How a card is coloured and titled. */
-const PRESENTATION: Partial<Record<LogKind, { title: string; colour: string; glyph: string }>> = {
-  storm: { title: 'Heavy weather', colour: UI.warn, glyph: '🌊' },
-  piracy: { title: 'Pirates', colour: UI.bad, glyph: '⚔' },
-  insurance: { title: 'The underwriters', colour: UI.verdigris, glyph: '§' },
-  contract: { title: 'New commission', colour: UI.textSoft, glyph: '✦' },
-  event: { title: 'From the exchange', colour: UI.warn, glyph: '⚑' },
-  declare: { title: 'A claim is made', colour: UI.brass, glyph: '★' },
-  lapse: { title: 'The claim collapses', colour: UI.warn, glyph: '✕' },
-  victory: { title: 'The company is carried', colour: UI.brass, glyph: '♛' },
+const PRESENTATION: Partial<Record<LogKind, { title: string; colour: string; art: VignetteKind }>> = {
+  storm: { title: 'Heavy weather', colour: UI.warn, art: 'storm' },
+  piracy: { title: 'Pirates', colour: UI.bad, art: 'piracy' },
+  insurance: { title: 'The underwriters', colour: UI.verdigris, art: 'insurance' },
+  contract: { title: 'New commission', colour: UI.textSoft, art: 'contract' },
+  event: { title: 'From the exchange', colour: UI.warn, art: 'event' },
+  declare: { title: 'A claim is made', colour: UI.brass, art: 'declare' },
+  lapse: { title: 'The claim collapses', colour: UI.warn, art: 'lapse' },
+  victory: { title: 'The company is carried', colour: UI.brass, art: 'victory' },
+  teaRace: { title: 'The Great Tea Race', colour: UI.brass, art: 'teaRace' },
+  crackOn: { title: 'Carried away', colour: UI.bad, art: 'spar' },
+  encounter: { title: 'On the reef', colour: UI.bad, art: 'pilot' },
 };
 
 const MAX_ON_SCREEN = 4;
@@ -97,7 +109,7 @@ export default function EventCards({
         const look = PRESENTATION[entry.kind] ?? {
           title: 'News',
           colour: UI.textSoft,
-          glyph: '•',
+          art: 'event' as VignetteKind,
         };
         const captain = captains.find(c => c.id === entry.captainId);
         const mine = entry.captainId !== null && entry.captainId === viewerId;
@@ -110,7 +122,7 @@ export default function EventCards({
             title="Dismiss"
             style={{ ...card, borderColor: look.colour }}
           >
-            <span style={{ ...glyph, color: look.colour }}>{look.glyph}</span>
+            <Vignette kind={look.art} colour={look.colour} size={40} style={vignetteFrame} />
             <span style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', minWidth: 0 }}>
               <span style={{ ...heading, color: look.colour }}>
                 {look.title}
@@ -169,10 +181,10 @@ const card: React.CSSProperties = {
   boxShadow: `0 6px 18px ${UI.shadow}`,
 };
 
-const glyph: React.CSSProperties = {
-  fontSize: '1rem',
-  lineHeight: 1.1,
-  flex: '0 0 auto',
+const vignetteFrame: React.CSSProperties = {
+  border: `1px solid ${UI.rule}`,
+  background: UI.panel,
+  borderRadius: 2,
 };
 
 const heading: React.CSSProperties = {
