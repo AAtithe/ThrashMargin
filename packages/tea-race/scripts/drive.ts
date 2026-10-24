@@ -56,6 +56,7 @@ import {
   TEA_RACE_PREMIUM,
   TEA_RACE_PURSE,
   TEA_RACE_ROUNDS,
+  shipSalePrice,
 } from '../src/sim/rules';
 import { LEGS, PORTS, planRoute, sourcesFor } from '../src/sim/content';
 import {
@@ -78,7 +79,7 @@ import {
   saleProceeds,
 } from '../src/sim/pricing';
 import { buildDeck, parseCardKey } from '../src/sim/contracts';
-import { shipsAwaitingOrders } from '../src/sim/attention';
+import { offersAwaiting, shipsAwaitingOrders } from '../src/sim/attention';
 import { AGENT_LADING_DISCOUNT, AGENT_PRICE, MAX_AGENTS, canPlaceAgent } from '../src/sim/agents';
 import {
   applyTrade,
@@ -941,6 +942,9 @@ interface GameReport {
   /** Seamanship: tea race placings, lots landed that were taken at sea. */
   teaPlacings: number;
   seaLanded: number;
+  crackOns: number;
+  spars: number;
+  offersSeen: number;
 }
 
 function playAiGame(seed: string, maxRounds = 400): GameReport {
@@ -961,6 +965,9 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
   let offReckoningBuys = 0;
   let seaLanded = 0;
   let teaPlacings = 0;
+  let crackOns = 0;
+  let spars = 0;
+  let offersSeen = 0;
   const racePlaces = new Map<number, number>();
 
   // Deliveries are audited from the log rather than by diffing state, because filling a card for
@@ -988,8 +995,19 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         equal(`AI game ${seed}: tea race ${year} place ${rank} pays purse and premium`,
           payout, TEA_RACE_PURSE[r] + units * GOOD_BY_ID.tea.basePrice * TEA_RACE_PREMIUM[r]);
         equal(`AI game ${seed}: tea race ${year} purse`, purse, TEA_RACE_PURSE[r]);
+        const opened = (year - 1) * 24 + TEA_RACE_OPENS_IN_YEAR;
+        check(
+          `AI game ${seed}: tea race ${year} placing falls inside its window`,
+          entry.round >= opened && entry.round <= opened + TEA_RACE_ROUNDS - 1,
+          `round ${entry.round}, window ${opened}-${opened + TEA_RACE_ROUNDS - 1}`,
+        );
         continue;
       }
+      if (entry.kind === 'crackOn') {
+        crackOns++;
+        if (entry.data?.damaged) spars++;
+      }
+      if (entry.kind === 'encounter' && entry.data?.offered) offersSeen++;
       if (entry.kind !== 'deliver' || !entry.data) continue;
       deliveries++;
 
@@ -1187,6 +1205,9 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
       lockedOut.length === 0 || s.winnerId === null ? null : lockedOut.includes(s.winnerId),
     teaPlacings,
     seaLanded,
+    crackOns,
+    spars,
+    offersSeen,
   };
 }
 
@@ -2446,6 +2467,7 @@ function testSeamanship() {
     cash(won, 'p1') - before, TEA_RACE_PURSE[1] + 2 * tea * TEA_RACE_PREMIUM[1]);
   equal(`${label}: the tea goes ashore`, shipOf(won, 's1').hold.length, 0);
   equal(`${label}: and the placing is recorded`, won.teaRace?.placings[0]?.rank, 1);
+  equal(`${label}: and counted to the captain's honours`, won.captains.find(c => c.id === 'p1')!.teaRaceWins, 1);
   check(`${label}: with one place left the race is still open`, won.teaRace?.closed === false);
 
   // Second home: the other captain.
@@ -2456,6 +2478,7 @@ function testSeamanship() {
   equal(`${label}: second home takes the smaller purse and ${TEA_RACE_PREMIUM[2]}x`,
     cash(placed2, 'p2') - before2, TEA_RACE_PURSE[2] + tea * TEA_RACE_PREMIUM[2]);
   check(`${label}: two placed closes the race`, placed2.teaRace?.closed === true);
+  equal(`${label}: second place is honoured too`, placed2.captains.find(c => c.id === 'p2')!.teaRaceSeconds, 1);
   check(`${label}: and openRace agrees`, openRace(placed2) === null);
 
   // Third home is just a ship with tea.
@@ -2539,6 +2562,9 @@ function testSeamanship() {
   equal(`${label}: castaways pay their reward`, cash(rescued, 'p1'), cash(e, 'p1') + 40);
   const traded = processAction(offer('trader', { good: 'silk', price: 30 }), { type: 'RESOLVE_ENCOUNTER', shipId: 's1', accept: true });
   equal(`${label}: a country trader's lot costs his price`, cash(traded, 'p1'), cash(e, 'p1') - 30);
+  equal(`${label}: an unanswered offer is flagged before the turn ends`, offersAwaiting(offer('pilot', { price: 25, points: 4 }), 'p1').length, 1);
+  equal(`${label}: only to its own captain`, offersAwaiting(offer('pilot', { price: 25, points: 4 }), 'p2').length, 0);
+  equal(`${label}: and not once answered`, offersAwaiting(declined, 'p1').length, 0);
   const ended = processAction(offer('pilot', { price: 25, points: 4 }), { type: 'END_TURN' });
   check(`${label}: an unanswered offer lapses at the end of the turn`, !ended.encounters || Object.keys(ended.encounters).length === 0);
 
@@ -2553,6 +2579,38 @@ function testSeamanship() {
     if (t.encounters?.s1) offered++;
   }
   check(`${label}: ships at sea meet things`, offered > 0 && offered < 30, `${offered}/60`);
+}
+
+/**
+ * Selling a hull back to the yard: the softlock escape for standing costs.
+ */
+function testShipSale() {
+  const label = 'ship sale';
+  const base = {
+    weather: false, piracy: false, events: false, hostileBids: false, quaysideSales: false,
+    wages: true, loans: false, deadlines: false, shipClasses: false, stocks: false, agents: false,
+  };
+  let g = createInitialState('t-sell', 'Sell', { humanNames: ['A'], aiCount: 1, seed: 'sell', hazards: base });
+  g = setCash(g, 'p1', 1000);
+  g = processAction(g, { type: 'ROLL' });
+  g = processAction(g, { type: 'BUY_SHIP' });
+  const fleet = g.ships.filter(x => x.ownerId === 'p1');
+  equal(`${label}: two ships to start`, fleet.length, 2);
+  const second = fleet[1].id;
+
+  const owing = { ...g, captains: g.captains.map(c => (c.id === 'p1' ? { ...c, cash: 0, arrears: 40 } : c)) };
+  const sold = processAction(owing, { type: 'SELL_SHIP', shipId: second });
+  check(`${label}: a docked hull can be sold`, sold !== owing);
+  equal(`${label}: she is gone`, sold.ships.some(x => x.id === second), false);
+  equal(`${label}: arrears are paid first`, sold.captains.find(c => c.id === 'p1')!.arrears, 0);
+  equal(`${label}: the rest is cash`, cash(sold, 'p1'), shipSalePrice(undefined) - 40);
+  check(`${label}: never the last ship`, processAction(sold, { type: 'SELL_SHIP', shipId: fleet[0].id }) === sold);
+
+  const board = { ...g, hazards: { ...base, wages: false } };
+  check(`${label}: refused when neither wages nor loans are on`, processAction(board, { type: 'SELL_SHIP', shipId: second }) === board);
+
+  const sailing = processAction(g, { type: 'SAIL_TO', shipId: fleet[0].id, destination: 'cape_town' });
+  check(`${label}: never a ship at sea`, processAction(sailing, { type: 'SELL_SHIP', shipId: fleet[0].id }) === sailing);
 }
 
 function main() {
@@ -2578,6 +2636,7 @@ function main() {
   testSourcelessCards();
   testWorldEvents();
   testSeamanship();
+  testShipSale();
   testDeterminism();
 
   const reports: [string, GameReport][] = [];
@@ -2614,10 +2673,20 @@ function main() {
   if (slow.length) {
     console.log(`  slow games (>250 rounds): ${slow.map(([seed, r]) => `${seed}:${r.rounds}`).join(', ')}`);
   }
+  const sum = (f: (r: GameReport) => number) => reports.reduce((n, [, r]) => n + f(r), 0);
   console.log(
-    `  seamanship: ${reports.reduce((n, [, r]) => n + r.teaPlacings, 0)} tea race placings, ` +
-      `${reports.reduce((n, [, r]) => n + r.seaLanded, 0)} lots landed that were taken at sea`,
+    `  seamanship: ${sum(r => r.teaPlacings)} tea race placings, ${sum(r => r.seaLanded)} lots landed ` +
+      `that were taken at sea, ${sum(r => r.crackOns)} crack-ons (${sum(r => r.spars)} spars), ` +
+      `${sum(r => r.offersSeen)} encounters offered`,
   );
+  // The new rules have to actually happen in play, not merely pass their unit checks: a race nobody
+  // enters, or a die nobody throws, is a feature the AI has silently stopped using.
+  const longGames = reports.filter(([, r]) => r.rounds >= 30);
+  check('seamanship: tea races are contested', sum(r => r.teaPlacings) >= longGames.length, `${sum(r => r.teaPlacings)} placings over ${longGames.length} games past round 30`);
+  check('seamanship: captains crack on', sum(r => r.crackOns) > 0);
+  const sparRate = sum(r => r.spars) / Math.max(1, sum(r => r.crackOns));
+  check('seamanship: spars go at a plausible rate', sparRate > 0.1 && sparRate < 0.3, `${(sparRate * 100).toFixed(1)}%`);
+  check('seamanship: ships meet things at sea', sum(r => r.offersSeen) > 0);
 
   // The owner's complaint as a number: is the game over by round 30?
   const judged = reports.filter(([, r]) => r.leaderAt30Won !== null);

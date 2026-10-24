@@ -1,6 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { UI } from '../theme';
-import type { ShipClassId } from '../sim/rules';
+import { CAPTAIN_COLOURS, type ShipClassId } from '../sim/rules';
 
 /**
  * The game's illustrations, all inline SVG so they theme with the page and cost no requests.
@@ -421,5 +421,50 @@ export function TeaChest({ size = 14, colour = UI.brass }: { size?: number; colo
       <path d="M1.5 6.5 H14.5 M8 3 V14" stroke={colour} strokeWidth={0.8} />
       <path d="M4 10 q1.5 -2 3 0 q1.5 2 3 0" fill="none" stroke={colour} strokeWidth={0.8} />
     </svg>
+  );
+}
+
+/**
+ * The lobby's banner: three clippers racing up-Channel on a long swell, a tea chest on the quay.
+ * The sea and sky are one SVG stretched to the width; the ships are the same profiles the fleet
+ * panel uses, laid over it, so the banner and the game draw ships the same way.
+ */
+export function Hero({ height = 132 }: { height?: number }) {
+  return (
+    <div style={{ position: 'relative', height, overflow: 'hidden', border: `1px solid ${UI.rule}`, background: UI.panel }} aria-hidden="true">
+      <svg viewBox="0 0 600 132" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
+        <rect x={0} y={0} width={600} height={132} fill={UI.tintBrass} />
+        <circle cx={470} cy={48} r={22} fill="none" stroke={UI.brass} strokeWidth={1} opacity={0.6} />
+        {[0, 1, 2, 3, 4].map(i => (
+          <line key={i} x1={440 - i * 4} y1={58 + i * 5} x2={500 + i * 4} y2={58 + i * 5} stroke={UI.brass} strokeWidth={0.6} opacity={0.35} />
+        ))}
+        <path d="M0 86 Q40 80 90 84 Q140 78 190 86 L190 92 L0 92 Z" fill={UI.panelRaised} stroke={UI.ruleStrong} strokeWidth={0.8} />
+        <path d="M520 90 Q560 78 600 82 L600 92 L520 92 Z" fill={UI.panelRaised} stroke={UI.ruleStrong} strokeWidth={0.8} />
+        <rect x={0} y={92} width={600} height={40} fill={UI.tintVerdigris} />
+        {[0, 1, 2, 3].map(r => (
+          <path
+            key={r}
+            d={`M${-20 + (r % 2) * 15} ${98 + r * 8} ${Array.from({ length: 22 }, () => 'q7 -3 14 0 t14 0').join(' ')}`}
+            fill="none"
+            stroke={UI.verdigris}
+            strokeWidth={0.9 - r * 0.12}
+            opacity={0.65 - r * 0.12}
+          />
+        ))}
+        <path d="M300 30 l4 -3 l4 3 M318 22 l3 -2 l3 2 M285 40 l3 -2 l3 2" fill="none" stroke={UI.textSoft} strokeWidth={0.8} />
+      </svg>
+      <div style={{ position: 'absolute', left: '8%', bottom: 14 }}>
+        <ShipProfile colour={CAPTAIN_COLOURS[1]} width={96} heel={-4} />
+      </div>
+      <div style={{ position: 'absolute', left: '36%', bottom: 8 }}>
+        <ShipProfile colour={CAPTAIN_COLOURS[0]} width={128} heel={-6} pennant={UI.brass} />
+      </div>
+      <div style={{ position: 'absolute', left: '66%', bottom: 18 }}>
+        <ShipProfile colour={CAPTAIN_COLOURS[2]} width={80} heel={-3} shipClass="barque" />
+      </div>
+      <div style={{ position: 'absolute', left: '2%', bottom: 44 }}>
+        <TeaChest size={20} />
+      </div>
+    </div>
   );
 }

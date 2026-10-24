@@ -70,6 +70,7 @@ import {
   REPAIR_PRICE,
   TEA_RACE_PREMIUM,
   TEA_RACE_PURSE,
+  shipSalePrice,
 } from './rules';
 import { activeCaptain, isHotseat, shipsOf } from './state';
 import {
@@ -869,7 +870,12 @@ function landNewSeasonTea(state: GameState, shipId: string): GameState {
 
   const captain = state.captains.find(c => c.id === ship.ownerId)!;
   const paid = prize.purse + prize.premium;
-  let s = updateCaptain(state, captain.id, { cash: captain.cash + paid });
+  let s = updateCaptain(state, captain.id, {
+    cash: captain.cash + paid,
+    ...(prize.rank === 1
+      ? { teaRaceWins: (captain.teaRaceWins ?? 0) + 1 }
+      : { teaRaceSeconds: (captain.teaRaceSeconds ?? 0) + 1 }),
+  });
   s = replaceShip(s, { ...ship, hold: ship.hold.filter(lot => !lots.includes(lot)) });
   const placings = [
     ...race.placings,
@@ -1398,6 +1404,50 @@ function doJettison(state: GameState, shipId: string, good?: string): GameState 
   );
 }
 
+/**
+ * Sell a docked hull back to the yard. Whatever she carries goes with her. The money pays off any
+ * arrears first, exactly as earnings do at the turn of the round, so a captain in the hole cannot
+ * sell a ship and spend the proceeds while still owing her crew.
+ */
+function doSellShip(state: GameState, shipId: string): GameState {
+  if (!state.hazards?.wages && !state.hazards?.loans) return state;
+  const ship = ownShip(state, shipId);
+  if (!ship || ship.location === null) return state;
+  const captain = activeCaptain(state);
+  if (shipsOf(state, captain.id).length <= 1) return state;
+
+  const price = shipSalePrice(ship.shipClass);
+  const arrears = captain.arrears ?? 0;
+  const settled = Math.min(arrears, price);
+  const strip = <T,>(r: Record<string, T> | undefined) => {
+    if (!r || !(ship.id in r)) return r;
+    const out = { ...r };
+    delete out[ship.id];
+    return out;
+  };
+  let s: GameState = {
+    ...state,
+    ships: state.ships.filter(x => x.id !== ship.id),
+    sailPoints: strip(state.sailPoints) ?? {},
+    dice: strip(state.dice) ?? {},
+    ...(state.crackedOn ? { crackedOn: strip(state.crackedOn) } : {}),
+    ...(state.encounters ? { encounters: strip(state.encounters) } : {}),
+  };
+  s = updateCaptain(s, captain.id, {
+    cash: captain.cash + price - settled,
+    ...(arrears > 0 ? { arrears: arrears - settled } : {}),
+  });
+  return log(
+    s,
+    'ship',
+    `${captain.name} sells ${ship.name} to the yard at ${portName(ship.location)} for ${money(price)}` +
+      `${ship.hold.length ? `, ${ship.hold.length} lot${ship.hold.length === 1 ? '' : 's'} aboard going with her` : ''}` +
+      `${settled > 0 ? ` — ${money(settled)} of it straight to the crew owed` : ''}.`,
+    captain.id,
+    { shipId: ship.id, sold: price, arrearsPaid: settled },
+  );
+}
+
 function doBuyShip(state: GameState, requested?: ShipClassId): GameState {
   if (state.phase !== 'act') return state;
   const captain = activeCaptain(state);
@@ -1648,6 +1698,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doJettison(state, action.shipId, action.good);
     case 'BUY_SHIP':
       return doBuyShip(state, action.shipClass);
+    case 'SELL_SHIP':
+      return doSellShip(state, action.shipId);
     case 'BUY_FITTING':
       return doBuyFitting(state, action.shipId, action.fitting as 'guns' | 'copper');
     case 'SET_INSURANCE':

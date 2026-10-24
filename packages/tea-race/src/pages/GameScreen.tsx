@@ -19,7 +19,7 @@ import MarketBoard from '../components/MarketBoard';
 import { livePrice, sellsFor } from '../sim/voyage';
 import { assetValue } from '../sim/actions';
 import { ladingPrice, saleProceeds } from '../sim/pricing';
-import { shipsAwaitingOrders } from '../sim/attention';
+import { offersAwaiting, shipsAwaitingOrders } from '../sim/attention';
 import CaptainsTable from '../components/CaptainsTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
@@ -28,6 +28,7 @@ import type { Contract, PortId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
 import TeaRacePanel from '../components/TeaRacePanel';
 import SeamanshipPanel from '../components/SeamanshipPanel';
+import { TeaChest, Vignette } from '../components/Art';
 import { RACE_FINISH, TEA_RACE_PORTS, openRace, raceLots } from '../sim/seamanship';
 
 export default function GameScreen() {
@@ -75,6 +76,11 @@ export default function GameScreen() {
       state && captain && state.phase === 'act' && captain.id === state.captains[state.activeIndex]?.id
         ? shipsAwaitingOrders(state, captain.id)
         : [],
+    [state, captain],
+  );
+  // Offers at sea that lapse with the turn. Above the early return for the same reason as `awaiting`.
+  const offers = useMemo(
+    () => (state && captain && state.phase === 'act' ? offersAwaiting(state, captain.id) : []),
     [state, captain],
   );
   const [confirmingEnd, setConfirmingEnd] = useState(false);
@@ -286,7 +292,7 @@ export default function GameScreen() {
                   onClick={() => {
                     // One extra click, never a block: waiting in port for cash or a better card is
                     // a real move, so the warning must be dismissible by simply repeating yourself.
-                    if (awaiting.length > 0 && !confirmingEnd) {
+                    if ((awaiting.length > 0 || offers.length > 0) && !confirmingEnd) {
                       setConfirmingEnd(true);
                       return;
                     }
@@ -305,9 +311,14 @@ export default function GameScreen() {
                   style={{
                     ...bodySmall,
                     fontSize: '0.78rem',
-                    color: awaiting.length > 0 ? UI.warn : UI.textFaint,
+                    color: awaiting.length > 0 || offers.length > 0 ? UI.warn : UI.textFaint,
                   }}
                 >
+                  {offers.length > 0 && (
+                    <>
+                      {offers.map(o => `${o.headline} — unanswered, it lapses when you end the turn`).join('. ')}.{' '}
+                    </>
+                  )}
                   {awaiting.length > 0
                     ? awaiting
                         .map(
@@ -380,6 +391,8 @@ export default function GameScreen() {
                 enabled={canAct}
                 sellable={state.hazards?.quaysideSales ?? false}
                 agentsOn={state.hazards?.agents ?? false}
+                shipSaleOn={(state.hazards?.wages || state.hazards?.loans) ?? false}
+                fleetSize={myShips.length}
                 priceFor={(port, good) =>
                   state.rules === 'voyage'
                     ? livePrice(state, port, good)
@@ -424,6 +437,7 @@ export default function GameScreen() {
       {over && winner && (
         <div style={backdrop}>
           <div style={{ ...victoryCard, borderColor: winner.colour }}>
+            <Vignette kind={state.rules === 'voyage' ? 'deliver' : 'victory'} size={64} colour={winner.colour} />
             <span style={{ ...dataText, fontSize: '0.62rem', letterSpacing: '0.2em', color: UI.textFaint }}>
               ROUND {state.round}
             </span>
@@ -449,6 +463,32 @@ export default function GameScreen() {
                 </>
               )}
             </p>
+            {/* The final standings, so the close reads as the end of a race rather than one name. */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontFamily: FONT.data, fontSize: '0.72rem' }}>
+              <tbody>
+                {[...state.captains]
+                  .sort((a, b) =>
+                    a.id === winner.id ? -1 : b.id === winner.id ? 1 : assetValue(state, b) - assetValue(state, a),
+                  )
+                  .map((c, i) => (
+                    <tr key={c.id} style={{ borderTop: `1px solid ${UI.rule}` }}>
+                      <td style={{ padding: '0.3rem 0.2rem', color: UI.textFaint }}>{i + 1}</td>
+                      <td style={{ padding: '0.3rem 0.2rem', color: c.colour, fontFamily: FONT.body, fontSize: '0.82rem' }}>{c.name}</td>
+                      {state.rules !== 'voyage' && (
+                        <td style={{ padding: '0.3rem 0.2rem', textAlign: 'right', color: UI.textSoft }}>{c.shares} sh</td>
+                      )}
+                      <td style={{ padding: '0.3rem 0.2rem', textAlign: 'right', color: UI.textSoft }}>
+                        worth {money(assetValue(state, c))}
+                      </td>
+                      {state.hazards?.teaRace && state.rules !== 'voyage' && (
+                        <td style={{ padding: '0.3rem 0.2rem', textAlign: 'right', color: UI.brass, whiteSpace: 'nowrap' }}>
+                          <TeaChest size={11} /> {c.teaRaceWins ?? 0}/{c.teaRaceSeconds ?? 0}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               <Button tone="primary" onClick={() => navigate('/')}>
                 Back to the lobby

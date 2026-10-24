@@ -42,6 +42,8 @@ import {
   VICTORY_CASH,
   sharePriceFor,
   REPAIR_PRICE,
+  SHIP_PRICE,
+  shipSalePrice,
 } from './rules';
 import { activeCaptain, shipsOf } from './state';
 import { seasonOf, turnsBetween } from './weather';
@@ -380,9 +382,11 @@ function seamanshipAction(s: GameState, captain: Captain, ships: Ship[], spendab
   if (!s.hazards?.pressSail || !levelOf(s, captain.id).fitsOut) return null;
   for (const ship of ships) {
     if (!ship.voyage || ship.hold.length === 0 || !canCrackOn(s, ship)) continue;
-    // One die can bring her in, or she is racing, or driving is simply this captain's temperament.
+    // Only when it can decide something: one die could bring her in this turn, or she is in the race.
+    // Driving every laden ship every turn was measured and loses money — about one throw in six
+    // costs a £40 repair and a slower ship, for three and a half points on a passage of thirty.
     const close = pointsToDestination(ship) <= 6;
-    if (close || isRacing(s, ship) || captain.aiProfile === 'racer') {
+    if (close || isRacing(s, ship)) {
       return { type: 'CRACK_ON', shipId: ship.id };
     }
   }
@@ -489,6 +493,10 @@ function loanAction(s: GameState, captain: Captain): GameAction | null {
 
   // Squeezed means: cannot cover the coming bill and still trade.
   if (captain.cash >= nextBill + TRADING_FLOAT) return null;
+  // Never more than a hull's price per hull. Without this cap she borrowed to pay the interest on
+  // what she had already borrowed: one captain carried £2,000 against a single ship, whose interest
+  // alone was more than that ship could earn, and the table never finished.
+  if ((captain.debt ?? 0) + LOAN_STEP > ships.length * SHIP_PRICE) return null;
   if ((captain.debt ?? 0) + LOAN_STEP > loanCeilingFor(ships.length, captain.shares)) return null;
   return { type: 'TAKE_LOAN' };
 }
@@ -630,6 +638,11 @@ const canRaid = (s: GameState, captain: Captain): boolean =>
  * looked up.
  */
 function voyageAction(s: GameState, captain: Captain): GameAction | null {
+  // The sea makes the same offers in free play, and a captain who ignored them would be handing the
+  // human a free edge. Same rules of thumb as the classic game.
+  const seaman = seamanshipAction(s, captain, shipsOf(s, captain.id), captain.cash);
+  if (seaman) return seaman;
+
   const ships = shipsOf(s, captain.id).filter(sh => sh.location !== null);
   const skill = levelOf(s, captain.id);
 
@@ -852,6 +865,26 @@ export function nextAiAction(s: GameState): GameAction | null {
   //    worth nothing, so sell one and trade back up.
   if (captain.shares > 0 && captain.cash < CHEAPEST_LOT && !ships.some(sh => sh.hold.length > 0)) {
     return { type: 'SELL_SHARE' };
+  }
+
+  // 4b. In arrears with nothing in hand and nothing under way: raise money from the fleet itself.
+  //
+  //     With wages on, a captain who cannot buy a lot cannot earn, and falls further behind every
+  //     round. The harness found whole tables in that hole for three hundred rounds. A hull sold at a
+  //     loss is better than a fleet that never sails again; failing that, a share.
+  const owing = (captain.arrears ?? 0) > 0;
+  const underWay = ships.some(sh => sh.voyage && sh.hold.length > 0);
+  if (owing && captain.cash < CHEAPEST_LOT && !underWay) {
+    if (ships.length > 1) {
+      const sale = [...docked].sort(
+        (a, b) =>
+          a.hold.reduce((n, l) => n + l.paid, 0) - b.hold.reduce((n, l) => n + l.paid, 0) ||
+          shipSalePrice(a.shipClass) - shipSalePrice(b.shipClass),
+      )[0];
+      if (sale) return { type: 'SELL_SHIP', shipId: sale.id };
+    } else if (captain.shares > 0) {
+      return { type: 'SELL_SHARE' };
+    }
   }
 
   // 4a. Empty ships in port: load here if this is the source, otherwise sail for one.

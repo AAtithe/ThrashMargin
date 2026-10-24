@@ -480,31 +480,16 @@ function ShipMarker({
   isRival: boolean;
   racing: boolean;
 }) {
-  let x: number;
-  let y: number;
-  let heading = 0;
-  let wake: { x: number; y: number } | null = null;
-
-  if (ship.location) {
-    const p = PORT_POINTS[ship.location];
-    if (!p) return null;
-    // Just off the quay so she never covers the port's own mark.
-    x = p.x + 13;
-    y = p.y - 13;
-  } else if (ship.voyage) {
-    const from = PORT_POINTS[ship.voyage.legFrom];
-    const to = PORT_POINTS[ship.voyage.route[0]];
-    if (!from || !to) return null;
-    const progress =
-      ship.voyage.legDistance > 0 ? 1 - ship.voyage.legRemaining / ship.voyage.legDistance : 0;
-    const dx = wrapDx(from.x, to.x);
-    x = from.x + dx * progress;
-    y = from.y + (to.y - from.y) * progress;
-    heading = (Math.atan2(to.y - from.y, dx) * 180) / Math.PI + 90;
-    wake = { x: from.x, y: from.y };
-  } else {
-    return null;
-  }
+  const pos = shipPosition(ship);
+  // Where she was drawn last time, so a move can glide rather than jump. Skipped on the first draw
+  // and on a Pacific crossing, where the chart wraps and a glide would sweep across the whole world.
+  const last = useRef<{ x: number; y: number } | null>(null);
+  const glide = pos !== null && last.current !== null && Math.abs(pos.x - last.current.x) < VB_WIDTH / 3;
+  useEffect(() => {
+    if (pos) last.current = { x: pos.x, y: pos.y };
+  });
+  if (!pos) return null;
+  const { x, y, heading, wake } = pos;
 
   const dest = destinationOf(ship);
   const laden = ship.hold.length > 0;
@@ -525,7 +510,13 @@ function ShipMarker({
           opacity={0.55}
         />
       )}
-      <g transform={`translate(${x} ${y}) rotate(${heading})`}>
+      <g
+        style={{
+          transform: `translate(${x}px, ${y}px)`,
+          transition: glide ? 'transform 700ms cubic-bezier(0.33, 0, 0.2, 1)' : 'none',
+        }}
+      >
+      <g transform={`rotate(${heading})`}>
         {selected && (
           <circle cx={0} cy={0} r={size + 7} fill="none" stroke={colour} strokeWidth={2} opacity={0.9} />
         )}
@@ -575,15 +566,15 @@ function ShipMarker({
       </g>
       {ship.damaged && (
         <path
-          d={`M${x + size * 0.7} ${y - size * 0.9} l5 5 m0 -5 l-5 5`}
+          d={`M${size * 0.7} ${-size * 0.9} l5 5 m0 -5 l-5 5`}
           stroke={CHART.damage}
           strokeWidth={1.8}
           strokeLinecap="round"
         />
       )}
       <text
-        x={x}
-        y={y + size + 13}
+        x={0}
+        y={size + 13}
         fill={colour}
         fontFamily={FONT.data}
         fontSize={10}
@@ -596,6 +587,7 @@ function ShipMarker({
       >
         {isRival ? captainName : ship.name}
       </text>
+      </g>
       <title>
         {`${ship.name} — ${captainName}. ${
           ship.hold.length ? `${ship.hold.length} of 3 slots full` : 'running light'
@@ -603,6 +595,38 @@ function ShipMarker({
       </title>
     </g>
   );
+}
+
+/** Where a ship is drawn, which way she heads, and the start of her leg for the wake. */
+function shipPosition(
+  ship: Ship,
+): { x: number; y: number; heading: number; wake: { x: number; y: number } | null } | null {
+  let x: number;
+  let y: number;
+  let heading = 0;
+  let wake: { x: number; y: number } | null = null;
+
+  if (ship.location) {
+    const p = PORT_POINTS[ship.location];
+    if (!p) return null;
+    // Just off the quay so she never covers the port's own mark.
+    x = p.x + 13;
+    y = p.y - 13;
+  } else if (ship.voyage) {
+    const from = PORT_POINTS[ship.voyage.legFrom];
+    const to = PORT_POINTS[ship.voyage.route[0]];
+    if (!from || !to) return null;
+    const progress =
+      ship.voyage.legDistance > 0 ? 1 - ship.voyage.legRemaining / ship.voyage.legDistance : 0;
+    const dx = wrapDx(from.x, to.x);
+    x = from.x + dx * progress;
+    y = from.y + (to.y - from.y) * progress;
+    heading = (Math.atan2(to.y - from.y, dx) * 180) / Math.PI + 90;
+    wake = { x: from.x, y: from.y };
+  } else {
+    return null;
+  }
+  return { x, y, heading, wake };
 }
 
 /** A clipper hull from above, bow up: fine entry, full quarters, a square transom. */

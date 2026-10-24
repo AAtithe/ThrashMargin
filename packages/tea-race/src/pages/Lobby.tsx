@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Hero } from '../components/Art';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
 import {
@@ -259,7 +260,8 @@ export default function Lobby() {
       <PortalNav />
       <main style={content}>
         <header style={{ marginBottom: '2rem' }}>
-          <p style={eyebrow}>After Ocean Trader, Clipper Games, 1988</p>
+          <Hero />
+          <p style={{ ...eyebrow, marginTop: '1rem' }}>After Ocean Trader, Clipper Games, 1988</p>
           <h1 style={title}>The Tea Race</h1>
           {/* Kept honest: a commission names the buyer and the price, never a source port — that
               stopped being true when cards lost their source, and this paragraph still claimed it. */}

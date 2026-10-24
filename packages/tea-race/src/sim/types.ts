@@ -180,6 +180,12 @@ export interface Captain {
    * from before agents existed loads untouched.
    */
   agents?: PortId[];
+  /**
+   * Great Tea Race honours: first and second places across every year of the game. Kept here rather
+   * than read from the log, which is trimmed. Absent meaning none.
+   */
+  teaRaceWins?: number;
+  teaRaceSeconds?: number;
 }
 
 export interface ContractFill {
@@ -508,6 +514,8 @@ export type GameAction =
    */
   | { type: 'SELL_CARGO'; shipId: ShipId; good: GoodId }
   | { type: 'BUY_SHIP'; shipClass?: import('./rules').ShipClassId }
+  /** Sell a docked hull back to the yard at a loss. Only with wages or loans in play; never the last. */
+  | { type: 'SELL_SHIP'; shipId: ShipId }
   /** Fit guns or copper to a docked ship, permanently. */
   | { type: 'BUY_FITTING'; shipId: ShipId; fitting: keyof ShipFittings }
   /** Open or close a ship's standing insurance policy. */

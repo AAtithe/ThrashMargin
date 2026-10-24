@@ -944,3 +944,18 @@ export const REPAIR_PRICE = 40;
  * one in seven: often enough that a long passage usually has one, rare enough to stay an event.
  */
 export const ENCOUNTER_CHANCE = 0.14;
+
+/**
+ * AUTHORED — a hull sold back to the yard fetches this fraction of her new price, fittings and any
+ * cargo aboard thrown in for nothing.
+ *
+ * The softlock escape for standing costs, on the same reasoning as selling a share back (§2.2).
+ * With wages and loans on, a captain with no cash and nothing aboard cannot buy a lot, so cannot
+ * earn, so falls further into arrears every round. The harness found whole tables stuck there for
+ * three hundred rounds. Only offered when wages or loans are in play, since those are what make the
+ * trap, and never for a captain's last ship — a fleet of none cannot trade or win.
+ */
+export const SHIP_SALE_FRACTION = 0.5;
+
+export const shipSalePrice = (shipClass: ShipClassId | undefined): number =>
+  Math.round(SHIP_CLASSES[shipClass ?? DEFAULT_SHIP_CLASS].price * SHIP_SALE_FRACTION);
