@@ -126,3 +126,31 @@ $$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE TRIGGER users_updated_at  BEFORE UPDATE ON users  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE OR REPLACE TRIGGER games_updated_at  BEFORE UPDATE ON games  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Row-level security, on every table, with no policies.
+--
+-- Supabase publishes the public schema through its Data API (PostgREST) to anyone holding the
+-- project URL and the anon key, and grants the `anon` and `authenticated` roles full rights on
+-- every table here by default. Nothing in this portal uses that route: the API connects directly as
+-- the tables' owner (DATABASE_URL), and an owner is not subject to row-level security unless it is
+-- FORCEd, which it deliberately is not. Enabling it with no policies therefore closes the Data API
+-- completely (every row hidden, every write refused) without changing anything the API does.
+-- The grants are revoked as well, so a policy added by mistake later still exposes nothing.
+-- The API applies the same on first use (shared/portal/server/schema.ts, secureTables).
+ALTER TABLE users          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE games          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE feedback       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE login_failures ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_audit    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_events    ENABLE ROW LEVEL SECURITY;
+
+DO $$
+DECLARE r TEXT;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+      EXECUTE format('REVOKE ALL ON users, games, feedback, login_failures, admin_audit, rate_events FROM %I', r);
+      EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM %I', r);
+    END IF;
+  END LOOP;
+END $$;

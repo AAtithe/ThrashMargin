@@ -132,4 +132,59 @@ async function apply(c: PoolClient): Promise<void> {
     const { rowCount } = await c.query('SELECT 1 FROM game_actions LIMIT 1');
     if (!rowCount) await c.query('DROP TABLE game_actions');
   }
+
+  await secureTables(c);
+}
+
+/**
+ * Every table this API owns, closed to Supabase's Data API (PostgREST). Supabase publishes the
+ * public schema to anyone with the project URL and anon key, and grants `anon` and `authenticated`
+ * full rights on new tables by default; with row-level security off, that meant anyone could read
+ * and rewrite users (emails, password hashes) and every save. Nothing here uses that route: this API
+ * connects as the tables' owner, and an owner is exempt from row-level security unless it is FORCEd,
+ * which it deliberately is not. So enabling it with no policies, and revoking those grants, shuts
+ * the Data API out entirely without changing anything the API itself does.
+ *
+ * Run inside a savepoint: if the connecting role cannot alter a table (it is not the owner), the
+ * failure is logged loudly and the rest of the setup still commits, rather than every request in
+ * every game failing. db/schema.sql applies the same statements; keep the two in step.
+ */
+export const SECURED_TABLES = ['users', 'games', 'feedback', 'login_failures', 'admin_audit', 'rate_events'];
+const DATA_API_ROLES = ['anon', 'authenticated'];
+
+async function secureTables(c: PoolClient): Promise<void> {
+  await c.query('SAVEPOINT secure_tables');
+  try {
+    const { rows: tables } = await c.query(
+      `SELECT c.relname, c.relrowsecurity FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+       WHERE n.nspname = current_schema() AND c.relkind = 'r' AND c.relname = ANY($1)`,
+      [SECURED_TABLES],
+    );
+    for (const t of tables) {
+      if (!t.relrowsecurity) await c.query(`ALTER TABLE ${c.escapeIdentifier(t.relname)} ENABLE ROW LEVEL SECURITY`);
+    }
+
+    // Revoked only where a grant exists, so a database already locked down costs a read, not a
+    // catalogue write, on every cold start.
+    const { rows: grantees } = await c.query(
+      `SELECT DISTINCT r.rolname FROM pg_class c
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+       CROSS JOIN LATERAL aclexplode(c.relacl) a
+       JOIN pg_roles r ON r.oid = a.grantee
+       WHERE n.nspname = current_schema() AND r.rolname = ANY($2)
+         AND ((c.relkind = 'r' AND c.relname = ANY($1)) OR c.relkind = 'S')`,
+      [SECURED_TABLES, DATA_API_ROLES],
+    );
+    const { rows: [{ schema }] } = await c.query('SELECT current_schema() AS schema');
+    const list = tables.map(t => c.escapeIdentifier(t.relname)).join(', ');
+    for (const { rolname } of grantees) {
+      const role = c.escapeIdentifier(rolname);
+      if (list) await c.query(`REVOKE ALL ON ${list} FROM ${role}`);
+      await c.query(`REVOKE ALL ON ALL SEQUENCES IN SCHEMA ${c.escapeIdentifier(schema)} FROM ${role}`);
+    }
+    await c.query('RELEASE SAVEPOINT secure_tables');
+  } catch (err) {
+    await c.query('ROLLBACK TO SAVEPOINT secure_tables');
+    console.error('SECURITY: could not enable row-level security on the portal tables', err);
+  }
 }
