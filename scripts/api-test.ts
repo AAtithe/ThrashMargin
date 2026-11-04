@@ -30,7 +30,15 @@ if (!['localhost', '127.0.0.1'].includes(host)) {
   console.error('Refusing to run: API_TEST_DATABASE_URL must point at a local database (it is wiped).');
   process.exit(2);
 }
-process.env.DATABASE_URL = URL_;
+// The API connects as an ordinary owner role, as on Supabase (its `postgres` is not a superuser).
+// A superuser ignores row-level security altogether, so testing as one would prove nothing about it.
+const API_ROLE = 'portal_api_test';
+process.env.DATABASE_URL = (() => {
+  const u = new URL(URL_);
+  u.username = API_ROLE;
+  u.password = API_ROLE;
+  return u.toString();
+})();
 process.env.JWT_SECRET = 'api-test-secret';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -93,6 +101,17 @@ const play = (method: string, kind: string, token: string | undefined, id?: stri
 
 async function resetDatabase(mode: 'fresh' | 'legacy') {
   await admin.query('DROP SCHEMA IF EXISTS public CASCADE; CREATE SCHEMA public;');
+  // Supabase's Data API roles, and the API's own non-superuser owner role.
+  await admin.query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF;
+      IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '${API_ROLE}') THEN
+        CREATE ROLE ${API_ROLE} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '${API_ROLE}';
+      END IF;
+    END $$;
+    GRANT ALL ON SCHEMA public TO ${API_ROLE};
+    GRANT USAGE ON SCHEMA public TO anon, authenticated;`);
   // Supabase's own table, as it exists in production: a `users` table with a `role` column, and a
   // `users_role_check`-style name collision risk, in a schema of its own.
   await admin.query(`
@@ -100,11 +119,13 @@ async function resetDatabase(mode: 'fresh' | 'legacy') {
     CREATE SCHEMA auth;
     CREATE TABLE auth.users (id uuid PRIMARY KEY, role varchar(255), email varchar(255));
     INSERT INTO auth.users VALUES (gen_random_uuid(), 'authenticated', 'someone@example.com');`);
-  await admin.query(readFileSync(path.join(ROOT, 'db/schema.sql'), 'utf8'));
+  // Built as the API's role, so it owns the tables exactly as the live database's owner does.
+  await admin.query(`SET ROLE ${API_ROLE}; ${readFileSync(path.join(ROOT, 'db/schema.sql'), 'utf8')}; RESET ROLE;`);
   if (mode === 'legacy') {
     // As the live database was before these rounds: none of the later columns or tables, and the
     // original server's two unused tables still present (player_stats with default-only rows).
     await admin.query(`
+      SET ROLE ${API_ROLE};
       ALTER TABLE users DROP COLUMN role;
       ALTER TABLE users DROP COLUMN password_changed_at;
       ALTER TABLE games DROP COLUMN version;
@@ -116,7 +137,20 @@ async function resetDatabase(mode: 'fresh' | 'legacy') {
         games_lost INTEGER NOT NULL DEFAULT 0, avg_turns NUMERIC(6,2));
       CREATE TABLE game_actions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE, user_id UUID NOT NULL REFERENCES users(id),
-        turn INTEGER NOT NULL, action JSONB NOT NULL);`);
+        turn INTEGER NOT NULL, action JSONB NOT NULL);
+      RESET ROLE;`);
+    // As the live database was when Supabase flagged it: row-level security off, and the Data API
+    // roles holding Supabase's default grants on every table and sequence.
+    await admin.query(`
+      SET ROLE ${API_ROLE};
+      ALTER TABLE users DISABLE ROW LEVEL SECURITY;
+      ALTER TABLE games DISABLE ROW LEVEL SECURITY;
+      ALTER TABLE feedback DISABLE ROW LEVEL SECURITY;
+      GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+      GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+      ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
+      RESET ROLE;`);
   }
 }
 
@@ -299,6 +333,42 @@ async function suite(mode: 'fresh' | 'legacy') {
   const fbKept = await admin.query(`SELECT COUNT(*)::int AS n FROM feedback WHERE user_id IS NULL`);
   ok(fbKept.rows[0].n > 0, 'delete: feedback kept without the name');
   ok((await auth('login', { username: 'ann', password: reset.body.temporaryPassword })).status === 401, 'delete: cannot sign in again');
+
+  // --- Supabase's Data API is shut out -----------------------------------------------------------------
+  // Everything above ran as the tables' owner with row-level security on, which proves the API is not
+  // blocked by it. This proves the other half: the roles PostgREST uses can neither read nor write.
+  const { SECURED_TABLES } = require(path.join(ROOT, 'packages/thrash-margin/api/_lib/schema'));
+  const all = await admin.query(
+    `SELECT relname, relrowsecurity, relforcerowsecurity FROM pg_class
+     WHERE relnamespace = 'public'::regnamespace AND relkind = 'r'`,
+  );
+  ok(all.rows.length > 0 && all.rows.every((r: any) => r.relrowsecurity), 'data api: row-level security on every public table');
+  ok(all.rows.every((r: any) => !r.relforcerowsecurity), 'data api: not forced, so the owning API is unaffected');
+  ok(
+    all.rows.every((r: any) => SECURED_TABLES.includes(r.relname)),
+    `data api: every public table is in SECURED_TABLES (${all.rows.map((r: any) => r.relname).join(', ')})`,
+  );
+  for (const role of ['anon', 'authenticated']) {
+    for (const sql of [
+      'SELECT count(*) FROM users',
+      'SELECT count(*) FROM games',
+      "INSERT INTO feedback (message) VALUES ('x')",
+      'DELETE FROM games',
+    ]) {
+      const c = await admin.connect();
+      let refused = false;
+      try {
+        await c.query(`SET ROLE ${role}`);
+        await c.query(sql);
+      } catch (err: any) {
+        refused = err.code === '42501'; // insufficient_privilege
+      } finally {
+        await c.query('RESET ROLE').catch(() => {});
+        c.release();
+      }
+      ok(refused, `data api: ${role} refused: ${sql}`);
+    }
+  }
 
   delete process.env.ADMIN_USERNAMES;
 }
