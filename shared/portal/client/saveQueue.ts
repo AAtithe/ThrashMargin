@@ -9,14 +9,18 @@
  *
  * After a conflict (409: saved from another tab or device) or a missing game (404) it stops saving
  * altogether and reports it. Carrying on would only overwrite newer progress, or write nowhere.
+ *
+ * A save refused for size (413: the save, or the account's storage, is over the limit) is reported
+ * but does not stop saving: once the player deletes old games, the next move saves again.
  */
-export type SaveOutcome = 'saved' | 'conflict' | 'missing' | 'expired' | 'failed';
+export type SaveOutcome = 'saved' | 'conflict' | 'missing' | 'expired' | 'full' | 'failed';
 
 export const SAVE_MESSAGES: Record<Exclude<SaveOutcome, 'saved'>, string> = {
   conflict:
     'This game has been saved from another tab or device since you opened it, so this tab has stopped saving. Reload the page to continue from the latest save.',
   missing: 'This game no longer exists on the server, so progress here is not being saved.',
   expired: 'Your sign-in has expired. Sign in again to keep saving.',
+  full: 'Your account is out of storage, so progress here is not being saved. Delete some old games from the lobby, then carry on.',
   failed: 'Could not reach the server; your latest progress will be saved on the next move.',
 };
 
@@ -60,6 +64,7 @@ export function createSaver(
       } else if (res.status === 409) outcome = 'conflict';
       else if (res.status === 404) outcome = 'missing';
       else if (res.status === 401) outcome = 'expired';
+      else if (res.status === 413) outcome = 'full';
     } catch {
       outcome = 'failed';
     } finally {

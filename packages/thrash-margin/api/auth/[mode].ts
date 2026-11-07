@@ -6,7 +6,7 @@ import { getDb } from '../_lib/db';
 import { signToken } from '../_lib/auth';
 import { isAdmin } from '../_lib/admin';
 import { ensureSchema } from '../_lib/schema';
-import { isEmail } from '../_lib/validate';
+import { isEmail, MIN_PASSWORD } from '../_lib/validate';
 import { clientAddress, isOverLimit, LIMITS, recordEvent } from '../_lib/rateLimit';
 import { handleCors } from '../_lib/cors';
 
@@ -14,38 +14,60 @@ import { handleCors } from '../_lib/cors';
 // the [mode] route param — Vercel's Hobby plan caps a deployment at 12 serverless functions.
 // URLs are unchanged: /api/auth/login and /api/auth/register still resolve here.
 
-// Sign-in attempt limit: after 10 wrong passwords for one username within 15 minutes, that
-// username is refused for the rest of the window, even with the right password. Keyed on the
-// lower-cased username whether or not the account exists, so the response does not reveal which
-// usernames are real. An admin's password reset clears the count.
+// Sign-in attempt limits, on failed attempts only, keyed on the lower-cased username whether or not
+// the account exists (so the response does not reveal which usernames are real):
+//   - one network, one username: 10 in 15 minutes. Stops password guessing from one place.
+//   - one network, any usernames: 30 in 15 minutes. Stops one place trying a few passwords
+//     against every account in turn.
+//   - one username, every network: 100 in an hour. Caps guessing spread across many networks.
+// The limit used to be per username alone, so anyone anywhere could keep a named player locked out
+// with 10 wrong passwords every 15 minutes. Now a stranger's failures lock out only the stranger's
+// own network; locking out the player everywhere takes 100 failures an hour from many networks.
+// An admin's password reset clears every count for that username.
 //
 // Fails open: if the count cannot be read, sign-in proceeds. Locking every player out because the
 // limiter's own table is unavailable would be the worse failure.
-const MAX_FAILURES = 10;
-const WINDOW = '15 minutes';
+const PER_PAIR = 10;
+const PER_NETWORK = 30;
+const PER_USERNAME_HOURLY = 100;
 
-async function tooManyFailures(db: Pool, key: string): Promise<boolean> {
+async function tooManyFailures(db: Pool, key: string, address: string): Promise<boolean> {
   try {
     await ensureSchema(db);
     const { rows } = await db.query(
-      `SELECT COUNT(*)::int AS n FROM login_failures WHERE username_key = $1 AND at > NOW() - $2::interval`,
-      [key, WINDOW],
+      `SELECT
+         COUNT(*) FILTER (WHERE username_key = $1 AND address = $2 AND at > NOW() - INTERVAL '15 minutes')::int AS pair,
+         COUNT(*) FILTER (WHERE address = $2 AND at > NOW() - INTERVAL '15 minutes')::int AS network,
+         COUNT(*) FILTER (WHERE username_key = $1)::int AS username
+       FROM login_failures
+       WHERE (username_key = $1 OR address = $2) AND at > NOW() - INTERVAL '1 hour'`,
+      [key, address],
     );
-    return rows[0].n >= MAX_FAILURES;
+    const r = rows[0];
+    return r.pair >= PER_PAIR || r.network >= PER_NETWORK || r.username >= PER_USERNAME_HOURLY;
   } catch (err) {
     console.error('login limiter read failed', err);
     return false;
   }
 }
 
-async function recordFailure(db: Pool, key: string): Promise<void> {
+async function recordFailure(db: Pool, key: string, address: string): Promise<void> {
   try {
-    await db.query('INSERT INTO login_failures (username_key) VALUES ($1)', [key]);
+    await db.query('INSERT INTO login_failures (username_key, address) VALUES ($1, $2)', [key, address]);
     // Keeps the table small; nothing older than the window is ever read.
     await db.query(`DELETE FROM login_failures WHERE at < NOW() - INTERVAL '1 day'`);
   } catch (err) {
     console.error('login limiter write failed', err);
   }
+}
+
+// Compared against when the username does not exist, so an unknown name takes as long to refuse as
+// a wrong password. Answering before bcrypt ran made real usernames measurably slower (~200 ms).
+// Made on first use rather than at load, so it does not add to every cold start.
+let dummyHash: string | null = null;
+function timingDummy(): string {
+  if (!dummyHash) dummyHash = bcrypt.hashSync('timing-equaliser-not-a-password', 12);
+  return dummyHash;
 }
 
 async function login(req: VercelRequest, res: VercelResponse) {
@@ -56,7 +78,8 @@ async function login(req: VercelRequest, res: VercelResponse) {
 
   const db = getDb();
   const key = String(username).toLowerCase().slice(0, 64);
-  if (await tooManyFailures(db, key)) {
+  const address = clientAddress(req);
+  if (await tooManyFailures(db, key, address)) {
     return res.status(429).json({
       message: 'Too many failed sign-in attempts. Try again in 15 minutes, or ask an admin to reset your password.',
     });
@@ -67,14 +90,9 @@ async function login(req: VercelRequest, res: VercelResponse) {
       [username],
     );
     const user = rows[0];
-    if (!user) {
-      await recordFailure(db, key);
-      return res.status(401).json({ message: 'Invalid credentials' });
-    }
-
-    const match = await bcrypt.compare(String(password), user.password);
-    if (!match) {
-      await recordFailure(db, key);
+    const match = await bcrypt.compare(String(password), user ? user.password : timingDummy());
+    if (!user || !match) {
+      await recordFailure(db, key, address);
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     db.query('DELETE FROM login_failures WHERE username_key = $1', [key]).catch(() => {});
@@ -104,8 +122,8 @@ async function register(req: VercelRequest, res: VercelResponse) {
   }
   // Same floor as /api/profile's password change, which previously was the only place it applied.
   // The type check also stops a non-string body value reaching bcrypt and surfacing as a 500.
-  if (typeof password !== 'string' || password.length < 6) {
-    return res.status(400).json({ message: 'password must be at least 6 characters' });
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD) {
+    return res.status(400).json({ message: `password must be at least ${MIN_PASSWORD} characters` });
   }
   if (!isEmail(email)) return res.status(400).json({ message: 'Enter a valid email address' });
 

@@ -170,36 +170,39 @@ async function suite(mode: 'fresh' | 'legacy') {
   };
   const { GAMES } = require(path.join(ROOT, 'packages/thrash-margin/shared/games'));
 
-  process.env.ADMIN_USERNAMES = 'tom';
-
   // --- Registration -------------------------------------------------------------------------
-  const tom = await auth('register', { username: 'Tom', email: 'tom@x.test', password: 'secret1' });
+  const tom = await auth('register', { username: 'Tom', email: 'tom@x.test', password: 'secret11' });
   ok(tom.status === 201 && tom.body.isAdmin === false, 'register: Tom created, not yet admin');
-  const ann = await auth('register', { username: 'ann', email: 'ann@x.test', password: 'secret1' });
+  const ann = await auth('register', { username: 'ann', email: 'ann@x.test', password: 'secret11' });
   ok(ann.status === 201, 'register: ann created');
-  ok((await auth('register', { username: 'tom', email: 't2@x.test', password: 'secret1' })).status === 409, 'register: case-variant of Tom refused');
+  ok((await auth('register', { username: 'tom', email: 't2@x.test', password: 'secret11' })).status === 409, 'register: case-variant of Tom refused');
   ok((await auth('register', { username: 'bob', email: 'b@x.test', password: '123' })).status === 400, 'register: short password refused');
+  ok((await auth('register', { username: 'bob', email: 'b@x.test', password: 'seven77' })).status === 400, 'register: 7-character password refused (minimum is 8)');
   ok((await auth('register', { username: 'bob', email: 'b@x.test', password: 12345678 })).status === 400, 'register: non-string password refused');
-  ok((await auth('register', { username: 'bob', email: 'not-an-email', password: 'secret1' })).status === 400, 'register: invalid email refused');
+  ok((await auth('register', { username: 'bob', email: 'not-an-email', password: 'secret11' })).status === 400, 'register: invalid email refused');
   if (mode === 'legacy') {
     const left = await admin.query(`SELECT to_regclass('public.player_stats') AS p, to_regclass('public.game_actions') AS g`);
     ok(!left.rows[0].p && !left.rows[0].g, 'schema: unused player_stats and game_actions dropped while empty');
   }
   for (let i = 0; i < 5; i++) {
-    await auth('register', { username: `spam${i}`, email: `spam${i}@x.test`, password: 'secret1' }, '10.9.9.9');
+    await auth('register', { username: `spam${i}`, email: `spam${i}@x.test`, password: 'secret11' }, '10.9.9.9');
   }
-  const sixth = await auth('register', { username: 'spam5', email: 'spam5@x.test', password: 'secret1' }, '10.9.9.9');
+  const sixth = await auth('register', { username: 'spam5', email: 'spam5@x.test', password: 'secret11' }, '10.9.9.9');
   ok(sixth.status === 429, 'limit: 6th account from one network address in an hour refused');
-  ok((await auth('register', { username: 'carol', email: 'c@x.test', password: 'secret1' }, '10.7.7.7')).status === 201, 'limit: other addresses unaffected');
+  ok((await auth('register', { username: 'carol', email: 'c@x.test', password: 'secret11' }, '10.7.7.7')).status === 201, 'limit: other addresses unaffected');
   ok(!('access-control-allow-origin' in tom.headers), 'cors: no cross-site permission sent by default');
   const health = await call(handlers.health, 'GET', {});
   ok(health.status === 200 && health.body.database === 'ok', 'health: reports the database reachable');
 
   // --- Sign-in and first admin ----------------------------------------------------------------
-  const tomLogin = await auth('login', { username: 'Tom', password: 'secret1' });
-  ok(tomLogin.status === 200 && tomLogin.body.isAdmin === true, 'login: Tom becomes first admin (setting "tom", account "Tom")');
+  // The old ADMIN_USERNAMES route is gone: a listed name signing in first is not made admin.
+  process.env.ADMIN_USERNAMES = 'ann';
+  ok((await auth('login', { username: 'ann', password: 'secret11' })).body.isAdmin === false, 'admin: ADMIN_USERNAMES no longer makes anyone admin');
+  delete process.env.ADMIN_USERNAMES;
+  const tomLogin = await auth('login', { username: 'Tom', password: 'secret11' });
+  ok(tomLogin.status === 200 && tomLogin.body.isAdmin === true, 'login: Tom, the oldest account, becomes first admin');
   const T = tomLogin.body.token as string;
-  const annLogin = await auth('login', { username: 'ann', password: 'secret1' });
+  const annLogin = await auth('login', { username: 'ann', password: 'secret11' });
   ok(annLogin.body.isAdmin === false, 'login: ann is not admin');
   const A = annLogin.body.token as string;
   const claims = jwt.decode(T) as { iat: number; exp: number };
@@ -214,12 +217,40 @@ async function suite(mode: 'fresh' | 'legacy') {
 
   // --- Sign-in attempt limit ------------------------------------------------------------------
   for (let i = 0; i < 10; i++) await auth('login', { username: 'ann', password: 'wrong' });
-  const locked = await auth('login', { username: 'ann', password: 'secret1' });
+  const locked = await auth('login', { username: 'ann', password: 'secret11' });
   ok(locked.status === 429, 'limit: 11th attempt refused even with the right password');
-  ok((await auth('login', { username: 'ANN', password: 'secret1' })).status === 429, 'limit: applies whatever the capitals');
-  ok((await auth('login', { username: 'Tom', password: 'secret1' })).status === 200, 'limit: other accounts unaffected');
+  ok((await auth('login', { username: 'ANN', password: 'secret11' })).status === 429, 'limit: applies whatever the capitals');
+  ok((await auth('login', { username: 'Tom', password: 'secret11' })).status === 200, 'limit: other accounts unaffected');
   for (let i = 0; i < 10; i++) await auth('login', { username: 'nobody', password: 'x' });
   ok((await auth('login', { username: 'nobody', password: 'x' })).status === 429, 'limit: unknown usernames limited the same way');
+  // A stranger's failures lock out only the stranger's network, not the player.
+  ok((await auth('login', { username: 'ann', password: 'secret11' }, '10.0.0.2')).status === 200, 'limit: player still signs in from their own network');
+  const recorded = await admin.query(`SELECT COUNT(*)::int AS n FROM login_failures WHERE username_key = 'nobody' AND address = '10.0.0.1'`);
+  ok(recorded.rows[0].n >= 10, 'limit: failures recorded with the network address');
+  // One network trying a few passwords against many accounts.
+  await admin.query(`INSERT INTO login_failures (username_key, address) SELECT 'sweep' || i, '10.5.5.5' FROM generate_series(1, 30) i`);
+  ok((await auth('login', { username: 'fresh-name', password: 'x' }, '10.5.5.5')).status === 429, 'limit: 30 failures from one network block it for any username');
+  ok((await auth('login', { username: 'fresh-name', password: 'x' }, '10.5.5.6')).status === 401, 'limit: other networks unaffected');
+  // Guessing spread across many networks.
+  await admin.query(`INSERT INTO login_failures (username_key, address) SELECT 'target', '172.16.0.' || i FROM generate_series(1, 100) i`);
+  ok((await auth('login', { username: 'target', password: 'x' }, '10.6.6.6')).status === 429, 'limit: 100 failures an hour for one username, from any networks, block it');
+  // IPv6: one /64 is one network, so rotating addresses inside it does not reset the count.
+  for (let i = 1; i <= 10; i++) await auth('login', { username: 'v6user', password: 'x' }, `2001:db8:5:6::${i.toString(16)}`);
+  ok((await auth('login', { username: 'v6user', password: 'x' }, '2001:db8:5:6:ffff::1')).status === 429, 'limit: IPv6 addresses counted per /64');
+  // An unknown username takes as long to refuse as a wrong password (bcrypt runs either way).
+  await auth('login', { username: 'no-such-user', password: 'x' }, '10.8.8.1'); // warms the dummy hash
+  let t0 = Date.now();
+  await auth('login', { username: 'Tom', password: 'wrong-pass' }, '10.8.8.2');
+  const known = Date.now() - t0;
+  t0 = Date.now();
+  await auth('login', { username: 'no-such-user-2', password: 'x' }, '10.8.8.3');
+  const unknown = Date.now() - t0;
+  ok(unknown > known * 0.5, `login: unknown username not answered faster (unknown ${unknown} ms, known ${known} ms)`);
+  const { networkKey } = require(path.join(ROOT, 'packages/thrash-margin/api/_lib/rateLimit'));
+  ok(
+    networkKey('2001:0db8:0001:0002:ffff::1') === '2001:db8:1:2::/64' && networkKey('::ffff:10.1.2.3') === '10.1.2.3' && networkKey('203.0.113.7') === '203.0.113.7',
+    'limit: network keys (IPv6 /64, IPv4-mapped, IPv4)',
+  );
 
   // --- Admin: roles, password reset, audit -------------------------------------------------------
   ok((await adminApi('GET', 'users', A)).status === 403, 'admin: non-admin refused');
@@ -229,7 +260,7 @@ async function suite(mode: 'fresh' | 'legacy') {
 
   const reset = await adminApi('POST', 'reset-password', T, { id: ann.body.userId });
   ok(reset.status === 200 && /^[A-Za-z2-9]{4}-[A-Za-z2-9]{4}-[A-Za-z2-9]{4}$/.test(reset.body.temporaryPassword), 'reset: returns a temporary password');
-  ok((await auth('login', { username: 'ann', password: 'secret1' })).status === 401, 'reset: old password stops working (and lock cleared)');
+  ok((await auth('login', { username: 'ann', password: 'secret11' })).status === 401, 'reset: old password stops working (and lock cleared)');
   const annAgain = await auth('login', { username: 'ann', password: reset.body.temporaryPassword });
   ok(annAgain.status === 200, 'reset: temporary password signs in');
 
@@ -238,6 +269,24 @@ async function suite(mode: 'fresh' | 'legacy') {
   ok((await adminApi('POST', 'reset-password', T, { id: ann.body.userId })).status === 403, 'reset: not for another admin');
   ok((await adminApi('PATCH', 'users', T, { id: ann.body.userId, role: 'user' })).status === 200, 'role: Tom removes ann');
   ok((await adminApi('GET', 'users', annAgain.body.token)).status === 403, 'role: ann loses access at once, same token');
+  const recentReset = await adminApi('POST', 'reset-password', T, { id: ann.body.userId });
+  ok(recentReset.status === 403 && !recentReset.body.temporaryPassword, 'reset: refused for an account demoted from admin in the last 30 days');
+  ok((await adminApi('PATCH', 'feedback', T, { id: 'not-a-uuid', status: 'resolved' })).status === 400, 'admin: malformed feedback id refused, not a server error');
+
+  // Two admins acting at once. A second connection demotes Tom and holds the lock; Tom's own request,
+  // already past its admin check, must wait and then be refused, not act on a role he no longer has.
+  const holder = await admin.connect();
+  const carolRow = await admin.query(`SELECT id FROM users WHERE username = 'carol'`);
+  await holder.query('BEGIN');
+  await holder.query(`UPDATE users SET role = 'user' WHERE id = $1`, [tom.body.userId]);
+  const racing = adminApi('PATCH', 'users', T, { id: carolRow.rows[0].id, role: 'admin' });
+  await new Promise(r => setTimeout(r, 300));
+  await holder.query('COMMIT');
+  holder.release();
+  const raced = await racing;
+  const carolRole = await admin.query(`SELECT role FROM users WHERE username = 'carol'`);
+  ok(raced.status === 403 && carolRole.rows[0].role === 'user', `role: an admin demoted mid-request is refused (got ${raced.status})`);
+  await admin.query(`UPDATE users SET role = 'admin' WHERE id = $1`, [tom.body.userId]);
 
   const audit = await adminApi('GET', 'audit', T);
   const actions = (audit.body.entries as { action: string; actor: string; target: string }[]).map(e => `${e.actor} ${e.action} ${e.target}`);
@@ -270,6 +319,9 @@ async function suite(mode: 'fresh' | 'legacy') {
     ok((await play('GET', others[0].slug, A2, id)).status === 404, `${g.slug}: not visible through another game's endpoint`);
   }
   ok((await play('GET', 'no-such-game', A2)).status === 404, 'play: unknown game 404');
+  for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    ok((await play('GET', k, A2)).status === 404, `play: '${k}' is an unknown game, not a hang or a crash`);
+  }
 
   // --- Shared game list ---------------------------------------------------------------------------
   const profile = await call(handlers.profile, 'GET', {}, undefined, A2);
@@ -297,6 +349,45 @@ async function suite(mode: 'fresh' | 'legacy') {
     'admin: per-game counts include Niccolò Rising',
   );
 
+  // --- Storage limits ---------------------------------------------------------------------------------
+  for (const g of GAMES as { slug: string }[]) {
+    const odd = await play('POST', g.slug, A2, undefined, { name: 12345, humanNames: Array(500).fill('x'.repeat(5000)), seed: 'y'.repeat(10000) });
+    ok(odd.status === 201, `${g.slug}: odd create body accepted with safe values, not a server error (got ${odd.status})`);
+    if (odd.status === 201) {
+      const st = (await play('GET', g.slug, A2, odd.body.gameId)).body.state;
+      ok(JSON.stringify(st).length < 100_000, `${g.slug}: oversized names and seed cut down, not stored`);
+      await play('DELETE', g.slug, A2, odd.body.gameId);
+    }
+  }
+  const teaSaves = (await play('GET', 'tea-race', A2)).body.saves as { id: string }[];
+  const teaId = teaSaves[0].id;
+  const teaState = (await play('GET', 'tea-race', A2, teaId)).body.state;
+  const huge = await play('PUT', 'tea-race', A2, teaId, { state: { ...teaState, padding: 'x'.repeat(600 * 1024) } });
+  ok(huge.status === 413, `saves: a save over 512 KB refused (got ${huge.status})`);
+  ok((await play('PUT', 'tea-race', A2, teaId, { state: teaState })).status === 200, 'saves: a normal save still accepted');
+  const annId = annAgain.body.userId as string;
+  await admin.query(
+    `INSERT INTO games (owner_id, game, state, config) SELECT $1, 'tea_race', '{}', '{}' FROM generate_series(1, $2::int)`,
+    [annId, 50 - teaSaves.length],
+  );
+  const full = await play('POST', 'tea-race', A2, undefined, { name: 'one too many' });
+  ok(full.status === 409, `saves: a 51st game of one kind refused (got ${full.status})`);
+  ok((await play('POST', 'steady-eddie', A2, undefined, { name: 'other game' })).status === 201, 'saves: the limit is per game, others unaffected');
+  await admin.query(`DELETE FROM games WHERE owner_id = $1 AND state = '{}'::jsonb`, [annId]);
+  // Fill the account's storage with incompressible data, then a normal save must be refused.
+  await admin.query(
+    `INSERT INTO games (owner_id, game, state, config)
+     SELECT $1, 'steady_eddie', jsonb_build_object('blob', string_agg(md5(i::text || random()::text), '')), '{}'
+     FROM generate_series(1, 830000) i`,
+    [annId],
+  );
+  const used = await admin.query(`SELECT SUM(pg_column_size(state))::bigint AS n FROM games WHERE owner_id = $1`, [annId]);
+  ok(Number(used.rows[0].n) > 25 * 1024 * 1024 - 100_000, `saves: test account filled to its 25 MB (${used.rows[0].n} bytes)`);
+  const noRoom = await play('PUT', 'tea-race', A2, teaId, { state: teaState });
+  ok(noRoom.status === 413, `saves: refused once the account's storage is full (got ${noRoom.status})`);
+  await admin.query(`DELETE FROM games WHERE owner_id = $1 AND state ? 'blob'`, [annId]);
+  ok((await play('PUT', 'tea-race', A2, teaId, { state: teaState })).status === 200, 'saves: accepted again once space is freed');
+
   // Delete last, so the cascade does not matter to the checks above.
   for (const g of GAMES as { slug: string }[]) {
     const list = await play('GET', g.slug, A2);
@@ -304,21 +395,21 @@ async function suite(mode: 'fresh' | 'legacy') {
     ok((await play('GET', g.slug, A2)).body.saves.length === 0, `${g.slug}: delete`);
   }
   // --- Password change signs out other sessions -------------------------------------------------
-  const carolLogin = await auth('login', { username: 'carol', password: 'secret1' });
+  const carolLogin = await auth('login', { username: 'carol', password: 'secret11' });
   const C1 = carolLogin.body.token as string;
   await new Promise(r => setTimeout(r, 1100)); // tokens carry whole seconds; make the change strictly later
-  const changed = await call(handlers.profile, 'PATCH', {}, { currentPassword: 'secret1', newPassword: 'secret2' }, C1);
+  const changed = await call(handlers.profile, 'PATCH', {}, { currentPassword: 'secret11', newPassword: 'secret22' }, C1);
   ok(changed.status === 200 && typeof changed.body.token === 'string', 'password change: returns a fresh token');
   ok((await call(handlers.profile, 'GET', {}, undefined, C1)).status === 401, 'password change: older session signed out');
   ok((await call(handlers.profile, 'GET', {}, undefined, changed.body.token)).status === 200, 'password change: fresh token works');
-  ok((await call(handlers.profile, 'PATCH', {}, { currentPassword: 'secret2', newEmail: 'nope' }, changed.body.token)).status === 400, 'profile: invalid email refused');
+  ok((await call(handlers.profile, 'PATCH', {}, { currentPassword: 'secret22', newEmail: 'nope' }, changed.body.token)).status === 400, 'profile: invalid email refused');
   await new Promise(r => setTimeout(r, 1100));
   const reset2 = await adminApi('POST', 'reset-password', T, { id: carolLogin.body.userId });
   ok(reset2.status === 200, 'reset: carol reset by admin');
   ok((await call(handlers.profile, 'GET', {}, undefined, changed.body.token)).status === 401, 'reset: signs the player out everywhere');
 
   // --- Account deletion -------------------------------------------------------------------------------
-  const tomSelf = await call(handlers.profile, 'DELETE', {}, { password: 'secret1' }, T);
+  const tomSelf = await call(handlers.profile, 'DELETE', {}, { password: 'secret11' }, T);
   ok(tomSelf.status === 409, 'delete: the only admin cannot delete their account');
   const annDel = await auth('login', { username: 'ann', password: reset.body.temporaryPassword });
   const AD = annDel.body.token as string;
@@ -370,7 +461,6 @@ async function suite(mode: 'fresh' | 'legacy') {
     }
   }
 
-  delete process.env.ADMIN_USERNAMES;
 }
 
 (async () => {

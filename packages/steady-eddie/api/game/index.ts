@@ -3,8 +3,9 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
-import { isGameId, saveState, sendSaveResult } from '../_lib/saves';
+import { cleanName, cleanNames, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState } from '../../src/sim/state';
+import { MAX_HAULIERS } from '../../src/sim/rules';
 
 /**
  * The same `games` table Thrash Margin and Niccolo use — one Postgres/Supabase instance, one
@@ -82,12 +83,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (id === undefined) {
     if (req.method === 'POST') {
-      const name: string = ((req.body?.name as string | undefined) ?? 'Run').trim();
-      const humanNames: string[] = Array.isArray(req.body?.humanNames)
-        ? (req.body.humanNames as unknown[]).filter((n): n is string => typeof n === 'string')
-        : ['You'];
+      const name = cleanName(req.body?.name, 'Run');
+      const humanNames = cleanNames(req.body?.humanNames, MAX_HAULIERS, ['You']);
       const aiCount = Number.isFinite(req.body?.aiCount) ? Number(req.body.aiCount) : 3;
-      const seed = typeof req.body?.seed === 'string' ? req.body.seed : undefined;
+      const seed = typeof req.body?.seed === 'string' ? req.body.seed.slice(0, 64) : undefined;
 
       const newId = uuid();
       const state = createInitialState(newId, name, {
@@ -100,11 +99,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
 
       try {
-        await db.query(
-          `INSERT INTO games (id, owner_id, game, mode, status, turn, state, config)
-           VALUES ($1, $2, $3, 'single', 'active', $4, $5, '{}')`,
-          [newId, user.userId, GAME_KIND, state.round, JSON.stringify(state)],
-        );
+        const created = await createGame(db, {
+          id: newId, ownerId: user.userId, game: GAME_KIND, status: 'active', turn: state.round, state, config: {},
+        });
+        if (!created) return sendGameLimit(res);
         return res.status(201).json({ gameId: newId, state, version: 0 });
       } catch (err) {
         console.error('create steady-eddie game error', err);

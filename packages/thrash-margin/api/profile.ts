@@ -2,9 +2,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
 import { getDb } from './_lib/db';
 import { requireUser, signToken } from './_lib/auth';
-import { isEmail } from './_lib/validate';
+import { isEmail, MIN_PASSWORD } from './_lib/validate';
 import { handleCors } from './_lib/cors';
-import { isAdmin } from './_lib/admin';
+import { isAdmin, lockAdmins } from './_lib/admin';
 import { countsByGame, GAMES_BY_TITLE_SQL } from '../shared/games';
 
 // /api/profile — a signed-in user's own account. Unlike /api/admin/users, this only ever
@@ -55,8 +55,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { currentPassword, newEmail, newPassword } = req.body ?? {};
     if (!currentPassword) return res.status(400).json({ message: 'Current password is required' });
     if (!newEmail && !newPassword) return res.status(400).json({ message: 'Nothing to update' });
-    if (newPassword && String(newPassword).length < 6) {
-      return res.status(400).json({ message: 'New password must be at least 6 characters' });
+    if (newPassword && String(newPassword).length < MIN_PASSWORD) {
+      return res.status(400).json({ message: `New password must be at least ${MIN_PASSWORD} characters` });
     }
     if (newEmail && !isEmail(newEmail)) return res.status(400).json({ message: 'Enter a valid email address' });
 
@@ -107,17 +107,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (!(await bcrypt.compare(password, row.password))) {
         return res.status(403).json({ message: 'Password is incorrect' });
       }
-      if (row.role === 'admin') {
-        const { rows: admins } = await db.query(`SELECT COUNT(*)::int AS n FROM users WHERE role = 'admin'`);
-        if (admins[0].n <= 1) {
+      const c = await db.connect();
+      try {
+        await c.query('BEGIN');
+        // Counted inside the transaction with the admin rows locked, so two admins deleting their
+        // accounts at the same moment cannot both pass and leave the portal with none.
+        const admins = await lockAdmins(c, user.userId);
+        if (admins.stillAdmin && admins.count <= 1) {
+          await c.query('ROLLBACK');
           return res.status(409).json({
             message: 'You are the only admin. Make someone else an admin first, then delete your account.',
           });
         }
-      }
-      const c = await db.connect();
-      try {
-        await c.query('BEGIN');
         await c.query('DELETE FROM login_failures WHERE username_key = LOWER($1)', [row.username]);
         await c.query(`DELETE FROM rate_events WHERE bucket = 'feedback' AND key = $1`, [user.userId]);
         await c.query('DELETE FROM users WHERE id = $1', [user.userId]);
