@@ -7,6 +7,11 @@ import { newSeed, type GameHook, type SaveMeta, type SaveStatus } from './types'
 import { SAVE_MESSAGES } from '../lib/saveQueue';
 
 const SAVE_DELAY_MS = 700;
+// After a failed save (network error, 5xx and the like) the retry waits, doubling from the first
+// value to the cap, and the wait resets on the next successful save. Without it the re-queued save
+// went straight back out, so every open tab resent it in a tight loop for as long as the API was down.
+const RETRY_FIRST_MS = 2_000;
+const RETRY_MAX_MS = 60_000;
 
 /**
  * Cloud persistence for signed-in players, on the same `games` table the other three games use
@@ -32,6 +37,8 @@ export function useGameCloud(): GameHook {
   // stops saving and says why.
   const version = useRef<number | undefined>(undefined);
   const halted = useRef(false);
+  // The wait before the next automatic retry; 0 while saves are succeeding.
+  const retryDelay = useRef(0);
 
   const fetchSaves = useCallback(async () => {
     try {
@@ -64,6 +71,7 @@ export function useGameCloud(): GameHook {
     pending.current = null;
     setSaveStatus('saving');
     const body = JSON.stringify({ state: s, version: version.current });
+    let failed = false;
     const run = (async () => {
       try {
         const res = await fetch(`${API}/api/play/thrash-margin?id=${encodeURIComponent(s.id)}`, {
@@ -90,9 +98,14 @@ export function useGameCloud(): GameHook {
         else {
           const data = await res.json().catch(() => ({}));
           if (typeof data.version === 'number' && ref.current?.id === s.id) version.current = data.version;
+          retryDelay.current = 0;
           setSaveStatus(pending.current ? 'saving' : 'saved');
         }
       } catch {
+        failed = true;
+        retryDelay.current = retryDelay.current
+          ? Math.min(retryDelay.current * 2, RETRY_MAX_MS)
+          : RETRY_FIRST_MS;
         setSaveStatus('error');
         // Keep it queued so the next change or End Turn retries, unless something newer is waiting.
         if (!pending.current && !halted.current) pending.current = s;
@@ -101,7 +114,12 @@ export function useGameCloud(): GameHook {
     inFlight.current = run;
     await run;
     inFlight.current = null;
-    if (pending.current && !timer.current && !closing) void flush();
+    if (pending.current && !timer.current && !closing) {
+      // A failed save waits out the backoff. A new move or End Turn still goes through queueSave,
+      // which replaces this timer and sends the latest state on its usual schedule.
+      if (failed) timer.current = window.setTimeout(() => { void flush(); }, retryDelay.current);
+      else void flush();
+    }
   }, []);
 
   const queueSave = useCallback((s: GameState, now: boolean) => {
@@ -136,6 +154,7 @@ export function useGameCloud(): GameHook {
       ref.current = s;
       version.current = typeof data.version === 'number' ? data.version : undefined;
       halted.current = false;
+      retryDelay.current = 0;
       setState(s);
       setSaveStatus('saved');
       void fetchSaves();
@@ -160,6 +179,7 @@ export function useGameCloud(): GameHook {
       ref.current = s;
       version.current = typeof data.version === 'number' ? data.version : undefined;
       halted.current = false;
+      retryDelay.current = 0;
       setState(s);
       setSaveStatus('saved');
     } catch {
