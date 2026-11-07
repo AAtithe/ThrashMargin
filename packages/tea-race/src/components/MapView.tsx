@@ -310,6 +310,12 @@ export default function MapView({
               />
             )}
             <circle
+              /* Only the centre copy carries the id. The chart is drawn three times over
+                 (`WORLD_COPIES`) so a Pacific course looks continuous, and putting an id on every
+                 copy would both be invalid HTML and hand `getElementById` — which the guided tour
+                 uses to place its spotlight — the western copy, sitting a full chart width
+                 off-screen. */
+              id={offset === 0 ? `port-node-${port.id}` : undefined}
               cx={p.x}
               cy={p.y}
               r={hoveredPort === port.id ? 6 : 4}

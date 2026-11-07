@@ -173,6 +173,7 @@ export default function PortPanel({
             return (
               <Button
                 key={c.id}
+                id={`contract-land-${c.id}`}
                 tone="primary"
                 disabled={!enabled}
                 title={`Every matching slot lands at once and is paid per unit`}
@@ -208,6 +209,7 @@ export default function PortPanel({
                 return (
                   <Button
                     key={id}
+                    id={`market-buy-${id}`}
                     disabled={!enabled || !afford}
                     title={
                       afford
@@ -284,6 +286,7 @@ export default function PortPanel({
                 <span key={good} style={{ display: 'inline-flex', gap: '0.3rem' }}>
                   {sellable && port && (
                     <Button
+                      id={`market-sell-${good}`}
                       disabled={!enabled}
                       title={`${port.name} will take them at ${money(
                         paysFor(port.id, good),
@@ -410,6 +413,7 @@ export default function PortPanel({
             )}
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               <Button
+                id="cast-off-button"
                 tone="primary"
                 disabled={!enabled}
                 onClick={() => {

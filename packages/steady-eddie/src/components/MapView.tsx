@@ -278,6 +278,7 @@ export default function MapView({
               />
             )}
             <circle
+              id={`depot-node-${depot.id}`}
               cx={p.x}
               cy={p.y}
               r={hoveredDepot === depot.id ? 6 : 4}

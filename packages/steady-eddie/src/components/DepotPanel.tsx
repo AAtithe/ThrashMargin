@@ -165,6 +165,7 @@ export default function DepotPanel({
             return (
               <Button
                 key={c.id}
+                id={`contract-land-${c.id}`}
                 tone="primary"
                 disabled={!enabled || struck}
                 title={
@@ -207,6 +208,7 @@ export default function DepotPanel({
                 return (
                   <Button
                     key={id}
+                    id={`market-buy-${id}`}
                     disabled={!enabled || !afford || embargoed}
                     title={
                       embargoed
@@ -255,6 +257,7 @@ export default function DepotPanel({
                 <span key={good} style={{ display: 'inline-flex', gap: '0.3rem' }}>
                   {sellable && depot && (
                     <Button
+                      id={`market-sell-${good}`}
                       disabled={!enabled}
                       title={`${depot.name} will take them at ${money(
                         depotSalePrice(depot.id, good),
@@ -378,6 +381,7 @@ export default function DepotPanel({
             )}
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               <Button
+                id="set-off-button"
                 tone="primary"
                 disabled={!enabled}
                 onClick={() => {

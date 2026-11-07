@@ -104,6 +104,13 @@ export default function Tutorial() {
           If a ship is left in port with her dice unspent, the end-turn button will stop and tell you
           before you waste the roll.
         </p>
+        <p style={para}>
+          You do not have to take any of this on trust. Start a game and the walkthrough offers
+          itself on the opening turn: it points at the control you want next, waits until you use it,
+          and works through a real first run on the board you were actually dealt. It is reachable
+          afterwards from <strong>Walk me through a turn</strong> in the game's header, for as long as
+          the position still fits.
+        </p>
       </Panel>
 
       <Panel title="The mistakes that cost the most">

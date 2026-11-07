@@ -559,6 +559,45 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
+### Session 12 (2026-11-07) — a hands-on walkthrough, and three ports' worth of duplicate ids
+
+The static `/how-to-play` page answers the questions a new captain asks, but it answers them
+*before* they are standing in front of the board. This session added the other half:
+`components/GuidedTour.tsx`, a coach-mark walkthrough that spotlights a real control (found by DOM
+id, boxed with `getBoundingClientRect`, everything else dimmed) and advances only when the player
+performs the real action. The game underneath is the live game — nothing is sandboxed, and
+everything done in the tour counts.
+
+**The script is computed, not authored, and that is the whole design.** Banco di Niccolò's tour can
+name a city and a good outright because its opening position is scripted. This one cannot: the five
+commissions are dealt from a shuffled deck against the save's own seed, so "buy tea and run it to
+Foochow" would be wrong in most games. `planFirstRun` reads the live board instead and picks a real
+first run out of it — a live commission for something Liverpool already sells if there is one,
+otherwise the commission whose nearest seller is closest, with the copy changing to match. Every
+completion test is deliberately loose (a player who does something sensible but different still
+counts as having done the step), and every working step carries a "Skip step" control, because a
+tour entered on a board its suggestion does not suit must never trap anybody.
+
+**A real bug found by the tour, in the chart rather than the tour.** `MapView` draws the whole world
+three times over (`WORLD_COPIES`) so a Pacific course looks continuous. Putting a plain `id` on each
+port mark therefore produced three elements sharing one id — invalid HTML, and `getElementById`
+hands back the *western* copy, a full chart width off-screen. The spotlight pointed at nothing.
+Fixed by scoping the id to the centre copy only. Worth remembering for anything else that ever wants
+to address a port mark from outside the SVG.
+
+Ids added for this: `roll-button`, `end-turn-button`, `contract-card-{id}`, `port-node-{id}`,
+`market-buy-{good}`, `market-sell-{good}`, `contract-land-{id}`, `cast-off-button`,
+`buy-share-button`. `components/ui.tsx`'s `Button` now forwards an optional `id`; nothing but the
+tour reads any of them.
+
+**Verification.** `tsc --noEmit` and `vite build` clean; `npm run drive` 369,678 checks, 0 failed.
+Driven live in a real browser rather than reasoned about — both because this adds hooks to
+`GameScreen` (a hook after an early return typechecks, passes the harness, and shows a blank page)
+and because a spotlight is a claim about pixels. All eight steps walked end to end on a dealt board:
+the buy step auto-advanced on a real purchase (£600 → £548 for a lot of cloth at Liverpool), the
+spotlight boxed the actual "Cloth £52" button, leaving and re-entering from the header worked, and a
+second game in the same browser correctly did not re-offer the tour. No console errors.
+
 ### Session 11 (2026-08-22) — free play made reachable, and a silent transport bug
 
 Voyage mode was built the session before. Checking whether it was actually *playable* found something

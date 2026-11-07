@@ -19,6 +19,11 @@ import { vehiclesAwaitingOrders } from '../sim/attention';
 import HauliersTable from '../components/HauliersTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
+import GuidedTour, {
+  canRunGuidedTour,
+  hasSeenGuidedTour,
+  markGuidedTourSeen,
+} from '../components/GuidedTour';
 import { Button, bodySmall, dataText } from '../components/ui';
 import type { Contract, DepotId } from '../sim/types';
 
@@ -69,6 +74,24 @@ export default function GameScreen() {
         : [],
     [state, haulier],
   );
+  /**
+   * The guided walkthrough.
+   *
+   * Both of these are hooks, so they live above the `if (!state)` bail-out below. A hook placed
+   * after an early return renders conditionally, which typechecks, passes the harness, and shows up
+   * only as a blank screen in a browser.
+   */
+  const [tourOpen, setTourOpen] = useState(false);
+  const tourEligible = canRunGuidedTour(state, haulier?.id ?? null) && haulier?.kind === 'human';
+  // Offered once per browser, on the first game that is actually at the position the script
+  // describes. Dismissal is a browser preference, not save data.
+  useEffect(() => {
+    if (tourEligible && !hasSeenGuidedTour()) {
+      markGuidedTourSeen();
+      setTourOpen(true);
+    }
+  }, [tourEligible]);
+
   const [confirmingEnd, setConfirmingEnd] = useState(false);
   // Never carry a half-pressed confirmation into somebody else's turn.
   useEffect(() => {
@@ -153,9 +176,16 @@ export default function GameScreen() {
           </div>
         )}
 
-        <Button tone="quiet" onClick={() => navigate('/')}>
-          Lobby
-        </Button>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          {tourEligible && !tourOpen && (
+            <Button tone="quiet" onClick={() => setTourOpen(true)}>
+              Walk me through a turn
+            </Button>
+          )}
+          <Button tone="quiet" onClick={() => navigate('/')}>
+            Lobby
+          </Button>
+        </div>
       </header>
 
       {/* --- The season ------------------------------------------------------------------- */}
@@ -233,7 +263,7 @@ export default function GameScreen() {
               </span>
             ) : mustRoll ? (
               <>
-                <Button tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
+                <Button id="roll-button" tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
                   Roll for the day — {myVehicles.length === 1 ? 'her' : 'the fleet'}
                 </Button>
                 <span style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
@@ -243,6 +273,7 @@ export default function GameScreen() {
             ) : canAct ? (
               <>
                 <Button
+                  id="end-turn-button"
                   tone={confirmingEnd ? 'primary' : undefined}
                   onClick={() => {
                     // One extra click, never a block: waiting in depot for cash or a better card is
@@ -350,6 +381,21 @@ export default function GameScreen() {
           <ChronicleLog log={state.log} hauliers={state.hauliers} />
         </aside>
       </main>
+
+      {/* The walkthrough sits above the board but below the handover and victory overlays — it
+          points at live controls, so it must never be up while those are blocking them. */}
+      {tourOpen && haulier && !over && state.phase !== 'handover' && (
+        <GuidedTour
+          state={state}
+          haulierId={haulier.id}
+          targetDepot={targetDepot}
+          focusedContractId={focusedContract?.id ?? null}
+          onFinish={() => {
+            markGuidedTourSeen();
+            setTourOpen(false);
+          }}
+        />
+      )}
 
       {/* Notable events pop as cards so the game can be watched rather than read. */}
       <EventCards log={state.log} hauliers={state.hauliers} viewerId={haulier?.id ?? null} />

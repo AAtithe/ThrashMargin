@@ -160,6 +160,48 @@ catch-all `[[...id]].ts` function apiece (thrash-margin, niccolo, tea-race first
 steady-eddie built the same way from day one) — 11 → 8 → 9 functions, with headroom for a fifth game
 before this needs revisiting.
 
+## 8a. Build log
+
+### Session 2 (2026-11-07) — onboarding: a how-to-play page and a hands-on walkthrough
+
+This fork shipped complete and shipped without either. Both now exist, built from The Tea Race's own
+pair and then corrected where the fork genuinely differs.
+
+**`pages/Tutorial.tsx` at `/how-to-play`.** Every figure is read from `sim/rules.ts`, `sim/events.ts`
+and `sim/pricing.ts` rather than written out, for the same reason the parent game's page does it:
+these constants have been retuned repeatedly and a hardcoded wage rate would be lying to players
+within the hour. Two numbers in particular are read rather than copied from the parent, because they
+are exactly where the fork diverges — the default 7.5-tonner carries **two** pallets where the
+clipper carried three, and the home depot's supply list is **empty**.
+
+**That empty supply list is the fork's defining opening, and nothing said so.** London is a
+distribution hub, not a producer: it stocks nothing at all, so *every* first move in Steady Eddie is
+a run out empty to wherever the load actually is. A tour written as "load up and go" — which is what
+the parent game's opening is — would have been wrong on turn one of every single game. The page
+calls it out explicitly, and the walkthrough has a step that detects it and says so.
+
+**`components/GuidedTour.tsx`**, forked from The Tea Race's own (see that game's Session 12 entry for
+the design reasoning, which holds here unchanged): a coach-mark walkthrough over the live game,
+spotlighting real controls by DOM id and advancing only on the real action, with its script computed
+from the dealt board rather than authored.
+
+**A factual error in the lobby's own blurb, fixed while here.** It read "each naming a cargo, the
+depot that sells it and the depot that wants it" — the exact source-lock misreading the engine
+already paid once to find and fix. A contract names the consignee and no supplier; sourcing is the
+player's decision, and the whole of §2's inherited economics rests on it. The blurb now says so, and
+reads its multipliers from `PAYOUT_MULTIPLIERS` instead of spelling out "four times, then twice".
+
+Ids added: `roll-button`, `end-turn-button`, `contract-card-{id}`, `depot-node-{id}`,
+`market-buy-{good}`, `market-sell-{good}`, `contract-land-{id}`, `set-off-button`,
+`buy-share-button`. `components/ui.tsx`'s `Button` now forwards an optional `id`.
+
+**Verification.** `tsc --noEmit` and `vite build` clean; `npm run drive` 361,127 checks, 0 failed.
+Driven live in a browser, not reasoned about — this adds hooks to `GameScreen`, and a hook after an
+early return typechecks, passes the harness and renders a blank page. All eight steps walked end to
+end on a dealt board, including the "Nothing loads here" branch firing correctly at London; leaving
+and re-entering from the header worked, and a second game in the same browser correctly did not
+re-offer the tour. No console errors.
+
 ## 9. Attribution
 
 After *Ocean Trader* (Clipper Games Ltd, 1988), by way of **The Tea Race** — see
