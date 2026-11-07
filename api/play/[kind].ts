@@ -24,7 +24,9 @@ const HANDLERS: Record<string, (req: VercelRequest, res: VercelResponse) => unkn
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   const kind = Array.isArray(req.query.kind) ? req.query.kind[0] : req.query.kind;
-  const run = kind ? HANDLERS[kind] : undefined;
+  // Own keys only: a plain lookup would find Object.prototype's members, so /api/play/constructor
+  // ran Object(req, res), which never answers and held the function open until it timed out.
+  const run = kind && Object.prototype.hasOwnProperty.call(HANDLERS, kind) ? HANDLERS[kind] : undefined;
   if (!run) return res.status(404).json({ message: 'Unknown game' });
   return run(req, res);
 }

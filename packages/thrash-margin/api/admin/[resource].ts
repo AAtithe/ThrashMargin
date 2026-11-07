@@ -5,7 +5,7 @@ import bcrypt from 'bcryptjs';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
-import { isAdmin, recordAudit } from '../_lib/admin';
+import { isAdmin, lockAdmins, recordAudit } from '../_lib/admin';
 import { countsByGame, GAMES_BY_TITLE_SQL } from '../../shared/games';
 
 // Combines what were two separate functions (users.ts, feedback.ts) into one, dispatching on
@@ -88,6 +88,8 @@ async function updateUserRole(req: VercelRequest, res: VercelResponse, callerId:
   }
   try {
     const found = await inTransaction(async c => {
+      // The caller was an admin when the request began; another admin may have removed them since.
+      if (!(await lockAdmins(c, callerId)).stillAdmin) return 'forbidden' as const;
       const names = await usernames(c, [callerId, id]);
       const target = names.get(id);
       if (!target) return false;
@@ -102,6 +104,7 @@ async function updateUserRole(req: VercelRequest, res: VercelResponse, callerId:
       });
       return true;
     });
+    if (found === 'forbidden') return res.status(403).json({ message: 'Admin access only' });
     if (!found) return res.status(404).json({ message: 'User not found' });
     return res.json({ success: true });
   } catch (err) {
@@ -109,6 +112,8 @@ async function updateUserRole(req: VercelRequest, res: VercelResponse, callerId:
     return res.status(500).json({ message: 'Server error' });
   }
 }
+
+const RECENT_ADMIN_DAYS = 30;
 
 // Unambiguous characters only (no 0/O, 1/l/I), so it can be read out or typed from a message.
 const TEMP_ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -123,8 +128,11 @@ function temporaryPassword(): string {
 //
 // Not for your own account (use Profile, which asks for the current password) and not for another
 // admin's: an admin able to reset another admin's password could take over that account, so admin
-// accounts change their own passwords only. Clears the account's failed sign-in count, so a
-// player locked out by the attempt limit can sign in straight away.
+// accounts change their own passwords only. Nor for an account that stopped being an admin in the
+// last RECENT_ADMIN_DAYS: otherwise one admin could demote another, reset their password, sign in
+// as them and promote them back, taking the account over in three logged but unprevented steps.
+// Clears the account's failed sign-in count, so a player locked out by the attempt limit can sign
+// in straight away.
 async function resetPassword(req: VercelRequest, res: VercelResponse, callerId: string) {
   const { id } = req.body ?? {};
   if (typeof id !== 'string' || !UUID_RE.test(id)) return res.status(400).json({ message: 'id required' });
@@ -139,6 +147,13 @@ async function resetPassword(req: VercelRequest, res: VercelResponse, callerId: 
       const target = names.get(id);
       if (!target) return 'not_found' as const;
       if (target.role === 'admin') return 'admin' as const;
+      const { rowCount: wasAdmin } = await c.query(
+        `SELECT 1 FROM admin_audit
+         WHERE target_id = $1 AND action = 'remove_admin' AND at > NOW() - make_interval(days => $2)
+         LIMIT 1`,
+        [id, RECENT_ADMIN_DAYS],
+      );
+      if (wasAdmin) return 'recent_admin' as const;
       // Also signs the player out everywhere (api/_lib/auth.ts), in case the account was taken over.
       await c.query('UPDATE users SET password = $1, password_changed_at = NOW() WHERE id = $2', [hash, id]);
       await c.query('DELETE FROM login_failures WHERE username_key = LOWER($1)', [target.username]);
@@ -154,6 +169,11 @@ async function resetPassword(req: VercelRequest, res: VercelResponse, callerId: 
     if (outcome === 'not_found') return res.status(404).json({ message: 'User not found' });
     if (outcome === 'admin') {
       return res.status(403).json({ message: "Admins change their own password on their Profile page." });
+    }
+    if (outcome === 'recent_admin') {
+      return res.status(403).json({
+        message: `This account was an admin within the last ${RECENT_ADMIN_DAYS} days, so its password cannot be reset here. Its owner can change it on their Profile page.`,
+      });
     }
     return res.json({ temporaryPassword: password });
   } catch (err) {
@@ -214,7 +234,7 @@ async function listFeedback(res: VercelResponse) {
 
 async function updateFeedback(req: VercelRequest, res: VercelResponse) {
   const { id, status } = req.body ?? {};
-  if (!id || (status !== 'open' && status !== 'resolved')) {
+  if (typeof id !== 'string' || !UUID_RE.test(id) || (status !== 'open' && status !== 'resolved')) {
     return res.status(400).json({ message: 'id and status (open|resolved) required' });
   }
   const db = getDb();

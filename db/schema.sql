@@ -80,8 +80,10 @@ CREATE TABLE IF NOT EXISTS feedback (
 CREATE TABLE IF NOT EXISTS login_failures (
   id            BIGSERIAL PRIMARY KEY,
   username_key  VARCHAR(64) NOT NULL,
+  address       VARCHAR(64),             -- the caller's network (IPv6 cut to its /64); see auth/[mode].ts
   at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE login_failures ADD COLUMN IF NOT EXISTS address VARCHAR(64);
 
 -- Permanent record of access changes made on the Admin page. Usernames are copied in so the history
 -- still reads correctly after an account is deleted.
@@ -110,6 +112,7 @@ CREATE TABLE IF NOT EXISTS rate_events (
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_rate_events ON rate_events (bucket, key, at);
 CREATE INDEX IF NOT EXISTS idx_login_failures_key_at ON login_failures (username_key, at);
+CREATE INDEX IF NOT EXISTS idx_login_failures_address_at ON login_failures (address, at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit (at DESC);
 CREATE INDEX IF NOT EXISTS idx_games_owner    ON games(owner_id);
 CREATE INDEX IF NOT EXISTS idx_games_status   ON games(status);

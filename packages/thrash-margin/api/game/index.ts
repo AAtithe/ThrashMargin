@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
-import { isGameId, saveState, sendSaveResult } from '../_lib/saves';
+import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState, sanitizeConfig } from '../../shared/sim';
 
 /**
@@ -42,16 +42,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // sanitizeConfig copies only known keys through a clamp, so the body cannot smuggle in an
       // out-of-range or unknown setting.
       const config = sanitizeConfig(req.body?.config ?? {});
-      const name = String(req.body?.name ?? '').trim().slice(0, 40) || 'Campaign';
+      const name = cleanName(req.body?.name, 'Campaign');
       const rawSeed = Number(req.body?.seed);
       const seed = Number.isFinite(rawSeed) ? rawSeed >>> 0 : Math.floor(Math.random() * 0xffffffff) >>> 0;
       const newId = uuid();
       const state = createInitialState(newId, config, { seed, createdAt: Date.now(), name });
       try {
-        await db.query(
-          'INSERT INTO games (id, owner_id, game, mode, status, turn, state, config) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [newId, user.userId, GAME_KIND, 'single', state.status, state.turn, JSON.stringify(state), JSON.stringify(state.config)],
-        );
+        const created = await createGame(db, {
+          id: newId, ownerId: user.userId, game: GAME_KIND,
+          status: state.status, turn: state.turn, state, config: state.config,
+        });
+        if (!created) return sendGameLimit(res);
         return res.status(201).json({ gameId: newId, state, version: 0 });
       } catch (err) {
         console.error('create game error', err);

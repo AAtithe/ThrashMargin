@@ -47,9 +47,27 @@ export async function recordEvent(db: Pool, limit: Limit, key: string): Promise<
   }
 }
 
-/** The caller's network address. On Vercel, x-forwarded-for is set by the platform itself. */
+/**
+ * The caller's network, as a rate-limit key. On Vercel, x-forwarded-for is set by the platform itself.
+ *
+ * An IPv6 address is cut to its /64: one connection is normally handed a whole /64, so counting
+ * full addresses would let one person rotate through billions of them and never reach a limit.
+ */
 export function clientAddress(req: VercelRequest): string {
   const fwd = req.headers['x-forwarded-for'];
   const first = (Array.isArray(fwd) ? fwd[0] : fwd ?? '').split(',')[0].trim();
-  return first || req.socket?.remoteAddress || 'unknown';
+  return networkKey(first || req.socket?.remoteAddress || 'unknown');
+}
+
+export function networkKey(address: string): string {
+  const a = address.trim().toLowerCase().replace(/^\[|\]$/g, '').replace(/%.*$/, '');
+  if (!a.includes(':')) return a; // IPv4, or 'unknown'
+  const mapped = a.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return mapped[1];
+  const [head, tail] = a.split('::');
+  const h = head ? head.split(':') : [];
+  const t = tail !== undefined && tail ? tail.split(':') : [];
+  const groups = tail === undefined ? h : [...h, ...Array(Math.max(0, 8 - h.length - t.length)).fill('0'), ...t];
+  if (groups.length !== 8 || groups.some(g => !/^[0-9a-f]{1,4}$/.test(g))) return a.slice(0, 64);
+  return groups.slice(0, 4).map(g => g.replace(/^0+(?=.)/, '')).join(':') + '::/64';
 }

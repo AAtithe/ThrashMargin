@@ -80,6 +80,12 @@ export function useGameCloud(): GameHook {
           setError(res.status === 409 ? SAVE_MESSAGES.conflict : SAVE_MESSAGES.missing);
           setSaveStatus('error');
         }
+        else if (res.status === 413) {
+          // Over the save or storage limit: say so (a network error message would mislead). Not
+          // re-queued, which would resend it at once in a loop; the next move saves the latest state.
+          setError(SAVE_MESSAGES.full);
+          setSaveStatus('error');
+        }
         else if (!res.ok) throw new Error(String(res.status));
         else {
           const data = await res.json().catch(() => ({}));

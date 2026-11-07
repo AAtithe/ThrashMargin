@@ -8,22 +8,16 @@ import { ensureSchema } from './schema';
 // and a removed admin must lose access on their next request, not when their token expires.
 //
 // Nothing has to be run by hand: the role column is added by ensureSchema (./schema.ts).
-// While no account is an admin yet, the first admin is set automatically when they
-// sign in (or load the welcome page), if either:
-//   - their username is in the old ADMIN_USERNAMES setting, ignoring capitals, and no other
-//     account shares that name ignoring capitals (so 'Tom' and 'tom' can never both qualify), or
-//   - theirs is the oldest account on the portal, i.e. the owner who set it up.
-// Once any admin exists neither rule is ever used again, and the setting can be deleted.
+// While no account is an admin yet, the oldest account on the portal (the owner who set it up)
+// becomes admin automatically when it signs in or loads the welcome page. Once any admin exists this
+// is never used again.
+//
+// There used to be a second route: any username listed in the old ADMIN_USERNAMES setting. Removed
+// after the November 2026 security review: while the portal had no admin, anyone who registered a
+// listed name nobody had taken yet would have been made admin. The setting is no longer read and can
+// be deleted from Vercel.
 //
 // Fails closed. Any error means "not an admin".
-
-// Old setting, lower-cased for the handover below.
-function legacyAdminNames(): string[] {
-  return (process.env.ADMIN_USERNAMES ?? '')
-    .split(',')
-    .map(s => s.trim().toLowerCase())
-    .filter(Boolean);
-}
 
 export async function isAdmin(db: Pool, userId: string): Promise<boolean> {
   try {
@@ -34,17 +28,13 @@ export async function isAdmin(db: Pool, userId: string): Promise<boolean> {
     if (row.role === 'admin') return true;
 
     // One statement, so "no admin yet" and the promotion cannot interleave with another sign-in:
-    // once anyone is an admin, this matches nothing.
+    // once anyone is an admin, this matches nothing. Only one row can ever qualify.
     const { rowCount } = await db.query(
       `UPDATE users u SET role = 'admin'
        WHERE u.id = $1
          AND NOT EXISTS (SELECT 1 FROM users WHERE role = 'admin')
-         AND (
-           (LOWER(u.username) = ANY($2::text[])
-             AND (SELECT COUNT(*) FROM users WHERE LOWER(username) = LOWER(u.username)) = 1)
-           OR u.id = (SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1)
-         )`,
-      [userId, legacyAdminNames()],
+         AND u.id = (SELECT id FROM users ORDER BY created_at ASC, id ASC LIMIT 1)`,
+      [userId],
     );
     if (rowCount) console.log(`admin bootstrap: ${userId} promoted as first admin`);
     return !!rowCount;
@@ -52,6 +42,18 @@ export async function isAdmin(db: Pool, userId: string): Promise<boolean> {
     console.error('admin role lookup failed', err);
     return false;
   }
+}
+
+/**
+ * Inside a transaction: locks every admin row until it ends and answers whether `userId` is still
+ * one of them. Every change that could remove an admin (a demotion, deleting an admin's account)
+ * calls this first, so two such changes run one after the other and the second sees the first.
+ * Without it, two admins demoting each other at the same moment both passed their checks and left
+ * the portal with no admin at all.
+ */
+export async function lockAdmins(c: { query: Pool['query'] }, userId: string): Promise<{ stillAdmin: boolean; count: number }> {
+  const { rows } = await c.query(`SELECT id FROM users WHERE role = 'admin' FOR UPDATE`);
+  return { stillAdmin: rows.some(r => r.id === userId), count: rows.length };
 }
 
 export interface AuditEntry {

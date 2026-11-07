@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
-import { isGameId, saveState, sendSaveResult } from '../_lib/saves';
+import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState } from '../../src/sim/state';
 
 /**
@@ -34,19 +34,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (id === undefined) {
     if (req.method === 'POST') {
-      const rawName = typeof req.body?.name === 'string' ? req.body.name : '';
-      const name = rawName.trim().slice(0, 40) || 'Claes';
+      const name = cleanName(req.body?.name, 'Claes');
       const seed = typeof req.body?.seed === 'string' ? req.body.seed.slice(0, 64) : undefined;
       const newId = uuid();
       // The server's clock, not the client's, starts the character. The client is authoritative
       // after this (see the design doc, section 4), but creation at least starts honest.
       const state = createInitialState(newId, name, { seed, createdAt: Date.now() });
       try {
-        await db.query(
-          `INSERT INTO games (id, owner_id, game, mode, status, turn, state, config)
-           VALUES ($1, $2, $3, 'single', 'active', $4, $5, '{}')`,
-          [newId, user.userId, GAME_KIND, state.level, JSON.stringify(state)],
-        );
+        const created = await createGame(db, {
+          id: newId, ownerId: user.userId, game: GAME_KIND, status: 'active', turn: state.level, state, config: {},
+        });
+        if (!created) return sendGameLimit(res);
         return res.status(201).json({ gameId: newId, state, version: 0 });
       } catch (err) {
         console.error('create niccolo-rising game error', err);

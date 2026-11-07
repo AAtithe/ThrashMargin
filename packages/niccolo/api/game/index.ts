@@ -3,7 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
-import { isGameId, saveState, sendSaveResult } from '../_lib/saves';
+import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState } from '../../src/sim/state';
 import type { FreeplayGoal, RivalCount } from '../../src/sim/freeplay';
 
@@ -40,11 +40,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (id === undefined) {
     if (req.method === 'POST') {
-      const name: string = ((req.body?.name as string | undefined) ?? 'Campaign').trim();
+      const name = cleanName(req.body?.name, 'Campaign');
       const skipPrologue = req.body?.skipPrologue === true;
       const hideObjectives = req.body?.hideObjectives === true;
       const hotseatHouseId: string | null =
-        typeof req.body?.hotseatHouseId === 'string' ? req.body.hotseatHouseId : null;
+        typeof req.body?.hotseatHouseId === 'string' ? req.body.hotseatHouseId.slice(0, 64) : null;
       const freeplay = req.body?.freeplay === true;
       // Clamped rather than trusted: this arrives over the wire, and `createRivals` slices a fixed
       // seat list by it, so a nonsense value would silently produce a game with no opponents.
@@ -60,11 +60,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const state = createInitialState(newId, name, { skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals, freeplayGoal });
 
       try {
-        await db.query(
-          `INSERT INTO games (id, owner_id, game, mode, status, turn, state, config)
-           VALUES ($1, $2, $3, 'single', 'active', $4, $5, '{}')`,
-          [newId, user.userId, GAME_KIND, state.week, JSON.stringify(state)],
-        );
+        const created = await createGame(db, {
+          id: newId, ownerId: user.userId, game: GAME_KIND, status: 'active', turn: state.week, state, config: {},
+        });
+        if (!created) return sendGameLimit(res);
         return res.status(201).json({ gameId: newId, state, version: 0 });
       } catch (err) {
         console.error('create niccolo game error', err);

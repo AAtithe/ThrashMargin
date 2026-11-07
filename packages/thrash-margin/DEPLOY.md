@@ -22,10 +22,11 @@
    ```
    This is your `DATABASE_URL`.
 5. Admins: nothing to run. The role column and the `login_failures` and `admin_audit` tables
-   are added automatically on first use. On a database with no admin yet, the first admin is the
-   first sign-in matching `ADMIN_USERNAMES` (capitals ignored), or failing that the oldest account;
-   after that the variable is ignored and can be removed, and admins are granted and removed on
-   the portal's Admin page.
+   are added automatically on first use. On a database with no admin yet, the oldest account
+   becomes the first admin when it signs in; after that admins are granted and removed on the
+   portal's Admin page. (`ADMIN_USERNAMES` is no longer read; delete it from Vercel.)
+   Optionally, set `DATABASE_CA_CERT` to Supabase's CA certificate (Project Settings → Database →
+   SSL configuration) so the API verifies it is talking to the real database.
 6. Backups: in Supabase, **Database → Backups**, confirm daily backups are listed. The table
    definitions are in `db/schema.sql`, but the data exists only in Supabase and its backups.
 7. Uptime: point a free uptime monitor (for example UptimeRobot or Better Stack) at

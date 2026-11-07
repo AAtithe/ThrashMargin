@@ -89,6 +89,12 @@ async function apply(c: PoolClient): Promise<void> {
     await c.query(`CREATE INDEX IF NOT EXISTS idx_login_failures_key_at ON login_failures (username_key, at)`);
   }
 
+  // Failed sign-ins are also counted per network, not only per username (auth/[mode].ts).
+  if (!(await hasColumn(c, 'login_failures', 'address'))) {
+    await c.query(`ALTER TABLE login_failures ADD COLUMN IF NOT EXISTS address VARCHAR(64)`);
+    await c.query(`CREATE INDEX IF NOT EXISTS idx_login_failures_address_at ON login_failures (address, at)`);
+  }
+
   if (!(await hasTable(c, 'admin_audit'))) {
     await c.query(`
       CREATE TABLE IF NOT EXISTS admin_audit (
