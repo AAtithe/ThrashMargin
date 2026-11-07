@@ -194,6 +194,18 @@ async function suite(mode: 'fresh' | 'legacy') {
   const health = await call(handlers.health, 'GET', {});
   ok(health.status === 200 && health.body.database === 'ok', 'health: reports the database reachable');
 
+  // Supabase's pooler drops idle connections. With no 'error' listener on the pool, pg's report of
+  // that crashed the whole function instance, and the player saw "Network error" on starting a game.
+  {
+    const { getDb } = require(path.join(ROOT, 'packages/thrash-margin/api/_lib/db'));
+    const db = getDb();
+    const { rows: [{ pid }] } = await db.query('SELECT pg_backend_pid() AS pid');
+    await admin.query('SELECT pg_terminate_backend($1)', [pid]);
+    await new Promise(r => setTimeout(r, 300));
+    const after = await db.query('SELECT 1 AS n');
+    ok(after.rows[0].n === 1, 'database: a dropped idle connection is replaced, not fatal to the server');
+  }
+
   // --- Sign-in and first admin ----------------------------------------------------------------
   // The old ADMIN_USERNAMES route is gone: a listed name signing in first is not made admin.
   process.env.ADMIN_USERNAMES = 'ann';

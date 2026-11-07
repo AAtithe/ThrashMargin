@@ -41,13 +41,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'POST') {
       // sanitizeConfig copies only known keys through a clamp, so the body cannot smuggle in an
       // out-of-range or unknown setting.
-      const config = sanitizeConfig(req.body?.config ?? {});
-      const name = cleanName(req.body?.name, 'Campaign');
-      const rawSeed = Number(req.body?.seed);
-      const seed = Number.isFinite(rawSeed) ? rawSeed >>> 0 : Math.floor(Math.random() * 0xffffffff) >>> 0;
-      const newId = uuid();
-      const state = createInitialState(newId, config, { seed, createdAt: Date.now(), name });
+      // Inside the try: a throw here used to escape the handler, and Vercel answered with a
+      // plain-text 500 the browser reported as a network error.
       try {
+        const config = sanitizeConfig(req.body?.config ?? {});
+        const name = cleanName(req.body?.name, 'Campaign');
+        const rawSeed = Number(req.body?.seed);
+        const seed = Number.isFinite(rawSeed) ? rawSeed >>> 0 : Math.floor(Math.random() * 0xffffffff) >>> 0;
+        const newId = uuid();
+        const state = createInitialState(newId, config, { seed, createdAt: Date.now(), name });
         const created = await createGame(db, {
           id: newId, ownerId: user.userId, game: GAME_KIND,
           status: state.status, turn: state.turn, state, config: state.config,
