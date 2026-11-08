@@ -38,7 +38,10 @@ export interface Weapon {
   minRange?: number;
 }
 
-export type UnitKind = 'rifleman' | 'rocketeer' | 'hauler' | 'buggy' | 'tank' | 'artillery';
+/** Named special characters. Campaign-only: never in a build menu, never in a skirmish. */
+export type HeroKind = 'spy' | 'commando' | 'engineer' | 'ace';
+export const HERO_KINDS: HeroKind[] = ['spy', 'commando', 'engineer', 'ace'];
+export type UnitKind = 'rifleman' | 'rocketeer' | 'hauler' | 'buggy' | 'tank' | 'artillery' | HeroKind;
 export type BuildingKind = 'hq' | 'power' | 'refinery' | 'barracks' | 'factory' | 'turret' | 'uplink';
 export type Category = 'building' | 'infantry' | 'vehicle';
 
@@ -55,6 +58,8 @@ export interface UnitSpec {
   weapon?: Weapon;
   requires: BuildingKind[];
   blurb: string;
+  /** True for the four named heroes (campaign only). */
+  hero?: true;
 }
 
 export interface BuildingSpec {
@@ -149,6 +154,62 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     weapon: { kind: 'artillery', damage: 90, range: 9, cooldown: 55, splash: 1.2, minRange: 2 },
     requires: ['factory', 'uplink'],
     blurb: 'Long-range shells that land with splash. Outranges turrets; needs an escort.',
+  },
+  // ---- Heroes (campaign only). Numbers are at level 1; HERO_LEVELS scales them. ----------------
+  spy: {
+    name: 'The Spy',
+    category: 'infantry',
+    cost: 0,
+    buildTicks: 0,
+    hp: 80,
+    armor: 'infantry',
+    speed: 0.075,
+    sight: 7,
+    weapon: { kind: 'bullet', damage: 6, range: 2.5, cooldown: 14 },
+    requires: [],
+    blurb: 'Unseen by the enemy unless their troops come within two tiles. Infiltrates enemy structures.',
+    hero: true,
+  },
+  commando: {
+    name: 'The Commando',
+    category: 'infantry',
+    cost: 0,
+    buildTicks: 0,
+    hp: 160,
+    armor: 'infantry',
+    speed: 0.07,
+    sight: 7,
+    weapon: { kind: 'bullet', damage: 30, range: 4.5, cooldown: 9 },
+    requires: [],
+    blurb: 'A one-man army against infantry. Plants demolition charges that bring a structure down.',
+    hero: true,
+  },
+  engineer: {
+    name: 'The Engineer',
+    category: 'infantry',
+    cost: 0,
+    buildTicks: 0,
+    hp: 90,
+    armor: 'infantry',
+    speed: 0.065,
+    sight: 5,
+    requires: [],
+    blurb: 'Repairs damaged vehicles beside them and captures enemy structures (not a Command Yard).',
+    hero: true,
+  },
+  ace: {
+    name: 'The Ace',
+    category: 'vehicle',
+    cost: 0,
+    buildTicks: 0,
+    hp: 650,
+    armor: 'heavy',
+    speed: 0.11,
+    sight: 6,
+    weapon: { kind: 'shell', damage: 70, range: 5.25, cooldown: 22 },
+    requires: [],
+    blurb: 'A veteran tank commander in a prototype tank. Overdrive: faster and firing faster for a while.',
+    hero: true,
   },
 };
 
@@ -368,3 +429,95 @@ export const DIFFICULTIES: Record<Difficulty, DifficultySpec> = {
 export const DEFAULT_DIFFICULTY: Difficulty = 'normal';
 
 export const SIDE_NAMES: Record<Owner, string> = { 0: 'Meridian Corps', 1: 'Ashen Combine' };
+
+// ---- Heroes, abilities and support powers (campaign) ------------------------------------------
+//
+// The contract every campaign workstream codes against; see fireline-campaign-design.md.
+
+export type AbilityTarget = 'none' | 'building';
+
+export interface AbilitySpec {
+  name: string;
+  blurb: string;
+  /** Ticks before it can be used again, at hero level 1. */
+  cooldown: number;
+  target: AbilityTarget;
+  /** Tiles from the hero to the target's footprint. */
+  range: number;
+}
+
+export const HERO_ABILITY: Record<HeroKind, AbilitySpec> = {
+  spy: {
+    name: 'Infiltrate',
+    blurb:
+      'Slip into an enemy structure (the Spy is not lost). Refinery: steal half their credits, up to 1500. Generator: their power fails for 60s. Comms Uplink: reveal the whole map. War Factory or Barracks: their production stops for 45s. Command Yard: reveal their base and halve their next attack wave.',
+    cooldown: 450,
+    target: 'building',
+    range: 1,
+  },
+  commando: {
+    name: 'Demolition charge',
+    blurb: 'Plant a charge on an enemy structure. It goes off 3 seconds later: destroys anything but a Command Yard, which loses 60% of its health.',
+    cooldown: 300,
+    target: 'building',
+    range: 1,
+  },
+  engineer: {
+    name: 'Capture',
+    blurb: 'Take over an enemy structure (not a Command Yard) after 5 seconds beside it. Interrupted if the Engineer moves or is hurt.',
+    cooldown: 200,
+    target: 'building',
+    range: 1,
+  },
+  ace: {
+    name: 'Overdrive',
+    blurb: 'For 10 seconds the Ace moves half again as fast and reloads in two thirds of the time.',
+    cooldown: 450,
+    target: 'none',
+    range: 0,
+  },
+};
+
+/** Ticks from planting a charge to its explosion; from starting a capture to owning the structure. */
+export const CHARGE_FUSE = 30;
+export const CAPTURE_TICKS = 50;
+export const OVERDRIVE_TICKS = 100;
+/** Enemy units or structures within this many tiles see a Spy. */
+export const SPY_DETECT_RANGE = 2;
+/** The Engineer repairs own vehicles within this range by this many hp per tick. */
+export const ENGINEER_REPAIR_RANGE = 1.5;
+export const ENGINEER_REPAIR_PER_TICK = 2;
+
+/** Hero experience: total xp needed for each level, level 1 at index 0. Kills give xp in battle. */
+export const HERO_LEVEL_XP = [0, 100, 250, 500, 900];
+export const HERO_MAX_LEVEL = HERO_LEVEL_XP.length;
+/** Per level above 1: health and damage up, ability cooldown down. */
+export const HERO_HP_PER_LEVEL = 0.08;
+export const HERO_DAMAGE_PER_LEVEL = 0.08;
+export const HERO_COOLDOWN_PER_LEVEL = 0.06;
+/** Xp a hero earns for a kill: a unit is worth its cost / 20 (min 5), a structure 40. */
+export const HERO_XP_STRUCTURE = 40;
+
+export function heroLevelFor(xp: number): number {
+  let l = 1;
+  while (l < HERO_MAX_LEVEL && xp >= HERO_LEVEL_XP[l]) l++;
+  return l;
+}
+
+export type SupportPower = 'recon' | 'barrage' | 'reinforce';
+
+export interface PowerSpec {
+  name: string;
+  blurb: string;
+  cooldown: number;
+  /** Tiles. For barrage, the blast radius; for recon, how far it reveals. */
+  radius: number;
+}
+
+export const POWERS: Record<SupportPower, PowerSpec> = {
+  recon: { name: 'Recon sweep', blurb: 'Reveal a wide area of the map, and any Spies in it, for 15 seconds.', cooldown: 1200, radius: 9 },
+  barrage: { name: 'Artillery barrage', blurb: 'Eight shells land across the target area over four seconds.', cooldown: 1800, radius: 3 },
+  reinforce: { name: 'Reinforcements', blurb: 'Four riflemen and a tank arrive at the map edge nearest your base.', cooldown: 2400, radius: 0 },
+};
+/** How long a recon sweep keeps its area revealed. */
+export const RECON_TICKS = 150;
