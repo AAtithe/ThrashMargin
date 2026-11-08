@@ -20,6 +20,7 @@
     "build:portal": "bash scripts/build-portal.sh",
     "check": "bash scripts/check.sh",
     "sync-shared": "node scripts/sync-shared.mjs",
-    "test:api": "tsx scripts/api-test.ts"
+    "test:api": "tsx scripts/api-test.ts",
+    "tours": "node scripts/tours/run.mjs"
   }
 }

@@ -461,7 +461,14 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO;
-  const targetIds = asList(step.target(view, plan, memory));
+  const done = !isManual && step.isComplete(view, plan, memory);
+  // Once a step is done the card holds still on the control just used until it moves on. Reading
+  // the target afresh during that pause made it flick to whatever the panel showed next: back to
+  // the building opener after a build, and to nothing at all after an attack.
+  const heldTargets = useRef<{ step: number; ids: string[] }>({ step: -1, ids: [] });
+  const liveTargets = asList(step.target(view, plan, memory));
+  if (!done || heldTargets.current.step !== stepIndex) heldTargets.current = { step: stepIndex, ids: liveTargets };
+  const targetIds = done ? heldTargets.current.ids : liveTargets;
   const { rect, id: shownTarget } = useTargetRect(targetIds);
 
   const focusMatch = /^tm-territory-(\d+)$/.exec(targetIds[0] ?? '');
@@ -474,13 +481,13 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
   // of what they just did before the card moves on.
+  // Keyed on `done`, not on `view`: the view is a new object on every render, so a busy board kept
+  // restarting the pause.
   useEffect(() => {
-    if (isManual) return;
-    if (!step.isComplete(view, plan, memory)) return;
+    if (!done) return;
     const t = window.setTimeout(() => setStepIndex(i => Math.min(i + 1, steps.length - 1)), 650);
     return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, stepIndex]);
+  }, [done, stepIndex, steps.length]);
 
   const PADDING = 8;
   const spotlight: React.CSSProperties | null = rect
@@ -533,7 +540,7 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
 
       {/* `data-tour-*` is how an automated pass drives the run: it reads which control the card is
           pointing at and clicks that, rather than guessing from the copy. */}
-      <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={shownTarget ?? ''}>
+      <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={shownTarget ?? ''} data-tour-done={done ? '1' : undefined}>
         <p style={stepLabel}>
           Guided turn — {stepIndex + 1} of {steps.length}
         </p>
