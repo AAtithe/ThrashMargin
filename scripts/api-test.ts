@@ -129,6 +129,7 @@ async function resetDatabase(mode: 'fresh' | 'legacy') {
       ALTER TABLE users DROP COLUMN role;
       ALTER TABLE users DROP COLUMN password_changed_at;
       ALTER TABLE users DROP COLUMN game_access;
+      ALTER TABLE users DROP COLUMN status;
       ALTER TABLE games DROP COLUMN version;
       DROP TABLE login_failures;
       DROP TABLE admin_audit;
@@ -402,6 +403,85 @@ async function suite(mode: 'fresh' | 'legacy') {
     ]),
     `access: every change recorded in the history (got ${JSON.stringify(accessAudit)})`,
   );
+
+  // --- Approval of new accounts ------------------------------------------------------------------
+  ok((await adminApi('GET', 'settings', T)).body.requireApproval === false, 'approval: off until an admin turns it on');
+  ok((await adminApi('PUT', 'settings', A2, { requireApproval: true })).status === 403, 'approval: a non-admin cannot turn it on');
+  ok((await adminApi('PUT', 'settings', T, { requireApproval: 'yes' })).status === 400, 'approval: must be true or false');
+  ok((await adminApi('PUT', 'settings', T, {})).status === 400, 'settings: an empty change refused');
+  const apOn = await adminApi('PUT', 'settings', T, { requireApproval: true });
+  ok(apOn.status === 200 && apOn.body.requireApproval === true && JSON.stringify(apOn.body.newAccountGames) === '["tea_race"]', 'approval: turned on, games setting untouched');
+  const erin = await auth('register', { username: 'erin', email: 'erin@x.test', password: 'secret11' }, '10.6.6.7');
+  ok(erin.status === 202 && erin.body.pending === true && !erin.body.token, 'approval: a new account is created pending, with no session');
+  const erinLogin = await auth('login', { username: 'erin', password: 'secret11' });
+  ok(erinLogin.status === 403 && erinLogin.body.code === 'pending' && !erinLogin.body.token, 'approval: a pending account cannot sign in');
+  ok((await auth('login', { username: 'erin', password: 'wrong-one' })).status === 401, 'approval: a wrong password is still just "invalid", revealing nothing');
+  const queue = (await adminApi('GET', 'users', T)).body.users as { id: string; username: string; status: string }[];
+  const erinRow = queue.find(u => u.username === 'erin')!;
+  ok(erinRow?.status === 'pending', 'approval: the user list shows erin waiting');
+  ok((await adminApi('POST', 'approve', A2, { id: erinRow.id })).status === 403, 'approval: a non-admin cannot approve');
+  ok((await adminApi('POST', 'approve', T, { id: dave.body.userId })).status === 409, 'approval: an active account cannot be approved');
+  await adminApi('PUT', 'settings', T, { newAccountGames: ['tea_race', 'steady_eddie'] });
+  const approved = await adminApi('POST', 'approve', T, { id: erinRow.id, note: 'known to us' });
+  ok(approved.status === 200 && JSON.stringify(approved.body.games) === '["tea_race","steady_eddie"]', 'approval: approving gives the new-account games as they are now');
+  const erinIn = await auth('login', { username: 'erin', password: 'secret11' });
+  ok(erinIn.status === 200 && typeof erinIn.body.token === 'string', 'approval: an approved account signs in');
+  ok((await play('GET', 'steady-eddie', erinIn.body.token)).status === 200, 'approval: and plays its games');
+  const frank = await auth('register', { username: 'frank', email: 'frank@x.test', password: 'secret11' }, '10.6.6.8');
+  ok(frank.status === 202, 'approval: frank waits too');
+  const frankId = ((await adminApi('GET', 'users', T)).body.users as { id: string; username: string }[]).find(u => u.username === 'frank')!.id;
+  ok((await adminApi('POST', 'reject', T, { id: erinRow.id })).status === 409, 'reject: only a pending account can be rejected');
+  ok((await adminApi('POST', 'reject', T, { id: frankId, note: 'not one of ours' })).status === 200, 'reject: frank rejected');
+  ok((await auth('login', { username: 'frank', password: 'secret11' })).status === 401, 'reject: the account is gone');
+  await adminApi('PUT', 'settings', T, { requireApproval: false, newAccountGames: ['tea_race'] });
+  ok((await auth('register', { username: 'gina', email: 'gina@x.test', password: 'secret11' }, '10.6.6.9')).status === 201, 'approval: off again, a new account signs in at once');
+
+  // --- Suspending and deleting accounts -------------------------------------------------------------
+  ok((await adminApi('PATCH', 'status', T, { id: tom.body.userId, status: 'suspended' })).status === 400, 'suspend: not your own account');
+  ok((await adminApi('PATCH', 'status', T, { id: dave.body.userId, status: 'gone' })).status === 400, 'suspend: unknown status refused');
+  ok((await adminApi('PATCH', 'status', A2, { id: dave.body.userId, status: 'suspended' })).status === 403, 'suspend: a non-admin cannot');
+  await adminApi('PATCH', 'users', T, { id: dave.body.userId, role: 'admin' });
+  ok((await adminApi('PATCH', 'status', T, { id: dave.body.userId, status: 'suspended' })).status === 403, 'suspend: not an admin (remove the role first)');
+  ok((await adminApi('POST', 'delete-account', T, { id: dave.body.userId, confirm: 'dave' })).status === 403, 'delete: not an admin (remove the role first)');
+  await adminApi('PATCH', 'users', T, { id: dave.body.userId, role: 'user' });
+  const daveFresh = await auth('login', { username: 'dave', password: 'secret11' });
+  const D2 = daveFresh.body.token as string;
+  ok((await play('GET', 'tea-race', D2)).status === 200, 'suspend: dave plays before');
+  await new Promise(r => setTimeout(r, 1100)); // tokens carry whole seconds
+  ok((await adminApi('PATCH', 'status', T, { id: dave.body.userId, status: 'suspended', note: 'shared login' })).status === 200, 'suspend: dave suspended');
+  ok((await play('GET', 'tea-race', D2)).status === 401, 'suspend: his session stops working at once');
+  ok((await call(handlers.profile, 'GET', {}, undefined, D2)).status === 401, 'suspend: everywhere, not only in games');
+  const daveBlocked = await auth('login', { username: 'dave', password: 'secret11' });
+  ok(daveBlocked.status === 403 && daveBlocked.body.code === 'suspended' && !daveBlocked.body.token, 'suspend: he cannot sign in');
+  const daveSaves = await admin.query('SELECT COUNT(*)::int AS n FROM users WHERE id = $1', [dave.body.userId]);
+  ok(daveSaves.rows[0].n === 1, 'suspend: the account is kept');
+  ok((await adminApi('PATCH', 'status', T, { id: dave.body.userId, status: 'active' })).status === 200, 'reinstate: dave reinstated');
+  ok((await play('GET', 'tea-race', D2)).status === 401, 'reinstate: an old session does not come back to life');
+  const daveBack = await auth('login', { username: 'dave', password: 'secret11' });
+  ok(daveBack.status === 200 && (await play('GET', 'tea-race', daveBack.body.token)).status === 200, 'reinstate: he signs in afresh and plays');
+  await play('POST', 'tea-race', daveBack.body.token, undefined, { name: 'to be deleted' });
+  ok((await adminApi('POST', 'delete-account', T, { id: tom.body.userId, confirm: 'Tom' })).status === 400, 'delete: not your own account');
+  ok((await adminApi('POST', 'delete-account', T, { id: dave.body.userId, confirm: 'Dave' })).status === 400, 'delete: the username must match exactly');
+  ok((await adminApi('POST', 'delete-account', A2, { id: dave.body.userId, confirm: 'dave' })).status === 403, 'delete: a non-admin cannot');
+  ok((await adminApi('POST', 'delete-account', T, { id: dave.body.userId, confirm: 'dave', note: 'left the firm' })).status === 200, 'delete: dave deleted');
+  ok((await call(handlers.profile, 'GET', {}, undefined, daveBack.body.token)).status === 401, 'delete: his session ends');
+  const daveGames = await admin.query('SELECT COUNT(*)::int AS n FROM games WHERE owner_id = $1', [dave.body.userId]);
+  ok(daveGames.rows[0].n === 0, 'delete: his saves are gone with him');
+  const statusAudit = (await adminApi('GET', 'audit', T)).body.entries.slice(0, 7).map((e: any) => `${e.action} ${e.target} ${e.detail ?? ''}`.trim());
+  ok(
+    JSON.stringify(statusAudit) === JSON.stringify([
+      'delete_account dave left the firm',
+      'unsuspend dave',
+      'suspend dave shared login',
+      'remove_admin dave',
+      'grant_admin dave',
+      'set_require_approval (new accounts) off',
+      'set_new_account_games (new accounts) tea_race',
+    ]),
+    `status: every change recorded in the history (got ${JSON.stringify(statusAudit)})`,
+  );
+  const rejectAudit = (await adminApi('GET', 'audit', T)).body.entries.find((e: any) => e.action === 'reject_account');
+  ok(rejectAudit?.target === 'frank' && rejectAudit?.detail === 'not one of ours', 'reject: recorded with its note');
 
   // --- Shared game list ---------------------------------------------------------------------------
   const profile = await call(handlers.profile, 'GET', {}, undefined, A2);

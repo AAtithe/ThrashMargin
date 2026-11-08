@@ -58,6 +58,12 @@ added later). `api/play/[kind].ts` refuses any game the account lacks with 403 b
 handler runs; that is the boundary. The lobbies' `hasGameAccess` check and the welcome page hiding
 cards are presentational, exactly like the sign-in gate. Logic: `packages/thrash-margin/api/_lib/access.ts`.
 
+Accounts also carry a `users.status`: `active`, `pending` (registered while the Admin page's "require
+approval" setting was on) or `suspended`. `getUser` refuses any session whose account is not active,
+on every request, so suspension takes effect at once; suspending also stamps `password_changed_at`,
+so reinstating does not revive an old session. Admin actions on accounts (approve, reject, suspend,
+delete) never target the caller or an admin, and every one is written to the access history.
+
 ### 2. `packages/tea-race/src/sim/` and `packages/niccolo-rising/src/sim/` are pure
 
 No `Math.random`, no clock. Dice come from `rng.ts` against the persisted `rngSeed`, and
