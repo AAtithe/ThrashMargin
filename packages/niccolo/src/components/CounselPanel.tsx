@@ -2,7 +2,7 @@ import { adviceFor, MAX_ADVICE_SHOWN } from '../sim/advisors';
 import type { Advice, AdviceUrgency } from '../sim/advisors';
 import type { GameState } from '../sim/types';
 import { UI } from '../theme';
-import { useStagger } from './motionKit';
+import { useWeekStagger } from './motionKit';
 
 /**
  * The household's counsel (Phase 21) — read-only by design. There is deliberately no button on any
@@ -57,7 +57,7 @@ export default function CounselPanel({ state }: { state: GameState }) {
   const advice = all.slice(0, MAX_ADVICE_SHOWN);
   const withheld = all.length - advice.length;
   // A new week's counsel is offered one voice at a time. Hooks above the early return.
-  const reveal = useStagger(state.week, advice.length, 220);
+  const reveal = useWeekStagger(state.week, advice.length, 220);
 
   if (advice.length === 0) {
     return (

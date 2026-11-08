@@ -7,7 +7,7 @@ import { Button, Label, Panel, bodySmall } from './ui';
 import ConvoyPanel from './ConvoyPanel';
 import ShipyardPanel from './ShipyardPanel';
 import type { Character, GameState } from '../sim/types';
-import { useStagger } from './motionKit';
+import { useWeekStagger } from './motionKit';
 
 interface FleetPanelProps {
   state: GameState;
@@ -63,7 +63,7 @@ export default function FleetPanel({
     state.lastExpeditionEvent?.week === state.week,
   ];
   const freshIndex = (slot: number) => (freshReports[slot] ? freshReports.slice(0, slot).filter(Boolean).length : -1);
-  const reveal = useStagger(state.week, freshReports.filter(Boolean).length);
+  const reveal = useWeekStagger(state.week, freshReports.filter(Boolean).length);
   const revealReport = (slot: number) => (freshIndex(slot) >= 0 ? reveal(freshIndex(slot)) : {});
   const expeditionVessel = state.expedition
     ? state.vessels.find(v => v.id === state.expedition!.vesselId)

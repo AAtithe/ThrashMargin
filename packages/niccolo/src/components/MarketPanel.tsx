@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import { paced, usePace } from '../lib/motion';
-import { FloatingAmount, Florins, useStagger } from './motionKit';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { FloatText, paced, replayClass, usePace } from '../lib/motion';
+import { florinFloat, Florins, useWeekStagger } from './motionKit';
 import { UI } from '../theme';
 import { findCity, findGood, marketGoodsAt } from '../sim/content';
 import { gradeBreakdown, gradeBuyMultiplier, gradeSellMultiplier, isPilotGood } from '../sim/grades';
@@ -88,12 +88,24 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, flash, o
   const buyPrice = grades ? Math.round(price * gradeBuyMultiplier(grade)) : price;
   const sellPrice = grades ? Math.round(price * gradeSellMultiplier(grade, grades.qualityMarket)) : price;
 
+  // Each trade replays the row's highlight and the held count's pulse in place (a second purchase
+  // of the same good lands while the first one's are still showing).
+  const highlight = useRef<HTMLSpanElement>(null);
+  const heldCount = useRef<HTMLSpanElement>(null);
+  const flashN = flash?.n;
+  useLayoutEffect(() => {
+    if (flashN === undefined) return;
+    replayClass(highlight.current, 'nb-trade-flash');
+    replayClass(heldCount.current, 'tm-anim-pulse');
+  }, [flashN]);
+  const float = flash ? florinFloat(flash.cashDelta) : null;
+
   return (
     <div style={ROW}>
       {flash && (
         <>
-          <span key={`hl-${flash.n}`} className="nb-trade-flash" aria-hidden="true" style={TRADE_FLASH} />
-          <FloatingAmount key={`fl-${flash.n}`} amount={flash.cashDelta} style={{ right: '0.2rem', top: '-0.2rem' }} />
+          <span ref={highlight} className="nb-trade-flash" aria-hidden="true" style={TRADE_FLASH} />
+          {float && <FloatText key={flash.n} text={float.text} colour={float.colour} style={{ right: '0.2rem', top: '-0.2rem' }} />}
         </>
       )}
       <span style={{ flex: 1 }}>
@@ -110,8 +122,7 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, flash, o
         )}
         {held > 0 && (
           <span
-            key={flash ? `held-${flash.n}` : 'held'}
-            className={flash ? 'tm-anim-pulse' : undefined}
+            ref={heldCount}
             style={{ color: UI.textSoft, ...(flash ? { display: 'inline-block' } : {}) }}
           >
             {' '}
@@ -236,7 +247,7 @@ export default function MarketPanel({
 
   // This week's market news (event headlines, then the causes line) arrives one line at a time.
   const newsCount = localEvents.length + (causes && causes.length > 0 ? 1 : 0);
-  const reveal = useStagger(week, newsCount);
+  const reveal = useWeekStagger(week, newsCount);
 
   if (goods.length === 0) {
     return <p style={{ fontSize: '0.8rem', color: UI.textSoft }}>No market at {cityName}.</p>;

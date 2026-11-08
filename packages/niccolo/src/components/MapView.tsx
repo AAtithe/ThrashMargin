@@ -13,7 +13,7 @@ import {
   wrapPanX,
 } from '../sim/geography';
 import type { City, LabelSide, Vessel } from '../sim/types';
-import { easeInOut, useTween } from './motionKit';
+import { easeInOut, useSkipOnInput, useTweenOnChange } from '../lib/motion';
 
 const SHIP_COLOR = UI.ensign;
 const COURIER_COLOR = UI.good;
@@ -463,7 +463,8 @@ export default function MapView({
   const liveRenders = useMemo(() => computeVesselRenders(vessels, inv), [vessels, inv]);
   // Between weeks the fleet glides from where it was to where it now is (any click or key finishes
   // it at once; with motion off `t` is always 1 and this is exactly `liveRenders`).
-  const glide = useTween(vessels, GLIDE_MS, samePositions);
+  const glide = useTweenOnChange(vessels, GLIDE_MS, samePositions);
+  useSkipOnInput(glide.playing, glide.skip);
   const vesselRenders = useMemo(
     () => glideRenders(glide.from, liveRenders, inv, glide.t),
     [glide.from, liveRenders, inv, glide.t],

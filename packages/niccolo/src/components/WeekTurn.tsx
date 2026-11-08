@@ -1,8 +1,7 @@
 import { formatWeekDate } from '../sim/clock';
 import { CAMPAIGN_START } from '../sim/content';
 import { UI } from '../theme';
-import { easeOut } from '../lib/motion';
-import { useTween } from './motionKit';
+import { easeOut, useSkipOnInput, useTweenOnChange } from '../lib/motion';
 
 /**
  * The passage of a week, made visible (presentation only — the week has already been resolved and
@@ -18,7 +17,8 @@ const FLIP_MS = 760;
 const SWEEP_MS = 1200;
 
 export function WeekDate({ week }: { week: number }) {
-  const { from, t, playing } = useTween(week, FLIP_MS);
+  const { from, t, playing, skip } = useTweenOnChange(week, FLIP_MS);
+  useSkipOnInput(playing, skip);
   const text = formatWeekDate(week, CAMPAIGN_START);
   if (!playing) return <>{text}</>;
   // First half: the old leaf tips back to edge-on. Second half: the new one falls into place.
@@ -40,7 +40,8 @@ export function WeekDate({ week }: { week: number }) {
 }
 
 export function WeekSweep({ week }: { week: number }) {
-  const { t, playing } = useTween(week, SWEEP_MS);
+  const { t, playing, skip } = useTweenOnChange(week, SWEEP_MS);
+  useSkipOnInput(playing, skip);
   if (!playing) return null;
   const fade = t > 0.75 ? 1 - (t - 0.75) / 0.25 : 1;
   return (

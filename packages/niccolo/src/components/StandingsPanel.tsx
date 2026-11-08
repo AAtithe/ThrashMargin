@@ -12,7 +12,7 @@ import {
 } from '../sim/freeplay';
 import { agentPlacementCost } from '../sim/houses';
 import type { GameState } from '../sim/types';
-import { useStagger } from './motionKit';
+import { useWeekStagger } from './motionKit';
 
 /**
  * Free play's standings (Phase 27).
@@ -61,7 +61,7 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
   const win = checkFreeplayWin(state);
   const notes = (state.lastAiNotes ?? []).filter(() => true);
   // The rivals' week is reported one trade at a time when it turns over.
-  const reveal = useStagger(state.week, Math.min(8, notes.length), 160);
+  const reveal = useWeekStagger(state.week, Math.min(8, notes.length), 160);
 
   return (
     <div>
