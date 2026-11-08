@@ -165,6 +165,7 @@ export default function DepotPanel({
             return (
               <Button
                 key={c.id}
+                id={`land-contract-${c.id}`}
                 tone="primary"
                 disabled={!enabled || struck}
                 title={
@@ -207,6 +208,7 @@ export default function DepotPanel({
                 return (
                   <Button
                     key={id}
+                    id={`load-cargo-${id}`}
                     disabled={!enabled || !afford || embargoed}
                     title={
                       embargoed
@@ -378,6 +380,7 @@ export default function DepotPanel({
             )}
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               <Button
+                id="set-off-button"
                 tone="primary"
                 disabled={!enabled}
                 onClick={() => {

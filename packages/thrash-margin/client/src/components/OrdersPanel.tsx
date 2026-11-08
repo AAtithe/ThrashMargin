@@ -84,7 +84,7 @@ export function AttackOrders({ state, target, visible, columns, setColumns, act,
           </>
         )}
         <div style={{ display: 'flex', gap: 8, marginTop: 12, alignItems: 'center' }}>
-          <Button tone="attack" icon="attack" disabled={!!why} onClick={() => action && act(action)} style={{ flex: 1 }}>
+          <Button id="tm-attack" tone="attack" icon="attack" disabled={!!why} onClick={() => action && act(action)} style={{ flex: 1 }}>
             Attack · {cost} action{cost === 1 ? '' : 's'}
           </Button>
         </div>

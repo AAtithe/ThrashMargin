@@ -91,7 +91,9 @@ export default function Tutorial() {
       <Panel title="Your first few turns">
         <p style={para}>
           You start at Liverpool with one ship and {money(STARTING_CASH)}. A turn is three steps and
-          you can stop after any of them.
+          you can stop after any of them. If you would rather be shown than told, start a voyage and
+          press <strong>Guided run</strong> in the header: it walks you through one complete
+          commission on your own live game, from empty hold to landed cargo.
         </p>
         <ol style={list}>
           <li>

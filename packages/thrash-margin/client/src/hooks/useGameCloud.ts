@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { migrateState, processAction } from 'shared/sim';
 import type { GameAction, GameConfig, GameState } from 'shared/sim';
-import { API, SESSION_EXPIRED, authHeaders, readJson, serverFailure } from '../lib/api';
+import { API, SESSION_EXPIRED, authHeaders } from '../lib/api';
+import { readJson, serverFailure } from '../lib/apiReply';
 import { getToken } from '../lib/token';
 import { newSeed, type GameHook, type SaveMeta, type SaveStatus } from './types';
 import { SAVE_MESSAGES } from '../lib/saveQueue';

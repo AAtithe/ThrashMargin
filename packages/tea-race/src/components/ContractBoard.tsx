@@ -70,6 +70,7 @@ export default function ContractBoard({
             <button
               key={contract.id}
               type="button"
+              id={`contract-card-${contract.id}`}
               onClick={() => onFocus(contract)}
               style={{
                 ...cardStyle,

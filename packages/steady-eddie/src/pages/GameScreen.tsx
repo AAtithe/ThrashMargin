@@ -20,6 +20,7 @@ import HauliersTable from '../components/HauliersTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
+import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
 import type { Contract, DepotId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -76,6 +77,30 @@ export default function GameScreen() {
     setConfirmingEnd(false);
   }, [state?.turn]);
 
+  /**
+   * The guided run, once it has been started. Latched in state rather than recomputed per render
+   * on purpose: the plan is chosen from the board as it stood when the run opened, and a plan
+   * that silently re-picked itself every time a rival filled a commission would rewrite the steps
+   * under the player's feet.
+   */
+  const [tourPlan, setTourPlan] = useState<TourPlan | null>(null);
+  /** Whether the once-per-browser offer has already been considered for this screen. */
+  const [tourOffered, setTourOffered] = useState(false);
+
+  // Open the run unasked on a game that has not moved yet, the first time this browser sees one.
+  // Hooks live above the `if (!state)` bail-out below; one placed after it renders conditionally,
+  // which typechecks, passes the harness, and blanks the screen.
+  useEffect(() => {
+    if (tourOffered || !state || !haulier) return;
+    if (haulier.kind !== 'human' || state.phase === 'over' || state.round > 1 || state.turn > 1) return;
+    setTourOffered(true);
+    if (hasSeenGuidedTour()) return;
+    const vehicle = state.vehicles.find(ve => ve.ownerId === haulier.id && ve.location) ?? null;
+    if (!vehicle) return;
+    const plan = planFirstRun(state, haulier, vehicle);
+    if (plan) setTourPlan(plan);
+  }, [state, haulier, tourOffered]);
+
   if (!state) {
     return (
       <div style={{ ...page, alignItems: 'center', justifyContent: 'center' }}>
@@ -128,6 +153,14 @@ export default function GameScreen() {
 
   const winner = state.winnerId ? state.hauliers.find(c => c.id === state.winnerId) : null;
 
+  /** A run the tour could teach from where the fleet stands right now, or null if there isn't one
+   *  (nothing affordable or reachable, everything struck, or every vehicle on the road). */
+  const tourCandidate: TourPlan | null = (() => {
+    if (!haulier || !isHuman || over) return null;
+    const parked = myVehicles.find(ve => ve.location) ?? null;
+    return parked ? planFirstRun(state, haulier, parked) : null;
+  })();
+
   return (
     <div style={page}>
       {/* --- Header ------------------------------------------------------------------- */}
@@ -154,10 +187,20 @@ export default function GameScreen() {
           </div>
         )}
 
-        <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
-        <Button tone="quiet" onClick={() => navigate('/')}>
-          Lobby
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+          {/* Offered whenever a run can actually be planned from where the fleet stands, not only
+              on day one: a player who skipped it, or who came back to a half-played game, should
+              still be able to ask for it. */}
+          {tourCandidate && !tourPlan && (
+            <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)}>
+              Guided run
+            </Button>
+          )}
+          <Button tone="quiet" onClick={() => navigate('/')}>
+            Lobby
+          </Button>
+        </div>
       </header>
 
       {/* --- The season ------------------------------------------------------------------- */}
@@ -235,7 +278,7 @@ export default function GameScreen() {
               </span>
             ) : mustRoll ? (
               <>
-                <Button tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
+                <Button id="roll-button" tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
                   Roll for the day — {myVehicles.length === 1 ? 'her' : 'the fleet'}
                 </Button>
                 <span style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
@@ -245,6 +288,7 @@ export default function GameScreen() {
             ) : canAct ? (
               <>
                 <Button
+                  id="end-turn-button"
                   tone={confirmingEnd ? 'primary' : undefined}
                   onClick={() => {
                     // One extra click, never a block: waiting in depot for cash or a better card is
@@ -357,6 +401,22 @@ export default function GameScreen() {
       <EventCards log={state.log} hauliers={state.hauliers} viewerId={haulier?.id ?? null} />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
+      {/* Kept off while a handover card or the closing card owns the screen — both are modal, and
+          spotlighting a control underneath one would point at something unclickable. */}
+      {tourPlan && haulier && !over && state.phase !== 'handover' && (
+        <GuidedTour
+          view={{
+            state,
+            haulier,
+            vehicle: state.vehicles.find(ve => ve.id === tourPlan.vehicleId) ?? null,
+            targetDepot,
+            focusedContract,
+          }}
+          plan={tourPlan}
+          onFinish={() => setTourPlan(null)}
+        />
+      )}
+
       {state.phase === 'handover' && haulier && (
         <HandoverCard
           state={state}
