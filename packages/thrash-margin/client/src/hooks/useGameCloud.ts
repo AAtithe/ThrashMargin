@@ -26,6 +26,9 @@ const RETRY_MAX_MS = 60_000;
 export function useGameCloud(): GameHook {
   const [state, setState] = useState<GameState | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>([]);
+  // False until the first list request has answered, either way: the lobby shows placeholder rows
+  // until then, so an empty list is never mistaken for "you have no saved games".
+  const [savesLoaded, setSavesLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
@@ -50,6 +53,8 @@ export function useGameCloud(): GameHook {
       setSaves(data.saves ?? []);
     } catch {
       /* non-fatal: the lobby shows what it has */
+    } finally {
+      setSavesLoaded(true);
     }
   }, []);
 
@@ -219,5 +224,5 @@ export function useGameCloud(): GameHook {
     }
   }, []);
 
-  return { state, error, loading, saveStatus, saves, createGame, loadGame, dispatch, restore, deleteGame };
+  return { state, error, savesLoaded, loading, saveStatus, saves, createGame, loadGame, dispatch, restore, deleteGame };
 }

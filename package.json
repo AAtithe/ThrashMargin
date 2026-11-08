@@ -19,6 +19,7 @@
     "drive:tm": "npm run drive --workspace=packages/thrash-margin",
     "build:portal": "bash scripts/build-portal.sh",
     "check": "bash scripts/check.sh",
+    "check:loading": "node scripts/loading-check.cjs",
     "sync-shared": "node scripts/sync-shared.mjs",
     "test:api": "tsx scripts/api-test.ts",
     "tours": "node scripts/tours/run.mjs"

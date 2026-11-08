@@ -8,7 +8,7 @@ import type { SaveMeta } from './useGameLocal';
 import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/saveQueue';
 
 /** See Steady Eddie's useGameCloud for why an expired token is reported rather than cleared. */
-const SESSION_EXPIRED =
+export const SESSION_EXPIRED =
   'Your sign-in has expired. Use "Sign out" above, then sign in again to reach your characters.';
 
 const ENDPOINT = `${API}/api/play/niccolo-rising`;
@@ -21,6 +21,9 @@ const ENDPOINT = `${API}/api/play/niccolo-rising`;
 export function useGameCloud() {
   const [state, setState] = useState<GameState | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>([]);
+  // False until the first list request has answered, either way: the lobby shows placeholder rows
+  // until then, so an empty list is never mistaken for "you have no saved games".
+  const [savesLoaded, setSavesLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Saves go through one queue: one request in flight, always the latest state, carrying the
@@ -51,6 +54,8 @@ export function useGameCloud() {
       setSaves(data.saves ?? []);
     } catch {
       /* non-fatal: the lobby shows what it already has */
+    } finally {
+      setSavesLoaded(true);
     }
   }, []);
 
@@ -136,5 +141,5 @@ export function useGameCloud() {
     }
   }, []);
 
-  return { state, error, saves, createGame, loadGame, dispatch, deleteGame };
+  return { state, error, savesLoaded, saves, createGame, loadGame, dispatch, deleteGame };
 }

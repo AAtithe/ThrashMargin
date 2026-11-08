@@ -654,15 +654,22 @@ interface Props {
   plan: TourPlan;
   onFinish: () => void;
   /**
-   * Hidden rather than unmounted while it is not the run owner's moment — a handover card, or
-   * another hotseat player's turn. Unmounting threw away the step and the opening snapshot, so every
-   * handover sent the run back to the welcome card, re-scanned against the *next* player's turn,
-   * and walked them through it with the first player's vehicle.
+   * Told which element the card is pointing at, whenever that changes, so the screen can open the
+   * panel it sits in. The panels slide away over the chart, and a ring round a control in a closed
+   * panel would point at nothing.
+   */
+  onTargetChange?: (targetId: string | null) => void;
+  /**
+   * Draw nothing this render, but stay mounted. Set while one of the game's own modals owns the
+   * display. It is a prop rather than the caller unmounting the run because the run's place in
+   * the walk lives in this component: unmounting throws away both the captured memory and the
+   * step index, and the card comes back at step one, so the run loops and never reaches its last
+   * step. Thrash Margin hit this on its end-of-turn dispatch; here it is the same structure.
    */
   hidden?: boolean;
 }
 
-export default function GuidedTour({ view, plan, onFinish, hidden = false }: Props) {
+export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidden = false }: Props) {
   // `useRef`, not `useState`: writing to it must not itself cause a render.
   const memoryRef = useRef<TourMemory>({ shares: view.haulier.shares, pickedCommission: false });
   const memory = memoryRef.current;
@@ -677,6 +684,11 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   // Nothing to measure while hidden, so the 250ms poll cannot scroll the board under a modal.
   const targetId = hidden ? null : step.target(view, plan);
   const rect = useTargetRect(targetId, stepIndex);
+  // Tell the screen which control is ringed, so it can open the panel that holds it.
+  useEffect(() => {
+    onTargetChange?.(targetId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetId]);
 
   // Declared *before* the advance effect below, and relied on for that: effects run in the order
   // they are declared, so the latch is set on the same commit as the player's click, and the

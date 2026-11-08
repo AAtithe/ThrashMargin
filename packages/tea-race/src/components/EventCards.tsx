@@ -124,7 +124,7 @@ export default function EventCards({
   const dismiss = (seq: number) => setQueue(prev => prev.filter(e => e.seq !== seq));
 
   return (
-    <div style={stack} aria-live="polite">
+    <div style={stack} className="tr-event-stack" aria-live="polite">
       {queue.map(entry => {
         const look = PRESENTATION[entry.kind] ?? {
           title: 'News',
@@ -176,7 +176,9 @@ export default function EventCards({
 const stack: React.CSSProperties = {
   position: 'fixed',
   left: '0.9rem',
-  bottom: '0.9rem',
+  // The bottom offset lives in styles.css (`.tr-event-stack`): the stack sits clear of the turn
+  // bar that floats along the bottom of the chart, whose height differs on a phone. Sitting on top
+  // of it once covered the roll button with a card that stays until clicked.
   width: 'min(320px, calc(100vw - 1.8rem))',
   display: 'flex',
   flexDirection: 'column',

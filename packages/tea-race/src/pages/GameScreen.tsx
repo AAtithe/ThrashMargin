@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { sourcesFor, planRoute, portName } from '../sim/content';
@@ -35,6 +35,9 @@ import CareerPanel from '../components/CareerPanel';
 import EraBanner from '../components/EraBanner';
 import { TeaChest, Vignette } from '../components/Art';
 import { RACE_FINISH, TEA_RACE_PORTS, openRace, raceLots } from '../sim/seamanship';
+import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { SESSION_EXPIRED } from '../hooks/useGameCloud';
+import { clearToken } from '../lib/portalAuth';
 
 export default function GameScreen() {
   const { id } = useParams();
@@ -89,6 +92,44 @@ export default function GameScreen() {
     [state, captain],
   );
   const [confirmingEnd, setConfirmingEnd] = useState(false);
+
+  /**
+   * The two panels that float over the chart. The chart is the board; the exchange (left) and the
+   * fleet and orders (right) slide in when they are wanted and away when they are not.
+   */
+  const [exchangeOpen, setExchangeOpen] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
+  const layout = usePanelLayout();
+  // Where there is not room for both beside a usable chart, opening one puts the other away.
+  const openExchange = (open: boolean) => {
+    setExchangeOpen(open);
+    if (open && layout.oneAtATime) setOrdersOpen(false);
+  };
+  const openOrders = (open: boolean) => {
+    setOrdersOpen(open);
+    if (open && layout.oneAtATime) setExchangeOpen(false);
+  };
+  const exchangeRef = useRef<HTMLElement | null>(null);
+  const boardRef = useRef<HTMLElement | null>(null);
+  const ordersRef = useRef<HTMLElement | null>(null);
+
+  // Orders slide in once a human captain has rolled: that is the moment there is something to do.
+  const actKey = state && captain?.kind === 'human' && state.phase === 'act' ? `${state.turn}` : null;
+  useEffect(() => {
+    if (actKey) openOrders(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actKey]);
+
+  // Esc puts the panels away.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setExchangeOpen(false);
+      setOrdersOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   // Never carry a half-pressed confirmation into somebody else's turn.
   useEffect(() => {
     setConfirmingEnd(false);
@@ -120,16 +161,21 @@ export default function GameScreen() {
 
   if (!state) {
     return (
-      <div style={{ ...page, alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ ...bodySmall, textAlign: 'center', maxWidth: '40ch' }}>
-          {error ?? 'Loading the voyage…'}
-        </p>
-        {error && (
-          <Button onClick={() => navigate('/')} style={{ marginTop: '0.8rem' }}>
-            Back to the lobby
-          </Button>
-        )}
-      </div>
+      <LoadingScreen
+        motif="clipper"
+        caption="Loading the voyage…"
+        error={error === SESSION_EXPIRED ? SIGN_IN_AGAIN : error}
+        actions={
+          error === SESSION_EXPIRED ? (
+            <Button tone="primary" onClick={() => { clearToken(); navigate('/'); }}>Sign in again</Button>
+          ) : (
+            <>
+              {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
+              <Button onClick={() => navigate('/')}>Back to the lobby</Button>
+            </>
+          )
+        }
+      />
     );
   }
 
@@ -180,6 +226,38 @@ export default function GameScreen() {
   })();
 
   const tourOwner = tourPlan ? state.captains.find(c => c.id === tourPlan.captainId) ?? null : null;
+  /**
+   * The guided run is pointing at something: open whichever panel it lives in, then, once the panel
+   * has finished sliding in, scroll the control into the middle of it. Scrolling any earlier
+   * measures a panel still in motion, and on a phone that left the control tucked under the
+   * sheet's own title strip with the spotlight framing an empty gap.
+   */
+  const revealTourTarget = (targetId: string | null) => {
+    if (!targetId) return;
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const panel = exchangeRef.current?.contains(el) ? 'exchange' : ordersRef.current?.contains(el) ? 'orders' : null;
+    if (!panel) return;
+    const wasOpen = panel === 'exchange' ? exchangeOpen : ordersOpen;
+    if (panel === 'exchange') openExchange(true);
+    else openOrders(true);
+    window.setTimeout(() => {
+      const target = document.getElementById(targetId);
+      const body = target?.closest('.tr-panel-body');
+      if (!target || !body) return;
+      const t = target.getBoundingClientRect(), b = body.getBoundingClientRect();
+      if (t.top < b.top + 8 || t.bottom > b.bottom - 8) target.scrollIntoView({ block: 'center', behavior: 'auto' });
+    }, wasOpen ? 0 : 320);
+  };
+
+  const insetPx = layout.sheet
+    ? { left: 0, right: 0, bottom: exchangeOpen || ordersOpen ? Math.round((boardRef.current?.clientHeight ?? window.innerHeight) * 0.58) : 0 }
+    : {
+        left: exchangeOpen ? layout.exchangeWidth + 20 : 0,
+        right: ordersOpen ? layout.ordersWidth + 20 : 0,
+        bottom: 0,
+      };
+  const focusPort = targetPort ?? selectedShip?.location ?? myShips.find(sh => sh.location)?.location ?? null;
 
   // The race, if one is running. Plain values, not a hook — this is below the early return.
   const race = openRace(state);
@@ -194,7 +272,7 @@ export default function GameScreen() {
   return (
     <div style={page}>
       {/* --- Header ------------------------------------------------------------------- */}
-      <header style={header}>
+      <header style={header} className="tr-header">
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.7rem', flexWrap: 'wrap', minWidth: 0 }}>
           <span style={{ fontFamily: FONT.display, fontSize: '1rem', color: UI.text }}>
             {state.name}
@@ -245,7 +323,7 @@ export default function GameScreen() {
             year {voyageYear(state.round)} · turns in {roundsLeftInSeason(state.round)} round
             {roundsLeftInSeason(state.round) === 1 ? '' : 's'}
           </span>
-          <span style={{ ...bodySmall, fontSize: '0.76rem' }}>
+          <span className="tr-hide-phone" style={{ ...bodySmall, fontSize: '0.76rem' }}>
             Green chevrons on the chart point the way the wind is fair. Crossed swords mark piratical
             waters.
           </span>
@@ -271,56 +349,195 @@ export default function GameScreen() {
       )}
 
       {/* --- Board -------------------------------------------------------------------- */}
-      <main style={board} className="tr-board">
-        {/* Left: what everyone is racing over. Narrow on purpose — it is reference, not controls. */}
-        <aside style={exchangeColumn}>
-          {/* While the race is on it is the most important thing on the board, so it leads. */}
-          {race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
-          {state.rules === 'voyage' ? (
-            <MarketBoard
-              state={state}
-              reference={selectedShip}
-              onPortClick={port => setTargetPort(port as PortId)}
-            />
-          ) : (
-          <ContractBoard
-            contracts={state.contracts}
-            captains={state.captains}
-            reference={selectedShip}
-            round={state.round}
-            deadlines={state.hazards?.deadlines ?? false}
-            focusedId={focusedContract?.id ?? null}
-            onFocus={contract => {
-              setFocusedContract(prev => (prev?.id === contract.id ? null : contract));
-              setTargetPort(null);
+      {/* The chart is the board and fills it. The exchange floats in from the left and the fleet
+          and orders from the right, each when wanted; the turn's one big button sits on the chart
+          along the bottom. `.tr-panel` in styles.css turns both panels into bottom sheets on a
+          phone. */}
+      <main ref={boardRef} style={board} className="tr-board">
+        <MapView
+          ships={state.ships}
+          captains={state.captains}
+          contracts={state.contracts}
+          selectedShipId={selectedShipId}
+          plannedRoute={plannedRoute}
+          viewerId={captain?.id ?? null}
+          season={season}
+          showPiracy={state.hazards?.piracy ?? false}
+          race={chartRace}
+          focusPort={focusPort}
+          inset={insetPx}
+          onPortClick={portId => {
+            setTargetPort(portId);
+            setFocusedContract(null);
+            if (canAct) openOrders(true);
+          }}
+        />
+
+        {/* What the rest of the table did while you waited, at the top of your own turn. */}
+        {isHuman && captain && !over && (
+          // Kept mounted but out of sight under a phone's sheet: it remembers being folded, and an
+          // unmount would forget that and print the paper again.
+          <div
+            className="tr-gazette"
+            style={{
+              ...gazetteSlot,
+              left: insetPx.left + 12,
+              right: insetPx.right + 12,
+              display: layout.sheet && (exchangeOpen || ordersOpen) ? 'none' : undefined,
             }}
-          />
-          )}
-          {!race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
-          <CaptainsTable state={state} />
+          >
+            <ShippingGazette key={captain.id} state={state} viewer={captain} />
+          </div>
+        )}
+
+        {/* With a panel away, the button that brings it back waits at its edge of the chart. */}
+        {!exchangeOpen && (
+          <button type="button" className="tr-launcher" style={{ ...launcher, left: 12 }} onClick={() => openExchange(true)}>
+            The exchange
+            <span style={launcherNote}>{state.rules === 'voyage' ? 'prices' : `${state.contracts.filter(c => c.fills.length < 2).length} commissions`}</span>
+          </button>
+        )}
+        {!ordersOpen && (
+          <button type="button" className="tr-launcher" style={{ ...launcher, right: 12 }} onClick={() => openOrders(true)}>
+            {captain?.kind === 'human' ? 'Your fleet and orders' : 'Fleets and log'}
+            {awaiting.length > 0 && <span style={{ ...launcherNote, color: UI.warn }}>{awaiting.length} awaiting orders</span>}
+          </button>
+        )}
+
+        <aside
+          ref={exchangeRef}
+          className={`tr-panel tr-panel-left${exchangeOpen ? ' open' : ''}`}
+          aria-hidden={!exchangeOpen}
+          aria-label="The exchange"
+        >
+          <PanelHead title="The exchange" onClose={() => setExchangeOpen(false)} />
+          <div style={panelBody} className="tr-panel-body">
+          {/* While the race is on it is the most important thing on the board, so it leads. */}
+            {race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
+            {state.rules === 'voyage' ? (
+              <MarketBoard
+                state={state}
+                reference={selectedShip}
+                onPortClick={port => setTargetPort(port as PortId)}
+              />
+            ) : (
+            <ContractBoard
+              contracts={state.contracts}
+              captains={state.captains}
+              reference={selectedShip}
+              round={state.round}
+              deadlines={state.hazards?.deadlines ?? false}
+              focusedId={focusedContract?.id ?? null}
+              onFocus={contract => {
+                setFocusedContract(prev => (prev?.id === contract.id ? null : contract));
+                setTargetPort(null);
+              }}
+            />
+            )}
+            {!race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
+            <CaptainsTable state={state} />
+            <PortLedger
+              contracts={state.contracts}
+              reference={selectedShip}
+              targetPort={targetPort}
+              onPortClick={portId => {
+                setTargetPort(portId);
+                setFocusedContract(null);
+              }}
+            />
+          </div>
         </aside>
 
-        {/* Centre: the chart, given the room. */}
-        <div style={mapColumn}>
-          {/* What the rest of the table did while you waited, at the top of your own turn. */}
-          {isHuman && captain && !over && <ShippingGazette key={captain.id} state={state} viewer={captain} />}
-          <MapView
-            ships={state.ships}
-            captains={state.captains}
-            contracts={state.contracts}
-            selectedShipId={selectedShipId}
-            plannedRoute={plannedRoute}
-            viewerId={captain?.id ?? null}
-            season={season}
-            showPiracy={state.hazards?.piracy ?? false}
-            race={chartRace}
-            onPortClick={portId => {
-              setTargetPort(portId);
-              setFocusedContract(null);
-            }}
-          />
+        <aside
+          ref={ordersRef}
+          id="game-sidebar"
+          className={`tr-panel tr-panel-right${ordersOpen ? ' open' : ''}`}
+          aria-hidden={!ordersOpen}
+          aria-label="Your fleet and orders"
+        >
+          <PanelHead title={captain?.kind === 'human' ? 'Your fleet and orders' : 'Fleets and log'} onClose={() => setOrdersOpen(false)} />
+          <div style={panelBody} className="tr-panel-body">
+          {captain && (
+            <>
+              <FleetPanel
+                ships={myShips}
+                captain={captain}
+                sailPoints={state.sailPoints}
+                dice={state.dice}
+                selectedShipId={selectedShipId}
+                rolled={state.phase === 'act'}
+                turn={state.turn}
+                deadlines={state.hazards?.deadlines ?? false}
+                raceYear={race?.year ?? null}
+                crackedOn={state.crackedOn}
+                renownOn={state.hazards?.renown ?? false}
+                onSelect={shipId => {
+                  setSelectedShipId(shipId);
+                  setTargetPort(null);
+                }}
+              />
 
-          <div style={turnBar}>
+              {/* Orders first: in a panel that slides in, what you do every turn must not sit
+                  below what you read once a game. */}
+              <PortPanel
+                ship={selectedShip}
+                captain={captain}
+                contracts={state.contracts}
+                sailPoints={state.sailPoints}
+                targetPort={targetPort}
+                onClearTarget={() => setTargetPort(null)}
+                dispatch={dispatch}
+                enabled={canAct}
+                sellable={state.hazards?.quaysideSales ?? false}
+                agentsOn={state.hazards?.agents ?? false}
+                shipSaleOn={(state.hazards?.wages || state.hazards?.loans) ?? false}
+                fleetSize={myShips.length}
+                priceFor={priceFor}
+                paysFor={(port, good) =>
+                  (state.rules === 'voyage' ? sellsFor(state, port, good) : null) ??
+                  saleProceeds(state, captain?.id ?? '', port, good)
+                }
+                season={season}
+                piracyOn={state.hazards?.piracy ?? false}
+              />
+
+              <SeamanshipPanel
+                state={state}
+                captain={captain}
+                ships={myShips}
+                dispatch={dispatch}
+                enabled={canAct}
+              />
+
+              <CountingHouse
+                state={state}
+                captain={captain}
+                fleetSize={myShips.length}
+                ships={myShips}
+                dispatch={dispatch}
+                enabled={canAct}
+              />
+
+              <CareerPanel state={state} captain={captain} dispatch={dispatch} enabled={isHuman && (state.phase === 'act' || state.phase === 'roll')} />
+
+              <ChartersPanel state={state} captain={captain} />
+            </>
+          )}
+
+          <RivalFleets state={state} viewerId={captain?.id ?? null} />
+          <ChronicleLog log={state.log} captains={state.captains} />
+          </div>
+        </aside>
+
+          <div
+            style={{
+              ...turnBar,
+              left: `calc(${insetPx.left}px + 12px)`,
+              right: `calc(${insetPx.right}px + 66px)`,
+              bottom: insetPx.bottom + 12,
+            }}
+            className="tr-turnbar"
+          >
             {over ? (
               <span style={{ ...bodySmall, color: UI.brass }}>
                 {/* Free play closes with a reckoning, not a company changing hands. */}
@@ -335,7 +552,7 @@ export default function GameScreen() {
                 <Button id="roll-button" tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
                   Take the wind — roll for {myShips.length === 1 ? 'her' : 'the fleet'}
                 </Button>
-                <span style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
+                <span className="tr-hide-phone" style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
                   2d6 per ship. Ships already at sea sail on the moment you roll
                   {state.hazards?.pressSail ? ', and may then be driven for one more die' : ''}.
                 </span>
@@ -353,6 +570,7 @@ export default function GameScreen() {
                       return;
                     }
                     setConfirmingEnd(false);
+                    setOrdersOpen(false);
                     dispatch({ type: 'END_TURN' });
                   }}
                 >
@@ -395,88 +613,6 @@ export default function GameScreen() {
               </span>
             )}
           </div>
-
-          <PortLedger
-            contracts={state.contracts}
-            reference={selectedShip}
-            targetPort={targetPort}
-            onPortClick={portId => {
-              setTargetPort(portId);
-              setFocusedContract(null);
-            }}
-          />
-        </div>
-
-        {/* Right: everything you actually do. */}
-        <aside style={actionColumn} id="game-sidebar">
-          {captain && (
-            <>
-              <FleetPanel
-                ships={myShips}
-                captain={captain}
-                sailPoints={state.sailPoints}
-                dice={state.dice}
-                selectedShipId={selectedShipId}
-                rolled={state.phase === 'act'}
-                turn={state.turn}
-                deadlines={state.hazards?.deadlines ?? false}
-                raceYear={race?.year ?? null}
-                crackedOn={state.crackedOn}
-                renownOn={state.hazards?.renown ?? false}
-                onSelect={shipId => {
-                  setSelectedShipId(shipId);
-                  setTargetPort(null);
-                }}
-              />
-
-              <CareerPanel state={state} captain={captain} dispatch={dispatch} enabled={isHuman && (state.phase === 'act' || state.phase === 'roll')} />
-
-              <ChartersPanel state={state} captain={captain} />
-
-              <SeamanshipPanel
-                state={state}
-                captain={captain}
-                ships={myShips}
-                dispatch={dispatch}
-                enabled={canAct}
-              />
-
-              <PortPanel
-                ship={selectedShip}
-                captain={captain}
-                contracts={state.contracts}
-                sailPoints={state.sailPoints}
-                targetPort={targetPort}
-                onClearTarget={() => setTargetPort(null)}
-                dispatch={dispatch}
-                enabled={canAct}
-                sellable={state.hazards?.quaysideSales ?? false}
-                agentsOn={state.hazards?.agents ?? false}
-                shipSaleOn={(state.hazards?.wages || state.hazards?.loans) ?? false}
-                fleetSize={myShips.length}
-                priceFor={priceFor}
-                paysFor={(port, good) =>
-                  (state.rules === 'voyage' ? sellsFor(state, port, good) : null) ??
-                  saleProceeds(state, captain?.id ?? '', port, good)
-                }
-                season={season}
-                piracyOn={state.hazards?.piracy ?? false}
-              />
-
-              <CountingHouse
-                state={state}
-                captain={captain}
-                fleetSize={myShips.length}
-                ships={myShips}
-                dispatch={dispatch}
-                enabled={canAct}
-              />
-            </>
-          )}
-
-          <RivalFleets state={state} viewerId={captain?.id ?? null} />
-          <ChronicleLog log={state.log} captains={state.captains} />
-        </aside>
       </main>
 
       {/* Notable events pop as cards so the game can be watched rather than read. */}
@@ -493,6 +629,7 @@ export default function GameScreen() {
           the plan owner's, not the active seat's — see `TourPlan.captainId`. */}
       {tourPlan && tourOwner && !over && (
         <GuidedTour
+          onTargetChange={revealTourTarget}
           view={{
             state,
             captain: tourOwner,
@@ -593,7 +730,9 @@ function priceLookup(state: GameState, captainId: string) {
 }
 
 const page: React.CSSProperties = {
+  height: '100dvh',
   minHeight: '100vh',
+  overflow: 'clip',
   display: 'flex',
   flexDirection: 'column',
   background: UI.ground,
@@ -632,52 +771,127 @@ const declarationBanner: React.CSSProperties = {
 };
 
 /**
- * Three columns: the exchange on the left as reference, the chart in the middle with the room it
- * needs, and every control on the right. Previously the chart and a single tall sidebar shared the
- * width, which squeezed the map and mixed "what I am racing over" with "what I can do".
- * `tr-board` in styles.css collapses this to one column on narrow screens.
+ * The board: the chart filling everything below the banners, with the panels, the launchers and
+ * the turn bar floating over it. `overflow: clip` rather than `hidden`, so that a scrollIntoView
+ * from the guided run (aimed at a control inside a closed, off-screen panel) cannot scroll the
+ * board sideways the way it can scroll an `overflow: hidden` box.
  */
 const board: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '0.8rem',
-  padding: '0.8rem',
+  position: 'relative',
   flex: 1,
+  minHeight: 0,
+  overflow: 'clip',
 };
 
-const exchangeColumn: React.CSSProperties = {
-  flex: '0 1 265px',
-  minWidth: 0,
+const panelBody: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
+  overflowY: 'auto',
   display: 'flex',
   flexDirection: 'column',
   gap: '0.7rem',
-};
-
-const mapColumn: React.CSSProperties = {
-  flex: '1 1 auto',
-  minWidth: 0,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.6rem',
-};
-
-const actionColumn: React.CSSProperties = {
-  flex: '0 1 355px',
-  minWidth: 0,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.7rem',
+  padding: '0.7rem',
 };
 
 const turnBar: React.CSSProperties = {
+  position: 'absolute',
+  // Above the event cards (30), below the panels (40): the turn's one button must never be covered.
+  zIndex: 32,
+  margin: '0 auto',
+  maxWidth: 760,
+  boxSizing: 'border-box',
   display: 'flex',
   alignItems: 'center',
   gap: '0.8rem',
   flexWrap: 'wrap',
-  border: `1px solid ${UI.rule}`,
+  border: `1px solid ${UI.ruleStrong}`,
   background: UI.panel,
-  padding: '0.6rem 0.75rem',
+  padding: '0.55rem 0.75rem',
+  boxShadow: `0 6px 20px ${UI.shadow}`,
+  transition: 'left 0.25s ease, right 0.25s ease, bottom 0.25s ease',
 };
+
+const gazetteSlot: React.CSSProperties = {
+  position: 'absolute',
+  top: 56,
+  zIndex: 22,
+  margin: '0 auto',
+  maxWidth: 620,
+  maxHeight: 'calc(100% - 150px)',
+  overflowY: 'auto',
+};
+
+const launcher: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  zIndex: 24,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 1,
+  padding: '0.45rem 0.75rem',
+  background: UI.panel,
+  border: `1px solid ${UI.ruleStrong}`,
+  boxShadow: `0 4px 14px ${UI.shadow}`,
+  color: UI.text,
+  fontFamily: FONT.display,
+  fontSize: '0.92rem',
+  cursor: 'pointer',
+  borderRadius: 2,
+};
+
+const launcherNote: React.CSSProperties = {
+  fontFamily: FONT.data,
+  fontSize: '0.62rem',
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  color: UI.textFaint,
+};
+
+/** A panel's title strip, with the button that puts it away. */
+function PanelHead({ title, onClose }: { title: string; onClose: () => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', padding: '0.5rem 0.6rem 0.5rem 0.8rem', borderBottom: `1px solid ${UI.rule}`, flexShrink: 0 }}>
+      <span style={{ fontFamily: FONT.display, fontSize: '0.95rem', color: UI.text }}>{title}</span>
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label={`Close ${title.toLowerCase()} (Esc)`}
+        title="Close (Esc)"
+        style={{ background: 'none', border: `1px solid ${UI.rule}`, borderRadius: 2, color: UI.textSoft, cursor: 'pointer', fontFamily: FONT.data, fontSize: '0.8rem', width: 30, height: 28 }}
+      >
+        ✕
+      </button>
+    </div>
+  );
+}
+
+/**
+ * How the panels sit, matching `.tr-panel` in styles.css: beside each other over a wide chart, one
+ * at a time over a narrower one, and as a bottom sheet on a phone.
+ */
+function usePanelLayout() {
+  const read = () => {
+    const w = window.innerWidth;
+    return {
+      sheet: w <= 720,
+      oneAtATime: w <= 1360,
+      exchangeWidth: w <= 1100 ? 280 : 300,
+      ordersWidth: w <= 1100 ? 340 : 370,
+    };
+  };
+  const [layout, setLayout] = useState(read);
+  useEffect(() => {
+    const onResize = () =>
+      setLayout(prev => {
+        const next = read();
+        return prev.sheet === next.sheet && prev.oneAtATime === next.oneAtATime && prev.exchangeWidth === next.exchangeWidth ? prev : next;
+      });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return layout;
+}
 
 const backdrop: React.CSSProperties = {
   position: 'fixed',

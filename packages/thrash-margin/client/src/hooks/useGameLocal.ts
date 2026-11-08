@@ -80,5 +80,5 @@ export function useGameLocal(): GameHook {
     setSaves(next);
   }, []);
 
-  return { state, error, loading: false, saveStatus: 'saved', saves, createGame, loadGame, dispatch, restore: commit, deleteGame };
+  return { state, error, savesLoaded: true, loading: false, saveStatus: 'saved', saves, createGame, loadGame, dispatch, restore: commit, deleteGame };
 }

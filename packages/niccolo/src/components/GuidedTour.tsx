@@ -408,7 +408,7 @@ interface GuidedTourProps {
    * a step that needs a popup section still forces it open immediately, and a step that doesn't
    * needs the caller to close whatever was open before) — the caller owns what "showing a section"
    * actually means, since popup state lives in `GameScreen`, not here. */
-  onStepChange?: (requiresSection: TourStep['requiresSection']) => void;
+  onStepChange?: (requiresSection: TourStep['requiresSection'], targetId: string | null) => void;
   /**
    * Hidden rather than unmounted while a scripted event, the chapter card or another modal owns the
    * screen. Unmounting threw the run away: the remount re-derived its step from the predicates, and
@@ -437,7 +437,8 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
 
   useEffect(() => {
     if (hidden) return;
-    onStepChange?.(step.requiresSection);
+    // The target too, so the caller can open whichever floating panel holds it.
+    onStepChange?.(step.requiresSection, step.targetId ?? null);
     // Re-run on un-hide too: a modal may have closed the popup section this step needs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIndex, hidden]);
