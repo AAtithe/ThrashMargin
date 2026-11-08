@@ -3,7 +3,7 @@
  *
  * It spotlights a control in the live UI, waits for the player to actually use it, and moves on
  * when the game state says they did. Everything counts: the troops are real troops, the attack is
- * a real attack, and a player who finishes has run one complete turn — select, recruit, build,
+ * a real attack, and a player who finishes has run one complete turn — select, build, recruit,
  * pick a target, attack, end the turn — rather than read about it.
  *
  * ## What was already here, and why this is not it
@@ -119,7 +119,8 @@ export function planFirstTurn(state: GameState): TourPlan | null {
     .sort((a, b) => BUILDINGS[a].cost.gold + BUILDINGS[a].cost.mat - (BUILDINGS[b].cost.gold + BUILDINGS[b].cost.mat));
   if (affordable.length === 0) return null;
 
-  if (purse.gold < state.config.recruitCost) return null;
+  // Recruiting comes after the build, so the gold has to cover both.
+  if (purse.gold - BUILDINGS[affordable[0]].cost.gold < state.config.recruitCost) return null;
 
   return { homeId: home.id, targetId: targets[0].id, building: affordable[0] };
 }
@@ -159,7 +160,7 @@ const INTRO: TourStep = {
   title: 'One turn, start to finish',
   body: (v, plan) =>
     `I will point at one control at a time and wait while you use it. This is your real campaign — everything you do here counts. ` +
-    `We will raise troops at ${nameOf(v, plan.homeId)}, build something that pays for itself, and take ${nameOf(v, plan.targetId)}. Skip at any time.`,
+    `We will build something at ${nameOf(v, plan.homeId)} that pays for itself, raise troops there, and take ${nameOf(v, plan.targetId)}. Skip at any time.`,
   target: () => null,
   isComplete: () => false,
 };
@@ -225,13 +226,16 @@ const END_TURN: TourStep = {
 const OUTRO: TourStep = {
   title: 'That is the turn',
   body: () =>
-    `Recruit, build, take ground, end the turn. The tension in this game is that troops eat and buildings do not: an army you cannot feed starves, and an economy you do not defend gets taken. ` +
+    `Build, recruit, take ground, end the turn. The tension in this game is that troops eat and buildings do not: an army you cannot feed starves, and an economy you do not defend gets taken. ` +
     `Watch the food chip in the top bar more closely than the gold. Press ? at any time for the full rules.`,
   target: () => null,
   isComplete: () => false,
 };
 
-const STEPS: TourStep[] = [INTRO, SELECT_HOME, RECRUIT, BUILD, PICK_TARGET, ATTACK, END_TURN, OUTRO];
+// Build comes before recruiting. The recruit stepper defaults to as many troops as the treasury
+// allows, so recruiting first spent the gold the planned building needed and left the build step
+// pointing at a disabled row with no way forward.
+const STEPS: TourStep[] = [INTRO, SELECT_HOME, BUILD, RECRUIT, PICK_TARGET, ATTACK, END_TURN, OUTRO];
 
 /* -------------------------------------------------------------------------------------------- */
 /* Placement                                                                                      */
@@ -268,16 +272,20 @@ function useTargetRect(targetIds: string[]): { rect: DOMRect | null; id: string 
       for (const id of ids) {
         const el = document.getElementById(id);
         if (!el) continue;
-        const r = el.getBoundingClientRect();
+        const raw = el.getBoundingClientRect();
         // A zero-size box is an element in the DOM but not laid out — a collapsed bottom sheet,
         // most often. Spotlighting it would ring nothing in the corner.
-        if (r.width === 0 && r.height === 0) continue;
-        if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
+        if (raw.width === 0 && raw.height === 0) continue;
+        // Map territories are SVG and live inside a pan-and-zoom viewport with its own focus
+        // handling. Scrolling one into view would scroll the overflow-hidden map container and
+        // knock the board out of line with its controls, so they are only ever clipped.
+        const inSvg = el instanceof SVGElement;
+        if (!inSvg && !scrolledOnce && (raw.top < 0 || raw.bottom > window.innerHeight || isClippedByScroller(el, raw))) {
           el.scrollIntoView({ block: 'center', behavior: 'auto' });
           scrolledOnce = true;
-          setRect(el.getBoundingClientRect(), id);
-          return;
         }
+        const r = visibleRectOf(el);
+        if (!r) continue;
         setRect(r, id);
         return;
       }
@@ -295,6 +303,68 @@ function useTargetRect(targetIds: string[]): { rect: DOMRect | null; id: string 
   }, [key]);
 
   return found;
+}
+
+/**
+ * The part of an element a player can actually see: its box cut down by every ancestor that clips
+ * its overflow, and by the window. A territory's Voronoi cell routinely runs far past the edge of
+ * the map viewport (on the tutorial map the capital's cell is taller than the screen), and ringing
+ * the raw box drew the spotlight under the top bar and off the page, with the card parked on top
+ * of the very thing it was pointing at. Returns null when nothing of it is visible.
+ */
+function visibleRectOf(el: Element): DOMRect | null {
+  const r = el.getBoundingClientRect();
+  let left = r.left, top = r.top, right = r.right, bottom = r.bottom;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p);
+    if (o.overflowX === 'visible' && o.overflowY === 'visible') continue;
+    const c = p.getBoundingClientRect();
+    left = Math.max(left, c.left); top = Math.max(top, c.top);
+    right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
+  }
+  left = Math.max(left, 0); top = Math.max(top, 0);
+  right = Math.min(right, window.innerWidth); bottom = Math.min(bottom, window.innerHeight);
+  if (right - left < 4 || bottom - top < 4) return null;
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+/** Whether a scrollable ancestor (the sidebar, most often) is hiding part of the element. */
+function isClippedByScroller(el: Element, r: DOMRect): boolean {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if (o !== 'auto' && o !== 'scroll') continue;
+    const c = p.getBoundingClientRect();
+    if (r.top < c.top - 1 || r.bottom > c.bottom + 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Where the card goes: below the target, then above, then to the right, then to the left — the
+ * first that fits on screen without covering it. A target too big for any of those (a territory
+ * filling most of a phone) gets the card in whichever screen corner overlaps it least.
+ */
+function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; left: number } {
+  const W = window.innerWidth, H = window.innerHeight, M = 16, GAP = 16;
+  const w = Math.min(cardW, W - 2 * M);
+  const clampX = (x: number) => Math.max(M, Math.min(x, W - M - w));
+  const clampY = (y: number) => Math.max(M, Math.min(y, H - M - cardH));
+  const candidates = [
+    { top: rect.bottom + GAP, left: clampX(rect.left), ok: rect.bottom + GAP + cardH <= H - M },
+    { top: rect.top - GAP - cardH, left: clampX(rect.left), ok: rect.top - GAP - cardH >= M },
+    { top: clampY(rect.top), left: rect.right + GAP, ok: rect.right + GAP + w <= W - M },
+    { top: clampY(rect.top), left: rect.left - GAP - w, ok: rect.left - GAP - w >= M },
+  ];
+  const fit = candidates.find(c => c.ok);
+  if (fit) return { top: fit.top, left: fit.left };
+  const overlap = (x: number, y: number) =>
+    Math.max(0, Math.min(x + w, rect.right) - Math.max(x, rect.left)) *
+    Math.max(0, Math.min(y + cardH, rect.bottom) - Math.max(y, rect.top));
+  const corners = [
+    { left: W - M - w, top: H - M - cardH }, { left: M, top: H - M - cardH },
+    { left: W - M - w, top: M }, { left: M, top: M },
+  ];
+  return corners.reduce((best, c) => (overlap(c.left, c.top) < overlap(best.left, best.top) ? c : best));
 }
 
 /**
@@ -371,23 +441,21 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
       }
     : null;
 
-  // Close enough to decide which side of the target has room; the card's real height varies with
-  // the body copy and pixel-exactness buys nothing.
-  const CARD_HEIGHT_ESTIMATE = 210;
+  // The card's height varies with the body copy, so it is measured after each render; the
+  // estimate covers only the very first frame.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(210);
+  useEffect(() => {
+    const h = cardRef.current?.offsetHeight;
+    if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
+  });
   const CARD_WIDTH = 330;
   const cardStyle: React.CSSProperties = rect
-    ? {
-        ...CARD,
-        top:
-          rect.bottom + 16 + CARD_HEIGHT_ESTIMATE <= window.innerHeight
-            ? rect.bottom + 16
-            : Math.max(16, rect.top - CARD_HEIGHT_ESTIMATE - 16),
-        left: Math.max(16, Math.min(rect.left, window.innerWidth - 16 - CARD_WIDTH)),
-      }
+    ? { ...CARD, ...placeCard(rect, CARD_WIDTH, cardHeight) }
     : {
         ...CARD,
-        top: Math.max(16, window.innerHeight / 2 - CARD_HEIGHT_ESTIMATE / 2),
-        left: Math.max(16, window.innerWidth / 2 - CARD_WIDTH / 2),
+        top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
+        left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
 
   const finish = () => {
@@ -404,7 +472,7 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
 
       {/* `data-tour-*` is how an automated pass drives the run: it reads which control the card is
           pointing at and clicks that, rather than guessing from the copy. */}
-      <div style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={shownTarget ?? ''}>
+      <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={shownTarget ?? ''}>
         <p style={stepLabel}>
           Guided turn — {stepIndex + 1} of {steps.length}
         </p>
