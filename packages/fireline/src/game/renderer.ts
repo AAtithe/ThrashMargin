@@ -544,13 +544,14 @@ export class Renderer {
   /**
    * Where each selected unit of the player's is heading: a dashed line from the unit through any
    * queued waypoints to its goal, marching towards it, with a marker at the end. Green for a move,
-   * amber for an attack-move, red to an attack target.
+   * amber for an attack-move, red to an attack target. More than four units share lines (below).
    */
   private orderLines(ctx: CanvasRenderingContext2D, cur: GameState, drawn: { u: Unit; x: number; y: number }[], ov: Overlay, t: number) {
     if (!ov.selected.size) return;
     const lines: [number[], number[], number[]] = [[], [], []];
     const ends: [number[], number[], number[]] = [[], [], []];
     let targets: Map<number, { x: number; y: number }> | null = null;
+    const chains: { lane: number; pts: number[] }[] = [];
     for (const { u, x, y } of drawn) {
       if (u.owner !== 0 || !ov.selected.has(u.id)) continue;
       const o = u.order;
@@ -581,6 +582,23 @@ export class Renderer {
           if (w && typeof w.x === 'number' && typeof w.y === 'number') pts.push(w.x * TILE, w.y * TILE);
         }
       if (pts.length < 4) continue;
+      chains.push({ lane, pts });
+    }
+    // A big selection draws one line per order, from the group's middle through the average of its
+    // waypoints, rather than one line per unit: twenty units sent somewhere made a spider's web.
+    let shown = chains;
+    if (chains.length > 4) {
+      const groups = new Map<string, { lane: number; sum: number[]; n: number }>();
+      for (const c of chains) {
+        const key = `${c.lane}:${c.pts.length}`;
+        const g = groups.get(key) ?? { lane: c.lane, sum: new Array(c.pts.length).fill(0), n: 0 };
+        for (let i = 0; i < c.pts.length; i++) g.sum[i] += c.pts[i];
+        g.n++;
+        groups.set(key, g);
+      }
+      shown = [...groups.values()].map(g => ({ lane: g.lane, pts: g.sum.map(v => v / g.n) }));
+    }
+    for (const { lane, pts } of shown) {
       const l = lines[lane];
       for (let i = 0; i + 3 < pts.length; i += 2) l.push(pts[i], pts[i + 1], pts[i + 2], pts[i + 3]);
       for (let i = 2; i < pts.length; i += 2) ends[lane].push(pts[i], pts[i + 1]);

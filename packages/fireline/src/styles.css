@@ -367,7 +367,7 @@ kbd {
   gap: 0.35rem;
   padding: 1.1rem 1.3rem;
   width: min(100%, 420px);
-  background: linear-gradient(90deg, var(--ui-art-scrim) 0%, var(--ui-art-scrim) 55%, transparent 100%);
+  background: linear-gradient(90deg, var(--ui-art-scrim) 0%, var(--ui-art-scrim) 70%, transparent 100%);
   color: var(--ui-on-art);
   pointer-events: none;
 }
