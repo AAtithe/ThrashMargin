@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { processAction, runAiTurn } from '../sim/actions';
-import { paced, usePace, useSkipOnInput } from '../lib/motion';
+import { paced, usePace, useSkipOnInput, useSteps } from '../lib/motion';
 import type { GameAction, GameState } from '../sim/types';
 
 /**
@@ -123,8 +123,13 @@ export interface AiReplay {
 export function useAiReplay(state: GameState | null): AiReplay {
   const pace = usePace();
   const armed = useRef<GameState | null>(null);
-  const [frames, setFrames] = useState<ReplayFrame[]>([]);
-  const [index, setIndex] = useState(0);
+  // Each replay gets its own key, so the shared step clock restarts on the very render it arrives.
+  const seq = useRef(0);
+  const [replay, setReplay] = useState<{ key: number; frames: ReplayFrame[] } | null>(null);
+  const frames = replay?.frames ?? NO_FRAMES;
+  const holds = useMemo(() => frames.map(f => f.holdMs), [frames]);
+  // Paced, finished at once with motion off (or switched off mid-replay), skippable.
+  const { index, playing, skip } = useSteps(replay?.key ?? null, holds);
 
   const arm = useCallback((before: GameState) => {
     armed.current = before;
@@ -135,39 +140,21 @@ export function useAiReplay(state: GameState | null): AiReplay {
     const before = armed.current;
     if (!state) return;
     if (!before || state === before) {
-      if (before === null && frames.length > 0 && index < frames.length) {
+      if (before === null && playing) {
         // A state change from elsewhere (a reload, a save conflict): stop replaying a stale turn.
-        setFrames([]);
+        setReplay(null);
       }
       return;
     }
     armed.current = null;
     if (before.id !== state.id || paced(1000, pace) <= 0) return;
     const f = replayFrames(before, state);
-    if (f) {
-      setFrames(f);
-      setIndex(0);
-    }
+    if (f) setReplay({ key: ++seq.current, frames: f });
     // Only a change of state starts or stops a replay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
 
-  const playing = frames.length > 0 && index < frames.length;
-
-  useEffect(() => {
-    if (!playing) return;
-    const hold = paced(frames[index].holdMs, pace);
-    const t = window.setTimeout(() => setIndex(i => i + 1), hold);
-    return () => window.clearTimeout(t);
-  }, [playing, index, frames, pace]);
-
-  const skip = useCallback(() => setIndex(Number.MAX_SAFE_INTEGER), []);
   useSkipOnInput(playing, skip);
-
-  // Switching motion off mid-replay ends it.
-  useEffect(() => {
-    if (paced(1000, pace) <= 0) skip();
-  }, [pace, skip]);
 
   return {
     arm,
@@ -177,3 +164,5 @@ export function useAiReplay(state: GameState | null): AiReplay {
     skip,
   };
 }
+
+const NO_FRAMES: ReplayFrame[] = [];

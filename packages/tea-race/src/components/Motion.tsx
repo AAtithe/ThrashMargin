@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { paced, useCountUp, usePace, useSkipOnInput } from '../lib/motion';
+import { FloatText, paced, signed, useCountUp, useFloats, usePace, useSkipOnInput } from '../lib/motion';
 import { UI } from '../theme';
 import { Die } from './Art';
 
@@ -27,59 +27,36 @@ export function Counted({
   float?: boolean;
   baseMs?: number;
 }) {
-  const pace = usePace();
   const shown = useCountUp(value, baseMs);
-  const [floats, setFloats] = useState<{ id: number; delta: number }[]>([]);
+  // Never more than a couple in the air: a burst of trades should not stack a column of figures.
+  // (Nothing is pushed with motion off; each removes itself on a timer.)
+  const floats = useFloats(1100, 2);
   const prev = useRef(value);
-  const seq = useRef(0);
-  const timers = useRef<number[]>([]);
 
   useEffect(() => {
     const delta = value - prev.current;
     prev.current = value;
-    const life = paced(1100, pace);
-    if (!float || delta === 0 || life <= 0) return;
-    const id = ++seq.current;
-    // Never more than a couple in the air: a burst of trades should not stack a column of figures.
-    setFloats(f => [...f.slice(-1), { id, delta }]);
-    // Removed on a timer rather than on animationend, which never fires if the pace is switched
-    // off mid-flight (the shared CSS then sets `animation: none`).
-    timers.current.push(window.setTimeout(() => setFloats(f => f.filter(x => x.id !== id)), life + 60));
-  }, [value, float, pace]);
-
-  useEffect(
-    () => () => {
-      for (const t of timers.current) window.clearTimeout(t);
-    },
-    [],
-  );
+    if (!float || delta === 0) return;
+    floats.push(signed(delta, format), delta > 0 ? UI.good : UI.bad);
+    // `format` is usually an inline arrow; only a change of value floats anything.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, float, floats.push]);
 
   const text = format(shown);
-  if (floats.length === 0) return <>{text}</>;
+  if (floats.items.length === 0) return <>{text}</>;
   return (
     <span style={{ position: 'relative', display: 'inline-block' }}>
       {text}
-      {floats.map(f => (
-        <span
+      {floats.items.map(f => (
+        <FloatText
           key={f.id}
-          className="tm-anim-float"
-          aria-hidden="true"
-          style={{
-            // Beside the figure rather than above it: a header sits at the very top of the page,
-            // and a figure rising out of it would be clipped before it could be read.
-            position: 'absolute',
-            left: '100%',
-            top: 0,
-            marginLeft: '0.4rem',
-            pointerEvents: 'none',
-            whiteSpace: 'nowrap',
-            fontWeight: 600,
-            color: f.delta > 0 ? UI.good : UI.bad,
-          }}
-        >
-          {f.delta > 0 ? '+' : '−'}
-          {format(Math.abs(f.delta))}
-        </span>
+          text={f.text}
+          colour={f.colour}
+          // Beside the figure rather than above it: a header sits at the very top of the page, and
+          // a figure rising out of it would be clipped before it could be read. The figure's own
+          // size, not the shared default.
+          style={{ left: '100%', top: 0, marginLeft: '0.4rem', fontSize: 'inherit' }}
+        />
       ))}
     </span>
   );

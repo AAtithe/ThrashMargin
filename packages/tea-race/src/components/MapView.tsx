@@ -13,7 +13,7 @@ import {
 } from '../sim/geography';
 import { destinationOf } from '../sim/movement';
 import { planFastestRoute, windFor, type Season } from '../sim/weather';
-import { easeOut, paced, usePace, useSkipOnInput } from '../lib/motion';
+import { easeInOut, paced, usePace, useSkipOnInput, useTween } from '../lib/motion';
 import { piracyRating } from '../sim/hazards';
 import { RENOWN_FAMOUS, RENOWN_SMART } from '../sim/rules';
 import type { Captain, Contract, PortId, Ship } from '../sim/types';
@@ -499,8 +499,9 @@ function ShipMarker({
   // drawn, rather than cutting straight across land to the new spot. Display only — the reducer
   // has already moved her; this is the chart catching up.
   const prevShip = useRef<Ship | null>(null);
-  const [sail, setSail] = useState<{ pts: Pt[]; ms: number; start: number } | null>(null);
-  const [, setFrame] = useState(0);
+  const sailSeq = useRef(0);
+  // `baseMs` is the full-pace duration; the shared tween paces it.
+  const [sail, setSail] = useState<{ id: number; pts: Pt[]; baseMs: number } | null>(null);
   useLayoutEffect(() => {
     const before = prevShip.current;
     prevShip.current = ship;
@@ -516,23 +517,17 @@ function ShipMarker({
     const length = pathLength(pts);
     if (length < 0.5) return;
     // Long enough to read as a passage, short enough never to hold the eye.
-    const ms = paced(Math.min(950, Math.max(380, 260 + length * 1.2)), pace);
-    if (ms <= 0) return;
-    setSail({ pts, ms, start: performance.now() });
+    const baseMs = Math.min(950, Math.max(380, 260 + length * 1.2));
+    if (paced(baseMs, pace) <= 0) return;
+    setSail({ id: ++sailSeq.current, pts, baseMs });
     // `pos` is derived from `ship`; watching the anchor is watching her position.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anchorOf(ship)]);
-  // Progress is read from the clock at render, so the very render that starts a passage already
-  // draws her at its start — never one frame at the destination first.
-  const t = sail ? Math.min(1, (performance.now() - sail.start) / sail.ms) : 1;
-  const underWay = sail !== null && t < 1;
-  useEffect(() => {
-    if (!underWay) return;
-    const raf = requestAnimationFrame(() => setFrame(f => f + 1));
-    return () => cancelAnimationFrame(raf);
-  });
-  useSkipOnInput(underWay, () => setSail(null));
-  const at = underWay ? pointAlong(sail.pts, easeInOut(t)) : null;
+  // The shared tween is key-aware: the very render that starts a passage already reads t = 0, so
+  // she is never drawn one frame at the destination first.
+  const { t, playing: underWay, skip } = useTween(sail ? sail.id : null, sail ? sail.baseMs : 0);
+  useSkipOnInput(underWay, skip);
+  const at = underWay && sail ? pointAlong(sail.pts, easeInOut(t)) : null;
 
   useEffect(() => {
     if (at) last.current = { x: at.x, y: at.y };
@@ -748,9 +743,6 @@ function pointAlong(pts: Pt[], t: number): Pt & { heading: number } {
   const end = pts[pts.length - 1];
   return { ...end, heading: 0 };
 }
-
-/** Gather way, run, and round up into the berth. */
-const easeInOut = (t: number) => (t < 0.5 ? (1 - easeOut(1 - 2 * t)) / 2 : 0.5 + easeOut(2 * t - 1) / 2);
 
 /** Where a ship is drawn, which way she heads, and the start of her leg for the wake. */
 function shipPosition(
