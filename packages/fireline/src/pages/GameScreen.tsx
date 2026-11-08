@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import ThemeToggle from '../components/ThemeToggle';
 import { TILE } from '../game/art';
+import { useLayout } from '../game/layout';
 import Minimap from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
 import { BuildPanel, SelectionPanel, type Tab } from '../game/Sidebar';
@@ -20,6 +21,10 @@ import { FONT, UI } from '../theme';
 
 const TICK_MS = 1000 / TICKS_PER_SECOND;
 const SAVE_EVERY_MS = 15000;
+const ZOOM_MIN = 0.55;
+const ZOOM_MAX = 1.7;
+/** How far a finger may wander, in CSS pixels, and still count as a tap rather than a drag. */
+const TAP_SLOP = 10;
 const SPEEDS = [
   { label: 'Slow', value: 0.6 },
   { label: 'Normal', value: 1 },
@@ -122,6 +127,30 @@ function Battle({
   const keys = useRef(new Set<string>());
   const mouse = useRef({ x: -1, y: -1, inside: false, downX: 0, downY: 0, down: false, pan: false, panX: 0, panY: 0, camX: 0, camY: 0, lastClick: 0 });
   const groups = useRef(new Map<string, number[]>());
+  // Fingers on the battlefield, by pointer id, and the gesture they are making. One finger pans
+  // (or draws a box in box mode), two pinch to zoom, and a finger lifted without moving is a tap.
+  const touches = useRef(new Map<number, { x: number; y: number }>());
+  const gesture = useRef({
+    kind: 'none' as 'none' | 'tap' | 'pan' | 'box' | 'pinch',
+    x0: 0,
+    y0: 0,
+    camX: 0,
+    camY: 0,
+    zoom: 1,
+    dist: 0,
+    midX: 0,
+    midY: 0,
+    lastTap: 0,
+    lastTapId: 0,
+    /** When a finger last touched the map. Browsers follow a tap with a made-up mouse move. */
+    lastTouch: -Infinity,
+  });
+  const layout = useLayout();
+  const opened = useRef(false);
+  const [menu, setMenu] = useState(false);
+  const [boxMode, setBoxMode] = useState(false);
+  const boxRef = useRef(boxMode);
+  boxRef.current = boxMode;
 
   const [, setHud] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -145,7 +174,7 @@ function Battle({
   const speedRef = useRef(speed);
   const placingRef = useRef(placing);
   const attackRef = useRef(attackMode);
-  pausedRef.current = paused || help;
+  pausedRef.current = paused || help || menu;
   speedRef.current = speed;
   placingRef.current = placing;
   attackRef.current = attackMode;
@@ -278,13 +307,202 @@ function Battle({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ---- Selecting ---------------------------------------------------------------------------
+  /** Select own units inside a screen-space box. */
+  const selectInBox = (d: { x0: number; y0: number; x1: number; y1: number }, additive: boolean) => {
+    const ov = overlay.current;
+    const s = cur.current;
+    const a = toWorld(Math.min(d.x0, d.x1), Math.min(d.y0, d.y1));
+    const b = toWorld(Math.max(d.x0, d.x1), Math.max(d.y0, d.y1));
+    const inBox = s.units.filter(u => u.owner === 0 && u.x >= a.x && u.x <= b.x && u.y >= a.y && u.y <= b.y);
+    // A box with fighting units in it leaves the haulers out, the way you almost always want.
+    const fighters = inBox.filter(u => u.kind !== 'hauler');
+    const chosen = fighters.length ? fighters : inBox;
+    if (additive) chosen.forEach(u => ov.selected.add(u.id));
+    else ov.selected = new Set(chosen.map(u => u.id));
+    if (chosen.length) sound.play('select');
+    refresh();
+  };
+
+  /** Every own unit of one kind inside the view. */
+  const selectKindOnScreen = (kind: string) => {
+    const c = cam.current;
+    const x0 = c.x / TILE;
+    const y0 = c.y / TILE;
+    const x1 = x0 + c.w / c.zoom / TILE;
+    const y1 = y0 + c.h / c.zoom / TILE;
+    overlay.current.selected = new Set(
+      cur.current.units.filter(u => u.owner === 0 && u.kind === kind && u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1).map(u => u.id),
+    );
+  };
+
+  /** Select one thing; a producer opens its own build list. */
+  const selectOne = (id: number) => {
+    overlay.current.selected = new Set([id]);
+    const b = cur.current.buildings.find(x => x.id === id);
+    if (b && b.owner === 0) {
+      if (b.kind === 'barracks') setTab('infantry');
+      if (b.kind === 'factory') setTab('vehicle');
+      if (b.kind === 'hq') setTab('building');
+    }
+    sound.play('select');
+  };
+
+  /** Every fighting unit you own: the touch stand-in for a box drawn round the whole army. */
+  const selectArmy = () => {
+    const ids = cur.current.units.filter(u => u.owner === 0 && u.kind !== 'hauler').map(u => u.id);
+    overlay.current.selected = new Set(ids);
+    if (ids.length) sound.play('select');
+    refresh();
+  };
+
+  const goHome = () => {
+    const yard = cur.current.buildings.find(b => b.owner === 0 && b.kind === 'hq') ?? cur.current.buildings.find(b => b.owner === 0);
+    if (yard) centreOn(yard.x + 1.5, yard.y + 1.5);
+  };
+
+  /**
+   * A finger lifted without moving. A touch screen has no right button, so a tap does what the
+   * situation calls for: with your units selected, a tap on open ground, ore, a refinery or an
+   * enemy is an order; a tap on one of your own units or structures selects it instead.
+   */
+  const tap = (sx: number, sy: number) => {
+    const s = cur.current;
+    const ov = overlay.current;
+    if (placingRef.current) {
+      updatePlacement(sx, sy);
+      const p = ov.placement;
+      if (p && p.ok && dispatch({ type: 'place', kind: p.kind, x: p.tx, y: p.ty })) setPlacing(null);
+      else sound.play('denied');
+      refresh();
+      return;
+    }
+    const w = toWorld(sx, sy);
+    if (attackRef.current) {
+      command(w.x, w.y, true);
+      setAttackMode(false);
+      return;
+    }
+    const id = pick(w.x, w.y);
+    const now = performance.now();
+    const g = gesture.current;
+    const double = id !== 0 && id === g.lastTapId && now - g.lastTap < 350;
+    g.lastTap = now;
+    g.lastTapId = id;
+    const unit = s.units.find(u => u.id === id);
+    const building = s.buildings.find(b => b.id === id);
+    const mine = ownSelectedUnits();
+    const selectedBuilding = s.buildings.find(b => ov.selected.has(b.id) && b.owner === 0);
+    if (unit && unit.owner === 0) {
+      if (double) selectKindOnScreen(unit.kind);
+      else selectOne(id);
+    } else if (building && building.owner === 0) {
+      // Haulers selected and a refinery tapped: send them to unload there.
+      if (building.kind === 'refinery' && mine.some(u => u.kind === 'hauler')) command(w.x, w.y, false);
+      else selectOne(id);
+    } else if (id) {
+      // An enemy: attack it with what is selected, or look at it when nothing of yours is.
+      if (mine.length) command(w.x, w.y, false);
+      else selectOne(id);
+    } else if (mine.length) {
+      command(w.x, w.y, false);
+    } else if (selectedBuilding && (selectedBuilding.kind === 'barracks' || selectedBuilding.kind === 'factory')) {
+      command(w.x, w.y, false);
+    } else {
+      ov.selected = new Set();
+    }
+    refresh();
+  };
+
   // ---- Pointer input on the battlefield -----------------------------------------------------
-  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+  const pinchOf = () => {
+    const [p, q] = [...touches.current.values()];
+    return { dist: Math.max(1, Math.hypot(p.x - q.x, p.y - q.y)), midX: (p.x + q.x) / 2, midY: (p.y + q.y) / 2 };
+  };
+
+  const touchDown = (e: React.PointerEvent<HTMLCanvasElement>, sx: number, sy: number) => {
+    touches.current.set(e.pointerId, { x: sx, y: sy });
+    const g = gesture.current;
+    const c = cam.current;
+    mouse.current.inside = false;
+    if (touches.current.size === 2) {
+      const p = pinchOf();
+      Object.assign(g, { kind: 'pinch', zoom: c.zoom, camX: c.x, camY: c.y, ...p });
+      overlay.current.drag = null;
+    } else if (touches.current.size === 1) {
+      Object.assign(g, { kind: 'tap', x0: sx, y0: sy, camX: c.x, camY: c.y });
+    }
+  };
+
+  const touchMove = (e: React.PointerEvent<HTMLCanvasElement>, sx: number, sy: number) => {
+    if (!touches.current.has(e.pointerId)) return;
+    touches.current.set(e.pointerId, { x: sx, y: sy });
+    const g = gesture.current;
+    const c = cam.current;
+    if (g.kind === 'pinch' && touches.current.size >= 2) {
+      const p = pinchOf();
+      // Keep the map point under the first midpoint under the fingers as they move and spread.
+      const wx = g.camX + g.midX / g.zoom;
+      const wy = g.camY + g.midY / g.zoom;
+      c.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, (g.zoom * p.dist) / g.dist));
+      c.x = wx - p.midX / c.zoom;
+      c.y = wy - p.midY / c.zoom;
+      clampCam(c);
+      return;
+    }
+    if (g.kind === 'tap' && Math.hypot(sx - g.x0, sy - g.y0) > TAP_SLOP) g.kind = boxRef.current ? 'box' : 'pan';
+    if (g.kind === 'pan') {
+      c.x = g.camX - (sx - g.x0) / c.zoom;
+      c.y = g.camY - (sy - g.y0) / c.zoom;
+      clampCam(c);
+    } else if (g.kind === 'box') {
+      overlay.current.drag = { x0: g.x0, y0: g.y0, x1: sx, y1: sy };
+    }
+  };
+
+  const touchUp = (e: React.PointerEvent<HTMLCanvasElement>, sx: number, sy: number) => {
+    if (!touches.current.delete(e.pointerId)) return;
+    const g = gesture.current;
+    if (g.kind === 'pinch') {
+      // The pinch is over only when both fingers are up; the second one lifting is not a tap.
+      if (touches.current.size === 0) g.kind = 'none';
+      return;
+    }
+    if (touches.current.size) return;
+    const kind = g.kind;
+    g.kind = 'none';
+    if (e.type === 'pointercancel') {
+      overlay.current.drag = null;
+      return;
+    }
+    if (kind === 'box' && overlay.current.drag) {
+      const d = overlay.current.drag;
+      overlay.current.drag = null;
+      selectInBox(d, false);
+      setBoxMode(false);
+    } else if (kind === 'tap') {
+      tap(sx, sy);
+    }
+  };
+
+  const local = (e: React.PointerEvent<HTMLCanvasElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const sx = e.clientX - r.left;
-    const sy = e.clientY - r.top;
+    return { sx: e.clientX - r.left, sy: e.clientY - r.top };
+  };
+
+  /** A mouse event that is really the browser echoing a recent touch, not a mouse. */
+  const echo = (e: React.PointerEvent<HTMLCanvasElement>) => e.pointerType !== 'touch' && performance.now() - gesture.current.lastTouch < 1000;
+
+  const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const { sx, sy } = local(e);
     const m = mouse.current;
     e.currentTarget.setPointerCapture(e.pointerId);
+    if (e.pointerType === 'touch') gesture.current.lastTouch = performance.now();
+    else if (echo(e)) return;
+    if (e.pointerType === 'touch') {
+      touchDown(e, sx, sy);
+      return;
+    }
     if (e.button === 1) {
       m.pan = true;
       m.panX = sx;
@@ -326,9 +544,15 @@ function Battle({
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const r = e.currentTarget.getBoundingClientRect();
-    const sx = e.clientX - r.left;
-    const sy = e.clientY - r.top;
+    const { sx, sy } = local(e);
+    if (e.pointerType === 'touch') {
+      gesture.current.lastTouch = performance.now();
+      touchMove(e, sx, sy);
+      return;
+    }
+    // Without this, the echo of a tap near the edge of the map would start edge-scrolling and
+    // carry the view away from the base with nobody touching anything.
+    if (echo(e)) return;
     const m = mouse.current;
     m.x = sx;
     m.y = sy;
@@ -348,6 +572,13 @@ function Battle({
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const { sx, sy } = local(e);
+    if (e.pointerType === 'touch') {
+      gesture.current.lastTouch = performance.now();
+      touchUp(e, sx, sy);
+      return;
+    }
+    if (echo(e)) return;
     const m = mouse.current;
     if (m.pan) {
       m.pan = false;
@@ -355,23 +586,12 @@ function Battle({
     }
     if (!m.down || e.button !== 0) return;
     m.down = false;
-    const r = e.currentTarget.getBoundingClientRect();
-    const sx = e.clientX - r.left;
-    const sy = e.clientY - r.top;
     const ov = overlay.current;
     const s = cur.current;
     if (ov.drag) {
-      const a = toWorld(Math.min(ov.drag.x0, ov.drag.x1), Math.min(ov.drag.y0, ov.drag.y1));
-      const b = toWorld(Math.max(ov.drag.x0, ov.drag.x1), Math.max(ov.drag.y0, ov.drag.y1));
+      const d = ov.drag;
       ov.drag = null;
-      const inBox = s.units.filter(u => u.owner === 0 && u.x >= a.x && u.x <= b.x && u.y >= a.y && u.y <= b.y);
-      // A box with fighting units in it leaves the haulers out, the way you almost always want.
-      const fighters = inBox.filter(u => u.kind !== 'hauler');
-      const chosen = fighters.length ? fighters : inBox;
-      if (e.shiftKey) chosen.forEach(u => ov.selected.add(u.id));
-      else ov.selected = new Set(chosen.map(u => u.id));
-      if (chosen.length) sound.play('select');
-      refresh();
+      selectInBox(d, e.shiftKey);
       return;
     }
     const w = toWorld(sx, sy);
@@ -382,24 +602,12 @@ function Battle({
     const unit = s.units.find(u => u.id === id);
     if (unit && unit.owner === 0 && double) {
       // Double-click: every unit of that kind on screen.
-      const c = cam.current;
-      const x0 = c.x / TILE;
-      const y0 = c.y / TILE;
-      const x1 = x0 + c.w / c.zoom / TILE;
-      const y1 = y0 + c.h / c.zoom / TILE;
-      ov.selected = new Set(s.units.filter(u => u.owner === 0 && u.kind === unit.kind && u.x >= x0 && u.x <= x1 && u.y >= y0 && u.y <= y1).map(u => u.id));
+      selectKindOnScreen(unit.kind);
     } else if (unit && unit.owner === 0 && e.shiftKey) {
       if (ov.selected.has(id)) ov.selected.delete(id);
       else ov.selected.add(id);
     } else if (id) {
-      ov.selected = new Set([id]);
-      const b = s.buildings.find(x => x.id === id);
-      if (b && b.owner === 0) {
-        if (b.kind === 'barracks') setTab('infantry');
-        if (b.kind === 'factory') setTab('vehicle');
-        if (b.kind === 'hq') setTab('building');
-      }
-      sound.play('select');
+      selectOne(id);
     } else if (!e.shiftKey) {
       // Clicking open ground with units selected leaves them selected; right-click gives orders.
       if (!ownSelectedUnits().length) ov.selected = new Set();
@@ -413,7 +621,7 @@ function Battle({
     const sx = e.clientX - r.left;
     const sy = e.clientY - r.top;
     const before = { x: c.x + sx / c.zoom, y: c.y + sy / c.zoom };
-    c.zoom = Math.max(0.55, Math.min(1.7, c.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
+    c.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, c.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
     c.x = before.x - sx / c.zoom;
     c.y = before.y - sy / c.zoom;
     clampCam(c);
@@ -443,8 +651,7 @@ function Battle({
         e.preventDefault();
         setPaused(p => !p);
       } else if (k === 'h' || e.key === 'Home') {
-        const yard = cur.current.buildings.find(b => b.owner === 0 && b.kind === 'hq') ?? cur.current.buildings.find(b => b.owner === 0);
-        if (yard) centreOn(yard.x + 1.5, yard.y + 1.5);
+        goHome();
       } else if (/^[1-9]$/.test(e.key)) {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
@@ -522,6 +729,12 @@ function Battle({
         const c = cam.current;
         c.w = w;
         c.h = h;
+        // A phone's view is too small for the fixed opening offset to show the base: on a narrow
+        // battlefield, open centred on the Command Yard instead, once its real size is known.
+        if (!opened.current && w > 0) {
+          opened.current = true;
+          if (w < 700 && hq) centreOn(hq.x + 1.5, hq.y + 1.5);
+        }
         clampCam(c);
 
         // Scrolling: arrow keys, or the pointer resting at the edge of the view.
@@ -598,7 +811,7 @@ function Battle({
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [doSave, refresh, setPlacing, updatePlacement]);
+  }, [doSave, refresh, setPlacing, updatePlacement, centreOn]);
 
   // ---- Saving -------------------------------------------------------------------------------
   useEffect(() => {
@@ -630,11 +843,68 @@ function Battle({
   const secs = Math.floor(s.tick / TICKS_PER_SECOND);
   const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   const recent = s.log.slice(-5).reverse();
+  const big = layout.touch ? touchBtn : null;
+  const saveStatus = (
+    <span style={{ fontSize: '0.72rem', color: saveError ? UI.bad : UI.textFaint }} title={saveError ?? undefined}>
+      {saveError ? 'Not saving' : lastSaved ? `Saved ${cloud ? 'to your account' : 'in this browser'}` : 'Saves every 15s'}
+    </span>
+  );
+  const speedButtons = (
+    <div style={{ display: 'flex', gap: 2 }}>
+      {SPEEDS.map(sp => (
+        <button
+          key={sp.label}
+          style={{ ...chromeBtn, padding: '3px 8px', ...big, borderColor: speed === sp.value ? UI.accent : UI.rule, color: speed === sp.value ? UI.accent : UI.textSoft }}
+          onClick={() => setSpeed(sp.value)}
+        >
+          {sp.label}
+        </button>
+      ))}
+    </div>
+  );
+  const soundControls = (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <button
+        style={{ ...chromeBtn, ...big, minWidth: 82 }}
+        data-testid="sound-button"
+        aria-pressed={!soundPrefs.muted}
+        title="Sound on or off (M)"
+        onClick={() => changeSound({ muted: !soundPrefs.muted })}
+      >
+        {soundPrefs.muted ? 'Sound off' : 'Sound on'}
+      </button>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.05}
+        value={soundPrefs.volume}
+        aria-label="Volume"
+        disabled={soundPrefs.muted}
+        onChange={e => changeSound({ volume: Number(e.target.value) })}
+        style={{ width: layout.compact ? 110 : 70, accentColor: 'var(--ui-accent)' }}
+      />
+    </div>
+  );
+  const tourButton = (
+    <button
+      style={{ ...chromeBtn, ...big }}
+      data-testid="tour-button"
+      onClick={() => {
+        setMenu(false);
+        setTourRun(n => n + 1);
+        setTourOpen(true);
+      }}
+    >
+      Tour
+    </button>
+  );
+  const ownSelected = s.units.some(u => u.owner === 0 && overlay.current.selected.has(u.id));
   const cursor = placing ? 'copy' : attackMode ? 'crosshair' : overlay.current.hover ? 'pointer' : 'default';
 
   return (
-    <div style={shell}>
-      <header style={topBar}>
+    <div style={shell} className="fl-shell">
+      <header style={layout.compact ? { ...topBar, flexWrap: 'nowrap', gap: 6 } : topBar}>
         <button
           style={chromeBtn}
           onClick={() => {
@@ -644,73 +914,91 @@ function Battle({
         >
           ← Lobby
         </button>
-        <strong style={{ fontFamily: FONT.display, fontSize: '1rem', letterSpacing: '0.04em' }}>FIRELINE</strong>
-        <span style={{ color: UI.textSoft, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
-          {s.name} · {DIFFICULTIES[s.difficulty].label}
-        </span>
+        {!layout.stacked && <strong style={{ fontFamily: FONT.display, fontSize: '1rem', letterSpacing: '0.04em' }}>FIRELINE</strong>}
+        {!layout.compact && (
+          <span style={{ color: UI.textSoft, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
+            {s.name} · {DIFFICULTIES[s.difficulty].label}
+          </span>
+        )}
         <span style={{ fontFamily: FONT.mono, fontSize: '0.85rem', color: UI.text }} data-testid="clock">
           {clock}
         </span>
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.72rem', color: saveError ? UI.bad : UI.textFaint }} title={saveError ?? undefined}>
-          {saveError ? 'Not saving' : lastSaved ? `Saved ${cloud ? 'to your account' : 'in this browser'}` : 'Saves every 15s'}
-        </span>
-        <div style={{ display: 'flex', gap: 2 }}>
-          {SPEEDS.map(sp => (
-            <button
-              key={sp.label}
-              style={{ ...chromeBtn, padding: '3px 8px', borderColor: speed === sp.value ? UI.accent : UI.rule, color: speed === sp.value ? UI.accent : UI.textSoft }}
-              onClick={() => setSpeed(sp.value)}
-            >
-              {sp.label}
+        {layout.compact ? (
+          <>
+            {saveError && <span style={{ fontSize: '0.72rem', color: UI.bad }}>Not saving</span>}
+            <button style={{ ...chromeBtn, ...(layout.touch ? touchBtn : null), minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
+              {paused ? 'Resume' : 'Pause'}
             </button>
-          ))}
-        </div>
-        <button style={{ ...chromeBtn, minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
-          {paused ? 'Resume' : 'Pause'}
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <button
-            style={{ ...chromeBtn, minWidth: 82 }}
-            data-testid="sound-button"
-            aria-pressed={!soundPrefs.muted}
-            title="Sound on or off (M)"
-            onClick={() => changeSound({ muted: !soundPrefs.muted })}
-          >
-            {soundPrefs.muted ? 'Sound off' : 'Sound on'}
-          </button>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={soundPrefs.volume}
-            aria-label="Volume"
-            disabled={soundPrefs.muted}
-            onChange={e => changeSound({ volume: Number(e.target.value) })}
-            style={{ width: 70, accentColor: 'var(--ui-accent)' }}
-          />
-        </div>
-        <button
-          style={chromeBtn}
-          data-testid="tour-button"
-          onClick={() => {
-            setTourRun(n => n + 1);
-            setTourOpen(true);
-          }}
-        >
-          Tour
-        </button>
-        <button style={chromeBtn} onClick={() => setHelp(true)} aria-label="Controls">
-          ?
-        </button>
-        <ThemeToggle style={{ padding: '4px 8px' }} />
+            <button
+              style={{ ...chromeBtn, ...(layout.touch ? touchBtn : null) }}
+              aria-expanded={menu}
+              aria-haspopup="dialog"
+              data-testid="menu-button"
+              onClick={() => setMenu(m => !m)}
+            >
+              Menu
+            </button>
+          </>
+        ) : (
+          <>
+            {saveStatus}
+            {speedButtons}
+            <button style={{ ...chromeBtn, minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
+              {paused ? 'Resume' : 'Pause'}
+            </button>
+            {soundControls}
+            {tourButton}
+            <button style={chromeBtn} onClick={() => setHelp(true)} aria-label="Controls">
+              ?
+            </button>
+            <ThemeToggle style={{ padding: '4px 8px' }} />
+          </>
+        )}
       </header>
+
+      {menu && layout.compact && (
+        <div style={menuScrim} onClick={() => setMenu(false)}>
+          <div role="dialog" aria-label="Battle menu" style={menuSheet} onClick={e => e.stopPropagation()} data-testid="menu">
+            <div style={{ fontSize: '0.85rem', color: UI.textSoft }}>
+              {s.name} · {DIFFICULTIES[s.difficulty].label}
+            </div>
+            {saveStatus}
+            <div style={menuRow}>
+              <span style={menuLabel}>Speed</span>
+              {speedButtons}
+            </div>
+            <div style={menuRow}>
+              <span style={menuLabel}>Sound</span>
+              {soundControls}
+            </div>
+            <div style={menuRow}>
+              <span style={menuLabel}>Theme</span>
+              <ThemeToggle style={{ padding: '6px 10px' }} />
+            </div>
+            <div style={{ ...menuRow, justifyContent: 'flex-end' }}>
+              {tourButton}
+              <button
+                style={{ ...chromeBtn, ...touchBtn }}
+                onClick={() => {
+                  setMenu(false);
+                  setHelp(true);
+                }}
+              >
+                Controls
+              </button>
+              <button style={{ ...chromeBtn, ...touchBtn, borderColor: UI.accent }} onClick={() => setMenu(false)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {saveError && <div style={errorStrip}>{saveError}</div>}
 
-      <div style={body}>
-        <div ref={wrapRef} style={{ position: 'relative', flex: 1, minWidth: 0, minHeight: 320, overflow: 'hidden', background: '#050707' }}>
+      <div style={{ ...body, flexDirection: layout.stacked ? 'column' : 'row', flexWrap: 'nowrap' }}>
+        <div ref={wrapRef} style={{ position: 'relative', flex: 1, minWidth: 0, minHeight: layout.stacked ? 180 : 0, overflow: 'hidden', background: '#050707' }}>
           <canvas
             ref={canvasRef}
             id="fl-battlefield"
@@ -721,6 +1009,7 @@ function Battle({
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
             onPointerLeave={() => (mouse.current.inside = false)}
             onContextMenu={e => e.preventDefault()}
             onWheel={onWheel}
@@ -728,12 +1017,74 @@ function Battle({
           {(placing || attackMode) && (
             <div style={hint}>
               {placing
-                ? `Place the ${BUILDINGS[placing].name}: click open ground near your base. Right-click or Esc to stop.`
-                : 'Attack-move: click where to go. Units fight anything they meet on the way.'}
+                ? layout.touch
+                  ? `Place the ${BUILDINGS[placing].name}: tap open ground near your base. Drag to look around.`
+                  : `Place the ${BUILDINGS[placing].name}: click open ground near your base. Right-click or Esc to stop.`
+                : `Attack-move: ${layout.touch ? 'tap' : 'click'} where to go. Units fight anything they meet on the way.`}
             </div>
           )}
-          <div style={feed} aria-live="polite">
-            {recent.map(l => (
+          {layout.touch && (
+            // While placing, the one button goes to the corner: centred, it sat under the ground near
+            // the base, and a phone's tap adjustment snapped taps meant for the map onto it.
+            <div style={placing ? { ...commandBar, left: 'auto' } : commandBar} data-testid="command-bar">
+              {placing ? (
+                <button style={barBtn(false)} onClick={() => setPlacing(null)}>
+                  Stop placing
+                </button>
+              ) : (
+                <>
+                  <button
+                    style={barBtn(boxMode)}
+                    aria-pressed={boxMode}
+                    data-testid="box-mode"
+                    title="Then drag on the map to select the units inside the box"
+                    onClick={() => setBoxMode(b => !b)}
+                  >
+                    Box
+                  </button>
+                  <button style={barBtn(false)} id="fl-select-army" data-testid="select-army" onClick={selectArmy}>
+                    Army
+                  </button>
+                  <button
+                    style={barBtn(attackMode)}
+                    aria-pressed={attackMode}
+                    data-testid="attack-move"
+                    title="Attack-move: then tap where to go, and they fight anything met on the way"
+                    disabled={!ownSelected}
+                    onClick={() => setAttackMode(a => !a)}
+                  >
+                    Attack
+                  </button>
+                  <button
+                    style={barBtn(false)}
+                    disabled={!ownSelected}
+                    onClick={() => {
+                      const ids = ownSelectedUnits().map(u => u.id);
+                      if (ids.length) dispatch({ type: 'stop', ids });
+                    }}
+                  >
+                    Stop
+                  </button>
+                  <button
+                    style={barBtn(false)}
+                    disabled={overlay.current.selected.size === 0}
+                    onClick={() => {
+                      overlay.current.selected = new Set();
+                      setAttackMode(false);
+                      refresh();
+                    }}
+                  >
+                    Clear
+                  </button>
+                  <button style={barBtn(false)} onClick={goHome}>
+                    Base
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+          <div style={{ ...feed, bottom: layout.touch ? 62 : 10, maxWidth: layout.stacked ? '90%' : '60%' }} aria-live="polite">
+            {(layout.stacked ? recent.slice(0, 3) : recent).map(l => (
               <div key={`${l.tick}-${l.text}`} style={{ color: l.tone === 'bad' ? '#ff9a8c' : l.tone === 'good' ? '#a8f0ae' : '#e4ebe8', opacity: Math.max(0.25, 1 - (s.tick - l.tick) / 300) }}>
                 {l.text}
               </div>
@@ -754,7 +1105,7 @@ function Battle({
             <div style={scrim} onClick={() => setHelp(false)}>
               <div style={{ ...card, maxWidth: 520, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
                 <h2 style={{ margin: 0, fontFamily: FONT.display }}>Controls</h2>
-                <Controls />
+                <Controls touch={layout.touch} />
                 <button style={{ ...chromeBtn, alignSelf: 'flex-end' }} onClick={() => setHelp(false)}>
                   Close
                 </button>
@@ -767,14 +1118,30 @@ function Battle({
         {tourOpen && (
           <GuidedTour
             key={tourRun}
-            view={{ s, selected: [...overlay.current.selected], placing, tab }}
+            view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch }}
             onFinish={() => setTourOpen(false)}
-            hidden={paused || help || s.winner !== null}
+            hidden={paused || help || menu || s.winner !== null}
           />
         )}
 
-        <aside style={sidebar} className="fl-scroll">
+        <aside
+          style={
+            layout.stacked
+              ? { ...sidebar, width: '100%', flex: '0 0 auto', maxHeight: '44%', borderLeft: 'none', borderTop: `1px solid ${UI.rule}` }
+              : layout.short
+                ? { ...sidebar, width: 228, flex: '0 0 228px', padding: 8 }
+                : sidebar
+          }
+          className="fl-scroll"
+        >
+          {layout.stacked && overlay.current.selected.size > 0 && (
+            <div style={{ borderBottom: `1px solid ${UI.rule}`, paddingBottom: 8 }}>
+              <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} touch={layout.touch} />
+            </div>
+          )}
           <BuildPanel
+            compact={layout.stacked || layout.short}
+            touch={layout.touch}
             state={s}
             tab={tab}
             setTab={setTab}
@@ -786,9 +1153,11 @@ function Battle({
             }}
             minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} />}
           />
-          <div style={{ borderTop: `1px solid ${UI.rule}`, paddingTop: 8 }}>
-            <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} />
-          </div>
+          {!(layout.stacked && overlay.current.selected.size > 0) && (
+            <div style={{ borderTop: `1px solid ${UI.rule}`, paddingTop: 8 }}>
+              <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} touch={layout.touch} />
+            </div>
+          )}
         </aside>
       </div>
     </div>
@@ -805,21 +1174,8 @@ function clampCam(c: Camera) {
   if (vh > MAP_H * TILE + 2 * m) c.y = (MAP_H * TILE - vh) / 2;
 }
 
-export function Controls() {
-  const rows: [string, string][] = [
-    ['Left-click / drag', 'Select a unit or structure; drag a box to select a group'],
-    ['Double-click', 'Select every unit of that kind on screen'],
-    ['Right-click', 'Move, attack, harvest, or set a rally point for a selected producer'],
-    ['A then click', 'Attack-move: go there, fighting anything met on the way'],
-    ['S', 'Stop'],
-    ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
-    ['R', 'Toggle repair on the selected structure'],
-    ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
-    ['H', 'Jump to your Command Yard'],
-    ['P or Space', 'Pause'],
-    ['M', 'Sound on or off'],
-    ['Esc', 'Cancel placement or attack-move; clear selection'],
-  ];
+export function Controls({ touch = false }: { touch?: boolean }) {
+  const rows: [string, string][] = touch ? TOUCH_ROWS : MOUSE_ROWS;
   return (
     <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem' }}>
       <tbody>
@@ -833,6 +1189,35 @@ export function Controls() {
     </table>
   );
 }
+
+const TOUCH_ROWS: [string, string][] = [
+  ['Tap', 'Select one of your units or structures'],
+  ['Tap with units selected', 'Move to open ground, attack an enemy, harvest ore, or unload at a refinery'],
+  ['Double-tap a unit', 'Select every unit of that kind on screen'],
+  ['Box, then drag', 'Select the units inside the box'],
+  ['Army', 'Select every fighting unit you own'],
+  ['Attack, then tap', 'Attack-move: go there, fighting anything met on the way'],
+  ['Barracks or Factory, then tap', 'Set where new units gather'],
+  ['Drag / pinch', 'Look around / zoom'],
+  ['Minimap', 'Tap to jump there, once a Comms Uplink is powered'],
+  ['× on a build button', 'Cancel it for a full refund'],
+  ['Base', 'Jump to your Command Yard'],
+];
+
+const MOUSE_ROWS: [string, string][] = [
+    ['Left-click / drag', 'Select a unit or structure; drag a box to select a group'],
+    ['Double-click', 'Select every unit of that kind on screen'],
+    ['Right-click', 'Move, attack, harvest, or set a rally point for a selected producer'],
+    ['A then click', 'Attack-move: go there, fighting anything met on the way'],
+    ['S', 'Stop'],
+    ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
+    ['R', 'Toggle repair on the selected structure'],
+    ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
+    ['H', 'Jump to your Command Yard'],
+    ['P or Space', 'Pause'],
+    ['M', 'Sound on or off'],
+    ['Esc', 'Cancel placement or attack-move; clear selection'],
+];
 
 function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) {
   const won = state.winner === 0;
@@ -882,7 +1267,6 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
 }
 
 const shell: CSSProperties = {
-  height: '100vh',
   display: 'flex',
   flexDirection: 'column',
   background: UI.ground,
@@ -920,6 +1304,64 @@ const sidebar: CSSProperties = {
   background: UI.panel,
   borderLeft: `1px solid ${UI.rule}`,
 };
+
+/** Finger-sized: 40px tall, the smallest target that is reliable on a phone. */
+const touchBtn: CSSProperties = { minHeight: 40, padding: '6px 12px', fontSize: '0.85rem' };
+
+const commandBar: CSSProperties = {
+  position: 'absolute',
+  left: 6,
+  right: 6,
+  bottom: 6,
+  display: 'flex',
+  gap: 4,
+  justifyContent: 'center',
+};
+
+const barBtn = (on: boolean): CSSProperties => ({
+  flex: '1 1 0',
+  minWidth: 0,
+  maxWidth: 110,
+  minHeight: 44,
+  padding: '6px 4px',
+  fontFamily: 'inherit',
+  fontSize: '0.8rem',
+  fontWeight: 600,
+  // Sits on the battlefield, which is the same canvas art in both modes, so like the hint and the
+  // feed it keeps one dark backing; only the "on" edge takes the theme's accent.
+  border: `1px solid ${on ? UI.accent : 'rgba(255,255,255,0.22)'}`,
+  background: on ? 'rgba(60,44,16,0.88)' : 'rgba(8,12,12,0.78)',
+  color: '#e9f0ec',
+  borderRadius: 6,
+  cursor: 'pointer',
+});
+
+const menuScrim: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 1500,
+  background: UI.scrim,
+  display: 'flex',
+  justifyContent: 'flex-end',
+  alignItems: 'flex-start',
+  padding: 8,
+};
+
+const menuSheet: CSSProperties = {
+  background: UI.panel,
+  border: `1px solid ${UI.rule}`,
+  borderRadius: 6,
+  padding: 14,
+  width: 'min(360px, 100%)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  boxShadow: `0 10px 40px ${UI.shadow}`,
+};
+
+const menuRow: CSSProperties = { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' };
+
+const menuLabel: CSSProperties = { fontSize: '0.75rem', color: UI.textFaint, width: 52 };
 
 export const chromeBtn: CSSProperties = {
   fontFamily: 'inherit',

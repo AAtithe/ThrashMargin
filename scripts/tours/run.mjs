@@ -35,6 +35,7 @@ const GAMES = {
   'niccolo':        { dir: 'packages/niccolo',              port: 5304 },
   'niccolo-rising': { dir: 'packages/niccolo-rising',       port: 5305 },
   'fireline':       { dir: 'packages/fireline',             port: 5306 },
+  'fireline-touch': { dir: 'packages/fireline',             port: 5307 },
 };
 
 const args = process.argv.slice(2);

@@ -97,7 +97,7 @@ export default function Minimap({
         height={MAP_H * SCALE}
         aria-label="Minimap"
         data-testid="minimap"
-        style={{ width: '100%', aspectRatio: '1', display: 'block', imageRendering: 'pixelated', borderRadius: 3, cursor: online ? 'crosshair' : 'default' }}
+        style={{ width: '100%', aspectRatio: '1', display: 'block', imageRendering: 'pixelated', borderRadius: 3, cursor: online ? 'crosshair' : 'default', touchAction: 'none' }}
         onPointerDown={e => {
           dragging.current = true;
           e.currentTarget.setPointerCapture(e.pointerId);
@@ -105,6 +105,7 @@ export default function Minimap({
         }}
         onPointerMove={e => dragging.current && jump(e)}
         onPointerUp={() => (dragging.current = false)}
+        onPointerCancel={() => (dragging.current = false)}
       />
       {!online && (
         <div

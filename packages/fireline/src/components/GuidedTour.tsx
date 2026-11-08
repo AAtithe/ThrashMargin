@@ -22,7 +22,7 @@
  *   step is read rather than acted on (`data-tour-manual`), and carries `data-tour-done` while it
  *   pauses after a finished step, so `scripts/tours/fireline.cjs` can drive it honestly.
  */
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { BUILDINGS, type BuildingKind, type Category } from '../sim/rules';
 import { countBuildings } from '../sim/state';
 import type { GameState } from '../sim/types';
@@ -53,6 +53,8 @@ export interface TourView {
   selected: number[];
   placing: BuildingKind | null;
   tab: Category;
+  /** A finger, not a mouse: the steps say tap, and name the command bar instead of keys. */
+  touch?: boolean;
 }
 
 /** Taken when a step becomes current. Predicates measure change from here. */
@@ -104,8 +106,8 @@ function busyWith(v: TourView, kind: BuildingKind): BuildingKind | null {
   return head && head.kind !== kind ? (head.kind as BuildingKind) : null;
 }
 
-const busyBody = (other: BuildingKind) =>
-  `Your Command Yard is busy with a ${BUILDINGS[other].name}, and it builds one structure at a time. Place it when it says Ready, or right-click its button to cancel it for a full refund. Then carry on.`;
+const busyBody = (other: BuildingKind, touch = false) =>
+  `Your Command Yard is busy with a ${BUILDINGS[other].name}, and it builds one structure at a time. Place it when it says Ready, or ${touch ? 'tap the × on its button' : 'right-click its button'} to cancel it for a full refund. Then carry on.`;
 
 const queueTarget = (kind: BuildingKind) => (v: TourView) => {
   if (v.tab !== 'building') return 'fl-tab-building';
@@ -128,13 +130,16 @@ const placeTarget = (kind: BuildingKind) => (v: TourView) => {
 const placeBody = (kind: BuildingKind, extra: string) => (v: TourView) => {
   const name = BUILDINGS[kind].name;
   const other = busyWith(v, kind);
-  if (other) return busyBody(other);
+  if (other) return busyBody(other, v.touch);
   const head = v.s.players[0].queues.building[0];
   if (v.placing === kind)
-    return `Move over open ground near your Command Yard. Green squares mean it fits; click to place it. ${extra}`;
+    return v.touch
+      ? `Tap open ground near your Command Yard. If it does not fit there, the outline turns red; try a little further out. Drag to look around. ${extra}`
+      : `Move over open ground near your Command Yard. Green squares mean it fits; click to place it. ${extra}`;
+  const verb = v.touch ? 'Tap' : 'Click';
   if (head && head.kind === kind && head.progress >= BUILDINGS[kind].buildTicks)
-    return `The ${name} is ready. Click its button once more to pick it up, then choose where it goes.`;
-  return `The ${name} is under construction; the bar along the bottom of its button fills as it builds. When the button says Ready, click it again.`;
+    return `The ${name} is ready. ${verb} its button once more to pick it up, then choose where it goes.`;
+  return `The ${name} is under construction; the bar along the bottom of its button fills as it builds. When the button says Ready, ${verb.toLowerCase()} it again.`;
 };
 
 function buildSteps(): TourStep[] {
@@ -151,8 +156,10 @@ function buildSteps(): TourStep[] {
       title: 'Build a Generator',
       body: v =>
         busyWith(v, 'power')
-          ? busyBody(busyWith(v, 'power')!)
-          : 'Everything runs on power, and your Command Yard makes almost none. Click Generator to start building one. You pay the 300 credits now; cancel with a right-click and you get them all back.',
+          ? busyBody(busyWith(v, 'power')!, v.touch)
+          : v.touch
+            ? 'Everything runs on power, and your Command Yard makes almost none. Tap Generator to start building one. You pay the 300 credits now; cancel with the × on its button and you get them all back.'
+            : 'Everything runs on power, and your Command Yard makes almost none. Click Generator to start building one. You pay the 300 credits now; cancel with a right-click and you get them all back.',
       target: queueTarget('power'),
       isComplete: queuedOrBuilt('power'),
     },
@@ -166,8 +173,8 @@ function buildSteps(): TourStep[] {
       title: 'Build a Refinery',
       body: v =>
         busyWith(v, 'refinery')
-          ? busyBody(busyWith(v, 'refinery')!)
-          : 'Credits come from ore, and ore only becomes credits at a Refinery. It is the most important thing you will build, and it arrives with a free hauler. Click Refinery.',
+          ? busyBody(busyWith(v, 'refinery')!, v.touch)
+          : `Credits come from ore, and ore only becomes credits at a Refinery. It is the most important thing you will build, and it arrives with a free hauler. ${v.touch ? 'Tap' : 'Click'} Refinery.`,
       target: queueTarget('refinery'),
       isComplete: queuedOrBuilt('refinery'),
     },
@@ -187,9 +194,11 @@ function buildSteps(): TourStep[] {
     },
     {
       title: 'Select your riflemen',
-      body: () =>
-        'Your three riflemen are standing by the Command Yard. Drag a box around them on the map, holding the left button down. A box with fighting units in it leaves haulers out, which is almost always what you want.',
-      target: () => 'fl-battlefield',
+      body: v =>
+        v.touch
+          ? 'Your three riflemen are standing by the Command Yard. Tap Army at the bottom of the map to select every fighting unit you own, or tap Box and drag round them. Haulers are left out, which is almost always what you want.'
+          : 'Your three riflemen are standing by the Command Yard. Drag a box around them on the map, holding the left button down. A box with fighting units in it leaves haulers out, which is almost always what you want.',
+      target: v => (v.touch ? 'fl-select-army' : 'fl-battlefield'),
       isComplete: (v, b) => {
         const key = [...v.selected].sort((a, c) => a - c).join(',');
         if (key === b.selection) return false;
@@ -198,8 +207,10 @@ function buildSteps(): TourStep[] {
     },
     {
       title: 'Give them an order',
-      body: () =>
-        'Right-click open ground and they march there. Right-click an enemy and they attack it. Press A and then click for an attack-move: they go there and fight anything they meet on the way, which is how to send an army.',
+      body: v =>
+        v.touch
+          ? 'Tap open ground and they march there. Tap an enemy and they attack it. Tap Attack and then the map for an attack-move: they go there and fight anything they meet on the way, which is how to send an army.'
+          : 'Right-click open ground and they march there. Right-click an enemy and they attack it. Press A and then click for an attack-move: they go there and fight anything they meet on the way, which is how to send an army.',
       target: () => 'fl-battlefield',
       isComplete: (v, b) =>
         v.s.units.some(
@@ -214,9 +225,11 @@ function buildSteps(): TourStep[] {
       title: 'Build a Barracks',
       body: v => {
         const other = busyWith(v, 'barracks');
-        if (other) return busyBody(other);
+        if (other) return busyBody(other, v.touch);
         if (v.placing === 'barracks') return 'Place it near the base. Infantry walk out of the door on its south side, so leave a little room below it.';
-        return 'Riflemen and rocketeers come from a Barracks. Build one and place it, the same way as before: click, wait for Ready, click again, then choose the ground.';
+        return v.touch
+          ? 'Riflemen and rocketeers come from a Barracks. Build one and place it, the same way as before: tap, wait for Ready, tap again, then choose the ground.'
+          : 'Riflemen and rocketeers come from a Barracks. Build one and place it, the same way as before: click, wait for Ready, click again, then choose the ground.';
       },
       target: placeTarget('barracks'),
       isComplete: placed('barracks'),
@@ -226,7 +239,7 @@ function buildSteps(): TourStep[] {
       body: v =>
         v.tab !== 'infantry'
           ? 'Open the Infantry list.'
-          : 'Click Rifleman to train one. Infantry and vehicles each queue up to five; riflemen are cheap and cut down enemy infantry, rocketeers are the answer to tanks and turrets.',
+          : `${v.touch ? 'Tap' : 'Click'} Rifleman to train one. Infantry and vehicles each queue up to five; riflemen are cheap and cut down enemy infantry, rocketeers are the answer to tanks and turrets.`,
       target: v => (v.tab !== 'infantry' ? 'fl-tab-infantry' : 'fl-build-rifleman'),
       isComplete: (v, b) => v.s.players[0].queues.infantry.length > b.infantryQueued || v.s.players[0].stats.trained > b.trained,
     },
@@ -241,8 +254,8 @@ function buildSteps(): TourStep[] {
     },
     {
       title: 'From here',
-      body: () =>
-        'Next: a War Factory for tanks, a turret or two on the side facing the enemy, then a Comms Uplink to bring this radar online and unlock artillery. You win when every enemy structure is gone. Press ? at any time for the controls.',
+      body: v =>
+        `Next: a War Factory for tanks, a turret or two on the side facing the enemy, then a Comms Uplink to bring this radar online and unlock artillery. You win when every enemy structure is gone. ${v.touch ? 'Menu, then Controls, lists every gesture.' : 'Press ? at any time for the controls.'}`,
       target: () => 'fl-minimap',
       isComplete: () => false,
       manual: true,
@@ -324,6 +337,13 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
   const targetId = hidden ? null : done ? lastTarget.current : step.target(view);
   if (!done) lastTarget.current = targetId;
   const rect = useTargetRect(targetId);
+  // The card's real height, so a phone can fit it above or below its target rather than over it.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardH, setCardH] = useState(250);
+  useLayoutEffect(() => {
+    const h = cardRef.current?.offsetHeight;
+    if (h && Math.abs(h - cardH) > 2) setCardH(h);
+  });
 
   // Latch completion the first time the game says so; later state cannot take it back.
   useEffect(() => {
@@ -359,10 +379,27 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
       }
     : null;
 
-  const CARD_W = 336;
-  const CARD_H = 250;
+  const short = window.innerHeight < 520;
+  // A phone on its side: on a battlefield step, a narrower card against the right edge, over the
+  // build panel the step does not need, so the map stays clear to act on.
+  const sideways = short && !!big && !!rect && window.innerWidth - rect.right > 120;
+  const CARD_W = sideways ? Math.min(300, window.innerWidth - rect!.right + 120) : 336;
+  const CARD_H = cardH;
+  const narrow = window.innerWidth < 700;
   let pos: { left: number; top: number };
-  if (!rect) pos = { left: window.innerWidth / 2 - CARD_W / 2, top: Math.max(16, window.innerHeight / 2 - CARD_H / 2) };
+  if (sideways) {
+    pos = { left: window.innerWidth - CARD_W - 8, top: 8 };
+  } else if (narrow && rect) {
+    // A phone: full width, above the target if it fits there, else below it. On the battlefield
+    // (the top of a stacked screen) that puts the card over the build panel, which that step
+    // does not need, and leaves the map clear to act on.
+    const above = rect.top - CARD_H - 12;
+    const below = rect.bottom + 12;
+    let top: number;
+    if (big) top = below + CARD_H <= window.innerHeight - 8 ? below : Math.max(8, rect.bottom - CARD_H - 70);
+    else top = above >= 8 ? above : below + CARD_H <= window.innerHeight - 8 ? below : 8;
+    pos = { left: 16, top };
+  } else if (!rect) pos = { left: window.innerWidth / 2 - CARD_W / 2, top: Math.max(16, window.innerHeight / 2 - CARD_H / 2) };
   else if (big) {
     // The battlefield: sit in its bottom-right corner, away from the Command Yard the camera opens on.
     pos = { left: rect.right - CARD_W - 16, top: rect.bottom - CARD_H - 16 };
@@ -375,8 +412,8 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
       top: rect.bottom + 16 + CARD_H <= window.innerHeight ? rect.bottom + 16 : Math.max(16, rect.top - CARD_H - 16),
     };
   }
-  pos.left = Math.max(16, Math.min(pos.left, window.innerWidth - CARD_W - 16));
-  pos.top = Math.max(16, pos.top);
+  if (!sideways) pos.left = Math.max(16, Math.min(pos.left, window.innerWidth - CARD_W - 16));
+  pos.top = Math.max(narrow || short ? 8 : 16, pos.top);
 
   const finish = () => {
     markGuidedTourSeen();
@@ -388,6 +425,7 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
       {!rect && <div style={{ position: 'fixed', inset: 0, zIndex: 2001, background: SCRIM, pointerEvents: 'none' }} />}
       {ring && <div style={ring} />}
       <div
+        ref={cardRef}
         role="dialog"
         aria-label="Guided first battle"
         style={{ ...CARD, left: pos.left, top: pos.top, width: CARD_W }}

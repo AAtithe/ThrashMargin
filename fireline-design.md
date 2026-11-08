@@ -114,9 +114,33 @@ unit orders and selection, "ready" chimes, the under-attack alarm, victory and d
   not play a burst of stale explosions.
 - Renderer-side only: the simulation never touches it.
 
-## 7. Not built yet
+## 7. Phones and touch screens
 
-- Touch controls. The game is playable with a mouse and keyboard; orders are right-click.
+Every pointer event is routed by its own `pointerType`, so mouse and finger both work on the same
+device. `game/layout.ts` reads the window and decides the arrangement.
+
+- **Gestures on the battlefield.** One finger drags the view, two fingers pinch to zoom, and a
+  finger lifted without moving (10px slop) is a tap. With your units selected, a tap on open
+  ground, ore, a refinery or an enemy is the order a right-click would give; a tap on your own unit
+  or structure selects it. A selected Barracks or War Factory plus a tap sets the rally point.
+  Double-tap a unit for every unit of that kind on screen.
+- **Command bar** (touch screens only), along the foot of the map: Box (the next drag draws a
+  selection box), Army (every fighting unit you own), Attack (then tap: attack-move), Stop, Clear,
+  Base. While placing a structure it shrinks to one Stop placing button in the corner: centred, it
+  sat under the ground near the base and a phone's tap adjustment snapped map taps onto it.
+- **Build buttons** carry a × to cancel, since iOS has no long-press context menu.
+- **Layout.** An upright narrow window stacks the map over the build panel (the panel takes at
+  most 44%, and the selection moves to its top). A phone on its side keeps the sidebar, narrowed to
+  228px with the minimap beside credits and power. Under 1100px the top bar keeps Lobby, clock,
+  Pause and Menu; speed, sound, theme, the tour and the controls sheet move into the Menu, which
+  pauses the battle and hides the tour card while open. The shell uses `100dvh`.
+- **Edge scrolling ignores mouse events within a second of a touch.** Browsers follow a tap with a
+  synthetic mouse move; without the guard, a tap near the edge of the map started edge-scrolling
+  and carried the view away from the base.
+- **Tour.** Steps say tap and name the command bar; Select your riflemen rings Army. On a narrow
+  screen the card goes full width above or below its target; on a phone on its side, a battlefield
+  step puts it over the build panel. `npm run tours -- fireline-touch` plays the whole run by touch
+  on an upright iPhone (CI's quick mode), the iPhone on its side, and a Pixel 7.
 
 ---
 
@@ -170,3 +194,12 @@ another structure occupies the queue, the queue and place steps ring that struct
 to clear it, instead of ringing a disabled button. The driver now re-reads the card before every
 click and checks the busy-queue path itself. Not reproducible locally even with the CPU slowed
 four-fold; the screenshot is what found it.
+
+### 2026-11-08 — Playable on phones
+
+Touch gestures, the command bar, the phone layouts and the touch tour driver (§7). Until now the
+only way to give an order was a right-click, so a phone could build but never move a unit. The
+touch driver found three faults the desktop driver never could: the tour card covered the Menu
+(so the Menu could not be used during the tour); the echo of a tap started edge-scrolling and
+dragged the view off the base; and a centred Stop placing button swallowed taps aimed at the
+ground near the base. All three fixed. The desktop layout at 1100px and wider is unchanged.

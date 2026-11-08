@@ -69,6 +69,14 @@ body {
   outline-offset: 2px;
 }
 
+.fl-shell {
+  height: 100vh;
+  height: 100dvh; /* a phone's address bar comes and goes; 100vh would hide the panel under it */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -90,6 +98,29 @@ button:disabled {
   cursor: pointer;
   overflow: hidden;
   user-select: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+}
+
+.fl-cancel {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 50%;
+  background: var(--ui-panel);
+  color: var(--ui-bad);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
 }
 .fl-build:hover:not(:disabled) {
   border-color: var(--ui-accent);
