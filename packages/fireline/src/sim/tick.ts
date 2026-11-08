@@ -74,7 +74,7 @@ export function step(s: GameState): void {
 
   const d = DIFFICULTIES[s.difficulty];
   if (s.tick % d.period === 0) runAi(s, 1);
-  if (s.autopilot && s.tick % d.period === Math.floor(d.period / 2)) runAi(s, 0);
+  if (s.autopilot && s.tick % DIFFICULTIES[s.autopilotDifficulty ?? s.difficulty].period === Math.floor(DIFFICULTIES[s.autopilotDifficulty ?? s.difficulty].period / 2)) runAi(s, 0);
   // The AI may have placed a structure or ordered units; refresh what it could have changed.
   ctx.occ = occupancy(s);
   ctx.buildings = new Map(s.buildings.map(b => [b.id, b]));

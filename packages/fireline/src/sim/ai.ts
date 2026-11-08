@@ -1,20 +1,23 @@
-import { canQueue, doCancel, doMove, doPlace, doQueue, doRally, placementProblem } from './commands';
-import { buildingCentre, dist, occupancy, passable } from './grid';
+import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
+import { buildingCentre, dist, distToBuilding, occupancy, passable } from './grid';
 import { idx, inBounds } from './map';
 import { next } from './rng';
 import {
   BUILDINGS,
+  DAMAGE_VS,
   DIFFICULTIES,
   MAP_H,
   MAP_W,
+  SELL_RETURN,
   UNITS,
   type BuildingKind,
+  type Difficulty,
   type DifficultySpec,
   type Owner,
   type UnitKind,
 } from './rules';
 import { countBuildings, powerOf, readyStructure, unlocked } from './state';
-import type { Building, GameState } from './types';
+import type { AiMemory, Building, GameState, Unit } from './types';
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -23,98 +26,570 @@ import type { Building, GameState } from './types';
  * its refineries pay a quarter more.
  *
  * Runs every `period` ticks (Easy is slowest to react). Everything it remembers lives in
- * `s.ai[owner]`, so a replay makes the same decisions.
+ * `s.ai[owner]`, so a replay makes the same decisions. Its arrays are only ever replaced, never
+ * changed in place, because `cloneState` copies the memory shallowly.
+ *
+ * Each decision, in order:
+ *  1. Economy first: no refinery or no hauler outranks everything, with queued units cancelled
+ *     and spare structures sold to pay for it if need be. A generator goes up before power would
+ *     run short, not after.
+ *  2. Damaged structures are repaired while credits allow.
+ *  3. Units, in a mix that answers what the opponent is fielding.
+ *  4. The army: badly hurt units pull back, the base and the haulers are defended, buggies raid
+ *     the opponent's haulers (Normal and Hard), and attack waves gather at a staging point, go
+ *     in together, regroup when strung out, pick off haulers, artillery and turrets first, and
+ *     fall back when broken.
  */
+
+/** How each difficulty fights, beyond the numbers in rules.ts that the lobby describes. */
+interface Tactics {
+  /** Haulers wanted beyond one per refinery (at most four in all). */
+  extraHaulers: number;
+  /** Buggies in a hauler raid; 0 for none. */
+  raidSize: number;
+  firstRaid: number;
+  raidInterval: number;
+  /** Units under this share of health, outside a wave, pull back home. 0 for never. */
+  retreatBelow: number;
+  /** Structures under this share of health are repaired. */
+  repairBelow: number;
+  /** Credits kept back before paying for repairs. */
+  repairReserve: number;
+  /** Explicit attack orders on haulers, artillery and turrets in reach. */
+  focus: boolean;
+  /** Wave pulls together when strung out. */
+  regroup: boolean;
+  /** Unit mix follows what the opponent fields. */
+  counter: boolean;
+  /** Share of a wave that must reach the staging point before it sets off. */
+  gatherShare: number;
+}
+
+const TACTICS: Record<Difficulty, Tactics> = {
+  easy: {
+    extraHaulers: 0,
+    raidSize: 0,
+    firstRaid: 0,
+    raidInterval: 0,
+    retreatBelow: 0,
+    repairBelow: 0.4,
+    repairReserve: 900,
+    focus: false,
+    regroup: false,
+    counter: false,
+    gatherShare: 0.6,
+  },
+  normal: {
+    extraHaulers: 1,
+    raidSize: 2,
+    firstRaid: 4200,
+    raidInterval: 2400,
+    retreatBelow: 0.3,
+    repairBelow: 0.6,
+    repairReserve: 600,
+    focus: true,
+    regroup: true,
+    counter: true,
+    gatherShare: 0.75,
+  },
+  hard: {
+    extraHaulers: 2,
+    raidSize: 3,
+    firstRaid: 3000,
+    raidInterval: 1800,
+    retreatBelow: 0.3,
+    repairBelow: 0.7,
+    repairReserve: 400,
+    focus: true,
+    regroup: true,
+    counter: true,
+    gatherShare: 0.8,
+  },
+};
+
+export type AiFn = (s: GameState, owner: Owner) => void;
+
+/**
+ * Test hook for scripts/ai-ladder.ts only: play one side with a different commander (the frozen
+ * first-build AI), to measure this one against it. Nothing in the game calls it, and with no
+ * hook set (the default) both sides run the commander below.
+ */
+const hooks: [AiFn | null, AiFn | null] = [null, null];
+export function setAutopilotAi(fn: AiFn | null, owner: Owner = 0): void {
+  hooks[owner] = fn;
+}
+
+/** The difficulty a side plays at: side 0 only plays at all in the harness (autopilot). */
+export function aiDifficulty(s: GameState, owner: Owner): Difficulty {
+  return owner === 0 && s.autopilotDifficulty ? s.autopilotDifficulty : s.difficulty;
+}
+
 export function runAi(s: GameState, owner: Owner): void {
-  const d = DIFFICULTIES[s.difficulty];
+  const hook = hooks[owner];
+  if (hook) hook(s, owner);
+  else commander(s, owner);
+}
+
+interface Pt {
+  x: number;
+  y: number;
+}
+
+function commander(s: GameState, owner: Owner): void {
+  const diff = aiDifficulty(s, owner);
+  const d = DIFFICULTIES[diff];
+  const t = TACTICS[diff];
+  const mem = s.ai[owner];
+  normalise(mem);
   const mine = s.buildings.filter(b => b.owner === owner);
   if (!mine.length) return;
   const anchor = mine.find(b => b.kind === 'hq') ?? mine[0];
   const home = buildingCentre(anchor);
   const enemy = s.buildings.filter(b => b.owner !== owner);
   const enemyHome = enemy.length ? buildingCentre(enemy.find(b => b.kind === 'hq') ?? enemy[0]) : { x: MAP_W / 2, y: MAP_H / 2 };
+  const units = s.units.filter(u => u.owner === owner);
+  const foes = s.units.filter(u => u.owner !== owner);
+  const p = s.players[owner];
+  const vq = p.queues.vehicle;
+  const iq = p.queues.infantry;
 
-  // 1. Structures.
+  // 1. Economy and structures.
+  const haulers = units.filter(u => u.kind === 'hauler');
+  const refineries = countBuildings(s, owner, 'refinery');
+  const noRefinery = refineries === 0;
+  const noHauler = haulers.length === 0 && !vq.some(q => q.kind === 'hauler');
+  const canBuildHauler = unlocked(s, owner, 'hauler');
+  const crisis = noRefinery || (noHauler && !p.queues.building.some(q => q.kind === 'refinery'));
+
   let saving = false;
   const ready = readyStructure(s, owner);
   if (ready) {
     const spot = findSpot(s, owner, ready, home, enemyHome);
     if (spot) doPlace(s, owner, ready, spot.x, spot.y);
     else doCancel(s, owner, 'building', ready);
-  } else if (s.players[owner].queues.building.length === 0) {
-    const want = nextStructure(s, owner, d);
+  } else if (p.queues.building.length === 0) {
+    const want = nextStructure(s, owner, d, noHauler && !canBuildHauler);
     if (want) {
-      if (canQueue(s, owner, 'building', want)) {
-        doQueue(s, owner, 'building', want);
-      } else if (unlocked(s, owner, want)) saving = true;
+      if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);
+      else if (unlocked(s, owner, want)) {
+        saving = true;
+        if (crisis && (want === 'refinery' || want === 'power')) raiseFunds(s, owner, BUILDINGS[want].cost);
+      }
     }
   }
 
-  // 2. Units.
-  const units = s.units.filter(u => u.owner === owner);
-  const haulers = units.filter(u => u.kind === 'hauler').length;
-  const refineries = countBuildings(s, owner, 'refinery');
-  const vq = s.players[owner].queues.vehicle;
-  const iq = s.players[owner].queues.infantry;
-  const wantHaulers = Math.min(4, refineries + (s.difficulty === 'hard' ? 1 : 0));
-  if (haulers < wantHaulers && !vq.some(q => q.kind === 'hauler') && canQueue(s, owner, 'vehicle', 'hauler')) {
-    queueUnit(s, owner, 'vehicle', 'hauler');
+  // Haulers beyond one per refinery: a refinery unloads far faster than one hauler can fill.
+  const wantHaulers = Math.min(4, refineries + t.extraHaulers);
+  if (haulers.length < wantHaulers && !vq.some(q => q.kind === 'hauler') && canBuildHauler) {
+    if (canQueue(s, owner, 'vehicle', 'hauler')) doQueue(s, owner, 'vehicle', 'hauler');
+    else if (haulers.length === 0) {
+      // No hauler at all: nothing else matters until one is on its way.
+      saving = true;
+      raiseFunds(s, owner, UNITS.hauler.cost);
+    }
   }
+
+  // Broke: no hauler, none queued, no refinery on the way and not enough to buy one.
+  const broke =
+    !s.units.some(u => u.owner === owner && u.kind === 'hauler') &&
+    !vq.some(q => q.kind === 'hauler') &&
+    !p.queues.building.some(q => q.kind === 'refinery') &&
+    p.credits < UNITS.hauler.cost;
+
+  // 2. Repairs, most important structures first, two at a time, while credits allow.
+  const repairOrder: BuildingKind[] = ['hq', 'refinery', 'factory', 'turret', 'power', 'barracks', 'uplink'];
+  const standing = s.buildings.filter(b => b.owner === owner); // raiseFunds may have sold one
+  let repairing = standing.filter(b => b.repairing).length;
+  if ((saving || crisis) && repairing) {
+    for (const b of standing) if (b.repairing) doRepair(s, b.id);
+    repairing = 0;
+  } else {
+    const hurt = standing
+      .filter(b => !b.repairing && b.hp < BUILDINGS[b.kind].hp * t.repairBelow)
+      .sort((a, b) => repairOrder.indexOf(a.kind) - repairOrder.indexOf(b.kind) || a.id - b.id);
+    for (const b of hurt) {
+      if (repairing >= 2 || p.credits < t.repairReserve) break;
+      doRepair(s, b.id);
+      repairing++;
+    }
+  }
+
+  // 3. Units.
+  const foeArmed = foes.filter(u => UNITS[u.kind].weapon);
+  const foeInfantry = foeArmed.filter(u => UNITS[u.kind].armor === 'infantry').length;
+  const foeArmour = foeArmed.length - foeInfantry;
+  const foeTurrets = enemy.filter(b => b.kind === 'turret').length;
+  const raidBuggies = units.filter(u => u.kind === 'buggy').length;
   if (!saving) {
     if (iq.length < 2) {
-      const roll = draw(s);
-      const kind: UnitKind = roll < 0.6 ? 'rifleman' : 'rocketeer';
-      if (canQueue(s, owner, 'infantry', kind)) queueUnit(s, owner, 'infantry', kind);
+      let riflemen = 0.6;
+      if (t.counter && foeArmed.length >= 4) riflemen = foeInfantry > foeArmour * 1.5 ? 0.8 : foeArmour > foeInfantry * 1.5 ? 0.35 : 0.6;
+      const kind: UnitKind = draw(s) < riflemen ? 'rifleman' : 'rocketeer';
+      if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
     }
     if (vq.length < 1) {
       const roll = draw(s);
-      let kind: UnitKind = roll < 0.55 ? 'tank' : roll < 0.78 ? 'buggy' : 'artillery';
+      let tank = 0.55;
+      let buggy = 0.23;
+      if (t.counter) {
+        if (foeInfantry > foeArmour * 1.5 && foeArmed.length >= 4) buggy = 0.33;
+        if (foeTurrets >= 3) {
+          tank = 0.5;
+          buggy = 0.15;
+        }
+      }
+      let kind: UnitKind = roll < tank ? 'tank' : roll < tank + buggy ? 'buggy' : 'artillery';
+      // Keep the raiding party up to strength once raids are due.
+      if (t.raidSize && raidBuggies < t.raidSize && s.tick >= t.firstRaid - 900) kind = 'buggy';
       if (!unlocked(s, owner, kind)) kind = 'tank';
-      if (canQueue(s, owner, 'vehicle', kind)) queueUnit(s, owner, 'vehicle', kind);
+      if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
     }
   }
 
   // Producers send new units to a staging point on the side facing the enemy.
-  const stage = openGround(s, toward(home, enemyHome, 10));
-  for (const b of mine) {
+  const stage = openGround(s, owner, toward(home, enemyHome, 10));
+  for (const b of standing) {
     if ((b.kind === 'barracks' || b.kind === 'factory') && !b.rally) doRally(s, b.id, stage.x, stage.y);
   }
 
-  // 3. The army.
-  const mem = s.ai[owner];
+  // 4. The army.
+  const alive = new Map(units.map(u => [u.id, u]));
+  let waveIds = mem.waveIds.filter(id => alive.has(id));
+  let raidIds = mem.raidIds.filter(id => alive.has(id));
   const army = units.filter(u => UNITS[u.kind].weapon);
-  const idle = army.filter(u => u.order.type === 'idle');
+  const inWave = new Set(waveIds);
+  const inRaid = new Set(raidIds);
+  const retreatTo = openGround(s, owner, toward(home, enemyHome, 4));
+  const retreating = (u: Unit) => u.order.type === 'move' && dist(u.order.x, u.order.y, retreatTo.x, retreatTo.y) < 3;
 
-  // Defend: anything idle near home answers an attack on the base.
-  if (s.tick - mem.hurtTick < 40) {
-    const defenders = idle.filter(u => dist(u.x, u.y, home.x, home.y) < 22).map(u => u.id);
-    if (defenders.length) doMove(s, owner, defenders, mem.hurtX, mem.hurtY, true);
-    return;
+  // Badly hurt units outside a wave come home rather than die for nothing.
+  if (t.retreatBelow > 0) {
+    const back: number[] = [];
+    for (const u of army) {
+      if (inWave.has(u.id) || u.hp >= UNITS[u.kind].hp * t.retreatBelow) continue;
+      if (dist(u.x, u.y, home.x, home.y) < 9 || retreating(u)) continue;
+      back.push(u.id);
+      if (inRaid.has(u.id)) inRaid.delete(u.id);
+    }
+    if (back.length) doMove(s, owner, back, retreatTo.x, retreatTo.y, false);
+    raidIds = raidIds.filter(id => inRaid.has(id));
   }
 
-  if (s.tick >= mem.nextAttack && enemy.length) {
-    const wave = Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth);
-    // A wave that has waited a whole extra interval goes with what it has.
-    const overdue = s.tick >= mem.nextAttack + d.attackInterval && idle.length >= d.firstWave;
-    if (idle.length >= wave || overdue) {
-      const target = nearestBuilding(enemy, home.x, home.y);
-      const c = buildingCentre(target);
-      doMove(
-        s,
-        owner,
-        idle.map(u => u.id),
-        c.x,
-        c.y,
-        true,
-      );
-      mem.wave++;
-      mem.nextAttack = s.tick + d.attackInterval;
+  const reserve = army.filter(u => !inWave.has(u.id) && !inRaid.has(u.id) && !retreating(u));
+  const free = (u: Unit) => u.order.type === 'idle' || (u.order.type === 'move' && dist(u.order.x, u.order.y, stage.x, stage.y) < 4);
+
+  // Defend the base: a structure hit lately, or armed enemies close to the yard.
+  let threat: Pt | null = s.tick - mem.hurtTick < 40 ? { x: mem.hurtX, y: mem.hurtY } : null;
+  if (!threat) {
+    let best = 15;
+    for (const f of foeArmed) {
+      const fd = dist(f.x, f.y, home.x, home.y);
+      if (fd < best) {
+        best = fd;
+        threat = { x: f.x, y: f.y };
+      }
+    }
+  }
+  if (threat) {
+    const defenders = reserve.filter(u => free(u) && dist(u.x, u.y, home.x, home.y) < 22).map(u => u.id);
+    // A wave still gathering at home turns round to help.
+    if (mem.wavePhase === 1) for (const id of waveIds) if (alive.get(id)!.order.type !== 'attack') defenders.push(id);
+    if (defenders.length) doMove(s, owner, defenders, threat.x, threat.y, true);
+  }
+
+  // Defend the haulers: nearby reserves answer anything armed close to one, and a badly hurt
+  // hauler runs for its refinery.
+  if (t.retreatBelow > 0) {
+    for (const h of haulers) {
+      const near = foeArmed.find(f => dist(f.x, f.y, h.x, h.y) < 5);
+      if (!near) continue;
+      const helpers = reserve
+        .filter(u => free(u) && dist(u.x, u.y, h.x, h.y) < 16)
+        .slice(0, 4)
+        .map(u => u.id);
+      if (helpers.length) doMove(s, owner, helpers, near.x, near.y, true);
+      if (h.hp < UNITS.hauler.hp * 0.5 && h.order.type === 'harvest' && h.order.phase !== 'return' && h.order.phase !== 'unload') {
+        const ref = nearestOwn(standing, 'refinery', h.x, h.y);
+        if (ref) doHarvest(s, owner, [h.id], undefined, ref.id);
+      }
+    }
+  }
+
+  // Raids: a few buggies hunt the opponent's haulers away from its turrets, and leave when they
+  // run into a turret or have taken too much.
+  if (t.raidSize > 0 && enemy.length) {
+    const foeHaulers = foes.filter(u => u.kind === 'hauler');
+    const turrets = enemy.filter(b => b.kind === 'turret');
+    const turretNear = (x: number, y: number, r: number) => turrets.some(b => distToBuilding(x, y, b) < r);
+    const safest = (from: Pt): Unit | null => {
+      let best: Unit | null = null;
+      let bestScore = -Infinity;
+      for (const h of foeHaulers) {
+        let safety = 20;
+        for (const b of turrets) safety = Math.min(safety, distToBuilding(h.x, h.y, b));
+        if (safety < 7) continue;
+        const score = safety - dist(from.x, from.y, h.x, h.y) * 0.3;
+        if (score > bestScore) {
+          bestScore = score;
+          best = h;
+        }
+      }
+      return best;
+    };
+    if (raidIds.length === 0) {
+      if (s.tick >= Math.max(mem.nextRaid, t.firstRaid)) {
+        const buggies = reserve.filter(u => u.kind === 'buggy' && free(u) && u.hp >= UNITS.buggy.hp * 0.6);
+        const target = buggies.length >= t.raidSize ? safest(stage) : null;
+        if (target) {
+          raidIds = buggies.slice(0, t.raidSize).map(u => u.id);
+          mem.raidTarget = target.id;
+          mem.nextRaid = s.tick; // While a raid is out, nextRaid holds the tick it set out.
+          doAttack(s, owner, raidIds, target.id);
+        }
+      }
+    } else {
+      const raiders = raidIds.map(id => alive.get(id)!);
+      const hp = raiders.reduce((a, u) => a + u.hp, 0);
+      const full = raiders.length * UNITS.buggy.hp;
+      const lead = raiders[0];
+      const danger = raiders.some(u => turretNear(u.x, u.y, 7)) || hp < full * 0.45 || s.tick - mem.nextRaid > 1500;
+      let target = foeHaulers.find(h => h.id === mem.raidTarget) ?? null;
+      if (!danger && !target) {
+        target = safest(lead);
+        if (target) mem.raidTarget = target.id;
+      }
+      if (danger || !target) {
+        doMove(s, owner, raidIds, stage.x, stage.y, false);
+        raidIds = [];
+        mem.raidTarget = 0;
+        mem.nextRaid = s.tick + t.raidInterval;
+      } else {
+        const strays = raiders.filter(u => !(u.order.type === 'attack' && u.order.target === target!.id)).map(u => u.id);
+        if (strays.length) doAttack(s, owner, strays, target.id);
+      }
+    }
+  }
+
+  // Attack waves.
+  const waveUnits = () => waveIds.map(id => alive.get(id)!);
+  const size = Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth);
+  const recruits = (): Unit[] => {
+    // Leave the raiders' buggies at home for the next raid.
+    let keep = broke ? 0 : t.raidSize;
+    return reserve.filter(u => {
+      if (!broke && (u.hp < UNITS[u.kind].hp * 0.45 || dist(u.x, u.y, home.x, home.y) > 30)) return false;
+      if (u.order.type !== 'idle' && u.order.type !== 'move' && u.order.type !== 'attackMove') return false;
+      if (u.kind === 'buggy' && keep > 0) {
+        keep--;
+        return false;
+      }
+      return true;
+    });
+  };
+  if (mem.wavePhase === 0) {
+    if (!threat && s.tick >= mem.nextAttack && enemy.length) {
+      const fit = recruits();
+      // A wave that has waited a whole extra interval goes with what it has; with no income left
+      // and none coming, everything goes now, since waiting can only make it weaker.
+      const overdue = (s.tick >= mem.nextAttack + d.attackInterval && fit.length >= d.firstWave) || (broke && fit.length > 0);
+      if (fit.length >= size || overdue) {
+        waveIds = fit.map(u => u.id);
+        mem.wavePhase = 1;
+        mem.waveTick = s.tick;
+        doMove(s, owner, waveIds, stage.x, stage.y, true);
+        mem.wave++;
+        mem.nextAttack = s.tick + d.attackInterval;
+      }
+    }
+  } else if (waveIds.length === 0) {
+    mem.wavePhase = 0;
+  } else if (mem.wavePhase === 1) {
+    const members = waveUnits();
+    const gathered = members.filter(u => dist(u.x, u.y, stage.x, stage.y) < 6).length;
+    if (!threat && (gathered >= members.length * t.gatherShare || s.tick - mem.waveTick > 450)) {
+      mem.wavePhase = 2;
+      mem.waveTick = s.tick;
+      mem.waveSize = members.length;
+      const target = pickTarget(enemy, foes, stage, t.focus, home);
+      doMove(s, owner, waveIds, target.x, target.y, true);
+    } else if (!threat) {
+      const lost = members.filter(u => u.order.type === 'idle' && dist(u.x, u.y, stage.x, stage.y) >= 6).map(u => u.id);
+      if (lost.length) doMove(s, owner, lost, stage.x, stage.y, true);
+    }
+  } else {
+    const members = waveUnits();
+    if (!broke && mem.waveSize >= 3 && members.length < Math.max(2, Math.ceil(mem.waveSize * 0.35))) {
+      // Broken: survivors fall back to the staging point and join the next wave.
+      doMove(s, owner, waveIds, stage.x, stage.y, false);
+      waveIds = [];
+      mem.wavePhase = 0;
+      mem.nextAttack = Math.min(mem.nextAttack, s.tick + Math.round(d.attackInterval / 2));
+    } else if (enemy.length) {
+      // The body of the wave: members near the middle. Stragglers far behind (stuck, or
+      // still walking from home) are not waited for.
+      let core = members;
+      let centre = middle(members);
+      const near = members.filter(u => dist(u.x, u.y, centre.x, centre.y) < 12);
+      if (near.length >= members.length / 2) {
+        core = near;
+        centre = middle(near);
+      }
+      const target = pickTarget(enemy, foes, centre, t.focus, home);
+      let spread = 0;
+      for (const u of core) spread = Math.max(spread, dist(u.x, u.y, centre.x, centre.y));
+      const fighting = members.some(u => u.engage);
+      if (t.regroup && !fighting && core.length >= 4 && spread > 7 && s.tick - mem.waveTick > 150) {
+        // Strung out on the march: pull together a little short of the centre, toward the target.
+        const meet = openGround(s, owner, toward(centre, target, 2));
+        doMove(s, owner, core.map(u => u.id), meet.x, meet.y, true);
+        mem.waveTick = s.tick;
+      } else {
+        const idle = members.filter(u => u.order.type === 'idle' && !u.engage).map(u => u.id);
+        if (idle.length) doMove(s, owner, idle, target.x, target.y, true);
+      }
+      if (t.focus) focusFire(s, owner, members, foes, enemy);
+      // Reinforcements: when the next wave is due, what has gathered at home joins this one.
+      if (!threat && s.tick >= mem.nextAttack) {
+        const fit = recruits();
+        if (fit.length >= Math.min(size, d.firstWave) || (broke && fit.length > 0)) {
+          const ids = fit.map(u => u.id);
+          doMove(s, owner, ids, target.x, target.y, true);
+          waveIds = waveIds.concat(ids);
+          mem.waveSize = waveIds.length;
+          mem.wave++;
+          mem.nextAttack = s.tick + d.attackInterval;
+        }
+      }
+    }
+  }
+
+  mem.waveIds = waveIds;
+  mem.raidIds = raidIds;
+}
+
+/** Memory from a save made before these fields existed. */
+function normalise(mem: AiMemory): void {
+  if (!Array.isArray(mem.waveIds)) mem.waveIds = [];
+  if (!Array.isArray(mem.raidIds)) mem.raidIds = [];
+  if (typeof mem.wavePhase !== 'number') mem.wavePhase = 0;
+  if (typeof mem.waveTick !== 'number') mem.waveTick = 0;
+  if (typeof mem.waveSize !== 'number') mem.waveSize = 0;
+  if (typeof mem.raidTarget !== 'number') mem.raidTarget = 0;
+  if (typeof mem.nextRaid !== 'number') mem.nextRaid = 0;
+}
+
+/**
+ * Credits for the one thing the economy cannot do without: cancel queued units (refunded in
+ * full), then sell what can be spared, least useful first. Never the yard, a generator, a
+ * refinery or a factory.
+ */
+function raiseFunds(s: GameState, owner: Owner, need: number): void {
+  const p = s.players[owner];
+  if (p.credits >= need) return;
+  for (const cat of ['vehicle', 'infantry'] as const) {
+    const q = p.queues[cat];
+    while (q.length && p.credits < need) {
+      const last = q[q.length - 1];
+      if (last.kind === 'hauler') break;
+      doCancel(s, owner, cat, last.kind);
+    }
+  }
+  if (p.credits >= need) return;
+  // Selling only helps if there is no income coming: with a hauler working, wait for it.
+  if (s.units.some(u => u.owner === owner && u.kind === 'hauler') && countBuildings(s, owner, 'refinery') > 0) return;
+  // And only if selling everything spare would actually reach the sum: otherwise keep it all.
+  const spare = s.buildings.filter(v => v.owner === owner && (v.kind === 'uplink' || v.kind === 'turret' || v.kind === 'barracks'));
+  const refund = (b: Building) => Math.floor((BUILDINGS[b.kind].cost * SELL_RETURN * (b.hp / BUILDINGS[b.kind].hp)) / 10) * 10;
+  if (p.credits + spare.reduce((a, b) => a + refund(b), 0) < need) return;
+  for (const kind of ['uplink', 'turret', 'barracks'] as BuildingKind[]) {
+    const b = spare.find(v => v.kind === kind);
+    if (b) {
+      doSell(s, owner, b.id);
+      return;
     }
   }
 }
 
-function queueUnit(s: GameState, owner: Owner, cat: 'infantry' | 'vehicle', kind: UnitKind): void {
-  doQueue(s, owner, cat, kind);
+/**
+ * Where a wave goes next. Haulers, artillery and turrets count as nearer than they are; other
+ * structures by how much they matter. Easy just walks to the nearest structure from home.
+ */
+function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, home: Pt): Pt {
+  if (!focus) return buildingCentre(nearestBuilding(enemy, home.x, home.y));
+  const bonus: Partial<Record<BuildingKind, number>> = { turret: 8, refinery: 6, factory: 4, uplink: 3, power: 2, barracks: 2, hq: 1 };
+  let best: Pt = buildingCentre(enemy[0]);
+  let bestScore = Infinity;
+  for (const b of enemy) {
+    const c = buildingCentre(b);
+    const score = dist(from.x, from.y, c.x, c.y) - (bonus[b.kind] ?? 0);
+    if (score < bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  for (const u of foes) {
+    if (u.kind !== 'hauler' && u.kind !== 'artillery') continue;
+    const score = dist(from.x, from.y, u.x, u.y) - 9;
+    if (score < bestScore) {
+      bestScore = score;
+      best = { x: u.x, y: u.y };
+    }
+  }
+  return best;
+}
+
+/**
+ * Explicit attack orders on the targets that matter most, for the wave members whose weapons
+ * work on them: haulers, artillery and turrets almost in range, for units not already in a
+ * firefight. Units already on such an order
+ * keep it; when the target dies they go idle and the wave re-targets them.
+ */
+function focusFire(s: GameState, owner: Owner, members: Unit[], foes: Unit[], enemy: Building[]): void {
+  const priority: { id: number; x: number; y: number; armor: 'heavy' | 'light' | 'building'; b?: Building }[] = [];
+  for (const u of foes) if (u.kind === 'hauler' || u.kind === 'artillery') priority.push({ id: u.id, x: u.x, y: u.y, armor: UNITS[u.kind].armor as 'heavy' | 'light' });
+  for (const b of enemy) if (b.kind === 'turret') priority.push({ id: b.id, x: b.x + 0.5, y: b.y + 0.5, armor: 'building', b });
+  if (!priority.length) return;
+  const ids = new Set(priority.map(q => q.id));
+  const armed = new Set(foes.filter(f => UNITS[f.kind].weapon && f.kind !== 'artillery').map(f => f.id));
+  const orders = new Map<number, number[]>();
+  for (const u of members) {
+    if (u.order.type === 'attack' && ids.has(u.order.target)) continue;
+    if (u.order.type !== 'attackMove' && u.order.type !== 'idle') continue;
+    // Never turn away from something that is shooting back: that fight comes first.
+    if (u.engage && armed.has(u.engage)) continue;
+    const w = UNITS[u.kind].weapon!;
+    let best = 0;
+    // Only targets about to come into range, so nobody chases across the map.
+    let bestD = w.range + 1;
+    for (const q of priority) {
+      if (DAMAGE_VS[w.kind][q.armor] < 0.6) continue;
+      const qd = q.b ? distToBuilding(u.x, u.y, q.b) : dist(u.x, u.y, q.x, q.y);
+      if (qd < bestD) {
+        bestD = qd;
+        best = q.id;
+      }
+    }
+    if (!best) continue;
+    const list = orders.get(best);
+    if (list) list.push(u.id);
+    else orders.set(best, [u.id]);
+  }
+  for (const [target, list] of orders) doAttack(s, owner, list, target);
+}
+
+function nearestOwn(mine: Building[], kind: BuildingKind, x: number, y: number): Building | null {
+  const list = mine.filter(b => b.kind === kind);
+  return list.length ? nearestBuilding(list, x, y) : null;
+}
+
+function middle(list: Unit[]): Pt {
+  let x = 0;
+  let y = 0;
+  for (const u of list) {
+    x += u.x;
+    y += u.y;
+  }
+  return { x: x / list.length, y: y / list.length };
 }
 
 function draw(s: GameState): number {
@@ -123,20 +598,27 @@ function draw(s: GameState): number {
   return r.value;
 }
 
-function toward(a: { x: number; y: number }, b: { x: number; y: number }, by: number): { x: number; y: number } {
+function toward(a: Pt, b: Pt, by: number): Pt {
   const d = dist(a.x, a.y, b.x, b.y) || 1;
   return { x: a.x + ((b.x - a.x) / d) * by, y: a.y + ((b.y - a.y) / d) * by };
 }
 
-/** The nearest point to `p` with clear ground two tiles all round: somewhere an army can wait. */
-function openGround(s: GameState, p: { x: number; y: number }): { x: number; y: number } {
+/**
+ * The nearest point to `p` with clear ground two tiles all round: somewhere an army can wait.
+ * Side 1 searches in the mirrored order, so on the point-symmetric map both sides choose the
+ * mirror image of each other's spot rather than both leaning top-left.
+ */
+function openGround(s: GameState, owner: Owner, p: Pt): Pt {
   const occ = occupancy(s);
-  const cx = Math.round(p.x);
-  const cy = Math.round(p.y);
+  const cx = Math.floor(p.x);
+  const cy = Math.floor(p.y);
+  const sign = owner === 1 ? -1 : 1;
   for (let r = 0; r <= 10; r++)
-    for (let dy = -r; dy <= r; dy++)
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+    for (let iy = -r; iy <= r; iy++)
+      for (let ix = -r; ix <= r; ix++) {
+        if (Math.max(Math.abs(ix), Math.abs(iy)) !== r) continue;
+        const dx = ix * sign;
+        const dy = iy * sign;
         let ok = true;
         for (let ey = -2; ey <= 2 && ok; ey++)
           for (let ex = -2; ex <= 2; ex++)
@@ -163,12 +645,23 @@ function nearestBuilding(list: Building[], x: number, y: number): Building {
   return best;
 }
 
-function nextStructure(s: GameState, owner: Owner, d: DifficultySpec): BuildingKind | null {
+/**
+ * The next structure to build. A refinery comes first whenever there is none, and whenever there
+ * is no hauler and no factory to build one (a refinery brings its own). A generator goes up
+ * before a structure would take power below a safe margin, never after the lights dim.
+ */
+function nextStructure(s: GameState, owner: Owner, d: DifficultySpec, needRefineryForHauler: boolean): BuildingKind | null {
   const pw = powerOf(s, owner);
+  const headroom = pw.made - pw.used;
   const count = (k: BuildingKind) => countBuildings(s, owner, k);
-  if (pw.made - pw.used < 25 && count('power') < 9) return 'power';
+  const powerFor = (k: BuildingKind): BuildingKind => {
+    if (!unlocked(s, owner, k)) return 'power';
+    return headroom + BUILDINGS[k].power < 10 ? 'power' : k;
+  };
+  if (count('refinery') === 0) return powerFor('refinery');
+  if (needRefineryForHauler && count('refinery') < 4) return powerFor('refinery');
+  if (headroom < 25 && count('power') < 12) return 'power';
   const plan: [BuildingKind, number][] = [
-    ['refinery', 1],
     ['barracks', 1],
     ['factory', 1],
     ['refinery', d.refineries],
@@ -180,9 +673,7 @@ function nextStructure(s: GameState, owner: Owner, d: DifficultySpec): BuildingK
   for (const [k, n] of plan) {
     if (count(k) >= n) continue;
     if (!unlocked(s, owner, k)) continue;
-    // Keep power ahead of what this structure will draw.
-    if (pw.made - pw.used + BUILDINGS[k].power < 0) return 'power';
-    return k;
+    return powerFor(k);
   }
   return null;
 }
@@ -191,13 +682,7 @@ function nextStructure(s: GameState, owner: Owner, d: DifficultySpec): BuildingK
  * Somewhere legal to put a structure, nearest a focus point, keeping a one-tile lane free all
  * round so the base never walls itself in. Turrets go out toward the enemy; refineries toward ore.
  */
-function findSpot(
-  s: GameState,
-  owner: Owner,
-  kind: BuildingKind,
-  home: { x: number; y: number },
-  enemyHome: { x: number; y: number },
-): { x: number; y: number } | null {
+function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enemyHome: Pt): Pt | null {
   const spec = BUILDINGS[kind];
   let focus = home;
   if (kind === 'turret') focus = toward(home, enemyHome, 7);
@@ -225,7 +710,9 @@ function findSpot(
       const cy = y + spec.h / 2;
       candidates.push([x, y, (cx - focus.x) ** 2 + (cy - focus.y) ** 2]);
     }
-  candidates.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0]);
+  // Ties broken in mirrored order for side 1, so both sides build mirror-image bases.
+  const sign = owner === 1 ? -1 : 1;
+  candidates.sort((a, b) => a[2] - b[2] || sign * (a[1] - b[1]) || sign * (a[0] - b[0]));
   for (const [x, y] of candidates) {
     if (placementProblem(s, owner, kind, x, y, occ)) continue;
     let clear = true;

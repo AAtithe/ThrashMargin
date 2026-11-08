@@ -127,6 +127,17 @@ export interface AiMemory {
   hurtTick: number;
   hurtX: number;
   hurtY: number;
+  /** The attack wave: its members, and 0 forming, 1 gathering at the staging point, 2 attacking. */
+  waveIds: number[];
+  wavePhase: number;
+  /** Tick the wave entered its current phase, or last regrouped. */
+  waveTick: number;
+  /** How many set out, so the wave knows when it has been broken. */
+  waveSize: number;
+  /** The hauler raid: its buggies, the hauler being hunted (0 for none), and when the next may go. */
+  raidIds: number[];
+  raidTarget: number;
+  nextRaid: number;
 }
 
 export interface GameState {
@@ -157,6 +168,8 @@ export interface GameState {
   log: LogEntry[];
   /** Last tick each kind of warning was logged, so alarms do not flood the log. */
   alarms: Record<string, number>;
+  /** Difficulty the computer plays side 0 with in the harness; defaults to s.difficulty. */
+  autopilotDifficulty?: Difficulty;
 }
 
 export type GameAction =
