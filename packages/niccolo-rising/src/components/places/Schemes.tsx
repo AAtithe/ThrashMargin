@@ -26,7 +26,7 @@ export default function Schemes(p: PlaceProps) {
                 {locked ? `needs ${COURSE[x.requiresCourse!]?.name}` : <span style={{ color: chance >= 0.6 ? UI.good : chance >= 0.4 ? UI.warn : UI.bad }}>{Math.round(chance * 100)}% chance</span>}
               </Meta>
             </div>
-            <ActButton p={p} verb={{ type: 'SCHEME', schemeId: x.id }}>Attempt</ActButton>
+            <ActButton p={p} id={`nr-scheme-${x.id}`} verb={{ type: 'SCHEME', schemeId: x.id }}>Attempt</ActButton>
           </Row>
         );
       })}

@@ -100,11 +100,14 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **Load the page after adding a React hook.** Hooks placed after an early return render
   conditionally; `tsc` and the harness both pass and the screen is blank.
 - **A guided tour is only verified by driving it in a browser.** Each game's tour card carries
-  `data-tour-target`, naming the element it is pointing at, so a script can walk every step by
-  clicking whatever the card names rather than guessing from the copy. Three classes of bug show up
-  there and nowhere else: a step whose predicate reads true before the run begins, a step that can
-  un-complete itself, and a spotlight measured while a smooth scroll is still moving the target.
-  None of them are visible to `tsc` or to `npm run drive`, which never render anything.
+  `data-tour-target`, naming the element it is actually ringing — the resolved one, where a step
+  offers several candidates — so a script can walk every step by clicking what the card names
+  rather than guessing from the copy. Niccolò Rising's card also carries `data-tour-manual`, for
+  its one step that is read rather than acted on. Four classes of bug show up there and nowhere
+  else: a step whose predicate reads true before the run begins, a step that can un-complete
+  itself, a spotlight measured while a smooth scroll is still moving the target, and a step
+  pointing at a control the game has disabled until some other thing is done first. None are
+  visible to `tsc` or to `npm run drive`, which never render anything.
 - **Light and dark mode: colours are CSS variables.** Each game's `theme.ts` hands out
   `var(--…)` strings; the values, one block per mode, are in that game's `styles.css` (portal
   chrome in `portal.css`, identical in every package). `lib/colorScheme.ts` stores the choice under
