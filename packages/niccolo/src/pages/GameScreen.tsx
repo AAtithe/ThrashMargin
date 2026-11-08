@@ -12,6 +12,7 @@ import MapView from '../components/MapView';
 import FleetPanel from '../components/FleetPanel';
 import OrdersPanel from '../components/OrdersPanel';
 import { Panel } from '../components/ui';
+import CampaignLoading from '../components/CampaignLoading';
 import DispatchesPanel from '../components/DispatchesPanel';
 import LedgerPanel from '../components/LedgerPanel';
 import CountingHousePanel from '../components/CountingHousePanel';
@@ -198,18 +199,6 @@ const BUTTON_ACTIVE: React.CSSProperties = {
   color: UI.brass,
 };
 
-function CenteredMessage({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={STYLE}>
-      <PortalNav variant="header" />
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ color: UI.textSoft }}>{children}</p>
-      </div>
-      <PortalNav variant="footer" />
-    </div>
-  );
-}
-
 export default function GameScreen() {
   const { id } = useParams<{ id: string }>();
   const { state, error, dispatch, loadGame, deleteGame } = useGameHybrid();
@@ -285,7 +274,7 @@ export default function GameScreen() {
   };
 
   if (!state) {
-    return <CenteredMessage>{error ?? 'Loading campaign…'}</CenteredMessage>;
+    return <CampaignLoading error={error} onRetry={id ? () => void loadGame(id) : undefined} onBack={() => nav('/')} />;
   }
 
   const selectedVessel = state.vessels.find(v => v.id === selectedVesselId) ?? null;

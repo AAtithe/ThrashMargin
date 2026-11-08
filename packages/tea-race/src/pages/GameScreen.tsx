@@ -35,6 +35,7 @@ import CareerPanel from '../components/CareerPanel';
 import EraBanner from '../components/EraBanner';
 import { TeaChest, Vignette } from '../components/Art';
 import { RACE_FINISH, TEA_RACE_PORTS, openRace, raceLots } from '../sim/seamanship';
+import { LoadingScreen } from '../lib/Loading';
 
 export default function GameScreen() {
   const { id } = useParams();
@@ -120,16 +121,17 @@ export default function GameScreen() {
 
   if (!state) {
     return (
-      <div style={{ ...page, alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ ...bodySmall, textAlign: 'center', maxWidth: '40ch' }}>
-          {error ?? 'Loading the voyage…'}
-        </p>
-        {error && (
-          <Button onClick={() => navigate('/')} style={{ marginTop: '0.8rem' }}>
-            Back to the lobby
-          </Button>
-        )}
-      </div>
+      <LoadingScreen
+        motif="clipper"
+        caption="Loading the voyage…"
+        error={error}
+        actions={
+          <>
+            {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
+            <Button onClick={() => navigate('/')}>Back to the lobby</Button>
+          </>
+        }
+      />
     );
   }
 
