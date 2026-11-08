@@ -24,6 +24,9 @@ const SESSION_EXPIRED = 'Your sign-in has expired — use "Sign out" above, then
 export function useGameCloud() {
   const [state, setState] = useState<GameState | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>([]);
+  // False until the first list request has answered, either way: the lobby shows placeholder rows
+  // until then, so an empty list is never mistaken for "you have no saved games".
+  const [savesLoaded, setSavesLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Saves go through one queue: one request in flight, always the latest state, carrying the
@@ -49,7 +52,9 @@ export function useGameCloud() {
       if (!res.ok) return;
       const data = await res.json();
       setSaves(data.saves ?? []);
-    } catch { /* non-fatal — the lobby just shows what it already has */ }
+    } catch { /* non-fatal — the lobby just shows what it already has */ } finally {
+      setSavesLoaded(true);
+    }
   }, []);
 
   afterSave.current = fetchSaves;
@@ -124,5 +129,5 @@ export function useGameCloud() {
     } catch { /* ignore */ }
   }, []);
 
-  return { state, error, saves, createGame, loadGame, dispatch, deleteGame };
+  return { state, error, savesLoaded, saves, createGame, loadGame, dispatch, deleteGame };
 }
