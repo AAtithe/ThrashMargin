@@ -22,6 +22,7 @@ const GAMES = [
   { server: 'packages/niccolo-rising/api/_lib', client: 'packages/niccolo-rising/src/lib', public: 'packages/niccolo-rising/public' },
   { server: 'packages/tea-race/api/_lib', client: 'packages/tea-race/src/lib', public: 'packages/tea-race/public' },
   { server: 'packages/steady-eddie/api/_lib', client: 'packages/steady-eddie/src/lib', public: 'packages/steady-eddie/public' },
+  { server: 'packages/fireline/api/_lib', client: 'packages/fireline/src/lib', public: 'packages/fireline/public' },
 ];
 // Served as a plain file (index.html loads it before first paint), so it goes in each game's Vite
 // public folder and beside the landing page rather than into src/.

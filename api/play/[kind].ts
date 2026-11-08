@@ -4,6 +4,7 @@ import niccolo from '../../packages/niccolo/api/game/index';
 import niccoloRising from '../../packages/niccolo-rising/api/game/index';
 import teaRace from '../../packages/tea-race/api/game/index';
 import steadyEddie from '../../packages/steady-eddie/api/game/index';
+import fireline from '../../packages/fireline/api/game/index';
 import { getDb } from '../../packages/thrash-margin/api/_lib/db';
 import { requireUser } from '../../packages/thrash-margin/api/_lib/auth';
 import { handleCors } from '../../packages/thrash-margin/api/_lib/cors';
@@ -24,6 +25,7 @@ const HANDLERS: Record<string, (req: VercelRequest, res: VercelResponse) => unkn
   'niccolo-rising': niccoloRising,
   'tea-race': teaRace,
   'steady-eddie': steadyEddie,
+  fireline,
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

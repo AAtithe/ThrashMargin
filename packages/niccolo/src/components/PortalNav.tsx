@@ -54,6 +54,14 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
             </a>
           </>
         )}
+        {canSee('fireline') && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href="/fireline/" style={styles.link}>
+              🎯 Fireline
+            </a>
+          </>
+        )}
         <span style={styles.sep}>·</span>
         <a href="/thrash-margin/feedback" style={styles.link}>
           💬 Feedback

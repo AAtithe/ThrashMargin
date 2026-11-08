@@ -57,6 +57,14 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
             </a>
           </>
         )}
+        {canSee('fireline') && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href="/fireline/" style={styles.link}>
+              🎯 Fireline
+            </a>
+          </>
+        )}
         <span style={styles.sep}>·</span>
         {/* Base-relative, like the Sign in link below — this is Thrash Margin's own route. */}
         <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>

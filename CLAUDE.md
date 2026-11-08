@@ -1,8 +1,8 @@
 # The Thrash Margin portal — working notes
 
-Five games served from one deployment, one Postgres/Supabase instance, and one account system:
+Six games served from one deployment, one Postgres/Supabase instance, and one account system:
 `packages/thrash-margin`, `packages/niccolo`, `packages/niccolo-rising`, `packages/steady-eddie`,
-`packages/tea-race`.
+`packages/tea-race`, `packages/fireline`.
 Each game's design document is at the repo root (`tea-race-design.md`, and so on) and carries its own
 build log; read the relevant one before changing a game's rules.
 
@@ -12,7 +12,7 @@ build log; read the relevant one before changing a game's rules.
 
 ### 1. Every game requires a signed-in account. There is no guest path.
 
-All five lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
+All six lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
 demo, or "try it without an account" route back in**, and do not relax the gate to make local
 development or testing easier. A guest path existed once and was deliberately removed
 (`7c0e0a0`); it is not an oversight and it is not a TODO.
@@ -26,6 +26,7 @@ The gate lives at:
 | Niccolò Rising | `packages/niccolo-rising/src/pages/Lobby.tsx` |
 | Steady Eddie | `packages/steady-eddie/src/pages/Lobby.tsx` |
 | The Tea Race | `packages/tea-race/src/pages/Lobby.tsx` |
+| Fireline | `packages/fireline/src/pages/Lobby.tsx` |
 
 **Where the gate is, and is not, enforced.** Be precise about this, because the two halves are
 easy to confuse and only one of them is a security boundary:
@@ -58,7 +59,7 @@ added later). `api/play/[kind].ts` refuses any game the account lacks with 403 b
 handler runs; that is the boundary. The lobbies' `hasGameAccess` check and the welcome page hiding
 cards are presentational, exactly like the sign-in gate. Logic: `packages/thrash-margin/api/_lib/access.ts`.
 
-### 2. `packages/tea-race/src/sim/` and `packages/niccolo-rising/src/sim/` are pure
+### 2. `packages/tea-race/src/sim/`, `packages/niccolo-rising/src/sim/` and `packages/fireline/src/sim/` are pure
 
 No `Math.random`, no clock. Dice come from `rng.ts` against the persisted `rngSeed`, and
 `createdAt` is passed in by the caller. Niccolò Rising runs in real time, so every one of its
@@ -99,6 +100,10 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **`npm run drive` before trusting anything.** ~370,000 assertions over 20 seeds in a couple of
   seconds. Use a wide seed set: pathologies in this codebase's history showed up in some seeds and
   not others, and a five-seed run once reported two bugs fixed while they were still there.
+- **Fireline has its own harness: `npm run drive:fl`** (whole computer-against-computer battles over
+  28 seeds plus every order, about 120,000 assertions, about 40 seconds; `-- --seeds 60` for a
+  wider sweep). Fireline is real time: it saves every 15 seconds of play rather than per action, and
+  it has no guided tour yet (see `fireline-design.md`).
 - **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and
   difficulty). Its engine (`packages/thrash-margin/shared/sim/`) follows the same purity rule as the
   Tea Race's `sim/`: no `Math.random`, no clock, illegal actions return the same state object.

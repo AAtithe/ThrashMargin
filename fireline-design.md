@@ -1,0 +1,110 @@
+# Fireline — design and build log
+
+A real-time strategy game in the genre of the classic base-builders: one Command Yard, ore to
+harvest, power to keep ahead of demand, and an army to build and send. Original setting, names
+and art: the Meridian Corps (blue, the player) against the Ashen Combine (red, the computer).
+
+Package: `packages/fireline`. Served at `/fireline/`. Saves: `/api/play/fireline`, `games.game =
+'fireline'`. Dev server: `npm run dev:fl` (port 5178). Tests: `npm run drive:fl`.
+
+---
+
+## 1. The game in one paragraph
+
+Each side starts with a Command Yard, three riflemen and 3,000 credits on a 64 by 64 map that is
+point-symmetric, so both start with the same ground and the same ore. The Yard builds structures
+one at a time; a finished structure is placed by hand within four tiles of something you own.
+Refineries arrive with a hauler, which gathers ore and turns it into credits. Barracks train
+infantry, the War Factory builds vehicles, Generators supply power. Short of power, every queue
+runs at half speed, turrets fire half as fast and the radar goes dark. A side loses when it has no
+structures left.
+
+## 2. Rules (all numbers in `src/sim/rules.ts`)
+
+| Structure | Size | Cost | Power | Needs |
+|---|---|---|---|---|
+| Command Yard | 3x3 | (start) | +20 | |
+| Generator | 2x2 | 300 | +100 | |
+| Refinery | 3x2 | 1500 | -30 | Generator |
+| Barracks | 2x2 | 400 | -20 | Generator |
+| War Factory | 3x3 | 1800 | -40 | Refinery |
+| Gun Turret | 1x1 | 600 | -25 | Barracks |
+| Comms Uplink | 2x2 | 1000 | -50 | Refinery |
+
+| Unit | Cost | Role |
+|---|---|---|
+| Rifleman | 100 | Anti-infantry |
+| Rocketeer | 300 | Anti-armour and structures |
+| Ore Hauler | 1200 | Economy (factory and refinery) |
+| Raider Buggy | 500 | Fast scout, machine gun |
+| Battle Tank | 800 | Main line unit |
+| Artillery | 1000 | Range 9, splash, minimum range 2 (needs uplink) |
+
+Damage is weapon kind against armour class (`DAMAGE_VS`). Shells, rockets and artillery are
+projectiles with a flight time; artillery lands where the target was, with a little scatter.
+
+Paying: in full when queued, refunded in full on cancel. Selling returns half, scaled by health.
+Repair is paid as it goes. Ore regrows slowly on tiles that still hold some.
+
+## 3. Engine
+
+`src/sim/` follows the repo's purity rule (CLAUDE.md invariant 2): no `Math.random`, no clock.
+Every random choice (map generation, AI picks, artillery scatter) draws from `rngSeed` in the
+state. `processAction` clones the state once and works on the clone, so its input is never
+touched; an illegal action returns the same object. One action is one order or one or more ticks
+(10 ticks a second at normal speed). Trigonometry is kept out of the simulation (formation slots
+are integer offsets) so a replay is exact.
+
+- `map.ts`: value-noise terrain, mirrored about the centre; anything unreachable from a base
+  becomes rock.
+- `grid.ts`: occupancy, A* with string-pulling, distances.
+- `commands.ts`: every order as a `can*` check and a `do*` apply, shared by player and AI.
+- `tick.ts`: production, AI, units (movement, targeting, firing, harvesting), structures,
+  projectiles, crowd separation, deaths, ore regrowth, fog, victory.
+- `ai.ts`: build order by difficulty, unit mix, attack waves, base defence.
+
+The computer plays by the same rules and orders. Two stated differences: it sees the whole map,
+and on Hard its refineries pay 25% more.
+
+## 4. Client
+
+Canvas 2D, no image files. `game/art.ts` draws every unit and structure with paths, in either
+team's colours; the same functions draw the build menu icons. `game/terrain.ts` paints the ground
+once per battle. `game/renderer.ts` draws a frame: terrain window, scorch marks, ore, structures,
+units interpolated between ticks, projectiles, muzzle flashes and explosions, particles, fog
+(a 64 by 64 canvas scaled up with smoothing, which gives soft edges), placement ghost, drag box.
+Particles and scorch marks are renderer-only and may use `Math.random`.
+
+Saves: every 15 seconds of play, on pause, on leaving, when the tab hides and when the battle
+ends. Not after every action, unlike the turn-based games: the battle advances ten times a second.
+
+## 5. Not built yet
+
+- A guided in-game tour (there is a How to play page). `npm run tours` does not cover Fireline,
+  and `scripts/loading-check.cjs` skips its tour check (`tour: false`).
+- Touch controls. The game is playable with a mouse and keyboard; orders are right-click.
+- Sound.
+
+---
+
+## Build log
+
+### 2026-11-08 — First playable build
+
+Engine, AI, renderer, lobby, saves, portal registration. `npm run drive:fl`: whole battles over
+28 seeds (20 Normal, 4 Easy, 4 Hard) computer against computer, plus every order legal and
+illegal; about 120,000 assertions in about 40 seconds. All 28 battles finished, average 17 game
+minutes, side 0 won 12 and side 1 won 16 (symmetric map, so that split is noise at this sample).
+
+Two problems the harness found on the way, both fixed before the first commit:
+
+1. A traffic jam froze an economy. The AI's staging point sat between two refineries, idle units
+   crowded the dock pad, and separation pushed haulers back as fast as they drove. Fixed three
+   ways: whoever is standing still gives way to whoever is moving (haulers most of all), idle
+   units step off dock pads and factory doors, and the AI stages its army on open ground.
+2. Under `tsx`, module-level constants read inside the innermost loops cost a getter call each
+   time; local copies in `grid.ts` and `tick.ts` halved the harness time. Results were identical
+   before and after (same winners, same ticks), which is the determinism doing its job.
+
+Browser checks: 60 frames a second during a 15-minute battle at 1440x900; light and dark mode;
+`node scripts/loading-check.cjs fireline` 25 of 25.

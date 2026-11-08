@@ -16,6 +16,7 @@ export const GAMES = [
   { key: 'niccolo_rising', slug: 'niccolo-rising', label: 'Niccolò Rising', short: 'Rising' },
   { key: 'tea_race', slug: 'tea-race', label: 'The Tea Race', short: 'Tea Race' },
   { key: 'steady_eddie', slug: 'steady-eddie', label: 'Steady Eddie', short: 'Steady Eddie' },
+  { key: 'fireline', slug: 'fireline', label: 'Fireline', short: 'Fireline' },
 ] as const;
 
 export type GameKey = (typeof GAMES)[number]['key'];

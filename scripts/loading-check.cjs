@@ -36,6 +36,8 @@ const GAMES = [
   { key: 'tea-race', dir: 'packages/tea-race', port: 5175, begin: /Begin with/, accentVar: '--ui-brass' },
   { key: 'steady-eddie', dir: 'packages/steady-eddie', port: 5176, begin: /Begin with/, accentVar: '--ui-brass' },
   { key: 'niccolo-rising', dir: 'packages/niccolo-rising', port: 5177, begin: 'Begin →', accentVar: '--ui-brass' },
+  // Fireline has no guided tour yet (a How to play page instead), so its tour check is skipped.
+  { key: 'fireline', dir: 'packages/fireline', port: 5178, begin: /Begin the battle/, accentVar: '--ui-accent', tour: false },
 ];
 const SIGN_IN_AGAIN = 'Your sign-in has expired. Sign in again to open this game.';
 const only = process.argv[2];
@@ -118,7 +120,8 @@ async function checkGame(browser, g) {
   const id = p.url().split('/game/')[1].split(/[?#]/)[0];
   if (g.key === 'niccolo') await p.getByRole('button', { name: 'Get to work' }).click({ timeout: 5000 }).catch(() => {});
   const tourSel = g.key === 'niccolo' ? 'button:has-text("Skip"), button:has-text("Explore on my own")' : '[data-tour-target], [data-tour-manual]';
-  ok(g.key, 'guided tour still offered once the game opens', await p.locator(tourSel).first().waitFor({ timeout: 5000 }).then(() => true, () => false));
+  if (g.tour !== false) ok(g.key, 'guided tour still offered once the game opens', await p.locator(tourSel).first().waitFor({ timeout: 5000 }).then(() => true, () => false));
+  else await p.locator('[data-testid=battlefield]').waitFor({ timeout: 10000 }).catch(() => {});
   const state = await p.evaluate(id => {
     let best = null;
     for (let i = 0; i < localStorage.length; i++) {
