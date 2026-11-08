@@ -96,6 +96,25 @@ interface TourStep {
    *  swaps the roll button for the end-turn button, the Load block vanishes when the hold fills). */
   target: (v: TourView, plan: TourPlan) => string | null;
   isComplete: (v: TourView, plan: TourPlan, memory: TourMemory) => boolean;
+  /**
+   * A step that only waits — it asks for nothing the player has not already done — and so is
+   * passed over, unseen, when it is already complete at the moment the tour would open it.
+   *
+   * The sail steps are the case. Casting off spends this turn's points at once, so a short leg
+   * ends at the quay in the same click, and "Sail her there — end the turn, I will wait" was then
+   * shown already satisfied and snatched away 650ms later: a card that completes itself, which
+   * reads as the tour skipping something. "Fill the hull" carries it too, for when the first lot
+   * filled the hold or spent the cash. Only steps with nothing left to ask may carry this flag; on
+   * a step that still asks for an action it would hide a predicate that is true too early.
+   */
+  passWhenReachedDone?: boolean;
+  /**
+   * When this returns a label, the step is waiting on nothing but the player having read it: the
+   * card's own button carries the label, in the primary style, and pressing it moves on. Used where
+   * the game has taken the action away from the player, so that the explanation stays up until it
+   * has been read instead of flashing past on a predicate that is already true.
+   */
+  acknowledge?: (v: TourView, plan: TourPlan) => string | null;
 }
 
 /**
@@ -209,11 +228,21 @@ const lotsOf = (ship: Ship | null, good: GoodId): number =>
 const contractOf = (state: GameState, id: ContractId): Contract | null =>
   state.contracts.find(c => c.id === id) ?? null;
 
-/** The commission is spent, for this captain's purposes: she has landed it, or both berths are gone. */
-const commissionClosed = (state: GameState, captain: Captain, id: ContractId): boolean => {
+/** She has landed this commission. */
+const landedBy = (state: GameState, captain: Captain, id: ContractId): boolean =>
+  !!contractOf(state, id)?.fills.some(f => f.captainId === captain.id);
+
+/** The commission went while she was at sea — withdrawn from the board, or both berths taken by
+ *  others — and she is still carrying its cargo, so there is nothing at this quay to land it on.
+ *
+ *  The cargo clause is not optional. Her own second-place landing fills the card's last berth and
+ *  deals its replacement inside the same action, so the card is gone the instant she has landed on
+ *  it: "the card is gone" alone would read her own success as having lost the race. */
+const commissionLost = (state: GameState, captain: Captain, ship: Ship | null, good: GoodId, id: ContractId): boolean => {
+  if (lotsOf(ship, good) === 0) return false;
   const contract = contractOf(state, id);
   if (!contract) return true;
-  return contract.fills.length >= 2 || contract.fills.some(f => f.captainId === captain.id);
+  return contract.fills.length >= 2 && !contract.fills.some(f => f.captainId === captain.id);
 };
 
 /** Whichever turn-bar button is live right now. Null while a rival is taking their turn. */
@@ -366,6 +395,7 @@ const SAIL_TO_SELLER: TourStep = {
       : `End the turn. I will wait until she makes ${portName(plan.loadPort)}.`,
   target: turnBarTarget,
   isComplete: (v, plan) => v.ship?.location === plan.loadPort,
+  passWhenReachedDone: true,
 };
 
 const LOAD: TourStep = {
@@ -392,6 +422,9 @@ const FILL: TourStep = {
     if (lots >= 1 && v.captain.cash < v.priceFor(plan.loadPort, plan.good)) return true;
     return lots >= 2;
   },
+  // When the first lot already filled her hold or spent the last of the cash there is nothing to
+  // ask, and the card would otherwise arrive complete and flash past.
+  passWhenReachedDone: true,
 };
 
 const COURSE_TO_BUYER: TourStep = {
@@ -419,28 +452,45 @@ const SAIL_TO_BUYER: TourStep = {
       : `End the turn, and keep going until she ties up at ${portName(plan.destination)}.`,
   target: turnBarTarget,
   isComplete: (v, plan) => v.ship?.location === plan.destination,
+  passWhenReachedDone: true,
 };
 
 const LAND: TourStep = {
   title: 'Land the cargo',
   body: (v, plan) => {
     const contract = contractOf(v.state, plan.contractId);
-    if (!contract) {
-      return `The commission has been withdrawn from the board while you sailed — it happens. Sell the cargo off the quay instead, or hold it for the next card that wants it, and I will carry on.`;
+    const instead = v.state.hazards?.quaysideSales
+      ? 'Sell the cargo off the quay if you like, or keep it for the next card that wants it'
+      : 'Keep the cargo for the next card that wants it — there are no quayside sales in this ruleset';
+    if (commissionLost(v.state, v.captain, v.ship, plan.good, plan.contractId)) {
+      // A card whose second berth is filled is replaced in the same action, so "gone from the
+      // board" usually means rivals filled it, not that it lapsed; the log is the only record.
+      const filledByOthers =
+        v.state.log.filter(
+          e => e.kind === 'deliver' && e.data?.contractId === plan.contractId && e.captainId !== v.captain.id,
+        ).length >= 2;
+      return contract || filledByOthers
+        ? `Both berths went to other captains while you were at sea. That is the game, and it is why speed is worth more than price here. ${instead}, and we will move on.`
+        : `The commission was withdrawn from the board while you sailed — it happens. ${instead}, and we will carry on.`;
     }
-    if (contract.fills.length >= 2) {
-      return `Both berths went to other captains while you were at sea. That is the game, and it is why speed is worth more than price here. Sell the cargo off the quay or keep it for the next commission, and we will move on.`;
-    }
+    // Gone with her cargo ashore: she took the last berth herself, and the card went with it.
+    if (!contract) return `Landed — and that filled the card's last berth, so it has left the board.`;
     const rank = contract.fills.length + 1;
     return `Land her. Every matching slot goes at once and is paid per lot — you are ${rank === 1 ? 'first home' : 'second home'}, at ${PAYOUT_MULTIPLIERS[rank as 1 | 2]}× ${money(contract.price)} a lot.`;
   },
-  target: (_v, plan) => `land-contract-${plan.contractId}`,
-  // Landed, or beaten to both berths, or the cargo went some other way once she was alongside.
-  // The last clause is anchored to her being *at* the destination: an empty hold on its own is
-  // the state she starts the tour in, and would read as a finished step before she had sailed.
+  target: (v, plan) => (commissionLost(v.state, v.captain, v.ship, plan.good, plan.contractId) ? null : `land-contract-${plan.contractId}`),
+  // Landed, or the cargo went some other way once she was alongside (sold, or over the side). The
+  // last clause is anchored to her being *at* the destination: an empty hold on its own is the
+  // state she starts the tour in, and would read as a finished step before she had sailed.
+  //
+  // Losing the commission while at sea is deliberately *not* completion. It used to be, and the
+  // step then arrived already done: the "both berths went to other captains" explanation — the
+  // one card in the run that tells the player what happened to their cargo — was shown for the
+  // 650ms pause and replaced. It now waits for the player to read it and press Carry on.
   isComplete: (v, plan) =>
-    commissionClosed(v.state, v.captain, plan.contractId) ||
+    landedBy(v.state, v.captain, plan.contractId) ||
     (v.ship?.location === plan.destination && lotsOf(v.ship, plan.good) === 0),
+  acknowledge: (v, plan) => (commissionLost(v.state, v.captain, v.ship, plan.good, plan.contractId) ? 'Carry on' : null),
 };
 
 const BUY_SHARE: TourStep = {
@@ -655,11 +705,26 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO;
+  const ackLabel = step.acknowledge?.(view, plan) ?? null;
   // Off the owner's turn (another human at a hot-seat table) there is nothing of hers to point at,
   // and the turn bar belongs to somebody else: stand aside entirely — no scrim over the other
   // player's board — and do not advance on their moves.
   const waiting = !isMyTurn(view);
-  const targetId = waiting ? null : step.target(view, plan);
+  const done = !isManual && !waiting && step.isComplete(view, plan, memory);
+
+  // During the pause after a step completes, the card keeps pointing where it pointed and saying
+  // what it said while the step was live. Targets and copy are computed from live state, and the
+  // state that completes a step can also re-aim it: rolling is what brings a ship in on "Sail her
+  // there", and the same roll turns the ringed roll button into End the turn — so for 650ms a
+  // finished step rang End the turn and said "End the turn, I will wait", and a player quick
+  // enough to obey threw away the turn she had just arrived on, with her points still unspent.
+  // Written during render, deliberately: it is the last live answer, not state anything renders from.
+  const live = useRef<{ stepIndex: number; target: string | null; body: string } | null>(null);
+  const liveTarget = waiting ? null : step.target(view, plan);
+  if (!done) live.current = { stepIndex, target: liveTarget, body: step.body(view, plan) };
+  const held = done && live.current?.stepIndex === stepIndex ? live.current : null;
+  const targetId = held ? held.target : liveTarget;
+  const bodyText = held ? held.body : step.body(view, plan);
   const rect = useTargetRect(targetId, stepIndex);
 
   // Declared *before* the advance effect below, and relied on for that: effects run in the order
@@ -675,12 +740,29 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   // Keyed on the *answer*, not on `view`: `view` is a fresh object on every render of the game
   // screen, so keying on it restarted the 650ms pause on every render, and a player clicking
   // briskly could keep a finished step on screen indefinitely.
-  const done = !isManual && !waiting && step.isComplete(view, plan, memory);
+  //
+  // The step after is read against the view as it stands when the pause ends (hence the ref), and
+  // a waiting step that is already satisfied is passed over rather than shown — see
+  // `passWhenReachedDone`. The indices passed over are published on the card for automated runs,
+  // which otherwise could not tell a step skipped by design from one that never appeared.
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const [passedOver, setPassedOver] = useState<number[]>([]);
   useEffect(() => {
     if (!done) return;
-    const t = setTimeout(() => setStepIndex(i => Math.min(i + 1, steps.length - 1)), 650);
+    const t = setTimeout(() => {
+      const last = steps.length - 1;
+      let next = Math.min(stepIndex + 1, last);
+      const passed: number[] = [];
+      while (next < last && steps[next].passWhenReachedDone && steps[next].isComplete(viewRef.current, plan, memory)) {
+        passed.push(next);
+        next++;
+      }
+      if (passed.length) setPassedOver(p => [...p, ...passed.filter(i => !p.includes(i))]);
+      setStepIndex(next);
+    }, 650);
     return () => clearTimeout(t);
-  }, [done, stepIndex, steps.length]);
+  }, [done, stepIndex, steps, plan, memory]);
 
   const PADDING = 8;
   // The padding is kept on screen too, or a control at the very edge has its ring drawn past it.
@@ -739,12 +821,20 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
 
       {/* `data-tour-*` is how an automated pass drives the tour: it reads which control the card
           is pointing at and clicks that, rather than guessing from the copy. */}
-      <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={targetId ?? ''}>
+      <div
+        ref={cardRef}
+        style={cardStyle}
+        data-tour-step={String(stepIndex)}
+        data-tour-target={targetId ?? ''}
+        data-tour-passed={passedOver.join(',')}
+        data-tour-done={done ? '1' : undefined}
+      >
         <p style={stepLabel}>
           Guided run — {stepIndex + 1} of {steps.length}
+          {done ? ' · done' : ''}
         </p>
         <h3 style={cardTitle}>{step.title}</h3>
-        <p style={cardBody}>{step.body(view, plan)}</p>
+        <p style={cardBody}>{bodyText}</p>
         <div style={footer}>
           <button type="button" style={ghostButton} onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}
@@ -757,10 +847,10 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
             )}
             <button
               type="button"
-              style={isManual ? primaryButton : plainButton}
+              style={isManual || ackLabel ? primaryButton : plainButton}
               onClick={() => (isLast ? finish() : setStepIndex(i => Math.min(i + 1, steps.length - 1)))}
             >
-              {isLast ? 'Finish' : isManual ? 'Start' : 'Skip this'}
+              {isLast ? 'Finish' : isManual ? 'Start' : ackLabel ?? 'Skip this'}
             </button>
           </div>
         </div>
