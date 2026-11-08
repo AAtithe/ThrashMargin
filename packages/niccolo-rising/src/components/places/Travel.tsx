@@ -31,6 +31,8 @@ export default function Travel(p: PlaceProps) {
           const item = ITEM[m.item];
           const stock = abroadStock(s, st.city, m.item);
           const home = saleValue(s, m.item, now);
+          // As many as there is room, stock and money for. At one or none it would only repeat "Buy 1".
+          const most = Math.min(room, stock, Math.floor(s.groats / m.cost));
           return (
             <Row key={m.item} style={{ alignItems: 'flex-start' }}>
               <div style={{ flex: 1 }}>
@@ -41,9 +43,11 @@ export default function Travel(p: PlaceProps) {
                 </Meta>
               </div>
               <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: 1 }}>Buy 1</ActButton>
-              <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: Math.max(1, Math.min(room, stock, Math.floor(s.groats / m.cost))) }}>
-                Buy {Math.max(1, Math.min(room, stock, Math.floor(s.groats / m.cost)))}
-              </ActButton>
+              {most > 1 && (
+                <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: most }}>
+                  Buy {most}
+                </ActButton>
+              )}
             </Row>
           );
         })}

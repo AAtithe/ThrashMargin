@@ -1,11 +1,12 @@
+import { useState } from 'react';
 import { ITEM, LODGING } from '../../sim/content';
-import { MISSION, MISSIONS, activeStatus, nextMission, objectiveStatus } from '../../sim/missions';
+import { MISSION, MISSIONS, activeStatus, missionReady, nextMission, objectiveStatus } from '../../sim/missions';
 import type { Mission } from '../../sim/types';
 import { FONT, UI } from '../../theme';
 import { duration, gr } from '../../lib/format';
-import { Blurb, Meta, Meter, Panel, Row } from '../ui';
+import { Blurb, Button, Meta, Meter, Panel, Row } from '../ui';
 import ActButton from './ActButton';
-import type { PlaceProps } from '../types';
+import type { PlaceProps, Verb } from '../types';
 
 function rewardText(m: Mission): string {
   const r = m.reward;
@@ -27,12 +28,33 @@ function Brief({ m }: { m: Mission }) {
   );
 }
 
+/**
+ * Why a mission button is greyed out, written on the page. A disabled button's tooltip never shows on
+ * a touch screen, and this is the panel a new player is steered by: "Level 3 required" or "You cannot
+ * report back while abroad" has to be readable without a mouse.
+ */
+function Why({ p, verb }: { p: PlaceProps; verb: Verb }) {
+  const reason = p.why(verb);
+  if (!reason) return null;
+  return (
+    <p style={{ margin: '0.1rem 0 0', textAlign: 'right' }}>
+      <Meta colour={UI.textSoft}>{reason}</Meta>
+    </p>
+  );
+}
+
 export default function Missions(p: PlaceProps) {
   const { s, now } = p;
+  // Abandoning throws away every count made since accepting (a journey to Geneva, an hour waiting on a
+  // recovering opponent) and sits beside Report back, so it asks once before it acts. The question is
+  // keyed to the mission in hand (its acceptance time), so it cannot carry over to the next one if this
+  // one ends some other way while the question is showing.
+  const [abandonAsked, setAbandonAsked] = useState<number | null>(null);
   const active = s.missions.active;
   const current = active ? MISSION[active.id] : null;
   const upcoming = nextMission(s);
   const done = MISSIONS.filter(m => s.missions.done.includes(m.id));
+  const confirmAbandon = active !== null && abandonAsked === active.accepted;
 
   return (
     <>
@@ -55,11 +77,20 @@ export default function Missions(p: PlaceProps) {
           ))}
           <Row>
             <Meta>Reward: {rewardText(current)}</Meta>
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
-              <ActButton p={p} verb={{ type: 'ABANDON_MISSION' }} tone="quiet">Abandon</ActButton>
-              <ActButton p={p} verb={{ type: 'COMPLETE_MISSION' }} tone="primary">Report back</ActButton>
-            </div>
+            {confirmAbandon ? (
+              <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                <span style={{ color: UI.bad, fontSize: '0.75rem' }}>Abandon, and lose the progress?</span>
+                <Button tone="danger" onClick={() => { setAbandonAsked(null); p.act({ type: 'ABANDON_MISSION' }); }}>Yes</Button>
+                <Button tone="quiet" onClick={() => setAbandonAsked(null)}>No</Button>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <Button tone="quiet" onClick={() => setAbandonAsked(active.accepted)}>Abandon</Button>
+                <ActButton p={p} verb={{ type: 'COMPLETE_MISSION' }} tone="primary">Report back</ActButton>
+              </div>
+            )}
           </Row>
+          {missionReady(s) && <Why p={p} verb={{ type: 'COMPLETE_MISSION' }} />}
           <Blurb>
             Schemes, duels, training and journeys count from the moment you accepted. Goods and groats asked for are
             handed over when you report back, in Bruges.
@@ -80,6 +111,8 @@ export default function Missions(p: PlaceProps) {
             <Meta>Reward: {rewardText(upcoming)}</Meta>
             <ActButton p={p} id={`nr-mission-accept`} verb={{ type: 'ACCEPT_MISSION', missionId: upcoming.id }} tone="primary">Accept</ActButton>
           </Row>
+          <Why p={p} verb={{ type: 'ACCEPT_MISSION', missionId: upcoming.id }} />
+          <Blurb>Schemes, duels, training and journeys count only once you have accepted, so accept before you start.</Blurb>
         </Panel>
       )}
 

@@ -199,6 +199,9 @@ export default function GameScreen() {
 
   const winner = state.winnerId ? state.hauliers.find(c => c.id === state.winnerId) : null;
 
+  /** Who the guided run belongs to. Not `haulier`, which is whoever holds the seat right now. */
+  const tourOwner = tourPlan ? state.hauliers.find(h => h.id === tourPlan.haulierId) ?? null : null;
+
   /** A run the tour could teach from where the fleet stands right now, or null if there isn't one
    *  (nothing affordable or reachable, everything struck, or every vehicle on the road). */
   const tourCandidate: TourPlan | null = (() => {
@@ -521,20 +524,22 @@ export default function GameScreen() {
       <EventCards log={state.log} hauliers={state.hauliers} viewerId={haulier?.id ?? null} />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
-      {/* Kept off while a handover card or the closing card owns the screen — both are modal, and
-          spotlighting a control underneath one would point at something unclickable. */}
-      {tourPlan && haulier && !over && (
+      {/* Hidden, not unmounted, while a handover card owns the screen or another hotseat player has
+          the seat: the card is modal, and the run belongs to the player who started it. Unmounting
+          sent the run back to its welcome card at every handover. The closing card ends it. */}
+      {tourPlan && tourOwner && !over && (
         <GuidedTour
           onTargetChange={revealTourTarget}
-          hidden={state.phase === 'handover'}
           view={{
             state,
-            haulier,
+            haulier: tourOwner,
             vehicle: state.vehicles.find(ve => ve.id === tourPlan.vehicleId) ?? null,
+            selectedVehicleId,
             targetDepot,
             focusedContract,
           }}
           plan={tourPlan}
+          hidden={state.phase === 'handover' || haulier?.id !== tourOwner.id}
           onFinish={() => setTourPlan(null)}
         />
       )}

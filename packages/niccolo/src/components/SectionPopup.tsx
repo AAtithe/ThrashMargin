@@ -9,9 +9,9 @@
  * scrim so the map is dimmed but still legible.
  *
  * Two details are load-bearing and should survive future edits:
- * - `id="section-popup-scroll"` on the scrolling body is a stable hook `GuidedTour.tsx`'s
- *   `useTargetRect` scrolls against (the same scrollTop math the original sidebar used — see that
- *   file for why `Element.scrollIntoView()` isn't used here).
+ * - The body is its own `overflowY: auto` scroller (`id="section-popup-scroll"`): `GuidedTour.tsx`'s
+ *   `scrollIntoScrollers` finds it by that computed style and sets its scrollTop to bring a tour
+ *   target into view — see that file for why `Element.scrollIntoView()` isn't used here.
  * - Both layers are `absolute`, not `fixed`, so they are scoped to the map pane (`BODY` in
  *   `GameScreen.tsx` is their positioning context) and **never cover the header or the section
  *   bar**. A first cut used a viewport-wide fixed scrim, which sat on top of the bar and made every
