@@ -99,6 +99,14 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   three difficulty levels once read as non-monotonic purely from sampling.
 - **Load the page after adding a React hook.** Hooks placed after an early return render
   conditionally; `tsc` and the harness both pass and the screen is blank.
+- **`npm run tours` after touching any tutorial, tour, coach or onboarding screen.** Plays every
+  game's tutorial in a real browser (`scripts/tours/<game>.cjs`, started by `scripts/tours/run.mjs`,
+  which runs each game's Vite server itself); `--quick` is what CI runs, and naming games runs only
+  those. Every tour driver waits 1.5s on each new step before acting and fails if the step moved:
+  a step that completes itself is the bug that hides from a fast script, and it shipped once
+  (Thrash Margin's attack step read as done on arrival because it watched the game log). Each
+  driver also checks the save for the real effects of the run, and none of them may pass on timing
+  luck. Thrash Margin's card also carries `data-tour-done` while it pauses after a finished step.
 - **A guided tour is only verified by driving it in a browser.** Each game's tour card carries
   `data-tour-target`, naming the element it is pointing at, so a script can walk every step by
   clicking whatever the card names rather than guessing from the copy. Three classes of bug show up
