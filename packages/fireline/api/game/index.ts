@@ -6,6 +6,7 @@ import { handleCors } from '../_lib/cors';
 import { queryParam } from '../_lib/query';
 import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState } from '../../src/sim/state';
+import { campaignSaveStatus, campaignSaveTurn, isCampaignSave, migrateCampaignSave, newCampaignSave } from '../../src/campaign/save';
 
 /**
  * Fireline's saves, in the shared `games` table, discriminated by `game = 'fireline'` so no other
@@ -27,6 +28,19 @@ const minutes = (state: { tick?: unknown }) => (typeof state.tick === 'number' ?
 
 const statusOf = (state: { winner?: unknown }) => (state.winner === 0 ? 'victory' : state.winner === 1 ? 'defeated' : 'active');
 
+/**
+ * A campaign is one row holding the whole career (`kind: 'campaign'`). Its `turn` is missions won and
+ * its status is 'victory' once the last mission is won, 'active' until then: a lost mission can be
+ * retried, so a campaign is never 'defeated'.
+ */
+function rowFields(state: object): { status: string; turn: number } {
+  if (isCampaignSave(state)) {
+    const c = migrateCampaignSave(state);
+    return c ? { status: campaignSaveStatus(c), turn: campaignSaveTurn(c) } : { status: 'active', turn: 0 };
+  }
+  return { status: statusOf(state), turn: minutes(state) };
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
 
@@ -39,6 +53,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (id !== undefined && !isGameId(id)) return res.status(404).json({ message: 'Game not found' });
 
   if (id === undefined) {
+    if (req.method === 'POST' && req.body?.mode === 'campaign') {
+      const name = cleanName(req.body?.name, 'Campaign');
+      const commander = cleanName(req.body?.commander, 'Commander');
+      const newId = uuid();
+      const state = newCampaignSave(newId, name, commander, Date.now());
+      try {
+        const created = await createGame(db, {
+          id: newId, ownerId: user.userId, game: GAME_KIND, status: 'active', turn: 0, state, config: {},
+        });
+        if (!created) return sendGameLimit(res);
+        return res.status(201).json({ gameId: newId, state, version: 0 });
+      } catch (err) {
+        console.error('create fireline campaign error', err);
+        return res.status(500).json({ message: 'Server error' });
+      }
+    }
+
     if (req.method === 'POST') {
       const name = cleanName(req.body?.name, 'Battle');
       const seed = typeof req.body?.seed === 'string' ? req.body.seed.slice(0, 64) : undefined;
@@ -63,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       try {
         const { rows } = await db.query(
-          `SELECT id, status, turn, state->>'name' AS name,
+          `SELECT id, status, turn, state->>'name' AS name, state->>'kind' AS kind,
                   EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
            FROM games WHERE owner_id = $1 AND game = $2 ORDER BY updated_at DESC LIMIT 50`,
           [user.userId, GAME_KIND],
@@ -74,6 +105,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           turn: Number(r.turn) || 0,
           status: r.status,
           savedAt: Math.round(parseFloat(r.saved_at)),
+          ...(r.kind === 'campaign' ? { kind: 'campaign' as const } : {}),
         }));
         return res.json({ saves });
       } catch (err) {
@@ -105,7 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!state || typeof state !== 'object') return res.status(400).json({ message: 'state required' });
     try {
       const result = await saveState(db, {
-        id, ownerId: user.userId, game: GAME_KIND, state, status: statusOf(state), turn: minutes(state),
+        id, ownerId: user.userId, game: GAME_KIND, state, ...rowFields(state),
         version: req.body?.version,
       });
       return sendSaveResult(res, result);
