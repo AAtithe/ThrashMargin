@@ -52,6 +52,43 @@ The game was prototyped as a single-file HTML/JS widget. The full game logic is 
 ### Settings
 - All game parameters are runtime-configurable: starting resources, recruit cost, food upkeep, player attack bonus, neutral territory strength
 
+## Onboarding, and the map-click bug it uncovered
+
+There are now two tutorials, and they do different jobs:
+
+- **The tutorial map** (`buildTutorial`, the lobby's "Start Tutorial", `getTutorialHint`'s six
+  hints in the green side panel, the "Tutorial Graduate" achievement). Unchanged, and still the
+  gentle eight-territory board. It only exists on `mapId === 'tutorial'`, so a player who starts a
+  normal campaign — what the lobby's main button does — never sees it.
+- **The guided turn** (`client/src/components/GuidedTour.tsx`), which runs on **any** map. It
+  spotlights one real control at a time, waits for the game state to say the player used it, and
+  walks one complete turn: select the capital, recruit, build, pick a target, attack, end turn.
+  `planFirstTurn` reads the board rather than hardcoding anything, so the copy names whatever the
+  player's actual capital, weakest neighbour and cheapest affordable building are called.
+
+  It is built around action points: recruit 1 + build 1 + attack 2 is exactly the default
+  `apPerTurn` of 4. **Do not add a fifth action step** — it would either sit waiting on a disabled
+  button or push the attack out of reach. `Game.tsx` hides the hint panel while the run is up so
+  the two are never talking at once.
+
+  `GameConfig.enableTutorial` remains declared in `shared/types.ts` and read by nothing. The run is
+  offered on a fresh campaign and from the header, not behind a lobby checkbox.
+
+### `setPointerCapture` on the map container swallows every click
+
+Building the above found that **a plain mouse click on a territory did nothing at all**.
+`handlePointerDown` captured the pointer on the map container for every pointer type. Pointer
+capture retargets the compatibility mouse events — `click` among them — to the capturing element,
+so the click was delivered to the container rather than to the territory under the cursor:
+`TerritoryRegion`'s `<g onClick>` never fired, and neither did the SVG's own deselect handler.
+
+Capture is now taken in `handlePointerMove`, at the moment a gesture crosses the drag threshold,
+which is all it was ever needed for — keeping a pan alive when the cursor leaves the map — plus on
+the second pointer of a pinch. **Do not move it back to pointerdown.** If you touch the map's
+pointer handling, check all four by hand in a browser: click selects, clicking the same territory
+again deselects, dragging pans *without* deselecting, and clicking empty sea clears the selection.
+A typecheck cannot see any of it.
+
 ## Architecture
 
 ### Data flow

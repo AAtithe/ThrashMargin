@@ -233,7 +233,7 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
 
       <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
         {!freePlay && (
-        <Button disabled={!enabled || !canBuyShare} onClick={() => dispatch({ type: 'BUY_SHARE' })}>
+        <Button id="buy-share-button" disabled={!enabled || !canBuyShare} onClick={() => dispatch({ type: 'BUY_SHARE' })}>
           {bankHasShares
             ? `Take up a share — ${money(sharePrice)}`
             : buyoutTarget

@@ -12,6 +12,7 @@ import {
   prodTotals, resolveCombat, ACHIEVEMENT_DEFS, CAMPAIGN_SCENARIOS,
 } from 'shared/engine-reference';
 import { PLAYER, NEUTRAL, isEnemy } from 'shared/types';
+import GuidedTour, { hasSeenGuidedTour, planFirstTurn, type TourPlan } from '../components/GuidedTour';
 import type { BuildingType, GameState, Territory, TurnEvent } from 'shared/types';
 
 export default function Game() {
@@ -45,6 +46,16 @@ export default function Game() {
   const prevOwnersRef = useRef<number[]>([]);
   const [captureFlash, setCaptureFlash] = useState<Set<number>>(new Set());
 
+  /**
+   * The guided turn, once started. Latched in state rather than recomputed per render: the plan
+   * names a particular neighbour and a particular building, chosen from the board as it stood
+   * when the run opened, and one that re-picked itself every render would rewrite the steps under
+   * the player's feet the moment anything changed.
+   */
+  const [tourPlan, setTourPlan] = useState<TourPlan | null>(null);
+  /** Whether the once-per-browser offer has already been considered for this campaign screen. */
+  const [tourOffered, setTourOffered] = useState(false);
+
   // Territory (x,y) positions and edges never change after a map is built, so this only
   // needs recomputing when the game/map instance itself changes, not on every turn.
   // `state` loads asynchronously (null on the first render), so `state?.nodes.length`
@@ -69,6 +80,18 @@ export default function Game() {
       prevActivePlayerRef.current = cur;
     }
   }, [state?.activePlayer]);
+
+  // Offer the guided turn unasked on a campaign that has not moved yet, the first time this
+  // browser sees one. Every hook in this component lives above the early returns further down;
+  // one placed after them renders conditionally, which typechecks and then blanks the screen.
+  useEffect(() => {
+    if (tourOffered || !state) return;
+    if (state.status !== 'active' || state.turn > 1) return;
+    setTourOffered(true);
+    if (hasSeenGuidedTour()) return;
+    const plan = planFirstTurn(state);
+    if (plan) setTourPlan(plan);
+  }, [state, tourOffered]);
 
   // Reset pan/zoom when game id changes
   useEffect(() => { setMapT({ x: 0, y: 0, scale: 1 }); }, [id]);
@@ -299,7 +322,13 @@ export default function Game() {
 
   const handlePointerDown = (e: React.PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    // Deliberately NOT capturing the pointer here. Capture retargets the compatibility mouse
+    // events — `click` included — to the capturing element, so capturing on pointerdown meant
+    // every click on the map was delivered to this container instead of the territory under the
+    // cursor. The `<g onClick>` in `TerritoryRegion` never fired and neither did the SVG's own
+    // deselect handler, which is to say a plain mouse click on a territory did nothing at all.
+    // Capture is taken in `handlePointerMove` instead, at the moment a gesture becomes a drag,
+    // which is all it was ever needed for: keeping a pan alive when the cursor leaves the map.
     cancelMomentum();
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (activePointersRef.current.size === 1) {
@@ -310,6 +339,7 @@ export default function Game() {
       setTooltip(null); // dismiss any lingering long-press peek tooltip from a prior gesture
       startLongPressTimer(e.clientX, e.clientY);
     } else if (activePointersRef.current.size === 2) {
+      e.currentTarget.setPointerCapture?.(e.pointerId);
       clearLongPressTimer();
       const [p0, p1] = Array.from(activePointersRef.current.values());
       pinchDistRef.current = Math.hypot(p0.x - p1.x, p0.y - p1.y);
@@ -331,7 +361,14 @@ export default function Game() {
     if (activePointersRef.current.size === 1) {
       const dx = e.clientX - lastPanPosRef.current.x;
       const dy = e.clientY - lastPanPosRef.current.y;
-      if (Math.abs(dx) + Math.abs(dy) > MOVE_THRESHOLD) { wasDraggingRef.current = true; clearLongPressTimer(); }
+      if (Math.abs(dx) + Math.abs(dy) > MOVE_THRESHOLD) {
+        // First movement past the threshold: this is a drag, so take the pointer now. Retargeting
+        // the eventual click to this container is exactly what a drag wants — `wasDraggingRef`
+        // swallows it below so a pan does not also deselect.
+        if (!wasDraggingRef.current) e.currentTarget.setPointerCapture?.(e.pointerId);
+        wasDraggingRef.current = true;
+        clearLongPressTimer();
+      }
       lastPanPosRef.current = { x: e.clientX, y: e.clientY };
       setMapT(t => ({ ...t, x: t.x + dx, y: t.y + dy }));
       const now = performance.now();
@@ -415,6 +452,8 @@ export default function Game() {
     if (!state.nodes.some(n => n.owner === f)) eliminatedFactions.push(f);
   }
   const isOver   = state.status !== 'active';
+  /** A first turn the tour could teach from the board as it stands, or null if there isn't one. */
+  const tourCandidate: TourPlan | null = tourPlan ? null : planFirstTurn(state);
   const maxAtk   = selId !== null ? Math.max(1, state.nodes[selId].troops - 1) : 1;
   const maxRec   = sel ? Math.max(0, getTroopCap(sel) - sel.troops) : 0;
   const clampRec = Math.min(recruitAmt, maxRec);
@@ -463,6 +502,18 @@ export default function Game() {
         <ChoiceModal event={state.pendingEvent} onChoice={i => act({ type: 'CHOICE', choiceIndex: i })} />
       )}
 
+      {/* ── Guided turn ──
+           Off while the pass screen, the production modal, an event choice or the end-of-campaign
+           screen owns the display: all four are modal, and a ring round a control underneath one
+           points at something that cannot be clicked. */}
+      {tourPlan && !isOver && !showPassScreen && !showProd && !state.pendingEvent && (
+        <GuidedTour
+          view={{ state, selId, tgtId }}
+          plan={tourPlan}
+          onFinish={() => setTourPlan(null)}
+        />
+      )}
+
       {/* ── Territory hover tooltip ── */}
       {tooltipNode && (
         <TooltipCard
@@ -504,11 +555,17 @@ export default function Game() {
           </div>
         </div>
         <div style={s.headerRight}>
+          {tourCandidate && (
+            <button onClick={() => setTourPlan(tourCandidate)} title="Walk through one turn"
+              style={{ background:'none', border:'1px solid #f59e0b', borderRadius:4, color:'#f59e0b', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center', flexShrink: 0, whiteSpace:'nowrap' }}>
+              Guided turn
+            </button>
+          )}
           <button onClick={() => setShowProd(true)} title="Production breakdown"
             style={{ background:'none', border:'1px solid #30363d', borderRadius:4, color:'#7d8590', fontSize:12, padding:'2px 8px', cursor:'pointer', alignSelf:'center', flexShrink: 0 }}>
             ⊞
           </button>
-          <button onClick={doEndTurn} disabled={isOver || loading} style={{ ...s.endBtn, ...(isOver ? s.endOver : {}) }}>
+          <button id="end-turn-button" onClick={doEndTurn} disabled={isOver || loading} style={{ ...s.endBtn, ...(isOver ? s.endOver : {}) }}>
             {endBtnText}
           </button>
         </div>
@@ -570,7 +627,7 @@ export default function Game() {
             <span style={{ color: '#7d8590', fontSize: 14 }}>{drawerOpen ? '▼' : '▲'}</span>
           </div>
           {/* Tutorial panel */}
-          {cfg.mapId === 'tutorial' && (
+          {cfg.mapId === 'tutorial' && !tourPlan && (
             <TutorialPanel state={state} selId={selId} tgtId={tgtId} />
           )}
           {sel ? (
@@ -838,6 +895,9 @@ function TerritoryRegion({ n, path, centroid, selId, tgtId, tgtIsMove, neighbour
     onMouseMove: (e: React.MouseEvent) => { e.stopPropagation(); onHover(n.id, e.clientX, e.clientY); },
     style: { cursor: 'pointer' as const },
     'data-territory-id': n.id, // hit-test target for the touch long-press peek tooltip
+    // Spotlight target for the guided tour. On the `<g>` rather than the fill path so the ring
+    // encloses the label and the troop count too, which is what a player is being pointed at.
+    id: `territory-${n.id}`,
   };
 
   if (!isVisible) {
@@ -1019,7 +1079,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
               </p>
               <Slider label="Send" val={attackAmt} min={1} max={maxAtk} onChange={setAttackAmt} />
               <CombatPreview sending={attackAmt} tgt={tgt} playerBonus={state.config.playerBonus} research={research} />
-              <Btn onClick={onAttack} disabled={disabled || noAtkAp} dim={noAtkAp}>⚔ Attack with {attackAmt} <ApCost n={attackCost} ap={ap} /></Btn>
+              <Btn id="attack-button" onClick={onAttack} disabled={disabled || noAtkAp} dim={noAtkAp}>⚔ Attack with {attackAmt} <ApCost n={attackCost} ap={ap} /></Btn>
               {/* Annex option for neutral target when diplomacy enabled */}
               {tgt.owner === NEUTRAL && state.config.enableDiplomacy && (
                 <Btn onClick={onAnnex} disabled={disabled || !canAnnex} dim={!canAnnex}>
@@ -1062,7 +1122,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
           <p style={s.label}>Recruit</p>
           <Slider label="Hire" val={clampRec} min={1} max={maxRec} onChange={setRecruitAmt} />
           <p style={{ ...s.muted, marginBottom: 8 }}>Cost: {clampRec * state.config.recruitCost}g · Have {state.resources.gold}g</p>
-          <Btn onClick={onRecruit} disabled={disabled || noAp1 || state.resources.gold < state.config.recruitCost} dim={noAp1}>
+          <Btn id="recruit-button" onClick={onRecruit} disabled={disabled || noAp1 || state.resources.gold < state.config.recruitCost} dim={noAp1}>
             + Recruit {clampRec} <ApCost n={1} ap={ap} />
           </Btn>
         </div>
@@ -1110,7 +1170,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
                 const info = BUILDINGS[to];
                 const ok = state.resources.gold >= info.cost.gold && state.resources.mat >= info.cost.mat && !noAp1;
                 return (
-                  <button key={to} onClick={() => onBuild(to)} disabled={disabled || !ok}
+                  <button key={to} id={`build-${to}`} onClick={() => onBuild(to)} disabled={disabled || !ok}
                     style={{ ...s.buildRow, opacity: ok ? 1 : 0.4, borderColor: ok ? '#1f6feb' : '#30363d' }}>
                     <span style={{ fontWeight: 600, fontSize: 12 }}>↑ {BUILDINGS[from].name} → {info.name}</span>
                     <span style={{ color: '#7d8590', fontSize: 11 }}>{info.cost.gold}g + {info.cost.mat}m · {info.desc}</span>
@@ -1122,7 +1182,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
                 const info = BUILDINGS[b];
                 const ok = state.resources.gold >= info.cost.gold && state.resources.mat >= info.cost.mat && !noAp1;
                 return (
-                  <button key={b} onClick={() => onBuild(b)} disabled={disabled || !ok}
+                  <button key={b} id={`build-${b}`} onClick={() => onBuild(b)} disabled={disabled || !ok}
                     style={{ ...s.buildRow, opacity: ok ? 1 : 0.4 }}>
                     <span style={{ fontWeight: 600, fontSize: 12 }}>{info.name}</span>
                     <span style={{ color: '#7d8590', fontSize: 11 }}>{info.cost.gold}g + {info.cost.mat}m · {info.desc}</span>
@@ -1151,7 +1211,7 @@ function Panel({ sel, tgt, tgtIsMove, state, attackAmt, setAttackAmt, maxAtk, cl
                 Population: {pop}/{popCost} {canAfPop ? '✓' : '— build Farms to grow'}
               </p>
             )}
-            <Btn onClick={onUpgrade} disabled={disabled || noAp1 || !canAfAll} dim={!canAfAll || noAp1}>
+            <Btn id="upgrade-button" onClick={onUpgrade} disabled={disabled || noAp1 || !canAfAll} dim={!canAfAll || noAp1}>
               ↑ Upgrade settlement <ApCost n={1} ap={ap} />
             </Btn>
           </div>
@@ -1392,12 +1452,14 @@ function Slider({ label, val, min, max, onChange }: { label: string; val: number
   );
 }
 
-function Btn({ children, onClick, disabled, dim }: {
+function Btn({ children, onClick, disabled, dim, id }: {
   children: React.ReactNode; onClick: () => void;
   disabled?: boolean; dim?: boolean;
+  /** Stable hook for the guided tour to spotlight this control. See `GuidedTour.tsx`. */
+  id?: string;
 }) {
   return (
-    <button onClick={onClick} disabled={disabled}
+    <button id={id} onClick={onClick} disabled={disabled}
       style={{ ...s.btn, opacity: dim ? 0.45 : 1 }}>
       {children}
     </button>

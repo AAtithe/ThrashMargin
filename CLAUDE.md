@@ -74,5 +74,11 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   three difficulty levels once read as non-monotonic purely from sampling.
 - **Load the page after adding a React hook.** Hooks placed after an early return render
   conditionally; `tsc` and the harness both pass and the screen is blank.
+- **A guided tour is only verified by driving it in a browser.** Each game's tour card carries
+  `data-tour-target`, naming the element it is pointing at, so a script can walk every step by
+  clicking whatever the card names rather than guessing from the copy. Three classes of bug show up
+  there and nowhere else: a step whose predicate reads true before the run begins, a step that can
+  un-complete itself, and a spotlight measured while a smooth scroll is still moving the target.
+  None of them are visible to `tsc` or to `npm run drive`, which never render anything.
 - **Never `git add -A` without reading `git status` first.** A commit in this repo once swept four
   other games' uncommitted lobby changes in under an unrelated message. Stage deliberately.

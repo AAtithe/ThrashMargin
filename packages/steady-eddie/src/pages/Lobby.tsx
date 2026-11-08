@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
 import {
   DEFAULT_DIFFICULTY,
   DIFFICULTIES,
+  FACE_UP_CONTRACTS,
   MAX_HAULIERS,
+  PAYOUT_MULTIPLIERS,
   PRESETS,
   SHARE_MAJORITY,
   TOTAL_SHARES,
@@ -199,12 +201,16 @@ export default function Lobby() {
           <p style={eyebrow}>A road fork of The Tea Race, after Ocean Trader, Clipper Games, 1988</p>
           <h1 style={title}>Steady Eddie</h1>
           <p style={{ ...bodySmall, maxWidth: '58ch', margin: 0 }}>
-            Five commissions are posted on the exchange at all times, each naming a cargo, the depot
-            that sells it and the depot that wants it. Only the first two vehicles home are paid — four
-            times the purchase price, then twice, then nothing. Carry {SHARE_MAJORITY} of the{' '}
-            {TOTAL_SHARES} company shares, {money(VICTORY_CASH)} and a vehicle still on the road, and the
-            company is yours.
+            {FACE_UP_CONTRACTS} commissions are posted on the exchange at all times, each naming a
+            cargo, the depot that wants it and the price it is reckoned at — load it wherever you can
+            get it. Only the first two vehicles home are paid: {PAYOUT_MULTIPLIERS[1]}× the commission
+            price a lot, then {PAYOUT_MULTIPLIERS[2]}×, then nothing. Carry {SHARE_MAJORITY} of the{' '}
+            {TOTAL_SHARES} company shares, {money(VICTORY_CASH)} and a vehicle still on the road, and
+            the company is yours.
           </p>
+          <Link to="/how-to-play" style={{ textDecoration: 'none', alignSelf: 'flex-start' }}>
+            <Button tone="quiet">How to play →</Button>
+          </Link>
         </header>
 
         {error && (
