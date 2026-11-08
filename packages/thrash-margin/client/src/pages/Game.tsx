@@ -23,6 +23,7 @@ import { marksFor, orderKind, suggestColumns, undoable } from '../game/plan';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { FONT, UI } from '../theme';
 import ThemeToggle from '../components/ThemeToggle';
+import MotionToggle from '../components/MotionToggle';
 
 type Tab = 'command' | 'realm' | 'research' | 'log';
 
@@ -223,6 +224,7 @@ function Game({ id }: { id: string | undefined }) {
           {(f.resources.population > 0 || inc.population > 0) && <Chip kind="pop" value={f.resources.population} rate={inc.population} />}
         </div>
         <span className="tm-spacer" />
+        <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
         <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
         <SaveBadge status={game.saveStatus} />
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>

@@ -26,6 +26,7 @@ import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
 import type { Contract, PortId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
+import MotionToggle from '../components/MotionToggle';
 import TeaRacePanel from '../components/TeaRacePanel';
 import SeamanshipPanel from '../components/SeamanshipPanel';
 import ChartersPanel from '../components/ChartersPanel';
@@ -183,6 +184,7 @@ export default function GameScreen() {
           </div>
         )}
 
+        <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
         <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
         <Button tone="quiet" onClick={() => navigate('/')}>
           Lobby

@@ -22,6 +22,7 @@ import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
 import type { Contract, DepotId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
+import MotionToggle from '../components/MotionToggle';
 
 export default function GameScreen() {
   const { id } = useParams();
@@ -154,6 +155,7 @@ export default function GameScreen() {
           </div>
         )}
 
+        <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
         <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
         <Button tone="quiet" onClick={() => navigate('/')}>
           Lobby
