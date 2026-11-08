@@ -21,6 +21,18 @@ export function iconFor(kind: BuildingKind | UnitKind): string {
   g.addColorStop(1, '#2b3f1f');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
+  // A little ground texture (fixed, so every icon matches) and a soft vignette to seat the art.
+  for (let i = 0; i < 70; i++) {
+    const a = Math.sin(i * 12.9898) * 43758.5453;
+    const b = Math.sin(i * 78.233) * 12345.6789;
+    ctx.fillStyle = i % 2 ? 'rgba(110,140,70,0.35)' : 'rgba(25,40,15,0.35)';
+    ctx.fillRect((a - Math.floor(a)) * W, (b - Math.floor(b)) * H, 1.2, 2.2);
+  }
+  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.62);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = v;
+  ctx.fillRect(0, 0, W, H);
   if (kind in BUILDINGS) {
     const spec = BUILDINGS[kind as BuildingKind];
     const s = Math.min((W - 10) / (spec.w * TILE), (H - 8) / (spec.h * TILE), 1.2);
