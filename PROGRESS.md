@@ -1338,6 +1338,26 @@ animated. The ring no longer slides from the last step's target either; it appea
 
 **Verification.** 20 runs at 1400x900 under 4x CPU throttling, 20 at the failing 930px height, and
 one at each of 880 to 960px with every animation frame recorded: no frame of any card off screen.
-`npm run tours -- tea-race --quick` passes; `npm run check` passes. The full matrix has three
-phone failures (`limas`/`mikes` ship perturbation, `golf` lose perturbation) that are identical on
-main before this change, outside the quick matrix CI runs, and left for their own fix.
+`npm run tours -- tea-race --quick` passes; `npm run check` passes.
+
+### 2026-11-08 — The Tea Race full tour matrix: three phone failures, one of them a real game bug
+
+The full matrix (not the quick one CI runs) had failed three phone scenarios since before the fix
+above. Two causes, one in the game and one in the driver.
+
+- **`golf/board/phone/h1/lose`: the game.** A phone has room for one panel at a time. Rolling opens
+  the fleet and orders panel, which put the exchange away, and on "Lay off a course for the buyer"
+  the run was pointing into the exchange (the port ledger). The run's target had not changed, so
+  nothing opened the exchange again: the card asked for Alexandria in a panel the player could not
+  see, with no ring. Any phone player who waited at the quay on that step for a turn met it.
+  `GameScreen.tsx` now keeps the run's current target, and the open-orders-on-roll effect stands
+  down where only one panel fits and that target is in the exchange (and only while a run is on,
+  since a run skipped mid-step leaves its last target behind). Fails with that file reverted,
+  passes with it.
+- **`limas` and `mikes` `/phone/h1/ship`: the driver.** The perturbation buys a second clipper
+  while the run points into the exchange; on a phone the shipyard is in the closed fleet panel, and
+  the driver waited 30s on a hidden button. It now opens the panel with its launcher first, as a
+  player must. On desktop both panels are open, which is why only the phone runs failed.
+
+**Verification.** The three scenarios seven times each (21 runs) and the full 32-run matrix: no
+problems. `npm run check` passes.

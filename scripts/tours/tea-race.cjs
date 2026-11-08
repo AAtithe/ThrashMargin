@@ -349,6 +349,12 @@ async function runOne(browser, cfg) {
         perturbed = true;
         const before = await page.evaluate(() => [...document.querySelectorAll('[id^=ship-button-]')].map(e => e.id));
         const buy = page.locator('button', { hasText: /Buy a clipper|Buy .* — £/ }).first();
+        // On a phone only one panel is open at a time, and the run is pointing into the exchange
+        // here, so the shipyard is in the closed fleet panel. Open it as a player would.
+        if ((await buy.count()) && !(await buy.isVisible())) {
+          await page.locator('button.tr-launcher', { hasText: 'Your fleet and orders' }).click();
+          await buy.waitFor({ state: 'visible', timeout: 3000 }).catch(() => {});
+        }
         if ((await buy.count()) && !(await buy.isDisabled())) {
           await buy.click();
           await page.waitForFunction(n => document.querySelectorAll('[id^=ship-button-]').length > n, before.length, { timeout: 3000 }).catch(() => {});

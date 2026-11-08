@@ -113,10 +113,22 @@ export default function GameScreen() {
   const boardRef = useRef<HTMLElement | null>(null);
   const ordersRef = useRef<HTMLElement | null>(null);
 
+  // The control the guided run is pointing at, if any. Kept so the game's own panel moves below do
+  // not put away the panel the run is pointing into.
+  const tourTargetRef = useRef<string | null>(null);
+
   // Orders slide in once a human captain has rolled: that is the moment there is something to do.
+  // Except where only one panel fits (a phone) and the guided run is pointing into the exchange:
+  // opening the orders there put the exchange away under the card, and since the run's target had
+  // not changed nothing opened it again. A player sitting at the quay on "Lay off a course for the
+  // buyer" rolled and was left with a card pointing at a port ledger they could not see.
   const actKey = state && captain?.kind === 'human' && state.phase === 'act' ? `${state.turn}` : null;
   useEffect(() => {
-    if (actKey) openOrders(true);
+    if (!actKey) return;
+    // Only while a run is on: one skipped mid-step leaves its last target behind in the ref.
+    const tourEl = tourPlan && tourTargetRef.current ? document.getElementById(tourTargetRef.current) : null;
+    if (layout.oneAtATime && tourEl && exchangeRef.current?.contains(tourEl)) return;
+    openOrders(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actKey]);
 
@@ -233,6 +245,7 @@ export default function GameScreen() {
    * sheet's own title strip with the spotlight framing an empty gap.
    */
   const revealTourTarget = (targetId: string | null) => {
+    tourTargetRef.current = targetId;
     if (!targetId) return;
     const el = document.getElementById(targetId);
     if (!el) return;
