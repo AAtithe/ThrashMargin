@@ -164,10 +164,17 @@ const waitSigChange = (page, prev, timeout) =>
  * and check the run is never drawn over it. Returns a problem string, or null.
  */
 async function settleReplay(page) {
-  if (!(await page.locator('[data-replay-bar]').count())) return null;
+  // One snapshot per look: two separate queries would race the replay's end and report an overlap
+  // that never reached the screen.
+  const look = () => page.evaluate(() => ({
+    replay: !!document.querySelector('[data-replay-bar]'),
+    card: !!document.querySelector('[data-tour-step]'),
+  }));
+  if (!(await look()).replay) return null;
   for (let i = 0; i < 120; i++) {
-    if (!(await page.locator('[data-replay-bar]').count())) return null;
-    if (await page.locator('[data-tour-step]').count()) return 'tour card shown over the rivals\' replay';
+    const l = await look();
+    if (!l.replay) return null;
+    if (l.card) return 'tour card shown over the rivals\' replay';
     await page.waitForTimeout(50);
   }
   return 'rivals\' replay still on screen after 6s';
