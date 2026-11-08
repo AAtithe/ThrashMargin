@@ -22,6 +22,10 @@
     {
       "source": "/steady-eddie/(.*)",
       "destination": "/steady-eddie/index.html"
+    },
+    {
+      "source": "/founders-ledger/(.*)",
+      "destination": "/founders-ledger/index.html"
     }
   ],
   "env": {
