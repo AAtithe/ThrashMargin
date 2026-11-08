@@ -15,7 +15,8 @@
  *
  * Copied into each game by scripts/sync-shared.mjs, like the rest of shared/portal/client.
  */
-import { useEffect, useRef, useState } from 'react';
+import { createElement, useCallback, useEffect, useRef, useState } from 'react';
+import type { CSSProperties, ReactElement } from 'react';
 
 export type Pace = 'full' | 'quick' | 'off';
 
@@ -165,6 +166,217 @@ export function pause(baseMs: number, signal?: AbortSignal): Promise<void> {
       resolve();
     });
   });
+}
+
+/** Ease-in-out, for things that travel (a ship leaving port and arriving), where ease-out alone
+ * makes the start look like a jolt. */
+export function easeInOut(t: number): number {
+  return t < 0.5 ? (1 - easeOut(1 - 2 * t)) / 2 : 0.5 + easeOut(2 * t - 1) / 2;
+}
+
+/*
+ * Playback clocks.
+ *
+ * Every clock here remembers which `key` (or value) its reading belongs to, and on the very render
+ * that the key changes it already reports the *start* of the new run. A clock that reset in an
+ * effect would still carry the previous run's finished value for one painted frame: a lorry drawn
+ * at her destination, then jumping back to set off. Three games found that flicker independently;
+ * these are the fixed versions, and the only ones.
+ */
+
+/**
+ * 0 → 1 over `baseMs` (paced), restarting whenever `key` changes. A `null` key means "nothing to
+ * play" and reads 1. With motion off it reads 1 at once. `skip` jumps to 1.
+ */
+export function useTween(key: string | number | null, baseMs: number): { t: number; playing: boolean; skip: () => void } {
+  const pace = usePace();
+  const dur = key === null ? 0 : paced(baseMs, pace);
+  const [st, setSt] = useState<{ key: typeof key; t: number }>({ key, t: 1 });
+  const raf = useRef<number | null>(null);
+  useEffect(() => {
+    if (dur <= 0) {
+      setSt({ key, t: 1 });
+      return;
+    }
+    const start = performance.now();
+    setSt({ key, t: 0 });
+    const step = (now: number) => {
+      const t = Math.min(1, (now - start) / dur);
+      setSt({ key, t });
+      if (t < 1) raf.current = requestAnimationFrame(step);
+    };
+    raf.current = requestAnimationFrame(step);
+    return () => {
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
+    };
+  }, [key, dur]);
+  const skip = useCallback(() => {
+    if (raf.current !== null) cancelAnimationFrame(raf.current);
+    setSt({ key, t: 1 });
+  }, [key]);
+  const t = st.key === key ? st.t : dur > 0 ? 0 : 1;
+  return { t, playing: t < 1, skip };
+}
+
+/**
+ * Tween from the previous `value` to the new one whenever it changes. `from` is what was on screen
+ * before the change; the caller draws the live value as the target and interpolates with `t`.
+ * Nothing plays on first mount or with motion off. `same` decides what counts as a change (a list
+ * rebuilt on every action, where only a change of position should animate). The restart happens
+ * during render, so there is no frame of the end state before it begins.
+ */
+export function useTweenOnChange<T>(
+  value: T,
+  baseMs: number,
+  same: (a: T, b: T) => boolean = Object.is,
+): { from: T; t: number; playing: boolean; skip: () => void } {
+  const pace = usePace();
+  const [seg, setSeg] = useState({ from: value, to: value, id: 0, dur: 0 });
+  const [t, setT] = useState(1);
+  if (!same(seg.to, value)) {
+    const dur = paced(baseMs, pace);
+    setSeg({ from: seg.to, to: value, id: seg.id + 1, dur });
+    setT(dur > 0 ? 0 : 1);
+  }
+  const raf = useRef<number | null>(null);
+  useEffect(() => {
+    if (seg.id === 0 || seg.dur <= 0) return;
+    const start = performance.now();
+    const step = (now: number) => {
+      const p = Math.min(1, (now - start) / seg.dur);
+      setT(p);
+      if (p < 1) raf.current = requestAnimationFrame(step);
+    };
+    raf.current = requestAnimationFrame(step);
+    return () => {
+      if (raf.current !== null) cancelAnimationFrame(raf.current);
+    };
+  }, [seg.id, seg.dur]);
+  const skip = useCallback(() => {
+    if (raf.current !== null) cancelAnimationFrame(raf.current);
+    setT(1);
+  }, []);
+  // Motion switched off mid-play: finish now rather than let the frame loop run on.
+  const playing = t < 1 && pace !== 'off';
+  return { from: seg.from, t: playing ? t : 1, playing, skip };
+}
+
+/**
+ * Step through frames, each held for its own duration (`baseMs[i]`, paced): an AI turn replayed
+ * action by action, a faction's captures one at a time. `index` is the frame on screen, 0 … count-1
+ * while playing and `count` once finished (show the real state). Restarts when `key` changes; the
+ * durations are read at that moment. With motion off, or a `null` key, it is finished at once.
+ */
+export function useSteps(key: string | number | null, baseMs: number[]): { index: number; playing: boolean; skip: () => void } {
+  const pace = usePace();
+  const count = baseMs.length;
+  const factor = key === null ? 0 : paced(1000, pace) / 1000;
+  const [st, setSt] = useState<{ key: typeof key; index: number }>({ key, index: count });
+  const timer = useRef<number | null>(null);
+  const durations = useRef(baseMs);
+  durations.current = baseMs;
+  useEffect(() => {
+    if (factor <= 0 || count <= 0) {
+      setSt({ key, index: count });
+      return;
+    }
+    let i = 0;
+    setSt({ key, index: 0 });
+    const hold = (n: number) => Math.max(16, Math.round((durations.current[n] ?? 0) * factor));
+    const tick = () => {
+      i += 1;
+      setSt({ key, index: i });
+      if (i < count) timer.current = window.setTimeout(tick, hold(i));
+    };
+    timer.current = window.setTimeout(tick, hold(0));
+    return () => {
+      if (timer.current !== null) window.clearTimeout(timer.current);
+    };
+  }, [key, count, factor]);
+  const skip = useCallback(() => {
+    if (timer.current !== null) window.clearTimeout(timer.current);
+    setSt({ key, index: count });
+  }, [key, count]);
+  const index = st.key === key ? st.index : factor > 0 && count > 0 ? 0 : count;
+  return { index, playing: index < count, skip };
+}
+
+/**
+ * Reveal `count` freshly arrived items one after another when `key` changes, rather than all at
+ * once. Returns props for item `i`: hidden items keep their space (so the panel does not jump as
+ * they land) and each rises in as it is revealed. Outside a playback it returns nothing, so a list
+ * that is not animating, and every list with motion off, renders exactly as before.
+ */
+export function useStagger(key: string | number | null, count: number, stepMs = 240): (i: number) => { className?: string; style?: CSSProperties } {
+  const { t, playing } = useTween(key, Math.max(1, count) * stepMs);
+  return (i: number) => {
+    if (!playing || count <= 0) return {};
+    return t * count > i ? { className: 'tm-anim-rise' } : { style: { visibility: 'hidden' } };
+  };
+}
+
+/** Restart a one-shot animation class (`tm-anim-pulse`, `tm-anim-shake`) on an element without
+ * remounting it, which would drop keyboard focus and reset its state. */
+export function replayClass(el: HTMLElement | null, cls: string): void {
+  if (!el || currentPace() === 'off') return;
+  el.classList.remove(cls);
+  void el.offsetWidth; // force a reflow so the browser sees the class as new
+  el.classList.add(cls);
+}
+
+/*
+ * Floating amounts: the small "+£120" or "−5" that rises off a figure when it changes.
+ */
+
+export interface FloatItem {
+  id: number;
+  text: string;
+  /** A theme token, e.g. `UI.good`. Never a hex literal. */
+  colour: string;
+}
+
+/**
+ * A short-lived list of floating amounts. `push` adds one; each removes itself after its animation.
+ * Removal is on a timer, not `animationend`, which never fires if motion is switched off mid-flight.
+ * Nothing is pushed with motion off.
+ */
+export function useFloats(lifeMs = 1100, max = 6): { items: FloatItem[]; push: (text: string, colour: string) => void } {
+  const [items, setItems] = useState<FloatItem[]>([]);
+  const seq = useRef(0);
+  const timers = useRef<number[]>([]);
+  useEffect(() => () => timers.current.forEach(t => window.clearTimeout(t)), []);
+  const push = useCallback(
+    (text: string, colour: string) => {
+      const ms = paced(lifeMs);
+      if (ms <= 0) return;
+      const id = ++seq.current;
+      setItems(prev => [...prev, { id, text, colour }].slice(-max));
+      timers.current.push(window.setTimeout(() => setItems(prev => prev.filter(f => f.id !== id)), ms + 60));
+    },
+    [lifeMs, max],
+  );
+  return { items, push };
+}
+
+/**
+ * One floating amount. Absolutely positioned: put it inside a `position: relative` box and place it
+ * with `style`. Styling beyond position and colour is the caller's.
+ */
+export function FloatText({ text, colour, style }: { text: string; colour: string; style?: CSSProperties }): ReactElement {
+  return createElement(
+    'span',
+    {
+      className: 'tm-anim-float',
+      'aria-hidden': true,
+      style: { position: 'absolute', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: 600, color: colour, pointerEvents: 'none', ...style },
+    },
+    text,
+  );
+}
+
+/** A signed amount for a float: "+120" / "−52" (a true minus sign), with an optional unit either side. */
+export function signed(amount: number, format: (n: number) => string = String): string {
+  return (amount >= 0 ? '+' : '−') + format(Math.abs(amount));
 }
 
 /**
