@@ -504,9 +504,15 @@ interface Props {
   view: TourView;
   plan: TourPlan;
   onFinish: () => void;
+  /**
+   * Told which element the card is pointing at, whenever that changes, so the screen can open the
+   * panel it sits in. The panels slide away over the chart, and a ring round a control in a closed
+   * panel would point at nothing.
+   */
+  onTargetChange?: (targetId: string | null) => void;
 }
 
-export default function GuidedTour({ view, plan, onFinish }: Props) {
+export default function GuidedTour({ view, plan, onFinish, onTargetChange }: Props) {
   // `useRef`, not `useState`: writing to it must not itself cause a render.
   const memoryRef = useRef<TourMemory>({ shares: view.captain.shares, pickedCommission: false });
   const memory = memoryRef.current;
@@ -520,6 +526,10 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
   const isManual = step === INTRO || step === OUTRO;
   const targetId = step.target(view, plan);
   const rect = useTargetRect(targetId);
+  useEffect(() => {
+    onTargetChange?.(targetId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetId]);
 
   // Declared *before* the advance effect below, and relied on for that: effects run in the order
   // they are declared, so the latch is set on the same commit in which the player's click landed,

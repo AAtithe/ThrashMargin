@@ -84,17 +84,59 @@ button:focus:not(:focus-visible) {
   outline: none;
 }
 
+/* Event cards stack above the floating turn bar rather than over it. */
+.tr-event-stack { bottom: calc(0.9rem + 72px); }
+@media (max-width: 720px) {
+  .tr-event-stack { bottom: calc(0.9rem + 110px); }
+}
+
 /*
- * The three-column board needs a real width. Below that the columns stack, exchange first, so a
- * phone still shows what is being raced over before the chart.
+ * The panels over the chart (GameScreen's usePanelLayout holds the same widths). They slide in from
+ * their own side and are hidden once out of sight, so a closed panel's buttons cannot take focus.
+ * On a phone both become a bottom sheet over the lower part of the chart.
  */
+.tr-panel {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-ground);
+  border: 1px solid var(--ui-rule-strong);
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0s linear 0.25s;
+}
+.tr-panel.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.25s ease, visibility 0s;
+}
+.tr-panel-left { left: 10px; width: 300px; transform: translateX(calc(-100% - 20px)); }
+.tr-panel-right { right: 10px; width: 370px; transform: translateX(calc(100% + 20px)); }
 @media (max-width: 1100px) {
-  .tr-board {
-    flex-wrap: wrap;
+  .tr-panel-left { width: 280px; }
+  .tr-panel-right { width: 340px; }
+}
+@media (max-width: 720px) {
+  .tr-panel-left,
+  .tr-panel-right {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: 58%;
+    border-width: 1px 0 0;
+    transform: translateY(calc(100% + 20px));
   }
-  .tr-board > * {
-    flex: 1 1 100% !important;
-  }
+  .tr-launcher { font-size: 0.8rem !important; padding: 0.35rem 0.55rem !important; }
+  .tr-gazette { top: 64px !important; }
+  .tr-hide-phone { display: none !important; }
+  .tr-era-track { flex: 1 1 90px !important; min-width: 90px !important; }
+  .tr-header { padding: 0.4rem 0.7rem !important; gap: 0.4rem !important; }
+  .tr-header button { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }
 }
 
 /* Dark scrollbars, so the log panel doesn't get a bright strip down its edge. */

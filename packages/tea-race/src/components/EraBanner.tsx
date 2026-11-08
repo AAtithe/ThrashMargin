@@ -34,13 +34,13 @@ export default function EraBanner({ state }: { state: GameState }) {
           Era {roman(current.era)}
         </span>
         <span style={{ fontFamily: FONT.display, fontSize: '0.9rem', color: UI.brass }}>{current.name}</span>
-        <span style={{ fontFamily: FONT.body, fontSize: '0.76rem', color: UI.textSoft }}>
+        <span className="tr-hide-phone" style={{ fontFamily: FONT.body, fontSize: '0.76rem', color: UI.textSoft }}>
           {coming
             ? `${coming.name} from round ${coming.from}${brings.length ? `: ${brings.join(', ')}` : ''}.`
             : 'Every rule of this game is now in play.'}
         </span>
       </div>
-      <div style={{ position: 'relative', height: 16, flex: '1 1 220px', minWidth: 160 }} aria-hidden="true">
+      <div className="tr-era-track" style={{ position: 'relative', height: 16, flex: '1 1 220px', minWidth: 160 }} aria-hidden="true">
         <div style={{ position: 'absolute', left: 0, right: 0, top: 7, height: 2, background: UI.rule }} />
         <div style={{ position: 'absolute', left: 0, width: at(state.round), top: 7, height: 2, background: UI.brass }} />
         {ERAS.map(e => (
