@@ -79,9 +79,20 @@ Fork of The Tea Race; same list, haulage vocabulary.
 
 ## Done means, per game
 
-- [ ] `npm run check` passes (typecheck, every harness, shared copies in sync).
-- [ ] Loaded in a browser at all three paces, in light and dark mode, with no console errors and no
+- [x] `npm run check` passes (typecheck, every harness, shared copies in sync).
+- [x] Loaded in a browser at all three paces, in light and dark mode, with no console errors and no
       blank screen (hooks placed before any early return).
-- [ ] With `Motion: off` the game looks and behaves as before.
-- [ ] Every new colour is a theme token in both blocks of the game's `styles.css`.
-- [ ] A short entry in the game's design document build log.
+- [x] With `Motion: off` the game looks and behaves as before.
+- [x] Every new colour is a theme token in both blocks of the game's `styles.css`.
+- [x] A short entry in the game's design document build log.
+
+## Open after this round
+
+- One shared key-aware tween and step-sequence helper to replace the local versions in Banco
+  (`motionKit.tsx`), Steady Eddie (`usePlayback.ts`) and Thrash Margin (`useBeats.ts`).
+- One shared floating-amount component (each game has its own today).
+- Steady Eddie's AI replay runs about 5 to 6s a round at full pace (16 steps in round one). It is
+  skippable, but worth tuning down after play-testing.
+- Niccolò Rising's Infirmary and gaol bars restart from empty after a reload (no start time is saved).
+- The Tea Race keeps its original 700ms ship glide at pace `off`, because off means "as before".
+- The Steady Eddie hot-seat handover over a running replay was not exercised in the browser.
