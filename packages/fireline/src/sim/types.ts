@@ -20,6 +20,16 @@ export type Order =
       refinery: number;
     };
 
+/** Orders a unit can hold in its waypoint queue, run one after another. */
+export type QueuedOrder = Extract<Order, { type: 'move' } | { type: 'attackMove' } | { type: 'attack' }>;
+
+/**
+ * What an idle unit does about enemies. Guard (the default) fires at anything in range and answers
+ * fire from close by; aggressive chases anything in sight; hold fires only when ordered to.
+ * Explicit orders (attack, attack-move) work the same under every stance.
+ */
+export type Stance = 'aggressive' | 'guard' | 'hold';
+
 export interface Unit {
   id: number;
   owner: Owner;
@@ -48,6 +58,11 @@ export interface Unit {
   /** Ticks spent unable to make progress, which triggers a re-path. */
   stuck: number;
   kills: number;
+  /** Rank from kills: 0 rookie, 1 veteran, 2 elite (thresholds in rules.ts VET_KILLS). */
+  vet: number;
+  /** Orders to run after the current one, oldest first (shift-click). */
+  queue: QueuedOrder[];
+  stance: Stance;
 }
 
 export interface Building {
@@ -96,6 +111,8 @@ export interface Projectile {
   target: number;
   damage: number;
   splash: number;
+  /** Id of the unit that fired it, or 0 (structures, and saves from before this field). */
+  shooter?: number;
 }
 
 /** Things that happened, kept for a few seconds so the renderer can draw them. Never read back. */
@@ -161,8 +178,9 @@ export interface GameState {
 
 export type GameAction =
   | { type: 'tick'; n?: number }
-  | { type: 'move'; ids: number[]; x: number; y: number; attackMove?: boolean }
-  | { type: 'attack'; ids: number[]; target: number }
+  | { type: 'move'; ids: number[]; x: number; y: number; attackMove?: boolean; queue?: boolean }
+  | { type: 'attack'; ids: number[]; target: number; queue?: boolean }
+  | { type: 'stance'; ids: number[]; stance: 'aggressive' | 'guard' | 'hold' }
   | { type: 'stop'; ids: number[] }
   | { type: 'harvest'; ids: number[]; tile?: number; refinery?: number }
   | { type: 'queue'; category: Category; kind: BuildingKind | UnitKind }

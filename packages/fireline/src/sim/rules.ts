@@ -268,6 +268,33 @@ export const ORE_REGROW_AMOUNT = 8;
 /** A new structure must sit within this many tiles (Chebyshev) of one you already own. */
 export const BUILD_RADIUS = 4;
 
+/** Veterancy. Kills needed for each rank above rookie: veteran, then elite. */
+export const VET_KILLS = [3, 7];
+export const VET_NAMES = ['Rookie', 'Veteran', 'Elite'];
+/** Damage multiplier by rank. */
+export const VET_DAMAGE = [1, 1.15, 1.3];
+/** Reload time multiplier by rank (lower is faster). */
+export const VET_RELOAD = [1, 0.85, 0.75];
+/** Elite units out of combat regain this share of full health every VET_REPAIR_TICKS. */
+export const VET_REPAIR_SHARE = 0.01;
+export const VET_REPAIR_TICKS = 20;
+
+/** The rank a unit with this many kills has earned. */
+export function vetFor(kills: number): number {
+  let v = 0;
+  while (v < VET_KILLS.length && kills >= VET_KILLS[v]) v++;
+  return v;
+}
+
+/** Most orders a unit may hold in its waypoint queue, after the current one. */
+export const ORDER_QUEUE_MAX = 12;
+
+/** Riflemen who walk out of a structure that is destroyed or sold, by footprint area. */
+export function survivorsFor(w: number, h: number): number {
+  const area = w * h;
+  return area >= 9 ? 3 : area >= 6 ? 2 : 1;
+}
+
 /** Selling returns this share of the cost, scaled by remaining health. */
 export const SELL_RETURN = 0.5;
 /** Repair costs this share of the cost per hit point restored, relative to cost/hp. */

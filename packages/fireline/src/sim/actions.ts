@@ -8,6 +8,7 @@ import {
   canRally,
   canRepair,
   canSell,
+  canStance,
   canStop,
   doAttack,
   doCancel,
@@ -18,6 +19,7 @@ import {
   doRally,
   doRepair,
   doSell,
+  doStance,
   doStop,
 } from './commands';
 import { cloneState } from './state';
@@ -46,15 +48,21 @@ export function processAction(s: GameState, a: GameAction): GameState {
       return c;
     }
     case 'move': {
-      if (!canMove(s, 0, ids(a.ids), a.x, a.y)) return s;
+      if (!canMove(s, 0, ids(a.ids), a.x, a.y, !!a.queue)) return s;
       const c = cloneState(s);
-      doMove(c, 0, ids(a.ids), a.x, a.y, !!a.attackMove);
+      doMove(c, 0, ids(a.ids), a.x, a.y, !!a.attackMove, !!a.queue);
       return c;
     }
     case 'attack': {
-      if (!canAttack(s, 0, ids(a.ids), a.target)) return s;
+      if (!canAttack(s, 0, ids(a.ids), a.target, !!a.queue)) return s;
       const c = cloneState(s);
-      doAttack(c, 0, ids(a.ids), a.target);
+      doAttack(c, 0, ids(a.ids), a.target, !!a.queue);
+      return c;
+    }
+    case 'stance': {
+      if (!canStance(s, 0, ids(a.ids), a.stance)) return s;
+      const c = cloneState(s);
+      doStance(c, 0, ids(a.ids), a.stance);
       return c;
     }
     case 'stop': {

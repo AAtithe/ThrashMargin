@@ -278,7 +278,17 @@ export function SelectionPanel({
           {one.order.type === 'harvest' ? 'Harvesting.' : 'Idle: right-click ore or a refinery.'}
         </span>
       )}
-      {one && one.kills > 0 && <span style={{ fontSize: '0.72rem', color: UI.textSoft }}>{one.kills} kills</span>}
+      {one && (one.kills > 0 || one.vet > 0 || one.queue.length > 0) && (
+        <span style={{ fontSize: '0.72rem', color: UI.textSoft }}>
+          {[
+            one.vet > 0 ? RANK_NAMES[one.vet] ?? '' : '',
+            one.kills > 0 ? `${one.kills} ${one.kills === 1 ? 'kill' : 'kills'}` : '',
+            one.queue.length > 0 ? `${one.queue.length} more ${one.queue.length === 1 ? 'order' : 'orders'} queued` : '',
+          ]
+            .filter(Boolean)
+            .join(' · ')}
+        </span>
+      )}
       {mine && (
         <div style={{ display: 'flex', gap: 6 }}>
           <button style={smallBtn(UI.rule)} onClick={() => dispatch({ type: 'stop', ids: units.map(u => u.id) })}>
@@ -286,9 +296,42 @@ export function SelectionPanel({
           </button>
         </div>
       )}
+      {mine && units.some(u => UNITS[u.kind].weapon) && (
+        <div style={{ display: 'flex', gap: 4 }} role="group" aria-label="Stance">
+          {STANCE_BUTTONS.map(([stance, label, title]) => {
+            const armed = units.filter(u => UNITS[u.kind].weapon);
+            const on = armed.every(u => u.stance === stance);
+            return (
+              <button
+                key={stance}
+                data-stance={stance}
+                aria-pressed={on}
+                style={{ ...smallBtn(on ? UI.good : UI.rule), padding: '4px 7px', fontWeight: on ? 600 : 400 }}
+                title={title}
+                onClick={() => dispatch({ type: 'stance', ids: armed.map(u => u.id), stance })}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {mine && (
+        <span style={{ fontSize: '0.68rem', color: UI.textFaint }}>
+          <kbd>Shift</kbd>+right-click queues waypoints.
+        </span>
+      )}
     </div>
   );
 }
+
+// Kept here rather than imported so this panel's additions stay in one place (rules.ts VET_NAMES).
+const RANK_NAMES = ['', 'Veteran', 'Elite'];
+const STANCE_BUTTONS: ['aggressive' | 'guard' | 'hold', string, string][] = [
+  ['aggressive', 'Aggressive', 'Chase and attack any enemy in sight'],
+  ['guard', 'Guard', 'Fire at enemies in range and answer fire from close by (default)'],
+  ['hold', 'Hold fire', 'Never fire or chase unless ordered to attack'],
+];
 
 function Bar({ frac }: { frac: number }) {
   return (

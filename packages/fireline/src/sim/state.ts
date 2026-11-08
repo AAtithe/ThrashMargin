@@ -8,15 +8,17 @@ import {
   MAP_W,
   PRODUCER,
   SIDE_NAMES,
+  ORDER_QUEUE_MAX,
   START_CREDITS,
   UNITS,
+  vetFor,
   type BuildingKind,
   type Category,
   type Difficulty,
   type Owner,
   type UnitKind,
 } from './rules';
-import type { Building, GameState, PlayerState, Unit } from './types';
+import type { Building, GameState, PlayerState, Stance, Unit } from './types';
 
 export interface NewGameOptions {
   seed?: string;
@@ -126,6 +128,9 @@ export function addUnit(s: GameState, owner: Owner, kind: UnitKind, x: number, y
     cargo: 0,
     stuck: 0,
     kills: 0,
+    vet: 0,
+    queue: [],
+    stance: 'guard',
   };
   s.units.push(u);
   return u;
@@ -140,7 +145,8 @@ export function cloneState(s: GameState): GameState {
   return {
     ...s,
     ore: s.ore.slice(),
-    units: s.units.map(u => ({ ...u, order: { ...u.order }, path: u.path.slice() })),
+    // Queued orders are never edited in place (a popped one is copied), so the array copy is enough.
+    units: s.units.map(u => ({ ...u, order: { ...u.order }, path: u.path.slice(), queue: u.queue.slice() })),
     buildings: s.buildings.map(b => ({ ...b, rally: b.rally ? { ...b.rally } : null })),
     players: s.players.map(p => ({
       ...p,
@@ -262,8 +268,10 @@ export function alarm(s: GameState, key: string, text: string, gap: number, tone
 }
 
 /**
- * A save from an older build is passed through this before use. There is only one shape so far;
- * anything that does not look like it is refused rather than crashing the reducer.
+ * A save from an older build is passed through this before use. Anything that does not look like
+ * a battle is refused rather than crashing the reducer. Saves from before veterancy, waypoint
+ * queues and stances get those fields filled with their defaults (rookie, empty queue, guard), so
+ * a battle in progress keeps loading. Returns a new object; the input is not modified.
  */
 export function migrateState(raw: unknown): GameState | null {
   const s = raw as Partial<GameState> | null;
@@ -271,7 +279,17 @@ export function migrateState(raw: unknown): GameState | null {
   if (typeof s.tiles !== 'string' || !Array.isArray(s.ore) || typeof s.explored !== 'string') return null;
   if (!Array.isArray(s.units) || !Array.isArray(s.buildings) || !Array.isArray(s.players)) return null;
   if (!Array.isArray(s.projectiles) || !Array.isArray(s.effects) || !Array.isArray(s.ai)) return null;
-  return s as GameState;
+  const units = s.units.map(raw => {
+    const u = raw as Partial<Unit> & Unit;
+    const kills = Number.isFinite(u.kills) ? u.kills : 0;
+    const vet = u.vet === 0 || u.vet === 1 || u.vet === 2 ? u.vet : vetFor(kills);
+    const queue = Array.isArray(u.queue)
+      ? u.queue.filter(o => o && (o.type === 'move' || o.type === 'attackMove' || o.type === 'attack')).slice(0, ORDER_QUEUE_MAX)
+      : [];
+    const stance: Stance = u.stance === 'aggressive' || u.stance === 'hold' ? u.stance : 'guard';
+    return { ...u, kills, vet, queue, stance };
+  });
+  return { ...(s as GameState), units };
 }
 
 export { idx };
