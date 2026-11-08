@@ -179,6 +179,8 @@ export default function GameScreen() {
     return docked ? planFirstRun(state, captain, docked, priceFor) : null;
   })();
 
+  const tourOwner = tourPlan ? state.captains.find(c => c.id === tourPlan.captainId) ?? null : null;
+
   // The race, if one is running. Plain values, not a hook — this is below the early return.
   const race = openRace(state);
   const chartRace = race
@@ -486,17 +488,22 @@ export default function GameScreen() {
       />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
-      {tourPlan && captain && !over && state.phase !== 'handover' && (
+      {/* Kept mounted through the hot-seat handover (`hidden`), never unmounted: remounting threw
+          away the step and the tour's memory and restarted it from the welcome card. The view is
+          the plan owner's, not the active seat's — see `TourPlan.captainId`. */}
+      {tourPlan && tourOwner && !over && (
         <GuidedTour
           view={{
             state,
-            captain,
+            captain: tourOwner,
             ship: state.ships.find(sh => sh.id === tourPlan.shipId) ?? null,
             targetPort,
             focusedContract,
-            priceFor,
+            selectedShipId,
+            priceFor: priceLookup(state, tourOwner.id),
           }}
           plan={tourPlan}
+          hidden={state.phase === 'handover'}
           onFinish={() => setTourPlan(null)}
         />
       )}
