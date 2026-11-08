@@ -36,8 +36,7 @@ const GAMES = [
   { key: 'tea-race', dir: 'packages/tea-race', port: 5175, begin: /Begin with/, accentVar: '--ui-brass' },
   { key: 'steady-eddie', dir: 'packages/steady-eddie', port: 5176, begin: /Begin with/, accentVar: '--ui-brass' },
   { key: 'niccolo-rising', dir: 'packages/niccolo-rising', port: 5177, begin: 'Begin →', accentVar: '--ui-brass' },
-  // Fireline has no guided tour yet (a How to play page instead), so its tour check is skipped.
-  { key: 'fireline', dir: 'packages/fireline', port: 5178, begin: /Begin the battle/, accentVar: '--ui-accent', tour: false },
+  { key: 'fireline', dir: 'packages/fireline', port: 5178, begin: /Begin the battle/, accentVar: '--ui-accent' },
 ];
 const SIGN_IN_AGAIN = 'Your sign-in has expired. Sign in again to open this game.';
 const only = process.argv[2];

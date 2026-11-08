@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import ThemeToggle from '../components/ThemeToggle';
 import { TILE } from '../game/art';
 import Minimap from '../game/Minimap';
@@ -128,6 +129,11 @@ function Battle({
   const [attackMode, setAttackMode] = useState(false);
   const [tab, setTab] = useState<Tab>('building');
   const [help, setHelp] = useState(false);
+  // The guided run opens by itself on a fresh battle for anyone who has not finished or skipped it
+  // in this browser; the Tour button reopens it at any time. Bumping `tourRun` remounts it, so a
+  // reopened run always starts on the welcome card.
+  const [tourOpen, setTourOpen] = useState(() => !hasSeenGuidedTour() && initial.tick < 600 && initial.winner === null);
+  const [tourRun, setTourRun] = useState(0);
   const pausedRef = useRef(paused);
   const speedRef = useRef(speed);
   const placingRef = useRef(placing);
@@ -619,6 +625,16 @@ function Battle({
         <button style={{ ...chromeBtn, minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
           {paused ? 'Resume' : 'Pause'}
         </button>
+        <button
+          style={chromeBtn}
+          data-testid="tour-button"
+          onClick={() => {
+            setTourRun(n => n + 1);
+            setTourOpen(true);
+          }}
+        >
+          Tour
+        </button>
         <button style={chromeBtn} onClick={() => setHelp(true)} aria-label="Controls">
           ?
         </button>
@@ -631,7 +647,10 @@ function Battle({
         <div ref={wrapRef} style={{ position: 'relative', flex: 1, minWidth: 0, minHeight: 320, overflow: 'hidden', background: '#050707' }}>
           <canvas
             ref={canvasRef}
+            id="fl-battlefield"
             data-testid="battlefield"
+            data-placing={placing ?? ''}
+            data-placement={overlay.current.placement ? (overlay.current.placement.ok ? 'ok' : 'bad') : ''}
             style={{ display: 'block', cursor, touchAction: 'none' }}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
@@ -678,6 +697,15 @@ function Battle({
           )}
           {s.winner !== null && <EndCard state={s} onLobby={() => navigate('/')} />}
         </div>
+
+        {tourOpen && (
+          <GuidedTour
+            key={tourRun}
+            view={{ s, selected: [...overlay.current.selected], placing, tab }}
+            onFinish={() => setTourOpen(false)}
+            hidden={paused || help || s.winner !== null}
+          />
+        )}
 
         <aside style={sidebar} className="fl-scroll">
           <BuildPanel
@@ -827,7 +855,7 @@ const sidebar: CSSProperties = {
 };
 
 export const chromeBtn: CSSProperties = {
-  font: 'inherit',
+  fontFamily: 'inherit',
   fontSize: '0.8rem',
   padding: '4px 10px',
   border: `1px solid ${UI.rule}`,

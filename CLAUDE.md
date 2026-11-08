@@ -103,7 +103,7 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **Fireline has its own harness: `npm run drive:fl`** (whole computer-against-computer battles over
   28 seeds plus every order, about 120,000 assertions, about 40 seconds; `-- --seeds 60` for a
   wider sweep). Fireline is real time: it saves every 15 seconds of play rather than per action, and
-  it has no guided tour yet (see `fireline-design.md`).
+  its guided tour runs on the live battle (see `fireline-design.md` §5).
 - **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and
   difficulty). Its engine (`packages/thrash-margin/shared/sim/`) follows the same purity rule as the
   Tea Race's `sim/`: no `Math.random`, no clock, illegal actions return the same state object.
@@ -121,7 +121,7 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   (Thrash Margin's attack step read as done on arrival because it watched the game log). Each
   driver also checks the save for the real effects of the run, and none of them may pass on timing
   luck. Thrash Margin's card also carries `data-tour-done` while it pauses after a finished step.
-- **A guided tour is only verified by driving it in a browser.** All five tour cards carry
+- **A guided tour is only verified by driving it in a browser.** All six tour cards carry
   `data-tour-target`, naming the element actually being ringed — the resolved one, where a step
   offers several candidates — so a script can walk every step by clicking what the card names
   rather than guessing from the copy. Niccolò Rising's card also carries `data-tour-manual`, for

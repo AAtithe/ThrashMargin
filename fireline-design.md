@@ -78,10 +78,27 @@ Particles and scorch marks are renderer-only and may use `Math.random`.
 Saves: every 15 seconds of play, on pause, on leaving, when the tab hides and when the battle
 ends. Not after every action, unlike the turn-based games: the battle advances ten times a second.
 
-## 5. Not built yet
+## 5. Guided first battle
 
-- A guided in-game tour (there is a How to play page). `npm run tours` does not cover Fireline,
-  and `scripts/loading-check.cjs` skips its tour check (`tour: false`).
+`components/GuidedTour.tsx`, twelve steps on the live battle, which keeps running underneath:
+build and place a Generator, then a Refinery; read how ore becomes credits; select the riflemen
+with a box and give them an order; build a Barracks and train a soldier; read the power bar; a
+closing card on what comes next. It opens by itself on a fresh battle (under a minute in) for
+anyone who has not finished or skipped it in this browser (`fireline_tour_seen`), and the Tour
+button in the top bar reopens it on the welcome card at any time.
+
+Built to the lessons the portal's other tours paid for: every predicate compares against a
+snapshot taken when its step became current, so nothing completes on arrival; completion is
+latched, so a move order turning back into idle cannot undo it; it always opens on the welcome
+card; it stays mounted (hidden) through pause, the controls sheet and the end card. The card
+carries `data-tour-target`, `data-tour-manual` and `data-tour-done`; build buttons carry
+`data-state` and the battlefield `data-placement`, so `scripts/tours/fireline.cjs` can play it
+by doing what the card names. That driver waits 1.5s on every step before acting, checks the
+ringed control is on screen, uncovered and enabled, pauses and resumes mid-run, checks the save
+for the real effects, and checks a finished run is not offered again.
+
+## 6. Not built yet
+
 - Touch controls. The game is playable with a mouse and keyboard; orders are right-click.
 - Sound.
 
@@ -106,5 +123,12 @@ Two problems the harness found on the way, both fixed before the first commit:
    time; local copies in `grid.ts` and `tick.ts` halved the harness time. Results were identical
    before and after (same winners, same ticks), which is the determinism doing its job.
 
-Browser checks: 60 frames a second during a 15-minute battle at 1440x900; light and dark mode;
+### 2026-11-08 — Guided first battle
+
+Added the tour and its driver (above). `npm run tours -- fireline` passes; `scripts/loading-check.cjs`
+no longer skips Fireline's tour check. The driver's first run caught React's warning for mixing
+the `font` shorthand with `fontWeight` on a re-rendered button, in the tour card and the sidebar
+tabs; both now set `fontFamily` instead.
+
+Browser checks (first build): 60 frames a second during a 15-minute battle at 1440x900; light and dark mode;
 `node scripts/loading-check.cjs fireline` 25 of 25.

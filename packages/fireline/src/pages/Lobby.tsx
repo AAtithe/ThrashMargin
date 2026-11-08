@@ -184,7 +184,7 @@ const eyebrow: CSSProperties = { margin: 0, fontSize: '0.7rem', letterSpacing: '
 const title: CSSProperties = { margin: 0, fontFamily: FONT.display, fontSize: 'clamp(2rem, 6vw, 3rem)', letterSpacing: '0.12em', lineHeight: 1 };
 const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '0.4rem' };
 const input: CSSProperties = {
-  font: 'inherit',
+  fontFamily: 'inherit',
   fontSize: '0.9rem',
   padding: '0.45rem 0.6rem',
   border: `1px solid ${UI.rule}`,

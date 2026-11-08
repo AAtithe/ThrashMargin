@@ -63,13 +63,13 @@ export function BuildPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
-        <div style={creditsBox} data-testid="credits" title="Credits. Haulers bring ore to a refinery to earn more.">
+        <div style={creditsBox} id="fl-credits" data-testid="credits" title="Credits. Haulers bring ore to a refinery to earn more.">
           <span style={tiny}>Credits</span>
           <span style={{ fontFamily: FONT.mono, fontSize: '1.15rem', color: UI.accent, fontVariantNumeric: 'tabular-nums' }}>
             {money(p.credits)}
           </span>
         </div>
-        <div style={{ ...creditsBox, flex: 1 }} title={`Power: ${pw.made} made, ${pw.used} used${pw.low ? '. Short: production halves.' : ''}`}>
+        <div id="fl-power" style={{ ...creditsBox, flex: 1 }} title={`Power: ${pw.made} made, ${pw.used} used${pw.low ? '. Short: production halves.' : ''}`}>
           <span style={tiny}>
             Power {pw.made}/{pw.used}
             {pw.low && <strong style={{ color: UI.bad, marginLeft: 6 }}>LOW</strong>}
@@ -90,7 +90,7 @@ export function BuildPanel({
         </div>
       </div>
 
-      {minimap}
+      <div id="fl-minimap">{minimap}</div>
 
       <div role="tablist" style={{ display: 'flex', gap: 2 }}>
         {TABS.map(t => {
@@ -99,13 +99,14 @@ export function BuildPanel({
           return (
             <button
               key={t.key}
+              id={`fl-tab-${t.key}`}
               role="tab"
               aria-selected={tab === t.key}
               onClick={() => setTab(t.key)}
               style={{
                 flex: 1,
                 padding: '5px 2px',
-                font: 'inherit',
+                fontFamily: 'inherit',
                 fontSize: '0.72rem',
                 fontWeight: tab === t.key ? 700 : 500,
                 border: `1px solid ${tab === t.key ? UI.accent : UI.rule}`,
@@ -151,8 +152,10 @@ export function BuildPanel({
           return (
             <button
               key={kind}
+              id={`fl-build-${kind}`}
               className={`fl-build${isReady ? ' ready' : ''}`}
               data-testid={`build-${kind}`}
+              data-state={!open ? 'locked' : isReady ? 'ready' : isHead ? 'building' : 'idle'}
               disabled={disabled}
               title={title}
               aria-pressed={placing === kind}
@@ -296,7 +299,7 @@ function Bar({ frac }: { frac: number }) {
 }
 
 const smallBtn = (border: string): CSSProperties => ({
-  font: 'inherit',
+  fontFamily: 'inherit',
   fontSize: '0.74rem',
   padding: '4px 9px',
   border: `1px solid ${border}`,
