@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "thrash-margin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:client", "--workspace", "packages/thrash-margin"],
+      "port": 5173
+    },
+    {
       "name": "niccolo",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "niccolo"],

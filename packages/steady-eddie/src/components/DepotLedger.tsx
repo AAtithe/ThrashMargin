@@ -14,32 +14,37 @@ interface Props {
   targetDepot: DepotId | null;
 }
 
+/**
+ * The regions `content/depots.json` actually uses, south to north.
+ *
+ * These were The Tea Race's ocean regions until now — 'north_america', 'far_east' and the rest,
+ * carried over verbatim in the fork and never reskinned. No UK depot carries any of those names,
+ * so `grouped` below filtered every depot out and this whole table rendered empty: the board's
+ * standing reference on what is bought and sold where, blank in every game since the fork.
+ *
+ * Driven off `REGION_ORDER`, so a region added to the content and not listed here would silently
+ * vanish the same way. The fallback below guards the names; the order is the thing to keep current.
+ */
 const REGION_NAMES: Record<string, string> = {
-  britain: 'Britain',
-  europe: 'Europe & the Mediterranean',
-  north_america: 'North America',
-  caribbean: 'The Caribbean',
-  south_america: 'South America',
-  pacific_america: 'The Pacific coast',
-  africa: 'Africa',
-  indian_ocean: 'India & the Indian Ocean',
-  east_indies: 'The East Indies',
-  far_east: 'The Far East',
-  australasia: 'Australasia',
+  south_east: 'The South East',
+  south: 'The South Coast',
+  south_west: 'The South West',
+  midlands: 'The Midlands',
+  north_west: 'The North West',
+  north: 'Yorkshire & the North',
+  north_east: 'The North East',
+  scotland: 'Scotland',
 };
 
 const REGION_ORDER = [
-  'britain',
-  'europe',
-  'north_america',
-  'caribbean',
-  'south_america',
-  'pacific_america',
-  'africa',
-  'indian_ocean',
-  'east_indies',
-  'far_east',
-  'australasia',
+  'south_east',
+  'south',
+  'south_west',
+  'midlands',
+  'north_west',
+  'north',
+  'north_east',
+  'scotland',
 ];
 
 type Mode = 'sells' | 'buys';
@@ -76,12 +81,19 @@ export default function DepotLedger({ contracts, reference, onDepotClick, target
 
   const grouped = useMemo(() => {
     const hot = mode === 'sells' ? hotSources : hotSinks;
-    return REGION_ORDER.map(region => ({
-      region,
-      depots: DEPOTS.filter(p => p.region === region).filter(
-        p => !onlyWanted || (hot[p.id]?.size ?? 0) > 0,
-      ),
-    })).filter(g => g.depots.length > 0);
+    // Listed regions first, in the order above, then anything the content has that this file has
+    // not been told about. A depot that falls through the gap is a depot the player cannot see
+    // trading at all, which is how the whole table came to be empty after the fork.
+    const known = new Set(REGION_ORDER);
+    const extras = [...new Set(DEPOTS.map(p => p.region).filter(r => !known.has(r)))];
+    return [...REGION_ORDER, ...extras]
+      .map(region => ({
+        region,
+        depots: DEPOTS.filter(p => p.region === region).filter(
+          p => !onlyWanted || (hot[p.id]?.size ?? 0) > 0,
+        ),
+      }))
+      .filter(g => g.depots.length > 0);
   }, [mode, onlyWanted, hotSources, hotSinks]);
 
   return (
@@ -131,6 +143,7 @@ export default function DepotLedger({ contracts, reference, onDepotClick, target
                 <button
                   key={depot.id}
                   type="button"
+                  id={`ledger-depot-${depot.id}`}
                   onClick={() => onDepotClick(depot.id)}
                   style={{
                     ...depotCell,

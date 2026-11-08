@@ -178,6 +178,7 @@ export default function PortPanel({
             return (
               <Button
                 key={c.id}
+                id={`land-contract-${c.id}`}
                 tone="primary"
                 disabled={!enabled}
                 title={`Every matching slot lands at once and is paid per unit`}
@@ -213,6 +214,7 @@ export default function PortPanel({
                 return (
                   <Button
                     key={id}
+                    id={`load-cargo-${id}`}
                     disabled={!enabled || !afford}
                     title={
                       afford
@@ -424,6 +426,7 @@ export default function PortPanel({
             )}
             <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
               <Button
+                id="cast-off-button"
                 tone="primary"
                 disabled={!enabled}
                 onClick={() => {

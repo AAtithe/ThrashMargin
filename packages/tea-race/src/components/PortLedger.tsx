@@ -103,6 +103,7 @@ export default function PortLedger({ contracts, reference, onPortClick, targetPo
                 <button
                   key={port.id}
                   type="button"
+                  id={`ledger-port-${port.id}`}
                   onClick={() => onPortClick(port.id)}
                   style={{
                     ...portCell,
