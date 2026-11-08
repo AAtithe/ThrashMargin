@@ -29,7 +29,7 @@ npm run typecheck --workspace=packages/niccolo --silent
 step "Typecheck: Niccolò Rising"
 npm run typecheck --workspace=packages/niccolo-rising --silent
 
-for game in tea-race steady-eddie fireline; do
+for game in tea-race steady-eddie founders-ledger fireline; do
   step "Typecheck: $game (client, then API)"
   "$TSC" --noEmit -p "packages/$game/tsconfig.json"
   "$TSC" --noEmit -p "packages/$game/api/tsconfig.json"
@@ -38,7 +38,7 @@ done
 step "Test: browser save queue"
 "$ROOT_DIR/node_modules/.bin/tsx" scripts/savequeue-test.ts | tail -1
 
-for game in thrash-margin tea-race steady-eddie niccolo niccolo-rising fireline; do
+for game in thrash-margin tea-race steady-eddie niccolo niccolo-rising founders-ledger fireline; do
   step "Test suite: $game"
   npm run drive --workspace="packages/$game" --silent | tail -3
 done

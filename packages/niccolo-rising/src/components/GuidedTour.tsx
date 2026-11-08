@@ -29,6 +29,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { JOBS, SCHEMES, YARD, barMax } from '../sim/content';
 import { nextMission } from '../sim/missions';
 import { WORK_STATS, type BattleStat, type GameState } from '../sim/types';
@@ -73,6 +74,9 @@ export interface TourPlan {
   jobId: string | null;
   /** Whether there is a mission waiting to be accepted. */
   hasMission: boolean;
+  /** Whether there is Energy for one train right now. A character who has spent it is not walked
+   *  to a yard whose button the sim will refuse; the bars step tells them it refills instead. */
+  canTrain: boolean;
 }
 
 /**
@@ -107,6 +111,7 @@ export function planFirstHours(s: GameState): TourPlan | null {
     schemeId: scheme.id,
     jobId: job?.id ?? null,
     hasMission: !s.missions.active && nextMission(s) !== null,
+    canTrain: s.bars.energy.cur >= (YARD[yardId]?.energy ?? Infinity),
   };
 }
 
@@ -124,6 +129,8 @@ export interface TourView {
 interface TourMemory {
   stat: number;
   schemes: number;
+  /** Missions already finished when the run opened. */
+  missionsDone: number;
 }
 
 interface TourStep {
@@ -148,9 +155,10 @@ const INTRO: TourStep = {
 
 const BARS: TourStep = {
   title: 'Time is the resource',
-  body: v =>
+  body: (v, plan) =>
     `Energy, Nerve, Spirits and Health. Every verb in this game spends one of them, and every one of them refills by the clock whether you are at the screen or not — you have ${Math.floor(v.s.bars.energy.cur)} of ${barMax(v.s, 'energy')} Energy and ${Math.floor(v.s.bars.nerve.cur)} of ${barMax(v.s, 'nerve')} Nerve right now. ` +
-    'That is the whole rhythm: spend what has built up, go and live your life, come back to a full bar. Nothing is lost by closing the tab, and nothing is gained by sitting on it.',
+    'That is the whole rhythm: spend what has built up, go and live your life, come back to a full bar. Nothing is lost by closing the tab, and nothing is gained by sitting on it.' +
+    (plan.canTrain ? '' : ' Your Energy is spent for now, so training waits for it to refill; this run skips the yard and goes on to what Nerve can buy.'),
   target: () => 'nr-bars',
   isComplete: () => false,
   manual: true,
@@ -162,7 +170,9 @@ const MISSION: TourStep = {
     'Missions are the spine of the story, and they count things you were going to do anyway. Accept this one: it asks for jokes at the burgomaster\'s expense, which is the cheapest thing in Bruges and the next step besides.',
   place: 'missions',
   target: () => 'nr-mission-accept',
-  isComplete: v => v.s.missions.active !== null || v.s.missions.done.length > 0,
+  // A change since the run opened, not "any mission ever finished": started from the header after
+  // the first mission, that read true on arrival and the step flashed past with nothing accepted.
+  isComplete: (v, _plan, memory) => v.s.missions.active !== null || v.s.missions.done.length > memory.missionsDone,
 };
 
 const TRAIN: TourStep = {
@@ -217,7 +227,7 @@ function buildSteps(plan: TourPlan): TourStep[] {
     INTRO,
     BARS,
     ...(plan.hasMission ? [MISSION] : []),
-    TRAIN,
+    ...(plan.canTrain ? [TRAIN] : []),
     SCHEME,
     ...(plan.jobId ? [JOB] : []),
     OUTRO,
@@ -282,6 +292,34 @@ function useTargetRect(targetId: string | null): DOMRect | null {
 }
 
 /**
+ * Where the card goes: below the target, then above, then to the right, then to the left — the
+ * first that fits on screen without covering it — else whichever screen corner overlaps it least.
+ * The same rule as the portal's other four tours.
+ */
+function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; left: number } {
+  const W = window.innerWidth, H = window.innerHeight, M = 16, GAP = 16;
+  const w = Math.min(cardW, W - 2 * M);
+  const clampX = (x: number) => Math.max(M, Math.min(x, W - M - w));
+  const clampY = (y: number) => Math.max(M, Math.min(y, H - M - cardH));
+  const candidates = [
+    { top: rect.bottom + GAP, left: clampX(rect.left), ok: rect.bottom + GAP + cardH <= H - M },
+    { top: rect.top - GAP - cardH, left: clampX(rect.left), ok: rect.top - GAP - cardH >= M },
+    { top: clampY(rect.top), left: rect.right + GAP, ok: rect.right + GAP + w <= W - M },
+    { top: clampY(rect.top), left: rect.left - GAP - w, ok: rect.left - GAP - w >= M },
+  ];
+  const fit = candidates.find(c => c.ok);
+  if (fit) return { top: fit.top, left: fit.left };
+  const overlap = (x: number, y: number) =>
+    Math.max(0, Math.min(x + w, rect.right) - Math.max(x, rect.left)) *
+    Math.max(0, Math.min(y + cardH, rect.bottom) - Math.max(y, rect.top));
+  const corners = [
+    { left: W - M - w, top: H - M - cardH }, { left: M, top: H - M - cardH },
+    { left: W - M - w, top: M }, { left: M, top: M },
+  ];
+  return corners.reduce((best, c) => (overlap(c.left, c.top) < overlap(best.left, best.top) ? c : best));
+}
+
+/**
  * Where to open. A prefix scan — walk forward from the first real step, stop at the first one not
  * done — rather than a search. Predicates only have to be honest about the state they are actually
  * reached in, and stopping on the very first real step means nothing has happened yet, which is a
@@ -318,6 +356,7 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   const memoryRef = useRef<TourMemory>({
     stat: view.s.battle[plan.stat],
     schemes: view.s.counters.schemes,
+    missionsDone: view.s.missions.done.length,
   });
   const memory = memoryRef.current;
 
@@ -336,13 +375,22 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
   // of what they just did before the card moves on.
+  // Keyed on the answer, not on `view`, which is a new object every second on this screen.
+  const done = !isManual && step.isComplete(view, plan, memory);
   useEffect(() => {
-    if (isManual) return;
-    if (!step.isComplete(view, plan, memory)) return;
+    if (!done) return;
     const t = window.setTimeout(() => setStepIndex(i => Math.min(i + 1, steps.length - 1)), 650);
     return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, stepIndex]);
+  }, [done, stepIndex, steps.length]);
+
+  // The card's height varies with the copy and the screen width (a phone wraps it far taller than
+  // any fixed estimate), so it is measured after each render; the estimate covers the first frame.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(230);
+  useEffect(() => {
+    const h = cardRef.current?.offsetHeight;
+    if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
+  });
 
   // Every hook above this line, so the run keeps advancing while it is out of sight.
   if (hidden) return null;
@@ -364,23 +412,13 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
       }
     : null;
 
-  // Close enough to decide which side of the target has room; the card's real height varies with
-  // the body copy and pixel-exactness buys nothing.
-  const CARD_HEIGHT_ESTIMATE = 230;
   const CARD_WIDTH = 22 * 16;
   const cardStyle: React.CSSProperties = rect
-    ? {
-        ...CARD,
-        top:
-          rect.bottom + 16 + CARD_HEIGHT_ESTIMATE <= window.innerHeight
-            ? rect.bottom + 16
-            : Math.max(16, rect.top - CARD_HEIGHT_ESTIMATE - 16),
-        left: Math.max(16, Math.min(rect.left, window.innerWidth - 16 - CARD_WIDTH)),
-      }
+    ? { ...CARD, ...placeCard(rect, CARD_WIDTH, cardHeight) }
     : {
         ...CARD,
-        top: Math.max(16, window.innerHeight / 2 - CARD_HEIGHT_ESTIMATE / 2),
-        left: Math.max(16, window.innerWidth / 2 - CARD_WIDTH / 2),
+        top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
+        left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
 
   const finish = () => {
@@ -392,7 +430,11 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
     ? `${PLACE_NAMES[step.place!]} is where this happens. Open it from the row along the top.`
     : step.body(view, plan);
 
-  return (
+  // Rendered into <body>, not where GameScreen mounts it. On a phone the board's stylesheet forces
+  // every direct child of `.nr-board` to `position: static !important`, which turned the card, the
+  // ring and the scrim into ordinary blocks at the foot of a long page: the screen dimmed and the
+  // card the player was meant to read was nowhere in sight.
+  return createPortal(
     <>
       {/* Nothing to spotlight (a bookend): dim the whole screen instead, so the card still reads
           as the thing being spoken to. */}
@@ -405,6 +447,7 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
           spotlights the bars and is read rather than acted on, and an automated pass that only
           knew the target would click a div for ever waiting for something to happen. */}
       <div
+        ref={cardRef}
         style={cardStyle}
         data-tour-step={String(stepIndex)}
         data-tour-target={targetId ?? ''}
@@ -435,7 +478,8 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }
 

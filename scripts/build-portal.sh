@@ -32,6 +32,9 @@ npm run build --workspace=packages/tea-race -- --base=/tea-race/
 echo "==> Building Steady Eddie (base /steady-eddie/)"
 npm run build --workspace=packages/steady-eddie -- --base=/steady-eddie/
 
+echo "==> Building The Founder's Ledger (base /founders-ledger/)"
+npm run build --workspace=packages/founders-ledger -- --base=/founders-ledger/
+
 echo "==> Building Fireline (base /fireline/)"
 npm run build --workspace=packages/fireline -- --base=/fireline/
 
@@ -40,12 +43,13 @@ echo "==> Building Thrash Margin client (base /thrash-margin/)"
 
 echo "==> Assembling dist/"
 rm -rf dist
-mkdir -p dist/niccolo dist/rising dist/tea-race dist/steady-eddie dist/fireline dist/thrash-margin
+mkdir -p dist/niccolo dist/rising dist/tea-race dist/steady-eddie dist/founders-ledger dist/fireline dist/thrash-margin
 cp -r landing/. dist/
 cp -r packages/niccolo/dist/. dist/niccolo/
 cp -r packages/niccolo-rising/dist/. dist/rising/
 cp -r packages/tea-race/dist/. dist/tea-race/
 cp -r packages/steady-eddie/dist/. dist/steady-eddie/
+cp -r packages/founders-ledger/dist/. dist/founders-ledger/
 cp -r packages/fireline/dist/. dist/fireline/
 cp -r packages/thrash-margin/client/dist/. dist/thrash-margin/
 

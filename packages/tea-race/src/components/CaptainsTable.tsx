@@ -113,20 +113,22 @@ const table: React.CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 };
 
+// Tight on purpose: the table lives in the narrow left column, and with the career column added
+// five columns at the old padding ran past the panel's edge.
 const th: React.CSSProperties = {
   textAlign: 'right',
   fontWeight: 400,
-  fontSize: '0.6rem',
-  letterSpacing: '0.12em',
+  fontSize: '0.58rem',
+  letterSpacing: '0.06em',
   textTransform: 'uppercase',
   color: UI.textFaint,
-  padding: '0 0.3rem 0.3rem',
+  padding: '0 0.15rem 0.3rem',
   borderBottom: `1px solid ${UI.rule}`,
 };
 
 const td: React.CSSProperties = {
   textAlign: 'right',
-  padding: '0.28rem 0.3rem',
+  padding: '0.28rem 0.15rem',
 };
 
 const dot: React.CSSProperties = {

@@ -14,7 +14,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SERVER = ['auth.ts', 'cors.ts', 'db.ts', 'rateLimit.ts', 'saves.ts', 'schema.ts'];
+const SERVER = ['auth.ts', 'cors.ts', 'db.ts', 'rateLimit.ts', 'saves.ts', 'schema.ts', 'query.ts'];
 const CLIENT = ['session.ts', 'saveQueue.ts', 'colorScheme.ts', 'apiReply.ts', 'NoGameAccess.tsx', 'Loading.tsx'];
 const GAMES = [
   { server: 'packages/thrash-margin/api/_lib', client: 'packages/thrash-margin/client/src/lib', public: 'packages/thrash-margin/client/public' },
@@ -23,6 +23,7 @@ const GAMES = [
   { server: 'packages/tea-race/api/_lib', client: 'packages/tea-race/src/lib', public: 'packages/tea-race/public' },
   { server: 'packages/steady-eddie/api/_lib', client: 'packages/steady-eddie/src/lib', public: 'packages/steady-eddie/public' },
   { server: 'packages/fireline/api/_lib', client: 'packages/fireline/src/lib', public: 'packages/fireline/public' },
+  { server: 'packages/founders-ledger/api/_lib', client: 'packages/founders-ledger/src/lib', public: 'packages/founders-ledger/public' },
 ];
 // Served as a plain file (index.html loads it before first paint), so it goes in each game's Vite
 // public folder and beside the landing page rather than into src/.

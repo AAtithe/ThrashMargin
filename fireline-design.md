@@ -5,7 +5,7 @@ harvest, power to keep ahead of demand, and an army to build and send. Original 
 and art: the Meridian Corps (blue, the player) against the Ashen Combine (red, the computer).
 
 Package: `packages/fireline`. Served at `/fireline/`. Saves: `/api/play/fireline`, `games.game =
-'fireline'`. Dev server: `npm run dev:fl` (port 5178). Tests: `npm run drive:fl`.
+'fireline'`. Dev server: `npm run dev:fire` (port 5178). Tests: `npm run drive:fire`.
 
 ---
 
@@ -124,7 +124,7 @@ unit orders and selection, "ready" chimes, the under-attack alarm, victory and d
 
 ### 2026-11-08 — First playable build
 
-Engine, AI, renderer, lobby, saves, portal registration. `npm run drive:fl`: whole battles over
+Engine, AI, renderer, lobby, saves, portal registration. `npm run drive:fire`: whole battles over
 28 seeds (20 Normal, 4 Easy, 4 Hard) computer against computer, plus every order legal and
 illegal; about 120,000 assertions in about 40 seconds. All 28 battles finished, average 17 game
 minutes, side 0 won 12 and side 1 won 16 (symmetric map, so that split is noise at this sample).

@@ -1,8 +1,8 @@
 # The Thrash Margin portal — working notes
 
-Six games served from one deployment, one Postgres/Supabase instance, and one account system:
+Seven games served from one deployment, one Postgres/Supabase instance, and one account system:
 `packages/thrash-margin`, `packages/niccolo`, `packages/niccolo-rising`, `packages/steady-eddie`,
-`packages/tea-race`, `packages/fireline`.
+`packages/tea-race`, `packages/fireline`, and `packages/founders-ledger` (a CEO coaching game, opt-in: see below).
 Each game's design document is at the repo root (`tea-race-design.md`, and so on) and carries its own
 build log; read the relevant one before changing a game's rules.
 
@@ -12,7 +12,7 @@ build log; read the relevant one before changing a game's rules.
 
 ### 1. Every game requires a signed-in account. There is no guest path.
 
-All six lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
+All seven lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
 demo, or "try it without an account" route back in**, and do not relax the gate to make local
 development or testing easier. A guest path existed once and was deliberately removed
 (`7c0e0a0`); it is not an oversight and it is not a TODO.
@@ -27,6 +27,7 @@ The gate lives at:
 | Steady Eddie | `packages/steady-eddie/src/pages/Lobby.tsx` |
 | The Tea Race | `packages/tea-race/src/pages/Lobby.tsx` |
 | Fireline | `packages/fireline/src/pages/Lobby.tsx` |
+| The Founder's Ledger | `packages/founders-ledger/src/App.tsx` |
 
 **Where the gate is, and is not, enforced.** Be precise about this, because the two halves are
 easy to confuse and only one of them is a security boundary:
@@ -58,6 +59,10 @@ Admins turn games on and off on the Admin page: per account, per game for every 
 added later). `api/play/[kind].ts` refuses any game the account lacks with 403 before the game's own
 handler runs; that is the boundary. The lobbies' `hasGameAccess` check and the welcome page hiding
 cards are presentational, exactly like the sign-in gate. Logic: `packages/thrash-margin/api/_lib/access.ts`.
+
+A game marked `optIn` in `shared/games.ts` (The Founder's Ledger) is the exception to "NULL means every
+game": no account has it until an admin turns it on, so adding one never shows it to every account.
+Its landing card is `hidden` in the HTML for the same reason. `npm run test:api` covers the rules.
 
 ### 2. `packages/tea-race/src/sim/`, `packages/niccolo-rising/src/sim/` and `packages/fireline/src/sim/` are pure
 
@@ -95,12 +100,16 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **Adding a game:** one entry in `packages/thrash-margin/shared/games.ts` (feedback, profile and
   admin read it), one line in `api/play/[kind].ts` (its saves endpoint), and its build in
   `scripts/build-portal.sh` and `scripts/check.sh`. No new Vercel function.
+- **Read query values with `queryParam(req, name)`** (`api/_lib/query.ts`), never `req.query`.
+  Vercel builds `req.query` with Node's deprecated `url.parse`, which logged a DeprecationWarning
+  on every request that read it. Route segments (`[kind]`, `[mode]`, `[resource]`) arrive the same
+  way. `npm run test:api` throws if any handler reads `req.query`.
 - **Schema changes** go in `db/schema.sql` and, for the live database, in
   `packages/thrash-margin/api/_lib/schema.ts`, which applies them automatically on first use.
 - **`npm run drive` before trusting anything.** ~370,000 assertions over 20 seeds in a couple of
   seconds. Use a wide seed set: pathologies in this codebase's history showed up in some seeds and
   not others, and a five-seed run once reported two bugs fixed while they were still there.
-- **Fireline has its own harness: `npm run drive:fl`** (whole computer-against-computer battles over
+- **Fireline has its own harness: `npm run drive:fire`** (whole computer-against-computer battles over
   28 seeds plus every order, about 120,000 assertions, about 40 seconds; `-- --seeds 60` for a
   wider sweep). Fireline is real time: it saves every 15 seconds of play rather than per action, and
   its guided tour runs on the live battle (see `fireline-design.md` §5).

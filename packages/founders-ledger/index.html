@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>The Founder's Ledger</title>
+    <script src="/theme-init.js"></script>
+    <!--
+      Shown while the JavaScript downloads, so the page is never blank. CSS only: the CSP forbids
+      inline scripts. React replaces everything inside #root when it mounts. The colours copy this
+      game's --bg, --muted and --accent tokens (src/styles.css), because that stylesheet arrives with
+      the bundle and is not here yet; theme-init.js has already set data-theme.
+      Nothing appears for 300ms, the same rule as the in-app loader (lib/Loading.tsx).
+    -->
+    <style>
+      :root { --boot-ground: #F1F3EE; --boot-soft: #56665D; --boot-accent: #1D5A47; }
+      :root[data-theme="dark"] { --boot-ground: #0E1512; --boot-soft: #93A399; --boot-accent: #5DB291; }
+      body { margin: 0; background: var(--boot-ground); }
+      .boot { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        font-family: system-ui, sans-serif; color: var(--boot-soft); font-size: 15px; animation: boot-in 180ms ease-out 300ms both; }
+      .boot-ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--boot-accent); border-right-color: transparent;
+        animation: boot-spin .8s linear infinite; }
+      @keyframes boot-in { from { opacity: 0 } to { opacity: 1 } }
+      @keyframes boot-spin { to { transform: rotate(360deg) } }
+      @media (prefers-reduced-motion: reduce) { .boot-ring { animation: none; } }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot" role="status" aria-live="polite" data-testid="boot-loader">
+        <div class="boot-ring" aria-hidden="true"></div>
+        <div>Loading The Founder's Ledger…</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

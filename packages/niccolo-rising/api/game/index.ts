@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
+import { queryParam } from '../_lib/query';
 import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState } from '../../src/sim/state';
 
@@ -27,8 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!user) return;
 
   const db = getDb();
-  const idParam = req.query.id;
-  const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  const id = queryParam(req, 'id');
   // A malformed id cannot exist; answered here rather than as a database error.
   if (id !== undefined && !isGameId(id)) return res.status(404).json({ message: 'Game not found' });
 

@@ -781,6 +781,7 @@ export const PRESETS = {
       renown: false,
       career: false,
       ramp: false,
+      letters: false,
     },
   },
   merchant: {
@@ -788,8 +789,8 @@ export const PRESETS = {
     blurb:
       'Money, not weather. Crew wages to pay, loans to raise, hulls to choose between, cargo you ' +
       'can sell off at a loss, an exchange to read, owners with charters to fill, a captain\'s ' +
-      'career to build, and a tea race every summer. Nothing random but the dice, and the longest ' +
-      'of the four — wages make every season count.',
+      'career to build, letters and rivals\' wagers, and a tea race every summer. The longest of the ' +
+      'four — wages make every season count.',
     hazards: {
       weather: false,
       piracy: false,
@@ -809,6 +810,7 @@ export const PRESETS = {
       renown: true,
       career: true,
       ramp: false,
+      letters: true,
     },
   },
   highSeas: {
@@ -837,13 +839,16 @@ export const PRESETS = {
       renown: true,
       career: false,
       ramp: true,
+      letters: true,
     },
   },
   full: {
     label: 'The full race',
     blurb:
-      'Everything, ramping up in eras: trade and the wind first, then pirates and the world, then ' +
-      'the tea race and the clock. Your captain levels up and learns skills as it goes.',
+      'Everything, but not all at once. You start on the plain 1988 board with your owners\' ' +
+      'charters to aim at, and each level your ' +
+      'captain earns opens the next layer: the chart, then the dangers, then the whole economy and ' +
+      'the tea race. You build into it rather than meeting it all on the first turn.',
     hazards: {
       weather: true,
       piracy: true,
@@ -863,6 +868,7 @@ export const PRESETS = {
       renown: true,
       career: true,
       ramp: true,
+      letters: true,
     },
   },
 } as const;

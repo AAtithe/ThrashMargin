@@ -9,6 +9,9 @@
  * `key` is the value stored in games.game and feedback.game (VARCHAR(16), so 16 characters at most).
  * `slug` is the game's URL segment, both for its client (/tea-race/) and its save endpoint
  * (/api/play/tea-race).
+ * `optIn` marks a game that no account has until an admin turns it on (Admin page, Game access).
+ * Every other game is on for an account whose access was never set (users.game_access NULL); an
+ * opt-in game is not, so adding one never puts it in front of every existing account.
  */
 export const GAMES = [
   { key: 'thrash_margin', slug: 'thrash-margin', label: 'Thrash Margin', short: 'TM' },
@@ -17,11 +20,16 @@ export const GAMES = [
   { key: 'tea_race', slug: 'tea-race', label: 'The Tea Race', short: 'Tea Race' },
   { key: 'steady_eddie', slug: 'steady-eddie', label: 'Steady Eddie', short: 'Steady Eddie' },
   { key: 'fireline', slug: 'fireline', label: 'Fireline', short: 'Fireline' },
+  // A personal CEO coaching game, not a game for the whole portal: off until an admin turns it on.
+  { key: 'founders_ledger', slug: 'founders-ledger', label: "The Founder's Ledger", short: 'Ledger', optIn: true },
 ] as const;
 
 export type GameKey = (typeof GAMES)[number]['key'];
 
 export const GAME_KEYS: readonly string[] = GAMES.map(g => g.key);
+
+/** The games an account has when its access was never set: every game except the opt-in ones. */
+export const DEFAULT_GAME_KEYS: readonly string[] = GAMES.filter(g => !('optIn' in g && g.optIn)).map(g => g.key);
 
 /** Feedback can also be about the portal as a whole. */
 export const FEEDBACK_TOPICS = [

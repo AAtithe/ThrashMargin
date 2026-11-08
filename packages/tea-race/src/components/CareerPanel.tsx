@@ -1,5 +1,6 @@
 import {
   BRANCH_NAMES,
+  FIRST_SKILL_LEVEL,
   LEVEL_XP,
   MAX_LEVEL,
   SKILLS,
@@ -12,6 +13,8 @@ import {
   type Skill,
 } from '../sim/career';
 import { FONT, UI } from '../theme';
+import { levelDriven, nextEraOf } from '../sim/eras';
+import { RULE_LABELS } from './EraBanner';
 import { Label, Panel, bodySmall, dataText } from './ui';
 import type { Captain, GameAction, GameState } from '../sim/types';
 
@@ -36,6 +39,9 @@ export default function CareerPanel({
   const { level, into, span } = levelProgress(captain.xp);
   const points = skillPoints(captain);
   const branches: Branch[] = ['seamanship', 'trade', 'command'];
+  // When the game grows with the career, say what the next level opens: the reason to want it.
+  const opens = levelDriven(state.rampPlan, state.rules) ? nextEraOf(state) : null;
+  const opensList = opens ? opens.brings.filter(k => state.rampPlan?.[k]).map(k => RULE_LABELS[k] ?? k) : [];
 
   return (
     <Panel title="Your career" aside={<Label>{points > 0 ? `${points} point${points === 1 ? '' : 's'} to spend` : `level ${level}`}</Label>}>
@@ -57,6 +63,22 @@ export default function CareerPanel({
           </div>
         </div>
 
+        {opens && opensList.length > 0 && (
+          <div style={teaser}>
+            <span style={{ ...dataText, fontSize: '0.58rem', letterSpacing: '0.14em', color: UI.brass, textTransform: 'uppercase' }}>
+              Level {opens.level} opens {opens.name.toLowerCase()}
+            </span>
+            <span style={{ ...bodySmall, fontSize: '0.74rem' }}>{opensList.join(', ')}.</span>
+          </div>
+        )}
+
+        {/* Nine greyed-out skills two levels before the first point is just more to read on the
+            first turn. Until then, one line says they are coming. */}
+        {level < FIRST_SKILL_LEVEL && (captain.skills?.length ?? 0) === 0 ? (
+          <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0 }}>
+            At level {FIRST_SKILL_LEVEL} you start choosing skills: Seamanship, Trade or Command.
+          </p>
+        ) : (
         <div style={tree}>
           {branches.map(branch => (
             <div key={branch} style={{ display: 'flex', flexDirection: 'column', alignItems: 'stretch', gap: 0, minWidth: 0 }}>
@@ -86,9 +108,11 @@ export default function CareerPanel({
             </div>
           ))}
         </div>
+        )}
         <p style={{ ...bodySmall, fontSize: '0.7rem', margin: 0, color: UI.textFaint }}>
           Experience comes from landing cargo, first homes, the tea race, charters, encounters taken up
-          and weather and pirates weathered. A captain behind on shares learns faster.
+          and weather and pirates weathered. Skill points start at level {FIRST_SKILL_LEVEL}. A captain
+          behind on shares learns faster.
         </p>
       </div>
     </Panel>
@@ -179,6 +203,15 @@ function SkillGlyph({ id, colour }: { id: Skill['id']; colour: string }) {
     </svg>
   );
 }
+
+const teaser: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '0.15rem',
+  border: `1px dashed ${UI.brass}`,
+  background: UI.tintBrass,
+  padding: '0.4rem 0.55rem',
+};
 
 const tree: React.CSSProperties = {
   display: 'grid',

@@ -29,7 +29,8 @@
         --nr-tag: #9a3a33; --nr-rule: #e3c0bc; --nr-a: #fdf6f5; --nr-b: #f5e9e7; --nr-edge: #e8d3d0; --nr-hover: #cf9f99;
         --tr-tag: #2c6f66; --tr-rule: #b9d8d2; --tr-a: #f4fbf9; --tr-b: #e6f2ef; --tr-edge: #cfe3de; --tr-hover: #8fbfb6;
         --se-tag: #8b5e17; --se-rule: #e0caa4; --se-a: #fdf8ef; --se-b: #f6ecda; --se-edge: #e7d8bd; --se-hover: #cfae73;
-        --fl-tag: #1f6e7a; --fl-rule: #b5d4d8; --fl-a: #f2f7f6; --fl-b: #e3ecea; --fl-edge: #c6d8d6; --fl-hover: #6aa6ae;
+        --fl-tag: #1d5a47; --fl-rule: #b9d3c6; --fl-a: #f4f8f5; --fl-b: #e6efe9; --fl-edge: #cfe0d6; --fl-hover: #7fae96;
+        --fire-tag: #1f6e7a; --fire-rule: #b5d4d8; --fire-a: #f2f7f6; --fire-b: #e3ecea; --fire-edge: #c6d8d6; --fire-hover: #6aa6ae;
       }
       :root[data-theme="dark"] {
         color-scheme: dark;
@@ -52,7 +53,8 @@
         --nr-tag: #e3a6a0; --nr-rule: #4a2a28; --nr-a: #171010; --nr-b: #0f0a0a; --nr-edge: #2c1b1a; --nr-hover: #5a3330;
         --tr-tag: #8fd0c4; --tr-rule: #24443f; --tr-a: #0c1618; --tr-b: #080f11; --tr-edge: #172a2c; --tr-hover: #2d5450;
         --se-tag: #e0a94e; --se-rule: #4a3a1a; --se-a: #181209; --se-b: #100c07; --se-edge: #2f2414; --se-hover: #5a4622;
-        --fl-tag: #6cc3cf; --fl-rule: #1d3c40; --fl-a: #0c1516; --fl-b: #081011; --fl-edge: #1a2c2e; --fl-hover: #2f6268;
+        --fl-tag: #5db291; --fl-rule: #1e3a2f; --fl-a: #0f1814; --fl-b: #0b120f; --fl-edge: #1f2f28; --fl-hover: #2f5a48;
+        --fire-tag: #6cc3cf; --fire-rule: #1d3c40; --fire-a: #0c1516; --fire-b: #081011; --fire-edge: #1a2c2e; --fire-hover: #2f6268;
       }
       * {
         box-sizing: border-box;
@@ -152,9 +154,12 @@
       .card.steady-eddie .tag { color: var(--se-tag); border-color: var(--se-rule); }
       .card.steady-eddie { background: linear-gradient(160deg, var(--se-a) 0%, var(--se-b) 100%); border-color: var(--se-edge); }
       .card.steady-eddie:hover { border-color: var(--se-hover); }
-      .card.fireline .tag { color: var(--fl-tag); border-color: var(--fl-rule); }
-      .card.fireline { background: linear-gradient(160deg, var(--fl-a) 0%, var(--fl-b) 100%); border-color: var(--fl-edge); }
-      .card.fireline:hover { border-color: var(--fl-hover); }
+      .card.founders-ledger .tag { color: var(--fl-tag); border-color: var(--fl-rule); }
+      .card.founders-ledger { background: linear-gradient(160deg, var(--fl-a) 0%, var(--fl-b) 100%); border-color: var(--fl-edge); }
+      .card.founders-ledger:hover { border-color: var(--fl-hover); }
+      .card.fireline .tag { color: var(--fire-tag); border-color: var(--fire-rule); }
+      .card.fireline { background: linear-gradient(160deg, var(--fire-a) 0%, var(--fire-b) 100%); border-color: var(--fire-edge); }
+      .card.fireline:hover { border-color: var(--fire-hover); }
       .account {
         position: fixed;
         top: 0;
@@ -197,7 +202,7 @@
     </div>
     <main>
       <h1>Choose a game</h1>
-      <p class="subtitle">Six separate builds, one address.</p>
+      <p class="subtitle">Seven separate builds, one address.</p>
       <div class="cards">
         <a class="card thrash-margin" data-game="thrash_margin" href="/thrash-margin/">
           <span class="tag">Territory strategy</span>
@@ -231,6 +236,15 @@
           <p>
             Race rival hauliers to land a load first — tomatoes to the Tesco depot in Kent, a flatpack
             run to IKEA Warrington. A road fork of <em>The Tea Race</em>.
+          </p>
+        </a>
+        <!-- Opt-in (shared/games.ts): hidden until portal.js finds it in the signed-in account's games. -->
+        <a class="card founders-ledger" data-game="founders_ledger" href="/founders-ledger/" hidden>
+          <span class="tag">CEO coaching</span>
+          <h2>The Founder's Ledger</h2>
+          <p>
+            Close your own week every Friday, buy your hours back, and write the life you are building.
+            Turned on by an admin, one account at a time.
           </p>
         </a>
         <a class="card fireline" data-game="fireline" href="/fireline/">
