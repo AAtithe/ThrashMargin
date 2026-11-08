@@ -320,9 +320,16 @@ interface Props {
   view: TourView;
   plan: TourPlan;
   onFinish: () => void;
+  /**
+   * Draw nothing for now, but keep the run's place. Game.tsx sets this while a modal (the
+   * hand-over, the dispatch, an event) owns the screen. Unmounting instead would throw the step
+   * away, and the prefix scan that picks where to open would land on the welcome card again,
+   * because ending the turn clears the selection the early steps read.
+   */
+  hidden?: boolean;
 }
 
-export default function GuidedTour({ view, plan, onFinish }: Props) {
+export default function GuidedTour({ view, plan, onFinish, hidden = false }: Props) {
   // Captured once, on the first render. `useRef` rather than `useState` because reading it must
   // never cause a render of its own.
   const memoryRef = useRef<TourMemory>({
@@ -394,6 +401,8 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
     markGuidedTourSeen();
     onFinish();
   };
+
+  if (hidden) return null;
 
   return (
     <>
