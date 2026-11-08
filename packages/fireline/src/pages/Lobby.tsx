@@ -473,8 +473,10 @@ const minutes = (ticks: number) => {
 
 /** What changed lately, in a line each. */
 const WHATS_NEW: { title: string; text: string }[] = [
-  { title: 'Build hotkeys', text: 'Q W E R T Y build from the open list, Tab switches lists, Shift queues five units.' },
-  { title: 'Combat alerts', text: 'Attacks on your base or haulers ping the radar. Space takes you there.' },
-  { title: 'Unit cards', text: 'Hover any build button or selection for cost, armour, weapon, range and speed.' },
-  { title: 'Clearer warnings', text: 'A low-power banner on the battlefield and a toast when funds run short.' },
+  { title: 'A battlefield that remembers', text: 'Tread marks, burnt-out wrecks and rubble where structures fell. Bigger explosions, living water, drifting cloud.' },
+  { title: 'Richer art', text: 'Detailed tanks and structures with working machinery, and damage you can see: scorch, holes, sparks and fire.' },
+  { title: 'Veterans and stances', text: 'Units promote at 3 and 7 kills. Set each group to aggressive, guard or hold fire.' },
+  { title: 'Waypoints', text: 'Shift + right-click queues orders. Crews run out of fallen structures.' },
+  { title: 'Faster commands', text: 'Q W E R T Y build from the open list, Tab switches lists, Shift queues five. Hover anything for its numbers.' },
+  { title: 'Combat alerts', text: 'Attacks on your base or haulers ping the radar; Space jumps there. Low power and short funds are flagged.' },
 ];

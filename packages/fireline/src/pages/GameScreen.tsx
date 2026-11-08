@@ -927,6 +927,8 @@ export function Controls() {
     ['Double-click', 'Select every unit of that kind on screen'],
     ['Right-click', 'Move, attack, harvest, or set a rally point for a selected producer'],
     ['A then click', 'Attack-move: go there, fighting anything met on the way'],
+    ['Shift + right-click', 'Queue another order after the current one (waypoints, up to 12)'],
+    ['Stance buttons', 'Aggressive chases anything in sight; Guard (default) holds and returns fire; Hold fire never shoots unordered'],
     ['S', 'Stop'],
     ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
     ['Q W E R T Y', 'Build or train the first to sixth item in the open list (the letter is on each button)'],

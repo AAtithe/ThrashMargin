@@ -170,3 +170,40 @@ another structure occupies the queue, the queue and place steps ring that struct
 to clear it, instead of ringing a disabled button. The driver now re-reads the card before every
 click and checks the busy-queue path itself. Not reproducible locally even with the CPU slowed
 four-fold; the screenshot is what found it.
+
+### 2026-11-08 — Improvement round 1 (five parallel builders)
+
+Five agents, one workstream each, each in its own git worktree and owning its own files, worked
+against written contracts at the seams (pose fields, veterancy, group badges, AI measurement,
+waypoints and stances); the plan is `fireline-improvements.md`. Four branches merged without a
+conflict; the computer-opponent workstream hit a usage limit and is being re-run.
+
+- Effects (`game/fx/`): tread marks, wrecks and rubble baked into the terrain canvas and faded
+  back towards a pristine copy; layered explosions with debris and smoke columns; muzzle light;
+  animated water and shore foam drawn into the terrain canvas; cloud shadows and vignette folded
+  into the fog canvas; dashed order lines; veterancy chevrons; control-group badges.
+- Art: much richer vehicles, infantry with a firing pose, structures with working machinery,
+  damage drawn from health (scorch, holes, sparks, fire), per-pixel terrain with raised rock
+  plateaus and banded shores. A sprite cache stamps each unit look per facing at screen
+  resolution, which made the richer art faster than the old art in big battles.
+- Gameplay: veterancy at 3 and 7 kills; waypoint queues (Shift + right-click, up to 12);
+  aggressive, guard and hold-fire stances; survivors from destroyed and sold structures; shells
+  now credit the unit that fired them. Older saves migrate. Harness: 170,387 assertions.
+- Interface: build hotkeys Q to Y and Tab, Shift to queue five, combat alerts pinged on the
+  minimap with Space to jump, an animated credits counter, a low-power banner, refusal toasts,
+  stat cards from `rules.ts`, a hero banner and difficulty cards in the lobby. Repair moved from R
+  to G; P alone pauses.
+- Integration fixes: a selection of more than four units draws one order line per order rather
+  than a web of one per unit; a fuller scrim behind the lobby headline; the controls sheet and the
+  lobby's What is new strip now cover every workstream.
+
+Found and handed on: over 84 computer-against-computer battles side 1 won 59 to side 0's 25, and
+the same split appears on the code before this round, so the round did not cause it. The likely
+cause is the two sides deciding at different points in the AI's cycle (and the income multiplier
+applying only to side 1); it does not affect a human player but it skews harness win rates, and it
+is the AI workstream's to measure.
+
+Frame rate in headless Chromium (software rendering, no GPU): 60 fps on ordinary mid-battle saves
+in each builder's own measurement; 47 to 58 fps in 200-unit set pieces, at or above the old
+build in the same setup. Integrated measurements taken while a builder was running on the same
+machine read lower and are not comparable; a check on a real GPU browser is still owed.
