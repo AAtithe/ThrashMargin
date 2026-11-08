@@ -43,7 +43,7 @@
  * the predicates cannot anticipate every way a game can go sideways while four rivals are sailing.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { distanceBetween, goodName, portName, sourcesFor } from '../sim/content';
 import { destinationOf } from '../sim/movement';
 import { HOLD_SLOTS, PAYOUT_MULTIPLIERS, SHARE_MAJORITY, slotsOf } from '../sim/rules';
@@ -540,11 +540,22 @@ function buildSteps(plan: TourPlan): TourStep[] {
  * The one-shot scroll is deliberate. A target inside the action column can start off-screen, so
  * the column is scrolled to it once — and then never again, so the tour does not fight a player
  * who has deliberately scrolled somewhere else.
+ *
+ * The rect is returned with `current`, which is false until it has been measured for *this* target
+ * on *this* step. Without it the first render of a new step was placed against the previous step's
+ * target: the outro, which has no target, was laid out for one frame under the "Turn the money
+ * into shares" button with that card's height, then slid to the middle. Where the fonts put the
+ * button low enough (CI's Linux fallback fonts did), the taller outro card hung off the bottom of
+ * the window for the length of the slide, and a probe taken inside it failed the tours run some of
+ * the time. The first measurement is also taken in a layout effect, before the browser paints.
  */
-function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | null {
-  const [rect, setRect] = useState<DOMRect | null>(null);
+function useTargetRect(targetId: string | null, stepIndex: number): { rect: DOMRect | null; current: boolean } {
+  const key = `${stepIndex}|${targetId ?? ''}`;
+  const [measured, setMeasured] = useState<{ key: string; rect: DOMRect | null }>({ key: '', rect: null });
+  const current = measured.key === key;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    const setRect = (rect: DOMRect | null) => setMeasured({ key, rect });
     if (!targetId) {
       setRect(null);
       return;
@@ -588,9 +599,9 @@ function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | nu
     // Keyed on the step as well as the id. "Load her hold" and "Fill the hull" ring the same
     // button and the Orders panel reflows between them; keyed on the id alone the second step had
     // already spent its one scroll.
-  }, [targetId, stepIndex]);
+  }, [targetId, stepIndex, key]);
 
-  return rect;
+  return { rect: current ? measured.rect : null, current };
 }
 
 /**
@@ -733,7 +744,7 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
   const held = done && live.current?.stepIndex === stepIndex ? live.current : null;
   const targetId = held ? held.target : liveTarget;
   const bodyText = held ? held.body : step.body(view, plan);
-  const rect = useTargetRect(targetId, stepIndex);
+  const { rect, current: rectCurrent } = useTargetRect(targetId, stepIndex);
   // Tell the screen which control is ringed, so it can open the panel that holds it.
   useEffect(() => {
     onTargetChange?.(targetId);
@@ -800,20 +811,33 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
       }
     : null;
 
-  // The card's height varies with the body copy, so it is measured after each render; the
-  // estimate covers only the very first frame.
+  // The card's height varies with the body copy, so it is measured after each render, in a layout
+  // effect so the corrected placement is what gets painted. The height is recorded with the step it
+  // was measured on: a new step's copy is a different height, and until it has been measured the
+  // card is placed against the last step's figure.
   const cardRef = useRef<HTMLDivElement>(null);
-  const [cardHeight, setCardHeight] = useState(220);
-  useEffect(() => {
+  const [cardHeight, setCardHeight] = useState({ step: -1, h: 220 });
+  useLayoutEffect(() => {
     const h = cardRef.current?.offsetHeight;
-    if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
+    if (h && (cardHeight.step !== stepIndex || Math.abs(h - cardHeight.h) > 2)) setCardHeight({ step: stepIndex, h });
+  });
+  // The card eases between positions only while it follows the same step's target (a reflow, a
+  // scroll). On a new step it jumps: easing from the old step's place with the new step's copy
+  // drew it off the bottom of the window for the length of the slide. The ease is switched back on
+  // one commit *after* the card is placed against its own target and height, so that the commit
+  // which moves it into place is never itself animated.
+  const placedFor = rectCurrent && cardHeight.step === stepIndex;
+  const [easeStep, setEaseStep] = useState(-1);
+  useEffect(() => {
+    if (placedFor && easeStep !== stepIndex) setEaseStep(stepIndex);
   });
   const CARD_WIDTH = 21 * 16;
+  const cardBase: React.CSSProperties = easeStep === stepIndex && placedFor ? CARD : { ...CARD, transition: 'none' };
   const cardStyle: React.CSSProperties = rect
-    ? { ...CARD, ...placeCard(rect, CARD_WIDTH, cardHeight) }
+    ? { ...cardBase, ...placeCard(rect, CARD_WIDTH, cardHeight.h) }
     : {
-        ...CARD,
-        top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
+        ...cardBase,
+        top: Math.max(16, window.innerHeight / 2 - cardHeight.h / 2),
         left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
 

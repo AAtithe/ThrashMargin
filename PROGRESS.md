@@ -1310,3 +1310,34 @@ Where each one is reachable, which is the part worth recording:
 that the theme work touched: Thrash Margin 8/8, Tea Race 14/14, Steady Eddie 14/14, Niccolò Rising
 7/7, Banco di Niccolò 11/11. No console or page errors in any run. The colour audit found no hex
 literals and no hex alpha appended to a token in any of the five.
+
+### 2026-11-08 — The Tea Race outro card measured off screen: a flaky CI tour traced to a stale first frame
+
+The "Tutorials played in a browser" job failed and passed on the same commit (82a8ca79, runs
+42483462955 and 42483548185) with `alpha/board/desktop/h1: step 13 "That is the loop": card off
+screen`. Not a scroll this time; two stale values and a transition, together.
+
+- On the first render of a new step, `useTargetRect` still returned the *previous* step's rect (it
+  cleared it in a passive effect, after the render), and the card height was the previous card's.
+  So the outro, which has no target, was placed for a frame under "Take up a share" with the share
+  card's height, before it was re-placed in the middle.
+- The card carries a 0.2s `top` transition, so it then *slid* from that spot to the middle, with the
+  outro's taller copy (245px against 204px) hanging below it throughout.
+- Whether that overflowed depended on where the fonts put the share button. On CI's Linux fallback
+  fonts the button sits about 30px higher than on a dev box, low enough for the share card to go
+  *below* it, and the outro's first frame ran past the bottom of a 900px window. The driver checks
+  a manual step's card straight away, so it failed whenever its probe landed inside the slide.
+  Reproduced locally by setting the window to 930px tall: before the fix every frame was recorded and
+  the outro was painted at top 691, bottom 936.
+
+Fix, in `GuidedTour.tsx`: the rect is stored with the step and target it was measured for and reads
+as null until it is current; the first measure and the card-height measure are layout effects, so
+the corrected placement is the one painted; and the card's ease is off on a new step, switched back
+on one commit after it is placed against its own target and height, so the move into place is never
+animated. The ring no longer slides from the last step's target either; it appears on the new one.
+
+**Verification.** 20 runs at 1400x900 under 4x CPU throttling, 20 at the failing 930px height, and
+one at each of 880 to 960px with every animation frame recorded: no frame of any card off screen.
+`npm run tours -- tea-race --quick` passes; `npm run check` passes. The full matrix has three
+phone failures (`limas`/`mikes` ship perturbation, `golf` lose perturbation) that are identical on
+main before this change, outside the quick matrix CI runs, and left for their own fix.
