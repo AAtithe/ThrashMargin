@@ -59,9 +59,17 @@ export async function lockAdmins(c: { query: Pool['query'] }, userId: string): P
 export interface AuditEntry {
   actorId: string;
   actorUsername: string;
-  targetId: string;
+  /** Null for a change to more than one account, or to a portal setting. */
+  targetId: string | null;
+  /** For those, a description in brackets: '(all accounts)', '(new accounts)'. */
   targetUsername: string;
-  action: 'grant_admin' | 'remove_admin' | 'reset_password';
+  action:
+    | 'grant_admin'
+    | 'remove_admin'
+    | 'reset_password'
+    | 'grant_game'
+    | 'revoke_game'
+    | 'set_new_account_games';
   detail?: string;
 }
 

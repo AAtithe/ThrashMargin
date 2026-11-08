@@ -674,7 +674,8 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO || !!step.manual?.(view, plan);
-  const targetId = step.target(view, plan);
+  // Nothing to measure while hidden, so the 250ms poll cannot scroll the board under a modal.
+  const targetId = hidden ? null : step.target(view, plan);
   const rect = useTargetRect(targetId, stepIndex);
 
   // Declared *before* the advance effect below, and relied on for that: effects run in the order

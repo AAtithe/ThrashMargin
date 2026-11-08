@@ -109,7 +109,7 @@ export default function Missions(p: PlaceProps) {
           ))}
           <Row>
             <Meta>Reward: {rewardText(upcoming)}</Meta>
-            <ActButton p={p} verb={{ type: 'ACCEPT_MISSION', missionId: upcoming.id }} tone="primary">Accept</ActButton>
+            <ActButton p={p} id={`nr-mission-accept`} verb={{ type: 'ACCEPT_MISSION', missionId: upcoming.id }} tone="primary">Accept</ActButton>
           </Row>
           <Why p={p} verb={{ type: 'ACCEPT_MISSION', missionId: upcoming.id }} />
           <Blurb>Schemes, duels, training and journeys count only once you have accepted, so accept before you start.</Blurb>

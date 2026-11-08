@@ -468,7 +468,9 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
   const heldTargets = useRef<{ step: number; ids: string[] }>({ step: -1, ids: [] });
   const liveTargets = asList(step.target(view, plan, memory));
   if (!done || heldTargets.current.step !== stepIndex) heldTargets.current = { step: stepIndex, ids: liveTargets };
-  const targetIds = done ? heldTargets.current.ids : liveTargets;
+  // Nothing to measure while hidden: an empty list stops the poll, and stops it scrolling the
+  // board around underneath whichever modal is on top.
+  const targetIds = hidden ? [] : done ? heldTargets.current.ids : liveTargets;
   const { rect, id: shownTarget } = useTargetRect(targetIds);
 
   const focusMatch = /^tm-territory-(\d+)$/.exec(targetIds[0] ?? '');
@@ -528,7 +530,9 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
     onFinish();
   };
 
-  // Every hook is above this line: one placed after an early return renders conditionally.
+  // Every hook is above this line (one placed after an early return renders conditionally), so the
+  // run keeps advancing while it is out of sight: ending the turn completes the step behind the
+  // dispatch, and the outro is what comes back.
   if (hidden) return null;
 
   return (

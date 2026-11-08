@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FONT, UI } from '../theme';
 import { useGameHybrid } from '../hooks/useGameHybrid';
-import { getStoredUser } from '../lib/portalAuth';
+import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
+import NoGameAccess from '../lib/NoGameAccess';
 import PortalNav from '../components/PortalNav';
 import type { SaveMeta } from '../hooks/useGameLocal';
 
@@ -71,6 +72,12 @@ export default function Lobby() {
         <PortalNav variant="footer" />
       </div>
     );
+  }
+
+  // Game access, set per account on the Admin page. Presentational, like the check above: the server
+  // refuses every request to a game the account does not have (api/play/[kind].ts).
+  if (!hasGameAccess(user, 'niccolo_rising')) {
+    return <NoGameAccess title="Niccolò Rising" header={<PortalNav variant="header" />} footer={<PortalNav variant="footer" />} />;
   }
 
   return (

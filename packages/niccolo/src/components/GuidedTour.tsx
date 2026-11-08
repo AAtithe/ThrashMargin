@@ -7,6 +7,30 @@ import { UI, FONT } from '../theme';
 const GOLD = UI.brass;
 const INK = UI.rule;
 
+/** Its own key, deliberately not `TutorialOverlay`'s. The two are different pieces of onboarding:
+ *  the overlay is read, this is played, and a player can legitimately want one and not the other.
+ *  A UI preference, not campaign state, so it lives in localStorage rather than in the save. */
+const TOUR_SEEN_KEY = 'niccolo_guided_tour_seen';
+
+/** Whether this browser has finished or skipped the tour before. */
+export function hasSeenGuidedTour(): boolean {
+  try {
+    return !!localStorage.getItem(TOUR_SEEN_KEY);
+  } catch {
+    // Private browsing and blocked storage both throw here. Offering the tour again is the
+    // harmless failure; crashing the game screen is not.
+    return false;
+  }
+}
+
+export function markGuidedTourSeen(): void {
+  try {
+    localStorage.setItem(TOUR_SEEN_KEY, '1');
+  } catch {
+    /* see above */
+  }
+}
+
 const CARD: React.CSSProperties = {
   position: 'fixed',
   zIndex: 102,
@@ -497,6 +521,12 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
         left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
 
+  // Skipping and finishing both mean "do not offer this again unasked".
+  const finish = () => {
+    markGuidedTourSeen();
+    onFinish();
+  };
+
   // Every hook is above this line: one placed after an early return renders conditionally.
   if (hidden) return null;
 
@@ -528,7 +558,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
         <p style={BODY}>{step.body}</p>
         {note && <p data-tour-note="" style={{ ...BODY, color: UI.bad, marginTop: '-0.4rem' }}>{note}</p>}
         <div style={FOOTER}>
-          <button style={GHOST_BUTTON} onClick={onFinish}>
+          <button style={GHOST_BUTTON} onClick={finish}>
             Skip tour
           </button>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
@@ -540,7 +570,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
             {isManual ? (
               <button
                 style={PRIMARY_BUTTON}
-                onClick={() => (isLast ? onFinish() : start())}
+                onClick={() => (isLast ? finish() : start())}
               >
                 {isLast ? 'Finish' : 'Start'}
               </button>

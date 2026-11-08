@@ -49,6 +49,15 @@ localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 
 Use that for local UI checks. Never change the gate, add an env-var escape hatch, or stub
 `getUser` to make a test pass.
 
+### Game access is per account, and enforced in `api/play/[kind].ts`
+
+Admins turn games on and off on the Admin page: per account, per game for every account, and a
+"new accounts" setting copied onto each account when it registers (`portal_settings`
+`new_account_games`). The value lives in `users.game_access` (NULL means every game, including ones
+added later). `api/play/[kind].ts` refuses any game the account lacks with 403 before the game's own
+handler runs; that is the boundary. The lobbies' `hasGameAccess` check and the welcome page hiding
+cards are presentational, exactly like the sign-in gate. Logic: `packages/thrash-margin/api/_lib/access.ts`.
+
 ### 2. `packages/tea-race/src/sim/` and `packages/niccolo-rising/src/sim/` are pure
 
 No `Math.random`, no clock. Dice come from `rng.ts` against the persisted `rngSeed`, and
@@ -107,12 +116,24 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   (Thrash Margin's attack step read as done on arrival because it watched the game log). Each
   driver also checks the save for the real effects of the run, and none of them may pass on timing
   luck. Thrash Margin's card also carries `data-tour-done` while it pauses after a finished step.
-- **A guided tour is only verified by driving it in a browser.** Each game's tour card carries
-  `data-tour-target`, naming the element it is pointing at, so a script can walk every step by
-  clicking whatever the card names rather than guessing from the copy. Three classes of bug show up
-  there and nowhere else: a step whose predicate reads true before the run begins, a step that can
-  un-complete itself, and a spotlight measured while a smooth scroll is still moving the target.
-  None of them are visible to `tsc` or to `npm run drive`, which never render anything.
+- **A guided tour is only verified by driving it in a browser.** All five tour cards carry
+  `data-tour-target`, naming the element actually being ringed — the resolved one, where a step
+  offers several candidates — so a script can walk every step by clicking what the card names
+  rather than guessing from the copy. Niccolò Rising's card also carries `data-tour-manual`, for
+  its one step that is read rather than acted on. Five classes of bug show up there and nowhere
+  else: a step whose predicate reads true before the run begins, a step that can un-complete
+  itself, a spotlight measured while a smooth scroll is still moving the target, a step pointing
+  at a control the game has disabled until some other thing is done first, and a target that is
+  simply off the bottom of the window because nothing scrolled to it. None are visible to `tsc`
+  or to `npm run drive`, which never render anything. Banco di Niccolò's tour was the last to get
+  the hooks and was carrying two of the five (see PROGRESS.md, 2026-11-08) after months of being
+  played by hand without either being noticed.
+- **Where a tour resumes is the caller's business, not the tour's.** Guessing it from the game
+  state cannot work: predicates that are honest mid-run read true on an untouched board, so the
+  guess opens past the welcome card. Four of the five walk their steps in order and stop at the
+  first unfinished one, which never reaches the dishonest predicates; Niccolò always opens a fresh
+  tour on the welcome card. All of them stay mounted through modals (a `hidden` prop, returned
+  after every hook), so an interrupted run keeps its own place.
 - **Light and dark mode: colours are CSS variables.** Each game's `theme.ts` hands out
   `var(--…)` strings; the values, one block per mode, are in that game's `styles.css` (portal
   chrome in `portal.css`, identical in every package). `lib/colorScheme.ts` stores the choice under

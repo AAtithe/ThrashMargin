@@ -110,6 +110,23 @@ async function apply(c: PoolClient): Promise<void> {
     await c.query(`CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit (at DESC)`);
   }
 
+  // Which games an account may play (access.ts in the Thrash Margin API). NULL means every game,
+  // so every account that existed before this column keeps everything it had.
+  if (!(await hasColumn(c, 'users', 'game_access'))) {
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS game_access JSONB`);
+  }
+
+  // Portal-wide settings changed on the Admin page, one row per setting. Today only
+  // 'new_account_games': the games a newly registered account starts with.
+  if (!(await hasTable(c, 'portal_settings'))) {
+    await c.query(`
+      CREATE TABLE IF NOT EXISTS portal_settings (
+        key         VARCHAR(64) PRIMARY KEY,
+        value       JSONB NOT NULL,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+  }
+
   // Registration and feedback limits (see rateLimit.ts).
   if (!(await hasTable(c, 'rate_events'))) {
     await c.query(`
@@ -153,7 +170,7 @@ async function apply(c: PoolClient): Promise<void> {
  * failure is logged loudly and the rest of the setup still commits, rather than every request in
  * every game failing. db/schema.sql applies the same statements; keep the two in step.
  */
-export const SECURED_TABLES = ['users', 'games', 'feedback', 'login_failures', 'admin_audit', 'rate_events'];
+export const SECURED_TABLES = ['users', 'games', 'feedback', 'login_failures', 'admin_audit', 'rate_events', 'portal_settings'];
 const DATA_API_ROLES = ['anon', 'authenticated'];
 
 async function secureTables(c: PoolClient): Promise<void> {

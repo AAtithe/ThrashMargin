@@ -720,7 +720,8 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   // enough to obey threw away the turn she had just arrived on, with her points still unspent.
   // Written during render, deliberately: it is the last live answer, not state anything renders from.
   const live = useRef<{ stepIndex: number; target: string | null; body: string } | null>(null);
-  const liveTarget = waiting ? null : step.target(view, plan);
+  // Nothing to measure while hidden, so the 250ms poll cannot scroll the board under a modal.
+  const liveTarget = waiting || hidden ? null : step.target(view, plan);
   if (!done) live.current = { stepIndex, target: liveTarget, body: step.body(view, plan) };
   const held = done && live.current?.stepIndex === stepIndex ? live.current : null;
   const targetId = held ? held.target : liveTarget;

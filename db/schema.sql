@@ -19,6 +19,9 @@ CREATE TABLE IF NOT EXISTS users (
   role           VARCHAR(16) NOT NULL DEFAULT 'user' CONSTRAINT users_role_check CHECK (role IN ('user', 'admin')),
   -- Sessions issued before this are refused, so a password change signs out every device.
   password_changed_at  TIMESTAMPTZ,
+  -- The games this account may play, as a JSON array of game keys; NULL means every game.
+  -- New accounts copy portal_settings 'new_account_games'. See packages/thrash-margin/api/_lib/access.ts.
+  game_access    JSONB,
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -28,6 +31,7 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'user';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS game_access JSONB;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
                  WHERE conname = 'users_role_check' AND conrelid = 'users'::regclass) THEN
@@ -94,7 +98,7 @@ CREATE TABLE IF NOT EXISTS admin_audit (
   actor_username   VARCHAR(32) NOT NULL,
   target_id        UUID REFERENCES users(id) ON DELETE SET NULL,
   target_username  VARCHAR(32) NOT NULL,
-  action           VARCHAR(32) NOT NULL,  -- 'grant_admin' | 'remove_admin' | 'reset_password'
+  action           VARCHAR(32) NOT NULL,  -- 'grant_admin' | 'remove_admin' | 'reset_password' | 'grant_game' | 'revoke_game' | 'set_new_account_games'
   detail           TEXT
 );
 
@@ -104,6 +108,14 @@ CREATE TABLE IF NOT EXISTS rate_events (
   bucket  VARCHAR(32) NOT NULL,   -- 'register' (key: network address) | 'feedback' (key: user id)
   key     VARCHAR(128) NOT NULL,
   at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Portal-wide settings changed on the Admin page. 'new_account_games': the JSON array of game keys a
+-- newly registered account starts with (no row: every game).
+CREATE TABLE IF NOT EXISTS portal_settings (
+  key         VARCHAR(64) PRIMARY KEY,
+  value       JSONB NOT NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- player_stats and game_actions, from the original single-game server, were never read by this API
@@ -146,13 +158,14 @@ ALTER TABLE feedback       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE login_failures ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_audit    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_events    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE portal_settings ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE r TEXT;
 BEGIN
   FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-      EXECUTE format('REVOKE ALL ON users, games, feedback, login_failures, admin_audit, rate_events FROM %I', r);
+      EXECUTE format('REVOKE ALL ON users, games, feedback, login_failures, admin_audit, rate_events, portal_settings FROM %I', r);
       EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM %I', r);
     END IF;
   END LOOP;

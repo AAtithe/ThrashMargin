@@ -38,7 +38,7 @@ import type { SectionDef } from '../components/SectionRail';
 import HotseatDecisionModal from '../components/HotseatDecisionModal';
 import EventOverlay from '../components/EventOverlay';
 import TutorialOverlay, { hasSeenTutorial, hasSeenChapter0Tutorial } from '../components/TutorialOverlay';
-import GuidedTour from '../components/GuidedTour';
+import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
 import ThemeToggle from '../components/ThemeToggle';
 
@@ -279,6 +279,12 @@ export default function GameScreen() {
   const [continueInsure, setContinueInsure] = useState<Record<string, boolean>>({});
   const [showTutorial, setShowTutorial] = useState(false);
   const [showGuidedTour, setShowGuidedTour] = useState(false);
+  /**
+   * Starting a tour mounts it fresh, on the welcome card. Once up it stays mounted, hidden rather
+   * than unmounted, while a scripted event, a chapter card, How to play, the hotseat prompt or the
+   * Chronicle owns the screen, so it keeps its own place and comes back exactly where it was.
+   */
+  const startGuidedTour = () => setShowGuidedTour(true);
   const [showChronicle, setShowChronicle] = useState(false);
   const [ledgerTab, setLedgerTab] = useState<'ledger' | 'countingHouse'>('ledger');
   // Which drawer section (if any) is open — Fleet/Orders/Objectives/Counsel are no longer among
@@ -564,11 +570,15 @@ export default function GameScreen() {
         <TutorialOverlay
           variant={state.flags.chapter0_complete ? 'main' : 'chapter0'}
           onClose={() => setShowTutorial(false)}
+          /* Offered unasked only until this browser has played or skipped the tour once — its own
+             key, not the overlay's, so dismissing "How to play" never counts as having seen the
+             walkthrough and vice versa. The header's "Guided tour" button is unconditional, so a
+             player who wants it again can always have it. */
           onStartGuidedTour={
-            canGuidedTour
+            canGuidedTour && !hasSeenGuidedTour()
               ? () => {
                   setShowTutorial(false);
-                  setShowGuidedTour(true);
+                  startGuidedTour();
                 }
               : undefined
           }
@@ -634,7 +644,7 @@ export default function GameScreen() {
           {canGuidedTour && (
             <button
               style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
-              onClick={() => { setShowTutorial(false); setShowGuidedTour(true); }}
+              onClick={() => { setShowTutorial(false); startGuidedTour(); }}
             >
               Guided tour
             </button>

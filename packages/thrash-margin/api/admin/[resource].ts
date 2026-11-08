@@ -6,13 +6,15 @@ import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
 import { isAdmin, lockAdmins, recordAudit } from '../_lib/admin';
-import { countsByGame, GAMES_BY_TITLE_SQL } from '../../shared/games';
+import { countsByGame, GAMES_BY_TITLE_SQL, GAME_KEYS } from '../../shared/games';
+import { isGameKey, NEW_ACCOUNT_GAMES, newAccountAccess, parseGameList, resolveAccess } from '../_lib/access';
 
 // Combines what were two separate functions (users.ts, feedback.ts) into one, dispatching on
 // the [resource] route param — Vercel's Hobby plan caps a deployment at 12 serverless
 // functions, and the portal's three games plus this admin surface were pushing past it.
 // URLs are unchanged: /api/admin/users and /api/admin/feedback still resolve here, alongside
-// /api/admin/reset-password and /api/admin/audit.
+// /api/admin/reset-password, /api/admin/audit, /api/admin/access, /api/admin/access-all and
+// /api/admin/settings.
 
 const ROLES = ['user', 'admin'] as const;
 
@@ -21,7 +23,7 @@ async function listUsers(res: VercelResponse) {
   try {
     const { rows } = await db.query(
       `SELECT
-         u.id, u.username, u.email, u.role, u.created_at, u.last_login_at,
+         u.id, u.username, u.email, u.role, u.created_at, u.last_login_at, u.game_access,
          ${GAMES_BY_TITLE_SQL} AS by_game,
          COUNT(g.id) FILTER (WHERE g.status = 'active')                 AS active_games,
          COUNT(g.id) FILTER (WHERE g.status = 'victory')                AS wins
@@ -38,6 +40,7 @@ async function listUsers(res: VercelResponse) {
       registeredAt: new Date(r.created_at).getTime(),
       lastLoginAt: r.last_login_at ? new Date(r.last_login_at).getTime() : null,
       gamesByTitle: countsByGame(r.by_game),
+      games: resolveAccess(r.game_access),
       activeGames: Number(r.active_games),
       wins: Number(r.wins),
     }));
@@ -182,6 +185,125 @@ async function resetPassword(req: VercelRequest, res: VercelResponse, callerId: 
   }
 }
 
+// --- Game access (see _lib/access.ts) ----------------------------------------------------------
+//
+// Turning a game off does not delete anything: the account's saves for it stay, unreachable, and
+// come back as they were if the game is turned on again.
+
+// PATCH /api/admin/access { id, game, enabled } — one game, on or off, for one account.
+// One game at a time, not a whole list, so two admins changing different games for the same account
+// cannot undo each other: each change reads and writes the account's row under a lock.
+async function updateAccess(req: VercelRequest, res: VercelResponse, callerId: string) {
+  const { id, game, enabled } = req.body ?? {};
+  if (typeof id !== 'string' || !UUID_RE.test(id) || !isGameKey(game) || typeof enabled !== 'boolean') {
+    return res.status(400).json({ message: 'id, game and enabled (true|false) required' });
+  }
+  try {
+    const out = await inTransaction(async c => {
+      const { rows } = await c.query('SELECT username, game_access FROM users WHERE id = $1 FOR UPDATE', [id]);
+      if (!rows[0]) return null;
+      const current = resolveAccess(rows[0].game_access);
+      if (current.includes(game) === enabled) return current; // already so; nothing to change or record
+      const next = enabled ? GAME_KEYS.filter(k => k === game || current.includes(k)) : current.filter(k => k !== game);
+      await c.query('UPDATE users SET game_access = $1::jsonb WHERE id = $2', [JSON.stringify(next), id]);
+      const names = await usernames(c, [callerId]);
+      await recordAudit(c, {
+        actorId: callerId,
+        actorUsername: names.get(callerId)?.username ?? '(unknown)',
+        targetId: id,
+        targetUsername: rows[0].username,
+        action: enabled ? 'grant_game' : 'revoke_game',
+        detail: game,
+      });
+      return next;
+    });
+    if (!out) return res.status(404).json({ message: 'User not found' });
+    return res.json({ games: out });
+  } catch (err) {
+    console.error('admin update access error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// POST /api/admin/access-all { game, enabled } — one game, on or off, for every existing account.
+// New accounts are not affected: they follow the "new accounts" setting below.
+async function updateAccessAll(req: VercelRequest, res: VercelResponse, callerId: string) {
+  const { game, enabled } = req.body ?? {};
+  if (!isGameKey(game) || typeof enabled !== 'boolean') {
+    return res.status(400).json({ message: 'game and enabled (true|false) required' });
+  }
+  try {
+    const changed = await inTransaction(async c => {
+      // An account at NULL already has every game; turning one off gives it every game but that one.
+      const { rowCount } = enabled
+        ? await c.query(
+            `UPDATE users SET game_access = game_access || to_jsonb($1::text)
+             WHERE game_access IS NOT NULL AND NOT (game_access ? $1)`,
+            [game],
+          )
+        : await c.query(
+            `UPDATE users SET game_access = CASE WHEN game_access IS NULL THEN $2::jsonb ELSE game_access - $1::text END
+             WHERE game_access IS NULL OR game_access ? $1`,
+            [game, JSON.stringify(GAME_KEYS.filter(k => k !== game))],
+          );
+      const names = await usernames(c, [callerId]);
+      await recordAudit(c, {
+        actorId: callerId,
+        actorUsername: names.get(callerId)?.username ?? '(unknown)',
+        targetId: null,
+        targetUsername: '(all accounts)',
+        action: enabled ? 'grant_game' : 'revoke_game',
+        detail: game,
+      });
+      return rowCount ?? 0;
+    });
+    return res.json({ success: true, changed });
+  } catch (err) {
+    console.error('admin update access for all error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// GET /api/admin/settings — { newAccountGames, saved }. `saved` is false while the setting has never
+// been changed, in which case new accounts get every game, including any added to the portal later.
+async function getSettings(res: VercelResponse) {
+  try {
+    const games = await newAccountAccess(getDb());
+    return res.json({ newAccountGames: games ?? [...GAME_KEYS], saved: games !== null });
+  } catch (err) {
+    console.error('admin get settings error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// PUT /api/admin/settings { newAccountGames: [game keys] } — the games a new account starts with.
+async function updateSettings(req: VercelRequest, res: VercelResponse, callerId: string) {
+  const games = parseGameList((req.body ?? {}).newAccountGames);
+  if (!games) return res.status(400).json({ message: 'newAccountGames must be a list of game keys' });
+  try {
+    await inTransaction(async c => {
+      await c.query(
+        `INSERT INTO portal_settings (key, value, updated_at) VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+        [NEW_ACCOUNT_GAMES, JSON.stringify(games)],
+      );
+      const names = await usernames(c, [callerId]);
+      await recordAudit(c, {
+        actorId: callerId,
+        actorUsername: names.get(callerId)?.username ?? '(unknown)',
+        targetId: null,
+        targetUsername: '(new accounts)',
+        action: 'set_new_account_games',
+        detail: games.join(','),
+      });
+    });
+    return res.json({ newAccountGames: games, saved: true });
+  } catch (err) {
+    console.error('admin update settings error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
 // GET /api/admin/audit — the most recent 100 access changes, newest first.
 async function listAudit(res: VercelResponse) {
   try {
@@ -260,6 +382,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (resource === 'users' && req.method === 'PATCH') return updateUserRole(req, res, user.userId);
   if (resource === 'reset-password' && req.method === 'POST') return resetPassword(req, res, user.userId);
   if (resource === 'audit' && req.method === 'GET') return listAudit(res);
+  if (resource === 'access' && req.method === 'PATCH') return updateAccess(req, res, user.userId);
+  if (resource === 'access-all' && req.method === 'POST') return updateAccessAll(req, res, user.userId);
+  if (resource === 'settings' && req.method === 'GET') return getSettings(res);
+  if (resource === 'settings' && req.method === 'PUT') return updateSettings(req, res, user.userId);
   if (resource === 'feedback' && req.method === 'GET') return listFeedback(res);
   if (resource === 'feedback' && req.method === 'PATCH') return updateFeedback(req, res);
 
