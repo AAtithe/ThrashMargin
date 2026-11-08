@@ -133,7 +133,9 @@ export default function EventCards({
   return (
     <div style={stack} aria-live="polite">
       {queue.map(entry => {
-        const look = PRESENTATION[entry.kind] ?? {
+        const look = (entry.kind === 'era' && entry.data?.level !== undefined
+          ? { title: `New at level ${entry.data.level}`, colour: UI.brass, art: 'teaRace' as VignetteKind }
+          : PRESENTATION[entry.kind]) ?? {
           title: 'News',
           colour: UI.textSoft,
           art: 'event' as VignetteKind,

@@ -5,7 +5,7 @@
  */
 import { HOME_PORT } from './content';
 import { dealOpeningCharters } from './charters';
-import { hazardsForEra } from './eras';
+import { hazardsForEra, scheduleFor } from './eras';
 import { dealOpeningContracts, shuffledDeck } from './contracts';
 import { seedFromString } from './rng';
 import {
@@ -123,7 +123,9 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     name: name.trim() || 'Voyage',
     rules,
     // With eras on, the plan is kept whole and only the first era's rules are put in force.
-    ...(planned.ramp ? { rampPlan: planned, hazards: hazardsForEra(planned, 1), era: 1 } : { hazards: planned }),
+    ...(planned.ramp
+      ? { rampPlan: planned, hazards: hazardsForEra(planned, 1, scheduleFor(planned, rules)), era: 1 }
+      : { hazards: planned }),
     difficulty: opts.difficulty ?? DEFAULT_DIFFICULTY,
     createdAt: opts.createdAt ?? 0,
     rngSeed: dealt.seed,

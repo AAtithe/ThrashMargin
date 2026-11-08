@@ -13,8 +13,8 @@
 import { createInitialState } from '../src/sim/state';
 import { newRace, nextRaceRound, openRace } from '../src/sim/seamanship';
 import { advance, isComplete } from '../src/sim/charters';
-import { LEVEL_XP, SKILL_EFFECT, XP_CATCH_UP, XP_FOR, levelFor, xpEarned, type SkillId } from '../src/sim/career';
-import { ERAS } from '../src/sim/eras';
+import { FIRST_SKILL_LEVEL, LEVEL_XP, SKILL_EFFECT, XP_CATCH_UP, XP_FOR, levelFor, xpEarned, type SkillId } from '../src/sim/career';
+import { ERAS, LEVEL_ERAS, levelDriven } from '../src/sim/eras';
 import { pairKey } from '../src/sim/letters';
 import {
   BOUNTY_PER_UNIT,
@@ -2765,7 +2765,9 @@ function testCareerAndEras() {
   const at = (xp: number, skills: SkillId[] = []) => ({ ...g, captains: g.captains.map(c => (c.id === 'p1' ? { ...c, xp, skills } : c)) });
   const novice = at(0);
   check(`${label}: no point, no skill`, processAction(novice, { type: 'LEARN_SKILL', skill: 'haggler' }) === novice);
-  const one = at(LEVEL_XP[1]);
+  const milestone = at(LEVEL_XP[1]);
+  check(`${label}: level 2 is a milestone with no point`, processAction(milestone, { type: 'LEARN_SKILL', skill: 'haggler' }) === milestone);
+  const one = at(LEVEL_XP[FIRST_SKILL_LEVEL - 1]);
   check(`${label}: never out of order`, processAction(one, { type: 'LEARN_SKILL', skill: 'merchantPrince' }) === one);
   const learned = processAction(one, { type: 'LEARN_SKILL', skill: 'haggler' });
   check(`${label}: a point buys a first-tier skill`, learned.captains[0].skills?.includes('haggler') === true);
@@ -2785,7 +2787,7 @@ function testCareerAndEras() {
 
   // A commodore's third charter.
   let cm = createInitialState('t-com', 'C', { humanNames: ['A'], aiCount: 1, seed: 'com', hazards: { ...on, charters: true } });
-  cm = { ...cm, captains: cm.captains.map(c => (c.id === 'p1' ? { ...c, xp: LEVEL_XP[3], skills: ['bosun', 'gunner'] as SkillId[] } : c)) };
+  cm = { ...cm, captains: cm.captains.map(c => (c.id === 'p1' ? { ...c, xp: LEVEL_XP[FIRST_SKILL_LEVEL + 1], skills: ['bosun', 'gunner'] as SkillId[] } : c)) };
   cm = processAction(cm, { type: 'ROLL' });
   const commodore = processAction(cm, { type: 'LEARN_SKILL', skill: 'commodore' });
   equal(`${label}: a commodore holds a third charter`, commodore.captains[0].charters?.length, CHARTERS_HELD + 1);
@@ -2917,6 +2919,57 @@ function testLetters() {
   check(`${label}: and is flagged before it does`, offersAwaiting(hand(g, { kind: 'shoreLeave', cost: 30 }), 'p1').length === 1);
 }
 
+/**
+ * Level-driven progression: with careers and eras both on, the game grows with the captain.
+ */
+function testProgression() {
+  const label = 'progression';
+  const full = { ...PRESETS.full.hazards };
+  const fresh = (humans: string[], ai: number, seed = 'prog') =>
+    createInitialState(`t-${seed}`, 'P', { humanNames: humans, aiCount: ai, seed, hazards: full });
+  const g = fresh(['A'], 3);
+  check(`${label}: the full race follows the level schedule`, levelDriven(g.rampPlan, g.rules));
+  equal(`${label}: it opens at stage 1`, g.era, 1);
+  const staged = LEVEL_ERAS.flatMap(e => e.brings);
+  check(
+    `${label}: and is the plain board — every staged rule held back`,
+    staged.every(k => !g.hazards?.[k]),
+    staged.filter(k => g.hazards?.[k]).join(', '),
+  );
+  check(`${label}: careers are on from the start, since they drive it`, g.hazards?.career === true);
+  check(`${label}: charters are dealt from the start, to point a beginner somewhere`, g.captains.every(c => (c.charters?.length ?? 0) === CHARTERS_HELD));
+
+  const setXp = (st: GameState, id: string, xp: number): GameState => ({ ...st, captains: st.captains.map(c => (c.id === id ? { ...c, xp } : c)) });
+  const turnRound = (st: GameState): GameState => runAiTurn({ ...st, activeIndex: st.captains.length - 1, phase: 'act' as const });
+
+  // A computer captain racing ahead does not drag a learner into rules they have not reached.
+  const aiAhead = turnRound(setXp(g, 'p2', LEVEL_XP[3]));
+  equal(`${label}: a computer captain's level does not set the pace`, aiAhead.era, 1);
+
+  // The human's level does, at the turn of the round.
+  const two = turnRound(setXp(g, 'p1', LEVEL_XP[1]));
+  equal(`${label}: level 2 opens stage 2`, two.era, 2);
+  check(`${label}: the chart opens`, two.hazards?.weather === true && two.hazards?.shipClasses === true);
+  check(`${label}: but not the dangers`, two.hazards?.piracy === false);
+  check(`${label}: and it is announced by level`, two.log.some(e => e.kind === 'era' && e.data?.level === 2));
+
+  // Two stages in one step opens both, and says so.
+  const jump = turnRound(setXp(g, 'p1', LEVEL_XP[3]));
+  equal(`${label}: a captain who jumps two levels jumps two stages`, jump.era, 4);
+  check(`${label}: everything planned is in play`, staged.every(k => jump.hazards?.[k] === (full as Record<string, boolean>)[k]));
+  check(`${label}: the commission clock starts today`, jump.contracts.every(c => (c.postedOn ?? 0) >= jump.round));
+
+  // With two humans the stronger sets the pace; with none, the strongest computer captain.
+  const hotseat = fresh(['A', 'B'], 2, 'prog2');
+  equal(`${label}: the stronger human sets the pace`, turnRound(setXp(hotseat, 'p2', LEVEL_XP[1])).era, 2);
+  const allAi = fresh([], 4, 'prog3');
+  equal(`${label}: an all-computer table follows its strongest`, turnRound(setXp(allAi, 'p3', LEVEL_XP[2])).era, 3);
+
+  // Careers off: the calendar schedule, unchanged.
+  const calendar = createInitialState('t-prog4', 'P', { humanNames: ['A'], aiCount: 1, seed: 'prog4', hazards: { ...full, career: false } });
+  check(`${label}: without careers the eras follow the calendar`, !levelDriven(calendar.rampPlan, calendar.rules) && calendar.hazards?.weather === true);
+}
+
 function main() {
   testPayoutLadder();
   testCargoRules();
@@ -2944,6 +2997,7 @@ function main() {
   testChartersAndRenown();
   testCareerAndEras();
   testLetters();
+  testProgression();
   testDeterminism();
 
   const reports: [string, GameReport][] = [];

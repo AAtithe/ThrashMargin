@@ -560,6 +560,50 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
+### Session 18 (2026-11-08) — the game grows with the captain
+
+The owner's brief: start as a very simple game and get more complicated as you level up, so a new
+player builds into it rather than being overwhelmed on the first turn. Session 15's eras ramped the
+game up by the calendar; whether or not the player had found their feet, round 13 brought pirates.
+
+**Level-driven progression** (`sim/eras.ts`, `LEVEL_ERAS`). With careers and eras both on, the
+stages follow the career level instead of the round:
+
+| Level | Stage | What arrives |
+|---|---|---|
+| 1 | The 1988 board | Dice, five cards, ten shares, and owners' charters |
+| 2 | The chart opens | Wind and weather, ship classes, quayside sales |
+| 3 | Rough seas | Pirates, encounters, cracking on, renown, letters |
+| 4 | The full race | Events, wages, loans, the tea race, the clock, the exchange, agents, hostile bids |
+
+The pace is set by the highest human captain (`tableLevel`), so a computer captain racing ahead
+never drags a learner into rules they have not reached; an all-computer table follows its
+strongest. Stages change at the turn of the round, announced with a "New at level N" card. Rules
+arriving mid-game are set up as they arrive (charters dealt, the commission clock restamped). The
+calendar schedule is unchanged when careers are off. Panels for rules not yet in play are hidden,
+the skill tree is one line until the first point, and the banner and career panel say what the
+next level opens.
+
+Three measurements shaped it:
+
+- **At the old levelling pace a learner never saw the whole game.** A median captain reached level
+  4 at round 50, and in 18 games in 100 not before the end. The early levels are quicker now:
+  level 2 around round 15, 3 around 24, 4 around 37 for a median captain, and every game reaches the
+  full race.
+- **Quicker levels meant earlier skills, which cost ten rounds of game length** (74 to 64). Level 2
+  is now a milestone without a skill point; points start at level 3 (`FIRST_SKILL_LEVEL`). Back to
+  74, then 70 once charters moved into the opening.
+- **A plain opening locks in an early leader.** On the 1988 board itself the round-30 share leader
+  wins 71% of games. With charters held to level 2 the progression game sat at 48.5% against 40.7%
+  with every rule in from the start. Hostile bids were not the lever (computer captains at the
+  default difficulty never bid); charters, which carry the catch-up payment, were. In force from
+  level 1: **43.7%**, inside the noise. They also give a beginner something to aim at.
+
+Pacing, 100 seeds: the 1988 board 73, merchant 84, high seas 68, full race 70. All finish.
+Verified: `npm run check` green (tea race 492,067 checks, 0 failed, including new progression
+tests), the guided tour run end to end, a new game in the browser opening as the plain board and
+reaching stage 2 at level 2, both modes and phone width.
+
 ### Session 17 (2026-11-08) — the captain's letters, wagers, and weather on the chart
 
 The owner asked for the game to be more interesting still. What was left flat: captains barely

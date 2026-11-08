@@ -19,7 +19,9 @@ export default function LettersPanel({
   dispatch: (action: GameAction) => void;
   enabled: boolean;
 }) {
-  if (!lettersOn(state) && !state.rampPlan?.letters) return null;
+  // Hidden until the post is actually arriving: a box announcing a rule you have not reached is the
+  // clutter the level-driven opening exists to remove. The era banner says what is coming.
+  if (!lettersOn(state)) return null;
   const letter = state.letters?.[captain.id];
   const errands = captain.errands ?? [];
   const wagers = (state.wagers ?? []).filter(w => w.a === captain.id || w.b === captain.id);
@@ -36,9 +38,6 @@ export default function LettersPanel({
   return (
     <Panel title="The post" aside={<Label>{letter ? 'a letter for you' : 'letters and wagers'}</Label>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-        {!lettersOn(state) && (
-          <p style={{ ...bodySmall, margin: 0, fontSize: '0.76rem', color: UI.textFaint }}>The post starts to arrive in Era II.</p>
-        )}
         {letter && (
           <LetterCard
             letter={letter}
@@ -48,7 +47,7 @@ export default function LettersPanel({
             onAnswer={accept => dispatch({ type: 'ANSWER_LETTER', accept })}
           />
         )}
-        {lettersOn(state) && quiet && (
+        {quiet && (
           <p style={{ ...bodySmall, margin: 0, fontSize: '0.76rem', color: UI.textFaint }}>
             Nothing in the post. Letters arrive at the top of a turn, about one turn in six.
           </p>

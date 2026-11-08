@@ -46,6 +46,7 @@ import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
 import { Vignette, type VignetteKind } from '../components/Art';
+import { FIRST_SKILL_LEVEL } from '../sim/career';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
@@ -247,17 +248,21 @@ export default function Tutorial() {
           </Rule>
           <Rule name="Captain careers" art="declare">
             Experience comes from landing cargo, being first home, the tea race, charters, encounters
-            taken up, and storms and pirates weathered. Each level brings a skill point for the tree:
+            taken up, and storms and pirates weathered. From level {FIRST_SKILL_LEVEL}, each level brings a skill point for the tree:
             Seamanship (Weather eye, Driver, Navigator), Trade (Haggler, Factor, Merchant prince) and
             Command (Bosun, Gunner, Commodore), each branch learned in order. Most captains reach level
             four or five by the close, so the top of a branch is a late-game prize. A captain behind
             on shares earns experience faster.
           </Rule>
           <Rule name="Eras" art="storm">
-            The game ramps up. Era I is trade and the wind. Era II, from round 13, brings pirates,
-            encounters, cracking on and world events. Era III, from round 31, brings the Great Tea
-            Race, the commission clock and hostile bids. Only the rules you chose in the lobby arrive;
-            the banner under the season shows what is coming next.
+            The game ramps up. With captain careers on, it grows with you rather than the calendar:
+            level 1 is the plain 1988 board and your owners' charters; level 2 opens the chart (wind
+            and weather, ship classes, quayside sales); level 3 the dangers (pirates, encounters, cracking on, renown,
+            letters); level 4 everything else (world events, wages and loans, the tea race, the
+            commission clock, the exchange, agents, hostile bids). Your own level sets the pace, never
+            a computer captain's. Without careers the eras follow the calendar: Era I from round 1,
+            Era II from round 13, Era III from round 31. Only the rules you chose in the lobby arrive,
+            and the banner under the season shows what is coming next.
           </Rule>
           <Rule name="The captain's letters" art="contract">
             About one turn in six a sealed letter arrives at the top of your turn, good for that turn

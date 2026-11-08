@@ -845,8 +845,10 @@ export const PRESETS = {
   full: {
     label: 'The full race',
     blurb:
-      'Everything, ramping up in eras: trade and the wind first, then pirates and the world, then ' +
-      'the tea race and the clock. Your captain levels up and learns skills as it goes.',
+      'Everything, but not all at once. You start on the plain 1988 board with your owners\' ' +
+      'charters to aim at, and each level your ' +
+      'captain earns opens the next layer: the chart, then the dangers, then the whole economy and ' +
+      'the tea race. You build into it rather than meeting it all on the first turn.',
     hazards: {
       weather: true,
       piracy: true,

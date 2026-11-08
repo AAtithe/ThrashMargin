@@ -78,9 +78,9 @@ import {
   charterReward,
 } from './rules';
 import { activeCaptain, isHotseat, shipsOf } from './state';
-import { eraFor, hazardsForEra } from './eras';
+import { currentEra, hazardsForEra, levelDriven, scheduleFor } from './eras';
 import { LETTER_TERMS, drawLetter, lettersOn, pairKey } from './letters';
-import { advance, charterText, chartersOn, drawCharter, isComplete, type CharterEvent } from './charters';
+import { advance, charterText, chartersOn, dealOpeningCharters, drawCharter, isComplete, type CharterEvent } from './charters';
 import {
   SKILL_BY_ID,
   SKILL_EFFECT,
@@ -575,6 +575,15 @@ function reckonVoyage(state: GameState): GameState {
 }
 
 const RULE_NAMES: Partial<Record<keyof import('./types').Hazards, string>> = {
+  weather: 'wind and weather',
+  shipClasses: 'ship classes',
+  quaysideSales: 'quayside sales',
+  charters: "owners' charters",
+  renown: 'ship renown',
+  wages: 'crew wages',
+  loans: 'loans',
+  stocks: 'the shipping exchange',
+  agents: 'port agents',
   piracy: 'pirates',
   encounters: 'encounters at sea',
   pressSail: 'cracking on',
@@ -595,23 +604,30 @@ const RULE_NAMES: Partial<Record<keyof import('./types').Hazards, string>> = {
 function turnTheEra(state: GameState): GameState {
   const plan = state.rampPlan;
   if (!plan || state.phase === 'over') return state;
-  const era = eraFor(state.round);
+  const schedule = scheduleFor(plan, state.rules);
+  const era = currentEra(state);
   if (era.era <= (state.era ?? 1)) return state;
 
-  const hazards = hazardsForEra(plan, era.era);
+  const hazards = hazardsForEra(plan, era.era, schedule);
   let s: GameState = { ...state, hazards, era: era.era };
   if (hazards.deadlines && !state.hazards?.deadlines) {
     s = { ...s, contracts: s.contracts.map(c => ({ ...c, postedOn: s.round })) };
   }
-  const arrived = era.brings.filter(k => hazards[k]).map(k => RULE_NAMES[k] ?? k);
+  // Charters arriving mid-game are dealt the moment they come into play.
+  if (hazards.charters && !state.hazards?.charters) s = dealOpeningCharters(s);
+
+  // A captain who levelled twice in one round arrives two stages on, and is told about both.
+  const passed = schedule.filter(e => e.era > (state.era ?? 1) && e.era <= era.era);
+  const arrived = passed.flatMap(e => e.brings).filter(k => hazards[k]).map(k => RULE_NAMES[k] ?? k);
+  const byLevel = era.level !== undefined && levelDriven(plan, state.rules);
   return log(
     s,
     'era',
-    `A new era: ${era.name}. ${
+    `${byLevel ? `Level ${era.level} — ${era.name}` : `A new era: ${era.name}`}. ${
       arrived.length ? `${arrived[0].charAt(0).toUpperCase()}${arrived.join(', ').slice(1)} ${arrived.length === 1 ? 'comes' : 'come'} into play.` : era.blurb
     }`,
     null,
-    { era: era.era },
+    { era: era.era, ...(byLevel ? { level: era.level! } : {}) },
   );
 }
 

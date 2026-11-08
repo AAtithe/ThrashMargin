@@ -72,12 +72,13 @@ export const XP_FOR = {
 /**
  * AUTHORED — experience to reach each level; level 1 is where everyone starts.
  *
- * Measured, then doubled. The first table had captains averaging level 3.5 by round 30 and 6.2 by
- * the close, so most owned the whole Seamanship branch — a point of speed on every ship on every
- * roll — long before the late game, and the merchant's game shortened from 90 rounds to 78. A ramp
- * needs the top of the tree to be a late-game prize.
+ * Measured twice. The first table had captains at level 3.5 by round 30, so the whole Seamanship
+ * branch arrived long before the late game; doubling it fixed that. Then levels began to open the
+ * game itself (see eras.ts), and at the doubled pace a middling captain reached the full game only
+ * at round 50, and in 18 games in 100 never. The early levels are quicker again, and skills start at
+ * level 3 (FIRST_SKILL_LEVEL) so their pace is unchanged.
  */
-export const LEVEL_XP = [0, 25, 60, 110, 175, 255, 350, 460, 590];
+export const LEVEL_XP = [0, 15, 38, 75, 140, 220, 315, 425, 555];
 export const MAX_LEVEL = LEVEL_XP.length;
 
 /**
@@ -104,8 +105,19 @@ export function levelProgress(xp: number | undefined): { level: number; into: nu
 
 export const hasSkill = (c: Captain | undefined, id: SkillId): boolean => Boolean(c?.skills?.includes(id));
 
-/** Points to spend: one per level above the first, less those already spent. */
-export const skillPoints = (c: Captain): number => levelFor(c.xp) - 1 - (c.skills?.length ?? 0);
+/**
+ * AUTHORED — the level that brings the first skill point; every level after it brings one more.
+ *
+ * Level 2 is a milestone without a point on purpose. When the game grows with the captain, the
+ * levels have to come quickly enough that a middling captain sees the whole game — but skills that
+ * early shortened games by ten rounds (74 against 64 over 100 seeds). Starting the points a level
+ * later keeps unlocks quick and skills where they were.
+ */
+export const FIRST_SKILL_LEVEL = 3;
+
+/** Points to spend: one per level from FIRST_SKILL_LEVEL on, less those already spent. */
+export const skillPoints = (c: Captain): number =>
+  Math.max(0, levelFor(c.xp) - (FIRST_SKILL_LEVEL - 1)) - (c.skills?.length ?? 0);
 
 export function canLearn(c: Captain, id: SkillId): boolean {
   const skill = SKILL_BY_ID[id];
