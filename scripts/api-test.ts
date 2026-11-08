@@ -311,6 +311,12 @@ async function suite(mode: 'fresh' | 'legacy') {
 
   // --- Every game's saves, through the one /api/play function -------------------------------------
   const A2 = annAgain.body.token as string;
+  // The Founder's Ledger is opt-in (shared/games.ts): off until an admin turns it on. Ann gets it here
+  // so the checks below cover every game; the opt-in rules have their own section further down.
+  const ledgerOn = await adminApi('PATCH', 'access', T, { id: annAgain.body.userId, game: 'founders_ledger', enabled: true });
+  ok(ledgerOn.status === 200 && ledgerOn.body.games.includes('founders_ledger'), 'access: an opt-in game turned on for ann');
+  // Tom too, so "another player cannot load it" below reaches the handler's owner check, not the 403.
+  ok((await adminApi('PATCH', 'access', T, { id: tom.body.userId, game: 'founders_ledger', enabled: true })).status === 200, 'access: and for tom');
   for (const g of GAMES as { key: string; slug: string; label: string }[]) {
     ok((await play('GET', g.slug, undefined)).status === 401, `${g.slug}: no token, 401`);
     const created = await play('POST', g.slug, A2, undefined, { name: `${g.label} test` });
@@ -339,10 +345,15 @@ async function suite(mode: 'fresh' | 'legacy') {
 
   // --- Game access (Admin page) -------------------------------------------------------------------
   const allKeys = (GAMES as { key: string }[]).map(g => g.key);
+  // Every game but the opt-in ones: what an account whose access was never set has.
+  const defaultKeys = (GAMES as { key: string; optIn?: boolean }[]).filter(g => !g.optIn).map(g => g.key);
   const annLogin2 = await auth('login', { username: 'ann', password: reset.body.temporaryPassword });
-  ok(JSON.stringify(annLogin2.body.games) === JSON.stringify(allKeys), 'access: an account from before access control has every game');
+  ok(JSON.stringify(annLogin2.body.games) === JSON.stringify(allKeys), 'access: ann has every game, the opt-in one included');
   const settings0 = await adminApi('GET', 'settings', T);
-  ok(settings0.status === 200 && settings0.body.saved === false && settings0.body.newAccountGames.length === allKeys.length, 'access: new accounts default to every game until the setting is saved');
+  ok(
+    settings0.status === 200 && settings0.body.saved === false && JSON.stringify(settings0.body.newAccountGames) === JSON.stringify(defaultKeys),
+    'access: new accounts default to every game but the opt-in ones until the setting is saved',
+  );
   ok((await adminApi('PUT', 'settings', A2, { newAccountGames: ['tea_race'] })).status === 403, 'access: a non-admin cannot change the new-account setting');
   ok((await adminApi('PUT', 'settings', T, { newAccountGames: ['tea_race', 'nope'] })).status === 400, 'access: unknown game key refused');
   ok((await adminApi('PUT', 'settings', T, { newAccountGames: 'tea_race' })).status === 400, 'access: setting must be a list');
@@ -403,6 +414,48 @@ async function suite(mode: 'fresh' | 'legacy') {
     `access: every change recorded in the history (got ${JSON.stringify(accessAudit)})`,
   );
 
+  // --- Opt-in games (The Founder's Ledger) -----------------------------------------------------------
+  // An account whose access was never set has every game but the opt-in ones.
+  await admin.query(`UPDATE users SET game_access = NULL WHERE username = 'carol'`);
+  const carolIn = await auth('login', { username: 'carol', password: 'secret11' });
+  const CA = carolIn.body.token as string;
+  ok(JSON.stringify(carolIn.body.games) === JSON.stringify(defaultKeys), 'opt-in: an account at every game does not have the opt-in one');
+  ok((await play('GET', 'founders-ledger', CA)).status === 403, 'opt-in: that account is refused it (403)');
+  ok((await play('GET', 'tea-race', CA)).status === 200, 'opt-in: and keeps every ordinary game');
+  // Turning an ordinary game off for everyone gives a NULL account the defaults minus that game, never the opt-in one.
+  await adminApi('POST', 'access-all', T, { game: 'tea_race', enabled: false });
+  const carolAfterOff = await admin.query(`SELECT game_access FROM users WHERE username = 'carol'`);
+  ok(
+    JSON.stringify(carolAfterOff.rows[0].game_access) === JSON.stringify(defaultKeys.filter(k => k !== 'tea_race')),
+    `opt-in: an ordinary game off for everyone leaves the opt-in one off (got ${JSON.stringify(carolAfterOff.rows[0].game_access)})`,
+  );
+  await adminApi('POST', 'access-all', T, { game: 'tea_race', enabled: true });
+  // Turning the opt-in game off for everyone leaves NULL accounts alone: they never had it.
+  await admin.query(`UPDATE users SET game_access = NULL WHERE username = 'carol'`);
+  await adminApi('POST', 'access-all', T, { game: 'founders_ledger', enabled: false });
+  const carolStill = await admin.query(`SELECT game_access FROM users WHERE username = 'carol'`);
+  ok(carolStill.rows[0].game_access === null, 'opt-in: turning it off for everyone does not rewrite accounts that never had it');
+  // On for everyone reaches NULL accounts too, in the portal's order, and keeps their other games.
+  const ledgerAll = await adminApi('POST', 'access-all', T, { game: 'founders_ledger', enabled: true });
+  ok(ledgerAll.status === 200, 'opt-in: on for everyone');
+  ok((await play('GET', 'founders-ledger', CA)).status === 200 && (await play('GET', 'founders-ledger', T)).status === 200, 'opt-in: on for everyone includes accounts at every game');
+  const carolNow = await admin.query(`SELECT game_access FROM users WHERE username = 'carol'`);
+  ok(JSON.stringify(carolNow.rows[0].game_access) === JSON.stringify(allKeys), `opt-in: a NULL account gets the defaults plus the opt-in game (got ${JSON.stringify(carolNow.rows[0].game_access)})`);
+  await adminApi('POST', 'access-all', T, { game: 'founders_ledger', enabled: false });
+  ok((await play('GET', 'founders-ledger', CA)).status === 403 && (await play('GET', 'tea-race', CA)).status === 200, 'opt-in: off for everyone again, other games kept');
+  await adminApi('PATCH', 'access', T, { id: annAgain.body.userId, game: 'founders_ledger', enabled: true });
+  // One ledger per account, and only a ledger is accepted as one.
+  const ledgerList = await play('GET', 'founders-ledger', A2);
+  ok(ledgerList.status === 200 && ledgerList.body.saves.length === 1, 'ledger: one ledger listed');
+  const again = await play('POST', 'founders-ledger', A2, undefined, {});
+  ok(again.status === 200 && again.body.gameId === ledgerList.body.saves[0].id, 'ledger: a second create returns the existing ledger');
+  ok((await play('GET', 'founders-ledger', A2)).body.saves.length === 1, 'ledger: still one ledger');
+  const notLedger = await play('PUT', 'founders-ledger', A2, ledgerList.body.saves[0].id, { state: { round: 1 } });
+  ok(notLedger.status === 400, `ledger: a state that is not a ledger refused (got ${notLedger.status})`);
+  const withReview = await play('PUT', 'founders-ledger', A2, ledgerList.body.saves[0].id, { state: { v: 2, reviews: [{ ts: 1 }, { ts: 2 }] } });
+  ok(withReview.status === 200, 'ledger: a ledger saved');
+  ok((await play('GET', 'founders-ledger', A2)).body.saves[0].turn === 2, 'ledger: the list counts its Friday reviews');
+
   // --- Shared game list ---------------------------------------------------------------------------
   const profile = await call(handlers.profile, 'GET', {}, undefined, A2);
   const counts = profile.body.gamesByTitle as Record<string, number>;
@@ -430,7 +483,9 @@ async function suite(mode: 'fresh' | 'legacy') {
   );
 
   // --- Storage limits ---------------------------------------------------------------------------------
-  for (const g of GAMES as { slug: string }[]) {
+  // The Founder's Ledger keeps one ledger per account, so a second create returns the first (checked
+  // in its own section); it takes no names or seed to cut down.
+  for (const g of (GAMES as { slug: string }[]).filter(x => x.slug !== 'founders-ledger')) {
     const odd = await play('POST', g.slug, A2, undefined, { name: 12345, humanNames: Array(500).fill('x'.repeat(5000)), seed: 'y'.repeat(10000) });
     ok(odd.status === 201, `${g.slug}: odd create body accepted with safe values, not a server error (got ${odd.status})`);
     if (odd.status === 201) {
