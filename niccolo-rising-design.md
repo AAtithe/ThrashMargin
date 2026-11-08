@@ -341,3 +341,22 @@ reduced-motion preference and nothing stored) every screen renders the markup it
   Watch). The button is never held.
 - **The Chronicle's new lines rise in**, oldest first, a beat apart. Lines already there when the
   character loads, or written while motion was off, appear at once.
+
+### Shared motion toolkit, and stays that survive a reload, 2026-11-08
+
+- **Onto the portal's helpers.** `components/motion.tsx` now builds on `lib/motion.ts` instead of
+  its own copies: `replay` became the shared `replayClass`, `useFloats` the shared one (sized here
+  by `useGameFloats`: 1.1 s, at most three), and `Floats` renders the shared `FloatText`, keeping
+  only this game's placement (left of a value, right of it, or above a button) and the data face.
+  `Tally`'s fallback float text is the shared `signed`. `Tally`, `TimerBar`, `Countdown`,
+  `Outcome`/`OutcomeContext` and `Anchor` stay here, being this game's own. Nothing looks different;
+  the reduced-motion rule in `styles.css` now hides `.tm-anim-float` (the old `.nr-float` class is
+  gone with the local markup).
+- **The Infirmary and the Steen record when the stay began.** Both statuses gain an optional
+  `since`, set to the action's `at` at every site that puts a character there (a scheme caught by
+  the Watch or gone wrong, a duel lost, a mission's injury: `sim/actions.ts`). The one sim change,
+  and a pure one: no clock, only `at`. A bandage or theriac shortening the stay keeps `since` and
+  moves `until`, so the bar jumps forward, as it should. The progress bar now runs from `since`, so a
+  reload resumes it at the right fraction instead of from empty; saves written before this lack
+  `since` and still load, and their bar falls back to running from when the screen first showed the
+  stay. The driver passes unchanged at 10,417,487 assertions.

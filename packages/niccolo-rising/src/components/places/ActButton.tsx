@@ -1,9 +1,9 @@
 import { useContext, useEffect, useId, useRef } from 'react';
 import type { ReactNode } from 'react';
-import { usePace } from '../../lib/motion';
+import { replayClass, usePace } from '../../lib/motion';
 import { UI } from '../../theme';
 import { Button } from '../ui';
-import { Anchor, Floats, OutcomeContext, replay, useFloats } from '../motion';
+import { Anchor, Floats, OutcomeContext, useGameFloats } from '../motion';
 import type { PlaceProps, Verb } from '../types';
 
 /**
@@ -17,10 +17,10 @@ export default function ActButton({ p, verb, children, tone, id }: { p: PlacePro
   const pace = usePace();
   const outcome = useContext(OutcomeContext);
   const box = useRef<HTMLSpanElement>(null);
-  const { items, push } = useFloats();
+  const { items, push } = useGameFloats();
   useEffect(() => {
     if (!outcome || outcome.origin !== origin || pace === 'off') return;
-    if (outcome.result !== 'ok') replay(box.current, 'tm-anim-shake');
+    if (outcome.result !== 'ok') replayClass(box.current, 'tm-anim-shake');
     for (const g of outcome.gains) push(g.text, g.good ? UI.good : UI.bad);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [outcome]);

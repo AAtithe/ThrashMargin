@@ -206,7 +206,7 @@ export default function GameScreen() {
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
                 Laid up after {st.reason}. Out in {duration(st.until - now)}. Bandages and theriac shorten the stay.
               </p>
-              <Countdown until={st.until} now={now} colour={UI.bad} />
+              <Countdown since={st.since} until={st.until} now={now} colour={UI.bad} />
               <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'bandage' }}>Use bandages ({view.inventory.bandage ?? 0})</ActButton>
                 <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'theriac' }}>Use theriac ({view.inventory.theriac ?? 0})</ActButton>
@@ -218,7 +218,7 @@ export default function GameScreen() {
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
                 Taken for {st.reason.toLowerCase()}. Released in {duration(st.until - now)}, or sooner if the gaoler is paid.
               </p>
-              <Countdown until={st.until} now={now} colour={UI.bad} />
+              <Countdown since={st.since} until={st.until} now={now} colour={UI.bad} />
               <ActButton p={props} verb={{ type: 'BRIBE' }}>Bribe the gaoler, {gr(bribeCost(view))}</ActButton>
             </Panel>
           )}

@@ -1,6 +1,7 @@
-import { createContext, useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { paced, useCountUp, usePace } from '../lib/motion';
+import { FloatText, replayClass, signed, useCountUp, useFloats, usePace } from '../lib/motion';
+import type { FloatItem } from '../lib/motion';
 import { FONT, UI } from '../theme';
 
 /**
@@ -30,44 +31,19 @@ export interface Outcome {
 
 export const OutcomeContext = createContext<Outcome | null>(null);
 
-/** Restart a one-shot animation class on an element without remounting it (which would drop focus). */
-export function replay(el: HTMLElement | null, cls: string): void {
-  if (!el) return;
-  el.classList.remove('tm-anim-pulse', 'tm-anim-shake', 'tm-anim-pop');
-  void el.offsetWidth;
-  el.classList.add(cls);
-}
+/** How long a float lives and how many stack at once (this game shows at most three). */
+const FLOAT_MS = 1100;
+const FLOAT_MAX = 3;
 
-interface FloatItem {
-  id: number;
-  text: string;
-  colour: string;
-}
-
-let nextFloat = 0;
-
-/** A short-lived stack of floating "+12 gr" markers. Nothing is added while motion is off. */
-export function useFloats(): { items: FloatItem[]; push: (text: string, colour: string) => void } {
-  const pace = usePace();
-  const [items, setItems] = useState<FloatItem[]>([]);
-  const timers = useRef<number[]>([]);
-  useEffect(() => () => timers.current.forEach(t => window.clearTimeout(t)), []);
-  const push = useCallback(
-    (text: string, colour: string) => {
-      const ms = paced(1100, pace);
-      if (ms <= 0) return;
-      const id = ++nextFloat;
-      setItems(prev => [...prev.slice(-2), { id, text, colour }]);
-      timers.current.push(window.setTimeout(() => setItems(prev => prev.filter(f => f.id !== id)), ms + 60));
-    },
-    [pace],
-  );
-  return { items, push };
+/** The portal's floating-amount stack, sized for this game's markers. */
+export function useGameFloats() {
+  return useFloats(FLOAT_MS, FLOAT_MAX);
 }
 
 /** Where a float drifts up from: beside the value (left or right of it) or above a button. */
 export type FloatSide = 'left' | 'right' | 'above';
 
+/** The shared FloatText, placed beside a value or above a button and set in the data face. */
 export function Floats({ items, side }: { items: FloatItem[]; side: FloatSide }) {
   return (
     <>
@@ -78,26 +54,7 @@ export function Floats({ items, side }: { items: FloatItem[]; side: FloatSide })
             : side === 'right'
               ? { left: '100%', marginLeft: 6, top: `${-i * 1.05}em` }
               : { right: '100%', marginRight: 6, top: `${-i * 1.05}em` };
-        return (
-          <span
-            key={f.id}
-            aria-hidden="true"
-            className="tm-anim-float nr-float"
-            style={{
-              position: 'absolute',
-              ...place,
-              color: f.colour,
-              fontFamily: FONT.data,
-              fontSize: '0.72rem',
-              fontWeight: 600,
-              whiteSpace: 'nowrap',
-              pointerEvents: 'none',
-              zIndex: 2,
-            }}
-          >
-            {f.text}
-          </span>
-        );
+        return <FloatText key={f.id} text={f.text} colour={f.colour} style={{ ...place, fontFamily: FONT.data, fontSize: '0.72rem', zIndex: 2 }} />;
       })}
     </>
   );
@@ -128,14 +85,14 @@ export function Tally({
   const shown = useCountUp(value, ms, decimals);
   const ref = useRef<HTMLSpanElement>(null);
   const prev = useRef(value);
-  const { items, push } = useFloats();
+  const { items, push } = useGameFloats();
   useEffect(() => {
     const delta = value - prev.current;
     prev.current = value;
     if (delta === 0 || pace === 'off') return;
-    replay(ref.current, 'tm-anim-pulse');
+    replayClass(ref.current, 'tm-anim-pulse');
     if (float && Math.abs(delta) >= 10 ** -decimals / 2) {
-      const text = floatFormat ? floatFormat(delta) : `${delta > 0 ? '+' : '−'}${format(Math.abs(delta))}`;
+      const text = floatFormat ? floatFormat(delta) : signed(delta, format);
       push(text, delta > 0 ? UI.good : UI.bad);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -181,10 +138,11 @@ export function Anchor({ children, innerRef }: { children: ReactNode; innerRef?:
 }
 
 /**
- * A TimerBar for a wait whose start the state does not record (the Infirmary, the Steen): it runs
- * from the moment this screen first showed the wait to its end. Mount it with the panel it sits in.
+ * A TimerBar for a stay in the Infirmary or the Steen. Saves from 2026-11-08 record when the stay
+ * began (`since`) and the bar runs from there, so it survives a reload; older saves do not, and the
+ * bar then runs from the moment this screen first showed the stay. Mount it with the panel it sits in.
  */
-export function Countdown({ until, now, colour }: { until: number; now: number; colour: string }) {
-  const [from] = useState(now);
-  return <TimerBar start={from} end={until} now={now} colour={colour} />;
+export function Countdown({ since, until, now, colour }: { since?: number; until: number; now: number; colour: string }) {
+  const [firstSeen] = useState(now);
+  return <TimerBar start={since ?? firstSeen} end={until} now={now} colour={colour} />;
 }
