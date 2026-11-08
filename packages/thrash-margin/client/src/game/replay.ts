@@ -4,7 +4,7 @@
  * The engine plays every AI faction inside END_TURN and returns the finished state at once. This
  * module reads what changed (the new chronicle lines and the board before and after) and lays it
  * out as a short list of beats: a banner per AI faction, then each territory it took, each attack
- * that broke on a wall, each annexation. The screen steps through the beats (see useBeats) while
+ * that broke on a wall, each annexation. The screen steps through the beats (useSteps, in Game.tsx) while
  * the real state is already applied and saved. Nothing here feeds back into the game.
  *
  * Pure: no clock, no randomness, no DOM.

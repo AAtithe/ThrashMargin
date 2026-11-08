@@ -3,7 +3,7 @@
  */
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { useCountUp } from '../lib/motion';
+import { FloatText, useCountUp, type FloatItem } from '../lib/motion';
 import { FONT, UI, signed } from '../theme';
 import Icon, { type IconName } from './Icon';
 
@@ -83,9 +83,6 @@ export function Muted({ children, style }: { children: ReactNode; style?: CSSPro
   return <p style={{ margin: 0, fontSize: 12, color: UI.textSoft, lineHeight: 1.5, ...style }}>{children}</p>;
 }
 
-/** A floating "+12" over a chip: `id` must be new for each marker so it animates afresh. */
-export interface ChipFloat { id: number; amount: number; note?: string }
-
 /** A resource with its stock and, optionally, its per-turn change. */
 export function Chip({ kind, value, rate, compact, title, animate, floats }: {
   kind: keyof typeof RESOURCE_META;
@@ -95,8 +92,8 @@ export function Chip({ kind, value, rate, compact, title, animate, floats }: {
   title?: string;
   /** Count a numeric value up or down to its new figure instead of snapping (paced). */
   animate?: boolean;
-  /** Changes to float up from the chip (income, upkeep, spending). */
-  floats?: ChipFloat[];
+  /** Changes to float up from the chip (income, upkeep, spending): the `items` of a `useFloats`. */
+  floats?: FloatItem[];
 }) {
   const m = RESOURCE_META[kind];
   const counted = useCountUp(typeof value === 'number' ? value : 0, 650);
@@ -117,25 +114,33 @@ export function Chip({ kind, value, rate, compact, title, animate, floats }: {
 }
 
 /**
- * Floating markers drawn in a fixed layer over the page, so the scrolling chip row (which clips
- * anything outside it) does not cut them off. Several markers on one chip stack downwards.
+ * The shared `FloatText`s, drawn in a fixed layer over the page rather than inside the chip: the
+ * chip row scrolls sideways (`overflow-x: auto`), which clips anything that rises out of it.
+ * Markers that arrive together (a turn's harvest and upkeep on the food chip) stack downwards and
+ * set off 120ms apart; each keeps the slot it arrived with, so one leaving never moves the others.
  */
-function Floats({ anchor, floats }: { anchor: RefObject<HTMLSpanElement>; floats: ChipFloat[] }) {
+function Floats({ anchor, floats }: { anchor: RefObject<HTMLSpanElement>; floats: FloatItem[] }) {
   const [at, setAt] = useState<{ x: number; y: number } | null>(null);
+  const slots = useRef(new Map<number, number>());
   const ids = floats.map(f => f.id).join(',');
   useLayoutEffect(() => {
     const r = anchor.current?.getBoundingClientRect();
     setAt(r ? { x: r.left + 18, y: r.bottom - 2 } : null);
   }, [anchor, ids]);
+  // Slot = place within the batch that arrived together; forget markers that have gone.
+  let fresh = 0;
+  for (const f of floats) if (!slots.current.has(f.id)) slots.current.set(f.id, fresh++);
+  for (const id of slots.current.keys()) if (!floats.some(f => f.id === id)) slots.current.delete(id);
   if (!at) return null;
   return createPortal(
     <>
-      {floats.map((f, i) => (
-        <span key={f.id} className="tm-anim-float tm-num"
-          style={{ position: 'fixed', left: at.x, top: at.y + i * 13, zIndex: 260, fontFamily: FONT.data, fontSize: 12, fontWeight: 700, whiteSpace: 'nowrap', color: f.amount >= 0 ? UI.good : UI.bad, textShadow: `0 0 3px ${UI.panel}`, animationDelay: `calc(${i * 120}ms * var(--tm-motion))` }}>
-          {signed(f.amount)}{f.note ? ` ${f.note}` : ''}
-        </span>
-      ))}
+      {floats.map(f => {
+        const i = slots.current.get(f.id) ?? 0;
+        return (
+          <FloatText key={f.id} text={f.text} colour={f.colour}
+            style={{ position: 'fixed', left: at.x, top: at.y + i * 13, zIndex: 260, fontFamily: FONT.data, fontSize: 12, fontWeight: 700, fontVariantNumeric: 'tabular-nums', textShadow: `0 0 3px ${UI.panel}`, animationDelay: `calc(${i * 120}ms * var(--tm-motion))` }} />
+        );
+      })}
     </>,
     document.body,
   );

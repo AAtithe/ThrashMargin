@@ -19,10 +19,9 @@ import { AttackOrders, MoveOrders } from '../components/OrdersPanel';
 import RealmPanel from '../components/RealmPanel';
 import ResearchPanel from '../components/ResearchPanel';
 import TerritoryPanel from '../components/TerritoryPanel';
-import { Button, Chip, type ChipFloat } from '../components/ui';
+import { Button, Chip } from '../components/ui';
 import { battleOutcome, boardAt, deriveBeats, type Beat } from '../game/replay';
-import { useBeats } from '../hooks/useBeats';
-import { paced, useCountUp, usePace, useSkipOnInput } from '../lib/motion';
+import { paced, signed, useCountUp, useFloats, usePace, useSkipOnInput, useSteps } from '../lib/motion';
 import { marksFor, orderKind, suggestColumns, undoable } from '../game/plan';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { FONT, UI } from '../theme';
@@ -77,7 +76,20 @@ function Game({ id }: { id: string | undefined }) {
   const [replay, setReplay] = useState<Replay | null>(null);
   const replayRef = useRef<Replay | null>(null);
   const [battle, setBattle] = useState<MapFx | null>(null);
-  const [floats, setFloats] = useState<Partial<Record<FloatKind, ChipFloat[]>>>({});
+  // One float list per resource chip. Kept for 1.6s: the CSS float runs 1.1s, and a second marker
+  // on the same chip (food: harvest, then upkeep) starts 120ms after the first.
+  const goldFloats = useFloats(1600);
+  const foodFloats = useFloats(1600);
+  const matFloats = useFloats(1600);
+  const influenceFloats = useFloats(1600);
+  const popFloats = useFloats(1600);
+  const floats: Record<FloatKind, ReturnType<typeof useFloats>> = { gold: goldFloats, food: foodFloats, mat: matFloats, influence: influenceFloats, pop: popFloats };
+  const floatsRef = useRef(floats);
+  floatsRef.current = floats;
+  /** Float a resource change up from its chip ("+12", "−3 upkeep"), green for a gain, red for a cost. */
+  const floatOn = useCallback((k: FloatKind, amount: number, note?: string) => {
+    if (amount) floatsRef.current[k].push(signed(amount) + (note ? ` ${note}` : ''), amount >= 0 ? UI.good : UI.bad);
+  }, []);
   const fxSeq = useRef(0);
   /**
    * The guided turn, once started. Latched in state rather than recomputed per render: the plan
@@ -109,17 +121,12 @@ function Game({ id }: { id: string | undefined }) {
     return () => window.clearTimeout(t);
   }, [state]);
 
-  // Battle effects and floating markers clear themselves once their animation has run.
+  // Battle effects clear themselves once their animation has run (chip floats remove themselves).
   useEffect(() => {
     if (!battle) return;
     const t = window.setTimeout(() => setBattle(null), Math.max(200, paced(1300)));
     return () => window.clearTimeout(t);
   }, [battle]);
-  useEffect(() => {
-    if (!Object.keys(floats).length) return;
-    const t = window.setTimeout(() => setFloats({}), Math.max(200, paced(1600)));
-    return () => window.clearTimeout(t);
-  }, [floats]);
 
   useEffect(() => {
     if (!toast) return;
@@ -172,35 +179,28 @@ function Game({ id }: { id: string | undefined }) {
       const inc = next.reports[me]?.income;
       // Income and upkeep land on the same faction's chips; in hot seat the bar now shows another.
       if (inc && next.activeFaction === me) {
-        const fl: Partial<Record<FloatKind, ChipFloat[]>> = {};
-        const add = (k: FloatKind, amount: number, note?: string) => {
-          if (amount) (fl[k] ??= []).push({ id: ++fxSeq.current, amount, note });
-        };
-        add('gold', inc.gold);
-        add('food', inc.food);
-        add('food', -inc.upkeep, 'upkeep');
-        add('mat', inc.mat);
-        add('influence', inc.influence);
-        add('pop', inc.population);
-        setFloats(fl);
+        floatOn('gold', inc.gold);
+        floatOn('food', inc.food);
+        floatOn('food', -inc.upkeep, 'upkeep');
+        floatOn('mat', inc.mat);
+        floatOn('influence', inc.influence);
+        floatOn('pop', inc.population);
       }
       return;
     }
     // Anything else the player does: float what it cost or earned.
     const a = before.factions[me].resources, b = next.factions[me].resources;
-    const fl: Partial<Record<FloatKind, ChipFloat[]>> = {};
     const diff: Array<[FloatKind, number]> = [['gold', b.gold - a.gold], ['food', b.food - a.food], ['mat', b.mat - a.mat], ['influence', b.influence - a.influence], ['pop', b.population - a.population]];
-    for (const [k, d] of diff) if (d) fl[k] = [{ id: ++fxSeq.current, amount: d }];
-    setFloats(fl);
+    for (const [k, d] of diff) floatOn(k, d);
     if (action.type === 'ATTACK') {
       const o = battleOutcome(before, next, action);
       const fx: MapFx = { key: id, nodes: new Map([[action.toId, o.captured ? 'pop' : 'shake']]), floats: [] };
       // Green: what the defender lost. Red: what the assault cost you (at the source if it failed).
-      if (o.defenderLoss) fx.floats.push({ node: action.toId, text: `−${o.defenderLoss}`, tone: 'good', dx: o.captured && o.attackerLoss ? -12 : 0 });
-      if (o.attackerLoss) fx.floats.push({ node: o.captured ? action.toId : action.fromId, text: `−${o.attackerLoss}`, tone: 'bad', dx: o.captured && o.defenderLoss ? 12 : 0 });
+      if (o.defenderLoss) fx.floats.push({ node: action.toId, text: signed(-o.defenderLoss), tone: 'good', dx: o.captured && o.attackerLoss ? -12 : 0 });
+      if (o.attackerLoss) fx.floats.push({ node: o.captured ? action.toId : action.fromId, text: signed(-o.attackerLoss), tone: 'bad', dx: o.captured && o.defenderLoss ? 12 : 0 });
       setBattle(fx);
     }
-  }, [state, game, selected, clear]);
+  }, [state, game, selected, clear, floatOn]);
 
   const undo = useCallback(() => {
     if (!undoStack.length || state?.status !== 'active') return;
@@ -265,9 +265,12 @@ function Game({ id }: { id: string | undefined }) {
   }, [clear, endTurn, undo, modal, state]);
 
   // The AI replay: which beat is showing. Held back while a hot-seat hand-over screen is up.
+  // `useSteps` reports the beat on screen (0 … count-1, then count when done); everything below
+  // reads `beat.index` as beats *revealed*, so beat i on screen is i + 1 revealed.
   const durations = useMemo(() => replay?.beats.map(b => b.ms) ?? [], [replay]);
   const replayLive = !!replay && !!state && state === replay.after && !passNeeded(state, readyFor);
-  const beat = useBeats(replayLive && replay ? String(replay.id) : null, durations);
+  const steps = useSteps(replayLive && replay ? replay.id : null, durations);
+  const beat = { index: steps.playing ? steps.index + 1 : durations.length, playing: steps.playing, skip: steps.skip };
   useSkipOnInput(beat.playing, beat.skip);
 
   const nextAct = useCallback(async () => {
@@ -313,7 +316,7 @@ function Game({ id }: { id: string | undefined }) {
     ? {
       key: replay.id * 1000 + beat.index,
       nodes: new Map([[current.node, current.kind === 'repelled' ? 'shake' : current.againstViewer ? 'hit' : 'pop']]),
-      floats: current.viewerLoss ? [{ node: current.node, text: `−${current.viewerLoss}`, tone: 'bad' }] : [],
+      floats: current.viewerLoss ? [{ node: current.node, text: signed(-current.viewerLoss), tone: 'bad' }] : [],
     }
     : battle;
   const kind = orderKind(state, selected, target);
@@ -341,11 +344,11 @@ function Game({ id }: { id: string | undefined }) {
         </div>
         <ApPips key={me} left={state.actionsLeft} max={unlimited ? 0 : Math.max(state.actionsLeft, state.config.apPerTurn)} unlimited={unlimited} animate={pace !== 'off'} />
         <div className="tm-chips" key={pace === 'off' ? undefined : `chips-${me}`} style={{ display: 'flex', alignItems: 'center', gap: 14, overflowX: 'auto', flex: 1, minWidth: 0 }}>
-          <Chip kind="gold" value={f.resources.gold} rate={inc.gold} animate floats={floats.gold} />
-          <Chip kind="food" value={f.resources.food} rate={inc.foodNet} title={`Food: grow ${inc.food}, troops eat ${inc.upkeep}`} animate floats={floats.food} />
-          <Chip kind="mat" value={f.resources.mat} rate={inc.mat} animate floats={floats.mat} />
-          {showDiplomacy && <Chip kind="influence" value={f.resources.influence} rate={inc.influence} animate floats={floats.influence} />}
-          {(f.resources.population > 0 || inc.population > 0) && <Chip kind="pop" value={f.resources.population} rate={inc.population} animate floats={floats.pop} />}
+          <Chip kind="gold" value={f.resources.gold} rate={inc.gold} animate floats={floats.gold.items} />
+          <Chip kind="food" value={f.resources.food} rate={inc.foodNet} title={`Food: grow ${inc.food}, troops eat ${inc.upkeep}`} animate floats={floats.food.items} />
+          <Chip kind="mat" value={f.resources.mat} rate={inc.mat} animate floats={floats.mat.items} />
+          {showDiplomacy && <Chip kind="influence" value={f.resources.influence} rate={inc.influence} animate floats={floats.influence.items} />}
+          {(f.resources.population > 0 || inc.population > 0) && <Chip kind="pop" value={f.resources.population} rate={inc.population} animate floats={floats.pop.items} />}
         </div>
         <span className="tm-spacer" />
         <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
