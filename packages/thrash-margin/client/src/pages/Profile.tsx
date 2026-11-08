@@ -52,10 +52,12 @@ export default function Profile() {
       if (!res.ok) { setLoadError(true); return; }
       const data = await res.json();
       setProfile(data);
-      // Keeps the nav's Admin link in step with a role granted or removed since sign-in.
+      // Keeps the nav's Admin link, and the games the lobbies offer, in step with changes an admin
+      // has made since sign-in.
       const stored = getStoredUser();
-      if (stored && stored.isAdmin !== (data.isAdmin === true)) {
-        setStoredUser({ ...stored, isAdmin: data.isAdmin === true });
+      const games = Array.isArray(data.games) ? data.games : stored?.games;
+      if (stored && (stored.isAdmin !== (data.isAdmin === true) || JSON.stringify(stored.games) !== JSON.stringify(games))) {
+        setStoredUser({ ...stored, isAdmin: data.isAdmin === true, ...(games ? { games } : {}) });
       }
       setNewEmail(data.email);
     } catch {

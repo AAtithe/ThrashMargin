@@ -44,13 +44,31 @@
       adminLink.hidden = u.isAdmin !== true;
       // Re-asked of the server on every visit, so a role granted or removed since sign-in shows
       // here without signing out and back in.
+      // Only the games this account has access to are shown (set per account on the Admin page).
+      // A courtesy again: /api/play refuses any game the account does not have. A session from
+      // before game access existed has no list, and shows every game until the profile answers.
+      function showGames(games) {
+        if (!Array.isArray(games)) return;
+        var cards = document.querySelectorAll('a.card[data-game]');
+        var shown = 0;
+        for (var i = 0; i < cards.length; i++) {
+          var on = games.indexOf(cards[i].getAttribute('data-game')) !== -1;
+          cards[i].hidden = !on;
+          if (on) shown++;
+        }
+        document.getElementById('no-games').hidden = shown > 0;
+      }
+      showGames(u.games);
       fetch('/api/profile', { headers: { Authorization: 'Bearer ' + localStorage.getItem('tm_token') } })
         .then(function (r) { return r.ok ? r.json() : null; })
         .then(function (p) {
           if (!p || typeof p.isAdmin !== 'boolean') return;
           adminLink.hidden = !p.isAdmin;
-          if (p.isAdmin !== u.isAdmin) {
+          showGames(p.games);
+          // Stored, so the lobbies (session.ts, hasGameAccess) see the same list.
+          if (p.isAdmin !== u.isAdmin || JSON.stringify(p.games) !== JSON.stringify(u.games)) {
             u.isAdmin = p.isAdmin;
+            if (Array.isArray(p.games)) u.games = p.games;
             localStorage.setItem('tm_user', JSON.stringify(u));
           }
         })

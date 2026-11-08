@@ -128,10 +128,12 @@ async function resetDatabase(mode: 'fresh' | 'legacy') {
       SET ROLE ${API_ROLE};
       ALTER TABLE users DROP COLUMN role;
       ALTER TABLE users DROP COLUMN password_changed_at;
+      ALTER TABLE users DROP COLUMN game_access;
       ALTER TABLE games DROP COLUMN version;
       DROP TABLE login_failures;
       DROP TABLE admin_audit;
       DROP TABLE rate_events;
+      DROP TABLE portal_settings;
       CREATE TABLE player_stats (user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         games_played INTEGER NOT NULL DEFAULT 0, games_won INTEGER NOT NULL DEFAULT 0,
         games_lost INTEGER NOT NULL DEFAULT 0, avg_turns NUMERIC(6,2));
@@ -334,6 +336,72 @@ async function suite(mode: 'fresh' | 'legacy') {
   for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
     ok((await play('GET', k, A2)).status === 404, `play: '${k}' is an unknown game, not a hang or a crash`);
   }
+
+  // --- Game access (Admin page) -------------------------------------------------------------------
+  const allKeys = (GAMES as { key: string }[]).map(g => g.key);
+  const annLogin2 = await auth('login', { username: 'ann', password: reset.body.temporaryPassword });
+  ok(JSON.stringify(annLogin2.body.games) === JSON.stringify(allKeys), 'access: an account from before access control has every game');
+  const settings0 = await adminApi('GET', 'settings', T);
+  ok(settings0.status === 200 && settings0.body.saved === false && settings0.body.newAccountGames.length === allKeys.length, 'access: new accounts default to every game until the setting is saved');
+  ok((await adminApi('PUT', 'settings', A2, { newAccountGames: ['tea_race'] })).status === 403, 'access: a non-admin cannot change the new-account setting');
+  ok((await adminApi('PUT', 'settings', T, { newAccountGames: ['tea_race', 'nope'] })).status === 400, 'access: unknown game key refused');
+  ok((await adminApi('PUT', 'settings', T, { newAccountGames: 'tea_race' })).status === 400, 'access: setting must be a list');
+  const setTo = await adminApi('PUT', 'settings', T, { newAccountGames: ['tea_race', 'tea_race'] });
+  ok(setTo.status === 200 && JSON.stringify(setTo.body.newAccountGames) === '["tea_race"]', 'access: new accounts set to The Tea Race only (duplicates folded)');
+  const dave = await auth('register', { username: 'dave', email: 'dave@x.test', password: 'secret11' }, '10.6.6.6');
+  ok(dave.status === 201 && JSON.stringify(dave.body.games) === '["tea_race"]', 'access: a new account starts with the saved setting');
+  const D = dave.body.token as string;
+  ok((await play('GET', 'tea-race', D)).status === 200, 'access: dave can open The Tea Race');
+  const daveTm = await play('GET', 'thrash-margin', D);
+  ok(daveTm.status === 403 && daveTm.body.code === 'no_game_access', 'access: dave is refused Thrash Margin (403)');
+  ok((await play('POST', 'niccolo', D, undefined, { name: 'x' })).status === 403, 'access: dave cannot create a game he does not have');
+  ok((await play('GET', 'thrash-margin', A2)).status === 200, 'access: the setting does not change existing accounts');
+  ok((await play('GET', 'thrash-margin', undefined)).status === 401, 'access: no token is still 401, not 403');
+  ok(JSON.stringify((await call(handlers.profile, 'GET', {}, undefined, D)).body.games) === '["tea_race"]', 'access: profile reports the account\'s games');
+
+  // One account, one game.
+  const annId2 = annLogin2.body.userId as string;
+  ok((await adminApi('PATCH', 'access', A2, { id: annId2, game: 'thrash_margin', enabled: false })).status === 403, 'access: a non-admin cannot change access');
+  ok((await adminApi('PATCH', 'access', T, { id: annId2, game: 'nope', enabled: false })).status === 400, 'access: unknown game refused');
+  ok((await adminApi('PATCH', 'access', T, { id: annId2, game: 'thrash_margin', enabled: 'no' })).status === 400, 'access: enabled must be a boolean');
+  ok((await adminApi('PATCH', 'access', T, { id: '00000000-0000-4000-8000-000000000000', game: 'thrash_margin', enabled: false })).status === 404, 'access: unknown account 404');
+  const off = await adminApi('PATCH', 'access', T, { id: annId2, game: 'thrash_margin', enabled: false });
+  ok(off.status === 200 && !off.body.games.includes('thrash_margin') && off.body.games.length === allKeys.length - 1, 'access: Thrash Margin turned off for ann, the rest kept');
+  ok((await play('GET', 'thrash-margin', A2)).status === 403, 'access: ann refused Thrash Margin at once, same token');
+  ok((await play('GET', 'tea-race', A2)).status === 200, 'access: ann keeps her other games');
+  const annTmSaves = await admin.query(`SELECT COUNT(*)::int AS n FROM games WHERE owner_id = $1 AND game = 'thrash_margin'`, [annId2]);
+  ok(annTmSaves.rows[0].n === 1, 'access: turning a game off keeps the saves');
+  const on = await adminApi('PATCH', 'access', T, { id: annId2, game: 'thrash_margin', enabled: true });
+  ok(on.status === 200 && JSON.stringify(on.body.games) === JSON.stringify(allKeys), 'access: turned back on, in the portal\'s order');
+  const backList = await play('GET', 'thrash-margin', A2);
+  ok(backList.status === 200 && backList.body.saves.length === 1, 'access: the save is back when the game is');
+
+  // One game, every account.
+  const allOff = await adminApi('POST', 'access-all', T, { game: 'niccolo', enabled: false });
+  ok(allOff.status === 200 && allOff.body.changed >= 2, `access: Banco di Niccolò off for everyone (${allOff.body.changed} changed)`);
+  ok((await play('GET', 'niccolo', A2)).status === 403 && (await play('GET', 'niccolo', T)).status === 403, 'access: everyone refused Banco di Niccolò');
+  ok((await play('GET', 'tea-race', T)).status === 200, 'access: other games unaffected');
+  const allOn = await adminApi('POST', 'access-all', T, { game: 'niccolo', enabled: true });
+  ok(allOn.status === 200, 'access: Banco di Niccolò on for everyone');
+  ok((await play('GET', 'niccolo', A2)).status === 200 && (await play('GET', 'niccolo', D)).status === 200, 'access: on for everyone includes accounts that never had it');
+  ok((await play('GET', 'thrash-margin', D)).status === 403, 'access: on for everyone changes only that game');
+  ok((await adminApi('POST', 'access-all', T, { game: 'niccolo' })).status === 400, 'access: enabled required');
+  const listed = await adminApi('GET', 'users', T);
+  const daveRow = (listed.body.users as { username: string; games: string[] }[]).find(u => u.username === 'dave');
+  ok(JSON.stringify(daveRow?.games) === '["niccolo","tea_race"]', `access: the user list reports each account's games (got ${JSON.stringify(daveRow?.games)})`);
+  const settings1 = await adminApi('GET', 'settings', T);
+  ok(settings1.body.saved === true && JSON.stringify(settings1.body.newAccountGames) === '["tea_race"]', 'access: the new-account setting is unchanged by account changes');
+  const accessAudit = (await adminApi('GET', 'audit', T)).body.entries.slice(0, 5).map((e: any) => `${e.action} ${e.target} ${e.detail}`);
+  ok(
+    JSON.stringify(accessAudit) === JSON.stringify([
+      'grant_game (all accounts) niccolo',
+      'revoke_game (all accounts) niccolo',
+      'grant_game ann thrash_margin',
+      'revoke_game ann thrash_margin',
+      'set_new_account_games (new accounts) tea_race',
+    ]),
+    `access: every change recorded in the history (got ${JSON.stringify(accessAudit)})`,
+  );
 
   // --- Shared game list ---------------------------------------------------------------------------
   const profile = await call(handlers.profile, 'GET', {}, undefined, A2);
