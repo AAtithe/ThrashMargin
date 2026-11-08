@@ -181,6 +181,7 @@ async function guidedTurn(browser, run) {
     const done = { deselect: false, help: false, cancel: false };
     let cs = await cardState(page);
     let last = -1;
+    try {
     for (let guard = 0; guard < 80; guard++) {
       if (!cs) {
         await closeModal(page);
@@ -232,10 +233,17 @@ async function guidedTurn(browser, run) {
         cs = back; continue;
       }
       if (run.perturb && cs.step === 5 && !done.cancel) {
-        const cancel = page.getByRole('button', { name: 'Cancel' }).first();
+        const cancel = page.locator('#tm-attack-cancel');
         if (await cancel.count()) {
           done.cancel = true;
-          await cancel.click();
+          await sleep(400); // let the card settle before judging what it covers
+          const covered = await page.evaluate(() => {
+            const b = document.getElementById('tm-attack-cancel').getBoundingClientRect();
+            const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
+            return !(e && e.closest('#tm-attack-cancel'));
+          });
+          if (covered) { problems.push(`${label}: the card covers the attack's Cancel`); await page.keyboard.press('Escape'); }
+          else await cancel.click();
           const after = await waitChange(page, cs, 2000);
           if (!after || !after.target.startsWith('tm-territory-')) problems.push(`${label}: after cancelling the attack, the card points at ${after?.target ?? 'nothing'}`);
           cs = after; continue;
@@ -250,6 +258,10 @@ async function guidedTurn(browser, run) {
         break;
       }
       cs = next;
+    }
+    } catch (e) {
+      // One run's failure is a problem to report, never a reason to skip the runs after it.
+      problems.push(`${label}: driver error: ${String(e.message || e).split('\n')[0]}`);
     }
 
     if (await cardState(page)) problems.push(`${label}: the run did not finish`);
@@ -311,10 +323,11 @@ async function coach(browser, run) {
   const browser = await chromium.launch();
   const t0 = Date.now();
   const want = label => !FILTER || label.includes(FILTER);
-  for (const run of runs) if (want(`${run.mapId}/${run.diff}/seed${run.seed}/${run.vp}${run.perturb ? '/perturbed' : ''}`)) await guidedTurn(browser, run);
-  for (const run of coachRuns) if (want(`coach/${run.diff}/${run.vp}`)) await coach(browser, run);
+  let ran = 0;
+  for (const run of runs) if (want(`${run.mapId}/${run.diff}/seed${run.seed}/${run.vp}${run.perturb ? '/perturbed' : ''}`)) { ran++; await guidedTurn(browser, run).catch(e => problems.push(`run crashed: ${String(e.message || e).split('\n')[0]}`)); }
+  for (const run of coachRuns) if (want(`coach/${run.diff}/${run.vp}`)) { ran++; await coach(browser, run).catch(e => problems.push(`coach crashed: ${String(e.message || e).split('\n')[0]}`)); }
   await browser.close();
-  console.log(`\n${runs.length + coachRuns.length} runs in ${Math.round((Date.now() - t0) / 1000)}s`);
+  console.log(`\n${ran} runs in ${Math.round((Date.now() - t0) / 1000)}s`);
   console.log(`PROBLEMS (${problems.length})`);
   for (const p of problems) console.log(' - ' + p);
   process.exit(problems.length ? 1 : 0);
