@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
+import { queryParam } from '../_lib/query';
 import { createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 
 /**
@@ -44,8 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!user) return;
 
   const db = getDb();
-  const idParam = req.query.id;
-  const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  // From req.url, never req.query, which logs a deprecation warning on Vercel; see _lib/query.ts.
+  const id = queryParam(req, 'id');
   if (id !== undefined && !isGameId(id)) return res.status(404).json({ message: 'Ledger not found' });
 
   if (id === undefined) {
