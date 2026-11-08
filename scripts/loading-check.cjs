@@ -76,18 +76,20 @@ function startServer(g) {
 }
 
 /** A fresh browser context, seeded once (sessionStorage survives reloads, so a reload keeps state). */
-async function context(browser, { theme = 'light', signedIn = false, reduced = false } = {}) {
+async function context(browser, { theme = 'light', signedIn = false, reduced = false, pace = null } = {}) {
   const c = await browser.newContext({ viewport: { width: 1100, height: 760 }, reducedMotion: reduced ? 'reduce' : 'no-preference' });
-  await c.addInitScript(([user, jwt, theme, signedIn]) => {
+  await c.addInitScript(([user, jwt, theme, signedIn, pace]) => {
     if (sessionStorage.getItem('loading-check')) return;
     sessionStorage.setItem('loading-check', '1');
     localStorage.setItem('tm_user', user);
     localStorage.setItem('tm_theme', theme);
+    // The portal's own animation pace (lib/motion.ts); null leaves it unset, as a new browser has it.
+    if (pace) localStorage.setItem('tm_motion', pace);
     if (signedIn) {
       localStorage.setItem('tm_token', jwt);
       localStorage.setItem('tm_last_active', String(Date.now()));
     }
-  }, [USER, FAKE_JWT, theme, signedIn]);
+  }, [USER, FAKE_JWT, theme, signedIn, pace]);
   return c;
 }
 
@@ -233,6 +235,21 @@ async function checkGame(browser, g) {
   });
   ok(g.key, 'reduced motion: still delayed, then shown, nothing moving',
     rmEarly !== null && rmEarly < 0.2 && rm.parts > 0 && rm.moving === 0 && rm.opacity > 0.9, JSON.stringify({ early: rmEarly, ...rm }));
+  await c.close();
+
+  // Motion: off (the portal's own setting, lib/motion.ts) stills the loader the same way, with no
+  // OS reduced-motion preference set.
+  c = await context(browser, { signedIn: true, pace: 'off' });
+  p = await c.newPage();
+  await serve(p, { delay: 3000, game: served });
+  await p.goto(`${base}/game/${id}`);
+  await wait(820);
+  const mo = await p.evaluate(() => {
+    const els = [...document.querySelectorAll('[data-testid=loading-screen] svg *')];
+    const l = document.querySelector('.wsl-loader');
+    return { parts: els.length, moving: els.filter(e => getComputedStyle(e).animationName !== 'none').length, opacity: l ? Number(getComputedStyle(l).opacity) : null };
+  });
+  ok(g.key, 'Motion: off: loader shown, nothing moving', mo.parts > 0 && mo.moving === 0 && mo.opacity > 0.9, JSON.stringify(mo));
   await c.close();
 
   // The CSS-only loader in index.html while the bundle is held back, both modes; then its

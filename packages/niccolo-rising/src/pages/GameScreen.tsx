@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { advance, whyIllegal } from '../sim/actions';
 import { bribeCost } from '../sim/content';
-import type { GameAction } from '../sim/types';
+import { BATTLE_STATS, WORK_STATS } from '../sim/types';
+import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { duration, gr } from '../lib/format';
 import StatusRail from '../components/StatusRail';
@@ -27,6 +28,10 @@ import Duels from '../components/places/Duels';
 import Bank from '../components/places/Bank';
 import type { PlaceProps, Verb } from '../components/types';
 import ThemeToggle from '../components/ThemeToggle';
+import MotionToggle from '../components/MotionToggle';
+import { Countdown, OutcomeContext } from '../components/motion';
+import type { Gain, Outcome } from '../components/motion';
+import { currentPace } from '../lib/motion';
 import GuidedTour, { hasSeenGuidedTour, planFirstHours, type TourPlan } from '../components/GuidedTour';
 
 const PLACES = [
@@ -44,6 +49,22 @@ const PLACES = [
 ] as const;
 
 type PlaceId = (typeof PLACES)[number]['id'];
+
+/**
+ * What an action visibly gained, for the floating markers by its button: battle and working stats and
+ * standing. Bars, groats and experience float in the status rail instead, where they are shown.
+ */
+function gainsOf(prev: GameState, next: GameState): Gain[] {
+  const out: Gain[] = [];
+  const add = (d: number, label: string, dp: number) => {
+    if (Math.abs(d) < 0.5 * 10 ** -dp) return;
+    out.push({ text: `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(dp)} ${label}`, good: d > 0 });
+  };
+  for (const k of BATTLE_STATS) add(next.battle[k] - prev.battle[k], k, 2);
+  for (const k of WORK_STATS) add(next.work[k] - prev.work[k], k, 2);
+  add(next.standing - prev.standing, 'standing', 0);
+  return out.slice(0, 3);
+}
 
 /** The client ticks this often. A TICK that changes nothing returns the same state and is not saved. */
 const TICK_MS = 60_000;
@@ -102,7 +123,34 @@ export default function GameScreen() {
     if (plan) setTourPlan(plan);
   }, [view, tourOffered]);
 
-  const act = useCallback((v: Verb) => dispatch({ ...v, at: Date.now() } as GameAction), [dispatch]);
+
+  // Presentation only: after an action, tell the button that sent it how it went. The state has
+  // already changed (and gone to the save queue) by the time this looks; it never delays either.
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const outcomeSeq = useRef(0);
+  const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const act = useCallback(
+    (v: Verb, origin?: string) => {
+      const prev = stateRef.current;
+      dispatch({ ...v, at: Date.now() } as GameAction);
+      if (!origin || !prev || currentPace() === 'off') return;
+      // React has committed the press's update by the next task; compare then.
+      window.setTimeout(() => {
+        const next = stateRef.current;
+        if (!next) return;
+        const seq = ++outcomeSeq.current;
+        if (next === prev) {
+          setOutcome({ seq, origin, result: 'rejected', gains: [] });
+          return;
+        }
+        const lastSeq = prev.log.length ? prev.log[prev.log.length - 1].seq : -1;
+        const bad = next.log.some(e => e.seq > lastSeq && e.tone === 'bad');
+        setOutcome({ seq, origin, result: bad ? 'bad' : 'ok', gains: gainsOf(prev, next) });
+      }, 0);
+    },
+    [dispatch],
+  );
   const why = useCallback(
     (v: Verb) => (view ? whyIllegal(view, { ...v, at: now } as GameAction) : 'Loading'),
     [view, now],
@@ -140,61 +188,66 @@ export default function GameScreen() {
   const tourCandidate: TourPlan | null = tourPlan || st.kind !== 'free' ? null : planFirstHours(view);
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: UI.ground, color: UI.text, fontFamily: FONT.body }} className="nr-board">
-      <StatusRail s={view} now={now} />
-      <main style={{ flex: 1, minWidth: 0, padding: '1rem 1.2rem' }}>
-        <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginBottom: '1rem', alignItems: 'center' }}>
-          <Link to="/" style={{ color: UI.textSoft, fontSize: '0.78rem', marginRight: '0.6rem', textDecoration: 'none' }}>
-            ← Characters
-          </Link>
-          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
-          {tourCandidate && (
-            <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)} style={{ marginRight: '0.6rem' }}>
-              Guided first hour
-            </Button>
+    <OutcomeContext.Provider value={outcome}>
+      <div style={{ display: 'flex', minHeight: '100vh', background: UI.ground, color: UI.text, fontFamily: FONT.body }} className="nr-board">
+        <StatusRail s={view} now={now} />
+        <main style={{ flex: 1, minWidth: 0, padding: '1rem 1.2rem' }}>
+          <nav style={{ display: 'flex', flexWrap: 'wrap', gap: '0.3rem', marginBottom: '1rem', alignItems: 'center' }}>
+            <Link to="/" style={{ color: UI.textSoft, fontSize: '0.78rem', marginRight: '0.6rem', textDecoration: 'none' }}>
+              ← Characters
+            </Link>
+            <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
+            <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
+            {tourCandidate && (
+              <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)} style={{ marginRight: '0.6rem' }}>
+                Guided first hour
+              </Button>
+            )}
+            {PLACES.map(p => (
+              <Button key={p.id} id={`nr-place-${p.id}`} tone={p.id === place ? 'primary' : 'quiet'} onClick={() => setPlace(p.id)}>
+                {p.name}
+              </Button>
+            ))}
+          </nav>
+
+          {error && <p style={{ fontSize: '0.8rem', color: UI.bad, margin: '0 0 0.8rem' }}>{error}</p>}
+
+          {st.kind === 'infirmary' && (
+            <Panel title="The Infirmary of St John" style={{ borderColor: UI.bad }}>
+              <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
+                Laid up after {st.reason}. Out in {duration(st.until - now)}. Bandages and theriac shorten the stay.
+              </p>
+              <Countdown since={st.since} until={st.until} now={now} colour={UI.bad} />
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'bandage' }}>Use bandages ({view.inventory.bandage ?? 0})</ActButton>
+                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'theriac' }}>Use theriac ({view.inventory.theriac ?? 0})</ActButton>
+              </div>
+            </Panel>
           )}
-          {PLACES.map(p => (
-            <Button key={p.id} id={`nr-place-${p.id}`} tone={p.id === place ? 'primary' : 'quiet'} onClick={() => setPlace(p.id)}>
-              {p.name}
-            </Button>
-          ))}
-        </nav>
+          {st.kind === 'steen' && (
+            <Panel title="The Steen" style={{ borderColor: UI.bad }}>
+              <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
+                Taken for {st.reason.toLowerCase()}. Released in {duration(st.until - now)}, or sooner if the gaoler is paid.
+              </p>
+              <Countdown since={st.since} until={st.until} now={now} colour={UI.bad} />
+              <ActButton p={props} verb={{ type: 'BRIBE' }}>Bribe the gaoler, {gr(bribeCost(view))}</ActButton>
+            </Panel>
+          )}
 
-        {error && <p style={{ fontSize: '0.8rem', color: UI.bad, margin: '0 0 0.8rem' }}>{error}</p>}
+          <Current {...props} />
+        </main>
+        <Chronicle s={view} />
 
-        {st.kind === 'infirmary' && (
-          <Panel title="The Infirmary of St John" style={{ borderColor: UI.bad }}>
-            <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
-              Laid up after {st.reason}. Out in {duration(st.until - now)}. Bandages and theriac shorten the stay.
-            </p>
-            <div style={{ display: 'flex', gap: '0.4rem' }}>
-              <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'bandage' }}>Use bandages ({view.inventory.bandage ?? 0})</ActButton>
-              <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'theriac' }}>Use theriac ({view.inventory.theriac ?? 0})</ActButton>
-            </div>
-          </Panel>
+        {tourPlan && (
+          <GuidedTour
+            hidden={st.kind !== 'free'}
+            view={{ s: view, place }}
+            plan={tourPlan}
+            onFinish={() => setTourPlan(null)}
+          />
         )}
-        {st.kind === 'steen' && (
-          <Panel title="The Steen" style={{ borderColor: UI.bad }}>
-            <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
-              Taken for {st.reason.toLowerCase()}. Released in {duration(st.until - now)}, or sooner if the gaoler is paid.
-            </p>
-            <ActButton p={props} verb={{ type: 'BRIBE' }}>Bribe the gaoler, {gr(bribeCost(view))}</ActButton>
-          </Panel>
-        )}
-
-        <Current {...props} />
-      </main>
-      <Chronicle s={view} />
-
-      {tourPlan && (
-        <GuidedTour
-          hidden={st.kind !== 'free'}
-          view={{ s: view, place }}
-          plan={tourPlan}
-          onFinish={() => setTourPlan(null)}
-        />
-      )}
-    </div>
+      </div>
+    </OutcomeContext.Provider>
   );
 }
 

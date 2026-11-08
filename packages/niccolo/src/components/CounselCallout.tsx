@@ -65,7 +65,7 @@ interface CounselCalloutProps {
  * sidebar now, not a menu this card used to open. Dismissing is the only action left to take. */
 export default function CounselCallout({ advice, onDismiss }: CounselCalloutProps) {
   return (
-    <div style={CARD} id="counsel-callout">
+    <div style={CARD} id="counsel-callout" className="tm-anim-rise">
       <div style={HEAD}>
         <span style={TITLE}>A word from the household</span>
         <button style={DISMISS} onClick={onDismiss} aria-label="Dismiss">
