@@ -193,9 +193,17 @@ export function easeInOut(t: number): number {
 export function useTween(key: string | number | null, baseMs: number): { t: number; playing: boolean; skip: () => void } {
   const pace = usePace();
   const dur = key === null ? 0 : paced(baseMs, pace);
-  const [st, setSt] = useState<{ key: typeof key; t: number }>({ key, t: 1 });
+  // Starts at 0 when there is something to play, so even the first render after mount is the
+  // start of the run, not one painted frame of its end.
+  const [st, setSt] = useState<{ key: typeof key; t: number }>({ key, t: dur > 0 ? 0 : 1 });
   const raf = useRef<number | null>(null);
+  // Read when a run starts. Switching between full and quick mid-run keeps the run going; only a
+  // switch to off (or a new key) ends or restarts it.
+  const durRef = useRef(dur);
+  durRef.current = dur;
+  const live = dur > 0;
   useEffect(() => {
+    const dur = durRef.current;
     if (dur <= 0) {
       setSt({ key, t: 1 });
       return;
@@ -211,12 +219,12 @@ export function useTween(key: string | number | null, baseMs: number): { t: numb
     return () => {
       if (raf.current !== null) cancelAnimationFrame(raf.current);
     };
-  }, [key, dur]);
+  }, [key, live]);
   const skip = useCallback(() => {
     if (raf.current !== null) cancelAnimationFrame(raf.current);
     setSt({ key, t: 1 });
   }, [key]);
-  const t = st.key === key ? st.t : dur > 0 ? 0 : 1;
+  const t = dur <= 0 ? 1 : st.key === key ? st.t : 0;
   return { t, playing: t < 1, skip };
 }
 
@@ -273,18 +281,25 @@ export function useSteps(key: string | number | null, baseMs: number[]): { index
   const pace = usePace();
   const count = baseMs.length;
   const factor = key === null ? 0 : paced(1000, pace) / 1000;
-  const [st, setSt] = useState<{ key: typeof key; index: number }>({ key, index: count });
+  const live = factor > 0 && count > 0;
+  // Starts on frame 0 when there is something to play, so the first render after mount is not one
+  // painted frame of the finished state.
+  const [st, setSt] = useState<{ key: typeof key; index: number }>({ key, index: live ? 0 : count });
   const timer = useRef<number | null>(null);
   const durations = useRef(baseMs);
   durations.current = baseMs;
+  // Read at each step, so switching between full and quick changes the remaining holds without
+  // restarting the replay. Only a switch to off (or a new key) ends or restarts it.
+  const factorRef = useRef(factor);
+  factorRef.current = factor;
   useEffect(() => {
-    if (factor <= 0 || count <= 0) {
+    if (!live) {
       setSt({ key, index: count });
       return;
     }
     let i = 0;
     setSt({ key, index: 0 });
-    const hold = (n: number) => Math.max(16, Math.round((durations.current[n] ?? 0) * factor));
+    const hold = (n: number) => Math.max(16, Math.round((durations.current[n] ?? 0) * factorRef.current));
     const tick = () => {
       i += 1;
       setSt({ key, index: i });
@@ -294,12 +309,12 @@ export function useSteps(key: string | number | null, baseMs: number[]): { index
     return () => {
       if (timer.current !== null) window.clearTimeout(timer.current);
     };
-  }, [key, count, factor]);
+  }, [key, count, live]);
   const skip = useCallback(() => {
     if (timer.current !== null) window.clearTimeout(timer.current);
     setSt({ key, index: count });
   }, [key, count]);
-  const index = st.key === key ? st.index : factor > 0 && count > 0 ? 0 : count;
+  const index = !live ? count : st.key === key ? st.index : 0;
   return { index, playing: index < count, skip };
 }
 
@@ -362,13 +377,14 @@ export function useFloats(lifeMs = 1100, max = 6): { items: FloatItem[]; push: (
 
 /**
  * One floating amount. Absolutely positioned: put it inside a `position: relative` box and place it
- * with `style`. Styling beyond position and colour is the caller's.
+ * with `style`. Styling beyond position and colour is the caller's; `className` adds a game's own
+ * hook for CSS and tests alongside `tm-anim-float`.
  */
-export function FloatText({ text, colour, style }: { text: string; colour: string; style?: CSSProperties }): ReactElement {
+export function FloatText({ text, colour, style, className }: { text: string; colour: string; style?: CSSProperties; className?: string }): ReactElement {
   return createElement(
     'span',
     {
-      className: 'tm-anim-float',
+      className: className ? `tm-anim-float ${className}` : 'tm-anim-float',
       'aria-hidden': true,
       style: { position: 'absolute', whiteSpace: 'nowrap', fontSize: '0.75rem', fontWeight: 600, color: colour, pointerEvents: 'none', ...style },
     },
