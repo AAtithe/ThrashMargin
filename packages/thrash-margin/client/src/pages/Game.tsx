@@ -433,9 +433,11 @@ function Game({ id }: { id: string | undefined }) {
         <div role="alert" style={{ position: 'fixed', left: 12, bottom: 12, background: UI.dangerBg, border: `1px solid ${UI.bad}`, color: UI.dangerText, padding: '8px 12px', borderRadius: 8, fontSize: 12.5, zIndex: 250, maxWidth: 420 }}>{game.error}</div>
       )}
 
-      {/* The guided turn. Hidden (but kept mounted, so it keeps its place) while the hand-over
-          screen, the dispatch, an event or a modal owns the display: all of them are modal, and a
-          ring round a control underneath one points at something that cannot be clicked. */}
+      {/* The guided turn. It draws nothing while the hand-over screen, the dispatch, an event or a
+          modal owns the display: all of them are modal, and a ring round a control underneath one
+          points at something that cannot be clicked. Hidden rather than unmounted — the run's
+          memory and its place in the walk live inside it, so unmounting it for the end-of-turn
+          dispatch sent the card back to step 1 as soon as the dispatch was dismissed. */}
       {tourPlan && !over && (
         <GuidedTour
           view={{ state, selected, target }}

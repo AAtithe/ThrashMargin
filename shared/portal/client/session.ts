@@ -15,6 +15,18 @@ export interface StoredUser {
   username: string;
   /** Shows or hides the Admin link. Presentational only; the server re-checks every request. */
   isAdmin?: boolean;
+  /**
+   * The games this account may play (game keys), as of sign-in or the last visit to the welcome
+   * page. Missing on a session from before game access existed: treated as every game. Presentational
+   * only; api/play/[kind].ts checks access on every request.
+   */
+  games?: string[];
+}
+
+/** Whether the lobby should offer this game. Not a security check: the server re-checks. */
+export function hasGameAccess(user: StoredUser | null, gameKey: string): boolean {
+  if (!user) return false;
+  return !Array.isArray(user.games) || user.games.includes(gameKey);
 }
 
 /**

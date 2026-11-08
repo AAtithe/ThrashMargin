@@ -302,9 +302,17 @@ interface Props {
   view: TourView;
   plan: TourPlan;
   onFinish: () => void;
+  /**
+   * Draw nothing this render, but stay mounted. Set while one of the game's own modals owns the
+   * display. It is a prop rather than the caller unmounting the run because the run's place in
+   * the walk lives in this component: unmounting throws away both the captured memory and the
+   * step index, and the card comes back at step one, so the run loops and never reaches its last
+   * step. Thrash Margin hit this on its end-of-turn dispatch; here it is the same structure.
+   */
+  hidden?: boolean;
 }
 
-export default function GuidedTour({ view, plan, onFinish }: Props) {
+export default function GuidedTour({ view, plan, onFinish, hidden = false }: Props) {
   // Captured once, on the first render. `useRef` rather than `useState` because reading it must
   // never cause a render of its own.
   const memoryRef = useRef<TourMemory>({
@@ -322,7 +330,8 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
   // The verb this step wants lives somewhere else: point at the way there first, and say so.
   const elsewhere = !!step.place && view.place !== step.place;
   const isManual = !!step.manual;
-  const targetId = elsewhere ? `nr-place-${step.place}` : step.target(view, plan);
+  // Nothing to measure while hidden, so the 250ms poll cannot scroll the page under a panel.
+  const targetId = hidden ? null : elsewhere ? `nr-place-${step.place}` : step.target(view, plan);
   const rect = useTargetRect(targetId);
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
@@ -334,6 +343,9 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, stepIndex]);
+
+  // Every hook above this line, so the run keeps advancing while it is out of sight.
+  if (hidden) return null;
 
   const PADDING = 8;
   const spotlight: React.CSSProperties | null = rect

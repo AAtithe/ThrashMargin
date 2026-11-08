@@ -536,12 +536,12 @@ export default function GameScreen() {
       {/* --- Overlays -------------------------------------------------------------------- */}
       {/* Kept off while a handover card or the closing card owns the screen — both are modal, and
           spotlighting a control underneath one would point at something unclickable. */}
-      {/* While the rivals' turns replay, the run steps aside rather than unmounting (it would forget
-          its place and its latches): its spotlight's scrim would otherwise dim the replay, and
-          its card would be talking about a board the screen is not yet showing. */}
-      {tourPlan && haulier && !over && state.phase !== 'handover' && (
-        <div style={{ display: frame ? 'none' : 'contents' }}>
+      {/* While the rivals' turns replay, the run steps aside as well (hidden, never unmounted: it
+          would forget its place and its latches): its scrim would otherwise dim the replay, and its
+          card would be talking about a board the screen is not yet showing. */}
+      {tourPlan && haulier && !over && (
         <GuidedTour
+          hidden={state.phase === 'handover' || !!frame}
           view={{
             state,
             haulier,
@@ -552,7 +552,6 @@ export default function GameScreen() {
           plan={tourPlan}
           onFinish={() => setTourPlan(null)}
         />
-        </div>
       )}
 
       {/* Hot seat: when computer hauliers sat between two humans, their replay plays first and the

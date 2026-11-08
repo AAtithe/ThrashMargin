@@ -1,4 +1,4 @@
-import { getStoredUser, clearToken } from '../lib/portalAuth';
+import { getStoredUser, clearToken, hasGameAccess } from '../lib/portalAuth';
 import ThemeToggle from './ThemeToggle';
 import MotionToggle from './MotionToggle';
 
@@ -11,6 +11,10 @@ interface PortalNavProps {
  * localStorage keys every other game's PortalNav writes. */
 export default function PortalNav({ variant = 'header' }: PortalNavProps) {
   const user = getStoredUser();
+  // Games the account has not been given (Admin page, Game access) are left out. A courtesy only:
+  // the server refuses them regardless (api/play/[kind].ts). Signed out, every game is listed, since
+  // each lobby then offers sign-in.
+  const canSee = (game: string) => !user || hasGameAccess(user, game);
   const isFooter = variant === 'footer';
 
   return (
@@ -19,22 +23,38 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         <a href="/" style={styles.link}>
           🏠 Home
         </a>
-        <span style={styles.sep}>·</span>
-        <a href="/thrash-margin/" style={styles.link}>
-          🎮 Thrash Margin
-        </a>
-        <span style={styles.sep}>·</span>
-        <a href="/tea-race/" style={styles.link}>
-          ⛵ The Tea Race
-        </a>
-        <span style={styles.sep}>·</span>
-        <a href="/steady-eddie/" style={styles.link}>
-          🚚 Steady Eddie
-        </a>
-        <span style={styles.sep}>·</span>
-        <a href="/niccolo/" style={styles.link}>
-          ⚖️ Banco di Niccolo
-        </a>
+        {canSee('thrash_margin') && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href="/thrash-margin/" style={styles.link}>
+              🎮 Thrash Margin
+            </a>
+          </>
+        )}
+        {canSee('tea_race') && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href="/tea-race/" style={styles.link}>
+              ⛵ The Tea Race
+            </a>
+          </>
+        )}
+        {canSee('steady_eddie') && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href="/steady-eddie/" style={styles.link}>
+              🚚 Steady Eddie
+            </a>
+          </>
+        )}
+        {canSee('niccolo') && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href="/niccolo/" style={styles.link}>
+              ⚖️ Banco di Niccolo
+            </a>
+          </>
+        )}
         <span style={styles.sep}>·</span>
         <a href="/thrash-margin/feedback" style={styles.link}>
           💬 Feedback

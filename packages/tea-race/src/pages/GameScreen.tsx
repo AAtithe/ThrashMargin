@@ -544,8 +544,9 @@ export default function GameScreen() {
       />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
-      {tourPlan && captain && !over && state.phase !== 'handover' && (
+      {tourPlan && captain && !over && (
         <GuidedTour
+          hidden={state.phase === 'handover'}
           view={{
             state,
             captain,

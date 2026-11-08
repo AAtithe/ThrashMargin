@@ -4,6 +4,10 @@ import niccolo from '../../packages/niccolo/api/game/index';
 import niccoloRising from '../../packages/niccolo-rising/api/game/index';
 import teaRace from '../../packages/tea-race/api/game/index';
 import steadyEddie from '../../packages/steady-eddie/api/game/index';
+import { getDb } from '../../packages/thrash-margin/api/_lib/db';
+import { requireUser } from '../../packages/thrash-margin/api/_lib/auth';
+import { handleCors } from '../../packages/thrash-margin/api/_lib/cors';
+import { gameKeyForSlug, gamesFor } from '../../packages/thrash-margin/api/_lib/access';
 
 // Every game's saves, as one Vercel function: /api/play/<game>?id=...
 //
@@ -27,6 +31,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Own keys only: a plain lookup would find Object.prototype's members, so /api/play/constructor
   // ran Object(req, res), which never answers and held the function open until it timed out.
   const run = kind && Object.prototype.hasOwnProperty.call(HANDLERS, kind) ? HANDLERS[kind] : undefined;
-  if (!run) return res.status(404).json({ message: 'Unknown game' });
+  const key = kind ? gameKeyForSlug(kind) : undefined;
+  if (!run || !key) return res.status(404).json({ message: 'Unknown game' });
+
+  // Game access (packages/thrash-margin/api/_lib/access.ts), checked here so it covers every
+  // request to every game, whatever the handler does. Signed in first: an unknown caller gets 401
+  // exactly as before, and the handler's own sign-in check still runs after this one.
+  if (handleCors(req, res)) return;
+  const user = await requireUser(req, res);
+  if (!user) return;
+  let allowed: boolean;
+  try {
+    allowed = (await gamesFor(getDb(), user.userId)).includes(key);
+  } catch (err) {
+    // Fails closed: an access check that could not be made is not a yes.
+    console.error('game access check failed', err);
+    return res.status(503).json({ message: 'Service temporarily unavailable' });
+  }
+  if (!allowed) {
+    return res.status(403).json({
+      message: 'Your account does not have access to this game. Ask an admin if you think it should.',
+      code: 'no_game_access',
+    });
+  }
   return run(req, res);
 }
