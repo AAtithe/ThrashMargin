@@ -67,11 +67,11 @@ Already real time; the job is to make the time visible.
 ## Steady Eddie (`packages/steady-eddie`)
 
 Fork of The Tea Race; same list, haulage vocabulary.
-- [ ] Dice roll tumble.
-- [ ] Lorry drives along the road on the map node by node.
-- [ ] AI hauliers' turns replayed in sequence with a skip control.
-- [ ] Cash and share counts count up; deliveries give a floating amount.
-- [ ] Event cards and depot panels enter with a short animation.
+- [x] Dice roll tumble.
+- [x] Lorry drives along the road on the map node by node.
+- [x] AI hauliers' turns replayed in sequence with a skip control.
+- [x] Cash and share counts count up; deliveries give a floating amount.
+- [x] Event cards and depot panels enter with a short animation.
 
 ## Done means, per game
 

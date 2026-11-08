@@ -175,3 +175,28 @@ reads `tm_user` from localStorage and can be satisfied from the browser console)
 without one. Do not weaken either half for local development — set `tm_user` in the console instead.
 
 See `CLAUDE.md` at the repo root, and §4a of `tea-race-design.md` for the full reasoning.
+
+## Build log: time on the board (2026-11-08)
+
+Owner's brief: make the game feel less like clicking away, with small animations. Everything is in
+the presentation layer (`motion-and-time-plan.md`); `sim/` is untouched and the reducer still
+resolves and saves every action at once. Pace follows the portal-wide `Motion: full / quick / off`
+toggle; at `off` the screen is exactly as before.
+
+- **Dice.** After your roll the dice tumble in the turn bar for about half a second
+  (`DiceTray`), and the fleet panel and the chart hold the pre-roll board until they land. Then the
+  lorries already on the road drive on.
+- **Lorries drive.** `MapView`'s markers glide from their old position to the new one through every
+  depot passed (read off the old course, or from a standing start the course the orders panel would
+  have given), instead of jumping.
+- **Computer turns replayed.** END_TURN still plays every computer haulier inside the reducer.
+  `hooks/aiReplay.ts` re-runs that same pure reducer after the fact with `runAiTurn`'s `observe` hook
+  to recover the board between steps, and checks the result is byte-identical to the saved state;
+  if it ever is not, there is simply no replay. The chart, the table, the log and the event cards
+  then step through each haulier's turn (whose turn with tumbling dice, roll, each drive, delivery
+  and a folded run of desk work), with a strip over the chart and a Skip button. Any click or key
+  skips; the Roll button is never held back. About 5 to 6 s at full, 2 s at quick.
+- **Money.** Cash and share counts count up (header, table, counting house); your own purchases and
+  deliveries float `+£`/`−£` over your cash, and anyone's delivery floats its payout over the depot.
+- **Entrances.** Event cards and log lines rise in; the orders panel re-enters when you pick another
+  vehicle or she parks up (without remounting, so its own settings survive).

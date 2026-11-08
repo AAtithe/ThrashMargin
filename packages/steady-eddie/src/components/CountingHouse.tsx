@@ -24,6 +24,7 @@ import { COMPANIES, STOCK_IDS, standing } from '../sim/stocks';
 import { insurancePremium } from '../sim/hazards';
 import { FONT, UI, money } from '../theme';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
+import { CountUp } from './Motion';
 import type { Haulier, GameAction, GameState, Vehicle } from '../sim/types';
 import type { VehicleClassId } from '../sim/rules';
 
@@ -98,7 +99,7 @@ export default function CountingHouse({ state, haulier, fleetSize, dispatch, ena
       title="Counting house"
       aside={
         <Label>
-          {haulier.shares}/{TOTAL_SHARES} shares
+          <CountUp value={haulier.shares} />/{TOTAL_SHARES} shares
         </Label>
       }
     >

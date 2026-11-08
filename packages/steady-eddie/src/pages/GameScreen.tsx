@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { sourcesFor, planRoute, depotName } from '../sim/content';
@@ -20,7 +20,16 @@ import HauliersTable from '../components/HauliersTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
-import type { Contract, DepotId } from '../sim/types';
+import type { Contract, DepotId, GameState, Vehicle } from '../sim/types';
+import { usePace, useSkipOnInput } from '../lib/motion';
+import { useSteps, useTween } from '../hooks/usePlayback';
+import { frameMs, recordAiTurns, type ReplayFrame } from '../hooks/aiReplay';
+import { CountUp, DiceTray, Enter, MoneyFloats, ReplayStrip } from '../components/Motion';
+import type { MapFloat } from '../components/MapView';
+
+const NO_HOLDS: number[] = [];
+/** How long the dice tumble after your own roll, at full pace. */
+const TUMBLE_MS = 560;
 import ThemeToggle from '../components/ThemeToggle';
 import MotionToggle from '../components/MotionToggle';
 
@@ -76,6 +85,91 @@ export default function GameScreen() {
   useEffect(() => {
     setConfirmingEnd(false);
   }, [state?.turn]);
+
+  /* --- Time on the board (presentation only) ------------------------------------------------------
+   * Every action below has already resolved, and been saved, by the time any of this runs: the
+   * reducer is instant and the hooks write the result at once. What follows only decides what the
+   * screen shows for the next moment: the dice tumbling before the roll shows, the computer
+   * hauliers' turns replayed step by step, the lorries driving rather than jumping. Any click or key
+   * skips straight to the real state, and with the pace off none of it happens at all.
+   *
+   * All of these hooks sit above the `if (!state)` bail-out, for the reason given at `awaiting`.
+   */
+  const pace = usePace();
+  const prevState = useRef<GameState | null>(null);
+  useEffect(() => {
+    prevState.current = state;
+  }, [state]);
+
+  /** The computer turns that ran inside the END_TURN that produced this state, step by step. */
+  const replay = useMemo((): { key: number; frames: ReplayFrame[]; holds: number[] } | null => {
+    const prev = prevState.current;
+    if (pace === 'off' || !prev || !state || prev.id !== state.id) return null;
+    if (prev.phase !== 'act' || state.turn - prev.turn < 2) return null;
+    const frames = recordAiTurns(prev, state);
+    return frames && frames.length ? { key: state.turn, frames, holds: frames.map(frameMs) } : null;
+    // Recomputed only when the state moves on; prevState is the state before that move.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+  const steps = useSteps(replay?.key ?? null, replay?.holds ?? NO_HOLDS);
+  const frame = replay && steps.playing ? replay.frames[steps.index] : null;
+
+  /** Your own roll: the board as it stood before it, held while the dice tumble. */
+  const rolled = useMemo((): { key: number; vehicles: Vehicle[] } | null => {
+    const prev = prevState.current;
+    if (pace === 'off' || !prev || !state || prev.id !== state.id) return null;
+    return prev.phase === 'roll' && state.phase === 'act' && prev.turn === state.turn
+      ? { key: state.turn, vehicles: prev.vehicles }
+      : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+  const tumble = useTween(rolled ? `roll-${rolled.key}` : null, TUMBLE_MS);
+  const tumbling = tumble.t < 1;
+
+  const [snapToken, setSnapToken] = useState(0);
+  useSkipOnInput(steps.playing || tumbling, () => {
+    steps.skip();
+    tumble.skip();
+    setSnapToken(n => n + 1);
+  });
+
+  /** What the board shows: a replay frame, the pre-roll board while the dice tumble, or the truth. */
+  const shown = frame?.state ?? state;
+  const mapVehicles = frame
+    ? frame.state.vehicles
+    : tumbling && rolled
+      ? rolled.vehicles
+      : state?.vehicles ?? [];
+
+  /** "+£1,200" over the depot where a load was just delivered, for anyone's delivery. */
+  const contractDepot = useRef(new Map<string, DepotId>());
+  for (const s of [prevState.current, state, ...(replay?.frames.map(f => f.state) ?? [])]) {
+    for (const c of s?.contracts ?? []) contractDepot.current.set(c.id, c.destination);
+  }
+  const [mapFloats, setMapFloats] = useState<MapFloat[]>([]);
+  const floatSeen = useRef<number | null>(null);
+  const shownLog = shown?.log;
+  useEffect(() => {
+    if (!shownLog) return;
+    const highest = shownLog.reduce((m, e) => Math.max(m, e.seq), -1);
+    if (floatSeen.current === null || pace === 'off') {
+      floatSeen.current = Math.max(floatSeen.current ?? -1, highest);
+      return;
+    }
+    const since = floatSeen.current;
+    floatSeen.current = Math.max(since, highest);
+    const fresh: MapFloat[] = [];
+    for (const e of shownLog) {
+      if (e.seq <= since || e.kind !== 'deliver') continue;
+      const depot = contractDepot.current.get(String(e.data?.contractId ?? ''));
+      const payout = Number(e.data?.payout ?? 0);
+      if (depot && payout > 0) fresh.push({ id: e.seq, depot, text: `+${money(payout)}` });
+    }
+    if (fresh.length === 0) return;
+    setMapFloats(f => [...f, ...fresh].slice(-6));
+    const ids = new Set(fresh.map(f => f.id));
+    window.setTimeout(() => setMapFloats(f => f.filter(x => !ids.has(x.id))), 1200);
+  }, [shownLog, pace]);
 
   if (!state) {
     return (
@@ -148,9 +242,12 @@ export default function GameScreen() {
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: haulier.colour }} />
               <span style={{ fontFamily: FONT.display, fontSize: '0.92rem' }}>{haulier.name}</span>
             </span>
-            <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass }}>{money(haulier.cash)}</span>
+            <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass, position: 'relative' }}>
+              <CountUp value={haulier.cash} format={money} />
+              <MoneyFloats value={haulier.cash} scope={`${haulier.id}:${state.turn}`} live={canAct && !frame} />
+            </span>
             <span style={{ ...dataText, fontSize: '0.8rem', color: UI.verdigris }}>
-              {haulier.shares} share{haulier.shares === 1 ? '' : 's'}
+              <CountUp value={haulier.shares} /> share{haulier.shares === 1 ? '' : 's'}
             </span>
           </div>
         )}
@@ -210,13 +307,30 @@ export default function GameScreen() {
               setTargetDepot(null);
             }}
           />
-          <HauliersTable state={state} />
+          <HauliersTable state={shown ?? state} />
         </aside>
 
         {/* Centre: the chart, given the room. */}
         <div style={mapColumn}>
+          {/* Shrinks to the chart, so the replay strip lies across the chart and not the column. */}
+          <div style={{ position: 'relative', display: 'flex', flexDirection: 'column', alignSelf: 'center', maxWidth: '100%' }}>
+          {frame && replay && (
+            <ReplayStrip
+              frame={frame}
+              haulier={frame.state.hauliers.find(h => h.id === frame.haulierId)}
+              index={steps.index}
+              count={replay.frames.length}
+              onSkip={() => {
+                steps.skip();
+                setSnapToken(n => n + 1);
+              }}
+              stepMs={replay.holds[steps.index] ?? 420}
+            />
+          )}
           <MapView
-            vehicles={state.vehicles}
+            vehicles={mapVehicles}
+            snapToken={snapToken}
+            floats={mapFloats}
             hauliers={state.hauliers}
             contracts={state.contracts}
             selectedVehicleId={selectedVehicleId}
@@ -229,6 +343,7 @@ export default function GameScreen() {
               setFocusedContract(null);
             }}
           />
+          </div>
 
           <div style={turnBar}>
             {over ? (
@@ -246,6 +361,13 @@ export default function GameScreen() {
               </>
             ) : canAct ? (
               <>
+                {pace !== 'off' && (
+                  <DiceTray
+                    rolls={myVehicles.map(v => ({ id: v.id, name: v.name, dice: state.dice[v.id] ?? null }))}
+                    t={tumble.t}
+                    colour={haulier?.colour}
+                  />
+                )}
                 <Button
                   tone={confirmingEnd ? 'primary' : undefined}
                   onClick={() => {
@@ -273,7 +395,9 @@ export default function GameScreen() {
                     color: awaiting.length > 0 ? UI.warn : UI.textFaint,
                   }}
                 >
-                  {awaiting.length > 0
+                  {tumbling
+                    ? 'Rolling…'
+                    : awaiting.length > 0
                     ? awaiting
                         .map(
                           w =>
@@ -315,7 +439,7 @@ export default function GameScreen() {
                 miles={state.miles}
                 dice={state.dice}
                 selectedVehicleId={selectedVehicleId}
-                rolled={state.phase === 'act'}
+                rolled={state.phase === 'act' && !tumbling}
                 turn={state.turn}
                 deadlines={state.hazards?.deadlines ?? false}
                 onSelect={vehicleId => {
@@ -324,6 +448,7 @@ export default function GameScreen() {
                 }}
               />
 
+              <Enter on={`${selectedVehicle?.id ?? ''}:${selectedVehicle?.location ?? 'road'}`}>
               <DepotPanel
                 state={state}
                 vehicle={selectedVehicle}
@@ -338,6 +463,7 @@ export default function GameScreen() {
                 season={season}
                 theftOn={state.hazards?.theft ?? false}
               />
+              </Enter>
 
               <CountingHouse
                 state={state}
@@ -351,12 +477,12 @@ export default function GameScreen() {
           )}
 
           <RivalFleets state={state} viewerId={haulier?.id ?? null} />
-          <ChronicleLog log={state.log} hauliers={state.hauliers} />
+          <ChronicleLog log={shown?.log ?? state.log} hauliers={state.hauliers} />
         </aside>
       </main>
 
       {/* Notable events pop as cards so the game can be watched rather than read. */}
-      <EventCards log={state.log} hauliers={state.hauliers} viewerId={haulier?.id ?? null} />
+      <EventCards log={shown?.log ?? state.log} hauliers={state.hauliers} viewerId={haulier?.id ?? null} />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
       {state.phase === 'handover' && haulier && (
