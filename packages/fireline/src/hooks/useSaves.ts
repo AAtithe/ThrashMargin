@@ -3,6 +3,8 @@ import { API, authHeaders } from '../lib/api';
 import { readJson, serverFailure } from '../lib/apiReply';
 import { getToken } from '../lib/portalAuth';
 import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/saveQueue';
+import { campaignSaveStatus, campaignSaveTurn, isCampaignSave, migrateCampaignSave, newCampaignSave } from '../campaign/save';
+import type { CampaignSave } from '../campaign/types';
 import { createInitialState, migrateState, type NewGameOptions } from '../sim/state';
 import type { GameState } from '../sim/types';
 
@@ -25,14 +27,31 @@ const stateKey = (id: string) => `fireline_save_${id}`;
 export interface SaveMeta {
   id: string;
   name: string;
-  /** Minutes of battle played. */
+  /** Minutes of battle played; for a campaign, missions won. */
   turn: number;
   status: 'active' | 'victory' | 'defeated';
   savedAt: number;
+  /** Present on a campaign save; absent on a skirmish. */
+  kind?: 'campaign';
 }
+
+/** What a save row holds: a skirmish battle or a whole campaign (tell them apart with isCampaignSave). */
+export type LoadedSave = GameState | CampaignSave;
 
 export const statusOf = (s: GameState): SaveMeta['status'] =>
   s.winner === null ? 'active' : s.winner === 0 ? 'victory' : 'defeated';
+
+function metaOf(s: LoadedSave): SaveMeta {
+  if (isCampaignSave(s)) {
+    return { id: s.id, name: s.name, turn: campaignSaveTurn(s), status: campaignSaveStatus(s), savedAt: Date.now(), kind: 'campaign' };
+  }
+  return { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now() };
+}
+
+/** Either kind of save, made current; null if it is neither. */
+function migrateAny(raw: unknown): LoadedSave | null {
+  return isCampaignSave(raw) ? migrateCampaignSave(raw) : migrateState(raw);
+}
 
 function readIndex(): SaveMeta[] {
   try {
@@ -43,10 +62,10 @@ function readIndex(): SaveMeta[] {
   }
 }
 
-function writeLocal(s: GameState): void {
+function writeLocal(s: LoadedSave): void {
   try {
     localStorage.setItem(stateKey(s.id), JSON.stringify(s));
-    const meta: SaveMeta = { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now() };
+    const meta = metaOf(s);
     const index = [meta, ...readIndex().filter(m => m.id !== s.id)];
     localStorage.setItem(INDEX_KEY, JSON.stringify(index));
   } catch {
@@ -148,16 +167,59 @@ export function useSaves() {
     [cloud],
   );
 
-  /** Loads one battle. Resolves to the state, or null with `error` set. */
+  /** Starts a campaign. Resolves to its id, or null with `error` set. */
+  const createCampaign = useCallback(
+    async (name: string, commander: string): Promise<string | null> => {
+      setError(null);
+      if (!cloud) {
+        const s = newCampaignSave(localId(), name || 'Campaign', commander, Date.now());
+        writeLocal(s);
+        setSaves(readIndex());
+        return s.id;
+      }
+      try {
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ mode: 'campaign', name, commander }),
+        });
+        if (res.status === 401) {
+          setExpired(true);
+          setError(SESSION_EXPIRED);
+          return null;
+        }
+        const data = await readJson(res);
+        if (!data) {
+          setError(serverFailure('starting the campaign', res));
+          return null;
+        }
+        if (!res.ok) {
+          setError(data.message ?? 'Could not start the campaign.');
+          return null;
+        }
+        return data.gameId as string;
+      } catch {
+        setError('Network error: the campaign could not be started.');
+        return null;
+      }
+    },
+    [cloud],
+  );
+
+  /**
+   * Loads one save. At run time it resolves to a skirmish GameState or a CampaignSave (or null with
+   * `error` set). The type parameter defaults to GameState so skirmish-only callers keep compiling;
+   * a caller that can open either passes `LoadedSave` and checks with `isCampaignSave`.
+   */
   const load = useCallback(
-    async (id: string): Promise<GameState | null> => {
+    async <T extends LoadedSave = GameState>(id: string): Promise<T | null> => {
       setError(null);
       if (!cloud) {
         try {
           const raw = localStorage.getItem(stateKey(id));
-          const s = raw ? migrateState(JSON.parse(raw)) : null;
+          const s = raw ? migrateAny(JSON.parse(raw)) : null;
           if (!s) setError('That battle could not be found in this browser.');
-          return s;
+          return s as T | null;
         } catch {
           setError('That battle could not be read.');
           return null;
@@ -179,13 +241,13 @@ export function useSaves() {
           setError(data.message ?? 'Could not load the battle.');
           return null;
         }
-        const s = migrateState(data.state);
+        const s = migrateAny(data.state);
         if (!s) {
           setError('This save is from an older version of Fireline and cannot be opened.');
           return null;
         }
         saver.current?.reset(id, data.version);
-        return s;
+        return s as T;
       } catch {
         setError('Network error: the battle could not be loaded.');
         return null;
@@ -194,8 +256,9 @@ export function useSaves() {
     [cloud],
   );
 
+  /** Saves a skirmish battle or a whole campaign (with its battle in progress, if any). */
   const save = useCallback(
-    (s: GameState) => {
+    (s: LoadedSave) => {
       if (!cloud) {
         writeLocal(s);
         setLastSaved(Date.now());
@@ -228,5 +291,5 @@ export function useSaves() {
     [cloud],
   );
 
-  return { cloud, saves, savesLoaded, error, expired, lastSaved, create, load, save, remove, refresh };
+  return { cloud, saves, savesLoaded, error, expired, lastSaved, create, createCampaign, load, save, remove, refresh };
 }
