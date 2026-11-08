@@ -824,6 +824,24 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
         top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
         left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
+  // The card glides between positions only once it has been on screen at this step. A new step (or
+  // the card coming back after being hidden for a replay) is placed where it belongs at once:
+  // sliding in from the previous card's spot, the closing card started in the corner the End turn
+  // card had used and, being taller, hung off the bottom of the window until the slide caught up.
+  const glideKey = `${stepIndex}|${hidden}`;
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (settledKey === glideKey) return;
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => setSettledKey(glideKey));
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+    };
+  }, [glideKey, settledKey]);
+  if (settledKey !== glideKey) cardStyle.transition = 'none';
 
   const finish = () => {
     markGuidedTourSeen();
