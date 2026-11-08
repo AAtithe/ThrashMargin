@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { processAction, runAiTurn } from '../sim/actions';
 import { paced, usePace, useSkipOnInput, useSteps } from '../lib/motion';
 import type { GameAction, GameState } from '../sim/types';
@@ -122,37 +122,32 @@ export interface AiReplay {
 
 export function useAiReplay(state: GameState | null): AiReplay {
   const pace = usePace();
-  const armed = useRef<GameState | null>(null);
-  // Each replay gets its own key, so the shared step clock restarts on the very render it arrives.
-  const seq = useRef(0);
+  // The state the player ended the turn from, set by `arm` in the same event as the END_TURN
+  // dispatch, so both land in one render.
+  const [armed, setArmed] = useState<GameState | null>(null);
   const [replay, setReplay] = useState<{ key: number; frames: ReplayFrame[] } | null>(null);
+  const [seen, setSeen] = useState<GameState | null>(state);
   const frames = replay?.frames ?? NO_FRAMES;
   const holds = useMemo(() => frames.map(f => f.holdMs), [frames]);
-  // Paced, finished at once with motion off (or switched off mid-replay), skippable.
   const { index, playing, skip } = useSteps(replay?.key ?? null, holds);
 
-  const arm = useCallback((before: GameState) => {
-    armed.current = before;
-  }, []);
+  const arm = useCallback((before: GameState) => setArmed(before), []);
 
-  // A new state after an armed END_TURN: work out the replay. Anything else clears it.
-  useEffect(() => {
-    const before = armed.current;
-    if (!state) return;
-    if (!before || state === before) {
-      if (before === null && playing) {
-        // A state change from elsewhere (a reload, a save conflict): stop replaying a stale turn.
-        setReplay(null);
-      }
-      return;
+  // Worked out during the render that receives the new state, not in an effect after it. An effect
+  // runs after the browser has painted, so the end-of-turn board showed for one frame before the
+  // replay rewound it: rival ships flicked to their destinations and back, and the event cards saw
+  // the log move backwards. Setting state during render makes React re-render before painting.
+  if (state !== seen) {
+    setSeen(state);
+    if (state && armed && state !== armed) {
+      setArmed(null);
+      const f = armed.id === state.id && paced(1000, pace) > 0 ? replayFrames(armed, state) : null;
+      setReplay(f ? { key: (replay?.key ?? 0) + 1, frames: f } : null);
+    } else if (!armed && playing) {
+      // The state moved on for some other reason (a load, the player acting): drop the replay.
+      setReplay(null);
     }
-    armed.current = null;
-    if (before.id !== state.id || paced(1000, pace) <= 0) return;
-    const f = replayFrames(before, state);
-    if (f) setReplay({ key: ++seq.current, frames: f });
-    // Only a change of state starts or stops a replay.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state]);
+  }
 
   useSkipOnInput(playing, skip);
 
