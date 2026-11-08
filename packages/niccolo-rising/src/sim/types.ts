@@ -29,8 +29,9 @@ export interface Bar {
 
 export type Status =
   | { kind: 'free' }
-  | { kind: 'infirmary'; until: number; reason: string }
-  | { kind: 'steen'; until: number; reason: string }
+  // `since`: when the stay began (the action's `at`). Optional: saves before 2026-11-08 lack it.
+  | { kind: 'infirmary'; since?: number; until: number; reason: string }
+  | { kind: 'steen'; since?: number; until: number; reason: string }
   | { kind: 'travelling'; to: string; departs: number; arrives: number }
   | { kind: 'abroad'; city: string };
 

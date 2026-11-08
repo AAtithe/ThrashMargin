@@ -6,6 +6,7 @@ import { FONT, UI } from '../../theme';
 import { duration, gr } from '../../lib/format';
 import { Blurb, Button, Meta, Meter, Panel, Row } from '../ui';
 import ActButton from './ActButton';
+import { TimerBar } from '../motion';
 import type { PlaceProps, Verb } from '../types';
 
 function rewardText(m: Mission): string {
@@ -63,6 +64,9 @@ export default function Missions(p: PlaceProps) {
           title={current.title}
           aside={active.deadline !== null ? <Meta colour={active.deadline - now < 6 * 3_600_000 ? UI.bad : UI.warn}>{duration(active.deadline - now)} left</Meta> : undefined}
         >
+          {active.deadline !== null && (
+            <TimerBar start={active.accepted} end={active.deadline} now={now} colour={active.deadline - now < 6 * 3_600_000 ? UI.bad : UI.warn} style={{ height: 3, marginTop: 0 }} />
+          )}
           <Brief m={current} />
           {activeStatus(s).map((o, i) => (
             <Row key={i}>

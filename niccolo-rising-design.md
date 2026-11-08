@@ -313,3 +313,50 @@ The first book takes two to three weeks of active play and most of a month of ca
 is the pace intended. Beating Simon is deliberately a long goal: at day 30 a keen character's
 battle stats (6,000) only just match his. Mission rewards are story, not income: about 0.2% of
 all groats earned, against about two-thirds from trade.
+
+### Motion and time, 2026-11-08
+
+The brief: make the real time the game already runs on visible, and give actions some feel, so it
+reads less like clicking away. Presentation only (`motion-and-time-plan.md`): nothing under `sim/`
+changed, no new actions, and the driver passes unchanged. Everything is built on the portal's
+`lib/motion.ts`; the game's own pieces are in `components/motion.tsx`. With motion off (or the OS
+reduced-motion preference and nothing stored) every screen renders the markup it had before.
+
+- **Bars creep up between ticks.** A faint layer behind each bar's solid fill sits where the bar is
+  part way to its next refill (`cur + amount × elapsed / tick`), redrawn on the screen's one-second
+  clock with a matching one-second linear transition, so it moves continuously and meets the solid
+  fill exactly when the sim's tick lands. The number beside it stays the true whole value. A loss
+  leaves the faint layer trailing down behind the bar for a second.
+- **Timers have bars.** Journey (Travel panel and rail), course (Schooling and rail), payday (Work),
+  deposit maturity (Bank; the term is read back from the rate), mission deadline (Missions), and the
+  Infirmary and the Steen (which record no start, so their bar runs from when the screen first showed
+  the stay). Same one-second linear glide.
+- **Numbers count.** Groats, standing, level, experience, bar values, battle and working stats count
+  to their new value and pulse once. Groats, experience and bar values float the difference beside
+  themselves (so a refill tick shows a small `+5` too).
+- **Actions answer the button.** Each ActButton passes its id with the verb; after the press commits
+  the screen compares the state before and after (never delaying the dispatch or the save) and the
+  button floats what changed in stats and standing. It shakes when the action was refused (the sim
+  returned the same state object) or went badly (a new log line in the bad tone: a duel lost, the
+  Watch). The button is never held.
+- **The Chronicle's new lines rise in**, oldest first, a beat apart. Lines already there when the
+  character loads, or written while motion was off, appear at once.
+
+### Shared motion toolkit, and stays that survive a reload, 2026-11-08
+
+- **Onto the portal's helpers.** `components/motion.tsx` now builds on `lib/motion.ts` instead of
+  its own copies: `replay` became the shared `replayClass`, `useFloats` the shared one (sized here
+  by `useGameFloats`: 1.1 s, at most three), and `Floats` renders the shared `FloatText`, keeping
+  only this game's placement (left of a value, right of it, or above a button) and the data face.
+  `Tally`'s fallback float text is the shared `signed`. `Tally`, `TimerBar`, `Countdown`,
+  `Outcome`/`OutcomeContext` and `Anchor` stay here, being this game's own. Nothing looks different;
+  the reduced-motion rule in `styles.css` now hides `.tm-anim-float` (the old `.nr-float` class is
+  gone with the local markup).
+- **The Infirmary and the Steen record when the stay began.** Both statuses gain an optional
+  `since`, set to the action's `at` at every site that puts a character there (a scheme caught by
+  the Watch or gone wrong, a duel lost, a mission's injury: `sim/actions.ts`). The one sim change,
+  and a pure one: no clock, only `at`. A bandage or theriac shortening the stay keeps `since` and
+  moves `until`, so the bar jumps forward, as it should. The progress bar now runs from `since`, so a
+  reload resumes it at the right fraction instead of from empty; saves written before this lack
+  `since` and still load, and their bar falls back to running from when the screen first showed the
+  stay. The driver passes unchanged at 10,417,487 assertions.

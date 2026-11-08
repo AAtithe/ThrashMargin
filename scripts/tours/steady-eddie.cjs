@@ -157,6 +157,29 @@ async function seed(page, cfg, saveId) {
 const waitSigChange = (page, prev, timeout) =>
   page.waitForFunction(p => window.__se.sig() !== p, prev, { timeout, polling: 50 }).then(() => true, () => false);
 
+/**
+ * The rivals' turns replay on the board after End turn (lib/motion.ts; on unless the pace is off).
+ * While the replay bar is up the run is hidden on purpose and the handover card waits, so a driver
+ * that read the screen then would see the run "disappear". Watch it to the end, as a player would,
+ * and check the run is never drawn over it. Returns a problem string, or null.
+ */
+async function settleReplay(page) {
+  // One snapshot per look: two separate queries would race the replay's end and report an overlap
+  // that never reached the screen.
+  const look = () => page.evaluate(() => ({
+    replay: !!document.querySelector('[data-replay-bar]'),
+    card: !!document.querySelector('[data-tour-step]'),
+  }));
+  if (!(await look()).replay) return null;
+  for (let i = 0; i < 120; i++) {
+    const l = await look();
+    if (!l.replay) return null;
+    if (l.card) return 'tour card shown over the rivals\' replay';
+    await page.waitForTimeout(50);
+  }
+  return 'rivals\' replay still on screen after 6s';
+}
+
 /** Play whole days with the run declined, then ask for it from the header. */
 async function playIntoGame(page, days) {
   if (await page.locator('[data-tour-step]').count()) throw new Error('run opened although already seen');
@@ -231,6 +254,8 @@ async function run(browser, cfg) {
     let otherTurns = 0;
 
     for (let iter = 0; iter < 800; iter++) {
+      const replayProblem = await settleReplay(page);
+      if (replayProblem) { await fail(replayProblem); break; }
       if (await page.evaluate(() => window.__se.handover())) {
         if (await page.evaluate(() => !!window.__se.snap())) await fail('tour card shown over the handover card');
         const before = await page.evaluate(() => window.__se.sig());
@@ -318,6 +343,14 @@ async function run(browser, cfg) {
       if (cfg.perturb && !perturbed.bought && /^Run her/.test(s.title) && s.target === 'end-turn-button') {
         perturbed.bought = true;
         const buy = page.locator('button', { hasText: /^(Buy a vehicle|[\w.\- ]*(Tonner|Van|Rigid|Artic)[\w ]*) — £/ }).first();
+        // The vehicle market is in Fleet and orders. Where only one panel fits (a phone), the
+        // previous step's target left the exchange open, so open the other panel the way a player
+        // would, from its launcher at the edge of the map.
+        if ((await buy.count()) && !(await buy.isVisible())) {
+          const launcher = page.locator('button.tr-launcher', { hasText: 'Your fleet and orders' });
+          if (await launcher.count()) await launcher.click();
+          await buy.waitFor({ state: 'visible', timeout: 2000 }).catch(() => {});
+        }
         if ((await buy.count()) && (await buy.isEnabled())) {
           const n0 = await page.locator('[id^="vehicle-button-"]').count();
           await buy.click();
@@ -464,12 +497,16 @@ function skipReason(step, g, plan, start) {
 }
 
 (async () => {
-  const configs = QUICK ? quickMatrix() : fullMatrix();
+  // TOUR_ONLY=<regex> runs only the matching labels (for chasing one failure).
+  const only = process.env.TOUR_ONLY ? new RegExp(process.env.TOUR_ONLY) : null;
+  const configs = (QUICK ? quickMatrix() : fullMatrix()).filter(c => !only || only.test(labelOf(c)));
   const t0 = Date.now();
   const browser = await chromium.launch();
   const all = [];
   for (const cfg of configs) {
-    const r = await run(browser, cfg);
+    // run() records its own errors; this catches anything outside its try (a context that would
+    // not open or close), so one bad run is a problem, not the end of the matrix.
+    const r = await run(browser, cfg).catch(e => ({ label: labelOf(cfg), note: '', secs: 0, problems: ['driver error: ' + String((e && e.message) || e).split('\n')[0]] }));
     console.log(r.problems.length ? `${r.label} FAIL (${r.secs}s) ${r.problems[0]}` : `${r.label} ok (${r.secs}s)${r.note}`);
     for (const p of r.problems) all.push(`${r.label}: ${p}`);
   }

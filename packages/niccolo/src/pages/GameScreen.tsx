@@ -43,6 +43,8 @@ import EventOverlay from '../components/EventOverlay';
 import TutorialOverlay, { hasSeenTutorial, hasSeenChapter0Tutorial } from '../components/TutorialOverlay';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
+import { WeekDate, WeekSweep } from '../components/WeekTurn';
+import { FlorinsWithDelta } from '../components/motionKit';
 
 /**
  * One entry per popup section. Fleet selection, giving a vessel her orders (the old 'city' section
@@ -96,6 +98,8 @@ const HEADER: React.CSSProperties = {
   padding: '0.55rem 1rem',
   borderBottom: `1px solid ${UI.rule}`,
   flexShrink: 0,
+  // Anchors the week-turn sweep line (WeekSweep) to the header's bottom rule.
+  position: 'relative',
 };
 
 const TITLE: React.CSSProperties = {
@@ -647,8 +651,8 @@ export default function GameScreen() {
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
         <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: '0.8rem', flexWrap: 'wrap', rowGap: '0.4rem', flex: '1 1 auto', minWidth: 0 }}>
           <span style={CLOCK} className="niccolo-clock">
-            {Math.round(state.cash)}f &nbsp;·&nbsp; hold: {heldGoodsSummary || 'nothing'}
-            &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
+            <FlorinsWithDelta value={state.cash} /> &nbsp;·&nbsp; hold: {heldGoodsSummary || 'nothing'}
+            &nbsp;·&nbsp; <WeekDate week={state.week} />
             &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
           </span>
           {/* Free play has no chapters, so it gets the standings instead of a chapter title — the
@@ -696,7 +700,8 @@ export default function GameScreen() {
               Chronicle
             </button>
           )}
-          {/* No theme toggle here: the portal bar directly above carries the same one. */}
+          {/* No motion or theme toggle here: the portal bar directly above carries the same two,
+              side by side, and every line of header is a line of chart lost. */}
           <button
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textFaint }}
             onClick={() => nav('/')}
@@ -712,6 +717,7 @@ export default function GameScreen() {
             Abandon this campaign
           </button>
         </div>
+        <WeekSweep week={state.week} />
       </header>
 
       {error && (

@@ -15,7 +15,8 @@ import { useEffect, useState, type ReactNode } from 'react';
  *   passes (Retry and Back to the lobby, in each game's own Button).
  * - A loader that replaces another one (Banco di Niccolò: the code chunk, then the save) shows at
  *   once, with no second delay, so the two stages read as one load instead of a blink between them.
- * - prefers-reduced-motion stops every movement; the loader still appears, standing still.
+ * - prefers-reduced-motion, or the portal's Motion: off, stops every movement; the loader still
+ *   appears, standing still.
  * - Colours are the game's own tokens (--ui-…), falling back to the portal's (--portal-…), so it
  *   follows light and dark mode with no colour of its own.
  *
@@ -72,6 +73,10 @@ const CSS = `
 .wsl-busy { display: inline-block; width: .8em; height: .8em; border-radius: 50%;
   border: 2px solid currentColor; border-right-color: transparent; vertical-align: -.1em;
   margin-right: .45em; animation: wsl-spin .7s linear infinite }
+
+/* The portal's own "Motion: off" (lib/motion.ts) stills the loader exactly as the OS setting does:
+   it still appears, after the same delay, standing still. */
+:root[data-motion="off"] .wsl-loader svg *, :root[data-motion="off"] .wsl-bone, :root[data-motion="off"] .wsl-busy { animation: none !important }
 
 @media (prefers-reduced-motion: reduce) {
   .wsl-loader svg *, .wsl-bone, .wsl-busy { animation: none !important }

@@ -24,6 +24,7 @@ import { assetValue } from '../sim/actions';
 import { insurancePremium } from '../sim/hazards';
 import { FONT, UI, money } from '../theme';
 import { Button, Label, Panel, bodySmall, dataText } from './ui';
+import { Counted } from './Motion';
 import type { Captain, GameAction, GameState, Ship } from '../sim/types';
 import type { ShipClassId } from '../sim/rules';
 
@@ -106,7 +107,15 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
       title="Counting house"
       aside={
         <Label>
-          {freePlay ? `worth ${money(worth)}` : `${captain.shares}/${TOTAL_SHARES} shares`}
+          {freePlay ? (
+            <>
+              worth <Counted key={captain.id} value={worth} format={money} />
+            </>
+          ) : (
+            <>
+              <Counted key={captain.id} value={captain.shares} />/{TOTAL_SHARES} shares
+            </>
+          )}
         </Label>
       }
     >

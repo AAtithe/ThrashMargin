@@ -228,3 +228,28 @@ The economic victory, scaled for AI income, stopped being the rivals' main route
 New: the exchange, marches through friendly land, per-player turn dispatches, the ledger,
 undo within a turn, a seeded random map, a coached tutorial, version 1 save migration, and a rules
 harness of about 12,000 assertions.
+
+### Time and motion (November 2026)
+
+The owner's brief: the game should feel less like clicking away. All of it is presentation; the
+engine, the saves and `drive:tm` are untouched, and with `Motion: off` the screen is as before.
+
+- **AI turns replayed.** After End turn the board briefly shows the old owners, then steps through
+  each AI faction: a banner (name, "took 2 · 1 attack repelled"), then each capture, repulse and
+  annexation in order, the territory flipping colour with a pop, a red flash and shake when it was
+  yours, and your losses floating off it. Derived from the new chronicle lines and the board before
+  and after (`client/src/game/replay.ts`, stepped by `hooks/useBeats.ts`). About 0.3–0.8s per
+  faction at full pace (long turns keep the six beats that matter most to you), 40% of that on
+  quick. Any click or key skips it; the dispatch, a pending decision and the end screen wait until
+  it finishes, and keys stay blocked exactly as before while a dispatch is due.
+- **Battles.** Your attack pops the badge of a captured territory or shakes one that held, and
+  floats the troops each side lost (green: theirs, red: yours).
+- **Treasury and actions.** Gold, food, materials, influence and population count to their new
+  figures; action pips drain and refill one at a time; the turn number pops when it changes.
+- **Income and upkeep** float off the chips at turn end (gold, harvest, `−N upkeep`), and any
+  spending (recruits, buildings, trades) floats its cost.
+- **Toasts** rise in, modal scrims fade in, the hot-seat hand-over pops.
+- Fixed in passing: the shared motion keyframes (`tm-pulse`, `tm-rise`) share names with this
+  game's own, and being injected later they replaced them (the pulsing ring on a territory hit
+  while away became a scale pulse about the map's origin). This game's are now `tm-hit-pulse` and
+  `tm-modal-rise`.

@@ -1,6 +1,7 @@
 import { SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel } from './ui';
+import { CountUp } from './Motion';
 import type { GameState } from '../sim/types';
 
 /**
@@ -46,7 +47,7 @@ export default function HauliersTable({ state }: { state: GameState }) {
                     color: haulier.cash >= VICTORY_CASH ? UI.good : UI.textSoft,
                   }}
                 >
-                  {money(haulier.cash)}
+                  <CountUp value={haulier.cash} format={money} />
                 </td>
                 <td
                   style={{
@@ -59,7 +60,7 @@ export default function HauliersTable({ state }: { state: GameState }) {
                           : UI.textSoft,
                   }}
                 >
-                  {haulier.shares}
+                  <CountUp value={haulier.shares} />
                 </td>
                 <td style={{ ...td, color: UI.textSoft }}>{vehicles}</td>
               </tr>

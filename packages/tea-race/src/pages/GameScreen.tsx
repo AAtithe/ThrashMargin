@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
+import { useAiReplay } from '../hooks/useAiReplay';
+import { Counted, TumblingDice } from '../components/Motion';
 import { sourcesFor, planRoute, portName } from '../sim/content';
 import { SEASON_NAMES, planFastestRoute, roundsLeftInSeason, seasonOf, voyageYear } from '../sim/weather';
 import { destinationOf } from '../sim/movement';
@@ -27,6 +29,7 @@ import { Button, bodySmall, dataText } from '../components/ui';
 import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
 import type { Contract, GameState, GoodId, PortId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
+import MotionToggle from '../components/MotionToggle';
 import TeaRacePanel from '../components/TeaRacePanel';
 import SeamanshipPanel from '../components/SeamanshipPanel';
 import ChartersPanel from '../components/ChartersPanel';
@@ -93,6 +96,9 @@ export default function GameScreen() {
     [state, captain],
   );
   const [confirmingEnd, setConfirmingEnd] = useState(false);
+  // The computer captains' turns, replayed on the board after you end yours. Above the early
+  // return, like every hook here.
+  const replay = useAiReplay(state);
 
   /**
    * The two panels that float over the chart. The chart is the board; the exchange (left) and the
@@ -160,6 +166,62 @@ export default function GameScreen() {
     if (plan) setTourPlan(plan);
   }, [state, captain, tourOffered]);
 
+  /**
+   * The control the guided run is ringing, and keeping the panel that holds it in view. On a phone
+   * (and on any chart too narrow for both) only one panel is open at a time, so the game's own
+   * moves can put the target away under a live step: the roll slides Fleet and orders in, which
+   * closes the exchange, and a step waiting on a port in the ledger was left pointing at nothing.
+   * Reacting only to a new target id cannot see that, because the target never changed.
+   *
+   * The rule: the panel is (re)opened, and the control scrolled to once, whenever the target
+   * changes or the game moves on (a new turn, phase or seat), polled until the panel has stayed
+   * open for two ticks so that a panel closed by the same render's effects is caught. Then it
+   * stops. A player who opens the other panel or closes this one on purpose mid-step (to buy a
+   * ship, or to see the chart) is left alone until the step, its target, or the game moves on;
+   * those are the moments the game itself rearranges the panels, so the run reasserts what it
+   * asks for exactly then and never fights a deliberate choice in between.
+   */
+  const [tourTarget, setTourTarget] = useState<string | null>(null);
+  const tourMoment = state ? `${state.turn}|${state.phase}|${state.activeIndex}` : '';
+  useEffect(() => {
+    if (!tourTarget) return;
+    let stopped = false;
+    let openTicks = 0;
+    const tick = () => {
+      if (stopped) return;
+      const el = document.getElementById(tourTarget);
+      if (!el) return; // may appear only once the player acts; keep looking
+      const inExchange = !!exchangeRef.current?.contains(el);
+      if (!inExchange && !ordersRef.current?.contains(el)) {
+        stopped = true; // on the chart or the turn bar: nothing to open
+        return;
+      }
+      const panel = (inExchange ? exchangeRef : ordersRef).current!;
+      if (!panel.classList.contains('open')) {
+        openTicks = 0;
+        if (inExchange) openExchange(true);
+        else openOrders(true);
+        return; // measure on a later tick, once the panel has slid in
+      }
+      if (++openTicks < 2) return;
+      // Scrolling any earlier measures a panel still in motion, and on a phone that left the
+      // control tucked under the sheet's own title strip with the spotlight framing an empty gap.
+      const body = el.closest('.tr-panel-body');
+      if (body) {
+        const t = el.getBoundingClientRect(), b = body.getBoundingClientRect();
+        if (t.top < b.top + 8 || t.bottom > b.bottom - 8) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+      }
+      stopped = true;
+    };
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourTarget, tourMoment]);
+
   if (!state) {
     return (
       <LoadingScreen
@@ -181,6 +243,14 @@ export default function GameScreen() {
   }
 
   const selectedShip = state.ships.find(s => s.id === selectedShipId) ?? null;
+  /**
+   * What the shared board shows: the real state, or a step of the computer captains' turns while
+   * they are being replayed. Only the public board follows the replay — the chart, the exchange,
+   * the table and the log. Your own panels and the turn controls always read the real state, so
+   * nothing you can do is ever behind the playback.
+   */
+  const view = replay.frame?.state ?? state;
+  const replayCaptain = replay.frame ? view.captains.find(c => c.id === replay.frame!.captainId) ?? null : null;
   const priceFor = priceLookup(state, captain?.id ?? '');
   const isHuman = captain?.kind === 'human';
   const canAct = state.phase === 'act' && isHuman;
@@ -227,30 +297,6 @@ export default function GameScreen() {
   })();
 
   const tourOwner = tourPlan ? state.captains.find(c => c.id === tourPlan.captainId) ?? null : null;
-  /**
-   * The guided run is pointing at something: open whichever panel it lives in, then, once the panel
-   * has finished sliding in, scroll the control into the middle of it. Scrolling any earlier
-   * measures a panel still in motion, and on a phone that left the control tucked under the
-   * sheet's own title strip with the spotlight framing an empty gap.
-   */
-  const revealTourTarget = (targetId: string | null) => {
-    if (!targetId) return;
-    const el = document.getElementById(targetId);
-    if (!el) return;
-    const panel = exchangeRef.current?.contains(el) ? 'exchange' : ordersRef.current?.contains(el) ? 'orders' : null;
-    if (!panel) return;
-    const wasOpen = panel === 'exchange' ? exchangeOpen : ordersOpen;
-    if (panel === 'exchange') openExchange(true);
-    else openOrders(true);
-    window.setTimeout(() => {
-      const target = document.getElementById(targetId);
-      const body = target?.closest('.tr-panel-body');
-      if (!target || !body) return;
-      const t = target.getBoundingClientRect(), b = body.getBoundingClientRect();
-      if (t.top < b.top + 8 || t.bottom > b.bottom - 8) target.scrollIntoView({ block: 'center', behavior: 'auto' });
-    }, wasOpen ? 0 : 320);
-  };
-
   const insetPx = layout.sheet
     ? { left: 0, right: 0, bottom: exchangeOpen || ordersOpen ? Math.round((boardRef.current?.clientHeight ?? window.innerHeight) * 0.58) : 0 }
     : {
@@ -261,12 +307,12 @@ export default function GameScreen() {
   const focusPort = targetPort ?? selectedShip?.location ?? myShips.find(sh => sh.location)?.location ?? null;
 
   // The race, if one is running. Plain values, not a hook — this is below the early return.
-  const race = openRace(state);
+  const race = openRace(view);
   const chartRace = race
     ? {
         ports: TEA_RACE_PORTS,
         finish: RACE_FINISH,
-        runners: new Set(state.ships.filter(sh => raceLots(sh, race).length > 0).map(sh => sh.id)),
+        runners: new Set(view.ships.filter(sh => raceLots(sh, race).length > 0).map(sh => sh.id)),
       }
     : null;
 
@@ -289,16 +335,25 @@ export default function GameScreen() {
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: captain.colour }} />
               <span style={{ fontFamily: FONT.display, fontSize: '0.92rem' }}>{captain.name}</span>
             </span>
-            <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass }}>{money(captain.cash)}</span>
+            <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass }}>
+              <Counted key={captain.id} value={captain.cash} format={money} float />
+            </span>
             <span style={{ ...dataText, fontSize: '0.8rem', color: UI.verdigris }}>
-              {state.rules === 'voyage'
-                ? `worth ${money(assetValue(state, captain))}`
-                : `${captain.shares} share${captain.shares === 1 ? '' : 's'}`}
+              {state.rules === 'voyage' ? (
+                <>
+                  worth <Counted key={captain.id} value={assetValue(state, captain)} format={money} />
+                </>
+              ) : (
+                <>
+                  <Counted key={captain.id} value={captain.shares} /> share{captain.shares === 1 ? '' : 's'}
+                </>
+              )}
             </span>
           </div>
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
           <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
           {/* Offered whenever a run can actually be planned from where the fleet stands, not only
               on turn one: a player who skipped the tour, or who came back to a half-played game,
@@ -356,9 +411,9 @@ export default function GameScreen() {
           phone. */}
       <main ref={boardRef} style={board} className="tr-board">
         <MapView
-          ships={state.ships}
-          captains={state.captains}
-          contracts={state.contracts}
+          ships={view.ships}
+          captains={view.captains}
+          contracts={view.contracts}
           selectedShipId={selectedShipId}
           plannedRoute={plannedRoute}
           viewerId={captain?.id ?? null}
@@ -377,7 +432,8 @@ export default function GameScreen() {
 
         {/* What the rest of the table did while you waited, at the top of your own turn. */}
         {isHuman && captain && !over && (
-          // Kept mounted but out of sight under a phone's sheet: it remembers being folded, and an
+          // Kept mounted but out of sight under a phone's sheet, and while the rivals' turns replay
+          // (the replay is showing the same news as it happens): it remembers being folded, and an
           // unmount would forget that and print the paper again.
           <div
             className="tr-gazette"
@@ -385,10 +441,39 @@ export default function GameScreen() {
               ...gazetteSlot,
               left: insetPx.left + 12,
               right: insetPx.right + 12,
-              display: layout.sheet && (exchangeOpen || ordersOpen) ? 'none' : undefined,
+              display: replay.frame || (layout.sheet && (exchangeOpen || ordersOpen)) ? 'none' : undefined,
             }}
           >
             <ShippingGazette key={captain.id} state={state} viewer={captain} />
+          </div>
+        )}
+
+        {/* The rivals' turns, narrated one step at a time while the chart and the exchange play
+            them back. Skip (or any key or click) shows the result at once. */}
+        {replay.frame && replayCaptain && (
+          <div className="tr-gazette" style={{ ...replaySlot, left: insetPx.left + 12, right: insetPx.right + 12 }}>
+            <div style={{ ...replayBar, borderLeftColor: replayCaptain.colour }} role="status" aria-live="polite" data-replay-bar>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: replayCaptain.colour, flex: '0 0 auto' }} />
+              {replay.frame.action.type === 'ROLL' && (
+                <span key={`dice-${replay.index}`} style={{ display: 'inline-flex', gap: '0.2rem', alignItems: 'center' }}>
+                  {view.ships
+                    .filter(sh => sh.ownerId === replayCaptain.id && view.dice[sh.id])
+                    .slice(0, 4)
+                    .map(sh => (
+                      <TumblingDice key={sh.id} values={view.dice[sh.id]} tumble size={15} tone={UI.brass} />
+                    ))}
+                </span>
+              )}
+              <span key={replay.index} className="tm-anim-rise" style={{ ...bodySmall, fontSize: '0.8rem', flex: '1 1 16rem', minWidth: 0 }}>
+                {replay.frame.text}
+              </span>
+              <span style={{ ...dataText, fontSize: '0.66rem', color: UI.textFaint }}>
+                {replay.index + 1}/{replay.count}
+              </span>
+              <Button tone="quiet" onClick={replay.skip} title="Show the result now (or press any key)">
+                Skip
+              </Button>
+            </div>
           </div>
         )}
 
@@ -415,17 +500,17 @@ export default function GameScreen() {
           <PanelHead title="The exchange" onClose={() => setExchangeOpen(false)} />
           <div style={panelBody} className="tr-panel-body">
           {/* While the race is on it is the most important thing on the board, so it leads. */}
-            {race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
+            {race && <TeaRacePanel state={view} viewerId={captain?.id ?? null} />}
             {state.rules === 'voyage' ? (
               <MarketBoard
-                state={state}
+                state={view}
                 reference={selectedShip}
                 onPortClick={port => setTargetPort(port as PortId)}
               />
             ) : (
             <ContractBoard
-              contracts={state.contracts}
-              captains={state.captains}
+              contracts={view.contracts}
+              captains={view.captains}
               reference={selectedShip}
               round={state.round}
               deadlines={state.hazards?.deadlines ?? false}
@@ -436,8 +521,8 @@ export default function GameScreen() {
               }}
             />
             )}
-            {!race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
-            <CaptainsTable state={state} />
+            {!race && <TeaRacePanel state={view} viewerId={captain?.id ?? null} />}
+            <CaptainsTable state={view} />
             <PortLedger
               contracts={state.contracts}
               reference={selectedShip}
@@ -481,6 +566,11 @@ export default function GameScreen() {
 
               {/* Orders first: in a panel that slides in, what you do every turn must not sit
                   below what you read once a game. */}
+              {/* Keyed by ship and berth, so a new port's business arrives with a short rise. */}
+              <div
+                key={`${selectedShip?.id ?? 'none'}@${selectedShip?.location ?? 'sea'}`}
+                className="tm-anim-rise"
+              >
               <PortPanel
                 ship={selectedShip}
                 captain={captain}
@@ -502,6 +592,7 @@ export default function GameScreen() {
                 season={season}
                 piracyOn={state.hazards?.piracy ?? false}
               />
+              </div>
 
               <SeamanshipPanel
                 state={state}
@@ -529,8 +620,8 @@ export default function GameScreen() {
             </>
           )}
 
-          <RivalFleets state={state} viewerId={captain?.id ?? null} />
-          <ChronicleLog log={state.log} captains={state.captains} />
+          <RivalFleets state={view} viewerId={captain?.id ?? null} />
+          <ChronicleLog log={view.log} captains={view.captains} />
           </div>
         </aside>
 
@@ -576,6 +667,7 @@ export default function GameScreen() {
                     }
                     setConfirmingEnd(false);
                     setOrdersOpen(false);
+                    replay.arm(state);
                     dispatch({ type: 'END_TURN' });
                   }}
                 >
@@ -622,8 +714,8 @@ export default function GameScreen() {
 
       {/* Notable events pop as cards so the game can be watched rather than read. */}
       <EventCards
-        log={state.log}
-        captains={state.captains}
+        log={view.log}
+        captains={view.captains}
         viewerId={captain?.id ?? null}
         inGazette={isHuman && captain && !over ? new Set(frontPage(state, captain).map(st => st.seq)) : undefined}
       />
@@ -631,10 +723,12 @@ export default function GameScreen() {
       {/* --- Overlays -------------------------------------------------------------------- */}
       {/* Kept mounted through the hot-seat handover (`hidden`), never unmounted: remounting threw
           away the step and the tour's memory and restarted it from the welcome card. The view is
-          the plan owner's, not the active seat's — see `TourPlan.captainId`. */}
+          the plan owner's, not the active seat's — see `TourPlan.captainId`.
+          Also hidden while the rivals' turns replay: its scrim would dim the replay, and its card would
+          be talking about the player's own move while the screen shows someone else's. */}
       {tourPlan && tourOwner && !over && (
         <GuidedTour
-          onTargetChange={revealTourTarget}
+          onTargetChange={setTourTarget}
           view={{
             state,
             captain: tourOwner,
@@ -645,7 +739,7 @@ export default function GameScreen() {
             priceFor: priceLookup(state, tourOwner.id),
           }}
           plan={tourPlan}
-          hidden={state.phase === 'handover'}
+          hidden={state.phase === 'handover' || !!replay.frame}
           onFinish={() => setTourPlan(null)}
         />
       )}
@@ -814,6 +908,32 @@ const turnBar: React.CSSProperties = {
   padding: '0.55rem 0.75rem',
   boxShadow: `0 6px 20px ${UI.shadow}`,
   transition: 'left 0.25s ease, right 0.25s ease, bottom 0.25s ease',
+};
+
+/**
+ * The narration of the rivals' turns while they replay. It floats where the Shipping Gazette sits
+ * (top of the chart, between the launchers), which waits for the replay to finish before it shows.
+ */
+const replaySlot: React.CSSProperties = {
+  position: 'absolute',
+  top: 56,
+  zIndex: 33,
+  margin: '0 auto',
+  maxWidth: 620,
+  boxShadow: `0 6px 20px ${UI.shadow}`,
+  transition: 'left 0.25s ease, right 0.25s ease',
+};
+
+const replayBar: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  flexWrap: 'wrap',
+  border: `1px solid ${UI.ruleStrong}`,
+  borderLeftWidth: 3,
+  background: UI.panel,
+  backgroundImage: `linear-gradient(${UI.tintBrass}, ${UI.tintBrass})`,
+  padding: '0.45rem 0.75rem',
 };
 
 const gazetteSlot: React.CSSProperties = {

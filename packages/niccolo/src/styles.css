@@ -68,6 +68,23 @@ body {
 }
 
 /*
+ * Motion (presentation only; see components/motionKit.tsx). Durations are multiplied by the portal
+ * pace, `--tm-motion` (1, 0.4 or 0, from lib/motion.ts), and `.nb-trade-flash` (like every `tm-anim-` class) is
+ * switched off outright with motion off. No colours here beyond existing tokens.
+ */
+@keyframes nb-trade-flash {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.nb-trade-flash {
+  animation: nb-trade-flash calc(900ms * var(--tm-motion, 1)) ease-out both;
+}
+:root[data-motion="off"] .nb-trade-flash {
+  animation: none;
+  display: none;
+}
+
+/*
  * The panels over the chart (GameScreen's usePanelLayout holds the same widths). They slide in from
  * their own side and are hidden once out of sight, so a closed panel's buttons cannot take focus.
  * On a phone both become a bottom sheet over the lower part of the chart.
@@ -115,6 +132,11 @@ body {
   .niccolo-clock { font-size: 0.78rem !important; }
   .niccolo-rail-label { display: none !important; }
   .niccolo-hide-phone { display: none !important; }
+}
+
+/* Motion: off stands the panels still, as OS reduced motion does below: they appear and go at once. */
+:root[data-motion="off"] .niccolo-panel {
+  transition: none;
 }
 
 /* The same rule the other four games carry: a player who asks for less motion gets none. */

@@ -60,7 +60,16 @@
       }
       showGames(u.games);
       fetch('/api/profile', { headers: { Authorization: 'Bearer ' + localStorage.getItem('tm_token') } })
-        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (r) {
+          // Refused: the session has ended (suspended by an admin, password changed elsewhere, account
+          // deleted). Sign out here too, rather than show a portal every game will refuse.
+          if (r.status === 401) {
+            ['tm_token', 'tm_user', 'tm_last_active'].forEach(function (k) { localStorage.removeItem(k); });
+            window.location.replace('/thrash-margin/login?next=/');
+            return null;
+          }
+          return r.ok ? r.json() : null;
+        })
         .then(function (p) {
           if (!p || typeof p.isAdmin !== 'boolean') return;
           adminLink.hidden = !p.isAdmin;

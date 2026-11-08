@@ -560,6 +560,39 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
+### Session 19 (2026-11-08) — time on the board: small animations
+
+The owner asked for "time elements so you feel it less like you have to just click away". All of it
+is presentation; `sim/` is untouched, nothing waits on an animation before saving, and every piece
+follows the portal-wide pace (`Motion: full / quick / off`, `lib/motion.ts`). With motion off the
+screen is what it was, including the old straight 700ms glide of a ship marker.
+
+- **Dice tumble** (`components/Motion.tsx`, `TumblingDice`). After a roll the fleet panel's dice
+  spin through faces for about half a second, then show the throw already in the state; the points
+  appear with them. Dice already on the table when the panel mounts (a reload mid-turn) stay still.
+- **Ships sail the route** (`MapView.tsx`, `ShipMarker`). A ship that moves follows the legs port
+  by port from where she was last drawn. At sea the passed ports are in her voyage; leaving port the
+  course is re-planned the way doSailTo plans it (fastest for the season, else shortest — both are
+  tried) and used only if it agrees with the voyage she now has, otherwise she glides straight as
+  before. Checked over 11,674 AI moves in 20 games: every one inferred.
+- **The rivals' turns replayed** (`hooks/useAiReplay.ts`). END_TURN still runs every computer turn
+  at once and saves at once. The replay re-derives the in-between states by re-running those turns
+  from the pre-END_TURN state through the exported `runAiTurn` with its `observe` hook (on a copy
+  with every captain marked 'ai', so END_TURN only advances the seat), restores the real captain
+  kinds, and is **discarded unless its last state is byte-identical to the reducer's**. Checked over
+  1,696 human turns in 30 games: all identical, worst case 11ms. The chart, exchange, table, rival
+  list, log and event cards then step through it (about 0.4s an action, 0.75s a roll or a sail),
+  with a narration bar and a Skip button; any click or key skips. Your own panels and the turn
+  controls always read the real state, so you can roll the moment you like. Not shown when the turn
+  ends in a hotseat handover or the end of the game — the cover or the result is the screen then.
+  The Shipping Gazette waits until the replay is done.
+- **Counting and floating figures.** Header cash, shares and worth, the table, and the counting
+  house count to their new value; a sale or purchase floats "+£120" / "−£52" beside the header cash.
+- **Entrances.** Event cards rise in; the orders panel rises in when you pick another ship or she
+  reaches a new berth.
+
+No new colours: everything uses existing tokens.
+
 ### Session 18 (2026-11-08) — the game grows with the captain
 
 The owner's brief: start as a very simple game and get more complicated as you level up, so a new
