@@ -66,9 +66,15 @@ export function markGuidedTourSeen(): void {
 /** Everything a step needs, assembled by `GameScreen` from state plus its own selection. */
 export interface TourView {
   state: GameState;
+  /** The haulier the run belongs to — its owner, not whoever's seat is active. In a hotseat game
+   *  those differ on every other player's turn. */
   haulier: Haulier;
   /** The vehicle the run is taught on. */
   vehicle: Vehicle | null;
+  /** The vehicle the Orders panel is showing. Every depot-side control acts on this one, so when it
+   *  is not the run's vehicle the step has to say "select her first" rather than point at a
+   *  button that would load somebody else. */
+  selectedVehicleId: string | null;
   targetDepot: DepotId | null;
   focusedContract: Contract | null;
 }
@@ -99,6 +105,9 @@ interface TourMemory {
 /* -------------------------------------------------------------------------------------------- */
 
 export interface TourPlan {
+  /** Whose run this is. In a hotseat game the active seat changes every turn, and a run that read
+   *  "the active haulier" taught the second player's turn against the first player's vehicle. */
+  haulierId: string;
   /** Held by id, not by reference, so a haulier who buys a second vehicle mid-run does not
    *  quietly change which cab the steps are talking about. */
   vehicleId: VehicleId;
@@ -149,6 +158,7 @@ export function planFirstRun(state: GameState, haulier: Haulier, vehicle: Vehicl
       const miles = out + run;
       if (best && (miles > best.miles || (miles === best.miles && contract.price <= best.price))) continue;
       best = {
+        haulierId: haulier.id,
         vehicleId: vehicle.id,
         contractId: contract.id,
         good: contract.good,
@@ -161,8 +171,8 @@ export function planFirstRun(state: GameState, haulier: Haulier, vehicle: Vehicl
   }
 
   if (!best) return null;
-  const { vehicleId, contractId, good, loadDepot, destination } = best;
-  return { vehicleId, contractId, good, loadDepot, destination };
+  const { haulierId, vehicleId, contractId, good, loadDepot, destination } = best;
+  return { haulierId, vehicleId, contractId, good, loadDepot, destination };
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -209,12 +219,13 @@ const isMyTurn = (v: TourView): boolean => v.haulier.id === v.state.hauliers[v.s
  * So: point at the roll first, and say why. The wrapped step's own completion is untouched —
  * rolling is not what finishes it, it is what makes finishing it possible.
  */
-function depotside(step: TourStep): TourStep {
+function depotside(step: TourStep, { perVehicle = true }: { perVehicle?: boolean } = {}): TourStep {
   return {
     ...step,
     target: (v, plan) => {
       if (!isMyTurn(v)) return null;
       if (v.state.phase === 'roll') return 'roll-button';
+      if (perVehicle && needsSelecting(v, plan)) return `vehicle-button-${plan.vehicleId}`;
       return step.target(v, plan);
     },
     body: (v, plan) => {
@@ -222,9 +233,43 @@ function depotside(step: TourStep): TourStep {
       if (v.state.phase === 'roll') {
         return 'Roll for the day first — nothing at the depot can be touched until the fleet has its miles. Then we carry on where we left off.';
       }
+      if (perVehicle && needsSelecting(v, plan)) {
+        return `The Orders panel is showing another vehicle. Select ${v.vehicle?.name ?? 'her'} in your fleet first — every order there goes to whichever vehicle is selected.`;
+      }
       return step.body(v, plan);
     },
   };
+}
+
+/**
+ * The Orders panel acts on the selected vehicle, not on the run's. A haulier with a second vehicle
+ * (bought mid-run, or already owned when the run was asked for from the header) could be looking at
+ * the wrong one, and the step would then ring a "Set off" or "Load" button that drives somebody
+ * else — or ring nothing at all, because the other vehicle is on the road and has no such button.
+ */
+const needsSelecting = (v: TourView, plan: TourPlan): boolean =>
+  !!v.vehicle && v.selectedVehicleId !== plan.vehicleId;
+
+/** For the steps whose control is not depot-side: just stand down on somebody else's turn. */
+function ownTurn(step: TourStep): TourStep {
+  return {
+    ...step,
+    target: (v, plan) => (isMyTurn(v) ? step.target(v, plan) : null),
+    body: (v, plan) => (isMyTurn(v) ? step.body(v, plan) : 'The other hauliers are taking their turns. I will wait.'),
+  };
+}
+
+/** Laying off a course also acts on the selected vehicle, so it needs the same "select her" guard
+ *  as the Orders panel, but not the roll: a course can be drawn before the dice. */
+function courseStep(step: TourStep): TourStep {
+  return ownTurn({
+    ...step,
+    target: (v, plan) => (needsSelecting(v, plan) ? `vehicle-button-${plan.vehicleId}` : step.target(v, plan)),
+    body: (v, plan) =>
+      needsSelecting(v, plan)
+        ? `The Orders panel is showing another vehicle. Select ${v.vehicle?.name ?? 'her'} in your fleet first — a course is laid off for whichever vehicle is selected.`
+        : step.body(v, plan),
+  });
 }
 
 /* -------------------------------------------------------------------------------------------- */
@@ -267,16 +312,35 @@ const COURSE_TO_SELLER: TourStep = {
     `Nothing is loaded where she stands. ${depotName(plan.loadDepot)} stocks ${goodName(plan.good)}. ` +
     `Click ${depotName(plan.loadDepot)} — in the depot ledger under the map, or on the map itself — to lay off a route for her.`,
   target: (_v, plan) => `ledger-depot-${plan.loadDepot}`,
-  isComplete: (v, plan) => v.targetDepot === plan.loadDepot || boundFor(v.vehicle, plan.loadDepot),
+  isComplete: (v, plan) =>
+    (v.targetDepot === plan.loadDepot && !needsSelecting(v, plan)) || boundFor(v.vehicle, plan.loadDepot),
 };
 
-const SET_OFF_TO_SELLER: TourStep = {
+/**
+ * The "Set off" button only exists while a course to the right depot is laid off, and the course
+ * is screen state the player can clear without meaning to — "Not yet", another depot, the commission
+ * board, or reselecting the vehicle all reset it. Pointing at `set-off-button` regardless left the
+ * card ringing nothing (or ringing a course to the wrong depot) with no way forward but Back. So the
+ * step re-asks for the course whenever the course is not the one it is waiting on.
+ */
+function setOff(depotOf: (plan: TourPlan) => DepotId, step: TourStep): TourStep {
+  return {
+    ...step,
+    target: (v, plan) => (v.targetDepot === depotOf(plan) ? step.target(v, plan) : `ledger-depot-${depotOf(plan)}`),
+    body: (v, plan) =>
+      v.targetDepot === depotOf(plan)
+        ? step.body(v, plan)
+        : `The course was cleared. Click ${depotName(depotOf(plan))} again to lay it off, then set off.`,
+  };
+}
+
+const SET_OFF_TO_SELLER: TourStep = setOff(plan => plan.loadDepot, {
   title: 'Set off',
   body: (_v, plan) =>
     `Commit her to it. She spends today's miles towards ${depotName(plan.loadDepot)} and carries on tomorrow — a vehicle already on the road drives the moment you roll, and you do not steer her again.`,
   target: () => 'set-off-button',
   isComplete: (v, plan) => boundFor(v.vehicle, plan.loadDepot),
-};
+});
 
 const DRIVE_TO_SELLER: TourStep = {
   title: 'Run her up there',
@@ -319,16 +383,17 @@ const COURSE_TO_BUYER: TourStep = {
   body: (_v, plan) =>
     `She is loaded. Click ${depotName(plan.destination)} to lay off the route that pays — the map will draw it.`,
   target: (_v, plan) => `ledger-depot-${plan.destination}`,
-  isComplete: (v, plan) => v.targetDepot === plan.destination || boundFor(v.vehicle, plan.destination),
+  isComplete: (v, plan) =>
+    (v.targetDepot === plan.destination && !needsSelecting(v, plan)) || boundFor(v.vehicle, plan.destination),
 };
 
-const SET_OFF_TO_BUYER: TourStep = {
+const SET_OFF_TO_BUYER: TourStep = setOff(plan => plan.destination, {
   title: 'Set off for the buyer',
   body: (_v, plan) =>
     `Send her. Remember what the race actually is: first vehicle home on this commission takes ${PAYOUT_MULTIPLIERS[1]}× the price a lot, second takes ${PAYOUT_MULTIPLIERS[2]}×, and everybody after that takes nothing at all.`,
   target: () => 'set-off-button',
   isComplete: (v, plan) => boundFor(v.vehicle, plan.destination),
-};
+});
 
 const DRIVE_TO_BUYER: TourStep = {
   title: 'Run her home',
@@ -383,18 +448,19 @@ function buildSteps(): TourStep[] {
   // there is no version of this game where the first load is bought where she is parked.
   return [
     INTRO,
-    ROLL,
-    PICK_COMMISSION,
-    COURSE_TO_SELLER,
+    ownTurn(ROLL),
+    ownTurn(PICK_COMMISSION),
+    courseStep(COURSE_TO_SELLER),
     depotside(SET_OFF_TO_SELLER),
-    DRIVE_TO_SELLER,
+    ownTurn(DRIVE_TO_SELLER),
     depotside(LOAD),
     depotside(FILL),
-    COURSE_TO_BUYER,
+    courseStep(COURSE_TO_BUYER),
     depotside(SET_OFF_TO_BUYER),
-    DRIVE_TO_BUYER,
+    ownTurn(DRIVE_TO_BUYER),
     depotside(LAND),
-    depotside(BUY_SHARE),
+    // The counting house is the haulier's, not a vehicle's: no need to select her first.
+    depotside(BUY_SHARE, { perVehicle: false }),
     OUTRO,
   ];
 }
@@ -415,7 +481,7 @@ function buildSteps(): TourStep[] {
  * a few hundred milliseconds after it is measured, and the ring visibly lands in the wrong place
  * and then slides onto the control.
  */
-function useTargetRect(targetId: string | null): DOMRect | null {
+function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | null {
   const [rect, setRect] = useState<DOMRect | null>(null);
 
   useEffect(() => {
@@ -431,13 +497,16 @@ function useTargetRect(targetId: string | null): DOMRect | null {
         return;
       }
       const r = el.getBoundingClientRect();
+      // In the DOM but not laid out: ringing it would draw a box in the corner of the screen.
+      if (r.width === 0 && r.height === 0) {
+        setRect(null);
+        return;
+      }
       if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
         el.scrollIntoView({ block: 'center', behavior: 'auto' });
         scrolledOnce = true;
-        setRect(el.getBoundingClientRect());
-        return;
       }
-      setRect(r);
+      setRect(visibleRectOf(el));
     };
     measure();
     const interval = setInterval(measure, 250);
@@ -448,9 +517,70 @@ function useTargetRect(targetId: string | null): DOMRect | null {
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
     };
-  }, [targetId]);
+    // Keyed on the step as well as the id. "Load her up" and "Fill the bay" ring the same button,
+    // and the Orders panel reflows between them, so keyed on the id alone the second step had
+    // already spent its one scroll and left the button half under the bottom edge of a phone.
+  }, [targetId, stepIndex]);
 
   return rect;
+}
+
+/**
+ * The part of an element a player can actually see: its box cut down by every ancestor that clips
+ * its overflow, and by the window. Ringing the raw box of a control taller than the screen, or one
+ * a player has scrolled half out of view, drew the spotlight off the page and parked the card on
+ * top of the very thing it pointed at. Returns null when nothing of it is visible.
+ */
+function visibleRectOf(el: Element): DOMRect | null {
+  const r = el.getBoundingClientRect();
+  let left = r.left, top = r.top, right = r.right, bottom = r.bottom;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p);
+    if (o.overflowX === 'visible' && o.overflowY === 'visible') continue;
+    const c = p.getBoundingClientRect();
+    left = Math.max(left, c.left);
+    top = Math.max(top, c.top);
+    right = Math.min(right, c.right);
+    bottom = Math.min(bottom, c.bottom);
+  }
+  left = Math.max(left, 0);
+  top = Math.max(top, 0);
+  right = Math.min(right, window.innerWidth);
+  bottom = Math.min(bottom, window.innerHeight);
+  if (right - left < 4 || bottom - top < 4) return null;
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+/**
+ * Where the card goes: below the target, then above, then to the right, then to the left — the
+ * first that fits on screen without covering it. Placed from the card's *measured* height: the
+ * fixed 200px estimate this replaced is short of the real card on a phone (the body copy wraps to
+ * eight lines), so "above" put the card's bottom edge over the control it was pointing at. A target
+ * too big for any side gets the card in whichever screen corner overlaps it least.
+ */
+function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; left: number } {
+  const W = window.innerWidth, H = window.innerHeight, M = 16, GAP = 16;
+  const w = Math.min(cardW, W - 2 * M);
+  const clampX = (x: number) => Math.max(M, Math.min(x, W - M - w));
+  const clampY = (y: number) => Math.max(M, Math.min(y, H - M - cardH));
+  const candidates = [
+    { top: rect.bottom + GAP, left: clampX(rect.left), ok: rect.bottom + GAP + cardH <= H - M },
+    { top: rect.top - GAP - cardH, left: clampX(rect.left), ok: rect.top - GAP - cardH >= M },
+    { top: clampY(rect.top), left: rect.right + GAP, ok: rect.right + GAP + w <= W - M },
+    { top: clampY(rect.top), left: rect.left - GAP - w, ok: rect.left - GAP - w >= M },
+  ];
+  const fit = candidates.find(c => c.ok);
+  if (fit) return { top: fit.top, left: fit.left };
+  const overlap = (x: number, y: number) =>
+    Math.max(0, Math.min(x + w, rect.right) - Math.max(x, rect.left)) *
+    Math.max(0, Math.min(y + cardH, rect.bottom) - Math.max(y, rect.top));
+  const corners = [
+    { left: W - M - w, top: H - M - cardH },
+    { left: M, top: H - M - cardH },
+    { left: W - M - w, top: M },
+    { left: M, top: M },
+  ];
+  return corners.reduce((best, c) => (overlap(c.left, c.top) < overlap(best.left, best.top) ? c : best));
 }
 
 /**
@@ -479,9 +609,16 @@ interface Props {
   view: TourView;
   plan: TourPlan;
   onFinish: () => void;
+  /**
+   * Hidden rather than unmounted while it is not the run owner's moment — a handover card, or
+   * another hotseat player's turn. Unmounting threw away the step and the opening snapshot, so every
+   * handover sent the run back to the welcome card, re-scanned against the *next* player's turn,
+   * and walked them through it with the first player's vehicle.
+   */
+  hidden?: boolean;
 }
 
-export default function GuidedTour({ view, plan, onFinish }: Props) {
+export default function GuidedTour({ view, plan, onFinish, hidden = false }: Props) {
   // `useRef`, not `useState`: writing to it must not itself cause a render.
   const memoryRef = useRef<TourMemory>({ shares: view.haulier.shares, pickedCommission: false });
   const memory = memoryRef.current;
@@ -494,7 +631,7 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO;
   const targetId = step.target(view, plan);
-  const rect = useTargetRect(targetId);
+  const rect = useTargetRect(targetId, stepIndex);
 
   // Declared *before* the advance effect below, and relied on for that: effects run in the order
   // they are declared, so the latch is set on the same commit as the player's click, and the
@@ -505,23 +642,34 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
   // of what they just did before the card moves on.
+  //
+  // Keyed on the *answer*, not on `view`. `view` is a fresh object on every render of the game
+  // screen, so keying on it restarted the 650ms pause on every click: a player who arrived and then
+  // rolled and ended turns at a brisk pace never let it elapse, and the card went on saying "end
+  // the turn, I will wait until she arrives" for as long as they kept playing.
+  const done = !isManual && step.isComplete(view, plan, memory);
   useEffect(() => {
-    if (isManual) return;
-    if (!step.isComplete(view, plan, memory)) return;
+    if (!done) return;
     const t = setTimeout(() => setStepIndex(i => Math.min(i + 1, steps.length - 1)), 650);
     return () => clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, stepIndex]);
+  }, [done, stepIndex, steps.length]);
 
   const PADDING = 8;
-  const spotlight: React.CSSProperties | null = rect
+  // The ring's padding is kept on screen too: a control at the very edge of the window otherwise
+  // had its ring drawn past the edge, so it read as pointing at something below the fold.
+  const ringBox = rect
+    ? (() => {
+        const l = Math.max(2, rect.left - PADDING), t = Math.max(2, rect.top - PADDING);
+        const r = Math.min(window.innerWidth - 2, rect.right + PADDING);
+        const b = Math.min(window.innerHeight - 2, rect.bottom + PADDING);
+        return { left: l, top: t, width: r - l, height: b - t };
+      })()
+    : null;
+  const spotlight: React.CSSProperties | null = ringBox
     ? {
         position: 'fixed',
         zIndex: 61,
-        left: rect.left - PADDING,
-        top: rect.top - PADDING,
-        width: rect.width + PADDING * 2,
-        height: rect.height + PADDING * 2,
+        ...ringBox,
         borderRadius: 3,
         border: `2px solid ${UI.brass}`,
         boxShadow: `0 0 0 9999px ${SCRIM}`,
@@ -530,29 +678,30 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
       }
     : null;
 
-  // Close enough to decide which side of the target has room; the card's real height varies with
-  // the length of the body copy, and pixel-exactness buys nothing.
-  const CARD_HEIGHT_ESTIMATE = 200;
+  // The card's height varies with the body copy and the viewport width, so it is measured after
+  // each render; the estimate covers only the very first frame.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(220);
+  useEffect(() => {
+    const h = cardRef.current?.offsetHeight;
+    if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
+  });
   const CARD_WIDTH = 21 * 16;
   const cardStyle: React.CSSProperties = rect
-    ? {
-        ...CARD,
-        top:
-          rect.bottom + 16 + CARD_HEIGHT_ESTIMATE <= window.innerHeight
-            ? rect.bottom + 16
-            : Math.max(16, rect.top - CARD_HEIGHT_ESTIMATE - 16),
-        left: Math.max(16, Math.min(rect.left, window.innerWidth - 16 - CARD_WIDTH)),
-      }
+    ? { ...CARD, ...placeCard(rect, CARD_WIDTH, cardHeight) }
     : {
         ...CARD,
-        top: Math.max(16, window.innerHeight / 2 - CARD_HEIGHT_ESTIMATE / 2),
-        left: Math.max(16, window.innerWidth / 2 - CARD_WIDTH / 2),
+        top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
+        left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
 
   const finish = () => {
     markGuidedTourSeen();
     onFinish();
   };
+
+  // Every hook is above this line: one placed after an early return renders conditionally.
+  if (hidden) return null;
 
   return (
     <>
@@ -563,7 +712,7 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
 
       {/* `data-tour-*` is how an automated pass drives the run: it reads which control the card is
           pointing at and clicks that, rather than guessing from the copy. */}
-      <div style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={targetId ?? ''}>
+      <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={targetId ?? ''}>
         <p style={stepLabel}>
           Guided run — {stepIndex + 1} of {steps.length}
         </p>
