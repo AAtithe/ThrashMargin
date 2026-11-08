@@ -6,7 +6,10 @@ import { useEffect, useState, type ReactNode } from 'react';
  *
  * - Nothing appears for the first 300ms. Most loads finish inside that, and a spinner that flashes
  *   for a tenth of a second makes the app feel slower than no spinner. The delay is pure CSS
- *   (animation-delay), so there is no timer, no state and no hook here at all.
+ *   (animation-delay), so no timer drives it; the only state is the handover record below.
+ * - After 8 seconds the loader says the load is slow and offers the caller's `actions`, so a
+ *   request that hangs is never a dead end. Also pure CSS: the actions are in the page from the
+ *   start, hidden (visibility, so not focusable either) until the reveal.
  * - No minimum display time: a loaded game is never held back so an animation can finish.
  * - An error shows at once, looks different from loading, and offers whatever actions the caller
  *   passes (Retry and Back to the lobby, in each game's own Button).
@@ -20,6 +23,13 @@ import { useEffect, useState, type ReactNode } from 'react';
  * and forbids inline scripts; this needs no script.
  */
 
+/**
+ * What a game screen says when its load was refused because the sign-in has expired. The hooks'
+ * own message points at "Sign out" in the nav bar, which several game screens do not show; this one
+ * goes with a "Sign in again" button instead of a Try again that could never succeed.
+ */
+export const SIGN_IN_AGAIN = 'Your sign-in has expired. Sign in again to open this game.';
+
 export type LoadingMotif = 'territories' | 'ledger' | 'coins' | 'lorry' | 'clipper';
 
 const TEXT = 'var(--ui-text, var(--portal-text))';
@@ -28,6 +38,9 @@ const FAINT = 'var(--ui-text-faint, var(--portal-faint))';
 const RULE = 'var(--ui-rule, var(--portal-rule))';
 const RAISED = 'var(--ui-panel-raised, var(--portal-raised))';
 const BAD = 'var(--ui-bad, var(--portal-bad))';
+
+/** How long a load runs before the loader admits it is slow and offers a way out. */
+const SLOW_MS = 8000;
 
 const CSS = `
 @keyframes wsl-in { from { opacity: 0 } to { opacity: 1 } }
@@ -40,6 +53,7 @@ const CSS = `
 @keyframes wsl-drop { 0% { transform: translateY(-26px); opacity: 0 } 15% { opacity: 1 } 55%,100% { transform: translateY(0); opacity: 1 } }
 @keyframes wsl-node { 0%,100% { opacity: .35 } 20%,40% { opacity: 1 } }
 @keyframes wsl-run { from { stroke-dashoffset: 0 } to { stroke-dashoffset: -20 } }
+@keyframes wsl-reveal { from { visibility: hidden; opacity: 0 } to { visibility: visible; opacity: 1 } }
 @keyframes wsl-shimmer { 0%,100% { opacity: .55 } 50% { opacity: 1 } }
 
 .wsl-wait { animation: wsl-in 180ms ease-out 300ms both }
@@ -53,6 +67,7 @@ const CSS = `
 .wsl-coin { animation: wsl-drop 1.4s cubic-bezier(.5,0,.7,1) infinite }
 .wsl-node { animation: wsl-node 1.5s ease-in-out infinite }
 .wsl-run { stroke-dasharray: 4 6; animation: wsl-run .8s linear infinite }
+.wsl-slow { animation: wsl-reveal 200ms ease-out ${SLOW_MS}ms both }
 .wsl-bone { animation: wsl-shimmer 1.4s ease-in-out infinite }
 .wsl-busy { display: inline-block; width: .8em; height: .8em; border-radius: 50%;
   border: 2px solid currentColor; border-right-color: transparent; vertical-align: -.1em;
@@ -63,6 +78,7 @@ const CSS = `
   /* Each game's styles.css sets animation: none on everything here; a class outranks *, so the
      300ms delay survives and a fast load still shows nothing. */
   .wsl-wait { animation: wsl-in 1ms linear 300ms both !important }
+  .wsl-slow { animation: wsl-reveal 1ms linear ${SLOW_MS}ms both !important }
 }
 `;
 
@@ -157,8 +173,9 @@ const isVisible = (l: Live, now: number) => l.instant || now - l.since >= DELAY_
 
 /**
  * The game screen while its save is fetched, or after the fetch failed. While loading it fades in
- * after 300ms; with `error` set it shows at once, with a warning glyph and the caller's `actions`
- * (normally Retry and Back to the lobby).
+ * after 300ms, and after 8 seconds offers the caller's `actions` under a "slower than usual" line.
+ * With `error` set it shows at once, with a warning glyph and the same `actions` (normally Try
+ * again and Back to the lobby).
  */
 export function LoadingScreen({
   motif,
@@ -222,6 +239,14 @@ export function LoadingScreen({
         <Motif motif={motif} accent={accent} />
         <p style={{ margin: 0, color: SOFT, fontSize: '0.95rem', letterSpacing: '0.01em', maxWidth: '42ch', lineHeight: 1.5 }}>{caption}</p>
       </div>
+      {actions && (
+        <div className="wsl-slow" data-testid="loading-slow" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 6 }}>
+          <p style={{ margin: 0, color: FAINT, fontSize: '0.85rem', maxWidth: '42ch', lineHeight: 1.5 }}>
+            This is taking longer than usual. The connection may be slow; you can try again.
+          </p>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>{actions}</div>
+        </div>
+      )}
     </div>
   );
 }
