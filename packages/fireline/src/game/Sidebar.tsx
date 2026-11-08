@@ -314,7 +314,9 @@ export function BuildPanel({
       {!hasBuilding(state, 0, PRODUCER[tab]) && (
         <p style={{ margin: 0, fontSize: '0.72rem', color: UI.textFaint }}>
           {tab === 'building'
-            ? 'Your Command Yard is gone. No new structures can be built.'
+            ? state.mission && !state.players[0].stats.built && !state.buildings.some(b => b.owner === 0)
+              ? 'No base in this mission: your units are all you have.'
+              : 'Your Command Yard is gone. No new structures can be built.'
             : `Build a ${BUILDINGS[PRODUCER[tab]].name} to unlock this list.`}
         </p>
       )}
@@ -403,7 +405,8 @@ function BuildTipFooter({
   const missing = needsOf(kind).filter(r => !hasBuilding(state, 0, r));
   const short = costOf(kind) - p.credits;
   const notes: string[] = [];
-  if (missing.length) notes.push(`Locked: build a ${missing.map(r => BUILDINGS[r].name).join(' and a ')} first.`);
+  if (state.allowed && !state.allowed.includes(kind)) notes.push('Not available in this mission.');
+  else if (missing.length) notes.push(`Locked: build a ${missing.map(r => BUILDINGS[r].name).join(' and a ')} first.`);
   else if (short > 0 && !p.queues[tab].some(q => q.kind === kind)) notes.push(`Need ${money(short)} more credits.`);
   if (lowPower) notes.push('Power is low: everything builds at half speed.');
   const k = hotkey?.toUpperCase();

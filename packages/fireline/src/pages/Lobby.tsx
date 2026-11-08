@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
-import { useSaves } from '../hooks/useSaves';
+import { useSaves, type SaveMeta } from '../hooks/useSaves';
+import { campaignSaves, isCampaignMeta } from './campaignSaves';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 import NoGameAccess from '../lib/NoGameAccess';
 import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
@@ -22,7 +23,16 @@ import { ART, FONT, UI } from '../theme';
 export default function Lobby() {
   const navigate = useNavigate();
   const user = getStoredUser();
-  const { saves, savesLoaded, error, create, remove } = useSaves();
+  const savesApi = useSaves();
+  const { saves: allSaves, savesLoaded, error, create, remove } = savesApi;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const camp = useMemo(() => campaignSaves(savesApi), [savesApi.cloud, savesApi.load, savesApi.save]);
+  const saves = allSaves.filter(s => !isCampaignMeta(s));
+  const campaigns = allSaves.filter(isCampaignMeta);
+  const [commander, setCommander] = useState(() => getStoredUser()?.username ?? '');
+  const [campName, setCampName] = useState('');
+  const [campBusy, setCampBusy] = useState(false);
+  const [campError, setCampError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [seed, setSeed] = useState('');
   const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
@@ -37,6 +47,21 @@ export default function Lobby() {
       if (id) navigate(`/game/${id}`);
     } finally {
       setBusy(false);
+    }
+  };
+
+  const beginCampaign = async () => {
+    if (campBusy) return;
+    setCampBusy(true);
+    setCampError(null);
+    try {
+      const id = await camp.createCampaign(campName.trim() || 'The Fireline campaign', commander.trim() || 'Commander');
+      if (id) navigate(`/game/${id}`);
+      else setCampError('The campaign could not be started. Try again in a moment.');
+    } catch {
+      setCampError('The campaign could not be started. Try again in a moment.');
+    } finally {
+      setCampBusy(false);
     }
   };
 
@@ -108,7 +133,65 @@ export default function Lobby() {
           </div>
         )}
 
-        <Panel title="A new battle" style={{ marginBottom: '1.5rem' }}>
+        <Panel title="Campaign" aside={<Label>8 missions</Label>} style={{ marginBottom: '1.5rem' }}>
+          <div className="fl-campaign-pitch">
+            <p style={{ ...bodySmall, margin: 0 }}>
+              Eight missions against the Ashen Combine, one after another. Your Commander earns rank and skill points to spend on
+              economy, industry and support powers. Four heroes join along the way and carry their experience from mission to
+              mission: <strong>the Spy</strong>, <strong>the Commando</strong>, <strong>the Engineer</strong> and{' '}
+              <strong>the Ace</strong>.
+            </p>
+          </div>
+          <div className="fl-campaign-form">
+            <div style={field}>
+              <Label>Commander's name</Label>
+              <input
+                style={input}
+                value={commander}
+                placeholder="Commander"
+                maxLength={32}
+                data-testid="commander-name"
+                onChange={e => setCommander(e.target.value)}
+              />
+            </div>
+            <div style={field}>
+              <Label>Name this campaign</Label>
+              <input style={input} value={campName} placeholder="The Fireline campaign" maxLength={60} onChange={e => setCampName(e.target.value)} />
+            </div>
+          </div>
+          {campError && (
+            <div style={errorBanner} role="alert">
+              {campError}
+            </div>
+          )}
+          <div>
+            <Button tone="primary" disabled={campBusy} onClick={beginCampaign}>
+              {campBusy ? <BusyLabel>Starting…</BusyLabel> : 'Start a new campaign →'}
+            </Button>
+          </div>
+          {!savesLoaded ? (
+            <LoadingRows rows={1} label="Loading your campaigns" />
+          ) : (
+            campaigns.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="campaign-saves">
+                {campaigns.map(s => (
+                  <SaveRow
+                    key={s.id}
+                    s={s}
+                    campaign
+                    confirming={confirmDelete === s.id}
+                    onOpen={() => navigate(`/game/${s.id}`)}
+                    onAsk={() => setConfirmDelete(s.id)}
+                    onKeep={() => setConfirmDelete(null)}
+                    onDelete={() => remove(s.id).then(() => setConfirmDelete(null))}
+                  />
+                ))}
+              </div>
+            )
+          )}
+        </Panel>
+
+        <Panel title="A new battle" aside={<Label>Skirmish</Label>} style={{ marginBottom: '1.5rem' }}>
           <div style={field}>
             <Label>Name this battle</Label>
             <input style={input} value={name} placeholder="Operation Fireline" maxLength={60} onChange={e => setName(e.target.value)} />
@@ -163,48 +246,84 @@ export default function Lobby() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {saves.map(s => (
-                <div key={s.id} style={row}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                    <strong style={{ fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</strong>
-                    <span style={{ fontSize: '0.74rem', color: UI.textFaint }}>
-                      {s.status === 'victory' ? (
-                        <span style={{ color: UI.good }}>Victory</span>
-                      ) : s.status === 'defeated' ? (
-                        <span style={{ color: UI.bad }}>Defeat</span>
-                      ) : (
-                        'In progress'
-                      )}{' '}
-                      · {s.turn} min · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
-                    </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-                    {confirmDelete === s.id ? (
-                      <>
-                        <Button tone="danger" onClick={() => remove(s.id).then(() => setConfirmDelete(null))}>
-                          Delete
-                        </Button>
-                        <Button tone="quiet" onClick={() => setConfirmDelete(null)}>
-                          Keep
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button tone={s.status === 'active' ? 'primary' : 'default'} onClick={() => navigate(`/game/${s.id}`)}>
-                          {s.status === 'active' ? 'Resume' : 'View'}
-                        </Button>
-                        <Button tone="quiet" onClick={() => setConfirmDelete(s.id)}>
-                          ✕
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
+                <SaveRow
+                  key={s.id}
+                  s={s}
+                  confirming={confirmDelete === s.id}
+                  onOpen={() => navigate(`/game/${s.id}`)}
+                  onAsk={() => setConfirmDelete(s.id)}
+                  onKeep={() => setConfirmDelete(null)}
+                  onDelete={() => remove(s.id).then(() => setConfirmDelete(null))}
+                />
               ))}
             </div>
           )}
         </Panel>
       </main>
       <PortalNav variant="footer" />
+    </div>
+  );
+}
+
+/** One saved battle or campaign in a list. */
+function SaveRow({
+  s,
+  campaign = false,
+  confirming,
+  onOpen,
+  onAsk,
+  onKeep,
+  onDelete,
+}: {
+  s: SaveMeta;
+  campaign?: boolean;
+  confirming: boolean;
+  onOpen: () => void;
+  onAsk: () => void;
+  onKeep: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div style={row} data-kind={campaign ? 'campaign' : 'skirmish'}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
+        <strong style={{ fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {campaign && <span className="fl-badge">Campaign</span>}
+          {s.name}
+        </strong>
+        <span style={{ fontSize: '0.74rem', color: UI.textFaint }}>
+          {campaign ? (
+            'Career in progress'
+          ) : s.status === 'victory' ? (
+            <span style={{ color: UI.good }}>Victory</span>
+          ) : s.status === 'defeated' ? (
+            <span style={{ color: UI.bad }}>Defeat</span>
+          ) : (
+            'In progress'
+          )}
+          {!campaign && ` · ${s.turn} min`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+        </span>
+      </div>
+      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+        {confirming ? (
+          <>
+            <Button tone="danger" onClick={onDelete}>
+              Delete
+            </Button>
+            <Button tone="quiet" onClick={onKeep}>
+              Keep
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button tone={campaign || s.status === 'active' ? 'primary' : 'default'} onClick={onOpen}>
+              {campaign ? 'Continue' : s.status === 'active' ? 'Resume' : 'View'}
+            </Button>
+            <Button tone="quiet" onClick={onAsk} title={campaign ? 'Delete this campaign' : 'Delete this battle'}>
+              ✕
+            </Button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
@@ -473,6 +592,7 @@ const minutes = (ticks: number) => {
 
 /** What changed lately, in a line each. */
 const WHATS_NEW: { title: string; text: string }[] = [
+  { title: 'The campaign', text: 'Eight missions, a Commander who ranks up and learns perks, four heroes who level up, and support powers.' },
   { title: 'A battlefield that remembers', text: 'Tread marks, burnt-out wrecks and rubble where structures fell. Bigger explosions, living water, drifting cloud.' },
   { title: 'Richer art', text: 'Detailed tanks and structures with working machinery, and damage you can see: scorch, holes, sparks and fire.' },
   { title: 'Veterans and stances', text: 'Units promote at 3 and 7 kills. Set each group to aggressive, guard or hold fire.' },

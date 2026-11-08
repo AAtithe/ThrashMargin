@@ -5,7 +5,7 @@ import { Button, Panel, bodySmall } from '../components/ui';
 import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
 import { statsOf } from '../game/Sidebar';
-import { BUILD_MENU, BUILDINGS, INFANTRY_MENU, UNITS, VEHICLE_MENU, type BuildingKind, type UnitKind } from '../sim/rules';
+import { BUILD_MENU, BUILDINGS, HERO_ABILITY, HERO_KINDS, INFANTRY_MENU, UNITS, VEHICLE_MENU, type BuildingKind, type UnitKind } from '../sim/rules';
 import { FONT, UI } from '../theme';
 
 /** The rules, generated from the same tables the simulation reads, so they cannot drift apart. */
@@ -66,6 +66,48 @@ export default function HowToPlay() {
           </ul>
         </Panel>
 
+        <Panel title="Campaign">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Start a campaign in the lobby and name your Commander. The campaign map shows eight missions in order; each one
+              you win opens the next. Click an open mission for its briefing, then <strong>Deploy</strong>.
+            </li>
+            <li>
+              A mission is won by its <strong>objectives</strong> (top right of the battlefield), not by flattening the map. Bonus
+              objectives are optional and earn a star each. Some missions have a time limit, shown beside the objectives.
+            </li>
+            <li>
+              Your <strong>Commander</strong> earns experience from every mission, even a lost one, and gains a skill point with
+              every rank. Spend them in the Commander panel on income, faster and cheaper production, tougher units and support
+              powers.
+            </li>
+            <li>
+              <strong>Heroes</strong> join as the campaign goes on. They level up from kills and carry their experience between
+              missions. A hero who falls is out for the rest of the mission and starts the next one wounded, at half health.
+            </li>
+            <li>
+              The hero bar sits at the bottom of the battlefield. <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> <kbd>V</kbd> select heroes one
+              to four (press twice to jump to the hero). <kbd>F</kbd> uses the selected hero's ability; Infiltrate, Demolition charge
+              and Capture then want a click on an enemy structure. Right-click or <kbd>Esc</kbd> cancels.
+            </li>
+            <li>
+              Support powers sit beside the heroes. Click one, then click the map: a Recon sweep reveals an area (and any Spies in
+              it), an Artillery barrage shells it, Reinforcements arrive at the edge of the map nearest your base.
+            </li>
+          </ul>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+            {HERO_KINDS.map(k => (
+              <div key={k} style={{ ...tile, flexDirection: 'column', gap: 4 }}>
+                <strong style={{ fontSize: '0.88rem' }}>{UNITS[k].name}</strong>
+                <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>
+                  <strong style={{ color: UI.text }}>{HERO_ABILITY[k].name}.</strong> {HERO_ABILITY[k].blurb}
+                </span>
+                <span style={{ fontSize: '0.72rem', color: UI.textFaint, lineHeight: 1.4 }}>{UNITS[k].blurb}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
         <Panel title="Structures">
           <Grid kinds={BUILD_MENU} />
         </Panel>
@@ -76,7 +118,7 @@ export default function HowToPlay() {
           <Grid kinds={VEHICLE_MENU} />
         </Panel>
         <Panel title="Controls">
-          <Controls />
+          <Controls campaign />
         </Panel>
       </main>
       <PortalNav variant="footer" />
