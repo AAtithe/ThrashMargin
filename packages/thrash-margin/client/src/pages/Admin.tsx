@@ -14,6 +14,8 @@ interface AdminUser {
   registeredAt: number;
   lastLoginAt: number | null;
   gamesByTitle: Record<string, number>;
+  /** The games this account may play (keys from GAMES). */
+  games: string[];
   activeGames: number;
   wins: number;
 }
@@ -23,7 +25,7 @@ interface AuditEntry {
   at: number;
   actor: string;
   target: string;
-  action: 'grant_admin' | 'remove_admin' | 'reset_password';
+  action: 'grant_admin' | 'remove_admin' | 'reset_password' | 'grant_game' | 'revoke_game' | 'set_new_account_games';
   detail: string | null;
 }
 
@@ -32,6 +34,23 @@ const AUDIT_VERBS: Record<string, string> = {
   remove_admin: 'removed admin from',
   reset_password: 'reset the password of',
 };
+
+const GAME_LABEL: Record<string, string> = Object.fromEntries(GAMES.map(g => [g.key, g.label]));
+
+/** One history row as a sentence after the actor's name. Targets in brackets are groups, not accounts. */
+function auditSentence(e: AuditEntry): { before: string; target: string | null; after: string } {
+  const group = e.target.startsWith('(') ? e.target.slice(1, -1) : null;
+  if (e.action === 'grant_game' || e.action === 'revoke_game') {
+    const game = GAME_LABEL[e.detail ?? ''] ?? e.detail ?? 'a game';
+    const verb = e.action === 'grant_game' ? 'turned on' : 'turned off';
+    return group ? { before: `${verb} ${game} for ${group}`, target: null, after: '' } : { before: `${verb} ${game} for`, target: e.target, after: '' };
+  }
+  if (e.action === 'set_new_account_games') {
+    const games = (e.detail ?? '').split(',').filter(Boolean).map(k => GAME_LABEL[k] ?? k);
+    return { before: `set new accounts to start with ${games.length ? games.join(', ') : 'no games'}`, target: null, after: '' };
+  }
+  return { before: AUDIT_VERBS[e.action] ?? e.action, target: e.target, after: '' };
+}
 
 interface FeedbackItem {
   id: string;
@@ -65,6 +84,12 @@ export default function Admin() {
   const [roleError, setRoleError] = useState<string | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [tempPassword, setTempPassword] = useState<{ username: string; password: string } | null>(null);
+  const [tab, setTab] = useState<'access' | 'feedback' | 'history'>('access');
+  const [newAccountGames, setNewAccountGames] = useState<string[] | null>(null);
+  const [defaultsSaved, setDefaultsSaved] = useState(false);
+  const [pending, setPending] = useState<Set<string>>(new Set());
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
   const signedIn = !!getToken();
   const myId = getStoredUser()?.userId;
 
@@ -82,6 +107,14 @@ export default function Admin() {
       const feedbackData = await feedbackRes.json();
       setUsers(usersData.users ?? []);
       setFeedback(feedbackData.items ?? []);
+      fetch(`${API}/api/admin/settings`, { headers: authHeaders() })
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => {
+          if (!d) return;
+          setNewAccountGames(d.newAccountGames ?? []);
+          setDefaultsSaved(d.saved === true);
+        })
+        .catch(() => {});
       // Loaded separately and allowed to fail: the history is useful, not essential to the page.
       fetch(`${API}/api/admin/audit`, { headers: authHeaders() })
         .then(r => (r.ok ? r.json() : null))
@@ -140,6 +173,71 @@ export default function Admin() {
       .catch(() => {});
   };
 
+  // Game access. Not optimistic, like role changes: the switch moves once the server has saved it.
+  const busy = (key: string, on: boolean) =>
+    setPending(prev => {
+      const next = new Set(prev);
+      if (on) next.add(key); else next.delete(key);
+      return next;
+    });
+
+  const send = async (method: string, resource: string, body: unknown): Promise<any | null> => {
+    setAccessError(null);
+    try {
+      const res = await fetch(`${API}/api/admin/${resource}`, { method, headers: authHeaders(), body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setAccessError(data.message ?? 'Could not save the change'); return null; }
+      refreshAudit();
+      return data;
+    } catch {
+      setAccessError('Could not reach the server, try again');
+      return null;
+    }
+  };
+
+  const toggleUserGame = async (u: AdminUser, game: string) => {
+    const key = `${u.id}:${game}`;
+    busy(key, true);
+    const data = await send('PATCH', 'access', { id: u.id, game, enabled: !u.games.includes(game) });
+    busy(key, false);
+    if (data?.games) setUsers(prev => prev?.map(x => (x.id === u.id ? { ...x, games: data.games } : x)) ?? null);
+  };
+
+  const toggleDefault = async (game: string) => {
+    if (!newAccountGames) return;
+    const next = newAccountGames.includes(game) ? newAccountGames.filter(k => k !== game) : [...newAccountGames, game];
+    const key = `default:${game}`;
+    busy(key, true);
+    const data = await send('PUT', 'settings', { newAccountGames: next });
+    busy(key, false);
+    if (data) {
+      setNewAccountGames(data.newAccountGames);
+      setDefaultsSaved(true);
+    }
+  };
+
+  const setForEveryone = async (game: string, enabled: boolean) => {
+    const label = GAME_LABEL[game];
+    const msg = enabled
+      ? `Turn on ${label} for every existing account?`
+      : `Turn off ${label} for every existing account? Their saves are kept and come back if you turn it on again.`;
+    if (!window.confirm(msg)) return;
+    const key = `all:${game}`;
+    busy(key, true);
+    const data = await send('POST', 'access-all', { game, enabled });
+    busy(key, false);
+    if (data) {
+      setUsers(prev =>
+        prev?.map(x => ({
+          ...x,
+          games: enabled
+            ? GAMES.map(g => g.key as string).filter(k => k === game || x.games.includes(k))
+            : x.games.filter(k => k !== game),
+        })) ?? null,
+      );
+    }
+  };
+
   const resetPassword = async (u: AdminUser) => {
     if (!window.confirm(`Reset ${u.username}'s password? Their current password stops working immediately.`)) return;
     setRoleError(null);
@@ -186,97 +284,201 @@ export default function Admin() {
   }
 
   const visibleFeedback = (feedback ?? []).filter(f => feedbackFilter === 'all' || f.status === feedbackFilter);
+  const openFeedback = (feedback ?? []).filter(f => f.status === 'open').length;
+  const q = query.trim().toLowerCase();
+  const visibleUsers = (users ?? []).filter(u => !q || u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+  const accessCount = (game: string) => (users ?? []).filter(u => u.games.includes(game)).length;
 
   return (
     <Shell>
       <div style={s.page}>
         <h1 style={s.title}>Admin</h1>
 
-        <section style={s.section}>
-          <h2 style={s.h2}>Users ({users?.length ?? 0})</h2>
-          {roleError && <p style={{ color: 'var(--portal-bad)', fontSize: 13, margin: '0 0 10px' }}>{roleError}</p>}
-          {tempPassword && (
-            <div style={s.notice}>
-              <div>
-                Temporary password for <strong>{tempPassword.username}</strong>:{' '}
-                <code style={s.code}>{tempPassword.password}</code>
-              </div>
-              <div style={{ color: 'var(--portal-soft)', marginTop: 4 }}>
-                Shown once. Pass it on privately; they should change it on their Profile page after signing in.
-              </div>
-              <button onClick={() => setTempPassword(null)} style={{ ...s.roleBtn, marginLeft: 0, marginTop: 8 }}>Done</button>
-            </div>
-          )}
-          <div style={s.tableWrap}>
-            <table style={s.table}>
-              <thead>
-                <tr>
-                  {['Username', 'Email', 'Role', 'Registered', 'Last login', ...GAMES.map(g => g.short), 'Active', 'Wins'].map(h => (
-                    <th key={h} style={s.th}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {(users ?? []).map(u => (
-                  <tr key={u.id}>
-                    <td style={s.tdStrong}>{u.username}</td>
-                    <td style={s.td}>{u.email}</td>
-                    <td style={s.td}>
-                      <span style={u.role === 'admin' ? s.roleAdmin : s.roleUser}>{u.role}</span>
-                      {u.id === myId ? (
-                        <span style={{ fontSize: 11, color: 'var(--portal-faint)', marginLeft: 8 }}>you</span>
-                      ) : (
-                        <>
-                          <button onClick={() => changeRole(u)} style={s.roleBtn}>
-                            {u.role === 'admin' ? 'Remove admin' : 'Make admin'}
-                          </button>
-                          {u.role !== 'admin' && (
-                            <button onClick={() => resetPassword(u)} style={s.roleBtn}>Reset password</button>
-                          )}
-                        </>
-                      )}
-                    </td>
-                    <td style={s.td}>{fmtDate(u.registeredAt)}</td>
-                    <td style={s.td}>{fmtDate(u.lastLoginAt)}</td>
-                    {GAMES.map(g => <td key={g.key} style={s.tdNum}>{u.gamesByTitle[g.key] ?? 0}</td>)}
-                    <td style={s.tdNum}>{u.activeGames}</td>
-                    <td style={s.tdNum}>{u.wins}</td>
-                  </tr>
-                ))}
-                {!users?.length && (
-                  <tr><td style={s.td} colSpan={7 + GAMES.length}>No registered users yet.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </section>
+        <div style={s.stats}>
+          <Stat label="Accounts" value={users?.length ?? 0} />
+          <Stat label="Admins" value={(users ?? []).filter(u => u.role === 'admin').length} />
+          <Stat label="Open feedback" value={openFeedback} />
+        </div>
 
-        <section style={s.section}>
-          <h2 style={s.h2}>Access history</h2>
-          {audit.length ? (
-            <div style={s.tableWrap}>
-              <table style={s.table}>
-                <tbody>
-                  {audit.map(e => (
-                    <tr key={e.id}>
-                      <td style={s.td}>{fmtDate(e.at)}</td>
-                      <td style={s.td}>
-                        <span style={{ color: 'var(--portal-text)', fontWeight: 600 }}>{e.actor}</span>{' '}
-                        {AUDIT_VERBS[e.action] ?? e.action}{' '}
-                        <span style={{ color: 'var(--portal-text)', fontWeight: 600 }}>{e.target}</span>
-                      </td>
+        <div style={s.tabs} role="tablist">
+          {([
+            ['access', 'Users and game access'],
+            ['feedback', `Feedback (${openFeedback} open)`],
+            ['history', 'Access history'],
+          ] as const).map(([key, label]) => (
+            <button key={key} role="tab" aria-selected={tab === key} onClick={() => setTab(key)} style={tab === key ? s.tabOn : s.tabOff}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'access' && (
+          <>
+            <section style={s.section}>
+              <h2 style={s.h2}>Game access</h2>
+              <p style={s.help}>
+                <strong>New accounts</strong> sets which games an account starts with when it is first created. It does not
+                change existing accounts: use the buttons below a game for everyone, or the switches in the user list for
+                one person. Turning a game off keeps the player's saves; they come back if it is turned on again.
+                {!defaultsSaved && ' Until you change a New accounts switch, new accounts get every game, including any added later.'}
+              </p>
+              {accessError && <p style={s.error}>{accessError}</p>}
+              <div style={s.gameGrid}>
+                {GAMES.map(g => {
+                  const count = accessCount(g.key);
+                  const total = users?.length ?? 0;
+                  return (
+                    <div key={g.key} style={s.gameCard} data-game={g.key}>
+                      <div style={s.gameName}>{g.label}</div>
+                      <label style={s.switchRow}>
+                        <Switch
+                          on={!!newAccountGames?.includes(g.key)}
+                          disabled={!newAccountGames || pending.has(`default:${g.key}`)}
+                          onClick={() => toggleDefault(g.key)}
+                          label={`${g.label} for new accounts`}
+                        />
+                        <span>New accounts</span>
+                      </label>
+                      <div style={s.gameCount}>{count} of {total} accounts have access</div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          style={s.smallBtn}
+                          disabled={pending.has(`all:${g.key}`) || count === total}
+                          onClick={() => setForEveryone(g.key, true)}
+                        >
+                          On for everyone
+                        </button>
+                        <button
+                          style={s.smallBtn}
+                          disabled={pending.has(`all:${g.key}`) || count === 0}
+                          onClick={() => setForEveryone(g.key, false)}
+                        >
+                          Off for everyone
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section style={s.section}>
+              <div style={s.sectionHead}>
+                <h2 style={{ ...s.h2, margin: 0 }}>Users ({visibleUsers.length})</h2>
+                <input
+                  type="search"
+                  placeholder="Find by username or email"
+                  value={query}
+                  onChange={e => setQuery(e.target.value)}
+                  style={s.search}
+                  aria-label="Find a user"
+                />
+              </div>
+              {roleError && <p style={s.error}>{roleError}</p>}
+              {tempPassword && (
+                <div style={s.notice}>
+                  <div>
+                    Temporary password for <strong>{tempPassword.username}</strong>:{' '}
+                    <code style={s.code}>{tempPassword.password}</code>
+                  </div>
+                  <div style={{ color: 'var(--portal-soft)', marginTop: 4 }}>
+                    Shown once. Pass it on privately; they should change it on their Profile page after signing in.
+                  </div>
+                  <button onClick={() => setTempPassword(null)} style={{ ...s.roleBtn, marginLeft: 0, marginTop: 8 }}>Done</button>
+                </div>
+              )}
+              <div style={s.tableWrap}>
+                <table style={s.table}>
+                  <thead>
+                    <tr>
+                      {['Username', 'Role', 'Last login'].map(h => <th key={h} style={s.th}>{h}</th>)}
+                      {GAMES.map(g => <th key={g.key} style={{ ...s.th, textAlign: 'center' }} title={g.label}>{g.short}</th>)}
+                      {['Active', 'Wins', 'Registered'].map(h => <th key={h} style={s.th}>{h}</th>)}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p style={{ color: 'var(--portal-soft)', fontSize: 13 }}>No access changes recorded yet.</p>
-          )}
-        </section>
+                  </thead>
+                  <tbody>
+                    {visibleUsers.map(u => (
+                      <tr key={u.id}>
+                        <td style={s.tdStrong}>
+                          {u.username}
+                          <div style={s.sub}>{u.email}</div>
+                        </td>
+                        <td style={s.td}>
+                          <span style={u.role === 'admin' ? s.roleAdmin : s.roleUser}>{u.role}</span>
+                          {u.id === myId ? (
+                            <span style={{ fontSize: 11, color: 'var(--portal-faint)', marginLeft: 8 }}>you</span>
+                          ) : (
+                            <>
+                              <button onClick={() => changeRole(u)} style={s.roleBtn}>
+                                {u.role === 'admin' ? 'Remove admin' : 'Make admin'}
+                              </button>
+                              {u.role !== 'admin' && (
+                                <button onClick={() => resetPassword(u)} style={s.roleBtn}>Reset password</button>
+                              )}
+                            </>
+                          )}
+                        </td>
+                        <td style={s.td}>{fmtDate(u.lastLoginAt)}</td>
+                        {GAMES.map(g => {
+                          const saves = u.gamesByTitle[g.key] ?? 0;
+                          return (
+                            <td key={g.key} style={s.tdCenter}>
+                              <Switch
+                                on={u.games.includes(g.key)}
+                                disabled={pending.has(`${u.id}:${g.key}`)}
+                                onClick={() => toggleUserGame(u, g.key)}
+                                label={`${g.label} for ${u.username}`}
+                              />
+                              <div style={s.sub}>{saves} {saves === 1 ? 'save' : 'saves'}</div>
+                            </td>
+                          );
+                        })}
+                        <td style={s.tdNum}>{u.activeGames}</td>
+                        <td style={s.tdNum}>{u.wins}</td>
+                        <td style={s.td}>{fmtDate(u.registeredAt)}</td>
+                      </tr>
+                    ))}
+                    {!visibleUsers.length && (
+                      <tr><td style={s.td} colSpan={6 + GAMES.length}>{users?.length ? 'No account matches.' : 'No registered users yet.'}</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        )}
 
+        {tab === 'history' && (
+          <section style={s.section}>
+            {audit.length ? (
+              <div style={s.tableWrap}>
+                <table style={s.table}>
+                  <tbody>
+                    {audit.map(e => {
+                      const line = auditSentence(e);
+                      return (
+                        <tr key={e.id}>
+                          <td style={s.td}>{fmtDate(e.at)}</td>
+                          <td style={{ ...s.td, whiteSpace: 'normal' }}>
+                            <span style={s.name}>{e.actor}</span> {line.before}
+                            {line.target && <> <span style={s.name}>{line.target}</span></>}
+                            {line.after}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ color: 'var(--portal-soft)', fontSize: 13 }}>No access changes recorded yet.</p>
+            )}
+          </section>
+        )}
+
+        {tab === 'feedback' && (
         <section style={s.section}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <div style={s.sectionHead}>
             <h2 style={{ ...s.h2, margin: 0 }}>Feedback ({visibleFeedback.length})</h2>
             <div style={s.filterRow}>
               {(['open', 'resolved', 'all'] as const).map(f => (
@@ -307,8 +509,59 @@ export default function Admin() {
             )}
           </div>
         </section>
+        )}
       </div>
     </Shell>
+  );
+}
+
+/** An on/off switch. A real button with role="switch", so it works from the keyboard and reads correctly. */
+function Switch({ on, disabled, onClick, label }: { on: boolean; disabled?: boolean; onClick: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      title={`${label}: ${on ? 'on' : 'off'}`}
+      disabled={disabled}
+      onClick={onClick}
+      style={{
+        position: 'relative',
+        width: 34,
+        height: 20,
+        flex: 'none',
+        borderRadius: 10,
+        border: `1px solid ${on ? 'var(--portal-good)' : 'var(--portal-faint)'}`,
+        background: on ? 'var(--portal-good)' : 'var(--portal-raised)',
+        cursor: disabled ? 'wait' : 'pointer',
+        opacity: disabled ? 0.6 : 1,
+        padding: 0,
+        transition: 'background 0.15s ease, border-color 0.15s ease',
+      }}
+    >
+      <span
+        style={{
+          position: 'absolute',
+          top: 2,
+          left: on ? 16 : 2,
+          width: 14,
+          height: 14,
+          borderRadius: 7,
+          background: on ? 'var(--portal-panel)' : 'var(--portal-faint)',
+          transition: 'left 0.15s ease',
+        }}
+      />
+    </button>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div style={s.stat}>
+      <div style={s.statValue}>{value}</div>
+      <div style={s.statLabel}>{label}</div>
+    </div>
   );
 }
 
@@ -332,7 +585,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 const s: Record<string, React.CSSProperties> = {
   outer:   { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  page:    { flex: 1, background: 'var(--portal-ground)', fontFamily: 'system-ui,sans-serif', padding: '32px 40px', color: 'var(--portal-text)' },
+  page:    { flex: 1, background: 'var(--portal-ground)', fontFamily: 'system-ui,sans-serif', padding: '32px clamp(16px, 4vw, 40px)', color: 'var(--portal-text)' },
   title:   { fontSize: 24, fontWeight: 700, margin: '0 0 24px', letterSpacing: -0.5 },
   section: { marginBottom: 40 },
   h2:      { fontSize: 15, fontWeight: 700, color: 'var(--portal-softer)', textTransform: 'uppercase', letterSpacing: 0.5, margin: '0 0 12px' },
@@ -356,4 +609,24 @@ const s: Record<string, React.CSSProperties> = {
   notice:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-warn)', borderRadius: 8, padding: '12px 14px', fontSize: 13, marginBottom: 12, color: 'var(--portal-text)' },
   code:       { fontFamily: 'ui-monospace, monospace', fontSize: 14, background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 4, padding: '2px 6px', userSelect: 'all' },
   signInLink: { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
+  tdCenter:   { padding: '9px 12px', borderBottom: '1px solid var(--portal-raised)', color: 'var(--portal-text-mid)', textAlign: 'center', verticalAlign: 'middle' },
+  sub:        { fontSize: 11, color: 'var(--portal-faint)', fontWeight: 400, marginTop: 3 },
+  name:       { color: 'var(--portal-text)', fontWeight: 600 },
+  error:      { color: 'var(--portal-bad)', fontSize: 13, margin: '0 0 10px' },
+  help:       { color: 'var(--portal-soft)', fontSize: 13, lineHeight: 1.55, margin: '0 0 14px', maxWidth: 760 },
+  stats:      { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 },
+  stat:       { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 8, padding: '10px 16px', minWidth: 120 },
+  statValue:  { fontSize: 22, fontWeight: 700, color: 'var(--portal-text)' },
+  statLabel:  { fontSize: 11, color: 'var(--portal-soft)', textTransform: 'uppercase', letterSpacing: 0.4 },
+  tabs:       { display: 'flex', gap: 4, borderBottom: '1px solid var(--portal-rule)', marginBottom: 24, flexWrap: 'wrap' },
+  tabOn:      { padding: '8px 14px', border: 'none', borderBottom: '2px solid var(--portal-action)', background: 'none', color: 'var(--portal-text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: -1 },
+  tabOff:     { padding: '8px 14px', border: 'none', borderBottom: '2px solid transparent', background: 'none', color: 'var(--portal-soft)', fontSize: 13, cursor: 'pointer', marginBottom: -1 },
+  sectionHead:{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' },
+  search:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 6, padding: '6px 10px', fontSize: 13, color: 'var(--portal-text)', minWidth: 220 },
+  gameGrid:   { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 },
+  gameCard:   { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 },
+  gameName:   { fontSize: 14, fontWeight: 700, color: 'var(--portal-text)' },
+  switchRow:  { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--portal-text-mid)' },
+  gameCount:  { fontSize: 12, color: 'var(--portal-soft)' },
+  smallBtn:   { background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-softer)', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer' },
 };

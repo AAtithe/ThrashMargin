@@ -49,6 +49,15 @@ localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 
 Use that for local UI checks. Never change the gate, add an env-var escape hatch, or stub
 `getUser` to make a test pass.
 
+### Game access is per account, and enforced in `api/play/[kind].ts`
+
+Admins turn games on and off on the Admin page: per account, per game for every account, and a
+"new accounts" setting copied onto each account when it registers (`portal_settings`
+`new_account_games`). The value lives in `users.game_access` (NULL means every game, including ones
+added later). `api/play/[kind].ts` refuses any game the account lacks with 403 before the game's own
+handler runs; that is the boundary. The lobbies' `hasGameAccess` check and the welcome page hiding
+cards are presentational, exactly like the sign-in gate. Logic: `packages/thrash-margin/api/_lib/access.ts`.
+
 ### 2. `packages/tea-race/src/sim/` and `packages/niccolo-rising/src/sim/` are pure
 
 No `Math.random`, no clock. Dice come from `rng.ts` against the persisted `rngSeed`, and

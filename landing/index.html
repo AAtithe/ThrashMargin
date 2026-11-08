@@ -102,6 +102,7 @@
         background: linear-gradient(160deg, var(--card-a) 0%, var(--card-b) 100%);
         transition: border-color 0.15s ease, transform 0.15s ease;
       }
+      a.card[hidden] { display: none; }
       a.card:hover {
         border-color: var(--card-hover);
         transform: translateY(-2px);
@@ -193,17 +194,17 @@
       <h1>Choose a game</h1>
       <p class="subtitle">Five separate builds, one address.</p>
       <div class="cards">
-        <a class="card thrash-margin" href="/thrash-margin/">
+        <a class="card thrash-margin" data-game="thrash_margin" href="/thrash-margin/">
           <span class="tag">Territory strategy</span>
           <h2>Thrash Margin</h2>
           <p>Settlers-style building meets Risk-style conquest. Expand, conquer, develop.</p>
         </a>
-        <a class="card niccolo" href="/niccolo/">
+        <a class="card niccolo" data-game="niccolo" href="/niccolo/">
           <span class="tag">Trading &amp; banking</span>
           <h2>Banco di Niccolo</h2>
           <p>Trade, credit and intelligence across 15th-century Europe and the Levant.</p>
         </a>
-        <a class="card rising" href="/rising/">
+        <a class="card rising" data-game="niccolo_rising" href="/rising/">
           <span class="tag">Real-time RPG</span>
           <h2>Niccolò Rising</h2>
           <p>
@@ -211,7 +212,7 @@
             your bars, and one day put Simon de St Pol on his back.
           </p>
         </a>
-        <a class="card tea-race" href="/tea-race/">
+        <a class="card tea-race" data-game="tea_race" href="/tea-race/">
           <span class="tag">Clipper racing</span>
           <h2>The Tea Race</h2>
           <p>
@@ -219,7 +220,7 @@
             After <em>Ocean Trader</em>, 1988.
           </p>
         </a>
-        <a class="card steady-eddie" href="/steady-eddie/">
+        <a class="card steady-eddie" data-game="steady_eddie" href="/steady-eddie/">
           <span class="tag">UK haulage</span>
           <h2>Steady Eddie</h2>
           <p>
@@ -228,6 +229,7 @@
           </p>
         </a>
       </div>
+      <p class="subtitle" id="no-games" hidden>No games are turned on for your account yet. Ask an admin to give you access.</p>
       <p class="footer"><a href="/privacy.html">Privacy notice</a></p>
     </main>
     <script src="/portal.js" data-part="account"></script>
