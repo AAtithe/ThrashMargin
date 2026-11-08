@@ -349,6 +349,14 @@ async function runOne(browser, cfg) {
         perturbed = true;
         const before = await page.evaluate(() => [...document.querySelectorAll('[id^=ship-button-]')].map(e => e.id));
         const buy = page.locator('button', { hasText: /Buy a clipper|Buy .* — £/ }).first();
+        // The counting house is in Fleet and orders. Where only one panel fits (a phone), the
+        // step's own target keeps the exchange open, so open the other panel the way a player
+        // would, from its launcher at the edge of the chart.
+        if ((await buy.count()) && !(await buy.isVisible())) {
+          const launcher = page.locator('button.tr-launcher', { hasText: 'Your fleet and orders' });
+          if (await launcher.count()) await launcher.click();
+          await buy.waitFor({ state: 'visible', timeout: 2000 }).catch(() => {});
+        }
         if ((await buy.count()) && !(await buy.isDisabled())) {
           await buy.click();
           await page.waitForFunction(n => document.querySelectorAll('[id^=ship-button-]').length > n, before.length, { timeout: 3000 }).catch(() => {});
@@ -496,7 +504,9 @@ async function runOne(browser, cfg) {
 }
 
 (async () => {
-  const configs = matrix();
+  // TOUR_ONLY=<regex> runs only the matching labels (for chasing one failure).
+  const only = process.env.TOUR_ONLY ? new RegExp(process.env.TOUR_ONLY) : null;
+  const configs = matrix().filter(c => !only || only.test(labelOf(c)));
   const started = Date.now();
   const browser = await chromium.launch();
   const results = [];
@@ -505,7 +515,9 @@ async function runOne(browser, cfg) {
     while (next < configs.length) {
       const cfg = configs[next++];
       const t0 = Date.now();
-      const r = await runOne(browser, cfg);
+      // runOne records its own errors; this catches anything outside its try (a context that
+      // would not open or close), so one bad run is a problem, not the end of the matrix.
+      const r = await runOne(browser, cfg).catch(e => ({ label: labelOf(cfg), problems: ['harness error: ' + String(e && e.message || e).split('\n')[0]], lostAtSea: false }));
       const secs = ((Date.now() - t0) / 1000).toFixed(0);
       const extra = r.lostAtSea ? ' [commission lost to rivals; card waited for Carry on]' : '';
       console.log(r.problems.length ? `${r.label} FAIL (${secs}s) ${r.problems.join(' | ')}` : `${r.label} ok (${secs}s)${extra}`);

@@ -402,10 +402,20 @@ async function playTour(page, opts, info, problem, log, shot) {
         const btn = page.getByRole('button', { name: 'Guided tour' });
         if (await btn.count()) {
           if (opts.selectCourier) {
-            // Select the other vessel first, so Select your ship has something to ask for.
-            await page.click('#vessel-button-courier_1');
+            // Select the other vessel first, so Select your ship has something to ask for. The fleet
+            // list lives in the Fleet & orders panel, which starts closed: open it the way a player
+            // would, pick the courier, then put the panel away again, so the tour itself has to
+            // bring the panel back to point at the ship.
+            await page.getByRole('button', { name: 'Fleet & orders', exact: true }).click({ timeout: 5000 });
+            await page.waitForSelector('#game-sidebar.open', { timeout: 3000 });
+            await page.click('#vessel-button-courier_1', { timeout: 5000 });
             await page.waitForFunction(() => document.getElementById('vessel-button-courier_1')?.style.background !== 'transparent', null, { timeout: 3000 })
               .catch(() => problem('selecting the courier did not take'));
+            await page.getByRole('button', { name: 'Close fleet and orders (Esc)' }).click({ timeout: 5000 });
+            await page.waitForFunction(() => {
+              const p = document.getElementById('game-sidebar');
+              return p && !p.classList.contains('open') && getComputedStyle(p).visibility === 'hidden';
+            }, null, { timeout: 3000 });
           }
           await btn.click(); tourStarted = true; await page.waitForSelector('[data-tour-step]', { timeout: 3000 }).catch(() => {}); continue; }
         problem('no tour card and no Guided tour button');
@@ -483,6 +493,10 @@ async function playTour(page, opts, info, problem, log, shot) {
     } else problem(`step ${t.step + 1} has a target but no spotlight ring`);
     if (cur.card.l < -1 || cur.card.r > cur.vw + 1 || cur.card.t < -1 || cur.card.b > cur.vh + 1) problem(`step ${t.step + 1} card off screen ${JSON.stringify(cur.card)}`);
     if (!cur.hitOk) problem(`step ${t.step + 1} target ${cur.target} not clickable at its centre (hit ${cur.hitWhat})`);
+    // The driver put Fleet & orders away after picking the courier: the tour must have brought it back.
+    if (opts.selectCourier && t.title === 'Select your ship' && !(await page.$('#game-sidebar.open'))) {
+      problem('Select your ship did not open the Fleet & orders panel');
+    }
 
     if (cur.el.disabled) {
       // Only the closure (Sell at Antwerp) and a second run (London already at its fastest) may
@@ -579,7 +593,14 @@ async function playTour(page, opts, info, problem, log, shot) {
   // TOUR_ONLY=<regex> narrows the matrix to matching labels while debugging.
   const only = process.env.TOUR_ONLY ? new RegExp(process.env.TOUR_ONLY) : null;
   const picked = only ? runs.filter(o => only.test(labelOf(o))) : runs;
-  for (const opts of picked) await run(browser, opts);
+  // run() records its own driver errors as problems; this catches anything thrown outside that
+  // (opening the context, say), so one broken run never stops the rest of the matrix.
+  for (const opts of picked) {
+    try { await run(browser, opts); } catch (e) {
+      console.log(`${labelOf(opts)} FAIL driver error outside the run: ${e.message.split('\n')[0]}`);
+      problems.push(`[${labelOf(opts)}] driver error outside the run: ${e.message.split('\n')[0]}`);
+    }
+  }
   await browser.close();
   console.log(`${picked.length} runs in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
   console.log(`PROBLEMS (${problems.length})`);

@@ -488,7 +488,9 @@ function Game({ id }: { id: string | undefined }) {
           view={{ state, selected, target }}
           plan={tourPlan}
           onFinish={() => setTourPlan(null)}
-          hidden={needPass || showDispatch || !!state.pendingEvent || !!modal}
+          // Also while the AI turns replay after End turn: the closing card used to show during the
+          // replay and then vanish under the dispatch that follows it.
+          hidden={needPass || replaying || showDispatch || !!state.pendingEvent || !!modal}
           onFocusTerritory={setTourFocus}
         />
       )}

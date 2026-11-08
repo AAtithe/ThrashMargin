@@ -343,6 +343,14 @@ async function run(browser, cfg) {
       if (cfg.perturb && !perturbed.bought && /^Run her/.test(s.title) && s.target === 'end-turn-button') {
         perturbed.bought = true;
         const buy = page.locator('button', { hasText: /^(Buy a vehicle|[\w.\- ]*(Tonner|Van|Rigid|Artic)[\w ]*) — £/ }).first();
+        // The vehicle market is in Fleet and orders. Where only one panel fits (a phone), the
+        // previous step's target left the exchange open, so open the other panel the way a player
+        // would, from its launcher at the edge of the map.
+        if ((await buy.count()) && !(await buy.isVisible())) {
+          const launcher = page.locator('button.tr-launcher', { hasText: 'Your fleet and orders' });
+          if (await launcher.count()) await launcher.click();
+          await buy.waitFor({ state: 'visible', timeout: 2000 }).catch(() => {});
+        }
         if ((await buy.count()) && (await buy.isEnabled())) {
           const n0 = await page.locator('[id^="vehicle-button-"]').count();
           await buy.click();
@@ -489,12 +497,16 @@ function skipReason(step, g, plan, start) {
 }
 
 (async () => {
-  const configs = QUICK ? quickMatrix() : fullMatrix();
+  // TOUR_ONLY=<regex> runs only the matching labels (for chasing one failure).
+  const only = process.env.TOUR_ONLY ? new RegExp(process.env.TOUR_ONLY) : null;
+  const configs = (QUICK ? quickMatrix() : fullMatrix()).filter(c => !only || only.test(labelOf(c)));
   const t0 = Date.now();
   const browser = await chromium.launch();
   const all = [];
   for (const cfg of configs) {
-    const r = await run(browser, cfg);
+    // run() records its own errors; this catches anything outside its try (a context that would
+    // not open or close), so one bad run is a problem, not the end of the matrix.
+    const r = await run(browser, cfg).catch(e => ({ label: labelOf(cfg), note: '', secs: 0, problems: ['driver error: ' + String((e && e.message) || e).split('\n')[0]] }));
     console.log(r.problems.length ? `${r.label} FAIL (${r.secs}s) ${r.problems[0]}` : `${r.label} ok (${r.secs}s)${r.note}`);
     for (const p of r.problems) all.push(`${r.label}: ${p}`);
   }

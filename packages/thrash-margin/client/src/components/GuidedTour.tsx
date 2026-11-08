@@ -155,6 +155,9 @@ interface TourStep {
   /** One id, or several in order of preference — the first that is on screen is spotlit. */
   target: (v: TourView, plan: TourPlan, memory: TourMemory) => string | string[] | null;
   isComplete: (v: TourView, plan: TourPlan, memory: TourMemory) => boolean;
+  /** Controls the card should also leave uncovered when the screen has room: on a phone the attack
+   *  card used to sit over the orders' own Cancel, leaving no way out but Skip or Escape. */
+  keepClear?: string[];
 }
 
 const nodeOf = (v: TourView, id: number): Territory | undefined => v.state.nodes[id];
@@ -211,6 +214,7 @@ const ATTACK: TourStep = {
     `The columns decide how many go and how many actions it costs. Combat here is arithmetic, not dice — what the panel forecasts is what will happen, not what might. ` +
     `Leave a garrison behind: a territory with nothing in it is a territory anyone can walk into.`,
   target: () => 'tm-attack',
+  keepClear: ['tm-attack-cancel'],
   // An attack that bounces is still an attack, and still the lesson: we hold it now, or we have
   // fought a battle since the run opened. Not "the chronicle has grown", which it had: building
   // and recruiting both write to it, so this step read as done the moment it was reached and the
@@ -383,7 +387,7 @@ function isClippedByScroller(el: Element, r: DOMRect): boolean {
  * first that fits on screen without covering it. A target too big for any of those (a territory
  * filling most of a phone) gets the card in whichever screen corner overlaps it least.
  */
-function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; left: number } {
+function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; left: number; fits: boolean } {
   const W = window.innerWidth, H = window.innerHeight, M = 16, GAP = 16;
   const w = Math.min(cardW, W - 2 * M);
   const clampX = (x: number) => Math.max(M, Math.min(x, W - M - w));
@@ -395,7 +399,7 @@ function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; 
     { top: clampY(rect.top), left: rect.left - GAP - w, ok: rect.left - GAP - w >= M },
   ];
   const fit = candidates.find(c => c.ok);
-  if (fit) return { top: fit.top, left: fit.left };
+  if (fit) return { top: fit.top, left: fit.left, fits: true };
   const overlap = (x: number, y: number) =>
     Math.max(0, Math.min(x + w, rect.right) - Math.max(x, rect.left)) *
     Math.max(0, Math.min(y + cardH, rect.bottom) - Math.max(y, rect.top));
@@ -403,7 +407,24 @@ function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; 
     { left: W - M - w, top: H - M - cardH }, { left: M, top: H - M - cardH },
     { left: W - M - w, top: M }, { left: M, top: M },
   ];
-  return corners.reduce((best, c) => (overlap(c.left, c.top) < overlap(best.left, best.top) ? c : best));
+  const best = corners.reduce((b, c) => (overlap(c.left, c.top) < overlap(b.left, b.top) ? c : b));
+  return { ...best, fits: false };
+}
+
+/** Where the card goes, keeping clear of the step's extra controls too when there is room for it,
+ *  and of the target alone when there is not. */
+function placeCardKeeping(rect: DOMRect, keepIds: string[] | undefined, cardW: number, cardH: number) {
+  const extra = (keepIds ?? [])
+    .map(id => document.getElementById(id)?.getBoundingClientRect())
+    .filter((r): r is DOMRect => !!r && (r.width > 0 || r.height > 0));
+  if (extra.length) {
+    const l = Math.min(rect.left, ...extra.map(r => r.left)), t = Math.min(rect.top, ...extra.map(r => r.top));
+    const r = Math.max(rect.right, ...extra.map(x => x.right)), b = Math.max(rect.bottom, ...extra.map(x => x.bottom));
+    const wide = placeCard(new DOMRect(l, t, r - l, b - t), cardW, cardH);
+    if (wide.fits) return { top: wide.top, left: wide.left };
+  }
+  const { top, left } = placeCard(rect, cardW, cardH);
+  return { top, left };
 }
 
 /**
@@ -518,7 +539,7 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
   });
   const CARD_WIDTH = 330;
   const cardStyle: React.CSSProperties = rect
-    ? { ...CARD, ...placeCard(rect, CARD_WIDTH, cardHeight) }
+    ? { ...CARD, ...placeCardKeeping(rect, done ? undefined : step.keepClear, CARD_WIDTH, cardHeight) }
     : {
         ...CARD,
         top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
