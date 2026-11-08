@@ -8,7 +8,7 @@ import type { SaveMeta } from './useGameLocal';
 import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/saveQueue';
 
 /** See Steady Eddie's useGameCloud for why an expired token is reported rather than cleared. */
-const SESSION_EXPIRED =
+export const SESSION_EXPIRED =
   'Your sign-in has expired. Use "Sign out" above, then sign in again to reach your characters.';
 
 const ENDPOINT = `${API}/api/play/niccolo-rising`;

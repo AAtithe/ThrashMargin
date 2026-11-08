@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { advance, whyIllegal } from '../sim/actions';
 import { bribeCost } from '../sim/content';
@@ -8,7 +8,9 @@ import { FONT, UI } from '../theme';
 import { duration, gr } from '../lib/format';
 import StatusRail from '../components/StatusRail';
 import PortalNav from '../components/PortalNav';
-import { LoadingScreen } from '../lib/Loading';
+import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { SESSION_EXPIRED } from '../hooks/useGameCloud';
+import { clearToken } from '../lib/portalAuth';
 import Chronicle from '../components/Chronicle';
 import { Button, Panel } from '../components/ui';
 import ActButton from '../components/places/ActButton';
@@ -49,6 +51,7 @@ const TICK_MS = 60_000;
 export default function GameScreen() {
   const { id } = useParams<{ id: string }>();
   const { state, error, loadGame, dispatch } = useGameHybrid();
+  const navigate = useNavigate();
   const [tickNow, setNow] = useState(() => Date.now());
   const [place, setPlace] = useState<PlaceId>('home');
 
@@ -113,12 +116,16 @@ export default function GameScreen() {
           fullPage={false}
           motif="coins"
           caption="The bells of the Belfort ring the hour. Fetching your character…"
-          error={state ? null : error}
+          error={state ? null : error === SESSION_EXPIRED ? SIGN_IN_AGAIN : error}
           actions={
-            <>
-              {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
-              <Link to="/" style={{ color: UI.brass, fontSize: '0.85rem', alignSelf: 'center' }}>← Back to your characters</Link>
-            </>
+            error === SESSION_EXPIRED ? (
+              <Button tone="primary" onClick={() => { clearToken(); navigate('/'); }}>Sign in again</Button>
+            ) : (
+              <>
+                {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
+                <Link to="/" style={{ color: UI.brass, fontSize: '0.85rem', alignSelf: 'center' }}>← Back to your characters</Link>
+              </>
+            )
           }
         />
         <PortalNav variant="footer" />

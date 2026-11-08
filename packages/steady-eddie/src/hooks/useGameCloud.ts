@@ -19,7 +19,7 @@ import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/save
  * clearing here would flip the hook from cloud to local on the very next render and swallow this
  * message before anyone read it. The header's own "Sign out" is the explicit next step.
  */
-const SESSION_EXPIRED =
+export const SESSION_EXPIRED =
   'Your sign-in has expired — use "Sign out" above, then sign in again to reach your cloud games.';
 
 /**

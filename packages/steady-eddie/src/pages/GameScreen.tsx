@@ -23,7 +23,9 @@ import { Button, bodySmall, dataText } from '../components/ui';
 import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
 import type { Contract, DepotId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
-import { LoadingScreen } from '../lib/Loading';
+import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { SESSION_EXPIRED } from '../hooks/useGameCloud';
+import { clearToken } from '../lib/portalAuth';
 
 export default function GameScreen() {
   const { id } = useParams();
@@ -107,12 +109,16 @@ export default function GameScreen() {
       <LoadingScreen
         motif="lorry"
         caption="Loading the run…"
-        error={error}
+        error={error === SESSION_EXPIRED ? SIGN_IN_AGAIN : error}
         actions={
-          <>
-            {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
-            <Button onClick={() => navigate('/')}>Back to the lobby</Button>
-          </>
+          error === SESSION_EXPIRED ? (
+            <Button tone="primary" onClick={() => { clearToken(); navigate('/'); }}>Sign in again</Button>
+          ) : (
+            <>
+              {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
+              <Button onClick={() => navigate('/')}>Back to the lobby</Button>
+            </>
+          )
         }
       />
     );

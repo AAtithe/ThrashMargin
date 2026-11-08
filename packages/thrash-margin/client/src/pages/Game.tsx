@@ -23,7 +23,9 @@ import { marksFor, orderKind, suggestColumns, undoable } from '../game/plan';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { FONT, UI } from '../theme';
 import ThemeToggle from '../components/ThemeToggle';
-import { LoadingScreen } from '../lib/Loading';
+import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { SESSION_EXPIRED } from '../lib/api';
+import { clearToken } from '../lib/token';
 import GuidedTour, { hasSeenGuidedTour, planFirstTurn, type TourPlan } from '../components/GuidedTour';
 
 type Tab = 'command' | 'realm' | 'research' | 'log';
@@ -207,12 +209,16 @@ function Game({ id }: { id: string | undefined }) {
         motif="territories"
         caption="Loading the campaign…"
         accent={UI.accent}
-        error={id ? game.error : 'Campaign not found.'}
+        error={!id ? 'Campaign not found.' : game.error === SESSION_EXPIRED ? SIGN_IN_AGAIN : game.error}
         actions={
-          <>
-            {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
-            <Button tone="quiet" onClick={() => nav('/')}>Back to the lobby</Button>
-          </>
+          game.error === SESSION_EXPIRED ? (
+            <Button tone="primary" onClick={() => { clearToken(); nav('/'); }}>Sign in again</Button>
+          ) : (
+            <>
+              {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
+              <Button tone="quiet" onClick={() => nav('/')}>Back to the lobby</Button>
+            </>
+          )
         }
       />
     );

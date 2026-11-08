@@ -13,6 +13,8 @@ import FleetPanel from '../components/FleetPanel';
 import OrdersPanel from '../components/OrdersPanel';
 import { Panel } from '../components/ui';
 import CampaignLoading from '../components/CampaignLoading';
+import { SESSION_EXPIRED } from '../hooks/useGameCloud';
+import { clearToken } from '../lib/portalAuth';
 import DispatchesPanel from '../components/DispatchesPanel';
 import LedgerPanel from '../components/LedgerPanel';
 import CountingHousePanel from '../components/CountingHousePanel';
@@ -274,7 +276,14 @@ export default function GameScreen() {
   };
 
   if (!state) {
-    return <CampaignLoading error={error} onRetry={id ? () => void loadGame(id) : undefined} onBack={() => nav('/')} />;
+    return (
+      <CampaignLoading
+        error={error}
+        onRetry={id ? () => void loadGame(id) : undefined}
+        onBack={() => nav('/')}
+        onSignIn={error === SESSION_EXPIRED ? () => { clearToken(); nav('/'); } : undefined}
+      />
+    );
   }
 
   const selectedVessel = state.vessels.find(v => v.id === selectedVesselId) ?? null;
