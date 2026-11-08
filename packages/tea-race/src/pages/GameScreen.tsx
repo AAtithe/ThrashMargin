@@ -159,6 +159,62 @@ export default function GameScreen() {
     if (plan) setTourPlan(plan);
   }, [state, captain, tourOffered]);
 
+  /**
+   * The control the guided run is ringing, and keeping the panel that holds it in view. On a phone
+   * (and on any chart too narrow for both) only one panel is open at a time, so the game's own
+   * moves can put the target away under a live step: the roll slides Fleet and orders in, which
+   * closes the exchange, and a step waiting on a port in the ledger was left pointing at nothing.
+   * Reacting only to a new target id cannot see that, because the target never changed.
+   *
+   * The rule: the panel is (re)opened, and the control scrolled to once, whenever the target
+   * changes or the game moves on (a new turn, phase or seat), polled until the panel has stayed
+   * open for two ticks so that a panel closed by the same render's effects is caught. Then it
+   * stops. A player who opens the other panel or closes this one on purpose mid-step (to buy a
+   * ship, or to see the chart) is left alone until the step, its target, or the game moves on;
+   * those are the moments the game itself rearranges the panels, so the run reasserts what it
+   * asks for exactly then and never fights a deliberate choice in between.
+   */
+  const [tourTarget, setTourTarget] = useState<string | null>(null);
+  const tourMoment = state ? `${state.turn}|${state.phase}|${state.activeIndex}` : '';
+  useEffect(() => {
+    if (!tourTarget) return;
+    let stopped = false;
+    let openTicks = 0;
+    const tick = () => {
+      if (stopped) return;
+      const el = document.getElementById(tourTarget);
+      if (!el) return; // may appear only once the player acts; keep looking
+      const inExchange = !!exchangeRef.current?.contains(el);
+      if (!inExchange && !ordersRef.current?.contains(el)) {
+        stopped = true; // on the chart or the turn bar: nothing to open
+        return;
+      }
+      const panel = (inExchange ? exchangeRef : ordersRef).current!;
+      if (!panel.classList.contains('open')) {
+        openTicks = 0;
+        if (inExchange) openExchange(true);
+        else openOrders(true);
+        return; // measure on a later tick, once the panel has slid in
+      }
+      if (++openTicks < 2) return;
+      // Scrolling any earlier measures a panel still in motion, and on a phone that left the
+      // control tucked under the sheet's own title strip with the spotlight framing an empty gap.
+      const body = el.closest('.tr-panel-body');
+      if (body) {
+        const t = el.getBoundingClientRect(), b = body.getBoundingClientRect();
+        if (t.top < b.top + 8 || t.bottom > b.bottom - 8) el.scrollIntoView({ block: 'center', behavior: 'auto' });
+      }
+      stopped = true;
+    };
+    tick();
+    const id = window.setInterval(tick, 200);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tourTarget, tourMoment]);
+
   if (!state) {
     return (
       <LoadingScreen
@@ -226,30 +282,6 @@ export default function GameScreen() {
   })();
 
   const tourOwner = tourPlan ? state.captains.find(c => c.id === tourPlan.captainId) ?? null : null;
-  /**
-   * The guided run is pointing at something: open whichever panel it lives in, then, once the panel
-   * has finished sliding in, scroll the control into the middle of it. Scrolling any earlier
-   * measures a panel still in motion, and on a phone that left the control tucked under the
-   * sheet's own title strip with the spotlight framing an empty gap.
-   */
-  const revealTourTarget = (targetId: string | null) => {
-    if (!targetId) return;
-    const el = document.getElementById(targetId);
-    if (!el) return;
-    const panel = exchangeRef.current?.contains(el) ? 'exchange' : ordersRef.current?.contains(el) ? 'orders' : null;
-    if (!panel) return;
-    const wasOpen = panel === 'exchange' ? exchangeOpen : ordersOpen;
-    if (panel === 'exchange') openExchange(true);
-    else openOrders(true);
-    window.setTimeout(() => {
-      const target = document.getElementById(targetId);
-      const body = target?.closest('.tr-panel-body');
-      if (!target || !body) return;
-      const t = target.getBoundingClientRect(), b = body.getBoundingClientRect();
-      if (t.top < b.top + 8 || t.bottom > b.bottom - 8) target.scrollIntoView({ block: 'center', behavior: 'auto' });
-    }, wasOpen ? 0 : 320);
-  };
-
   const insetPx = layout.sheet
     ? { left: 0, right: 0, bottom: exchangeOpen || ordersOpen ? Math.round((boardRef.current?.clientHeight ?? window.innerHeight) * 0.58) : 0 }
     : {
@@ -629,7 +661,7 @@ export default function GameScreen() {
           the plan owner's, not the active seat's — see `TourPlan.captainId`. */}
       {tourPlan && tourOwner && !over && (
         <GuidedTour
-          onTargetChange={revealTourTarget}
+          onTargetChange={setTourTarget}
           view={{
             state,
             captain: tourOwner,
