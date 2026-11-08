@@ -138,6 +138,7 @@ export default function EventCards({
           <button
             key={entry.seq}
             type="button"
+            className="tm-anim-rise"
             onClick={() => dismiss(entry.seq)}
             title="Dismiss"
             style={{ ...card, borderColor: look.colour }}

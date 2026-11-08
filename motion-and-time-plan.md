@@ -58,11 +58,11 @@ Already real time; the job is to make the time visible.
 
 ## The Tea Race (`packages/tea-race`)
 
-- [ ] Dice roll: the die tumbles briefly before the result shows.
-- [ ] Ships sail along the path on the map node by node instead of jumping to the destination.
-- [ ] AI opponents' turns replayed in sequence (roll, move, trade) with a skip control.
-- [ ] Cash and share counts count up; sales and purchases give a floating amount.
-- [ ] Event cards and port panels enter with a short animation.
+- [x] Dice roll: the die tumbles briefly before the result shows.
+- [x] Ships sail along the path on the map node by node instead of jumping to the destination.
+- [x] AI opponents' turns replayed in sequence (roll, move, trade) with a skip control.
+- [x] Cash and share counts count up; sales and purchases give a floating amount.
+- [x] Event cards and port panels enter with a short animation.
 
 ## Steady Eddie (`packages/steady-eddie`)
 

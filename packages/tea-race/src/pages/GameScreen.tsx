@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
+import { useAiReplay } from '../hooks/useAiReplay';
+import { Counted, TumblingDice } from '../components/Motion';
 import { sourcesFor, planRoute, portName } from '../sim/content';
 import { SEASON_NAMES, planFastestRoute, roundsLeftInSeason, seasonOf, voyageYear } from '../sim/weather';
 import { destinationOf } from '../sim/movement';
@@ -89,6 +91,9 @@ export default function GameScreen() {
     [state, captain],
   );
   const [confirmingEnd, setConfirmingEnd] = useState(false);
+  // The computer captains' turns, replayed on the board after you end yours. Above the early
+  // return, like every hook here.
+  const replay = useAiReplay(state);
   // Never carry a half-pressed confirmation into somebody else's turn.
   useEffect(() => {
     setConfirmingEnd(false);
@@ -110,6 +115,14 @@ export default function GameScreen() {
   }
 
   const selectedShip = state.ships.find(s => s.id === selectedShipId) ?? null;
+  /**
+   * What the shared board shows: the real state, or a step of the computer captains' turns while
+   * they are being replayed. Only the public board follows the replay — the chart, the exchange,
+   * the table and the log. Your own panels and the turn controls always read the real state, so
+   * nothing you can do is ever behind the playback.
+   */
+  const view = replay.frame?.state ?? state;
+  const replayCaptain = replay.frame ? view.captains.find(c => c.id === replay.frame!.captainId) ?? null : null;
   const isHuman = captain?.kind === 'human';
   const canAct = state.phase === 'act' && isHuman;
 
@@ -147,12 +160,12 @@ export default function GameScreen() {
   const winner = state.winnerId ? state.captains.find(c => c.id === state.winnerId) : null;
 
   // The race, if one is running. Plain values, not a hook — this is below the early return.
-  const race = openRace(state);
+  const race = openRace(view);
   const chartRace = race
     ? {
         ports: TEA_RACE_PORTS,
         finish: RACE_FINISH,
-        runners: new Set(state.ships.filter(sh => raceLots(sh, race).length > 0).map(sh => sh.id)),
+        runners: new Set(view.ships.filter(sh => raceLots(sh, race).length > 0).map(sh => sh.id)),
       }
     : null;
 
@@ -175,11 +188,19 @@ export default function GameScreen() {
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: captain.colour }} />
               <span style={{ fontFamily: FONT.display, fontSize: '0.92rem' }}>{captain.name}</span>
             </span>
-            <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass }}>{money(captain.cash)}</span>
+            <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass }}>
+              <Counted key={captain.id} value={captain.cash} format={money} float />
+            </span>
             <span style={{ ...dataText, fontSize: '0.8rem', color: UI.verdigris }}>
-              {state.rules === 'voyage'
-                ? `worth ${money(assetValue(state, captain))}`
-                : `${captain.shares} share${captain.shares === 1 ? '' : 's'}`}
+              {state.rules === 'voyage' ? (
+                <>
+                  worth <Counted key={captain.id} value={assetValue(state, captain)} format={money} />
+                </>
+              ) : (
+                <>
+                  <Counted key={captain.id} value={captain.shares} /> share{captain.shares === 1 ? '' : 's'}
+                </>
+              )}
             </span>
           </div>
         )}
@@ -231,17 +252,17 @@ export default function GameScreen() {
         {/* Left: what everyone is racing over. Narrow on purpose — it is reference, not controls. */}
         <aside style={exchangeColumn}>
           {/* While the race is on it is the most important thing on the board, so it leads. */}
-          {race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
+          {race && <TeaRacePanel state={view} viewerId={captain?.id ?? null} />}
           {state.rules === 'voyage' ? (
             <MarketBoard
-              state={state}
+              state={view}
               reference={selectedShip}
               onPortClick={port => setTargetPort(port as PortId)}
             />
           ) : (
           <ContractBoard
-            contracts={state.contracts}
-            captains={state.captains}
+            contracts={view.contracts}
+            captains={view.captains}
             reference={selectedShip}
             round={state.round}
             deadlines={state.hazards?.deadlines ?? false}
@@ -252,18 +273,21 @@ export default function GameScreen() {
             }}
           />
           )}
-          {!race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
-          <CaptainsTable state={state} />
+          {!race && <TeaRacePanel state={view} viewerId={captain?.id ?? null} />}
+          <CaptainsTable state={view} />
         </aside>
 
         {/* Centre: the chart, given the room. */}
         <div style={mapColumn}>
           {/* What the rest of the table did while you waited, at the top of your own turn. */}
-          {isHuman && captain && !over && <ShippingGazette key={captain.id} state={state} viewer={captain} />}
+          {/* Held back while the replay is showing the same news as it happens. */}
+          {isHuman && captain && !over && !replay.frame && (
+            <ShippingGazette key={captain.id} state={state} viewer={captain} />
+          )}
           <MapView
-            ships={state.ships}
-            captains={state.captains}
-            contracts={state.contracts}
+            ships={view.ships}
+            captains={view.captains}
+            contracts={view.contracts}
             selectedShipId={selectedShipId}
             plannedRoute={plannedRoute}
             viewerId={captain?.id ?? null}
@@ -275,6 +299,31 @@ export default function GameScreen() {
               setFocusedContract(null);
             }}
           />
+
+          {replay.frame && replayCaptain && (
+            <div style={{ ...replayBar, borderLeftColor: replayCaptain.colour }} role="status" aria-live="polite">
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: replayCaptain.colour, flex: '0 0 auto' }} />
+              {replay.frame.action.type === 'ROLL' && (
+                <span key={`dice-${replay.index}`} style={{ display: 'inline-flex', gap: '0.2rem', alignItems: 'center' }}>
+                  {view.ships
+                    .filter(sh => sh.ownerId === replayCaptain.id && view.dice[sh.id])
+                    .slice(0, 4)
+                    .map(sh => (
+                      <TumblingDice key={sh.id} values={view.dice[sh.id]} tumble size={15} tone={UI.brass} />
+                    ))}
+                </span>
+              )}
+              <span key={replay.index} className="tm-anim-rise" style={{ ...bodySmall, fontSize: '0.8rem', flex: '1 1 16rem', minWidth: 0 }}>
+                {replay.frame.text}
+              </span>
+              <span style={{ ...dataText, fontSize: '0.66rem', color: UI.textFaint }}>
+                {replay.index + 1}/{replay.count}
+              </span>
+              <Button tone="quiet" onClick={replay.skip} title="Show the result now (or press any key)">
+                Skip
+              </Button>
+            </div>
+          )}
 
           <div style={turnBar}>
             {over ? (
@@ -308,6 +357,7 @@ export default function GameScreen() {
                       return;
                     }
                     setConfirmingEnd(false);
+                    replay.arm(state);
                     dispatch({ type: 'END_TURN' });
                   }}
                 >
@@ -396,6 +446,11 @@ export default function GameScreen() {
                 enabled={canAct}
               />
 
+              {/* Keyed by ship and berth, so a new port's business arrives with a short rise. */}
+              <div
+                key={`${selectedShip?.id ?? 'none'}@${selectedShip?.location ?? 'sea'}`}
+                className="tm-anim-rise"
+              >
               <PortPanel
                 ship={selectedShip}
                 captain={captain}
@@ -421,6 +476,7 @@ export default function GameScreen() {
                 season={season}
                 piracyOn={state.hazards?.piracy ?? false}
               />
+              </div>
 
               <CountingHouse
                 state={state}
@@ -433,15 +489,15 @@ export default function GameScreen() {
             </>
           )}
 
-          <RivalFleets state={state} viewerId={captain?.id ?? null} />
-          <ChronicleLog log={state.log} captains={state.captains} />
+          <RivalFleets state={view} viewerId={captain?.id ?? null} />
+          <ChronicleLog log={view.log} captains={view.captains} />
         </aside>
       </main>
 
       {/* Notable events pop as cards so the game can be watched rather than read. */}
       <EventCards
-        log={state.log}
-        captains={state.captains}
+        log={view.log}
+        captains={view.captains}
         viewerId={captain?.id ?? null}
         inGazette={isHuman && captain && !over ? new Set(frontPage(state, captain).map(st => st.seq)) : undefined}
       />
@@ -607,6 +663,17 @@ const turnBar: React.CSSProperties = {
   border: `1px solid ${UI.rule}`,
   background: UI.panel,
   padding: '0.6rem 0.75rem',
+};
+
+const replayBar: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  flexWrap: 'wrap',
+  border: `1px solid ${UI.rule}`,
+  borderLeftWidth: 3,
+  background: UI.tintBrass,
+  padding: '0.45rem 0.75rem',
 };
 
 const backdrop: React.CSSProperties = {

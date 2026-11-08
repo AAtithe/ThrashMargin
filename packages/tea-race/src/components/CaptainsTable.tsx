@@ -2,6 +2,7 @@ import { SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel } from './ui';
 import { TeaChest } from './Art';
+import { Counted } from './Motion';
 import { careerOn, levelFor } from '../sim/career';
 import { assetValue } from '../sim/actions';
 import type { GameState } from '../sim/types';
@@ -68,7 +69,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                     color: captain.cash >= VICTORY_CASH ? UI.good : UI.textSoft,
                   }}
                 >
-                  {money(captain.cash)}
+                  <Counted value={captain.cash} format={money} />
                 </td>
                 <td
                   style={{
@@ -81,7 +82,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                           : UI.textSoft,
                   }}
                 >
-                  {freePlay ? money(worthOf(captain)) : captain.shares}
+                  {freePlay ? <Counted value={worthOf(captain)} format={money} /> : <Counted value={captain.shares} />}
                 </td>
                 <td style={{ ...td, color: UI.textSoft }}>{ships}</td>
                 {careerOn(state) && (
