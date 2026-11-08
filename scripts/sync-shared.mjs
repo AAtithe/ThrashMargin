@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = ['auth.ts', 'cors.ts', 'db.ts', 'rateLimit.ts', 'saves.ts', 'schema.ts'];
-const CLIENT = ['session.ts', 'saveQueue.ts', 'colorScheme.ts', 'apiReply.ts', 'NoGameAccess.tsx'];
+const CLIENT = ['session.ts', 'saveQueue.ts', 'colorScheme.ts', 'apiReply.ts', 'NoGameAccess.tsx', 'Loading.tsx'];
 const GAMES = [
   { server: 'packages/thrash-margin/api/_lib', client: 'packages/thrash-margin/client/src/lib', public: 'packages/thrash-margin/client/public' },
   { server: 'packages/niccolo/api/_lib', client: 'packages/niccolo/src/lib', public: 'packages/niccolo/public' },
