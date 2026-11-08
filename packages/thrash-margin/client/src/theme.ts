@@ -65,6 +65,8 @@ export const MAP = {
   seaDeep: 'var(--map-sea-deep)',
   land: 'var(--map-land)',
   coast: 'var(--map-coast)',
+  /** The pale band of shallow water hugging every coastline. */
+  shallow: 'var(--map-shallow)',
   label: 'var(--map-label)',
   labelHalo: 'var(--map-label-halo)',
   fog: 'var(--map-fog)',

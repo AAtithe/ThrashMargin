@@ -31,10 +31,24 @@ interface MapViewProps {
   viewerId: string | null;
   /** The Great Tea Race, when one is running: its ports are marked and its runners fly a pennant. */
   race?: { ports: PortId[]; finish: PortId; runners: Set<string> } | null;
+  /**
+   * A port to keep in view: the one just clicked, or where the selected ship lies. When it changes
+   * and is hidden under a panel or off the edge, the chart pans to it.
+   */
+  focusPort?: PortId | null;
+  /** Screen pixels covered by panels floating over the chart, so fitting and panning avoid them. */
+  inset?: { left: number; right: number; bottom: number };
 }
 
 const ZOOM_MIN = 1;
-const ZOOM_MAX = 6;
+const ZOOM_MAX = 7;
+const DRAG_THRESHOLD = 5;
+/**
+ * The smallest a port name may appear on screen, in pixels. Labels are authored at 13 chart units,
+ * which is plenty on a big monitor and unreadable on a phone or a short laptop, where the chart is
+ * drawn at well under one pixel per unit. Below this they are lifted; zoomed in they grow normally.
+ */
+const MIN_LABEL_PX = 12;
 
 const LABEL_OFFSET: Record<string, [number, number]> = {
   n: [0, -14],
@@ -60,11 +74,41 @@ export default function MapView({
   showPiracy,
   viewerId,
   race = null,
+  focusPort = null,
+  inset,
 }: MapViewProps) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
-  const [drag, setDrag] = useState<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const [hoveredPort, setHoveredPort] = useState<PortId | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  /**
+   * The chart fills its pane. Its height always shows the whole sheet from pole to pole; its width
+   * shows as much of the world as the pane has room for, so a wide screen sees past the date line
+   * into the repeated copy beyond it and a phone sees an ocean at a time and pans round. `scale` is
+   * screen pixels per chart unit at zoom 1, and `vbWidth` the chart units across.
+   */
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const read = () => {
+      const r = el.getBoundingClientRect();
+      setSize(prev => (prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height }));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = size.h > 0 ? size.h / VB_HEIGHT : 0;
+  const vbWidth = scale > 0 ? size.w / scale : VB_WIDTH;
+  const insetL = scale > 0 ? (inset?.left ?? 0) / scale : 0;
+  const insetR = scale > 0 ? (inset?.right ?? 0) / scale : 0;
+  const insetB = scale > 0 ? (inset?.bottom ?? 0) / scale : 0;
+  /** How much to enlarge marks and names so they never drop below a readable size on screen. */
+  const lift = scale > 0 ? Math.max(1, MIN_LABEL_PX / (13 * scale * view.zoom)) : 1;
 
   const colourOf = useMemo(
     () => Object.fromEntries(captains.map(c => [c.id, c.colour])),
@@ -87,79 +131,159 @@ export default function MapView({
     return set;
   }, [contracts]);
 
-  const contentScale = () => {
-    const svg = svgRef.current;
-    if (!svg) return 0;
-    const rect = svg.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return 0;
-    return Math.min(rect.width / VB_WIDTH, rect.height / VB_HEIGHT);
+  /** Pan so a chart point sits mid-way across the part of the pane no panel covers. */
+  const centreOn = (x: number, y: number | null, zoom: number) => {
+    const midX = (insetL + vbWidth - insetR) / 2;
+    const midY = (VB_HEIGHT - insetB) / 2;
+    return {
+      zoom,
+      panX: wrapPanX(midX - x * zoom, zoom),
+      panY: y === null ? clampPanY(0, zoom) : clampPanY(midY - y * zoom, zoom),
+    };
   };
 
-  const setViewSafely = (zoom: number, panX: number, panY: number) =>
-    setView({ zoom, panX: wrapPanX(panX, zoom), panY: clampPanY(panY, zoom) });
+  /** Back to the whole sheet's height, centred on the port in focus (the player's own waters). */
+  const fit = () => {
+    const p = focusPort ? PORT_POINTS[focusPort] : null;
+    setView(centreOn(p ? p.x : VB_WIDTH / 2, null, 1));
+  };
 
-  // Scroll-to-zoom needs a real native listener: React registers `wheel` passively and silently
-  // ignores preventDefault() inside a JSX onWheel handler.
+  // Fit once the pane has a size. Not again on resize: that would throw away the player's view.
+  const fitted = useRef(false);
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const scale = contentScale();
-      // A momentarily zero-sized SVG (it happens behind a modal) would make this NaN, and once NaN
-      // is in the view state nothing recovers it.
-      if (!Number.isFinite(scale) || scale <= 0) return;
+    if (fitted.current || scale <= 0) return;
+    fitted.current = true;
+    fit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scale]);
 
-      const rect = svg.getBoundingClientRect();
-      const offsetX = (rect.width - VB_WIDTH * scale) / 2;
-      const offsetY = (rect.height - VB_HEIGHT * scale) / 2;
-      const vbX = (e.clientX - rect.left - offsetX) / scale;
-      const vbY = (e.clientY - rect.top - offsetY) / scale;
-
-      setView(prev => {
-        const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-        const panX = vbX - ((vbX - prev.panX) / prev.zoom) * zoom;
-        const panY = vbY - ((vbY - prev.panY) / prev.zoom) * zoom;
-        return { zoom, panX: wrapPanX(panX, zoom), panY: clampPanY(panY, zoom) };
-      });
-    };
-    svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
-  }, []);
-
-  // Drag listeners live on the window, not the SVG: a fast drag can leave the map pane, and an
-  // SVG-scoped listener would leave the drag stuck mid-pan.
+  // A port newly in focus that is hidden under a panel or off the pane is brought into the open.
   useEffect(() => {
-    if (!drag) return;
-    const scale = contentScale();
-    const onMove = (e: PointerEvent) => {
-      if (!Number.isFinite(scale) || scale <= 0) return;
-      setView(prev => ({
-        zoom: prev.zoom,
-        panX: wrapPanX(drag.panX + (e.clientX - drag.x) / scale, prev.zoom),
-        panY: clampPanY(drag.panY + (e.clientY - drag.y) / scale, prev.zoom),
-      }));
-    };
-    const onUp = () => setDrag(null);
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-  }, [drag]);
+    if (!focusPort || scale <= 0) return;
+    const p = PORT_POINTS[focusPort];
+    if (!p) return;
+    setView(prev => {
+      // The port is drawn in every copy of the world; measure the copy nearest the middle.
+      const mid = (insetL + vbWidth - insetR) / 2;
+      let sx = prev.panX + p.x * prev.zoom;
+      const span = VB_WIDTH * prev.zoom;
+      while (sx - mid > span / 2) sx -= span;
+      while (mid - sx > span / 2) sx += span;
+      const sy = prev.panY + p.y * prev.zoom;
+      const margin = 50 / scale;
+      if (sx > insetL + margin && sx < vbWidth - insetR - margin && sy > margin && sy < VB_HEIGHT - insetB - margin) return prev;
+      return centreOn(p.x, p.y, prev.zoom);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusPort]);
 
-  const zoomBy = (factor: number) =>
+  /** Zoom about a point given in chart units across the pane (the pane's middle when omitted). */
+  const zoomAt = (factor: number, vbX?: number, vbY?: number) =>
     setView(prev => {
       const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * factor));
-      const cx = VB_WIDTH / 2;
-      const cy = VB_HEIGHT / 2;
+      const cx = vbX ?? (insetL + vbWidth - insetR) / 2;
+      const cy = vbY ?? (VB_HEIGHT - insetB) / 2;
       const panX = cx - ((cx - prev.panX) / prev.zoom) * zoom;
       const panY = cy - ((cy - prev.panY) / prev.zoom) * zoom;
       return { zoom, panX: wrapPanX(panX, zoom), panY: clampPanY(panY, zoom) };
     });
+  const zoomBy = (factor: number) => zoomAt(factor);
+
+  // Kept in a ref so the native listeners below, attached once, always see the current geometry.
+  const live = useRef({ scale, zoomAt });
+  live.current = { scale, zoomAt };
+
+  // Scroll-to-zoom needs a real native listener: React registers `wheel` passively and silently
+  // ignores preventDefault() inside a JSX onWheel handler.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const { scale: sc, zoomAt: z } = live.current;
+      // A momentarily zero-sized pane (it happens behind a modal) would make this NaN, and once NaN
+      // is in the view state nothing recovers it.
+      if (!Number.isFinite(sc) || sc <= 0) return;
+      const rect = el.getBoundingClientRect();
+      // Trackpads send many small deltas, a mouse wheel a few large ones: scale by the delta.
+      const factor = Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.0035);
+      z(factor, (e.clientX - rect.left) / sc, (e.clientY - rect.top) / sc);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Keyboard: + and - zoom, 0 fits. Ignored while typing in a field.
+  const fitRef = useRef(fit);
+  fitRef.current = fit;
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '+' || e.key === '=') live.current.zoomAt(1.3);
+      else if (e.key === '-' || e.key === '_') live.current.zoomAt(1 / 1.3);
+      else if (e.key === '0') fitRef.current();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  /**
+   * Drag to pan, pinch to zoom. The pane only captures the pointer once it has moved past a few
+   * pixels, so a tap on a port still reaches the port; a click that ends a drag is swallowed so
+   * letting go over a port does not also lay a course to it.
+   */
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const travelled = useRef(0);
+  const pinch = useRef<number | null>(null);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1) travelled.current = 0;
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = Math.hypot(a.x - b.x, a.y - b.y);
+    }
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const prevPt = pointers.current.get(e.pointerId);
+    if (!prevPt || scale <= 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (pinch.current && rect) zoomAt(d / pinch.current, ((a.x + b.x) / 2 - rect.left) / scale, ((a.y + b.y) / 2 - rect.top) / scale);
+      pinch.current = d;
+      travelled.current = 99;
+      return;
+    }
+    const dx = e.clientX - prevPt.x, dy = e.clientY - prevPt.y;
+    travelled.current += Math.abs(dx) + Math.abs(dy);
+    if (travelled.current <= DRAG_THRESHOLD) return;
+    if (!wrapRef.current?.hasPointerCapture(e.pointerId)) wrapRef.current?.setPointerCapture(e.pointerId);
+    if (!dragging) setDragging(true);
+    setView(prev => ({
+      zoom: prev.zoom,
+      panX: wrapPanX(prev.panX + dx / scale, prev.zoom),
+      panY: clampPanY(prev.panY + dy / scale, prev.zoom),
+    }));
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    if (pointers.current.size === 0) setDragging(false);
+  };
+
+  /** The copies of the world the pane can currently see, as offsets in chart units. */
+  const copies = (() => {
+    const start = -view.panX / view.zoom;
+    const end = start + vbWidth / view.zoom;
+    const out: number[] = [];
+    for (let k = Math.floor(start / VB_WIDTH) - 1; k <= Math.floor(end / VB_WIDTH); k++) out.push(k * VB_WIDTH);
+    return out;
+  })();
 
   /**
    * Every leg, already unwrapped so Pacific crossings run the short way off the edge, and carrying
@@ -256,14 +380,14 @@ export default function MapView({
               y={(leg.y1 + leg.y2) / 2 - 6}
               fill={CHART.distance}
               fontFamily={FONT.data}
-              fontSize={9}
+              fontSize={9 * Math.min(lift, 1.3)}
               textAnchor="middle"
               dominantBaseline="middle"
               pointerEvents="none"
             >
               {leg.distance}
             </text>
-            <WindMark leg={leg} />
+            <WindMark leg={leg} lift={lift} />
             {leg.piracy > 0 && (
               <text
                 x={(leg.x1 + leg.x2) / 2}
@@ -297,7 +421,8 @@ export default function MapView({
         const p = PORT_POINTS[port.id];
         const onContract = contractPorts.has(port.id);
         const fill = port.home ? CHART.portHome : onContract ? CHART.portContract : CHART.port;
-        const [dx, dy] = LABEL_OFFSET[port.labelSide] ?? LABEL_OFFSET.e;
+        const [ox, oy] = LABEL_OFFSET[port.labelSide] ?? LABEL_OFFSET.e;
+        const dx = ox * lift, dy = oy * lift;
         return (
           <g key={port.id} data-port-id={port.id}>
             {onContract && (
@@ -307,7 +432,7 @@ export default function MapView({
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={9}
+                r={9 * lift}
                 fill="none"
                 stroke={CHART.portContract}
                 strokeWidth={1.4}
@@ -318,9 +443,18 @@ export default function MapView({
             <circle
               cx={p.x}
               cy={p.y}
-              r={hoveredPort === port.id ? 6 : 4}
+              r={(hoveredPort === port.id ? 6 : 4) * lift}
               fill={fill}
+              pointerEvents="none"
+            />
+            {/* The click target: invisible and larger than the mark, so a finger can find it. */}
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={Math.max(9 * lift, 14 / (scale * view.zoom || 1))}
+              fill="transparent"
               style={{ cursor: 'pointer' }}
+              data-port-hit={port.id}
               onPointerEnter={() => setHoveredPort(port.id)}
               onPointerLeave={() => setHoveredPort(null)}
               onClick={e => {
@@ -333,11 +467,11 @@ export default function MapView({
               y={p.y + dy}
               fill={CHART.label}
               fontFamily={FONT.body}
-              fontSize={13}
+              fontSize={13 * lift}
               textAnchor={LABEL_ANCHOR[port.labelSide] ?? 'start'}
               paintOrder="stroke"
               stroke={CHART.labelHalo}
-              strokeWidth={3}
+              strokeWidth={3 * lift}
               strokeLinejoin="round"
               /* Always-on labels near clickable marks must not eat their clicks. */
               pointerEvents="none"
@@ -348,7 +482,7 @@ export default function MapView({
         );
       })}
 
-      {race && <RaceMarks race={race} />}
+      {race && <RaceMarks race={race} lift={lift} />}
 
       {ships.map(ship => (
         <ShipMarker
@@ -359,21 +493,30 @@ export default function MapView({
           captainName={nameOf[ship.ownerId] ?? ''}
           isRival={ship.ownerId !== viewerId}
           racing={race?.runners.has(ship.id) ?? false}
+          lift={lift}
         />
       ))}
     </g>
   );
 
   return (
-    <div style={{ position: 'relative', background: CHART.sea, border: `1px solid ${CHART.coast}` }}>
+    <div
+      ref={wrapRef}
+      className="tr-chart"
+      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: CHART.sea, touchAction: 'none', cursor: dragging ? 'grabbing' : 'grab' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onClickCapture={e => {
+        if (travelled.current > DRAG_THRESHOLD) e.stopPropagation();
+      }}
+    >
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
-        style={{ display: 'block', width: '100%', height: 'auto', touchAction: 'none', cursor: drag ? 'grabbing' : 'grab' }}
-        onPointerDown={e => {
-          if (e.button !== 0) return;
-          setDrag({ x: e.clientX, y: e.clientY, panX: view.panX, panY: view.panY });
-        }}
+        viewBox={`0 0 ${vbWidth.toFixed(2)} ${VB_HEIGHT}`}
+        preserveAspectRatio="xMinYMin meet"
+        style={{ display: 'block', width: '100%', height: '100%', userSelect: 'none' }}
         role="img"
         aria-label="World chart of trading ports and sea routes"
       >
@@ -384,28 +527,30 @@ export default function MapView({
           </pattern>
         </defs>
         {/* Outside the transformed group on purpose: inside it, it would pan away. */}
-        <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill={CHART.sea} />
+        <rect x={0} y={0} width={vbWidth} height={VB_HEIGHT} fill={CHART.sea} />
 
         <g transform={`translate(${view.panX} ${view.panY}) scale(${view.zoom})`}>
-          {WORLD_COPIES.map(worldCopy)}
+          {copies.map(worldCopy)}
         </g>
 
-        {/* Fixed to the sheet, not the world: a compass rose and the chart's cartouche. */}
-        <CompassRose x={58} y={VB_HEIGHT - 70} />
-        <Cartouche x={VB_WIDTH - 230} y={18} />
+        {/* Fixed to the pane, not the world: a compass rose and the chart's cartouche, kept clear
+            of the panels and of the controls along the bottom edge. */}
+        <CompassRose x={insetL + 58} y={VB_HEIGHT - insetB - 70} />
+        {vbWidth - insetL - insetR > 700 && <Cartouche x={(insetL + vbWidth - insetR) / 2 - 106} y={14} />}
       </svg>
 
-      <div style={zoomControls}>
-        <button style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in">
+      <div style={{ ...zoomControls, right: 10 + (inset?.right ?? 0), bottom: 10 + (inset?.bottom ?? 0) }}>
+        <button style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in (+)" title="Zoom in (+)">
           +
         </button>
-        <button style={zoomButton} onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out">
+        <button style={zoomButton} onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out (-)" title="Zoom out (-)">
           −
         </button>
         <button
           style={{ ...zoomButton, fontSize: '0.6rem' }}
-          onClick={() => setViewSafely(1, 0, 0)}
-          aria-label="Fit the whole chart"
+          onClick={fit}
+          aria-label="Fit the whole chart (0)"
+          title="Fit the whole chart (0)"
         >
           fit
         </button>
@@ -420,7 +565,9 @@ export default function MapView({
  */
 function WindMark({
   leg,
+  lift = 1,
 }: {
+  lift?: number;
   leg: {
     x1: number; y1: number; x2: number; y2: number;
     fairWay: 'forward' | 'back' | null; strength: number; windLabel: string; becalmed: boolean;
@@ -432,7 +579,7 @@ function WindMark({
   if (!leg.fairWay) {
     if (!leg.becalmed) return null;
     return (
-      <circle cx={mx} cy={my} r={2.6} fill="none" stroke={CHART.windFoul} strokeWidth={1} opacity={0.75} pointerEvents="none">
+      <circle cx={mx} cy={my} r={2.6 * Math.min(lift, 1.6)} fill="none" stroke={CHART.windFoul} strokeWidth={1} opacity={0.75} pointerEvents="none">
         <title>{leg.windLabel}</title>
       </circle>
     );
@@ -440,7 +587,7 @@ function WindMark({
 
   const sign = leg.fairWay === 'forward' ? 1 : -1;
   const angle = (Math.atan2((leg.y2 - leg.y1) * sign, (leg.x2 - leg.x1) * sign) * 180) / Math.PI;
-  const size = 3 + leg.strength * 0.9;
+  const size = (3 + leg.strength * 0.9) * Math.min(lift, 1.6);
 
   return (
     <g transform={`translate(${mx} ${my}) rotate(${angle})`} pointerEvents="none">
@@ -473,6 +620,7 @@ function ShipMarker({
   captainName,
   isRival,
   racing,
+  lift = 1,
 }: {
   ship: Ship;
   colour: string;
@@ -480,7 +628,10 @@ function ShipMarker({
   captainName: string;
   isRival: boolean;
   racing: boolean;
+  /** Enlargement so she stays visible when the chart is drawn small (see MIN_LABEL_PX). */
+  lift?: number;
 }) {
+  // Positioned at her true place, so a move glides but a zoom (which changes `lift`) does not.
   const pos = shipPosition(ship);
   // Where she was drawn last time, so a move can glide rather than jump. Skipped on the first draw
   // and on a Pacific crossing, where the chart wraps and a glide would sweep across the whole world.
@@ -517,6 +668,9 @@ function ShipMarker({
           transition: glide ? 'transform 700ms cubic-bezier(0.33, 0, 0.2, 1)' : 'none',
         }}
       >
+      {/* Enlarged about her own centre; a ship in port is also nudged further off the quay, since
+          the port's mark has grown with her. */}
+      <g transform={lift !== 1 ? `translate(${ship.location ? 13 * (lift - 1) : 0} ${ship.location ? -13 * (lift - 1) : 0}) scale(${lift})` : undefined}>
       <g transform={`rotate(${heading})`}>
         {selected && (
           <circle cx={0} cy={0} r={size + 7} fill="none" stroke={colour} strokeWidth={2} opacity={0.9} />
@@ -601,6 +755,7 @@ function ShipMarker({
         {isRival ? captainName : ship.name}
       </text>
       </g>
+      </g>
       <title>
         {`${ship.name} — ${captainName}. ${
           ship.hold.length ? `${ship.hold.length} of 3 slots full` : 'running light'
@@ -651,7 +806,7 @@ const hullPath = (s: number) =>
  * flag over London. Only while a race is running, so the chart is not carrying furniture for a
  * contest that is not on.
  */
-function RaceMarks({ race }: { race: { ports: PortId[]; finish: PortId } }) {
+function RaceMarks({ race, lift = 1 }: { race: { ports: PortId[]; finish: PortId }; lift?: number }) {
   const finish = PORT_POINTS[race.finish];
   return (
     <g pointerEvents="none">
@@ -659,7 +814,7 @@ function RaceMarks({ race }: { race: { ports: PortId[]; finish: PortId } }) {
         const p = PORT_POINTS[id];
         if (!p) return null;
         return (
-          <g key={id} transform={`translate(${p.x - 19} ${p.y - 8})`}>
+          <g key={id} transform={`translate(${p.x} ${p.y}) scale(${lift}) translate(-19 -8)`}>
             <rect x={0} y={0} width={9} height={7.5} fill={CHART.labelHalo} stroke={CHART.tea} strokeWidth={1.2} />
             <path d="M0 2.6 H9 M4.5 0 V7.5" stroke={CHART.tea} strokeWidth={0.7} />
             <title>New-season tea is loading here</title>
@@ -667,7 +822,7 @@ function RaceMarks({ race }: { race: { ports: PortId[]; finish: PortId } }) {
         );
       })}
       {finish && (
-        <g transform={`translate(${finish.x - 4} ${finish.y - 30})`}>
+        <g transform={`translate(${finish.x} ${finish.y}) scale(${lift}) translate(-4 -30)`}>
           <line x1={0} y1={0} x2={0} y2={24} stroke={CHART.port} strokeWidth={1.4} />
           <rect x={0} y={0} width={14} height={9} fill={CHART.labelHalo} stroke={CHART.port} strokeWidth={0.8} />
           {[0, 1, 2, 3].map(i => (
