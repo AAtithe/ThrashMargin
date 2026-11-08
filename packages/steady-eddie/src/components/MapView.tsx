@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CHART, FONT } from '../theme';
 import { sourcesFor, LEGS, DEPOTS, DEPOT_BY_ID, planRoute } from '../sim/content';
-import { CHART as BACKDROP, DEPOT_POINTS, VB_HEIGHT, VB_WIDTH, clampPanX } from '../sim/geography';
+import { CHART as BACKDROP, DEPOT_POINTS, VB_HEIGHT, VB_WIDTH } from '../sim/geography';
 import { destinationOf } from '../sim/movement';
 import { planFastestRoute, type Season } from '../sim/weather';
 import { easeOut, useTween } from '../lib/motion';
@@ -21,6 +21,13 @@ interface MapViewProps {
   /** Whose vehicles are "mine" — everyone else's get their haulier's name on the chart. */
   viewerId: string | null;
   /**
+   * A depot to keep in view: the one just clicked, or where the selected vehicle is parked. When it
+   * changes and is hidden under a panel or off the pane, the chart pans to it.
+   */
+  focusDepot?: DepotId | null;
+  /** Screen pixels covered by panels floating over the chart, so fitting and panning avoid them. */
+  inset?: { left: number; right: number; bottom: number };
+  /**
    * Bumped when a playback is skipped: vehicles then jump straight to where they are rather than
    * driving there. Optional, so the chart works unchanged without any motion wiring.
    */
@@ -35,21 +42,35 @@ export interface MapFloat {
   text: string;
 }
 
-const ZOOM_MIN = 1;
-const ZOOM_MAX = 6;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 8;
+const DRAG_THRESHOLD = 5;
+/**
+ * The smallest a depot name may appear on screen, in pixels. Names are authored at 13 chart units;
+ * on a phone or a short laptop the chart is drawn at well under a pixel per unit and they were
+ * unreadable. Below this they are lifted; zoomed in they grow normally.
+ */
+const MIN_LABEL_PX = 12;
 
+/**
+ * The playable area: every depot, with room round it for the names. The default view frames this
+ * rather than the whole sheet, most of which is sea and Ireland and has nothing to drive to.
+ */
+const DEPOT_BOUNDS = (() => {
+  const pts = DEPOTS.map(d => DEPOT_POINTS[d.id]).filter(Boolean);
+  const xs = pts.map(p => p.x);
+  const ys = pts.map(p => p.y);
+  return { minX: Math.min(...xs) - 40, maxX: Math.max(...xs) + 90, minY: Math.min(...ys) - 40, maxY: Math.max(...ys) + 40 };
+})();
+
+type Anchor = 'start' | 'middle' | 'end';
 const LABEL_OFFSET: Record<string, [number, number]> = {
   n: [0, -14],
   s: [0, 20],
   e: [12, 5],
   w: [-12, 5],
 };
-type Anchor = 'start' | 'middle' | 'end';
 const LABEL_ANCHOR: Record<string, Anchor> = { n: 'middle', s: 'middle', e: 'start', w: 'end' };
-
-/** Vertical pan is clamped so the sheet's top and bottom edges never scroll into view. */
-const clampPanY = (panY: number, zoom: number) =>
-  Math.min(0, Math.max(VB_HEIGHT * (1 - zoom), panY));
 
 export default function MapView({
   vehicles,
@@ -61,14 +82,11 @@ export default function MapView({
   season,
   showTheft,
   viewerId,
+  focusDepot = null,
+  inset,
   snapToken = 0,
   floats = [],
 }: MapViewProps) {
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
-  const [drag, setDrag] = useState<{ x: number; y: number; panX: number; panY: number } | null>(null);
-  const [hoveredDepot, setHoveredDepot] = useState<DepotId | null>(null);
-
   const colourOf = useMemo(
     () => Object.fromEntries(hauliers.map(c => [c.id, c.colour])),
     [hauliers],
@@ -90,79 +108,196 @@ export default function MapView({
     return set;
   }, [contracts]);
 
-  const contentScale = () => {
-    const svg = svgRef.current;
-    if (!svg) return 0;
-    const rect = svg.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return 0;
-    return Math.min(rect.width / VB_WIDTH, rect.height / VB_HEIGHT);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
+  const [dragging, setDragging] = useState(false);
+  const [hoveredDepot, setHoveredDepot] = useState<DepotId | null>(null);
+
+  /**
+   * The chart fills its pane. `scale` is screen pixels per chart unit at zoom 1, chosen so the whole
+   * sheet fits; the viewBox then matches the pane's own shape, so there is no letterboxing and the
+   * sea runs to every edge. The view is fitted to the depots, not the sheet (see `fit`).
+   */
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const read = () => {
+      const r = el.getBoundingClientRect();
+      setSize(prev => (prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height }));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = size.w > 0 && size.h > 0 ? Math.min(size.w / VB_WIDTH, size.h / VB_HEIGHT) : 0;
+  const vbW = scale > 0 ? size.w / scale : VB_WIDTH;
+  const vbH = scale > 0 ? size.h / scale : VB_HEIGHT;
+  const insetL = scale > 0 ? (inset?.left ?? 0) / scale : 0;
+  const insetR = scale > 0 ? (inset?.right ?? 0) / scale : 0;
+  const insetB = scale > 0 ? (inset?.bottom ?? 0) / scale : 0;
+  /** How much to enlarge marks and names so they never drop below a readable size on screen. */
+  const lift = scale > 0 ? Math.max(1, MIN_LABEL_PX / (13 * scale * view.zoom)) : 1;
+
+  /**
+   * Keep the sheet on screen whatever the player does. Along an axis where it is smaller than the
+   * open part of the pane it can sit anywhere inside it; where it is larger it can be dragged until
+   * its edge shows a narrow band, and no further.
+   */
+  const clampView = (v: { zoom: number; panX: number; panY: number }) => {
+    const axis = (pan: number, len: number, from: number, to: number) => {
+      const span = to - from;
+      const slack = Math.min(80 / (scale || 1), span * 0.2);
+      const lo = len <= span ? from - slack : to - slack - len;
+      const hi = len <= span ? to - len + slack : from + slack;
+      return Math.min(hi, Math.max(lo, pan));
+    };
+    return {
+      zoom: v.zoom,
+      panX: axis(v.panX, VB_WIDTH * v.zoom, insetL, vbW - insetR),
+      panY: axis(v.panY, VB_HEIGHT * v.zoom, 0, vbH - insetB),
+    };
   };
 
-  const setViewSafely = (zoom: number, panX: number, panY: number) =>
-    setView({ zoom, panX: clampPanX(panX, zoom), panY: clampPanY(panY, zoom) });
+  /** Frame every depot in the part of the pane the panels leave, as large as fits. */
+  const fit = () => {
+    const { minX, maxX, minY, maxY } = DEPOT_BOUNDS;
+    const availW = Math.max(100, vbW - insetL - insetR);
+    const availH = Math.max(100, vbH - insetB);
+    const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(availW / (maxX - minX), availH / (maxY - minY))));
+    setView(
+      clampView({
+        zoom,
+        panX: insetL + availW / 2 - ((minX + maxX) / 2) * zoom,
+        panY: availH / 2 - ((minY + maxY) / 2) * zoom,
+      }),
+    );
+  };
+
+  // Fit once the pane has a size. Not again on resize: that would throw away the player's view.
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (fitted.current || scale <= 0) return;
+    fitted.current = true;
+    fit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scale]);
+
+  // A depot newly in focus that is hidden under a panel or off the pane is brought into the open.
+  useEffect(() => {
+    if (!focusDepot || scale <= 0) return;
+    const p = DEPOT_POINTS[focusDepot];
+    if (!p) return;
+    setView(prev => {
+      const sx = prev.panX + p.x * prev.zoom;
+      const sy = prev.panY + p.y * prev.zoom;
+      const margin = 50 / scale;
+      if (sx > insetL + margin && sx < vbW - insetR - margin && sy > margin && sy < vbH - insetB - margin) return prev;
+      return clampView({
+        zoom: prev.zoom,
+        panX: (insetL + vbW - insetR) / 2 - p.x * prev.zoom,
+        panY: (vbH - insetB) / 2 - p.y * prev.zoom,
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusDepot]);
+
+  /** Zoom about a point in chart units across the pane (the open part's middle when omitted). */
+  const zoomAt = (factor: number, vbX?: number, vbY?: number) =>
+    setView(prev => {
+      const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * factor));
+      const cx = vbX ?? (insetL + vbW - insetR) / 2;
+      const cy = vbY ?? (vbH - insetB) / 2;
+      return clampView({
+        zoom,
+        panX: cx - ((cx - prev.panX) / prev.zoom) * zoom,
+        panY: cy - ((cy - prev.panY) / prev.zoom) * zoom,
+      });
+    });
+  const zoomBy = (factor: number) => zoomAt(factor);
+
+  // The native listeners below are attached once; this keeps them reading the current geometry.
+  const live = useRef({ scale, zoomAt, fit });
+  live.current = { scale, zoomAt, fit };
 
   // Scroll-to-zoom needs a real native listener: React registers `wheel` passively and silently
   // ignores preventDefault() inside a JSX onWheel handler.
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
+    const el = wrapRef.current;
+    if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const scale = contentScale();
-      // A momentarily zero-sized SVG (it happens behind a modal) would make this NaN, and once NaN
+      const { scale: sc, zoomAt: z } = live.current;
+      // A momentarily zero-sized pane (it happens behind a modal) would make this NaN, and once NaN
       // is in the view state nothing recovers it.
-      if (!Number.isFinite(scale) || scale <= 0) return;
-
-      const rect = svg.getBoundingClientRect();
-      const offsetX = (rect.width - VB_WIDTH * scale) / 2;
-      const offsetY = (rect.height - VB_HEIGHT * scale) / 2;
-      const vbX = (e.clientX - rect.left - offsetX) / scale;
-      const vbY = (e.clientY - rect.top - offsetY) / scale;
-
-      setView(prev => {
-        const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-        const panX = vbX - ((vbX - prev.panX) / prev.zoom) * zoom;
-        const panY = vbY - ((vbY - prev.panY) / prev.zoom) * zoom;
-        return { zoom, panX: clampPanX(panX, zoom), panY: clampPanY(panY, zoom) };
-      });
+      if (!Number.isFinite(sc) || sc <= 0) return;
+      const rect = el.getBoundingClientRect();
+      // Trackpads send many small deltas, a mouse wheel a few large ones: scale by the delta.
+      const factor = Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.0035);
+      z(factor, (e.clientX - rect.left) / sc, (e.clientY - rect.top) / sc);
     };
-    svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  // Drag listeners live on the window, not the SVG: a fast drag can leave the map pane, and an
-  // SVG-scoped listener would leave the drag stuck mid-pan.
+  // Keyboard: + and - zoom, 0 fits. Ignored while typing in a field.
   useEffect(() => {
-    if (!drag) return;
-    const scale = contentScale();
-    const onMove = (e: PointerEvent) => {
-      if (!Number.isFinite(scale) || scale <= 0) return;
-      setView(prev => ({
-        zoom: prev.zoom,
-        panX: clampPanX(drag.panX + (e.clientX - drag.x) / scale, prev.zoom),
-        panY: clampPanY(drag.panY + (e.clientY - drag.y) / scale, prev.zoom),
-      }));
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '+' || e.key === '=') live.current.zoomAt(1.3);
+      else if (e.key === '-' || e.key === '_') live.current.zoomAt(1 / 1.3);
+      else if (e.key === '0') live.current.fit();
     };
-    const onUp = () => setDrag(null);
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-    window.addEventListener('pointercancel', onUp);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      window.removeEventListener('pointercancel', onUp);
-    };
-  }, [drag]);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
-  const zoomBy = (factor: number) =>
-    setView(prev => {
-      const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * factor));
-      const cx = VB_WIDTH / 2;
-      const cy = VB_HEIGHT / 2;
-      const panX = cx - ((cx - prev.panX) / prev.zoom) * zoom;
-      const panY = cy - ((cy - prev.panY) / prev.zoom) * zoom;
-      return { zoom, panX: clampPanX(panX, zoom), panY: clampPanY(panY, zoom) };
-    });
+  /**
+   * Drag to pan, pinch to zoom. The pane only captures the pointer once it has moved past a few
+   * pixels, so a tap on a depot still reaches the depot; the click that ends a drag is swallowed so
+   * letting go over a depot does not also lay a course to it.
+   */
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const travelled = useRef(0);
+  const pinch = useRef<number | null>(null);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1) travelled.current = 0;
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = Math.hypot(a.x - b.x, a.y - b.y);
+    }
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const prevPt = pointers.current.get(e.pointerId);
+    if (!prevPt || scale <= 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (pinch.current && rect) zoomAt(d / pinch.current, ((a.x + b.x) / 2 - rect.left) / scale, ((a.y + b.y) / 2 - rect.top) / scale);
+      pinch.current = d;
+      travelled.current = 99;
+      return;
+    }
+    const dx = e.clientX - prevPt.x, dy = e.clientY - prevPt.y;
+    travelled.current += Math.abs(dx) + Math.abs(dy);
+    if (travelled.current <= DRAG_THRESHOLD) return;
+    if (!wrapRef.current?.hasPointerCapture(e.pointerId)) wrapRef.current?.setPointerCapture(e.pointerId);
+    if (!dragging) setDragging(true);
+    setView(prev => clampView({ zoom: prev.zoom, panX: prev.panX + dx / scale, panY: prev.panY + dy / scale }));
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    if (pointers.current.size === 0) setDragging(false);
+  };
 
   /**
    * Every leg, carrying whatever hazard ratings this game plays with. No wrap-around handling here
@@ -222,7 +357,7 @@ export default function MapView({
             y={(leg.y1 + leg.y2) / 2 - 6}
             fill={CHART.distance}
             fontFamily={FONT.data}
-            fontSize={9}
+            fontSize={9 * Math.min(lift, 1.3)}
             textAnchor="middle"
             dominantBaseline="middle"
             pointerEvents="none"
@@ -275,7 +410,8 @@ export default function MapView({
         const p = DEPOT_POINTS[depot.id];
         const onContract = contractDepots.has(depot.id);
         const fill = depot.home ? CHART.depotHome : onContract ? CHART.depotContract : CHART.depot;
-        const [dx, dy] = LABEL_OFFSET[depot.labelSide] ?? LABEL_OFFSET.e;
+        const [ox, oy] = LABEL_OFFSET[depot.labelSide] ?? LABEL_OFFSET.e;
+        const dx = ox * lift, dy = oy * lift;
         return (
           <g key={depot.id} data-depot-id={depot.id}>
             {onContract && (
@@ -285,7 +421,7 @@ export default function MapView({
               <circle
                 cx={p.x}
                 cy={p.y}
-                r={9}
+                r={9 * lift}
                 fill="none"
                 stroke={CHART.depotContract}
                 strokeWidth={1.4}
@@ -296,8 +432,16 @@ export default function MapView({
             <circle
               cx={p.x}
               cy={p.y}
-              r={hoveredDepot === depot.id ? 6 : 4}
+              r={(hoveredDepot === depot.id ? 6 : 4) * lift}
               fill={fill}
+              pointerEvents="none"
+            />
+            {/* The click target: invisible and larger than the mark, so a finger can find it. */}
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={Math.max(9 * lift, 14 / (scale * view.zoom || 1))}
+              fill="transparent"
               style={{ cursor: 'pointer' }}
               onPointerEnter={() => setHoveredDepot(depot.id)}
               onPointerLeave={() => setHoveredDepot(null)}
@@ -311,11 +455,11 @@ export default function MapView({
               y={p.y + dy}
               fill={CHART.label}
               fontFamily={FONT.body}
-              fontSize={13}
+              fontSize={13 * lift}
               textAnchor={LABEL_ANCHOR[depot.labelSide] ?? 'start'}
               paintOrder="stroke"
               stroke={CHART.labelHalo}
-              strokeWidth={3}
+              strokeWidth={3 * lift}
               strokeLinejoin="round"
               /* Always-on labels near clickable marks must not eat their clicks. */
               pointerEvents="none"
@@ -336,6 +480,7 @@ export default function MapView({
           isRival={vehicle.ownerId !== viewerId}
           season={season}
           snapToken={snapToken}
+          lift={lift}
         />
       ))}
 
@@ -343,19 +488,19 @@ export default function MapView({
         const p = DEPOT_POINTS[f.depot];
         if (!p) return null;
         return (
-          <g key={f.id} transform={`translate(${p.x} ${p.y - 16})`} pointerEvents="none">
+          <g key={f.id} transform={`translate(${p.x} ${p.y - 16 * lift})`} pointerEvents="none">
             <text
               className="tm-anim-float"
               x={0}
               y={0}
               fill={CHART.depotContract}
               fontFamily={FONT.data}
-              fontSize={13}
+              fontSize={13 * lift}
               fontWeight={700}
               textAnchor="middle"
               paintOrder="stroke"
               stroke={CHART.labelHalo}
-              strokeWidth={3.5}
+              strokeWidth={3.5 * lift}
               strokeLinejoin="round"
             >
               {f.text}
@@ -368,56 +513,43 @@ export default function MapView({
 
   return (
     <div
-      style={{
-        position: 'relative',
-        background: CHART.sea,
-        border: `1px solid ${CHART.coast}`,
-        alignSelf: 'center',
-        maxWidth: '100%',
+      ref={wrapRef}
+      className="se-chart"
+      style={{ position: 'relative', width: '100%', height: '100%', overflow: 'hidden', background: CHART.sea, touchAction: 'none', cursor: dragging ? 'grabbing' : 'grab' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onClickCapture={e => {
+        if (travelled.current > DRAG_THRESHOLD) e.stopPropagation();
       }}
     >
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
-        style={{
-          display: 'block',
-          // Height-driven, not width-driven: this map's viewBox is portrait (taller than it is
-          // wide, to match Britain's own shape), unlike The Tea Race's landscape world chart. A
-          // width:100% map in a wide desktop column came out taller than the whole viewport —
-          // the fleet/orders panels below it were only reachable by scrolling. Capping by height
-          // and letting width follow from the aspect ratio keeps the whole board on screen;
-          // maxWidth still shrinks it to fit a narrow (mobile-stacked) column instead of
-          // overflowing sideways.
-          height: 'min(68vh, 820px)',
-          width: 'auto',
-          maxWidth: '100%',
-          touchAction: 'none',
-          cursor: drag ? 'grabbing' : 'grab',
-        }}
-        onPointerDown={e => {
-          if (e.button !== 0) return;
-          setDrag({ x: e.clientX, y: e.clientY, panX: view.panX, panY: view.panY });
-        }}
+        viewBox={`0 0 ${vbW.toFixed(2)} ${vbH.toFixed(2)}`}
+        preserveAspectRatio="xMinYMin meet"
+        style={{ display: 'block', width: '100%', height: '100%', userSelect: 'none' }}
         role="img"
         aria-label="Chart of UK depots and road routes"
       >
         {/* Outside the transformed group on purpose: inside it, it would pan away. */}
-        <rect x={0} y={0} width={VB_WIDTH} height={VB_HEIGHT} fill={CHART.sea} />
+        <rect x={0} y={0} width={vbW} height={vbH} fill={CHART.sea} />
 
         <g transform={`translate(${view.panX} ${view.panY}) scale(${view.zoom})`}>{map}</g>
       </svg>
 
-      <div style={zoomControls}>
-        <button style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in">
+      <div style={{ ...zoomControls, right: 10 + (inset?.right ?? 0), bottom: 10 + (inset?.bottom ?? 0) }}>
+        <button style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in (+)" title="Zoom in (+)">
           +
         </button>
-        <button style={zoomButton} onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out">
+        <button style={zoomButton} onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out (-)" title="Zoom out (-)">
           −
         </button>
         <button
           style={{ ...zoomButton, fontSize: '0.6rem' }}
-          onClick={() => setViewSafely(1, 0, 0)}
-          aria-label="Fit the whole chart"
+          onClick={fit}
+          aria-label="Fit every depot in view (0)"
+          title="Fit every depot in view (0)"
         >
           fit
         </button>
@@ -442,6 +574,7 @@ function VehicleMarker({
   isRival,
   season,
   snapToken,
+  lift = 1,
 }: {
   vehicle: Vehicle;
   colour: string;
@@ -450,6 +583,8 @@ function VehicleMarker({
   isRival: boolean;
   season: Season | null;
   snapToken: number;
+  /** Enlargement so she stays visible when the chart is drawn small (see MIN_LABEL_PX). */
+  lift?: number;
 }) {
   // Driving, not jumping: when her position changes, glide from where she was, node by node along
   // the road, to where the reducer has already put her. Presentation only; see tripBetween.
@@ -458,7 +593,7 @@ function VehicleMarker({
   const trip = useMemo(() => {
     const was = last.current;
     if (was.sig === sig || was.snapToken !== snapToken) return null;
-    return tripBetween(was.vehicle, vehicle, season);
+    return tripBetween(was.vehicle, vehicle, season, lift);
     // Keyed on her position, not the object: a cargo change alone must not set her driving.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sig, snapToken]);
@@ -468,7 +603,7 @@ function VehicleMarker({
   const segments = trip ? trip.length - 1 : 0;
   const { t } = useTween(trip ? `${vehicle.id}:${sig}:${snapToken}` : null, Math.min(950, 240 + 190 * segments));
 
-  const at = placeOf(vehicle);
+  const at = placeOf(vehicle, lift);
   if (!at) return null;
   let { x, y, heading } = at;
   let wake = at.wake;
@@ -482,7 +617,7 @@ function VehicleMarker({
 
   const dest = destinationOf(vehicle);
   const laden = vehicle.hold.length > 0;
-  const size = selected ? 15 : 12;
+  const size = (selected ? 15 : 12) * lift;
 
   return (
     <g pointerEvents="none">
@@ -523,9 +658,9 @@ function VehicleMarker({
           vehicle.hold.map((_, i) => (
             <circle
               key={i}
-              cx={(i - (vehicle.hold.length - 1) / 2) * 4.4}
+              cx={(i - (vehicle.hold.length - 1) / 2) * 4.4 * lift}
               cy={size * 0.16}
-              r={1.5}
+              r={1.5 * lift}
               fill={CHART.labelHalo}
               opacity={0.9}
             />
@@ -533,14 +668,14 @@ function VehicleMarker({
       </g>
       <text
         x={x}
-        y={y + size + 13}
+        y={y + size + 13 * lift}
         fill={colour}
         fontFamily={FONT.data}
-        fontSize={10}
+        fontSize={10 * lift}
         textAnchor="middle"
         paintOrder="stroke"
         stroke={CHART.labelHalo}
-        strokeWidth={3}
+        strokeWidth={3 * lift}
         strokeLinejoin="round"
         opacity={isRival ? 0.95 : 0.75}
       >
@@ -556,12 +691,12 @@ function VehicleMarker({
 }
 
 /** Where a vehicle is drawn, and the leg start her wake trails back to. */
-function placeOf(vehicle: Vehicle): { x: number; y: number; heading: number; wake: { x: number; y: number } | null } | null {
+function placeOf(vehicle: Vehicle, lift = 1): { x: number; y: number; heading: number; wake: { x: number; y: number } | null } | null {
   if (vehicle.location) {
     const p = DEPOT_POINTS[vehicle.location];
     if (!p) return null;
     // Just off the depot so she never covers the depot's own mark.
-    return { x: p.x + 13, y: p.y - 13, heading: 0, wake: null };
+    return { x: p.x + 13 * lift, y: p.y - 13 * lift, heading: 0, wake: null };
   }
   if (vehicle.run) {
     const from = DEPOT_POINTS[vehicle.run.legFrom];
@@ -592,9 +727,9 @@ type Pt = { x: number; y: number };
  * orders panel would have given her (fastest in season, shortest otherwise). A move this cannot
  * explain (turning back mid-leg) is drawn as a straight line, which is still not a jump.
  */
-function tripBetween(a: Vehicle, b: Vehicle, season: Season | null): Pt[] | null {
-  const start = placeOf(a);
-  const end = placeOf(b);
+function tripBetween(a: Vehicle, b: Vehicle, season: Season | null, lift = 1): Pt[] | null {
+  const start = placeOf(a, lift);
+  const end = placeOf(b, lift);
   if (!start || !end) return null;
   const stop = b.location ?? b.run?.legFrom ?? null;
   let via: DepotId[] = [];

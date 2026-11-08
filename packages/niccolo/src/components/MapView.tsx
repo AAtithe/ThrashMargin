@@ -6,7 +6,6 @@ import {
   CITY_POINTS,
   VB_HEIGHT,
   VB_WIDTH,
-  WORLD_COPIES,
   clampPanY,
   unwrapRun,
   wrapDx,
@@ -19,9 +18,11 @@ const SHIP_COLOR = UI.ensign;
 const COURIER_COLOR = UI.good;
 
 /**
- * Marker and text sizes are authored as their approximate on-screen PIXEL size, because every one
- * of them is counter-scaled by 1/zoom at draw time (see `inv` in the component). A glyph therefore
- * ends up at roughly `size * contentScale` screen pixels whatever the zoom — the one thing that
+ * Marker and text sizes are authored as their on-screen PIXEL size, because every one of them is
+ * counter-scaled at draw time by both the zoom and the chart's own scale on screen (see `inv` in
+ * the component). They used to be counter-scaled by the zoom alone, which held them at
+ * `size * contentScale` pixels: on a pane well under the sheet's 1600 units across that put city
+ * names at six or seven pixels, which is most of why the chart was hard to read. This is the one thing that
  * could not be copied from Tea Race, since Bruges and Ghent sit 40km apart (half a degree, ~2
  * viewBox units of 1600) and a world-unit marker of any legible size would overlap its neighbours
  * at every zoom.
@@ -31,6 +32,7 @@ const ZOOM_MIN = 1;
  * about 21x — this is set well above that. */
 const ZOOM_MAX = 60;
 const ZOOM_STEP = 1.12;
+const DRAG_THRESHOLD = 5;
 
 /** A port's filled dot; an inland city is the same dot left open (see `CityMark` below). Replaces
  * the previous turreted-castle glyph — a plain, larger click target reads at a glance and needs no
@@ -95,8 +97,10 @@ const NEAREST_NEIGHBOUR: Record<string, number> = (() => {
 const MIN_MARKER_SCALE = 0.5;
 
 /** A port's on-screen radius at `ZOOM_MIN`, in the same pixel terms as every other size constant
- * here — see the file-level note on counter-scaling. */
-const PORT_RADIUS_AT_MIN_ZOOM = PORT_RADIUS;
+ * here (see the file-level note on counter-scaling). Smaller than the full `PORT_RADIUS` since
+ * these became true pixels: at the opening framing a full-size disc on every city read as a heap
+ * of grey coins over the Low Countries. */
+const PORT_RADIUS_AT_MIN_ZOOM = 6;
 /** Where a port's marker grows to once there's room for it — about the size the old castle glyph
  * drew at, and comfortably above the ~24px a mouse or fingertip actually wants to land on. */
 const PORT_RADIUS_AT_MAX_GROWTH = 16;
@@ -120,14 +124,13 @@ const MARKER_GROWTH_ZOOM = 10;
  * places), each marker's growth is capped by its neighbour's own distance and catches up once zoom
  * opens the gap. Both curves are continuous, so nothing pops as you scroll or zoom.
  */
-function markerScale(c: City, inv: number): number {
-  const zoom = 1 / inv;
+function markerScale(c: City, inv: number, zoom: number): number {
   const growth = Math.min(1, Math.max(0, (zoom - ZOOM_MIN) / (MARKER_GROWTH_ZOOM - ZOOM_MIN)));
   const desiredRadius = PORT_RADIUS_AT_MIN_ZOOM + (PORT_RADIUS_AT_MAX_GROWTH - PORT_RADIUS_AT_MIN_ZOOM) * growth;
   const gap = NEAREST_NEIGHBOUR[c.id] ?? Infinity;
-  // The gap is in world units; at this zoom two neighbours can each claim up to 0.45 of it
-  // (screen-pixel terms, same convention as `ring` below) before their full extents would touch.
-  const crowdCap = Number.isFinite(gap) ? gap * 0.45 * zoom : Infinity;
+  // The gap is in world units and `1 / inv` is screen pixels per world unit, so this is the gap on
+  // screen: two neighbours can each claim up to 0.45 of it before their full extents would touch.
+  const crowdCap = Number.isFinite(gap) ? (gap * 0.45) / inv : Infinity;
   return Math.max(MIN_MARKER_SCALE, Math.min(desiredRadius, crowdCap) / PORT_RADIUS);
 }
 
@@ -143,31 +146,38 @@ const boxesOverlap = (a: Box, b: Box) =>
   a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
 
 /**
- * Default view: frames every city currently in the game rather than the whole globe, which at
- * zoom 1 would leave the playable area a sliver. Computed from `CITIES`, so a future chapter that
- * adds a city updates this with no code change.
+ * The playable area: every city in the game, laid out the short way round. The default view frames
+ * this rather than the whole globe, which would leave the cities a sliver. Computed from `CITIES`,
+ * so a future chapter that adds a city updates it with no code change.
  */
-const DEFAULT_VIEW = (() => {
+const CITY_BOUNDS = (() => {
   const pts = unwrapRun((CITIES as City[]).map(cityPoint));
   const xs = pts.map(p => p.x);
   const ys = pts.map(p => p.y);
-  const minX = Math.min(...xs);
-  const maxX = Math.max(...xs);
-  const minY = Math.min(...ys);
-  const maxY = Math.max(...ys);
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const MARGIN = 1.25;
+  return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+})();
+
+/**
+ * The default view for a pane `vbWidth` chart units across, with `inset` units covered by panels on
+ * each side: every city framed in the part of the pane that is left, as large as fits.
+ */
+function fitView(vbWidth: number, inset: { l: number; r: number; b: number }) {
+  const { minX, maxX, minY, maxY } = CITY_BOUNDS;
+  const availW = Math.max(120, vbWidth - inset.l - inset.r);
+  const availH = Math.max(120, VB_HEIGHT - inset.b);
+  const MARGIN = 1.2;
   const zoom = Math.min(
     ZOOM_MAX,
-    Math.max(ZOOM_MIN, Math.min(VB_WIDTH / ((maxX - minX) * MARGIN), VB_HEIGHT / ((maxY - minY) * MARGIN))),
+    Math.max(ZOOM_MIN, Math.min(availW / ((maxX - minX) * MARGIN), availH / ((maxY - minY) * MARGIN))),
   );
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
   return {
     zoom,
-    panX: wrapPanX(VB_WIDTH / 2 - cx * zoom, zoom),
-    panY: clampPanY(VB_HEIGHT / 2 - cy * zoom, zoom),
+    panX: wrapPanX(inset.l + availW / 2 - cx * zoom, zoom),
+    panY: clampPanY(availH / 2 - cy * zoom, zoom),
   };
-})();
+}
 
 /**
  * Where each route's sailing-time label goes, and whether it can be drawn at all. Nudged
@@ -218,6 +228,8 @@ interface VesselRender {
  * vessel under way is interpolated along its leg the short way round the globe.
  */
 function computeVesselRenders(vessels: Vessel[], inv: number): VesselRender[] {
+  // `inv` here is screen pixels to world units, so a docked vessel sits a fixed distance off the
+  // city's mark on screen at any zoom.
   const dockedGroups = new Map<string, Vessel[]>();
   for (const v of vessels) {
     if (v.destination) continue;
@@ -312,6 +324,8 @@ interface MapViewProps {
   onSelectVessel: (vesselId: string) => void;
   cityInfoAge: Record<string, number | null>;
   previewedCityId?: string | null;
+  /** Screen pixels covered by panels floating over the chart; fitting and panning avoid them. */
+  inset?: { left: number; right: number; bottom: number };
 }
 
 /** Fog by information age: fresh news reads solid, old or absent news fades the city out. */
@@ -375,90 +389,191 @@ export default function MapView({
   onSelectVessel,
   cityInfoAge,
   previewedCityId,
+  inset,
 }: MapViewProps) {
   const selected = vessels.find(v => v.id === selectedVesselId) ?? null;
   const [hoveredVesselId, setHoveredVesselId] = useState<string | null>(null);
   const [hoveredCityId, setHoveredCityId] = useState<string | null>(null);
 
+  const wrapRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const dragRef = useRef<{ x: number; y: number; panX: number; panY: number } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [view, setView] = useState(DEFAULT_VIEW);
 
-  /** Rendered scale of the viewBox inside the element, accounting for letterboxing. */
-  const contentScale = () => {
-    const svg = svgRef.current;
-    if (!svg) return 0;
-    const rect = svg.getBoundingClientRect();
-    if (!rect.width || !rect.height) return 0;
-    return Math.min(rect.width / VB_WIDTH, rect.height / VB_HEIGHT);
+  /**
+   * The chart fills its pane. Its height shows the sheet from pole to pole at zoom 1; its width
+   * shows as much of the world as the pane has room for, wrapping round past the date line. `scale`
+   * is screen pixels per chart unit at zoom 1 and `vbWidth` the chart units across the pane.
+   */
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const read = () => {
+      const r = el.getBoundingClientRect();
+      setSize(prev => (prev.w === r.width && prev.h === r.height ? prev : { w: r.width, h: r.height }));
+    };
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = size.h > 0 ? size.h / VB_HEIGHT : 0;
+  const vbWidth = scale > 0 ? size.w / scale : VB_WIDTH;
+  const insetU = {
+    l: scale > 0 ? (inset?.left ?? 0) / scale : 0,
+    r: scale > 0 ? (inset?.right ?? 0) / scale : 0,
+    b: scale > 0 ? (inset?.bottom ?? 0) / scale : 0,
   };
 
-  // Scroll-to-zoom toward the cursor. Must be a real native listener: React registers `wheel`
-  // passively and silently ignores preventDefault() inside a JSX onWheel handler.
+  const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
+  const fit = () => setView(fitView(vbWidth, insetU));
+  // Frame the cities once the pane has a size. Not again on resize: that would throw away the view.
+  const fitted = useRef(false);
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
-    const onWheel = (e: WheelEvent) => {
-      e.preventDefault();
-      const scale = contentScale();
-      if (!Number.isFinite(scale) || scale <= 0) return;
-      const rect = svg.getBoundingClientRect();
-      const vbX = (e.clientX - rect.left - (rect.width - VB_WIDTH * scale) / 2) / scale;
-      const vbY = (e.clientY - rect.top - (rect.height - VB_HEIGHT * scale) / 2) / scale;
-      setView(prev => {
-        const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * (e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP)));
-        const panX = vbX - ((vbX - prev.panX) / prev.zoom) * zoom;
-        const panY = vbY - ((vbY - prev.panY) / prev.zoom) * zoom;
-        return { zoom, panX: wrapPanX(panX, zoom), panY: clampPanY(panY, zoom) };
-      });
-    };
-    svg.addEventListener('wheel', onWheel, { passive: false });
-    return () => svg.removeEventListener('wheel', onWheel);
-  }, []);
+    if (fitted.current || scale <= 0) return;
+    fitted.current = true;
+    fit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scale]);
 
-  // Drag listeners live on the window, not the SVG: a fast drag can leave the map pane, and an
-  // SVG-scoped listener would leave the drag stuck mid-pan.
-  useEffect(() => {
-    if (!isDragging) return;
-    const scale = contentScale();
-    const onMove = (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag || !Number.isFinite(scale) || scale <= 0) return;
-      setView(prev => ({
-        zoom: prev.zoom,
-        panX: wrapPanX(drag.panX + (e.clientX - drag.x) / scale, prev.zoom),
-        panY: clampPanY(drag.panY + (e.clientY - drag.y) / scale, prev.zoom),
-      }));
-    };
-    const end = () => {
-      setIsDragging(false);
-      dragRef.current = null;
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
-    return () => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', end);
-    };
-  }, [isDragging]);
-
-  const zoomBy = (factor: number) =>
+  /** Zoom about a point in chart units across the pane (the open part's middle when omitted). */
+  const zoomAt = (factor: number, vbX?: number, vbY?: number) =>
     setView(prev => {
       const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev.zoom * factor));
-      const cx = VB_WIDTH / 2;
-      const cy = VB_HEIGHT / 2;
+      const cx = vbX ?? (insetU.l + vbWidth - insetU.r) / 2;
+      const cy = vbY ?? (VB_HEIGHT - insetU.b) / 2;
       return {
         zoom,
         panX: wrapPanX(cx - ((cx - prev.panX) / prev.zoom) * zoom, zoom),
         panY: clampPanY(cy - ((cy - prev.panY) / prev.zoom) * zoom, zoom),
       };
     });
+  const zoomBy = (factor: number) => zoomAt(factor);
 
-  /** Counter-scale for markers and text, so they hold a constant screen size at any zoom. */
-  const inv = 1 / view.zoom;
+  // The native listeners below are attached once; this keeps them reading the current geometry.
+  const live = useRef({ scale, zoomAt, fit });
+  live.current = { scale, zoomAt, fit };
+
+  // Scroll-to-zoom toward the cursor. Must be a real native listener: React registers `wheel`
+  // passively and silently ignores preventDefault() inside a JSX onWheel handler.
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const { scale: sc, zoomAt: z } = live.current;
+      if (!Number.isFinite(sc) || sc <= 0) return;
+      const rect = el.getBoundingClientRect();
+      // Trackpads send many small deltas, a mouse wheel a few large ones: scale by the delta.
+      const factor = Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.004);
+      z(factor, (e.clientX - rect.left) / sc, (e.clientY - rect.top) / sc);
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, []);
+
+  // Keyboard: + and - zoom, 0 frames the cities again. Ignored while typing in a field.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '+' || e.key === '=') live.current.zoomAt(ZOOM_STEP ** 3);
+      else if (e.key === '-' || e.key === '_') live.current.zoomAt(1 / ZOOM_STEP ** 3);
+      else if (e.key === '0') live.current.fit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  /**
+   * Drag to pan, pinch to zoom. The pane captures the pointer only once it has moved past a few
+   * pixels, so a tap on a city still reaches the city; the click that ends a drag is swallowed so
+   * letting go over a city does not also preview it.
+   */
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const travelled = useRef(0);
+  const pinch = useRef<number | null>(null);
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size === 1) travelled.current = 0;
+    if (pointers.current.size === 2) {
+      const [a, b] = [...pointers.current.values()];
+      pinch.current = Math.hypot(a.x - b.x, a.y - b.y);
+    }
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const prevPt = pointers.current.get(e.pointerId);
+    if (!prevPt || scale <= 0) return;
+    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pointers.current.size >= 2) {
+      const [a, b] = [...pointers.current.values()];
+      const d = Math.hypot(a.x - b.x, a.y - b.y);
+      const rect = wrapRef.current?.getBoundingClientRect();
+      if (pinch.current && rect) zoomAt(d / pinch.current, ((a.x + b.x) / 2 - rect.left) / scale, ((a.y + b.y) / 2 - rect.top) / scale);
+      pinch.current = d;
+      travelled.current = 99;
+      return;
+    }
+    const dx = e.clientX - prevPt.x, dy = e.clientY - prevPt.y;
+    travelled.current += Math.abs(dx) + Math.abs(dy);
+    if (travelled.current <= DRAG_THRESHOLD) return;
+    if (!wrapRef.current?.hasPointerCapture(e.pointerId)) wrapRef.current?.setPointerCapture(e.pointerId);
+    if (!isDragging) setIsDragging(true);
+    setView(prev => ({
+      zoom: prev.zoom,
+      panX: wrapPanX(prev.panX + dx / scale, prev.zoom),
+      panY: clampPanY(prev.panY + dy / scale, prev.zoom),
+    }));
+  };
+  const onPointerUp = (e: React.PointerEvent) => {
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size < 2) pinch.current = null;
+    if (pointers.current.size === 0) setIsDragging(false);
+  };
+
+  // A city newly previewed that sits under a panel or off the pane is brought into the open part.
+  useEffect(() => {
+    if (!previewedCityId || scale <= 0) return;
+    const city = findCity(previewedCityId);
+    if (!city) return;
+    const p = cityPoint(city);
+    setView(prev => {
+      const mid = (insetU.l + vbWidth - insetU.r) / 2;
+      let sx = prev.panX + p.x * prev.zoom;
+      const span = VB_WIDTH * prev.zoom;
+      while (sx - mid > span / 2) sx -= span;
+      while (mid - sx > span / 2) sx += span;
+      const sy = prev.panY + p.y * prev.zoom;
+      const margin = 50 / scale;
+      if (sx > insetU.l + margin && sx < vbWidth - insetU.r - margin && sy > margin && sy < VB_HEIGHT - insetU.b - margin) return prev;
+      return {
+        zoom: prev.zoom,
+        panX: wrapPanX(mid - p.x * prev.zoom, prev.zoom),
+        panY: clampPanY((VB_HEIGHT - insetU.b) / 2 - p.y * prev.zoom, prev.zoom),
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewedCityId]);
+
+  /** The copies of the world the pane can currently see, as offsets in chart units. */
+  const copies = (() => {
+    const start = -view.panX / view.zoom;
+    const end = start + vbWidth / view.zoom;
+    const out: number[] = [];
+    for (let k = Math.floor(start / VB_WIDTH) - 1; k <= Math.floor(end / VB_WIDTH); k++) out.push(k * VB_WIDTH);
+    return out;
+  })();
+
+  /**
+   * Counter-scale for markers and text: world units per screen pixel, so a size of 13 is 13 pixels
+   * on screen at any zoom and any pane size. `invZoom` counter-scales only the zoom, for the land's
+   * hachure, which should keep the density it was drawn at rather than become a pixel pattern.
+   */
+  const inv = scale > 0 ? 1 / (view.zoom * scale) : 1 / view.zoom;
+  const invZoom = 1 / view.zoom;
+  const zoomNow = view.zoom;
 
   const liveRenders = useMemo(() => computeVesselRenders(vessels, inv), [vessels, inv]);
   // Between weeks the fleet glides from where it was to where it now is (any click or key finishes
@@ -521,7 +636,7 @@ export default function MapView({
       const p = cityPoint(c);
       const side: LabelSide = c.labelSide ?? 'e';
       const [dx, dy] = LABEL_OFFSET[side];
-      const ms = markerScale(c, inv);
+      const ms = markerScale(c, inv, zoomNow);
       const raw = textBox(c.name, CITY_FONT * inv, p.x + dx * inv * ms, p.y + dy * inv * ms, LABEL_ANCHOR[side]);
       const pad = LABEL_HALO * inv;
       const box = { left: raw.left - pad, right: raw.right + pad, top: raw.top - pad, bottom: raw.bottom + pad };
@@ -533,7 +648,7 @@ export default function MapView({
             if (o.id === c.id) return false;
             const op = cityPoint(o);
             const oh = o.port ? MARKER_HALF.port : MARKER_HALF.inland;
-            const os = markerScale(o, inv);
+            const os = markerScale(o, inv, zoomNow);
             return boxesOverlap(box, {
               left: op.x - oh * inv * os, right: op.x + oh * inv * os,
               top: op.y - oh * inv * os, bottom: op.y + oh * inv * os,
@@ -545,12 +660,17 @@ export default function MapView({
       }
     }
     return keep;
-  }, [inv, previewedCityId, hoveredCityId]);
+  }, [inv, zoomNow, previewedCityId, hoveredCityId]);
 
   /** One full copy of the world's content, offset east or west. Drawing three of these side by
    * side is what makes panning round the world seamless. */
-  const worldCopy = (offset: number) => (
-    <g key={offset} transform={offset ? `translate(${offset} 0)` : undefined}>
+  /** The copy that carries ids, labels and the planned path: the one under the open pane's middle. */
+  const primaryOffset =
+    Math.floor(((insetU.l + vbWidth - insetU.r) / 2 - view.panX) / view.zoom / VB_WIDTH) * VB_WIDTH;
+  const worldCopy = (copyOffset: number) => {
+    const offset = copyOffset - primaryOffset;
+    return (
+    <g key={copyOffset} transform={copyOffset ? `translate(${copyOffset} 0)` : undefined}>
       <path d={BACKDROP.graticule} fill="none" stroke={CHART.graticule} strokeWidth={0.5} vectorEffect="non-scaling-stroke" />
       <path d={BACKDROP.equator} fill="none" stroke={CHART.equator} strokeWidth={0.7} strokeDasharray="8 5" vectorEffect="non-scaling-stroke" />
 
@@ -650,7 +770,7 @@ export default function MapView({
         const isHovered = c.id === hoveredCityId;
         const fill = reachable ? CHART.routeLive : CHART.port;
         const half = c.port ? MARKER_HALF.port : MARKER_HALF.inland;
-        const mScale = markerScale(c, inv);
+        const mScale = markerScale(c, inv, zoomNow);
         const ring = half * mScale + 5;
         const side: LabelSide = c.labelSide ?? 'e';
         const [ldx, ldy] = LABEL_OFFSET[side];
@@ -761,24 +881,32 @@ export default function MapView({
         );
       })}
     </g>
-  );
+    );
+  };
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+    <div
+      ref={wrapRef}
+      className="niccolo-chart"
+      style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', touchAction: 'none', cursor: isDragging ? 'grabbing' : 'grab' }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onClickCapture={e => {
+        if (travelled.current > DRAG_THRESHOLD) e.stopPropagation();
+      }}
+    >
       <svg
         ref={svgRef}
-        viewBox={`0 0 ${VB_WIDTH} ${VB_HEIGHT}`}
+        viewBox={`0 0 ${vbWidth.toFixed(2)} ${VB_HEIGHT}`}
+        preserveAspectRatio="xMinYMin meet"
         style={{
+          display: 'block',
           width: '100%',
           height: '100%',
           background: GEO.void,
-          cursor: isDragging ? 'grabbing' : 'grab',
-          touchAction: 'none',
-        }}
-        onPointerDown={e => {
-          if (e.button !== 0) return;
-          dragRef.current = { x: e.clientX, y: e.clientY, panX: view.panX, panY: view.panY };
-          setIsDragging(true);
+          userSelect: 'none',
         }}
         role="img"
         aria-label="World chart of trading cities and routes"
@@ -792,11 +920,11 @@ export default function MapView({
             width={3.2}
             height={3.2}
             patternUnits="userSpaceOnUse"
-            patternTransform={`rotate(35) scale(${inv})`}
+            patternTransform={`rotate(35) scale(${invZoom})`}
           >
             {/* Opaque ground inside the tile, slightly oversized so rotated tiles leave no seams. */}
             <rect x={-0.5} y={-0.5} width={4.2} height={4.2} fill={GEO.landGround} />
-            <line x1={0} y1={0} x2={0} y2={3.2} stroke={GEO.hatch} strokeWidth={0.35 * inv} opacity={0.5} />
+            <line x1={0} y1={0} x2={0} y2={3.2} stroke={GEO.hatch} strokeWidth={0.35 * invZoom} opacity={0.5} />
           </pattern>
         </defs>
 
@@ -804,31 +932,35 @@ export default function MapView({
             bare ground at the sheet's edges. Deliberately drawn far larger than the viewBox to
             cover the pane's letterbox bars at any aspect ratio. */}
         <rect
-          x={-VB_WIDTH}
+          x={-vbWidth}
           y={-VB_HEIGHT}
-          width={VB_WIDTH * 3}
+          width={vbWidth * 3}
           height={VB_HEIGHT * 3}
           fill={CHART.sea}
         />
 
         <g transform={`translate(${view.panX},${view.panY}) scale(${view.zoom})`}>
-          {WORLD_COPIES.map(worldCopy)}
+          {copies.map(worldCopy)}
         </g>
 
-        <CompassRose x={VB_WIDTH - 42} y={46} />
+        {/* Fixed to the pane, clear of the panels; drawn in screen pixels like everything else. */}
+        <g transform={`translate(${vbWidth - insetU.r - 42 / (scale || 1)},${46 / (scale || 1)}) scale(${1 / (scale || 1)})`}>
+          <CompassRose x={0} y={0} />
+        </g>
       </svg>
 
-      <div style={ZOOM_CONTROLS}>
-        <button style={ZOOM_BUTTON} onClick={() => zoomBy(ZOOM_STEP ** 3)} aria-label="Zoom in">
+      <div style={{ ...ZOOM_CONTROLS, right: `calc(0.6rem + ${inset?.right ?? 0}px)`, bottom: `calc(0.6rem + ${inset?.bottom ?? 0}px)` }}>
+        <button style={ZOOM_BUTTON} onClick={() => zoomBy(ZOOM_STEP ** 3)} aria-label="Zoom in (+)" title="Zoom in (+)">
           +
         </button>
-        <button style={ZOOM_BUTTON} onClick={() => zoomBy(1 / ZOOM_STEP ** 3)} aria-label="Zoom out">
+        <button style={ZOOM_BUTTON} onClick={() => zoomBy(1 / ZOOM_STEP ** 3)} aria-label="Zoom out (-)" title="Zoom out (-)">
           −
         </button>
         <button
           style={{ ...ZOOM_BUTTON, fontSize: '0.6rem' }}
-          onClick={() => setView(DEFAULT_VIEW)}
-          aria-label="Fit every city in view"
+          onClick={fit}
+          aria-label="Fit every city in view (0)"
+          title="Fit every city in view (0)"
         >
           fit
         </button>

@@ -84,6 +84,61 @@ body {
   display: none;
 }
 
+/*
+ * The panels over the chart (GameScreen's usePanelLayout holds the same widths). They slide in from
+ * their own side and are hidden once out of sight, so a closed panel's buttons cannot take focus.
+ * On a phone both become a bottom sheet over the lower part of the chart.
+ */
+.niccolo-panel {
+  position: absolute;
+  top: 0.6rem;
+  bottom: 0.6rem;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-ground);
+  border: 1px solid var(--ui-rule);
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0s linear 0.25s;
+}
+.niccolo-panel.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.25s ease, visibility 0s;
+}
+.niccolo-panel-left { left: 0.6rem; width: 280px; transform: translateX(calc(-100% - 1.2rem)); }
+.niccolo-panel-right { right: 0.6rem; width: 360px; transform: translateX(calc(100% + 1.2rem)); }
+@media (max-width: 1100px) {
+  .niccolo-panel-left { width: 260px; }
+  .niccolo-panel-right { width: 330px; }
+}
+@media (max-width: 720px) {
+  .niccolo-panel-left,
+  .niccolo-panel-right {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: 58%;
+    border-width: 1px 0 0;
+    transform: translateY(calc(100% + 1.2rem));
+  }
+  .niccolo-launcher { font-size: 0.75rem !important; padding: 0.35rem 0.55rem !important; }
+  .niccolo-game-header { padding: 0.4rem 0.6rem !important; gap: 0.3rem !important; }
+  .niccolo-game-header h1 { font-size: 1rem !important; }
+  .niccolo-game-header button { padding: 0.25rem 0.5rem !important; }
+  .niccolo-clock { font-size: 0.78rem !important; }
+  .niccolo-rail-label { display: none !important; }
+  .niccolo-hide-phone { display: none !important; }
+}
+
+/* Motion: off stands the panels still, as OS reduced motion does below: they appear and go at once. */
+:root[data-motion="off"] .niccolo-panel {
+  transition: none;
+}
+
 /* The same rule the other four games carry: a player who asks for less motion gets none. */
 @media (prefers-reduced-motion: reduce) {
   * {

@@ -303,7 +303,7 @@ interface GuidedTourProps {
    * a step that needs a popup section still forces it open immediately, and a step that doesn't
    * needs the caller to close whatever was open before) — the caller owns what "showing a section"
    * actually means, since popup state lives in `GameScreen`, not here. */
-  onStepChange?: (requiresSection: TourStep['requiresSection']) => void;
+  onStepChange?: (requiresSection: TourStep['requiresSection'], targetId: string | null) => void;
 }
 
 export default function GuidedTour({
@@ -322,7 +322,8 @@ export default function GuidedTour({
   const rect = useTargetRect(step.targetId);
 
   useEffect(() => {
-    onStepChange?.(step.requiresSection);
+    // The target too, so the caller can open whichever floating panel holds it.
+    onStepChange?.(step.requiresSection, step.targetId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIndex]);
 

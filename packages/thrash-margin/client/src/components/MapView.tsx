@@ -3,8 +3,9 @@
  * texture, a troop badge per territory, and overlays for whatever the player is planning: attack
  * targets, move destinations, annexable neutrals, and arrows from every column of an assault.
  *
- * Pan with a drag, zoom with the wheel, a pinch or the buttons. A click that moved more than a
- * few pixels was a pan, not a selection.
+ * The board fills the screen; panels float over it and report how much they cover (`inset`).
+ * Pan with a drag, zoom with the wheel, a pinch, the buttons or the + and - keys (0 fits the
+ * map). A click that moved more than a few pixels was a pan, not a selection.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import { BUILDINGS, FACTION_COLORS, mapDefFor, type GameState, type Territory } from 'shared/sim';
@@ -45,17 +46,29 @@ interface Props {
   flash: Set<number>;
   onPick: (id: number | null) => void;
   onHover: (id: number | null, x: number, y: number) => void;
-  /** Territory to keep in view on small screens. */
+  /** Territory to keep in view: brought out from under the panel when it is picked. */
   focus?: number | null;
+  /**
+   * Screen space covered by panels floating over the board (the side panel on a wide screen,
+   * the sheet's handle on a phone). The fit and the focus pan both work in what is left.
+   */
+  inset?: { right: number; bottom: number };
   /** Effects for the current beat of a replay, or the battle just fought. */
   fx?: MapFx | null;
-  /** Drawn over the board, outside the pan and zoom (the AI replay banner). */
+  /**
+   * Drawn over the board, outside the pan and zoom (the AI replay banner), and laid out in the
+   * part of the board the inset leaves uncovered so it centres on what can be seen.
+   */
   overlay?: ReactNode;
 }
 
 const MOVE_THRESHOLD = 5;
+const MIN_ZOOM = 0.7;
+const MAX_ZOOM = 6;
 
-export default function MapView({ state, visible, selected, target, marks, flash, onPick, onHover, focus, fx, overlay }: Props) {
+type View = { x: number; y: number; k: number };
+
+export default function MapView({ state, visible, selected, target, marks, flash, onPick, onHover, focus, inset, fx, overlay }: Props) {
   const def = mapDefFor(state.config.mapId);
   // Positions and edges never change during a game, so geometry is computed once per game.
   const geometry = useMemo(
@@ -63,70 +76,140 @@ export default function MapView({ state, visible, selected, target, marks, flash
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [state.id, state.nodes.length, def.viewBox],
   );
+  const box = geometry.bounds;
+  const insetRight = inset?.right ?? 0;
+  const insetBottom = inset?.bottom ?? 0;
 
-  const [view, setView] = useState({ x: 0, y: 0, k: 1 });
+  const [view, setView] = useState<View>({ x: 0, y: 0, k: 1 });
+  /** Off while a finger or the mouse is dragging, so the board tracks it without lag. */
+  const [glide, setGlide] = useState(true);
   const wrap = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const last = useRef({ x: 0, y: 0 });
   const travelled = useRef(0);
   const pinch = useRef<number | null>(null);
 
-  // Where a board point lands on screen at zoom 1 (the SVG letterboxes with "meet").
+  // Where a board point lands on screen at zoom 1 (the SVG letterboxes with "meet"), plus the
+  // on-screen box the whole board occupies at zoom 1.
   const project = useCallback((px: number, py: number) => {
     const rect = wrap.current?.getBoundingClientRect();
-    const [vx, vy, vw, vh] = def.viewBox.split(' ').map(Number);
-    if (!rect) return null;
-    const s0 = Math.min(rect.width / vw, rect.height / vh);
-    return { x: (rect.width - vw * s0) / 2 + (px - vx) * s0, y: (rect.height - vh * s0) / 2 + (py - vy) * s0, rect, fill: Math.max(rect.width / vw, rect.height / vh) / s0 };
-  }, [def.viewBox]);
+    if (!rect || !rect.width || !rect.height) return null;
+    const s0 = Math.min(rect.width / box.w, rect.height / box.h);
+    const ox = (rect.width - box.w * s0) / 2, oy = (rect.height - box.h * s0) / 2;
+    return { x: ox + (px - box.x) * s0, y: oy + (py - box.y) * s0, rect, s0, ox, oy };
+  }, [box]);
 
-  /** Zoom so the board fills a tall, narrow screen, centred on the player's capital. */
+  /**
+   * Keep the land on screen whatever the player does. Along an axis where the board is smaller
+   * than the view it can sit anywhere inside it; where it is larger it can be dragged until its
+   * edge shows a narrow band of sea, and no further. Without this one flick loses the map.
+   */
+  const clamp = useCallback((v: View): View => {
+    const p = project(box.x, box.y);
+    if (!p) return v;
+    const axis = (pos: number, origin: number, size: number, span: number) => {
+      const lead = origin * v.k, len = size * v.k;
+      const slack = Math.min(90, span * 0.18);
+      const lo = len <= span ? -lead - slack : span - slack - lead - len;
+      const hi = len <= span ? span - lead - len + slack : slack - lead;
+      return Math.min(hi, Math.max(lo, pos));
+    };
+    return {
+      x: axis(v.x, p.ox, box.w * p.s0, p.rect.width - insetRight),
+      y: axis(v.y, p.oy, box.h * p.s0, p.rect.height - insetBottom),
+      k: v.k,
+    };
+  }, [project, box, insetRight, insetBottom]);
+
+  /**
+   * Fit the whole land into the space the panels leave. Where that would make the board too
+   * small to read (a tall, narrow phone against a wide map) zoom in on the player's capital
+   * instead, filling the height, and let them pan out from there.
+   */
   const fit = useCallback(() => {
+    const p0 = project(box.x, box.y);
+    if (!p0) return;
+    const w = p0.rect.width - insetRight, h = p0.rect.height - insetBottom;
+    if (w < 40 || h < 40) return;
+    const bw = box.w * p0.s0, bh = box.h * p0.s0; // board size on screen at zoom 1
+    const kFit = Math.min(w / bw, h / bh);
+    // Readable means a territory badge about 18px across or more: below that, go to the capital.
+    const badge = 21 * p0.s0 * kFit;
+    if (badge >= 15) {
+      const x = w / 2 - (p0.ox + bw / 2) * kFit;
+      const y = h / 2 - (p0.oy + bh / 2) * kFit;
+      setView(clamp({ x, y, k: kFit }));
+      return;
+    }
     const cap = state.nodes.find(n => n.owner === state.activeFaction && n.capital) ?? state.nodes[0];
     const c = geometry.centroids.get(cap.id) ?? cap;
     const p = project(c.x, c.y);
-    if (!p || p.fill < 1.25) { setView({ x: 0, y: 0, k: 1 }); return; }
-    const k = Math.min(3, p.fill);
-    const x = Math.min(0, Math.max(p.rect.width - p.rect.width * k, p.rect.width / 2 - p.x * k));
-    const y = Math.min(0, Math.max(p.rect.height - p.rect.height * k, p.rect.height * 0.4 - p.y * k));
-    setView({ x, y, k });
+    if (!p) return;
+    const k = Math.min(MAX_ZOOM, Math.max(kFit, h / bh, 18 / (21 * p0.s0)));
+    setView(clamp({ x: w / 2 - p.x * k, y: h * 0.45 - p.y * k, k }));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, geometry, state.id]);
+  }, [project, clamp, geometry, box, insetRight, insetBottom, state.id]);
 
-  useEffect(() => { fit(); }, [fit]);
-
-  // On a phone the bottom sheet covers the lower half: bring a picked territory into the top half.
+  // Fit once the board has a size, and again whenever the window is resized.
+  const fitted = useRef(false);
   useEffect(() => {
-    if (focus === null || focus === undefined || window.innerWidth > 720) return;
+    if (!fitted.current) { fitted.current = true; fit(); }
+    const onResize = () => fit();
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [fit]);
+
+  // A picked territory under a panel, or off the edge, is brought into the open part of the board.
+  useEffect(() => {
+    if (focus === null || focus === undefined) return;
     const c = geometry.centroids.get(focus);
     if (!c) return;
     setView(v => {
       const p = project(c.x, c.y);
       if (!p) return v;
-      const sy = p.y * v.k + v.y;
-      if (sy > 60 && sy < p.rect.height * 0.32) return v;
-      return { ...v, x: p.rect.width / 2 - p.x * v.k, y: p.rect.height * 0.2 - p.y * v.k };
+      const w = p.rect.width - insetRight, h = p.rect.height - insetBottom;
+      const sx = p.x * v.k + v.x, sy = p.y * v.k + v.y;
+      const margin = 70;
+      if (sx > margin && sx < w - margin && sy > margin && sy < h - margin) return v;
+      return clamp({ ...v, x: w / 2 - p.x * v.k, y: h / 2 - p.y * v.k });
     });
-  }, [focus, geometry, project]);
+  }, [focus, geometry, project, clamp, insetRight, insetBottom]);
 
   const zoomAt = useCallback((factor: number, cx?: number, cy?: number) => {
     setView(v => {
-      const k = Math.min(5, Math.max(0.6, v.k * factor));
+      const k = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, v.k * factor));
       const rect = wrap.current?.getBoundingClientRect();
       if (!rect) return { ...v, k };
-      const mx = (cx ?? rect.left + rect.width / 2) - rect.left;
-      const my = (cy ?? rect.top + rect.height / 2) - rect.top;
-      return { x: mx - (mx - v.x) * (k / v.k), y: my - (my - v.y) * (k / v.k), k };
+      const mx = cx !== undefined ? cx - rect.left : (rect.width - insetRight) / 2;
+      const my = cy !== undefined ? cy - rect.top : (rect.height - insetBottom) / 2;
+      return clamp({ x: mx - (mx - v.x) * (k / v.k), y: my - (my - v.y) * (k / v.k), k });
     });
-  }, []);
+  }, [clamp, insetRight, insetBottom]);
 
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
-    const onWheel = (e: WheelEvent) => { e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.12 : 0.89, e.clientX, e.clientY); };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      // Trackpads send many small deltas, a mouse wheel a few large ones: scale by the delta.
+      const factor = Math.exp(-Math.max(-60, Math.min(60, e.deltaY)) * 0.0035);
+      zoomAt(factor, e.clientX, e.clientY);
+    };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [zoomAt]);
+
+  // Keyboard zoom: + and - (and =, which is + without shift), 0 to fit.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === '+' || e.key === '=') zoomAt(1.25);
+      else if (e.key === '-' || e.key === '_') zoomAt(0.8);
+      else if (e.key === '0') fit();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [zoomAt, fit]);
 
   const down = (e: RPointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
@@ -137,6 +220,7 @@ export default function MapView({ state, visible, selected, target, marks, flash
     } else if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
       pinch.current = Math.hypot(a.x - b.x, a.y - b.y);
+      setGlide(false);
     }
   };
   const moveP = (e: RPointerEvent) => {
@@ -156,13 +240,14 @@ export default function MapView({ state, visible, selected, target, marks, flash
     if (travelled.current > MOVE_THRESHOLD) {
       if (!(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       wrap.current?.classList.add('tm-grabbing');
-      setView(v => ({ ...v, x: v.x + dx, y: v.y + dy }));
+      setGlide(false);
+      setView(v => clamp({ ...v, x: v.x + dx, y: v.y + dy }));
     }
   };
   const up = (e: RPointerEvent) => {
     pointers.current.delete(e.pointerId);
     if (pointers.current.size < 2) pinch.current = null;
-    if (pointers.current.size === 0) wrap.current?.classList.remove('tm-grabbing');
+    if (pointers.current.size === 0) { wrap.current?.classList.remove('tm-grabbing'); setGlide(true); }
   };
 
   const click = (id: number | null) => {
@@ -180,11 +265,27 @@ export default function MapView({ state, visible, selected, target, marks, flash
       style={{ position: 'relative', flex: 1, overflow: 'hidden', background: `radial-gradient(ellipse at 50% 40%, ${MAP.sea}, ${MAP.seaDeep})` }}
     >
       <svg
-        viewBox={def.viewBox} preserveAspectRatio="xMidYMid meet"
-        style={{ width: '100%', height: '100%', display: 'block', transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: '0 0', userSelect: 'none' }}
+        viewBox={geometry.viewBox} preserveAspectRatio="xMidYMid meet"
+        style={{ width: '100%', height: '100%', display: 'block', transform: `translate(${view.x}px, ${view.y}px) scale(${view.k})`, transformOrigin: '0 0', userSelect: 'none', transition: glide ? 'transform 0.18s ease-out' : 'none', willChange: 'transform' }}
         onClick={() => click(null)}
       >
         <MapDefs />
+
+        {/* Shallows: a pale band round every coast, drawn under the land, so the sea reads as
+            wrapping the continent rather than the land being cut off at a frame. */}
+        <g style={{ pointerEvents: 'none' }}>
+          {state.nodes.map(n => (
+            <path key={`s${n.id}`} d={geometry.cellPaths.get(n.id) ?? ''} fill={MAP.shallow} stroke={MAP.shallow} strokeWidth={30} strokeLinejoin="round" />
+          ))}
+          {state.nodes.map(n => (
+            <path key={`c${n.id}`} d={geometry.cellPaths.get(n.id) ?? ''} fill={MAP.coast} stroke={MAP.coast} strokeWidth={11} strokeLinejoin="round" opacity={0.55} />
+          ))}
+          {/* Land under the territories, a little proud of them, so the corners each region rounds
+              off where three meet are filled with land rather than showing the coast through. */}
+          {state.nodes.map(n => (
+            <path key={`l${n.id}`} d={geometry.cellPaths.get(n.id) ?? ''} fill={MAP.land} stroke={MAP.land} strokeWidth={8} strokeLinejoin="round" />
+          ))}
+        </g>
 
         {/* Roads between territories whose regions do not touch */}
         {state.edges.map(([a, b]) => {
@@ -236,10 +337,14 @@ export default function MapView({ state, visible, selected, target, marks, flash
         })}
       </svg>
 
-      {overlay}
+      {overlay && (
+        <div style={{ position: 'absolute', left: 0, top: 0, right: insetRight, bottom: insetBottom, pointerEvents: 'none', transition: 'right 0.25s ease' }}>
+          {overlay}
+        </div>
+      )}
 
-      <div style={{ position: 'absolute', right: 10, bottom: 10, display: 'flex', flexDirection: 'column', gap: 6 }} className="tm-zoom">
-        {([['plus', () => zoomAt(1.25), 'Zoom in'], ['reset', fit, 'Reset view'], ['minus', () => zoomAt(0.8), 'Zoom out']] as const).map(([icon, fn, label]) => (
+      <div style={{ position: 'absolute', right: 10 + insetRight, bottom: 10 + insetBottom, display: 'flex', flexDirection: 'column', gap: 6, transition: 'right 0.25s ease' }} className="tm-zoom">
+        {([['plus', () => zoomAt(1.4), 'Zoom in (+)'], ['reset', fit, 'Fit the map (0)'], ['minus', () => zoomAt(0.7), 'Zoom out (-)']] as const).map(([icon, fn, label]) => (
           <button key={icon} type="button" onClick={fn} aria-label={label} title={label}
             style={{ width: 32, height: 32, borderRadius: 7, background: MAP.control, border: `1px solid ${UI.ruleStrong}`, color: UI.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Icon name={icon} size={14} />
