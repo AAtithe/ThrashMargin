@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { migrateState, processAction } from 'shared/sim';
 import type { GameAction, GameConfig, GameState } from 'shared/sim';
-import { API, SESSION_EXPIRED, authHeaders } from '../lib/api';
+import { API, SESSION_EXPIRED, authHeaders, readJson, serverFailure } from '../lib/api';
 import { getToken } from '../lib/token';
 import { newSeed, type GameHook, type SaveMeta, type SaveStatus } from './types';
 import { SAVE_MESSAGES } from '../lib/saveQueue';
@@ -148,8 +148,9 @@ export function useGameCloud(): GameHook {
         body: JSON.stringify({ config, name, seed: newSeed() }),
       });
       if (res.status === 401) { setError(SESSION_EXPIRED); return null; }
-      const data = await res.json();
-      if (!res.ok) { setError(data.message ?? 'Could not start the campaign.'); return null; }
+      const data = await readJson(res);
+      if (!data) { setError(serverFailure('starting the campaign', res)); return null; }
+      if (!res.ok) { setError(typeof data.message === 'string' ? data.message : 'Could not start the campaign.'); return null; }
       const s = migrateState(data.state);
       ref.current = s;
       version.current = typeof data.version === 'number' ? data.version : undefined;
@@ -173,8 +174,9 @@ export function useGameCloud(): GameHook {
     try {
       const res = await fetch(`${API}/api/play/thrash-margin?id=${encodeURIComponent(id)}`, { headers: authHeaders() });
       if (res.status === 401) { setError(SESSION_EXPIRED); return; }
-      const data = await res.json();
-      if (!res.ok) { setError(data.message ?? 'Could not load the campaign.'); return; }
+      const data = await readJson(res);
+      if (!data) { setError(serverFailure('loading the campaign', res)); return; }
+      if (!res.ok) { setError(typeof data.message === 'string' ? data.message : 'Could not load the campaign.'); return; }
       const s = migrateState(data.state);
       ref.current = s;
       version.current = typeof data.version === 'number' ? data.version : undefined;
