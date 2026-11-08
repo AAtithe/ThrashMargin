@@ -234,13 +234,15 @@ function Battle({
       }
       if (!mine.length) return;
       const ids = mine.map(u => u.id);
+      // Shift held: add the order to the end of each unit's waypoint queue.
+      const queue = keys.current.has('Shift');
       const targetUnit = s.units.find(u => u.id === target);
       const targetBuilding = s.buildings.find(b => b.id === target);
       const enemy = (targetUnit && targetUnit.owner !== 0) || (targetBuilding && targetBuilding.owner !== 0);
       if (enemy) {
-        dispatch({ type: 'attack', ids, target });
+        dispatch({ type: 'attack', ids, target, queue });
         const haulers = mine.filter(u => !UNITS[u.kind].weapon).map(u => u.id);
-        if (haulers.length) dispatch({ type: 'move', ids: haulers, x: wx, y: wy });
+        if (haulers.length) dispatch({ type: 'move', ids: haulers, x: wx, y: wy, queue });
         ov.pings.push({ x: wx, y: wy, at: now, kind: 'attack' });
         return;
       }
@@ -259,7 +261,7 @@ function Battle({
         ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
         return;
       }
-      if (dispatch({ type: 'move', ids, x: wx, y: wy, attackMove: forceAttackMove })) {
+      if (dispatch({ type: 'move', ids, x: wx, y: wy, attackMove: forceAttackMove, queue })) {
         ov.pings.push({ x: wx, y: wy, at: now, kind: forceAttackMove ? 'attack' : 'move' });
       }
     },

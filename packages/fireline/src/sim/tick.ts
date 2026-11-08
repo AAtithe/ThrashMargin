@@ -27,11 +27,18 @@ import {
   SCOOP_TICKS,
   UNITS,
   UNLOAD_PER_TICK,
+  VET_DAMAGE,
+  VET_NAMES,
+  VET_RELOAD,
+  VET_REPAIR_SHARE,
+  VET_REPAIR_TICKS,
+  vetFor,
   type Category,
   type Owner,
   type UnitKind,
   type Weapon,
 } from './rules';
+import { spawnSurvivors } from './commands';
 import { addUnit, alarm, buildTicksOf, log, powerOf, producerFor, updateExplored } from './state';
 import type { Building, GameState, Projectile, Unit } from './types';
 
@@ -237,6 +244,20 @@ function halt(u: Unit): void {
   u.pathGoal = -1;
 }
 
+/** The current order is done (arrived, or its target is gone): start the next queued one, or idle. */
+function nextOrder(u: Unit): void {
+  const q = u.queue.length ? u.queue[0] : null;
+  if (q) {
+    u.queue = u.queue.slice(1);
+    u.order = { ...q };
+    u.engage = q.type === 'attack' ? q.target : 0;
+  } else {
+    u.order = { type: 'idle' };
+    u.engage = 0;
+  }
+  halt(u);
+}
+
 // ---------------------------------------------------------------------------------------------
 // Targets
 
@@ -276,7 +297,7 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
   return best;
 }
 
-function fire(s: GameState, owner: Owner, sx: number, sy: number, w: Weapon, t: Target, shooter: number): void {
+function fire(s: GameState, owner: Owner, sx: number, sy: number, w: Weapon, t: Target, shooter: number, damageMul = 1): void {
   const tp = targetPoint(t);
   let toX = tp.x;
   let toY = tp.y;
@@ -303,8 +324,9 @@ function fire(s: GameState, owner: Owner, sx: number, sy: number, w: Weapon, t: 
     firedAt: s.tick,
     hitAt: s.tick + flight,
     target: t.unit ? t.unit.id : t.building!.id,
-    damage: w.damage,
+    damage: damageMul === 1 ? w.damage : w.damage * damageMul,
     splash: w.splash ?? 0,
+    shooter,
   };
   if (flight === 0) hit(s, p, shooter);
   else s.projectiles.push(p);
@@ -350,14 +372,21 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
   } else {
     // Units under fire defend themselves: an idle unit turns on its attacker.
     const vu = t.unit!;
-    if (vu.order.type === 'idle' && UNITS[vu.kind].weapon && !vu.engage && shooter) vu.engage = shooter;
+    if (vu.order.type === 'idle' && vu.stance !== 'hold' && UNITS[vu.kind].weapon && !vu.engage && shooter) vu.engage = shooter;
   }
   if (victim.hp <= 0) {
     victim.hp = 0;
     s.players[p.owner].stats.killed++;
     s.players[victim.owner].stats.lost++;
     const killer = s.units.find(v => v.id === shooter);
-    if (killer) killer.kills++;
+    if (killer) {
+      killer.kills++;
+      const rank = vetFor(killer.kills);
+      if (rank > killer.vet) {
+        killer.vet = rank;
+        if (killer.owner === 0) log(s, `${UNITS[killer.kind].name} promoted to ${VET_NAMES[rank]}.`, 'good');
+      }
+    }
   }
 }
 
@@ -374,22 +403,27 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
     return;
   }
 
-  const order = u.order;
-  if (order.type === 'attack') {
-    if (!lookup(ctx, order.target)) {
-      u.order = { type: 'idle' };
-      u.engage = 0;
-      halt(u);
-    } else u.engage = order.target;
-  } else if (order.type === 'move') {
-    u.engage = 0;
+  // Elite units patch themselves up between fights.
+  if (u.vet >= 2 && !u.engage && u.hp < spec.hp && (s.tick + u.id) % VET_REPAIR_TICKS === 0) {
+    u.hp = Math.min(spec.hp, u.hp + Math.max(1, Math.round(spec.hp * VET_REPAIR_SHARE)));
   }
 
-  if (w && (u.order.type === 'idle' || u.order.type === 'attackMove')) {
+  const order = u.order;
+  if (order.type === 'attack') {
+    if (!lookup(ctx, order.target)) nextOrder(u);
+    else u.engage = order.target;
+  }
+  if (u.order.type === 'move') u.engage = 0;
+
+  const stance = u.stance;
+  if (w && u.order.type === 'idle' && stance === 'hold') {
+    // Holding fire: an idle unit neither picks targets nor keeps one.
+    u.engage = 0;
+  } else if (w && (u.order.type === 'idle' || u.order.type === 'attackMove')) {
     const current = u.engage ? lookup(ctx, u.engage) : null;
     if (!current) u.engage = 0;
     if ((s.tick + u.id) % 4 === 0 && (!current || u.order.type === 'idle')) {
-      const range = u.order.type === 'idle' ? w.range + 0.5 : spec.sight + 1;
+      const range = u.order.type === 'idle' && stance !== 'aggressive' ? w.range + 0.5 : spec.sight + 1;
       const found = acquire(s, u.owner, u.x, u.y, range);
       if (found && (!current || u.order.type === 'attackMove')) u.engage = found;
     }
@@ -408,10 +442,14 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
         halt(u);
         aim(u, tp.x, tp.y);
         if (u.cooldown === 0) {
-          fire(s, u.owner, u.x + u.tx * 0.35, u.y + u.ty * 0.35, w, t, u.id);
-          u.cooldown = w.cooldown;
+          const vet = u.vet;
+          fire(s, u.owner, u.x + u.tx * 0.35, u.y + u.ty * 0.35, w, t, u.id, VET_DAMAGE[vet] ?? 1);
+          u.cooldown = vet ? Math.round(w.cooldown * (VET_RELOAD[vet] ?? 1)) : w.cooldown;
         }
-      } else if (u.order.type === 'attack' || (u.order.type === 'attackMove' && d <= spec.sight + 3)) {
+      } else if (
+        u.order.type === 'attack' ||
+        ((u.order.type === 'attackMove' || (u.order.type === 'idle' && stance === 'aggressive')) && d <= spec.sight + 3)
+      ) {
         firing = true;
         if (d < (w.minRange ?? 0)) {
           // Too close for artillery: back away from the target.
@@ -432,10 +470,7 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
   if (!firing) {
     const o = u.order;
     if (o.type === 'move' || o.type === 'attackMove') {
-      if (travel(s, ctx, u, o.x, o.y)) {
-        u.order = { type: 'idle' };
-        halt(u);
-      }
+      if (travel(s, ctx, u, o.x, o.y)) nextOrder(u);
     }
     // Idle on a dock pad or in a factory door: step aside.
     if (u.order.type === 'idle' && (s.tick + u.id) % 10 === 0 && ctx.keepClear.has(tileOf(u))) {
@@ -653,7 +688,7 @@ function landProjectiles(s: GameState, _ctx: Ctx): void {
   if (!s.projectiles.length) return;
   const keep: Projectile[] = [];
   for (const p of s.projectiles) {
-    if (p.hitAt <= s.tick) hit(s, p);
+    if (p.hitAt <= s.tick) hit(s, p, p.shooter ?? 0);
     else keep.push(p);
   }
   s.projectiles = keep;
@@ -734,6 +769,7 @@ function nudge(s: GameState, ctx: Ctx, u: Unit, dx: number, dy: number): void {
 // ---------------------------------------------------------------------------------------------
 
 function removeDead(s: GameState): void {
+  let fallen: Building[] | null = null;
   if (s.units.some(u => u.hp <= 0)) {
     for (const u of s.units) {
       if (u.hp > 0) continue;
@@ -750,7 +786,13 @@ function removeDead(s: GameState): void {
       if (b.owner === 0) log(s, `${spec.name} destroyed.`, 'bad');
       else log(s, `Enemy ${spec.name} destroyed.`, 'good');
     }
+    fallen = s.buildings.filter(b => b.hp <= 0);
     s.buildings = s.buildings.filter(b => b.hp > 0);
+  }
+  if (fallen) {
+    // The crews walk out, unless that was the side's last structure and the battle is over.
+    const occ = occupancy(s);
+    for (const b of fallen) if (s.buildings.some(o => o.owner === b.owner)) spawnSurvivors(s, b, occ);
   }
 }
 
