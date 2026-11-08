@@ -1,13 +1,13 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
-import { paced, useCountUp, usePace } from '../lib/motion';
-import { useTween } from '../hooks/usePlayback';
+import { useEffect, useLayoutEffect, useRef, type CSSProperties, type ReactNode } from 'react';
+import { FloatText, replayClass, signed, useCountUp, useFloats, useTween } from '../lib/motion';
 import { FONT, UI, money } from '../theme';
 import type { Haulier } from '../sim/types';
 import type { ReplayFrame } from '../hooks/aiReplay';
 
 /**
- * The small presentation pieces behind Steady Eddie's sense of time (lib/motion.ts holds the pace
- * and the keyframes). Every one of them is display only: none holds game state back, and with the
+ * The small presentation pieces behind Steady Eddie's sense of time. lib/motion.ts holds the pace,
+ * the keyframes and the shared clocks and floats; what is here is this game's own: the dice and the
+ * replay strip, and thin wrappers that fit the shared pieces to this screen. Every one of them is display only: none holds game state back, and with the
  * pace off each renders exactly what the screen showed before motion existed.
  */
 
@@ -31,13 +31,7 @@ export function Enter({
   className?: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    el.classList.remove(className);
-    void el.offsetWidth; // restart the CSS animation
-    el.classList.add(className);
-  }, [on, className]);
+  useLayoutEffect(() => replayClass(ref.current, className), [on, className]);
   return <div ref={ref}>{children}</div>;
 }
 
@@ -46,37 +40,22 @@ export function Enter({
  * while not live (someone else's turn, a load) just pass silently. Nothing at all with the pace off.
  */
 export function MoneyFloats({ value, scope, live }: { value: number; scope: string; live: boolean }) {
-  const pace = usePace();
+  const { items, push } = useFloats(1100, 3);
   const last = useRef({ value, scope });
-  const seq = useRef(0);
-  const timers = useRef<number[]>([]);
-  const [floats, setFloats] = useState<{ id: number; delta: number }[]>([]);
 
   useEffect(() => {
     const prev = last.current;
     last.current = { value, scope };
-    if (pace === 'off' || !live || prev.scope !== scope || prev.value === value) return;
-    const id = ++seq.current;
-    setFloats(f => [...f.slice(-2), { id, delta: value - prev.value }]);
-    timers.current.push(
-      window.setTimeout(() => setFloats(f => f.filter(x => x.id !== id)), paced(1150, pace) + 50),
-    );
-  }, [value, scope, live, pace]);
+    if (!live || prev.scope !== scope || prev.value === value) return;
+    const delta = value - prev.value;
+    push(signed(delta, money), delta > 0 ? UI.good : UI.textSoft);
+  }, [value, scope, live, push]);
 
-  useEffect(() => () => timers.current.forEach(t => window.clearTimeout(t)), []);
-
-  if (floats.length === 0) return null;
+  if (items.length === 0) return null;
   return (
     <span style={floatAnchor} aria-hidden="true">
-      {floats.map(f => (
-        <span
-          key={f.id}
-          className="tm-anim-float"
-          style={{ ...floatText, color: f.delta > 0 ? UI.good : UI.textSoft }}
-        >
-          {f.delta > 0 ? '+' : '−'}
-          {money(Math.abs(f.delta))}
-        </span>
+      {items.map(f => (
+        <FloatText key={f.id} text={f.text} colour={f.colour} style={floatText} />
       ))}
     </span>
   );
@@ -194,13 +173,10 @@ const floatAnchor: CSSProperties = {
 };
 
 const floatText: CSSProperties = {
-  position: 'absolute',
   left: 0,
   bottom: 0,
   fontFamily: FONT.data,
   fontSize: '0.8rem',
-  fontWeight: 600,
-  whiteSpace: 'nowrap',
 };
 
 const die: CSSProperties = {

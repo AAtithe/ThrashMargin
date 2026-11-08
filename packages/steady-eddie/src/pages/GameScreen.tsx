@@ -22,15 +22,16 @@ import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
 import type { Contract, DepotId, GameState, Vehicle } from '../sim/types';
 import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
-import { usePace, useSkipOnInput } from '../lib/motion';
-import { useSteps, useTween } from '../hooks/usePlayback';
-import { frameMs, recordAiTurns, type ReplayFrame } from '../hooks/aiReplay';
+import { paced, signed, usePace, useSkipOnInput, useSteps, useTween } from '../lib/motion';
+import { recordAiTurns, replayHolds, type ReplayFrame } from '../hooks/aiReplay';
 import { CountUp, DiceTray, Enter, MoneyFloats, ReplayStrip } from '../components/Motion';
 import type { MapFloat } from '../components/MapView';
 
 const NO_HOLDS: number[] = [];
 /** How long the dice tumble after your own roll, at full pace. */
 const TUMBLE_MS = 560;
+/** How long a payout floats over its depot at full pace: the life of the shared `tm-anim-float`. */
+const MAP_FLOAT_MS = 1100;
 import ThemeToggle from '../components/ThemeToggle';
 import MotionToggle from '../components/MotionToggle';
 
@@ -108,7 +109,7 @@ export default function GameScreen() {
     if (pace === 'off' || !prev || !state || prev.id !== state.id) return null;
     if (prev.phase !== 'act' || state.turn - prev.turn < 2) return null;
     const frames = recordAiTurns(prev, state);
-    return frames && frames.length ? { key: state.turn, frames, holds: frames.map(frameMs) } : null;
+    return frames && frames.length ? { key: state.turn, frames, holds: replayHolds(frames) } : null;
     // Recomputed only when the state moves on; prevState is the state before that move.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
@@ -149,6 +150,7 @@ export default function GameScreen() {
   }
   const [mapFloats, setMapFloats] = useState<MapFloat[]>([]);
   const floatSeen = useRef<number | null>(null);
+  const mapFloatTimers = useRef<number[]>([]);
   const shownLog = shown?.log;
   useEffect(() => {
     if (!shownLog) return;
@@ -164,13 +166,15 @@ export default function GameScreen() {
       if (e.seq <= since || e.kind !== 'deliver') continue;
       const depot = contractDepot.current.get(String(e.data?.contractId ?? ''));
       const payout = Number(e.data?.payout ?? 0);
-      if (depot && payout > 0) fresh.push({ id: e.seq, depot, text: `+${money(payout)}` });
+      if (depot && payout > 0) fresh.push({ id: e.seq, depot, text: signed(payout, money) });
     }
     if (fresh.length === 0) return;
     setMapFloats(f => [...f, ...fresh].slice(-6));
     const ids = new Set(fresh.map(f => f.id));
-    window.setTimeout(() => setMapFloats(f => f.filter(x => !ids.has(x.id))), 1200);
+    const t = window.setTimeout(() => setMapFloats(f => f.filter(x => !ids.has(x.id))), paced(MAP_FLOAT_MS, pace) + 60);
+    mapFloatTimers.current.push(t);
   }, [shownLog, pace]);
+  useEffect(() => () => mapFloatTimers.current.forEach(t => window.clearTimeout(t)), []);
 
   /**
    * The guided run, once it has been started. Latched in state rather than recomputed per render
@@ -457,7 +461,8 @@ export default function GameScreen() {
               </>
             ) : (
               <span style={{ ...bodySmall, color: UI.textFaint }}>
-                {haulier?.name} is taking their turn…
+                {(frame ? frame.state.hauliers.find(h => h.id === frame.haulierId) : haulier)?.name} is taking
+                their turn…
               </span>
             )}
           </div>
@@ -531,7 +536,11 @@ export default function GameScreen() {
       {/* --- Overlays -------------------------------------------------------------------- */}
       {/* Kept off while a handover card or the closing card owns the screen — both are modal, and
           spotlighting a control underneath one would point at something unclickable. */}
+      {/* While the rivals' turns replay, the run steps aside rather than unmounting (it would forget
+          its place and its latches): its spotlight's scrim would otherwise dim the replay, and
+          its card would be talking about a board the screen is not yet showing. */}
       {tourPlan && haulier && !over && state.phase !== 'handover' && (
+        <div style={{ display: frame ? 'none' : 'contents' }}>
         <GuidedTour
           view={{
             state,
@@ -543,9 +552,13 @@ export default function GameScreen() {
           plan={tourPlan}
           onFinish={() => setTourPlan(null)}
         />
+        </div>
       )}
 
-      {state.phase === 'handover' && haulier && (
+      {/* Hot seat: when computer hauliers sat between two humans, their replay plays first and the
+          card follows it. Shown at once, the card covered the whole replay, and the press that
+          dismissed it also skipped it, so nobody ever saw the rivals move. */}
+      {state.phase === 'handover' && haulier && !frame && (
         <HandoverCard
           state={state}
           next={haulier}

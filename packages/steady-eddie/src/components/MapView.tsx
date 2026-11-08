@@ -4,8 +4,7 @@ import { sourcesFor, LEGS, DEPOTS, DEPOT_BY_ID, planRoute } from '../sim/content
 import { CHART as BACKDROP, DEPOT_POINTS, VB_HEIGHT, VB_WIDTH, clampPanX } from '../sim/geography';
 import { destinationOf } from '../sim/movement';
 import { planFastestRoute, type Season } from '../sim/weather';
-import { easeOut } from '../lib/motion';
-import { useTween } from '../hooks/usePlayback';
+import { easeOut, useTween } from '../lib/motion';
 import { theftRating } from '../sim/hazards';
 import type { Haulier, Contract, DepotId, Vehicle } from '../sim/types';
 

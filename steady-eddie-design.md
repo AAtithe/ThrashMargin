@@ -236,8 +236,35 @@ toggle; at `off` the screen is exactly as before.
   if it ever is not, there is simply no replay. The chart, the table, the log and the event cards
   then step through each haulier's turn (whose turn with tumbling dice, roll, each drive, delivery
   and a folded run of desk work), with a strip over the chart and a Skip button. Any click or key
-  skips; the Roll button is never held back. About 5 to 6 s at full, 2 s at quick.
+  skips; the Roll button is never held back. About 5 to 6 s at full, 2 s at quick (since shortened,
+  below).
 - **Money.** Cash and share counts count up (header, table, counting house); your own purchases and
   deliveries float `+£`/`−£` over your cash, and anyone's delivery floats its payout over the depot.
 - **Entrances.** Event cards and log lines rise in; the orders panel re-enters when you pick another
   vehicle or she parks up (without remounting, so its own settings survive).
+
+### Replay timing, shortened (2026-11-08, later)
+
+At 5 to 8 s a round (a 3-rival first round was 16 steps, ~7.7 s) the replay risked making the game
+feel slower rather than more alive. Two changes, both in `hooks/aiReplay.ts`, nothing in `sim/`:
+
+- **Fewer steps.** Desk work (loading, fittings, loans, shares) no longer gets a beat of its own: it
+  rides with the same haulier's next drive or delivery ("Loaded tea. Set off for Leeds."), or with
+  the beat before it at the end of their turn. The opening beat, the roll, each drive and each
+  delivery stay separate. A 3-rival round averages 9.3 steps, down from 10.8 (round one 10, from 16).
+- **A budget per round.** `frameMs` gives each beat its most (opening 360, roll 440, drive 500,
+  delivery 640 ms); `replayHolds` squeezes a busy round evenly toward `REPLAY_TARGET_MS` (2.8 s), no
+  beat below its floor (240 to 380 ms, a delivery always outlasting a drive), and caps any round at
+  `REPLAY_CAP_MS` (3.8 s) by cutting every beat proportionally.
+
+Measured over 60 seeds x 40 rounds with the AI playing the human seat, full pace: 3 rivals, mean 5.5 s
+→ 2.9 s, p90 7.7 → 3.4 s, worst 12.6 → 3.8 s; 2 rivals 4.0 → 2.5 s. In the browser, 8 rounds of a
+fresh 3-rival game took 3.9 to 8.2 s each before and 2.7 to 3.0 s after; quick pace about 1.0 to 1.5 s.
+With 4 or 5 rivals most rounds hit the cap and the shortest beat falls to ~140 to 200 ms; readable,
+but it is the place to look if a big table feels rushed.
+
+**Hot seat.** With rivals seated between two humans, the handover card used to appear at once over
+the replay: the replay ran invisibly behind it and the press that dismissed the card also skipped
+it. The card now waits for the replay to finish (or be skipped), and the turn bar names the rival
+being replayed rather than the next human. The guided run likewise steps aside (hidden, not
+unmounted, so it keeps its place) while a replay plays, instead of dimming it under its scrim.
