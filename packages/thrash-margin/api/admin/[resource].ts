@@ -7,7 +7,7 @@ import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
 import { isAdmin, lockAdmins, recordAudit } from '../_lib/admin';
 import { countsByGame, GAMES_BY_TITLE_SQL, GAME_KEYS } from '../../shared/games';
-import { isGameKey, NEW_ACCOUNT_GAMES, newAccountAccess, parseGameList, resolveAccess } from '../_lib/access';
+import { isGameKey, isOptIn, NEW_ACCOUNT_GAMES, newAccountAccess, parseGameList, resolveAccess } from '../_lib/access';
 
 // Combines what were two separate functions (users.ts, feedback.ts) into one, dispatching on
 // the [resource] route param — Vercel's Hobby plan caps a deployment at 12 serverless
@@ -234,18 +234,34 @@ async function updateAccessAll(req: VercelRequest, res: VercelResponse, callerId
   }
   try {
     const changed = await inTransaction(async c => {
-      // An account at NULL already has every game; turning one off gives it every game but that one.
-      const { rowCount } = enabled
-        ? await c.query(
-            `UPDATE users SET game_access = game_access || to_jsonb($1::text)
-             WHERE game_access IS NOT NULL AND NOT (game_access ? $1)`,
-            [game],
-          )
-        : await c.query(
-            `UPDATE users SET game_access = CASE WHEN game_access IS NULL THEN $2::jsonb ELSE game_access - $1::text END
-             WHERE game_access IS NULL OR game_access ? $1`,
-            [game, JSON.stringify(GAME_KEYS.filter(k => k !== game))],
-          );
+      // An account at NULL already has every game but the opt-in ones (_lib/access.ts). Turning an
+      // ordinary game off gives it every default game but that one; turning an opt-in game on gives it
+      // the defaults plus that game. Either way a NULL account is only rewritten when it must change.
+      const optIn = isOptIn(game);
+      const defaults = resolveAccess(null);
+      let rowCount = 0;
+      if (enabled) {
+        rowCount += (await c.query(
+          `UPDATE users SET game_access = game_access || to_jsonb($1::text)
+           WHERE game_access IS NOT NULL AND NOT (game_access ? $1)`,
+          [game],
+        )).rowCount ?? 0;
+        if (optIn) {
+          rowCount += (await c.query('UPDATE users SET game_access = $1::jsonb WHERE game_access IS NULL', [
+            JSON.stringify(GAME_KEYS.filter(k => k === game || defaults.includes(k))),
+          ])).rowCount ?? 0;
+        }
+      } else {
+        rowCount += (await c.query(
+          `UPDATE users SET game_access = game_access - $1::text WHERE game_access IS NOT NULL AND game_access ? $1`,
+          [game],
+        )).rowCount ?? 0;
+        if (!optIn) {
+          rowCount += (await c.query('UPDATE users SET game_access = $1::jsonb WHERE game_access IS NULL', [
+            JSON.stringify(defaults.filter(k => k !== game)),
+          ])).rowCount ?? 0;
+        }
+      }
       const names = await usernames(c, [callerId]);
       await recordAudit(c, {
         actorId: callerId,
@@ -265,11 +281,12 @@ async function updateAccessAll(req: VercelRequest, res: VercelResponse, callerId
 }
 
 // GET /api/admin/settings — { newAccountGames, saved }. `saved` is false while the setting has never
-// been changed, in which case new accounts get every game, including any added to the portal later.
+// been changed, in which case new accounts get every game but the opt-in ones, including any added
+// to the portal later.
 async function getSettings(res: VercelResponse) {
   try {
     const games = await newAccountAccess(getDb());
-    return res.json({ newAccountGames: games ?? [...GAME_KEYS], saved: games !== null });
+    return res.json({ newAccountGames: games ?? resolveAccess(null), saved: games !== null });
   } catch (err) {
     console.error('admin get settings error', err);
     return res.status(500).json({ message: 'Server error' });
