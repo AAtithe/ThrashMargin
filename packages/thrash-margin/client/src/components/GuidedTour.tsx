@@ -390,9 +390,15 @@ interface Props {
   view: TourView;
   plan: TourPlan;
   onFinish: () => void;
+  /**
+   * Hidden rather than unmounted while a modal owns the screen. Unmounting threw away the step
+   * and the opening snapshot, so the dispatch that follows End turn sent the run back to the
+   * welcome card on turn two, teaching a plan whose gold had already been spent.
+   */
+  hidden?: boolean;
 }
 
-export default function GuidedTour({ view, plan, onFinish }: Props) {
+export default function GuidedTour({ view, plan, onFinish, hidden = false }: Props) {
   // Captured once, on the first render. `useRef` rather than `useState` because reading it must
   // never cause a render of its own.
   const memoryRef = useRef<TourMemory>({
@@ -462,6 +468,9 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
     markGuidedTourSeen();
     onFinish();
   };
+
+  // Every hook is above this line: one placed after an early return renders conditionally.
+  if (hidden) return null;
 
   return (
     <>
