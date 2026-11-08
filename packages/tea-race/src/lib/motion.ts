@@ -247,7 +247,8 @@ export function pause(baseMs: number, signal?: AbortSignal): Promise<void> {
 
 /**
  * Shared keyframes and utility classes, injected once as a <style> tag (the CSP allows inline
- * styles, not inline scripts). Animation durations read `--tm-motion` (1, 0.4 or 0), so pace
+ * styles, not inline scripts). Keyframe names carry a `tm-motion-` prefix so they can never replace a
+ * game's own keyframes (an unprefixed `tm-pulse` once overrode Thrash Margin's). Animation durations read `--tm-motion` (1, 0.4 or 0), so pace
  * changes apply to CSS animations too. Colours are never set here: callers style with tokens.
  *
  *   tm-anim-pop      scale in from 0.85 with a small overshoot
@@ -264,23 +265,25 @@ const CSS = `
 :root{--tm-motion:1}
 :root[data-motion="quick"]{--tm-motion:.4}
 :root[data-motion="off"]{--tm-motion:0}
-@keyframes tm-pop{0%{transform:scale(.85);opacity:0}70%{transform:scale(1.04);opacity:1}100%{transform:scale(1)}}
-@keyframes tm-fade{from{opacity:0}to{opacity:1}}
-@keyframes tm-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@keyframes tm-float{0%{opacity:0;transform:translateY(0)}15%{opacity:1}100%{opacity:0;transform:translateY(-18px)}}
-@keyframes tm-pulse{0%{transform:scale(1)}40%{transform:scale(1.08)}100%{transform:scale(1)}}
-@keyframes tm-shake{0%,100%{transform:none}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
-@keyframes tm-tumble{0%{transform:rotate(0) translateY(0)}25%{transform:rotate(90deg) translateY(-4px)}50%{transform:rotate(180deg) translateY(0)}75%{transform:rotate(270deg) translateY(-3px)}100%{transform:rotate(360deg) translateY(0)}}
-@keyframes tm-glow{0%{box-shadow:0 0 0 0 currentColor;opacity:1}100%{box-shadow:0 0 0 10px transparent;opacity:1}}
-.tm-anim-pop{animation:tm-pop calc(320ms * var(--tm-motion)) ease-out both}
-.tm-anim-fade{animation:tm-fade calc(300ms * var(--tm-motion)) ease-out both}
-.tm-anim-rise{animation:tm-rise calc(320ms * var(--tm-motion)) ease-out both}
-.tm-anim-float{animation:tm-float calc(1100ms * var(--tm-motion)) ease-out both;pointer-events:none}
-.tm-anim-pulse{animation:tm-pulse calc(420ms * var(--tm-motion)) ease-out}
-.tm-anim-shake{animation:tm-shake calc(380ms * var(--tm-motion)) ease-in-out}
-.tm-anim-tumble{animation:tm-tumble calc(420ms * var(--tm-motion)) linear infinite}
-.tm-anim-glow{animation:tm-glow calc(900ms * var(--tm-motion)) ease-out}
+@keyframes tm-motion-pop{0%{transform:scale(.85);opacity:0}70%{transform:scale(1.04);opacity:1}100%{transform:scale(1)}}
+@keyframes tm-motion-fade{from{opacity:0}to{opacity:1}}
+@keyframes tm-motion-rise{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes tm-motion-float{0%{opacity:0;transform:translateY(0)}15%{opacity:1}100%{opacity:0;transform:translateY(-18px)}}
+@keyframes tm-motion-pulse{0%{transform:scale(1)}40%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes tm-motion-shake{0%,100%{transform:none}20%{transform:translateX(-4px)}40%{transform:translateX(4px)}60%{transform:translateX(-3px)}80%{transform:translateX(2px)}}
+@keyframes tm-motion-tumble{0%{transform:rotate(0) translateY(0)}25%{transform:rotate(90deg) translateY(-4px)}50%{transform:rotate(180deg) translateY(0)}75%{transform:rotate(270deg) translateY(-3px)}100%{transform:rotate(360deg) translateY(0)}}
+@keyframes tm-motion-glow{0%{box-shadow:0 0 0 0 currentColor;opacity:1}100%{box-shadow:0 0 0 10px transparent;opacity:1}}
+.tm-anim-pop{animation:tm-motion-pop calc(320ms * var(--tm-motion)) ease-out both}
+.tm-anim-fade{animation:tm-motion-fade calc(300ms * var(--tm-motion)) ease-out both}
+.tm-anim-rise{animation:tm-motion-rise calc(320ms * var(--tm-motion)) ease-out both}
+.tm-anim-float{animation:tm-motion-float calc(1100ms * var(--tm-motion)) ease-out both;pointer-events:none}
+.tm-anim-pulse{animation:tm-motion-pulse calc(420ms * var(--tm-motion)) ease-out}
+.tm-anim-shake{animation:tm-motion-shake calc(380ms * var(--tm-motion)) ease-in-out}
+.tm-anim-tumble{animation:tm-motion-tumble calc(420ms * var(--tm-motion)) linear infinite}
+.tm-anim-glow{animation:tm-motion-glow calc(900ms * var(--tm-motion)) ease-out}
 :root[data-motion="off"] [class*="tm-anim-"]{animation:none !important}
+:root[data-motion="off"] .tm-anim-float{display:none}
+@media (prefers-reduced-motion: reduce){.tm-anim-float{display:none}}
 `;
 
 /** Apply the stored pace and inject the shared keyframes. Call once from main.tsx. */
