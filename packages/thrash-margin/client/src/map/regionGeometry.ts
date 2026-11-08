@@ -8,8 +8,10 @@ export interface MapGeometry {
   centroids: Map<number, { x: number; y: number; radius: number }>;
   /** Pairs of territory ids that are true Voronoi (geometric) neighbours, keyed "loId-hiId". */
   geometricEdgeSet: Set<string>;
-  /** Smoothed landmass silhouette, used as a clip-path + coastline stroke. */
-  coastlinePath: string;
+  /** The board's frame: the land plus a band of sea, as an SVG viewBox string. */
+  viewBox: string;
+  /** The same frame as numbers. */
+  bounds: { x: number; y: number; w: number; h: number };
 }
 
 type Point = [number, number];
@@ -77,24 +79,34 @@ function pointsToSmoothPath(points: Point[]): string {
  * Subdivide each polygon edge with a couple of deterministically-jittered midpoints
  * so straight Voronoi cell edges read as organic, irregular borders rather than
  * crisp computational-geometry lines.
+ *
+ * The jitter is seeded by the edge itself, not by the cell, and always measured along the edge in
+ * one canonical direction: the two territories either side of a border then bend it identically,
+ * so neighbours meet along one wavy line instead of leaving slivers of sea between them.
  */
-function jitterPolygon(points: Point[], rng: () => number, amount: number): Point[] {
+function jitterPolygon(points: Point[], amount: number): Point[] {
   const out: Point[] = [];
   const n = points.length;
+  const steps = 2;
   for (let i = 0; i < n; i++) {
-    const [x0, y0] = points[i];
-    const [x1, y1] = points[(i + 1) % n];
-    out.push([x0, y0]);
-    const dx = x1 - x0, dy = y1 - y0;
+    const p0 = points[i];
+    const p1 = points[(i + 1) % n];
+    out.push(p0);
+    const flip = p0[0] > p1[0] || (p0[0] === p1[0] && p0[1] > p1[1]);
+    const [a, b] = flip ? [p1, p0] : [p0, p1];
+    const dx = b[0] - a[0], dy = b[1] - a[1];
     const len = Math.hypot(dx, dy) || 1;
-    const nx = -dy / len, ny = dx / len; // unit normal, perpendicular to this edge
-    const steps = 2;
+    const nx = -dy / len, ny = dx / len; // unit normal of the canonical direction
+    const rng = mulberry32(hashSeed(`${a[0].toFixed(1)},${a[1].toFixed(1)}|${b[0].toFixed(1)},${b[1].toFixed(1)}`));
+    // Short edges get proportionally less wobble, or they fold over themselves.
+    const amp = Math.min(amount, len * 0.18);
+    const mids: Point[] = [];
     for (let s = 1; s <= steps; s++) {
       const t = s / (steps + 1);
-      const mx = x0 + dx * t, my = y0 + dy * t;
-      const jitter = (rng() - 0.5) * 2 * amount;
-      out.push([mx + nx * jitter, my + ny * jitter]);
+      const jitter = (rng() - 0.5) * 2 * amp;
+      mids.push([a[0] + dx * t + nx * jitter, a[1] + dy * t + ny * jitter]);
     }
+    out.push(...(flip ? mids.reverse() : mids));
   }
   return out;
 }
@@ -123,36 +135,102 @@ function polygonCentroidAndRadius(points: Point[]): { x: number; y: number; radi
 }
 
 /**
+ * Sutherland-Hodgman: clip a convex polygon to a convex clip polygon (both counter- or both
+ * clockwise does not matter here, as the inside test uses the clip polygon's own winding).
+ */
+function clipConvex(subject: Point[], clip: Point[]): Point[] {
+  let out = subject;
+  const sign = Math.sign(polygonArea(clip)) || 1;
+  for (let i = 0; i < clip.length && out.length; i++) {
+    const [ax, ay] = clip[i];
+    const [bx, by] = clip[(i + 1) % clip.length];
+    const inside = ([x, y]: Point) => sign * ((bx - ax) * (y - ay) - (by - ay) * (x - ax)) >= 0;
+    const cross = ([px, py]: Point, [qx, qy]: Point): Point => {
+      const a1 = by - ay, b1 = ax - bx, c1 = a1 * ax + b1 * ay;
+      const a2 = qy - py, b2 = px - qx, c2 = a2 * px + b2 * py;
+      const det = a1 * b2 - a2 * b1 || 1e-9;
+      return [(b2 * c1 - b1 * c2) / det, (a1 * c2 - a2 * c1) / det];
+    };
+    const input = out;
+    out = [];
+    for (let j = 0; j < input.length; j++) {
+      const cur = input[j], prev = input[(j + input.length - 1) % input.length];
+      if (inside(cur)) {
+        if (!inside(prev)) out.push(cross(prev, cur));
+        out.push(cur);
+      } else if (inside(prev)) {
+        out.push(cross(prev, cur));
+      }
+    }
+  }
+  return out;
+}
+
+function polygonArea(points: Point[]): number {
+  let a = 0;
+  for (let i = 0; i < points.length; i++) {
+    const [x0, y0] = points[i];
+    const [x1, y1] = points[(i + 1) % points.length];
+    a += x0 * y1 - x1 * y0;
+  }
+  return a / 2;
+}
+
+/** A wobbly, roughly circular convex-ish blob around a site: the most land a territory can hold. */
+function siteBlob(cx: number, cy: number, r: number, rng: () => number): Point[] {
+  const sides = 28;
+  const out: Point[] = [];
+  for (let i = 0; i < sides; i++) {
+    const t = (i / sides) * Math.PI * 2;
+    // Small wobble only: a large one would make the blob concave and break the convex clip.
+    const rr = r * (0.94 + rng() * 0.08);
+    out.push([cx + Math.cos(t) * rr, cy + Math.sin(t) * rr]);
+  }
+  return out;
+}
+
+/**
  * Computes organic territory-region geometry from the engine's flat node/edge lists.
- * Pure and deterministic — same (nodes, edges, viewBox) always produces the same shapes,
- * so callers should memoize this per map instance rather than recomputing every render.
+ * Pure and deterministic: same (nodes, edges) always produces the same shapes, so callers
+ * should memoize this per map instance rather than recomputing every render.
+ *
+ * The land is not a rectangle. Each Voronoi cell is clipped to a blob round its own site, sized
+ * from how far apart territories sit, so interior cells keep their shared borders while the ones
+ * on the edge round off into headlands with sea bays between them: the board reads as a
+ * continent with water wrapping round it. The returned viewBox frames that land, so the board
+ * can be fitted to the land rather than to a rectangle drawn round it.
  */
 export function computeMapGeometry(nodes: Territory[], edges: [number, number][], viewBox: string): MapGeometry {
   void edges; // gameplay adjacency is consumed by the caller for route-connector rendering, not here
   const [vx, vy, vw, vh] = parseViewBox(viewBox);
-  // Boundary territories get open-ended Voronoi cells that Voronoi.cellPolygon clips to
-  // these bounds. They must match the SVG's own viewBox exactly (not a larger margin) or
-  // those cells — and the labels anchored to their centroids — render past the visible
-  // canvas and get cut off by the viewBox itself.
-  const bounds: [number, number, number, number] = [vx, vy, vx + vw, vy + vh];
 
   const points: Point[] = nodes.map(n => [n.x, n.y]);
   const delaunay = Delaunay.from(points);
-  const voronoi = delaunay.voronoi(bounds);
+
+  // Typical spacing: the median distance from a territory to its nearest neighbour.
+  const nearest = nodes.map((_, i) => {
+    let best = Infinity;
+    for (const j of delaunay.neighbors(i)) best = Math.min(best, Math.hypot(points[i][0] - points[j][0], points[i][1] - points[j][1]));
+    return Number.isFinite(best) ? best : 120;
+  }).sort((a, b) => a - b);
+  const spacing = nearest[Math.floor(nearest.length / 2)] ?? 120;
+  // Big enough that interior cells are untouched, small enough that edge cells become headlands.
+  const reach = spacing * 0.78;
+
+  const minNX = Math.min(...points.map(p => p[0])), maxNX = Math.max(...points.map(p => p[0]));
+  const minNY = Math.min(...points.map(p => p[1])), maxNY = Math.max(...points.map(p => p[1]));
+  const outer = reach * 2;
+  const voronoi = delaunay.voronoi([minNX - outer, minNY - outer, maxNX + outer, maxNY + outer]);
 
   const cellPaths = new Map<number, string>();
   const centroids = new Map<number, { x: number; y: number; radius: number }>();
   const geometricEdgeSet = new Set<string>();
-  // Every cell's own vertices, collected so the coastline can hug the actual rendered
-  // territory extent — a hull of just the node centres would sit well inside the cells
-  // once boundary cells are bounded by the viewBox (see below), leaving a mismatched
-  // coastline floating in the middle of the map instead of around its edge.
   const allCellPoints: Point[] = [];
 
   nodes.forEach((n, i) => {
     const cell = voronoi.cellPolygon(i);
     if (!cell) {
-      // Degenerate/duplicate point — fall back to a small square so rendering never breaks.
+      // Degenerate/duplicate point: fall back to a small square so rendering never breaks.
       const half = 20;
       cellPaths.set(n.id, `M ${n.x - half} ${n.y - half} L ${n.x + half} ${n.y - half} L ${n.x + half} ${n.y + half} L ${n.x - half} ${n.y + half} Z`);
       centroids.set(n.id, { x: n.x, y: n.y, radius: 18 });
@@ -160,23 +238,14 @@ export function computeMapGeometry(nodes: Territory[], edges: [number, number][]
       return;
     }
     const raw = cell.slice(0, -1) as Point[]; // cellPolygon repeats the first point at the end
-    allCellPoints.push(...raw);
-    const rng = mulberry32(hashSeed(String(n.id)));
-    const jittered = jitterPolygon(raw, rng, 6);
+    const blob = siteBlob(n.x, n.y, reach, mulberry32(hashSeed(`blob-${n.id}`)));
+    const clipped = clipConvex(raw, blob);
+    const shape = clipped.length >= 3 ? clipped : raw;
+    allCellPoints.push(...shape);
+    const jittered = jitterPolygon(shape, 6);
     const smoothed = chaikinSmooth(jittered, 2);
     cellPaths.set(n.id, pointsToSmoothPath(smoothed));
-
-    // Boundary territories can get large, lopsided open-ended cells whose true geometric
-    // centroid sits very close to (or past) the viewBox edge — fine for the fill, but it
-    // would clip the name/troop-count text anchored there. Keep the overlay anchor a safe
-    // distance inside the frame regardless of how skewed the underlying cell is.
-    const labelMargin = 28;
-    const centroid = polygonCentroidAndRadius(raw);
-    centroids.set(n.id, {
-      ...centroid,
-      x: Math.min(vx + vw - labelMargin, Math.max(vx + labelMargin, centroid.x)),
-      y: Math.min(vy + vh - labelMargin, Math.max(vy + labelMargin, centroid.y)),
-    });
+    centroids.set(n.id, polygonCentroidAndRadius(shape));
   });
 
   for (let i = 0; i < nodes.length; i++) {
@@ -185,27 +254,21 @@ export function computeMapGeometry(nodes: Territory[], edges: [number, number][]
     }
   }
 
-  // The coastline just needs to loosely enclose every cell — a true convex hull over every
-  // cell vertex is fragile here (many vertices sit exactly on the viewBox edge once boundary
-  // cells are bounded to it, and that many collinear points made a hull-based shape prone to
-  // self-crossing once smoothed). A padded bounding box, jittered and Chaikin-smoothed the
-  // same way as the territory cells, gives a robust, always-simple, still-organic silhouette.
-  const pad = 20;
-  const minX = Math.min(...allCellPoints.map(p => p[0])) - pad;
-  const maxX = Math.max(...allCellPoints.map(p => p[0])) + pad;
-  const minY = Math.min(...allCellPoints.map(p => p[1])) - pad;
-  const maxY = Math.max(...allCellPoints.map(p => p[1])) + pad;
-  const margin = 4;
-  const clampX = (x: number) => Math.min(vx + vw - margin, Math.max(vx + margin, x));
-  const clampY = (y: number) => Math.min(vy + vh - margin, Math.max(vy + margin, y));
-  const box: Point[] = [
-    [clampX(minX), clampY(minY)], [clampX(maxX), clampY(minY)],
-    [clampX(maxX), clampY(maxY)], [clampX(minX), clampY(maxY)],
-  ];
-  const coastRng = mulberry32(hashSeed('coastline'));
-  const jitteredBox = jitterPolygon(box, coastRng, 16);
-  const smoothedHull = chaikinSmooth(jitteredBox, 3);
-  const coastlinePath = pointsToSmoothPath(smoothedHull);
+  // Frame the land with a band of sea. Fall back to the map's declared viewBox if anything
+  // degenerate leaves no points to measure.
+  const pad = Math.max(24, spacing * 0.35);
+  let frame: [number, number, number, number] = [vx, vy, vw, vh];
+  if (allCellPoints.length) {
+    const x0 = Math.min(...allCellPoints.map(p => p[0])) - pad;
+    const x1 = Math.max(...allCellPoints.map(p => p[0])) + pad;
+    const y0 = Math.min(...allCellPoints.map(p => p[1])) - pad;
+    const y1 = Math.max(...allCellPoints.map(p => p[1])) + pad;
+    frame = [x0, y0, x1 - x0, y1 - y0];
+  }
 
-  return { cellPaths, centroids, geometricEdgeSet, coastlinePath };
+  return {
+    cellPaths, centroids, geometricEdgeSet,
+    viewBox: frame.map(v => v.toFixed(1)).join(' '),
+    bounds: { x: frame[0], y: frame[1], w: frame[2], h: frame[3] },
+  };
 }

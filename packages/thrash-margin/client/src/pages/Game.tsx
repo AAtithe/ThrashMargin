@@ -1,6 +1,8 @@
 /**
- * The game screen: the board on the left, a tabbed sidebar on the right (a bottom sheet on a
- * phone), and a top bar with the treasury, actions left, undo and End turn.
+ * The game screen: the board fills the window, a tabbed panel slides over it from the right when
+ * wanted (a bottom sheet on a phone), and a top bar holds the treasury, actions left, undo and
+ * End turn. The panel opens when a territory is picked or a tab is chosen, and closes on Esc, the
+ * close button, or a click on open sea, so the map is the map until the player asks for more.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -21,7 +23,7 @@ import TerritoryPanel from '../components/TerritoryPanel';
 import { Button, Chip } from '../components/ui';
 import { marksFor, orderKind, suggestColumns, undoable } from '../game/plan';
 import { useGameHybrid } from '../hooks/useGameHybrid';
-import { FONT, UI } from '../theme';
+import { FONT, MAP, UI } from '../theme';
 import ThemeToggle from '../components/ThemeToggle';
 import GuidedTour, { hasSeenGuidedTour, planFirstTurn, type TourPlan } from '../components/GuidedTour';
 
@@ -52,6 +54,7 @@ function Game({ id }: { id: string | undefined }) {
   const [toast, setToast] = useState<string | null>(null);
   const [hover, setHover] = useState<{ id: number; x: number; y: number } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  const layout = usePanelLayout();
   const [flash, setFlash] = useState<Set<number>>(new Set());
   const [endHidden, setEndHidden] = useState(false);
   const prevOwners = useRef<number[] | null>(null);
@@ -135,7 +138,7 @@ function Game({ id }: { id: string | undefined }) {
 
   const pick = useCallback((nid: number | null) => {
     if (!state) return;
-    if (nid === null) { clear(); return; }
+    if (nid === null) { clear(); setSheetOpen(false); return; }
     const me = state.activeFaction;
     const n = state.nodes[nid];
     setTab('command');
@@ -175,7 +178,7 @@ function Game({ id }: { id: string | undefined }) {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.metaKey || e.ctrlKey || e.altKey) return;
       if (keysBlocked.current && e.key !== 'Escape') return;
-      if (e.key === 'Escape') { if (!modal) clear(); }
+      if (e.key === 'Escape') { if (!modal) { clear(); setSheetOpen(false); } }
       else if (e.key === 'e' || e.key === 'E') { if (!modal && !e.repeat && state?.status === 'active' && !state.pendingEvent) endTurn(); }
       else if (e.key === 'z' || e.key === 'Z') { if (!modal) undo(); }
       else if (e.key === 'l' || e.key === 'L') setModal(m => (m === 'ledger' ? null : 'ledger'));
@@ -223,6 +226,7 @@ function Game({ id }: { id: string | undefined }) {
   const unlimited = state.actionsLeft >= UNLIMITED_AP;
   const showDiplomacy = state.config.enableDiplomacy || state.config.enableSpies;
   const fc = FACTION_COLORS[me];
+  const tabs = ([['command', sel ? 'Orders' : 'Overview'], ['realm', 'Realm'], ...(state.config.enableTechTree ? [['research', 'Research']] : []), ['log', 'Chronicle']] as Array<[Tab, string]>);
   /** A first turn the run could teach from the board as it stands, or null if there isn't one. */
   const tourCandidate: TourPlan | null = tourPlan ? null : planFirstTurn(state);
 
@@ -274,27 +278,48 @@ function Game({ id }: { id: string | undefined }) {
         </div>
       )}
 
-      <div className="tm-body" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+      <div className="tm-body" style={{ flex: 1, display: 'flex', minHeight: 0, position: 'relative' }}>
         <MapView
           state={state} visible={visible} selected={selected} target={target} marks={marks} flash={flash}
           onPick={pick} onHover={(nid, x, y) => setHover(nid === null ? null : { id: nid, x, y })}
           focus={target ?? selected}
+          inset={layout === 'sheet'
+            ? { right: 0, bottom: sheetOpen ? Math.round(window.innerHeight * 0.55) : 52 }
+            : { right: sheetOpen ? layout.panelWidth + 24 : 0, bottom: 0 }}
         />
 
-        {/* ── Sidebar ── */}
-        <aside className={`tm-sidebar${sheetOpen ? ' open' : ''}`} style={{ width: 360, flexShrink: 0, background: UI.panel, borderLeft: `1px solid ${UI.rule}`, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        {/* With the panel away, its tabs wait at the top right of the board. */}
+        {layout !== 'sheet' && !sheetOpen && (
+          <nav className="tm-panel-launcher" aria-label="Open a panel"
+            style={{ position: 'absolute', top: 12, right: 12, display: 'flex', gap: 4, padding: 4, background: MAP.control, border: `1px solid ${UI.ruleStrong}`, borderRadius: 10, boxShadow: `0 6px 18px ${UI.shadow}`, zIndex: 30 }}>
+            {tabs.map(([t, label]) => (
+              <button key={t} type="button" className="tm-btn" onClick={() => { setTab(t); setSheetOpen(true); }}
+                style={{ padding: '7px 11px', background: 'none', border: 'none', borderRadius: 7, color: UI.text, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+                {label}
+              </button>
+            ))}
+          </nav>
+        )}
+
+        {/* ── Panel ── */}
+        <aside className={`tm-sidebar${sheetOpen ? ' open' : ''}`} aria-hidden={!sheetOpen && layout !== 'sheet'}
+          style={{ background: UI.panel, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div className="tm-sheet-handle" onClick={() => setSheetOpen(v => !v)}
             style={{ alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: `1px solid ${UI.rule}`, cursor: 'pointer' }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{sel ? sel.name : 'Your realm'}</span>
             <span style={{ transform: sheetOpen ? 'rotate(90deg)' : 'rotate(-90deg)', display: 'inline-flex', color: UI.textSoft }}><Icon name="next" /></span>
           </div>
-          <nav style={{ display: 'flex', borderBottom: `1px solid ${UI.rule}`, flexShrink: 0 }}>
-            {([['command', sel ? 'Orders' : 'Overview'], ['realm', 'Realm'], ...(state.config.enableTechTree ? [['research', 'Research']] : []), ['log', 'Chronicle']] as Array<[Tab, string]>).map(([t, label]) => (
+          <nav style={{ display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${UI.rule}`, flexShrink: 0 }}>
+            {tabs.map(([t, label]) => (
               <button key={t} type="button" onClick={() => setTab(t)}
                 style={{ flex: 1, padding: '10px 4px', background: 'none', border: 'none', borderBottom: `2px solid ${tab === t ? UI.accent : 'transparent'}`, color: tab === t ? UI.text : UI.textSoft, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
                 {label}
               </button>
             ))}
+            <button type="button" className="tm-panel-close" onClick={() => setSheetOpen(false)} aria-label="Close the panel (Esc)" title="Close the panel (Esc)"
+              style={{ width: 38, flexShrink: 0, background: 'none', border: 'none', borderLeft: `1px solid ${UI.rule}`, color: UI.textSoft, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Icon name="close" size={14} />
+            </button>
           </nav>
           <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'grid', alignContent: 'start', gap: 10 }}>
             {state.config.mapId === 'tutorial' && !over && !tourPlan && tab === 'command' && <Coach state={state} selected={selected} target={target} />}
@@ -316,7 +341,7 @@ function Game({ id }: { id: string | undefined }) {
         </aside>
       </div>
 
-      {hover && !sheetOpen && <HoverCard state={state} id={hover.id} x={hover.x} y={hover.y} seen={visible.has(hover.id)} />}
+      {hover && <HoverCard state={state} id={hover.id} x={hover.x} y={hover.y} seen={visible.has(hover.id)} />}
       {toast && (
         <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: UI.panelRaised, border: `1px solid ${UI.warn}`, color: UI.text, padding: '9px 14px', borderRadius: 8, fontSize: 13, zIndex: 250, maxWidth: '90vw' }}>
           {toast}
@@ -345,6 +370,28 @@ function Game({ id }: { id: string | undefined }) {
       {modal === 'help' && <HelpModal onClose={() => setModal(null)} />}
     </div>
   );
+}
+
+/**
+ * How the panel sits: floating over the right of the board (with its width, which the board needs
+ * to know so it can fit and pan round it), or as a bottom sheet on a narrow screen. The widths
+ * and the 720px switch match `.tm-sidebar` in styles.css.
+ */
+function usePanelLayout(): 'sheet' | { panelWidth: number } {
+  const read = () => {
+    const w = window.innerWidth;
+    return w <= 720 ? 'sheet' as const : { panelWidth: w <= 1100 ? 320 : 360 };
+  };
+  const [layout, setLayout] = useState(read);
+  useEffect(() => {
+    const onResize = () => setLayout(prev => {
+      const next = read();
+      return prev === next || (prev !== 'sheet' && next !== 'sheet' && prev.panelWidth === next.panelWidth) ? prev : next;
+    });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return layout;
 }
 
 function ApPips({ left, max, unlimited }: { left: number; max: number; unlimited: boolean }) {
