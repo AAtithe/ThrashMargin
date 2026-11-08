@@ -55,9 +55,20 @@ Round 1 (2026-11-08): workstreams A, B, C and E built and integrated; D (compute
 - [x] Unit and structure tooltips with real numbers (damage, range, speed, armour).
 - [x] Stance and veterancy shown in the selection panel (with C).
 
+## F. Campaign, Commander career and heroes (round 2)
+
+Spec and code contract: `fireline-campaign-design.md`. Four builders in parallel, then the
+mission AI once the round-1 opponent work lands.
+
+- [~] Eight-mission campaign with briefings, objectives, bonus stars, debriefs and a theatre map.
+- [~] Commander ranks (Lieutenant to General), skill points and a three-branch skill tree.
+- [~] Four heroes who level up and carry over: Spy (stealth, infiltration), Commando (demolition),
+  Engineer (capture, field repair), Ace (prototype tank, overdrive).
+- [~] Support powers: recon sweep, artillery barrage, reinforcements.
+- [ ] Mission AI modes: defend, raid, passive.
+
 ## Later rounds
 
-- Campaign: a handful of scripted missions with objectives and briefings.
 - Skirmish options: two computer opponents, starting credits, map size.
 - Touch controls (tap to select, tap-and-hold for orders).
 - Ambient music bed.
