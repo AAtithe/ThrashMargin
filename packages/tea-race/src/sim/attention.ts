@@ -108,12 +108,23 @@ export interface OfferAwaiting {
  * block. Only the active captain's own offers, and only while they can still be answered.
  */
 export function offersAwaiting(state: GameState, captainId: string): OfferAwaiting[] {
-  if (state.phase !== 'act' || !state.encounters) return [];
+  const letter = letterAwaiting(state, captainId);
+  if (state.phase !== 'act' || !state.encounters) return letter ? [letter] : [];
   const out: OfferAwaiting[] = [];
   for (const ship of state.ships) {
     if (ship.ownerId !== captainId) continue;
     const enc = state.encounters[ship.id];
     if (enc) out.push({ shipId: ship.id, shipName: ship.name, headline: enc.headline });
   }
-  return out;
+  return letter ? [...out, letter] : out;
+}
+
+/**
+ * A letter still unanswered this turn. Same footing as an encounter: it lapses at the end of the
+ * turn, lapsing is declining, and declining is a fair answer, so this only adds a line.
+ */
+export function letterAwaiting(state: GameState, captainId: string): OfferAwaiting | null {
+  if (state.phase !== 'act') return null;
+  const l = state.letters?.[captainId];
+  return l ? { shipId: '', shipName: '', headline: `A letter: ${l.headline}` } : null;
 }

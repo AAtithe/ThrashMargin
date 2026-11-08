@@ -9,7 +9,8 @@ export interface PlaceProps {
   /** The state advanced to `now`, so every timer and bar on the panel is current. */
   s: GameState;
   now: number;
-  act: (v: Verb) => void;
+  /** Dispatch a verb. `origin` names the button that pressed it, so the screen can answer that button. */
+  act: (v: Verb, origin?: string) => void;
   /** Why a verb would be refused right now, or null. Drives disabled buttons and their tooltips. */
   why: (v: Verb) => string | null;
 }

@@ -2,6 +2,7 @@ import { SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel } from './ui';
 import { TeaChest } from './Art';
+import { Counted } from './Motion';
 import { careerOn, levelFor } from '../sim/career';
 import { assetValue } from '../sim/actions';
 import type { GameState } from '../sim/types';
@@ -68,7 +69,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                     color: captain.cash >= VICTORY_CASH ? UI.good : UI.textSoft,
                   }}
                 >
-                  {money(captain.cash)}
+                  <Counted value={captain.cash} format={money} />
                 </td>
                 <td
                   style={{
@@ -81,7 +82,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                           : UI.textSoft,
                   }}
                 >
-                  {freePlay ? money(worthOf(captain)) : captain.shares}
+                  {freePlay ? <Counted value={worthOf(captain)} format={money} /> : <Counted value={captain.shares} />}
                 </td>
                 <td style={{ ...td, color: UI.textSoft }}>{ships}</td>
                 {careerOn(state) && (
@@ -113,20 +114,22 @@ const table: React.CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
 };
 
+// Tight on purpose: the table lives in the narrow left column, and with the career column added
+// five columns at the old padding ran past the panel's edge.
 const th: React.CSSProperties = {
   textAlign: 'right',
   fontWeight: 400,
-  fontSize: '0.6rem',
-  letterSpacing: '0.12em',
+  fontSize: '0.58rem',
+  letterSpacing: '0.06em',
   textTransform: 'uppercase',
   color: UI.textFaint,
-  padding: '0 0.3rem 0.3rem',
+  padding: '0 0.15rem 0.3rem',
   borderBottom: `1px solid ${UI.rule}`,
 };
 
 const td: React.CSSProperties = {
   textAlign: 'right',
-  padding: '0.28rem 0.3rem',
+  padding: '0.28rem 0.15rem',
 };
 
 const dot: React.CSSProperties = {

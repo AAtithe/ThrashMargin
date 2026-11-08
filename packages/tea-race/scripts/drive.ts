@@ -13,8 +13,9 @@
 import { createInitialState } from '../src/sim/state';
 import { newRace, nextRaceRound, openRace } from '../src/sim/seamanship';
 import { advance, isComplete } from '../src/sim/charters';
-import { LEVEL_XP, SKILL_EFFECT, XP_CATCH_UP, XP_FOR, levelFor, xpEarned, type SkillId } from '../src/sim/career';
-import { ERAS } from '../src/sim/eras';
+import { FIRST_SKILL_LEVEL, LEVEL_XP, SKILL_EFFECT, XP_CATCH_UP, XP_FOR, levelFor, xpEarned, type SkillId } from '../src/sim/career';
+import { ERAS, LEVEL_ERAS, levelDriven } from '../src/sim/eras';
+import { pairKey } from '../src/sim/letters';
 import {
   BOUNTY_PER_UNIT,
   GLUT_FACTOR,
@@ -108,7 +109,7 @@ import {
   STOCK_CEILING,
   STOCK_FLOOR,
 } from '../src/sim/stocks';
-import type { Contract, Encounter, GameState, PortId, Ship, WorldEventKind } from '../src/sim/types';
+import type { Contract, Encounter, GameState, Letter, PortId, Ship, WorldEventKind } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
 // Tiny assertion harness
@@ -1147,6 +1148,15 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         state.ships.filter(x => x.ownerId === captain.id).length <= MAX_SHIPS,
       );
       check(`AI game ${seed}: ${captain.name} is never overdrawn`, captain.cash >= 0, `${captain.cash}`);
+      if (state.wagers?.length) {
+        for (const w of state.wagers.filter(x => x.a === captain.id || x.b === captain.id)) {
+          check(`AI game ${seed}: a wager is between two different captains`, w.a !== w.b);
+          // Cards leave the board by a fill (settled on the spot) or by the clock (called off at the
+          // turn of the round, after the clock runs), so between turns no wager may outlive its card.
+          check(`AI game ${seed}: and on a card still on the board`, state.contracts.some(c => c.id === w.contractId));
+        }
+      }
+      check(`AI game ${seed}: ${captain.name} carries at most two dispatches`, (captain.errands?.length ?? 0) <= 2);
       if (state.hazards?.charters) {
         check(
           `AI game ${seed}: ${captain.name} holds at most ${CHARTERS_HELD} charters (one more as commodore), none already finished`,
@@ -2755,7 +2765,9 @@ function testCareerAndEras() {
   const at = (xp: number, skills: SkillId[] = []) => ({ ...g, captains: g.captains.map(c => (c.id === 'p1' ? { ...c, xp, skills } : c)) });
   const novice = at(0);
   check(`${label}: no point, no skill`, processAction(novice, { type: 'LEARN_SKILL', skill: 'haggler' }) === novice);
-  const one = at(LEVEL_XP[1]);
+  const milestone = at(LEVEL_XP[1]);
+  check(`${label}: level 2 is a milestone with no point`, processAction(milestone, { type: 'LEARN_SKILL', skill: 'haggler' }) === milestone);
+  const one = at(LEVEL_XP[FIRST_SKILL_LEVEL - 1]);
   check(`${label}: never out of order`, processAction(one, { type: 'LEARN_SKILL', skill: 'merchantPrince' }) === one);
   const learned = processAction(one, { type: 'LEARN_SKILL', skill: 'haggler' });
   check(`${label}: a point buys a first-tier skill`, learned.captains[0].skills?.includes('haggler') === true);
@@ -2775,7 +2787,7 @@ function testCareerAndEras() {
 
   // A commodore's third charter.
   let cm = createInitialState('t-com', 'C', { humanNames: ['A'], aiCount: 1, seed: 'com', hazards: { ...on, charters: true } });
-  cm = { ...cm, captains: cm.captains.map(c => (c.id === 'p1' ? { ...c, xp: LEVEL_XP[3], skills: ['bosun', 'gunner'] as SkillId[] } : c)) };
+  cm = { ...cm, captains: cm.captains.map(c => (c.id === 'p1' ? { ...c, xp: LEVEL_XP[FIRST_SKILL_LEVEL + 1], skills: ['bosun', 'gunner'] as SkillId[] } : c)) };
   cm = processAction(cm, { type: 'ROLL' });
   const commodore = processAction(cm, { type: 'LEARN_SKILL', skill: 'commodore' });
   equal(`${label}: a commodore holds a third charter`, commodore.captains[0].charters?.length, CHARTERS_HELD + 1);
@@ -2804,6 +2816,160 @@ function testCareerAndEras() {
   check('eras: and the tea race opens with the era', three.teaRace !== undefined);
 }
 
+/**
+ * The captain's letters: every kind both ways, errands, the patron, and wagers.
+ */
+function testLetters() {
+  const label = 'letters';
+  const off = {
+    weather: true, piracy: false, events: false, hostileBids: false, quaysideSales: false,
+    wages: false, loans: false, deadlines: false, shipClasses: false, stocks: false, agents: false,
+  };
+  const on = { ...off, letters: true };
+  const base = (seed = 'post') => {
+    let g = createInitialState(`t-${seed}`, 'Post', { humanNames: ['A', 'B'], aiCount: 0, seed, hazards: on });
+    g = setCash(setCash(g, 'p1', 1000), 'p2', 1000);
+    return processAction(g, { type: 'ROLL' });
+  };
+  const hand = (g: GameState, l: Partial<Letter>): GameState => ({
+    ...g,
+    letters: { p1: { id: 900, kind: 'dispatch', captainId: 'p1', headline: 'h', body: 'b', accept: 'y', decline: 'n', ...l } as Letter },
+  });
+  const p1 = (g: GameState) => g.captains.find(c => c.id === 'p1')!;
+
+  // They arrive at the top of a turn, about one in six.
+  let arrived = 0;
+  for (let i = 0; i < 300; i++) if (base(`post-${i}`).letters?.p1) arrived++;
+  check(`${label}: about one turn in six brings a letter`, arrived > 25 && arrived < 80, `${arrived}/300`);
+  const strict = { ...hand(base(), {}), hazards: off };
+  check(`${label}: no answering with the switch off`, processAction(strict, { type: 'ANSWER_LETTER', accept: true }) === strict);
+  const none = { ...base(), letters: {} };
+  check(`${label}: nothing to answer, nothing happens`, processAction(none, { type: 'ANSWER_LETTER', accept: true }) === none);
+
+  // Dispatches: bond lodged, paid back with the reward on arrival, forfeit if late.
+  const g = base();
+  const d = hand(g, { kind: 'dispatch', port: 'lisbon', byRound: g.round + 8, reward: 110, cost: 40 });
+  const took = processAction(d, { type: 'ANSWER_LETTER', accept: true });
+  equal(`${label}: dispatches cost the bond`, cash(took, 'p1'), 960);
+  equal(`${label}: and are carried`, p1(took).errands?.length, 1);
+  equal(`${label}: the letter is answered`, took.letters?.p1, undefined);
+  const broke = setCash(d, 'p1', 10);
+  check(`${label}: no bond, no dispatches`, processAction(broke, { type: 'ANSWER_LETTER', accept: true }) === broke);
+  const sent = { ...took, sailPoints: { s1: 40 } };
+  const there = processAction(sent, { type: 'SAIL_TO', shipId: 's1', destination: 'lisbon' });
+  equal(`${label}: tying up in time pays the reward and the bond back`, cash(there, 'p1'), 960 + 110 + 40);
+  equal(`${label}: and the errand is done`, p1(there).errands?.length, 0);
+  const late = { ...took, round: g.round + 8, activeIndex: 1, phase: 'act' as const };
+  const lapsed = processAction(late, { type: 'END_TURN' });
+  equal(`${label}: late dispatches are struck off`, lapsed.captains.find(c => c.id === 'p1')!.errands?.length, 0);
+  equal(`${label}: with the bond forfeit`, cash(lapsed, 'p1'), 960);
+
+  // Shore leave: pay, or sail short next roll.
+  const leave = hand(g, { kind: 'shoreLeave', cost: 30 });
+  equal(`${label}: leave costs its price`, cash(processAction(leave, { type: 'ANSWER_LETTER', accept: true }), 'p1'), 970);
+  const refused = processAction(leave, { type: 'ANSWER_LETTER', accept: false });
+  equal(`${label}: refusing marks the crew sullen`, p1(refused).sullen, true);
+  const nextRoll = (st: GameState) => processAction({ ...st, activeIndex: 0, phase: 'roll' as const, sailPoints: {}, dice: {} }, { type: 'ROLL' });
+  const sullenRoll = nextRoll(refused);
+  const cheerfulRoll = nextRoll({ ...refused, captains: refused.captains.map(c => (c.id === 'p1' ? { ...c, sullen: undefined } : c)) });
+  equal(`${label}: a sullen crew sails three short`, sullenRoll.sailPoints.s1, Math.max(0, cheerfulRoll.sailPoints.s1 - 3));
+  equal(`${label}: for one roll only`, p1(sullenRoll).sullen, undefined);
+
+  // A shipwright's slip.
+  const yard = hand(g, { kind: 'shipwright', shipId: 's1', fitting: 'copper', cost: 75 });
+  const coppered = processAction(yard, { type: 'ANSWER_LETTER', accept: true });
+  equal(`${label}: the yard coppers her`, shipOf(coppered, 's1').fittings?.copper, true);
+  equal(`${label}: at its price`, cash(coppered, 'p1'), 925);
+
+  // A patron: money now, taken back on his day.
+  const patron = hand(g, { kind: 'patron', cost: 150, repay: 200, byRound: g.round + 12 });
+  const lent = processAction(patron, { type: 'ANSWER_LETTER', accept: true });
+  equal(`${label}: the patron advances his money`, cash(lent, 'p1'), 1150);
+  check(`${label}: and is owed`, p1(lent).patron?.amount === 200);
+  const due = processAction({ ...lent, round: g.round + 12, activeIndex: 1, phase: 'act' as const }, { type: 'END_TURN' });
+  equal(`${label}: on his day he takes what he is owed`, cash(due, 'p1'), 950);
+  equal(`${label}: and is paid off`, p1(due).patron, undefined);
+
+  // Wagers: both stakes held, the winner takes both, a third party calls it off.
+  const price = GOOD_BY_ID.tea.basePrice;
+  let w = forceContract(g, { id: 'bet-card', good: 'tea', destination: 'liverpool', price });
+  w = place(w, 's1', 'liverpool', [{ good: 'tea', paid: price, boughtAt: 'foochow', boughtOnTurn: 0 }]);
+  const bet = hand(w, { kind: 'wager', rivalId: 'p2', contractId: 'bet-card', stake: 50 });
+  const total = (st: GameState) => st.captains.reduce((n, c) => n + c.cash, 0) + (st.wagers ?? []).reduce((n, x) => n + x.stake * 2, 0);
+  const matched = processAction(bet, { type: 'ANSWER_LETTER', accept: true });
+  equal(`${label}: matching a wager stakes both captains`, cash(matched, 'p1') + cash(matched, 'p2'), 2000 - 100);
+  equal(`${label}: and holds them at the exchange`, total(matched), total(bet));
+  const won = processAction(matched, { type: 'DELIVER', shipId: 's1', contractId: 'bet-card' });
+  equal(`${label}: landing it first takes both stakes`, cash(won, 'p1'), cash(matched, 'p1') + price * 4 + 100);
+  equal(`${label}: the wager is settled`, won.wagers?.length, 0);
+  equal(`${label}: and goes on the head-to-head`, won.rivalries?.[pairKey('p1', 'p2')]?.p1, 1);
+  // A card taken by somebody else: both stakes back.
+  const third = createInitialState('t-bet3', 'B3', { humanNames: ['A', 'B', 'C'], aiCount: 0, seed: 'bet3', hazards: on });
+  let t3 = processAction(setCash(setCash(setCash(third, 'p1', 1000), 'p2', 1000), 'p3', 1000), { type: 'ROLL' });
+  t3 = forceContract(t3, { id: 'bet-card', good: 'tea', destination: 'liverpool', price });
+  t3 = { ...t3, wagers: [{ id: 1, a: 'p2', b: 'p3', contractId: 'bet-card', good: 'tea', destination: 'liverpool', stake: 50 }] };
+  t3 = setCash(setCash(t3, 'p2', 950), 'p3', 950);
+  t3 = place(t3, 's1', 'liverpool', [{ good: 'tea', paid: price, boughtAt: 'foochow', boughtOnTurn: 0 }]);
+  const offBet = processAction(t3, { type: 'DELIVER', shipId: 's1', contractId: 'bet-card' });
+  check(`${label}: a third captain landing it calls the wager off`, cash(offBet, 'p2') === 1000 && cash(offBet, 'p3') === 1000 && (offBet.wagers?.length ?? 0) === 0);
+
+  // An unanswered letter lapses with the turn.
+  const ended = processAction(hand(g, { kind: 'shoreLeave', cost: 30 }), { type: 'END_TURN' });
+  check(`${label}: an unanswered letter lapses with the turn`, !ended.letters?.p1);
+  check(`${label}: and is flagged before it does`, offersAwaiting(hand(g, { kind: 'shoreLeave', cost: 30 }), 'p1').length === 1);
+}
+
+/**
+ * Level-driven progression: with careers and eras both on, the game grows with the captain.
+ */
+function testProgression() {
+  const label = 'progression';
+  const full = { ...PRESETS.full.hazards };
+  const fresh = (humans: string[], ai: number, seed = 'prog') =>
+    createInitialState(`t-${seed}`, 'P', { humanNames: humans, aiCount: ai, seed, hazards: full });
+  const g = fresh(['A'], 3);
+  check(`${label}: the full race follows the level schedule`, levelDriven(g.rampPlan, g.rules));
+  equal(`${label}: it opens at stage 1`, g.era, 1);
+  const staged = LEVEL_ERAS.flatMap(e => e.brings);
+  check(
+    `${label}: and is the plain board — every staged rule held back`,
+    staged.every(k => !g.hazards?.[k]),
+    staged.filter(k => g.hazards?.[k]).join(', '),
+  );
+  check(`${label}: careers are on from the start, since they drive it`, g.hazards?.career === true);
+  check(`${label}: charters are dealt from the start, to point a beginner somewhere`, g.captains.every(c => (c.charters?.length ?? 0) === CHARTERS_HELD));
+
+  const setXp = (st: GameState, id: string, xp: number): GameState => ({ ...st, captains: st.captains.map(c => (c.id === id ? { ...c, xp } : c)) });
+  const turnRound = (st: GameState): GameState => runAiTurn({ ...st, activeIndex: st.captains.length - 1, phase: 'act' as const });
+
+  // A computer captain racing ahead does not drag a learner into rules they have not reached.
+  const aiAhead = turnRound(setXp(g, 'p2', LEVEL_XP[3]));
+  equal(`${label}: a computer captain's level does not set the pace`, aiAhead.era, 1);
+
+  // The human's level does, at the turn of the round.
+  const two = turnRound(setXp(g, 'p1', LEVEL_XP[1]));
+  equal(`${label}: level 2 opens stage 2`, two.era, 2);
+  check(`${label}: the chart opens`, two.hazards?.weather === true && two.hazards?.shipClasses === true);
+  check(`${label}: but not the dangers`, two.hazards?.piracy === false);
+  check(`${label}: and it is announced by level`, two.log.some(e => e.kind === 'era' && e.data?.level === 2));
+
+  // Two stages in one step opens both, and says so.
+  const jump = turnRound(setXp(g, 'p1', LEVEL_XP[3]));
+  equal(`${label}: a captain who jumps two levels jumps two stages`, jump.era, 4);
+  check(`${label}: everything planned is in play`, staged.every(k => jump.hazards?.[k] === (full as Record<string, boolean>)[k]));
+  check(`${label}: the commission clock starts today`, jump.contracts.every(c => (c.postedOn ?? 0) >= jump.round));
+
+  // With two humans the stronger sets the pace; with none, the strongest computer captain.
+  const hotseat = fresh(['A', 'B'], 2, 'prog2');
+  equal(`${label}: the stronger human sets the pace`, turnRound(setXp(hotseat, 'p2', LEVEL_XP[1])).era, 2);
+  const allAi = fresh([], 4, 'prog3');
+  equal(`${label}: an all-computer table follows its strongest`, turnRound(setXp(allAi, 'p3', LEVEL_XP[2])).era, 3);
+
+  // Careers off: the calendar schedule, unchanged.
+  const calendar = createInitialState('t-prog4', 'P', { humanNames: ['A'], aiCount: 1, seed: 'prog4', hazards: { ...full, career: false } });
+  check(`${label}: without careers the eras follow the calendar`, !levelDriven(calendar.rampPlan, calendar.rules) && calendar.hazards?.weather === true);
+}
+
 function main() {
   testPayoutLadder();
   testCargoRules();
@@ -2830,6 +2996,8 @@ function main() {
   testShipSale();
   testChartersAndRenown();
   testCareerAndEras();
+  testLetters();
+  testProgression();
   testDeterminism();
 
   const reports: [string, GameReport][] = [];

@@ -1,9 +1,11 @@
+import { useRef } from 'react';
 import { freshness } from '../sim/rules';
 import { GOOD_BY_ID, portName } from '../sim/content';
 import { SHIP_CLASSES, slotsOf } from '../sim/rules';
 import { destinationOf, pointsToDestination } from '../sim/movement';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel, Pill, bodySmall, dataText } from './ui';
+import { TumblingDice } from './Motion';
 import { Die, RenownStars, ShipProfile, TeaChest } from './Art';
 import { RENOWN_FAMOUS, RENOWN_SMART, renownSpeed, renownTitle } from '../sim/rules';
 import type { Captain, Ship } from '../sim/types';
@@ -43,6 +45,10 @@ export default function FleetPanel({
   crackedOn = {},
   renownOn = false,
 }: Props) {
+  // Dice already on the table when this panel appeared (a reload mid-turn) are shown still; only a
+  // roll made while watching tumbles.
+  const settledTurn = useRef(rolled ? turn : null);
+  const tumble = settledTurn.current !== turn;
   return (
     <Panel
       title="Your fleet"
@@ -87,14 +93,23 @@ export default function FleetPanel({
                   </span>
                   {rolled && roll && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
-                      <Die value={roll[0]} size={17} tone={points > 0 ? UI.brass : UI.textFaint} faint={points === 0} />
-                      <Die value={roll[1]} size={17} tone={points > 0 ? UI.brass : UI.textFaint} faint={points === 0} />
-                      {extra !== undefined && (
-                        <Die value={extra} size={17} tone={ship.damaged ? UI.bad : UI.good} title={`cracked on: ${extra}`} />
-                      )}
-                      <span style={{ ...dataText, color: points > 0 ? UI.brass : UI.textFaint, fontSize: '0.72rem', marginLeft: '0.15rem' }}>
-                        {points > 0 ? `${points} pts` : 'spent'}
-                      </span>
+                      <TumblingDice
+                        values={roll}
+                        tumble={tumble}
+                        size={17}
+                        tone={points > 0 ? UI.brass : UI.textFaint}
+                        faint={points === 0}
+                        after={
+                          <>
+                            {extra !== undefined && (
+                              <Die value={extra} size={17} tone={ship.damaged ? UI.bad : UI.good} title={`cracked on: ${extra}`} />
+                            )}
+                            <span style={{ ...dataText, color: points > 0 ? UI.brass : UI.textFaint, fontSize: '0.72rem', marginLeft: '0.15rem' }}>
+                              {points > 0 ? `${points} pts` : 'spent'}
+                            </span>
+                          </>
+                        }
+                      />
                     </span>
                   )}
                   {rolled && !roll && (

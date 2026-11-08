@@ -77,6 +77,8 @@ export default function OrdersPanel({
       {selectedVessel && !selectedVessel.destination && selectedVessel.capacity > 0 && (
         <MarketPanel
           cityId={selectedVessel.location}
+          vesselId={selectedVessel.id}
+          week={state.week}
           cityName={findCity(selectedVessel.location)?.name ?? selectedVessel.location}
           cash={state.cash}
           cargo={selectedVessel.cargo}

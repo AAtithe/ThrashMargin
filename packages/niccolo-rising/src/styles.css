@@ -132,4 +132,8 @@ button:focus:not(:focus-visible) {
     transition: none !important;
     animation: none !important;
   }
+  /* A floating "+12 gr" with its animation stripped would just sit there: hide it instead. */
+  .tm-anim-float {
+    display: none !important;
+  }
 }

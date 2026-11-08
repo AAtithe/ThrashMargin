@@ -329,7 +329,7 @@ async function runOne(browser, cfg) {
       if (p.tgt && p.hit && p.hit !== 'target') note(`step ${p.step} "${p.title}": a click on #${p.target} hits ${p.hit}`);
       if (p.tgt && (p.tgt.bottom < 0 || p.tgt.top > p.vh)) note(`step ${p.step} "${p.title}": #${p.target} off screen`);
       if (p.card && (p.card.bottom > p.vh + 1 || p.card.right > p.vw + 1 || p.card.top < -1 || p.card.left < -1))
-        note(`step ${p.step} "${p.title}": card off screen`);
+        note(`step ${p.step} "${p.title}": card off screen (card ${box(p.card)} in a ${p.vw}x${p.vh} window, target ${p.target ?? 'none'})`);
 
       const key = keyOf(p);
       sameCount = key === lastKey ? sameCount + 1 : 0;

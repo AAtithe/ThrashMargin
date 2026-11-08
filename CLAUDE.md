@@ -1,8 +1,8 @@
 # The Thrash Margin portal — working notes
 
-Five games served from one deployment, one Postgres/Supabase instance, and one account system:
+Seven games served from one deployment, one Postgres/Supabase instance, and one account system:
 `packages/thrash-margin`, `packages/niccolo`, `packages/niccolo-rising`, `packages/steady-eddie`,
-`packages/tea-race`.
+`packages/tea-race`, `packages/fireline`, and `packages/founders-ledger` (a CEO coaching game, opt-in: see below).
 Each game's design document is at the repo root (`tea-race-design.md`, and so on) and carries its own
 build log; read the relevant one before changing a game's rules.
 
@@ -12,7 +12,7 @@ build log; read the relevant one before changing a game's rules.
 
 ### 1. Every game requires a signed-in account. There is no guest path.
 
-All five lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
+All seven lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
 demo, or "try it without an account" route back in**, and do not relax the gate to make local
 development or testing easier. A guest path existed once and was deliberately removed
 (`7c0e0a0`); it is not an oversight and it is not a TODO.
@@ -26,6 +26,8 @@ The gate lives at:
 | Niccolò Rising | `packages/niccolo-rising/src/pages/Lobby.tsx` |
 | Steady Eddie | `packages/steady-eddie/src/pages/Lobby.tsx` |
 | The Tea Race | `packages/tea-race/src/pages/Lobby.tsx` |
+| Fireline | `packages/fireline/src/pages/Lobby.tsx` |
+| The Founder's Ledger | `packages/founders-ledger/src/App.tsx` |
 
 **Where the gate is, and is not, enforced.** Be precise about this, because the two halves are
 easy to confuse and only one of them is a security boundary:
@@ -58,7 +60,11 @@ added later). `api/play/[kind].ts` refuses any game the account lacks with 403 b
 handler runs; that is the boundary. The lobbies' `hasGameAccess` check and the welcome page hiding
 cards are presentational, exactly like the sign-in gate. Logic: `packages/thrash-margin/api/_lib/access.ts`.
 
-### 2. `packages/tea-race/src/sim/` and `packages/niccolo-rising/src/sim/` are pure
+A game marked `optIn` in `shared/games.ts` (The Founder's Ledger) is the exception to "NULL means every
+game": no account has it until an admin turns it on, so adding one never shows it to every account.
+Its landing card is `hidden` in the HTML for the same reason. `npm run test:api` covers the rules.
+
+### 2. `packages/tea-race/src/sim/`, `packages/niccolo-rising/src/sim/` and `packages/fireline/src/sim/` are pure
 
 No `Math.random`, no clock. Dice come from `rng.ts` against the persisted `rngSeed`, and
 `createdAt` is passed in by the caller. Niccolò Rising runs in real time, so every one of its
@@ -94,11 +100,19 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **Adding a game:** one entry in `packages/thrash-margin/shared/games.ts` (feedback, profile and
   admin read it), one line in `api/play/[kind].ts` (its saves endpoint), and its build in
   `scripts/build-portal.sh` and `scripts/check.sh`. No new Vercel function.
+- **Read query values with `queryParam(req, name)`** (`api/_lib/query.ts`), never `req.query`.
+  Vercel builds `req.query` with Node's deprecated `url.parse`, which logged a DeprecationWarning
+  on every request that read it. Route segments (`[kind]`, `[mode]`, `[resource]`) arrive the same
+  way. `npm run test:api` throws if any handler reads `req.query`.
 - **Schema changes** go in `db/schema.sql` and, for the live database, in
   `packages/thrash-margin/api/_lib/schema.ts`, which applies them automatically on first use.
 - **`npm run drive` before trusting anything.** ~370,000 assertions over 20 seeds in a couple of
   seconds. Use a wide seed set: pathologies in this codebase's history showed up in some seeds and
   not others, and a five-seed run once reported two bugs fixed while they were still there.
+- **Fireline has its own harness: `npm run drive:fire`** (whole computer-against-computer battles over
+  28 seeds plus every order, about 120,000 assertions, about 40 seconds; `-- --seeds 60` for a
+  wider sweep). Fireline is real time: it saves every 15 seconds of play rather than per action, and
+  its guided tour runs on the live battle (see `fireline-design.md` §5).
 - **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and
   difficulty). Its engine (`packages/thrash-margin/shared/sim/`) follows the same purity rule as the
   Tea Race's `sim/`: no `Math.random`, no clock, illegal actions return the same state object.
@@ -116,7 +130,7 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   (Thrash Margin's attack step read as done on arrival because it watched the game log). Each
   driver also checks the save for the real effects of the run, and none of them may pass on timing
   luck. Thrash Margin's card also carries `data-tour-done` while it pauses after a finished step.
-- **A guided tour is only verified by driving it in a browser.** All five tour cards carry
+- **A guided tour is only verified by driving it in a browser.** All six tour cards carry
   `data-tour-target`, naming the element actually being ringed — the resolved one, where a step
   offers several candidates — so a script can walk every step by clicking what the card names
   rather than guessing from the copy. Niccolò Rising's card also carries `data-tour-manual`, for

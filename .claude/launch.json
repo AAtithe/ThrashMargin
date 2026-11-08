@@ -24,6 +24,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace", "steady-eddie"],
       "port": 5176
+    },
+    {
+      "name": "fireline",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace", "fireline"],
+      "port": 5178
     }
   ]
 }
