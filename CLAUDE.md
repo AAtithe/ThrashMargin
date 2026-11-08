@@ -1,8 +1,8 @@
 # The Thrash Margin portal — working notes
 
-Five games served from one deployment, one Postgres/Supabase instance, and one account system:
+Six games served from one deployment, one Postgres/Supabase instance, and one account system:
 `packages/thrash-margin`, `packages/niccolo`, `packages/niccolo-rising`, `packages/steady-eddie`,
-`packages/tea-race`.
+`packages/tea-race`, and `packages/founders-ledger` (a CEO coaching game, opt-in: see below).
 Each game's design document is at the repo root (`tea-race-design.md`, and so on) and carries its own
 build log; read the relevant one before changing a game's rules.
 
@@ -12,7 +12,7 @@ build log; read the relevant one before changing a game's rules.
 
 ### 1. Every game requires a signed-in account. There is no guest path.
 
-All five lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
+All six lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
 demo, or "try it without an account" route back in**, and do not relax the gate to make local
 development or testing easier. A guest path existed once and was deliberately removed
 (`7c0e0a0`); it is not an oversight and it is not a TODO.
@@ -26,6 +26,7 @@ The gate lives at:
 | Niccolò Rising | `packages/niccolo-rising/src/pages/Lobby.tsx` |
 | Steady Eddie | `packages/steady-eddie/src/pages/Lobby.tsx` |
 | The Tea Race | `packages/tea-race/src/pages/Lobby.tsx` |
+| The Founder's Ledger | `packages/founders-ledger/src/App.tsx` |
 
 **Where the gate is, and is not, enforced.** Be precise about this, because the two halves are
 easy to confuse and only one of them is a security boundary:
@@ -57,6 +58,10 @@ Admins turn games on and off on the Admin page: per account, per game for every 
 added later). `api/play/[kind].ts` refuses any game the account lacks with 403 before the game's own
 handler runs; that is the boundary. The lobbies' `hasGameAccess` check and the welcome page hiding
 cards are presentational, exactly like the sign-in gate. Logic: `packages/thrash-margin/api/_lib/access.ts`.
+
+A game marked `optIn` in `shared/games.ts` (The Founder's Ledger) is the exception to "NULL means every
+game": no account has it until an admin turns it on, so adding one never shows it to every account.
+Its landing card is `hidden` in the HTML for the same reason. `npm run test:api` covers the rules.
 
 ### 2. `packages/tea-race/src/sim/` and `packages/niccolo-rising/src/sim/` are pure
 
