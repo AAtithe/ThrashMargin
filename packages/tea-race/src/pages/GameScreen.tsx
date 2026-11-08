@@ -544,9 +544,12 @@ export default function GameScreen() {
       />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
+      {/* Hidden, never unmounted, while the hand-over card is up or the rivals' turns replay: its
+          scrim would dim the replay, and its card would be talking about the player's own move while
+          the screen shows someone else's. Unmounting would lose its place. */}
       {tourPlan && captain && !over && (
         <GuidedTour
-          hidden={state.phase === 'handover'}
+          hidden={state.phase === 'handover' || !!replay.frame}
           view={{
             state,
             captain,
