@@ -57,8 +57,9 @@ interface EventOverlayProps {
 
 export default function EventOverlay({ event, onChoose }: EventOverlayProps) {
   return (
-    <div style={BACKDROP}>
-      <div style={CARD}>
+    <div style={BACKDROP} className="tm-anim-fade">
+      {/* Keyed on the event so a second event queued behind the first arrives with its own beat. */}
+      <div style={CARD} className="tm-anim-pop" key={event.id}>
         <h2 style={TITLE}>{event.title}</h2>
         <p style={BODY}>{event.body}</p>
         {event.choices.map((choice, i) => (

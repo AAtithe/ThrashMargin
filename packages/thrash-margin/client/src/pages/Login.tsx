@@ -20,6 +20,7 @@ const GAME_TITLES: { prefix: string; title: string; subtitle: string }[] = [
   { prefix: '/niccolo/', title: 'Banco di Niccolo', subtitle: 'Trade · Credit · Intelligence' },
   { prefix: '/tea-race/', title: 'The Tea Race', subtitle: 'Clippers · Cargo · First home' },
   { prefix: '/steady-eddie/', title: 'Steady Eddie', subtitle: 'Haulage · Loads · First to the depot' },
+  { prefix: '/fireline/', title: 'Fireline', subtitle: 'Real-time strategy · Build · Harvest · Conquer' },
 ];
 
 export default function Login() {

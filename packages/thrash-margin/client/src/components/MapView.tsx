@@ -7,7 +7,7 @@
  * Pan with a drag, zoom with the wheel, a pinch, the buttons or the + and - keys (0 fits the
  * map). A click that moved more than a few pixels was a pan, not a selection.
  */
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as RPointerEvent, type ReactNode } from 'react';
 import { BUILDINGS, FACTION_COLORS, mapDefFor, type GameState, type Territory } from 'shared/sim';
 import { computeMapGeometry } from '../map/regionGeometry';
 import { MAP, UI } from '../theme';
@@ -21,6 +21,18 @@ export interface MapMarks {
   columns: Map<number, number>;
   /** Territories hit while the player was away. */
   hit: Set<number>;
+}
+
+/**
+ * Short-lived effects on the board (presentation only, see game/replay.ts): a pop on a territory
+ * just taken, a shake on one just lost or held, and floating numbers for the troops each side lost.
+ * Bump `key` to replay the same effect on the same territory.
+ */
+export type FxKind = 'pop' | 'shake' | 'hit';
+export interface MapFx {
+  key: number;
+  nodes: Map<number, FxKind>;
+  floats: Array<{ node: number; text: string; tone: 'bad' | 'good' | 'plain'; dx?: number }>;
 }
 
 export const NO_MARKS: MapMarks = { attack: new Set(), move: new Set(), annex: new Set(), columns: new Map(), hit: new Set() };
@@ -41,6 +53,13 @@ interface Props {
    * the sheet's handle on a phone). The fit and the focus pan both work in what is left.
    */
   inset?: { right: number; bottom: number };
+  /** Effects for the current beat of a replay, or the battle just fought. */
+  fx?: MapFx | null;
+  /**
+   * Drawn over the board, outside the pan and zoom (the AI replay banner), and laid out in the
+   * part of the board the inset leaves uncovered so it centres on what can be seen.
+   */
+  overlay?: ReactNode;
 }
 
 const MOVE_THRESHOLD = 5;
@@ -49,7 +68,7 @@ const MAX_ZOOM = 6;
 
 type View = { x: number; y: number; k: number };
 
-export default function MapView({ state, visible, selected, target, marks, flash, onPick, onHover, focus, inset }: Props) {
+export default function MapView({ state, visible, selected, target, marks, flash, onPick, onHover, focus, inset, fx, overlay }: Props) {
   const def = mapDefFor(state.config.mapId);
   // Positions and edges never change during a game, so geometry is computed once per game.
   const geometry = useMemo(
@@ -282,9 +301,26 @@ export default function MapView({ state, visible, selected, target, marks, flash
             seen={visible.has(n.id)} sel={selected === n.id} tgt={target === n.id}
             attack={marks.attack.has(n.id)} move={marks.move.has(n.id)} annex={marks.annex.has(n.id)}
             column={marks.columns.get(n.id)} hit={marks.hit.has(n.id)} flash={flash.has(n.id)}
+            fx={fx?.nodes.get(n.id)} fxKey={fx?.nodes.has(n.id) ? fx.key : undefined}
             onClick={click} onHover={onHover}
           />
         ))}
+
+        {/* Floating troop losses over the territories in the current effect */}
+        {fx && fx.floats.map((f, i) => {
+          const c = nodeAt(f.node);
+          return (
+            <text
+              key={`${fx.key}-${i}`} className="tm-anim-float"
+              x={c.x + (f.dx ?? 0)} y={c.y - 16} textAnchor="middle" fontSize={11} fontWeight={800}
+              fill={f.tone === 'bad' ? UI.bad : f.tone === 'good' ? UI.good : MAP.label}
+              stroke={MAP.labelHalo} strokeWidth={3} paintOrder="stroke"
+              style={{ pointerEvents: 'none', transformBox: 'fill-box' }}
+            >
+              {f.text}
+            </text>
+          );
+        })}
 
         {/* Assault arrows from every committed column into the target */}
         {target !== null && [...marks.columns.entries()].map(([from, n]) => {
@@ -300,6 +336,12 @@ export default function MapView({ state, visible, selected, target, marks, flash
           );
         })}
       </svg>
+
+      {overlay && (
+        <div style={{ position: 'absolute', left: 0, top: 0, right: insetRight, bottom: insetBottom, pointerEvents: 'none', transition: 'right 0.25s ease' }}>
+          {overlay}
+        </div>
+      )}
 
       <div style={{ position: 'absolute', right: 10 + insetRight, bottom: 10 + insetBottom, display: 'flex', flexDirection: 'column', gap: 6, transition: 'right 0.25s ease' }} className="tm-zoom">
         {([['plus', () => zoomAt(1.4), 'Zoom in (+)'], ['reset', fit, 'Fit the map (0)'], ['minus', () => zoomAt(0.7), 'Zoom out (-)']] as const).map(([icon, fn, label]) => (
@@ -361,11 +403,13 @@ interface RegionProps {
   column?: number;
   hit: boolean;
   flash: boolean;
+  fx?: FxKind;
+  fxKey?: number;
   onClick: (id: number) => void;
   onHover: (id: number | null, x: number, y: number) => void;
 }
 
-const Region = memo(function Region({ n, path, c, seen, sel, tgt, attack, move, annex, column, hit, flash, onClick, onHover }: RegionProps) {
+const Region = memo(function Region({ n, path, c, seen, sel, tgt, attack, move, annex, column, hit, flash, fx, fxKey, onClick, onHover }: RegionProps) {
   const fc = FACTION_COLORS[n.owner] ?? FACTION_COLORS[0];
   const neutral = n.owner === 0;
   const terrain = n.terrain ?? 'plains';
@@ -387,18 +431,22 @@ const Region = memo(function Region({ n, path, c, seen, sel, tgt, attack, move, 
       <path d={path} fill={seen ? `url(#tm-${terrain})` : 'url(#tm-fog)'} />
       <path d={path} fill={fc.fill} opacity={neutral ? 0.12 : seen ? 0.5 : 0.28} />
       {flash && <path d={path} fill={fc.edge} style={{ animation: 'tm-flash 1.1s ease-out forwards', pointerEvents: 'none' }} />}
+      {fx && <path key={`fx-${fxKey}`} d={path} fill={fx === 'hit' ? UI.bad : fc.edge} style={{ animation: 'tm-flash calc(900ms * var(--tm-motion)) ease-out forwards', opacity: 0, pointerEvents: 'none' }} />}
       <path d={path} fill="none" stroke={neutral ? MAP.neutralEdge : fc.edge} strokeWidth={neutral ? 1 : 1.6} strokeOpacity={neutral ? 1 : 0.85} />
       {plan && <path d={path} fill={plan} fillOpacity={0.12} stroke={plan} strokeWidth={2} strokeDasharray="6 4" style={{ animation: 'tm-ants 0.9s linear infinite' }} />}
       {ring && <path d={path} fill={ring} fillOpacity={0.18} stroke={ring} strokeWidth={3} />}
       {sel && <path d={path} fill="#fff" fillOpacity={0.08} stroke="#fff" strokeWidth={2.6} />}
       {column !== undefined && !sel && <path d={path} fill="none" stroke={UI.attack} strokeWidth={2} strokeOpacity={0.8} />}
 
-      {/* Troop badge */}
-      <circle cx={c.x} cy={c.y} r={r} fill={neutral ? MAP.neutralFill : fc.fill} stroke={n.capital ? UI.accent : neutral ? MAP.neutralRing : fc.edge} strokeWidth={n.capital ? 2.2 : 1.4} />
-      <text x={c.x} y={c.y + 0.5} textAnchor="middle" dominantBaseline="middle" fontSize={seen ? (n.troops > 99 ? 8 : n.troops > 9 ? 10 : 11.5) : 11} fontWeight={800} fill={seen ? '#fff' : '#8b939c'} style={{ pointerEvents: 'none' }}>
-        {seen ? n.troops : '?'}
-      </text>
-      {hit && <circle cx={c.x} cy={c.y} r={r + 4} fill="none" stroke={UI.bad} strokeWidth={2} style={{ animation: 'tm-pulse 1.4s ease-in-out infinite', pointerEvents: 'none' }} />}
+      {/* Troop badge (wrapped so a replay can pop or shake it) */}
+      <g key={fx ? `badge-${fxKey}` : 'badge'} className={fx === 'pop' ? 'tm-anim-pop' : fx ? 'tm-anim-shake' : undefined} style={fx ? BADGE_FX : undefined}>
+        <circle cx={c.x} cy={c.y} r={r} fill={neutral ? MAP.neutralFill : fc.fill} stroke={n.capital ? UI.accent : neutral ? MAP.neutralRing : fc.edge} strokeWidth={n.capital ? 2.2 : 1.4} />
+        <text x={c.x} y={c.y + 0.5} textAnchor="middle" dominantBaseline="middle" fontSize={seen ? (n.troops > 99 ? 8 : n.troops > 9 ? 10 : 11.5) : 11} fontWeight={800} fill={seen ? '#fff' : '#8b939c'} style={{ pointerEvents: 'none' }}>
+          {seen ? n.troops : '?'}
+        </text>
+      </g>
+      {fx === 'hit' && <circle key={`ring-${fxKey}`} cx={c.x} cy={c.y} r={r + 4} fill="none" stroke={UI.bad} strokeWidth={2.4} style={{ animation: 'tm-flash calc(900ms * var(--tm-motion)) ease-out forwards', opacity: 0, pointerEvents: 'none' }} />}
+      {hit && <circle cx={c.x} cy={c.y} r={r + 4} fill="none" stroke={UI.bad} strokeWidth={2} style={{ animation: 'tm-hit-pulse 1.4s ease-in-out infinite', pointerEvents: 'none' }} />}
 
       {/* Capital crown and stronghold star above the badge */}
       {n.capital && (
@@ -423,6 +471,9 @@ const Region = memo(function Region({ n, path, c, seen, sel, tgt, attack, move, 
     </g>
   );
 });
+
+/** SVG transforms default to the canvas origin: scale and shake the badge about its own centre. */
+const BADGE_FX = { transformBox: 'fill-box', transformOrigin: 'center' } as const;
 
 const ROMAN = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
 

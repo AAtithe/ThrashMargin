@@ -3,6 +3,7 @@ import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
+import { queryParam } from '../_lib/query';
 import { cleanName, cleanNames, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState } from '../../src/sim/state';
 import { MAX_HAULIERS } from '../../src/sim/rules';
@@ -66,7 +67,7 @@ function readHazards(
  * its 12-function ceiling. A path-based `[[...id]].ts` catch-all doesn't work here: that's a
  * Next.js routing convention, not something plain Vercel Functions understand, so it silently
  * 404s on every request in production even though it looks fine locally. Query-string `id` on a
- * single plain `index.ts` sidesteps that entirely. `req.query.id` is `undefined` on the
+ * single plain `index.ts` sidesteps that entirely. `queryParam(req, 'id')` is `undefined` on the
  * collection route and a plain string (or one-element array, if the key is repeated) otherwise.
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -76,8 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!user) return;
 
   const db = getDb();
-  const idParam = req.query.id;
-  const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  const id = queryParam(req, 'id');
   // A malformed id cannot exist; answered here rather than as a database error.
   if (id !== undefined && !isGameId(id)) return res.status(404).json({ message: 'Game not found' });
 

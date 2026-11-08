@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CHART, FONT } from '../theme';
-import { sourcesFor, LEGS, DEPOTS, DEPOT_BY_ID } from '../sim/content';
+import { sourcesFor, LEGS, DEPOTS, DEPOT_BY_ID, planRoute } from '../sim/content';
 import { CHART as BACKDROP, DEPOT_POINTS, VB_HEIGHT, VB_WIDTH } from '../sim/geography';
 import { destinationOf } from '../sim/movement';
-import type { Season } from '../sim/weather';
+import { planFastestRoute, type Season } from '../sim/weather';
+import { easeOut, useTween } from '../lib/motion';
 import { theftRating } from '../sim/hazards';
 import type { Haulier, Contract, DepotId, Vehicle } from '../sim/types';
 
@@ -26,6 +27,19 @@ interface MapViewProps {
   focusDepot?: DepotId | null;
   /** Screen pixels covered by panels floating over the chart, so fitting and panning avoid them. */
   inset?: { left: number; right: number; bottom: number };
+  /**
+   * Bumped when a playback is skipped: vehicles then jump straight to where they are rather than
+   * driving there. Optional, so the chart works unchanged without any motion wiring.
+   */
+  snapToken?: number;
+  /** Floating payouts over a depot ("+£1,200" where a load was just delivered). */
+  floats?: MapFloat[];
+}
+
+export interface MapFloat {
+  id: number;
+  depot: DepotId;
+  text: string;
 }
 
 const ZOOM_MIN = 0.5;
@@ -70,6 +84,8 @@ export default function MapView({
   viewerId,
   focusDepot = null,
   inset,
+  snapToken = 0,
+  floats = [],
 }: MapViewProps) {
   const colourOf = useMemo(
     () => Object.fromEntries(hauliers.map(c => [c.id, c.colour])),
@@ -462,9 +478,36 @@ export default function MapView({
           selected={vehicle.id === selectedVehicleId}
           haulierName={nameOf[vehicle.ownerId] ?? ''}
           isRival={vehicle.ownerId !== viewerId}
+          season={season}
+          snapToken={snapToken}
           lift={lift}
         />
       ))}
+
+      {floats.map(f => {
+        const p = DEPOT_POINTS[f.depot];
+        if (!p) return null;
+        return (
+          <g key={f.id} transform={`translate(${p.x} ${p.y - 16 * lift})`} pointerEvents="none">
+            <text
+              className="tm-anim-float"
+              x={0}
+              y={0}
+              fill={CHART.depotContract}
+              fontFamily={FONT.data}
+              fontSize={13 * lift}
+              fontWeight={700}
+              textAnchor="middle"
+              paintOrder="stroke"
+              stroke={CHART.labelHalo}
+              strokeWidth={3.5 * lift}
+              strokeLinejoin="round"
+            >
+              {f.text}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 
@@ -529,6 +572,8 @@ function VehicleMarker({
   selected,
   haulierName,
   isRival,
+  season,
+  snapToken,
   lift = 1,
 }: {
   vehicle: Vehicle;
@@ -536,33 +581,38 @@ function VehicleMarker({
   selected: boolean;
   haulierName: string;
   isRival: boolean;
+  season: Season | null;
+  snapToken: number;
   /** Enlargement so she stays visible when the chart is drawn small (see MIN_LABEL_PX). */
   lift?: number;
 }) {
-  let x: number;
-  let y: number;
-  let heading = 0;
-  let wake: { x: number; y: number } | null = null;
+  // Driving, not jumping: when her position changes, glide from where she was, node by node along
+  // the road, to where the reducer has already put her. Presentation only; see tripBetween.
+  const sig = positionSignature(vehicle);
+  const last = useRef({ sig, vehicle, snapToken });
+  const trip = useMemo(() => {
+    const was = last.current;
+    if (was.sig === sig || was.snapToken !== snapToken) return null;
+    return tripBetween(was.vehicle, vehicle, season, lift);
+    // Keyed on her position, not the object: a cargo change alone must not set her driving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig, snapToken]);
+  useEffect(() => {
+    last.current = { sig, vehicle, snapToken };
+  });
+  const segments = trip ? trip.length - 1 : 0;
+  const { t } = useTween(trip ? `${vehicle.id}:${sig}:${snapToken}` : null, Math.min(950, 240 + 190 * segments));
 
-  if (vehicle.location) {
-    const p = DEPOT_POINTS[vehicle.location];
-    if (!p) return null;
-    // Just off the depot so she never covers the depot's own mark.
-    x = p.x + 13 * lift;
-    y = p.y - 13 * lift;
-  } else if (vehicle.run) {
-    const from = DEPOT_POINTS[vehicle.run.legFrom];
-    const to = DEPOT_POINTS[vehicle.run.route[0]];
-    if (!from || !to) return null;
-    const progress =
-      vehicle.run.legDistance > 0 ? 1 - vehicle.run.legRemaining / vehicle.run.legDistance : 0;
-    const dx = to.x - from.x;
-    x = from.x + dx * progress;
-    y = from.y + (to.y - from.y) * progress;
-    heading = (Math.atan2(to.y - from.y, dx) * 180) / Math.PI + 90;
-    wake = { x: from.x, y: from.y };
-  } else {
-    return null;
+  const at = placeOf(vehicle, lift);
+  if (!at) return null;
+  let { x, y, heading } = at;
+  let wake = at.wake;
+  if (trip && t < 1) {
+    const mid = alongPolyline(trip, easeOut(t));
+    x = mid.x;
+    y = mid.y;
+    heading = mid.heading;
+    wake = mid.from;
   }
 
   const dest = destinationOf(vehicle);
@@ -638,6 +688,94 @@ function VehicleMarker({
       </title>
     </g>
   );
+}
+
+/** Where a vehicle is drawn, and the leg start her wake trails back to. */
+function placeOf(vehicle: Vehicle, lift = 1): { x: number; y: number; heading: number; wake: { x: number; y: number } | null } | null {
+  if (vehicle.location) {
+    const p = DEPOT_POINTS[vehicle.location];
+    if (!p) return null;
+    // Just off the depot so she never covers the depot's own mark.
+    return { x: p.x + 13 * lift, y: p.y - 13 * lift, heading: 0, wake: null };
+  }
+  if (vehicle.run) {
+    const from = DEPOT_POINTS[vehicle.run.legFrom];
+    const to = DEPOT_POINTS[vehicle.run.route[0]];
+    if (!from || !to) return null;
+    const progress =
+      vehicle.run.legDistance > 0 ? 1 - vehicle.run.legRemaining / vehicle.run.legDistance : 0;
+    const dx = to.x - from.x;
+    return {
+      x: from.x + dx * progress,
+      y: from.y + (to.y - from.y) * progress,
+      heading: (Math.atan2(to.y - from.y, dx) * 180) / Math.PI + 90,
+      wake: { x: from.x, y: from.y },
+    };
+  }
+  return null;
+}
+
+function positionSignature(v: Vehicle): string {
+  return v.location ?? `${v.run?.legFrom}>${v.run?.route.join(',')}@${v.run?.legRemaining}`;
+}
+
+type Pt = { x: number; y: number };
+
+/**
+ * The road a vehicle drove between two snapshots: her old point, every depot she passed through,
+ * her new point. Read off her old course where she had one; from a standing start, the course the
+ * orders panel would have given her (fastest in season, shortest otherwise). A move this cannot
+ * explain (turning back mid-leg) is drawn as a straight line, which is still not a jump.
+ */
+function tripBetween(a: Vehicle, b: Vehicle, season: Season | null, lift = 1): Pt[] | null {
+  const start = placeOf(a, lift);
+  const end = placeOf(b, lift);
+  if (!start || !end) return null;
+  const stop = b.location ?? b.run?.legFrom ?? null;
+  let via: DepotId[] = [];
+
+  if (a.run) {
+    const sameLeg = b.run && b.run.legFrom === a.run.legFrom && b.run.route[0] === a.run.route[0];
+    if (!sameLeg && stop) {
+      const k = a.run.route.indexOf(stop);
+      if (k >= 0) via = a.run.route.slice(0, k + 1);
+    }
+  } else if (a.location) {
+    via = [a.location];
+    if (stop && stop !== a.location) {
+      const route = season
+        ? planFastestRoute(a.location, stop, season, a.fittings?.aeroKit)
+        : planRoute(a.location, stop);
+      if (route) via = [a.location, ...route.path];
+    }
+  }
+
+  const pts: Pt[] = [{ x: start.x, y: start.y }];
+  for (const id of via) {
+    const p = DEPOT_POINTS[id];
+    if (p) pts.push({ x: p.x, y: p.y });
+  }
+  pts.push({ x: end.x, y: end.y });
+  return pts;
+}
+
+/** A point `u` (0..1) of the way along a polyline by length, with its heading and segment start. */
+function alongPolyline(pts: Pt[], u: number): Pt & { heading: number; from: Pt } {
+  const lens = pts.slice(1).map((p, i) => Math.hypot(p.x - pts[i].x, p.y - pts[i].y));
+  const total = lens.reduce((n, l) => n + l, 0);
+  let d = u * total;
+  for (let i = 0; i < lens.length; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    if (d <= lens[i] || i === lens.length - 1) {
+      const f = lens[i] > 0 ? Math.min(1, d / lens[i]) : 1;
+      const heading = lens[i] > 0 ? (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 90 : 0;
+      return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, heading, from: a };
+    }
+    d -= lens[i];
+  }
+  const p = pts[pts.length - 1];
+  return { ...p, heading: 0, from: p };
 }
 
 const zoomControls: React.CSSProperties = {

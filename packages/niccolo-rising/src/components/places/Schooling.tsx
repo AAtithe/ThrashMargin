@@ -4,6 +4,7 @@ import { UI } from '../../theme';
 import { duration, gr } from '../../lib/format';
 import { Blurb, Meta, Panel, Row } from '../ui';
 import ActButton from './ActButton';
+import { TimerBar } from '../motion';
 import type { PlaceProps } from '../types';
 
 function perkText(p: Perks): string {
@@ -26,6 +27,7 @@ export default function Schooling(p: PlaceProps) {
     <>
       {s.course && (
         <Panel title={`Studying: ${COURSE[s.course.id]?.name}`}>
+          <TimerBar start={s.course.ends - (COURSE[s.course.id]?.hours ?? 0) * 3_600_000} end={s.course.ends} now={now} colour={UI.verdigris} />
           <Meta colour={UI.verdigris}>{duration(s.course.ends - now)} left. It carries on while you do other things.</Meta>
         </Panel>
       )}

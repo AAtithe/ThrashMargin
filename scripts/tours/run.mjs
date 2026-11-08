@@ -34,6 +34,7 @@ const GAMES = {
   'steady-eddie':   { dir: 'packages/steady-eddie',         port: 5303 },
   'niccolo':        { dir: 'packages/niccolo',              port: 5304 },
   'niccolo-rising': { dir: 'packages/niccolo-rising',       port: 5305 },
+  'fireline':       { dir: 'packages/fireline',             port: 5306 },
 };
 
 const args = process.argv.slice(2);

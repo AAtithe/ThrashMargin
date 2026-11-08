@@ -10,6 +10,7 @@ import { ensureSchema } from '../_lib/schema';
 import { isEmail, MIN_PASSWORD } from '../_lib/validate';
 import { clientAddress, isOverLimit, LIMITS, recordEvent } from '../_lib/rateLimit';
 import { handleCors } from '../_lib/cors';
+import { queryParam } from '../_lib/query';
 
 // Combines what were two separate functions (login.ts, register.ts) into one, dispatching on
 // the [mode] route param — Vercel's Hobby plan caps a deployment at 12 serverless functions.
@@ -194,7 +195,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
   if (req.method !== 'POST') return res.status(405).end();
 
-  if (req.query.mode === 'login') return login(req, res);
-  if (req.query.mode === 'register') return register(req, res);
+  const mode = queryParam(req, 'mode');
+  if (mode === 'login') return login(req, res);
+  if (mode === 'register') return register(req, res);
   return res.status(404).json({ message: 'Not found' });
 }

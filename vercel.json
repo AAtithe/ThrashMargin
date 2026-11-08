@@ -26,6 +26,10 @@
     {
       "source": "/founders-ledger/(.*)",
       "destination": "/founders-ledger/index.html"
+    },
+    {
+      "source": "/fireline/(.*)",
+      "destination": "/fireline/index.html"
     }
   ],
   "env": {

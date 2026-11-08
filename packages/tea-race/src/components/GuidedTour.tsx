@@ -43,7 +43,7 @@
  * the predicates cannot anticipate every way a game can go sideways while four rivals are sailing.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { distanceBetween, goodName, portName, sourcesFor } from '../sim/content';
 import { destinationOf } from '../sim/movement';
 import { HOLD_SLOTS, PAYOUT_MULTIPLIERS, SHARE_MAJORITY, slotsOf } from '../sim/rules';
@@ -542,7 +542,13 @@ function buildSteps(plan: TourPlan): TourStep[] {
  * who has deliberately scrolled somewhere else.
  */
 function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | null {
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  // The rect remembers which target and step it was measured for. Held as a bare rect, the first
+  // render of a new step still carried the previous step's box until the effect below cleared it:
+  // one painted frame of the closing card laid out against the End turn button at the foot of the
+  // screen, and, being taller than the estimate, running off the bottom of it.
+  const key = `${targetId ?? ''}|${stepIndex}`;
+  const [measured, setMeasured] = useState<{ key: string; rect: DOMRect | null }>({ key, rect: null });
+  const setRect = (rect: DOMRect | null) => setMeasured({ key, rect });
 
   useEffect(() => {
     if (!targetId) {
@@ -588,9 +594,10 @@ function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | nu
     // Keyed on the step as well as the id. "Load her hold" and "Fill the hull" ring the same
     // button and the Orders panel reflows between them; keyed on the id alone the second step had
     // already spent its one scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetId, stepIndex]);
 
-  return rect;
+  return measured.key === key ? measured.rect : null;
 }
 
 /**
@@ -800,11 +807,12 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
       }
     : null;
 
-  // The card's height varies with the body copy, so it is measured after each render; the
-  // estimate covers only the very first frame.
+  // The card's height varies with the body copy, so it is measured after each render, before the
+  // browser paints (a layout effect): measured after paint, a card that came back from being
+  // hidden for a replay was drawn for a frame at the previous card's height.
   const cardRef = useRef<HTMLDivElement>(null);
   const [cardHeight, setCardHeight] = useState(220);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const h = cardRef.current?.offsetHeight;
     if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
   });
@@ -816,6 +824,24 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
         top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
         left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
+  // The card glides between positions only once it has been on screen at this step. A new step (or
+  // the card coming back after being hidden for a replay) is placed where it belongs at once:
+  // sliding in from the previous card's spot, the closing card started in the corner the End turn
+  // card had used and, being taller, hung off the bottom of the window until the slide caught up.
+  const glideKey = `${stepIndex}|${hidden}`;
+  const [settledKey, setSettledKey] = useState<string | null>(null);
+  useEffect(() => {
+    if (settledKey === glideKey) return;
+    let r2 = 0;
+    const r1 = requestAnimationFrame(() => {
+      r2 = requestAnimationFrame(() => setSettledKey(glideKey));
+    });
+    return () => {
+      cancelAnimationFrame(r1);
+      cancelAnimationFrame(r2);
+    };
+  }, [glideKey, settledKey]);
+  if (settledKey !== glideKey) cardStyle.transition = 'none';
 
   const finish = () => {
     markGuidedTourSeen();

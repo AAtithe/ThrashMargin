@@ -55,6 +55,7 @@ import { AGENT_PRICE, canPlaceAgent } from './agents';
 import { RACE_FINISH, canCrackOn, openRace, raceLots } from './seamanship';
 import { charterValue } from './charters';
 import { canLearn, careerOn, type SkillId } from './career';
+import { lettersOn, reachFor } from './letters';
 import { pointsToDestination } from './movement';
 import type { AiProfile, Captain, CargoLot, Contract, Encounter, GameAction, GameState, PortId, Ship } from './types';
 import type { ShipClassId } from './rules';
@@ -264,7 +265,10 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
         1,
         multiplier === 4,
       );
-      const profit = landedValue(s, contract.good, contract.price, multiplier) - cost + charter;
+      // Dispatches due at either end of the run ride along for nothing.
+      const me = s.captains.find(c => c.id === owner);
+      const errands = errandValue(me, source) + errandValue(me, contract.destination);
+      const profit = landedValue(s, contract.good, contract.price, multiplier) - cost + charter + errands;
 
       const turns =
         passageTurns(s, from, source, toSource, skill.usesWind) +
@@ -327,7 +331,8 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
       units.length,
       multiplier === 4,
     );
-    const score = ((gross + charter) * (1 - drag)) / Math.max(0.5, turns);
+    const errands = errandValue(s.captains.find(c => c.id === ship.ownerId), contract.destination);
+    const score = ((gross + charter + errands) * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, source: null, score };
   }
   return best;
@@ -420,6 +425,59 @@ function seamanshipAction(s: GameState, captain: Captain, ships: Ship[], spendab
     }
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// The post
+// ---------------------------------------------------------------------------
+
+/**
+ * Answer the letter in hand. Every letter is answered one way or the other, so the AI loop always
+ * makes progress. Rules of thumb, never a lookahead, and each one a judgement a human could make
+ * from the same letter.
+ */
+function letterAction(s: GameState, captain: Captain, spendable: number): GameAction | null {
+  const l = s.letters?.[captain.id];
+  if (!l || !lettersOn(s)) return null;
+  const keep = TRADING_FLOAT;
+  switch (l.kind) {
+    case 'dispatch': {
+      // Only if one of her ships can plainly make it in time, reckoning seven points a round.
+      const reach = Math.min(
+        ...shipsOf(s, captain.id).map(sh => {
+          const at = sh.location ?? sh.voyage?.route[sh.voyage.route.length - 1];
+          return at ? distanceBetween(at, l.port!) + (sh.voyage ? sh.voyage.legRemaining : 0) : Infinity;
+        }),
+      );
+      const rounds = (l.byRound ?? 0) - s.round;
+      // Half the window in hand. A looser rule took eight a game and failed nearly half, forfeiting
+      // the bond each time — the wind and the other cards keep a ship from going straight there.
+      return { type: 'ANSWER_LETTER', accept: reach / POINTS_PER_TURN <= rounds / 2 && spendable - (l.cost ?? 0) >= keep };
+    }
+    case 'shoreLeave':
+      return { type: 'ANSWER_LETTER', accept: spendable - (l.cost ?? 0) >= keep };
+    case 'shipwright':
+      return { type: 'ANSWER_LETTER', accept: levelOf(s, captain.id).fitsOut && spendable - (l.cost ?? 0) >= keep * 1.5 };
+    case 'patron': {
+      // A third again to borrow: worth it only to a captain short of the money to trade, never to a
+      // racer, and never once she holds a majority and needs the cash bar.
+      const wants = captain.aiProfile !== 'racer' && captain.shares < SHARE_MAJORITY && captain.cash < TRADING_FLOAT * 2;
+      return { type: 'ANSWER_LETTER', accept: wants };
+    }
+    case 'wager': {
+      const card = s.contracts.find(c => c.id === l.contractId);
+      if (!card || !l.rivalId) return { type: 'ANSWER_LETTER', accept: false };
+      const mine = reachFor(s, captain.id, card.good, card.destination);
+      const theirs = reachFor(s, l.rivalId, card.good, card.destination);
+      // Only a bet she expects to win, and can afford to lose.
+      return { type: 'ANSWER_LETTER', accept: mine < theirs * 0.8 && spendable - (l.stake ?? 0) >= keep };
+    }
+  }
+}
+
+/** Admiralty dispatches she has taken: worth steering for, so they are worth something to a run. */
+function errandValue(captain: Captain | undefined, port: string): number {
+  return (captain?.errands ?? []).filter(e => e.port === port).reduce((n, e) => n + e.reward + e.bond, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -775,7 +833,9 @@ export function nextAiAction(s: GameState): GameAction | null {
   const declarer = s.declaration?.captainId === captain.id;
   const spendable = declarer ? Math.max(0, captain.cash - VICTORY_CASH) : captain.cash;
 
-  // 0. Seamanship: answer the sea, repair, crack on.
+  // 0. The post, then seamanship: answer the sea, repair, crack on.
+  const post = letterAction(s, captain, spendable);
+  if (post) return post;
   const seaman = seamanshipAction(s, captain, ships, spendable);
   if (seaman) return seaman;
 
@@ -830,6 +890,21 @@ export function nextAiAction(s: GameState): GameAction | null {
       ) {
         if (skill.fitsOut) return { type: 'BUY_FITTING', shipId: ship.id, fitting: 'guns' };
       }
+    }
+  }
+
+  // 2b. Dispatches about to run out of time: the nearest ship in port goes, unless one is already
+  //     bound there. Without this a ship only carried them when she had nothing better to do, and
+  //     captains forfeited the bond on nearly half the dispatches they took.
+  for (const e of captain.errands ?? []) {
+    if (ships.some(sh => sh.voyage && sh.voyage.route[sh.voyage.route.length - 1] === e.port)) continue;
+    const nearest = [...docked]
+      .filter(sh => sh.location !== e.port)
+      .sort((a, b) => distanceBetween(a.location!, e.port) - distanceBetween(b.location!, e.port))[0];
+    if (!nearest) continue;
+    const roundsLeft = e.byRound - s.round;
+    if (distanceBetween(nearest.location!, e.port) / POINTS_PER_TURN >= roundsLeft - 2) {
+      return { type: 'SAIL_TO', shipId: nearest.id, destination: e.port };
     }
   }
 
@@ -947,6 +1022,10 @@ export function nextAiAction(s: GameState): GameAction | null {
         return { type: 'BUY_CARGO', shipId: ship.id, good };
       }
     }
+
+    // Dispatches outstanding and nothing better to do: carry them.
+    const errand = (captain.errands ?? []).find(e => e.port !== ship.location && s.round <= e.byRound);
+    if (errand && (!run || run.score < errand.reward / 4)) return { type: 'SAIL_TO', shipId: ship.id, destination: errand.port };
 
     // Nothing to load and nothing worth chasing — go where the cards generally are.
     if (run?.source) return { type: 'SAIL_TO', shipId: ship.id, destination: run.source };

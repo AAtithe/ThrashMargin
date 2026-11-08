@@ -63,6 +63,14 @@ function story(e: LogEntry, nameOf: (id: string | null) => string): Omit<Story, 
       return d.level !== undefined
         ? { weight: 28, art: 'declare', headline: `${who} rises to level ${d.level}`, text: e.text, colour: UI.verdigris }
         : null;
+    case 'wager':
+      if (d.won !== undefined) return { weight: 55, art: 'declare', headline: `${who} wins a wager`, text: e.text, colour: UI.brass };
+      if (d.opened) return { weight: 32, art: 'contract', headline: `${who} accepts a wager`, text: e.text, colour: UI.brass };
+      return null;
+    case 'letter':
+      if (d.delivered) return { weight: 30, art: 'contract', headline: `${who} delivers the Admiralty's dispatches`, text: e.text, colour: UI.verdigris };
+      if (d.failed) return { weight: 26, art: 'lapse', headline: `${who}'s dispatches go astray`, text: e.text, colour: UI.warn };
+      return null;
     case 'renown':
       return { weight: 35, art: 'crackOn', headline: `${who}'s ship makes her name`, text: e.text, colour: UI.brass };
     case 'crackOn':

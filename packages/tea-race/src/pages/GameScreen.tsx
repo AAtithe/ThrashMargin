@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
+import { useAiReplay } from '../hooks/useAiReplay';
+import { Counted, TumblingDice } from '../components/Motion';
 import { sourcesFor, planRoute, portName } from '../sim/content';
 import { SEASON_NAMES, planFastestRoute, roundsLeftInSeason, seasonOf, voyageYear } from '../sim/weather';
 import { destinationOf } from '../sim/movement';
@@ -27,12 +29,14 @@ import { Button, bodySmall, dataText } from '../components/ui';
 import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
 import type { Contract, GameState, GoodId, PortId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
+import MotionToggle from '../components/MotionToggle';
 import TeaRacePanel from '../components/TeaRacePanel';
 import SeamanshipPanel from '../components/SeamanshipPanel';
 import ChartersPanel from '../components/ChartersPanel';
 import ShippingGazette, { frontPage } from '../components/ShippingGazette';
 import CareerPanel from '../components/CareerPanel';
 import EraBanner from '../components/EraBanner';
+import LettersPanel from '../components/LettersPanel';
 import { TeaChest, Vignette } from '../components/Art';
 import { RACE_FINISH, TEA_RACE_PORTS, openRace, raceLots } from '../sim/seamanship';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
@@ -92,6 +96,9 @@ export default function GameScreen() {
     [state, captain],
   );
   const [confirmingEnd, setConfirmingEnd] = useState(false);
+  // The computer captains' turns, replayed on the board after you end yours. Above the early
+  // return, like every hook here.
+  const replay = useAiReplay(state);
 
   /**
    * The two panels that float over the chart. The chart is the board; the exchange (left) and the
@@ -180,6 +187,14 @@ export default function GameScreen() {
   }
 
   const selectedShip = state.ships.find(s => s.id === selectedShipId) ?? null;
+  /**
+   * What the shared board shows: the real state, or a step of the computer captains' turns while
+   * they are being replayed. Only the public board follows the replay — the chart, the exchange,
+   * the table and the log. Your own panels and the turn controls always read the real state, so
+   * nothing you can do is ever behind the playback.
+   */
+  const view = replay.frame?.state ?? state;
+  const replayCaptain = replay.frame ? view.captains.find(c => c.id === replay.frame!.captainId) ?? null : null;
   const priceFor = priceLookup(state, captain?.id ?? '');
   const isHuman = captain?.kind === 'human';
   const canAct = state.phase === 'act' && isHuman;
@@ -260,12 +275,12 @@ export default function GameScreen() {
   const focusPort = targetPort ?? selectedShip?.location ?? myShips.find(sh => sh.location)?.location ?? null;
 
   // The race, if one is running. Plain values, not a hook — this is below the early return.
-  const race = openRace(state);
+  const race = openRace(view);
   const chartRace = race
     ? {
         ports: TEA_RACE_PORTS,
         finish: RACE_FINISH,
-        runners: new Set(state.ships.filter(sh => raceLots(sh, race).length > 0).map(sh => sh.id)),
+        runners: new Set(view.ships.filter(sh => raceLots(sh, race).length > 0).map(sh => sh.id)),
       }
     : null;
 
@@ -288,16 +303,25 @@ export default function GameScreen() {
               <span style={{ width: 9, height: 9, borderRadius: '50%', background: captain.colour }} />
               <span style={{ fontFamily: FONT.display, fontSize: '0.92rem' }}>{captain.name}</span>
             </span>
-            <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass }}>{money(captain.cash)}</span>
+            <span style={{ ...dataText, fontSize: '0.8rem', color: UI.brass }}>
+              <Counted key={captain.id} value={captain.cash} format={money} float />
+            </span>
             <span style={{ ...dataText, fontSize: '0.8rem', color: UI.verdigris }}>
-              {state.rules === 'voyage'
-                ? `worth ${money(assetValue(state, captain))}`
-                : `${captain.shares} share${captain.shares === 1 ? '' : 's'}`}
+              {state.rules === 'voyage' ? (
+                <>
+                  worth <Counted key={captain.id} value={assetValue(state, captain)} format={money} />
+                </>
+              ) : (
+                <>
+                  <Counted key={captain.id} value={captain.shares} /> share{captain.shares === 1 ? '' : 's'}
+                </>
+              )}
             </span>
           </div>
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
           <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
           {/* Offered whenever a run can actually be planned from where the fleet stands, not only
               on turn one: a player who skipped the tour, or who came back to a half-played game,
@@ -355,15 +379,16 @@ export default function GameScreen() {
           phone. */}
       <main ref={boardRef} style={board} className="tr-board">
         <MapView
-          ships={state.ships}
-          captains={state.captains}
-          contracts={state.contracts}
+          ships={view.ships}
+          captains={view.captains}
+          contracts={view.contracts}
           selectedShipId={selectedShipId}
           plannedRoute={plannedRoute}
           viewerId={captain?.id ?? null}
           season={season}
           showPiracy={state.hazards?.piracy ?? false}
           race={chartRace}
+          errandPorts={isHuman && captain ? (captain.errands ?? []).map(e => e.port) : []}
           focusPort={focusPort}
           inset={insetPx}
           onPortClick={portId => {
@@ -375,7 +400,8 @@ export default function GameScreen() {
 
         {/* What the rest of the table did while you waited, at the top of your own turn. */}
         {isHuman && captain && !over && (
-          // Kept mounted but out of sight under a phone's sheet: it remembers being folded, and an
+          // Kept mounted but out of sight under a phone's sheet, and while the rivals' turns replay
+          // (the replay is showing the same news as it happens): it remembers being folded, and an
           // unmount would forget that and print the paper again.
           <div
             className="tr-gazette"
@@ -383,10 +409,39 @@ export default function GameScreen() {
               ...gazetteSlot,
               left: insetPx.left + 12,
               right: insetPx.right + 12,
-              display: layout.sheet && (exchangeOpen || ordersOpen) ? 'none' : undefined,
+              display: replay.frame || (layout.sheet && (exchangeOpen || ordersOpen)) ? 'none' : undefined,
             }}
           >
             <ShippingGazette key={captain.id} state={state} viewer={captain} />
+          </div>
+        )}
+
+        {/* The rivals' turns, narrated one step at a time while the chart and the exchange play
+            them back. Skip (or any key or click) shows the result at once. */}
+        {replay.frame && replayCaptain && (
+          <div className="tr-gazette" style={{ ...replaySlot, left: insetPx.left + 12, right: insetPx.right + 12 }}>
+            <div style={{ ...replayBar, borderLeftColor: replayCaptain.colour }} role="status" aria-live="polite" data-replay-bar>
+              <span style={{ width: 9, height: 9, borderRadius: '50%', background: replayCaptain.colour, flex: '0 0 auto' }} />
+              {replay.frame.action.type === 'ROLL' && (
+                <span key={`dice-${replay.index}`} style={{ display: 'inline-flex', gap: '0.2rem', alignItems: 'center' }}>
+                  {view.ships
+                    .filter(sh => sh.ownerId === replayCaptain.id && view.dice[sh.id])
+                    .slice(0, 4)
+                    .map(sh => (
+                      <TumblingDice key={sh.id} values={view.dice[sh.id]} tumble size={15} tone={UI.brass} />
+                    ))}
+                </span>
+              )}
+              <span key={replay.index} className="tm-anim-rise" style={{ ...bodySmall, fontSize: '0.8rem', flex: '1 1 16rem', minWidth: 0 }}>
+                {replay.frame.text}
+              </span>
+              <span style={{ ...dataText, fontSize: '0.66rem', color: UI.textFaint }}>
+                {replay.index + 1}/{replay.count}
+              </span>
+              <Button tone="quiet" onClick={replay.skip} title="Show the result now (or press any key)">
+                Skip
+              </Button>
+            </div>
           </div>
         )}
 
@@ -413,17 +468,17 @@ export default function GameScreen() {
           <PanelHead title="The exchange" onClose={() => setExchangeOpen(false)} />
           <div style={panelBody} className="tr-panel-body">
           {/* While the race is on it is the most important thing on the board, so it leads. */}
-            {race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
+            {race && <TeaRacePanel state={view} viewerId={captain?.id ?? null} />}
             {state.rules === 'voyage' ? (
               <MarketBoard
-                state={state}
+                state={view}
                 reference={selectedShip}
                 onPortClick={port => setTargetPort(port as PortId)}
               />
             ) : (
             <ContractBoard
-              contracts={state.contracts}
-              captains={state.captains}
+              contracts={view.contracts}
+              captains={view.captains}
               reference={selectedShip}
               round={state.round}
               deadlines={state.hazards?.deadlines ?? false}
@@ -434,8 +489,8 @@ export default function GameScreen() {
               }}
             />
             )}
-            {!race && <TeaRacePanel state={state} viewerId={captain?.id ?? null} />}
-            <CaptainsTable state={state} />
+            {!race && <TeaRacePanel state={view} viewerId={captain?.id ?? null} />}
+            <CaptainsTable state={view} />
             <PortLedger
               contracts={state.contracts}
               reference={selectedShip}
@@ -479,6 +534,11 @@ export default function GameScreen() {
 
               {/* Orders first: in a panel that slides in, what you do every turn must not sit
                   below what you read once a game. */}
+              {/* Keyed by ship and berth, so a new port's business arrives with a short rise. */}
+              <div
+                key={`${selectedShip?.id ?? 'none'}@${selectedShip?.location ?? 'sea'}`}
+                className="tm-anim-rise"
+              >
               <PortPanel
                 ship={selectedShip}
                 captain={captain}
@@ -500,6 +560,7 @@ export default function GameScreen() {
                 season={season}
                 piracyOn={state.hazards?.piracy ?? false}
               />
+              </div>
 
               <SeamanshipPanel
                 state={state}
@@ -508,6 +569,9 @@ export default function GameScreen() {
                 dispatch={dispatch}
                 enabled={canAct}
               />
+
+              {/* Beside the other things that lapse with the turn: a letter unanswered is declined. */}
+              <LettersPanel state={state} captain={captain} dispatch={dispatch} enabled={canAct} />
 
               <CountingHouse
                 state={state}
@@ -524,8 +588,8 @@ export default function GameScreen() {
             </>
           )}
 
-          <RivalFleets state={state} viewerId={captain?.id ?? null} />
-          <ChronicleLog log={state.log} captains={state.captains} />
+          <RivalFleets state={view} viewerId={captain?.id ?? null} />
+          <ChronicleLog log={view.log} captains={view.captains} />
           </div>
         </aside>
 
@@ -571,6 +635,7 @@ export default function GameScreen() {
                     }
                     setConfirmingEnd(false);
                     setOrdersOpen(false);
+                    replay.arm(state);
                     dispatch({ type: 'END_TURN' });
                   }}
                 >
@@ -617,8 +682,8 @@ export default function GameScreen() {
 
       {/* Notable events pop as cards so the game can be watched rather than read. */}
       <EventCards
-        log={state.log}
-        captains={state.captains}
+        log={view.log}
+        captains={view.captains}
         viewerId={captain?.id ?? null}
         inGazette={isHuman && captain && !over ? new Set(frontPage(state, captain).map(st => st.seq)) : undefined}
       />
@@ -626,7 +691,9 @@ export default function GameScreen() {
       {/* --- Overlays -------------------------------------------------------------------- */}
       {/* Kept mounted through the hot-seat handover (`hidden`), never unmounted: remounting threw
           away the step and the tour's memory and restarted it from the welcome card. The view is
-          the plan owner's, not the active seat's — see `TourPlan.captainId`. */}
+          the plan owner's, not the active seat's — see `TourPlan.captainId`.
+          Also hidden while the rivals' turns replay: its scrim would dim the replay, and its card would
+          be talking about the player's own move while the screen shows someone else's. */}
       {tourPlan && tourOwner && !over && (
         <GuidedTour
           onTargetChange={revealTourTarget}
@@ -640,7 +707,7 @@ export default function GameScreen() {
             priceFor: priceLookup(state, tourOwner.id),
           }}
           plan={tourPlan}
-          hidden={state.phase === 'handover'}
+          hidden={state.phase === 'handover' || !!replay.frame}
           onFinish={() => setTourPlan(null)}
         />
       )}
@@ -809,6 +876,32 @@ const turnBar: React.CSSProperties = {
   padding: '0.55rem 0.75rem',
   boxShadow: `0 6px 20px ${UI.shadow}`,
   transition: 'left 0.25s ease, right 0.25s ease, bottom 0.25s ease',
+};
+
+/**
+ * The narration of the rivals' turns while they replay. It floats where the Shipping Gazette sits
+ * (top of the chart, between the launchers), which waits for the replay to finish before it shows.
+ */
+const replaySlot: React.CSSProperties = {
+  position: 'absolute',
+  top: 56,
+  zIndex: 33,
+  margin: '0 auto',
+  maxWidth: 620,
+  boxShadow: `0 6px 20px ${UI.shadow}`,
+  transition: 'left 0.25s ease, right 0.25s ease',
+};
+
+const replayBar: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '0.6rem',
+  flexWrap: 'wrap',
+  border: `1px solid ${UI.ruleStrong}`,
+  borderLeftWidth: 3,
+  background: UI.panel,
+  backgroundImage: `linear-gradient(${UI.tintBrass}, ${UI.tintBrass})`,
+  padding: '0.45rem 0.75rem',
 };
 
 const gazetteSlot: React.CSSProperties = {

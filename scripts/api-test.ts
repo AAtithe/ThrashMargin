@@ -88,7 +88,21 @@ async function call(
     },
   };
   const headers: Record<string, string> = { ...extraHeaders, ...(token ? { authorization: `Bearer ${token}` } : {}) };
-  await h({ method, query, body, headers }, res);
+  // Shaped like a production request: Vercel puts every value, the dynamic route segments
+  // included, in the query string of req.url. `query` throws, because Vercel builds req.query with
+  // Node's deprecated url.parse and logged a DeprecationWarning on every request that read it;
+  // handlers read req.url through api/_lib/query.ts instead, and this keeps it that way.
+  const url = `/api?${new URLSearchParams(query)}`;
+  const req = {
+    method,
+    url,
+    body,
+    headers,
+    get query(): never {
+      throw new Error('A handler read req.query; use queryParam(req, name) from api/_lib/query.ts');
+    },
+  };
+  await h(req, res);
   return out;
 }
 

@@ -44,7 +44,7 @@ export default function ChronicleLog({
           entries.map(entry => {
             const haulier = hauliers.find(c => c.id === entry.haulierId);
             return (
-              <p key={entry.seq} style={line}>
+              <p key={entry.seq} style={line} className="tm-anim-rise">
                 <span style={{ ...dot, background: haulier?.colour ?? 'transparent' }} />
                 <span style={{ color: KIND_COLOUR[entry.kind] ?? UI.textSoft }}>{entry.text}</span>
               </p>

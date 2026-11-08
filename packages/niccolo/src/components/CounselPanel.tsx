@@ -2,6 +2,7 @@ import { adviceFor, MAX_ADVICE_SHOWN } from '../sim/advisors';
 import type { Advice, AdviceUrgency } from '../sim/advisors';
 import type { GameState } from '../sim/types';
 import { UI } from '../theme';
+import { useWeekStagger } from './motionKit';
 
 /**
  * The household's counsel (Phase 21) — read-only by design. There is deliberately no button on any
@@ -34,9 +35,9 @@ function urgencyLabel(u: AdviceUrgency): string {
   return 'in passing';
 }
 
-export function AdviceRow({ advice }: { advice: Advice }) {
+export function AdviceRow({ advice, className, style }: { advice: Advice; className?: string; style?: React.CSSProperties }) {
   return (
-    <div style={ROW}>
+    <div className={className} style={{ ...ROW, ...style }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', alignItems: 'baseline' }}>
         <span style={{ color: UI.brass }}>
           {advice.officerName} <span style={{ fontSize: '0.7rem', color: UI.textSoft }}>· {advice.officerRole}</span>
@@ -55,6 +56,8 @@ export default function CounselPanel({ state }: { state: GameState }) {
   const all = adviceFor(state);
   const advice = all.slice(0, MAX_ADVICE_SHOWN);
   const withheld = all.length - advice.length;
+  // A new week's counsel is offered one voice at a time. Hooks above the early return.
+  const reveal = useWeekStagger(state.week, advice.length, 220);
 
   if (advice.length === 0) {
     return (
@@ -74,8 +77,8 @@ export default function CounselPanel({ state }: { state: GameState }) {
         What the household would tell you, if asked. They see only what you see — a price they quote is
         from a report that has actually arrived, and may already be out of date.
       </p>
-      {advice.map(a => (
-        <AdviceRow key={a.id} advice={a} />
+      {advice.map((a, i) => (
+        <AdviceRow key={a.id} advice={a} {...reveal(i)} />
       ))}
       {withheld > 0 && (
         <p style={{ fontSize: '0.7rem', color: UI.textFaint, margin: '0.5rem 0 0', fontStyle: 'italic' }}>
