@@ -198,6 +198,61 @@ const BUTTON_ACTIVE: React.CSSProperties = {
   color: UI.brass,
 };
 
+/**
+ * Below this width the three columns cannot sit side by side: the two sidebars alone are 600px, so
+ * on a phone the map pane collapsed to nothing and the Fleet/Orders column was laid out entirely off
+ * the right edge of the screen, out of reach (the root is `overflow: hidden`). The game was
+ * unplayable there, and the guided tour pointed at controls nobody could see.
+ */
+const NARROW_QUERY = '(max-width: 800px), (max-height: 520px)';
+
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(NARROW_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia?.(NARROW_QUERY);
+    if (!mq) return;
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return narrow;
+}
+
+/**
+ * Narrow (or short — a phone held sideways) layout: the whole screen is one scrolling column —
+ * header, section bar, map, then Fleet/Orders, then objectives/counsel. The page scrolls rather than
+ * the body pane, so the header scrolls away and the map gets the full height of the screen.
+ */
+const STYLE_NARROW: React.CSSProperties = {
+  ...STYLE,
+  overflowY: 'auto',
+};
+
+const BODY_NARROW: React.CSSProperties = {
+  ...BODY,
+  flex: '0 0 auto',
+  flexDirection: 'column',
+};
+
+const MAP_PANE_NARROW: React.CSSProperties = {
+  ...MAP_PANE,
+  flex: '0 0 auto',
+  height: '75vh',
+  minHeight: 300,
+  order: 0,
+};
+
+const narrowSidebar = (base: React.CSSProperties, order: number): React.CSSProperties => ({
+  ...base,
+  flex: '0 0 auto',
+  overflowY: 'visible',
+  borderLeft: 'none',
+  borderRight: 'none',
+  borderTop: `1px solid ${UI.rule}`,
+  order,
+});
+
 function CenteredMessage({ children }: { children: React.ReactNode }) {
   return (
     <div style={STYLE}>
@@ -234,6 +289,7 @@ export default function GameScreen() {
   // not campaign state, so it isn't persisted to the save.
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
+  const narrow = useNarrow();
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -482,7 +538,7 @@ export default function GameScreen() {
   ];
 
   return (
-    <div style={STYLE}>
+    <div style={narrow ? STYLE_NARROW : STYLE}>
       {showChapterCompleteCard ? (
         <ChapterCompleteCard
           chapterNumber={closedChapterNumber}
@@ -518,13 +574,18 @@ export default function GameScreen() {
           }
         />
       )}
-      {showGuidedTour && !showTutorial && !pendingEvent && !showChapterCompleteCard && (
+      {/* Kept mounted, only hidden, while something else owns the screen — see GuidedTour's
+          `hidden` prop for what unmounting it used to cost. The hotseat prompt and the Chronicle
+          are in the list too: both are modals the tour's own scrim and card would otherwise sit on
+          top of (z-index 101/102 against their 100), covering the very buttons that close them. */}
+      {showGuidedTour && (
         <GuidedTour
           state={state}
           selectedVesselId={selectedVesselId}
           previewCityId={previewCityId}
           onFinish={() => setShowGuidedTour(false)}
           onStepChange={handleTourStepChange}
+          hidden={showTutorial || !!pendingEvent || showChapterCompleteCard || showHotseatModal || showChronicle}
         />
       )}
       {showHotseatModal && hotseatHouse && (
@@ -539,7 +600,7 @@ export default function GameScreen() {
         />
       )}
       <PortalNav variant="header" />
-      <header style={HEADER}>
+      <header style={narrow ? { ...HEADER, padding: '0.6rem 1rem' } : HEADER}>
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.2rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
           <span style={CLOCK}>
@@ -623,8 +684,16 @@ export default function GameScreen() {
         onSelect={id => setActiveSection(prev => (prev === id ? null : (id as SectionId)))}
       />
 
-      <div style={BODY}>
-        <aside style={leftCollapsed ? { ...LEFT_SIDEBAR, flex: `0 0 ${SIDEBAR_COLLAPSED_WIDTH}px`, padding: '0.6rem 0.4rem' } : LEFT_SIDEBAR}>
+      <div style={narrow ? BODY_NARROW : BODY}>
+        <aside
+          style={
+            narrow
+              ? narrowSidebar(LEFT_SIDEBAR, 2)
+              : leftCollapsed
+                ? { ...LEFT_SIDEBAR, flex: `0 0 ${SIDEBAR_COLLAPSED_WIDTH}px`, padding: '0.6rem 0.4rem' }
+                : LEFT_SIDEBAR
+          }
+        >
           <button
             style={SIDEBAR_TOGGLE}
             onClick={() => setLeftCollapsed(v => !v)}
@@ -647,7 +716,7 @@ export default function GameScreen() {
           )}
         </aside>
 
-        <div style={MAP_PANE}>
+        <div style={narrow ? MAP_PANE_NARROW : MAP_PANE}>
           <MapView
             key={state.id}
             vessels={state.vessels}
@@ -798,7 +867,13 @@ export default function GameScreen() {
         </div>
 
         <aside
-          style={rightCollapsed ? { ...RIGHT_SIDEBAR, flex: `0 0 ${SIDEBAR_COLLAPSED_WIDTH}px`, padding: '0.6rem 0.4rem' } : RIGHT_SIDEBAR}
+          style={
+            narrow
+              ? narrowSidebar(RIGHT_SIDEBAR, 1)
+              : rightCollapsed
+                ? { ...RIGHT_SIDEBAR, flex: `0 0 ${SIDEBAR_COLLAPSED_WIDTH}px`, padding: '0.6rem 0.4rem' }
+                : RIGHT_SIDEBAR
+          }
           id="game-sidebar"
         >
           <button
