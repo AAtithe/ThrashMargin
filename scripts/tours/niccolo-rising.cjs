@@ -1,6 +1,6 @@
 /**
- * Niccolò Rising: the Missions chain (the game's onboarding; it has no guided tour), played in a
- * browser with Playwright's clock standing in for real hours.
+ * Niccolò Rising: the Missions chain and the guided first hour, played in a browser with
+ * Playwright's clock standing in for real hours.
  *
  *   npm run tours -- niccolo-rising            # six missions on desktop and phone, every edge flow
  *   npm run tours -- niccolo-rising --quick    # two missions on each, abandon + level gate (CI)
@@ -29,6 +29,15 @@
  * reason is on the page; a level-gated Accept is disabled with its reason on the page; dark mode.
  * Quick mode runs only the abandon and level-gate flows.
  *
+ * The guided first hour (`components/GuidedTour.tsx`), driven by clicking whatever the card names
+ * (`data-tour-target`; `data-tour-manual` steps are read and dismissed): offered unasked to a fresh
+ * character on both viewports, and in full mode started from the header after the first mission and
+ * tried on a character with no Energy. Each new step is left alone for 1.5s and must not move on its
+ * own; the target must be on screen, enabled, not under the card and what a click actually hits; a
+ * spell in the Steen or the infirmary after a failed scheme hides the card, and the run must come
+ * back on the same step; at the end every step was shown and the save shows a mission accepted, a
+ * stat trained and a scheme attempted, and Finish marks the tour seen.
+ *
  * Screenshots only on failure, into TOUR_OUT. Only the client-side `tm_user` is set; the sign-in gate
  * and server auth are untouched. See scripts/tours/run.mjs.
  */
@@ -49,6 +58,15 @@ const PRE_ACT = new Set(['goose', 'drill', 'scots', 'snow']);
 const runs = [];
 for (const vp of ['desktop', 'phone']) runs.push({ kind: 'missions', vp, max: QUICK ? 2 : 6 });
 for (const vp of ['desktop', 'phone']) runs.push({ kind: 'edges', vp, full: !QUICK });
+// The guided first hour: offered unasked to a fresh character made in the lobby, on both viewports;
+// in full mode also started from the header after the first mission (the mission step must still
+// wait for a new Accept) and on a character with no Energy left (the train step must not point at
+// a control the sim refuses).
+for (const vp of ['desktop', 'phone']) runs.push({ kind: 'tour', vp, variant: 'fresh' });
+if (!QUICK) {
+  runs.push({ kind: 'tour', vp: 'desktop', variant: 'after-mission' });
+  runs.push({ kind: 'tour', vp: 'phone', variant: 'tired' });
+}
 
 const problems = [];
 
@@ -429,16 +447,173 @@ async function edgesRun(page, { vp, full }, local) {
   return flows.join(', ');
 }
 
+// ---------------------------------------------------------------------------------------------
+// The guided first hour, driven by clicking whatever the card names
+// ---------------------------------------------------------------------------------------------
+
+const IDLE_MS = 1500;
+const cardOf = page => page.evaluate(() => {
+  const c = document.querySelector('[data-tour-step]');
+  if (!c) return null;
+  const r = c.getBoundingClientRect();
+  return {
+    step: Number(c.getAttribute('data-tour-step')),
+    target: c.getAttribute('data-tour-target') || '',
+    manual: c.getAttribute('data-tour-manual') === '1',
+    title: c.querySelector('h3')?.textContent || '',
+    label: c.querySelector('p')?.textContent || '',
+    buttons: [...c.querySelectorAll('button')].map(b => b.textContent.trim()),
+    card: { l: r.left, t: r.top, r: r.right, b: r.bottom },
+  };
+});
+
+/** Seeds a character with the real sim, so a run can start from a particular state. */
+async function seedCharacter(page, id, mutate) {
+  await page.evaluate(async ({ id, start, mutate }) => {
+    const { createInitialState } = await import('/src/sim/state.ts');
+    const s = JSON.parse(JSON.stringify(createInitialState(id, 'Tour', { seed: id, createdAt: start })));
+    // eslint-disable-next-line no-new-func
+    new Function('s', mutate)(s);
+    localStorage.setItem('nrising_save_' + id, JSON.stringify(s));
+    localStorage.setItem('nrising_saves', JSON.stringify([{ id, name: 'Tour', turn: 1, status: 'active', savedAt: start }]));
+  }, { id, start: START, mutate });
+}
+
+async function tourRun(page, { vp, variant }, local) {
+  const label = `${vp} tour(${variant})`;
+  const { fail, ff } = kit(page, label, local);
+  await page.goto(BASE + '/');
+  await page.evaluate(u => { localStorage.setItem('tm_user', u); localStorage.removeItem('niccolo_rising_tour_seen'); }, USER);
+
+  let id;
+  if (variant === 'fresh') {
+    await page.reload();
+    await page.waitForSelector('text=A new character');
+    await page.fill('input[placeholder="Claes"]', 'Claes');
+    await page.click('button:has-text("Begin")');
+    await page.waitForURL(/\/game\//);
+    id = page.url().split('/game/')[1];
+  } else {
+    id = 'tour-' + variant;
+    // after-mission: the first mission already done, so "has any mission ever been finished" is true
+    // before the run begins. tired: no Energy left to train with.
+    await seedCharacter(page, id, variant === 'after-mission'
+      ? "s.missions.done = ['goose']; s.counters.schemes = 3;"
+      : "s.bars.energy.cur = 0;");
+    await page.goto(`${BASE}/game/${id}`);
+    await page.waitForSelector('text=Where things stand');
+    await page.waitForTimeout(500);
+    const offered = (await page.locator('[data-tour-step]').count()) > 0;
+    // A tired character has still never played, so the unasked offer is right; one who has
+    // finished a mission must not get it unasked, and starts it from the header.
+    if (variant === 'tired' && !offered) await fail('the tour was not offered to a character who has never played');
+    if (variant === 'after-mission') {
+      if (offered) await fail('the tour was offered unasked to a character who has already played');
+      const start = page.locator('button', { hasText: 'Guided first hour' });
+      if (!(await start.count())) { await fail('the header offers no Guided first hour'); return ''; }
+      await start.click();
+    }
+  }
+  try { await page.waitForSelector('[data-tour-step]', { timeout: 6000 }); } catch { await fail('the guided first hour was not offered'); return ''; }
+
+  const before = await saveOf(page, id);
+  const total = Number((/of (\d+)/.exec((await cardOf(page)).label) || [])[1]);
+  const shown = new Set();
+  const titles = new Set();
+  let last = -1, finished = false;
+  for (let guard = 0; guard < 60 && !finished; guard++) {
+    let c = await cardOf(page);
+    if (!c) {
+      // Hidden: the Steen or the infirmary after a failed scheme. Let the clock run it out; the
+      // run must come back on the step it left.
+      const s = await saveOf(page, id);
+      if (s.status.kind === 'free') { await fail(`the card vanished on step ${last + 1} with the character free`); break; }
+      await ff(30);
+      await page.waitForTimeout(300);
+      c = await cardOf(page);
+      if (!c) continue;
+      if (c.step !== last) await fail(`after the ${s.status.kind} the run is on step ${c.step + 1}, was ${last + 1}`);
+    }
+    if (c.step < last) await fail(`went back from step ${last + 1} to ${c.step + 1}`);
+    const fresh = c.step !== last;
+    last = c.step;
+    shown.add(c.step);
+    titles.add(c.title);
+
+    if (c.buttons.includes('Finish')) { await page.locator('[data-tour-step] button', { hasText: 'Finish' }).click(); finished = true; break; }
+    if (c.manual) {
+      const next = c.buttons.find(b => b === 'Start' || b === 'Next');
+      await page.locator('[data-tour-step] button', { hasText: next }).click();
+      await page.waitForTimeout(250);
+      continue;
+    }
+    if (fresh) {
+      // The step must wait for the player.
+      await page.waitForTimeout(IDLE_MS);
+      const now = await cardOf(page);
+      if (now && now.step !== c.step) { await fail(`step ${c.step + 1} "${c.title}" completed itself with no action`); continue; }
+      if (now) c = now;
+    }
+    if (!c.target) { await fail(`step ${c.step + 1} "${c.title}" points at nothing`); break; }
+    // Geometry, once the card has settled.
+    await page.waitForTimeout(300);
+    const geo = await page.evaluate(t => {
+      const el = document.getElementById(t), card = document.querySelector('[data-tour-step]');
+      if (!el || !card) return null;
+      const r = el.getBoundingClientRect(), k = card.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      return {
+        off: r.top < 0 || r.left < 0 || r.bottom > innerHeight || r.right > innerWidth,
+        cardOff: k.top < 0 || k.left < 0 || k.bottom > innerHeight + 1 || k.right > innerWidth + 1,
+        covers: !(k.right <= r.left || r.right <= k.left || k.bottom <= r.top || r.bottom <= k.top),
+        hit: !!hit && (hit === el || el.contains(hit)),
+        disabled: !!el.disabled, why: el.getAttribute('title') || '',
+      };
+    }, c.target);
+    if (!geo) { await fail(`step ${c.step + 1} names ${c.target}, which is not on the page`); break; }
+    if (geo.off) await fail(`step ${c.step + 1} target ${c.target} is off screen`);
+    if (geo.cardOff) await fail(`step ${c.step + 1} card is off screen`);
+    if (geo.covers) await fail(`step ${c.step + 1} card covers ${c.target}`);
+    if (!geo.hit) await fail(`step ${c.step + 1} something else is on top of ${c.target}`);
+    if (geo.disabled) { await fail(`step ${c.step + 1} "${c.title}" points at disabled ${c.target}: ${geo.why}`); break; }
+    await page.locator('#' + c.target).click();
+    // Wait for the step or its target to move on.
+    let moved = false;
+    for (let i = 0; i < 40 && !moved; i++) {
+      await page.waitForTimeout(100);
+      const n = await cardOf(page);
+      moved = !n || n.step !== c.step || n.target !== c.target;
+    }
+    if (!moved) { await fail(`stuck on step ${c.step + 1} "${c.title}" after clicking ${c.target}`); break; }
+  }
+
+  if (!finished) await fail(`the run did not finish (last step ${last + 1} of ${total})`);
+  for (let i = 0; i < total; i++) if (!shown.has(i)) await fail(`step ${i + 1} of ${total} was never shown`);
+  const after = await saveOf(page, id);
+  const did = [];
+  if (after.missions.active || after.missions.done.length > before.missions.done.length) did.push('mission');
+  else if (!before.missions.active) await fail('no mission was accepted');
+  const stats = ['strength', 'speed', 'defence', 'dexterity'];
+  const trained = stats.some(k => after.battle[k] > before.battle[k]);
+  if (trained) did.push('train');
+  else if (titles.has('Spend Energy on a stat') || variant !== 'tired') await fail('no stat was trained');
+  if (variant === 'tired' && titles.has('Spend Energy on a stat')) await fail('a character with no Energy was walked to the yard');
+  if (after.counters.schemes > before.counters.schemes) did.push('scheme'); else await fail('no scheme was attempted');
+  if (after.job && !before.job) did.push('post');
+  if (finished && !(await page.evaluate(() => localStorage.getItem('niccolo_rising_tour_seen')))) await fail('Finish did not mark the tour seen');
+  return `${shown.size}/${total} steps; ${did.join(', ')}`;
+}
+
 (async () => {
   const browser = await chromium.launch();
   for (const run of runs) {
-    const label = run.kind === 'missions' ? `${run.vp} missions(${run.max})` : `${run.vp} edges${run.full ? '' : '(quick)'}`;
+    const label = run.kind === 'missions' ? `${run.vp} missions(${run.max})` : run.kind === 'tour' ? `${run.vp} tour(${run.variant})` : `${run.vp} edges${run.full ? '' : '(quick)'}`;
     const t0 = Date.now();
     const { ctx, page, errors } = await openPage(browser, run.vp);
     const local = [];
     let info = '';
     try {
-      info = await (run.kind === 'missions' ? missionsRun(page, run, local) : edgesRun(page, run, local));
+      info = await (run.kind === 'missions' ? missionsRun(page, run, local) : run.kind === 'tour' ? tourRun(page, run, local) : edgesRun(page, run, local));
     } catch (e) {
       local.push('threw: ' + String(e.message || e).split('\n')[0]);
       await page.screenshot({ path: path.join(OUT, `${label.replace(/\W+/g, '-')}-threw.png`) }).catch(() => {});
