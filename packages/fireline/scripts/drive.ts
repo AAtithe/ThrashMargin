@@ -331,7 +331,9 @@ function veterancy(): void {
 function waypoints(): void {
   const { s: a, cx, cy } = arena();
   const r = put(a, 0, 'rifleman', cx + 0.5, cy + 0.5);
-  const foe = put(a, 1, 'rifleman', cx - 4.5, cy - 4.5, { hp: 1, stance: 'hold' });
+  // Above the 30% the computer treats as 'badly hurt': at less it pulls a unit home to repair,
+  // and the queued attack would be chasing a retreating target.
+  const foe = put(a, 1, 'rifleman', cx - 4.5, cy - 4.5, { hp: 20, stance: 'hold' });
   const A = { x: cx + 3.5, y: cy + 0.5 };
   const B = { x: cx + 3.5, y: cy + 3.5 };
   const C = { x: cx + 0.5, y: cy + 3.5 };

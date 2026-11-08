@@ -63,8 +63,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     projectiles: [],
     effects: [],
     ai: [
-      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0 },
-      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0 },
+      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0, waveIds: [], wavePhase: 0, waveTick: 0, waveSize: 0, raidIds: [], raidTarget: 0, nextRaid: 0 },
+      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0, waveIds: [], wavePhase: 0, waveTick: 0, waveSize: 0, raidIds: [], raidTarget: 0, nextRaid: 0 },
     ],
     autopilot: !!opts.autopilot,
     nextId: 1,
