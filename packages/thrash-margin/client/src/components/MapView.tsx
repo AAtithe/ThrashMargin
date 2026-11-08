@@ -88,7 +88,10 @@ export default function MapView({ state, visible, selected, target, marks, flash
       const p = project(c.x, c.y);
       if (!p) return v;
       const sy = p.y * v.k + v.y;
-      if (sy > 60 && sy < p.rect.height * 0.32) return v;
+      // Horizontal too: a territory off the side of the board read as already in view, which
+      // left the guided turn pointing at a neighbour with only a sliver of it on screen.
+      const sx = p.x * v.k + v.x;
+      if (sy > 60 && sy < p.rect.height * 0.32 && sx > 40 && sx < p.rect.width - 40) return v;
       return { ...v, x: p.rect.width / 2 - p.x * v.k, y: p.rect.height * 0.2 - p.y * v.k };
     });
   }, [focus, geometry, project]);

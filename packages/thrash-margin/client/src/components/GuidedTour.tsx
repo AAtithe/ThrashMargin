@@ -396,9 +396,15 @@ interface Props {
    * welcome card on turn two, teaching a plan whose gold had already been spent.
    */
   hidden?: boolean;
+  /**
+   * Called with the territory the current step points at, or null. On a phone the map shows only
+   * part of the board above the bottom sheet, and the neighbour to attack was routinely off the
+   * edge with a sliver of ring showing; `Game.tsx` feeds this to the map's focus so it pans there.
+   */
+  onFocusTerritory?: (id: number | null) => void;
 }
 
-export default function GuidedTour({ view, plan, onFinish, hidden = false }: Props) {
+export default function GuidedTour({ view, plan, onFinish, hidden = false, onFocusTerritory }: Props) {
   // Captured once, on the first render. `useRef` rather than `useState` because reading it must
   // never cause a render of its own.
   const memoryRef = useRef<TourMemory>({
@@ -419,6 +425,14 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   const isManual = step === INTRO || step === OUTRO;
   const targetIds = asList(step.target(view, plan));
   const { rect, id: shownTarget } = useTargetRect(targetIds);
+
+  const focusMatch = /^tm-territory-(\d+)$/.exec(targetIds[0] ?? '');
+  const focusId = focusMatch ? Number(focusMatch[1]) : null;
+  useEffect(() => {
+    onFocusTerritory?.(focusId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
+  useEffect(() => () => onFocusTerritory?.(null), [onFocusTerritory]);
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
   // of what they just did before the card moves on.
