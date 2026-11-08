@@ -79,6 +79,7 @@ import {
 } from './rules';
 import { activeCaptain, isHotseat, shipsOf } from './state';
 import { eraFor, hazardsForEra } from './eras';
+import { LETTER_TERMS, drawLetter, lettersOn, pairKey } from './letters';
 import { advance, charterText, chartersOn, drawCharter, isComplete, type CharterEvent } from './charters';
 import {
   SKILL_BY_ID,
@@ -108,7 +109,9 @@ import { nextAiAction } from './ai';
 import type {
   Captain,
   ContractFill,
+  Errand,
   GameAction,
+  Wager,
   GameState,
   LogEntry,
   LogKind,
@@ -202,7 +205,10 @@ export function assetValue(state: GameState, captain: Captain): number {
     // Net of what is owed. A failed declaration is settled on this figure, and a captain who has
     // borrowed their way to the top of the table has not actually got there.
     (captain.debt ?? 0) -
-    (captain.arrears ?? 0) +
+    (captain.arrears ?? 0) -
+    (captain.patron?.amount ?? 0) +
+    // Stakes lodged on open wagers are hers until the wager settles.
+    (state.wagers ?? []).filter(w => w.a === captain.id || w.b === captain.id).reduce((n, w) => n + w.stake, 0) +
     holdingsValue(captain.holdings, state.stockPrices)
   );
 }
@@ -573,6 +579,7 @@ const RULE_NAMES: Partial<Record<keyof import('./types').Hazards, string>> = {
   encounters: 'encounters at sea',
   pressSail: 'cracking on',
   events: 'world events',
+  letters: "the captain's letters",
   teaRace: 'the Great Tea Race',
   deadlines: 'commissions on a clock',
   hostileBids: 'hostile bids',
@@ -617,6 +624,8 @@ function advanceSeat(state: GameState): GameState {
     // Only written when present, so a game with seamanship off keeps exactly the shape it had.
     ...(state.crackedOn ? { crackedOn: {} } : {}),
     ...(state.encounters ? { encounters: {} } : {}),
+    // A letter not answered by the end of the turn is a letter declined.
+    ...(state.letters ? { letters: {} } : {}),
     turn: state.turn + 1,
     phase: 'roll',
   };
@@ -633,6 +642,7 @@ function advanceSeat(state: GameState): GameState {
     s = expireContracts(s);
     s = turnTheWorld(s);
     s = turnTheTeaSeason(s);
+    s = settleThePost(s);
   }
 
   // Every individual turn, not once per completed round — see DECLARATION_TURNS. Read as rounds it
@@ -723,7 +733,9 @@ function doRoll(state: GameState): GameState {
     // A famous ship ships the best hands, and it shows on every roll.
     const crew = state.hazards?.renown ? renownSpeed(ship.renown) : 0;
     const nav = careerOn(state) && hasSkill(captain, 'navigator') ? SKILL_EFFECT.navigatorBonus : 0;
-    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull + crew + nav - damage);
+    // Crews refused their leave work the ship with a will to match, for one roll.
+    const sullen = captain.sullen ? LETTER_TERMS.sullenPenalty : 0;
+    sailPoints[ship.id] = Math.max(0, r.total + (wind?.modifier ?? 0) + copper + hull + crew + nav - damage - sullen);
     dice[ship.id] = r.dice;
   }
   s = { ...s, rngSeed: seed, sailPoints, dice };
@@ -737,6 +749,9 @@ function doRoll(state: GameState): GameState {
     })
     .join(', ');
   s = log(s, 'roll', `${captain.name} takes the wind — ${rolls}.`, captain.id);
+  if (captain.sullen) s = updateCaptain(s, captain.id, { sullen: undefined });
+  // The post, at the top of the turn.
+  s = deliverPost(s, captain.id);
 
   // A ship already lying in London with the new season's tea lands it now — she may have arrived
   // during a strike, or before the race opened.
@@ -1092,9 +1107,236 @@ function doLearnSkill(state: GameState, skill: SkillId): GameState {
   return s;
 }
 
+// ---------------------------------------------------------------------------
+// The captain's letters, errands, the patron and wagers. See sim/letters.ts.
+// ---------------------------------------------------------------------------
+
+/** Hand the captain whose turn is starting a letter, perhaps. */
+function deliverPost(state: GameState, captainId: string): GameState {
+  if (!lettersOn(state) || state.letters?.[captainId]) return state;
+  const captain = state.captains.find(c => c.id === captainId)!;
+  const drawn = drawLetter(state, captain);
+  let s: GameState = { ...state, rngSeed: drawn.seed };
+  if (!drawn.letter) return s;
+  const l = drawn.letter;
+  s = { ...s, letters: { ...(s.letters ?? {}), [captainId]: l }, nextLetterSeq: l.id + 1 };
+  return log(s, 'letter', `A letter for ${captain.name}: ${l.headline.toLowerCase()}.`, captainId, {
+    letterId: l.id,
+    kind: l.kind,
+    offered: 1,
+  });
+}
+
+/** Answer the letter in hand. A refusal that the terms cannot meet returns the state untouched. */
+function doAnswerLetter(state: GameState, accept: boolean): GameState {
+  if (state.phase !== 'act' || !lettersOn(state)) return state;
+  const captain = activeCaptain(state);
+  const l = state.letters?.[captain.id];
+  if (!l) return state;
+  const rest = { ...(state.letters ?? {}) };
+  delete rest[captain.id];
+  let s: GameState = { ...state, letters: rest };
+
+  if (!accept) {
+    if (l.kind === 'shoreLeave') {
+      s = updateCaptain(s, captain.id, { sullen: true });
+      return log(s, 'letter', `${captain.name} refuses the hands their leave. They will remember it on the next roll.`, captain.id, {
+        kind: l.kind,
+        declined: 1,
+      });
+    }
+    return log(s, 'letter', `${captain.name} declines: ${l.headline.toLowerCase()}.`, captain.id, { kind: l.kind, declined: 1 });
+  }
+
+  switch (l.kind) {
+    case 'dispatch': {
+      const bond = l.cost ?? 0;
+      if (captain.cash < bond || !l.port || l.byRound === undefined) return state;
+      const errand: Errand = { id: l.id, port: l.port, byRound: l.byRound, reward: l.reward ?? 0, bond };
+      s = updateCaptain(s, captain.id, { cash: captain.cash - bond, errands: [...(captain.errands ?? []), errand] });
+      return log(
+        s,
+        'letter',
+        `${captain.name} takes the Admiralty's dispatches for ${portName(l.port)}, due by round ${l.byRound}, and lodges a ${money(bond)} bond.`,
+        captain.id,
+        { kind: l.kind, accepted: 1, port: l.port },
+      );
+    }
+    case 'shoreLeave': {
+      const cost = l.cost ?? 0;
+      if (captain.cash < cost) return state;
+      s = updateCaptain(s, captain.id, { cash: captain.cash - cost });
+      return log(s, 'letter', `${captain.name} grants the hands their leave — ${money(cost)}, and willing crews.`, captain.id, {
+        kind: l.kind,
+        accepted: 1,
+      });
+    }
+    case 'shipwright': {
+      const cost = l.cost ?? 0;
+      const ship = s.ships.find(x => x.id === l.shipId);
+      if (!ship || !ship.location || !l.fitting || ship.fittings?.[l.fitting] || captain.cash < cost) return state;
+      s = updateCaptain(s, captain.id, { cash: captain.cash - cost });
+      s = replaceShip(s, { ...ship, fittings: { ...(ship.fittings ?? {}), [l.fitting]: true } });
+      return log(
+        s,
+        'fitting',
+        `${ship.name} is ${l.fitting === 'copper' ? 'coppered' : 'armed'} at ${portName(ship.location)} on a shipwright's idle slip for ${money(cost)}.`,
+        captain.id,
+        { shipId: ship.id, fitting: l.fitting, price: cost, letter: 1 },
+      );
+    }
+    case 'patron': {
+      if (captain.patron || l.cost === undefined || l.repay === undefined || l.byRound === undefined) return state;
+      s = updateCaptain(s, captain.id, { cash: captain.cash + l.cost, patron: { amount: l.repay, byRound: l.byRound } });
+      return log(
+        s,
+        'letter',
+        `${captain.name} takes a patron's ${money(l.cost)}, ${money(l.repay)} to be repaid by round ${l.byRound}.`,
+        captain.id,
+        { kind: l.kind, accepted: 1, advance: l.cost },
+      );
+    }
+    case 'wager': {
+      const stake = l.stake ?? 0;
+      const rival = s.captains.find(c => c.id === l.rivalId);
+      const card = s.contracts.find(c => c.id === l.contractId);
+      // Both stakes go into escrow at the exchange, so a wager never makes or destroys money.
+      if (!rival || !card || card.fills.length > 0 || captain.cash < stake || rival.cash < stake) return state;
+      s = updateCaptain(s, captain.id, { cash: captain.cash - stake });
+      s = updateCaptain(s, rival.id, { cash: rival.cash - stake });
+      const wager: Wager = { id: l.id, a: captain.id, b: rival.id, contractId: card.id, good: card.good, destination: card.destination, stake };
+      s = { ...s, wagers: [...(s.wagers ?? []), wager] };
+      return log(
+        s,
+        'wager',
+        `${captain.name} matches ${rival.name}'s ${money(stake)}: first of the two to land ${goodName(card.good)} at ${portName(card.destination)} takes both stakes.`,
+        captain.id,
+        { wagerId: wager.id, rivalId: rival.id, stake, opened: 1 },
+      );
+    }
+  }
+}
+
+/** Admiralty dispatches delivered by tying up at the port in time. */
+function deliverDispatches(state: GameState, shipId: string): GameState {
+  const ship = state.ships.find(x => x.id === shipId);
+  if (!ship?.location) return state;
+  const captain = state.captains.find(c => c.id === ship.ownerId);
+  const due = captain?.errands?.find(e => e.port === ship.location && state.round <= e.byRound);
+  if (!captain || !due) return state;
+  let s = updateCaptain(state, captain.id, {
+    cash: captain.cash + due.reward + due.bond,
+    errands: (captain.errands ?? []).filter(e => e.id !== due.id),
+  });
+  s = log(
+    s,
+    'letter',
+    `${ship.name} delivers the Admiralty's dispatches at ${portName(ship.location)} — ${money(due.reward)}, and the ${money(due.bond)} bond returned.`,
+    captain.id,
+    { kind: 'dispatch', delivered: 1, reward: due.reward },
+  );
+  s = earnRenown(s, ship.id, LETTER_TERMS.dispatchRenown);
+  return gainXp(s, captain.id, XP_FOR.charter);
+}
+
+/**
+ * At the turn of the round: dispatches that ran out of time forfeit their bond, a patron whose day
+ * has come takes what he is owed, and wagers on a card that has left the board are called off.
+ */
+function settleThePost(state: GameState): GameState {
+  if (!lettersOn(state)) return state;
+  let s = state;
+  for (const captain of state.captains) {
+    const now = s.captains.find(c => c.id === captain.id)!;
+    const lapsed = (now.errands ?? []).filter(e => s.round > e.byRound);
+    if (lapsed.length) {
+      s = updateCaptain(s, now.id, { errands: (now.errands ?? []).filter(e => s.round <= e.byRound) });
+      for (const e of lapsed) {
+        s = log(s, 'letter', `${now.name}'s dispatches for ${portName(e.port)} are overdue. The ${money(e.bond)} bond is forfeit.`, now.id, {
+          kind: 'dispatch',
+          failed: 1,
+          bond: e.bond,
+        });
+      }
+    }
+    s = collectPatron(s, now.id);
+  }
+  // A card can leave the board without either party landing it: withdrawn by the clock, or filled
+  // out by others. Either way the bet is off and both stakes go back.
+  for (const w of s.wagers ?? []) {
+    if (!s.contracts.some(c => c.id === w.contractId)) s = callOffWager(s, w, 'the commission has left the board');
+  }
+  return s;
+}
+
+/** Take what a patron is owed once his day has passed, as far as the purse allows. */
+function collectPatron(state: GameState, captainId: string): GameState {
+  const captain = state.captains.find(c => c.id === captainId)!;
+  const p = captain.patron;
+  if (!p || state.round <= p.byRound || captain.cash <= 0) return state;
+  const paid = Math.min(captain.cash, p.amount);
+  const left = p.amount - paid;
+  const s = updateCaptain(state, captainId, { cash: captain.cash - paid, patron: left > 0 ? { ...p, amount: left } : undefined });
+  return log(
+    s,
+    'letter',
+    left > 0
+      ? `${captain.name}'s patron takes ${money(paid)}; ${money(left)} is still owed, and comes off the next landing.`
+      : `${captain.name} repays the patron in full — ${money(paid)}.`,
+    captainId,
+    { kind: 'patron', repaid: paid, owed: left },
+  );
+}
+
+/** Both stakes back: the wager is off. */
+function callOffWager(state: GameState, w: Wager, why: string): GameState {
+  let s: GameState = { ...state, wagers: (state.wagers ?? []).filter(x => x.id !== w.id) };
+  for (const id of [w.a, w.b]) {
+    const c = s.captains.find(x => x.id === id)!;
+    s = updateCaptain(s, id, { cash: c.cash + w.stake });
+  }
+  const a = s.captains.find(c => c.id === w.a)!;
+  const b = s.captains.find(c => c.id === w.b)!;
+  return log(s, 'wager', `The wager between ${a.name} and ${b.name} is off — ${why}. Both stakes go back.`, null, {
+    wagerId: w.id,
+    void: 1,
+  });
+}
+
+/** A card has just been filled: settle every wager on it. */
+function settleWagersOn(state: GameState, contractId: string, fillerId: string): GameState {
+  let s = state;
+  for (const w of state.wagers ?? []) {
+    if (w.contractId !== contractId) continue;
+    if (fillerId !== w.a && fillerId !== w.b) {
+      s = callOffWager(s, w, 'somebody else landed it first');
+      continue;
+    }
+    const loserId = fillerId === w.a ? w.b : w.a;
+    s = { ...s, wagers: (s.wagers ?? []).filter(x => x.id !== w.id) };
+    const winner = s.captains.find(c => c.id === fillerId)!;
+    s = updateCaptain(s, fillerId, { cash: winner.cash + w.stake * 2 });
+    const key = pairKey(fillerId, loserId);
+    const record = { ...(s.rivalries?.[key] ?? {}) };
+    record[fillerId] = (record[fillerId] ?? 0) + 1;
+    s = { ...s, rivalries: { ...(s.rivalries ?? {}), [key]: record } };
+    const loser = s.captains.find(c => c.id === loserId)!;
+    s = log(
+      s,
+      'wager',
+      `${winner.name} lands ${goodName(w.good)} at ${portName(w.destination)} ahead of ${loser.name} and takes the wager — ${money(w.stake * 2)}. ` +
+        `Between them it stands ${record[fillerId]}–${record[loserId] ?? 0}.`,
+      fillerId,
+      { wagerId: w.id, won: w.stake * 2, loserId },
+    );
+    s = gainXp(s, fillerId, XP_FOR.encounter);
+  }
+  return s;
+}
+
 /** Everything that happens the moment a ship ties up, wherever the arrival came from. */
 function onArrival(state: GameState, shipId: string): GameState {
-  return landNewSeasonTea(state, shipId);
+  return deliverDispatches(landNewSeasonTea(state, shipId), shipId);
 }
 
 /** Pushes a ship back along her leg, never past its start. Shared by storms' kin: heaving to. */
@@ -1529,6 +1771,12 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
       cardPrice: contract.price,
     },
   );
+  s = settleWagersOn(s, contract.id, captain.id);
+  // A patron whose day has passed takes what he is still owed off the top of the landing.
+  {
+    const now = s.captains.find(c => c.id === captain.id)!;
+    if (now.patron && s.round > now.patron.byRound) s = collectPatron(s, captain.id);
+  }
   if (rank === 1) s = earnRenown(s, ship.id, RENOWN_FOR.firstHome);
   s = gainXp(s, captain.id, XP_FOR.lotLanded * landed.length + (rank === 1 ? XP_FOR.firstHome : 0));
   // Paid on its own line rather than folded into the delivery, so the card's payout stays exactly
@@ -1946,6 +2194,8 @@ export function processAction(state: GameState, action: GameAction): GameState {
       return doResolveEncounter(state, action.shipId, action.accept);
     case 'LEARN_SKILL':
       return doLearnSkill(state, action.skill);
+    case 'ANSWER_LETTER':
+      return doAnswerLetter(state, action.accept);
     case 'END_TURN':
       // Rolling is not optional — ending a turn without it would silently skip the wind.
       return state.phase === 'act' ? endTurn(state) : state;

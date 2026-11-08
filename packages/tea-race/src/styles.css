@@ -123,3 +123,13 @@ button:focus:not(:focus-visible) {
     animation: none !important;
   }
 }
+
+/* Storm clouds on the chart drift a little, so the weather reads as weather. Reduced motion stops
+   it with every other animation (the rule above). */
+@keyframes tr-drift {
+  0%, 100% { transform: translateX(-1.5px); }
+  50% { transform: translateX(1.5px); }
+}
+.tr-drift {
+  animation: tr-drift 5s ease-in-out infinite;
+}

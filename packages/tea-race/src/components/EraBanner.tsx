@@ -7,6 +7,7 @@ const RULE_NAMES: Partial<Record<keyof Hazards, string>> = {
   encounters: 'encounters',
   pressSail: 'cracking on',
   events: 'world events',
+  letters: 'letters',
   teaRace: 'the tea race',
   deadlines: 'commissions on a clock',
   hostileBids: 'hostile bids',

@@ -48,6 +48,7 @@ const HAZARD_KEYS = [
   'renown',
   'career',
   'ramp',
+  'letters',
 ] as const;
 
 function readRules(raw: unknown): 'classic' | 'voyage' | undefined {

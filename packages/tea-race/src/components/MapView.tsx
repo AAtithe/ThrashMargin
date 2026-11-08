@@ -12,7 +12,7 @@ import {
   wrapPanX,
 } from '../sim/geography';
 import { destinationOf } from '../sim/movement';
-import { windFor, type Season } from '../sim/weather';
+import { stormRating, windFor, type Season } from '../sim/weather';
 import { piracyRating } from '../sim/hazards';
 import { RENOWN_FAMOUS, RENOWN_SMART } from '../sim/rules';
 import type { Captain, Contract, PortId, Ship } from '../sim/types';
@@ -31,6 +31,8 @@ interface MapViewProps {
   viewerId: string | null;
   /** The Great Tea Race, when one is running: its ports are marked and its runners fly a pennant. */
   race?: { ports: PortId[]; finish: PortId; runners: Set<string> } | null;
+  /** Ports the viewer carries Admiralty dispatches for, marked with a pennant. */
+  errandPorts?: PortId[];
 }
 
 const ZOOM_MIN = 1;
@@ -60,6 +62,7 @@ export default function MapView({
   showPiracy,
   viewerId,
   race = null,
+  errandPorts = [],
 }: MapViewProps) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [view, setView] = useState({ zoom: 1, panX: 0, panY: 0 });
@@ -211,6 +214,7 @@ export default function MapView({
           windLabel: label,
           becalmed: Boolean(forward && back && forward.modifier < 0 && back.modifier < 0),
           piracy: showPiracy ? piracyRating(leg.a, leg.b) : 0,
+          storm: season ? stormRating(leg.a, leg.b, season) : 0,
         };
       }),
     [season, showPiracy],
@@ -264,6 +268,14 @@ export default function MapView({
               {leg.distance}
             </text>
             <WindMark leg={leg} />
+            {/* This season's worst weather, a third of the way along; the worst pirate waters two
+                thirds along, clear of the wind chevron and the distance at the midpoint. */}
+            {leg.storm >= 3 && (
+              <StormCloud x={leg.x1 + (leg.x2 - leg.x1) / 3} y={leg.y1 + (leg.y2 - leg.y1) / 3} severe={leg.storm >= 4} />
+            )}
+            {leg.piracy >= 2 && (
+              <BlackFlag x={leg.x1 + ((leg.x2 - leg.x1) * 2) / 3} y={leg.y1 + ((leg.y2 - leg.y1) * 2) / 3} />
+            )}
             {leg.piracy > 0 && (
               <text
                 x={(leg.x1 + leg.x2) / 2}
@@ -349,6 +361,9 @@ export default function MapView({
       })}
 
       {race && <RaceMarks race={race} />}
+      {errandPorts.map(id => (
+        <AdmiraltyPennant key={id} port={id} />
+      ))}
 
       {ships.map(ship => (
         <ShipMarker
@@ -676,6 +691,51 @@ function RaceMarks({ race }: { race: { ports: PortId[]; finish: PortId } }) {
           <title>The tea race finishes in London</title>
         </g>
       )}
+    </g>
+  );
+}
+
+/** A storm cloud with rain, over a leg that is dangerous this season. Gently drifts. */
+function StormCloud({ x, y, severe }: { x: number; y: number; severe: boolean }) {
+  return (
+    <g transform={`translate(${x} ${y - 10})`} pointerEvents="none" opacity={0.85}>
+      <g className="tr-drift">
+        <path
+          d="M-11 2 Q-12 -4 -6 -4 Q-4 -10 2 -8 Q8 -11 10 -4 Q15 -3 13 2 Z"
+          fill={CHART.labelHalo}
+          stroke={CHART.coast}
+          strokeWidth={0.9}
+        />
+        <path d="M-6 5 l-2 4 M0 5 l-2 4 M6 5 l-2 4" stroke={CHART.windFoul} strokeWidth={1} strokeLinecap="round" />
+        {severe && <path d="M2 4 L-1 9 L2 9 L0 14" fill="none" stroke={CHART.windFoul} strokeWidth={1.2} strokeLinejoin="round" />}
+      </g>
+      <title>{severe ? 'The worst weather of the season' : 'Stormy this season'}</title>
+    </g>
+  );
+}
+
+/** The black flag, over the most piratical waters on the chart. */
+function BlackFlag({ x, y }: { x: number; y: number }) {
+  return (
+    <g transform={`translate(${x} ${y - 14})`} pointerEvents="none">
+      <line x1={0} y1={0} x2={0} y2={14} stroke={CHART.port} strokeWidth={1} />
+      <path d="M0 0 H10 L8.5 3.5 L10 7 H0 Z" fill={CHART.port} />
+      <circle cx={4.6} cy={2.8} r={1.3} fill={CHART.labelHalo} />
+      <path d="M2.8 5.4 L6.4 6.2 M6.4 5.4 L2.8 6.2" stroke={CHART.labelHalo} strokeWidth={0.6} />
+      <title>Notorious pirate waters</title>
+    </g>
+  );
+}
+
+/** A blue Admiralty pennant over a port the viewer carries dispatches for. */
+function AdmiraltyPennant({ port }: { port: PortId }) {
+  const p = PORT_POINTS[port];
+  if (!p) return null;
+  return (
+    <g transform={`translate(${p.x + 6} ${p.y - 26})`} pointerEvents="none">
+      <line x1={0} y1={0} x2={0} y2={20} stroke={CHART.port} strokeWidth={1.2} />
+      <path d="M0 0 L14 3.5 L0 7 Z" fill={CHART.portContract} stroke={CHART.port} strokeWidth={0.5} />
+      <title>Your Admiralty dispatches are for here</title>
     </g>
   );
 }

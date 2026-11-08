@@ -199,6 +199,12 @@ export interface Captain {
   xp?: number;
   /** Skills learned, in the order they were taken. */
   skills?: import('./career').SkillId[];
+  /** The captain's letters: dispatches accepted and not yet carried. */
+  errands?: Errand[];
+  /** A patron's advance still to be repaid. */
+  patron?: { amount: number; byRound: number };
+  /** The crew were refused shore leave and sail sullenly on her next roll. */
+  sullen?: boolean;
 }
 
 export interface ContractFill {
@@ -274,6 +280,63 @@ export interface Hazards {
   career?: boolean;
   /** Eras: the world's dangers and contests arrive in stages as the game goes on. */
   ramp?: boolean;
+  /** The captain's letters: offers, errands, dilemmas and rivals' wagers that arrive by post. */
+  letters?: boolean;
+}
+
+export type LetterKind = 'dispatch' | 'shoreLeave' | 'shipwright' | 'patron' | 'wager';
+
+/**
+ * A sealed letter handed to a captain at the top of her turn, asking for a yes or a no. Good for
+ * that turn only; leaving it unanswered is the same as declining.
+ */
+export interface Letter {
+  id: number;
+  kind: LetterKind;
+  captainId: CaptainId;
+  headline: string;
+  body: string;
+  /** Labels for the two answers. */
+  accept: string;
+  decline: string;
+  /** dispatch: where, by when, for what. */
+  port?: PortId;
+  byRound?: number;
+  reward?: number;
+  /** shoreLeave, shipwright: what it costs. patron: what is advanced now. */
+  cost?: number;
+  /** patron: what is repaid at `byRound`. */
+  repay?: number;
+  /** shipwright: which ship and which fitting. */
+  shipId?: ShipId;
+  fitting?: keyof ShipFittings;
+  /** wager: the rival and the card. */
+  rivalId?: CaptainId;
+  contractId?: ContractId;
+  stake?: number;
+}
+
+/** Admiralty dispatches accepted and not yet carried. */
+export interface Errand {
+  id: number;
+  port: PortId;
+  /** Inclusive: deliverable while `round <= byRound`. */
+  byRound: number;
+  reward: number;
+  /** Forfeited if the dispatches are not delivered in time. */
+  bond: number;
+}
+
+/** A wager between two captains on who lands a card first. */
+export interface Wager {
+  id: number;
+  /** The captain who took up the challenge, and the rival who made it. */
+  a: CaptainId;
+  b: CaptainId;
+  contractId: ContractId;
+  good: GoodId;
+  destination: PortId;
+  stake: number;
 }
 
 export type CharterKind = 'regionTrade' | 'firstHome' | 'goodTrade' | 'spread' | 'teaRace' | 'fleet';
@@ -403,7 +466,9 @@ export type LogKind =
   | 'charter'
   | 'renown'
   | 'career'
-  | 'era';
+  | 'era'
+  | 'letter'
+  | 'wager';
 
 export interface LogEntry {
   /**
@@ -535,6 +600,16 @@ export interface GameState {
   rampPlan?: Hazards;
   /** Eras: the era now in force, 1-based. */
   era?: number;
+  /** The captain's letters awaiting an answer this turn, by captain. Cleared when the turn ends. */
+  letters?: Record<CaptainId, Letter>;
+  nextLetterSeq?: number;
+  /** Wagers standing between captains. */
+  wagers?: Wager[];
+  /**
+   * Wagers won, head to head: `rivalries["p1|p3"]["p1"]` is how many times p1 has beaten p3. Keys
+   * are the two ids sorted, so each pair has one record.
+   */
+  rivalries?: Record<string, Record<CaptainId, number>>;
 
   log: LogEntry[];
 }
@@ -598,6 +673,8 @@ export type GameAction =
   | { type: 'REPAIR_SHIP'; shipId: ShipId }
   /** Take up, or pass by, what a ship has met at sea this turn. */
   | { type: 'RESOLVE_ENCOUNTER'; shipId: ShipId; accept: boolean }
+  /** Answer the letter in hand: take up its offer, or decline it. */
+  | { type: 'ANSWER_LETTER'; accept: boolean }
   /** Spend a skill point from the captain's career. */
   | { type: 'LEARN_SKILL'; skill: import('./career').SkillId }
   | { type: 'DECLARE' }

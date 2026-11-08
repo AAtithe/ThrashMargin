@@ -31,8 +31,8 @@ export const ERAS: Era[] = [
     era: 2,
     from: 13,
     name: 'Rough seas',
-    blurb: 'Pirates, encounters at sea, cracking on, and a world that throws strikes and gluts.',
-    brings: ['piracy', 'encounters', 'pressSail', 'events'],
+    blurb: 'Pirates, encounters at sea, cracking on, the post, and a world that throws strikes and gluts.',
+    brings: ['piracy', 'encounters', 'pressSail', 'events', 'letters'],
   },
   {
     era: 3,

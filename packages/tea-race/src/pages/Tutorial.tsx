@@ -257,6 +257,16 @@ export default function Tutorial() {
             Race, the commission clock and hostile bids. Only the rules you chose in the lobby arrive;
             the banner under the season shows what is coming next.
           </Rule>
+          <Rule name="The captain's letters" art="contract">
+            About one turn in six a sealed letter arrives at the top of your turn, good for that turn
+            only. Admiralty dispatches: tie up at a named port by a deadline for a reward, against a
+            bond you lose if you are late. The hands want leave: pay, or every ship sails three points
+            short on the next roll. A shipwright with a slip free: copper or guns at half price. A
+            patron: money now, a third more to repay later, taken from your landings if you are late.
+            A rival's wager on a commission: both stakes are held at the exchange and the first of you
+            to land it takes them both. The stakes rise a quarter every year, and wagers won are kept
+            as a head-to-head record.
+          </Rule>
           <Rule name="The shipping exchange" art="event">
             Three companies whose prices rise and fall with the cargo actually landed in their waters.
             Not another way to win — somewhere for money to go, and a market to read. If you can see

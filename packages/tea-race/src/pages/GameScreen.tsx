@@ -32,6 +32,7 @@ import ChartersPanel from '../components/ChartersPanel';
 import ShippingGazette, { frontPage } from '../components/ShippingGazette';
 import CareerPanel from '../components/CareerPanel';
 import EraBanner from '../components/EraBanner';
+import LettersPanel from '../components/LettersPanel';
 import { TeaChest, Vignette } from '../components/Art';
 import { RACE_FINISH, TEA_RACE_PORTS, openRace, raceLots } from '../sim/seamanship';
 
@@ -268,6 +269,7 @@ export default function GameScreen() {
             season={season}
             showPiracy={state.hazards?.piracy ?? false}
             race={chartRace}
+            errandPorts={isHuman && captain ? (captain.errands ?? []).map(e => e.port) : []}
             onPortClick={portId => {
               setTargetPort(portId);
               setFocusedContract(null);
@@ -381,6 +383,8 @@ export default function GameScreen() {
                   setTargetPort(null);
                 }}
               />
+
+              <LettersPanel state={state} captain={captain} dispatch={dispatch} enabled={canAct} />
 
               <CareerPanel state={state} captain={captain} dispatch={dispatch} enabled={isHuman && (state.phase === 'act' || state.phase === 'roll')} />
 

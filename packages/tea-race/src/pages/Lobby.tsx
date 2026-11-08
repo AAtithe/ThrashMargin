@@ -159,6 +159,13 @@ const SWITCHES: { key: keyof Hazards & string; group: SwitchGroup; name: string;
       'The game ramps up as it goes. Era I is trade and the wind; pirates, encounters and world events arrive in Era II at round 13; the tea race, the commission clock and hostile bids in Era III at round 31. Only rules you have switched on ever arrive.',
   },
   {
+    key: 'letters',
+    group: 'The race',
+    name: "The captain's letters",
+    blurb:
+      'About one turn in six, a sealed letter: Admiralty dispatches to carry against a bond, a crew wanting shore leave, a yard with a slip free, a patron with money to lend, or a rival wagering she lands a commission before you. Every one a choice, and the stakes rise with the years.',
+  },
+  {
     key: 'stocks',
     group: 'Money',
     name: 'The shipping exchange',

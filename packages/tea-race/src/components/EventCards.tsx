@@ -41,6 +41,11 @@ function isNotable(entry: LogEntry): boolean {
     case 'renown':
     case 'era':
       return true;
+    // The post: outcomes are news, the letter itself is in the post panel already.
+    case 'wager':
+      return entry.data?.won !== undefined || entry.data?.void !== undefined || entry.data?.opened !== undefined;
+    case 'letter':
+      return entry.data?.delivered !== undefined || entry.data?.failed !== undefined || entry.data?.owed !== undefined;
     // A level is news; the skill learned with it is the player's own click.
     case 'career':
       return entry.data?.level !== undefined;
@@ -74,6 +79,8 @@ const PRESENTATION: Partial<Record<LogKind, { title: string; colour: string; art
   renown: { title: 'A name in every port', colour: UI.brass, art: 'crackOn' },
   era: { title: 'A new era', colour: UI.brass, art: 'event' },
   career: { title: 'Promotion', colour: UI.verdigris, art: 'declare' },
+  wager: { title: 'A wager', colour: UI.brass, art: 'declare' },
+  letter: { title: 'The post', colour: UI.verdigris, art: 'contract' },
 };
 
 const MAX_ON_SCREEN = 4;

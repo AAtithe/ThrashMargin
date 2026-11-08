@@ -115,6 +115,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     renown: true,
     career: true,
     ramp: true,
+    letters: true,
   };
 
   return dealOpeningCharters({

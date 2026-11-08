@@ -781,6 +781,7 @@ export const PRESETS = {
       renown: false,
       career: false,
       ramp: false,
+      letters: false,
     },
   },
   merchant: {
@@ -788,8 +789,8 @@ export const PRESETS = {
     blurb:
       'Money, not weather. Crew wages to pay, loans to raise, hulls to choose between, cargo you ' +
       'can sell off at a loss, an exchange to read, owners with charters to fill, a captain\'s ' +
-      'career to build, and a tea race every summer. Nothing random but the dice, and the longest ' +
-      'of the four — wages make every season count.',
+      'career to build, letters and rivals\' wagers, and a tea race every summer. The longest of the ' +
+      'four — wages make every season count.',
     hazards: {
       weather: false,
       piracy: false,
@@ -809,6 +810,7 @@ export const PRESETS = {
       renown: true,
       career: true,
       ramp: false,
+      letters: true,
     },
   },
   highSeas: {
@@ -837,6 +839,7 @@ export const PRESETS = {
       renown: true,
       career: false,
       ramp: true,
+      letters: true,
     },
   },
   full: {
@@ -863,6 +866,7 @@ export const PRESETS = {
       renown: true,
       career: true,
       ramp: true,
+      letters: true,
     },
   },
 } as const;
