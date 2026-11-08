@@ -1231,3 +1231,82 @@ See `CLAUDE.md` at the repo root, and §4a of `tea-race-design.md` for the full 
 
 - **Difficulty, re-measured with real profiles for the first time.** Fresher information alone wins **114/150**; the three profiles come out fully ordered **148/150**. The capacity claim is now asserted as a *band* on the carrack's own win rate rather than a comparison between two figures that both sit near a fifth — an earlier version failed on exactly that noise.
 - **Verification.** Seven drivers, **517 assertions**, three clean runs, 3.8s. All three typechecks (client, api, scripts) and `vite build` clean. Live: the lobby's goal selector, `by_year` reading *"3 of 3 · 586f · richest in week 260"* with *"260 weeks left. Nobody has won anything yet."*, `survivor` reading *"last house solvent"*, the rebalanced carrack listing as *"hold 40, 20% slower, 5f a week — 460f"*, and a 40-week run in which the Grimani stored salt at Venice and glass at Genoa while the Doria carried **14 fine silk** toward Geneva and stored 23 more there. Zero console errors.
+
+### 2026-11-08 — The guided tour joins the portal pattern, and two defects it had been hiding
+
+Niccolò's guided tour is the oldest of the five and the one the other four were modelled on. It
+was also the only one that had never been **driven**: the pattern the others settled on puts
+`data-tour-step` and `data-tour-target` on the tour card so a script can walk every step by
+clicking whatever the card is pointing at, and this one predated it. Adding the hooks and running
+it found two faults that four months of playing it by hand had not.
+
+- **The "Buy some cloth" step was invisible.** `useTargetRect` scrolled by computing against
+  `#section-popup-scroll`, the popup drawer's own scroll container. The three steps whose targets
+  live in the *permanently visible* right-hand sidebar have no such container, so they never
+  scrolled at all. On a 1600×1000 window the cloth button sat at y=1419 — 419px below the fold —
+  and the player saw no ring, no card and no scrim: the tour simply vanished for a step. Now
+  `el.scrollIntoView({ block: 'center', behavior: 'auto' })` with an immediate re-measure, the
+  same instant-scroll the other four use. Measured on every step, before and after: the ring
+  tracks its target to 0.0px once the 0.2s ease settles, and every target is now on screen.
+  The old "scrollIntoView proved unreliable" note was true of the *smooth* variant and is kept,
+  with the sidebar failure recorded beside it.
+- **The welcome card was unreachable.** `firstIncompleteStep` asked "has any real step completed?"
+  to tell a fresh tour from a resumed one. "Sell it at a profit" completes when the hold is empty
+  of cloth, which is true of an empty hold, so the probe was true before the player had done
+  anything and the tour always opened on step two. On a skip-the-prologue campaign it opened on
+  step **three**, because `GameScreen` auto-selects the only vessel. This is the class the root
+  working notes name first: a step whose predicate reads true before the run begins.
+
+  The guessing was the wrong shape, so it is gone rather than patched. The step index now lives in
+  `GameScreen`, which already knows the difference between a tour the player has just asked for
+  and one being remounted because a scripted event took the screen for a moment. A fresh tour
+  starts at the welcome card; an interrupted one comes back exactly where it was, which is what
+  the guessing had been reaching for.
+
+Also: the card's horizontal clamp used the bare `320` while the card renders 357px wide, so on
+every step targeting the right sidebar it hung 21px off the right edge. Clamped against the real
+border box. And the tour gained its own `niccolo_guided_tour_seen` key with the
+`hasSeenGuidedTour`/`markGuidedTourSeen` pair the other four export, so the How-to-play overlay
+stops offering the walkthrough once it has been played or skipped. The header's "Guided tour"
+button is unconditional, so it is always reachable again.
+
+**Verification.** All eleven steps driven in a browser, each advancing on real game state — cloth
+bought, ship dispatched to Antwerp, the week advanced, cloth sold at a profit, Julius posted
+aboard, London's courier line bought, a bill of exchange written. Zero page errors, zero console
+errors. `tsc` clean, 85 driver assertions passing.
+
+
+### 2026-11-08 — A tour that loops is not a tour: the same reset in all five
+
+Driving Thrash Margin's tour end to end, rather than step by step, found that it never reached its
+last step. It got as far as "End the turn", the end-of-turn dispatch modal came up, and when that
+was dismissed the card came back reading **step 1 of 8** and walked the same turn again, for ever.
+
+The cause is the same in every one of the five, because they share a structure: the run's place in
+the walk lives inside the component — `memoryRef`, captured on the first render, and the step
+index. Every caller was *unmounting* the tour while one of the game's own modals owned the screen,
+which was right about not drawing a ring under a modal and wrong about how to achieve it.
+Unmounting throws both away, and the opening scan then re-reads a board that has moved on.
+
+All five now take a `hidden` prop instead: every hook sits above an `if (hidden) return null`, so
+the run keeps advancing out of sight — ending the turn completes the step behind the dispatch, and
+the outro is what comes back — and `targetIds` is forced empty while hidden so the 250ms measure
+poll cannot scroll the board around underneath the modal.
+
+Where each one is reachable, which is the part worth recording:
+
+- **Thrash Margin** — every guided turn, in solo play. The dispatch fires at the end of the turn
+  the tour is teaching. Observed looping; observed fixed.
+- **Niccolò Rising** — the Steen and the infirmary, which replace the panel the run is pointing at.
+  Reproduced with cardsharping: taken to the Steen on step 2, bribed out, and **before** the fix
+  the card came back at the welcome card, **after** it came back at step 3, having advanced while
+  hidden. Rarer than it first looks: the practical joke the run itself asks for is caught only
+  about 1% of the time, because the caught roll happens only on a failure and a difficulty-0
+  scheme succeeds 95% of the time. It is the rest of the game that makes it reachable.
+- **The Tea Race and Steady Eddie** — the hand-over card, so a hot-seat game with two humans.
+  Not reachable solo, fixed for consistency rather than from an observed failure.
+
+**Verification.** All five driven end to end afterwards, in both light and dark mode for the four
+that the theme work touched: Thrash Margin 8/8, Tea Race 14/14, Steady Eddie 14/14, Niccolò Rising
+7/7, Banco di Niccolò 11/11. No console or page errors in any run. The colour audit found no hex
+literals and no hex alpha appended to a token in any of the five.

@@ -320,9 +320,18 @@ interface Props {
   view: TourView;
   plan: TourPlan;
   onFinish: () => void;
+  /**
+   * Draw nothing this render, but stay mounted. Set while one of the game's own modals owns the
+   * display — the dispatch, an event, the hand-over screen. It is a prop rather than the caller
+   * unmounting the run because the run's place in the walk lives in this component: unmounting it
+   * for the end-of-turn dispatch threw away both the captured memory and the step index, and the
+   * card came back at step 1 of 8 the moment the dispatch was dismissed, so the run never reached
+   * its last step and looped instead.
+   */
+  hidden?: boolean;
 }
 
-export default function GuidedTour({ view, plan, onFinish }: Props) {
+export default function GuidedTour({ view, plan, onFinish, hidden = false }: Props) {
   // Captured once, on the first render. `useRef` rather than `useState` because reading it must
   // never cause a render of its own.
   const memoryRef = useRef<TourMemory>({
@@ -341,7 +350,9 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO;
-  const targetIds = asList(step.target(view, plan));
+  // Nothing to measure while hidden: an empty list stops the poll, and stops it scrolling the
+  // board around underneath whichever modal is on top.
+  const targetIds = hidden ? [] : asList(step.target(view, plan));
   const { rect, id: shownTarget } = useTargetRect(targetIds);
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
@@ -353,6 +364,10 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, stepIndex]);
+
+  // Every hook above this line, so the run keeps advancing while it is out of sight: ending the
+  // turn completes the step behind the dispatch, and the outro is what comes back.
+  if (hidden) return null;
 
   const PADDING = 8;
   const spotlight: React.CSSProperties | null = rect
