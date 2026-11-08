@@ -21,6 +21,8 @@ export interface GameHook {
   loading: boolean;
   saveStatus: SaveStatus;
   saves: SaveMeta[];
+  /** False until the first saves list has answered (always true for the local hook). */
+  savesLoaded: boolean;
   createGame: (config: Partial<GameConfig>, name?: string) => Promise<string | null>;
   loadGame: (id: string) => Promise<void>;
   /** Applies an action. Returns the new state, or null if the engine rejected it. */
