@@ -1,0 +1,53 @@
+/*
+ * Portal chrome palette: the nav strip, sign-in, profile, feedback and admin pages. Identical in
+ * every package and on the landing page, so the strip reads as "the site" whichever game you are
+ * in. `data-theme` on <html> is set before first paint by index.html (see lib/colorScheme.ts).
+ */
+:root {
+  color-scheme: light;
+  --portal-bar: #ece9e2;
+  --portal-bar-rule: #d6d1c6;
+  --portal-bar-text: #6b6659;
+  --portal-sep: #b8b2a4;
+  --portal-link: #4a4639;
+  --portal-btn-rule: #c3bdb0;
+
+  --portal-ground: #f4f2ee;
+  --portal-panel: #ffffff;
+  --portal-raised: #ebe8e1;
+  --portal-rule: #d8d3c8;
+  --portal-text: #1f2328;
+  --portal-text-mid: #3b4048;
+  --portal-soft: #5f6670;
+  --portal-softer: #59636e;
+  --portal-faint: #8a9099;
+  --portal-good: #1a7f37;
+  --portal-good-rule: #2da44e;
+  --portal-bad: #cf222e;
+  --portal-warn: #9a6700;
+  --portal-action: #0969da;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --portal-bar: #0b0c10;
+  --portal-bar-rule: #22252b;
+  --portal-bar-text: #7a7f8a;
+  --portal-sep: #3a3e46;
+  --portal-link: #9aa1ad;
+  --portal-btn-rule: #333a48;
+
+  --portal-ground: #0d1117;
+  --portal-panel: #161b22;
+  --portal-raised: #21262d;
+  --portal-rule: #30363d;
+  --portal-text: #e6edf3;
+  --portal-text-mid: #c9d1d9;
+  --portal-soft: #7d8590;
+  --portal-softer: #9198a1;
+  --portal-faint: #4b5563;
+  --portal-good: #3fb950;
+  --portal-good-rule: #2ea043;
+  --portal-bad: #f85149;
+  --portal-warn: #d29922;
+  --portal-action: #1f6feb;
+}
