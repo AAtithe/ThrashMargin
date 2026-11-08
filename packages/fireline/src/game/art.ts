@@ -239,6 +239,10 @@ export interface UnitPose {
   hp?: number;
   /** Fired within the last ~0.15s. Missing means "work it out from sinceShot". */
   firing?: boolean;
+  /** Heroes: the Spy's cloak shimmer (drawn live over the stamp). */
+  shimmer?: boolean;
+  /** Heroes: the Engineer is welding something right now (a live spark at his torch). */
+  repairing?: boolean;
 }
 
 export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: number, pose: UnitPose): void {
@@ -249,7 +253,13 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
   switch (kind) {
     case 'rifleman':
     case 'rocketeer':
+    case 'spy':
+    case 'commando':
+    case 'engineer':
       drawTrooperCached(ctx, kind, owner, team, pose);
+      break;
+    case 'ace':
+      drawVehicleCached(ctx, kind, owner, team, pose, drawAce);
       break;
     case 'tank':
       drawVehicleCached(ctx, kind, owner, team, pose, drawTank);
@@ -276,13 +286,16 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
 // right because it is baked per facing. Only sparks and flames are drawn live, over the stamp.
 
 type Layer = 'all' | 'hull' | 'turret';
-type VehicleKind = 'tank' | 'artillery' | 'buggy' | 'hauler';
+type VehicleKind = 'tank' | 'artillery' | 'buggy' | 'hauler' | 'ace';
+type TrooperKind = 'rifleman' | 'rocketeer' | 'spy' | 'commando' | 'engineer';
 type VehicleFn = (ctx: Ctx, team: Team, p: UnitPose, layer: Layer) => void;
 
 const ANGLES = 48;
 const VANGLES = 64;
 /** Hull length and width, for placing live damage effects. */
-const HULL: Record<VehicleKind, [number, number]> = { tank: [22, 13], artillery: [20, 10], buggy: [17, 9], hauler: [26, 14] };
+const HULL: Record<VehicleKind, [number, number]> = { tank: [22, 13], artillery: [20, 10], buggy: [17, 9], hauler: [26, 14], ace: [27, 15] };
+/** Half the side of a vehicle's sprite canvas: the Ace's twin barrels and pennant reach further. */
+const VHALF: Record<VehicleKind, number> = { tank: 26, artillery: 26, buggy: 26, hauler: 26, ace: 31 };
 const SPRITE_BUDGET = 12_000_000;
 const sprites = new Map<string, HTMLCanvasElement>();
 let spritePixels = 0;
@@ -313,7 +326,7 @@ function sprite(ctx: Ctx, key: string, half: number, draw: (g: Ctx) => void) {
   ctx.drawImage(c, -half, -half, half * 2, half * 2);
 }
 
-function drawTrooperCached(ctx: Ctx, kind: 'rifleman' | 'rocketeer', owner: Owner, team: Team, p: UnitPose) {
+function drawTrooperCached(ctx: Ctx, kind: TrooperKind, owner: Owner, team: Team, p: UnitPose) {
   const hp = clamp01(p.hp, 1);
   const firing = p.firing ?? p.sinceShot < 0.15;
   const flash = firing && p.sinceShot < 0.1;
@@ -321,7 +334,7 @@ function drawTrooperCached(ctx: Ctx, kind: 'rifleman' | 'rocketeer', owner: Owne
   const facing = Math.round(frac(p.turret / TAU) * ANGLES) % ANGLES;
   const hurt = hp < 0.5;
   const key = `${kind}${owner}${firing ? 1 : 0}${flash ? 1 : 0}${hurt ? 1 : 0}${p.moving ? 1 : 0}/${facing}/${step}`;
-  sprite(ctx, key, 22, g =>
+  sprite(ctx, key, kind in HERO_SCALE ? 30 : 22, g =>
     drawTrooper(g, kind, team, {
       hull: 0,
       turret: (facing / ANGLES) * TAU,
@@ -334,6 +347,8 @@ function drawTrooperCached(ctx: Ctx, kind: 'rifleman' | 'rocketeer', owner: Owne
     }),
   );
   if (hp < 0.25) sparks(ctx, 0, -2, p.t, 2, 3);
+  if (p.shimmer) cloakShimmer(ctx, p.t);
+  if (p.repairing && kind === 'engineer') weldSpark(ctx, p.turret, p.t);
 }
 
 function drawVehicleCached(ctx: Ctx, kind: VehicleKind, owner: Owner, team: Team, p: UnitPose, fn: VehicleFn) {
@@ -346,7 +361,7 @@ function drawVehicleCached(ctx: Ctx, kind: VehicleKind, owner: Owner, team: Team
   const tq = frame / 12;
   const hf = Math.round(frac(p.hull / TAU) * VANGLES) % VANGLES;
   const cargo = kind === 'hauler' ? Math.round(clamp01(p.cargo, 0) * 8) : 0;
-  sprite(ctx, `${kind}${owner}h${hf}/${p.moving ? frame : 'i'}/${hurt}/${cargo}`, 26, g =>
+  sprite(ctx, `${kind}${owner}h${hf}/${p.moving ? frame : 'i'}/${hurt}/${cargo}`, VHALF[kind], g =>
     fn(g, team, { hull: (hf / VANGLES) * TAU, turret: 0, t: tq, moving: p.moving, cargo: cargo / 8, sinceShot: 9, hp: hpq, firing: false }, 'hull'),
   );
   if (hp < 0.5) {
@@ -358,7 +373,7 @@ function drawVehicleCached(ctx: Ctx, kind: VehicleKind, owner: Owner, team: Team
   if (kind === 'hauler') return;
   const tf = Math.round(frac(p.turret / TAU) * VANGLES) % VANGLES;
   const rq = Math.min(8, Math.floor(p.sinceShot / 0.05));
-  sprite(ctx, `${kind}${owner}t${tf}/${rq}/${firing ? 1 : 0}/${p.moving ? frame : 'i'}`, 26, g =>
+  sprite(ctx, `${kind}${owner}t${tf}/${rq}/${firing ? 1 : 0}/${p.moving ? frame : 'i'}`, VHALF[kind], g =>
     fn(g, team, { hull: 0, turret: (tf / VANGLES) * TAU, t: tq, moving: p.moving, cargo: 0, sinceShot: rq === 8 ? 9 : rq * 0.05, hp: hpq, firing }, 'turret'),
   );
 }
@@ -739,7 +754,11 @@ function drawHauler(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
  * carried at port across the chest; firing, it is shouldered and pointing at the target with the
  * stance braced, and a short flash leaves the muzzle.
  */
-function drawTrooper(ctx: Ctx, kind: 'rifleman' | 'rocketeer', team: Team, p: UnitPose) {
+function drawTrooper(ctx: Ctx, kind: TrooperKind, team: Team, p: UnitPose) {
+  if (kind === 'spy' || kind === 'commando' || kind === 'engineer') {
+    drawHeroTrooper(ctx, kind, team, p);
+    return;
+  }
   const hp = clamp01(p.hp, 1);
   const firing = p.firing ?? p.sinceShot < 0.15;
   const step = p.moving ? Math.sin(p.t * 16) : 0;
@@ -869,6 +888,541 @@ function drawTrooper(ctx: Ctx, kind: 'rifleman' | 'rocketeer', team: Team, p: Un
     ctx.fillStyle = '#b8352a';
     ctx.fillRect(-1.1, -2.4, 0.6, 0.9);
     if (hp < 0.25) sparks(ctx, 0, -1, p.t, 2, 3);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Heroes (campaign). Four silhouettes that read at a glance against line troops: the Spy is slim
+// in a long coat and a wide hat, the Commando broad with a beret, a bandolier and a heavy gun, the
+// Engineer in a hard hat and a hi-vis vest with a toolkit, and the Ace a larger prototype tank in
+// gunmetal with team slashes, twin barrels and a commander's pennant. Every hero also carries a
+// gold star and level pips (drawHeroBadge), drawn by the renderer over the stamp.
+
+const GOLD = '#ffd34d';
+const GOLD_DARK = '#8a6412';
+/** Hero infantry are drawn a little larger than line troops (1.6). */
+const HERO_SCALE: Record<string, number> = { spy: 1.85, commando: 2.0, engineer: 1.85 };
+
+/** A five-pointed star centred on (x, y). */
+export function starPath(ctx: Ctx, x: number, y: number, r: number, inner = 0.45) {
+  ctx.beginPath();
+  for (let i = 0; i < 10; i++) {
+    const a = -Math.PI / 2 + (i * Math.PI) / 5;
+    const d = i % 2 ? r * inner : r;
+    if (i) ctx.lineTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
+    else ctx.moveTo(x + Math.cos(a) * d, y + Math.sin(a) * d);
+  }
+  ctx.closePath();
+}
+
+/** A playing-card spade, point up in the current frame: the Ace's emblem. */
+export function spadePath(ctx: Ctx, x: number, y: number, s: number) {
+  ctx.beginPath();
+  ctx.moveTo(x, y - s);
+  ctx.bezierCurveTo(x + s * 0.4, y - s * 0.5, x + s * 1.05, y - s * 0.15, x + s * 0.85, y + s * 0.35);
+  ctx.bezierCurveTo(x + s * 0.7, y + s * 0.7, x + s * 0.25, y + s * 0.65, x + s * 0.08, y + s * 0.35);
+  ctx.lineTo(x + s * 0.3, y + s);
+  ctx.lineTo(x - s * 0.3, y + s);
+  ctx.lineTo(x - s * 0.08, y + s * 0.35);
+  ctx.bezierCurveTo(x - s * 0.25, y + s * 0.65, x - s * 0.7, y + s * 0.7, x - s * 0.85, y + s * 0.35);
+  ctx.bezierCurveTo(x - s * 1.05, y - s * 0.15, x - s * 0.4, y - s * 0.5, x, y - s);
+  ctx.closePath();
+}
+
+/**
+ * The hero mark: a gold star with a dark edge, and five level pips beside it, filled up to
+ * `level`. (x, y) is the star's centre, in world pixels; about 22 px wide in all.
+ */
+export function drawHeroBadge(ctx: Ctx, x: number, y: number, level: number): void {
+  const lv = Math.max(1, Math.min(5, Math.round(level)));
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,10,12,0.72)';
+  rrect(ctx, x - 5, y - 4.6, 23, 9.2, 3);
+  ctx.fill();
+  starPath(ctx, x, y, 4.2);
+  ctx.fillStyle = GOLD;
+  ctx.fill();
+  ctx.strokeStyle = GOLD_DARK;
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  for (let i = 0; i < 5; i++) {
+    const px = x + 6 + i * 2.6;
+    ctx.fillStyle = i < lv ? GOLD : 'rgba(255,255,255,0.2)';
+    if (i < lv) ctx.fillRect(px - 0.9, y - 2, 1.8, 4);
+    else ctx.fillRect(px - 0.9, y - 1.2, 1.8, 2.4);
+  }
+  ctx.restore();
+}
+
+/** The Spy's cloak: a pale band sweeping across him and a few motes, drawn live over the stamp. */
+function cloakShimmer(ctx: Ctx, t: number) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(-1.5, 0, 9, 9, 0, 0, TAU);
+  ctx.clip();
+  ctx.globalCompositeOperation = 'lighter';
+  const ph = frac(t * 0.55);
+  const bx = -14 + ph * 28;
+  const g = ctx.createLinearGradient(bx - 2.2, -2.6, bx + 2.2, 2.6);
+  g.addColorStop(0, 'rgba(150,210,255,0)');
+  g.addColorStop(0.5, 'rgba(180,230,255,0.38)');
+  g.addColorStop(1, 'rgba(150,210,255,0)');
+  alpha(ctx, 1);
+  ctx.fillStyle = g;
+  ctx.fillRect(-10, -10, 20, 20);
+  ctx.restore();
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.fillStyle = '#cfeeff';
+  for (let i = 0; i < 5; i++) {
+    const q = frac(t * 0.8 + i * 0.23);
+    const a = i * 1.9 + t * 0.9;
+    const d = 5 + 3 * Math.sin(t * 1.7 + i);
+    alpha(ctx, Math.sin(q * Math.PI) * 0.55);
+    ctx.fillRect(Math.cos(a) * d - 0.6, Math.sin(a) * d - q * 5 - 0.6, 1.2, 1.2);
+  }
+  alpha(ctx, 1);
+  ctx.restore();
+}
+
+/** The Engineer's torch at work: a blue-white core, flickering, and sparks spitting off it. */
+function weldSpark(ctx: Ctx, facing: number, t: number) {
+  const sc = HERO_SCALE.engineer;
+  const c = Math.cos(facing);
+  const s = Math.sin(facing);
+  const lx = 5.6 * sc;
+  const ly = -1.4 * sc;
+  const x = lx * c - ly * s;
+  const y = lx * s + ly * c;
+  const f = 0.6 + 0.4 * Math.sin(t * 37) * Math.sin(t * 23);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 7);
+  g.addColorStop(0, `rgba(220,240,255,${0.9 * f})`);
+  g.addColorStop(0.35, `rgba(120,190,255,${0.45 * f})`);
+  g.addColorStop(1, 'rgba(80,140,255,0)');
+  alpha(ctx, 1);
+  ctx.fillStyle = g;
+  ctx.fillRect(x - 7, y - 7, 14, 14);
+  ctx.restore();
+  sparks(ctx, x, y, t * 2.5, 5, 7);
+}
+
+function heroLegs(ctx: Ctx, colour: string, width: number, step: number, braced: boolean) {
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = width;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (braced) {
+    ctx.moveTo(-0.6, -1.5);
+    ctx.lineTo(1.8, -2.9);
+    ctx.moveTo(-0.6, 1.5);
+    ctx.lineTo(-3, 2.6);
+  } else {
+    ctx.moveTo(-0.8, -1.4);
+    ctx.lineTo(-0.8 + step * 2.6, -1.8);
+    ctx.moveTo(-0.8, 1.4);
+    ctx.lineTo(-0.8 - step * 2.6, 1.8);
+  }
+  ctx.stroke();
+}
+
+function drawHeroTrooper(ctx: Ctx, kind: 'spy' | 'commando' | 'engineer', team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  const step = p.moving ? Math.sin(p.t * 16) : 0;
+  const skin = '#c8a07a';
+  const sc = HERO_SCALE[kind];
+  ctx.scale(sc, sc);
+  ctx.fillStyle = 'rgba(0,0,0,0.16)';
+  ctx.beginPath();
+  ctx.ellipse(1.6, 2.6, kind === 'commando' ? 6 : 5.4, 3.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(1.4, 2.4, kind === 'commando' ? 4.4 : 3.8, 2.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.save();
+  ctx.rotate(p.turret);
+
+  if (kind === 'spy') {
+    heroLegs(ctx, '#1d1d22', 1.3, step, false);
+    // The long coat, flaring behind him with a split vent; a team-colour belt.
+    ctx.fillStyle = litGrad(ctx, p.turret, 4, '#c4a874', '#6a5636');
+    ctx.beginPath();
+    ctx.moveTo(1.2, -1.9);
+    ctx.quadraticCurveTo(0.2, -2.3, -1.2, -2.2);
+    ctx.lineTo(-5.6 - step * 0.4, -2.8);
+    ctx.lineTo(-6.0, -0.5);
+    ctx.lineTo(-4.9, 0);
+    ctx.lineTo(-6.0, 0.5);
+    ctx.lineTo(-5.6 + step * 0.4, 2.8);
+    ctx.lineTo(-1.2, 2.2);
+    ctx.quadraticCurveTo(0.2, 2.3, 1.2, 1.9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+    ctx.strokeStyle = team.main;
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-1.6, -2.3);
+    ctx.lineTo(-1.6, 2.3);
+    ctx.stroke();
+    // Turned-up collar.
+    ctx.fillStyle = '#7d6745';
+    ctx.beginPath();
+    ctx.ellipse(-0.3, 0, 1.2, 2.2, 0, 0, TAU);
+    ctx.fill();
+    // Pistol arm out when firing; hands in pockets otherwise.
+    if (firing) {
+      ctx.strokeStyle = '#4a453d';
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(0.2, 1.8);
+      ctx.lineTo(3.6, 0.6);
+      ctx.stroke();
+      ctx.fillStyle = '#141416';
+      ctx.fillRect(3.4, 0.25, 2.2, 0.8);
+      ctx.fillStyle = skin;
+      circle(ctx, 3.5, 0.65, 0.5);
+      ctx.fill();
+      if (p.sinceShot < 0.08) {
+        ctx.fillStyle = 'rgba(255,235,150,0.95)';
+        circle(ctx, 6.2, 0.65, 0.9);
+        ctx.fill();
+      }
+    }
+    // Wide-brimmed hat with a team band: the silhouette that names him.
+    ctx.fillStyle = '#26231f';
+    circle(ctx, 0.2, 0, 2.75);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.16)';
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.arc(0.2, 0, 2.55, Math.PI * 0.9, Math.PI * 1.6);
+    ctx.stroke();
+    ctx.fillStyle = '#423c34';
+    ctx.beginPath();
+    ctx.ellipse(0.3, 0, 1.75, 1.45, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = team.main;
+    ctx.lineWidth = 0.55;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.4;
+    ctx.beginPath();
+    ctx.moveTo(-0.9, 0);
+    ctx.lineTo(1.4, 0);
+    ctx.stroke();
+  } else if (kind === 'commando') {
+    heroLegs(ctx, '#262b1d', 1.7, step, firing && !p.moving);
+    // Broad shoulders in olive, team patches on each.
+    ctx.fillStyle = litGrad(ctx, p.turret, 4, '#7c8a5a', '#3c4529');
+    ctx.beginPath();
+    ctx.ellipse(-0.2, 0, 2.8, 4.3, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+    ctx.fillStyle = team.main;
+    ctx.fillRect(-1.1, -4.1, 1.8, 1.1);
+    ctx.fillRect(-1.1, 3.0, 1.8, 1.1);
+    // Bandolier across the chest, brass rounds along it.
+    ctx.strokeStyle = '#3d2b19';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-2.2, -3.2);
+    ctx.lineTo(1.8, 3.3);
+    ctx.stroke();
+    ctx.fillStyle = '#e0b04a';
+    for (let i = 0; i < 6; i++) {
+      const f = 0.1 + i * 0.15;
+      ctx.fillRect(-2.2 + 4 * f - 0.35, -3.2 + 6.5 * f - 0.35, 0.7, 0.7);
+    }
+    // The heavy gun: level and blazing when firing, carried low across the body otherwise.
+    ctx.save();
+    if (!firing) {
+      ctx.translate(0.4, 0.6);
+      ctx.rotate(-0.55);
+    }
+    ctx.strokeStyle = skin;
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(0, -3.2);
+    ctx.lineTo(3.8, 0.9);
+    ctx.moveTo(0, 3.2);
+    ctx.lineTo(1.4, 2.2);
+    ctx.stroke();
+    ctx.fillStyle = '#1a1b1d';
+    ctx.fillRect(0.2, 0.7, 6.4, 2.1);
+    ctx.fillStyle = '#2b2d30';
+    ctx.fillRect(6.4, 1.1, 4.2, 1.3);
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    for (let i = 0; i < 4; i++) ctx.fillRect(6.8 + i * 0.95, 1.2, 0.4, 0.4);
+    ctx.fillStyle = '#4a5233';
+    ctx.fillRect(1.6, 2.8, 2.2, 1.7);
+    ctx.fillStyle = '#c99a3a';
+    ctx.fillRect(2.2, 2.6, 0.5, 0.6);
+    ctx.fillRect(2.9, 2.6, 0.5, 0.6);
+    if (firing && p.sinceShot < 0.1) {
+      ctx.fillStyle = 'rgba(255,235,150,0.95)';
+      ctx.beginPath();
+      ctx.moveTo(10.6, 0.3);
+      ctx.lineTo(13.6, 1.75);
+      ctx.lineTo(10.6, 3.2);
+      ctx.lineTo(11.4, 1.75);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,170,70,0.9)';
+      circle(ctx, 11, 1.75, 1.1);
+      ctx.fill();
+    }
+    ctx.restore();
+    // Head and a beret slumped to one side, with a gold cap badge.
+    ctx.fillStyle = skin;
+    circle(ctx, 0.5, 0, 1.6);
+    ctx.fill();
+    ctx.fillStyle = team.dark;
+    ctx.beginPath();
+    ctx.ellipse(0.1, -0.45, 2.05, 1.75, -0.3, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.4;
+    ctx.stroke();
+    ctx.fillStyle = GOLD;
+    circle(ctx, 1.1, -1.1, 0.5);
+    ctx.fill();
+  } else {
+    heroLegs(ctx, '#2c3a52', 1.4, step, false);
+    // Toolkit in the left hand: a red box with a handle.
+    ctx.fillStyle = '#b8352a';
+    rrect(ctx, -0.6, 3.1, 3.2, 1.9, 0.4);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillRect(-0.6, 3.1, 3.2, 0.5);
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 0.4;
+    ctx.strokeRect(0.3, 2.7, 1.4, 0.5);
+    // Shoulders in the hi-vis vest, reflective stripes across the back; team-colour sleeves.
+    ctx.fillStyle = litGrad(ctx, p.turret, 3.5, '#ffc43a', '#d77d10');
+    ctx.beginPath();
+    ctx.ellipse(-0.1, 0, 2.4, 3.6, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+    ctx.strokeStyle = '#eef3f4';
+    ctx.lineWidth = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(-1.3, -3.2);
+    ctx.lineTo(-1.3, 3.2);
+    ctx.moveTo(-0.2, -3.5);
+    ctx.lineTo(-0.2, 3.5);
+    ctx.stroke();
+    // Torch arm forward (further when welding), the other down to the toolkit.
+    ctx.strokeStyle = team.main;
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    ctx.moveTo(0.2, -2.6);
+    ctx.lineTo(p.repairing ? 3.4 : 2.4, -1.6);
+    ctx.moveTo(0.2, 2.6);
+    ctx.lineTo(1, 3.2);
+    ctx.stroke();
+    ctx.strokeStyle = '#3b3e40';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(p.repairing ? 3.2 : 2.2, -1.6);
+    ctx.lineTo(p.repairing ? 5.6 : 4.4, -1.4);
+    ctx.stroke();
+    ctx.fillStyle = skin;
+    circle(ctx, p.repairing ? 3.3 : 2.3, -1.6, 0.5);
+    ctx.fill();
+    // Hard hat with a brim and a ridge, a team sticker on the side.
+    ctx.fillStyle = '#e8b51f';
+    circle(ctx, 0.3, 0, 2.35);
+    ctx.fill();
+    ctx.fillStyle = '#ffd94a';
+    circle(ctx, 0.35, 0, 1.85);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(120,80,0,0.6)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-1.4, 0);
+    ctx.lineTo(2.1, 0);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    circle(ctx, -0.2, -0.8, 0.6);
+    ctx.fill();
+    ctx.fillStyle = team.main;
+    ctx.fillRect(-0.4, 0.8, 1.1, 0.7);
+  }
+  ctx.restore();
+  if (hp < 0.5) {
+    ctx.fillStyle = '#e9e4d6';
+    ctx.fillRect(-1.6, -2.6, 1.6, 0.9);
+    ctx.fillStyle = '#b8352a';
+    ctx.fillRect(-1.1, -2.6, 0.6, 0.9);
+  }
+}
+
+function drawAce(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 30, 23, 4.5);
+    ctx.save();
+    ctx.rotate(p.hull);
+    treads(ctx, 30, 8.6, 6, p.t, p.moving);
+    // Side skirts over the tracks.
+    ctx.fillStyle = '#22262a';
+    ctx.fillRect(-13, -11.2, 24, 1.6);
+    ctx.fillRect(-13, 9.6, 24, 1.6);
+    // Gunmetal hull, team-colour slashes across it, gold trim.
+    ctx.fillStyle = litGrad(ctx, p.hull, 12, '#68707a', '#24282d');
+    rrect(ctx, -13.5, -7.6, 27, 15.2, 3);
+    ctx.fill();
+    ctx.save();
+    rrect(ctx, -13.5, -7.6, 27, 15.2, 3);
+    ctx.clip();
+    ctx.fillStyle = team.main;
+    for (let i = -2; i < 3; i++) {
+      const x = i * 6.5;
+      ctx.beginPath();
+      ctx.moveTo(x - 1, -8);
+      ctx.lineTo(x + 1.6, -8);
+      ctx.lineTo(x - 2.4, 8);
+      ctx.lineTo(x - 5, 8);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    ctx.strokeStyle = '#d9b04a';
+    ctx.lineWidth = 0.8;
+    rrect(ctx, -12.6, -6.7, 25.2, 13.4, 2.4);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 1;
+    rrect(ctx, -13.5, -7.6, 27, 15.2, 3);
+    ctx.stroke();
+    // Wedge glacis, lit.
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    ctx.beginPath();
+    ctx.moveTo(8, -7.2);
+    ctx.lineTo(13.2, -3.6);
+    ctx.lineTo(13.2, 3.6);
+    ctx.lineTo(8, 7.2);
+    ctx.closePath();
+    ctx.fill();
+    // Engine deck with twin grilles, exhausts, headlights.
+    ctx.fillStyle = 'rgba(0,0,0,0.38)';
+    ctx.fillRect(-12.6, -5.4, 5.6, 4.4);
+    ctx.fillRect(-12.6, 1, 5.6, 4.4);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    for (let i = 0; i < 4; i++) {
+      ctx.fillRect(-12.2 + i * 1.3, -5, 0.6, 3.6);
+      ctx.fillRect(-12.2 + i * 1.3, 1.4, 0.6, 3.6);
+    }
+    ctx.fillStyle = '#2c2a28';
+    ctx.fillRect(-14.2, -7, 2.2, 2.2);
+    ctx.fillRect(-14.2, 4.8, 2.2, 2.2);
+    ctx.fillStyle = p.moving ? '#fff3c4' : '#c9c2a2';
+    ctx.fillRect(12.6, -6.4, 1.3, 1.8);
+    ctx.fillRect(12.6, 4.6, 1.3, 1.8);
+    hullDamage(ctx, hp, p.t, 27, 15, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    const recoil = Math.max(0, 2.8 - p.sinceShot * 12);
+    // Twin long barrels, firing together.
+    for (const off of [-2, 2]) {
+      ctx.save();
+      ctx.translate(0, off);
+      barrel(ctx, 5, 16, 2.4, recoil, firing);
+      ctx.restore();
+    }
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.moveTo(-6.5, -5);
+    ctx.lineTo(5, -5.6);
+    ctx.lineTo(9.6, -1.4);
+    ctx.lineTo(9.6, 3.2);
+    ctx.lineTo(5, 7.6);
+    ctx.lineTo(-6.5, 7);
+    ctx.closePath();
+    ctx.fill();
+    // A long angular turret in gunmetal, a team chevron pointing forward.
+    ctx.fillStyle = litGrad(ctx, p.turret, 8, '#8a939c', '#30353b');
+    ctx.beginPath();
+    ctx.moveTo(-8.5, -6);
+    ctx.lineTo(4, -6.8);
+    ctx.lineTo(8.8, -2.6);
+    ctx.lineTo(8.8, 2.6);
+    ctx.lineTo(4, 6.8);
+    ctx.lineTo(-8.5, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    ctx.fillStyle = team.main;
+    ctx.beginPath();
+    ctx.moveTo(-1, -6.4);
+    ctx.lineTo(4.5, 0);
+    ctx.lineTo(-1, 6.4);
+    ctx.lineTo(-3.6, 6.2);
+    ctx.lineTo(1.6, 0);
+    ctx.lineTo(-3.6, -6.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#1f2327';
+    ctx.fillRect(-10, -4.4, 2, 8.8);
+    // Commander's cupola with a gold ring; the spade on the bustle.
+    ctx.fillStyle = '#1f2a33';
+    circle(ctx, -4.6, -2.4, 2.1);
+    ctx.fill();
+    ctx.strokeStyle = '#d9b04a';
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+    ctx.save();
+    ctx.translate(-5, 3);
+    ctx.rotate(Math.PI / 2);
+    spadePath(ctx, 0, 0, 1.9);
+    ctx.fillStyle = GOLD;
+    ctx.fill();
+    ctx.restore();
+    ctx.fillStyle = '#9fd6ff';
+    ctx.fillRect(4.2, -4.4, 1.4, 1.2);
+    // The commander's pennant on a short mast, streaming behind.
+    const flap = Math.sin(p.t * (p.moving ? 14 : 4)) * (p.moving ? 1.2 : 0.5);
+    ctx.strokeStyle = '#1a1a1a';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(-7.4, -4.6);
+    ctx.lineTo(-7.4, -5.8);
+    ctx.stroke();
+    ctx.fillStyle = team.main;
+    ctx.beginPath();
+    ctx.moveTo(-7.4, -5.8);
+    ctx.quadraticCurveTo(-11, -6.8 + flap, -15, -6.2 + flap * 1.4);
+    ctx.lineTo(-7.4, -3.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = GOLD;
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+    // Whip antenna.
+    const sway = p.moving ? Math.sin(p.t * 9) * 1.5 : 0.4;
+    ctx.strokeStyle = 'rgba(20,20,20,0.75)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(-7.5, 4.6);
+    ctx.quadraticCurveTo(-11.5, 6 + sway * 0.5, -15, 7 + sway);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 

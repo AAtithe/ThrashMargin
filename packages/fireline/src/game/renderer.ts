@@ -1,9 +1,11 @@
 import { dockTile } from '../sim/grid';
-import { BUILDINGS, MAP_H, MAP_W, TICKS_PER_SECOND, UNITS, type BuildingKind } from '../sim/rules';
+import { isDetected } from '../sim/mission';
+import { BUILDINGS, CAPTURE_TICKS, CHARGE_FUSE, ENGINEER_REPAIR_RANGE, MAP_H, MAP_W, POWERS, TICKS_PER_SECOND, UNITS, type BuildingKind } from '../sim/rules';
 import { buildTicksOf, powerOf, producerFor, visibility } from '../sim/state';
-import type { Building, GameState, Unit } from '../sim/types';
+import type { Building, Effect, GameState, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
-import { drawBuilding, drawDock, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
+import { drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
+import { drawCampaignEffect, drawCaptureRing, drawChargeOnBuilding, drawOverdriveGlow, drawReconArea, startCampaignEffect } from './fx/campaign';
 import { Atmosphere } from './fx/atmosphere';
 import { Particles } from './fx/particles';
 import { Scars } from './fx/scars';
@@ -25,6 +27,41 @@ const FIRING_WINDOW = 0.15;
 /** How long, in ticks, a shot lights the ground, and the most such lights in one frame. */
 const LIGHT_TICKS = 1.3;
 const MAX_LIGHTS = 32;
+
+/** Full health of a unit: a per-unit maxHp if the simulation sets one (perks, hero levels), else the kind's. */
+const maxHpOf = (u: Unit) => (u as { maxHp?: number }).maxHp ?? UNITS[u.kind].hp;
+
+/** The sound each campaign effect makes. */
+const CAMPAIGN_SOUND: Partial<Record<Effect['kind'], SoundKind>> = {
+  infiltrate: 'infiltrate',
+  captured: 'capture',
+  charge: 'charge',
+  levelup: 'levelup',
+  recon: 'recon',
+  barrage: 'barrage',
+  reinforce: 'reinforce',
+};
+
+/**
+ * Whether side 0 can see this enemy Spy. Until the simulation's isDetected exists it throws, and
+ * an enemy Spy is then simply not drawn.
+ */
+function spySeen(s: GameState, u: Unit): boolean {
+  try {
+    return isDetected(s, u, 0);
+  } catch {
+    return false;
+  }
+}
+
+/** The Engineer is welding: an own vehicle beside him is short of health. */
+function engineerWelding(s: GameState, u: Unit): boolean {
+  for (const v of s.units) {
+    if (v.owner !== u.owner || UNITS[v.kind].category !== 'vehicle' || v.hp >= maxHpOf(v)) continue;
+    if (Math.hypot(v.x - u.x, v.y - u.y) <= ENGINEER_REPAIR_RANGE) return true;
+  }
+  return false;
+}
 
 /**
  * Draws one frame of the battlefield. Owns nothing the simulation reads: particles, scorch marks
@@ -208,6 +245,10 @@ export class Renderer {
         ctx.fillRect(cx - 2, cy - 7, 4, 14);
         ctx.globalAlpha = 1;
       }
+      if (b.chargeAt !== undefined && b.chargeAt + 1 > rt) {
+        const left = Math.max(0, Math.min(1, (b.chargeAt - rt) / CHARGE_FUSE));
+        drawChargeOnBuilding(ctx, px, py, spec.w * TILE, spec.h * TILE, left, t);
+      }
       if (selected && b.owner === 0 && b.rally) {
         const cx = px + (spec.w * TILE) / 2;
         const cy = py + spec.h * TILE;
@@ -231,7 +272,10 @@ export class Renderer {
       const x = (p.x + (u.x - p.x) * alpha) * TILE;
       const y = (p.y + (u.y - p.y) * alpha) * TILE;
       if (!inView(x, y)) continue;
-      if (u.owner !== 0 && !vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
+      if (u.owner !== 0) {
+        if (!vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
+        if (u.kind === 'spy' && !spySeen(cur, u)) continue;
+      }
       drawn.push({ u, x, y });
     }
     drawn.sort((a, b) => a.y - b.y);
@@ -260,18 +304,42 @@ export class Renderer {
         moving,
         cargo: u.cargo / 600,
         sinceShot,
-        hp: u.hp / spec.hp,
+        hp: u.hp / maxHpOf(u),
         firing: sinceShot < FIRING_WINDOW,
       };
+      const hero = u.hero;
+      if (hero) {
+        upose.shimmer = u.kind === 'spy';
+        upose.repairing = u.kind === 'engineer' && engineerWelding(cur, u);
+        const act = hero.active;
+        if (act && act.kind === 'overdrive' && act.until > cur.tick) {
+          drawOverdriveGlow(ctx, x, y, upose.hull, t, (act.until - rt) / TICKS_PER_SECOND);
+          if (moving && Math.random() < dt * 20) this.fx.fire(x - u.fx * 14, y - u.fy * 14);
+        }
+      }
+      // Your own Spy is cloaked: drawn at about half strength.
+      const cloaked = u.kind === 'spy' && u.owner === 0;
+      if (cloaked) ctx.globalAlpha = 0.55;
       drawUnit(ctx, u.kind, u.owner, x, y, upose);
+      if (cloaked) ctx.globalAlpha = 1;
       if (spec.category === 'vehicle' && moving) {
         this.scars.track(u, x, y, this.fx, dt);
         if (Math.random() < dt * 5) this.fx.exhaust(x - u.fx * 10, y - u.fy * 10);
       }
     }
     for (const { u, x, y } of drawn) {
+      const act = u.hero?.active;
+      if (!act || act.kind !== 'capture') continue;
+      const b = cur.buildings.find(v => v.id === act.target);
+      if (!b) continue;
+      const bs = BUILDINGS[b.kind];
+      // Progress may be kept as ticks or as a fraction; either reads as 0..1 here.
+      const prog = act.progress > 1 || Number.isInteger(act.progress) ? act.progress / CAPTURE_TICKS : act.progress;
+      drawCaptureRing(ctx, x, y, b.x * TILE, b.y * TILE, bs.w * TILE, bs.h * TILE, Math.max(0, Math.min(1, prog)), TEAM[u.owner].main, t);
+    }
+    for (const { u, x, y } of drawn) {
       const spec = UNITS[u.kind];
-      const frac = u.hp / spec.hp;
+      const frac = u.hp / maxHpOf(u);
       const r = spec.category === 'infantry' ? 9 : 14;
       if (ov.selected.has(u.id) || ov.hover === u.id) hpBar(ctx, x - r, y - r - 7, r * 2, frac);
       else if (frac < 1) hpBar(ctx, x - r, y - r - 5, r * 2, frac, true);
@@ -285,6 +353,7 @@ export class Renderer {
       if (vet > 0) chevrons(ctx, x + r + 2, y - r - 2, Math.min(2, vet));
       const group = u.owner === 0 ? ov.groupOf?.get(u.id) : undefined;
       if (group !== undefined) groupBadge(ctx, x, y + r + 1, group);
+      if (u.hero) drawHeroBadge(ctx, x - r + 4, y - r - 13, u.hero.level);
     }
 
     // 6. Shells and rockets in flight.
@@ -338,6 +407,7 @@ export class Renderer {
         this.seen.add(e.id);
         if (e.kind === 'boom') this.burst(x, y, e.size, e.weapon);
         if (e.kind === 'sold') for (let i = 0; i < 18; i++) this.fx.spark(x, y);
+        startCampaignEffect(e, this.fx);
         if (age < 4) this.hear(e, cam, vis);
       }
       if (!inView(x, y, 120)) continue;
@@ -379,6 +449,8 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(x, y, e.size * 10 * (age / 6), 0, Math.PI * 2);
         ctx.stroke();
+      } else if (e.kind !== 'muzzle' && e.kind !== 'sold') {
+        drawCampaignEffect(ctx, e, age, cur, t);
       }
     }
     if (this.seen.size > 4000) {
@@ -416,6 +488,12 @@ export class Renderer {
     }
     this.fogCtx.putImageData(this.fogImg, 0, 0);
     ctx.drawImage(this.fog, 0, 0, MAP_W * TILE, MAP_H * TILE);
+    // Recon sweeps: a soft scanning ring over the revealed area, above the fog.
+    if (cur.recon)
+      for (const [cx, cy, r, until] of cur.recon) {
+        if (until <= cur.tick) continue;
+        drawReconArea(ctx, cx * TILE, cy * TILE, r * TILE, t, (until - rt) / TICKS_PER_SECOND);
+      }
     // Edges of the world.
     ctx.fillStyle = '#050707';
     ctx.fillRect(-400, -400, MAP_W * TILE + 800, 400);
@@ -463,10 +541,13 @@ export class Renderer {
    */
   private hear(e: GameState['effects'][number], cam: Camera, vis: Uint8Array) {
     const k = Math.floor(e.y) * MAP_W + Math.floor(e.x);
-    if (!vis[k]) return;
+    // A recon sweep or a barrage is called by a commander and heard on the radio, fog or not.
+    if (!vis[k] && e.kind !== 'recon' && e.kind !== 'barrage') return;
     let kind: SoundKind;
     let gain = 1;
-    if (e.kind === 'muzzle') kind = e.weapon === 'bullet' ? 'bullet' : e.weapon === 'rocket' ? 'rocket' : e.weapon === 'artillery' ? 'artillery' : 'shell';
+    const campaign = CAMPAIGN_SOUND[e.kind];
+    if (campaign) kind = campaign;
+    else if (e.kind === 'muzzle') kind = e.weapon === 'bullet' ? 'bullet' : e.weapon === 'rocket' ? 'rocket' : e.weapon === 'artillery' ? 'artillery' : 'shell';
     else if (e.kind === 'sold') kind = 'sold';
     else if (e.size >= 2) kind = 'boomBuilding';
     else if (e.size >= 1) kind = 'boomVehicle';
