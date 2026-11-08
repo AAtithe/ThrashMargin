@@ -15,7 +15,9 @@
  * and not disabled; pausing hides the card and resuming brings it back on the same step; after the
  * run the save holds the real effects (a Generator, a Refinery, a Barracks, a hauler, a soldier
  * trained or queued, riflemen moved from where they started); finishing marks the run seen, so a
- * reload does not offer it again, and the Tour button reopens it on the welcome card. No page or
+ * reload does not offer it again, and the Tour button reopens it on the welcome card. Mid-run it
+ * queues a Barracks during the Refinery step: the card must ring the Barracks and explain the busy
+ * queue rather than ring a disabled Refinery button, then return once it is cancelled. No page or
  * console errors. Desktop only: the game asks for a mouse and keyboard.
  *
  * Screenshots only on failure, into TOUR_OUT. See scripts/tours/run.mjs.
@@ -115,6 +117,10 @@ async function main() {
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
+  if (process.env.TOUR_SLOW) {
+    const cdp = await ctx.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: Number(process.env.TOUR_SLOW) });
+  }
   const errors = [];
   page.on('pageerror', e => errors.push('page error: ' + e.message));
   page.on('console', m => {
@@ -148,6 +154,7 @@ async function main() {
     if (cs.step !== 0) problems.push(`the run opened on step ${cs.step}, not the welcome card`);
     let last = -1;
     let pausedOnce = false;
+    let busyOnce = false;
     let finished = false;
     for (let guard = 0; guard < 120 && cs; guard++) {
       if (cs.step < last) problems.push(`went back from step ${last} to ${cs.step}`);
@@ -199,6 +206,24 @@ async function main() {
         continue;
       }
 
+      // A player who fills the structure queue with something else mid-step: the card must ring
+      // that thing and explain, not a disabled button, and come back once it is cancelled.
+      if (!busyOnce && cs.title === 'Build a Refinery' && cs.target === 'fl-build-refinery') {
+        busyOnce = true;
+        await page.locator('#fl-build-barracks').click();
+        await sleep(500);
+        const busy = await cardState(page);
+        if (!busy || busy.target !== 'fl-build-barracks') problems.push(`with a Barracks queued, the Refinery step rings ${busy?.target || 'nothing'}, not the Barracks`);
+        else await checkTarget(page, busy);
+        await page.locator('#fl-build-barracks').click({ button: 'right' });
+        await sleep(500);
+        const back = await cardState(page);
+        if (!back || back.target !== 'fl-build-refinery') problems.push(`after cancelling the Barracks the Refinery step rings ${back?.target || 'nothing'}`);
+        cs = back;
+        if (!cs) break;
+        continue;
+      }
+
       if (!cs.target) {
         problems.push(`step ${cs.step} "${cs.title}" points at nothing`);
         break;
@@ -236,6 +261,12 @@ async function main() {
           await shot(`never-ready-${cs.step}`);
           break;
         }
+      }
+      // Act only on what the card still names: a card that moved on meanwhile is read afresh.
+      const still = await cardState(page);
+      if (!still || still.step !== cs.step || still.target !== cs.target || still.done) {
+        cs = still;
+        continue;
       }
       try {
         await el.click({ timeout: 3000 });

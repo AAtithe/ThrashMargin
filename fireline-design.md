@@ -157,3 +157,16 @@ ready, place, select and order sounds fire on the matching actions; M mutes and 
 seconds of a large firefight produced 41 machine-gun shots, 3 rockets and 3 impacts, the throttle
 holding gunfire to about ten a second. No page errors. `npm run tours -- fireline` and
 `npm run check` still pass.
+
+### 2026-11-08 — Tour fix from CI
+
+CI's tutorial job failed on the tour commit: the run reached "Build a Refinery" with that button
+disabled. The CI screenshot showed 2,400 credits and one item in the structure queue: a second
+Generator. In the one render after a structure was placed, the placing state had cleared but the
+step had not yet latched, so the card rang the build button again, and the fast CI runner clicked
+it (a quick double click would do the same for a player). Two fixes: a step now counts as done in
+the same render the game says so, and keeps ringing what it last rang while it pauses; and when
+another structure occupies the queue, the queue and place steps ring that structure and explain how
+to clear it, instead of ringing a disabled button. The driver now re-reads the card before every
+click and checks the busy-queue path itself. Not reproducible locally even with the CPU slowed
+four-fold; the screenshot is what found it.

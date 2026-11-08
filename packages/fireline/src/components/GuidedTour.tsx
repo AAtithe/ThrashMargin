@@ -94,6 +94,26 @@ interface TourStep {
   manual?: boolean;
 }
 
+/**
+ * Another structure is occupying the one-at-a-time structure queue, so this step's button is
+ * disabled. Ring the thing in the way instead, and say how to clear it, rather than pointing at a
+ * control the game will not let the player use.
+ */
+function busyWith(v: TourView, kind: BuildingKind): BuildingKind | null {
+  const head = v.s.players[0].queues.building[0];
+  return head && head.kind !== kind ? (head.kind as BuildingKind) : null;
+}
+
+const busyBody = (other: BuildingKind) =>
+  `Your Command Yard is busy with a ${BUILDINGS[other].name}, and it builds one structure at a time. Place it when it says Ready, or right-click its button to cancel it for a full refund. Then carry on.`;
+
+const queueTarget = (kind: BuildingKind) => (v: TourView) => {
+  if (v.tab !== 'building') return 'fl-tab-building';
+  const other = busyWith(v, kind);
+  if (other) return v.placing === other ? 'fl-battlefield' : `fl-build-${other}`;
+  return `fl-build-${kind}`;
+};
+
 const queuedOrBuilt = (kind: BuildingKind) => (v: TourView, b: Baseline) =>
   countBuildings(v.s, 0, kind) > b.built[kind] || (v.s.players[0].queues.building.some(q => q.kind === kind) && !b.queued[kind]);
 
@@ -102,12 +122,13 @@ const placed = (kind: BuildingKind) => (v: TourView, b: Baseline) => countBuildi
 /** Ring the build button until the structure is being placed, then the battlefield. */
 const placeTarget = (kind: BuildingKind) => (v: TourView) => {
   if (v.placing === kind) return 'fl-battlefield';
-  if (v.tab !== 'building') return 'fl-tab-building';
-  return `fl-build-${kind}`;
+  return queueTarget(kind)(v);
 };
 
 const placeBody = (kind: BuildingKind, extra: string) => (v: TourView) => {
   const name = BUILDINGS[kind].name;
+  const other = busyWith(v, kind);
+  if (other) return busyBody(other);
   const head = v.s.players[0].queues.building[0];
   if (v.placing === kind)
     return `Move over open ground near your Command Yard. Green squares mean it fits; click to place it. ${extra}`;
@@ -128,9 +149,11 @@ function buildSteps(): TourStep[] {
     },
     {
       title: 'Build a Generator',
-      body: () =>
-        'Everything runs on power, and your Command Yard makes almost none. Click Generator to start building one. You pay the 300 credits now; cancel with a right-click and you get them all back.',
-      target: v => (v.tab !== 'building' ? 'fl-tab-building' : 'fl-build-power'),
+      body: v =>
+        busyWith(v, 'power')
+          ? busyBody(busyWith(v, 'power')!)
+          : 'Everything runs on power, and your Command Yard makes almost none. Click Generator to start building one. You pay the 300 credits now; cancel with a right-click and you get them all back.',
+      target: queueTarget('power'),
       isComplete: queuedOrBuilt('power'),
     },
     {
@@ -141,9 +164,11 @@ function buildSteps(): TourStep[] {
     },
     {
       title: 'Build a Refinery',
-      body: () =>
-        'Credits come from ore, and ore only becomes credits at a Refinery. It is the most important thing you will build, and it arrives with a free hauler. Click Refinery.',
-      target: v => (v.tab !== 'building' ? 'fl-tab-building' : 'fl-build-refinery'),
+      body: v =>
+        busyWith(v, 'refinery')
+          ? busyBody(busyWith(v, 'refinery')!)
+          : 'Credits come from ore, and ore only becomes credits at a Refinery. It is the most important thing you will build, and it arrives with a free hauler. Click Refinery.',
+      target: queueTarget('refinery'),
       isComplete: queuedOrBuilt('refinery'),
     },
     {
@@ -188,6 +213,8 @@ function buildSteps(): TourStep[] {
     {
       title: 'Build a Barracks',
       body: v => {
+        const other = busyWith(v, 'barracks');
+        if (other) return busyBody(other);
         if (v.placing === 'barracks') return 'Place it near the base. Infantry walk out of the door on its south side, so leave a little room below it.';
         return 'Riflemen and rocketeers come from a Barracks. Build one and place it, the same way as before: click, wait for Ready, click again, then choose the ground.';
       },
@@ -288,8 +315,14 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const manual = !!step.manual;
-  const done = latched === stepIndex;
-  const targetId = hidden ? null : step.target(view);
+  // Done as soon as the game says so, in this very render, not one render later when the latch
+  // lands. Otherwise the frame after placing a structure (placing cleared, step not yet latched)
+  // rings the build button again, and a quick second click queues a second one. CI caught this.
+  const done = latched === stepIndex || (!manual && step.isComplete(view, baseline.current.b));
+  const lastTarget = useRef<string | null>(null);
+  // A finished step keeps ringing what it last rang while it pauses, rather than its idle target.
+  const targetId = hidden ? null : done ? lastTarget.current : step.target(view);
+  if (!done) lastTarget.current = targetId;
   const rect = useTargetRect(targetId);
 
   // Latch completion the first time the game says so; later state cannot take it back.
