@@ -2,14 +2,17 @@
  * The Founder's Ledger. Colours are tokens: light on :root, dark under [data-theme="dark"], which
  * theme-init.js sets on <html> before first paint (the portal's shared light/dark choice).
  * Fonts are system stacks: the portal's CSP serves fonts from 'self' only.
- * --ui-ground and --ui-accent hand this palette to the shared loader (lib/Loading.tsx).
+ * The --ui-* aliases hand this palette to the shared loader (lib/Loading.tsx).
  */
 /* Layout: a weekly management pack for one person. Scoreboard first, then the section in hand. Bottle green for progress, brass for coaching. */
 :root{
   --bg:#F1F3EE; --surface:#FFFFFF; --sunk:#E6EAE3; --ink:#14231D; --muted:#56665D; --line:#D3D9D0;
   --accent:#1D5A47; --accent-ink:#FFFFFF; --brass:#9A6B1C; --good:#2B7A4B; --bad:#B0402F;
   --good-bg:#E2F0E6; --bad-bg:#F6E3DF; --brass-bg:#F3EAD8;
-  --ui-ground:var(--bg); --ui-accent:var(--accent);
+  /* The shared loader's names for this palette. Aliases, so dark mode follows by itself. Without the
+     text, rule and bad ones it fell back to the portal's greys and red around a green motif. */
+  --ui-ground:var(--bg); --ui-accent:var(--accent); --ui-text:var(--ink); --ui-text-soft:var(--muted);
+  --ui-text-faint:var(--muted); --ui-rule:var(--line); --ui-panel-raised:var(--sunk); --ui-bad:var(--bad);
   --display:"Avenir Next", "Segoe UI", system-ui, sans-serif;
   --body:"Helvetica Neue", Arial, system-ui, sans-serif;
   --mono:ui-monospace, "SFMono-Regular", Menlo, monospace;
