@@ -1,15 +1,19 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   BUILD_MENU,
   BUILDINGS,
+  DAMAGE_VS,
   INFANTRY_MENU,
   MAX_QUEUE,
   PRODUCER,
   UNITS,
+  TICKS_PER_SECOND,
   VEHICLE_MENU,
+  type Armor,
   type BuildingKind,
   type Category,
   type UnitKind,
+  type WeaponKind,
 } from '../sim/rules';
 import { buildTicksOf, costOf, hasBuilding, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
@@ -33,6 +37,188 @@ const MENUS: Record<Tab, (BuildingKind | UnitKind)[]> = {
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
 const blurbOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].blurb : UNITS[k as UnitKind].blurb);
 const needsOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].requires : UNITS[k as UnitKind].requires);
+
+/** The build hotkeys, in menu order: the first item on the open tab is Q, the second W, and so on. */
+export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y'] as const;
+
+/** Items for each tab, in menu (and hotkey) order. */
+export const menuFor = (tab: Tab) => MENUS[tab];
+
+/** The order Tab cycles through. */
+export const TAB_ORDER: Tab[] = TABS.map(t => t.key);
+
+/** How many units a shift-click or shift+hotkey queues. */
+export const BATCH = 5;
+
+/**
+ * What a press on a build button does, shared by the button and its hotkey. A ready structure
+ * toggles placement; a structure under construction ignores the press; anything else queues one,
+ * or with `batch` (units only) up to five, stopping at the first refusal.
+ */
+export function pressBuild(
+  state: GameState,
+  tab: Tab,
+  kind: BuildingKind | UnitKind,
+  placing: BuildingKind | null,
+  dispatch: (a: GameAction) => boolean,
+  setPlacing: (k: BuildingKind | null) => void,
+  batch: boolean,
+): void {
+  const head = state.players[0].queues[tab][0];
+  if (tab === 'building' && readyStructure(state, 0) === kind) {
+    setPlacing(placing === kind ? null : (kind as BuildingKind));
+    return;
+  }
+  if (tab === 'building' && head && head.kind === kind) return;
+  const n = batch && tab !== 'building' ? BATCH : 1;
+  for (let i = 0; i < n; i++) if (!dispatch({ type: 'queue', category: tab, kind })) break;
+}
+
+const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure' };
+const WEAPON_NAME: Record<WeaponKind, string> = { bullet: 'Machine gun', shell: 'Cannon', rocket: 'Rockets', artillery: 'Artillery shell' };
+const secs = (ticks: number) => {
+  const v = ticks / TICKS_PER_SECOND;
+  return `${Number.isInteger(v) ? v : v.toFixed(1)}s`;
+};
+
+export interface StatRow {
+  label: string;
+  value: string;
+}
+
+/** Every number worth knowing about a unit or structure, straight from rules.ts. */
+export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
+  const isB = kind in BUILDINGS;
+  const b = isB ? BUILDINGS[kind as BuildingKind] : null;
+  const u = isB ? null : UNITS[kind as UnitKind];
+  const spec = (b ?? u)!;
+  const rows: StatRow[] = [];
+  if (kind !== 'hq') {
+    rows.push({ label: 'Cost', value: `${spec.cost.toLocaleString('en-GB')} credits` });
+    rows.push({ label: 'Build time', value: secs(spec.buildTicks) });
+  }
+  rows.push({ label: 'Health', value: `${spec.hp}` });
+  rows.push({ label: 'Armour', value: ARMOR_NAME[u ? u.armor : 'building'] });
+  if (b) {
+    rows.push({ label: 'Power', value: b.power > 0 ? `+${b.power}` : `${b.power}` });
+    rows.push({ label: 'Size', value: `${b.w}×${b.h} tiles` });
+  }
+  if (u) rows.push({ label: 'Speed', value: `${(u.speed * TICKS_PER_SECOND).toFixed(1)} tiles/s` });
+  rows.push({ label: 'Sight', value: `${spec.sight} tiles` });
+  const w = spec.weapon;
+  if (w) {
+    rows.push({ label: 'Weapon', value: `${WEAPON_NAME[w.kind]}, ${w.damage} damage` });
+    rows.push({ label: 'Range', value: `${w.range} tiles${w.minRange ? ` (not under ${w.minRange})` : ''}` });
+    rows.push({ label: 'Reload', value: secs(w.cooldown) });
+    if (w.splash) rows.push({ label: 'Splash', value: `${w.splash} tiles` });
+    const vs = DAMAGE_VS[w.kind];
+    rows.push({
+      label: 'Damage vs',
+      value: (['infantry', 'light', 'heavy', 'building'] as Armor[]).map(a => `${ARMOR_NAME[a].toLowerCase()} ${Math.round(vs[a] * 100)}%`).join(' · '),
+    });
+  }
+  if (spec.requires.length) rows.push({ label: 'Needs', value: spec.requires.map(r => BUILDINGS[r].name).join(', ') });
+  return rows;
+}
+
+/**
+ * A stat card that floats to the left of the sidebar, level with the control it describes. It
+ * never takes the pointer, so it cannot cover anything a click is aimed at, and it sits under
+ * the guided tour's card.
+ */
+export function StatTip({ kind, anchor, extra }: { kind: BuildingKind | UnitKind; anchor: HTMLElement; extra?: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || !anchor.isConnected) return;
+    const a = anchor.getBoundingClientRect();
+    // Clear of the whole sidebar, so the card never hides the neighbouring buttons.
+    const edge = (anchor.closest('aside') ?? anchor).getBoundingClientRect().left;
+    el.style.left = `${Math.max(8, edge - el.offsetWidth - 8)}px`;
+    el.style.top = `${Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, a.top))}px`;
+  });
+  return (
+    <div ref={ref} className="fl-tip" role="tooltip" data-testid="stat-tip">
+      <strong className="fl-tip-title">{nameOf(kind)}</strong>
+      <span className="fl-tip-blurb">{blurbOf(kind)}</span>
+      <dl>
+        {statsOf(kind).map(r => (
+          <div key={r.label}>
+            <dt>{r.label}</dt>
+            <dd>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {extra}
+    </div>
+  );
+}
+
+/** Hover-or-focus state for a StatTip. */
+function useTip<K>() {
+  const [tip, setTip] = useState<{ key: K; el: HTMLElement } | null>(null);
+  const bind = (key: K) => ({
+    onMouseEnter: (e: React.MouseEvent<HTMLElement>) => setTip({ key, el: e.currentTarget }),
+    onMouseLeave: () => setTip(null),
+    onFocus: (e: React.FocusEvent<HTMLElement>) => setTip({ key, el: e.currentTarget }),
+    onBlur: () => setTip(null),
+  });
+  return { tip: tip && tip.el.isConnected ? tip : null, bind, clear: () => setTip(null) };
+}
+
+/**
+ * The credits figure, counting toward the real value rather than jumping, so a hauler's delivery
+ * reads as money arriving. Written straight to the DOM each frame: no React render per frame.
+ * `data-value` always carries the real figure.
+ */
+function Credits({ value }: { value: number }) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const shown = useRef(value);
+  const target = useRef(value);
+  const raf = useRef(0);
+  target.current = value;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || Math.floor(shown.current) === Math.floor(value)) return;
+    let still = false;
+    try {
+      still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    } catch {
+      still = false;
+    }
+    cancelAnimationFrame(raf.current);
+    if (still) {
+      shown.current = value;
+      el.textContent = money(value);
+      return;
+    }
+    el.dataset.trend = value > shown.current ? 'up' : 'down';
+    let last = performance.now();
+    const step = (now: number) => {
+      const dt = Math.min(100, Math.max(0, now - last));
+      last = now;
+      const diff = target.current - shown.current;
+      if (Math.abs(diff) < 1) {
+        shown.current = target.current;
+        el.textContent = money(shown.current);
+        delete el.dataset.trend;
+        return;
+      }
+      let move = diff * (1 - Math.exp(-dt / 140));
+      if (Math.abs(move) < 1) move = Math.sign(diff) * Math.min(1, Math.abs(diff));
+      shown.current += move;
+      el.textContent = money(shown.current);
+      raf.current = requestAnimationFrame(step);
+    };
+    raf.current = requestAnimationFrame(step);
+  }, [value]);
+  useEffect(() => () => cancelAnimationFrame(raf.current), []);
+  return (
+    <span ref={ref} className="fl-credits-value" data-value={Math.floor(value)}>
+      {money(shown.current)}
+    </span>
+  );
+}
 
 /**
  * Credits, power, the build menu and the queues. Everything here reads the live state handed in
@@ -59,15 +245,16 @@ export function BuildPanel({
   const pw = powerOf(state, 0);
   const ready = readyStructure(state, 0);
   const max = Math.max(pw.made, pw.used, 100);
+  const { tip, bind, clear } = useTip<BuildingKind | UnitKind>();
+  // A tab change swaps the buttons out from under the pointer: drop the card with them.
+  useEffect(clear, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
         <div style={creditsBox} id="fl-credits" data-testid="credits" title="Credits. Haulers bring ore to a refinery to earn more.">
           <span style={tiny}>Credits</span>
-          <span style={{ fontFamily: FONT.mono, fontSize: '1.15rem', color: UI.accent, fontVariantNumeric: 'tabular-nums' }}>
-            {money(p.credits)}
-          </span>
+          <Credits value={p.credits} />
         </div>
         <div id="fl-power" style={{ ...creditsBox, flex: 1 }} title={`Power: ${pw.made} made, ${pw.used} used${pw.low ? '. Short: production halves.' : ''}`}>
           <span style={tiny}>
@@ -103,6 +290,7 @@ export function BuildPanel({
               role="tab"
               aria-selected={tab === t.key}
               onClick={() => setTab(t.key)}
+              title={`${t.label} (Tab cycles the lists)`}
               style={{
                 flex: 1,
                 padding: '5px 2px',
@@ -132,7 +320,7 @@ export function BuildPanel({
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 5 }}>
-        {MENUS[tab].map(kind => {
+        {MENUS[tab].map((kind, index) => {
           const q = p.queues[tab];
           const inQueue = q.filter(i => i.kind === kind).length;
           const head = q[0];
@@ -144,11 +332,9 @@ export function BuildPanel({
           const blockedByOther = tab === 'building' && q.length > 0 && !isHead;
           const full = tab !== 'building' && q.length >= MAX_QUEUE;
           const affordable = p.credits >= cost;
-          const disabled = !open || blockedByOther || (!isHead && !isReady && (full || !affordable));
-          const missing = needsOf(kind).filter(r => !hasBuilding(state, 0, r));
-          const title = !open
-            ? `${nameOf(kind)}: needs ${missing.map(r => BUILDINGS[r].name).join(' and ')}`
-            : `${nameOf(kind)}, ${cost} credits. ${blurbOf(kind)}${isHead ? ' Right-click to cancel.' : ''}`;
+          // Unaffordable stays clickable: the click is refused with a toast that says why.
+          const disabled = !open || blockedByOther || (!isHead && !isReady && full);
+          const key = BUILD_KEYS[index]?.toUpperCase();
           return (
             <button
               key={kind}
@@ -156,13 +342,13 @@ export function BuildPanel({
               className={`fl-build${isReady ? ' ready' : ''}`}
               data-testid={`build-${kind}`}
               data-state={!open ? 'locked' : isReady ? 'ready' : isHead ? 'building' : 'idle'}
+              data-afford={affordable ? '1' : '0'}
               disabled={disabled}
-              title={title}
+              aria-label={`${nameOf(kind)}, ${cost} credits${key ? `, hotkey ${key}` : ''}`}
+              aria-keyshortcuts={key}
               aria-pressed={placing === kind}
-              onClick={() => {
-                if (isReady) setPlacing(placing === kind ? null : kind);
-                else if (tab !== 'building' || !isHead) dispatch({ type: 'queue', category: tab, kind });
-              }}
+              {...bind(kind)}
+              onClick={e => pressBuild(state, tab, kind, placing, dispatch, setPlacing, e.shiftKey)}
               onContextMenu={e => {
                 e.preventDefault();
                 if (inQueue) {
@@ -173,7 +359,9 @@ export function BuildPanel({
               style={{ borderColor: placing === kind ? UI.good : undefined, opacity: open ? 1 : 0.42 }}
             >
               <img src={iconFor(kind)} alt="" width={96} height={64} style={{ width: '100%', height: 'auto', borderRadius: 2, display: 'block' }} />
-              <span style={{ fontWeight: 600, lineHeight: 1.1, textAlign: 'center' }}>{nameOf(kind)}</span>
+              <span style={{ fontWeight: 600, lineHeight: 1.1, textAlign: 'center' }}>
+                {key && <kbd className="fl-key">{key}</kbd>} {nameOf(kind)}
+              </span>
               <span style={{ fontFamily: FONT.mono, color: affordable ? UI.textSoft : UI.bad }}>{cost}</span>
               {isHead && !isReady && (
                 <div style={progressWrap}>
@@ -186,6 +374,51 @@ export function BuildPanel({
           );
         })}
       </div>
+      {tip && (
+        <StatTip
+          kind={tip.key}
+          anchor={tip.el}
+          extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={BUILD_KEYS[MENUS[tab].indexOf(tip.key)]} lowPower={pw.low} />}
+        />
+      )}
+    </div>
+  );
+}
+
+/** The live part of a build button's card: what stands in the way right now, and the keys. */
+function BuildTipFooter({
+  state,
+  tab,
+  kind,
+  hotkey,
+  lowPower,
+}: {
+  state: GameState;
+  tab: Tab;
+  kind: BuildingKind | UnitKind;
+  hotkey?: string;
+  lowPower: boolean;
+}) {
+  const p = state.players[0];
+  const missing = needsOf(kind).filter(r => !hasBuilding(state, 0, r));
+  const short = costOf(kind) - p.credits;
+  const notes: string[] = [];
+  if (missing.length) notes.push(`Locked: build a ${missing.map(r => BUILDINGS[r].name).join(' and a ')} first.`);
+  else if (short > 0 && !p.queues[tab].some(q => q.kind === kind)) notes.push(`Need ${money(short)} more credits.`);
+  if (lowPower) notes.push('Power is low: everything builds at half speed.');
+  const k = hotkey?.toUpperCase();
+  const how =
+    tab === 'building'
+      ? `${k ? `${k} or click` : 'Click'} to build, again to place it when ready. Right-click cancels.`
+      : `${k ? `${k} or click` : 'Click'} to train one; with Shift, ${BATCH}. Right-click cancels one.`;
+  return (
+    <div className="fl-tip-foot">
+      {notes.map(n => (
+        <span key={n} className="fl-tip-warn">
+          {n}
+        </span>
+      ))}
+      <span>{how}</span>
     </div>
   );
 }
@@ -201,11 +434,14 @@ export function SelectionPanel({
 }) {
   const units = state.units.filter(u => selected.has(u.id));
   const building = state.buildings.find(b => selected.has(b.id));
+  const { tip, bind } = useTip<BuildingKind | UnitKind>();
+  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} />;
   if (!units.length && !building) {
     return (
       <p style={{ margin: 0, fontSize: '0.74rem', color: UI.textFaint, lineHeight: 1.45 }}>
         Drag a box or click to select. Right-click to move or attack. <kbd>A</kbd> attack-move, <kbd>S</kbd> stop,{' '}
-        <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> to group.
+        <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> to group. <kbd>Q</kbd>–<kbd>Y</kbd> build from the open list, <kbd>Tab</kbd>{' '}
+        switches lists, <kbd>Space</kbd> jumps to the last alert.
       </p>
     );
   }
@@ -216,7 +452,7 @@ export function SelectionPanel({
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <strong style={{ fontSize: '0.85rem', color: mine ? UI.text : UI.enemy }}>
+          <strong tabIndex={0} className="fl-has-tip" style={{ fontSize: '0.85rem', color: mine ? UI.text : UI.enemy }} {...bind(building.kind)}>
             {mine ? '' : 'Enemy '}
             {spec.name}
           </strong>
@@ -225,6 +461,7 @@ export function SelectionPanel({
           </span>
         </div>
         <Bar frac={building.hp / spec.hp} />
+        {tipCard}
         {mine && (
           <>
             <p style={{ margin: 0, fontSize: '0.72rem', color: UI.textSoft, lineHeight: 1.4 }}>
@@ -236,7 +473,7 @@ export function SelectionPanel({
                 style={smallBtn(building.repairing ? UI.good : UI.rule)}
                 disabled={building.hp >= spec.hp && !building.repairing}
                 onClick={() => dispatch({ type: 'repair', id: building.id })}
-                title="Repair, paid for as the work is done"
+                title="Repair (G), paid for as the work is done"
               >
                 {building.repairing ? 'Repairing…' : 'Repair'}
               </button>
@@ -264,7 +501,13 @@ export function SelectionPanel({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
         {[...counts].map(([kind, n]) => (
-          <span key={kind} style={{ fontSize: '0.74rem', padding: '2px 6px', border: `1px solid ${UI.rule}`, borderRadius: 3, color: mine ? UI.text : UI.enemy }}>
+          <span
+            key={kind}
+            tabIndex={0}
+            className="fl-has-tip"
+            {...bind(kind)}
+            style={{ fontSize: '0.74rem', padding: '2px 6px', border: `1px solid ${UI.rule}`, borderRadius: 3, color: mine ? UI.text : UI.enemy }}
+          >
             {n > 1 ? `${n}× ` : ''}
             {mine ? '' : 'Enemy '}
             {UNITS[kind].name}
@@ -272,6 +515,7 @@ export function SelectionPanel({
         ))}
       </div>
       <Bar frac={hp / Math.max(1, max)} />
+      {tipCard}
       {one && one.kind === 'hauler' && mine && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }}>
           Carrying {one.cargo} of 600 ore.{' '}
