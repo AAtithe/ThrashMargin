@@ -99,6 +99,10 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **Adding a game:** one entry in `packages/thrash-margin/shared/games.ts` (feedback, profile and
   admin read it), one line in `api/play/[kind].ts` (its saves endpoint), and its build in
   `scripts/build-portal.sh` and `scripts/check.sh`. No new Vercel function.
+- **Read query values with `queryParam(req, name)`** (`api/_lib/query.ts`), never `req.query`.
+  Vercel builds `req.query` with Node's deprecated `url.parse`, which logged a DeprecationWarning
+  on every request that read it. Route segments (`[kind]`, `[mode]`, `[resource]`) arrive the same
+  way. `npm run test:api` throws if any handler reads `req.query`.
 - **Schema changes** go in `db/schema.sql` and, for the live database, in
   `packages/thrash-margin/api/_lib/schema.ts`, which applies them automatically on first use.
 - **`npm run drive` before trusting anything.** ~370,000 assertions over 20 seeds in a couple of
