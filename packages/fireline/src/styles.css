@@ -577,6 +577,13 @@ kbd {
   color: var(--ui-ground);
   font-weight: 600;
 }
+.fl-camp-btn:disabled,
+.fl-camp-btn.primary:disabled {
+  background: transparent;
+  border-color: var(--ui-rule);
+  color: var(--ui-text-faint);
+  opacity: 1;
+}
 .fl-camp-btn.big {
   font-size: 0.95rem;
   padding: 8px 20px;

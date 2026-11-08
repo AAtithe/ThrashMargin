@@ -1,4 +1,4 @@
-import { dockTile, nearestPassable, occupancy, passable } from './grid';
+import { dockTile, frontRow, nearestPassable, occupancy, passable } from './grid';
 import { idx, inBounds, isWalkable } from './map';
 import {
   BUILD_RADIUS,
@@ -98,7 +98,7 @@ export function placementProblem(s: GameState, owner: Owner, kind: BuildingKind,
     if (foot.has(idx(d.x, d.y))) return 'Blocks a refinery dock';
   }
   if (kind === 'refinery') {
-    const d = { x: x + 1, y: y + spec.h };
+    const d = { x: x + 1, y: frontRow(owner, y, spec.h) };
     if (!inBounds(d.x, d.y) || !isWalkable(s.tiles[idx(d.x, d.y)]) || occ[idx(d.x, d.y)]) return 'The dock pad below needs clear ground';
   }
   // Near something we already own.

@@ -10,6 +10,8 @@ import {
   targetPoint,
   tileOf,
   type Target,
+  doorTile,
+  frontDir,
 } from './grid';
 import { next } from './rng';
 import {
@@ -110,7 +112,8 @@ export function step(s: GameState): void {
       ctx.keepClear.add(d.x + d.y * MAP_W);
     } else if (b.kind === 'barracks' || b.kind === 'factory') {
       const spec = BUILDINGS[b.kind];
-      ctx.keepClear.add(b.x + Math.floor(spec.w / 2) + (b.y + spec.h) * MAP_W);
+      const door = doorTile(b);
+      ctx.keepClear.add(door.x + door.y * MAP_W);
     }
   }
 
@@ -252,15 +255,16 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): vo
   const producer = producerFor(s, owner, cat);
   if (!producer) return;
   const spec = BUILDINGS[producer.kind];
-  const ex = producer.x + Math.floor(spec.w / 2) + 0.5;
-  const ey = producer.y + spec.h + 0.5;
+  const door = doorTile(producer);
+  const ex = door.x + 0.5;
+  const ey = door.y + 0.5;
   const k = nearestPassable(s, ctx.occ, ex, ey, 5);
   if (k < 0) return; // Exit blocked: stays finished at the head of the queue and tries next tick.
   const head = s.players[owner].queues[cat].shift()!;
   const kind = head.kind as UnitKind;
   const u = addUnit(s, owner, kind, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5);
   u.fx = 0;
-  u.fy = 1;
+  u.fy = frontDir(owner);
   ctx.units.set(u.id, u);
   s.players[owner].stats.trained++;
   if (kind === 'hauler') {
@@ -269,7 +273,7 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): vo
     u.order = { type: 'move', x: producer.rally.x, y: producer.rally.y };
   } else {
     // Step clear of the door.
-    u.order = { type: 'move', x: u.x, y: Math.min(u.y + 1.5, 63.5) };
+    u.order = { type: 'move', x: u.x, y: Math.max(0.5, Math.min(u.y + 1.5 * frontDir(owner), 63.5)) };
   }
   if (owner === 0) log(s, `${UNITS[kind].name} ready.`);
 }

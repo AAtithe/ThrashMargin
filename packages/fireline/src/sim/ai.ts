@@ -1,5 +1,5 @@
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
-import { buildingCentre, dist, distToBuilding, occupancy, passable } from './grid';
+import { buildingCentre, dist, distToBuilding, occupancy, passable, laneRow } from './grid';
 import { idx, inBounds } from './map';
 import { next } from './rng';
 import {
@@ -724,8 +724,9 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
         }
       }
     // Leave the row below clear as well, where units come out of barracks and factories.
-    if (clear && inBounds(x, y + spec.h + 1)) {
-      for (let tx = x - 1; tx <= x + spec.w; tx++) if (inBounds(tx, y + spec.h + 1) && occ[idx(tx, y + spec.h + 1)]) clear = false;
+    const lane = laneRow(owner, y, spec.h);
+    if (clear && inBounds(x, lane)) {
+      for (let tx = x - 1; tx <= x + spec.w; tx++) if (inBounds(tx, lane) && occ[idx(tx, lane)]) clear = false;
     }
     if (clear) return { x, y };
   }

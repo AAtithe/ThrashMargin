@@ -1,4 +1,4 @@
-import { buildingCentre, dist, distToBuilding, dockTile, occupancy, passable } from './grid';
+import { buildingCentre, dist, distToBuilding, dockTile, frontRow, laneRow, occupancy, passable } from './grid';
 import { generateMap, idx, inBounds, isWalkable, START_0, START_1 } from './map';
 import { next, seedFromString } from './rng';
 import {
@@ -84,9 +84,10 @@ function toward(a: { x: number; y: number }, b: { x: number; y: number }, by: nu
  * free), without the "near your base" rule, and with a one-tile lane kept all round so a base
  * never walls itself in, as the computer's own builder does.
  */
-function siteOk(s: GameState, occ: Int32Array, kind: BuildingKind, x: number, y: number): boolean {
+function siteOk(s: GameState, occ: Int32Array, owner: Owner, kind: BuildingKind, x: number, y: number): boolean {
   const spec = BUILDINGS[kind];
-  if (!inBounds(x - 1, y - 1) || !inBounds(x + spec.w, y + spec.h + 1)) return false;
+  const lane = laneRow(owner, y, spec.h);
+  if (!inBounds(x - 1, y - 1) || !inBounds(x + spec.w, y + spec.h) || !inBounds(x, lane)) return false;
   for (let ty = y - 1; ty <= y + spec.h; ty++)
     for (let tx = x - 1; tx <= x + spec.w; tx++) {
       const k = idx(tx, ty);
@@ -94,8 +95,8 @@ function siteOk(s: GameState, occ: Int32Array, kind: BuildingKind, x: number, y:
       const inside = tx >= x && tx < x + spec.w && ty >= y && ty < y + spec.h;
       if (inside && (!isWalkable(s.tiles[k]) || s.ore[k] > 0)) return false;
     }
-  // The row below stays clear too: units leave barracks and factories there.
-  for (let tx = x - 1; tx <= x + spec.w; tx++) if (occ[idx(tx, y + spec.h + 1)]) return false;
+  // The lane in front stays clear too: units leave barracks and factories there.
+  for (let tx = x - 1; tx <= x + spec.w; tx++) if (inBounds(tx, lane) && occ[idx(tx, lane)]) return false;
   for (const u of s.units) if (u.x >= x - 0.2 && u.x < x + spec.w + 0.2 && u.y >= y - 0.2 && u.y < y + spec.h + 0.2) return false;
   for (const b of s.buildings) {
     if (b.kind !== 'refinery') continue;
@@ -103,8 +104,8 @@ function siteOk(s: GameState, occ: Int32Array, kind: BuildingKind, x: number, y:
     if (d.x >= x && d.x < x + spec.w && d.y >= y && d.y < y + spec.h) return false;
   }
   if (kind === 'refinery') {
-    const k = idx(x + 1, y + spec.h);
-    if (!isWalkable(s.tiles[k])) return false;
+    const fy = frontRow(owner, y, spec.h);
+    if (!inBounds(x + 1, fy) || !isWalkable(s.tiles[idx(x + 1, fy)])) return false;
   }
   return true;
 }
@@ -123,7 +124,7 @@ function placeNear(s: GameState, owner: Owner, kind: BuildingKind, focus: { x: n
     }
   cands.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0]);
   for (const [x, y] of cands) {
-    if (!siteOk(s, occ, kind, x, y)) continue;
+    if (!siteOk(s, occ, owner, kind, x, y)) continue;
     const b = addBuilding(s, owner, kind, x, y, -100);
     if (kind === 'refinery') {
       const d = dockTile(b);

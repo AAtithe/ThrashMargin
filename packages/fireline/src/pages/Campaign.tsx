@@ -521,7 +521,7 @@ function Roster({ c }: { c: CampaignState }) {
                   </span>
                 </>
               ) : (
-                <span className="fl-small">{by ? `Joins after mission ${by.order}, ${by.title}.` : 'Joins later in the campaign.'}</span>
+                <span className="fl-small">{by ? `Joins in mission ${by.order}, ${by.title}.` : 'Joins later in the campaign.'}</span>
               )}
               <span className="fl-small" style={{ color: UI.text }}>
                 <strong>{ab.name}.</strong> {ab.blurb}
