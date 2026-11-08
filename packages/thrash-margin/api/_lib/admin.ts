@@ -69,7 +69,13 @@ export interface AuditEntry {
     | 'reset_password'
     | 'grant_game'
     | 'revoke_game'
-    | 'set_new_account_games';
+    | 'set_new_account_games'
+    | 'set_require_approval'
+    | 'approve_account'
+    | 'reject_account'
+    | 'suspend'
+    | 'unsuspend'
+    | 'delete_account';
   detail?: string;
 }
 

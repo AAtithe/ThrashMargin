@@ -29,6 +29,8 @@ export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Registered while the portal requires approval: no session yet, so say so rather than sign in.
+  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const game = GAME_TITLES.find(g => destination().startsWith(g.prefix));
 
@@ -39,6 +41,7 @@ export default function Login() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setLoading(true);
     try {
       const body = mode === 'register'
@@ -51,6 +54,12 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed'); return; }
+      if (data.pending) {
+        setNotice(data.message ?? 'Account created. An admin needs to approve it before you can sign in.');
+        setMode('login');
+        setPassword('');
+        return;
+      }
       setToken(data.token);
       setStoredUser({
         userId: data.userId,
@@ -77,7 +86,7 @@ export default function Login() {
 
         <div style={s.tabs}>
           {(['login', 'register'] as const).map(m => (
-            <button key={m} style={mode === m ? s.tabOn : s.tabOff} onClick={() => { setMode(m); setError(null); }}>
+            <button key={m} style={mode === m ? s.tabOn : s.tabOff} onClick={() => { setMode(m); setError(null); setNotice(null); }}>
               {m === 'login' ? 'Sign in' : 'Register'}
             </button>
           ))}
@@ -102,6 +111,7 @@ export default function Login() {
             <p style={{ color: '#3fb950', fontSize: 13, margin: 0 }}>Your account and saved games have been deleted.</p>
           )}
           {error && <p style={s.error}>{error}</p>}
+          {notice && !error && <p style={s.notice} role="status">{notice}</p>}
           <button style={s.btn} type="submit" disabled={loading}>
             {loading ? '…' : game ? (mode === 'login' ? 'Sign in →' : 'Create account →') : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
           </button>
@@ -128,5 +138,6 @@ const s: Record<string, React.CSSProperties> = {
   form:    { display: 'flex', flexDirection: 'column', gap: 10 },
   input:   { padding: '9px 12px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none' },
   error:   { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
+  notice:  { color: 'var(--portal-good)', fontSize: 13, margin: 0, lineHeight: 1.45 },
   btn:     { marginTop: 6, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
 };

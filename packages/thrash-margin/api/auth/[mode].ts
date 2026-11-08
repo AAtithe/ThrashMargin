@@ -5,7 +5,7 @@ import type { Pool } from 'pg';
 import { getDb } from '../_lib/db';
 import { signToken } from '../_lib/auth';
 import { isAdmin } from '../_lib/admin';
-import { gamesFor, newAccountAccess } from '../_lib/access';
+import { gamesFor, newAccountAccess, requiresApproval } from '../_lib/access';
 import { ensureSchema } from '../_lib/schema';
 import { isEmail, MIN_PASSWORD } from '../_lib/validate';
 import { clientAddress, isOverLimit, LIMITS, recordEvent } from '../_lib/rateLimit';
@@ -88,7 +88,7 @@ async function login(req: VercelRequest, res: VercelResponse) {
   }
   try {
     const { rows } = await db.query(
-      'SELECT id, username, password FROM users WHERE username = $1',
+      'SELECT id, username, password, status FROM users WHERE username = $1',
       [username],
     );
     const user = rows[0];
@@ -98,6 +98,17 @@ async function login(req: VercelRequest, res: VercelResponse) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
     db.query('DELETE FROM login_failures WHERE username_key = $1', [key]).catch(() => {});
+
+    // Told only after the right password, so the answer reveals nothing to someone guessing.
+    if (user.status === 'pending') {
+      return res.status(403).json({
+        code: 'pending',
+        message: 'Your account is waiting for an admin to approve it. You can sign in once it has been approved.',
+      });
+    }
+    if (user.status === 'suspended') {
+      return res.status(403).json({ code: 'suspended', message: 'This account has been suspended. Contact an admin.' });
+    }
 
     // Non-blocking: a failed timestamp update shouldn't fail the login itself.
     db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]).catch(err =>
@@ -152,13 +163,22 @@ async function register(req: VercelRequest, res: VercelResponse) {
     // told "Server error" while the account already existed, and their retry was refused as taken.
     // The account starts with the games the Admin page's "new accounts" setting allows, copied on
     // now; NULL (every game) if that setting has never been saved. See _lib/access.ts.
+    // When the Admin page requires approval, the account is created 'pending': no session is issued
+    // and it cannot sign in until an admin approves it (_lib/access.ts).
     await ensureSchema(db);
     const access = await newAccountAccess(db);
+    const pending = await requiresApproval(db);
     await db.query(
-      'INSERT INTO users (id, username, email, password, game_access) VALUES ($1, $2, $3, $4, $5::jsonb)',
-      [id, username, email.toLowerCase(), hash, access === null ? null : JSON.stringify(access)],
+      'INSERT INTO users (id, username, email, password, game_access, status) VALUES ($1, $2, $3, $4, $5::jsonb, $6)',
+      [id, username, email.toLowerCase(), hash, access === null ? null : JSON.stringify(access), pending ? 'pending' : 'active'],
     );
     await recordEvent(db, LIMITS.register, address);
+    if (pending) {
+      return res.status(202).json({
+        pending: true,
+        message: 'Account created. An admin needs to approve it before you can sign in.',
+      });
+    }
     const token = signToken({ userId: id, username });
     const games = access ?? (await gamesFor(db, id));
     return res.status(201).json({ token, userId: id, username, isAdmin: false, games });

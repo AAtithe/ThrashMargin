@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS users (
   -- The games this account may play, as a JSON array of game keys; NULL means every game.
   -- New accounts copy portal_settings 'new_account_games'. See packages/thrash-margin/api/_lib/access.ts.
   game_access    JSONB,
+  -- 'active' | 'pending' (waiting for an admin's approval) | 'suspended'. Only active accounts can
+  -- sign in or use a session (shared/portal/server/auth.ts).
+  status         VARCHAR(16) NOT NULL DEFAULT 'active' CONSTRAINT users_status_check CHECK (status IN ('active', 'pending', 'suspended')),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -32,6 +35,13 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'user';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS game_access JSONB;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'active';
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                 WHERE conname = 'users_status_check' AND conrelid = 'users'::regclass) THEN
+    ALTER TABLE users ADD CONSTRAINT users_status_check CHECK (status IN ('active', 'pending', 'suspended'));
+  END IF;
+END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
                  WHERE conname = 'users_role_check' AND conrelid = 'users'::regclass) THEN
@@ -99,6 +109,7 @@ CREATE TABLE IF NOT EXISTS admin_audit (
   target_id        UUID REFERENCES users(id) ON DELETE SET NULL,
   target_username  VARCHAR(32) NOT NULL,
   action           VARCHAR(32) NOT NULL,  -- 'grant_admin' | 'remove_admin' | 'reset_password' | 'grant_game' | 'revoke_game' | 'set_new_account_games'
+                                         -- | 'set_require_approval' | 'approve_account' | 'reject_account' | 'suspend' | 'unsuspend' | 'delete_account'
   detail           TEXT
 );
 
@@ -111,7 +122,8 @@ CREATE TABLE IF NOT EXISTS rate_events (
 );
 
 -- Portal-wide settings changed on the Admin page. 'new_account_games': the JSON array of game keys a
--- newly registered account starts with (no row: every game).
+-- newly registered account starts with (no row: every game). 'require_approval': true or false (no
+-- row: false), whether a new account waits for an admin's approval before it can sign in.
 CREATE TABLE IF NOT EXISTS portal_settings (
   key         VARCHAR(64) PRIMARY KEY,
   value       JSONB NOT NULL,
