@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { GameState } from '../sim/types';
 import { tradeBlockedAt } from '../sim/marketEvents';
+import { canInvestFurther, courierInvestmentCost } from '../sim/news';
 import { UI, FONT } from '../theme';
 
 const GOLD = UI.brass;
@@ -223,6 +224,17 @@ const STEPS: TourStep[] = [
     targetId: `dispatches-invest-${DEMO_INVEST_CITY}`,
     isComplete: (state, _v, _p, memory) => (state.courierInvestment[DEMO_INVEST_CITY] ?? 0) > memory.courierLondon,
     requiresSection: 'dispatches',
+    // A second run of the tour finds London already at the fastest a courier gets (the first run
+    // invested in it), and a lean purse cannot pay; either way the button is disabled.
+    blockedNote: state => {
+      if (!canInvestFurther(DEMO_INVEST_CITY, state.courierInvestment, state.characters)) {
+        return 'London\'s courier line is already as fast as it gets (the button reads "Fastest"), so there is nothing to buy here — skip this step.';
+      }
+      const cost = courierInvestmentCost(DEMO_INVEST_CITY, state.courierInvestment);
+      return cost > state.cash
+        ? `Investing costs ${cost}f and the house holds ${Math.floor(state.cash)}f, so the button is disabled — skip this step, or come back once you can pay.`
+        : null;
+    },
   },
   {
     title: 'Write a bill of exchange',
@@ -406,12 +418,29 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stepIndex, hidden]);
 
+  const done = (i: number) =>
+    STEPS[i].targetId !== null && STEPS[i].isComplete(state, selectedVesselId, previewCityId, memory);
+  // Every way forward — Start, Skip this, and the auto-advance below — lands on the next real step
+  // not already done, never on one that is: a done step would sit on screen for 700ms with nothing
+  // for the player to do, then advance by itself. On a skip-prologue campaign the ship is selected
+  // by default, so Start passes over "Select your ship". A tour reopened after a first run (the ship
+  // now docked at Antwerp, Antwerp the previewed city) flashed through "Look at Antwerp", "Confirm
+  // the voyage" and "Advance the clock" in two seconds after the cloth was bought, each reading done
+  // on arrival. Back skips the same way in reverse, or it could never get past a done step.
+  const nextOpen = (from: number) => {
+    let i = from + 1;
+    while (i < STEPS.length - 1 && done(i)) i++;
+    return Math.min(i, STEPS.length - 1);
+  };
+  const start = () => setStepIndex(nextOpen(stepIndex));
+
   // Auto-advance once the player actually performs the real action a step asks for. Not while
   // hidden: a step completed by the very action that raised a modal advances once it is dismissed.
+  // Any change to the state re-arms the timer, so `nextOpen` always judges the current state.
   useEffect(() => {
     if (isManual || hidden) return;
     if (!step.isComplete(state, selectedVesselId, previewCityId, memory)) return;
-    const t = setTimeout(() => setStepIndex(i => Math.min(i + 1, STEPS.length - 1)), 700);
+    const t = setTimeout(() => setStepIndex(nextOpen(stepIndex)), 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, selectedVesselId, previewCityId, stepIndex, hidden]);
@@ -419,18 +448,6 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
   // The padded ring is kept inside the window too: a target flush with a screen edge otherwise drew
   // half its ring off the page.
   const note = isManual ? null : step.blockedNote?.(state) ?? null;
-
-  const done = (i: number) =>
-    STEPS[i].targetId !== null && STEPS[i].isComplete(state, selectedVesselId, previewCityId, memory);
-  // Start lands on the first real step not already done — on a skip-prologue campaign the ship is
-  // selected by default, and flashing "Select your ship" at a player who has nothing to do there
-  // read as the tour misfiring. Back skips the same way in reverse: a done step would only bounce
-  // straight forward again 700ms later, so Back could never get past it.
-  const start = () => {
-    let i = stepIndex + 1;
-    while (i < STEPS.length - 1 && done(i)) i++;
-    setStepIndex(i);
-  };
   const back = () => {
     let i = stepIndex - 1;
     while (i > 0 && done(i)) i--;
@@ -509,7 +526,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
         </p>
         <h3 style={TITLE}>{step.title}</h3>
         <p style={BODY}>{step.body}</p>
-        {note && <p style={{ ...BODY, color: UI.bad, marginTop: '-0.4rem' }}>{note}</p>}
+        {note && <p data-tour-note="" style={{ ...BODY, color: UI.bad, marginTop: '-0.4rem' }}>{note}</p>}
         <div style={FOOTER}>
           <button style={GHOST_BUTTON} onClick={onFinish}>
             Skip tour
@@ -531,7 +548,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
               // Every real step needs a way past it that is not "abandon the whole tour": the world
               // keeps running underneath, and a market closure at Antwerp (seed-dependent) left the
               // card pointing at a disabled Sell button with Skip tour as the only control.
-              <button style={BUTTON} onClick={() => setStepIndex(i => Math.min(i + 1, STEPS.length - 1))}>
+              <button style={BUTTON} onClick={start}>
                 Skip this
               </button>
             )}
