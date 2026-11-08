@@ -26,6 +26,34 @@ jobs:
         working-directory: packages/thrash-margin/client
       - run: npm run check
 
+  tours:
+    name: Tutorials played in a browser
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            packages/thrash-margin/client/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm ci --no-audit --no-fund
+        working-directory: packages/thrash-margin/client
+      # Playwright is installed globally rather than added to the repo: only this job needs it, and
+      # scripts/tours/run.mjs resolves it from the global install.
+      - run: npm install -g playwright@1.63.0 && npx -y playwright@1.63.0 install --with-deps chromium
+      - run: npm run tours -- --quick
+        env:
+          TOUR_OUT: ${{ runner.temp }}/tours
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: tour-failures
+          path: ${{ runner.temp }}/tours
+
   api:
     name: Server tests against a Supabase-shaped Postgres
     runs-on: ubuntu-24.04

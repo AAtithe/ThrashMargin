@@ -10,7 +10,9 @@ import PortalNav from '../components/PortalNav';
 import { Button, Label, Modal, ModalHeader, Muted } from '../components/ui';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import type { SaveMeta } from '../hooks/types';
-import { clearToken, getStoredUser } from '../lib/token';
+import { clearToken, getStoredUser, hasGameAccess } from '../lib/token';
+import NoGameAccess from '../lib/NoGameAccess';
+import { BusyLabel, LoadingRows } from '../lib/Loading';
 import { FONT, MAP, UI } from '../theme';
 
 const SETTINGS_KEY = 'tm_last_settings_v2';
@@ -40,18 +42,22 @@ function relTime(ts: number): string {
 }
 
 export default function Lobby() {
-  const { saves, createGame, deleteGame, loading, error } = useGameHybrid();
+  const { saves, savesLoaded, createGame, deleteGame, loading, error } = useGameHybrid();
   const nav = useNavigate();
   const user = getStoredUser();
   const [setup, setSetup] = useState<Setup>(loadSetup);
   const [advanced, setAdvanced] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [review, setReview] = useState(false);
+  // Which start button was pressed, so only that one shows the busy ring while the game is created.
+  const [starting, setStarting] = useState<string | null>(null);
 
   const config = useMemo(() => presetConfig(setup.diff, { mapId: setup.mapId, ...setup.overrides }), [setup]);
 
-  const start = async (cfg: Partial<GameConfig>, name?: string) => {
+  const start = async (cfg: Partial<GameConfig>, name?: string, key = 'new') => {
+    setStarting(key);
     const id = await createGame(cfg, name);
+    setStarting(null);
     if (id) nav(`/game/${id}`);
   };
 
@@ -91,6 +97,12 @@ export default function Lobby() {
     );
   }
 
+  // Game access, set per account on the Admin page. Presentational, like the check above: the server
+  // refuses every request to a game the account does not have (api/play/[kind].ts).
+  if (!hasGameAccess(user, 'thrash_margin')) {
+    return <NoGameAccess title="Thrash Margin" header={<PortalNav variant="header" />} footer={<PortalNav variant="footer" />} />;
+  }
+
   return (
     <div style={{ minHeight: '100vh', background: UI.ground }}>
       <PortalNav variant="header" />
@@ -107,6 +119,12 @@ export default function Lobby() {
 
       <main style={{ maxWidth: 1080, margin: '0 auto', padding: '12px 20px 40px', display: 'grid', gap: 26 }}>
         {error && <div role="alert" style={{ background: UI.dangerBg, border: `1px solid ${UI.bad}`, color: UI.dangerText, padding: '10px 14px', borderRadius: 8, fontSize: 13 }}>{error}</div>}
+
+        {!savesLoaded && (
+          <Section title="Continue">
+            <LoadingRows rows={2} label="Loading your campaigns" />
+          </Section>
+        )}
 
         {active.length > 0 && (
           <Section title="Continue">
@@ -126,7 +144,7 @@ export default function Lobby() {
                 <div style={{ fontWeight: 700, fontSize: 14 }}>New here?</div>
                 <Muted>Eight territories, one rival and a coach that walks you through your first turns.</Muted>
               </div>
-              <Button tone="primary" onClick={() => void start(presetConfig('easy', { mapId: 'tutorial' }), 'Tutorial')} disabled={loading}>Play the tutorial</Button>
+              <Button tone="primary" onClick={() => void start(presetConfig('easy', { mapId: 'tutorial' }), 'Tutorial', 'tutorial')} disabled={loading}>{loading && starting === 'tutorial' ? <BusyLabel>Starting…</BusyLabel> : 'Play the tutorial'}</Button>
             </div>
 
             <div>
@@ -175,16 +193,16 @@ export default function Lobby() {
 
             <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
               <Button tone="quiet" onClick={() => setReview(true)}>Review settings</Button>
-              <Button tone="primary" icon="next" onClick={startNew} disabled={loading}>{loading ? 'Starting…' : 'Start campaign'}</Button>
+              <Button tone="primary" icon="next" onClick={startNew} disabled={loading}>{loading && starting === 'new' ? <BusyLabel>Starting…</BusyLabel> : 'Start campaign'}</Button>
             </div>
           </div>
         </Section>
 
         <Section title="The campaign">
           <Muted style={{ marginBottom: 10 }}>Three linked acts of rising difficulty. Win an act to unlock the next, with gold and technologies carried forward.</Muted>
-          <CampaignActs saves={saves} onStart={sc => void start(presetConfig(sc.diff, {
+          <CampaignActs saves={saves} busy={loading ? starting : null} onStart={sc => void start(presetConfig(sc.diff, {
             mapId: sc.mapId, campaignScenario: sc.index, campaignBonusGold: sc.bonusGold, campaignBonusTechs: sc.bonusTechs,
-          }), sc.title)} />
+          }), sc.title, `act-${sc.index}`)} />
         </Section>
 
         <Section title="Achievements">
@@ -370,7 +388,7 @@ function SaveCard({ save, confirming, onConfirm, onOpen, onDelete }: {
   );
 }
 
-function CampaignActs({ saves, onStart }: { saves: SaveMeta[]; onStart: (s: CampaignScenario) => void }) {
+function CampaignActs({ saves, busy, onStart }: { saves: SaveMeta[]; busy: string | null; onStart: (s: CampaignScenario) => void }) {
   const best = saves.filter(s => s.status === 'victory' && s.campaignScenario !== undefined).reduce((m, s) => Math.max(m, s.campaignScenario!), -1);
   return (
     <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
@@ -387,7 +405,7 @@ function CampaignActs({ saves, onStart }: { saves: SaveMeta[]; onStart: (s: Camp
             <Muted>{sc.desc}</Muted>
             {sc.bonusGold > 0 && <div style={{ fontSize: 11.5, color: UI.gold }}>Carried forward: {sc.bonusGold} gold{sc.bonusTechs.length ? ` and ${sc.bonusTechs.length} technolog${sc.bonusTechs.length === 1 ? 'y' : 'ies'}` : ''}</div>}
             <div style={{ marginTop: 4 }}>
-              {unlocked ? <Button small tone={done ? 'default' : 'primary'} onClick={() => onStart(sc)}>{done ? 'Replay' : 'Begin'}</Button>
+              {unlocked ? <Button small tone={done ? 'default' : 'primary'} onClick={() => onStart(sc)} disabled={busy !== null}>{busy === `act-${sc.index}` ? <BusyLabel>Starting…</BusyLabel> : done ? 'Replay' : 'Begin'}</Button>
                 : <span style={{ fontSize: 11.5, color: UI.textFaint }}>Win the previous act to unlock.</span>}
             </div>
           </div>

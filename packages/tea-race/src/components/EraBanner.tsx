@@ -57,7 +57,7 @@ export default function EraBanner({ state }: { state: GameState }) {
           {byLevel ? `Stage ${shown.era} of ${schedule.length}` : `Era ${roman(shown.era)}`}
         </span>
         <span style={{ fontFamily: FONT.display, fontSize: '0.9rem', color: UI.brass }}>{shown.name}</span>
-        <span style={{ fontFamily: FONT.body, fontSize: '0.76rem', color: UI.textSoft }}>
+        <span className="tr-hide-phone" style={{ fontFamily: FONT.body, fontSize: '0.76rem', color: UI.textSoft }}>
           {coming
             ? byLevel
               ? `Reach level ${coming.level} to open ${coming.name.toLowerCase()}${brings.length ? `: ${brings.join(', ')}` : ''}.`
@@ -65,7 +65,7 @@ export default function EraBanner({ state }: { state: GameState }) {
             : 'Every rule of this game is now in play.'}
         </span>
       </div>
-      <div style={{ position: 'relative', height: 18, flex: '1 1 220px', minWidth: 160 }} aria-hidden="true">
+      <div className="tr-era-track" style={{ position: 'relative', height: 18, flex: '1 1 220px', minWidth: 160 }} aria-hidden="true">
         <div style={{ position: 'absolute', left: 0, right: 0, top: 8, height: 2, background: UI.rule }} />
         <div style={{ position: 'absolute', left: 0, width: now, top: 8, height: 2, background: UI.brass }} />
         {schedule.map(e => (

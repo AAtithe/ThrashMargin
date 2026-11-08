@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { advance, whyIllegal } from '../sim/actions';
 import { bribeCost } from '../sim/content';
@@ -8,6 +8,9 @@ import { FONT, UI } from '../theme';
 import { duration, gr } from '../lib/format';
 import StatusRail from '../components/StatusRail';
 import PortalNav from '../components/PortalNav';
+import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { SESSION_EXPIRED } from '../hooks/useGameCloud';
+import { clearToken } from '../lib/portalAuth';
 import Chronicle from '../components/Chronicle';
 import { Button, Panel } from '../components/ui';
 import ActButton from '../components/places/ActButton';
@@ -24,6 +27,7 @@ import Duels from '../components/places/Duels';
 import Bank from '../components/places/Bank';
 import type { PlaceProps, Verb } from '../components/types';
 import ThemeToggle from '../components/ThemeToggle';
+import GuidedTour, { hasSeenGuidedTour, planFirstHours, type TourPlan } from '../components/GuidedTour';
 
 const PLACES = [
   { id: 'home', name: 'Home', Panel: Home },
@@ -47,8 +51,19 @@ const TICK_MS = 60_000;
 export default function GameScreen() {
   const { id } = useParams<{ id: string }>();
   const { state, error, loadGame, dispatch } = useGameHybrid();
+  const navigate = useNavigate();
   const [tickNow, setNow] = useState(() => Date.now());
   const [place, setPlace] = useState<PlaceId>('home');
+
+  /**
+   * The guided first hour, once started. Latched in state rather than recomputed per render: the
+   * plan names a particular yard, scheme and post, chosen from the character as they stood when
+   * the run opened, and one that re-picked itself on every tick would rewrite the steps under the
+   * player's feet — this screen re-renders once a second.
+   */
+  const [tourPlan, setTourPlan] = useState<TourPlan | null>(null);
+  /** Whether the once-per-browser offer has already been considered for this character. */
+  const [tourOffered, setTourOffered] = useState(false);
 
   // Every hook sits above the early returns below: a hook after one renders conditionally, which
   // both tsc and the driver miss and which leaves a blank screen.
@@ -75,33 +90,54 @@ export default function GameScreen() {
   const now = Math.max(tickNow, state?.clock ?? 0);
   const view = useMemo(() => (state ? advance(state, now) : null), [state, now]);
 
+  // Offer the guided first hour unasked to a character who has not done anything yet, the first
+  // time this browser sees one. Every hook sits above the early returns below.
+  useEffect(() => {
+    if (tourOffered || !view) return;
+    const untouched = view.counters.schemes === 0 && view.job === null && view.missions.done.length === 0;
+    if (!untouched) return;
+    setTourOffered(true);
+    if (hasSeenGuidedTour()) return;
+    const plan = planFirstHours(view);
+    if (plan) setTourPlan(plan);
+  }, [view, tourOffered]);
+
   const act = useCallback((v: Verb) => dispatch({ ...v, at: Date.now() } as GameAction), [dispatch]);
   const why = useCallback(
     (v: Verb) => (view ? whyIllegal(view, { ...v, at: now } as GameAction) : 'Loading'),
     [view, now],
   );
 
-  if (error && !state) {
-    return (
-      <Holding>
-        <p style={{ color: UI.bad, fontSize: '0.88rem', margin: '0 0 1rem', lineHeight: 1.5 }}>{error}</p>
-        <Link to="/" style={{ color: UI.brass, fontSize: '0.85rem' }}>← Back to your characters</Link>
-      </Holding>
-    );
-  }
   if (!view) {
     return (
-      <Holding>
-        <p style={{ color: UI.textSoft, fontSize: '0.85rem', margin: 0, fontStyle: 'italic' }}>
-          The bells of the Belfort ring the hour. Fetching your character…
-        </p>
-      </Holding>
+      <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, color: UI.text, fontFamily: FONT.body }}>
+        <PortalNav variant="header" />
+        <LoadingScreen
+          fullPage={false}
+          motif="coins"
+          caption="The bells of the Belfort ring the hour. Fetching your character…"
+          error={state ? null : error === SESSION_EXPIRED ? SIGN_IN_AGAIN : error}
+          actions={
+            error === SESSION_EXPIRED ? (
+              <Button tone="primary" onClick={() => { clearToken(); navigate('/'); }}>Sign in again</Button>
+            ) : (
+              <>
+                {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
+                <Link to="/" style={{ color: UI.brass, fontSize: '0.85rem', alignSelf: 'center' }}>← Back to your characters</Link>
+              </>
+            )
+          }
+        />
+        <PortalNav variant="footer" />
+      </div>
     );
   }
 
   const props: PlaceProps = { s: view, now, act, why };
   const Current = PLACES.find(p => p.id === place)!.Panel;
   const st = view.status;
+  /** A first hour the run could teach from where the character stands, or null if there isn't one. */
+  const tourCandidate: TourPlan | null = tourPlan || st.kind !== 'free' ? null : planFirstHours(view);
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: UI.ground, color: UI.text, fontFamily: FONT.body }} className="nr-board">
@@ -112,8 +148,13 @@ export default function GameScreen() {
             ← Characters
           </Link>
           <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
+          {tourCandidate && (
+            <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)} style={{ marginRight: '0.6rem' }}>
+              Guided first hour
+            </Button>
+          )}
           {PLACES.map(p => (
-            <Button key={p.id} tone={p.id === place ? 'primary' : 'quiet'} onClick={() => setPlace(p.id)}>
+            <Button key={p.id} id={`nr-place-${p.id}`} tone={p.id === place ? 'primary' : 'quiet'} onClick={() => setPlace(p.id)}>
               {p.name}
             </Button>
           ))}
@@ -144,24 +185,17 @@ export default function GameScreen() {
         <Current {...props} />
       </main>
       <Chronicle s={view} />
+
+      {tourPlan && (
+        <GuidedTour
+          hidden={st.kind !== 'free'}
+          view={{ s: view, place }}
+          plan={tourPlan}
+          onFinish={() => setTourPlan(null)}
+        />
+      )}
     </div>
   );
 }
 
 /** The portal chrome and a titled card, for the moments before a character is on screen. */
-function Holding({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, color: UI.text, fontFamily: FONT.body }}>
-      <PortalNav variant="header" />
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem 1.5rem' }}>
-        <div style={{ border: `1px solid ${UI.rule}`, background: UI.panelRaised, padding: '2rem 2.2rem', maxWidth: 420, textAlign: 'center' }}>
-          <h1 style={{ fontFamily: FONT.display, fontSize: '1.8rem', letterSpacing: '0.08em', color: UI.brass, margin: '0 0 0.8rem', fontWeight: 'normal' }}>
-            Niccolò Rising
-          </h1>
-          {children}
-        </div>
-      </div>
-      <PortalNav variant="footer" />
-    </div>
-  );
-}

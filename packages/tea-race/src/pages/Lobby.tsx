@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Hero } from '../components/Art';
 import { useGameHybrid } from '../hooks/useGameHybrid';
-import { getStoredUser } from '../lib/portalAuth';
+import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
+import NoGameAccess from '../lib/NoGameAccess';
 import {
   DEFAULT_DIFFICULTY,
   DIFFICULTIES,
@@ -21,6 +22,7 @@ import { VOYAGE_ROUNDS } from '../sim/voyage';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
+import { BusyLabel, LoadingRows } from '../lib/Loading';
 
 /**
  * Every optional rule, in the order they are offered. One row here is the whole of a switch: the
@@ -191,7 +193,7 @@ function presetFor(h: FullHazards): PresetName | null {
 
 export default function Lobby() {
   const navigate = useNavigate();
-  const { saves, error, createGame, loadGame, deleteGame } = useGameHybrid();
+  const { saves, savesLoaded, error, createGame, loadGame, deleteGame } = useGameHybrid();
   const user = getStoredUser();
 
   const [name, setName] = useState('');
@@ -288,6 +290,12 @@ export default function Lobby() {
         <PortalNav variant="footer" />
       </div>
     );
+  }
+
+  // Game access, set per account on the Admin page. Presentational, like the check above: the server
+  // refuses every request to a game the account does not have (api/play/[kind].ts).
+  if (!hasGameAccess(user, 'tea_race')) {
+    return <NoGameAccess title="The Tea Race" header={<PortalNav variant="header" />} footer={<PortalNav variant="footer" />} />;
   }
 
   return (
@@ -524,13 +532,15 @@ export default function Lobby() {
 
           <div>
             <Button tone="primary" disabled={tooMany || busy} onClick={begin}>
-              {busy ? 'Casting off…' : `Begin with ${total} captains →`}
+              {busy ? <BusyLabel>Casting off…</BusyLabel> : `Begin with ${total} captains →`}
             </Button>
           </div>
         </Panel>
 
         <Panel title="Your voyages" aside={saves.length > 0 ? <Label>{saves.length}</Label> : undefined}>
-          {saves.length === 0 ? (
+          {!savesLoaded ? (
+            <LoadingRows rows={2} label="Loading your voyages" />
+          ) : saves.length === 0 ? (
             <p style={{ ...bodySmall, margin: 0, color: UI.textFaint }}>
               No voyages yet. These are saved to your account.
             </p>

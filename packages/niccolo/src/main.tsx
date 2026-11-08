@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Lobby from './pages/Lobby';
 import { applyScheme, initialScheme } from './lib/colorScheme';
+import CampaignLoading from './components/CampaignLoading';
 import './portal.css';
 import './styles.css';
 // Loaded only when a campaign is opened. The game screen carries the 385 KB world chart and the
@@ -21,7 +22,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route
           path="/game/:id"
           element={
-            <Suspense fallback={<div style={{ padding: 32, color: '#9a8a6a', fontFamily: 'Georgia, serif' }}>Opening the ledger…</div>}>
+            <Suspense fallback={<CampaignLoading />}>
               <GameScreen />
             </Suspense>
           }

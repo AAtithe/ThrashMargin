@@ -5,6 +5,7 @@ import { requireUser, signToken } from './_lib/auth';
 import { isEmail, MIN_PASSWORD } from './_lib/validate';
 import { handleCors } from './_lib/cors';
 import { isAdmin, lockAdmins } from './_lib/admin';
+import { resolveAccess } from './_lib/access';
 import { countsByGame, GAMES_BY_TITLE_SQL } from '../shared/games';
 
 // /api/profile — a signed-in user's own account. Unlike /api/admin/users, this only ever
@@ -22,7 +23,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const { rows } = await db.query(
         `SELECT
-           u.id, u.username, u.email, u.created_at, u.last_login_at,
+           u.id, u.username, u.email, u.created_at, u.last_login_at, u.game_access,
            ${GAMES_BY_TITLE_SQL} AS by_game,
            COUNT(g.id) FILTER (WHERE g.status = 'active')      AS active_games,
            COUNT(g.id) FILTER (WHERE g.status = 'victory')     AS wins
@@ -44,6 +45,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         activeGames: Number(r.active_games),
         wins: Number(r.wins),
         isAdmin: await isAdmin(db, user.userId),
+        games: resolveAccess(r.game_access),
       });
     } catch (err) {
       console.error('get profile error', err);

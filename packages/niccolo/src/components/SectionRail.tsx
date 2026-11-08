@@ -132,14 +132,18 @@ export default function SectionRail({ sections, active, onSelect }: SectionRailP
         return (
           <div key={s.id} style={CLUSTER}>
             {startsNewGroup && i > 0 && <span style={DIVIDER} />}
-            {startsNewGroup && s.group && <span style={GROUP_LABEL}>{s.group}</span>}
+            {startsNewGroup && s.group && <span style={GROUP_LABEL} className="niccolo-rail-label">{s.group}</span>}
             <button
               id={`section-tab-${s.id}`}
               style={s.id === active ? TAB_ACTIVE : TAB}
               onClick={() => onSelect(s.id)}
+              title={s.label}
+              aria-label={s.label}
             >
               <span style={GLYPH}>{s.glyph}</span>
-              <span style={LABEL}>{s.label}</span>
+              {/* On a phone the labels go (styles.css) and the row of glyphs fits on one line, so the
+                  chart keeps a usable height; the title and aria-label still name each tab. */}
+              <span style={LABEL} className="niccolo-rail-label">{s.label}</span>
               {s.badge && <span style={BADGE} />}
             </button>
           </div>

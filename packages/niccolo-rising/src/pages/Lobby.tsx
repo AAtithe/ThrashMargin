@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FONT, UI } from '../theme';
 import { useGameHybrid } from '../hooks/useGameHybrid';
-import { getStoredUser } from '../lib/portalAuth';
+import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
+import NoGameAccess from '../lib/NoGameAccess';
 import PortalNav from '../components/PortalNav';
 import type { SaveMeta } from '../hooks/useGameLocal';
+import { BusyLabel, LoadingRows } from '../lib/Loading';
 
 const PAGE: React.CSSProperties = { minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, color: UI.text, fontFamily: FONT.body };
 const CONTENT: React.CSSProperties = { maxWidth: 640, margin: '0 auto', padding: '2rem 1.5rem', flex: 1, width: '100%', boxSizing: 'border-box' };
@@ -24,7 +26,7 @@ function relTime(ts: number): string {
 }
 
 export default function Lobby() {
-  const { saves, error, createGame, deleteGame } = useGameHybrid();
+  const { saves, savesLoaded, error, createGame, deleteGame } = useGameHybrid();
   const nav = useNavigate();
   const user = getStoredUser();
   const [name, setName] = useState('');
@@ -73,6 +75,12 @@ export default function Lobby() {
     );
   }
 
+  // Game access, set per account on the Admin page. Presentational, like the check above: the server
+  // refuses every request to a game the account does not have (api/play/[kind].ts).
+  if (!hasGameAccess(user, 'niccolo_rising')) {
+    return <NoGameAccess title="Niccolò Rising" header={<PortalNav variant="header" />} footer={<PortalNav variant="footer" />} />;
+  }
+
   return (
     <div style={PAGE}>
       <PortalNav variant="header" />
@@ -96,12 +104,13 @@ export default function Lobby() {
         <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem' }}>
           <input style={FIELD} placeholder="Claes" value={name} onChange={e => setName(e.target.value)} maxLength={40} />
           <button style={BUTTON} onClick={handleNew} disabled={starting}>
-            {starting ? '…' : 'Begin →'}
+            {starting ? <BusyLabel>Beginning…</BusyLabel> : 'Begin →'}
           </button>
         </div>
 
         <p style={LABEL}>Your characters</p>
-        {saves.length === 0 && <p style={{ color: UI.textFaint, fontSize: '0.85rem' }}>None yet. Begin one above.</p>}
+        {!savesLoaded && <LoadingRows rows={2} label="Loading your characters" />}
+        {savesLoaded && saves.length === 0 && <p style={{ color: UI.textFaint, fontSize: '0.85rem' }}>None yet. Begin one above.</p>}
         {saves.map(save => (
           <SaveCard
             key={save.id}

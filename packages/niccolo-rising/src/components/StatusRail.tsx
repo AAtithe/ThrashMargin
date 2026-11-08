@@ -69,9 +69,12 @@ export default function StatusRail({ s, now }: { s: GameState; now: number }) {
         </div>
       )}
       <div style={{ fontSize: '0.78rem', color: status.colour, margin: '0.4rem 0 1rem' }}>{status.text}</div>
-      {BAR_IDS.map(bar => (
-        <BarLine key={bar} s={s} bar={bar} now={now} />
-      ))}
+      {/* The guided first hours spotlight this block whole: the four bars are one lesson, not four. */}
+      <div id="nr-bars">
+        {BAR_IDS.map(bar => (
+          <BarLine key={bar} s={s} bar={bar} now={now} />
+        ))}
+      </div>
       <div style={{ fontSize: '0.7rem', color: UI.textFaint, marginTop: '0.8rem', lineHeight: 1.4 }}>
         Lodging: {currentLodging(s).name}
         {s.course && <div style={{ marginTop: 4 }}>Studying, {duration(s.course.ends - now)} left</div>}

@@ -151,5 +151,5 @@ export function useGameLocal() {
     setSaves(next);
   }, []);
 
-  return { state, error, saves, createGame, loadGame, dispatch, deleteGame };
+  return { state, error, savesLoaded: true, saves, createGame, loadGame, dispatch, deleteGame };
 }

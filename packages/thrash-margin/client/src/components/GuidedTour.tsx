@@ -3,7 +3,7 @@
  *
  * It spotlights a control in the live UI, waits for the player to actually use it, and moves on
  * when the game state says they did. Everything counts: the troops are real troops, the attack is
- * a real attack, and a player who finishes has run one complete turn — select, recruit, build,
+ * a real attack, and a player who finishes has run one complete turn — select, build, recruit,
  * pick a target, attack, end the turn — rather than read about it.
  *
  * ## What was already here, and why this is not it
@@ -85,6 +85,10 @@ function neighboursOf(state: GameState, id: number): Territory[] {
 }
 
 const mine = (state: GameState) => state.nodes.filter(n => n.owner === state.activeFaction);
+const battlesOf = (state: GameState) => {
+  const st = state.factions[state.activeFaction]?.stats;
+  return st ? st.battlesWon + st.battlesLost : 0;
+};
 
 /**
  * Work out the turn to teach, from the board as it stands.
@@ -119,7 +123,8 @@ export function planFirstTurn(state: GameState): TourPlan | null {
     .sort((a, b) => BUILDINGS[a].cost.gold + BUILDINGS[a].cost.mat - (BUILDINGS[b].cost.gold + BUILDINGS[b].cost.mat));
   if (affordable.length === 0) return null;
 
-  if (purse.gold < state.config.recruitCost) return null;
+  // Recruiting comes after the build, so the gold has to cover both.
+  if (purse.gold - BUILDINGS[affordable[0]].cost.gold < state.config.recruitCost) return null;
 
   return { homeId: home.id, targetId: targets[0].id, building: affordable[0] };
 }
@@ -139,16 +144,16 @@ export interface TourView {
 interface TourMemory {
   troops: number;
   buildings: number;
-  territories: number;
   turn: number;
-  logLength: number;
+  /** Battles the player had fought when the run opened, won or lost. */
+  battles: number;
 }
 
 interface TourStep {
   title: string;
-  body: (v: TourView, plan: TourPlan) => string;
+  body: (v: TourView, plan: TourPlan, memory: TourMemory) => string;
   /** One id, or several in order of preference — the first that is on screen is spotlit. */
-  target: (v: TourView, plan: TourPlan) => string | string[] | null;
+  target: (v: TourView, plan: TourPlan, memory: TourMemory) => string | string[] | null;
   isComplete: (v: TourView, plan: TourPlan, memory: TourMemory) => boolean;
 }
 
@@ -159,7 +164,7 @@ const INTRO: TourStep = {
   title: 'One turn, start to finish',
   body: (v, plan) =>
     `I will point at one control at a time and wait while you use it. This is your real campaign — everything you do here counts. ` +
-    `We will raise troops at ${nameOf(v, plan.homeId)}, build something that pays for itself, and take ${nameOf(v, plan.targetId)}. Skip at any time.`,
+    `We will build something at ${nameOf(v, plan.homeId)} that pays for itself, raise troops there, and take ${nameOf(v, plan.targetId)}. Skip at any time.`,
   target: () => null,
   isComplete: () => false,
 };
@@ -206,12 +211,13 @@ const ATTACK: TourStep = {
     `The columns decide how many go and how many actions it costs. Combat here is arithmetic, not dice — what the panel forecasts is what will happen, not what might. ` +
     `Leave a garrison behind: a territory with nothing in it is a territory anyone can walk into.`,
   target: () => 'tm-attack',
-  // An attack that bounces is still an attack, and still the lesson. Any of: we hold it now, we
-  // hold more ground than we did, or the chronicle has grown since the run opened.
+  // An attack that bounces is still an attack, and still the lesson: we hold it now, or we have
+  // fought a battle since the run opened. Not "the chronicle has grown", which it had: building
+  // and recruiting both write to it, so this step read as done the moment it was reached and the
+  // card skipped on to End turn with no attack made.
   isComplete: (v, plan, memory) =>
     nodeOf(v, plan.targetId)?.owner === v.state.activeFaction ||
-    mine(v.state).length > memory.territories ||
-    v.state.log.length > memory.logLength,
+    battlesOf(v.state) > memory.battles,
 };
 
 const END_TURN: TourStep = {
@@ -225,13 +231,50 @@ const END_TURN: TourStep = {
 const OUTRO: TourStep = {
   title: 'That is the turn',
   body: () =>
-    `Recruit, build, take ground, end the turn. The tension in this game is that troops eat and buildings do not: an army you cannot feed starves, and an economy you do not defend gets taken. ` +
+    `Build, recruit, take ground, end the turn. The tension in this game is that troops eat and buildings do not: an army you cannot feed starves, and an economy you do not defend gets taken. ` +
     `Watch the food chip in the top bar more closely than the gold. Press ? at any time for the full rules.`,
   target: () => null,
   isComplete: () => false,
 };
 
-const STEPS: TourStep[] = [INTRO, SELECT_HOME, RECRUIT, BUILD, PICK_TARGET, ATTACK, END_TURN, OUTRO];
+// Build comes before recruiting. The recruit stepper defaults to as many troops as the treasury
+// allows, so recruiting first spent the gold the planned building needed and left the build step
+// pointing at a disabled row with no way forward.
+/**
+ * A step that acts on the capital's orders, made safe against the capital being deselected.
+ *
+ * Clicking a selected territory again deselects it, and so does Escape. A player who clicked their
+ * capital twice (a double-click, or a second click to "make sure") had the run move on to Build
+ * with nothing selected, and the card pointed at a building slot that was no longer on screen,
+ * with Back the only way forward. Until the capital is selected again the step points at it.
+ *
+ * The attack step also needs the target picked; if it was cancelled, it points back at the target.
+ */
+function needsHome(step: TourStep, needsTarget = false): TourStep {
+  // A finished step is never redirected: the attack clears the target as it lands, and the card
+  // would otherwise say the attack was put away during the pause before it moves on.
+  const lostHome = (v: TourView, plan: TourPlan, m: TourMemory) => !step.isComplete(v, plan, m) && v.selected !== plan.homeId;
+  const lostTarget = (v: TourView, plan: TourPlan, m: TourMemory) => needsTarget && !step.isComplete(v, plan, m) && v.target !== plan.targetId;
+  return {
+    ...step,
+    body: (v, plan, m) =>
+      lostHome(v, plan, m)
+        ? `${nameOf(v, plan.homeId)} is no longer selected. Click it again to bring back its orders.`
+        : lostTarget(v, plan, m)
+          ? `The attack was put away. Click ${nameOf(v, plan.targetId)} again to bring the orders back.`
+          : step.body(v, plan, m),
+    target: (v, plan, m) =>
+      lostHome(v, plan, m)
+        ? `tm-territory-${plan.homeId}`
+        : lostTarget(v, plan, m)
+          ? `tm-territory-${plan.targetId}`
+          : step.target(v, plan, m),
+  };
+}
+
+const STEPS: TourStep[] = [
+  INTRO, SELECT_HOME, needsHome(BUILD), needsHome(RECRUIT), needsHome(PICK_TARGET), needsHome(ATTACK, true), END_TURN, OUTRO,
+];
 
 /* -------------------------------------------------------------------------------------------- */
 /* Placement                                                                                      */
@@ -268,16 +311,20 @@ function useTargetRect(targetIds: string[]): { rect: DOMRect | null; id: string 
       for (const id of ids) {
         const el = document.getElementById(id);
         if (!el) continue;
-        const r = el.getBoundingClientRect();
+        const raw = el.getBoundingClientRect();
         // A zero-size box is an element in the DOM but not laid out — a collapsed bottom sheet,
         // most often. Spotlighting it would ring nothing in the corner.
-        if (r.width === 0 && r.height === 0) continue;
-        if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
+        if (raw.width === 0 && raw.height === 0) continue;
+        // Map territories are SVG and live inside a pan-and-zoom viewport with its own focus
+        // handling. Scrolling one into view would scroll the overflow-hidden map container and
+        // knock the board out of line with its controls, so they are only ever clipped.
+        const inSvg = el instanceof SVGElement;
+        if (!inSvg && !scrolledOnce && (raw.top < 0 || raw.bottom > window.innerHeight || isClippedByScroller(el, raw))) {
           el.scrollIntoView({ block: 'center', behavior: 'auto' });
           scrolledOnce = true;
-          setRect(el.getBoundingClientRect(), id);
-          return;
         }
+        const r = visibleRectOf(el);
+        if (!r) continue;
         setRect(r, id);
         return;
       }
@@ -295,6 +342,68 @@ function useTargetRect(targetIds: string[]): { rect: DOMRect | null; id: string 
   }, [key]);
 
   return found;
+}
+
+/**
+ * The part of an element a player can actually see: its box cut down by every ancestor that clips
+ * its overflow, and by the window. A territory's Voronoi cell routinely runs far past the edge of
+ * the map viewport (on the tutorial map the capital's cell is taller than the screen), and ringing
+ * the raw box drew the spotlight under the top bar and off the page, with the card parked on top
+ * of the very thing it was pointing at. Returns null when nothing of it is visible.
+ */
+function visibleRectOf(el: Element): DOMRect | null {
+  const r = el.getBoundingClientRect();
+  let left = r.left, top = r.top, right = r.right, bottom = r.bottom;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p);
+    if (o.overflowX === 'visible' && o.overflowY === 'visible') continue;
+    const c = p.getBoundingClientRect();
+    left = Math.max(left, c.left); top = Math.max(top, c.top);
+    right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
+  }
+  left = Math.max(left, 0); top = Math.max(top, 0);
+  right = Math.min(right, window.innerWidth); bottom = Math.min(bottom, window.innerHeight);
+  if (right - left < 4 || bottom - top < 4) return null;
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+/** Whether a scrollable ancestor (the sidebar, most often) is hiding part of the element. */
+function isClippedByScroller(el: Element, r: DOMRect): boolean {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if (o !== 'auto' && o !== 'scroll') continue;
+    const c = p.getBoundingClientRect();
+    if (r.top < c.top - 1 || r.bottom > c.bottom + 1) return true;
+  }
+  return false;
+}
+
+/**
+ * Where the card goes: below the target, then above, then to the right, then to the left — the
+ * first that fits on screen without covering it. A target too big for any of those (a territory
+ * filling most of a phone) gets the card in whichever screen corner overlaps it least.
+ */
+function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; left: number } {
+  const W = window.innerWidth, H = window.innerHeight, M = 16, GAP = 16;
+  const w = Math.min(cardW, W - 2 * M);
+  const clampX = (x: number) => Math.max(M, Math.min(x, W - M - w));
+  const clampY = (y: number) => Math.max(M, Math.min(y, H - M - cardH));
+  const candidates = [
+    { top: rect.bottom + GAP, left: clampX(rect.left), ok: rect.bottom + GAP + cardH <= H - M },
+    { top: rect.top - GAP - cardH, left: clampX(rect.left), ok: rect.top - GAP - cardH >= M },
+    { top: clampY(rect.top), left: rect.right + GAP, ok: rect.right + GAP + w <= W - M },
+    { top: clampY(rect.top), left: rect.left - GAP - w, ok: rect.left - GAP - w >= M },
+  ];
+  const fit = candidates.find(c => c.ok);
+  if (fit) return { top: fit.top, left: fit.left };
+  const overlap = (x: number, y: number) =>
+    Math.max(0, Math.min(x + w, rect.right) - Math.max(x, rect.left)) *
+    Math.max(0, Math.min(y + cardH, rect.bottom) - Math.max(y, rect.top));
+  const corners = [
+    { left: W - M - w, top: H - M - cardH }, { left: M, top: H - M - cardH },
+    { left: W - M - w, top: M }, { left: M, top: M },
+  ];
+  return corners.reduce((best, c) => (overlap(c.left, c.top) < overlap(best.left, best.top) ? c : best));
 }
 
 /**
@@ -320,17 +429,28 @@ interface Props {
   view: TourView;
   plan: TourPlan;
   onFinish: () => void;
+  /**
+   * Hidden rather than unmounted while a modal owns the screen. Unmounting threw away the step
+   * and the opening snapshot, so the dispatch that follows End turn sent the run back to the
+   * welcome card on turn two, teaching a plan whose gold had already been spent.
+   */
+  hidden?: boolean;
+  /**
+   * Called with the territory the current step points at, or null. On a phone the map shows only
+   * part of the board above the bottom sheet, and the neighbour to attack was routinely off the
+   * edge with a sliver of ring showing; `Game.tsx` feeds this to the map's focus so it pans there.
+   */
+  onFocusTerritory?: (id: number | null) => void;
 }
 
-export default function GuidedTour({ view, plan, onFinish }: Props) {
+export default function GuidedTour({ view, plan, onFinish, hidden = false, onFocusTerritory }: Props) {
   // Captured once, on the first render. `useRef` rather than `useState` because reading it must
   // never cause a render of its own.
   const memoryRef = useRef<TourMemory>({
     troops: view.state.nodes[plan.homeId]?.troops ?? 0,
     buildings: view.state.nodes[plan.homeId]?.buildings.length ?? 0,
-    territories: view.state.nodes.filter(n => n.owner === view.state.activeFaction).length,
     turn: view.state.turn,
-    logLength: view.state.log.length,
+    battles: battlesOf(view.state),
   });
   const memory = memoryRef.current;
 
@@ -341,18 +461,35 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO;
-  const targetIds = asList(step.target(view, plan));
+  const done = !isManual && step.isComplete(view, plan, memory);
+  // Once a step is done the card holds still on the control just used until it moves on. Reading
+  // the target afresh during that pause made it flick to whatever the panel showed next: back to
+  // the building opener after a build, and to nothing at all after an attack.
+  const heldTargets = useRef<{ step: number; ids: string[] }>({ step: -1, ids: [] });
+  const liveTargets = asList(step.target(view, plan, memory));
+  if (!done || heldTargets.current.step !== stepIndex) heldTargets.current = { step: stepIndex, ids: liveTargets };
+  // Nothing to measure while hidden: an empty list stops the poll, and stops it scrolling the
+  // board around underneath whichever modal is on top.
+  const targetIds = hidden ? [] : done ? heldTargets.current.ids : liveTargets;
   const { rect, id: shownTarget } = useTargetRect(targetIds);
+
+  const focusMatch = /^tm-territory-(\d+)$/.exec(targetIds[0] ?? '');
+  const focusId = focusMatch ? Number(focusMatch[1]) : null;
+  useEffect(() => {
+    onFocusTerritory?.(focusId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId]);
+  useEffect(() => () => onFocusTerritory?.(null), [onFocusTerritory]);
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
   // of what they just did before the card moves on.
+  // Keyed on `done`, not on `view`: the view is a new object on every render, so a busy board kept
+  // restarting the pause.
   useEffect(() => {
-    if (isManual) return;
-    if (!step.isComplete(view, plan, memory)) return;
+    if (!done) return;
     const t = window.setTimeout(() => setStepIndex(i => Math.min(i + 1, steps.length - 1)), 650);
     return () => window.clearTimeout(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, stepIndex]);
+  }, [done, stepIndex, steps.length]);
 
   const PADDING = 8;
   const spotlight: React.CSSProperties | null = rect
@@ -371,29 +508,32 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
       }
     : null;
 
-  // Close enough to decide which side of the target has room; the card's real height varies with
-  // the body copy and pixel-exactness buys nothing.
-  const CARD_HEIGHT_ESTIMATE = 210;
+  // The card's height varies with the body copy, so it is measured after each render; the
+  // estimate covers only the very first frame.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(210);
+  useEffect(() => {
+    const h = cardRef.current?.offsetHeight;
+    if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
+  });
   const CARD_WIDTH = 330;
   const cardStyle: React.CSSProperties = rect
-    ? {
-        ...CARD,
-        top:
-          rect.bottom + 16 + CARD_HEIGHT_ESTIMATE <= window.innerHeight
-            ? rect.bottom + 16
-            : Math.max(16, rect.top - CARD_HEIGHT_ESTIMATE - 16),
-        left: Math.max(16, Math.min(rect.left, window.innerWidth - 16 - CARD_WIDTH)),
-      }
+    ? { ...CARD, ...placeCard(rect, CARD_WIDTH, cardHeight) }
     : {
         ...CARD,
-        top: Math.max(16, window.innerHeight / 2 - CARD_HEIGHT_ESTIMATE / 2),
-        left: Math.max(16, window.innerWidth / 2 - CARD_WIDTH / 2),
+        top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
+        left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
 
   const finish = () => {
     markGuidedTourSeen();
     onFinish();
   };
+
+  // Every hook is above this line (one placed after an early return renders conditionally), so the
+  // run keeps advancing while it is out of sight: ending the turn completes the step behind the
+  // dispatch, and the outro is what comes back.
+  if (hidden) return null;
 
   return (
     <>
@@ -404,12 +544,12 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
 
       {/* `data-tour-*` is how an automated pass drives the run: it reads which control the card is
           pointing at and clicks that, rather than guessing from the copy. */}
-      <div style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={shownTarget ?? ''}>
+      <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={shownTarget ?? ''} data-tour-done={done ? '1' : undefined}>
         <p style={stepLabel}>
           Guided turn — {stepIndex + 1} of {steps.length}
         </p>
         <h3 style={cardTitle}>{step.title}</h3>
-        <p style={cardBody}>{step.body(view, plan)}</p>
+        <p style={cardBody}>{step.body(view, plan, memory)}</p>
         <div style={footer}>
           <button type="button" style={ghostButton} onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}
