@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs';
 import { getDb } from '../_lib/db';
 import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
+import { queryParam } from '../_lib/query';
 import { isAdmin, lockAdmins, recordAudit } from '../_lib/admin';
 import { countsByGame, GAMES_BY_TITLE_SQL, GAME_KEYS } from '../../shared/games';
 import { isGameKey, NEW_ACCOUNT_GAMES, newAccountAccess, parseGameList, resolveAccess } from '../_lib/access';
@@ -376,7 +377,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!user) return;
   if (!(await isAdmin(getDb(), user.userId))) return res.status(403).json({ message: 'Admin access only' });
 
-  const resource = req.query.resource;
+  const resource = queryParam(req, 'resource');
 
   if (resource === 'users' && req.method === 'GET') return listUsers(res);
   if (resource === 'users' && req.method === 'PATCH') return updateUserRole(req, res, user.userId);

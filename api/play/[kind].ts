@@ -7,6 +7,7 @@ import steadyEddie from '../../packages/steady-eddie/api/game/index';
 import { getDb } from '../../packages/thrash-margin/api/_lib/db';
 import { requireUser } from '../../packages/thrash-margin/api/_lib/auth';
 import { handleCors } from '../../packages/thrash-margin/api/_lib/cors';
+import { queryParam } from '../../packages/thrash-margin/api/_lib/query';
 import { gameKeyForSlug, gamesFor } from '../../packages/thrash-margin/api/_lib/access';
 
 // Every game's saves, as one Vercel function: /api/play/<game>?id=...
@@ -27,7 +28,7 @@ const HANDLERS: Record<string, (req: VercelRequest, res: VercelResponse) => unkn
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const kind = Array.isArray(req.query.kind) ? req.query.kind[0] : req.query.kind;
+  const kind = queryParam(req, 'kind');
   // Own keys only: a plain lookup would find Object.prototype's members, so /api/play/constructor
   // ran Object(req, res), which never answers and held the function open until it timed out.
   const run = kind && Object.prototype.hasOwnProperty.call(HANDLERS, kind) ? HANDLERS[kind] : undefined;
