@@ -521,3 +521,24 @@ export const POWERS: Record<SupportPower, PowerSpec> = {
 };
 /** How long a recon sweep keeps its area revealed. */
 export const RECON_TICKS = 150;
+
+/** Ticks a Spy's sabotage of a Generator, and of a War Factory or Barracks, lasts. */
+export const SPY_BLACKOUT_TICKS = 600;
+export const SPY_SABOTAGE_TICKS = 450;
+/** Most a Spy steals from a Refinery, and the share of the enemy's credits taken. */
+export const SPY_STEAL_MAX = 1500;
+export const SPY_STEAL_SHARE = 0.5;
+/** Share of a Command Yard's full health a demolition charge takes (anything else is destroyed). */
+export const CHARGE_HQ_SHARE = 0.6;
+/** Overdrive: speed multiplier and reload multiplier while it lasts. */
+export const OVERDRIVE_SPEED = 1.5;
+export const OVERDRIVE_RELOAD = 2 / 3;
+/** Artillery barrage: shells, damage of each, splash radius, and ticks between landings. */
+export const BARRAGE_SHELLS = 8;
+export const BARRAGE_DAMAGE = 110;
+export const BARRAGE_SPLASH = 1.5;
+export const BARRAGE_GAP = 5;
+/** Reinforcements: who arrives. */
+export const REINFORCEMENTS: UnitKind[] = ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'tank'];
+/** Xp a hero earns for a successful infiltration or capture (the same as destroying a structure). */
+export const HERO_XP_ABILITY = HERO_XP_STRUCTURE;

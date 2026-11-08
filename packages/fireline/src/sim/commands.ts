@@ -19,7 +19,7 @@ import {
   addUnit,
   buildTicksOf,
   categoryOf,
-  costOf,
+  costFor,
   log,
   readyStructure,
   unlocked,
@@ -40,16 +40,20 @@ export function ownUnits(s: GameState, owner: Owner, ids: number[]): Unit[] {
 export function canQueue(s: GameState, owner: Owner, category: Category, kind: BuildingKind | UnitKind): boolean {
   if (!(kind in BUILDINGS) && !(kind in UNITS)) return false;
   if (kind === 'hq') return false;
+  // Heroes are campaign characters, never built.
+  if (kind in UNITS && UNITS[kind as UnitKind].hero) return false;
   if (categoryOf(kind) !== category) return false;
+  // A mission limits what side 0 may build to what the campaign has unlocked.
+  if (owner === 0 && s.allowed && !s.allowed.includes(kind)) return false;
   const p = s.players[owner];
   if (p.queues[category].length >= (category === 'building' ? 1 : MAX_QUEUE)) return false;
   if (!unlocked(s, owner, kind)) return false;
-  return p.credits >= costOf(kind);
+  return p.credits >= costFor(s, owner, kind);
 }
 
 export function doQueue(s: GameState, owner: Owner, category: Category, kind: BuildingKind | UnitKind): void {
   const p = s.players[owner];
-  p.credits -= costOf(kind);
+  p.credits -= costFor(s, owner, kind);
   p.queues[category].push({ kind, progress: 0 });
 }
 
@@ -63,7 +67,7 @@ export function doCancel(s: GameState, owner: Owner, category: Category, kind: B
   for (let i = q.length - 1; i >= 0; i--) {
     if (q[i].kind === kind) {
       q.splice(i, 1);
-      s.players[owner].credits += costOf(kind);
+      s.players[owner].credits += costFor(s, owner, kind);
       return;
     }
   }
