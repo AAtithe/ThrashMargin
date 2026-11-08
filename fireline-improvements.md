@@ -6,7 +6,7 @@ round is being built by five parallel agents, one per workstream, each owning it
 
 Status key: [ ] not started, [~] in progress, [x] done.
 
-Round 1 (2026-11-08): workstreams A, B, C and E built and integrated; D (computer opponent) re-running after it hit a usage limit.
+Round 1 (2026-11-08): all five workstreams built and integrated. Round 2 (campaign): built and integrated.
 
 ## A. Battlefield effects (renderer)
 
@@ -36,15 +36,15 @@ Round 1 (2026-11-08): workstreams A, B, C and E built and integrated; D (compute
 - [x] Waypoint queues: shift with an order appends instead of replacing.
 - [x] Unit stances: aggressive (chase), guard (default), hold fire.
 - [x] Infantry survivors run out of a destroyed or sold structure.
-- [~] The opponent using stances and waypoints itself (with D).
+- [ ] The opponent using stances and waypoints itself.
 
 ## D. Computer opponent
 
-- [~] Raids its opponent's haulers with fast units.
-- [~] Pulls badly damaged units back to base to repair.
-- [~] Picks targets by threat and value (artillery and haulers first, then turrets).
-- [~] Rebuilds lost economy first (refinery, hauler) and replaces lost generators before power runs short.
-- [~] Difficulty stays monotonic and measured: Hard beats Normal beats Easy over 150+ seeds.
+- [x] Raids its opponent's haulers with fast units.
+- [x] Pulls badly damaged units back to base to repair.
+- [x] Picks targets by threat and value (artillery and haulers first, then turrets).
+- [x] Rebuilds lost economy first (refinery, hauler) and replaces lost generators before power runs short.
+- [x] Difficulty stays monotonic and measured: Hard beats Normal beats Easy over 150+ seeds.
 
 ## E. Interface
 
@@ -60,12 +60,20 @@ Round 1 (2026-11-08): workstreams A, B, C and E built and integrated; D (compute
 Spec and code contract: `fireline-campaign-design.md`. Four builders in parallel, then the
 mission AI once the round-1 opponent work lands.
 
-- [~] Eight-mission campaign with briefings, objectives, bonus stars, debriefs and a theatre map.
-- [~] Commander ranks (Lieutenant to General), skill points and a three-branch skill tree.
-- [~] Four heroes who level up and carry over: Spy (stealth, infiltration), Commando (demolition),
+- [x] Eight-mission campaign with briefings, objectives, bonus stars, debriefs and a theatre map.
+- [x] Commander ranks (Lieutenant to General), skill points and a three-branch skill tree.
+- [x] Four heroes who level up and carry over: Spy (stealth, infiltration), Commando (demolition),
   Engineer (capture, field repair), Ace (prototype tank, overdrive).
-- [~] Support powers: recon sweep, artillery barrage, reinforcements.
-- [ ] Mission AI modes: defend, raid, passive.
+- [x] Support powers: recon sweep, artillery barrage, reinforcements.
+- [x] Mission AI modes: defend, raid, passive.
+
+## Found along the way
+
+- [x] Seat imbalance: side 1 won 78% of mirror games (structure fronts faced the enemy for side 1).
+  Now 43% to 56% over 150 games.
+- [ ] The last few points of that gap (fixed tie-break orders in formations and spawn searches).
+- [ ] Side 1's refinery chute and factory door are drawn on the south face; its front is now north.
+- [ ] A real-GPU frame-rate check of the round-1 effects (headless measurements only so far).
 
 ## Later rounds
 

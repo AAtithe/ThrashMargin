@@ -15,7 +15,7 @@ import {
   type UnitKind,
   type WeaponKind,
 } from '../sim/rules';
-import { buildTicksOf, costOf, hasBuilding, powerOf, readyStructure, unlocked } from '../sim/state';
+import { buildTicksOf, costFor, hasBuilding, maxHpOf, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
@@ -329,7 +329,7 @@ export function BuildPanel({
           const isHead = head && head.kind === kind;
           const progress = isHead ? head.progress / buildTicksOf(kind) : 0;
           const open = unlocked(state, 0, kind);
-          const cost = costOf(kind);
+          const cost = costFor(state, 0, kind);
           const isReady = tab === 'building' && ready === kind;
           const blockedByOther = tab === 'building' && q.length > 0 && !isHead;
           const full = tab !== 'building' && q.length >= MAX_QUEUE;
@@ -403,7 +403,7 @@ function BuildTipFooter({
 }) {
   const p = state.players[0];
   const missing = needsOf(kind).filter(r => !hasBuilding(state, 0, r));
-  const short = costOf(kind) - p.credits;
+  const short = costFor(state, 0, kind) - p.credits;
   const notes: string[] = [];
   if (state.allowed && !state.allowed.includes(kind)) notes.push('Not available in this mission.');
   else if (missing.length) notes.push(`Locked: build a ${missing.map(r => BUILDINGS[r].name).join(' and a ')} first.`);
@@ -497,7 +497,7 @@ export function SelectionPanel({
   const counts = new Map<UnitKind, number>();
   for (const u of units) counts.set(u.kind, (counts.get(u.kind) ?? 0) + 1);
   const hp = units.reduce((a, u) => a + u.hp, 0);
-  const max = units.reduce((a, u) => a + UNITS[u.kind].hp, 0);
+  const max = units.reduce((a, u) => a + maxHpOf(u), 0);
   const mine = units[0].owner === 0;
   const one = units.length === 1 ? units[0] : null;
   return (

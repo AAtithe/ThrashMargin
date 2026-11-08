@@ -164,6 +164,8 @@ export function Battle({
   const keys = useRef(new Set<string>());
   const mouse = useRef({ x: -1, y: -1, inside: false, downX: 0, downY: 0, down: false, pan: false, panX: 0, panY: 0, camX: 0, camY: 0, lastClick: 0 });
   const groups = useRef(new Map<string, number[]>());
+  /** A building-target ability ordered out of range: the hero walks there and uses it on arrival. */
+  const pendingAbility = useRef<{ heroId: number; target: number; since: number } | null>(null);
   // Combat alerts: every recent ping (drawn by the minimap) and the latest hit, which Space jumps to.
   const alerts = useRef<Alert[]>([]);
   const lastAlert = useRef<Alert | null>(null);
@@ -403,6 +405,17 @@ export function Battle({
       return;
     }
     const problem = abilityProblem(s, 0, t.heroId, b.id);
+    if (problem === 'Move closer first') {
+      // Walk there and use it on arrival (checked every tick in the loop below).
+      const spec = BUILDINGS[b.kind];
+      if (dispatch({ type: 'move', ids: [t.heroId], x: b.x + spec.w / 2, y: b.y + spec.h / 2 })) {
+        pendingAbility.current = { heroId: t.heroId, target: b.id, since: s.tick };
+        showToast('Moving into position');
+        overlay.current.pings.push({ x: wx, y: wy, at: now, kind: 'attack' });
+        setTargeting(null);
+        return;
+      }
+    }
     if (problem || !dispatch({ type: 'ability', id: t.heroId, target: b.id })) {
       sound.play('denied');
       showToast(problem ?? 'Not now');
@@ -855,6 +868,24 @@ export function Battle({
         }
         if (targetingRef.current?.kind === 'power') placeRing(m.x, m.y);
         if (cur.current.tick !== lastTick) {
+          const pa = pendingAbility.current;
+          if (pa) {
+            const st = cur.current;
+            const hero = st.units.find(u => u.id === pa.heroId);
+            const target = st.buildings.find(b => b.id === pa.target);
+            const walking = hero && (hero.order.type === 'move' || hero.order.type === 'idle');
+            if (!hero || !target || target.owner === 0 || !walking || st.tick - pa.since > 600) pendingAbility.current = null;
+            else {
+              const why = abilityProblem(st, 0, pa.heroId, pa.target);
+              if (!why) {
+                pendingAbility.current = null;
+                dispatch({ type: 'ability', id: pa.heroId, target: pa.target });
+              } else if (why !== 'Move closer first') {
+                pendingAbility.current = null;
+                showToast(why);
+              }
+            }
+          }
           lastTick = cur.current.tick;
           // Drop selections of things that have died.
           const sel = overlay.current.selected;

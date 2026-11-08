@@ -207,3 +207,38 @@ Frame rate in headless Chromium (software rendering, no GPU): 60 fps on ordinary
 in each builder's own measurement; 47 to 58 fps in 200-unit set pieces, at or above the old
 build in the same setup. Integrated measurements taken while a builder was running on the same
 machine read lower and are not comparable; a check on a real GPU browser is still owed.
+
+### 2026-11-08 — Round 1's computer opponent; even seats
+
+The opponent workstream re-ran after a usage limit and landed: economy first, repairs, counter-
+picked units, hauler raids, waves that gather, regroup and fall back, retreat below 30% health.
+`npm run ladder:fire` (scripts/ai-ladder.ts, 150 seeds a match, parallel workers) measured the new
+commander beating the old 82% of the time, and, from the same seat, the opponent winning 0% on
+Easy, 78% on Normal and 97% on Hard.
+
+The ladder also proved the seat imbalance first seen in round 1: side 1 won 78% of mirror games
+with either commander. Every structure's front (door, refinery dock) was its south edge, which
+faces away from the enemy for side 0 but towards it for side 1. `frontRow()` in grid.ts now puts
+the front away from the enemy for both; docks, doors, spawns, placement, the AI's lanes and the
+mission layout use it. The 150-game mirror now reads 43% to 56%, within about a margin of error
+of even. Side 0, the player, plays exactly as before. Cosmetic gap still open: side 1's refinery
+chute and factory door are drawn on the south face while its units leave from the north.
+
+### 2026-11-08 — Campaign (see fireline-campaign-design.md)
+
+Contract first, then four builders in parallel (simulation, campaign content and progression,
+art, interface), then integration. Integration found and fixed: missions built the AI's memory
+with five fields after round 1 had added seven more (now one `newAiMemory()` for both); the
+campaign map hit-tested clicks with the wrong signature for the art's node positions, so clicks
+missed the drawn nodes (now the same function and radius); the interface estimated hero health,
+prices and cooldowns itself (now the sim's `maxHpOf`, `costFor` and `abilityCooldown`). Harness
+tests written against the old AI broke under the new one, which rightly defends and refunds;
+ability tests now run with side 1's commander off (`noCommander`). Mission AI modes added:
+passive, defend, raid, and no structure queued by an outpost with no Command Yard; each is tested
+by what the enemy actually does over twelve minutes. A hero ordered to use a structure ability
+out of range now walks there and uses it on arrival.
+
+Numbers at integration: drive 210,000+ assertions (about 80s), campaign-check 1,209 with all
+eight missions built and run 2,000 ticks, the guided tour passes, and a browser run through
+lobby, new campaign, map (clicking a node on the canvas), briefing, deploy, battle HUD, debrief
+and back to the map (mission 1 won, mission 2 open) with no page errors.

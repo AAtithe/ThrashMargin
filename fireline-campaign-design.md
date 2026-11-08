@@ -1,5 +1,8 @@
 # Fireline — Campaign, Commander career and heroes
 
+Status (2026-11-08): built and integrated. Section 8's checks pass; the build log is in
+`fireline-design.md`. Mission AI modes (section 5) are in `ai.ts`.
+
 The second mode of Fireline. Skirmish (one battle against the computer) stays exactly as it is.
 The campaign adds what skirmish lacks: a reason to come back. Missions in sequence, a Commander
 who ranks up and spends skill points, and four named heroes who level up and carry over.
@@ -104,9 +107,10 @@ writes the briefings and tunes the specs):
 8. **Fireline** — the finale on Hard: every hero, every power, destroy everything. Bonus: no hero
    falls; win inside 25 minutes.
 
-Mission AI (`MissionSpec.enemy.ai`): normal (skirmish commander), defend (never sends waves, guards
-its base, rebuilds), raid (sends small fast waves often), passive (does nothing; outposts and
-scripted units only). Until the AI workstream lands this, every mode behaves as normal.
+Mission AI (`MissionSpec.enemy.ai`): normal (skirmish commander), defend (never sends waves or
+raids, guards its base, rebuilds), raid (waves of 3 to 6, twice as often, the first at half the
+skirmish timing), passive (makes no decisions; outposts and scripted units fight what comes in
+range). An outpost with no Command Yard never queues a structure.
 
 Victory and defeat in a mission are decided by `s.mission`, not the skirmish rule: won when every
 primary objective is done; lost when an objective fails (a hero falls under `keepAlive`), the time

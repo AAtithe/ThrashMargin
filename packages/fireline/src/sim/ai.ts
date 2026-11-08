@@ -17,7 +17,7 @@ import {
   type UnitKind,
 } from './rules';
 import { countBuildings, powerOf, readyStructure, unlocked } from './state';
-import type { AiMemory, Building, GameState, Unit } from './types';
+import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -125,6 +125,9 @@ export function aiDifficulty(s: GameState, owner: Owner): Difficulty {
 }
 
 export function runAi(s: GameState, owner: Owner): void {
+  // A passive mission enemy makes no decisions at all: its outpost and scripted units still fight
+  // whatever comes in range, through the engine's own targeting.
+  if (missionMode(s, owner) === 'passive') return;
   const hook = hooks[owner];
   if (hook) hook(s, owner);
   else commander(s, owner);
@@ -135,12 +138,42 @@ interface Pt {
   y: number;
 }
 
+/** How the computer behaves on this side: a mission's mode for side 1, 'normal' otherwise. */
+export function missionMode(s: GameState, owner: Owner): AiMode {
+  return owner === 1 && s.mission ? s.mission.ai : 'normal';
+}
+
+/**
+ * The difficulty's numbers, adjusted for a mission mode. Raid: small waves twice as often. The
+ * other modes use the numbers as they are; defend is handled by never letting a wave or raid fall due.
+ */
+function tuned(d: DifficultySpec, mode: AiMode): DifficultySpec {
+  if (mode !== 'raid') return d;
+  return {
+    ...d,
+    firstAttack: Math.round(d.firstAttack / 2),
+    attackInterval: Math.round(d.attackInterval / 2),
+    firstWave: 3,
+    waveGrowth: 1,
+    waveCap: Math.min(6, d.waveCap),
+  };
+}
+
 function commander(s: GameState, owner: Owner): void {
   const diff = aiDifficulty(s, owner);
-  const d = DIFFICULTIES[diff];
+  const mode = missionMode(s, owner);
+  const d = tuned(DIFFICULTIES[diff], mode);
   const t = TACTICS[diff];
   const mem = s.ai[owner];
   normalise(mem);
+  // Defend: build, repair and fight off attackers, but never send a wave or a raid. Pushed back at
+  // every decision, so nothing can fall due in between.
+  if (mode === 'defend') {
+    mem.nextAttack = Math.max(mem.nextAttack, s.tick + 100000);
+    mem.nextRaid = Math.max(mem.nextRaid, s.tick + 100000);
+  }
+  // Raid: the first wave comes at the raid timing, not the skirmish one the memory started with.
+  if (mode === 'raid' && mem.wave === 0) mem.nextAttack = Math.min(mem.nextAttack, d.firstAttack);
   const mine = s.buildings.filter(b => b.owner === owner);
   if (!mine.length) return;
   const anchor = mine.find(b => b.kind === 'hq') ?? mine[0];
@@ -167,7 +200,9 @@ function commander(s: GameState, owner: Owner): void {
     const spot = findSpot(s, owner, ready, home, enemyHome);
     if (spot) doPlace(s, owner, ready, spot.x, spot.y);
     else doCancel(s, owner, 'building', ready);
-  } else if (p.queues.building.length === 0) {
+  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq')) {
+    // Only with a Command Yard: a mission outpost has none, and a structure it queued could never
+    // be built, leaving its credits stuck in the queue.
     const want = nextStructure(s, owner, d, noHauler && !canBuildHauler);
     if (want) {
       if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);

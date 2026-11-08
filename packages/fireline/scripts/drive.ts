@@ -53,7 +53,7 @@ import {
   type UnitKind,
 } from '../src/sim/rules';
 import { addBuilding, addUnit, costFor, createInitialState, maxHpOf, migrateState, powerOf, readyStructure, visibility } from '../src/sim/state';
-import type { Building, GameAction, GameState, MissionContext, MissionSpec, ObjectiveSpec, Perks, Unit } from '../src/sim/types';
+import type { AiMode, Building, GameAction, GameState, MissionContext, MissionSpec, ObjectiveSpec, Perks, Unit } from '../src/sim/types';
 
 let assertions = 0;
 let failures = 0;
@@ -1655,6 +1655,68 @@ function missionBattles(): void {
   ok(finished >= 2, `mission battles end in a decision, not the clock (${finished}/${n})`);
 }
 
+
+/**
+ * Mission AI modes, judged by what the enemy actually does over twelve minutes against a base that
+ * sits still: passive queues nothing and sends nobody; defend never comes near our base; raid
+ * arrives sooner than the same commander in normal mode; an outpost with no Command Yard never
+ * spends credits on a structure it could not build.
+ */
+function missionAiModes(): void {
+  const base = (ai: AiMode, enemyBase: 'full' | 'outpost' = 'full') =>
+    createMissionState(
+      mspec({
+        id: `ai-${ai}-${enemyBase}`,
+        seed: 'ai-modes',
+        player: { credits: 0, structures: ['hq', 'power'], units: [], heroes: [] },
+        enemy: {
+          credits: 8000,
+          base: enemyBase,
+          structures: ['power', 'power', 'refinery', 'barracks', 'factory'],
+          units: ['tank', 'tank', 'rifleman', 'rifleman', 'rifleman', 'rifleman'],
+          ai,
+        },
+        objectives: [{ kind: 'survive', ticks: 100000 }],
+      }),
+      mctx(),
+    );
+  /** Ticks until an enemy unit first comes within 15 tiles of our Command Yard, or null. */
+  const watch = (s0: GameState, ticks: number) => {
+    let s = s0;
+    let arrived: number | null = null;
+    let queued = false;
+    let attackMoves = 0;
+    const yard = s.buildings.find(b => b.owner === 0 && b.kind === 'hq')!;
+    for (let t = 0; t < ticks && s.winner === null; t += 50) {
+      s = processAction(s, { type: 'tick', n: 50 });
+      const q = s.players[1].queues;
+      if (q.building.length || q.infantry.length || q.vehicle.length) queued = true;
+      attackMoves += s.units.filter(u => u.owner === 1 && u.order.type === 'attackMove').length;
+      if (arrived === null && s.units.some(u => u.owner === 1 && dist(u.x, u.y, yard.x + 1.5, yard.y + 1.5) < 15)) arrived = s.tick;
+    }
+    return { s, arrived, queued, attackMoves };
+  };
+  const passive = watch(base('passive'), 7200);
+  ok(!passive.queued, 'passive: the enemy queues nothing');
+  ok(passive.attackMoves === 0 && passive.arrived === null, 'passive: and sends nobody');
+  const defend = watch(base('defend'), 7200);
+  ok(defend.queued, 'defend: the enemy still builds and trains');
+  ok(defend.arrived === null, `defend: but never comes near our base (${defend.arrived})`);
+  const normal = watch(base('normal'), 7200);
+  const raid = watch(base('raid'), 7200);
+  ok(raid.arrived !== null, `raid: the enemy comes for us (${raid.arrived})`);
+  ok(normal.arrived === null || (raid.arrived !== null && raid.arrived < normal.arrived), `raid: sooner than normal mode (${raid.arrived} against ${normal.arrived})`);
+  let everQueuedStructure = false;
+  {
+    let s = base('normal', 'outpost');
+    for (let t = 0; t < 7200 && s.winner === null; t += 50) {
+      s = processAction(s, { type: 'tick', n: 50 });
+      if (s.players[1].queues.building.length) everQueuedStructure = true;
+    }
+  }
+  ok(!everQueuedStructure, 'outpost: its credits never go into a structure it cannot build');
+}
+
 const started = Date.now();
 const sections: [string, () => void][] = [
   ['Mission setup', missionSetup],
@@ -1669,6 +1731,7 @@ const sections: [string, () => void][] = [
   ['Support powers', noCommander(powerTests)],
   ['Objectives, triggers, victory and defeat', objectiveTests],
   ['Mission replay and saves', missionReplay],
+  ['Mission AI modes', missionAiModes],
   ['Mission battles', missionBattles],
 ];
 if (!CAMPAIGN_ONLY) {

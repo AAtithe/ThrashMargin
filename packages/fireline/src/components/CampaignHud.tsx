@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react';
-import { abilityProblem, heroUnit } from '../sim/mission';
+import { abilityCooldown, abilityProblem, heroUnit } from '../sim/mission';
+import { maxHpOf } from '../sim/state';
 import {
   HERO_ABILITY,
   HERO_COOLDOWN_PER_LEVEL,
@@ -35,14 +36,6 @@ export const clockOf = (ticks: number) => {
 };
 
 /** A hero's full ability cooldown at its level, for the sweep. */
-export const abilityCooldownOf = (kind: HeroKind, level: number) =>
-  Math.max(1, Math.round(HERO_ABILITY[kind].cooldown * (1 - HERO_COOLDOWN_PER_LEVEL * (level - 1))));
-
-const maxHpOf = (u: Unit, s: GameState) => {
-  const level = u.hero?.level ?? 1;
-  return UNITS[u.kind].hp * (1 + HERO_HP_PER_LEVEL * (level - 1)) * (s.perks?.unitHpMul ?? 1);
-};
-
 /** 0..1 through the current level; 1 at the top level. */
 export function levelProgress(xp: number, level: number): number {
   if (level >= HERO_MAX_LEVEL) return 1;
@@ -153,9 +146,9 @@ export function HeroBar({
           );
         }
         const level = u.hero.level;
-        const hp = Math.max(0, Math.min(1, u.hp / maxHpOf(u, s)));
+        const hp = Math.max(0, Math.min(1, u.hp / maxHpOf(u)));
         const block = abilityBlock(s, u);
-        const cdFull = abilityCooldownOf(kind, level);
+        const cdFull = abilityCooldown(kind, level);
         const sweep = u.hero.abilityCd > 0 ? Math.min(1, u.hero.abilityCd / cdFull) : 0;
         const aiming = targeting?.kind === 'ability' && targeting.heroId === u.id;
         const busy = u.hero.active;

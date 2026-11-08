@@ -43,5 +43,8 @@ for game in thrash-margin tea-race steady-eddie niccolo niccolo-rising founders-
   npm run drive --workspace="packages/$game" --silent | tail -3
 done
 
+step "Test suite: fireline campaign (progression, the eight missions built and run)"
+npm run campaign-check --workspace=packages/fireline --silent | tail -2
+
 echo
 echo "==> All checks passed"
