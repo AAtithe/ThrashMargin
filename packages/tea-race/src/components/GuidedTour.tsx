@@ -43,7 +43,7 @@
  * the predicates cannot anticipate every way a game can go sideways while four rivals are sailing.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { distanceBetween, goodName, portName, sourcesFor } from '../sim/content';
 import { destinationOf } from '../sim/movement';
 import { HOLD_SLOTS, PAYOUT_MULTIPLIERS, SHARE_MAJORITY, slotsOf } from '../sim/rules';
@@ -807,11 +807,12 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
       }
     : null;
 
-  // The card's height varies with the body copy, so it is measured after each render; the
-  // estimate covers only the very first frame.
+  // The card's height varies with the body copy, so it is measured after each render, before the
+  // browser paints (a layout effect): measured after paint, a card that came back from being
+  // hidden for a replay was drawn for a frame at the previous card's height.
   const cardRef = useRef<HTMLDivElement>(null);
   const [cardHeight, setCardHeight] = useState(220);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const h = cardRef.current?.offsetHeight;
     if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
   });

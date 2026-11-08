@@ -32,7 +32,7 @@
  *   scan has to treat "stopped at the first real step" as a fresh start rather than a resume.
  */
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { distanceBetween, depotName, goodName, sourcesFor } from '../sim/content';
 import { destinationOf } from '../sim/movement';
 import { depotStruck, goodEmbargoed } from '../sim/events';
@@ -758,10 +758,11 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
     : null;
 
   // The card's height varies with the body copy and the viewport width, so it is measured after
-  // each render; the estimate covers only the very first frame.
+  // each render, before the browser paints (a layout effect), so a card coming back from being
+  // hidden for a replay is never drawn for a frame at the previous card's height.
   const cardRef = useRef<HTMLDivElement>(null);
   const [cardHeight, setCardHeight] = useState(220);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const h = cardRef.current?.offsetHeight;
     if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
   });
