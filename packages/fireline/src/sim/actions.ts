@@ -22,6 +22,7 @@ import {
   doStance,
   doStop,
 } from './commands';
+import { abilityProblem, doAbility, doPower, powerProblem } from './mission';
 import { cloneState } from './state';
 import { step } from './tick';
 import type { GameAction, GameState } from './types';
@@ -111,6 +112,20 @@ export function processAction(s: GameState, a: GameAction): GameState {
       if (!canRally(s, 0, a.id, a.x, a.y)) return s;
       const c = cloneState(s);
       doRally(c, a.id, a.x, a.y);
+      return c;
+    }
+    case 'ability': {
+      const target = a.target === undefined ? undefined : a.target;
+      if (!Number.isInteger(a.id) || (target !== undefined && !Number.isInteger(target))) return s;
+      if (abilityProblem(s, 0, a.id, target) !== null) return s;
+      const c = cloneState(s);
+      doAbility(c, 0, a.id, target);
+      return c;
+    }
+    case 'power': {
+      if (typeof a.power !== 'string' || powerProblem(s, 0, a.power, a.x, a.y) !== null) return s;
+      const c = cloneState(s);
+      doPower(c, 0, a.power, a.x, a.y);
       return c;
     }
     default:

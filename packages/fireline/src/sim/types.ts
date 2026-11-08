@@ -65,6 +65,11 @@ export interface Unit {
   stance: Stance;
   /** Present on the four named heroes only (campaign). */
   hero?: HeroState;
+  /**
+   * Full health, when it differs from UNITS[kind].hp: Commander perks (Armour) on side 0's units,
+   * and hero levels. Absent means UNITS[kind].hp. Read it through maxHpOf() in state.ts.
+   */
+  maxHp?: number;
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -73,7 +78,10 @@ export interface HeroState {
   xp: number;
   /** Ticks until the ability can be used again; 0 means ready. */
   abilityCd: number;
-  /** What the hero is doing with the ability right now, if anything. */
+  /**
+   * What the hero is doing with the ability right now, if anything. Overdrive lasts until a tick;
+   * a capture's progress runs from 0 to 1 (owned at 1).
+   */
   active?:
     | { kind: 'overdrive'; until: number }
     | { kind: 'capture'; target: number; progress: number };
@@ -98,6 +106,8 @@ export interface Building {
   ty: number;
   /** A demolition charge planted on it: explodes at this tick. */
   chargeAt?: number;
+  /** Id of the Commando who planted the charge, credited with the kill. */
+  chargedBy?: number;
   /** Production stopped (spy on a factory or barracks) until this tick. */
   sabotagedUntil?: number;
 }
@@ -301,6 +311,10 @@ export interface MissionRuntime {
   result: 'won' | 'lost' | null;
   /** Why it was lost, for the debrief. */
   lostBecause?: string;
+  /** The spec's triggers, copied in so the battle can fire them without the mission list. */
+  triggers?: TriggerSpec[];
+  /** Heroes that fell in this battle, with the experience they had: out for the rest of it. */
+  fallen?: Partial<Record<HeroKind, number>>;
 }
 
 /** What the campaign layer is told when a mission ends. */
