@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { processAction } from '../sim/actions';
 import { migrateState } from '../sim/state';
 import { API, authHeaders } from '../lib/api';
+import { readJson, serverFailure } from '../lib/apiReply';
 import type { NewGameOptions } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import type { SaveMeta } from './useGameLocal';
@@ -95,7 +96,8 @@ export function useGameCloud() {
           setError(SESSION_EXPIRED);
           return null;
         }
-        const data = await res.json();
+        const data = await readJson(res);
+        if (!data) { setError(serverFailure('starting the voyage', res)); return null; }
         if (!res.ok) {
           setError(data.message ?? 'Failed to start the voyage');
           return null;
@@ -120,7 +122,8 @@ export function useGameCloud() {
         setError(SESSION_EXPIRED);
         return;
       }
-      const data = await res.json();
+      const data = await readJson(res);
+      if (!data) { setError(serverFailure('loading the voyage', res)); return; }
       if (!res.ok) {
         setError(data.message ?? 'Failed to load the voyage');
         return;

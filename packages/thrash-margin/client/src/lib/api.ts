@@ -18,23 +18,3 @@ export function authHeaders(): HeadersInit {
 export const SESSION_EXPIRED =
   'Your sign-in has expired. Use "Sign out" above, then sign in again to reach your saved campaigns.';
 
-/**
- * The body of an API reply, or null when it is not JSON. Every endpoint answers in JSON, so a reply
- * that is not means the platform answered instead (the function crashed or ran out of time). That
- * used to throw inside the caller's try and reach the player as "Network error", which sent anyone
- * looking at it after the wrong cause.
- */
-export async function readJson(res: Response): Promise<Record<string, unknown> | null> {
-  const text = await res.text();
-  try {
-    const data = JSON.parse(text);
-    return data && typeof data === 'object' ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-/** The message for a reply the server did not answer in JSON, naming the status so it can be traced. */
-export function serverFailure(action: string, res: Response): string {
-  return `The server failed while ${action} (error ${res.status}). Nothing was lost; try again in a moment.`;
-}

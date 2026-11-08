@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useRef } from 'react';
 import { processAction } from '../sim/actions';
 import { withAllCurrencies } from '../sim/currency';
 import { API, authHeaders } from '../lib/api';
+import { readJson, serverFailure } from '../lib/apiReply';
 import type { GameAction, GameState } from '../sim/types';
 import type { FreeplayGoal, RivalCount } from '../sim/freeplay';
 import type { SaveMeta } from './useGameLocal';
@@ -72,7 +73,8 @@ export function useGameCloud() {
         body: JSON.stringify({ name, skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals, freeplayGoal }),
       });
       if (res.status === 401) { setError(SESSION_EXPIRED); return null; }
-      const data = await res.json();
+      const data = await readJson(res);
+      if (!data) { setError(serverFailure('starting the campaign', res)); return null; }
       if (!res.ok) { setError(data.message ?? 'Failed to start campaign'); return null; }
       setState(data.state);
       saver.current?.reset(data.gameId, data.version);
@@ -89,7 +91,8 @@ export function useGameCloud() {
     try {
       const res = await fetch(`${API}/api/play/niccolo?id=${gameId}`, { headers: authHeaders() });
       if (res.status === 401) { setError(SESSION_EXPIRED); return; }
-      const data = await res.json();
+      const data = await readJson(res);
+      if (!data) { setError(serverFailure('loading the campaign', res)); return; }
       if (!res.ok) { setError(data.message ?? 'Failed to load campaign'); return; }
       saver.current?.reset(gameId, data.version);
       setState({ ...data.state, exchangeRates: withAllCurrencies(data.state.exchangeRates) });
