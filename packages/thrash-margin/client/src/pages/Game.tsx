@@ -10,7 +10,8 @@ import {
 } from 'shared/sim';
 import Icon from '../components/Icon';
 import LogPanel from '../components/LogPanel';
-import MapView, { type MapMarks } from '../components/MapView';
+import MapView, { type MapFx, type MapMarks } from '../components/MapView';
+import ReplayBanner from '../components/ReplayBanner';
 import {
   Coach, DispatchModal, EventModal, HelpModal, LedgerModal, PassScreen, VictoryScreen, reportHasNews,
 } from '../components/Modals';
@@ -18,7 +19,10 @@ import { AttackOrders, MoveOrders } from '../components/OrdersPanel';
 import RealmPanel from '../components/RealmPanel';
 import ResearchPanel from '../components/ResearchPanel';
 import TerritoryPanel from '../components/TerritoryPanel';
-import { Button, Chip } from '../components/ui';
+import { Button, Chip, type ChipFloat } from '../components/ui';
+import { battleOutcome, boardAt, deriveBeats, type Beat } from '../game/replay';
+import { useBeats } from '../hooks/useBeats';
+import { paced, useCountUp, usePace, useSkipOnInput } from '../lib/motion';
 import { marksFor, orderKind, suggestColumns, undoable } from '../game/plan';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { FONT, UI } from '../theme';
@@ -26,6 +30,17 @@ import ThemeToggle from '../components/ThemeToggle';
 import MotionToggle from '../components/MotionToggle';
 
 type Tab = 'command' | 'realm' | 'research' | 'log';
+type FloatKind = 'gold' | 'food' | 'mat' | 'influence' | 'pop';
+
+/** An End turn being replayed on screen: the board before, the board after, and the beats between. */
+interface Replay { id: number; before: GameState; after: GameState; beats: Beat[] }
+
+/** Whether a hot-seat hand-over screen is due before the board may be shown. */
+function passNeeded(state: GameState, readyFor: string | null): boolean {
+  const hotseat = state.config.hotseat && Object.values(state.factions).filter(x => x.human && !x.eliminated).length > 1;
+  const me = state.activeFaction;
+  return hotseat && state.status === 'active' && readyFor !== `${state.turn}-${me}` && (state.turn > 1 || me !== 1);
+}
 
 /**
  * Keyed on the game id so moving to another game (the campaign's next act) starts from a clean
@@ -56,6 +71,14 @@ function Game({ id }: { id: string | undefined }) {
   const [endHidden, setEndHidden] = useState(false);
   const prevOwners = useRef<number[] | null>(null);
 
+  // Motion (presentation only: the state above is always final and already saved).
+  const pace = usePace();
+  const [replay, setReplay] = useState<Replay | null>(null);
+  const replayRef = useRef<Replay | null>(null);
+  const [battle, setBattle] = useState<MapFx | null>(null);
+  const [floats, setFloats] = useState<Partial<Record<FloatKind, ChipFloat[]>>>({});
+  const fxSeq = useRef(0);
+
   useEffect(() => { if (id) void loadGame(id); }, [id, loadGame]);
   // Keys must not reach a board the player cannot see (hot seat hand-over, the dispatch, the end).
   const keysBlocked = useRef(false);
@@ -67,12 +90,26 @@ function Game({ id }: { id: string | undefined }) {
     const prev = prevOwners.current;
     prevOwners.current = owners;
     if (!prev || prev.length !== owners.length) return;
+    // An End turn about to be replayed flashes each territory on its own beat instead.
+    if (replayRef.current?.after === state && replayRef.current.beats.length) return;
     const changed = new Set(owners.map((o, i) => (o !== prev[i] ? i : -1)).filter(i => i >= 0));
     if (!changed.size) return;
     setFlash(changed);
     const t = window.setTimeout(() => setFlash(new Set()), 1100);
     return () => window.clearTimeout(t);
   }, [state]);
+
+  // Battle effects and floating markers clear themselves once their animation has run.
+  useEffect(() => {
+    if (!battle) return;
+    const t = window.setTimeout(() => setBattle(null), Math.max(200, paced(1300)));
+    return () => window.clearTimeout(t);
+  }, [battle]);
+  useEffect(() => {
+    if (!Object.keys(floats).length) return;
+    const t = window.setTimeout(() => setFloats({}), Math.max(200, paced(1600)));
+    return () => window.clearTimeout(t);
+  }, [floats]);
 
   useEffect(() => {
     if (!toast) return;
@@ -99,6 +136,48 @@ function Game({ id }: { id: string | undefined }) {
       if (!sel || sel.owner !== next.activeFaction) setSelected(null);
     }
     if (action.type === 'END_TURN') { clear(); setTab('command'); }
+
+    // Motion: replay the AI turns, show what a battle cost, float resource changes. Never with
+    // motion off, so that setting leaves the game exactly as it always was.
+    if (paced(1000) <= 0) return;
+    const me = before.activeFaction;
+    const id = ++fxSeq.current;
+    if (action.type === 'END_TURN') {
+      const beats = deriveBeats(before, next, me);
+      const rp = beats.length ? { id, before, after: next, beats } : null;
+      replayRef.current = rp;
+      setReplay(rp);
+      const inc = next.reports[me]?.income;
+      // Income and upkeep land on the same faction's chips; in hot seat the bar now shows another.
+      if (inc && next.activeFaction === me) {
+        const fl: Partial<Record<FloatKind, ChipFloat[]>> = {};
+        const add = (k: FloatKind, amount: number, note?: string) => {
+          if (amount) (fl[k] ??= []).push({ id: ++fxSeq.current, amount, note });
+        };
+        add('gold', inc.gold);
+        add('food', inc.food);
+        add('food', -inc.upkeep, 'upkeep');
+        add('mat', inc.mat);
+        add('influence', inc.influence);
+        add('pop', inc.population);
+        setFloats(fl);
+      }
+      return;
+    }
+    // Anything else the player does: float what it cost or earned.
+    const a = before.factions[me].resources, b = next.factions[me].resources;
+    const fl: Partial<Record<FloatKind, ChipFloat[]>> = {};
+    const diff: Array<[FloatKind, number]> = [['gold', b.gold - a.gold], ['food', b.food - a.food], ['mat', b.mat - a.mat], ['influence', b.influence - a.influence], ['pop', b.population - a.population]];
+    for (const [k, d] of diff) if (d) fl[k] = [{ id: ++fxSeq.current, amount: d }];
+    setFloats(fl);
+    if (action.type === 'ATTACK') {
+      const o = battleOutcome(before, next, action);
+      const fx: MapFx = { key: id, nodes: new Map([[action.toId, o.captured ? 'pop' : 'shake']]), floats: [] };
+      // Green: what the defender lost. Red: what the assault cost you (at the source if it failed).
+      if (o.defenderLoss) fx.floats.push({ node: action.toId, text: `−${o.defenderLoss}`, tone: 'good', dx: o.captured && o.attackerLoss ? -12 : 0 });
+      if (o.attackerLoss) fx.floats.push({ node: o.captured ? action.toId : action.fromId, text: `−${o.attackerLoss}`, tone: 'bad', dx: o.captured && o.defenderLoss ? 12 : 0 });
+      setBattle(fx);
+    }
   }, [state, game, selected, clear]);
 
   const undo = useCallback(() => {
@@ -163,6 +242,12 @@ function Game({ id }: { id: string | undefined }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [clear, endTurn, undo, modal, state]);
 
+  // The AI replay: which beat is showing. Held back while a hot-seat hand-over screen is up.
+  const durations = useMemo(() => replay?.beats.map(b => b.ms) ?? [], [replay]);
+  const replayLive = !!replay && !!state && state === replay.after && !passNeeded(state, readyFor);
+  const beat = useBeats(replayLive && replay ? String(replay.id) : null, durations);
+  useSkipOnInput(beat.playing, beat.skip);
+
   const nextAct = useCallback(async () => {
     if (!state || state.config.campaignScenario === undefined) return;
     const next = CAMPAIGN_SCENARIOS[state.config.campaignScenario + 1];
@@ -185,6 +270,7 @@ function Game({ id }: { id: string | undefined }) {
     );
   }
 
+  const replayingNow = beat.playing && !!replay;
   const me = state.activeFaction;
   const f = state.factions[me];
   const inc = incomeOf(state, me);
@@ -193,10 +279,24 @@ function Game({ id }: { id: string | undefined }) {
   const turnKey = `${state.turn}-${me}`;
   const needPass = hotseat && !over && readyFor !== turnKey && (state.turn > 1 || me !== 1);
   const report = state.reports[me];
-  const showDispatch = !needPass && !over && !state.pendingEvent && seenDispatch !== turnKey && reportHasNews(report);
-  keysBlocked.current = needPass || showDispatch || over;
+  const dispatchDue = !needPass && !over && !state.pendingEvent && seenDispatch !== turnKey && reportHasNews(report);
+  // Keys stay blocked from the moment a dispatch is due, even while the replay holds it back.
+  keysBlocked.current = needPass || dispatchDue || over;
+  // The replay plays first; whatever interrupts the board (dispatch, decision, the end) follows it.
+  const replaying = replayingNow;
+  const showDispatch = dispatchDue && !replaying;
+  const mapState = replaying && replay ? { ...state, nodes: boardAt(replay.before, replay.after, replay.beats, beat.index) } : state;
+  const current = replaying && replay ? replay.beats[beat.index - 1] : undefined;
+  const mapFx: MapFx | null = current && current.node !== null && replay
+    ? {
+      key: replay.id * 1000 + beat.index,
+      nodes: new Map([[current.node, current.kind === 'repelled' ? 'shake' : current.againstViewer ? 'hit' : 'pop']]),
+      floats: current.viewerLoss ? [{ node: current.node, text: `−${current.viewerLoss}`, tone: 'bad' }] : [],
+    }
+    : battle;
   const kind = orderKind(state, selected, target);
-  const marks: MapMarks = { ...marksFor(state, selected, target, columns), hit: new Set(report?.attacksSuffered.map(a => a.target) ?? []) };
+  // Territories hit while away pulse, but only once the replay has shown them being hit.
+  const marks: MapMarks = { ...marksFor(state, selected, target, columns), hit: new Set(replayingNow ? [] : report?.attacksSuffered.map(a => a.target) ?? []) };
   const sel = selected !== null ? state.nodes[selected] : null;
   const unlimited = state.actionsLeft >= UNLIMITED_AP;
   const showDiplomacy = state.config.enableDiplomacy || state.config.enableSpies;
@@ -212,16 +312,16 @@ function Game({ id }: { id: string | undefined }) {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 10, height: 10, borderRadius: 3, background: fc.fill, border: `1px solid ${fc.edge}` }} />
-          <span style={{ fontSize: 13, fontWeight: 600 }}>Turn {state.turn}</span>
+          <span key={state.turn} className={pace === 'off' ? undefined : 'tm-anim-pop'} style={{ fontSize: 13, fontWeight: 600, display: 'inline-block' }}>Turn {state.turn}</span>
           {hotseat && <span className="tm-hide-mobile" style={{ fontSize: 12, color: UI.textSoft }}>{factionName(state, me)}</span>}
         </div>
-        <ApPips left={state.actionsLeft} max={unlimited ? 0 : Math.max(state.actionsLeft, state.config.apPerTurn)} unlimited={unlimited} />
-        <div className="tm-chips" style={{ display: 'flex', alignItems: 'center', gap: 14, overflowX: 'auto', flex: 1, minWidth: 0 }}>
-          <Chip kind="gold" value={f.resources.gold} rate={inc.gold} />
-          <Chip kind="food" value={f.resources.food} rate={inc.foodNet} title={`Food: grow ${inc.food}, troops eat ${inc.upkeep}`} />
-          <Chip kind="mat" value={f.resources.mat} rate={inc.mat} />
-          {showDiplomacy && <Chip kind="influence" value={f.resources.influence} rate={inc.influence} />}
-          {(f.resources.population > 0 || inc.population > 0) && <Chip kind="pop" value={f.resources.population} rate={inc.population} />}
+        <ApPips key={me} left={state.actionsLeft} max={unlimited ? 0 : Math.max(state.actionsLeft, state.config.apPerTurn)} unlimited={unlimited} animate={pace !== 'off'} />
+        <div className="tm-chips" key={pace === 'off' ? undefined : `chips-${me}`} style={{ display: 'flex', alignItems: 'center', gap: 14, overflowX: 'auto', flex: 1, minWidth: 0 }}>
+          <Chip kind="gold" value={f.resources.gold} rate={inc.gold} animate floats={floats.gold} />
+          <Chip kind="food" value={f.resources.food} rate={inc.foodNet} title={`Food: grow ${inc.food}, troops eat ${inc.upkeep}`} animate floats={floats.food} />
+          <Chip kind="mat" value={f.resources.mat} rate={inc.mat} animate floats={floats.mat} />
+          {showDiplomacy && <Chip kind="influence" value={f.resources.influence} rate={inc.influence} animate floats={floats.influence} />}
+          {(f.resources.population > 0 || inc.population > 0) && <Chip kind="pop" value={f.resources.population} rate={inc.population} animate floats={floats.pop} />}
         </div>
         <span className="tm-spacer" />
         <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
@@ -248,9 +348,10 @@ function Game({ id }: { id: string | undefined }) {
 
       <div className="tm-body" style={{ flex: 1, display: 'flex', minHeight: 0 }}>
         <MapView
-          state={state} visible={visible} selected={selected} target={target} marks={marks} flash={flash}
+          state={mapState} visible={visible} selected={selected} target={target} marks={marks} flash={flash}
           onPick={pick} onHover={(nid, x, y) => setHover(nid === null ? null : { id: nid, x, y })}
-          focus={target ?? selected}
+          focus={target ?? selected} fx={mapFx}
+          overlay={replaying && replay ? <ReplayBanner state={state} beats={replay.beats} index={beat.index} onSkip={beat.skip} /> : null}
         />
 
         {/* ── Sidebar ── */}
@@ -290,8 +391,10 @@ function Game({ id }: { id: string | undefined }) {
 
       {hover && !sheetOpen && <HoverCard state={state} id={hover.id} x={hover.x} y={hover.y} seen={visible.has(hover.id)} />}
       {toast && (
-        <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', background: UI.panelRaised, border: `1px solid ${UI.warn}`, color: UI.text, padding: '9px 14px', borderRadius: 8, fontSize: 13, zIndex: 250, maxWidth: '90vw' }}>
-          {toast}
+        <div role="status" style={{ position: 'fixed', left: '50%', bottom: 24, transform: 'translateX(-50%)', zIndex: 250, maxWidth: '90vw' }}>
+          <div key={toast} className="tm-anim-rise" style={{ background: UI.panelRaised, border: `1px solid ${UI.warn}`, color: UI.text, padding: '9px 14px', borderRadius: 8, fontSize: 13 }}>
+            {toast}
+          </div>
         </div>
       )}
       {game.error && state && (
@@ -299,22 +402,25 @@ function Game({ id }: { id: string | undefined }) {
       )}
 
       {needPass && <PassScreen state={state} onReady={() => setReadyFor(turnKey)} />}
-      {!needPass && state.pendingEvent && !over && <EventModal state={state} event={state.pendingEvent} act={act} />}
+      {!needPass && !replaying && state.pendingEvent && !over && <EventModal state={state} event={state.pendingEvent} act={act} />}
       {showDispatch && report && <DispatchModal state={state} report={report} onClose={() => setSeenDispatch(turnKey)} />}
-      {over && !endHidden && <VictoryScreen state={state} onLobby={() => nav('/')} onNext={nextAct} onClose={() => setEndHidden(true)} />}
+      {over && !endHidden && !replaying && <VictoryScreen state={state} onLobby={() => nav('/')} onNext={nextAct} onClose={() => setEndHidden(true)} />}
       {modal === 'ledger' && <LedgerModal state={state} onClose={() => setModal(null)} onPick={nid => pick(nid)} />}
       {modal === 'help' && <HelpModal onClose={() => setModal(null)} />}
     </div>
   );
 }
 
-function ApPips({ left, max, unlimited }: { left: number; max: number; unlimited: boolean }) {
+function ApPips({ left, max, unlimited, animate }: { left: number; max: number; unlimited: boolean; animate: boolean }) {
+  // Pips drain and refill one at a time rather than all at once (snaps with motion off).
+  const counted = useCountUp(left, 120 * Math.max(1, max));
+  const lit = animate ? counted : left;
   if (unlimited) return <Chip kind="ap" value="∞" title="Unlimited actions" />;
   return (
     <div title={`${left} of ${max} actions left`} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
       <Icon name="ap" color={UI.ap} size={15} />
       {Array.from({ length: max }, (_, i) => (
-        <span key={i} style={{ width: 9, height: 9, borderRadius: 2, background: i < left ? UI.ap : 'transparent', border: `1px solid ${i < left ? UI.ap : UI.ruleStrong}` }} />
+        <span key={i} style={{ width: 9, height: 9, borderRadius: 2, background: i < lit ? UI.ap : 'transparent', border: `1px solid ${i < lit ? UI.ap : UI.ruleStrong}`, ...(animate ? { transition: 'background 0.15s, border-color 0.15s' } : {}) }} />
       ))}
     </div>
   );

@@ -115,7 +115,7 @@ export function PassScreen({ state, onReady }: { state: GameState; onReady: () =
   const fc = FACTION_COLORS[state.activeFaction];
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 400, background: UI.ground, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ textAlign: 'center', maxWidth: 380 }}>
+      <div className="tm-anim-pop" style={{ textAlign: 'center', maxWidth: 380 }}>
         <div style={{ width: 54, height: 54, borderRadius: 12, margin: '0 auto 16px', background: fc.fill, border: `2px solid ${fc.edge}` }} />
         <Label>Turn {state.turn} · hot seat</Label>
         <h2 style={{ fontFamily: FONT.display, fontSize: 28, margin: '8px 0 6px' }}>{factionName(state, state.activeFaction)}</h2>

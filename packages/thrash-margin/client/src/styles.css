@@ -145,10 +145,10 @@ input[type="range"].tm-range { width: 100%; accent-color: var(--ui-accent); }
 
 @keyframes tm-flash { 0% { opacity: 0.9; } 100% { opacity: 0; } }
 @keyframes tm-ants { to { stroke-dashoffset: -20; } }
-@keyframes tm-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
-@keyframes tm-rise { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes tm-hit-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
+@keyframes tm-modal-rise { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
 
-.tm-modal { animation: tm-rise 0.18s ease-out; }
+.tm-modal { animation: tm-modal-rise 0.18s ease-out; }
 .tm-mapwrap { cursor: grab; touch-action: none; }
 .tm-mapwrap.tm-grabbing { cursor: grabbing; }
 
