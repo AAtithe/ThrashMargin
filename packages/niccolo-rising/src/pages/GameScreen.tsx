@@ -186,8 +186,9 @@ export default function GameScreen() {
       </main>
       <Chronicle s={view} />
 
-      {tourPlan && st.kind === 'free' && (
+      {tourPlan && (
         <GuidedTour
+          hidden={st.kind !== 'free'}
           view={{ s: view, place }}
           plan={tourPlan}
           onFinish={() => setTourPlan(null)}
