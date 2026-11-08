@@ -3,9 +3,9 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import ThemeToggle from '../components/ThemeToggle';
 import { TILE } from '../game/art';
-import Minimap from '../game/Minimap';
+import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
-import { BuildPanel, SelectionPanel, type Tab } from '../game/Sidebar';
+import { BUILD_KEYS, BuildPanel, SelectionPanel, TAB_ORDER, menuFor, pressBuild, type Tab } from '../game/Sidebar';
 import { sound } from '../game/sound';
 import { statusOf, useSaves } from '../hooks/useSaves';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
@@ -13,13 +13,18 @@ import { clearToken, getStoredUser } from '../lib/portalAuth';
 import { processAction } from '../sim/actions';
 import { placementProblem } from '../sim/commands';
 import { occupancy } from '../sim/grid';
-import { BUILDINGS, DIFFICULTIES, MAP_H, MAP_W, TICKS_PER_SECOND, UNITS, type BuildingKind } from '../sim/rules';
-import { powerOf, readyStructure } from '../sim/state';
+import { BUILDINGS, DIFFICULTIES, MAP_H, MAP_W, MAX_QUEUE, TICKS_PER_SECOND, UNITS, type BuildingKind, type UnitKind } from '../sim/rules';
+import { costOf, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 
 const TICK_MS = 1000 / TICKS_PER_SECOND;
 const SAVE_EVERY_MS = 15000;
+/** How long the battlefield's "under attack" chip stays up after the last hit, in milliseconds. */
+const ALERT_CHIP_MS = 8000;
+/** Alerts closer than this (tiles) within this long (ms) of one already pinged share its ping. */
+const ALERT_MERGE_TILES = 6;
+const ALERT_MERGE_MS = 6000;
 const SPEEDS = [
   { label: 'Slow', value: 0.6 },
   { label: 'Normal', value: 1 },
@@ -122,6 +127,11 @@ function Battle({
   const keys = useRef(new Set<string>());
   const mouse = useRef({ x: -1, y: -1, inside: false, downX: 0, downY: 0, down: false, pan: false, panX: 0, panY: 0, camX: 0, camY: 0, lastClick: 0 });
   const groups = useRef(new Map<string, number[]>());
+  // Combat alerts: every recent ping (drawn by the minimap) and the latest hit, which Space jumps to.
+  const alerts = useRef<Alert[]>([]);
+  const lastAlert = useRef<Alert | null>(null);
+  const [toast, setToast] = useState<{ text: string; n: number } | null>(null);
+  const toastTimer = useRef(0);
 
   const [, setHud] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -145,6 +155,8 @@ function Battle({
   const speedRef = useRef(speed);
   const placingRef = useRef(placing);
   const attackRef = useRef(attackMode);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   pausedRef.current = paused || help;
   speedRef.current = speed;
   placingRef.current = placing;
@@ -158,11 +170,29 @@ function Battle({
     if (!k) overlay.current.placement = null;
   }, []);
 
+  const showToast = useCallback((text: string) => {
+    window.clearTimeout(toastTimer.current);
+    setToast(t => ({ text, n: (t?.n ?? 0) + 1 }));
+    toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+  }, []);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
   const dispatch = useCallback(
     (a: GameAction): boolean => {
       const next = processAction(cur.current, a);
       if (next === cur.current) {
         if (a.type === 'queue' || a.type === 'place') sound.play('denied');
+        if (a.type === 'queue') {
+          // Say why, in the order the rules check it.
+          const s = cur.current;
+          const q = s.players[0].queues[a.category];
+          if (!unlocked(s, 0, a.kind)) {
+            const needs = (a.kind in BUILDINGS ? BUILDINGS[a.kind as BuildingKind] : UNITS[a.kind as UnitKind]).requires;
+            showToast(`Needs a ${needs.filter(r => !s.buildings.some(b => b.owner === 0 && b.kind === r)).map(r => BUILDINGS[r].name).join(' and a ')}`);
+          } else if (a.category === 'building' && q.length) showToast('One structure at a time');
+          else if (q.length >= MAX_QUEUE) showToast('Queue full');
+          else if (s.players[0].credits < costOf(a.kind)) showToast('Insufficient funds');
+        }
         return false;
       }
       cur.current = next;
@@ -172,7 +202,7 @@ function Battle({
       refresh();
       return true;
     },
-    [refresh],
+    [refresh, showToast],
   );
 
   const doSave = useCallback(() => {
@@ -217,6 +247,27 @@ function Battle({
     c.y = ty * TILE - c.h / c.zoom / 2;
     clampCam(c);
   }, []);
+
+  const jumpToAlert = useCallback(() => {
+    const a = lastAlert.current;
+    if (a) centreOn(a.x, a.y);
+  }, [centreOn]);
+
+  /** Placement from the build menu or its hotkeys: entering it leaves attack-move. */
+  const choosePlacing = useCallback(
+    (k: BuildingKind | null) => {
+      setPlacing(k);
+      if (k) setAttackMode(false);
+    },
+    [setPlacing],
+  );
+
+  /** Control-group badges for the renderer (contract 3): unit id to digit, newest group winning. */
+  const syncGroupBadges = () => {
+    const m = new Map<number, number>();
+    for (const [digit, ids] of groups.current) for (const id of ids) m.set(id, Number(digit));
+    (overlay.current as Overlay & { groupOf?: Map<number, number> }).groupOf = m;
+  };
 
   // ---- Orders -------------------------------------------------------------------------------
   const command = useCallback(
@@ -426,6 +477,19 @@ function Battle({
       keys.current.add(e.key);
       const ov = overlay.current;
       const k = e.key.toLowerCase();
+      const buildIndex = (BUILD_KEYS as readonly string[]).indexOf(k);
+      if (buildIndex >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Q W E R T Y: the open list's items in order; Shift queues five units.
+        const kind = menuFor(tabRef.current)[buildIndex];
+        if (kind) pressBuild(cur.current, tabRef.current, kind, placingRef.current, dispatch, choosePlacing, e.shiftKey);
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const i = TAB_ORDER.indexOf(tabRef.current);
+        setTab(TAB_ORDER[(i + (e.shiftKey ? TAB_ORDER.length - 1 : 1)) % TAB_ORDER.length]);
+        return;
+      }
       if (e.key === 'Escape') {
         if (help) setHelp(false);
         else if (placingRef.current) setPlacing(null);
@@ -439,16 +503,21 @@ function Battle({
       } else if (k === 's' && !e.ctrlKey && !e.metaKey) {
         const ids = ownSelectedUnits().map(u => u.id);
         if (ids.length) dispatch({ type: 'stop', ids });
-      } else if (k === 'p' || e.key === ' ') {
-        e.preventDefault();
+      } else if (k === 'p' && !e.ctrlKey && !e.metaKey) {
         setPaused(p => !p);
+      } else if (e.key === ' ') {
+        // Space never presses a focused button here; it jumps to the latest combat alert.
+        e.preventDefault();
+        jumpToAlert();
       } else if (k === 'h' || e.key === 'Home') {
         const yard = cur.current.buildings.find(b => b.owner === 0 && b.kind === 'hq') ?? cur.current.buildings.find(b => b.owner === 0);
         if (yard) centreOn(yard.x + 1.5, yard.y + 1.5);
       } else if (/^[1-9]$/.test(e.key)) {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
+          groups.current.delete(e.key);
           groups.current.set(e.key, ownSelectedUnits().map(u => u.id));
+          syncGroupBadges();
         } else {
           const live = new Set(cur.current.units.filter(u => u.owner === 0).map(u => u.id));
           const ids = (groups.current.get(e.key) ?? []).filter(id => live.has(id));
@@ -464,7 +533,7 @@ function Battle({
             refresh();
           }
         }
-      } else if (k === 'r') {
+      } else if (k === 'g' && !e.ctrlKey && !e.metaKey) {
         const b = cur.current.buildings.find(x => ov.selected.has(x.id) && x.owner === 0);
         if (b) dispatch({ type: 'repair', id: b.id });
       } else if (e.key === '?') {
@@ -484,7 +553,7 @@ function Battle({
       window.removeEventListener('blur', blur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, refresh, setPlacing, centreOn, help, changeSound]);
+  }, [dispatch, refresh, setPlacing, centreOn, help, changeSound, choosePlacing, jumpToAlert]);
 
   // Browsers only allow audio after the player has touched the page.
   useEffect(() => {
@@ -504,6 +573,18 @@ function Battle({
     let lastTick = cur.current.tick;
     let heardLog = cur.current.log.length ? cur.current.log[cur.current.log.length - 1] : null;
     let heardWinner = cur.current.winner !== null;
+    // Hits already in a loaded save are not news.
+    let seenHurt = cur.current.ai[0].hurtTick;
+    let haulerHp = new Map<number, number>();
+    for (const u of cur.current.units) if (u.owner === 0 && u.kind === 'hauler') haulerHp.set(u.id, u.hp);
+    const raiseAlert = (x: number, y: number, kind: Alert['kind'], at: number) => {
+      lastAlert.current = { x, y, at, kind };
+      const list = alerts.current.filter(a => at - a.at < Math.max(ALERT_MS, ALERT_MERGE_MS));
+      if (!list.some(a => at - a.at < ALERT_MERGE_MS && Math.hypot(a.x - x, a.y - y) < ALERT_MERGE_TILES)) list.push({ x, y, at, kind });
+      // Mutated in place: the minimap holds this array and reads it every frame.
+      alerts.current.length = 0;
+      alerts.current.push(...list);
+    };
     const frame = (now: number) => {
       const dt = Math.min(250, now - last);
       last = now;
@@ -576,6 +657,20 @@ function Battle({
             if (alive.size !== sel.size) overlay.current.selected = alive;
           }
           if (placingRef.current && readyStructure(cur.current, 0) !== placingRef.current) setPlacing(null);
+          // Combat alerts: a structure hit (the side's own memory of it) or a hauler losing health.
+          const mem = cur.current.ai[0];
+          if (mem.hurtTick > seenHurt) {
+            seenHurt = mem.hurtTick;
+            raiseAlert(mem.hurtX, mem.hurtY, 'base', now);
+          }
+          const hp = new Map<number, number>();
+          for (const u of cur.current.units) {
+            if (u.owner !== 0 || u.kind !== 'hauler') continue;
+            const was = haulerHp.get(u.id);
+            if (was !== undefined && u.hp < was) raiseAlert(u.x, u.y, 'hauler', now);
+            hp.set(u.id, u.hp);
+          }
+          haulerHp = hp;
           // Interface sounds from what the battle reported this tick.
           const log = cur.current.log;
           let from = heardLog ? log.lastIndexOf(heardLog) + 1 : 0;
@@ -626,7 +721,9 @@ function Battle({
   // ---- Render -------------------------------------------------------------------------------
   const s = cur.current;
   const vis = renderer.current!.visible(s);
-  const uplinkOnline = s.buildings.some(b => b.owner === 0 && b.kind === 'uplink') && !powerOf(s, 0).low;
+  const power = powerOf(s, 0);
+  const uplinkOnline = s.buildings.some(b => b.owner === 0 && b.kind === 'uplink') && !power.low;
+  const alert = lastAlert.current && performance.now() - lastAlert.current.at < ALERT_CHIP_MS ? lastAlert.current : null;
   const secs = Math.floor(s.tick / TICKS_PER_SECOND);
   const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   const recent = s.log.slice(-5).reverse();
@@ -725,11 +822,31 @@ function Battle({
             onContextMenu={e => e.preventDefault()}
             onWheel={onWheel}
           />
-          {(placing || attackMode) && (
-            <div style={hint}>
-              {placing
-                ? `Place the ${BUILDINGS[placing].name}: click open ground near your base. Right-click or Esc to stop.`
-                : 'Attack-move: click where to go. Units fight anything they meet on the way.'}
+          <div className="fl-banners">
+            {(placing || attackMode) && (
+              <div className="fl-hint">
+                {placing
+                  ? `Place the ${BUILDINGS[placing].name}: click open ground near your base. Right-click or Esc to stop.`
+                  : 'Attack-move: click where to go. Units fight anything they meet on the way.'}
+              </div>
+            )}
+            {power.low && s.winner === null && (
+              <div className="fl-lowpower" role="status" data-testid="low-power">
+                <strong>Low power</strong> {power.made}/{power.used}. Production at half speed, turrets slowed, radar down. Build a
+                Generator.
+              </div>
+            )}
+          </div>
+          {alert && s.winner === null && (
+            <button type="button" className="fl-alert-chip" data-testid="alert-chip" data-kind={alert.kind} onClick={jumpToAlert}>
+              <span className="fl-alert-dot" aria-hidden="true" />
+              {alert.kind === 'base' ? 'Base under attack' : 'Hauler under attack'}
+              <kbd>Space</kbd>
+            </button>
+          )}
+          {toast && (
+            <div key={toast.n} className="fl-toast" role="status" data-testid="toast">
+              {toast.text}
             </div>
           )}
           <div style={feed} aria-live="polite">
@@ -780,11 +897,8 @@ function Battle({
             setTab={setTab}
             dispatch={dispatch}
             placing={placing}
-            setPlacing={k => {
-              setPlacing(k);
-              if (k) setAttackMode(false);
-            }}
-            minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} />}
+            setPlacing={choosePlacing}
+            minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} alerts={alerts.current} />}
           />
           <div style={{ borderTop: `1px solid ${UI.rule}`, paddingTop: 8 }}>
             <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} />
@@ -813,10 +927,14 @@ export function Controls() {
     ['A then click', 'Attack-move: go there, fighting anything met on the way'],
     ['S', 'Stop'],
     ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
-    ['R', 'Toggle repair on the selected structure'],
+    ['Q W E R T Y', 'Build or train the first to sixth item in the open list (the letter is on each button)'],
+    ['Shift + click or key', 'Queue five infantry or vehicles at once'],
+    ['Tab', 'Next build list: Structures, Infantry, Vehicles (Shift + Tab goes back)'],
+    ['G', 'Toggle repair on the selected structure'],
     ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
     ['H', 'Jump to your Command Yard'],
-    ['P or Space', 'Pause'],
+    ['Space', 'Jump to the last combat alert (pinged on the minimap)'],
+    ['P', 'Pause'],
     ['M', 'Sound on or off'],
     ['Esc', 'Cancel placement or attack-move; clear selection'],
   ];
@@ -930,21 +1048,6 @@ export const chromeBtn: CSSProperties = {
   color: UI.text,
   borderRadius: 3,
   cursor: 'pointer',
-};
-
-const hint: CSSProperties = {
-  position: 'absolute',
-  top: 10,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  background: 'rgba(8,12,12,0.82)',
-  color: '#e9f0ec',
-  padding: '6px 12px',
-  borderRadius: 4,
-  fontSize: '0.8rem',
-  pointerEvents: 'none',
-  maxWidth: '90%',
-  textAlign: 'center',
 };
 
 const feed: CSSProperties = {
