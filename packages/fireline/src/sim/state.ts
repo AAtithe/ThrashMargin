@@ -19,7 +19,7 @@ import {
   type Owner,
   type UnitKind,
 } from './rules';
-import type { Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
+import type { AiMemory, Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
 
 export interface NewGameOptions {
   seed?: string;
@@ -37,6 +37,11 @@ function newPlayer(owner: Owner): PlayerState {
     queues: { building: [], infantry: [], vehicle: [] },
     stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
   };
+}
+
+/** A computer commander's starting memory. The one place it is built, for skirmish and missions alike. */
+export function newAiMemory(firstAttack: number): AiMemory {
+  return { nextAttack: firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0, waveIds: [], wavePhase: 0, waveTick: 0, waveSize: 0, raidIds: [], raidTarget: 0, nextRaid: 0 };
 }
 
 export function createInitialState(id: string, name: string, opts: NewGameOptions): GameState {
@@ -64,8 +69,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     projectiles: [],
     effects: [],
     ai: [
-      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0, waveIds: [], wavePhase: 0, waveTick: 0, waveSize: 0, raidIds: [], raidTarget: 0, nextRaid: 0 },
-      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0, waveIds: [], wavePhase: 0, waveTick: 0, waveSize: 0, raidIds: [], raidTarget: 0, nextRaid: 0 },
+      newAiMemory(d.firstAttack),
+      newAiMemory(d.firstAttack),
     ],
     autopilot: !!opts.autopilot,
     nextId: 1,

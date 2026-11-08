@@ -4,7 +4,7 @@ import { MISSIONS, missionById } from '../campaign/missions';
 import { PERKS, RANKS, applyOutcome, buyPerk, heroesFor, missionContext, missionUnlocked, perkProblem, rankFor } from '../campaign/progression';
 import type { CampaignSave, CampaignState, PerkBranch, PerkSpec } from '../campaign/types';
 import { HeroPortrait, RankInsignia } from '../components/CampaignArt';
-import { drawMap, hasCampaignArt, nodePosition, type CampaignMapNode } from '../components/campaignArtBridge';
+import { drawMap, hasCampaignArt, nodeHitRadius, nodePosition, type CampaignMapNode } from '../components/campaignArtBridge';
 import { clockOf, heroName, levelProgress } from '../components/CampaignHud';
 import ThemeToggle from '../components/ThemeToggle';
 import { createMissionState, missionOutcome, objectiveLabel } from '../sim/mission';
@@ -335,7 +335,7 @@ function TheatreCanvas({ nodes, onOpen, selected }: { nodes: CampaignMapNode[]; 
       ctx,
       size.w,
       size.h,
-      nodes.map(n => ({ ...n, selected: n.id === hover || n.id === selected })),
+      nodes.map(n => ({ ...n, selected: n.id === selected, hover: n.id === hover })),
     );
   }, [nodes, size, hover, selected]);
 
@@ -344,9 +344,9 @@ function TheatreCanvas({ nodes, onOpen, selected }: { nodes: CampaignMapNode[]; 
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
     let best: CampaignMapNode | null = null;
-    let bestD = 26;
-    nodes.forEach((n, i) => {
-      const p = nodePosition(i, nodes.length, size.w, size.h);
+    let bestD = nodeHitRadius(size.w, size.h);
+    nodes.forEach(n => {
+      const p = nodePosition(n.order, size.w, size.h);
       const d = Math.hypot(p.x - x, p.y - y);
       if (d < bestD) {
         bestD = d;

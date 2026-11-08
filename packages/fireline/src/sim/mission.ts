@@ -36,7 +36,7 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { addBuilding, addUnit, log, updateExplored } from './state';
+import { addBuilding, addUnit, log, newAiMemory, updateExplored } from './state';
 import type {
   Building,
   GameState,
@@ -237,10 +237,7 @@ export function createMissionState(spec: MissionSpec, ctx: MissionContext): Game
     players: [newPlayer(0, Math.max(0, spec.player.credits + perks.extraStartCredits)), newPlayer(1, Math.max(0, spec.enemy.credits))],
     projectiles: [],
     effects: [],
-    ai: [
-      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0 },
-      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0 },
-    ],
+    ai: [newAiMemory(d.firstAttack), newAiMemory(d.firstAttack)],
     autopilot: false,
     nextId: 1,
     winner: null,

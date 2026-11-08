@@ -1,3 +1,4 @@
+import { setAutopilotAi } from '../src/sim/ai';
 /**
  * Fireline's test harness: whole battles, computer against computer, over many seeds, with the
  * invariants checked as they play, plus every order the player can give, legal and illegal.
@@ -911,6 +912,23 @@ function blackoutAndSabotage(): void {
   ok(t.players[0].queues.infantry[0].progress > 0, 'and starts again when the sabotage ends');
 }
 
+/**
+ * Hero ability, sabotage and power tests run with side 1's computer commander switched off: they
+ * test the rules, not the commander. With it on, the commander answers a Commando standing by its
+ * base by sending defenders (an extra kill for him), and cancels queued units for a refund when its
+ * economy is empty, as it is in these setups.
+ */
+function noCommander(fn: () => void): () => void {
+  return () => {
+    setAutopilotAi(() => {}, 1);
+    try {
+      fn();
+    } finally {
+      setAutopilotAi(null, 1);
+    }
+  };
+}
+
 function spyTests(): void {
   const s = heroArena(1000);
   const spy = heroOf(s, 'spy');
@@ -1642,13 +1660,13 @@ const sections: [string, () => void][] = [
   ['Mission setup', missionSetup],
   ['Objective labels', labels],
   ['Build rules and perks', buildRules],
-  ['Blackout and sabotage', blackoutAndSabotage],
-  ['The Spy', spyTests],
-  ['Stealth and detection', stealthTests],
-  ['The Commando', commandoTests],
-  ['The Engineer', engineerTests],
-  ['The Ace', aceTests],
-  ['Support powers', powerTests],
+  ['Blackout and sabotage', noCommander(blackoutAndSabotage)],
+  ['The Spy', noCommander(spyTests)],
+  ['Stealth and detection', noCommander(stealthTests)],
+  ['The Commando', noCommander(commandoTests)],
+  ['The Engineer', noCommander(engineerTests)],
+  ['The Ace', noCommander(aceTests)],
+  ['Support powers', noCommander(powerTests)],
   ['Objectives, triggers, victory and defeat', objectiveTests],
   ['Mission replay and saves', missionReplay],
   ['Mission battles', missionBattles],
