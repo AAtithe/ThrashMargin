@@ -145,12 +145,16 @@ export function useSkipOnInput(active: boolean, skip: () => void): void {
   useEffect(() => {
     if (!active) return;
     const h = () => fn.current();
-    // Capture phase, so the press that skips also reaches whatever it was aimed at.
+    // Capture phase, so the press that skips also reaches whatever it was aimed at. On `click`, not
+    // `pointerdown`: skipping redraws the screen (settled dice are a different width from tumbling
+    // ones), and a skip on pointerdown moved the button out from under the press before it was
+    // released, so the click landed beside it and was lost. On click, the press has already
+    // reached its target when the skip redraws.
     window.addEventListener('keydown', h, true);
-    window.addEventListener('pointerdown', h, true);
+    window.addEventListener('click', h, true);
     return () => {
       window.removeEventListener('keydown', h, true);
-      window.removeEventListener('pointerdown', h, true);
+      window.removeEventListener('click', h, true);
     };
   }, [active]);
 }
