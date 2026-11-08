@@ -116,3 +116,11 @@ body {
   .niccolo-rail-label { display: none !important; }
   .niccolo-hide-phone { display: none !important; }
 }
+
+/* The same rule the other four games carry: a player who asks for less motion gets none. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}

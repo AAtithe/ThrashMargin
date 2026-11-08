@@ -132,5 +132,17 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   because the CSP forbids inline scripts) applies it before first paint. Both live in
   `shared/portal/client/` and are copied out by `npm run sync-shared`. A new colour is a token in both blocks, never a hex literal in a component, and never
   hex alpha appended to a token (`${UI.bad}55` is invalid CSS). Check both modes in the browser.
+- **Loading states use the shared loader**, `lib/Loading.tsx` (original in `shared/portal/client/`):
+  `LoadingScreen` for a game screen waiting on its save, `LoadingRows` for a saves list,
+  `BusyLabel` for a button whose request is in flight. Nothing shows for the first 300ms, a load
+  still running at 8 seconds offers Try again, errors show at once with Try again (an expired
+  sign-in gets Sign in again instead), reduced motion stops all movement. The standard and its
+  reasons are in `loading-animations-plan.md`. Each `index.html` also carries a CSS-only loader
+  inside `#root` for the bundle download, with colours copied from the game's tokens; keep it, and
+  keep the colours in step, when editing those files.
+- **`npm run check:loading` after touching a loading state** (the shared loader, a game screen's
+  load branch, a lobby's saves list, an `index.html`, or a game's palette). Drives all five games
+  in Chromium with the API intercepted, about 130 checks in a few minutes; starts and stops its
+  own dev servers. Needs Playwright, so it is not part of `npm run check`.
 - **Never `git add -A` without reading `git status` first.** A commit in this repo once swept four
   other games' uncommitted lobby changes in under an unrelated message. Stage deliberately.

@@ -23,6 +23,9 @@ import { Button, bodySmall, dataText } from '../components/ui';
 import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
 import type { Contract, DepotId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
+import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { SESSION_EXPIRED } from '../hooks/useGameCloud';
+import { clearToken } from '../lib/portalAuth';
 
 export default function GameScreen() {
   const { id } = useParams();
@@ -141,16 +144,21 @@ export default function GameScreen() {
 
   if (!state) {
     return (
-      <div style={{ ...page, alignItems: 'center', justifyContent: 'center' }}>
-        <p style={{ ...bodySmall, textAlign: 'center', maxWidth: '40ch' }}>
-          {error ?? 'Loading the run…'}
-        </p>
-        {error && (
-          <Button onClick={() => navigate('/')} style={{ marginTop: '0.8rem' }}>
-            Back to the lobby
-          </Button>
-        )}
-      </div>
+      <LoadingScreen
+        motif="lorry"
+        caption="Loading the run…"
+        error={error === SESSION_EXPIRED ? SIGN_IN_AGAIN : error}
+        actions={
+          error === SESSION_EXPIRED ? (
+            <Button tone="primary" onClick={() => { clearToken(); navigate('/'); }}>Sign in again</Button>
+          ) : (
+            <>
+              {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
+              <Button onClick={() => navigate('/')}>Back to the lobby</Button>
+            </>
+          )
+        }
+      />
     );
   }
 

@@ -15,6 +15,8 @@ export interface GameHook {
   state: GameState | null;
   error: string | null;
   saves: SaveMeta[];
+  /** False until the first saves list has answered (always true for the local hook). */
+  savesLoaded: boolean;
   createGame: (name?: string, opts?: NewGameOptions) => string | null | Promise<string | null>;
   loadGame: (gameId: string) => void | Promise<void>;
   dispatch: (action: GameAction) => void;
