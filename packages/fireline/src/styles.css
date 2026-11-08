@@ -139,6 +139,8 @@ button:disabled {
 @media (prefers-reduced-motion: reduce) {
   .fl-build.ready { animation: none; }
 }
+/* The portal's own Motion: off (lib/motion.ts) stills the same things the OS setting does. */
+:root[data-motion="off"] .fl-build.ready { animation: none; }
 
 .fl-scroll::-webkit-scrollbar {
   width: 8px;
@@ -359,6 +361,11 @@ kbd {
   .fl-toast {
     animation: none;
   }
+}
+:root[data-motion="off"] .fl-lowpower,
+:root[data-motion="off"] .fl-alert-dot,
+:root[data-motion="off"] .fl-toast {
+  animation: none;
 }
 
 /* ---- Lobby ------------------------------------------------------------------------------- */
@@ -1336,4 +1343,10 @@ kbd {
   .fl-bar-anim > span {
     transition: none;
   }
+}
+:root[data-motion="off"] .fl-debrief-stars span[data-on="1"] {
+  animation: none;
+}
+:root[data-motion="off"] .fl-bar-anim > span {
+  transition: none;
 }

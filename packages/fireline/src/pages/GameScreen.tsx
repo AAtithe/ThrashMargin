@@ -4,6 +4,7 @@ import { isCampaignSave } from '../campaign/save';
 import type { CampaignSave } from '../campaign/types';
 import { HERO_KEYS, HeroBar, heroName, ObjectivesPanel, PowerBar, abilityBlock, type Targeting } from '../components/CampaignHud';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
+import MotionToggle from '../components/MotionToggle';
 import ThemeToggle from '../components/ThemeToggle';
 import { TILE } from '../game/art';
 import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
@@ -1045,6 +1046,7 @@ export function Battle({
         <button style={chromeBtn} onClick={() => setHelp(true)} aria-label="Controls">
           ?
         </button>
+        <MotionToggle style={{ padding: '4px 8px' }} />
         <ThemeToggle style={{ padding: '4px 8px' }} />
       </header>
 
