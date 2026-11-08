@@ -310,9 +310,15 @@ interface Props {
    * step. Thrash Margin hit this on its end-of-turn dispatch; here it is the same structure.
    */
   hidden?: boolean;
+  /**
+   * Told which element the card is pointing at, whenever that changes, so the screen can open the
+   * panel it sits in, or clear a phone's sheet off a landmark on the map. The panels slide away
+   * over the map, and a ring round a control in a closed panel would point at nothing.
+   */
+  onTargetChange?: (targetId: string | null) => void;
 }
 
-export default function GuidedTour({ view, plan, onFinish, hidden = false }: Props) {
+export default function GuidedTour({ view, plan, onFinish, hidden = false, onTargetChange }: Props) {
   // Captured once, on the first render. `useRef` rather than `useState` because reading it must
   // never cause a render of its own.
   const memoryRef = useRef<TourMemory>({
@@ -333,6 +339,10 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   // Nothing to measure while hidden, so the 250ms poll cannot scroll the page under a panel.
   const targetId = hidden ? null : elsewhere ? `nr-place-${step.place}` : step.target(view, plan);
   const rect = useTargetRect(targetId);
+  useEffect(() => {
+    onTargetChange?.(targetId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetId]);
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
   // of what they just did before the card moves on.

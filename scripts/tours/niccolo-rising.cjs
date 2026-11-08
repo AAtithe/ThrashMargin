@@ -1,6 +1,8 @@
 /**
- * Niccolò Rising: the Missions chain (the game's onboarding; it has no guided tour), played in a
- * browser with Playwright's clock standing in for real hours.
+ * Niccolò Rising: the Missions chain, played in a browser with Playwright's clock standing in for
+ * real hours. The guided first hour is a separate run a new character is offered; this driver marks
+ * it already seen, as a returning player has, because its opening card sits over the middle of the
+ * town map and a bot that ignored it could not reach the landmarks underneath.
  *
  *   npm run tours -- niccolo-rising            # six missions on desktop and phone, every edge flow
  *   npm run tours -- niccolo-rising --quick    # two missions on each, abandon + level gate (CI)
@@ -42,6 +44,8 @@ const VIEWPORTS = { desktop: { width: 1400, height: 900 }, phone: { width: 390, 
 const START = new Date('2026-03-02T09:00:00Z').getTime();
 const MIN = 60_000;
 const USER = JSON.stringify({ userId: 'local-dev', username: 'local-dev' });
+/** The guided first hour's once-per-browser flag (src/components/GuidedTour.tsx). */
+const TOUR_SEEN = 'niccolo_rising_tour_seen';
 const COUNTING = new Set(['scheme', 'duel', 'train', 'arrive']);
 // Missions whose counted action the bot performs once before accepting (Woad and Geneva's journeys are too slow).
 const PRE_ACT = new Set(['goose', 'drill', 'scots', 'snow']);
@@ -72,9 +76,29 @@ function kit(page, label, local) {
     if (shots++ < 3) await page.screenshot({ path: path.join(OUT, `${label.replace(/\W+/g, '-')}-${shots}.png`) }).catch(() => {});
   };
   const ff = async mins => { await page.clock.fastForward(mins * MIN); await page.waitForTimeout(30); };
+  /**
+   * Goes to a place the way a player does: by its landmark on the town map. On a phone an open
+   * sheet covers most of the map, so it is put away first, as a player would close it.
+   */
   const goPlace = async name => {
-    await page.locator('main nav button', { hasText: new RegExp(`^${name}$`) }).first().click();
-    await page.waitForTimeout(20);
+    const id = PLACE_IDS[name];
+    if (!id) throw new Error(`no landmark for ${name}`);
+    if ((page.viewportSize()?.width ?? 1400) <= 720) {
+      for (const close of await page.locator('.nr-panel.open button[title="Close (Esc)"]').all()) await close.click();
+      await page.waitForTimeout(300);
+    }
+    // The landmark's round mark itself (its first circle is the tap target): the landmark's whole
+    // box also takes in its name and, once selected, a line of description off to one side, so its
+    // centre can fall on bare map.
+    await page.locator(`#nr-place-${id} circle`).first().click();
+    await page.waitForSelector('.nr-panel-right.open');
+    await page.waitForTimeout(300); // the panel slides in
+  };
+  /** Reads the character sheet or the chronicle, which share the panel on the left. */
+  const readSide = async tab => {
+    await page.locator('button', { hasText: new RegExp(`^${tab === 'character' ? 'Character' : 'Chronicle'}$`) }).first().click();
+    await page.waitForTimeout(300);
+    return page.locator(`#nr-${tab}`).innerText();
   };
   /** Clicks a button in the last element under `scope` containing `rowText`. 'clicked' | 'disabled:<why>' | 'missing'. */
   const press = async (rowText, buttonText, scope = 'main div') => {
@@ -92,6 +116,8 @@ function kit(page, label, local) {
       const vw = document.documentElement.clientWidth;
       if (document.documentElement.scrollWidth > vw + 1) out.push(`page scrolls horizontally: ${document.documentElement.scrollWidth} > ${vw}`);
       for (const b of document.querySelectorAll('main button')) {
+        // A panel slid away over the map is out of sight on purpose, not off screen by mistake.
+        if (b.closest('.nr-panel:not(.open)')) continue;
         const rc = b.getBoundingClientRect();
         if (rc.width && (rc.right > vw + 1 || rc.left < -1)) out.push(`button "${b.textContent}" off screen (${Math.round(rc.left)}..${Math.round(rc.right)} of ${vw})`);
       }
@@ -99,8 +125,14 @@ function kit(page, label, local) {
     });
     for (const x of r) await fail(`[${tag}] ${x}`);
   };
-  return { fail, ff, goPlace, press, layoutCheck };
+  return { fail, ff, goPlace, readSide, press, layoutCheck };
 }
+
+/** Each place's landmark on the town map is `#nr-place-<id>` (packages/niccolo-rising/src/pages/GameScreen.tsx). */
+const PLACE_IDS = {
+  Home: 'home', Missions: 'missions', 'Training yard': 'yard', Schemes: 'schemes', Duels: 'duels', Work: 'work',
+  Schooling: 'school', Travel: 'travel', Waterhalle: 'market', Lodging: 'lodging', Bank: 'bank',
+};
 
 const saveOf = (page, id) => page.evaluate(k => JSON.parse(localStorage.getItem(k)), `nrising_save_${id}`);
 
@@ -128,13 +160,13 @@ async function missionsRun(page, { vp, max }, local) {
   await page.waitForSelector('text=Sign in / Register');
   if (await page.locator('text=A new character').count()) await fail('lobby offered character creation with no stored user');
 
-  await page.evaluate(u => localStorage.setItem('tm_user', u), USER);
+  await page.evaluate(([u, seen]) => { localStorage.setItem('tm_user', u); localStorage.setItem(seen, '1'); }, [USER, TOUR_SEEN]);
   await page.reload();
   await page.waitForSelector('text=A new character');
   await page.fill('input[placeholder="Claes"]', 'Claes');
   await page.click('button:has-text("Begin")');
   await page.waitForURL(/\/game\//);
-  await page.waitForSelector('text=Where things stand');
+  await page.waitForSelector('#nr-place-home');
   const id = page.url().split('/game/')[1];
   await layoutCheck('home');
 
@@ -314,7 +346,7 @@ async function missionsRun(page, { vp, max }, local) {
 
 async function edgesRun(page, { vp, full }, local) {
   const label = `${vp} edges${full ? '' : '(quick)'}`;
-  const { fail, ff, goPlace } = kit(page, label, local);
+  const { fail, ff, goPlace, readSide } = kit(page, label, local);
   const key = 'nrising_save_edge-geneva';
   const saved = async () => (await page.evaluate(k => JSON.parse(localStorage.getItem(k)), key)).missions.active?.id ?? null;
   const mutate = async fn => page.evaluate(([k, src]) => {
@@ -324,14 +356,14 @@ async function edgesRun(page, { vp, full }, local) {
   }, [key, fn]);
   const reloadTo = async place => {
     await page.reload();
-    await page.waitForSelector('text=Where things stand');
+    await page.waitForSelector('#nr-place-home');
     await goPlace(place);
   };
   const mainText = () => page.locator('main').innerText();
   const flows = [];
 
   await page.goto(BASE + '/');
-  await page.evaluate(u => localStorage.setItem('tm_user', u), USER);
+  await page.evaluate(([u, seen]) => { localStorage.setItem('tm_user', u); localStorage.setItem(seen, '1'); }, [USER, TOUR_SEEN]);
 
   if (full) {
     await page.goto(BASE + '/game/does-not-exist');
@@ -355,11 +387,11 @@ async function edgesRun(page, { vp, full }, local) {
     localStorage.setItem('nrising_saves', JSON.stringify([{ id: 'edge-geneva', name: 'Edge', turn: 3, status: 'active', savedAt: start }]));
   }, START);
   await page.goto(BASE + '/game/edge-geneva');
-  await page.waitForSelector('text=Where things stand');
+  await page.waitForSelector('#nr-place-home');
   await goPlace('Missions');
 
   if (full) {
-    const rail = await page.locator('aside').first().innerText();
+    const rail = await readSide('character');
     if (!/Courier to Geneva/.test(rail)) await fail('rail does not show the active mission');
     if (!/2d 0h|4\dh/.test(rail)) await fail('rail deadline text unexpected: ' + rail.split('\n').slice(-2).join(' | '));
     const report = page.locator('button', { hasText: 'Report back' });
@@ -373,7 +405,8 @@ async function edgesRun(page, { vp, full }, local) {
     await page.waitForTimeout(200);
     if (await saved()) await fail('mission still active in the save after its deadline');
     if (!/Accept/.test(await mainText())) await fail('after a failed deadline the mission is not offered again');
-    if (!/Mission failed/.test(await page.locator('aside').last().innerText())) await fail('no failure line in the chronicle');
+    if (!/Mission failed/.test(await readSide('chronicle'))) await fail('no failure line in the chronicle');
+    await goPlace('Missions');
     await page.locator('button', { hasText: 'Accept' }).click();
     await page.waitForTimeout(50);
     if ((await saved()) !== 'geneva') await fail('could not accept Geneva again after it failed');

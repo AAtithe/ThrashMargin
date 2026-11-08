@@ -206,6 +206,42 @@ be revisited before any player-versus-player feature ships (see §6).
 
 ## 7. Build log
 
+### The town map, 2026-11-08
+
+The other four games moved to a map that fills the screen with their panels popping out over it.
+This one had no map, only a status column, a row of eleven place buttons and the chronicle, so it
+got one: `components/TownMap.tsx`, a drawn plan of Bruges inside its walls (moat, the Reie and the
+Minnewater, the Markt with the Belfort, the Burg, the seven gates) with a landmark for every place,
+put where it plausibly stood in 1460. Picking one slides that place's screen out from the right;
+the character sheet and the chronicle share a panel on the left. A pennant marks the character, at
+the Sint-Janshospitaal or the Steen when the town has put them there, and at the Dampoort when
+abroad or on the road; the infirmary and Steen cards float over the map rather than sitting above
+a place screen. The header keeps money, status and the four bars on screen without opening anything.
+
+Decisions worth keeping:
+
+- **Marks and names are screen pixels at any zoom**, as in Banco di Niccolò, so the town can be
+  zoomed for room without labels growing or vanishing.
+- **A phone opens on the whole town**, not a closer view that fills the screen's height: every
+  place must be reachable without hunting for it. Where names would touch at that size they sit to
+  one side of their mark (`LABEL_SIDE` in `GameScreen.tsx`).
+- **The map re-fits into the space a side panel leaves** unless the player has zoomed or dragged
+  since the last fit. Before this, opening a place on a desktop slid its panel over Home, the
+  training yard and the Steen, which could then not be clicked; `npm run tours` caught it.
+- **The guided first hour routes through the map.** It is told the place only while that place's
+  panel is open, so it first rings the landmark ("Go to the training yard"), then the control in
+  the panel, opening and scrolling the panel itself once it has finished sliding in. On a phone it
+  puts the sheet away before ringing a landmark, since the sheet covers most of the map.
+- The landmark ids are the old place buttons' (`nr-place-<id>`), so the tour's steps did not change.
+  `scripts/tours/niccolo-rising.cjs` now goes to places by their landmark (the round mark, not the
+  landmark's whole box, which takes in its name and, once selected, a description off to one side),
+  reads the rail and chronicle from the left panel, and marks the guided first hour as seen: its
+  opening card sits over the middle of the town, and that driver tests the missions chain, not the tour.
+
+Verified with `npm run tours -- niccolo-rising` (six missions each on desktop and phone, every edge
+flow), the guided first hour driven step by step at four sizes in both modes with every target on
+screen and uncovered once settled, `npm run check:loading -- niccolo-rising` (26/26) and `npm run check`.
+
 ### The guided first hour, 2026-11-08
 
 The fifth and last game to get the portal's guided-run treatment, and the one that needed the most

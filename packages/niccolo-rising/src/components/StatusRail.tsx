@@ -47,11 +47,12 @@ export function statusLine(s: GameState, now: number): { text: string; colour: s
   }
 }
 
-export default function StatusRail({ s, now }: { s: GameState; now: number }) {
+/** `embedded` drops the rail's own width and border, for when it sits inside a floating panel. */
+export default function StatusRail({ s, now, embedded = false }: { s: GameState; now: number; embedded?: boolean }) {
   const status = statusLine(s, now);
   const need = xpToNext(s.level);
   return (
-    <aside style={{ width: 230, flexShrink: 0, padding: '1rem', borderRight: `1px solid ${UI.rule}`, background: UI.panel }}>
+    <aside style={embedded ? { padding: '0.2rem 0.1rem' } : { width: 230, flexShrink: 0, padding: '1rem', borderRight: `1px solid ${UI.rule}`, background: UI.panel }}>
       <div style={{ fontFamily: FONT.display, fontSize: '1.2rem', color: UI.brass }}>{s.name}</div>
       <div style={{ fontSize: '0.75rem', color: UI.textSoft, marginBottom: '0.4rem' }}>
         Level {s.level} · standing {s.standing.toLocaleString('en-GB')}

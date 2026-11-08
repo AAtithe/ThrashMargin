@@ -37,6 +37,20 @@
   --bar-nerve: #a8342f;
   --bar-spirits: #8f6210;
   --bar-health: #2c6f66;
+  --town-fields: #d9d3b8;
+  --town-ground: #ece3cf;
+  --town-water: #a9c3c9;
+  --town-water-edge: #7f9ea6;
+  --town-wall: #8a7a5e;
+  --town-street: #f7f1e3;
+  --town-block: #d8ccb3;
+  --town-square: #e2d4b4;
+  --town-label: #2a251e;
+  --town-label-halo: #f8f4eb;
+  --town-mark: #f8f4eb;
+  --town-mark-edge: #8b5e17;
+  --town-mark-icon: #5a3d10;
+  --town-control: rgba(248, 244, 235, 0.94);
 }
 :root[data-theme="dark"] {
   --ui-ground: #0d1419;
@@ -66,6 +80,20 @@
   --bar-nerve: #c2606a;
   --bar-spirits: #d9a441;
   --bar-health: #6fb0a4;
+  --town-fields: #10181d;
+  --town-ground: #18222a;
+  --town-water: #20384a;
+  --town-water-edge: #345469;
+  --town-wall: #6b5b44;
+  --town-street: #26333c;
+  --town-block: #22303a;
+  --town-square: #2a3640;
+  --town-label: #e6ddc9;
+  --town-label-halo: #0d1419;
+  --town-mark: #1b272f;
+  --town-mark-edge: #d09a4e;
+  --town-mark-icon: #e8c48a;
+  --town-control: rgba(20, 30, 37, 0.94);
 }
 
 body {
@@ -93,18 +121,50 @@ button:focus:not(:focus-visible) {
 }
 
 /*
- * The three-column screen needs a real width. Below that the columns stack: status, place, chronicle.
+ * The panels over the town map (GameScreen's usePanelLayout holds the same widths). The character
+ * sheet and chronicle slide in from the left, a place's screen from the right; once out of sight
+ * they are hidden, so a closed panel's buttons cannot take focus. On a phone both become a bottom
+ * sheet over the lower part of the map.
  */
+.nr-panel {
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  background: var(--ui-ground);
+  border: 1px solid var(--ui-rule-strong);
+  box-shadow: 0 14px 40px var(--ui-shadow);
+  visibility: hidden;
+  transition: transform 0.25s ease, visibility 0s linear 0.25s;
+}
+.nr-panel.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.25s ease, visibility 0s;
+}
+.nr-panel-left { left: 10px; width: 290px; transform: translateX(calc(-100% - 20px)); }
+.nr-panel-right { right: 10px; width: 520px; transform: translateX(calc(100% + 20px)); }
 @media (max-width: 1100px) {
-  .nr-board {
-    flex-wrap: wrap;
+  .nr-panel-left { width: 260px; }
+  .nr-panel-right { width: 440px; }
+}
+@media (max-width: 720px) {
+  .nr-panel-left,
+  .nr-panel-right {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: 66%;
+    border-width: 1px 0 0;
+    transform: translateY(calc(100% + 20px));
   }
-  .nr-board > * {
-    flex: 1 1 100% !important;
-    width: 100% !important;
-    max-height: none !important;
-    position: static !important;
-  }
+  .nr-header { padding: 0.4rem 0.7rem !important; }
+  .nr-hide-phone, .nr-hint { display: none !important; }
+  .nr-launcher { font-size: 0.8rem !important; padding: 0.3rem 0.55rem !important; }
 }
 
 /* Dark scrollbars, so the log panel doesn't get a bright strip down its edge. */

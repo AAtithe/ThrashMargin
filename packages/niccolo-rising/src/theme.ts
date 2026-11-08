@@ -1,7 +1,7 @@
 /**
  * Niccolò Rising's palette: Banco di Niccolò's chrome (itself Tea Race's), duplicated on purpose so
  * the portal reads as one place. Cross-package imports do not survive Vercel's file tracing.
- * There is no chart in this game, so only the chrome is carried over.
+ * Its board is a town map of Bruges rather than a sea chart, with its own tokens (TOWN below).
  */
 /*
  * Every colour below is a CSS variable reference; the light and dark values live in styles.css and
@@ -37,6 +37,27 @@ export const UI = {
   tintBad: 'var(--ui-tint-bad)',
   tintBrass: 'var(--ui-tint-brass)',
   badRule: 'var(--ui-bad-rule)',
+} as const;
+
+/**
+ * The town map of Bruges (components/TownMap.tsx): fields, the moat and canals, the walls, streets,
+ * house blocks, and the landmarks for each place. Values per mode in styles.css.
+ */
+export const TOWN = {
+  fields: 'var(--town-fields)',
+  town: 'var(--town-ground)',
+  water: 'var(--town-water)',
+  waterEdge: 'var(--town-water-edge)',
+  wall: 'var(--town-wall)',
+  street: 'var(--town-street)',
+  block: 'var(--town-block)',
+  square: 'var(--town-square)',
+  label: 'var(--town-label)',
+  labelHalo: 'var(--town-label-halo)',
+  mark: 'var(--town-mark)',
+  markEdge: 'var(--town-mark-edge)',
+  markIcon: 'var(--town-mark-icon)',
+  control: 'var(--town-control)',
 } as const;
 
 /** One colour per bar, so a glance at the rail reads without labels. */
