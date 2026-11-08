@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UI, FONT } from '../theme';
 import { formatWeekDate } from '../sim/clock';
@@ -40,7 +40,6 @@ import EventOverlay from '../components/EventOverlay';
 import TutorialOverlay, { hasSeenTutorial, hasSeenChapter0Tutorial } from '../components/TutorialOverlay';
 import GuidedTour from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
-import ThemeToggle from '../components/ThemeToggle';
 
 /**
  * One entry per popup section. Fleet selection, giving a vessel her orders (the old 'city' section
@@ -84,29 +83,33 @@ const STYLE: React.CSSProperties = {
   fontFamily: FONT.body,
 };
 
+/** Compact on purpose: every line of header is a line of chart lost, and the chart is the board. */
 const HEADER: React.CSSProperties = {
   display: 'flex',
   alignItems: 'baseline',
   justifyContent: 'space-between',
-  padding: '1.2rem 2rem',
+  gap: '0.8rem',
+  flexWrap: 'wrap',
+  padding: '0.55rem 1rem',
   borderBottom: `1px solid ${UI.rule}`,
+  flexShrink: 0,
 };
 
 const TITLE: React.CSSProperties = {
-  fontSize: '1.6rem',
+  fontSize: '1.2rem',
   letterSpacing: '0.1em',
   color: UI.brass,
   margin: 0,
+  whiteSpace: 'nowrap',
 };
 
 const CLOCK: React.CSSProperties = {
-  fontSize: '1rem',
+  fontSize: '0.9rem',
   letterSpacing: '0.08em',
   color: UI.textSoft,
 };
 
 const BODY: React.CSSProperties = {
-  display: 'flex',
   flex: 1,
   minHeight: 0,
   // Positioning context for the slide-out section drawer, which is deliberately scoped to this pane
@@ -114,67 +117,90 @@ const BODY: React.CSSProperties = {
   // sections silently closed the drawer instead (the same overlay-swallows-clicks trap this codebase
   // has now hit three times). Keeping it in here leaves the header and the bar permanently live.
   position: 'relative',
+  // `clip`, not `hidden`: a scrollIntoView aimed at a control in a closed, off-screen panel cannot
+  // scroll a clipped box sideways, and could scroll a hidden one.
+  overflow: 'clip',
 };
 
 /**
- * Reference column (left): read-only — chapter objectives and the household's counsel, always
- * visible rather than tabs to open, the same role Tea Race gives its own left column ("reference,
- * not controls"). The section drawer's own `left:0` absolute positioning (see `SectionPopup.tsx`)
- * docks against `BODY`'s edge and so slides out *over* this column when a drawer section is open —
- * deliberate: it leaves the map (the thing you actually need to keep seeing) untouched.
+ * The chart fills the whole body. The two columns that used to sit beside it, objectives and
+ * counsel on the left and fleet and orders on the right, now float over it and slide in when
+ * wanted (`.niccolo-panel` in styles.css, which also turns them into bottom sheets on a phone).
+ * The section drawer still docks against the body's left edge, over everything, as before.
  */
-const LEFT_SIDEBAR: React.CSSProperties = {
-  flex: '0 0 260px',
-  minWidth: 0,
-  overflowY: 'auto',
-  padding: '0.6rem',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '0.6rem',
-  borderRight: `1px solid ${UI.rule}`,
-};
-
 const MAP_PANE: React.CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  padding: '0.5rem',
-  // Anchors MapView's absolutely-positioned "Reset view" control to this pane's own corner,
-  // independent of the map's internal pan/zoom transform.
-  position: 'relative',
+  position: 'absolute',
+  inset: 0,
 };
 
-/** Action column (right): everything you actually do to a ship — select her, then give her orders.
- * Tea Race's own `FleetPanel` + `PortPanel` pair, permanently on screen instead of behind a menu. */
-const RIGHT_SIDEBAR: React.CSSProperties = {
-  flex: '0 0 340px',
-  minWidth: 0,
+const PANEL_BODY: React.CSSProperties = {
+  flex: 1,
+  minHeight: 0,
   overflowY: 'auto',
   padding: '0.6rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '0.6rem',
-  borderLeft: `1px solid ${UI.rule}`,
 };
 
-/** Either sidebar collapsed to a bare toggle strip — the map behind it gets the reclaimed width
- * (both `LEFT_SIDEBAR`/`RIGHT_SIDEBAR` are `flex: 0 0 <width>`, so shrinking just this one number
- * is all `MAP_PANE`'s own `flex: 1` needs to fill the rest). Kept as a real width rather than
- * `display: none` so the toggle button itself never disappears — the one way back is always visible.
- */
-const SIDEBAR_COLLAPSED_WIDTH = 34;
+const LAUNCHER: React.CSSProperties = {
+  position: 'absolute',
+  top: '0.6rem',
+  zIndex: 30,
+  background: UI.panelRaised,
+  border: `1px solid ${UI.rule}`,
+  boxShadow: `0 4px 14px ${UI.shadow}`,
+  color: UI.text,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: '0.85rem',
+  letterSpacing: '0.04em',
+  padding: '0.45rem 0.8rem',
+};
 
-const SIDEBAR_TOGGLE: React.CSSProperties = {
-  alignSelf: 'flex-start',
+const PANEL_HEAD: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: '0.5rem 0.6rem 0.5rem 0.8rem',
+  borderBottom: `1px solid ${UI.rule}`,
   flexShrink: 0,
-  background: UI.panel,
+  color: UI.brass,
+  letterSpacing: '0.04em',
+  fontSize: '0.95rem',
+};
+
+const PANEL_CLOSE: React.CSSProperties = {
+  background: 'none',
   border: `1px solid ${UI.rule}`,
   color: UI.textSoft,
   cursor: 'pointer',
   fontFamily: 'inherit',
-  fontSize: '0.85rem',
-  lineHeight: 1,
-  padding: '0.35rem 0.5rem',
+  width: 30,
+  height: 28,
 };
+
+/**
+ * How the panels sit, matching `.niccolo-panel` in styles.css: beside each other over a wide chart,
+ * one at a time over a narrower one, and as a bottom sheet on a phone.
+ */
+function usePanelLayout() {
+  const read = () => {
+    const w = window.innerWidth;
+    return { sheet: w <= 720, oneAtATime: w <= 1360, leftWidth: w <= 1100 ? 260 : 280, rightWidth: w <= 1100 ? 330 : 360 };
+  };
+  const [layout, setLayout] = useState(read);
+  useEffect(() => {
+    const onResize = () =>
+      setLayout(prev => {
+        const next = read();
+        return prev.sheet === next.sheet && prev.oneAtATime === next.oneAtATime && prev.leftWidth === next.leftWidth ? prev : next;
+      });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  return layout;
+}
 
 const BUTTON: React.CSSProperties = {
   background: UI.panel,
@@ -230,10 +256,73 @@ export default function GameScreen() {
   // these; see the SectionId comment above.
   const [activeSection, setActiveSection] = useState<SectionId | null>(null);
   const [showHotseatModal, setShowHotseatModal] = useState(false);
-  // Either sidebar can be tucked away to give the map the room back — a preference for this visit,
-  // not campaign state, so it isn't persisted to the save.
-  const [leftCollapsed, setLeftCollapsed] = useState(false);
-  const [rightCollapsed, setRightCollapsed] = useState(false);
+  // The two panels over the chart. A preference for this visit, not campaign state, so not saved.
+  // Both start away: the chart is the board, and the panels come to it when there is something to
+  // read or do.
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
+  const layout = usePanelLayout();
+  // Where there is not room for both beside a usable chart, opening one puts the other away.
+  const openLeft = (open: boolean) => {
+    setLeftOpen(open);
+    if (open && layout.oneAtATime) setRightOpen(false);
+  };
+  const openRight = (open: boolean) => {
+    setRightOpen(open);
+    if (open && layout.oneAtATime) setLeftOpen(false);
+  };
+  const leftRef = useRef<HTMLElement | null>(null);
+  const rightRef = useRef<HTMLElement | null>(null);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  /** The control the guided tour is pointing at, so the panel holding it can be opened. */
+  const [tourTarget, setTourTarget] = useState<string | null>(null);
+
+  // Esc puts the panels away (the section drawer has its own close).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setLeftOpen(false);
+      setRightOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  /**
+   * While the tour points into a panel, keep that panel open, and once it has finished sliding in
+   * scroll the control into the middle of it. Polled because a step's control can appear only after
+   * the player acts (the market's buy buttons need a vessel selected first). Scrolled once per
+   * target, so the tour never fights a player who scrolls somewhere else.
+   */
+  const scrolledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!showGuidedTour || !tourTarget) return;
+    const tick = () => {
+      const el = document.getElementById(tourTarget);
+      if (!el) return;
+      const inLeft = leftRef.current?.contains(el);
+      const inRight = rightRef.current?.contains(el);
+      if (!inLeft && !inRight) return;
+      const panel = (inLeft ? leftRef : rightRef).current!;
+      if (!panel.classList.contains('open')) {
+        if (inLeft) openLeft(true);
+        else openRight(true);
+        return; // measure on a later tick, once the slide has finished
+      }
+      if (scrolledFor.current === tourTarget) return;
+      const body = el.closest('.niccolo-panel-body');
+      if (!body) return;
+      const t = el.getBoundingClientRect(), b = body.getBoundingClientRect();
+      if (t.top < b.top + 8 || t.bottom > b.bottom - 8) {
+        body.scrollTop += t.top - b.top - b.height / 2 + t.height / 2;
+      }
+      scrolledFor.current = tourTarget;
+    };
+    tick();
+    const id = window.setInterval(tick, 350);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showGuidedTour, tourTarget]);
 
   useEffect(() => {
     if (id) loadGame(id);
@@ -274,7 +363,8 @@ export default function GameScreen() {
   // that targets the map or header (e.g. "click this city's marker") must actively *close* whatever
   // popup a previous step opened — the popup's own full-viewport backdrop would otherwise sit on
   // top of the map, silently swallowing that click exactly like `EventOverlay`'s own backdrop bug.
-  const handleTourStepChange = (requiresSection: SectionId | undefined) => {
+  const handleTourStepChange = (requiresSection: SectionId | undefined, targetId?: string | null) => {
+    setTourTarget(targetId ?? null);
     setActiveSection(requiresSection ?? null);
     if (requiresSection === 'ledger') setLedgerTab('countingHouse');
   };
@@ -300,13 +390,14 @@ export default function GameScreen() {
   // committing. Dispatch is a separate, explicit confirmation.
   const handlePreviewCity = (cityId: string) => {
     setPreviewCityId(cityId);
+    openRight(true);
   };
 
-  // Clicking a vessel's own marker on the map selects it, mirroring the city-click shortcut above —
-  // both panels reacting to it (Fleet's highlighted row, Orders' contents) are always on screen, so
-  // there's no popup left to open.
+  // Clicking a vessel's own marker on the map selects it, mirroring the city-click shortcut above,
+  // and brings the fleet and orders panel in, since that is where she is given her orders.
   const handleSelectVessel = (vesselId: string) => {
     setSelectedVesselId(vesselId);
+    openRight(true);
   };
 
   const handleConfirmDispatch = () => {
@@ -539,10 +630,10 @@ export default function GameScreen() {
         />
       )}
       <PortalNav variant="header" />
-      <header style={HEADER}>
+      <header style={HEADER} className="niccolo-game-header">
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.2rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
-          <span style={CLOCK}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: '0.8rem', flexWrap: 'wrap', rowGap: '0.4rem', flex: '1 1 auto', minWidth: 0 }}>
+          <span style={CLOCK} className="niccolo-clock">
             {Math.round(state.cash)}f &nbsp;·&nbsp; hold: {heldGoodsSummary || 'nothing'}
             &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
             &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
@@ -592,14 +683,16 @@ export default function GameScreen() {
               Chronicle
             </button>
           )}
-          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+          {/* No theme toggle here: the portal bar directly above carries the same one. */}
           <button
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textFaint }}
             onClick={() => nav('/')}
           >
             ← Back to campaigns
           </button>
+          {/* Not on a phone, where the header must stay short; the lobby's delete does the same. */}
           <button
+            className="niccolo-hide-phone"
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textFaint }}
             onClick={abandonAndReturn}
           >
@@ -623,30 +716,7 @@ export default function GameScreen() {
         onSelect={id => setActiveSection(prev => (prev === id ? null : (id as SectionId)))}
       />
 
-      <div style={BODY}>
-        <aside style={leftCollapsed ? { ...LEFT_SIDEBAR, flex: `0 0 ${SIDEBAR_COLLAPSED_WIDTH}px`, padding: '0.6rem 0.4rem' } : LEFT_SIDEBAR}>
-          <button
-            style={SIDEBAR_TOGGLE}
-            onClick={() => setLeftCollapsed(v => !v)}
-            aria-label={leftCollapsed ? 'Show objectives and counsel' : 'Hide objectives and counsel'}
-            title={leftCollapsed ? 'Show objectives and counsel' : 'Hide objectives and counsel'}
-          >
-            {leftCollapsed ? '›' : '‹'}
-          </button>
-          {!leftCollapsed && (
-            <>
-              {!freeplayMode && (
-                <Panel title={`Chapter ${objectiveChapter} objectives`}>
-                  <ObjectivesPanel chapterNumber={objectiveChapter} progress={objectiveProgress} />
-                </Panel>
-              )}
-              <Panel title="Counsel">
-                <CounselPanel state={state} />
-              </Panel>
-            </>
-          )}
-        </aside>
-
+      <div style={BODY} ref={bodyRef}>
         <div style={MAP_PANE}>
           <MapView
             key={state.id}
@@ -656,6 +726,11 @@ export default function GameScreen() {
             onSelectVessel={handleSelectVessel}
             cityInfoAge={cityInfoAge}
             previewedCityId={previewCityId}
+            inset={
+              layout.sheet
+                ? { left: 0, right: 0, bottom: leftOpen || rightOpen ? Math.round((bodyRef.current?.clientHeight ?? window.innerHeight) * 0.58) : 0 }
+                : { left: leftOpen ? layout.leftWidth + 16 : 0, right: rightOpen ? layout.rightWidth + 16 : 0, bottom: 0 }
+            }
           />
 
           {activeSection && (
@@ -797,53 +872,83 @@ export default function GameScreen() {
           )}
         </div>
 
-        <aside
-          style={rightCollapsed ? { ...RIGHT_SIDEBAR, flex: `0 0 ${SIDEBAR_COLLAPSED_WIDTH}px`, padding: '0.6rem 0.4rem' } : RIGHT_SIDEBAR}
-          id="game-sidebar"
-        >
-          <button
-            style={{ ...SIDEBAR_TOGGLE, alignSelf: 'flex-end' }}
-            onClick={() => setRightCollapsed(v => !v)}
-            aria-label={rightCollapsed ? 'Show fleet and orders' : 'Hide fleet and orders'}
-            title={rightCollapsed ? 'Show fleet and orders' : 'Hide fleet and orders'}
-          >
-            {rightCollapsed ? '‹' : '›'}
+        {/* With a panel away, the button that brings it back waits at its edge of the chart. */}
+        {!leftOpen && (
+          <button type="button" className="niccolo-launcher" style={{ ...LAUNCHER, left: '0.6rem' }} onClick={() => openLeft(true)}>
+            {freeplayMode ? 'Counsel' : `Objectives & counsel`}
           </button>
-          {!rightCollapsed && (
-            <>
-              <FleetPanel
-                state={state}
-                selectedVesselId={selectedVesselId}
-                onSelect={setSelectedVesselId}
-                blocked={!!pendingEvent || showChapterCompleteCard}
-                continueInsure={continueInsure}
-                onSetContinueInsure={handleSetContinueInsure}
-                onSetSailNow={handleSetSailNow}
-                onCancelRoute={handleCancelRoute}
-                onFormConvoy={vesselIds => dispatch({ type: 'FORM_CONVOY', vesselIds })}
-                onDisbandConvoy={() => dispatch({ type: 'DISBAND_CONVOY' })}
-                onHireEscort={escortName => dispatch({ type: 'HIRE_ESCORT', escortName })}
-                onBuyVessel={handleBuyVessel}
-                onSellVessel={handleSellVessel}
-              />
-              <OrdersPanel
-                state={state}
-                selectedVessel={selectedVessel}
-                previewCity={previewCity}
-                dockedCityIds={dockedCityIds}
-                insureNext={insureNext}
-                onInsureChange={setInsureNext}
-                onConfirmDispatch={handleConfirmDispatch}
-                onQueueRoute={handleQueueRoute}
-                onBuy={handleBuyGood}
-                onSell={handleSellGood}
-              />
-            </>
+        )}
+        {!rightOpen && (
+          <button type="button" className="niccolo-launcher" style={{ ...LAUNCHER, right: '0.6rem' }} onClick={() => openRight(true)}>
+            Fleet &amp; orders
+          </button>
+        )}
+
+        <aside
+          ref={leftRef}
+          className={`niccolo-panel niccolo-panel-left${leftOpen ? ' open' : ''}`}
+          aria-hidden={!leftOpen}
+          aria-label="Objectives and counsel"
+        >
+          <div style={PANEL_HEAD}>
+            <span>{freeplayMode ? 'Counsel' : 'Objectives & counsel'}</span>
+            <button type="button" style={PANEL_CLOSE} onClick={() => setLeftOpen(false)} aria-label="Close objectives and counsel (Esc)" title="Close (Esc)">✕</button>
+          </div>
+          <div style={PANEL_BODY} className="niccolo-panel-body">
+          {!freeplayMode && (
+            <Panel title={`Chapter ${objectiveChapter} objectives`}>
+              <ObjectivesPanel chapterNumber={objectiveChapter} progress={objectiveProgress} />
+            </Panel>
           )}
+          <Panel title="Counsel">
+            <CounselPanel state={state} />
+          </Panel>
+          </div>
+        </aside>
+
+        <aside
+          ref={rightRef}
+          id="game-sidebar"
+          className={`niccolo-panel niccolo-panel-right${rightOpen ? ' open' : ''}`}
+          aria-hidden={!rightOpen}
+          aria-label="Fleet and orders"
+        >
+          <div style={PANEL_HEAD}>
+            <span>Fleet &amp; orders</span>
+            <button type="button" style={PANEL_CLOSE} onClick={() => setRightOpen(false)} aria-label="Close fleet and orders (Esc)" title="Close (Esc)">✕</button>
+          </div>
+          <div style={PANEL_BODY} className="niccolo-panel-body">
+          <FleetPanel
+            state={state}
+            selectedVesselId={selectedVesselId}
+            onSelect={setSelectedVesselId}
+            blocked={!!pendingEvent || showChapterCompleteCard}
+            continueInsure={continueInsure}
+            onSetContinueInsure={handleSetContinueInsure}
+            onSetSailNow={handleSetSailNow}
+            onCancelRoute={handleCancelRoute}
+            onFormConvoy={vesselIds => dispatch({ type: 'FORM_CONVOY', vesselIds })}
+            onDisbandConvoy={() => dispatch({ type: 'DISBAND_CONVOY' })}
+            onHireEscort={escortName => dispatch({ type: 'HIRE_ESCORT', escortName })}
+            onBuyVessel={handleBuyVessel}
+            onSellVessel={handleSellVessel}
+          />
+          <OrdersPanel
+            state={state}
+            selectedVessel={selectedVessel}
+            previewCity={previewCity}
+            dockedCityIds={dockedCityIds}
+            insureNext={insureNext}
+            onInsureChange={setInsureNext}
+            onConfirmDispatch={handleConfirmDispatch}
+            onQueueRoute={handleQueueRoute}
+            onBuy={handleBuyGood}
+            onSell={handleSellGood}
+          />
+          </div>
         </aside>
       </div>
 
-      <PortalNav variant="footer" />
     </div>
   );
 }
