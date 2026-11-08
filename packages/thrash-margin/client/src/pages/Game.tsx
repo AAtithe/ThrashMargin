@@ -27,6 +27,9 @@ import { useGameHybrid } from '../hooks/useGameHybrid';
 import { FONT, UI } from '../theme';
 import ThemeToggle from '../components/ThemeToggle';
 import MotionToggle from '../components/MotionToggle';
+import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { SESSION_EXPIRED } from '../lib/api';
+import { clearToken } from '../lib/token';
 import GuidedTour, { hasSeenGuidedTour, planFirstTurn, type TourPlan } from '../components/GuidedTour';
 
 type Tab = 'command' | 'realm' | 'research' | 'log';
@@ -288,10 +291,24 @@ function Game({ id }: { id: string | undefined }) {
 
   if (!state) {
     return (
-      <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: 12, color: UI.textSoft }}>
-        <div>{game.error ?? (game.loading ? 'Loading the campaign…' : 'Campaign not found.')}</div>
-        <Button tone="quiet" onClick={() => nav('/')}>Back to the lobby</Button>
-      </div>
+      // Loading until there is a state or an error: the first render comes before the load has even
+      // started, and this used to read "Campaign not found." for that one frame.
+      <LoadingScreen
+        motif="territories"
+        caption="Loading the campaign…"
+        accent={UI.accent}
+        error={!id ? 'Campaign not found.' : game.error === SESSION_EXPIRED ? SIGN_IN_AGAIN : game.error}
+        actions={
+          game.error === SESSION_EXPIRED ? (
+            <Button tone="primary" onClick={() => { clearToken(); nav('/'); }}>Sign in again</Button>
+          ) : (
+            <>
+              {id && <Button tone="primary" onClick={() => void loadGame(id)}>Try again</Button>}
+              <Button tone="quiet" onClick={() => nav('/')}>Back to the lobby</Button>
+            </>
+          )
+        }
+      />
     );
   }
 

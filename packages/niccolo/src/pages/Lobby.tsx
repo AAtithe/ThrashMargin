@@ -10,6 +10,7 @@ import type { FreeplayGoal, RivalCount } from '../sim/freeplay';
 import PortalNav from '../components/PortalNav';
 import TutorialOverlay from '../components/TutorialOverlay';
 import type { SaveMeta } from '../hooks/useGameLocal';
+import { BusyLabel, LoadingRows } from '../lib/Loading';
 
 const STYLE: React.CSSProperties = {
   minHeight: '100vh',
@@ -98,7 +99,7 @@ function relTime(ts: number): string {
 }
 
 export default function Lobby() {
-  const { saves, error, createGame, deleteGame } = useGameHybrid();
+  const { saves, savesLoaded, error, createGame, deleteGame } = useGameHybrid();
   const nav = useNavigate();
   const user = getStoredUser();
   const [name, setName] = useState('');
@@ -196,7 +197,7 @@ export default function Lobby() {
             maxLength={40}
           />
           <button style={BUTTON} onClick={handleNew} disabled={starting}>
-            {starting ? '…' : 'Begin →'}
+            {starting ? <BusyLabel>Opening…</BusyLabel> : 'Begin →'}
           </button>
         </div>
         <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
@@ -280,7 +281,8 @@ export default function Lobby() {
         </label>
 
         <p style={SECTION_LABEL}>Active campaigns</p>
-        {active.length === 0 && (
+        {!savesLoaded && <LoadingRows rows={2} label="Loading your campaigns" />}
+        {savesLoaded && active.length === 0 && (
           <p style={{ color: UI.textFaint, fontSize: '0.85rem' }}>No active campaigns — start one above.</p>
         )}
         {active.map(save => (

@@ -5,9 +5,33 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Niccolò Rising</title>
     <script src="/theme-init.js"></script>
+    <!--
+      Shown while the JavaScript downloads, so the page is never blank. CSS only: the CSP forbids
+      inline scripts. React replaces everything inside #root when it mounts. The colours copy this
+      game's --ui-ground, --ui-text-soft and accent tokens (styles.css), because that stylesheet
+      arrives with the bundle and is not here yet; theme-init.js has already set data-theme.
+      Nothing appears for 300ms, the same rule as the in-app loader (lib/Loading.tsx).
+    -->
+    <style>
+      :root { --boot-ground: #ece6d9; --boot-soft: #5a5345; --boot-accent: #8b5e17; }
+      :root[data-theme="dark"] { --boot-ground: #0d1419; --boot-soft: #93a3ad; --boot-accent: #d09a4e; }
+      body { margin: 0; background: var(--boot-ground); }
+      .boot { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        font-family: system-ui, sans-serif; color: var(--boot-soft); font-size: 15px; animation: boot-in 180ms ease-out 300ms both; }
+      .boot-ring { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--boot-accent); border-right-color: transparent;
+        animation: boot-spin .8s linear infinite; }
+      @keyframes boot-in { from { opacity: 0 } to { opacity: 1 } }
+      @keyframes boot-spin { to { transform: rotate(360deg) } }
+      @media (prefers-reduced-motion: reduce) { .boot-ring { animation: none; } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="boot" role="status" aria-live="polite" data-testid="boot-loader">
+        <div class="boot-ring" aria-hidden="true"></div>
+        <div>Loading Niccolò Rising…</div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -83,3 +83,11 @@ body {
   animation: none;
   display: none;
 }
+
+/* The same rule the other four games carry: a player who asks for less motion gets none. */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
