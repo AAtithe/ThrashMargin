@@ -515,9 +515,10 @@ export default function GameScreen() {
       {/* --- Overlays -------------------------------------------------------------------- */}
       {/* Kept off while a handover card or the closing card owns the screen — both are modal, and
           spotlighting a control underneath one would point at something unclickable. */}
-      {tourPlan && haulier && !over && state.phase !== 'handover' && (
+      {tourPlan && haulier && !over && (
         <GuidedTour
           onTargetChange={revealTourTarget}
+          hidden={state.phase === 'handover'}
           view={{
             state,
             haulier,

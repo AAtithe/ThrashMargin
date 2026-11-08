@@ -10,7 +10,8 @@ import PortalNav from '../components/PortalNav';
 import { Button, Label, Modal, ModalHeader, Muted } from '../components/ui';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import type { SaveMeta } from '../hooks/types';
-import { clearToken, getStoredUser } from '../lib/token';
+import { clearToken, getStoredUser, hasGameAccess } from '../lib/token';
+import NoGameAccess from '../lib/NoGameAccess';
 import { FONT, MAP, UI } from '../theme';
 
 const SETTINGS_KEY = 'tm_last_settings_v2';
@@ -89,6 +90,12 @@ export default function Lobby() {
         <PortalNav variant="footer" />
       </div>
     );
+  }
+
+  // Game access, set per account on the Admin page. Presentational, like the check above: the server
+  // refuses every request to a game the account does not have (api/play/[kind].ts).
+  if (!hasGameAccess(user, 'thrash_margin')) {
+    return <NoGameAccess title="Thrash Margin" header={<PortalNav variant="header" />} footer={<PortalNav variant="footer" />} />;
   }
 
   return (

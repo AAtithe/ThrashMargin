@@ -5,6 +5,30 @@ import { UI, FONT } from '../theme';
 const GOLD = UI.brass;
 const INK = UI.rule;
 
+/** Its own key, deliberately not `TutorialOverlay`'s. The two are different pieces of onboarding:
+ *  the overlay is read, this is played, and a player can legitimately want one and not the other.
+ *  A UI preference, not campaign state, so it lives in localStorage rather than in the save. */
+const TOUR_SEEN_KEY = 'niccolo_guided_tour_seen';
+
+/** Whether this browser has finished or skipped the tour before. */
+export function hasSeenGuidedTour(): boolean {
+  try {
+    return !!localStorage.getItem(TOUR_SEEN_KEY);
+  } catch {
+    // Private browsing and blocked storage both throw here. Offering the tour again is the
+    // harmless failure; crashing the game screen is not.
+    return false;
+  }
+}
+
+export function markGuidedTourSeen(): void {
+  try {
+    localStorage.setItem(TOUR_SEEN_KEY, '1');
+  } catch {
+    /* see above */
+  }
+}
+
 const CARD: React.CSSProperties = {
   position: 'fixed',
   zIndex: 102,
@@ -198,13 +222,18 @@ const STEPS: TourStep[] = [
  * intro. Otherwise skip straight to the first not-yet-complete real step (or the outro, if every
  * real step is already done).
  */
-function firstIncompleteStep(state: GameState, selectedVesselId: string | null, previewCityId: string | null): number {
-  const realSteps = STEPS.map((step, index) => ({ step, index })).filter(({ step }) => step.targetId !== null);
-  const anyProgress = realSteps.some(({ step }) => step.isComplete(state, selectedVesselId, previewCityId));
-  if (!anyProgress) return 0;
-  const nextIncomplete = realSteps.find(({ step }) => !step.isComplete(state, selectedVesselId, previewCityId));
-  return nextIncomplete ? nextIncomplete.index : STEPS.length - 1;
-}
+/* `firstIncompleteStep` used to guess where to resume by asking whether any real step was already
+ * complete. It could not work, and never did: "Sell it at a profit" completes when the hold is
+ * empty of cloth, which is true of an empty hold, so the "has anything happened yet?" probe was
+ * true before the player had done a thing and the welcome card was unreachable. On a
+ * skip-the-prologue campaign "Select your ship" was satisfied at mount too, because `GameScreen`
+ * auto-selects the only vessel, so the tour opened on step three.
+ *
+ * Guessing was the wrong shape. The caller already knows the difference between a tour the player
+ * has just asked for and one being remounted because a scripted event briefly took the screen, so
+ * the step index lives in `GameScreen` and is passed in. A fresh tour starts at the welcome card;
+ * an interrupted one comes back exactly where it was, which is what the guessing was reaching for.
+ */
 
 function useTargetRect(targetId: string | null): DOMRect | null {
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -214,15 +243,19 @@ function useTargetRect(targetId: string | null): DOMRect | null {
       setRect(null);
       return;
     }
-    // Phase 17 follow-up: a step's target now typically lives inside a popup section's own
-    // scrolling body (`id="section-popup-scroll"` in `SectionPopup.tsx`), which may need scrolling
-    // if that section's content is tall enough. Same proven approach as before this redesign
-    // (compute directly against the container's own scrollTop, not `Element.scrollIntoView`,
-    // whose browser-implemented scroll distance proved unreliable here) — just retargeted from the
-    // old always-open `#game-sidebar` to the new popup's scroll container, which may not exist at
-    // all for a step targeting the map or header (fine — `sidebar` is just null then, no scroll
-    // needed since those are never tall enough to need it). `scrolledOnce` stops it from re-yanking
-    // the container if the player deliberately scrolls elsewhere afterward.
+    // The target may be anywhere: the header, the map, one of the two sidebars (each its own
+    // scroller), or inside a popup section's scrolling body (`id="section-popup-scroll"` in
+    // `SectionPopup.tsx`). An earlier version computed the scroll by hand against that one popup
+    // container's `scrollTop`, which is why the sidebars were never scrolled at all: an Orders- or
+    // Fleet-targeting step whose control sat below the fold rang a rectangle hundreds of pixels
+    // under the viewport, and placed its own card there too, so the player saw no tour whatsoever
+    // (measured: the "Buy some cloth" step ringed y=1362 in a 1000px window). `scrollIntoView`
+    // scrolls every scrollable ancestor, which is exactly what is wanted here, and the note that
+    // it "proved unreliable" was about the *smooth* variant: a smooth scroll is still moving the
+    // element for a few hundred milliseconds after it is measured, so the ring lands wrong and
+    // then slides on. `behavior: 'auto'` settles synchronously, so the rect taken immediately
+    // afterwards is the one the player sees. `scrolledOnce` stops it re-yanking the page if the
+    // player deliberately scrolls elsewhere afterward.
     let scrolledOnce = false;
     const measure = () => {
       const el = document.getElementById(targetId);
@@ -231,25 +264,26 @@ function useTargetRect(targetId: string | null): DOMRect | null {
         return;
       }
       const r = el.getBoundingClientRect();
-      setRect(r);
       if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
-        const sidebar = document.getElementById('section-popup-scroll');
-        if (sidebar) {
-          const sidebarRect = sidebar.getBoundingClientRect();
-          const target = sidebar.scrollTop + (r.top - sidebarRect.top) - sidebarRect.height / 2 + r.height / 2;
-          sidebar.scrollTop = Math.max(0, target);
-        }
+        el.scrollIntoView({ block: 'center', behavior: 'auto' });
         scrolledOnce = true;
+        setRect(el.getBoundingClientRect());
+        return;
       }
+      setRect(r);
     };
     measure();
     // Re-measure on a short interval — the popup's content can show/hide as the player acts, and a
     // plain resize listener wouldn't catch that.
     const interval = setInterval(measure, 250);
     window.addEventListener('resize', measure);
+    // Capture-phase, so a scroll of either sidebar or of a popup's own body counts, not just the
+    // window's. Without it the ring lags a quarter-second behind anything the player scrolls.
+    window.addEventListener('scroll', measure, true);
     return () => {
       clearInterval(interval);
       window.removeEventListener('resize', measure);
+      window.removeEventListener('scroll', measure, true);
     };
   }, [targetId]);
 
@@ -260,6 +294,10 @@ interface GuidedTourProps {
   state: GameState;
   selectedVesselId: string | null;
   previewCityId: string | null;
+  /** Which step to show. Owned by `GameScreen` so an interrupted tour resumes where it was. */
+  stepIndex: number;
+  /** Report a move so the caller's copy keeps up. */
+  onStepIndexChange: (index: number) => void;
   onFinish: () => void;
   /** Called whenever the current step changes (including on mount, so a tour resumed directly onto
    * a step that needs a popup section still forces it open immediately, and a step that doesn't
@@ -268,8 +306,16 @@ interface GuidedTourProps {
   onStepChange?: (requiresSection: TourStep['requiresSection'], targetId: string | null) => void;
 }
 
-export default function GuidedTour({ state, selectedVesselId, previewCityId, onFinish, onStepChange }: GuidedTourProps) {
-  const [stepIndex, setStepIndex] = useState(() => firstIncompleteStep(state, selectedVesselId, previewCityId));
+export default function GuidedTour({
+  state,
+  selectedVesselId,
+  previewCityId,
+  stepIndex,
+  onStepIndexChange,
+  onFinish,
+  onStepChange,
+}: GuidedTourProps) {
+  const setStepIndex = (next: number) => onStepIndexChange(Math.max(0, Math.min(next, STEPS.length - 1)));
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
   const isManual = step.targetId === null;
@@ -285,7 +331,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
   useEffect(() => {
     if (isManual) return;
     if (!step.isComplete(state, selectedVesselId, previewCityId)) return;
-    const t = setTimeout(() => setStepIndex(i => Math.min(i + 1, STEPS.length - 1)), 700);
+    const t = setTimeout(() => setStepIndex(stepIndex + 1), 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state, selectedVesselId, previewCityId, stepIndex]);
@@ -310,6 +356,10 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
   // Estimated card height — real height varies slightly with body copy length, but this only
   // needs to be close enough to decide which side of the target has room, not pixel-exact.
   const CARD_HEIGHT_ESTIMATE = 170;
+  // The *border box*, which is what has to fit on screen: `CARD` is content-box, so its 20rem
+  // width plus 1.1rem of padding and 1px of border on each side comes to this. Clamping against
+  // the bare 320 instead hung 21px of every right-hand-sidebar step's card off the right edge.
+  const CARD_WIDTH = 20 * 16 + 2 * 1.1 * 16 + 2;
   const cardStyle: React.CSSProperties = rect
     ? {
         ...CARD,
@@ -319,13 +369,18 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
           rect.bottom + 16 + CARD_HEIGHT_ESTIMATE <= window.innerHeight
             ? rect.bottom + 16
             : Math.max(16, rect.top - CARD_HEIGHT_ESTIMATE - 16),
-        left: Math.max(16, Math.min(rect.left, window.innerWidth - 16 - 320)),
+        left: Math.max(16, Math.min(rect.left, window.innerWidth - 16 - CARD_WIDTH)),
       }
     : {
         ...CARD,
         top: window.innerHeight / 2 - 100,
-        left: window.innerWidth / 2 - 160,
+        left: Math.max(16, window.innerWidth / 2 - CARD_WIDTH / 2),
       };
+
+  const finish = () => {
+    markGuidedTourSeen();
+    onFinish();
+  };
 
   return (
     <>
@@ -340,28 +395,32 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
         />
       )}
       {spotlight && <div style={spotlight} />}
-      {/* `data-tour-*` lets an automated pass drive the tour: it reads which control the card is
-          pointing at and clicks that, rather than guessing from the copy. */}
-      <div style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={step.targetId ?? ''}>
+
+      {/* `data-tour-*` is how an automated pass drives the tour: it reads which control the card
+          is pointing at and clicks that, rather than guessing from the copy. It reports the
+          element actually ringed, not the step's preference — a step whose target is not on
+          screen rings nothing, and a pass told to click it anyway would hunt a control that is
+          not there. */}
+      <div style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={rect ? step.targetId ?? '' : ''}>
         <p style={STEP_LABEL}>
           Guided walkthrough — {stepIndex + 1} of {STEPS.length}
         </p>
         <h3 style={TITLE}>{step.title}</h3>
         <p style={BODY}>{step.body}</p>
         <div style={FOOTER}>
-          <button style={GHOST_BUTTON} onClick={onFinish}>
+          <button style={GHOST_BUTTON} onClick={finish}>
             Skip tour
           </button>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             {stepIndex > 0 && (
-              <button style={BUTTON} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
+              <button style={BUTTON} onClick={() => setStepIndex(stepIndex - 1)}>
                 Back
               </button>
             )}
             {isManual && (
               <button
                 style={PRIMARY_BUTTON}
-                onClick={() => (isLast ? onFinish() : setStepIndex(i => i + 1))}
+                onClick={() => (isLast ? finish() : setStepIndex(stepIndex + 1))}
               >
                 {isLast ? 'Finish' : 'Start'}
               </button>

@@ -510,9 +510,17 @@ interface Props {
    * panel would point at nothing.
    */
   onTargetChange?: (targetId: string | null) => void;
+  /**
+   * Draw nothing this render, but stay mounted. Set while one of the game's own modals owns the
+   * display. It is a prop rather than the caller unmounting the run because the run's place in
+   * the walk lives in this component: unmounting throws away both the captured memory and the
+   * step index, and the card comes back at step one, so the run loops and never reaches its last
+   * step. Thrash Margin hit this on its end-of-turn dispatch; here it is the same structure.
+   */
+  hidden?: boolean;
 }
 
-export default function GuidedTour({ view, plan, onFinish, onTargetChange }: Props) {
+export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidden = false }: Props) {
   // `useRef`, not `useState`: writing to it must not itself cause a render.
   const memoryRef = useRef<TourMemory>({ shares: view.captain.shares, pickedCommission: false });
   const memory = memoryRef.current;
@@ -524,7 +532,8 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange }: Pro
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO;
-  const targetId = step.target(view, plan);
+  // Nothing to measure while hidden, so the 250ms poll cannot scroll the board under a modal.
+  const targetId = hidden ? null : step.target(view, plan);
   const rect = useTargetRect(targetId);
   useEffect(() => {
     onTargetChange?.(targetId);
@@ -547,6 +556,9 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange }: Pro
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, stepIndex]);
+
+  // Every hook above this line, so the run keeps advancing while it is out of sight.
+  if (hidden) return null;
 
   const PADDING = 8;
   const spotlight: React.CSSProperties | null = rect
