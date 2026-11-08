@@ -86,9 +86,12 @@ export default function StatusRail({ s, now }: { s: GameState; now: number }) {
         {status.text}
         {s.status.kind === 'travelling' && <TimerBar start={s.status.departs} end={s.status.arrives} now={now} colour={UI.verdigris} style={{ marginBottom: 0 }} />}
       </div>
-      {BAR_IDS.map(bar => (
-        <BarLine key={bar} s={s} bar={bar} now={now} />
-      ))}
+      {/* The guided first hours spotlight this block whole: the four bars are one lesson, not four. */}
+      <div id="nr-bars">
+        {BAR_IDS.map(bar => (
+          <BarLine key={bar} s={s} bar={bar} now={now} />
+        ))}
+      </div>
       <div style={{ fontSize: '0.7rem', color: UI.textFaint, marginTop: '0.8rem', lineHeight: 1.4 }}>
         Lodging: {currentLodging(s).name}
         {s.course && (

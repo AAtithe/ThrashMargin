@@ -12,7 +12,7 @@ import type { PlaceProps, Verb } from '../types';
  * shakes if the action was refused or went badly. The answer is drawn after the state has changed and
  * been saved; nothing here waits on it or holds the button.
  */
-export default function ActButton({ p, verb, children, tone }: { p: PlaceProps; verb: Verb; children: ReactNode; tone?: 'default' | 'primary' | 'quiet' | 'danger' }) {
+export default function ActButton({ p, verb, children, tone, id }: { p: PlaceProps; verb: Verb; children: ReactNode; tone?: 'default' | 'primary' | 'quiet' | 'danger'; id?: string }) {
   const origin = useId();
   const pace = usePace();
   const outcome = useContext(OutcomeContext);
@@ -26,7 +26,7 @@ export default function ActButton({ p, verb, children, tone }: { p: PlaceProps; 
   }, [outcome]);
   const reason = p.why(verb);
   const button = (
-    <Button tone={tone} disabled={reason !== null} title={reason ?? undefined} onClick={() => p.act(verb, origin)}>
+    <Button id={id} tone={tone} disabled={reason !== null} title={reason ?? undefined} onClick={() => p.act(verb, origin)}>
       {children}
     </Button>
   );

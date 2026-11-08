@@ -146,6 +146,47 @@ strictly more), the no-two-in-a-row deck-fairness check, and the vehicle-class d
 type-checking, so — per The Tea Race's own hard-won lesson — no drive-harness measurement should be
 trusted mid-refactor without a clean `tsc` pass alongside it.
 
+## 7a. Onboarding — the guided run, and two things the fork carried over broken
+
+Added together, late: a how-to-play page (`pages/Tutorial.tsx`, at `/how-to-play`, every number
+read from `sim/rules.ts` so it cannot drift) and a guided run
+(`components/GuidedTour.tsx`), forked from The Tea Race's alongside everything else. The run
+spotlights one real control at a time, waits for the game state to say the player used it, and
+drives the whole loop on the player's own live game — roll, take the commission, route to a depot
+that stocks the good, set off, drive, load, fill the bay, run it home, land it, buy a share.
+
+Three differences from the parent game's version, none cosmetic:
+
+- **The sourcing leg is unconditional here.** London, the home depot, supplies nothing at all, so
+  unlike The Tea Race there is no version of this game where the first load is bought where she is
+  parked. The plan is still computed rather than scripted, but the step list does not branch.
+- **Strikes and embargoes silently disable buttons**, so the plan filters both out before it
+  recommends a depot or a good.
+- **One price, not two.** No second ruleset, so `priceAt` is read directly.
+
+Driving it in a browser found two defects this fork inherited and nobody had noticed, both of them
+the fork's own fingerprints:
+
+- **The depot ledger rendered empty in every game since the fork.** `DepotLedger.tsx` still carried
+  The Tea Race's *ocean* region list — `north_america`, `indian_ocean`, `far_east` and the rest —
+  and grouped depots by matching against it. No UK depot carries any of those names, so every depot
+  was filtered out and "What the depots trade", the board's standing reference on what is bought
+  and sold where, was blank. Reskinned to the eight regions the content actually uses, south to
+  north, and the grouping now appends any region the content has that the file has not been told
+  about, so the same gap cannot silently swallow a depot again.
+- **The lobby taught a rule this game does not have.** Its blurb said each commission names "the
+  depot that sells it and the depot that wants it". It names only the buyer — the no-source-lock
+  rule is the fork's inherited *fix*, and the front door was describing the bug. Rewritten, and
+  driven off `FACE_UP_CONTRACTS` and `PAYOUT_MULTIPLIERS` rather than prose numbers.
+
+It also inherits the parent game's own hardest-won finding, which applies identically here: a
+vehicle arrives at the *end* of a turn, and every depot control is dead until the next day's roll,
+so the step after an arrival must point at the roll first or it points at a disabled button. See
+§8 of `tea-race-design.md`, Session 12.
+
+Verified by driving all fourteen steps in a real browser across several seeds with no console or
+page errors, plus `npm run drive:se` at 361,127 checks and a clean typecheck.
+
 ## 8. Portal integration
 
 Same recipe as The Tea Race's own §"portal integration" note: `packages/steady-eddie/` mirroring the

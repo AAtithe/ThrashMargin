@@ -39,7 +39,7 @@ troop costs gold to raise and food to keep, and food is the hard ceiling on the 
 | `shared/sim/` | The engine. Pure TypeScript, shared by the client and the API. |
 | `scripts/drive.ts` | Headless rules harness (`npm run drive:tm` from the repo root). |
 | `client/src/pages/Game.tsx` | The game screen: board, sidebar tabs, top bar, modals. |
-| `client/src/components/` | MapView, TerritoryPanel, OrdersPanel, RealmPanel, ResearchPanel, LogPanel, Modals, HistoryChart, ui, Icon. |
+| `client/src/components/` | MapView, TerritoryPanel, OrdersPanel, RealmPanel, ResearchPanel, LogPanel, Modals, HistoryChart, GuidedTour, ui, Icon. |
 | `client/src/game/plan.ts` | Pure helpers: highlights, suggested assault columns, what is undoable. |
 | `client/src/hooks/` | `useGameCloud` (API, debounced saves) and `useGameLocal`, switched by `useGameHybrid`. |
 | `client/src/theme.ts`, `styles.css` | Palette, fonts, the few things inline styles cannot do. |
@@ -62,6 +62,21 @@ troop costs gold to raise and food to keep, and food is the hard ceiling on the 
 5. **Presets state every rule toggle** (`RULE_TOGGLES`); the harness asserts it.
 6. **Saves are versioned.** `version: 2`. Change the shape and you must extend `migrateState`; the
    harness carries a version 1 fixture.
+
+## Onboarding
+
+Two tutorials, doing different jobs. **The tutorial map** — `maps.ts`'s board, the lobby's
+quick-start and the `Coach` panel in `Modals.tsx` — is unchanged and still the gentle way in, but
+it is gated on `mapId === 'tutorial'` and so never appears on a normal campaign. **The guided
+turn** (`client/src/components/GuidedTour.tsx`) runs on any map: it spotlights one real control at
+a time, waits for the state to say the player used it, and walks a whole turn. `planFirstTurn`
+reads the board, so it names the player's actual capital, their softest neighbour and the cheapest
+base building they can afford. `Game.tsx` hides the coach while the run is up so only one of them
+is talking.
+
+A step may name several target ids; the first on screen is spotlit, which is how the two-stage
+building picker is handled. `data-tour-target` on the card reports the id actually ringed, and an
+automated pass drives the whole run by clicking it — see the root `CLAUDE.md`.
 
 ## Working practices
 

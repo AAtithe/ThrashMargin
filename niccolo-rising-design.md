@@ -206,6 +206,41 @@ be revisited before any player-versus-player feature ships (see §6).
 
 ## 7. Build log
 
+### The guided first hour, 2026-11-08
+
+The fifth and last game to get the portal's guided-run treatment, and the one that needed the most
+rethinking, because the other four are turn-based and this one is not.
+
+`components/GuidedTour.tsx` spotlights one real control at a time on the player's own character:
+read the bars, take the first mission, spend Energy on a stat, spend Nerve on a scheme, take a
+post. Seven steps, everything real, everything kept.
+
+Two differences from the other four, both forced by the shape of this game:
+
+- **It opens on the bars and asks for nothing.** §1's first pillar is that time is the resource,
+  and that is the one thing a Torn-shaped game cannot teach by pointing at a button: the lesson is
+  what happens while the tab is shut. So the second step rings the four bars in the status rail,
+  reads the live figures out of state, and advances on a press rather than an action. That makes
+  it the portal's first guided step that is read rather than done, which the card now declares in
+  `data-tour-manual` — an automated pass that knew only the target clicked a div for ever waiting
+  for something to happen.
+- **Navigation is folded into the steps.** The verbs live in eleven places behind a nav row. A
+  step carries the place it belongs to, and when the player is elsewhere it points at that place's
+  button and retitles itself "Go to the training yard". Making each move its own step would have
+  doubled the length for no teaching; forcing the place open behind the player's back, which is
+  what Banco di Niccolò's tour does with its popup sections, would have taught them nothing about
+  where anything is.
+
+`planFirstHours` reads the character rather than hardcoding: the yard is one they already belong
+to, the scheme is the cheapest their Nerve will carry, and the post is the first whose
+requirements they already meet. On a fresh character that is Astorre's drill yard, the practical
+joke and the Charetty dyeworks — which is also the first mission's objective, so the scheme step
+advances the story it just told them to accept.
+
+Verified by driving all seven steps in a real browser with no console or page errors, plus
+`npm run drive --workspace=packages/niccolo-rising` at 10,417,487 assertions and a clean
+typecheck.
+
 ### Phases 1 to 4, 2026-10-03
 Initial build. Package, API (`api/niccolo-rising/game`, the portal's tenth Vercel function), sign-in
 gate, pure sim, every place in §3, game screen and driver. `npm run drive:rising` from the root.

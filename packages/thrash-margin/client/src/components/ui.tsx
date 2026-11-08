@@ -28,7 +28,7 @@ const TONES: Record<Tone, CSSProperties> = {
   attack: { background: UI.attackBg, color: UI.attackText, border: `1px solid ${UI.attack}` },
 };
 
-export function Button({ children, onClick, disabled, tone = 'default', title, icon, small, full, style }: {
+export function Button({ children, onClick, disabled, tone = 'default', title, icon, small, full, style, id }: {
   children?: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
@@ -38,10 +38,12 @@ export function Button({ children, onClick, disabled, tone = 'default', title, i
   small?: boolean;
   full?: boolean;
   style?: CSSProperties;
+  /** A stable hook for the guided turn to spotlight this control. See `GuidedTour.tsx`. */
+  id?: string;
 }) {
   return (
     <button
-      type="button" className="tm-btn" onClick={onClick} disabled={disabled} title={title}
+      type="button" id={id} className="tm-btn" onClick={onClick} disabled={disabled} title={title}
       style={{
         display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6,
         padding: small ? '4px 9px' : '7px 12px', borderRadius: 6, fontSize: small ? 12 : 13,

@@ -1,6 +1,7 @@
 // The browser save queue (shared/portal/client/saveQueue.ts) against a fake, slow server. Run by
 // scripts/check.sh: rapid saves must never trip a false conflict, and a real one must stop saving.
 import { createSaver, type SaveOutcome } from '../shared/portal/client/saveQueue';
+import { readJson, serverFailure } from '../shared/portal/client/apiReply';
 let fails = 0; const ok = (c: unknown, m: string) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fails++; };
 // A fake server holding one game's version, with a slow response.
 let serverVersion = 0; let concurrent = 0; let maxConcurrent = 0; const sent: number[] = [];
@@ -31,5 +32,14 @@ let serverVersion = 0; let concurrent = 0; let maxConcurrent = 0; const sent: nu
   ok(sent.length === before, 'after a conflict this tab stops saving');
   s.reset('g1', serverVersion); s.save('g1', { n: 53 }); await new Promise(r => setTimeout(r, 60));
   ok(outcomes[outcomes.length - 1] === 'saved', 'after reloading (reset) it saves again');
+  // Reading replies (shared/portal/client/apiReply.ts): a platform error page is a server failure,
+  // not something to throw on and report as a network error.
+  const reply = (status: number, body: string) => new Response(body, { status });
+  ok((await readJson(reply(201, '{"gameId":"g"}')))?.gameId === 'g', 'reply: JSON body read');
+  ok((await readJson(reply(500, '{"message":"Server error"}')))?.message === 'Server error', 'reply: JSON error body read');
+  ok((await readJson(reply(500, 'A server error has occurred\n\nFUNCTION_INVOCATION_FAILED'))) === null, 'reply: plain-text crash page is null, not a throw');
+  ok((await readJson(reply(504, ''))) === null, 'reply: empty timeout body is null');
+  ok((await readJson(reply(200, '"text"'))) === null, 'reply: JSON that is not an object is null');
+  ok(serverFailure('starting the voyage', reply(504, '')).includes('error 504'), 'reply: failure message names the status');
   console.log(fails ? fails + ' FAILED' : 'all passed'); process.exit(fails ? 1 : 0);
 })();

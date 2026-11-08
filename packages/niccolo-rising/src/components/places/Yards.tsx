@@ -38,7 +38,7 @@ export default function Yards(p: PlaceProps) {
                 <Row key={k}>
                   <span style={{ textTransform: 'capitalize', fontSize: '0.85rem', flex: 1 }}>{k}</span>
                   <Meta>+{trainGain(s, y, s.battle[k], s.bars.spirits.cur).toFixed(2)} per train</Meta>
-                  <ActButton p={p} verb={{ type: 'TRAIN', yardId: y.id, stat: k, times: 1 }}>Train</ActButton>
+                  <ActButton p={p} id={`nr-train-${y.id}-${k}`} verb={{ type: 'TRAIN', yardId: y.id, stat: k, times: 1 }}>Train</ActButton>
                   {most > 1 && (
                     <ActButton p={p} verb={{ type: 'TRAIN', yardId: y.id, stat: k, times: most }}>
                       Train ×{most}

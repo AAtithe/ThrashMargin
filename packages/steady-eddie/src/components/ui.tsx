@@ -34,6 +34,7 @@ export function Button({
   tone = 'default',
   title,
   style,
+  id,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -41,6 +42,8 @@ export function Button({
   tone?: 'default' | 'primary' | 'quiet' | 'danger';
   title?: string;
   style?: CSSProperties;
+  /** A stable hook for the guided run to spotlight this control. See `GuidedTour.tsx`. */
+  id?: string;
 }) {
   const tones: Record<string, CSSProperties> = {
     default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
@@ -51,6 +54,7 @@ export function Button({
   return (
     <button
       type="button"
+      id={id}
       onClick={onClick}
       disabled={disabled}
       title={title}

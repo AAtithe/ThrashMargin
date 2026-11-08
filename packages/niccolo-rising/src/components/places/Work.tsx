@@ -58,7 +58,7 @@ export default function Work(p: PlaceProps) {
                 {j.ranks.map(r => r.name).join(' → ')} · starts at {gr(j.ranks[0].pay)} a day, needs {reqText(j.ranks[0].req)}
               </Meta>
             </div>
-            <ActButton p={p} verb={{ type: 'JOIN_JOB', jobId: j.id }}>Take a post</ActButton>
+            <ActButton p={p} id={`nr-job-${j.id}`} verb={{ type: 'JOIN_JOB', jobId: j.id }}>Take a post</ActButton>
           </Row>
         ))}
       </Panel>

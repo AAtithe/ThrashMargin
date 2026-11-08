@@ -165,6 +165,33 @@ reshaped, a pending event rebuilt from the current definition. The cloud hook sa
 
 ## Build log
 
+### The guided turn (November 2026)
+
+The game had a tutorial map, a lobby quick-start and the `Coach` panel, whose text follows the
+board state. Two gaps, and the first is the one that mattered: the coach is rendered only under
+`mapId === 'tutorial'`, so a player who pressed the lobby's own main button got nothing at all.
+The second is that a sentence in a side panel about a shape on a map is not a ring round the shape.
+
+`client/src/components/GuidedTour.tsx` runs on any map: select the capital, recruit, build, pick a
+target, attack, end the turn. Eight steps, each spotlighting one real control, waiting on real
+state, on the player's own campaign. `planFirstTurn` reads the board rather than hardcoding
+anything — the player's actual capital, the softest adjacent territory, and the cheapest base
+building the treasury can pay for — so the copy names the right things on every map. `Game.tsx`
+stands the coach down while the run is up so the two are never talking at once.
+
+Two things worth keeping:
+
+- **A step may name more than one control.** The building picker is two stages — an opener that is
+  replaced by the list it reveals — so that step names the building row and the opener, in that
+  order, and the first one on screen is spotlit. The `data-tour-target` attribute reports the one
+  actually ringed, not the first preference: reporting the preference sent an automated pass
+  hunting for a row that was not on screen yet while the ring sat correctly on the opener.
+- **The pointer-capture trap, avoided here by accident.** The prototype's map took the pointer on
+  `pointerdown` for every pointer type, and pointer capture retargets the compatibility mouse
+  events — `click` among them — to the capturing element, so a plain mouse click on a territory
+  did nothing at all. `MapView.tsx` takes it in the move handler past `MOVE_THRESHOLD` instead,
+  which is the only thing it is needed for. Do not move it back.
+
 ### The overhaul (October 2026)
 
 The prototype engine was a single 1,700-line file with a 1,800-line game screen. An audit found:

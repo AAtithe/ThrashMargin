@@ -28,6 +28,7 @@ import { useGameHybrid } from '../hooks/useGameHybrid';
 import { FONT, UI } from '../theme';
 import ThemeToggle from '../components/ThemeToggle';
 import MotionToggle from '../components/MotionToggle';
+import GuidedTour, { hasSeenGuidedTour, planFirstTurn, type TourPlan } from '../components/GuidedTour';
 
 type Tab = 'command' | 'realm' | 'research' | 'log';
 type FloatKind = 'gold' | 'food' | 'mat' | 'influence' | 'pop';
@@ -78,6 +79,15 @@ function Game({ id }: { id: string | undefined }) {
   const [battle, setBattle] = useState<MapFx | null>(null);
   const [floats, setFloats] = useState<Partial<Record<FloatKind, ChipFloat[]>>>({});
   const fxSeq = useRef(0);
+  /**
+   * The guided turn, once started. Latched in state rather than recomputed per render: the plan
+   * names a particular neighbour and a particular building, chosen from the board as it stood
+   * when the run opened, and one that re-picked itself every render would rewrite the steps under
+   * the player's feet the moment anything changed.
+   */
+  const [tourPlan, setTourPlan] = useState<TourPlan | null>(null);
+  /** Whether the once-per-browser offer has already been considered for this campaign. */
+  const [tourOffered, setTourOffered] = useState(false);
 
   useEffect(() => { if (id) void loadGame(id); }, [id, loadGame]);
   // Keys must not reach a board the player cannot see (hot seat hand-over, the dispatch, the end).
@@ -116,6 +126,18 @@ function Game({ id }: { id: string | undefined }) {
     const t = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  // Offer the guided turn unasked on a campaign that has not moved yet, the first time this
+  // browser sees one. Every hook lives above the early return further down; one placed after it
+  // renders conditionally, which typechecks and then blanks the screen.
+  useEffect(() => {
+    if (tourOffered || !state) return;
+    if (state.status !== 'active' || state.turn > 1) return;
+    setTourOffered(true);
+    if (hasSeenGuidedTour()) return;
+    const plan = planFirstTurn(state);
+    if (plan) setTourPlan(plan);
+  }, [state, tourOffered]);
 
   const visible = useMemo(() => (state ? visibleTo(state, state.activeFaction) : new Set<number>()), [state]);
 
@@ -301,6 +323,8 @@ function Game({ id }: { id: string | undefined }) {
   const unlimited = state.actionsLeft >= UNLIMITED_AP;
   const showDiplomacy = state.config.enableDiplomacy || state.config.enableSpies;
   const fc = FACTION_COLORS[me];
+  /** A first turn the run could teach from the board as it stands, or null if there isn't one. */
+  const tourCandidate: TourPlan | null = tourPlan ? null : planFirstTurn(state);
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, overflow: 'hidden' }}>
@@ -330,9 +354,14 @@ function Game({ id }: { id: string | undefined }) {
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <IconButton icon="ledger" label="Ledger (L)" onClick={() => setModal('ledger')} />
           <IconButton icon="help" label="How to play (?)" onClick={() => setModal('help')} />
+          {tourCandidate && (
+            <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)} title="Walk through one turn">
+              <span className="tm-hide-mobile">Guided turn</span>
+            </Button>
+          )}
           <IconButton icon="undo" label={undoStack.length ? 'Undo (Z)' : 'Nothing to undo'} onClick={undo} disabled={!undoStack.length || over} />
           {over && endHidden && <Button tone="quiet" onClick={() => setEndHidden(false)}>Results</Button>}
-          <Button tone="primary" icon="next" onClick={endTurn} disabled={over || !!state.pendingEvent}
+          <Button id="tm-end-turn" tone="primary" icon="next" onClick={endTurn} disabled={over || !!state.pendingEvent}
             title={state.pendingEvent ? `Answer "${state.pendingEvent.title}" first` : 'End your turn (E)'}>
             <span className="tm-hide-mobile">End turn</span>
           </Button>
@@ -370,7 +399,7 @@ function Game({ id }: { id: string | undefined }) {
             ))}
           </nav>
           <div style={{ flex: 1, overflowY: 'auto', padding: 12, display: 'grid', alignContent: 'start', gap: 10 }}>
-            {state.config.mapId === 'tutorial' && !over && tab === 'command' && <Coach state={state} selected={selected} target={target} />}
+            {state.config.mapId === 'tutorial' && !over && !tourPlan && tab === 'command' && <Coach state={state} selected={selected} target={target} />}
             {tab === 'command' && (
               kind === 'attack' && selected !== null && target !== null ? (
                 <AttackOrders state={state} target={target} visible={visible.has(target)} columns={columns} setColumns={setColumns} act={act} onCancel={() => { setTarget(null); setColumns(new Map()); }} />
@@ -399,6 +428,17 @@ function Game({ id }: { id: string | undefined }) {
       )}
       {game.error && state && (
         <div role="alert" style={{ position: 'fixed', left: 12, bottom: 12, background: UI.dangerBg, border: `1px solid ${UI.bad}`, color: UI.dangerText, padding: '8px 12px', borderRadius: 8, fontSize: 12.5, zIndex: 250, maxWidth: 420 }}>{game.error}</div>
+      )}
+
+      {/* The guided turn. Off while the hand-over screen, the dispatch, an event or a modal owns
+          the display: all of them are modal, and a ring round a control underneath one points at
+          something that cannot be clicked. */}
+      {tourPlan && !over && !needPass && !showDispatch && !state.pendingEvent && !modal && (
+        <GuidedTour
+          view={{ state, selected, target }}
+          plan={tourPlan}
+          onFinish={() => setTourPlan(null)}
+        />
       )}
 
       {needPass && <PassScreen state={state} onReady={() => setReadyFor(turnKey)} />}

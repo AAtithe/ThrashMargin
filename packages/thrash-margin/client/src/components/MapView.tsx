@@ -315,6 +315,9 @@ const Region = memo(function Region({ n, path, c, seen, sel, tgt, attack, move, 
   return (
     <g
       data-territory-id={n.id}
+      // Spotlight target for the guided turn. On the `<g>` so the ring encloses the label and the
+      // troop count as well as the shape, which is what the player is being pointed at.
+      id={`tm-territory-${n.id}`}
       onClick={e => { e.stopPropagation(); onClick(n.id); }}
       onMouseMove={e => onHover(n.id, e.clientX, e.clientY)}
       style={{ cursor: 'pointer' }}

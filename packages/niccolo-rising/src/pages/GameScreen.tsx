@@ -29,6 +29,7 @@ import MotionToggle from '../components/MotionToggle';
 import { Countdown, OutcomeContext } from '../components/motion';
 import type { Gain, Outcome } from '../components/motion';
 import { currentPace } from '../lib/motion';
+import GuidedTour, { hasSeenGuidedTour, planFirstHours, type TourPlan } from '../components/GuidedTour';
 
 const PLACES = [
   { id: 'home', name: 'Home', Panel: Home },
@@ -71,6 +72,16 @@ export default function GameScreen() {
   const [tickNow, setNow] = useState(() => Date.now());
   const [place, setPlace] = useState<PlaceId>('home');
 
+  /**
+   * The guided first hour, once started. Latched in state rather than recomputed per render: the
+   * plan names a particular yard, scheme and post, chosen from the character as they stood when
+   * the run opened, and one that re-picked itself on every tick would rewrite the steps under the
+   * player's feet — this screen re-renders once a second.
+   */
+  const [tourPlan, setTourPlan] = useState<TourPlan | null>(null);
+  /** Whether the once-per-browser offer has already been considered for this character. */
+  const [tourOffered, setTourOffered] = useState(false);
+
   // Every hook sits above the early returns below: a hook after one renders conditionally, which
   // both tsc and the driver miss and which leaves a blank screen.
   useEffect(() => {
@@ -95,6 +106,19 @@ export default function GameScreen() {
   // render earlier than the save's own clock, or a journey just begun reads longer than it is.
   const now = Math.max(tickNow, state?.clock ?? 0);
   const view = useMemo(() => (state ? advance(state, now) : null), [state, now]);
+
+  // Offer the guided first hour unasked to a character who has not done anything yet, the first
+  // time this browser sees one. Every hook sits above the early returns below.
+  useEffect(() => {
+    if (tourOffered || !view) return;
+    const untouched = view.counters.schemes === 0 && view.job === null && view.missions.done.length === 0;
+    if (!untouched) return;
+    setTourOffered(true);
+    if (hasSeenGuidedTour()) return;
+    const plan = planFirstHours(view);
+    if (plan) setTourPlan(plan);
+  }, [view, tourOffered]);
+
 
   // Presentation only: after an action, tell the button that sent it how it went. The state has
   // already changed (and gone to the save queue) by the time this looks; it never delays either.
@@ -149,6 +173,8 @@ export default function GameScreen() {
   const props: PlaceProps = { s: view, now, act, why };
   const Current = PLACES.find(p => p.id === place)!.Panel;
   const st = view.status;
+  /** A first hour the run could teach from where the character stands, or null if there isn't one. */
+  const tourCandidate: TourPlan | null = tourPlan || st.kind !== 'free' ? null : planFirstHours(view);
 
   return (
     <OutcomeContext.Provider value={outcome}>
@@ -161,8 +187,13 @@ export default function GameScreen() {
             </Link>
             <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
             <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft, marginRight: '0.6rem' }} />
+            {tourCandidate && (
+              <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)} style={{ marginRight: '0.6rem' }}>
+                Guided first hour
+              </Button>
+            )}
             {PLACES.map(p => (
-              <Button key={p.id} tone={p.id === place ? 'primary' : 'quiet'} onClick={() => setPlace(p.id)}>
+              <Button key={p.id} id={`nr-place-${p.id}`} tone={p.id === place ? 'primary' : 'quiet'} onClick={() => setPlace(p.id)}>
                 {p.name}
               </Button>
             ))}
@@ -195,6 +226,14 @@ export default function GameScreen() {
           <Current {...props} />
         </main>
         <Chronicle s={view} />
+
+        {tourPlan && st.kind === 'free' && (
+          <GuidedTour
+            view={{ s: view, place }}
+            plan={tourPlan}
+            onFinish={() => setTourPlan(null)}
+          />
+        )}
       </div>
     </OutcomeContext.Provider>
   );

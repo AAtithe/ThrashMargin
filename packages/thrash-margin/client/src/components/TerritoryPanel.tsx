@@ -145,7 +145,7 @@ function Recruit({ state, node, act }: { state: GameState; node: Territory; act:
           <Stepper value={n} min={max ? 1 : 0} max={max} onChange={setN} />
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
             <span style={{ fontSize: 11.5, color: UI.textSoft }}>Upkeep {state.config.upkeep * Math.max(1, n)} food a turn</span>
-            <Button small tone="primary" icon="troops" disabled={!!why || n < 1} onClick={() => act(action)}>Recruit {n} for {n * cost}</Button>
+            <Button id="tm-recruit" small tone="primary" icon="troops" disabled={!!why || n < 1} onClick={() => act(action)}>Recruit {n} for {n * cost}</Button>
           </div>
           <Why text={max < 1 ? why : null} />
         </>
@@ -183,7 +183,7 @@ function Buildings({ state, node, act }: { state: GameState; node: Territory; ac
           );
         })}
         {free > 0 && !open && (
-          <Button icon="build" onClick={() => setOpen(true)} full>{`Build in ${free === 1 ? 'the free slot' : `one of ${free} free slots`}`}</Button>
+          <Button id="tm-build-open" icon="build" onClick={() => setOpen(true)} full>{`Build in ${free === 1 ? 'the free slot' : `one of ${free} free slots`}`}</Button>
         )}
         {free > 0 && open && (
           <div style={{ display: 'grid', gap: 6 }}>
@@ -191,7 +191,7 @@ function Buildings({ state, node, act }: { state: GameState; node: Territory; ac
               const a: GameAction = { type: 'BUILD', nodeId: node.id, building: b };
               const why = explain(state, a);
               return (
-                <button key={b} type="button" className="tm-btn tm-row-hover" disabled={!!why} onClick={() => { act(a); setOpen(false); }} title={why ?? undefined}
+                <button key={b} type="button" id={`tm-build-${b}`} className="tm-btn tm-row-hover" disabled={!!why} onClick={() => { act(a); setOpen(false); }} title={why ?? undefined}
                   style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', borderRadius: 6, background: UI.panelSunk, border: `1px solid ${UI.rule}`, cursor: why ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: why ? 0.55 : 1 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: PIP[BUILDINGS[b].family] }} />
                   <span style={{ flex: 1 }}>

@@ -26,7 +26,8 @@ import CaptainsTable from '../components/CaptainsTable';
 import ChronicleLog from '../components/ChronicleLog';
 import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
-import type { Contract, PortId } from '../sim/types';
+import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
+import type { Contract, GameState, GoodId, PortId } from '../sim/types';
 import ThemeToggle from '../components/ThemeToggle';
 import MotionToggle from '../components/MotionToggle';
 import TeaRacePanel from '../components/TeaRacePanel';
@@ -99,6 +100,30 @@ export default function GameScreen() {
     setConfirmingEnd(false);
   }, [state?.turn]);
 
+  /**
+   * The guided run, once it has been started. Latched in state rather than recomputed per render
+   * on purpose: the plan is chosen from the board as it stood when the tour opened, and a plan
+   * that silently re-picked itself every time a rival filled a commission would rewrite the steps
+   * under the player's feet.
+   */
+  const [tourPlan, setTourPlan] = useState<TourPlan | null>(null);
+  /** Whether the once-per-browser offer has already been considered for this screen. */
+  const [tourOffered, setTourOffered] = useState(false);
+
+  // Open the run unasked on a game that has not moved yet, the first time this browser sees one.
+  // Hooks live above the `if (!state)` bail-out below; one placed after it renders conditionally,
+  // which typechecks, passes the harness, and blanks the screen.
+  useEffect(() => {
+    if (tourOffered || !state || !captain) return;
+    if (captain.kind !== 'human' || state.phase === 'over' || state.round > 1 || state.turn > 1) return;
+    setTourOffered(true);
+    if (hasSeenGuidedTour()) return;
+    const ship = state.ships.find(sh => sh.ownerId === captain.id && sh.location) ?? null;
+    if (!ship) return;
+    const plan = planFirstRun(state, captain, ship, priceLookup(state, captain.id));
+    if (plan) setTourPlan(plan);
+  }, [state, captain, tourOffered]);
+
   if (!state) {
     return (
       <div style={{ ...page, alignItems: 'center', justifyContent: 'center' }}>
@@ -123,6 +148,7 @@ export default function GameScreen() {
    */
   const view = replay.frame?.state ?? state;
   const replayCaptain = replay.frame ? view.captains.find(c => c.id === replay.frame!.captainId) ?? null : null;
+  const priceFor = priceLookup(state, captain?.id ?? '');
   const isHuman = captain?.kind === 'human';
   const canAct = state.phase === 'act' && isHuman;
 
@@ -158,6 +184,14 @@ export default function GameScreen() {
   })();
 
   const winner = state.winnerId ? state.captains.find(c => c.id === state.winnerId) : null;
+
+  /** A run the tour could teach from where the fleet stands right now, or null if there isn't one
+   *  (nothing affordable, nothing reachable, or every ship at sea). Cheap enough to recompute. */
+  const tourCandidate: TourPlan | null = (() => {
+    if (!captain || !isHuman || over) return null;
+    const docked = myShips.find(sh => sh.location) ?? null;
+    return docked ? planFirstRun(state, captain, docked, priceFor) : null;
+  })();
 
   // The race, if one is running. Plain values, not a hook — this is below the early return.
   const race = openRace(view);
@@ -205,11 +239,21 @@ export default function GameScreen() {
           </div>
         )}
 
-        <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
-        <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
-        <Button tone="quiet" onClick={() => navigate('/')}>
-          Lobby
-        </Button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+          {/* Offered whenever a run can actually be planned from where the fleet stands, not only
+              on turn one: a player who skipped the tour, or who came back to a half-played game,
+              should still be able to ask for it. */}
+          {tourCandidate && !tourPlan && (
+            <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)}>
+              Guided run
+            </Button>
+          )}
+          <Button tone="quiet" onClick={() => navigate('/')}>
+            Lobby
+          </Button>
+        </div>
       </header>
 
       {/* --- The season ------------------------------------------------------------------- */}
@@ -337,7 +381,7 @@ export default function GameScreen() {
               </span>
             ) : mustRoll ? (
               <>
-                <Button tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
+                <Button id="roll-button" tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
                   Take the wind — roll for {myShips.length === 1 ? 'her' : 'the fleet'}
                 </Button>
                 <span style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
@@ -348,6 +392,7 @@ export default function GameScreen() {
             ) : canAct ? (
               <>
                 <Button
+                  id="end-turn-button"
                   tone={confirmingEnd ? 'primary' : undefined}
                   onClick={() => {
                     // One extra click, never a block: waiting in port for cash or a better card is
@@ -464,11 +509,7 @@ export default function GameScreen() {
                 agentsOn={state.hazards?.agents ?? false}
                 shipSaleOn={(state.hazards?.wages || state.hazards?.loans) ?? false}
                 fleetSize={myShips.length}
-                priceFor={(port, good) =>
-                  state.rules === 'voyage'
-                    ? livePrice(state, port, good)
-                    : ladingPrice(state, captain?.id ?? '', port, good)
-                }
+                priceFor={priceFor}
                 paysFor={(port, good) =>
                   (state.rules === 'voyage' ? sellsFor(state, port, good) : null) ??
                   saleProceeds(state, captain?.id ?? '', port, good)
@@ -503,6 +544,21 @@ export default function GameScreen() {
       />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
+      {tourPlan && captain && !over && state.phase !== 'handover' && (
+        <GuidedTour
+          view={{
+            state,
+            captain,
+            ship: state.ships.find(sh => sh.id === tourPlan.shipId) ?? null,
+            targetPort,
+            focusedContract,
+            priceFor,
+          }}
+          plan={tourPlan}
+          onFinish={() => setTourPlan(null)}
+        />
+      )}
+
       {state.phase === 'handover' && captain && (
         <HandoverCard
           state={state}
@@ -576,6 +632,15 @@ export default function GameScreen() {
       )}
     </div>
   );
+}
+
+/**
+ * What a quay charges for a good under the ruleset in play. Hoisted out of the Orders panel's props
+ * so the guided run prices its plan exactly the way the panel will price the button it spotlights.
+ */
+function priceLookup(state: GameState, captainId: string) {
+  return (port: PortId, good: GoodId): number =>
+    state.rules === 'voyage' ? livePrice(state, port, good) : ladingPrice(state, captainId, port, good);
 }
 
 const page: React.CSSProperties = {

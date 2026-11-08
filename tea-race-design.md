@@ -560,7 +560,7 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
-### Session 16 (2026-11-08) — time on the board: small animations
+### Session 17 (2026-11-08) — time on the board: small animations
 
 The owner asked for "time elements so you feel it less like you have to just click away". All of it
 is presentation; `sim/` is untouched, nothing waits on an animation before saving, and every piece
@@ -592,6 +592,54 @@ screen is what it was, including the old straight 700ms glide of a ship marker.
   reaches a new berth.
 
 No new colours: everything uses existing tokens.
+
+### Session 16 (2026-11-08) — the guided run
+
+The how-to-play page (`pages/Tutorial.tsx`) was the only onboarding this game had. It is a good
+reference and it stays, but it is a page a new captain reads *instead of* playing, and it teaches
+the one thing hardest to learn from prose: that a commission names a buyer and never a seller, so
+the whole first move is a sourcing decision the card will not make for you.
+
+`components/GuidedTour.tsx` teaches that by making the player do it. It spotlights one real control
+at a time, waits for the game state to say the player used it, and runs the full loop on their own
+live game — roll, pick the commission, lay off a course to a port that actually stocks the good,
+cast off, sail, load, fill the hull, run it home, land it, buy a share. Fourteen steps, all of them
+real actions with real money.
+
+**The route is computed, not scripted.** Niccolò's tour hardcodes Bruges→Antwerp with cloth because
+that campaign has one fixed starting market. This game cannot: Liverpool sells only cloth, the five
+commissions are dealt from nineteen goods, and on most new games there is no commission the home
+port can load for. `planFirstRun` scores every live commission against every port that sells its
+good, on total distance, filtered by what the captain can afford, and the step list is built from
+the plan — the three sail-to-the-seller steps appear only when the cargo has to be fetched, which
+is usually.
+
+Four things the browser found that the typechecker and the harness could not — and the first is
+the one worth remembering, because nothing static could have caught it:
+
+- **A ship arrives at the end of a turn, and the quay is dead until the next roll.** Every control
+  in the Orders panel and the counting house is driven by `canAct`, which is false in the roll
+  phase. So the step *after* an arrival was always reached with a roll pending, and the tour spent
+  that turn pointing at a disabled button. Unattended, the ship then sat at the quay while the
+  rivals played the game out around her — a tour that looked finished in the logs and was in fact
+  stuck on turn four. Those steps are now wrapped: while a roll is pending they point at the roll
+  and say why, and their own completion is untouched, because rolling is not what finishes them,
+  it is what makes finishing them possible.
+
+- **A step that reads true before the run begins skips the welcome card.** "Land the cargo" was
+  satisfied by an empty hold, which is the state the tour starts in. Opening on the first step that
+  is not done is now a *prefix* scan — walk forward, stop at the first unfinished step — so a
+  predicate that is only honest about the state it is actually reached in cannot mislead it.
+- **A step that can un-complete itself is a step the tour sticks on.** The commissions board toggles
+  focus, so clicking the card twice undid a finished step. Latched.
+- **A smooth `scrollIntoView` leaves the ring behind.** Measured drift of up to 275px between the
+  spotlight and the control it was pointing at, because the element was still moving when it was
+  measured. Instant scroll, re-measured synchronously; checked at zero drift on every step.
+
+Verified by driving every step in a real browser across several seeds — both the sourcing-leg
+shape and the rarer load-it-where-she-stands one — clicking whatever control the card points at
+(it carries `data-tour-target` for exactly that), with no console or page errors, plus
+`npm run drive:tea` at 369,678 checks and a clean typecheck.
 
 ### Session 15 (2026-10-24) — captain careers and eras: a game that ramps up
 
@@ -792,6 +840,7 @@ chequered flag over London while a race runs.
 Verified: `npm run check` green (tea race 543,686 checks, 0 failed); `npm run test:api` 233 passed;
 browser play-through in both modes. The pilot put Cutty Sark on a reef and she still came second
 home for £435.
+
 
 ### Session 11 (2026-08-22) — free play made reachable, and a silent transport bug
 
