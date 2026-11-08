@@ -140,7 +140,7 @@ export function ReplayStrip({
       : frame.entries[frame.entries.length - 1]?.text ?? '';
 
   return (
-    <div style={strip} role="status" aria-live="polite">
+    <div style={strip} role="status" aria-live="polite" data-replay-bar>
       <span style={{ ...dot, background: haulier?.colour ?? UI.textFaint }} />
       <span style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', minWidth: 0, flex: '1 1 auto' }}>
         <span style={stripHead}>

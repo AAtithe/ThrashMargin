@@ -157,6 +157,22 @@ async function seed(page, cfg, saveId) {
 const waitSigChange = (page, prev, timeout) =>
   page.waitForFunction(p => window.__se.sig() !== p, prev, { timeout, polling: 50 }).then(() => true, () => false);
 
+/**
+ * The rivals' turns replay on the board after End turn (lib/motion.ts; on unless the pace is off).
+ * While the replay bar is up the run is hidden on purpose and the handover card waits, so a driver
+ * that read the screen then would see the run "disappear". Watch it to the end, as a player would,
+ * and check the run is never drawn over it. Returns a problem string, or null.
+ */
+async function settleReplay(page) {
+  if (!(await page.locator('[data-replay-bar]').count())) return null;
+  for (let i = 0; i < 120; i++) {
+    if (!(await page.locator('[data-replay-bar]').count())) return null;
+    if (await page.locator('[data-tour-step]').count()) return 'tour card shown over the rivals\' replay';
+    await page.waitForTimeout(50);
+  }
+  return 'rivals\' replay still on screen after 6s';
+}
+
 /** Play whole days with the run declined, then ask for it from the header. */
 async function playIntoGame(page, days) {
   if (await page.locator('[data-tour-step]').count()) throw new Error('run opened although already seen');
@@ -231,6 +247,8 @@ async function run(browser, cfg) {
     let otherTurns = 0;
 
     for (let iter = 0; iter < 800; iter++) {
+      const replayProblem = await settleReplay(page);
+      if (replayProblem) { await fail(replayProblem); break; }
       if (await page.evaluate(() => window.__se.handover())) {
         if (await page.evaluate(() => !!window.__se.snap())) await fail('tour card shown over the handover card');
         const before = await page.evaluate(() => window.__se.sig());
