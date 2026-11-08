@@ -526,7 +526,12 @@ function buildSteps(): TourStep[] {
  * and then slides onto the control.
  */
 function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | null {
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  // The rect remembers which target and step it was measured for, so the first render of a new
+  // step never lays its card out against the previous step's box (one painted frame, which put The
+  // Tea Race's closing card off the bottom of the screen).
+  const key = `${targetId ?? ''}|${stepIndex}`;
+  const [measured, setMeasured] = useState<{ key: string; rect: DOMRect | null }>({ key, rect: null });
+  const setRect = (rect: DOMRect | null) => setMeasured({ key, rect });
 
   useEffect(() => {
     if (!targetId) {
@@ -566,7 +571,7 @@ function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | nu
     // already spent its one scroll and left the button half under the bottom edge of a phone.
   }, [targetId, stepIndex]);
 
-  return rect;
+  return measured.key === key ? measured.rect : null;
 }
 
 /**

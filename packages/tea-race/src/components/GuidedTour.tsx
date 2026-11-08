@@ -542,7 +542,13 @@ function buildSteps(plan: TourPlan): TourStep[] {
  * who has deliberately scrolled somewhere else.
  */
 function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | null {
-  const [rect, setRect] = useState<DOMRect | null>(null);
+  // The rect remembers which target and step it was measured for. Held as a bare rect, the first
+  // render of a new step still carried the previous step's box until the effect below cleared it:
+  // one painted frame of the closing card laid out against the End turn button at the foot of the
+  // screen, and, being taller than the estimate, running off the bottom of it.
+  const key = `${targetId ?? ''}|${stepIndex}`;
+  const [measured, setMeasured] = useState<{ key: string; rect: DOMRect | null }>({ key, rect: null });
+  const setRect = (rect: DOMRect | null) => setMeasured({ key, rect });
 
   useEffect(() => {
     if (!targetId) {
@@ -588,9 +594,10 @@ function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | nu
     // Keyed on the step as well as the id. "Load her hold" and "Fill the hull" ring the same
     // button and the Orders panel reflows between them; keyed on the id alone the second step had
     // already spent its one scroll.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetId, stepIndex]);
 
-  return rect;
+  return measured.key === key ? measured.rect : null;
 }
 
 /**
