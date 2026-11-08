@@ -11,6 +11,8 @@ interface AdminUser {
   username: string;
   email: string;
   role: 'user' | 'admin';
+  /** 'pending' waits in the approval queue; 'suspended' cannot sign in. */
+  status: 'active' | 'pending' | 'suspended';
   registeredAt: number;
   lastLoginAt: number | null;
   gamesByTitle: Record<string, number>;
@@ -25,7 +27,9 @@ interface AuditEntry {
   at: number;
   actor: string;
   target: string;
-  action: 'grant_admin' | 'remove_admin' | 'reset_password' | 'grant_game' | 'revoke_game' | 'set_new_account_games';
+  action:
+    | 'grant_admin' | 'remove_admin' | 'reset_password' | 'grant_game' | 'revoke_game' | 'set_new_account_games'
+    | 'set_require_approval' | 'approve_account' | 'reject_account' | 'suspend' | 'unsuspend' | 'delete_account';
   detail: string | null;
 }
 
@@ -33,7 +37,15 @@ const AUDIT_VERBS: Record<string, string> = {
   grant_admin: 'made admin',
   remove_admin: 'removed admin from',
   reset_password: 'reset the password of',
+  approve_account: 'approved',
+  reject_account: 'rejected',
+  suspend: 'suspended',
+  unsuspend: 'reinstated',
+  delete_account: 'deleted the account of',
 };
+
+/** Actions whose detail is a note the admin typed, shown after the sentence. */
+const NOTED = new Set(['approve_account', 'reject_account', 'suspend', 'unsuspend', 'delete_account']);
 
 const GAME_LABEL: Record<string, string> = Object.fromEntries(GAMES.map(g => [g.key, g.label]));
 
@@ -45,11 +57,15 @@ function auditSentence(e: AuditEntry): { before: string; target: string | null; 
     const verb = e.action === 'grant_game' ? 'turned on' : 'turned off';
     return group ? { before: `${verb} ${game} for ${group}`, target: null, after: '' } : { before: `${verb} ${game} for`, target: e.target, after: '' };
   }
+  if (e.action === 'set_require_approval') {
+    return { before: `turned ${e.detail === 'on' ? 'on' : 'off'} approval for new accounts`, target: null, after: '' };
+  }
   if (e.action === 'set_new_account_games') {
     const games = (e.detail ?? '').split(',').filter(Boolean).map(k => GAME_LABEL[k] ?? k);
     return { before: `set new accounts to start with ${games.length ? games.join(', ') : 'no games'}`, target: null, after: '' };
   }
-  return { before: AUDIT_VERBS[e.action] ?? e.action, target: e.target, after: '' };
+  const note = NOTED.has(e.action) && e.detail ? `: "${e.detail}"` : '';
+  return { before: AUDIT_VERBS[e.action] ?? e.action, target: e.target, after: note };
 }
 
 interface FeedbackItem {
@@ -87,6 +103,7 @@ export default function Admin() {
   const [tab, setTab] = useState<'access' | 'feedback' | 'history'>('access');
   const [newAccountGames, setNewAccountGames] = useState<string[] | null>(null);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
+  const [requireApproval, setRequireApproval] = useState<boolean | null>(null);
   const [pending, setPending] = useState<Set<string>>(new Set());
   const [accessError, setAccessError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -113,6 +130,7 @@ export default function Admin() {
           if (!d) return;
           setNewAccountGames(d.newAccountGames ?? []);
           setDefaultsSaved(d.saved === true);
+          setRequireApproval(d.requireApproval === true);
         })
         .catch(() => {});
       // Loaded separately and allowed to fail: the history is useful, not essential to the page.
@@ -238,6 +256,70 @@ export default function Admin() {
     }
   };
 
+  const toggleApproval = async () => {
+    if (requireApproval === null) return;
+    const next = !requireApproval;
+    const msg = next
+      ? 'Require approval for new accounts? Anyone who registers will wait in the queue and cannot sign in until an admin approves them.'
+      : 'Stop requiring approval? New accounts will be able to sign in straight away. Accounts already waiting stay in the queue.';
+    if (!window.confirm(msg)) return;
+    busy('approval', true);
+    const data = await send('PUT', 'settings', { requireApproval: next });
+    busy('approval', false);
+    if (data) setRequireApproval(data.requireApproval === true);
+  };
+
+  /** Replaces one account in the list, or removes it when `next` is null. */
+  const patchUser = (id: string, next: Partial<AdminUser> | null) =>
+    setUsers(prev => (prev ? (next ? prev.map(x => (x.id === id ? { ...x, ...next } : x)) : prev.filter(x => x.id !== id)) : null));
+
+  // A note is optional everywhere; cancelling the prompt cancels the action.
+  const askNote = (question: string): string | null => window.prompt(`${question}\n\nOptional note for the access history:`, '');
+
+  const approve = async (u: AdminUser) => {
+    const note = askNote(`Approve ${u.username}? They can sign in at once, with the games set for new accounts.`);
+    if (note === null) return;
+    busy(`acct:${u.id}`, true);
+    const data = await send('POST', 'approve', { id: u.id, note });
+    busy(`acct:${u.id}`, false);
+    if (data) patchUser(u.id, { status: 'active', games: data.games ?? u.games });
+  };
+
+  const reject = async (u: AdminUser) => {
+    const note = askNote(`Reject ${u.username}? Their account is deleted. They could register again and would wait in the queue again.`);
+    if (note === null) return;
+    busy(`acct:${u.id}`, true);
+    const data = await send('POST', 'reject', { id: u.id, note });
+    busy(`acct:${u.id}`, false);
+    if (data) patchUser(u.id, null);
+  };
+
+  const setSuspended = async (u: AdminUser, suspend: boolean) => {
+    const note = askNote(
+      suspend
+        ? `Suspend ${u.username}? They are signed out everywhere at once and cannot sign in. Their saves are kept.`
+        : `Reinstate ${u.username}? They can sign in again.`,
+    );
+    if (note === null) return;
+    busy(`acct:${u.id}`, true);
+    const data = await send('PATCH', 'status', { id: u.id, status: suspend ? 'suspended' : 'active', note });
+    busy(`acct:${u.id}`, false);
+    if (data) patchUser(u.id, { status: suspend ? 'suspended' : 'active' });
+  };
+
+  const deleteUser = async (u: AdminUser) => {
+    const typed = window.prompt(
+      `Delete ${u.username}'s account and every saved game it owns? This cannot be undone. Their feedback is kept without their name.\n\nType ${u.username} to confirm:`,
+      '',
+    );
+    if (typed === null) return;
+    if (typed !== u.username) { setAccessError('The username did not match, so nothing was deleted.'); return; }
+    busy(`acct:${u.id}`, true);
+    const data = await send('POST', 'delete-account', { id: u.id, confirm: typed });
+    busy(`acct:${u.id}`, false);
+    if (data) patchUser(u.id, null);
+  };
+
   const resetPassword = async (u: AdminUser) => {
     if (!window.confirm(`Reset ${u.username}'s password? Their current password stops working immediately.`)) return;
     setRoleError(null);
@@ -286,8 +368,10 @@ export default function Admin() {
   const visibleFeedback = (feedback ?? []).filter(f => feedbackFilter === 'all' || f.status === feedbackFilter);
   const openFeedback = (feedback ?? []).filter(f => f.status === 'open').length;
   const q = query.trim().toLowerCase();
-  const visibleUsers = (users ?? []).filter(u => !q || u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
-  const accessCount = (game: string) => (users ?? []).filter(u => u.games.includes(game)).length;
+  const pendingUsers = (users ?? []).filter(u => u.status === 'pending');
+  const members = (users ?? []).filter(u => u.status !== 'pending');
+  const visibleUsers = members.filter(u => !q || u.username.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));
+  const accessCount = (game: string) => members.filter(u => u.games.includes(game)).length;
 
   return (
     <Shell>
@@ -295,7 +379,9 @@ export default function Admin() {
         <h1 style={s.title}>Admin</h1>
 
         <div style={s.stats}>
-          <Stat label="Accounts" value={users?.length ?? 0} />
+          <Stat label="Accounts" value={members.length} />
+          <Stat label="Waiting for approval" value={pendingUsers.length} />
+          <Stat label="Suspended" value={members.filter(u => u.status === 'suspended').length} />
           <Stat label="Admins" value={(users ?? []).filter(u => u.role === 'admin').length} />
           <Stat label="Open feedback" value={openFeedback} />
         </div>
@@ -315,6 +401,47 @@ export default function Admin() {
         {tab === 'access' && (
           <>
             <section style={s.section}>
+              <div style={s.sectionHead}>
+                <h2 style={{ ...s.h2, margin: 0 }}>Waiting for approval ({pendingUsers.length})</h2>
+                <label style={s.switchRow}>
+                  <Switch
+                    on={!!requireApproval}
+                    disabled={requireApproval === null || pending.has('approval')}
+                    onClick={toggleApproval}
+                    label="Require approval for new accounts"
+                  />
+                  <span>Require approval for new accounts</span>
+                </label>
+              </div>
+              <p style={s.help}>
+                {requireApproval
+                  ? 'New accounts cannot sign in until an admin approves them here. Approving gives them the games set for new accounts below; rejecting deletes the account.'
+                  : 'Off: anyone who registers can sign in straight away. Turn it on to approve each new account here first.'}
+              </p>
+              {pendingUsers.length > 0 && (
+                <div style={s.tableWrap}>
+                  <table style={s.table}>
+                    <tbody>
+                      {pendingUsers.map(u => (
+                        <tr key={u.id} data-pending-user={u.username}>
+                          <td style={s.tdStrong}>
+                            {u.username}
+                            <div style={s.sub}>{u.email}</div>
+                          </td>
+                          <td style={s.td}>Registered {fmtDate(u.registeredAt)}</td>
+                          <td style={{ ...s.td, textAlign: 'right' }}>
+                            <button style={s.approveBtn} disabled={pending.has(`acct:${u.id}`)} onClick={() => approve(u)}>Approve</button>
+                            <button style={s.roleBtn} disabled={pending.has(`acct:${u.id}`)} onClick={() => reject(u)}>Reject</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </section>
+
+            <section style={s.section}>
               <h2 style={s.h2}>Game access</h2>
               <p style={s.help}>
                 <strong>New accounts</strong> sets which games an account starts with when it is first created. It does not
@@ -326,7 +453,7 @@ export default function Admin() {
               <div style={s.gameGrid}>
                 {GAMES.map(g => {
                   const count = accessCount(g.key);
-                  const total = users?.length ?? 0;
+                  const total = members.length;
                   return (
                     <div key={g.key} style={s.gameCard} data-game={g.key}>
                       <div style={s.gameName}>{g.label}</div>
@@ -401,6 +528,7 @@ export default function Admin() {
                       <tr key={u.id}>
                         <td style={s.tdStrong}>
                           {u.username}
+                          {u.status === 'suspended' && <span style={s.suspended}>Suspended</span>}
                           <div style={s.sub}>{u.email}</div>
                         </td>
                         <td style={s.td}>
@@ -413,7 +541,13 @@ export default function Admin() {
                                 {u.role === 'admin' ? 'Remove admin' : 'Make admin'}
                               </button>
                               {u.role !== 'admin' && (
-                                <button onClick={() => resetPassword(u)} style={s.roleBtn}>Reset password</button>
+                                <>
+                                  <button onClick={() => resetPassword(u)} style={s.roleBtn}>Reset password</button>
+                                  <button onClick={() => setSuspended(u, u.status !== 'suspended')} style={s.roleBtn} disabled={pending.has(`acct:${u.id}`)}>
+                                    {u.status === 'suspended' ? 'Reinstate' : 'Suspend'}
+                                  </button>
+                                  <button onClick={() => deleteUser(u)} style={s.dangerBtn} disabled={pending.has(`acct:${u.id}`)}>Delete</button>
+                                </>
                               )}
                             </>
                           )}
@@ -439,7 +573,7 @@ export default function Admin() {
                       </tr>
                     ))}
                     {!visibleUsers.length && (
-                      <tr><td style={s.td} colSpan={6 + GAMES.length}>{users?.length ? 'No account matches.' : 'No registered users yet.'}</td></tr>
+                      <tr><td style={s.td} colSpan={6 + GAMES.length}>{members.length ? 'No account matches.' : 'No registered users yet.'}</td></tr>
                     )}
                   </tbody>
                 </table>
@@ -609,7 +743,7 @@ const s: Record<string, React.CSSProperties> = {
   notice:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-warn)', borderRadius: 8, padding: '12px 14px', fontSize: 13, marginBottom: 12, color: 'var(--portal-text)' },
   code:       { fontFamily: 'ui-monospace, monospace', fontSize: 14, background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 4, padding: '2px 6px', userSelect: 'all' },
   signInLink: { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
-  tdCenter:   { padding: '9px 12px', borderBottom: '1px solid var(--portal-raised)', color: 'var(--portal-text-mid)', textAlign: 'center', verticalAlign: 'middle' },
+  tdCenter:   { padding: '9px 12px', borderBottom: '1px solid var(--portal-raised)', color: 'var(--portal-text-mid)', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' },
   sub:        { fontSize: 11, color: 'var(--portal-faint)', fontWeight: 400, marginTop: 3 },
   name:       { color: 'var(--portal-text)', fontWeight: 600 },
   error:      { color: 'var(--portal-bad)', fontSize: 13, margin: '0 0 10px' },
@@ -628,5 +762,8 @@ const s: Record<string, React.CSSProperties> = {
   gameName:   { fontSize: 14, fontWeight: 700, color: 'var(--portal-text)' },
   switchRow:  { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--portal-text-mid)' },
   gameCount:  { fontSize: 12, color: 'var(--portal-soft)' },
+  approveBtn: { background: 'none', border: '1px solid var(--portal-good-rule)', color: 'var(--portal-good)', borderRadius: 5, padding: '2px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
+  dangerBtn:  { marginLeft: 8, background: 'none', border: '1px solid var(--portal-bad)', color: 'var(--portal-bad)', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer' },
+  suspended:  { marginLeft: 8, fontSize: 10, fontWeight: 700, color: 'var(--portal-bad)', textTransform: 'uppercase', letterSpacing: 0.4 },
   smallBtn:   { background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-softer)', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer' },
 };

@@ -8,14 +8,15 @@ import { handleCors } from '../_lib/cors';
 import { queryParam } from '../_lib/query';
 import { isAdmin, lockAdmins, recordAudit } from '../_lib/admin';
 import { countsByGame, GAMES_BY_TITLE_SQL, GAME_KEYS } from '../../shared/games';
-import { isGameKey, isOptIn, NEW_ACCOUNT_GAMES, newAccountAccess, parseGameList, resolveAccess } from '../_lib/access';
+import { isGameKey, isOptIn, NEW_ACCOUNT_GAMES, newAccountAccess, parseGameList, REQUIRE_APPROVAL, requiresApproval, resolveAccess } from '../_lib/access';
 
 // Combines what were two separate functions (users.ts, feedback.ts) into one, dispatching on
 // the [resource] route param — Vercel's Hobby plan caps a deployment at 12 serverless
 // functions, and the portal's three games plus this admin surface were pushing past it.
 // URLs are unchanged: /api/admin/users and /api/admin/feedback still resolve here, alongside
 // /api/admin/reset-password, /api/admin/audit, /api/admin/access, /api/admin/access-all and
-// /api/admin/settings.
+// /api/admin/settings, /api/admin/status, /api/admin/approve, /api/admin/reject and
+// /api/admin/delete-account.
 
 const ROLES = ['user', 'admin'] as const;
 
@@ -24,7 +25,7 @@ async function listUsers(res: VercelResponse) {
   try {
     const { rows } = await db.query(
       `SELECT
-         u.id, u.username, u.email, u.role, u.created_at, u.last_login_at, u.game_access,
+         u.id, u.username, u.email, u.role, u.status, u.created_at, u.last_login_at, u.game_access,
          ${GAMES_BY_TITLE_SQL} AS by_game,
          COUNT(g.id) FILTER (WHERE g.status = 'active')                 AS active_games,
          COUNT(g.id) FILTER (WHERE g.status = 'victory')                AS wins
@@ -38,6 +39,7 @@ async function listUsers(res: VercelResponse) {
       username: r.username,
       email: r.email,
       role: r.role === 'admin' ? 'admin' : 'user',
+      status: r.status,
       registeredAt: new Date(r.created_at).getTime(),
       lastLoginAt: r.last_login_at ? new Date(r.last_login_at).getTime() : null,
       gamesByTitle: countsByGame(r.by_game),
@@ -281,43 +283,232 @@ async function updateAccessAll(req: VercelRequest, res: VercelResponse, callerId
   }
 }
 
-// GET /api/admin/settings — { newAccountGames, saved }. `saved` is false while the setting has never
-// been changed, in which case new accounts get every game but the opt-in ones, including any added
-// to the portal later.
+// GET /api/admin/settings — { newAccountGames, saved, requireApproval }. `saved` is false while the
+// games setting has never been changed, in which case new accounts get every game but the opt-in ones,
+// including any added to the portal later.
 async function getSettings(res: VercelResponse) {
   try {
-    const games = await newAccountAccess(getDb());
-    return res.json({ newAccountGames: games ?? resolveAccess(null), saved: games !== null });
+    const db = getDb();
+    const games = await newAccountAccess(db);
+    return res.json({ newAccountGames: games ?? resolveAccess(null), saved: games !== null, requireApproval: await requiresApproval(db) });
   } catch (err) {
     console.error('admin get settings error', err);
     return res.status(500).json({ message: 'Server error' });
   }
 }
 
-// PUT /api/admin/settings { newAccountGames: [game keys] } — the games a new account starts with.
+// PUT /api/admin/settings { newAccountGames?: [game keys], requireApproval?: boolean } — the games a new
+// account starts with, and whether it must be approved before it can sign in. Either or both.
 async function updateSettings(req: VercelRequest, res: VercelResponse, callerId: string) {
-  const games = parseGameList((req.body ?? {}).newAccountGames);
-  if (!games) return res.status(400).json({ message: 'newAccountGames must be a list of game keys' });
+  const body = req.body ?? {};
+  const games = body.newAccountGames === undefined ? undefined : parseGameList(body.newAccountGames);
+  const approval = body.requireApproval;
+  if (games === null) return res.status(400).json({ message: 'newAccountGames must be a list of game keys' });
+  if (approval !== undefined && typeof approval !== 'boolean') {
+    return res.status(400).json({ message: 'requireApproval must be true or false' });
+  }
+  if (games === undefined && approval === undefined) return res.status(400).json({ message: 'Nothing to update' });
   try {
     await inTransaction(async c => {
-      await c.query(
-        `INSERT INTO portal_settings (key, value, updated_at) VALUES ($1, $2::jsonb, NOW())
-         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
-        [NEW_ACCOUNT_GAMES, JSON.stringify(games)],
-      );
       const names = await usernames(c, [callerId]);
-      await recordAudit(c, {
-        actorId: callerId,
-        actorUsername: names.get(callerId)?.username ?? '(unknown)',
-        targetId: null,
-        targetUsername: '(new accounts)',
-        action: 'set_new_account_games',
-        detail: games.join(','),
-      });
+      const actorUsername = names.get(callerId)?.username ?? '(unknown)';
+      const put = (key: string, value: unknown) =>
+        c.query(
+          `INSERT INTO portal_settings (key, value, updated_at) VALUES ($1, $2::jsonb, NOW())
+           ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+          [key, JSON.stringify(value)],
+        );
+      if (games) {
+        await put(NEW_ACCOUNT_GAMES, games);
+        await recordAudit(c, {
+          actorId: callerId, actorUsername, targetId: null, targetUsername: '(new accounts)',
+          action: 'set_new_account_games', detail: games.join(','),
+        });
+      }
+      if (approval !== undefined) {
+        await put(REQUIRE_APPROVAL, approval);
+        await recordAudit(c, {
+          actorId: callerId, actorUsername, targetId: null, targetUsername: '(new accounts)',
+          action: 'set_require_approval', detail: approval ? 'on' : 'off',
+        });
+      }
     });
-    return res.json({ newAccountGames: games, saved: true });
+    const db = getDb();
+    const saved = await newAccountAccess(db);
+    return res.json({ newAccountGames: saved ?? resolveAccess(null), saved: saved !== null, requireApproval: await requiresApproval(db) });
   } catch (err) {
     console.error('admin update settings error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// --- Account status (see _lib/access.ts and shared auth.ts) -------------------------------------
+//
+// 'active' accounts sign in and play. 'pending' accounts registered while approval was required and
+// wait in the Admin page's queue. 'suspended' accounts cannot sign in, and any session they hold stops
+// working on its next request, because getUser checks the status every time. Their saves are kept.
+//
+// None of these may target the caller or an admin: remove the admin role first (which has its own
+// rules). That keeps an admin from locking out or deleting another admin in one step.
+
+const MAX_NOTE = 500;
+
+function cleanNote(raw: unknown): string | undefined {
+  return typeof raw === 'string' && raw.trim() ? raw.trim().slice(0, MAX_NOTE) : undefined;
+}
+
+type Target = { username: string; role: string; status: string };
+
+/**
+ * Inside a transaction: re-checks that the caller is still an admin (locking the admin rows, as role
+ * changes do) and locks the target's row. Returns the target, or the reason it cannot be acted on.
+ */
+async function lockTarget(c: PoolClient, callerId: string, id: string): Promise<Target | 'forbidden' | 'not_found' | 'self' | 'admin'> {
+  if (id === callerId) return 'self';
+  if (!(await lockAdmins(c, callerId)).stillAdmin) return 'forbidden';
+  const { rows } = await c.query('SELECT username, role, status FROM users WHERE id = $1 FOR UPDATE', [id]);
+  if (!rows[0]) return 'not_found';
+  if (rows[0].role === 'admin') return 'admin';
+  return rows[0];
+}
+
+const REFUSALS: Record<string, [number, string]> = {
+  self: [400, 'You cannot do this to your own account.'],
+  forbidden: [403, 'Admin access only'],
+  not_found: [404, 'User not found'],
+  admin: [403, 'This account is an admin. Remove its admin role first.'],
+  not_pending: [409, 'This account is not waiting for approval.'],
+  pending: [409, 'This account is waiting for approval. Approve or reject it instead.'],
+};
+
+function sendOutcome(res: VercelResponse, outcome: string | Record<string, unknown>) {
+  if (typeof outcome !== 'string') return res.json(outcome);
+  const [status, message] = REFUSALS[outcome] ?? [500, 'Server error'];
+  return res.status(status).json({ message });
+}
+
+async function actorName(c: PoolClient, callerId: string): Promise<string> {
+  return (await usernames(c, [callerId])).get(callerId)?.username ?? '(unknown)';
+}
+
+/** Deletes an account and what it owns, as the Profile page's own deletion does (api/profile.ts). */
+async function deleteAccountRows(c: PoolClient, id: string, username: string): Promise<void> {
+  await c.query('DELETE FROM login_failures WHERE username_key = LOWER($1)', [username]);
+  await c.query(`DELETE FROM rate_events WHERE bucket = 'feedback' AND key = $1`, [id]);
+  await c.query('DELETE FROM users WHERE id = $1', [id]);
+}
+
+// PATCH /api/admin/status { id, status: 'suspended' | 'active', note? } — suspend or reinstate.
+async function updateStatus(req: VercelRequest, res: VercelResponse, callerId: string) {
+  const { id, status } = req.body ?? {};
+  if (typeof id !== 'string' || !UUID_RE.test(id) || (status !== 'suspended' && status !== 'active')) {
+    return res.status(400).json({ message: 'id and status (suspended|active) required' });
+  }
+  try {
+    const outcome = await inTransaction(async c => {
+      const t = await lockTarget(c, callerId, id);
+      if (typeof t === 'string') return t;
+      if (t.status === 'pending') return 'pending';
+      if (t.status !== status) {
+        // Suspending also stamps password_changed_at, which refuses every session issued before now
+        // (shared auth.ts). So reinstating an account does not bring an old session back to life:
+        // they sign in afresh.
+        await c.query(
+          `UPDATE users SET status = $1::varchar, password_changed_at = CASE WHEN $1::varchar = 'suspended' THEN NOW() ELSE password_changed_at END
+           WHERE id = $2`,
+          [status, id],
+        );
+        await recordAudit(c, {
+          actorId: callerId, actorUsername: await actorName(c, callerId), targetId: id, targetUsername: t.username,
+          action: status === 'suspended' ? 'suspend' : 'unsuspend', detail: cleanNote(req.body?.note),
+        });
+      }
+      return { status };
+    });
+    return sendOutcome(res, outcome);
+  } catch (err) {
+    console.error('admin update status error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// POST /api/admin/approve { id, note? } — a pending account becomes active, with the "new accounts"
+// games as they stand now (the setting may have changed while it waited).
+async function approveAccount(req: VercelRequest, res: VercelResponse, callerId: string) {
+  const { id } = req.body ?? {};
+  if (typeof id !== 'string' || !UUID_RE.test(id)) return res.status(400).json({ message: 'id required' });
+  try {
+    const outcome = await inTransaction(async c => {
+      const t = await lockTarget(c, callerId, id);
+      if (typeof t === 'string') return t;
+      if (t.status !== 'pending') return 'not_pending';
+      const access = await newAccountAccess(c);
+      await c.query(`UPDATE users SET status = 'active', game_access = $1::jsonb WHERE id = $2`, [
+        access === null ? null : JSON.stringify(access),
+        id,
+      ]);
+      await recordAudit(c, {
+        actorId: callerId, actorUsername: await actorName(c, callerId), targetId: id, targetUsername: t.username,
+        action: 'approve_account', detail: cleanNote(req.body?.note),
+      });
+      return { status: 'active', games: resolveAccess(access) };
+    });
+    return sendOutcome(res, outcome);
+  } catch (err) {
+    console.error('admin approve error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// POST /api/admin/reject { id, note? } — a pending account is deleted. It never played, so there is
+// nothing of value to keep; the history keeps its name and the note. They may register again, and
+// would wait in the queue again.
+async function rejectAccount(req: VercelRequest, res: VercelResponse, callerId: string) {
+  const { id } = req.body ?? {};
+  if (typeof id !== 'string' || !UUID_RE.test(id)) return res.status(400).json({ message: 'id required' });
+  try {
+    const outcome = await inTransaction(async c => {
+      const t = await lockTarget(c, callerId, id);
+      if (typeof t === 'string') return t;
+      if (t.status !== 'pending') return 'not_pending';
+      await recordAudit(c, {
+        actorId: callerId, actorUsername: await actorName(c, callerId), targetId: id, targetUsername: t.username,
+        action: 'reject_account', detail: cleanNote(req.body?.note),
+      });
+      await deleteAccountRows(c, id, t.username);
+      return { success: true };
+    });
+    return sendOutcome(res, outcome);
+  } catch (err) {
+    console.error('admin reject error', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+// POST /api/admin/delete-account { id, confirm, note? } — deletes an account and every save it owns.
+// `confirm` must repeat the account's username exactly, so a mis-click cannot do it. Not for your own
+// account (the Profile page does that, and asks for your password) and not for an admin's.
+async function deleteAccount(req: VercelRequest, res: VercelResponse, callerId: string) {
+  const { id, confirm } = req.body ?? {};
+  if (typeof id !== 'string' || !UUID_RE.test(id) || typeof confirm !== 'string') {
+    return res.status(400).json({ message: 'id and confirm (the username) required' });
+  }
+  try {
+    const outcome = await inTransaction(async c => {
+      const t = await lockTarget(c, callerId, id);
+      if (typeof t === 'string') return t;
+      if (confirm !== t.username) return 'mismatch';
+      await recordAudit(c, {
+        actorId: callerId, actorUsername: await actorName(c, callerId), targetId: id, targetUsername: t.username,
+        action: 'delete_account', detail: cleanNote(req.body?.note),
+      });
+      await deleteAccountRows(c, id, t.username);
+      return { success: true };
+    });
+    if (outcome === 'mismatch') return res.status(400).json({ message: 'Type the username exactly to confirm.' });
+    return sendOutcome(res, outcome);
+  } catch (err) {
+    console.error('admin delete account error', err);
     return res.status(500).json({ message: 'Server error' });
   }
 }
@@ -404,6 +595,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (resource === 'access-all' && req.method === 'POST') return updateAccessAll(req, res, user.userId);
   if (resource === 'settings' && req.method === 'GET') return getSettings(res);
   if (resource === 'settings' && req.method === 'PUT') return updateSettings(req, res, user.userId);
+  if (resource === 'status' && req.method === 'PATCH') return updateStatus(req, res, user.userId);
+  if (resource === 'approve' && req.method === 'POST') return approveAccount(req, res, user.userId);
+  if (resource === 'reject' && req.method === 'POST') return rejectAccount(req, res, user.userId);
+  if (resource === 'delete-account' && req.method === 'POST') return deleteAccount(req, res, user.userId);
   if (resource === 'feedback' && req.method === 'GET') return listFeedback(res);
   if (resource === 'feedback' && req.method === 'PATCH') return updateFeedback(req, res);
 

@@ -12,7 +12,9 @@
  *     an older, longer setting is refused too);
  *   - its account no longer exists;
  *   - its account's password was changed or reset after it was issued, which is what signs every
- *     other device out when a password changes.
+ *     other device out when a password changes;
+ *   - its account is not active: suspended by an admin, or still waiting for approval. Checked on
+ *     every request, so a suspension ends the account's sessions on its next request.
  */
 import jwt from 'jsonwebtoken';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
@@ -52,8 +54,9 @@ export async function getUser(req: VercelRequest): Promise<TokenPayload> {
 
   const db = getDb();
   await ensureSchema(db);
-  const { rows } = await db.query('SELECT password_changed_at FROM users WHERE id = $1', [payload.userId]);
+  const { rows } = await db.query('SELECT password_changed_at, status FROM users WHERE id = $1', [payload.userId]);
   if (!rows[0]) throw new AuthError('Account no longer exists');
+  if (rows[0].status !== 'active') throw new AuthError('Account is not active');
   const changed = rows[0].password_changed_at as Date | null;
   // Whole seconds, because iat is: a token issued in the same second as the change still counts
   // as issued after it, which is what keeps the fresh token returned by a password change valid.
