@@ -22,13 +22,17 @@ the screen then takes a moment to show what happened. Three rules hold everywher
 ## Shared foundation (done first, one commit)
 
 - [x] `shared/portal/client/motion.ts`, copied into every game by `npm run sync-shared`:
-  `usePace`, `paced`, `useCountUp`, `useProgress`, `useSequence`, `useSkipOnInput`, `pause`,
+  `usePace`, `paced`, `useCountUp`, `useSkipOnInput`, `pause`,
   `easeOut`, and shared keyframes (`tm-anim-pop / fade / rise / float / pulse / shake / tumble /
   glow`) whose durations scale with the pace.
 - [x] `MotionToggle` beside the light/dark toggle in every portal nav and in-game header.
 - [x] `initMotion()` in every `main.tsx`.
 - [x] Shared keyframes prefixed `tm-motion-` after the unprefixed names overrode two of Thrash
       Margin's own; floating markers hidden when motion is off or the OS asks for reduced motion.
+- [x] `useProgress` and `useSequence` removed: on the render where their key changed they returned
+      the previous run's finished value (a one-frame flash of the end state). No game used them;
+      each wrote a key-aware local version (Banco `motionKit.tsx`, Steady Eddie `usePlayback.ts`,
+      Thrash Margin `useBeats.ts`). Consolidating those into one shared helper is a follow-up.
 
 ## Thrash Margin (`packages/thrash-margin/client`)
 

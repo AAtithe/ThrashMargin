@@ -17,7 +17,7 @@
  *
  * Copied into each game by scripts/sync-shared.mjs, like the rest of shared/portal/client.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export type Pace = 'full' | 'quick' | 'off';
 
@@ -102,43 +102,6 @@ export function easeOut(t: number): number {
 }
 
 /**
- * Drive a 0 → 1 progress value over `durationMs` (already paced by the caller, or use `paced`).
- * Restarts whenever `key` changes. Returns 1 at once when the duration is 0. The returned `skip`
- * jumps straight to 1.
- */
-export function useProgress(key: unknown, durationMs: number): { t: number; done: boolean; skip: () => void } {
-  const [t, setT] = useState(durationMs > 0 ? 0 : 1);
-  const raf = useRef<number | null>(null);
-  const skipped = useRef(false);
-  useEffect(() => {
-    skipped.current = false;
-    if (durationMs <= 0) {
-      setT(1);
-      return;
-    }
-    setT(0);
-    const start = performance.now();
-    const step = (now: number) => {
-      if (skipped.current) return;
-      const p = Math.min(1, (now - start) / durationMs);
-      setT(p);
-      if (p < 1) raf.current = requestAnimationFrame(step);
-    };
-    raf.current = requestAnimationFrame(step);
-    return () => {
-      if (raf.current !== null) cancelAnimationFrame(raf.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, durationMs]);
-  const skip = useCallback(() => {
-    skipped.current = true;
-    if (raf.current !== null) cancelAnimationFrame(raf.current);
-    setT(1);
-  }, []);
-  return { t, done: t >= 1, skip };
-}
-
-/**
  * A number that counts from its previous value to `target` instead of jumping. Rounds to integers
  * unless `decimals` is given. Snaps at once when motion is off.
  */
@@ -171,45 +134,6 @@ export function useCountUp(target: number, baseMs = 600, decimals = 0): number {
     };
   }, [target, baseMs, decimals, pace]);
   return shown;
-}
-
-/**
- * Step through `count` items one after another, `baseMs` apart (paced). Used to replay a batch of
- * things that happened at once in the simulation (an AI turn, a week's news) as a short sequence.
- * Restarts when `key` changes. `index` is how many items are revealed so far (0 … count); `skip`
- * reveals them all. With motion off, everything is revealed at once.
- *
- * While `playing` is true the caller should keep its normal controls usable, or show a clear
- * "skip" affordance: playback must never trap the player.
- */
-export function useSequence(key: unknown, count: number, baseMs = 450): { index: number; playing: boolean; skip: () => void } {
-  const pace = usePace();
-  const dur = paced(baseMs, pace);
-  const [index, setIndex] = useState(dur > 0 ? 0 : count);
-  const timer = useRef<number | null>(null);
-  useEffect(() => {
-    if (dur <= 0 || count <= 0) {
-      setIndex(count);
-      return;
-    }
-    setIndex(0);
-    let i = 0;
-    const tick = () => {
-      i += 1;
-      setIndex(i);
-      if (i < count) timer.current = window.setTimeout(tick, dur);
-    };
-    timer.current = window.setTimeout(tick, Math.min(dur, 120));
-    return () => {
-      if (timer.current !== null) window.clearTimeout(timer.current);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, count, dur]);
-  const skip = useCallback(() => {
-    if (timer.current !== null) window.clearTimeout(timer.current);
-    setIndex(count);
-  }, [count]);
-  return { index, playing: index < count, skip };
 }
 
 /**
