@@ -1232,6 +1232,20 @@ See `CLAUDE.md` at the repo root, and §4a of `tea-race-design.md` for the full 
 - **Difficulty, re-measured with real profiles for the first time.** Fresher information alone wins **114/150**; the three profiles come out fully ordered **148/150**. The capacity claim is now asserted as a *band* on the carrack's own win rate rather than a comparison between two figures that both sit near a fifth — an earlier version failed on exactly that noise.
 - **Verification.** Seven drivers, **517 assertions**, three clean runs, 3.8s. All three typechecks (client, api, scripts) and `vite build` clean. Live: the lobby's goal selector, `by_year` reading *"3 of 3 · 586f · richest in week 260"* with *"260 weeks left. Nobody has won anything yet."*, `survivor` reading *"last house solvent"*, the rebalanced carrack listing as *"hold 40, 20% slower, 5f a week — 460f"*, and a 40-week run in which the Grimani stored salt at Venice and glass at Genoa while the Doria carried **14 fine silk** toward Geneva and stored 23 more there. Zero console errors.
 
+### 2026-11-08 — Motion and time: the week turns, the fleet sails, the purse counts
+
+The owner's brief: *"add time elements so you feel it less like you have to just click away, with small animations."* Built on the shared toolkit in `lib/motion.ts` (`motion-and-time-plan.md`). **Presentation only:** nothing in `sim/` or `api/` changed, no new actions, and the state is applied and saved the instant the button is pressed. Every playback finishes at once on a click or a key, and with `Motion: off` the screen renders exactly what it did before.
+
+- **The week turns over.** The header date tips away and the new one falls into place like a calendar leaf (`WeekTurn.tsx`), and a brass hairline runs along the header's bottom rule while the turn plays. About 1.2s at full pace, 0.5s at quick.
+- **Ships and couriers glide** from last week's position to this week's (`MapView.tsx`, `glideRenders`). Interpolated in the view only, the short way round the globe, eased in and out; a vessel that reached port and sailed straight on along a queued route is drawn through that port rather than cutting the corner. Keyed on *positions*, so a trade (which also replaces the vessels array) never replays a voyage. City marks also fade to their new fog level as news lands instead of snapping.
+- **Florins count.** Header cash, the market's cash line and the Ledger's owed-to/owed-by/cash-on-hand figures count to their new values; the header also floats the change (`−19f` for a week's wages, `+31f` for a sale).
+- **News arrives one item at a time.** This week's counsel, this week's storm/sabotage/expedition reports in the Fleet panel, the local market headlines and causes line, and the rivals' trades in Standings land staggered when the week turns (`useStagger`). Only fresh items take part; hidden ones keep their space, so nothing jumps. Scripted events and the chapter card pop in; the counsel callout rises in.
+- **Trades answer at once.** A buy or sell tints its market row briefly, pulses the "held" count and floats the amount off the row. Read off the state before and after rather than the click, so a purchase the sim refused shows nothing.
+
+New helpers in `components/motionKit.tsx`: `useTween` (restarts during render rather than in an effect, so there is never a painted frame of the end state before a tween begins — `useProgress` has that one-frame flash), `useStagger`, `Florins`, `FlorinsWithDelta`, `FloatingAmount`. No new colour tokens: everything uses existing ones (`brass`, `good`, `bad`, `tint-brass`).
+
+**Verification.** `typecheck` and `npm run drive` (85 assertions) clean. Live in Chromium at full, quick and off, light and dark: a free-play buy (row tint, `−24f` floating from row and header), a dispatch, and week turns sampled at 60/250/500/800/1400ms — the ship's position moves monotonically to its berth, the date flips at the midpoint, a click mid-turn lands everything at its final position at once, and at `off` the first sample is already final with no floating elements. The guided tour's trade loop (steps 3 to 7) still advances with the animations playing, the scripted-event overlay still resolves, and zero console errors throughout.
+
 ### 2026-11-08 — The guided tour joins the portal pattern, and two defects it had been hiding
 
 Niccolò's guided tour is the oldest of the five and the one the other four were modelled on. It
@@ -1330,11 +1344,14 @@ screen`. Not a scroll this time; two stale values and a transition, together.
   Reproduced locally by setting the window to 930px tall: before the fix every frame was recorded and
   the outro was painted at top 691, bottom 936.
 
-Fix, in `GuidedTour.tsx`: the rect is stored with the step and target it was measured for and reads
-as null until it is current; the first measure and the card-height measure are layout effects, so
-the corrected placement is the one painted; and the card's ease is off on a new step, switched back
-on one commit after it is placed against its own target and height, so the move into place is never
-animated. The ring no longer slides from the last step's target either; it appears on the new one.
+Fix, in `GuidedTour.tsx`. A parallel session reached the same diagnosis from CI's own numbers and
+landed it on main first (`9a2c74c`, `25040cd`): the rect is keyed to the step and target it was
+measured for, the card height is a layout effect, and a new card is placed directly, gliding only
+once it has been on screen for two frames at its step. This branch independently wrote the same
+three changes; on merging, main's version was kept, since it also covers the card coming back after
+a replay. The one addition kept from this branch: the target is also first measured in a layout
+effect, so a new step's first painted frame is never the card in the middle of the screen before it
+jumps to its target.
 
 **Verification.** 20 runs at 1400x900 under 4x CPU throttling, 20 at the failing 930px height, and
 one at each of 880 to 960px with every animation frame recorded: no frame of any card off screen.

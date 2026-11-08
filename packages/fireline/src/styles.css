@@ -1,0 +1,125 @@
+/*
+ * Fireline's chrome palette, one block per mode. theme.ts hands out var(--…) references to these.
+ * The battlefield itself is canvas art and looks the same in both modes (its palette is ART in
+ * theme.ts); everything around it follows the portal's light or dark choice. `data-theme` on
+ * <html> is set before first paint by theme-init.js (see lib/colorScheme.ts).
+ */
+:root {
+  --ui-ground: #e9ece8;
+  --ui-panel: #f7f8f6;
+  --ui-panel-raised: #dde2dd;
+  --ui-rule: #c5ccc6;
+  --ui-rule-strong: #9aa59e;
+  --ui-text: #1b2420;
+  --ui-text-soft: #4c5a55;
+  --ui-text-faint: #7b8883;
+  --ui-brass: #a86a0c;
+  --ui-accent: #a86a0c;
+  --ui-info: #1f7c87;
+  --ui-good: #2f7d34;
+  --ui-warn: #9a6400;
+  --ui-bad: #b8382c;
+  --ui-scrim: rgba(20, 28, 24, 0.55);
+  --ui-shadow: rgba(20, 30, 25, 0.25);
+  --ui-tint-accent: rgba(168, 106, 12, 0.12);
+  --ui-tint-bad: rgba(184, 56, 44, 0.1);
+  --ui-tint-good: rgba(47, 125, 52, 0.1);
+  --ui-hud: rgba(247, 248, 246, 0.92);
+  --ui-team: #2f6fc4;
+  --ui-enemy: #c23a30;
+}
+:root[data-theme="dark"] {
+  --ui-ground: #0e1214;
+  --ui-panel: #161c1f;
+  --ui-panel-raised: #1e262a;
+  --ui-rule: #2b363b;
+  --ui-rule-strong: #43525a;
+  --ui-text: #dfe6e3;
+  --ui-text-soft: #94a3a0;
+  --ui-text-faint: #64716e;
+  --ui-brass: #e0a43a;
+  --ui-accent: #e0a43a;
+  --ui-info: #4fb3bf;
+  --ui-good: #6fbf73;
+  --ui-warn: #e0a43a;
+  --ui-bad: #e0574a;
+  --ui-scrim: rgba(4, 6, 7, 0.72);
+  --ui-shadow: rgba(0, 0, 0, 0.6);
+  --ui-tint-accent: rgba(224, 164, 58, 0.12);
+  --ui-tint-bad: rgba(224, 87, 74, 0.12);
+  --ui-tint-good: rgba(111, 191, 115, 0.1);
+  --ui-hud: rgba(14, 18, 20, 0.9);
+  --ui-team: #5b9cf0;
+  --ui-enemy: #e6584c;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--ui-ground);
+  color: var(--ui-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.fl-build {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 2px 5px;
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  background: var(--ui-panel-raised);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 0.68rem;
+  cursor: pointer;
+  overflow: hidden;
+  user-select: none;
+}
+.fl-build:hover:not(:disabled) {
+  border-color: var(--ui-accent);
+}
+.fl-build.ready {
+  border-color: var(--ui-good);
+  animation: fl-pulse 1s ease-in-out infinite alternate;
+}
+@keyframes fl-pulse {
+  from { box-shadow: 0 0 0 0 var(--ui-tint-good); }
+  to { box-shadow: 0 0 0 3px var(--ui-tint-good); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-build.ready { animation: none; }
+}
+
+.fl-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+.fl-scroll::-webkit-scrollbar-thumb {
+  background: var(--ui-rule-strong);
+  border-radius: 4px;
+}
+
+kbd {
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.75em;
+  border: 1px solid var(--ui-rule-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  padding: 0 4px;
+  background: var(--ui-panel-raised);
+}

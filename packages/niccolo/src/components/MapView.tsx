@@ -12,6 +12,7 @@ import {
   wrapPanX,
 } from '../sim/geography';
 import type { City, LabelSide, Vessel } from '../sim/types';
+import { easeInOut, useSkipOnInput, useTweenOnChange } from '../lib/motion';
 
 const SHIP_COLOR = UI.ensign;
 const COURIER_COLOR = UI.good;
@@ -276,6 +277,46 @@ function computeVesselRenders(vessels: Vessel[], inv: number): VesselRender[] {
   return renders;
 }
 
+/** How long a vessel takes to glide from last week's position to this week's, before pacing. */
+const GLIDE_MS = 1100;
+
+/** Where each vessel is drawn — the only thing that should make the fleet glide. A trade changes
+ * the vessels array too (cargo), and that must not replay a voyage. */
+const positionKey = (vs: Vessel[]) =>
+  vs.map(v => `${v.id}:${v.location}>${v.destination ?? ''}@${v.weeksRemaining}`).join('|');
+const samePositions = (a: Vessel[], b: Vessel[]) => a === b || positionKey(a) === positionKey(b);
+
+/**
+ * Last week's renders blended into this week's, `t` from 0 to 1. Presentation only: the vessels
+ * have already moved in the state (and the save); this just lets the eye follow them there. A
+ * vessel that reached port and sailed straight on (a queued route) is routed through that port
+ * rather than cutting the corner. A vessel with no previous render (just bought) simply appears.
+ */
+function glideRenders(fromVessels: Vessel[], to: VesselRender[], inv: number, t: number): VesselRender[] {
+  if (t >= 1) return to;
+  const from = new Map(computeVesselRenders(fromVessels, inv).map(r => [r.vessel.id, r]));
+  const e = easeInOut(t);
+  const lerp = (a: { x: number; y: number }, b: { x: number; y: number }, s: number) => ({
+    x: a.x + wrapDx(a.x, b.x) * s,
+    y: a.y + (b.y - a.y) * s,
+  });
+  return to.map(r => {
+    const f = from.get(r.vessel.id);
+    if (!f) return r;
+    const passedPort = f.vessel.destination && f.vessel.destination === r.vessel.location && r.vessel.destination;
+    const via = passedPort ? findCity(f.vessel.destination!) : undefined;
+    let p: { x: number; y: number };
+    if (via) {
+      const mid = cityPoint(via);
+      p = e < 0.5 ? lerp(f, mid, e * 2) : lerp(mid, r, (e - 0.5) * 2);
+    } else {
+      p = lerp(f, r, e);
+    }
+    const rotationDeg = via && e < 0.5 ? f.rotationDeg : r.rotationDeg ?? f.rotationDeg;
+    return { ...r, x: p.x, y: p.y, rotationDeg };
+  });
+}
+
 interface MapViewProps {
   vessels: Vessel[];
   selectedVesselId: string | null;
@@ -334,6 +375,9 @@ function CityMark({ port, fill, opacity }: { port: boolean; fill: string; opacit
       strokeWidth={MARKER_STROKE}
       fillOpacity={opacity}
       strokeOpacity={opacity}
+      // News landing from a city firms its mark up over a moment rather than in one frame. The
+      // duration is scaled by the portal pace, so with motion off this is an instant change.
+      style={{ transition: 'fill-opacity calc(700ms * var(--tm-motion, 1)), stroke-opacity calc(700ms * var(--tm-motion, 1))' }}
     />
   );
 }
@@ -531,7 +575,15 @@ export default function MapView({
   const invZoom = 1 / view.zoom;
   const zoomNow = view.zoom;
 
-  const vesselRenders = useMemo(() => computeVesselRenders(vessels, inv), [vessels, inv]);
+  const liveRenders = useMemo(() => computeVesselRenders(vessels, inv), [vessels, inv]);
+  // Between weeks the fleet glides from where it was to where it now is (any click or key finishes
+  // it at once; with motion off `t` is always 1 and this is exactly `liveRenders`).
+  const glide = useTweenOnChange(vessels, GLIDE_MS, samePositions);
+  useSkipOnInput(glide.playing, glide.skip);
+  const vesselRenders = useMemo(
+    () => glideRenders(glide.from, liveRenders, inv, glide.t),
+    [glide.from, liveRenders, inv, glide.t],
+  );
 
   /**
    * The selected vessel's own path, current leg plus every queued leg after it — Tea Race draws

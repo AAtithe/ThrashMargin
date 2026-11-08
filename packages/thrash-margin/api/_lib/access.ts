@@ -1,11 +1,12 @@
 import type { Pool } from 'pg';
-import { GAMES, GAME_KEYS } from '../../shared/games';
+import { DEFAULT_GAME_KEYS, GAMES, GAME_KEYS } from '../../shared/games';
 import { ensureSchema } from './schema';
 
 // Which games an account may play.
 //
 // Stored on the account itself, `users.game_access` (JSONB):
-//   - NULL       every game, including any game added to the portal later. Every account that
+//   - NULL       every game, including any game added to the portal later, except opt-in games
+//                (`optIn` in shared/games.ts), which only an admin turns on. Every account that
 //                existed before access control did is NULL, so nobody lost a game when it shipped.
 //   - [keys...]  exactly those games (keys from GAMES in shared/games.ts). [] means none.
 //
@@ -20,9 +21,9 @@ import { ensureSchema } from './schema';
 
 export const NEW_ACCOUNT_GAMES = 'new_account_games';
 
-/** A stored value as the list of games it allows. Unknown keys are dropped; NULL is every game. */
+/** A stored value as the list of games it allows. Unknown keys are dropped; NULL is every game but the opt-in ones. */
 export function resolveAccess(raw: unknown): string[] {
-  if (raw === null || raw === undefined) return [...GAME_KEYS];
+  if (raw === null || raw === undefined) return [...DEFAULT_GAME_KEYS];
   if (!Array.isArray(raw)) return [];
   return GAME_KEYS.filter(k => raw.includes(k));
 }
@@ -31,6 +32,11 @@ export function resolveAccess(raw: unknown): string[] {
 export function parseGameList(raw: unknown): string[] | null {
   if (!Array.isArray(raw) || raw.some(k => typeof k !== 'string' || !GAME_KEYS.includes(k))) return null;
   return GAME_KEYS.filter(k => raw.includes(k)); // de-duplicated, in the portal's order
+}
+
+/** Whether a game is off for everyone until an admin turns it on (see shared/games.ts). */
+export function isOptIn(key: string): boolean {
+  return !DEFAULT_GAME_KEYS.includes(key);
 }
 
 export function isGameKey(raw: unknown): raw is string {

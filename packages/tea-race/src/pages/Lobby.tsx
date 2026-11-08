@@ -151,14 +151,21 @@ const SWITCHES: { key: keyof Hazards & string; group: SwitchGroup; name: string;
     group: 'The race',
     name: 'Captain careers',
     blurb:
-      'Experience from everything you do well, levels, and a skill tree of nine: Seamanship, Trade and Command. Choose a build and grow into it. A captain behind on shares learns faster.',
+      'Experience from everything you do well, levels, and a skill tree of nine: Seamanship, Trade and Command, with skill points from level 3. Choose a build and grow into it. With eras on as well, your level is what opens up the game. A captain behind on shares learns faster.',
   },
   {
     key: 'ramp',
     group: 'The world',
     name: 'Eras',
     blurb:
-      'The game ramps up as it goes. Era I is trade and the wind; pirates, encounters and world events arrive in Era II at round 13; the tea race, the commission clock and hostile bids in Era III at round 31. Only rules you have switched on ever arrive.',
+      'The game ramps up as it goes. With captain careers on, it grows with you: the 1988 board and your charters at level 1, the chart at level 2, the dangers at level 3, everything at level 4. Without careers it follows the calendar instead, in three eras from rounds 1, 13 and 31. Only rules you have switched on ever arrive.',
+  },
+  {
+    key: 'letters',
+    group: 'The race',
+    name: "The captain's letters",
+    blurb:
+      'About one turn in six, a sealed letter: Admiralty dispatches to carry against a bond, a crew wanting shore leave, a yard with a slip free, a patron with money to lend, or a rival wagering she lands a commission before you. Every one a choice, and the stakes rise with the years.',
   },
   {
     key: 'stocks',

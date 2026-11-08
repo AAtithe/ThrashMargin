@@ -1,0 +1,764 @@
+import { runAi } from './ai';
+import {
+  dist,
+  distToTarget,
+  dockTile,
+  findPath,
+  nearestPassable,
+  occupancy,
+  passable,
+  targetPoint,
+  tileOf,
+  type Target,
+} from './grid';
+import { next } from './rng';
+import {
+  BUILDINGS,
+  DAMAGE_VS,
+  DIFFICULTIES,
+  FLIGHT_TICKS,
+  HARVEST_PER_SCOOP,
+  HAULER_CAPACITY,
+  MAP_W as W,
+  ORE_REGROW_AMOUNT,
+  ORE_REGROW_TICKS,
+  ORE_TILE_MAX,
+  REPAIR_COST_SHARE,
+  SCOOP_TICKS,
+  UNITS,
+  UNLOAD_PER_TICK,
+  type Category,
+  type Owner,
+  type UnitKind,
+  type Weapon,
+} from './rules';
+import { addUnit, alarm, buildTicksOf, log, powerOf, producerFor, updateExplored } from './state';
+import type { Building, GameState, Projectile, Unit } from './types';
+
+const MAP_W = W;
+
+/**
+ * One tick of the battle, applied in place to a state the caller has already cloned.
+ *
+ * Order within a tick: production, the computer's decisions, every unit, every structure, shells
+ * landing, units nudged apart, the dead removed, ore regrowth, fog, victory. Units are processed in
+ * id order, always, so a replay makes the same choices.
+ */
+
+interface Ctx {
+  occ: Int32Array;
+  units: Map<number, Unit>;
+  buildings: Map<number, Building>;
+  /** Path searches still allowed this tick. Spreads the cost of a big group order over ticks. */
+  pathBudget: number;
+  power: [boolean, boolean];
+  /** Dock pads and factory doors, which idle units step off. */
+  keepClear: Set<number>;
+}
+
+const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle'];
+
+export function step(s: GameState): void {
+  if (s.winner !== null) return;
+  s.tick++;
+  const ctx: Ctx = {
+    occ: occupancy(s),
+    units: new Map(s.units.map(u => [u.id, u])),
+    buildings: new Map(s.buildings.map(b => [b.id, b])),
+    pathBudget: 24,
+    power: [powerOf(s, 0).low, powerOf(s, 1).low],
+    keepClear: new Set(),
+  };
+
+  production(s, ctx);
+
+  const d = DIFFICULTIES[s.difficulty];
+  if (s.tick % d.period === 0) runAi(s, 1);
+  if (s.autopilot && s.tick % d.period === Math.floor(d.period / 2)) runAi(s, 0);
+  // The AI may have placed a structure or ordered units; refresh what it could have changed.
+  ctx.occ = occupancy(s);
+  ctx.buildings = new Map(s.buildings.map(b => [b.id, b]));
+  ctx.units = new Map(s.units.map(u => [u.id, u]));
+  for (const b of s.buildings) {
+    if (b.kind === 'refinery') {
+      const d = dockTile(b);
+      ctx.keepClear.add(d.x + d.y * MAP_W);
+    } else if (b.kind === 'barracks' || b.kind === 'factory') {
+      const spec = BUILDINGS[b.kind];
+      ctx.keepClear.add(b.x + Math.floor(spec.w / 2) + (b.y + spec.h) * MAP_W);
+    }
+  }
+
+  for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
+  for (const b of s.buildings) if (b.hp > 0) updateBuilding(s, ctx, b);
+  landProjectiles(s, ctx);
+  separate(s, ctx);
+  removeDead(s);
+
+  if (s.tick % ORE_REGROW_TICKS === 0) {
+    for (let k = 0; k < s.ore.length; k++) {
+      const o = s.ore[k];
+      if (o > 0 && o < ORE_TILE_MAX) s.ore[k] = Math.min(ORE_TILE_MAX, o + ORE_REGROW_AMOUNT);
+    }
+  }
+  if (s.tick % 5 === 0) updateExplored(s);
+  if (s.effects.length && s.effects[0].at < s.tick - 40) s.effects = s.effects.filter(e => e.at >= s.tick - 40);
+
+  checkVictory(s);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Production
+
+function production(s: GameState, ctx: Ctx): void {
+  for (const owner of [0, 1] as Owner[]) {
+    const p = s.players[owner];
+    const rate = ctx.power[owner] ? 0.5 : 1;
+    for (const cat of CATEGORIES) {
+      const head = p.queues[cat][0];
+      if (!head) continue;
+      const total = buildTicksOf(head.kind);
+      if (head.progress >= total) {
+        if (cat !== 'building') spawnFromQueue(s, ctx, owner, cat);
+        continue;
+      }
+      if (!producerFor(s, owner, cat)) continue;
+      head.progress = Math.min(total, head.progress + rate);
+      if (head.progress >= total) {
+        if (cat === 'building') {
+          if (owner === 0) log(s, `${nameOf(head.kind)} ready. Choose where to place it.`, 'good');
+        } else spawnFromQueue(s, ctx, owner, cat);
+      }
+    }
+  }
+}
+
+const nameOf = (kind: string) => (kind in UNITS ? UNITS[kind as UnitKind].name : BUILDINGS[kind as keyof typeof BUILDINGS].name);
+
+function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): void {
+  const producer = producerFor(s, owner, cat);
+  if (!producer) return;
+  const spec = BUILDINGS[producer.kind];
+  const ex = producer.x + Math.floor(spec.w / 2) + 0.5;
+  const ey = producer.y + spec.h + 0.5;
+  const k = nearestPassable(s, ctx.occ, ex, ey, 5);
+  if (k < 0) return; // Exit blocked: stays finished at the head of the queue and tries next tick.
+  const head = s.players[owner].queues[cat].shift()!;
+  const kind = head.kind as UnitKind;
+  const u = addUnit(s, owner, kind, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5);
+  u.fx = 0;
+  u.fy = 1;
+  ctx.units.set(u.id, u);
+  s.players[owner].stats.trained++;
+  if (kind === 'hauler') {
+    u.order = { type: 'harvest', phase: 'seek', tile: -1, refinery: 0 };
+  } else if (producer.rally) {
+    u.order = { type: 'move', x: producer.rally.x, y: producer.rally.y };
+  } else {
+    // Step clear of the door.
+    u.order = { type: 'move', x: u.x, y: Math.min(u.y + 1.5, 63.5) };
+  }
+  if (owner === 0) log(s, `${UNITS[kind].name} ready.`);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Movement
+
+function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popOnArrive: boolean): boolean {
+  const sp = UNITS[u.kind].speed;
+  const dx = tx - u.x;
+  const dy = ty - u.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  let nx: number;
+  let ny: number;
+  let arrived = false;
+  if (d <= sp) {
+    nx = tx;
+    ny = ty;
+    arrived = true;
+  } else {
+    nx = u.x + (dx / d) * sp;
+    ny = u.y + (dy / d) * sp;
+  }
+  if (!passable(s, ctx.occ, Math.floor(nx), Math.floor(ny))) {
+    u.stuck++;
+    if (u.stuck > 8) {
+      u.path = [];
+      u.pathGoal = -1;
+      u.stuck = 0;
+    }
+    return false;
+  }
+  u.x = nx;
+  u.y = ny;
+  u.stuck = 0;
+  if (d > 0.0001) {
+    u.fx = dx / d;
+    u.fy = dy / d;
+  }
+  if (arrived && popOnArrive) u.path.shift();
+  return arrived;
+}
+
+/**
+ * Moves a unit toward (gx, gy). Returns true once it has arrived, or once it has got as close as
+ * the ground allows. Paths are computed lazily and re-computed when the goal moves.
+ */
+function travel(s: GameState, ctx: Ctx, u: Unit, gx: number, gy: number): boolean {
+  const goal = nearestPassable(s, ctx.occ, gx, gy, 6);
+  if (goal < 0) return true;
+  const here = tileOf(u);
+  if (here === goal && u.path.length === 0) {
+    // Last stretch inside the goal tile: walk straight to the point if it is in this tile.
+    const inTile = Math.floor(gx) + Math.floor(gy) * MAP_W === goal;
+    const px = inTile ? gx : (goal % MAP_W) + 0.5;
+    const py = inTile ? gy : ((goal / MAP_W) | 0) + 0.5;
+    if (dist(u.x, u.y, px, py) < 0.05) return true;
+    stepAlong(s, ctx, u, px, py, false);
+    return dist(u.x, u.y, px, py) < 0.05;
+  }
+  const goalMoved = u.pathGoal !== goal;
+  if (goalMoved && (u.pathGoal === -1 || s.tick - u.pathTick >= 6 || u.path.length === 0)) {
+    if (ctx.pathBudget <= 0) return false;
+    ctx.pathBudget--;
+    u.path = findPath(s, ctx.occ, here, goal);
+    u.pathGoal = goal;
+    u.pathTick = s.tick;
+    if (!u.path.length) return true;
+  }
+  if (!u.path.length) return true; // A partial path has run out: as close as we can get.
+  const k = u.path[0];
+  stepAlong(s, ctx, u, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5, true);
+  return false;
+}
+
+function halt(u: Unit): void {
+  u.path = [];
+  u.pathGoal = -1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Targets
+
+function lookup(ctx: Ctx, id: number): Target | null {
+  const u = ctx.units.get(id);
+  if (u && u.hp > 0) return { unit: u };
+  const b = ctx.buildings.get(id);
+  if (b && b.hp > 0) return { building: b };
+  return null;
+}
+
+/** Nearest enemy within range, preferring things that shoot back over things that do not. */
+function acquire(s: GameState, owner: Owner, x: number, y: number, range: number, unitsOnly = false): number {
+  let best = 0;
+  let bestScore = Infinity;
+  for (const e of s.units) {
+    if (e.owner === owner || e.hp <= 0) continue;
+    const d = dist(x, y, e.x, e.y);
+    if (d > range) continue;
+    const score = d + (UNITS[e.kind].weapon ? 0 : 1.5);
+    if (score < bestScore) {
+      bestScore = score;
+      best = e.id;
+    }
+  }
+  if (unitsOnly) return best;
+  for (const b of s.buildings) {
+    if (b.owner === owner || b.hp <= 0) continue;
+    const d = distToTarget(x, y, { building: b });
+    if (d > range) continue;
+    const score = d + (BUILDINGS[b.kind].weapon ? 0.5 : 3);
+    if (score < bestScore) {
+      bestScore = score;
+      best = b.id;
+    }
+  }
+  return best;
+}
+
+function fire(s: GameState, owner: Owner, sx: number, sy: number, w: Weapon, t: Target, shooter: number): void {
+  const tp = targetPoint(t);
+  let toX = tp.x;
+  let toY = tp.y;
+  let flight = FLIGHT_TICKS[w.kind];
+  if (w.kind === 'artillery') {
+    const d = dist(sx, sy, toX, toY);
+    flight += Math.round(d * 0.5);
+    // Shells scatter a little, and land where the target was, not where it has gone.
+    const a = next(s.rngSeed);
+    const b = next(a.seed);
+    s.rngSeed = b.seed;
+    toX += (a.value - 0.5) * 0.9;
+    toY += (b.value - 0.5) * 0.9;
+  }
+  s.effects.push({ id: s.nextId++, kind: 'muzzle', x: sx, y: sy, x2: toX, y2: toY, at: s.tick, size: 0, weapon: w.kind });
+  const p: Projectile = {
+    id: s.nextId++,
+    owner,
+    weapon: w.kind,
+    fromX: sx,
+    fromY: sy,
+    toX,
+    toY,
+    firedAt: s.tick,
+    hitAt: s.tick + flight,
+    target: t.unit ? t.unit.id : t.building!.id,
+    damage: w.damage,
+    splash: w.splash ?? 0,
+  };
+  if (flight === 0) hit(s, p, shooter);
+  else s.projectiles.push(p);
+}
+
+function hit(s: GameState, p: Projectile, shooter = 0): void {
+  if (p.splash > 0) {
+    for (const u of s.units) {
+      if (u.owner === p.owner || u.hp <= 0) continue;
+      const d = dist(p.toX, p.toY, u.x, u.y);
+      if (d > p.splash) continue;
+      hurt(s, { unit: u }, p.damage * (1 - (0.5 * d) / p.splash), p, shooter);
+    }
+    for (const b of s.buildings) {
+      if (b.owner === p.owner || b.hp <= 0) continue;
+      const d = distToTarget(p.toX, p.toY, { building: b });
+      if (d > p.splash) continue;
+      hurt(s, { building: b }, p.damage * (1 - (0.5 * d) / p.splash), p, shooter);
+    }
+  } else {
+    const u = s.units.find(v => v.id === p.target && v.hp > 0);
+    const b = u ? undefined : s.buildings.find(v => v.id === p.target && v.hp > 0);
+    if (u) hurt(s, { unit: u }, p.damage, p, shooter);
+    else if (b) hurt(s, { building: b }, p.damage, p, shooter);
+  }
+  if (p.weapon !== 'bullet') s.effects.push({ id: s.nextId++, kind: 'boom', x: p.toX, y: p.toY, at: s.tick, size: 0, weapon: p.weapon });
+}
+
+function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: number): void {
+  const armor = t.unit ? UNITS[t.unit.kind].armor : 'building';
+  const amount = Math.max(1, Math.round(raw * DAMAGE_VS[p.weapon][armor]));
+  const victim = t.unit ?? t.building!;
+  if (victim.hp <= 0) return;
+  victim.hp -= amount;
+  if (t.building) {
+    const mem = s.ai[victim.owner];
+    mem.hurtTick = s.tick;
+    mem.hurtX = t.building.x + 1;
+    mem.hurtY = t.building.y + 1;
+    if (victim.owner === 0) alarm(s, 'base', 'Our base is under attack.', 300);
+  } else if (victim.owner === 0 && t.unit!.kind === 'hauler') {
+    alarm(s, 'hauler', 'A hauler is under attack.', 300);
+  } else {
+    // Units under fire defend themselves: an idle unit turns on its attacker.
+    const vu = t.unit!;
+    if (vu.order.type === 'idle' && UNITS[vu.kind].weapon && !vu.engage && shooter) vu.engage = shooter;
+  }
+  if (victim.hp <= 0) {
+    victim.hp = 0;
+    s.players[p.owner].stats.killed++;
+    s.players[victim.owner].stats.lost++;
+    const killer = s.units.find(v => v.id === shooter);
+    if (killer) killer.kills++;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Units
+
+function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
+  const spec = UNITS[u.kind];
+  const w = spec.weapon;
+  if (u.cooldown > 0) u.cooldown--;
+
+  if (u.order.type === 'harvest') {
+    harvestStep(s, ctx, u);
+    return;
+  }
+
+  const order = u.order;
+  if (order.type === 'attack') {
+    if (!lookup(ctx, order.target)) {
+      u.order = { type: 'idle' };
+      u.engage = 0;
+      halt(u);
+    } else u.engage = order.target;
+  } else if (order.type === 'move') {
+    u.engage = 0;
+  }
+
+  if (w && (u.order.type === 'idle' || u.order.type === 'attackMove')) {
+    const current = u.engage ? lookup(ctx, u.engage) : null;
+    if (!current) u.engage = 0;
+    if ((s.tick + u.id) % 4 === 0 && (!current || u.order.type === 'idle')) {
+      const range = u.order.type === 'idle' ? w.range + 0.5 : spec.sight + 1;
+      const found = acquire(s, u.owner, u.x, u.y, range);
+      if (found && (!current || u.order.type === 'attackMove')) u.engage = found;
+    }
+  }
+
+  let firing = false;
+  if (u.engage && w) {
+    const t = lookup(ctx, u.engage);
+    if (!t) {
+      u.engage = 0;
+    } else {
+      const d = distToTarget(u.x, u.y, t);
+      const tp = targetPoint(t);
+      if (d <= w.range && d >= (w.minRange ?? 0)) {
+        firing = true;
+        halt(u);
+        aim(u, tp.x, tp.y);
+        if (u.cooldown === 0) {
+          fire(s, u.owner, u.x + u.tx * 0.35, u.y + u.ty * 0.35, w, t, u.id);
+          u.cooldown = w.cooldown;
+        }
+      } else if (u.order.type === 'attack' || (u.order.type === 'attackMove' && d <= spec.sight + 3)) {
+        firing = true;
+        if (d < (w.minRange ?? 0)) {
+          // Too close for artillery: back away from the target.
+          travel(s, ctx, u, u.x + (u.x - tp.x), u.y + (u.y - tp.y));
+        } else travel(s, ctx, u, tp.x, tp.y);
+        aim(u, tp.x, tp.y);
+      } else if (u.order.type === 'idle' && d <= spec.sight + 1 && u.engage) {
+        // Shot at from out of range while idle: close in, but give up beyond sight.
+        firing = true;
+        travel(s, ctx, u, tp.x, tp.y);
+        aim(u, tp.x, tp.y);
+      } else {
+        u.engage = 0;
+      }
+    }
+  }
+
+  if (!firing) {
+    const o = u.order;
+    if (o.type === 'move' || o.type === 'attackMove') {
+      if (travel(s, ctx, u, o.x, o.y)) {
+        u.order = { type: 'idle' };
+        halt(u);
+      }
+    }
+    // Idle on a dock pad or in a factory door: step aside.
+    if (u.order.type === 'idle' && (s.tick + u.id) % 10 === 0 && ctx.keepClear.has(tileOf(u))) {
+      const k = clearSpot(s, ctx, u.x, u.y);
+      if (k >= 0) u.order = { type: 'move', x: (k % MAP_W) + 0.5, y: ((k / MAP_W) | 0) + 0.5 };
+    }
+    // Turret drifts back to the hull's heading.
+    u.tx += (u.fx - u.tx) * 0.2;
+    u.ty += (u.fy - u.ty) * 0.2;
+    normaliseTurret(u);
+  }
+}
+
+/** The nearest passable tile that is not a dock or a door, within a few tiles. */
+function clearSpot(s: GameState, ctx: Ctx, x: number, y: number): number {
+  const cx = Math.floor(x);
+  const cy = Math.floor(y);
+  for (let r = 1; r <= 4; r++)
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+        if (!passable(s, ctx.occ, cx + dx, cy + dy)) continue;
+        const k = (cy + dy) * MAP_W + cx + dx;
+        if (!ctx.keepClear.has(k)) return k;
+      }
+  return -1;
+}
+
+function aim(o: { x: number; y: number; tx: number; ty: number }, x: number, y: number): void {
+  const dx = x - o.x;
+  const dy = y - o.y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  if (d < 0.0001) return;
+  o.tx = dx / d;
+  o.ty = dy / d;
+}
+
+function normaliseTurret(u: Unit): void {
+  const d = Math.sqrt(u.tx * u.tx + u.ty * u.ty);
+  if (d < 0.0001) {
+    u.tx = u.fx;
+    u.ty = u.fy;
+  } else {
+    u.tx /= d;
+    u.ty /= d;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Harvesting
+
+function findOre(s: GameState, u: Unit): number {
+  const claimed = new Set<number>();
+  for (const v of s.units)
+    if (v.id !== u.id && v.owner === u.owner && v.order.type === 'harvest' && v.order.tile >= 0) claimed.add(v.order.tile);
+  let best = -1;
+  let bestD = Infinity;
+  for (let k = 0; k < s.ore.length; k++) {
+    if (s.ore[k] <= 0) continue;
+    const x = (k % MAP_W) + 0.5;
+    const y = ((k / MAP_W) | 0) + 0.5;
+    const d = dist(u.x, u.y, x, y) + (claimed.has(k) ? 4 : 0);
+    if (d < bestD) {
+      bestD = d;
+      best = k;
+    }
+  }
+  return best;
+}
+
+function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
+  const h = u.order;
+  if (h.type !== 'harvest') return;
+  const p = s.players[u.owner];
+  switch (h.phase) {
+    case 'seek': {
+      if (u.cargo >= HAULER_CAPACITY) {
+        h.phase = 'return';
+        halt(u);
+        return;
+      }
+      if (h.tile < 0 || s.ore[h.tile] <= 0) {
+        h.tile = findOre(s, u);
+        halt(u);
+        if (h.tile < 0) {
+          if (u.cargo > 0) h.phase = 'return';
+          return;
+        }
+      }
+      const tx = (h.tile % MAP_W) + 0.5;
+      const ty = ((h.tile / MAP_W) | 0) + 0.5;
+      const arrived = travel(s, ctx, u, tx, ty);
+      if (tileOf(u) === h.tile) {
+        h.phase = 'gather';
+        halt(u);
+      } else if (arrived) {
+        // Could not reach that tile; try another next tick.
+        h.tile = -1;
+      }
+      return;
+    }
+    case 'gather': {
+      if (tileOf(u) !== h.tile || s.ore[h.tile] <= 0) {
+        h.phase = 'seek';
+        if (s.ore[h.tile] <= 0) h.tile = -1;
+        return;
+      }
+      if ((s.tick + u.id) % SCOOP_TICKS === 0) {
+        const take = Math.min(HARVEST_PER_SCOOP, s.ore[h.tile], HAULER_CAPACITY - u.cargo);
+        s.ore[h.tile] -= take;
+        u.cargo += take;
+        if (u.cargo >= HAULER_CAPACITY) {
+          h.phase = 'return';
+          halt(u);
+        } else if (s.ore[h.tile] <= 0) {
+          h.tile = -1;
+          h.phase = 'seek';
+        }
+      }
+      return;
+    }
+    case 'return': {
+      let ref = h.refinery ? ctx.buildings.get(h.refinery) : undefined;
+      if (!ref || ref.hp <= 0 || ref.owner !== u.owner || ref.kind !== 'refinery') {
+        ref = undefined;
+        let bestD = Infinity;
+        for (const b of s.buildings) {
+          if (b.owner !== u.owner || b.kind !== 'refinery' || b.hp <= 0) continue;
+          const dk = dockTile(b);
+          const d = dist(u.x, u.y, dk.x + 0.5, dk.y + 0.5);
+          if (d < bestD) {
+            bestD = d;
+            ref = b;
+          }
+        }
+        h.refinery = ref ? ref.id : 0;
+        halt(u);
+      }
+      if (!ref) return; // Nowhere to unload: wait.
+      const dk = dockTile(ref);
+      travel(s, ctx, u, dk.x + 0.5, dk.y + 0.5);
+      if (dist(u.x, u.y, dk.x + 0.5, dk.y + 0.5) < 0.1) {
+        h.phase = 'unload';
+        u.fx = 0;
+        u.fy = -1;
+        halt(u);
+      } else if (u.path.length === 0 && u.pathGoal !== -1 && tileOf(u) !== dk.x + dk.y * MAP_W && s.tick - u.pathTick > 40) {
+        // Dock unreachable for a long while: forget this refinery and look again.
+        h.refinery = 0;
+      }
+      return;
+    }
+    case 'unload': {
+      const ref = ctx.buildings.get(h.refinery);
+      if (!ref || ref.hp <= 0) {
+        h.phase = 'return';
+        h.refinery = 0;
+        return;
+      }
+      const amount = Math.min(UNLOAD_PER_TICK, u.cargo);
+      u.cargo -= amount;
+      // Only the computer side gets the difficulty's income multiplier (1 on Normal).
+      const credits = Math.round(amount * (u.owner === 1 ? DIFFICULTIES[s.difficulty].income : 1));
+      p.credits += credits;
+      p.stats.harvested += credits;
+      if (u.cargo <= 0) {
+        u.cargo = 0;
+        h.phase = 'seek';
+      }
+      return;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Structures
+
+function updateBuilding(s: GameState, ctx: Ctx, b: Building): void {
+  const spec = BUILDINGS[b.kind];
+  if (b.repairing) {
+    if (b.hp >= spec.hp) b.repairing = false;
+    else {
+      const amount = Math.max(1, Math.round(spec.hp / 200));
+      const cost = (amount * spec.cost * REPAIR_COST_SHARE) / spec.hp;
+      const p = s.players[b.owner];
+      if (p.credits >= cost) {
+        p.credits = Math.round((p.credits - cost) * 100) / 100;
+        b.hp = Math.min(spec.hp, b.hp + amount);
+      } else b.repairing = false;
+    }
+  }
+  const w = spec.weapon;
+  if (!w || s.tick - b.placedAt < 15) return;
+  // Short of power, a turret's guns cycle at half speed.
+  if (b.cooldown > 0 && (!ctx.power[b.owner] || s.tick % 2 === 0)) b.cooldown--;
+  const cx = b.x + spec.w / 2;
+  const cy = b.y + spec.h / 2;
+  let t = b.engage ? lookup(ctx, b.engage) : null;
+  if (t && distToTarget(cx, cy, t) > w.range) t = null;
+  if (!t && (s.tick + b.id) % 4 === 0) {
+    const found = acquire(s, b.owner, cx, cy, w.range, true);
+    t = found ? lookup(ctx, found) : null;
+  }
+  b.engage = t ? (t.unit ? t.unit.id : t.building!.id) : 0;
+  if (!t) return;
+  const tp = targetPoint(t);
+  aim(b, tp.x, tp.y);
+  if (b.cooldown === 0) {
+    fire(s, b.owner, cx + b.tx * 0.45, cy + b.ty * 0.45, w, t, 0);
+    b.cooldown = w.cooldown;
+  }
+}
+
+function landProjectiles(s: GameState, _ctx: Ctx): void {
+  if (!s.projectiles.length) return;
+  const keep: Projectile[] = [];
+  for (const p of s.projectiles) {
+    if (p.hitAt <= s.tick) hit(s, p);
+    else keep.push(p);
+  }
+  s.projectiles = keep;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Crowding: overlapping units push each other apart, never into blocked ground.
+
+function separate(s: GameState, ctx: Ctx): void {
+  const buckets = new Map<number, Unit[]>();
+  for (const u of s.units) {
+    if (u.hp <= 0) continue;
+    const k = tileOf(u);
+    const list = buckets.get(k);
+    if (list) list.push(u);
+    else buckets.set(k, [u]);
+  }
+  const radius = (u: Unit) => (UNITS[u.kind].category === 'infantry' ? 0.2 : 0.38);
+  // Whoever is standing still gives way to whoever is going somewhere, and everybody gives way
+  // to a hauler: otherwise an idle crowd on a dock pad freezes the economy.
+  const weight = (u: Unit) => (u.kind === 'hauler' ? 0.1 : u.path.length ? 0.25 : 1);
+  const push = new Map<number, [number, number]>();
+  const add = (u: Unit, x: number, y: number) => {
+    const p = push.get(u.id);
+    if (p) {
+      p[0] += x;
+      p[1] += y;
+    } else push.set(u.id, [x, y]);
+  };
+  for (const u of s.units) {
+    if (u.hp <= 0) continue;
+    const ux = Math.floor(u.x);
+    const uy = Math.floor(u.y);
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const list = buckets.get((uy + dy) * MAP_W + ux + dx);
+        if (!list) continue;
+        for (const v of list) {
+          if (v.id <= u.id || v.hp <= 0) continue;
+          const min = radius(u) + radius(v);
+          let ex = v.x - u.x;
+          let ey = v.y - u.y;
+          let d = Math.sqrt(ex * ex + ey * ey);
+          if (d >= min) continue;
+          if (d < 0.0001) {
+            ex = ((v.id * 7) % 5) - 2 || 1;
+            ey = ((v.id * 3) % 5) - 2;
+            d = Math.sqrt(ex * ex + ey * ey);
+          }
+          const overlap = (min - d) * 0.5;
+          const wu = weight(u);
+          const wv = weight(v);
+          const su = wu / (wu + wv);
+          add(u, (-ex / d) * overlap * su, (-ey / d) * overlap * su);
+          add(v, (ex / d) * overlap * (1 - su), (ey / d) * overlap * (1 - su));
+        }
+      }
+  }
+  for (const u of s.units) {
+    const p = push.get(u.id);
+    if (!p) continue;
+    const m = Math.sqrt(p[0] * p[0] + p[1] * p[1]);
+    const cap = 0.05;
+    const k = m > cap ? cap / m : 1;
+    nudge(s, ctx, u, p[0] * k, p[1] * k);
+  }
+}
+
+function nudge(s: GameState, ctx: Ctx, u: Unit, dx: number, dy: number): void {
+  const nx = u.x + dx;
+  const ny = u.y + dy;
+  if (passable(s, ctx.occ, Math.floor(nx), Math.floor(ny))) {
+    u.x = nx;
+    u.y = ny;
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+
+function removeDead(s: GameState): void {
+  if (s.units.some(u => u.hp <= 0)) {
+    for (const u of s.units) {
+      if (u.hp > 0) continue;
+      const size = UNITS[u.kind].category === 'infantry' ? 0 : 1;
+      s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
+    }
+    s.units = s.units.filter(u => u.hp > 0);
+  }
+  if (s.buildings.some(b => b.hp <= 0)) {
+    for (const b of s.buildings) {
+      if (b.hp > 0) continue;
+      const spec = BUILDINGS[b.kind];
+      s.effects.push({ id: s.nextId++, kind: 'boom', x: b.x + spec.w / 2, y: b.y + spec.h / 2, at: s.tick, size: 2 });
+      if (b.owner === 0) log(s, `${spec.name} destroyed.`, 'bad');
+      else log(s, `Enemy ${spec.name} destroyed.`, 'good');
+    }
+    s.buildings = s.buildings.filter(b => b.hp > 0);
+  }
+}
+
+function checkVictory(s: GameState): void {
+  const has = [false, false];
+  for (const b of s.buildings) has[b.owner] = true;
+  if (has[0] && has[1]) return;
+  if (!has[0] && !has[1]) s.winner = 1;
+  else s.winner = has[0] ? 0 : 1;
+  log(s, s.winner === 0 ? 'Victory. The Ashen Combine has been driven from the field.' : 'Defeat. Our last structure has fallen.', s.winner === 0 ? 'good' : 'bad');
+}

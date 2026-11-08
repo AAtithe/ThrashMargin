@@ -1,5 +1,6 @@
 import { getStoredUser, clearToken, hasGameAccess } from '../lib/token';
 import ThemeToggle from './ThemeToggle';
+import MotionToggle from './MotionToggle';
 
 interface PortalNavProps {
   variant?: 'header' | 'footer';
@@ -57,6 +58,14 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
             </a>
           </>
         )}
+        {canSee('fireline') && (
+          <>
+            <span style={styles.sep}>·</span>
+            <a href="/fireline/" style={styles.link}>
+              🎯 Fireline
+            </a>
+          </>
+        )}
         <span style={styles.sep}>·</span>
         {/* Base-relative, like the Sign in link below — this is Thrash Margin's own route. */}
         <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>
@@ -74,6 +83,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         )}
       </div>
       <div style={styles.right}>
+        <MotionToggle />
         <ThemeToggle />
         {user ? (
           <>
