@@ -5,6 +5,7 @@ import { FONT, UI } from '../../theme';
 import { duration, gr, stat } from '../../lib/format';
 import { Blurb, Meta, Panel, Row } from '../ui';
 import ActButton from './ActButton';
+import { Tally, TimerBar } from '../motion';
 import type { PlaceProps } from '../types';
 
 function reqText(req: Record<WorkStat, number>) {
@@ -23,7 +24,9 @@ export default function Work(p: PlaceProps) {
           {WORK_STATS.map(k => (
             <div key={k}>
               <div style={{ fontSize: '0.72rem', color: UI.textSoft, textTransform: 'capitalize' }}>{k}</div>
-              <div style={{ fontFamily: FONT.data, fontSize: '1rem' }}>{stat(s.work[k])}</div>
+              <div style={{ fontFamily: FONT.data, fontSize: '1rem' }}>
+                <Tally key={s.id} value={s.work[k]} format={stat} decimals={2} />
+              </div>
             </div>
           ))}
         </div>
@@ -35,6 +38,7 @@ export default function Work(p: PlaceProps) {
             {gr(Math.round(rank.pay * (1 + perks(s).payPct / 100)))} a day · next payday in{' '}
             {duration(s.job.since + (s.job.paidDays + 1) * DAY - now)}
           </Meta>
+          <TimerBar start={s.job.since + s.job.paidDays * DAY} end={s.job.since + (s.job.paidDays + 1) * DAY} now={now} colour={UI.brass} style={{ height: 3 }} />
           <Row>
             <Meta>{nextRank ? `Next: ${nextRank.name}, needs ${reqText(nextRank.req)}` : 'The top of the ladder.'}</Meta>
             <div style={{ display: 'flex', gap: '0.4rem' }}>

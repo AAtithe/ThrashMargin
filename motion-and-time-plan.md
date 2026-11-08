@@ -27,15 +27,17 @@ the screen then takes a moment to show what happened. Three rules hold everywher
   glow`) whose durations scale with the pace.
 - [x] `MotionToggle` beside the light/dark toggle in every portal nav and in-game header.
 - [x] `initMotion()` in every `main.tsx`.
+- [x] Shared keyframes prefixed `tm-motion-` after the unprefixed names overrode two of Thrash
+      Margin's own; floating markers hidden when motion is off or the OS asks for reduced motion.
 
 ## Thrash Margin (`packages/thrash-margin/client`)
 
-- [ ] AI turns replayed: after End Turn, show each AI faction's moves in sequence (faction banner,
+- [x] AI turns replayed: after End Turn, show each AI faction's moves in sequence (faction banner,
       territories changing hands highlighted one by one, battles flashed) instead of a single jump.
-- [ ] Battle feedback: attacker/defender losses shown, a shake on a lost territory, a pop on a captured one.
-- [ ] Gold, food and action points count up or down rather than snapping.
-- [ ] Income and upkeep at turn end shown as floating `+/-` markers.
-- [ ] Toasts and modals enter with a short rise/pop.
+- [x] Battle feedback: attacker/defender losses shown, a shake on a lost territory, a pop on a captured one.
+- [x] Gold, food and action points count up or down rather than snapping.
+- [x] Income and upkeep at turn end shown as floating `+/-` markers.
+- [x] Toasts and modals enter with a short rise/pop.
 
 ## Banco di Niccolò (`packages/niccolo`)
 
@@ -48,11 +50,11 @@ the screen then takes a moment to show what happened. Three rules hold everywher
 ## Niccolò Rising (`packages/niccolo-rising`)
 
 Already real time; the job is to make the time visible.
-- [ ] Bars (energy, nerve and similar) fill smoothly between ticks instead of stepping.
-- [ ] Timed actions (courses, journeys, work) show a live, smoothly moving progress bar and countdown.
-- [ ] Action results: floating gains and losses, a pulse on what changed, a shake on a failure.
-- [ ] Money and stats count up.
-- [ ] New log or message lines rise in.
+- [x] Bars (energy, nerve and similar) fill smoothly between ticks instead of stepping.
+- [x] Timed actions (courses, journeys, work) show a live, smoothly moving progress bar and countdown.
+- [x] Action results: floating gains and losses, a pulse on what changed, a shake on a failure.
+- [x] Money and stats count up.
+- [x] New log or message lines rise in.
 
 ## The Tea Race (`packages/tea-race`)
 

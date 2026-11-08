@@ -1,15 +1,18 @@
 import { useState } from 'react';
-import { CONFIG } from '../../sim/content';
+import { CONFIG, DAY } from '../../sim/content';
 import { FONT, UI } from '../../theme';
 import { duration, gr } from '../../lib/format';
 import { Blurb, Meta, Panel, Row } from '../ui';
 import ActButton from './ActButton';
+import { TimerBar } from '../motion';
 import type { PlaceProps } from '../types';
 
 export default function Bank(p: PlaceProps) {
   const { s, now } = p;
   const [amount, setAmount] = useState('');
   const n = Math.floor(Number(amount));
+  // The deposit records its rate, not its term; the rate names the term (display only).
+  const term = s.deposit ? CONFIG.bank.terms.find(t => t.pct === s.deposit!.pct) : undefined;
   return (
     <Panel title="The Medici counting house">
       <Blurb>
@@ -17,12 +20,15 @@ export default function Bank(p: PlaceProps) {
         the only income in Bruges that needs no Energy and no Nerve.
       </Blurb>
       {s.deposit ? (
-        <Row>
-          <Meta colour={UI.verdigris}>
-            {gr(s.deposit.amount)} at {s.deposit.pct}%, matures in {duration(s.deposit.matures - now)}, paying{' '}
-            {gr(s.deposit.amount * (1 + s.deposit.pct / 100))}
-          </Meta>
-        </Row>
+        <>
+          <Row>
+            <Meta colour={UI.verdigris}>
+              {gr(s.deposit.amount)} at {s.deposit.pct}%, matures in {duration(s.deposit.matures - now)}, paying{' '}
+              {gr(s.deposit.amount * (1 + s.deposit.pct / 100))}
+            </Meta>
+          </Row>
+          {term && <TimerBar start={s.deposit.matures - term.days * DAY} end={s.deposit.matures} now={now} colour={UI.verdigris} style={{ height: 3, marginTop: 0 }} />}
+        </>
       ) : (
         <>
           <Row>

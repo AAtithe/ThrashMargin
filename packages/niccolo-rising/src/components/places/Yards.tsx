@@ -4,6 +4,7 @@ import { FONT, UI } from '../../theme';
 import { gr, stat } from '../../lib/format';
 import { Blurb, Meta, Panel, Row } from '../ui';
 import ActButton from './ActButton';
+import { Tally } from '../motion';
 import type { PlaceProps } from '../types';
 
 export default function Yards(p: PlaceProps) {
@@ -15,7 +16,9 @@ export default function Yards(p: PlaceProps) {
           {BATTLE_STATS.map(k => (
             <div key={k}>
               <div style={{ fontSize: '0.72rem', color: UI.textSoft, textTransform: 'capitalize' }}>{k}</div>
-              <div style={{ fontFamily: FONT.data, fontSize: '1rem' }}>{stat(s.battle[k])}</div>
+              <div style={{ fontFamily: FONT.data, fontSize: '1rem' }}>
+                <Tally key={s.id} value={s.battle[k]} format={stat} decimals={2} />
+              </div>
             </div>
           ))}
         </div>

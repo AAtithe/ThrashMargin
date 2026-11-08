@@ -77,8 +77,25 @@ export function Meta({ children, colour }: { children: ReactNode; colour?: strin
   return <span style={{ fontFamily: FONT.data, fontSize: '0.72rem', color: colour ?? UI.textFaint }}>{children}</span>;
 }
 
-export function Meter({ value, max, colour, height = 6 }: { value: number; max: number; colour: string; height?: number }) {
+/**
+ * A filled bar. `ahead`, when given, is where the bar is heading before its next step (a bar part way
+ * to its next refill): it is drawn as a faint fill behind the solid one and glides there with the
+ * screen's one-second clock, so a refilling bar creeps up continuously instead of jumping at each tick.
+ * When the value drops, the faint fill is left behind for that second and trails down after it, a
+ * small mark of what was just lost. Callers omit `ahead` when motion is off, and the bar is exactly
+ * the plain one.
+ */
+export function Meter({ value, max, colour, height = 6, ahead }: { value: number; max: number; colour: string; height?: number; ahead?: number }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  if (ahead !== undefined) {
+    const aheadPct = max > 0 ? Math.max(pct, Math.min(100, (ahead / max) * 100)) : 0;
+    return (
+      <div style={{ height, background: UI.ground, border: `1px solid ${UI.rule}`, position: 'relative', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', left: 0, top: 0, width: `${aheadPct}%`, height: '100%', background: colour, opacity: 0.35, transition: 'width 1000ms linear' }} />
+        <div style={{ position: 'relative', width: `${pct}%`, height: '100%', background: colour, transition: 'width 300ms' }} />
+      </div>
+    );
+  }
   return (
     <div style={{ height, background: UI.ground, border: `1px solid ${UI.rule}` }}>
       <div style={{ width: `${pct}%`, height: '100%', background: colour, transition: 'width 300ms' }} />
