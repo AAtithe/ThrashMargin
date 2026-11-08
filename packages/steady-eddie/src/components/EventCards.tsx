@@ -84,7 +84,13 @@ export default function EventCards({
     seen.current = highest;
     if (fresh.length === 0) return;
     // Newest on top, and never more than a handful — a bad turn can fire several at once.
-    setQueue(prev => [...fresh.reverse(), ...prev].slice(0, MAX_ON_SCREEN));
+    // Never queue an entry twice. The board can show a later log and then an earlier one (a
+    // rivals' replay starts from the final state's commit and winds back to its first step), so
+    // `seen` can move backwards and the same entries arrive again.
+    setQueue(prev => {
+      const have = new Set(prev.map(e => e.seq));
+      return [...fresh.reverse().filter(e => !have.has(e.seq)), ...prev].slice(0, MAX_ON_SCREEN);
+    });
   }, [log]);
 
   if (queue.length === 0) return null;
