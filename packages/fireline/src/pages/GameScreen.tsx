@@ -6,6 +6,7 @@ import { TILE } from '../game/art';
 import Minimap from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
 import { BuildPanel, SelectionPanel, type Tab } from '../game/Sidebar';
+import { sound } from '../game/sound';
 import { statusOf, useSaves } from '../hooks/useSaves';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
 import { clearToken, getStoredUser } from '../lib/portalAuth';
@@ -134,6 +135,12 @@ function Battle({
   // reopened run always starts on the welcome card.
   const [tourOpen, setTourOpen] = useState(() => !hasSeenGuidedTour() && initial.tick < 600 && initial.winner === null);
   const [tourRun, setTourRun] = useState(0);
+  const [soundPrefs, setSoundPrefs] = useState(sound.prefs);
+  const changeSound = useCallback((p: Partial<typeof soundPrefs>) => {
+    sound.unlock();
+    sound.setPrefs(p);
+    setSoundPrefs(sound.prefs);
+  }, []);
   const pausedRef = useRef(paused);
   const speedRef = useRef(speed);
   const placingRef = useRef(placing);
@@ -154,8 +161,14 @@ function Battle({
   const dispatch = useCallback(
     (a: GameAction): boolean => {
       const next = processAction(cur.current, a);
-      if (next === cur.current) return false;
+      if (next === cur.current) {
+        if (a.type === 'queue' || a.type === 'place') sound.play('denied');
+        return false;
+      }
       cur.current = next;
+      if (a.type === 'queue' || a.type === 'cancel') sound.play('queue');
+      else if (a.type === 'place') sound.play('place');
+      else if (a.type === 'move' || a.type === 'attack' || a.type === 'harvest' || a.type === 'rally' || a.type === 'stop') sound.play('order');
       refresh();
       return true;
     },
@@ -357,6 +370,7 @@ function Battle({
       const chosen = fighters.length ? fighters : inBox;
       if (e.shiftKey) chosen.forEach(u => ov.selected.add(u.id));
       else ov.selected = new Set(chosen.map(u => u.id));
+      if (chosen.length) sound.play('select');
       refresh();
       return;
     }
@@ -385,6 +399,7 @@ function Battle({
         if (b.kind === 'factory') setTab('vehicle');
         if (b.kind === 'hq') setTab('building');
       }
+      sound.play('select');
     } else if (!e.shiftKey) {
       // Clicking open ground with units selected leaves them selected; right-click gives orders.
       if (!ownSelectedUnits().length) ov.selected = new Set();
@@ -454,6 +469,8 @@ function Battle({
         if (b) dispatch({ type: 'repair', id: b.id });
       } else if (e.key === '?') {
         setHelp(h => !h);
+      } else if (k === 'm' && !e.ctrlKey && !e.metaKey) {
+        changeSound({ muted: !sound.prefs.muted });
       }
     };
     const up = (e: KeyboardEvent) => keys.current.delete(e.key);
@@ -467,13 +484,26 @@ function Battle({
       window.removeEventListener('blur', blur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, refresh, setPlacing, centreOn, help]);
+  }, [dispatch, refresh, setPlacing, centreOn, help, changeSound]);
+
+  // Browsers only allow audio after the player has touched the page.
+  useEffect(() => {
+    const unlock = () => sound.unlock();
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
+    return () => {
+      window.removeEventListener('pointerdown', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+  }, []);
 
   // ---- The loop: simulation at ten ticks a second, drawing every frame ----------------------
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
     let lastTick = cur.current.tick;
+    let heardLog = cur.current.log.length ? cur.current.log[cur.current.log.length - 1] : null;
+    let heardWinner = cur.current.winner !== null;
     const frame = (now: number) => {
       const dt = Math.min(250, now - last);
       last = now;
@@ -546,6 +576,20 @@ function Battle({
             if (alive.size !== sel.size) overlay.current.selected = alive;
           }
           if (placingRef.current && readyStructure(cur.current, 0) !== placingRef.current) setPlacing(null);
+          // Interface sounds from what the battle reported this tick.
+          const log = cur.current.log;
+          let from = heardLog ? log.lastIndexOf(heardLog) + 1 : 0;
+          if (from === 0 && heardLog) from = Math.max(0, log.length - 2);
+          for (let i = from; i < log.length; i++) {
+            const l = log[i];
+            if (/under attack/i.test(l.text)) sound.play('alarm');
+            else if (/ ready/i.test(l.text)) sound.play('ready');
+          }
+          if (log.length) heardLog = log[log.length - 1];
+          if (cur.current.winner !== null && !heardWinner) {
+            heardWinner = true;
+            sound.play(cur.current.winner === 0 ? 'victory' : 'defeat');
+          }
           if (cur.current.winner !== null) doSave();
           refresh();
         }
@@ -625,6 +669,28 @@ function Battle({
         <button style={{ ...chromeBtn, minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
           {paused ? 'Resume' : 'Pause'}
         </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            style={{ ...chromeBtn, minWidth: 82 }}
+            data-testid="sound-button"
+            aria-pressed={!soundPrefs.muted}
+            title="Sound on or off (M)"
+            onClick={() => changeSound({ muted: !soundPrefs.muted })}
+          >
+            {soundPrefs.muted ? 'Sound off' : 'Sound on'}
+          </button>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={soundPrefs.volume}
+            aria-label="Volume"
+            disabled={soundPrefs.muted}
+            onChange={e => changeSound({ volume: Number(e.target.value) })}
+            style={{ width: 70, accentColor: 'var(--ui-accent)' }}
+          />
+        </div>
         <button
           style={chromeBtn}
           data-testid="tour-button"
@@ -751,6 +817,7 @@ export function Controls() {
     ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
     ['H', 'Jump to your Command Yard'],
     ['P or Space', 'Pause'],
+    ['M', 'Sound on or off'],
     ['Esc', 'Cancel placement or attack-move; clear selection'],
   ];
   return (

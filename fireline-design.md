@@ -97,10 +97,26 @@ by doing what the card names. That driver waits 1.5s on every step before acting
 ringed control is on screen, uncovered and enabled, pauses and resumes mid-run, checks the save
 for the real effects, and checks a finished run is not offered again.
 
-## 6. Not built yet
+## 6. Sound
+
+`game/sound.ts`, synthesised with the Web Audio API: no audio files, for the same reasons the art
+is code. Gunfire by weapon (machine gun, tank shell, rocket whoosh, artillery thump), explosions
+by size (hit, vehicle, structure), selling, placing a structure, build-menu clicks and refusals,
+unit orders and selection, "ready" chimes, the under-attack alarm, victory and defeat stings.
+
+- Audio starts only after the player's first click or key press, as browsers require.
+- Battle sounds are panned by screen position and fade with distance from the middle of the view.
+  Anything under the fog is silent, so sound never reveals what the player cannot see.
+- Each sound has a minimum gap and the mix has a 24-voice cap, plus a compressor, so a large
+  firefight stays legible.
+- Sound on or off (top bar, or M) and volume are saved per browser in `fireline_sound`.
+- The renderer marks effects already in a loaded save as heard, so opening a battle mid-fight does
+  not play a burst of stale explosions.
+- Renderer-side only: the simulation never touches it.
+
+## 7. Not built yet
 
 - Touch controls. The game is playable with a mouse and keyboard; orders are right-click.
-- Sound.
 
 ---
 
@@ -132,3 +148,12 @@ tabs; both now set `fontFamily` instead.
 
 Browser checks (first build): 60 frames a second during a 15-minute battle at 1440x900; light and dark mode;
 `node scripts/loading-check.cjs fireline` 25 of 25.
+
+### 2026-11-08 — Sound
+
+Added synthesised sound (§6). Checked in Chromium through the engine's play counts (exposed on
+`window.__firelineSound` in dev builds only): audio stays locked until the first gesture; queue,
+ready, place, select and order sounds fire on the matching actions; M mutes and unmutes; four
+seconds of a large firefight produced 41 machine-gun shots, 3 rockets and 3 impacts, the throttle
+holding gunfire to about ten a second. No page errors. `npm run tours -- fireline` and
+`npm run check` still pass.

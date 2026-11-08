@@ -4,6 +4,7 @@ import { powerOf, visibility } from '../sim/state';
 import type { Building, GameState, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
 import { drawBuilding, drawDock, drawUnit, TILE } from './art';
+import { sound, type SoundKind } from './sound';
 import { paintTerrain } from './terrain';
 
 /**
@@ -60,6 +61,8 @@ export class Renderer {
   private particles: Particle[] = [];
   private scorches: { x: number; y: number; r: number }[] = [];
   private seen = new Set<number>();
+  /** False until the first frame, which marks what is already on the field as seen, silently. */
+  private primed = false;
   private visFor: GameState | null = null;
   private vis: Uint8Array = new Uint8Array(MAP_W * MAP_H);
   private lastNow = 0;
@@ -290,6 +293,11 @@ export class Renderer {
     }
 
     // 7. Flashes, tracers and explosions.
+    if (!this.primed) {
+      // A loaded save carries a few seconds of old effects: neither replay them nor play them.
+      for (const e of cur.effects) this.seen.add(e.id);
+      this.primed = true;
+    }
     for (const e of cur.effects) {
       const age = rt - e.at + 1;
       const x = e.x * TILE;
@@ -298,6 +306,7 @@ export class Renderer {
         this.seen.add(e.id);
         if (e.kind === 'boom') this.burst(x, y, e.size, e.weapon);
         if (e.kind === 'sold') for (let i = 0; i < 18; i++) this.particles.push(spark(x, y));
+        if (age < 4) this.hear(e, cam, vis);
       }
       if (!inView(x, y, 120)) continue;
       if (e.kind === 'muzzle' && age < 2.2) {
@@ -420,6 +429,33 @@ export class Renderer {
       ctx.fillRect(Math.min(x0, x1), Math.min(y0, y1), Math.abs(x1 - x0), Math.abs(y1 - y0));
       ctx.strokeRect(Math.min(x0, x1) + 0.5, Math.min(y0, y1) + 0.5, Math.abs(x1 - x0), Math.abs(y1 - y0));
     }
+  }
+
+  /**
+   * The sound of an effect, placed on screen: panned by where it is, quieter the further from the
+   * middle of the view, and silent under the fog, so sound never reveals what the player cannot see.
+   */
+  private hear(e: GameState['effects'][number], cam: Camera, vis: Uint8Array) {
+    const k = Math.floor(e.y) * MAP_W + Math.floor(e.x);
+    if (!vis[k]) return;
+    let kind: SoundKind;
+    let gain = 1;
+    if (e.kind === 'muzzle') kind = e.weapon === 'bullet' ? 'bullet' : e.weapon === 'rocket' ? 'rocket' : e.weapon === 'artillery' ? 'artillery' : 'shell';
+    else if (e.kind === 'sold') kind = 'sold';
+    else if (e.size >= 2) kind = 'boomBuilding';
+    else if (e.size >= 1) kind = 'boomVehicle';
+    else {
+      kind = 'boomSmall';
+      gain = e.size > 0 || e.weapon === 'artillery' ? 0.9 : 0.5;
+    }
+    const sx = (e.x * TILE - cam.x) * cam.zoom;
+    const sy = (e.y * TILE - cam.y) * cam.zoom;
+    const half = cam.w / 2 || 1;
+    const pan = Math.max(-0.9, Math.min(0.9, (sx - half) / half));
+    const inView = sx >= 0 && sy >= 0 && sx <= cam.w && sy <= cam.h;
+    const dTiles = Math.hypot(sx - half, sy - cam.h / 2) / (TILE * cam.zoom);
+    gain *= Math.max(0.12, Math.min(1, 1.15 - dTiles / 30)) * (inView ? 1 : 0.45);
+    sound.play(kind, pan, gain);
   }
 
   private burst(x: number, y: number, size: number, weapon?: string) {
