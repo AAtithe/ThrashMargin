@@ -85,6 +85,10 @@ function neighboursOf(state: GameState, id: number): Territory[] {
 }
 
 const mine = (state: GameState) => state.nodes.filter(n => n.owner === state.activeFaction);
+const battlesOf = (state: GameState) => {
+  const st = state.factions[state.activeFaction]?.stats;
+  return st ? st.battlesWon + st.battlesLost : 0;
+};
 
 /**
  * Work out the turn to teach, from the board as it stands.
@@ -140,16 +144,16 @@ export interface TourView {
 interface TourMemory {
   troops: number;
   buildings: number;
-  territories: number;
   turn: number;
-  logLength: number;
+  /** Battles the player had fought when the run opened, won or lost. */
+  battles: number;
 }
 
 interface TourStep {
   title: string;
-  body: (v: TourView, plan: TourPlan) => string;
+  body: (v: TourView, plan: TourPlan, memory: TourMemory) => string;
   /** One id, or several in order of preference — the first that is on screen is spotlit. */
-  target: (v: TourView, plan: TourPlan) => string | string[] | null;
+  target: (v: TourView, plan: TourPlan, memory: TourMemory) => string | string[] | null;
   isComplete: (v: TourView, plan: TourPlan, memory: TourMemory) => boolean;
 }
 
@@ -207,12 +211,13 @@ const ATTACK: TourStep = {
     `The columns decide how many go and how many actions it costs. Combat here is arithmetic, not dice — what the panel forecasts is what will happen, not what might. ` +
     `Leave a garrison behind: a territory with nothing in it is a territory anyone can walk into.`,
   target: () => 'tm-attack',
-  // An attack that bounces is still an attack, and still the lesson. Any of: we hold it now, we
-  // hold more ground than we did, or the chronicle has grown since the run opened.
+  // An attack that bounces is still an attack, and still the lesson: we hold it now, or we have
+  // fought a battle since the run opened. Not "the chronicle has grown", which it had: building
+  // and recruiting both write to it, so this step read as done the moment it was reached and the
+  // card skipped on to End turn with no attack made.
   isComplete: (v, plan, memory) =>
     nodeOf(v, plan.targetId)?.owner === v.state.activeFaction ||
-    mine(v.state).length > memory.territories ||
-    v.state.log.length > memory.logLength,
+    battlesOf(v.state) > memory.battles,
 };
 
 const END_TURN: TourStep = {
@@ -235,7 +240,41 @@ const OUTRO: TourStep = {
 // Build comes before recruiting. The recruit stepper defaults to as many troops as the treasury
 // allows, so recruiting first spent the gold the planned building needed and left the build step
 // pointing at a disabled row with no way forward.
-const STEPS: TourStep[] = [INTRO, SELECT_HOME, BUILD, RECRUIT, PICK_TARGET, ATTACK, END_TURN, OUTRO];
+/**
+ * A step that acts on the capital's orders, made safe against the capital being deselected.
+ *
+ * Clicking a selected territory again deselects it, and so does Escape. A player who clicked their
+ * capital twice (a double-click, or a second click to "make sure") had the run move on to Build
+ * with nothing selected, and the card pointed at a building slot that was no longer on screen,
+ * with Back the only way forward. Until the capital is selected again the step points at it.
+ *
+ * The attack step also needs the target picked; if it was cancelled, it points back at the target.
+ */
+function needsHome(step: TourStep, needsTarget = false): TourStep {
+  // A finished step is never redirected: the attack clears the target as it lands, and the card
+  // would otherwise say the attack was put away during the pause before it moves on.
+  const lostHome = (v: TourView, plan: TourPlan, m: TourMemory) => !step.isComplete(v, plan, m) && v.selected !== plan.homeId;
+  const lostTarget = (v: TourView, plan: TourPlan, m: TourMemory) => needsTarget && !step.isComplete(v, plan, m) && v.target !== plan.targetId;
+  return {
+    ...step,
+    body: (v, plan, m) =>
+      lostHome(v, plan, m)
+        ? `${nameOf(v, plan.homeId)} is no longer selected. Click it again to bring back its orders.`
+        : lostTarget(v, plan, m)
+          ? `The attack was put away. Click ${nameOf(v, plan.targetId)} again to bring the orders back.`
+          : step.body(v, plan, m),
+    target: (v, plan, m) =>
+      lostHome(v, plan, m)
+        ? `tm-territory-${plan.homeId}`
+        : lostTarget(v, plan, m)
+          ? `tm-territory-${plan.targetId}`
+          : step.target(v, plan, m),
+  };
+}
+
+const STEPS: TourStep[] = [
+  INTRO, SELECT_HOME, needsHome(BUILD), needsHome(RECRUIT), needsHome(PICK_TARGET), needsHome(ATTACK, true), END_TURN, OUTRO,
+];
 
 /* -------------------------------------------------------------------------------------------- */
 /* Placement                                                                                      */
@@ -410,9 +449,8 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
   const memoryRef = useRef<TourMemory>({
     troops: view.state.nodes[plan.homeId]?.troops ?? 0,
     buildings: view.state.nodes[plan.homeId]?.buildings.length ?? 0,
-    territories: view.state.nodes.filter(n => n.owner === view.state.activeFaction).length,
     turn: view.state.turn,
-    logLength: view.state.log.length,
+    battles: battlesOf(view.state),
   });
   const memory = memoryRef.current;
 
@@ -423,7 +461,7 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO;
-  const targetIds = asList(step.target(view, plan));
+  const targetIds = asList(step.target(view, plan, memory));
   const { rect, id: shownTarget } = useTargetRect(targetIds);
 
   const focusMatch = /^tm-territory-(\d+)$/.exec(targetIds[0] ?? '');
@@ -500,7 +538,7 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
           Guided turn — {stepIndex + 1} of {steps.length}
         </p>
         <h3 style={cardTitle}>{step.title}</h3>
-        <p style={cardBody}>{step.body(view, plan)}</p>
+        <p style={cardBody}>{step.body(view, plan, memory)}</p>
         <div style={footer}>
           <button type="button" style={ghostButton} onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}
