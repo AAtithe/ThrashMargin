@@ -1,0 +1,111 @@
+import {
+  canAttack,
+  canCancel,
+  canHarvest,
+  canMove,
+  canPlace,
+  canQueue,
+  canRally,
+  canRepair,
+  canSell,
+  canStop,
+  doAttack,
+  doCancel,
+  doHarvest,
+  doMove,
+  doPlace,
+  doQueue,
+  doRally,
+  doRepair,
+  doSell,
+  doStop,
+} from './commands';
+import { cloneState } from './state';
+import { step } from './tick';
+import type { GameAction, GameState } from './types';
+
+/** Most ticks one action may advance. The client sends one or two at a time. */
+export const MAX_TICKS_PER_ACTION = 600;
+
+const ids = (v: unknown): number[] => (Array.isArray(v) ? v.filter(n => Number.isInteger(n)) : []);
+
+/**
+ * The reducer. Orders are always side 0's (the player's); the computer gives its orders from
+ * inside the tick. An illegal action returns the very same state object, which the client uses to
+ * skip a pointless save and the harness uses to assert a rejection. The state passed in is never
+ * modified: a legal action clones it once and works on the clone.
+ */
+export function processAction(s: GameState, a: GameAction): GameState {
+  if (s.winner !== null) return s;
+  switch (a.type) {
+    case 'tick': {
+      const n = a.n ?? 1;
+      if (!Number.isInteger(n) || n < 1 || n > MAX_TICKS_PER_ACTION) return s;
+      const c = cloneState(s);
+      for (let i = 0; i < n && c.winner === null; i++) step(c);
+      return c;
+    }
+    case 'move': {
+      if (!canMove(s, 0, ids(a.ids), a.x, a.y)) return s;
+      const c = cloneState(s);
+      doMove(c, 0, ids(a.ids), a.x, a.y, !!a.attackMove);
+      return c;
+    }
+    case 'attack': {
+      if (!canAttack(s, 0, ids(a.ids), a.target)) return s;
+      const c = cloneState(s);
+      doAttack(c, 0, ids(a.ids), a.target);
+      return c;
+    }
+    case 'stop': {
+      if (!canStop(s, 0, ids(a.ids))) return s;
+      const c = cloneState(s);
+      doStop(c, 0, ids(a.ids));
+      return c;
+    }
+    case 'harvest': {
+      if (!canHarvest(s, 0, ids(a.ids), a.tile, a.refinery)) return s;
+      const c = cloneState(s);
+      doHarvest(c, 0, ids(a.ids), a.tile, a.refinery);
+      return c;
+    }
+    case 'queue': {
+      if (!canQueue(s, 0, a.category, a.kind)) return s;
+      const c = cloneState(s);
+      doQueue(c, 0, a.category, a.kind);
+      return c;
+    }
+    case 'cancel': {
+      if (!canCancel(s, 0, a.category, a.kind)) return s;
+      const c = cloneState(s);
+      doCancel(c, 0, a.category, a.kind);
+      return c;
+    }
+    case 'place': {
+      if (!canPlace(s, 0, a.kind, a.x, a.y)) return s;
+      const c = cloneState(s);
+      doPlace(c, 0, a.kind, a.x, a.y);
+      return c;
+    }
+    case 'sell': {
+      if (!canSell(s, 0, a.id)) return s;
+      const c = cloneState(s);
+      doSell(c, 0, a.id);
+      return c;
+    }
+    case 'repair': {
+      if (!canRepair(s, 0, a.id)) return s;
+      const c = cloneState(s);
+      doRepair(c, a.id);
+      return c;
+    }
+    case 'rally': {
+      if (!canRally(s, 0, a.id, a.x, a.y)) return s;
+      const c = cloneState(s);
+      doRally(c, a.id, a.x, a.y);
+      return c;
+    }
+    default:
+      return s;
+  }
+}

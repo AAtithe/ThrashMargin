@@ -19,6 +19,7 @@ export const GAMES = [
   { key: 'niccolo_rising', slug: 'niccolo-rising', label: 'Niccolò Rising', short: 'Rising' },
   { key: 'tea_race', slug: 'tea-race', label: 'The Tea Race', short: 'Tea Race' },
   { key: 'steady_eddie', slug: 'steady-eddie', label: 'Steady Eddie', short: 'Steady Eddie' },
+  { key: 'fireline', slug: 'fireline', label: 'Fireline', short: 'Fireline' },
   // A personal CEO coaching game, not a game for the whole portal: off until an admin turns it on.
   { key: 'founders_ledger', slug: 'founders-ledger', label: "The Founder's Ledger", short: 'Ledger', optIn: true },
 ] as const;

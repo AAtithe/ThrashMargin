@@ -30,6 +30,7 @@
         --tr-tag: #2c6f66; --tr-rule: #b9d8d2; --tr-a: #f4fbf9; --tr-b: #e6f2ef; --tr-edge: #cfe3de; --tr-hover: #8fbfb6;
         --se-tag: #8b5e17; --se-rule: #e0caa4; --se-a: #fdf8ef; --se-b: #f6ecda; --se-edge: #e7d8bd; --se-hover: #cfae73;
         --fl-tag: #1d5a47; --fl-rule: #b9d3c6; --fl-a: #f4f8f5; --fl-b: #e6efe9; --fl-edge: #cfe0d6; --fl-hover: #7fae96;
+        --fire-tag: #1f6e7a; --fire-rule: #b5d4d8; --fire-a: #f2f7f6; --fire-b: #e3ecea; --fire-edge: #c6d8d6; --fire-hover: #6aa6ae;
       }
       :root[data-theme="dark"] {
         color-scheme: dark;
@@ -53,6 +54,7 @@
         --tr-tag: #8fd0c4; --tr-rule: #24443f; --tr-a: #0c1618; --tr-b: #080f11; --tr-edge: #172a2c; --tr-hover: #2d5450;
         --se-tag: #e0a94e; --se-rule: #4a3a1a; --se-a: #181209; --se-b: #100c07; --se-edge: #2f2414; --se-hover: #5a4622;
         --fl-tag: #5db291; --fl-rule: #1e3a2f; --fl-a: #0f1814; --fl-b: #0b120f; --fl-edge: #1f2f28; --fl-hover: #2f5a48;
+        --fire-tag: #6cc3cf; --fire-rule: #1d3c40; --fire-a: #0c1516; --fire-b: #081011; --fire-edge: #1a2c2e; --fire-hover: #2f6268;
       }
       * {
         box-sizing: border-box;
@@ -155,6 +157,9 @@
       .card.founders-ledger .tag { color: var(--fl-tag); border-color: var(--fl-rule); }
       .card.founders-ledger { background: linear-gradient(160deg, var(--fl-a) 0%, var(--fl-b) 100%); border-color: var(--fl-edge); }
       .card.founders-ledger:hover { border-color: var(--fl-hover); }
+      .card.fireline .tag { color: var(--fire-tag); border-color: var(--fire-rule); }
+      .card.fireline { background: linear-gradient(160deg, var(--fire-a) 0%, var(--fire-b) 100%); border-color: var(--fire-edge); }
+      .card.fireline:hover { border-color: var(--fire-hover); }
       .account {
         position: fixed;
         top: 0;
@@ -197,7 +202,7 @@
     </div>
     <main>
       <h1>Choose a game</h1>
-      <p class="subtitle">Five separate builds, one address.</p>
+      <p class="subtitle">Seven separate builds, one address.</p>
       <div class="cards">
         <a class="card thrash-margin" data-game="thrash_margin" href="/thrash-margin/">
           <span class="tag">Territory strategy</span>
@@ -240,6 +245,14 @@
           <p>
             Close your own week every Friday, buy your hours back, and write the life you are building.
             Turned on by an admin, one account at a time.
+          </p>
+        </a>
+        <a class="card fireline" data-game="fireline" href="/fireline/">
+          <span class="tag">Real-time strategy</span>
+          <h2>Fireline</h2>
+          <p>
+            Build a base, harvest ore, keep the power on and send tanks, rocketeers and artillery against
+            the Ashen Combine. Command and conquer, in real time.
           </p>
         </a>
       </div>
