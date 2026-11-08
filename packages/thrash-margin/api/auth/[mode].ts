@@ -5,6 +5,7 @@ import type { Pool } from 'pg';
 import { getDb } from '../_lib/db';
 import { signToken } from '../_lib/auth';
 import { isAdmin } from '../_lib/admin';
+import { gamesFor, newAccountAccess } from '../_lib/access';
 import { ensureSchema } from '../_lib/schema';
 import { isEmail, MIN_PASSWORD } from '../_lib/validate';
 import { clientAddress, isOverLimit, LIMITS, recordEvent } from '../_lib/rateLimit';
@@ -105,7 +106,10 @@ async function login(req: VercelRequest, res: VercelResponse) {
     const token = signToken({ userId: user.id, username: user.username });
     // For the nav's Admin link only. Presentational: every admin endpoint re-checks the role.
     const admin = await isAdmin(db, user.id);
-    return res.json({ token, userId: user.id, username: user.username, isAdmin: admin });
+    // The games this account may play, so the portal can show which are open to it. Presentational
+    // too: api/play/[kind].ts re-checks access on every request.
+    const games = await gamesFor(db, user.id);
+    return res.json({ token, userId: user.id, username: user.username, isAdmin: admin, games });
   } catch (err) {
     console.error('login error', err);
     return res.status(500).json({ message: 'Server error' });
@@ -145,13 +149,18 @@ async function register(req: VercelRequest, res: VercelResponse) {
     // One statement, so an account is either fully created or not at all. It used to be followed
     // by a second insert into player_stats (a table nothing read); if that failed, the player was
     // told "Server error" while the account already existed, and their retry was refused as taken.
+    // The account starts with the games the Admin page's "new accounts" setting allows, copied on
+    // now; NULL (every game) if that setting has never been saved. See _lib/access.ts.
+    await ensureSchema(db);
+    const access = await newAccountAccess(db);
     await db.query(
-      'INSERT INTO users (id, username, email, password) VALUES ($1, $2, $3, $4)',
-      [id, username, email.toLowerCase(), hash],
+      'INSERT INTO users (id, username, email, password, game_access) VALUES ($1, $2, $3, $4, $5::jsonb)',
+      [id, username, email.toLowerCase(), hash, access === null ? null : JSON.stringify(access)],
     );
     await recordEvent(db, LIMITS.register, address);
     const token = signToken({ userId: id, username });
-    return res.status(201).json({ token, userId: id, username, isAdmin: false });
+    const games = access ?? (await gamesFor(db, id));
+    return res.status(201).json({ token, userId: id, username, isAdmin: false, games });
   } catch (err: any) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'Username or email already taken' });

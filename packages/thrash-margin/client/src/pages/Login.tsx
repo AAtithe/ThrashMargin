@@ -51,7 +51,12 @@ export default function Login() {
       const data = await res.json();
       if (!res.ok) { setError(data.message ?? 'Failed'); return; }
       setToken(data.token);
-      setStoredUser({ userId: data.userId, username: data.username, isAdmin: data.isAdmin === true });
+      setStoredUser({
+        userId: data.userId,
+        username: data.username,
+        isAdmin: data.isAdmin === true,
+        ...(Array.isArray(data.games) ? { games: data.games } : {}),
+      });
       // A full page load, not a router push: the destination is usually another app on the portal.
       window.location.assign(destination());
     } catch {
