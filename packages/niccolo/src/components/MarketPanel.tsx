@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { paced, usePace } from '../lib/motion';
+import { FloatingAmount, Florins, useStagger } from './motionKit';
 import { UI } from '../theme';
 import { findCity, findGood, marketGoodsAt } from '../sim/content';
 import { gradeBreakdown, gradeBuyMultiplier, gradeSellMultiplier, isPilotGood } from '../sim/grades';
@@ -18,6 +20,8 @@ const LABEL: React.CSSProperties = {
 };
 
 const ROW: React.CSSProperties = {
+  // Anchors the trade feedback (the row's brief highlight and the floating amount).
+  position: 'relative',
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
@@ -58,11 +62,24 @@ interface MarketRowProps {
   grades?: { breakdown: Record<GradeId, number>; qualityMarket: boolean };
   /** Phase 23: a short market-event marker on this row ('in demand' / 'glut' / 'closed'). */
   tag?: string;
+  /** The trade that just landed on this row, if any — see `TradeFlash`. */
+  flash?: TradeFlash | null;
   onBuy: (quantity: number, grade?: GradeId) => void;
   onSell: (quantity: number, grade?: GradeId) => void;
 }
 
-function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, onBuy, onSell }: MarketRowProps) {
+/**
+ * A trade that has just gone through on one row: what it did to the purse and to the hold. Seen
+ * only by comparing the state before and after (the sim is unchanged), and only while motion is on.
+ * `n` increments per trade so a second purchase of the same good replays the feedback.
+ */
+interface TradeFlash {
+  goodId: string;
+  cashDelta: number;
+  n: number;
+}
+
+function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, flash, onBuy, onSell }: MarketRowProps) {
   const [qty, setQty] = useState(1);
   const [grade, setGrade] = useState<GradeId>('common');
   const good = findGood(goodId);
@@ -73,6 +90,12 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, onBuy, o
 
   return (
     <div style={ROW}>
+      {flash && (
+        <>
+          <span key={`hl-${flash.n}`} className="nb-trade-flash" aria-hidden="true" style={TRADE_FLASH} />
+          <FloatingAmount key={`fl-${flash.n}`} amount={flash.cashDelta} style={{ right: '0.2rem', top: '-0.2rem' }} />
+        </>
+      )}
       <span style={{ flex: 1 }}>
         {good?.name ?? goodId}
         {grades?.qualityMarket && (
@@ -86,7 +109,11 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, onBuy, o
           </span>
         )}
         {held > 0 && (
-          <span style={{ color: UI.textSoft }}>
+          <span
+            key={flash ? `held-${flash.n}` : 'held'}
+            className={flash ? 'tm-anim-pulse' : undefined}
+            style={{ color: UI.textSoft, ...(flash ? { display: 'inline-block' } : {}) }}
+          >
             {' '}
             ({grades
               ? `${held} held: ${(['common', 'fine', 'excellent'] as GradeId[])
@@ -137,8 +164,20 @@ function MarketRow({ goodId, price, held, canBuy, canSell, grades, tag, onBuy, o
   );
 }
 
+/** The row's brief highlight after a trade: a tint that fades out (keyframes in styles.css). */
+const TRADE_FLASH: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  background: UI.tintBrass,
+  pointerEvents: 'none',
+};
+
 interface MarketPanelProps {
   cityId: string;
+  /** Which vessel is trading — so switching vessels is never mistaken for a trade. */
+  vesselId?: string;
+  /** The current week — this week's market news lands one line at a time when it turns over. */
+  week?: number;
   cityName: string;
   cash: number;
   cargo: Cargo;
@@ -156,6 +195,8 @@ interface MarketPanelProps {
 
 export default function MarketPanel({
   cityId,
+  vesselId,
+  week,
   cityName,
   cash,
   cargo,
@@ -172,6 +213,31 @@ export default function MarketPanel({
   const city = findCity(cityId);
   const localEvents = (marketEvents ?? []).filter(e => e.cityId === cityId);
 
+  // Trade feedback, read off the state rather than the click: a purchase the sim refused (short of
+  // cash, hold full) changes nothing and so shows nothing. Exactly one good's quantity and the purse
+  // must both have moved, at the same dock aboard the same vessel. Hooks sit above the early return.
+  const pace = usePace();
+  const before = useRef({ cityId, vesselId, cash, cargo });
+  const [flash, setFlash] = useState<TradeFlash | null>(null);
+  useEffect(() => {
+    const prev = before.current;
+    before.current = { cityId, vesselId, cash, cargo };
+    if (pace === 'off' || prev.cityId !== cityId || prev.vesselId !== vesselId || prev.cash === cash) return;
+    const changed = goods.filter(g => (cargo[g] ?? 0) !== (prev.cargo[g] ?? 0));
+    if (changed.length !== 1) return;
+    setFlash(f => ({ goodId: changed[0], cashDelta: Math.round(cash) - Math.round(prev.cash), n: (f?.n ?? 0) + 1 }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cash, cargo, cityId, vesselId]);
+  useEffect(() => {
+    if (!flash) return;
+    const clear = window.setTimeout(() => setFlash(null), paced(1200, pace) + 50);
+    return () => window.clearTimeout(clear);
+  }, [flash, pace]);
+
+  // This week's market news (event headlines, then the causes line) arrives one line at a time.
+  const newsCount = localEvents.length + (causes && causes.length > 0 ? 1 : 0);
+  const reveal = useStagger(week, newsCount);
+
   if (goods.length === 0) {
     return <p style={{ fontSize: '0.8rem', color: UI.textSoft }}>No market at {cityName}.</p>;
   }
@@ -180,21 +246,31 @@ export default function MarketPanel({
     <div>
       <p style={LABEL}>Market — {cityName}</p>
       <p style={{ fontSize: '0.8rem', margin: '0 0 0.5rem' }}>
-        Cash: <strong style={{ color: UI.brass }}>{Math.round(cash)}f</strong>
+        Cash: <strong style={{ color: UI.brass }}><Florins value={cash} /></strong>
         {' · '}
         Hold: {used}/{capacity}
       </p>
       {localEvents.length > 0 && (
         <div style={{ margin: '0 0 0.6rem' }}>
-          {localEvents.map(e => (
-            <p key={e.id} style={{ fontSize: '0.74rem', color: e.blocksTrade ? UI.bad : UI.brass, margin: '0 0 0.3rem', fontStyle: 'italic' }}>
-              {e.headline}
-            </p>
-          ))}
+          {localEvents.map((e, i) => {
+            const r = reveal(i);
+            return (
+              <p
+                key={e.id}
+                className={r.className}
+                style={{ fontSize: '0.74rem', color: e.blocksTrade ? UI.bad : UI.brass, margin: '0 0 0.3rem', fontStyle: 'italic', ...r.style }}
+              >
+                {e.headline}
+              </p>
+            );
+          })}
         </div>
       )}
       {causes && causes.length > 0 && (
-        <p style={{ fontSize: '0.7rem', color: UI.textSoft, margin: '0 0 0.5rem' }}>
+        <p
+          className={reveal(localEvents.length).className}
+          style={{ fontSize: '0.7rem', color: UI.textSoft, margin: '0 0 0.5rem', ...reveal(localEvents.length).style }}
+        >
           {causes.map(cause => describeMarketCause(cause, cityName)).join(' ')}
         </p>
       )}
@@ -220,6 +296,7 @@ export default function MarketPanel({
             canBuy={capacity > used && !blocked}
             canSell={held > 0 && !blocked}
             tag={tag}
+            flash={flash && flash.goodId === goodId && pace !== 'off' ? flash : null}
             onBuy={(quantity, grade) => onBuy(goodId, quantity, grade)}
             onSell={(quantity, grade) => onSell(goodId, quantity, grade)}
           />

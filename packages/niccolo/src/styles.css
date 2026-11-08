@@ -66,3 +66,20 @@ body {
   outline: 2px solid var(--ui-brass);
   outline-offset: 2px;
 }
+
+/*
+ * Motion (presentation only; see components/motionKit.tsx). Durations are multiplied by the portal
+ * pace, `--tm-motion` (1, 0.4 or 0, from lib/motion.ts), and `.nb-trade-flash` (like every `tm-anim-` class) is
+ * switched off outright with motion off. No colours here beyond existing tokens.
+ */
+@keyframes nb-trade-flash {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+.nb-trade-flash {
+  animation: nb-trade-flash calc(900ms * var(--tm-motion, 1)) ease-out both;
+}
+:root[data-motion="off"] .nb-trade-flash {
+  animation: none;
+  display: none;
+}

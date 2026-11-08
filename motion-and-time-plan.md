@@ -41,11 +41,11 @@ the screen then takes a moment to show what happened. Three rules hold everywher
 
 ## Banco di Niccolò (`packages/niccolo`)
 
-- [ ] Week advance has a short passage-of-time beat: the date turns over visibly.
-- [ ] Ships and couriers glide along their routes on the map between weeks instead of jumping.
-- [ ] Cash, credit and ledger figures count up or down.
-- [ ] New news and events arrive staggered rather than all at once.
-- [ ] Trades (buy/sell) give immediate feedback: a floating amount, a pulse on the cargo line.
+- [x] Week advance has a short passage-of-time beat: the date turns over visibly.
+- [x] Ships and couriers glide along their routes on the map between weeks instead of jumping.
+- [x] Cash, credit and ledger figures count up or down.
+- [x] New news and events arrive staggered rather than all at once.
+- [x] Trades (buy/sell) give immediate feedback: a floating amount, a pulse on the cargo line.
 
 ## Niccolò Rising (`packages/niccolo-rising`)
 

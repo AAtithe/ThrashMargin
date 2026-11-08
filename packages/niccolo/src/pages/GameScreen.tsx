@@ -42,6 +42,8 @@ import GuidedTour from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
 import ThemeToggle from '../components/ThemeToggle';
 import MotionToggle from '../components/MotionToggle';
+import { WeekDate, WeekSweep } from '../components/WeekTurn';
+import { FlorinsWithDelta } from '../components/motionKit';
 
 /**
  * One entry per popup section. Fleet selection, giving a vessel her orders (the old 'city' section
@@ -91,6 +93,8 @@ const HEADER: React.CSSProperties = {
   justifyContent: 'space-between',
   padding: '1.2rem 2rem',
   borderBottom: `1px solid ${UI.rule}`,
+  // Anchors the week-turn sweep line (WeekSweep) to the header's bottom rule.
+  position: 'relative',
 };
 
 const TITLE: React.CSSProperties = {
@@ -544,8 +548,8 @@ export default function GameScreen() {
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: '1.2rem', flexWrap: 'wrap', rowGap: '0.5rem' }}>
           <span style={CLOCK}>
-            {Math.round(state.cash)}f &nbsp;·&nbsp; hold: {heldGoodsSummary || 'nothing'}
-            &nbsp;·&nbsp; {formatWeekDate(state.week, CAMPAIGN_START)}
+            <FlorinsWithDelta value={state.cash} /> &nbsp;·&nbsp; hold: {heldGoodsSummary || 'nothing'}
+            &nbsp;·&nbsp; <WeekDate week={state.week} />
             &nbsp;·&nbsp; conscience {Math.round(state.conscience)}
           </span>
           {/* Free play has no chapters, so it gets the standings instead of a chapter title — the
@@ -608,6 +612,7 @@ export default function GameScreen() {
             Abandon this campaign
           </button>
         </div>
+        <WeekSweep week={state.week} />
       </header>
 
       {error && (

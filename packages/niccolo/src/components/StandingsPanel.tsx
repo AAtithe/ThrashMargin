@@ -12,6 +12,7 @@ import {
 } from '../sim/freeplay';
 import { agentPlacementCost } from '../sim/houses';
 import type { GameState } from '../sim/types';
+import { useStagger } from './motionKit';
 
 /**
  * Free play's standings (Phase 27).
@@ -59,6 +60,8 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
   const goal = freeplayGoal(state);
   const win = checkFreeplayWin(state);
   const notes = (state.lastAiNotes ?? []).filter(() => true);
+  // The rivals' week is reported one trade at a time when it turns over.
+  const reveal = useStagger(state.week, Math.min(8, notes.length), 160);
 
   return (
     <div>
@@ -157,7 +160,11 @@ export default function StandingsPanel({ state, onPlaceAgent }: StandingsPanelPr
         </p>
       ) : (
         notes.slice(0, 8).map((n, i) => (
-          <p key={`${n.traderId}-${n.goodId}-${i}`} style={{ fontSize: '0.76rem', color: UI.textSoft, margin: '0 0 0.2rem' }}>
+          <p
+            key={`${n.traderId}-${n.goodId}-${i}`}
+            className={reveal(i).className}
+            style={{ fontSize: '0.76rem', color: UI.textSoft, margin: '0 0 0.2rem', ...reveal(i).style }}
+          >
             {n.traderName} {n.direction === 1 ? 'bought' : 'sold'} {n.quantity} at{' '}
             {findCity(n.cityId)?.name ?? n.cityId}.
           </p>
