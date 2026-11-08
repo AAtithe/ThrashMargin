@@ -246,12 +246,17 @@ async function guidedTurn(browser, run) {
         if (await cancel.count()) {
           done.cancel = true;
           await sleep(400); // let the card settle before judging what it covers
+          // Covered means the tour card is what sits on top of it. Cancel scrolled out of the
+          // panel's view (on a phone the orders scroll to the Attack button) is not the tour's
+          // doing: a player scrolls up to it, and so does this.
+          await cancel.scrollIntoViewIfNeeded().catch(() => {});
+          await sleep(300);
           const covered = await page.evaluate(() => {
             const b = document.getElementById('tm-attack-cancel').getBoundingClientRect();
             const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
-            return !(e && e.closest('#tm-attack-cancel'));
+            return !!e && !!e.closest('[data-tour-step]');
           });
-          if (covered) { problems.push(`${label}: the card covers the attack's Cancel`); await page.keyboard.press('Escape'); }
+          if (covered) { problems.push(`${label}: the card covers the attack's Cancel`); await page.screenshot({ path: path.join(OUT, label.replace(/\//g, '_') + '-cancel.png') }).catch(() => {}); await page.keyboard.press('Escape'); }
           else await cancel.click();
           const after = await waitChange(page, cs, 2000);
           if (!after || !after.target.startsWith('tm-territory-')) problems.push(`${label}: after cancelling the attack, the card points at ${after?.target ?? 'nothing'}`);
