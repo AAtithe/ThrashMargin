@@ -105,6 +105,34 @@ Guard rails:
 - [x] 6.1 Staged file by file after reading `git status`; no `git add -A`.
 - [x] 6.2 Pushed to `claude/tender-ride-j92cj0`.
 
+## Phase 7. Improvements after review
+
+The first build covered the happy path and a failed load. Reviewing it as a player found four gaps.
+
+- [x] 7.1 **A hung load was a dead end.** Retry and Back only appeared once a request failed; a
+      request that never answers spun forever. After 8 seconds the loader now says the load is
+      slow and offers the same actions. Pure CSS: the actions are hidden with `visibility` (so not
+      focusable) until the reveal, and reduced motion keeps the 8 seconds.
+- [x] 7.2 **An expired sign-in offered "Try again", which can never work,** and the hooks' message
+      says "use Sign out above" on full-screen loaders that have no nav bar. Every game screen now
+      shows "Your sign-in has expired. Sign in again to open this game." (`SIGN_IN_AGAIN` in the
+      shared component) with one button, Sign in again, which clears the stored session and returns
+      to the lobby's sign-in panel. Each hook's `SESSION_EXPIRED` is exported for the comparison;
+      the lobbies keep the original message, where the nav bar is present. The gate is unchanged.
+- [x] 7.3 **The component's own comment was wrong** ("no timer, no state and no hook") after the
+      handover record was added. Corrected.
+- [x] 7.4 **The browser checks lived only in a scratch folder.** Now `scripts/loading-check.cjs`,
+      run with `npm run check:loading` (or `-- <game>` for one). It starts and stops the five dev
+      servers itself, intercepts every API call, and covers everything in Phase 5 plus 7.1, 7.2,
+      the Niccolò handover and the Begin buttons. Not in `npm run check`, which runs without a
+      browser on Vercel and in CI.
+- [x] 7.5 **The static loader's colours are copied by hand** from each game's tokens, because the
+      stylesheet has not arrived when it shows. The harness now compares them with the live tokens
+      after load, in both modes, so a palette change that forgets `index.html` fails the check.
+- [x] 7.6 The harness was proved able to fail: with the Tea Race's dark boot colour changed and the
+      slow timer cut to 1 second, it reported exactly those two failures (24/26), and passed again
+      once both were put back.
+
 ---
 
 ## Out of scope, deliberately
@@ -135,3 +163,8 @@ Guard rails:
   every load; Niccolò Rising's long caption ran off the screen until the caption was width-limited.
 - Not changed: the `if (!user)` gate in every lobby, `api/_lib/auth.ts`, and anything under any
   `sim/`. Harness and screenshots were kept out of the repo (scratch files for this session).
+
+**2026-11-08, improvements (Phase 7).** `npm run check` passes. `npm run check:loading`: 131 of 131
+across the five games (26 per game, plus the Niccolò handover). One harness defect found on the way
+and fixed: stopping `npx` left Vite running and holding its port, so the next run could not start;
+servers now run in their own process group and the whole group is stopped.
