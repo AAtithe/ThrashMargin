@@ -196,7 +196,16 @@ async function guidedTurn(browser, run) {
       last = cs.step;
       seen.add(cs.step);
 
-      if (cs.step === 7) { await page.getByRole('button', { name: 'Finish' }).click(); break; }
+      if (cs.step === 7) {
+        // A modal can still arrive over the closing card; close it and try again rather than hang.
+        let ok = false;
+        for (let k = 0; k < 3 && !ok; k++) {
+          ok = await page.locator('[data-tour-step] button', { hasText: 'Finish' }).click({ timeout: 3000 }).then(() => true, () => false);
+          if (!ok) await closeModal(page);
+        }
+        if (!ok) problems.push(`${label}: could not press Finish on the closing card`);
+        break;
+      }
       if (MANUAL.has(cs.step)) { await page.getByRole('button', { name: 'Start' }).click(); cs = await waitChange(page, cs, 3000); continue; }
 
       if (fresh) {
