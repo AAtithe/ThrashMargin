@@ -86,6 +86,23 @@ interface TourStep {
    *  the end-turn button, the Load block disappears once the bay is full. */
   target: (v: TourView, plan: TourPlan) => string | null;
   isComplete: (v: TourView, plan: TourPlan, memory: TourMemory) => boolean;
+  /**
+   * Passed over, rather than shown, when it is already complete at the moment the run reaches it.
+   *
+   * Only for steps whose work the game can legitimately do for the player on the way in: a vehicle
+   * that covers the whole leg on the day she sets off is already there, and "End the turn, I will
+   * wait until she arrives" then flashed up for the 650ms advance pause and vanished — a step that
+   * completed itself. Every other step stays shown even if done, so a predicate that reads true too
+   * early still shows up as a card that skips past (which is what the browser harness looks for)
+   * instead of being silently swallowed here.
+   */
+  skipIfDone?: boolean;
+  /**
+   * True while the step has nothing for the player to do but read: it then waits for "Carry on"
+   * instead of completing on its own. For news the game delivered without being asked, which an
+   * automatic advance would show for 650ms and take away again.
+   */
+  manual?: (v: TourView, plan: TourPlan) => boolean;
 }
 
 /**
@@ -198,6 +215,15 @@ const commissionClosed = (state: GameState, haulier: Haulier, id: ContractId): b
   return contract.fills.length >= 2 || contract.fills.some(f => f.haulierId === haulier.id);
 };
 
+/**
+ * Beaten to it: the commission is spent and she is still carrying its cargo. Read from the hold,
+ * not from the card, because a landing that fills the second berth retires the card in the same
+ * action (`replenishContracts` runs inside DELIVER), so "the card is gone" is also what her own
+ * successful landing as second home looks like.
+ */
+const lostTheRace = (v: TourView, plan: TourPlan): boolean =>
+  commissionClosed(v.state, v.haulier, plan.contractId) && lotsOf(v.vehicle, plan.good) > 0;
+
 /** Whichever turn-bar button is live. Null while a rival is taking their turn. */
 const turnBarTarget = (v: TourView): string | null => {
   if (v.haulier.id !== v.state.hauliers[v.state.activeIndex]?.id) return null;
@@ -224,12 +250,14 @@ function depotside(step: TourStep, { perVehicle = true }: { perVehicle?: boolean
     ...step,
     target: (v, plan) => {
       if (!isMyTurn(v)) return null;
+      if (step.manual?.(v, plan)) return step.target(v, plan);
       if (v.state.phase === 'roll') return 'roll-button';
       if (perVehicle && needsSelecting(v, plan)) return `vehicle-button-${plan.vehicleId}`;
       return step.target(v, plan);
     },
     body: (v, plan) => {
       if (!isMyTurn(v)) return 'The other hauliers are taking their turns. I will wait.';
+      if (step.manual?.(v, plan)) return step.body(v, plan);
       if (v.state.phase === 'roll') {
         return 'Roll for the day first — nothing at the depot can be touched until the fleet has its miles. Then we carry on where we left off.';
       }
@@ -350,6 +378,7 @@ const DRIVE_TO_SELLER: TourStep = {
       : `End the turn. I will wait until she makes ${depotName(plan.loadDepot)}.`,
   target: turnBarTarget,
   isComplete: (v, plan) => v.vehicle?.location === plan.loadDepot,
+  skipIfDone: true,
 };
 
 const LOAD: TourStep = {
@@ -376,6 +405,8 @@ const FILL: TourStep = {
     if (lots >= 1 && v.haulier.cash < priceAt(plan.loadDepot, plan.good)) return true;
     return lots >= 2;
   },
+  // Reached already done when the first lot filled the bay or spent the last of the money.
+  skipIfDone: true,
 };
 
 const COURSE_TO_BUYER: TourStep = {
@@ -403,28 +434,41 @@ const DRIVE_TO_BUYER: TourStep = {
       : `End the turn, and keep going until she pulls into ${depotName(plan.destination)}.`,
   target: turnBarTarget,
   isComplete: (v, plan) => v.vehicle?.location === plan.destination,
+  skipIfDone: true,
 };
 
 const LAND: TourStep = {
   title: 'Land the load',
   body: (v, plan) => {
-    const contract = contractOf(v.state, plan.contractId);
-    if (!contract) {
-      return `The commission came off the board while you were driving — it happens. Sell the cargo at the depot instead, or hold it for the next card that wants it, and I will carry on.`;
+    if (lostTheRace(v, plan)) {
+      // Depot sales are a rules toggle: with them off, the cargo can only be held or dumped.
+      const elsewhere = v.state.hazards?.depotSales
+        ? 'Sell the cargo at the depot, or hold it for the next card that wants it'
+        : 'Hold the cargo for the next card that wants it';
+      return `Both berths went to other hauliers while you were on the road, and the commission is off the board. That is the game, and it is why speed is worth more than margin here. ${elsewhere}, and carry on when you are ready.`;
     }
-    if (contract.fills.length >= 2) {
-      return `Both berths went to other hauliers while you were on the road. That is the game, and it is why speed is worth more than margin here. Sell it at the depot or keep it for the next commission, and we will move on.`;
+    const contract = contractOf(v.state, plan.contractId);
+    // Landed (as second home the card is retired at once) or the cargo went another way: the step
+    // is complete and about to move on.
+    if (!contract || contract.fills.some(f => f.haulierId === v.haulier.id) || lotsOf(v.vehicle, plan.good) === 0) {
+      return 'Done — the cargo is off the vehicle.';
     }
     const rank = contract.fills.length + 1;
     return `Land her. Every matching slot goes at once and is paid per lot — you are ${rank === 1 ? 'first home' : 'second home'}, at ${PAYOUT_MULTIPLIERS[rank as 1 | 2]}× ${money(contract.price)} a lot.`;
   },
-  target: (_v, plan) => `land-contract-${plan.contractId}`,
-  // Landed, beaten to both berths, or the cargo went some other way once she was on the bay. The
-  // last clause is anchored to her being *at* the destination: an empty bay on its own is the
-  // state she starts in, and would read as a finished step before she had driven anywhere.
+  target: (v, plan) => (lostTheRace(v, plan) ? null : `land-contract-${plan.contractId}`),
+  // Landed, or the cargo went some other way once she was on the bay. The last clause is anchored
+  // to her being *at* the destination: an empty bay on its own is the state she starts in, and
+  // would read as a finished step before she had driven anywhere.
+  //
+  // Beaten to both berths is *not* completion. It used to be, and since it is almost always settled
+  // by rivals while she is still on the road, the step was already complete when reached: the card
+  // explaining what had happened flashed up for the 650ms pause and was gone before it could be
+  // read. Now it waits for "Carry on".
   isComplete: (v, plan) =>
-    commissionClosed(v.state, v.haulier, plan.contractId) ||
+    !!contractOf(v.state, plan.contractId)?.fills.some(f => f.haulierId === v.haulier.id) ||
     (v.vehicle?.location === plan.destination && lotsOf(v.vehicle, plan.good) === 0),
+  manual: lostTheRace,
 };
 
 const BUY_SHARE: TourStep = {
@@ -629,7 +673,7 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   const step = steps[stepIndex];
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
-  const isManual = step === INTRO || step === OUTRO;
+  const isManual = step === INTRO || step === OUTRO || !!step.manual?.(view, plan);
   const targetId = step.target(view, plan);
   const rect = useTargetRect(targetId, stepIndex);
 
@@ -647,12 +691,29 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
   // screen, so keying on it restarted the 650ms pause on every click: a player who arrived and then
   // rolled and ended turns at a brisk pace never let it elapse, and the card went on saying "end
   // the turn, I will wait until she arrives" for as long as they kept playing.
+  //
+  // The step after is skipped when it is marked `skipIfDone` and the game has already done it (see
+  // TourStep). Read through a ref at the moment the pause ends, so it judges the state the player
+  // will actually see, not the one from the click that started the pause.
   const done = !isManual && step.isComplete(view, plan, memory);
+  const viewRef = useRef(view);
+  viewRef.current = view;
+  const [skipped, setSkipped] = useState<number[]>([]);
   useEffect(() => {
     if (!done) return;
-    const t = setTimeout(() => setStepIndex(i => Math.min(i + 1, steps.length - 1)), 650);
+    const t = setTimeout(() => {
+      const last = steps.length - 1;
+      let next = Math.min(stepIndex + 1, last);
+      const passed: number[] = [];
+      while (next < last && steps[next].skipIfDone && steps[next].isComplete(viewRef.current, plan, memory)) {
+        passed.push(next);
+        next++;
+      }
+      if (passed.length) setSkipped(prev => [...prev, ...passed.filter(k => !prev.includes(k))]);
+      setStepIndex(next);
+    }, 650);
     return () => clearTimeout(t);
-  }, [done, stepIndex, steps.length]);
+  }, [done, stepIndex, steps, plan, memory]);
 
   const PADDING = 8;
   // The ring's padding is kept on screen too: a control at the very edge of the window otherwise
@@ -711,8 +772,16 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
       {spotlight && <div style={spotlight} />}
 
       {/* `data-tour-*` is how an automated pass drives the run: it reads which control the card is
-          pointing at and clicks that, rather than guessing from the copy. */}
-      <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={targetId ?? ''}>
+          pointing at and clicks that, rather than guessing from the copy, and `data-tour-skipped`
+          lists the steps passed over as already done, so it can check each had a reason. */}
+      <div
+        ref={cardRef}
+        style={cardStyle}
+        data-tour-step={String(stepIndex)}
+        data-tour-target={targetId ?? ''}
+        data-tour-skipped={skipped.join(',')}
+        data-tour-manual={isManual ? '1' : ''}
+      >
         <p style={stepLabel}>
           Guided run — {stepIndex + 1} of {steps.length}
         </p>
@@ -733,7 +802,7 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
               style={isManual ? primaryButton : plainButton}
               onClick={() => (isLast ? finish() : setStepIndex(i => Math.min(i + 1, steps.length - 1)))}
             >
-              {isLast ? 'Finish' : isManual ? 'Start' : 'Skip this'}
+              {isLast ? 'Finish' : isFirst ? 'Start' : isManual ? 'Carry on' : 'Skip this'}
             </button>
           </div>
         </div>
