@@ -560,6 +560,103 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
+### Session 18 (2026-11-08) — the game grows with the captain
+
+The owner's brief: start as a very simple game and get more complicated as you level up, so a new
+player builds into it rather than being overwhelmed on the first turn. Session 15's eras ramped the
+game up by the calendar; whether or not the player had found their feet, round 13 brought pirates.
+
+**Level-driven progression** (`sim/eras.ts`, `LEVEL_ERAS`). With careers and eras both on, the
+stages follow the career level instead of the round:
+
+| Level | Stage | What arrives |
+|---|---|---|
+| 1 | The 1988 board | Dice, five cards, ten shares, and owners' charters |
+| 2 | The chart opens | Wind and weather, ship classes, quayside sales |
+| 3 | Rough seas | Pirates, encounters, cracking on, renown, letters |
+| 4 | The full race | Events, wages, loans, the tea race, the clock, the exchange, agents, hostile bids |
+
+The pace is set by the highest human captain (`tableLevel`), so a computer captain racing ahead
+never drags a learner into rules they have not reached; an all-computer table follows its
+strongest. Stages change at the turn of the round, announced with a "New at level N" card. Rules
+arriving mid-game are set up as they arrive (charters dealt, the commission clock restamped). The
+calendar schedule is unchanged when careers are off. Panels for rules not yet in play are hidden,
+the skill tree is one line until the first point, and the banner and career panel say what the
+next level opens.
+
+Three measurements shaped it:
+
+- **At the old levelling pace a learner never saw the whole game.** A median captain reached level
+  4 at round 50, and in 18 games in 100 not before the end. The early levels are quicker now:
+  level 2 around round 15, 3 around 24, 4 around 37 for a median captain, and every game reaches the
+  full race.
+- **Quicker levels meant earlier skills, which cost ten rounds of game length** (74 to 64). Level 2
+  is now a milestone without a skill point; points start at level 3 (`FIRST_SKILL_LEVEL`). Back to
+  74, then 70 once charters moved into the opening.
+- **A plain opening locks in an early leader.** On the 1988 board itself the round-30 share leader
+  wins 71% of games. With charters held to level 2 the progression game sat at 48.5% against 40.7%
+  with every rule in from the start. Hostile bids were not the lever (computer captains at the
+  default difficulty never bid); charters, which carry the catch-up payment, were. In force from
+  level 1: **43.7%**, inside the noise. They also give a beginner something to aim at.
+
+Pacing, 100 seeds: the 1988 board 73, merchant 84, high seas 68, full race 70. All finish.
+Verified: `npm run check` green (tea race 492,067 checks, 0 failed, including new progression
+tests), the guided tour run end to end, a new game in the browser opening as the plain board and
+reaching stage 2 at level 2, both modes and phone width.
+
+### Session 17 (2026-11-08) — the captain's letters, wagers, and weather on the chart
+
+The owner asked for the game to be more interesting still. What was left flat: captains barely
+touched one another. Everybody raced the same cards, but nothing ever passed between two named
+captains, and nothing personal ever landed on anyone's desk.
+
+**The captain's letters** (`letters`, `sim/letters.ts`). About one turn in six a sealed letter
+arrives at the top of the turn, good for that turn only:
+
+| Letter | Yes | No |
+|---|---|---|
+| Admiralty dispatches | Lodge a bond; tie up at a named port within 8 rounds for £100 and the bond back, plus a point of renown | Nothing |
+| The hands want leave | Pay £30 | Every ship sails 3 short on the next roll |
+| A shipwright's slip | Copper or guns at half price | Nothing |
+| A patron | £150 now, £200 back in 12 rounds, the rest taken off later landings | Nothing |
+| A rival's wager | Both stakes (£50) held at the exchange; first of the two to land the card takes both | Nothing |
+
+Stakes rise a quarter a year. Every letter is a trade-off, never free money. With eras on, the post
+arrives in Era II. Unanswered letters lapse with the turn and are flagged on the end-turn button.
+
+**Wagers and rivalries.** Both stakes go into escrow when a wager is matched, so a wager never
+creates or destroys money. A card filled by a third captain, or withdrawn by the clock, calls it off
+and returns both stakes; the harness asserts no wager outlives its card. Wins are kept as a
+head-to-head record per pair, shown in the post panel and reported in the Gazette.
+
+**On the chart:** drifting storm clouds over this season's stormiest legs (2 in spring, 10 in
+winter), the black flag over the 10 most piratical legs, and a blue Admiralty pennant over ports you
+carry dispatches for.
+
+What measurement changed:
+
+- **The AI forfeited half its bonds.** Accepting whenever a ship could reach the port, captains took
+  8.4 dispatches a game and failed 3.5. A stricter acceptance rule barely helped, because the real
+  fault was routing: ships only carried dispatches when idle. An urgency rule (the nearest docked
+  ship goes when time is short) took it to **6.7 delivered against 0.9 failed**.
+- **Dispatch renown, not dispatch money, shortened games.** The merchant's game fell from 82 rounds
+  to 75. Cutting the reward from £110 to £80 changed nothing. Having the AI decline each letter kind
+  in turn isolated dispatches, and within them the renown: at 2 points, eight times a game, ships
+  reached their speed bonuses too soon. At 1 point: **79 against 82**.
+- **No help to the leader.** Over 288 games each, the round-30 leader wins 35.8% with letters
+  against 38.2% without.
+
+Also: the captains table's spacing tightened, because the level column added in session 15 ran past
+the narrow left column's edge.
+
+**Open, and worth its own session:** seat 0 wins 35–45% of all-AI games where parity is 25%, with
+or without any of the optional rules. Session 9 recorded turn order outweighing the difficulty dial;
+it still does.
+
+Pacing, 100–150 seeds: the 1988 board 73, merchant 79, high seas 68, full race 80–83. All finish.
+Verified: `npm run check` green (tea race 525,019 checks, 0 failed), `npm run test:api` 325 passed,
+browser in both modes and at phone width, dispatches accepted from the letter.
+
 ### Session 16 (2026-11-08) — the guided run
 
 The how-to-play page (`pages/Tutorial.tsx`) was the only onboarding this game had. It is a good
