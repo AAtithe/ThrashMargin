@@ -108,6 +108,14 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   three difficulty levels once read as non-monotonic purely from sampling.
 - **Load the page after adding a React hook.** Hooks placed after an early return render
   conditionally; `tsc` and the harness both pass and the screen is blank.
+- **`npm run tours` after touching any tutorial, tour, coach or onboarding screen.** Plays every
+  game's tutorial in a real browser (`scripts/tours/<game>.cjs`, started by `scripts/tours/run.mjs`,
+  which runs each game's Vite server itself); `--quick` is what CI runs, and naming games runs only
+  those. Every tour driver waits 1.5s on each new step before acting and fails if the step moved:
+  a step that completes itself is the bug that hides from a fast script, and it shipped once
+  (Thrash Margin's attack step read as done on arrival because it watched the game log). Each
+  driver also checks the save for the real effects of the run, and none of them may pass on timing
+  luck. Thrash Margin's card also carries `data-tour-done` while it pauses after a finished step.
 - **A guided tour is only verified by driving it in a browser.** All five tour cards carry
   `data-tour-target`, naming the element actually being ringed — the resolved one, where a step
   offers several candidates — so a script can walk every step by clicking what the card names
@@ -123,8 +131,9 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 - **Where a tour resumes is the caller's business, not the tour's.** Guessing it from the game
   state cannot work: predicates that are honest mid-run read true on an untouched board, so the
   guess opens past the welcome card. Four of the five walk their steps in order and stop at the
-  first unfinished one, which never reaches the dishonest predicates; Niccolò, whose tour is
-  unmounted and remounted by scripted events, keeps the index in `GameScreen` instead.
+  first unfinished one, which never reaches the dishonest predicates; Niccolò always opens a fresh
+  tour on the welcome card. All of them stay mounted through modals (a `hidden` prop, returned
+  after every hook), so an interrupted run keeps its own place.
 - **Light and dark mode: colours are CSS variables.** Each game's `theme.ts` hands out
   `var(--…)` strings; the values, one block per mode, are in that game's `styles.css` (portal
   chrome in `portal.css`, identical in every package). `lib/colorScheme.ts` stores the choice under

@@ -22,10 +22,12 @@ const BACKDROP: React.CSSProperties = {
   inset: 0,
   background: UI.scrim,
   display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
   zIndex: 100,
-  padding: '2rem',
+  padding: '2rem 1rem',
+  // Scrolls rather than clipping when a card is taller than the window (a phone held sideways). The
+  // card centres itself with `margin: auto` instead of the backdrop's align/justify, because a
+  // flex-centred child that overflows is cut off at the top, beyond the reach of the scroll.
+  overflowY: 'auto',
 };
 
 const CARD: React.CSSProperties = {
@@ -33,6 +35,7 @@ const CARD: React.CSSProperties = {
   border: `1px solid ${UI.rule}`,
   boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px ${UI.shadow}`,
   maxWidth: '34rem',
+  margin: 'auto',
   padding: '1.8rem',
   fontFamily: FONT.body,
   color: UI.text,
@@ -60,10 +63,13 @@ const BODY: React.CSSProperties = {
   color: UI.text,
 };
 
+// Wraps on a phone: the last card's three buttons otherwise squeezed "Walk me through the first
+// move" into a five-line column beside the dots.
 const FOOTER: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'space-between',
+  flexWrap: 'wrap',
   gap: '0.6rem',
 };
 
@@ -113,12 +119,12 @@ const STEPS: Step[] = [
   {
     title: 'The map',
     body:
-      "Select a vessel from the Fleet menu, then click a lit city to send it there. Couriers travel by land only; the ship can also cross the sea routes (the dashed lines). A vessel already under way can't be redirected — check how many weeks are left before you commit it.",
+      "Select a vessel in the Fleet panel, click a city on the map to see what's known about it, then send the vessel there from the Orders panel. Couriers travel by land only; the ship can also cross the sea routes (the dashed lines). A vessel already under way can't be redirected — check how many weeks are left before you commit it.",
   },
   {
     title: 'Buying and selling',
     body:
-      "Dock a cargo vessel at a city with a market and open the Market menu: buy low, carry it somewhere it sells dear. Every trade nudges that city's price against you a little — buying enough wool drives the price up, selling drives it down — and prices drift back toward normal over time if you leave a market alone.",
+      "Dock a cargo vessel at a city with a market and use the market in the Orders panel: buy low, carry it somewhere it sells dear. Every trade nudges that city's price against you a little — buying enough wool drives the price up, selling drives it down — and prices drift back toward normal over time if you leave a market alone.",
   },
   {
     title: 'Information is not the same as truth',
@@ -156,7 +162,7 @@ const CHAPTER0_STEPS: Step[] = [
   {
     title: 'The handcart trades for real',
     body:
-      "It only holds 3 units, but it's a real cargo hold: dock it at a city with a market and the Market menu works exactly as it will later for a full ship — buy what's cheap, sell what's dear, or just sell whatever an event has handed you. Select it from the Vessels list in the Fleet menu, then click a city on the map to send it there.",
+      "It only holds 3 units, but it's a real cargo hold: dock it at a city with a market and the market in the Orders panel works exactly as it will later for a full ship — buy what's cheap, sell what's dear, or just sell whatever an event has handed you. Select it in the Fleet panel, click a city on the map, then send it there from the Orders panel.",
   },
   {
     title: 'Waiting is part of it',
@@ -220,7 +226,7 @@ export default function TutorialOverlay({ onClose, variant = 'main', onStartGuid
               />
             ))}
           </div>
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '0.5rem', marginLeft: 'auto' }}>
             {stepIndex > 0 && (
               <button style={BUTTON} onClick={() => setStepIndex(i => i - 1)}>
                 Back

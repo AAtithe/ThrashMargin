@@ -246,13 +246,11 @@ export default function GameScreen() {
   const [showTutorial, setShowTutorial] = useState(false);
   const [showGuidedTour, setShowGuidedTour] = useState(false);
   /**
-   * Which step the guided tour is on. Held here rather than inside the tour because a scripted
-   * event, a chapter card or the How-to-play overlay all unmount it mid-flow; keeping the index
-   * out here is what lets it come back exactly where it was. Starting a tour resets it to the
-   * welcome card.
+   * Starting a tour mounts it fresh, on the welcome card. Once up it stays mounted, hidden rather
+   * than unmounted, while a scripted event, a chapter card, How to play, the hotseat prompt or the
+   * Chronicle owns the screen, so it keeps its own place and comes back exactly where it was.
    */
-  const [tourStep, setTourStep] = useState(0);
-  const startGuidedTour = () => { setTourStep(0); setShowGuidedTour(true); };
+  const startGuidedTour = () => setShowGuidedTour(true);
   const [showChronicle, setShowChronicle] = useState(false);
   const [ledgerTab, setLedgerTab] = useState<'ledger' | 'countingHouse'>('ledger');
   // Which drawer section (if any) is open — Fleet/Orders/Objectives/Counsel are no longer among
@@ -623,15 +621,18 @@ export default function GameScreen() {
           }
         />
       )}
-      {showGuidedTour && !showTutorial && !pendingEvent && !showChapterCompleteCard && (
+      {/* Kept mounted, only hidden, while something else owns the screen — see GuidedTour's
+          `hidden` prop for what unmounting it used to cost. The hotseat prompt and the Chronicle
+          are in the list too: both are modals the tour's own scrim and card would otherwise sit on
+          top of (z-index 101/102 against their 100), covering the very buttons that close them. */}
+      {showGuidedTour && (
         <GuidedTour
           state={state}
           selectedVesselId={selectedVesselId}
           previewCityId={previewCityId}
-          stepIndex={tourStep}
-          onStepIndexChange={setTourStep}
           onFinish={() => setShowGuidedTour(false)}
           onStepChange={handleTourStepChange}
+          hidden={showTutorial || !!pendingEvent || showChapterCompleteCard || showHotseatModal || showChronicle}
         />
       )}
       {showHotseatModal && hotseatHouse && (

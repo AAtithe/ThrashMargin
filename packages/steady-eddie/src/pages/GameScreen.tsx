@@ -298,6 +298,9 @@ export default function GameScreen() {
 
   const winner = state.winnerId ? state.hauliers.find(c => c.id === state.winnerId) : null;
 
+  /** Who the guided run belongs to. Not `haulier`, which is whoever holds the seat right now. */
+  const tourOwner = tourPlan ? state.hauliers.find(h => h.id === tourPlan.haulierId) ?? null : null;
+
   /** A run the tour could teach from where the fleet stands right now, or null if there isn't one
    *  (nothing affordable or reachable, everything struck, or every vehicle on the road). */
   const tourCandidate: TourPlan | null = (() => {
@@ -656,23 +659,24 @@ export default function GameScreen() {
       <EventCards log={shown?.log ?? state.log} hauliers={state.hauliers} viewerId={haulier?.id ?? null} />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
-      {/* Kept off while a handover card or the closing card owns the screen — both are modal, and
-          spotlighting a control underneath one would point at something unclickable. */}
-      {/* While the rivals' turns replay, the run steps aside as well (hidden, never unmounted: it
-          would forget its place and its latches): its scrim would otherwise dim the replay, and its
+      {/* Hidden, not unmounted, while a handover card owns the screen or another hotseat player has
+          the seat: the card is modal, and the run belongs to the player who started it. Unmounting
+          sent the run back to its welcome card at every handover. The closing card ends it.
+          It also steps aside while the rivals' turns replay: its scrim would dim the replay, and its
           card would be talking about a board the screen is not yet showing. */}
-      {tourPlan && haulier && !over && (
+      {tourPlan && tourOwner && !over && (
         <GuidedTour
           onTargetChange={revealTourTarget}
-          hidden={state.phase === 'handover' || !!frame}
           view={{
             state,
-            haulier,
+            haulier: tourOwner,
             vehicle: state.vehicles.find(ve => ve.id === tourPlan.vehicleId) ?? null,
+            selectedVehicleId,
             targetDepot,
             focusedContract,
           }}
           plan={tourPlan}
+          hidden={state.phase === 'handover' || haulier?.id !== tourOwner.id || !!frame}
           onFinish={() => setTourPlan(null)}
         />
       )}

@@ -287,12 +287,17 @@ export function HelpModal({ onClose }: { onClose: () => void }) {
 export function coachStep(state: GameState, selected: number | null, target: number | null): { title: string; text: string } {
   const me = state.factions[1];
   const cap = state.nodes.find(n => n.owner === 1 && n.capital);
-  if (me.stats.captures === 0) {
+  // Taking ground by annexation counts as much as by the sword; a coach that only read captures
+  // sat on its first step for good after an annex.
+  if (me.stats.captures + me.stats.annexed === 0) {
     if (selected === null || state.nodes[selected].owner !== 1) return { title: 'Select your capital', text: `Click ${cap?.name ?? 'your capital'}, the territory with the crown. Its badge shows its troops.` };
     if (target === null) return { title: 'Pick a target', text: 'Orange outlines are neighbours you can attack. Click Meadowkeep: a farm already stands there.' };
     return { title: 'Read the forecast', text: 'The forecast shows exactly what the attack will cost. Aim for odds of 1.8 : 1 or better, then press Attack.' };
   }
-  const built = state.nodes.some(n => n.owner === 1 && n.buildings.length > 0 && n.id !== 1);
+  // Meadowkeep (id 1) starts with a farm standing, so it counts only once the player adds to it.
+  // Excluding it outright left the coach on this step for the rest of the game after a player
+  // built their first building there.
+  const built = state.nodes.some(n => n.owner === 1 && n.buildings.length > (n.id === 1 ? 1 : 0));
   if (!built) return { title: 'Build for the future', text: 'Select a territory you own and build a farm or a mine. Farms feed troops; every troop eats 1 food a turn.' };
   if (state.turn === 1) return { title: 'End the turn', text: 'Press End turn. You collect income, the rival moves, and a dispatch tells you what happened.' };
   if (state.nodes.filter(n => n.owner === 1).length < 4) return { title: 'Expand', text: 'Recruiting costs gold but no actions. Recruit, then take more neutral land: each territory adds gold and food.' };

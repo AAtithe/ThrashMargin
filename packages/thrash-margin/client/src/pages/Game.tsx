@@ -106,6 +106,8 @@ function Game({ id }: { id: string | undefined }) {
   const [tourPlan, setTourPlan] = useState<TourPlan | null>(null);
   /** Whether the once-per-browser offer has already been considered for this campaign. */
   const [tourOffered, setTourOffered] = useState(false);
+  /** The territory the guided turn is pointing at, so a phone's map pans to it. */
+  const [tourFocus, setTourFocus] = useState<number | null>(null);
 
   useEffect(() => { if (id) void loadGame(id); }, [id, loadGame]);
   // Keys must not reach a board the player cannot see (hot seat hand-over, the dispatch, the end).
@@ -403,7 +405,7 @@ function Game({ id }: { id: string | undefined }) {
         <MapView
           state={mapState} visible={visible} selected={selected} target={target} marks={marks} flash={flash}
           onPick={pick} onHover={(nid, x, y) => setHover(nid === null ? null : { id: nid, x, y })}
-          focus={target ?? selected}
+          focus={target ?? tourFocus ?? selected}
           inset={layout === 'sheet'
             ? { right: 0, bottom: sheetOpen ? Math.round(window.innerHeight * 0.55) : 52 }
             : { right: sheetOpen ? layout.panelWidth + 24 : 0, bottom: 0 }}
@@ -487,6 +489,7 @@ function Game({ id }: { id: string | undefined }) {
           plan={tourPlan}
           onFinish={() => setTourPlan(null)}
           hidden={needPass || showDispatch || !!state.pendingEvent || !!modal}
+          onFocusTerritory={setTourFocus}
         />
       )}
 

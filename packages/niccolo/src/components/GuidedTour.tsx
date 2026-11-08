@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GameState } from '../sim/types';
+import { tradeBlockedAt } from '../sim/marketEvents';
+import { canInvestFurther, courierInvestmentCost } from '../sim/news';
 import { UI, FONT } from '../theme';
 
 const GOLD = UI.brass;
@@ -33,6 +35,8 @@ const CARD: React.CSSProperties = {
   position: 'fixed',
   zIndex: 102,
   width: '20rem',
+  maxWidth: 'calc(100vw - 32px)',
+  boxSizing: 'border-box',
   background: UI.panelRaised,
   border: `1px solid ${INK}`,
   boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px ${UI.shadow}`,
@@ -111,13 +115,39 @@ const DEMO_CHARACTER_ID = 'julius';
  * actually does something to, at the same base 15f first-level cost. */
 const DEMO_INVEST_CITY = 'london';
 
+/**
+ * What the campaign looked like when this run of the tour began, captured once on mount. A step's
+ * predicate compares against it rather than against an absolute ("week >= 1", "Julius isn't idle",
+ * "any obligation exists"), because the tour is offered after Chapter 0 — weeks in, with officers
+ * possibly already posted and bills possibly already on the ladder — and an absolute predicate read
+ * true before the player had done anything, so the card skipped straight past the step.
+ */
+interface TourMemory {
+  week: number;
+  cloth: number;
+  juliusAssignment: string;
+  courierLondon: number;
+  obligationIds: Set<string>;
+}
+
+function captureMemory(state: GameState): TourMemory {
+  const julius = state.characters.find(c => c.id === DEMO_CHARACTER_ID);
+  return {
+    week: state.week,
+    cloth: state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0,
+    juliusAssignment: JSON.stringify(julius?.assignment ?? null),
+    courierLondon: state.courierInvestment[DEMO_INVEST_CITY] ?? 0,
+    obligationIds: new Set(state.obligations.map(o => o.id)),
+  };
+}
+
 interface TourStep {
   title: string;
   body: string;
   /** DOM id of the real UI element to spotlight; null for the intro/outro cards, which have no
    * single target and instead show a manual button. */
   targetId: string | null;
-  isComplete: (state: GameState, selectedVesselId: string | null, previewCityId: string | null) => boolean;
+  isComplete: (state: GameState, selectedVesselId: string | null, previewCityId: string | null, memory: TourMemory) => boolean;
   /** Only set for a step whose target lives inside a popup drawer section rather than the header,
    * the map, or one of the always-visible sidebars (Fleet, Orders) — `GameScreen.tsx`'s
    * `onStepChange` forces the right popup open whenever this step becomes current, the same way
@@ -125,7 +155,17 @@ interface TourStep {
    * Fleet- and Orders-targeting steps no longer need an entry here: both panels are permanent
    * chrome now, not a menu to open first. */
   requiresSection?: 'household' | 'dispatches' | 'ledger';
+  /** A sentence appended to the body when the world has put the step out of reach for now — the
+   * card otherwise kept telling the player to press a disabled button. */
+  blockedNote?: (state: GameState) => string | null;
 }
+
+/** A market event (a guild closure, an embargo) can shut the scripted good at either end of the
+ * first hop; the seeded RNG decides, so some campaigns hit it and others never do. */
+const closedNote = (cityId: string, cityName: string) => (state: GameState) =>
+  tradeBlockedAt(state.marketEvents, cityId, FIRST_HOP_GOOD)
+    ? `${cityName} has closed the cloth trade for now (marked "closed" beside it), so this button is disabled — advance the week until it reopens, or skip this step.`
+    : null;
 
 const STEPS: TourStep[] = [
   {
@@ -136,7 +176,8 @@ const STEPS: TourStep[] = [
   },
   {
     title: 'Select your ship',
-    body: 'Click "The Charetty ship" in the Fleet panel, on the right.',
+    // No "on the right": in the phone layout the Fleet panel sits below the map.
+    body: 'Click "The Charetty ship" in the Fleet panel.',
     targetId: `vessel-button-${SHIP_ID}`,
     isComplete: (_state, selectedVesselId) => selectedVesselId === SHIP_ID,
   },
@@ -144,7 +185,9 @@ const STEPS: TourStep[] = [
     title: 'Buy some cloth',
     body: "Bruges weaves fine cloth — it's in the Orders panel below Fleet. Click Buy to load a bale aboard.",
     targetId: `market-buy-${FIRST_HOP_GOOD}`,
-    isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) > 0,
+    blockedNote: closedNote('bruges', 'Bruges'),
+    isComplete: (state, _v, _p, memory) =>
+      (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) > memory.cloth,
   },
   {
     title: 'Look at Antwerp',
@@ -174,33 +217,55 @@ const STEPS: TourStep[] = [
     title: 'Advance the clock',
     body: 'Click "Advance one week" to let the ship travel.',
     targetId: 'advance-week-button',
-    isComplete: state => state.week >= 1,
+    // Done when the ship has actually docked at Antwerp, not when the calendar reads past week 0:
+    // a campaign reaches this tour after Chapter 0, weeks in, and "week >= 1" was already true, so
+    // the card flashed past this step and parked on "Sell" while the ship was still at sea — a Sell
+    // button that does not exist yet, under a full-screen scrim.
+    isComplete: state => {
+      const ship = state.vessels.find(v => v.id === SHIP_ID);
+      return !!ship && !ship.destination && ship.location === FIRST_HOP_CITY;
+    },
   },
   {
     title: 'Sell it at a profit',
     body: 'Antwerp pays more for cloth than Bruges did. Click Sell to close the loop.',
     targetId: `market-sell-${FIRST_HOP_GOOD}`,
+    blockedNote: closedNote(FIRST_HOP_CITY, 'Antwerp'),
     isComplete: state => (state.vessels.find(v => v.id === SHIP_ID)?.cargo[FIRST_HOP_GOOD] ?? 0) === 0,
   },
   {
     title: 'Assign an officer',
     body: "Officers can be given a posting instead of sitting idle. Open the Household menu and give Julius an assignment — negotiate or investigate somewhere, or send him aboard a ship.",
     targetId: `household-assign-${DEMO_CHARACTER_ID}`,
-    isComplete: state => state.characters.find(c => c.id === DEMO_CHARACTER_ID)?.assignment.type !== 'idle',
+    // A change of posting, not "not idle": Julius may already hold one when the run begins.
+    isComplete: (state, _v, _p, memory) =>
+      JSON.stringify(state.characters.find(c => c.id === DEMO_CHARACTER_ID)?.assignment ?? null) !== memory.juliusAssignment,
     requiresSection: 'household',
   },
   {
     title: 'Invest in a courier line',
     body: "Reports arrive faster from a city you've paid to speed up. Open the Dispatches menu and try investing in London's courier line.",
     targetId: `dispatches-invest-${DEMO_INVEST_CITY}`,
-    isComplete: state => (state.courierInvestment[DEMO_INVEST_CITY] ?? 0) >= 1,
+    isComplete: (state, _v, _p, memory) => (state.courierInvestment[DEMO_INVEST_CITY] ?? 0) > memory.courierLondon,
     requiresSection: 'dispatches',
+    // A second run of the tour finds London already at the fastest a courier gets (the first run
+    // invested in it), and a lean purse cannot pay; either way the button is disabled.
+    blockedNote: state => {
+      if (!canInvestFurther(DEMO_INVEST_CITY, state.courierInvestment, state.characters)) {
+        return 'London\'s courier line is already as fast as it gets (the button reads "Fastest"), so there is nothing to buy here — skip this step.';
+      }
+      const cost = courierInvestmentCost(DEMO_INVEST_CITY, state.courierInvestment);
+      return cost > state.cash
+        ? `Investing costs ${cost}f and the house holds ${Math.floor(state.cash)}f, so the button is disabled — skip this step, or come back once you can pay.`
+        : null;
+    },
   },
   {
     title: 'Write a bill of exchange',
     body: 'The Ledger menu\'s Counting House lets you borrow now against a future repayment — real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
     targetId: 'counting-house-borrow-button',
-    isComplete: state => state.obligations.length > 0,
+    // A *new* obligation: Chapter 0's story, or the player, may already have put one on the ladder.
+    isComplete: (state, _v, _p, memory) => state.obligations.some(o => !memory.obligationIds.has(o.id)),
     requiresSection: 'ledger',
   },
   {
@@ -213,27 +278,52 @@ const STEPS: TourStep[] = [
 ];
 
 /**
- * Where to resume on mount. The manual intro/outro steps always report `isComplete() => false` —
- * they're narrative bookends, not real progress — so a naive "skip while complete" scan would
- * never get past the very first (intro) step on a *re*-mount, resetting an interrupted tour back
- * to the welcome card every time (observed happening whenever a scripted story event interrupts
- * the tour mid-flow, since `GameScreen` unmounts `GuidedTour` while that event is up). Instead:
- * if no real (non-manual) step has been completed yet, this is a genuinely fresh start — show the
- * intro. Otherwise skip straight to the first not-yet-complete real step (or the outro, if every
- * real step is already done).
+ * The part of an element a player can actually see: its box cut down by every ancestor that clips
+ * its overflow, and by the window. The Orders panel's Buy/Sell buttons sit far down the right
+ * sidebar's own scroller, and a city marker can sit outside the map pane once the map is panned;
+ * ringing the raw box drew the spotlight (and parked the card) off the bottom of the screen.
+ * Returns null when nothing of it is visible.
  */
-/* `firstIncompleteStep` used to guess where to resume by asking whether any real step was already
- * complete. It could not work, and never did: "Sell it at a profit" completes when the hold is
- * empty of cloth, which is true of an empty hold, so the "has anything happened yet?" probe was
- * true before the player had done a thing and the welcome card was unreachable. On a
- * skip-the-prologue campaign "Select your ship" was satisfied at mount too, because `GameScreen`
- * auto-selects the only vessel, so the tour opened on step three.
- *
- * Guessing was the wrong shape. The caller already knows the difference between a tour the player
- * has just asked for and one being remounted because a scripted event briefly took the screen, so
- * the step index lives in `GameScreen` and is passed in. A fresh tour starts at the welcome card;
- * an interrupted one comes back exactly where it was, which is what the guessing was reaching for.
+function visibleRectOf(el: Element): DOMRect | null {
+  const r = el.getBoundingClientRect();
+  let left = r.left, top = r.top, right = r.right, bottom = r.bottom;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p);
+    if (o.overflowX === 'visible' && o.overflowY === 'visible') continue;
+    const c = p.getBoundingClientRect();
+    left = Math.max(left, c.left); top = Math.max(top, c.top);
+    right = Math.min(right, c.right); bottom = Math.min(bottom, c.bottom);
+  }
+  left = Math.max(left, 0); top = Math.max(top, 0);
+  right = Math.min(right, window.innerWidth); bottom = Math.min(bottom, window.innerHeight);
+  if (right - left < 4 || bottom - top < 4) return null;
+  return new DOMRect(left, top, right - left, bottom - top);
+}
+
+/**
+ * Centre the element in every scrolling ancestor that is hiding part of it, innermost first, by
+ * setting `scrollTop` directly and instantly. Not `Element.scrollIntoView`: this screen's root is
+ * `overflow: hidden`, and scrollIntoView scrolls that too, shoving the header off the top. Not a
+ * smooth scroll either: the element would still be moving when it is measured, and the ring would
+ * land wrong and slide on. Only vertical scrollers are touched, so a city marker brings the map pane
+ * back into view in the phone layout's single scrolling column without disturbing the map's own
+ * pan-and-zoom (a transform, not a scroller — its markers are only ever clipped).
  */
+function scrollIntoScrollers(el: Element): boolean {
+  let moved = false;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const o = getComputedStyle(p).overflowY;
+    if (o !== 'auto' && o !== 'scroll') continue;
+    if (p.scrollHeight <= p.clientHeight) continue;
+    const r = el.getBoundingClientRect();
+    const c = p.getBoundingClientRect();
+    if (r.top >= c.top - 1 && r.bottom <= c.bottom + 1) continue;
+    const before = p.scrollTop;
+    p.scrollTop = Math.max(0, before + (r.top - c.top) - c.height / 2 + r.height / 2);
+    if (p.scrollTop !== before) moved = true;
+  }
+  return moved;
+}
 
 function useTargetRect(targetId: string | null): DOMRect | null {
   const [rect, setRect] = useState<DOMRect | null>(null);
@@ -243,19 +333,9 @@ function useTargetRect(targetId: string | null): DOMRect | null {
       setRect(null);
       return;
     }
-    // The target may be anywhere: the header, the map, one of the two sidebars (each its own
-    // scroller), or inside a popup section's scrolling body (`id="section-popup-scroll"` in
-    // `SectionPopup.tsx`). An earlier version computed the scroll by hand against that one popup
-    // container's `scrollTop`, which is why the sidebars were never scrolled at all: an Orders- or
-    // Fleet-targeting step whose control sat below the fold rang a rectangle hundreds of pixels
-    // under the viewport, and placed its own card there too, so the player saw no tour whatsoever
-    // (measured: the "Buy some cloth" step ringed y=1362 in a 1000px window). `scrollIntoView`
-    // scrolls every scrollable ancestor, which is exactly what is wanted here, and the note that
-    // it "proved unreliable" was about the *smooth* variant: a smooth scroll is still moving the
-    // element for a few hundred milliseconds after it is measured, so the ring lands wrong and
-    // then slides on. `behavior: 'auto'` settles synchronously, so the rect taken immediately
-    // afterwards is the one the player sees. `scrolledOnce` stops it re-yanking the page if the
-    // player deliberately scrolls elsewhere afterward.
+    // One-shot per step, so the run doesn't fight a player who deliberately scrolls elsewhere. The
+    // target may not exist yet on the first tick (a popup section opening, a panel re-rendering),
+    // so "once" means once the element has been found, not once per effect.
     let scrolledOnce = false;
     const measure = () => {
       const el = document.getElementById(targetId);
@@ -263,22 +343,22 @@ function useTargetRect(targetId: string | null): DOMRect | null {
         setRect(null);
         return;
       }
-      const r = el.getBoundingClientRect();
-      if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
-        el.scrollIntoView({ block: 'center', behavior: 'auto' });
+      if (!scrolledOnce) {
         scrolledOnce = true;
-        setRect(el.getBoundingClientRect());
-        return;
+        scrollIntoScrollers(el);
       }
-      setRect(r);
+      setRect(prev => {
+        const next = visibleRectOf(el);
+        if (prev && next && prev.x === next.x && prev.y === next.y && prev.width === next.width && prev.height === next.height) return prev;
+        return next;
+      });
     };
     measure();
     // Re-measure on a short interval — the popup's content can show/hide as the player acts, and a
-    // plain resize listener wouldn't catch that.
+    // plain resize listener wouldn't catch that — and on any scroll, so the ring follows a sidebar
+    // the player scrolls by hand.
     const interval = setInterval(measure, 250);
     window.addEventListener('resize', measure);
-    // Capture-phase, so a scroll of either sidebar or of a popup's own body counts, not just the
-    // window's. Without it the ring lags a quarter-second behind anything the player scrolls.
     window.addEventListener('scroll', measure, true);
     return () => {
       clearInterval(interval);
@@ -290,61 +370,133 @@ function useTargetRect(targetId: string | null): DOMRect | null {
   return rect;
 }
 
+/**
+ * Where the card goes: below the target, then above, then to the right, then to the left — the
+ * first that fits on screen without covering it. A target too big for any of those gets the card in
+ * whichever screen corner overlaps it least. The old rule ("below, else above, clamped to 16px")
+ * put the card straight on top of a target near the top of a short window.
+ */
+function placeCard(rect: DOMRect, cardW: number, cardH: number): { top: number; left: number } {
+  const W = window.innerWidth, H = window.innerHeight, M = 16, GAP = 16;
+  const w = Math.min(cardW, W - 2 * M);
+  const clampX = (x: number) => Math.max(M, Math.min(x, W - M - w));
+  const clampY = (y: number) => Math.max(M, Math.min(y, H - M - cardH));
+  const candidates = [
+    { top: rect.bottom + GAP, left: clampX(rect.left), ok: rect.bottom + GAP + cardH <= H - M },
+    { top: rect.top - GAP - cardH, left: clampX(rect.left), ok: rect.top - GAP - cardH >= M },
+    { top: clampY(rect.top), left: rect.right + GAP, ok: rect.right + GAP + w <= W - M },
+    { top: clampY(rect.top), left: rect.left - GAP - w, ok: rect.left - GAP - w >= M },
+  ];
+  const fit = candidates.find(c => c.ok);
+  if (fit) return { top: fit.top, left: fit.left };
+  const overlap = (x: number, y: number) =>
+    Math.max(0, Math.min(x + w, rect.right) - Math.max(x, rect.left)) *
+    Math.max(0, Math.min(y + cardH, rect.bottom) - Math.max(y, rect.top));
+  const corners = [
+    { left: W - M - w, top: H - M - cardH }, { left: M, top: H - M - cardH },
+    { left: W - M - w, top: M }, { left: M, top: M },
+  ];
+  return corners.reduce((best, c) => (overlap(c.left, c.top) < overlap(best.left, best.top) ? c : best));
+}
+
 interface GuidedTourProps {
   state: GameState;
   selectedVesselId: string | null;
   previewCityId: string | null;
-  /** Which step to show. Owned by `GameScreen` so an interrupted tour resumes where it was. */
-  stepIndex: number;
-  /** Report a move so the caller's copy keeps up. */
-  onStepIndexChange: (index: number) => void;
   onFinish: () => void;
   /** Called whenever the current step changes (including on mount, so a tour resumed directly onto
    * a step that needs a popup section still forces it open immediately, and a step that doesn't
    * needs the caller to close whatever was open before) — the caller owns what "showing a section"
    * actually means, since popup state lives in `GameScreen`, not here. */
   onStepChange?: (requiresSection: TourStep['requiresSection'], targetId: string | null) => void;
+  /**
+   * Hidden rather than unmounted while a scripted event, the chapter card or another modal owns the
+   * screen. Unmounting threw the run away: the remount re-derived its step from the predicates, and
+   * "Buy some cloth" (cargo > 0) reads false again once the cloth is sold, so an event firing during
+   * the Household/Dispatches/Ledger steps sent the player back to buying cloth at Antwerp.
+   */
+  hidden?: boolean;
 }
 
-export default function GuidedTour({
-  state,
-  selectedVesselId,
-  previewCityId,
-  stepIndex,
-  onStepIndexChange,
-  onFinish,
-  onStepChange,
-}: GuidedTourProps) {
-  const setStepIndex = (next: number) => onStepIndexChange(Math.max(0, Math.min(next, STEPS.length - 1)));
+export default function GuidedTour({ state, selectedVesselId, previewCityId, onFinish, onStepChange, hidden = false }: GuidedTourProps) {
+  // Captured once, on the first render; `useRef` because reading it must never cause a render.
+  const memoryRef = useRef<TourMemory | null>(null);
+  if (memoryRef.current === null) memoryRef.current = captureMemory(state);
+  const memory = memoryRef.current;
+
+  // Every mount is a fresh run now (the component stays mounted, hidden, through modals), so it
+  // always opens on the welcome card. The old resume-scan could never do that after Chapter 0:
+  // "Select your ship" (the first vessel is selected by default on a skip-prologue campaign) and
+  // "Sell" (no cloth aboard) both read true before the player had touched anything, so it judged
+  // the run already under way and opened on step 2 or 3 with no introduction.
+  const [stepIndex, setStepIndex] = useState(0);
   const step = STEPS[stepIndex];
   const isLast = stepIndex === STEPS.length - 1;
   const isManual = step.targetId === null;
-  const rect = useTargetRect(step.targetId);
+  const rect = useTargetRect(hidden ? null : step.targetId);
 
   useEffect(() => {
+    if (hidden) return;
     // The target too, so the caller can open whichever floating panel holds it.
-    onStepChange?.(step.requiresSection, step.targetId);
+    onStepChange?.(step.requiresSection, step.targetId ?? null);
+    // Re-run on un-hide too: a modal may have closed the popup section this step needs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepIndex]);
+  }, [stepIndex, hidden]);
 
-  // Auto-advance once the player actually performs the real action a step asks for.
+  const done = (i: number) =>
+    STEPS[i].targetId !== null && STEPS[i].isComplete(state, selectedVesselId, previewCityId, memory);
+  // Every way forward — Start, Skip this, and the auto-advance below — lands on the next real step
+  // not already done, never on one that is: a done step would sit on screen for 700ms with nothing
+  // for the player to do, then advance by itself. On a skip-prologue campaign the ship is selected
+  // by default, so Start passes over "Select your ship". A tour reopened after a first run (the ship
+  // now docked at Antwerp, Antwerp the previewed city) flashed through "Look at Antwerp", "Confirm
+  // the voyage" and "Advance the clock" in two seconds after the cloth was bought, each reading done
+  // on arrival. Back skips the same way in reverse, or it could never get past a done step.
+  const nextOpen = (from: number) => {
+    let i = from + 1;
+    while (i < STEPS.length - 1 && done(i)) i++;
+    return Math.min(i, STEPS.length - 1);
+  };
+  const start = () => setStepIndex(nextOpen(stepIndex));
+
+  // Auto-advance once the player actually performs the real action a step asks for. Not while
+  // hidden: a step completed by the very action that raised a modal advances once it is dismissed.
+  // Any change to the state re-arms the timer, so `nextOpen` always judges the current state.
   useEffect(() => {
-    if (isManual) return;
-    if (!step.isComplete(state, selectedVesselId, previewCityId)) return;
-    const t = setTimeout(() => setStepIndex(stepIndex + 1), 700);
+    if (isManual || hidden) return;
+    if (!step.isComplete(state, selectedVesselId, previewCityId, memory)) return;
+    const t = setTimeout(() => setStepIndex(nextOpen(stepIndex)), 700);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state, selectedVesselId, previewCityId, stepIndex]);
+  }, [state, selectedVesselId, previewCityId, stepIndex, hidden]);
+
+  // The padded ring is kept inside the window too: a target flush with a screen edge otherwise drew
+  // half its ring off the page.
+  const note = isManual ? null : step.blockedNote?.(state) ?? null;
+  const back = () => {
+    let i = stepIndex - 1;
+    while (i > 0 && done(i)) i--;
+    setStepIndex(Math.max(0, i));
+  };
 
   const PADDING = 8;
-  const spotlight: React.CSSProperties | null = rect
+  const ring = rect
+    ? {
+        left: Math.max(2, rect.left - PADDING),
+        top: Math.max(2, rect.top - PADDING),
+        right: Math.min(window.innerWidth - 2, rect.right + PADDING),
+        bottom: Math.min(window.innerHeight - 2, rect.bottom + PADDING),
+      }
+    : null;
+  const spotlight: React.CSSProperties | null = ring
     ? {
         position: 'fixed',
         zIndex: 101,
-        left: rect.left - PADDING,
-        top: rect.top - PADDING,
-        width: rect.width + PADDING * 2,
-        height: rect.height + PADDING * 2,
+        boxSizing: 'border-box',
+        left: ring.left,
+        top: ring.top,
+        width: ring.right - ring.left,
+        height: ring.bottom - ring.top,
         borderRadius: 6,
         border: `2px solid ${GOLD}`,
         boxShadow: `0 0 0 9999px ${UI.scrim}`,
@@ -353,34 +505,31 @@ export default function GuidedTour({
       }
     : null;
 
-  // Estimated card height — real height varies slightly with body copy length, but this only
-  // needs to be close enough to decide which side of the target has room, not pixel-exact.
-  const CARD_HEIGHT_ESTIMATE = 170;
-  // The *border box*, which is what has to fit on screen: `CARD` is content-box, so its 20rem
-  // width plus 1.1rem of padding and 1px of border on each side comes to this. Clamping against
-  // the bare 320 instead hung 21px of every right-hand-sidebar step's card off the right edge.
-  const CARD_WIDTH = 20 * 16 + 2 * 1.1 * 16 + 2;
+  // The card's height varies with the body copy and the viewport width, so it is measured after
+  // each render; the estimate covers only the very first frame.
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [cardHeight, setCardHeight] = useState(190);
+  useEffect(() => {
+    const h = cardRef.current?.offsetHeight;
+    if (h && Math.abs(h - cardHeight) > 2) setCardHeight(h);
+  });
+  const CARD_WIDTH = 320;
   const cardStyle: React.CSSProperties = rect
-    ? {
-        ...CARD,
-        // Prefer below the target; if there isn't room, place it above instead of clamping into
-        // an overlap with the very element it's pointing at.
-        top:
-          rect.bottom + 16 + CARD_HEIGHT_ESTIMATE <= window.innerHeight
-            ? rect.bottom + 16
-            : Math.max(16, rect.top - CARD_HEIGHT_ESTIMATE - 16),
-        left: Math.max(16, Math.min(rect.left, window.innerWidth - 16 - CARD_WIDTH)),
-      }
+    ? { ...CARD, ...placeCard(rect, CARD_WIDTH, cardHeight) }
     : {
         ...CARD,
-        top: window.innerHeight / 2 - 100,
-        left: Math.max(16, window.innerWidth / 2 - CARD_WIDTH / 2),
+        top: Math.max(16, window.innerHeight / 2 - cardHeight / 2),
+        left: Math.max(16, window.innerWidth / 2 - Math.min(CARD_WIDTH, window.innerWidth - 32) / 2),
       };
 
+  // Skipping and finishing both mean "do not offer this again unasked".
   const finish = () => {
     markGuidedTourSeen();
     onFinish();
   };
+
+  // Every hook is above this line: one placed after an early return renders conditionally.
+  if (hidden) return null;
 
   return (
     <>
@@ -391,38 +540,47 @@ export default function GuidedTour({
             inset: 0,
             zIndex: 101,
             background: UI.scrim,
+            // Never swallow clicks: on a real step this shows while the target is briefly missing
+            // (a popup opening, a panel re-rendering), and a click-eating scrim then left Skip as
+            // the only working control on the screen.
+            pointerEvents: 'none',
           }}
         />
       )}
       {spotlight && <div style={spotlight} />}
-
-      {/* `data-tour-*` is how an automated pass drives the tour: it reads which control the card
-          is pointing at and clicks that, rather than guessing from the copy. It reports the
-          element actually ringed, not the step's preference — a step whose target is not on
-          screen rings nothing, and a pass told to click it anyway would hunt a control that is
-          not there. */}
-      <div style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={rect ? step.targetId ?? '' : ''}>
+      {/* `data-tour-*` is how an automated pass drives the run: it reads which control the card is
+          pointing at and clicks that, rather than guessing from the copy. Empty while nothing is
+          ringed. */}
+      <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={rect ? step.targetId ?? '' : ''}>
         <p style={STEP_LABEL}>
           Guided walkthrough — {stepIndex + 1} of {STEPS.length}
         </p>
         <h3 style={TITLE}>{step.title}</h3>
         <p style={BODY}>{step.body}</p>
+        {note && <p data-tour-note="" style={{ ...BODY, color: UI.bad, marginTop: '-0.4rem' }}>{note}</p>}
         <div style={FOOTER}>
           <button style={GHOST_BUTTON} onClick={finish}>
             Skip tour
           </button>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             {stepIndex > 0 && (
-              <button style={BUTTON} onClick={() => setStepIndex(stepIndex - 1)}>
+              <button style={BUTTON} onClick={back}>
                 Back
               </button>
             )}
-            {isManual && (
+            {isManual ? (
               <button
                 style={PRIMARY_BUTTON}
-                onClick={() => (isLast ? finish() : setStepIndex(stepIndex + 1))}
+                onClick={() => (isLast ? finish() : start())}
               >
                 {isLast ? 'Finish' : 'Start'}
+              </button>
+            ) : (
+              // Every real step needs a way past it that is not "abandon the whole tour": the world
+              // keeps running underneath, and a market closure at Antwerp (seed-dependent) left the
+              // card pointing at a disabled Sell button with Skip tour as the only control.
+              <button style={BUTTON} onClick={start}>
+                Skip this
               </button>
             )}
           </div>

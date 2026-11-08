@@ -239,6 +239,7 @@ export default function GameScreen() {
     return docked ? planFirstRun(state, captain, docked, priceFor) : null;
   })();
 
+  const tourOwner = tourPlan ? state.captains.find(c => c.id === tourPlan.captainId) ?? null : null;
   /**
    * The guided run is pointing at something: open whichever panel it lives in, then, once the panel
    * has finished sliding in, scroll the control into the middle of it. Scrolling any earlier
@@ -683,22 +684,25 @@ export default function GameScreen() {
       />
 
       {/* --- Overlays -------------------------------------------------------------------- */}
-      {/* Hidden, never unmounted, while the hand-over card is up or the rivals' turns replay: its
-          scrim would dim the replay, and its card would be talking about the player's own move while
-          the screen shows someone else's. Unmounting would lose its place. */}
-      {tourPlan && captain && !over && (
+      {/* Kept mounted through the hot-seat handover (`hidden`), never unmounted: remounting threw
+          away the step and the tour's memory and restarted it from the welcome card. The view is
+          the plan owner's, not the active seat's — see `TourPlan.captainId`.
+          Also hidden while the rivals' turns replay: its scrim would dim the replay, and its card would
+          be talking about the player's own move while the screen shows someone else's. */}
+      {tourPlan && tourOwner && !over && (
         <GuidedTour
           onTargetChange={revealTourTarget}
-          hidden={state.phase === 'handover' || !!replay.frame}
           view={{
             state,
-            captain,
+            captain: tourOwner,
             ship: state.ships.find(sh => sh.id === tourPlan.shipId) ?? null,
             targetPort,
             focusedContract,
-            priceFor,
+            selectedShipId,
+            priceFor: priceLookup(state, tourOwner.id),
           }}
           plan={tourPlan}
+          hidden={state.phase === 'handover' || !!replay.frame}
           onFinish={() => setTourPlan(null)}
         />
       )}
