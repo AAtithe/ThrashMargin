@@ -66,7 +66,7 @@ export function objectiveStatus(s: GameState, o: Objective, progress: number): O
     case 'deliver':
       return out(`Bring ${ITEM[o.itemId]?.name.toLowerCase() ?? o.itemId}`, s.inventory[o.itemId] ?? 0, o.qty);
     case 'pay':
-      return out('Put groats into it', s.groats, o.groats);
+      return out('Groats in hand, paid over when you report back', s.groats, o.groats);
     case 'course':
       return out(`Complete ${COURSE[o.courseId]?.name ?? o.courseId}`, s.coursesDone.includes(o.courseId) ? 1 : 0, 1);
     case 'job': {
