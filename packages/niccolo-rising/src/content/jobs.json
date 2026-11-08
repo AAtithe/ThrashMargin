@@ -1,0 +1,30 @@
+[
+  { "id": "charetty", "name": "The Charetty dyeworks", "blurb": "Marian de Charetty's house: vats of woad and madder, a courier business, and a lad called Claes who will not stay in his place.",
+    "ranks": [
+      { "name": "Vat-boy", "pay": 30, "req": { "craft": 0, "wit": 0, "stamina": 0 }, "gains": { "craft": 3, "wit": 1, "stamina": 2 } },
+      { "name": "Journeyman dyer", "pay": 70, "req": { "craft": 40, "wit": 10, "stamina": 25 }, "gains": { "craft": 5, "wit": 1, "stamina": 3 } },
+      { "name": "Master of the vats", "pay": 150, "req": { "craft": 140, "wit": 40, "stamina": 80 }, "gains": { "craft": 7, "wit": 2, "stamina": 4 } },
+      { "name": "Manager of the company", "pay": 320, "req": { "craft": 380, "wit": 200, "stamina": 200 }, "gains": { "craft": 8, "wit": 5, "stamina": 5 } }
+    ] },
+  { "id": "medici", "name": "The Medici branch", "blurb": "Tommaso Portinari's counting house, all green baize and ledgers. Florence watches every entry.",
+    "ranks": [
+      { "name": "Messenger", "pay": 40, "req": { "craft": 0, "wit": 15, "stamina": 0 }, "gains": { "craft": 0, "wit": 3, "stamina": 2 } },
+      { "name": "Junior clerk", "pay": 90, "req": { "craft": 0, "wit": 60, "stamina": 20 }, "gains": { "craft": 1, "wit": 5, "stamina": 2 } },
+      { "name": "Factor", "pay": 200, "req": { "craft": 20, "wit": 200, "stamina": 70 }, "gains": { "craft": 1, "wit": 7, "stamina": 3 } },
+      { "name": "Branch manager", "pay": 420, "req": { "craft": 60, "wit": 480, "stamina": 160 }, "gains": { "craft": 2, "wit": 9, "stamina": 4 } }
+    ] },
+  { "id": "notary", "name": "Julius the notary", "blurb": "Contracts, wills and quarrels, all in a beautiful Bolognese hand. Julius is cleverer than he is careful.",
+    "ranks": [
+      { "name": "Copyist", "pay": 35, "req": { "craft": 0, "wit": 10, "stamina": 5 }, "gains": { "craft": 1, "wit": 3, "stamina": 2 } },
+      { "name": "Scrivener", "pay": 80, "req": { "craft": 10, "wit": 50, "stamina": 40 }, "gains": { "craft": 1, "wit": 4, "stamina": 4 } },
+      { "name": "Notary's clerk", "pay": 170, "req": { "craft": 20, "wit": 160, "stamina": 120 }, "gains": { "craft": 2, "wit": 6, "stamina": 5 } },
+      { "name": "Notary public", "pay": 360, "req": { "craft": 40, "wit": 380, "stamina": 260 }, "gains": { "craft": 3, "wit": 8, "stamina": 6 } }
+    ] },
+  { "id": "astorre", "name": "Astorre's company", "blurb": "Captain Astorre and his mercenaries, half his ear gone and all his opinions intact. Paid by whoever is paying.",
+    "ranks": [
+      { "name": "Recruit", "pay": 35, "req": { "craft": 5, "wit": 0, "stamina": 15 }, "gains": { "craft": 2, "wit": 0, "stamina": 4 } },
+      { "name": "Crossbowman", "pay": 80, "req": { "craft": 30, "wit": 5, "stamina": 60 }, "gains": { "craft": 3, "wit": 1, "stamina": 5 } },
+      { "name": "Sergeant", "pay": 180, "req": { "craft": 90, "wit": 40, "stamina": 180 }, "gains": { "craft": 4, "wit": 2, "stamina": 7 } },
+      { "name": "Captain of a lance", "pay": 380, "req": { "craft": 200, "wit": 120, "stamina": 420 }, "gains": { "craft": 5, "wit": 3, "stamina": 9 } }
+    ] }
+]

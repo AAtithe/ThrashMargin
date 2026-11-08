@@ -30,6 +30,14 @@ import {
   WAGES_PER_SHIP,
   hostileBidPrice,
   sharePriceFor,
+  DAMAGE_SPEED_PENALTY,
+  REPAIR_PRICE,
+  TEA_RACE_PREMIUM,
+  TEA_RACE_PURSE,
+  CHARTER_TERMS,
+  RENOWN_FAMOUS,
+  RENOWN_FOR,
+  RENOWN_SMART,
 } from '../sim/rules';
 import { AGENT_LADING_DISCOUNT, AGENT_PRICE } from '../sim/agents';
 import { GLUT_FACTOR, SHORTAGE_FACTOR } from '../sim/events';
@@ -37,6 +45,7 @@ import { PRICE_CEILING, PRICE_FLOOR } from '../sim/pricing';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
+import { Vignette, type VignetteKind } from '../components/Art';
 
 const pct = (n: number) => `${Math.round(n * 100)}%`;
 
@@ -150,56 +159,107 @@ export default function Tutorial() {
 
       <Panel title="What the optional rules actually do">
         <dl style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-          <Rule name="Wind and weather">
+          <Rule name="Wind and weather" art="storm">
             A seasonal wind chart, so the fast way round changes through the year. Green chevrons on
             the chart point where the wind is fair. Storms cost time, never cargo.
           </Rule>
-          <Rule name="Pirates">
+          <Rule name="Pirates" art="piracy">
             Ransoms, and occasionally the whole hold. Guns halve the chance and talk most boarders down
             to money. Insurance is a <em>cargo</em> policy: an empty hull costs nothing and is covered
             for nothing, and the premium scales with the cargo aboard and how piratical the route is.
             It is worth buying for a full hold on a dangerous run and a poor buy otherwise.
           </Rule>
-          <Rule name="World events">
+          <Rule name="World events" art="event">
             Strikes shut a port to all trade. Embargoes stop a good being loaded anywhere. A glut pays{' '}
             ×{GLUT_FACTOR}, a shortage ×{SHORTAGE_FACTOR}, and an Admiralty bounty pays a premium a
             lot. Everything expires.
           </Rule>
-          <Rule name="Per-port prices">
+          <Rule name="Per-port prices" art="deliver">
             Always on. Each quay sets its own price, between {pct(PRICE_FLOOR)} and{' '}
             {pct(PRICE_CEILING)} of the commission's reckoning. You are paid on the{' '}
             <strong>commission's</strong> price, so buying cheap is the margin.
           </Rule>
-          <Rule name="Crew wages">
+          <Rule name="Crew wages" art="insurance">
             {money(WAGES_PER_SHIP)} a ship every round, more when laden. Cash stops being a score and
             becomes a constraint. If you cannot pay you fall into arrears, which come off the top of
             what you earn next round — nobody goes bankrupt, but a broke captain's next delivery is
-            not really theirs.
+            not really theirs.{' '}
+            In a hole with nothing aboard, a docked hull can be sold back to the yard for half her
+            price (never your last), which pays the arrears first.
           </Rule>
-          <Rule name="Loans">
+          <Rule name="Loans" art="insurance">
             Borrow against your ships and shares at {pct(LOAN_INTEREST_PER_ROUND)} a round. Useful
             through a bad season. What you owe counts against you if a claim is settled on assets.
           </Rule>
-          <Rule name="Hostile bids">
+          <Rule name="Hostile bids" art="declare">
             Buy a share off anyone, the leader included, whatever your own holding. Cheapest when you
             hold least — a first bid from nothing costs {money(hostileBidPrice(0, 0))} — and every bid
             anyone makes doubles the price for everyone after. This is the way back in if you fall
             behind, and it runs out fast.
           </Rule>
-          <Rule name="Port agents">
+          <Rule name="Port agents" art="deliver">
             {money(AGENT_PRICE)} for a permanent man at one quay: {pct(AGENT_LADING_DISCOUNT)} off
             everything you lade there, more for anything you sell off there, and word ahead of the
             market. Where you trade becomes a position you hold.
           </Rule>
-          <Rule name="Ship classes">
+          <Rule name="Ship classes" art="trader">
             A fast clipper, a roomy barque and an armed Indiaman instead of one hull repeated. Up to{' '}
             {MAX_SHIPS} ships, from {money(SHIP_PRICE)}.
           </Rule>
-          <Rule name="Commissions expire">
+          <Rule name="Commissions expire" art="contract">
             Cards come off the board if nobody fills them, and cargo loses value the longer it sits in
             the hold. Counter-intuitively this makes for the <em>shortest</em> games.
           </Rule>
-          <Rule name="The shipping exchange">
+          <Rule name="The Great Tea Race" art="teaRace">
+            Every summer the new season's tea comes down to Foochow, Shanghai and Hong Kong. Tea
+            loaded there while the race is open is marked as the new season's; land it in London and
+            the first ship home takes {money(TEA_RACE_PURSE[1])} and {TEA_RACE_PREMIUM[1]}x a lot, the
+            second {money(TEA_RACE_PURSE[2])} and {TEA_RACE_PREMIUM[2]}x. It lands itself the moment
+            she ties up. Everybody can see it coming, which is the point: it is the one contest the
+            whole table plans towards.
+          </Rule>
+          <Rule name="Cracking on" art="crackOn">
+            Once a turn, any ship may be driven for one more die: at sea she runs it at once, in port
+            it is added to the wind she has yet to sail on. Throw a 1 (a 1 or 2 rounding a great cape)
+            and she carries away a spar instead: nothing gained, {DAMAGE_SPEED_PENALTY} points slower
+            every roll, and {money(REPAIR_PRICE)} at a quay to make her good. Worth it to win a race
+            or make port this turn; a poor habit on a long, quiet passage.
+          </Rule>
+          <Rule name="Encounters at sea" art="derelict">
+            A ship under way sometimes meets something that asks for a decision, good for that turn
+            only. A derelict to salvage for the ground it costs, castaways whose owners pay to have
+            them taken off, a country trader with a lot going cheap, a pilot who will take her through
+            the reefs for a fee (most of them know the way). Holding your course is always an answer.
+          </Rule>
+          <Rule name="Owners' charters" art="contract">
+            Your owners hand you two charters: land {CHARTER_TERMS.regionTrade.target} lots in a named
+            region, be first home on {CHARTER_TERMS.firstHome.target} commissions, land{' '}
+            {CHARTER_TERMS.goodTrade.target} lots of one good, trade into {CHARTER_TERMS.spread.target}{' '}
+            different regions, place in a tea race, or run a fleet of three. Each pays{' '}
+            {money(CHARTER_TERMS.fleet.reward)} to {money(CHARTER_TERMS.firstHome.reward)} when done and is
+            replaced at once. They are public: read a rival's and you can guess where she is going.
+          </Rule>
+          <Rule name="Ship renown" art="crackOn">
+            A ship earns renown for being first home on a card (+{RENOWN_FOR.firstHome}) and in the tea race
+            (+{RENOWN_FOR.raceWin} for a win, +{RENOWN_FOR.raceSecond} for second). At {RENOWN_SMART} she is a
+            smart ship and sails a point faster every roll; at {RENOWN_FAMOUS}, a famous clipper, two. Sell
+            her and her name goes with her.
+          </Rule>
+          <Rule name="Captain careers" art="declare">
+            Experience comes from landing cargo, being first home, the tea race, charters, encounters
+            taken up, and storms and pirates weathered. Each level brings a skill point for the tree:
+            Seamanship (Weather eye, Driver, Navigator), Trade (Haggler, Factor, Merchant prince) and
+            Command (Bosun, Gunner, Commodore), each branch learned in order. Most captains reach level
+            four or five by the close, so the top of a branch is a late-game prize. A captain behind
+            on shares earns experience faster.
+          </Rule>
+          <Rule name="Eras" art="storm">
+            The game ramps up. Era I is trade and the wind. Era II, from round 13, brings pirates,
+            encounters, cracking on and world events. Era III, from round 31, brings the Great Tea
+            Race, the commission clock and hostile bids. Only the rules you chose in the lobby arrive;
+            the banner under the season shows what is coming next.
+          </Rule>
+          <Rule name="The shipping exchange" art="event">
             Three companies whose prices rise and fall with the cargo actually landed in their waters.
             Not another way to win — somewhere for money to go, and a market to read. If you can see
             where the commissions are sending everyone, you can see which company is about to move.
@@ -239,11 +299,18 @@ export default function Tutorial() {
   );
 }
 
-function Rule({ name, children }: { name: string; children: React.ReactNode }) {
+function Rule({ name, art, children }: { name: string; art?: VignetteKind; children: React.ReactNode }) {
   return (
-    <div>
-      <dt style={term}>{name}</dt>
-      <dd style={{ ...para, margin: '0.1rem 0 0 0' }}>{children}</dd>
+    <div style={{ display: 'flex', gap: '0.7rem', alignItems: 'flex-start' }}>
+      {art ? (
+        <Vignette kind={art} size={40} colour={UI.verdigris} style={{ border: `1px solid ${UI.rule}`, background: UI.panel, marginTop: '0.15rem' }} />
+      ) : (
+        <span style={{ width: 42, flex: '0 0 42px' }} />
+      )}
+      <div style={{ minWidth: 0 }}>
+        <dt style={term}>{name}</dt>
+        <dd style={{ ...para, margin: '0.1rem 0 0 0' }}>{children}</dd>
+      </div>
     </div>
   );
 }

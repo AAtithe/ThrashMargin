@@ -1,0 +1,165 @@
+[
+  {
+    "id": "goose",
+    "title": "The goose and the burgomaster",
+    "giver": "Felix de Charetty",
+    "minLevel": 1,
+    "brief": "Felix has a wager with half the apprentices of the Spangnaerts quarter that Claes cannot make a burgomaster run. Claes has a goose, a bucket and no sense of proportion. Make the town laugh three times, and Felix pays.",
+    "done": "Bruges laughs until it aches, and a burgomaster with feathers in his hat swears to find the dyer's lad responsible. Felix pays up with bad grace and a better grin.",
+    "objectives": [{ "kind": "scheme", "schemeId": "prank", "count": 3 }],
+    "reward": { "groats": 60, "xp": 10 }
+  },
+  {
+    "id": "drill",
+    "title": "Astorre's yard",
+    "after": "goose",
+    "giver": "Captain Astorre",
+    "minLevel": 1,
+    "brief": "Astorre watched the goose affair from a tavern window. 'A boy who makes enemies that fast,' he says, scratching at what is left of his ear, 'had better learn to stand up afterwards.' Put forty points of battle stats on in the drill yard.",
+    "done": "Astorre grunts, which from him is a speech, and tosses you a length of ash with lead knotted into the end. 'For the next burgomaster.'",
+    "objectives": [{ "kind": "train", "amount": 40 }],
+    "reward": { "xp": 15, "items": { "cudgel": 1 } }
+  },
+  {
+    "id": "scots",
+    "title": "The Scots at Sluys",
+    "after": "drill",
+    "giver": "Julius the notary",
+    "minLevel": 1,
+    "brief": "A boatload of Scots archers has come ashore at Sluys with a grievance and a thirst, and they have been taking both out on the Charetty couriers. Julius would rather not go down to the harbour himself. Win two fights against them.",
+    "done": "The archers go back to their ship with a better opinion of Flemings. Julius pays the courier money you saved him, and pretends it was his idea.",
+    "objectives": [{ "kind": "duel", "opponentId": "drunk", "count": 2 }],
+    "reward": { "groats": 120, "xp": 18 }
+  },
+  {
+    "id": "woad",
+    "title": "Blue for the vats",
+    "after": "scots",
+    "giver": "Marian de Charetty",
+    "minLevel": 2,
+    "brief": "The demoiselle de Charetty runs her late husband's dyeworks better than he ever did, and the woad is running low. Take a post at the works, then go to Ghent and bring home two bales of woad for the blue vats.",
+    "done": "Marian counts the bales herself, checks the colour against the light, and says nothing at all. Henninc the foreman says that means she is pleased.",
+    "objectives": [
+      { "kind": "job", "jobId": "charetty", "rank": 0 },
+      { "kind": "arrive", "city": "ghent" },
+      { "kind": "deliver", "itemId": "woad", "qty": 2 }
+    ],
+    "reward": { "groats": 180, "xp": 22 }
+  },
+  {
+    "id": "snow",
+    "title": "Snow on the Grand Place",
+    "after": "woad",
+    "giver": "Felix de Charetty",
+    "minLevel": 3,
+    "brief": "Simon de St Pol, golden and insufferable, is in Bruges for the winter, and Felix wants him humbled. A snowball is a small thing. Several snowballs, a frozen fountain and a borrowed sled are less small. Pull off three schemes of any kind while Simon is in town.",
+    "done": "Simon de St Pol lands in the fountain in front of half the nobility of Flanders. That night three of his men find you in an alley by the Minnewater, and they are thorough. You wake in the Infirmary, and you begin to understand that some jokes are not forgiven.",
+    "objectives": [{ "kind": "scheme", "count": 3 }],
+    "reward": { "xp": 30, "standing": 5, "infirmaryMinutes": 30 }
+  },
+  {
+    "id": "geneva",
+    "title": "Courier to Geneva",
+    "after": "snow",
+    "giver": "Marian de Charetty",
+    "minLevel": 3,
+    "hours": 48,
+    "brief": "The Charetty courier business carries letters for half the banks of Bruges, and the Geneva run is late. Marian needs it done inside two days, and a pot of Geneva kermes brought back for the scarlet vats while you are there.",
+    "done": "The letters arrive in time, which earns the Charetty name more than the fee does. The kermes goes into the vat, and the cloth comes out a red the Waterhalle has not seen this season.",
+    "objectives": [
+      { "kind": "arrive", "city": "geneva" },
+      { "kind": "deliver", "itemId": "kermes", "qty": 1 }
+    ],
+    "reward": { "groats": 450, "xp": 35 }
+  },
+  {
+    "id": "cipher",
+    "title": "A letter for the Medici",
+    "after": "geneva",
+    "giver": "Gregorio of Asti",
+    "minLevel": 4,
+    "brief": "One of the Geneva letters was in cipher, and Gregorio the lawyer noticed you looking at it longer than a courier should. 'Learn your reckoning properly,' he says, 'and get your wit up, and I may have work for a boy who can read what is not meant to be read.'",
+    "done": "Gregorio sets a page of numbers in front of you. Within the hour you have it: a Medici factor in Geneva telling Bruges which way the Duke of Milan is leaning. Gregorio looks at you for a long time, and then pays you rather well to forget it.",
+    "objectives": [
+      { "kind": "course", "courseId": "reckoning" },
+      { "kind": "work", "stat": "wit", "value": 50 }
+    ],
+    "reward": { "groats": 600, "xp": 40, "standing": 5 }
+  },
+  {
+    "id": "felix",
+    "title": "Felix goes for a soldier",
+    "after": "cipher",
+    "giver": "Felix de Charetty",
+    "minLevel": 5,
+    "brief": "Felix has signed with Astorre's company for the Italian war, over his mother's furious objections. Before he goes he wants one thing settled: which of you is the better man in the street. Beat him, and he will go to Italy knowing it.",
+    "done": "Felix gets up laughing, which you did not expect, and embraces you, which you expected even less. 'Look after her,' he says, meaning his mother, and rides south with Astorre's lances in the morning.",
+    "objectives": [{ "kind": "duel", "opponentId": "felix", "count": 1 }],
+    "reward": { "xp": 45, "items": { "dagger": 1 } }
+  },
+  {
+    "id": "alum",
+    "title": "The alum of Tolfa",
+    "after": "felix",
+    "giver": "Gregorio of Asti",
+    "minLevel": 6,
+    "brief": "Every dyer in Flanders needs alum to fix the colour, and the Turk holds the old mines. Gregorio has heard of new alum in Spain that the Pope's men cannot tax. Bring it past the officials three times and the Charetty vats never run short again.",
+    "done": "Three cargoes of Spanish alum sit in the Charetty cellars under bales of wool. Gregorio burns the paperwork himself. Somewhere in Rome, a Medici cardinal's monopoly is a little less complete.",
+    "objectives": [{ "kind": "scheme", "schemeId": "alum", "count": 3 }],
+    "reward": { "groats": 1200, "xp": 55 }
+  },
+  {
+    "id": "italy",
+    "title": "Silk from Florence",
+    "after": "alum",
+    "giver": "Tobias Beventini",
+    "minLevel": 6,
+    "hours": 72,
+    "brief": "Tobie the physician has letters from Astorre's company in Italy, and none of them are good. The Charetty needs silk to sell and money to pay its lances. Go to Florence within three days and bring back two bolts of Lucchese silk.",
+    "done": "The silk sells, and the lances are paid. Tobie reads the latest letter twice and folds it away without telling you what it says.",
+    "objectives": [
+      { "kind": "arrive", "city": "florence" },
+      { "kind": "deliver", "itemId": "silk", "qty": 2 }
+    ],
+    "reward": { "groats": 1500, "xp": 65 }
+  },
+  {
+    "id": "grief",
+    "title": "News from the south",
+    "after": "italy",
+    "giver": "Tobias Beventini",
+    "minLevel": 7,
+    "brief": "Felix de Charetty is dead, killed in a skirmish in the south that nobody will remember. Marian has shut herself in the counting room. Somebody has to keep the works running and the debtors at bay, and the street needs to see that the Charetty still has teeth. Win three duels and reach level 8.",
+    "done": "Bruges notices that the Charetty did not fall when its heir did. Marian comes out of the counting room on the fourth day, looks at the ledgers you have kept, and looks at you as if for the first time.",
+    "objectives": [
+      { "kind": "duel", "count": 3 },
+      { "kind": "level", "level": 8 }
+    ],
+    "reward": { "groats": 800, "xp": 70, "standing": 15 }
+  },
+  {
+    "id": "marian",
+    "title": "Marian",
+    "after": "grief",
+    "giver": "Marian de Charetty",
+    "minLevel": 9,
+    "brief": "The company's creditors smell a widow without an heir. Marian has decided, as she decides everything, quickly and completely: she will marry the apprentice. To be worth it, rise to journeyman at the works and put three thousand groats into the company's debts.",
+    "done": "Bruges is scandalised for a month and then forgets. Claes the apprentice is gone. In his place stands Nicholas vander Poele, husband of the demoiselle de Charetty, master of a dyeworks, a courier business and a mercenary company, and not yet twenty.",
+    "objectives": [
+      { "kind": "job", "jobId": "charetty", "rank": 1 },
+      { "kind": "pay", "groats": 3000 }
+    ],
+    "reward": { "xp": 120, "standing": 30, "lodging": "house", "honour": "nicholas" }
+  },
+  {
+    "id": "stpol",
+    "title": "The vendetta",
+    "after": "marian",
+    "giver": "Father Godscalc",
+    "minLevel": 12,
+    "brief": "Simon de St Pol has never forgotten the fountain, and his father Jordan de Ribérac has reasons of his own, older than you, to want you gone. Every few months another of their men tries. There is only one way to end it in the street: beat Simon de St Pol, face to face.",
+    "done": "Simon goes down on the cobbles of the Burg in front of the whole of Bruges. He will hate you for the rest of his life, and so will his father. But nobody in Flanders will ever again mistake you for a dyer's lad.",
+    "objectives": [{ "kind": "duel", "opponentId": "simon", "count": 1 }],
+    "reward": { "groats": 5000, "xp": 200, "standing": 50 }
+  }
+]

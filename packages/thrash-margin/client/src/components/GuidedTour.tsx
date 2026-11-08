@@ -8,42 +8,36 @@
  *
  * ## What was already here, and why this is not it
  *
- * The game has carried a tutorial since the prototype: `buildTutorial`'s eight-territory map, the
- * lobby's "Start Tutorial" quick-start, `getTutorialHint`'s six state-driven hints in a green
- * panel, and the "Tutorial Graduate" achievement. That tutorial is good as far as it goes, and it
- * stays. Two things it does not do:
+ * The game ships a tutorial map and a `Coach` panel (`components/Modals.tsx`) whose text follows
+ * the board state. That is good as far as it goes, and it stays. Two things it does not do:
  *
- * - **It only exists on the tutorial map.** `cfg.mapId === 'tutorial'` gates the panel, so a
- *   player who starts a normal campaign — which is what the lobby's main button does — gets no
- *   help at all.
- * - **It tells rather than points.** "Click Ironhold (your blue capital)" is a sentence in a
- *   side panel about a shape on a map; this points at the shape.
+ * - **It only exists on the tutorial map.** `Game.tsx` renders it under
+ *   `state.config.mapId === 'tutorial'`, so a player who starts a normal campaign — which is what
+ *   the lobby's main button does — gets no help at all.
+ * - **It tells rather than points.** A sentence in a side panel about a shape on a map is not the
+ *   same as a ring round the shape.
  *
  * So this runs on any map, naming whatever the player's actual capital and neighbours are called,
- * and `Game.tsx` hides the hint panel while it is up so the two are never talking at once.
- *
- * `GameConfig.enableTutorial` is a flag declared in `shared/types.ts` and read by nothing — a
- * placeholder from the prototype. It is deliberately left alone: the run is offered on a fresh
- * campaign and from the header, not behind a lobby checkbox nobody ticks.
- *
- * ## Action points are the constraint this tour is built around
- *
- * A turn is `apPerTurn` points, 4 by default. Recruit costs 1, build costs 1, and an attack costs
- * 2 — exactly the four the tour spends, in that order, and no more. A fifth action step would
- * either sit waiting on a disabled button or push the attack out of reach, so there isn't one.
+ * and `Game.tsx` hides the coach while it is up so the two are never talking at once.
  *
  * ## What the predicates have to tolerate
  *
- * `isComplete` is read against live state on every render, so no step may read true before the
- * run begins, and the opening scan walks the steps in order and stops at the first unfinished one
- * rather than searching the whole list. Several steps measure a *change* (troops recruited,
- * building raised), which is what `TourMemory`'s opening snapshot is for.
+ * `isComplete` is read against live state on every render, so no step may read true before the run
+ * begins, and the opening scan walks the steps in order and stops at the first unfinished one
+ * rather than searching the whole list. Several steps measure a *change* — troops recruited, a
+ * building raised — which is what `TourMemory`'s opening snapshot is for.
+ *
+ * A step's target may name more than one element, first match wins. That is for the build step:
+ * the panel's building picker is two stages, an opener that is replaced by a list of buildings, so
+ * the step points at the row once the list is open and at the opener before it.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { BUILDINGS, BUILDING_UPGRADES, getSlots } from 'shared/engine-reference';
-import { PLAYER, isEnemy } from 'shared/types';
-import type { BuildingType, GameState, Territory } from 'shared/types';
+import {
+  BASE_BUILDINGS, BUILDINGS, slotsOf,
+  type BuildingType, type GameState, type Territory,
+} from 'shared/sim';
+import { UI } from '../theme';
 
 const TOUR_SEEN_KEY = 'tm_guided_tour_seen';
 
@@ -80,8 +74,6 @@ export interface TourPlan {
   building: BuildingType;
 }
 
-const owned = (state: GameState) => state.nodes.filter(n => n.owner === PLAYER);
-
 /** Neighbours of a node, read off the edge list in both directions. */
 function neighboursOf(state: GameState, id: number): Territory[] {
   const ids = new Set<number>();
@@ -92,40 +84,42 @@ function neighboursOf(state: GameState, id: number): Territory[] {
   return [...ids].map(i => state.nodes[i]).filter(Boolean);
 }
 
+const mine = (state: GameState) => state.nodes.filter(n => n.owner === state.activeFaction);
+
 /**
  * Work out the turn to teach, from the board as it stands.
  *
- * Nothing here is hardcoded to the tutorial map. The home territory is whichever one the player
- * actually holds, the target is the softest thing next to it, and the building is the cheapest one
- * the treasury can pay for out of what is still unbuilt — so the run says "build a Farm" only when
- * a Farm is genuinely the sensible thing to build, and says the right name on every map.
+ * Nothing is hardcoded to the tutorial map. The home territory is whichever one the player holds,
+ * the target is the softest thing next to it, and the building is the cheapest the treasury can
+ * pay for out of what is still unbuilt — so the run says "build a Farm" only when a Farm is
+ * genuinely the sensible thing to build, and says the right name on every map.
  *
  * Returns null when the run does not make sense: more than one territory held (this is a first
  * turn, not a rescue), no free building slot, nothing adjacent to take, or no money.
  */
 export function planFirstTurn(state: GameState): TourPlan | null {
   if (state.status !== 'active') return null;
-  const mine = owned(state);
-  if (mine.length !== 1) return null;
-  const home = mine[0];
+  const held = mine(state);
+  if (held.length !== 1) return null;
+  const home = held[0];
+  const purse = state.factions[state.activeFaction]?.resources;
+  if (!purse) return null;
 
   // Somewhere to attack. Weakest first: a first attack that bounces teaches the wrong lesson.
   const targets = neighboursOf(state, home.id)
-    .filter(n => n.owner !== PLAYER)
-    .sort((a, b) => a.troops - b.troops || Number(isEnemy(b.owner)) - Number(isEnemy(a.owner)));
+    .filter(n => n.owner !== state.activeFaction)
+    .sort((a, b) => a.troops - b.troops);
   if (targets.length === 0) return null;
 
-  // Something to build, and a slot to put it in. Base buildings only: the rest of the list is
-  // reachable as an upgrade of something already standing, which on turn one nothing is.
-  if (home.buildings.length >= getSlots(home)) return null;
-  const upgradeTargets = new Set<string>(Object.values(BUILDING_UPGRADES));
-  const affordable = (Object.keys(BUILDINGS) as BuildingType[])
-    .filter(b => !upgradeTargets.has(b) && !home.buildings.includes(b))
-    .filter(b => BUILDINGS[b].cost.gold <= state.resources.gold && BUILDINGS[b].cost.mat <= state.resources.mat)
+  // Something to build, and a slot to put it in.
+  if (home.buildings.length >= slotsOf(home)) return null;
+  const affordable = BASE_BUILDINGS
+    .filter(b => !home.buildings.includes(b))
+    .filter(b => BUILDINGS[b].cost.gold <= purse.gold && BUILDINGS[b].cost.mat <= purse.mat)
     .sort((a, b) => BUILDINGS[a].cost.gold + BUILDINGS[a].cost.mat - (BUILDINGS[b].cost.gold + BUILDINGS[b].cost.mat));
   if (affordable.length === 0) return null;
 
-  if (state.resources.gold < state.config.recruitCost) return null;
+  if (purse.gold < state.config.recruitCost) return null;
 
   return { homeId: home.id, targetId: targets[0].id, building: affordable[0] };
 }
@@ -137,8 +131,8 @@ export function planFirstTurn(state: GameState): TourPlan | null {
 /** Everything a step reads, assembled by `Game.tsx` from state plus its own selection. */
 export interface TourView {
   state: GameState;
-  selId: number | null;
-  tgtId: number | null;
+  selected: number | null;
+  target: number | null;
 }
 
 /** The opening snapshot, for steps that measure a change rather than a value. */
@@ -153,7 +147,8 @@ interface TourMemory {
 interface TourStep {
   title: string;
   body: (v: TourView, plan: TourPlan) => string;
-  target: (v: TourView, plan: TourPlan) => string | null;
+  /** One id, or several in order of preference — the first that is on screen is spotlit. */
+  target: (v: TourView, plan: TourPlan) => string | string[] | null;
   isComplete: (v: TourView, plan: TourPlan, memory: TourMemory) => boolean;
 }
 
@@ -172,61 +167,58 @@ const INTRO: TourStep = {
 const SELECT_HOME: TourStep = {
   title: 'Select your capital',
   body: (v, plan) =>
-    `Click ${nameOf(v, plan.homeId)} on the map. Selecting a territory is what opens its options — nothing in this game happens to a territory you have not selected.`,
-  target: (_v, plan) => `territory-${plan.homeId}`,
-  isComplete: (v, plan) => v.selId === plan.homeId,
+    `Click ${nameOf(v, plan.homeId)} on the map. Selecting a territory is what opens its orders — nothing in this game happens to a territory you have not selected.`,
+  target: (_v, plan) => `tm-territory-${plan.homeId}`,
+  isComplete: (v, plan) => v.selected === plan.homeId,
 };
 
 const RECRUIT: TourStep = {
   title: 'Raise some troops',
   body: (v, plan) =>
-    `Recruit costs ${v.state.config.recruitCost} gold a troop and one action point, and a settlement will only hold so many — ${nameOf(v, plan.homeId)} is capped by its level and its barracks. ` +
-    `Set the slider where you like and press Recruit.`,
-  target: () => 'recruit-button',
+    `Troops cost ${v.state.config.recruitCost} gold each and no action at all, so raising them is never the thing that stops you doing something else. ` +
+    `What does stop you is the cap: ${nameOf(v, plan.homeId)} holds only so many, and barracks and higher levels are what raise it. Set the stepper and press Recruit.`,
+  target: () => 'tm-recruit',
   isComplete: (v, plan, memory) => (nodeOf(v, plan.homeId)?.troops ?? 0) > memory.troops,
 };
 
 const BUILD: TourStep = {
   title: 'Build something that pays',
   body: (_v, plan) =>
-    `A settlement has slots, and an empty slot earns nothing. ${BUILDINGS[plan.building].name} — ${BUILDINGS[plan.building].desc.toLowerCase()} — costs ${BUILDINGS[plan.building].cost.gold} gold and ${BUILDINGS[plan.building].cost.mat} materials, and goes on paying every turn for the rest of the campaign. ` +
-    `This is the half of the game the sword does not win.`,
-  target: (_v, plan) => `build-${plan.building}`,
+    `A settlement has slots, and an empty slot earns nothing. Open the slot and choose ${BUILDINGS[plan.building].name} — ${BUILDINGS[plan.building].desc.toLowerCase()} — for ${BUILDINGS[plan.building].cost.gold} gold and ${BUILDINGS[plan.building].cost.mat} materials. ` +
+    `It costs one action now and goes on paying every turn for the rest of the campaign. This is the half of the game the sword does not win.`,
+  // The picker is two stages: the opener is replaced by the list of buildings once it is pressed.
+  target: (_v, plan) => [`tm-build-${plan.building}`, 'tm-build-open'],
   isComplete: (v, plan, memory) => (nodeOf(v, plan.homeId)?.buildings.length ?? 0) > memory.buildings,
 };
 
 const PICK_TARGET: TourStep = {
   title: 'Pick what to take',
-  body: (v, plan) => {
-    const target = nodeOf(v, plan.targetId);
-    return (
-      `Click ${nameOf(v, plan.targetId)} — the ring round it marks it as somewhere you can reach from here. ` +
-      `It holds ${target?.troops ?? '?'} troops, which is the softest thing next to you, and taking it widens everything: more gold a turn, more ground to recruit on, more neighbours to go at next.`
-    );
-  },
-  target: (_v, plan) => `territory-${plan.targetId}`,
-  isComplete: (v, plan) => v.tgtId === plan.targetId || nodeOf(v, plan.targetId)?.owner === PLAYER,
+  body: (v, plan) =>
+    `With your own territory selected, click ${nameOf(v, plan.targetId)} — the ring round it marks it as somewhere you can reach from here. ` +
+    `It holds ${nodeOf(v, plan.targetId)?.troops ?? '?'} troops, the softest thing next to you, and taking it widens everything: more income a turn, more ground to recruit on, more neighbours to go at next.`,
+  target: (_v, plan) => `tm-territory-${plan.targetId}`,
+  isComplete: (v, plan) => v.target === plan.targetId || nodeOf(v, plan.targetId)?.owner === v.state.activeFaction,
 };
 
 const ATTACK: TourStep = {
   title: 'Send them in',
   body: () =>
-    `The slider sets how many troops go. Combat here is arithmetic, not dice — the preview above the button is what will happen, not what might. ` +
-    `Leave at least one troop at home: a territory with nothing in it is a territory anyone can walk into.`,
-  target: () => 'attack-button',
-  // An attack that bounces is still an attack, and still the lesson. Any of: we hold it now, the
-  // defenders are fewer than they were, or the log has grown since the run opened.
+    `The columns decide how many go and how many actions it costs. Combat here is arithmetic, not dice — what the panel forecasts is what will happen, not what might. ` +
+    `Leave a garrison behind: a territory with nothing in it is a territory anyone can walk into.`,
+  target: () => 'tm-attack',
+  // An attack that bounces is still an attack, and still the lesson. Any of: we hold it now, we
+  // hold more ground than we did, or the chronicle has grown since the run opened.
   isComplete: (v, plan, memory) =>
-    nodeOf(v, plan.targetId)?.owner === PLAYER ||
-    owned(v.state).length > memory.territories ||
+    nodeOf(v, plan.targetId)?.owner === v.state.activeFaction ||
+    mine(v.state).length > memory.territories ||
     v.state.log.length > memory.logLength,
 };
 
 const END_TURN: TourStep = {
   title: 'End the turn',
   body: v =>
-    `Your points are spent. Ending the turn collects the production, feeds the troops — one food each, every turn, and a shortfall starves them — and lets ${v.state.config.hotseat ? 'the other player' : 'the enemy'} move.`,
-  target: () => 'end-turn-button',
+    `Ending the turn collects the income, feeds the troops — ${v.state.config.upkeep} food each, every turn, and a shortfall starves them — and lets everyone else move.`,
+  target: () => 'tm-end-turn',
   isComplete: (v, _plan, memory) => v.state.turn > memory.turn,
 };
 
@@ -234,7 +226,7 @@ const OUTRO: TourStep = {
   title: 'That is the turn',
   body: () =>
     `Recruit, build, take ground, end the turn. The tension in this game is that troops eat and buildings do not: an army you cannot feed starves, and an economy you do not defend gets taken. ` +
-    `Watch the food line in the header more closely than the gold. Win by taking every enemy territory.`,
+    `Watch the food chip in the top bar more closely than the gold. Press ? at any time for the full rules.`,
   target: () => null,
   isComplete: () => false,
 };
@@ -256,35 +248,40 @@ const STEPS: TourStep[] = [INTRO, SELECT_HOME, RECRUIT, BUILD, PICK_TARGET, ATTA
  * somewhere deliberately, instant because a smooth scroll leaves the element moving for a few
  * hundred milliseconds after it is measured and the ring visibly lands wrong and then slides on.
  */
-function useTargetRect(targetId: string | null): DOMRect | null {
-  const [rect, setRect] = useState<DOMRect | null>(null);
+function useTargetRect(targetIds: string[]): { rect: DOMRect | null; id: string | null } {
+  // The resolved id travels with the rect: a step may name several candidates, and both the
+  // `data-tour-target` attribute and anything reading it need the one actually spotlit, not the
+  // first on the list. Reporting the preference instead made an automated pass hunt for the
+  // building row while the ring was on the opener that reveals it.
+  const [found, setFound] = useState<{ rect: DOMRect | null; id: string | null }>({ rect: null, id: null });
+  const key = targetIds.join('|');
 
   useEffect(() => {
-    if (!targetId) {
+    const ids = key ? key.split('|') : [];
+    const setRect = (r: DOMRect | null, id: string | null = null) => setFound({ rect: r, id: r ? id : null });
+    if (ids.length === 0) {
       setRect(null);
       return;
     }
     let scrolledOnce = false;
     const measure = () => {
-      const el = document.getElementById(targetId);
-      if (!el) {
-        setRect(null);
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        const r = el.getBoundingClientRect();
+        // A zero-size box is an element in the DOM but not laid out — a collapsed bottom sheet,
+        // most often. Spotlighting it would ring nothing in the corner.
+        if (r.width === 0 && r.height === 0) continue;
+        if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
+          el.scrollIntoView({ block: 'center', behavior: 'auto' });
+          scrolledOnce = true;
+          setRect(el.getBoundingClientRect(), id);
+          return;
+        }
+        setRect(r, id);
         return;
       }
-      const r = el.getBoundingClientRect();
-      // A zero-size box is an element that is in the DOM but not laid out — a collapsed mobile
-      // drawer, most often. Spotlighting it would draw a ring round nothing in the corner.
-      if (r.width === 0 && r.height === 0) {
-        setRect(null);
-        return;
-      }
-      if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
-        el.scrollIntoView({ block: 'center', behavior: 'auto' });
-        scrolledOnce = true;
-        setRect(el.getBoundingClientRect());
-        return;
-      }
-      setRect(r);
+      setRect(null);
     };
     measure();
     const interval = setInterval(measure, 250);
@@ -295,9 +292,9 @@ function useTargetRect(targetId: string | null): DOMRect | null {
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
     };
-  }, [targetId]);
+  }, [key]);
 
-  return rect;
+  return found;
 }
 
 /**
@@ -312,6 +309,8 @@ function firstIncompleteStep(v: TourView, plan: TourPlan, memory: TourMemory): n
   while (i < last && STEPS[i].isComplete(v, plan, memory)) i++;
   return i === 1 ? 0 : i;
 }
+
+const asList = (t: string | string[] | null): string[] => (t === null ? [] : Array.isArray(t) ? t : [t]);
 
 /* -------------------------------------------------------------------------------------------- */
 /* The component                                                                                  */
@@ -329,7 +328,7 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
   const memoryRef = useRef<TourMemory>({
     troops: view.state.nodes[plan.homeId]?.troops ?? 0,
     buildings: view.state.nodes[plan.homeId]?.buildings.length ?? 0,
-    territories: owned(view.state).length,
+    territories: view.state.nodes.filter(n => n.owner === view.state.activeFaction).length,
     turn: view.state.turn,
     logLength: view.state.log.length,
   });
@@ -342,16 +341,16 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
   const isManual = step === INTRO || step === OUTRO;
-  const targetId = step.target(view, plan);
-  const rect = useTargetRect(targetId);
+  const targetIds = asList(step.target(view, plan));
+  const { rect, id: shownTarget } = useTargetRect(targetIds);
 
   // Advance once the game itself says the step is done. The pause lets the player see the result
   // of what they just did before the card moves on.
   useEffect(() => {
     if (isManual) return;
     if (!step.isComplete(view, plan, memory)) return;
-    const t = setTimeout(() => setStepIndex(i => Math.min(i + 1, steps.length - 1)), 650);
-    return () => clearTimeout(t);
+    const t = window.setTimeout(() => setStepIndex(i => Math.min(i + 1, steps.length - 1)), 650);
+    return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, stepIndex]);
 
@@ -364,8 +363,8 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
         top: rect.top - PADDING,
         width: rect.width + PADDING * 2,
         height: rect.height + PADDING * 2,
-        borderRadius: 6,
-        border: `2px solid ${GOLD}`,
+        borderRadius: 8,
+        border: `2px solid ${UI.accent}`,
         boxShadow: `0 0 0 9999px ${SCRIM}`,
         pointerEvents: 'none',
         transition: 'all 0.2s ease',
@@ -398,14 +397,14 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
 
   return (
     <>
-      {/* No target to spotlight (a bookend, or the drawer that holds it is shut): dim the whole
+      {/* No target to spotlight (a bookend, or the sheet that holds it is shut): dim the whole
           board instead, so the card still reads as the thing being spoken to. */}
       {!rect && <div style={{ position: 'fixed', inset: 0, zIndex: 2001, background: SCRIM, pointerEvents: 'none' }} />}
       {spotlight && <div style={spotlight} />}
 
       {/* `data-tour-*` is how an automated pass drives the run: it reads which control the card is
           pointing at and clicks that, rather than guessing from the copy. */}
-      <div style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={targetId ?? ''}>
+      <div style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={shownTarget ?? ''}>
         <p style={stepLabel}>
           Guided turn — {stepIndex + 1} of {steps.length}
         </p>
@@ -436,11 +435,10 @@ export default function GuidedTour({ view, plan, onFinish }: Props) {
 }
 
 /* -------------------------------------------------------------------------------------------- */
-/* Chrome — the game's own palette, not a second one                                              */
+/* Chrome — the game's own tokens, so it follows light and dark mode with everything else         */
 /* -------------------------------------------------------------------------------------------- */
 
-const GOLD = '#f59e0b';
-const SCRIM = 'rgba(2, 6, 12, 0.76)';
+const SCRIM = 'rgba(2, 6, 12, 0.72)';
 
 const CARD: React.CSSProperties = {
   position: 'fixed',
@@ -448,13 +446,12 @@ const CARD: React.CSSProperties = {
   width: 330,
   maxWidth: 'calc(100vw - 32px)',
   boxSizing: 'border-box',
-  background: '#161b22',
-  border: `1px solid ${GOLD}`,
+  background: UI.panelRaised,
+  border: `1px solid ${UI.accent}`,
   borderRadius: 8,
-  boxShadow: '0 10px 44px rgba(0,0,0,0.7)',
+  boxShadow: '0 10px 44px rgba(0,0,0,0.45)',
   padding: '14px 16px 12px',
-  fontFamily: 'system-ui,sans-serif',
-  color: '#e6edf3',
+  color: UI.text,
   transition: 'top 0.2s ease, left 0.2s ease',
 };
 
@@ -463,21 +460,21 @@ const stepLabel: React.CSSProperties = {
   fontWeight: 700,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: '#7d8590',
+  color: UI.textFaint,
   margin: '0 0 6px',
 };
 
 const cardTitle: React.CSSProperties = {
   fontSize: 16,
   fontWeight: 800,
-  color: GOLD,
+  color: UI.accent,
   margin: '0 0 8px',
 };
 
 const cardBody: React.CSSProperties = {
   fontSize: 13,
   lineHeight: 1.55,
-  color: '#9198a1',
+  color: UI.textSoft,
   margin: '0 0 14px',
 };
 
@@ -492,12 +489,12 @@ const footer: React.CSSProperties = {
 // shared base: mixing a shorthand and a longhand for one property across renders of the same
 // element is a real React warning, not a lint nag.
 const plainButton: React.CSSProperties = {
-  background: '#21262d',
-  border: '1px solid #30363d',
-  borderRadius: 5,
-  color: '#e6edf3',
+  background: UI.panel,
+  border: `1px solid ${UI.ruleStrong}`,
+  borderRadius: 6,
+  color: UI.text,
   padding: '6px 11px',
-  fontFamily: 'inherit',
+  font: 'inherit',
   fontSize: 12,
   fontWeight: 600,
   cursor: 'pointer',
@@ -505,9 +502,9 @@ const plainButton: React.CSSProperties = {
 
 const primaryButton: React.CSSProperties = {
   ...plainButton,
-  border: `1px solid ${GOLD}`,
-  background: GOLD,
-  color: '#0d1117',
+  border: `1px solid ${UI.accent}`,
+  background: UI.accent,
+  color: UI.accentInk,
   fontWeight: 700,
 };
 
@@ -515,6 +512,6 @@ const ghostButton: React.CSSProperties = {
   ...plainButton,
   border: '1px solid transparent',
   background: 'transparent',
-  color: '#6b7280',
+  color: UI.textFaint,
   padding: '6px 2px',
 };

@@ -500,6 +500,7 @@ The rules change the owner cares most about, and the one that makes the map matt
   money a use besides shares and makes where you trade matter over time.
 - **Multiple stocks** — several shipping companies whose prices move with the trade flowing through
   their regions, so shares become a market to read rather than a counter to fill.
+- ✅ **Seamanship** (2026-10-24): the Great Tea Race, cracking on, encounters at sea. See session 12.
 
 ## 7. Voyage mode — free play built, full simulation still not
 
@@ -559,7 +560,7 @@ profit-per-turn score against five known cards has nothing to say about a drifti
 
 ## 8. Build log
 
-### Session 12 (2026-11-08) — the guided run
+### Session 16 (2026-11-08) — the guided run
 
 The how-to-play page (`pages/Tutorial.tsx`) was the only onboarding this game had. It is a good
 reference and it stays, but it is a page a new captain reads *instead of* playing, and it teaches
@@ -606,6 +607,207 @@ Verified by driving every step in a real browser across several seeds — both t
 shape and the rarer load-it-where-she-stands one — clicking whatever control the card points at
 (it carries `data-tour-target` for exactly that), with no console or page errors, plus
 `npm run drive:tea` at 369,678 checks and a clean typecheck.
+
+### Session 15 (2026-10-24) — captain careers and eras: a game that ramps up
+
+The owner asked for an RPG element and for play that ramps up over time. Read both ways: the
+captain grows in power, and the world grows more demanding. Both optional, both off in the 1988
+board.
+
+**Captain careers** (`career`, `sim/career.ts`). Experience from landing lots (2 each), first home
+(+3), the tea race (10 / 5), charters (6), encounters taken up (2), storms and pirates weathered
+(1). Levels at 25, 60, 110, 175, 255, 350, 460, 590, each with a skill point. Nine skills in three
+branches, each learned in order:
+
+| Seamanship | Trade | Command |
+|---|---|---|
+| Weather eye: storm setback halved | Haggler: lading 4% cheaper | Bosun: repairs half price, wages £1 a ship less |
+| Driver: cracking on +1, no cape risk | Factor: charters pay £20 more | Gunner: every ship sails as if armed |
+| Navigator: +1 point every ship every roll | Merchant prince: first home pays £8 more a lot | Commodore: a third charter |
+
+Merchant prince's bonus is paid on its own log line, never folded into the delivery, so the card's
+payout stays exactly what the card says and the harness audits it as it always has. Computer
+captains spend every point at once down the branch that suits their temperament.
+
+Three measurements shaped it:
+
+- **Levelling was too fast.** The first thresholds had captains at level 3.5 by round 30 and 6.2
+  by the close, so most owned all of Seamanship, a point of speed everywhere, long before the late
+  game. Doubled: now **2.3 at round 30, 4.3 at the close**, so the top of a branch is a late prize.
+- **The money skills shorten games.** With no skills learned, careers left the merchant's game at
+  90 rounds; Haggler alone took it to 84, Bosun to 86, everything to 78. Trimmed Haggler 6% → 4%,
+  Factor £30 → £20, Merchant prince £12 → £8: now 82 (150 seeds), full race 81 against 88.
+- **Levelling did not hand the leader a runaway.** Learning from the charters session, the comeback
+  term went in from the start: experience is worth 15% more per share behind the leader. Over 293
+  games each, round-30 leader wins **38.2% with careers, 36.9% without**, inside the noise.
+
+**Eras** (`ramp`, `sim/eras.ts`). The game's chosen rules are kept as `rampPlan`; `hazards` holds
+only those in force. Era I (rounds 1–12), *Fair winds*: trade and the wind. Era II from round 13,
+*Rough seas*: pirates, encounters, cracking on, world events. Era III from round 31, *The race is
+on*: the tea race (its year-two race opens the same round), the commission clock, hostile bids. The
+economy rules are in force from the start, since they carry state from round one. Only rules in the
+plan ever arrive. Cards face up when the clock arrives are restamped to that round; otherwise the
+first round of Era III would have withdrawn the whole board at once. On its own, eras lengthen the
+high seas game slightly (69 → 73), as holding dangers back should.
+
+**Interface:** a career panel with a ship's-wheel level badge, experience bar and an illustrated
+skill tree you click to learn; an era timeline under the season banner saying what arrives next; a
+level column in the table; era and promotion cards; both in the Gazette.
+
+Pacing, 100–150 seeds: the 1988 board 73, merchant 82, high seas 73, full race 81. All finish.
+Verified: `npm run check` green (tea race 450,229 checks, 0 failed), `npm run test:api` 233 passed,
+browser in both modes and at phone width, a skill learned by clicking the tree.
+
+### Session 14 (2026-10-24) — charters, renown and the Gazette
+
+The owner asked to make the game more interesting still. Three things were flat. Every captain
+wanted the same card every turn, so the table converged on one plan. Ships were interchangeable.
+And rival turns resolved in an instant, so the race was hard to follow.
+
+**Owners' charters** (`charters`, `sim/charters.ts`). Two personal objectives per captain: land six
+lots in a named region, be first home on three cards, land five lots of one good, trade into five
+regions, place in a tea race, run a fleet of three. Paid on completion and replaced at once with a
+kind she does not already hold. Progress is recorded by the reducer at the moment of the event,
+never rebuilt from the trimmed log. Charters are public, so reading a rival's is part of the game.
+The AI adds a charter's share of value to its run scoring (`charterValue`), so captains' plans pull
+apart.
+
+Two measurements shaped them:
+
+- **Rewards were cut twice.** At £120–£200, captains completed eleven or twelve a game (about £2,000
+  of new money), the merchant's game fell from a median of 101 rounds to 69, and one full race was
+  won in ten. Now £45–£75. Cutting further barely moved length, so the remaining shortening comes
+  from captains steering better, not from cash.
+- **Flat rewards favoured the leader.** Over 300 seeds, the round-30 share leader won 44.8% with
+  the new rules against 40.0% without, and charters alone were the cause (renown alone matched the
+  baseline). They pay whoever trades most, and the leader trades most: the hostile bid's lesson
+  again. A charter now pays £20 more for every share its holder trails the leader by
+  (`charterReward`). Re-measured over 282 games: **39.7% against 40.0%**, neutralised.
+
+**Ship renown** (`renown`). First home on a card +1, a tea race win +3, second +1, capped at 15. A
+smart ship (6) sails a point faster every roll, a famous clipper (12) two. Stars on the fleet panel
+and over the ship on the chart. On its own it leaves pacing and the leader's edge where they were.
+
+**The Shipping Gazette** (`components/ShippingGazette.tsx`, presentation only). At the top of each
+human turn, everything the rest of the table did since your last turn as a front page: an editor's
+headline and news in brief, weighted (a tea race win outranks a claim, which outranks the biggest
+delivery). The pop-up cards now stand aside for anything the paper prints, so a rival's turn is
+reported once, not twice.
+
+Pacing, 100 seeds per preset: the 1988 board 73 (unchanged), merchant 90, high seas 69, full race
+86. All 400 finish. Both new rules are off in the 1988 board; merchant and full have both, high
+seas has renown.
+
+Verified: `npm run check` green (tea race 685,602 checks, 0 failed), `npm run test:api` 233 passed,
+browser play-through in both modes and at phone width.
+
+### Session 13 (2026-10-24) — the arrears trap, and finishing seamanship
+
+Worked from an explicit list of eleven items, all closed.
+
+**The stall was a debt spiral, not the share market.** Session 12 recorded the three unfinished
+full-race games as the share-market endgame. Tracing them showed every stalled table had captains on
+£0 with three ships and thousands in arrears. Two causes compounded. The AI borrowed to pay the
+interest on what it had already borrowed: one captain carried £2,000 against a single ship, whose
+interest alone outran anything that ship could earn. And the rules had no exit: with nothing aboard
+and nothing in hand a captain cannot buy a lot, so cannot earn, so falls further behind every round.
+**A human could reach that state too**, so the fix is partly a rule.
+
+- **`SELL_SHIP`** (authored, §2.2's reasoning applied to hulls): a docked ship sold to the yard at
+  half her price, fittings and cargo thrown in, the proceeds paying arrears first. Only when wages or
+  loans are on, since those make the trap, so the 1988 board is untouched. Never the last ship.
+- **AI borrowing cap:** never more than a hull's price per hull.
+- **AI distress rule:** in arrears, broke and nothing under way, sell the least valuable docked hull,
+  or a share if she has only one ship.
+
+100 seeds per preset, all AI, before and after:
+
+| Preset | unfinished | median | p90 |
+|---|---|---|---|
+| The 1988 board | 0 → 0 | 73 → 73 | 108 → 108 |
+| A merchant's game | 0 → 0 | 98 → 101 | 152 → 156 |
+| The high seas | 0 → 0 | 70 → 70 | 102 → 102 |
+| The full race | **3 → 0** | 95 → 107 | 166 → 167 |
+
+**Free-play captains now use seamanship** (they had ignored it). The first cut cost them money: the
+racer temperament drove every laden ship every turn, about one throw in six cost a £40 repair, and
+median final cash fell from about £300 to £247. Cracking on is now only for a ship one die from port
+or in the race, which also applies to the classic game. Free play is back to £316. Note the design
+log's older £1,849 free-play figure predates wages being on by default; with wages the baseline is
+about £300.
+
+**Fairness, 150 seeds each, full race:** round-30 share leader wins 44% with seamanship on and 41%
+with it off; seat 0 wins 31% and 34%. Both differences are inside the ±8-point noise, so the new rules
+do not measurably favour the leader. A captain who won a tea race went on to take the company about
+half the time against a 25% baseline, which most likely means strong captains win races rather than
+races making winners. Worth watching once humans play it.
+
+Also: an end-of-turn warning for unanswered encounters (`offersAwaiting` in `attention.ts`); tea race
+honours stored on each captain (`teaRaceWins`, `teaRaceSeconds`, since the log is trimmed) and shown
+in the table and on a victory screen that now carries final standings; ships glide along their legs
+on the chart (skipped on the Pacific seam, off under reduced motion); a banner on the lobby, a ship
+on the handover card and a vignette beside every optional rule in how-to-play; chronicle colours for
+the new log kinds. The harness now asserts the new rules actually happen in AI play (races
+contested, spar rate 10–30%, encounters offered), that every race placing falls inside its window,
+and covers the ship sale. A pre-existing phone-width overflow in the shipping exchange rows is fixed.
+
+Verified: `npm run check` green (tea race 486,252 checks, 0 failed; fewer than session 12 only
+because games are shorter now that none stall). Browser-checked at 390, 820 and 1400 wide in both
+modes with no horizontal scroll. No `api/` change this session.
+
+### Session 12 (2026-10-24) — seamanship: the turn gets a second dimension
+
+The owner's report: "game play currently feels quite one-dimensional", plus a request for more
+graphics. The diagnosis was structural, not a missing rule. **A ship at sea had no decisions at all.**
+`ROLL` advanced her and that was her whole turn, so most of a fleet spent most of a game as spectators,
+and every turn collapsed to "roll, click a port". Three switches, all off in the 1988 board
+(`sim/seamanship.ts`, constants at the foot of `rules.ts`):
+
+| Switch | What it adds | Presets |
+|---|---|---|
+| `teaRace` | Every summer (round 7 of each 24-round year) tea loaded at Foochow, Shanghai or Hong Kong is the new season's. First ship to tie up in London with it takes £150 and 3x tea's reckoning a lot; second £75 and 2x. Lands itself on arrival. Open 18 rounds or until two have placed. | merchant, high seas, full |
+| `pressSail` | `CRACK_ON`: any ship, once a turn, throws one more die. At sea she runs it at once; in port it adds to her wind. A 1 (1–2 rounding a cape) carries away a spar instead: nothing gained, −2 every roll until `REPAIR_SHIP` (£40 at a quay). | merchant, high seas, full |
+| `encounters` | About one ship-turn at sea in seven meets a derelict, castaways, a country trader or a pilot. Each is a choice (`RESOLVE_ENCOUNTER`) that lapses at the end of the turn. | high seas, full |
+
+The race is the namesake made literal: the one contest a year the whole table can see coming and
+plan towards. It is deterministic, a date in the calendar and never a draw, so it keeps running
+through a declaration. The AI reasons about it as a virtual card (`raceCard` in `ai.ts`), so its one
+scoring routine weighs the race against the five face-up commissions with no second brain. A lot
+carries `season` and only that year's tea answers that year's race.
+
+**What the harness caught, and it was not in the new rules.** With encounters on, 8 games in 100
+spiralled into wage arrears and never finished. The cause was an old AI blind spot that salvage made
+common: a ship holding *one* unwanted lot was neither empty enough for the "go hunting" branch nor
+full enough for the "clear the hold" branch, so she sat in port for the rest of the game. One trace
+showed three ships idle from round 20 to round 120. Fixed in the AI, not the rule: a ship with spare
+slots and nothing aboard worth steering for now hunts work for the empty ones. That also fixed the
+baseline. With all three new switches off, 100 seeds went from 1 unfinished, median 64, to
+**0 unfinished, median 89, max 190**. The AI also now declines salvage nobody would pay for.
+
+Pacing, 100 seeds per preset, all AI:
+
+| Preset | unfinished | median | p90 |
+|---|---|---|---|
+| The 1988 board | 0 | 73 | 108 |
+| A merchant's game | 0 | 98 | 152 |
+| The high seas | 0 | 70 | 102 |
+| The full race | 3 | 95 | 166 |
+
+**Still open at the time:** the full race's three unfinished games. Diagnosed and fixed in session 13.
+
+**Graphics** (`components/Art.tsx`, all inline SVG, line work in `currentColor` so every piece
+follows light and dark mode): real dice faces for every roll and the crack-on die; ship profiles
+per hull class, with a broken topmast when damaged and a gold pennant when racing; engraved
+vignettes on every event card (the emoji glyphs are gone); a Tea Race panel with a race-course
+graphic placing every runner by her distance from London; a Seamanship panel for encounters,
+cracking on and repairs; and on the chart a sea swell texture, a compass rose, a title cartouche,
+top-down clipper hulls with braced yards and cargo pips, tea chests on the China ports and a
+chequered flag over London while a race runs.
+
+Verified: `npm run check` green (tea race 543,686 checks, 0 failed); `npm run test:api` 233 passed;
+browser play-through in both modes. The pilot put Cutty Sark on a reef and she still came second
+home for £435.
+
 
 ### Session 11 (2026-08-22) — free play made reachable, and a silent transport bug
 

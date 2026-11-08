@@ -137,9 +137,11 @@ export default function CountingHouse({ state, captain, fleetSize, dispatch, ena
             const held = captain.holdings?.[id] ?? 0;
             const trend = standing(price, co.base);
             return (
-              <span key={id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem' }}>
+              // Wraps rather than overflowing: at the panel's narrowest the two buttons used to run
+              // off its right edge and clip.
+              <span key={id} style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', flexWrap: 'wrap' }}>
                 <span
-                  style={{ minWidth: '9.5rem', color: UI.text }}
+                  style={{ flex: '1 1 8rem', minWidth: 0, color: UI.text }}
                   title={`${co.blurb} Opens at ${money(co.base)}; moves with cargo landed in its waters.`}
                 >
                   {co.name}

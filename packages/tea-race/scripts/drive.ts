@@ -11,6 +11,10 @@
  * Math.random behind the sim's back.
  */
 import { createInitialState } from '../src/sim/state';
+import { newRace, nextRaceRound, openRace } from '../src/sim/seamanship';
+import { advance, isComplete } from '../src/sim/charters';
+import { LEVEL_XP, SKILL_EFFECT, XP_CATCH_UP, XP_FOR, levelFor, xpEarned, type SkillId } from '../src/sim/career';
+import { ERAS } from '../src/sim/eras';
 import {
   BOUNTY_PER_UNIT,
   GLUT_FACTOR,
@@ -48,6 +52,22 @@ import {
   SHIP_PRICE,
   TOTAL_SHARES,
   VICTORY_CASH,
+  DAMAGE_SPEED_PENALTY,
+  REPAIR_PRICE,
+  SPAR_CARRIED_ON,
+  TEA_RACE_OPENS_IN_YEAR,
+  TEA_RACE_PREMIUM,
+  TEA_RACE_PURSE,
+  TEA_RACE_ROUNDS,
+  shipSalePrice,
+  CHARTERS_HELD,
+  CHARTER_TERMS,
+  RENOWN_CAP,
+  RENOWN_FAMOUS,
+  RENOWN_FOR,
+  RENOWN_SMART,
+  renownSpeed,
+  CHARTER_CATCH_UP,
 } from '../src/sim/rules';
 import { LEGS, PORTS, planRoute, sourcesFor } from '../src/sim/content';
 import {
@@ -70,7 +90,7 @@ import {
   saleProceeds,
 } from '../src/sim/pricing';
 import { buildDeck, parseCardKey } from '../src/sim/contracts';
-import { shipsAwaitingOrders } from '../src/sim/attention';
+import { offersAwaiting, shipsAwaitingOrders } from '../src/sim/attention';
 import { AGENT_LADING_DISCOUNT, AGENT_PRICE, MAX_AGENTS, canPlaceAgent } from '../src/sim/agents';
 import {
   applyTrade,
@@ -88,7 +108,7 @@ import {
   STOCK_CEILING,
   STOCK_FLOOR,
 } from '../src/sim/stocks';
-import type { Contract, GameState, PortId, Ship, WorldEventKind } from '../src/sim/types';
+import type { Contract, Encounter, GameState, PortId, Ship, WorldEventKind } from '../src/sim/types';
 
 // ---------------------------------------------------------------------------
 // Tiny assertion harness
@@ -372,7 +392,9 @@ function pointsLeft(ship: Ship): number {
 
 function testCaps() {
   const label = 'caps';
-  let s = createInitialState('t-caps', 'Caps', { humanNames: ['A'], aiCount: 1, seed: 'caps' });
+  // Pinned to the 1988 board: the caps are faithful rules, and with charters on a fleet charter
+  // pays out mid-test and the cash arithmetic below stops being about the cap.
+  let s = createInitialState('t-caps', 'Caps', { humanNames: ['A'], aiCount: 1, seed: 'caps', hazards: { ...PRESETS.board.hazards } });
   s = setCash(s, 'p1', 100_000);
   s = processAction(s, { type: 'ROLL' });
 
@@ -883,7 +905,7 @@ function testHazardsOff() {
   const b = play();
   check(`${label}: replays byte-identically`, JSON.stringify(a) === JSON.stringify(b));
 
-  const hazardKinds = new Set(['storm', 'piracy', 'insurance', 'fitting']);
+  const hazardKinds = new Set(['storm', 'piracy', 'insurance', 'fitting', 'teaRace', 'encounter', 'crackOn', 'repair', 'charter', 'renown']);
   const leaked = a.log.filter(e => hazardKinds.has(e.kind));
   equal(`${label}: emits no hazard events at all`, leaked.length, 0);
   check(
@@ -930,6 +952,13 @@ interface GameReport {
    */
   lockedOutAtBankEmpty: number;
   aLockedOutCaptainWon: boolean | null;
+  /** Seamanship: tea race placings, lots landed that were taken at sea. */
+  teaPlacings: number;
+  seaLanded: number;
+  crackOns: number;
+  chartersPaid: number;
+  spars: number;
+  offersSeen: number;
 }
 
 function playAiGame(seed: string, maxRounds = 400): GameReport {
@@ -948,6 +977,13 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
   let leaderAt30Shares = 0;
   let newsPricedFills = 0;
   let offReckoningBuys = 0;
+  let seaLanded = 0;
+  let teaPlacings = 0;
+  let crackOns = 0;
+  let chartersPaid = 0;
+  let spars = 0;
+  let offersSeen = 0;
+  const racePlaces = new Map<number, number>();
 
   // Deliveries are audited from the log rather than by diffing state, because filling a card for
   // the second time and dealing its replacement happen inside a single action — no observer
@@ -961,6 +997,43 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
     for (const entry of state.log) {
       if (entry.seq <= lastSeq) continue;
       lastSeq = entry.seq;
+      // A tea race placing is a delivery too, audited against its own ladder.
+      if (entry.kind === 'teaRace' && entry.data?.rank) {
+        deliveries++;
+        teaPlacings++;
+        const { rank, payout, purse, units, year } = entry.data as Record<string, number>;
+        const seen = (racePlaces.get(year) ?? 0) + 1;
+        racePlaces.set(year, seen);
+        equal(`AI game ${seed}: tea race ${year} placing ${seen} is ranked in order`, rank, seen);
+        check(`AI game ${seed}: tea race ${year} pays only two places`, seen <= 2, `place ${seen}`);
+        const r = rank as 1 | 2;
+        equal(`AI game ${seed}: tea race ${year} place ${rank} pays purse and premium`,
+          payout, TEA_RACE_PURSE[r] + units * GOOD_BY_ID.tea.basePrice * TEA_RACE_PREMIUM[r]);
+        equal(`AI game ${seed}: tea race ${year} purse`, purse, TEA_RACE_PURSE[r]);
+        const opened = (year - 1) * 24 + TEA_RACE_OPENS_IN_YEAR;
+        check(
+          `AI game ${seed}: tea race ${year} placing falls inside its window`,
+          entry.round >= opened && entry.round <= opened + TEA_RACE_ROUNDS - 1,
+          `round ${entry.round}, window ${opened}-${opened + TEA_RACE_ROUNDS - 1}`,
+        );
+        continue;
+      }
+      if (entry.kind === 'charter' && entry.data?.reward !== undefined) {
+        chartersPaid++;
+        const kind = String(entry.data.kind) as keyof typeof CHARTER_TERMS;
+        equal(`AI game ${seed}: a ${kind} charter is reckoned on its terms`, entry.data.base, CHARTER_TERMS[kind]?.reward);
+        check(
+          `AI game ${seed}: and pays at least its terms, sweetened only in whole shares behind`,
+          Number(entry.data.reward) >= Number(entry.data.base) &&
+            (Number(entry.data.reward) - Number(entry.data.base) - Number(entry.data.factor ?? 0)) % CHARTER_CATCH_UP === 0,
+          `paid ${entry.data.reward} on terms of ${entry.data.base}`,
+        );
+      }
+      if (entry.kind === 'crackOn') {
+        crackOns++;
+        if (entry.data?.damaged) spars++;
+      }
+      if (entry.kind === 'encounter' && entry.data?.offered) offersSeen++;
       if (entry.kind !== 'deliver' || !entry.data) continue;
       deliveries++;
 
@@ -1018,6 +1091,18 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
       );
       // What she paid is a quay price, so it sits inside the band rather than on the reckoning — and
       // the floor has to allow for a port agent knocking his cut off the asking price too.
+      // Lots salvaged or bought at sea carry no quay price, so a delivery including any is checked
+      // only for never costing more than the dearest quay would have.
+      const seaLots = Number(entry.data?.seaLots ?? 0);
+      if (seaLots > 0) {
+        check(
+          `AI game ${seed}: ${contractId} with lots taken at sea never cost more than the quays`,
+          purchasePrice >= 0 && purchasePrice <= Math.ceil(cardPrice * PRICE_CEILING) * units + units,
+          `paid ${purchasePrice} for ${units}`,
+        );
+        seaLanded += seaLots;
+        continue;
+      }
       const floor = Math.floor(cardPrice * PRICE_FLOOR * (1 - AGENT_LADING_DISCOUNT)) * units - units;
       check(
         `AI game ${seed}: ${contractId} was bought inside the price band`,
@@ -1062,6 +1147,14 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         state.ships.filter(x => x.ownerId === captain.id).length <= MAX_SHIPS,
       );
       check(`AI game ${seed}: ${captain.name} is never overdrawn`, captain.cash >= 0, `${captain.cash}`);
+      if (state.hazards?.charters) {
+        check(
+          `AI game ${seed}: ${captain.name} holds at most ${CHARTERS_HELD} charters (one more as commodore), none already finished`,
+          (captain.charters?.length ?? 0) <= CHARTERS_HELD + (captain.skills?.includes('commodore') ? 1 : 0) &&
+            (captain.charters ?? []).every(c => c.progress < c.target),
+          JSON.stringify(captain.charters),
+        );
+      }
     }
     for (const ship of state.ships) {
       check(
@@ -1074,6 +1167,7 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
         ship.hold.length <= slotsOf(ship.shipClass),
         `${ship.hold.length} lots aboard a ${ship.shipClass ?? 'clipper'}`,
       );
+      check(`AI game ${seed}: ${ship.name}'s renown within its cap`, (ship.renown ?? 0) <= RENOWN_CAP, `${ship.renown}`);
       for (const lot of ship.hold) {
         check(
           `AI game ${seed}: ${ship.name}'s cargo is a real good`,
@@ -1144,6 +1238,12 @@ function playAiGame(seed: string, maxRounds = 400): GameReport {
     lockedOutAtBankEmpty: lockedOut.length,
     aLockedOutCaptainWon:
       lockedOut.length === 0 || s.winnerId === null ? null : lockedOut.includes(s.winnerId),
+    teaPlacings,
+    seaLanded,
+    crackOns,
+    chartersPaid,
+    spars,
+    offersSeen,
   };
 }
 
@@ -2352,6 +2452,358 @@ function testWorldEvents() {
 
 // ---------------------------------------------------------------------------
 
+/**
+ * Seamanship: the Great Tea Race, cracking on, encounters at sea. All three toggled; all three off in
+ * the 1988 board.
+ */
+function testSeamanship() {
+  const label = 'seamanship';
+  const off = {
+    weather: false, piracy: false, events: false, hostileBids: false, quaysideSales: false,
+    wages: false, loans: false, deadlines: false, shipClasses: false, stocks: false, agents: false,
+  };
+  const on = { ...off, teaRace: true, pressSail: true, encounters: true };
+  const fresh = (hz: typeof off & Record<string, boolean>, seed = 'sea') =>
+    setCash(createInitialState(`t-${seed}`, 'Sea', { humanNames: ['A'], aiCount: 1, seed, hazards: hz }), 'p1', 5000);
+  /** Skip to a round, keeping it the first seat's roll. */
+  const atRound = (s: GameState, round: number): GameState => ({ ...s, round, activeIndex: 0, phase: 'roll' });
+
+  // --- The race opens on its date, and only with the switch on.
+  const opening = (hz: typeof off & Record<string, boolean>) => {
+    let s = atRound(fresh(hz), TEA_RACE_OPENS_IN_YEAR - 1);
+    s = { ...s, activeIndex: s.captains.length - 1, phase: 'act' };
+    return processAction(s, { type: 'END_TURN' });
+  };
+  const opened = opening(on);
+  check(`${label}: the race opens on round ${TEA_RACE_OPENS_IN_YEAR}`, opened.teaRace !== undefined && !opened.teaRace.closed);
+  equal(`${label}: in year 1`, opened.teaRace?.year, 1);
+  equal(`${label}: and not with the switch off`, opening(off).teaRace, undefined);
+  equal(`${label}: the next race is a year on`, nextRaceRound(TEA_RACE_OPENS_IN_YEAR + 1), TEA_RACE_OPENS_IN_YEAR + 24);
+
+  // --- New-season tea is tea loaded at a China port while the race is open.
+  let g = { ...fresh(on), teaRace: newRace(TEA_RACE_OPENS_IN_YEAR), round: TEA_RACE_OPENS_IN_YEAR };
+  g = place(g, 's1', 'foochow');
+  g = processAction(g, { type: 'ROLL' });
+  let loaded = processAction(g, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
+  equal(`${label}: Foochow tea is the new season's`, shipOf(loaded, 's1').hold[0]?.season, 1);
+  const otherTea = processAction({ ...g, teaRace: undefined }, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
+  equal(`${label}: tea loaded with no race running is not`, shipOf(otherTea, 's1').hold[0]?.season, undefined);
+  loaded = processAction(loaded, { type: 'BUY_CARGO', shipId: 's1', good: 'tea' });
+
+  // --- Landing it in London pays the purse and the premium, and records the placing.
+  const tea = GOOD_BY_ID.tea.basePrice;
+  const toLondon = (s: GameState, shipId: string, captainId: string) => {
+    const docked = place(s, shipId, 'liverpool', shipOf(s, shipId).hold);
+    const ready = { ...docked, activeIndex: s.captains.findIndex(c => c.id === captainId), phase: 'act' as const, sailPoints: { [shipId]: 30 } };
+    return processAction(ready, { type: 'SAIL_TO', shipId, destination: 'london' });
+  };
+  const before = cash(loaded, 'p1');
+  const won = toLondon(loaded, 's1', 'p1');
+  equal(`${label}: first home is paid the purse and ${TEA_RACE_PREMIUM[1]}x per lot`,
+    cash(won, 'p1') - before, TEA_RACE_PURSE[1] + 2 * tea * TEA_RACE_PREMIUM[1]);
+  equal(`${label}: the tea goes ashore`, shipOf(won, 's1').hold.length, 0);
+  equal(`${label}: and the placing is recorded`, won.teaRace?.placings[0]?.rank, 1);
+  equal(`${label}: and counted to the captain's honours`, won.captains.find(c => c.id === 'p1')!.teaRaceWins, 1);
+  check(`${label}: with one place left the race is still open`, won.teaRace?.closed === false);
+
+  // Second home: the other captain.
+  const seasonLot = { good: 'tea', paid: 40, boughtAt: 'foochow', boughtOnTurn: 0, season: 1 };
+  const second = place(won, 's2', 'liverpool', [seasonLot]);
+  const before2 = cash(second, 'p2');
+  const placed2 = toLondon(second, 's2', 'p2');
+  equal(`${label}: second home takes the smaller purse and ${TEA_RACE_PREMIUM[2]}x`,
+    cash(placed2, 'p2') - before2, TEA_RACE_PURSE[2] + tea * TEA_RACE_PREMIUM[2]);
+  check(`${label}: two placed closes the race`, placed2.teaRace?.closed === true);
+  equal(`${label}: second place is honoured too`, placed2.captains.find(c => c.id === 'p2')!.teaRaceSeconds, 1);
+  check(`${label}: and openRace agrees`, openRace(placed2) === null);
+
+  // Third home is just a ship with tea.
+  const third = place(placed2, 's1', 'liverpool', [seasonLot]);
+  const after3 = toLondon(third, 's1', 'p1');
+  equal(`${label}: third home lands nothing`, shipOf(after3, 's1').hold.length, 1);
+  equal(`${label}: and is paid nothing`, cash(after3, 'p1'), cash(third, 'p1'));
+
+  // Last year's tea does not race this year.
+  const stale = place({ ...loaded, teaRace: { ...newRace(TEA_RACE_OPENS_IN_YEAR + 24) } }, 's1', 'liverpool', [seasonLot]);
+  const staleRun = toLondon(stale, 's1', 'p1');
+  equal(`${label}: last season's tea does not place`, staleRun.teaRace?.placings.length, 0);
+
+  // The race closes on its own when time runs out.
+  let late = { ...fresh(on), teaRace: newRace(TEA_RACE_OPENS_IN_YEAR) };
+  late = { ...late, round: TEA_RACE_OPENS_IN_YEAR + TEA_RACE_ROUNDS - 1, activeIndex: late.captains.length - 1, phase: 'act' };
+  late = processAction(late, { type: 'END_TURN' });
+  check(`${label}: an unclaimed race closes after ${TEA_RACE_ROUNDS} rounds`, late.teaRace?.closed === true);
+
+  // --- Cracking on.
+  let c = place(fresh(on, 'crack'), 's1', 'liverpool');
+  c = processAction(c, { type: 'ROLL' });
+  const points = c.sailPoints.s1;
+  const cracked = processAction(c, { type: 'CRACK_ON', shipId: 's1' });
+  check(`${label}: a docked ship can crack on`, cracked !== c);
+  const die = cracked.crackedOn?.s1 ?? 0;
+  check(`${label}: and throws one die`, die >= 1 && die <= 6, `${die}`);
+  if (die > SPAR_CARRIED_ON) {
+    equal(`${label}: which is added to her wind`, cracked.sailPoints.s1, points + die);
+  } else {
+    check(`${label}: or she carries away a spar`, shipOf(cracked, 's1').damaged === true);
+  }
+  check(`${label}: once a turn`, processAction(cracked, { type: 'CRACK_ON', shipId: 's1' }) === cracked);
+  const strictly = { ...c, hazards: { ...on, pressSail: false } };
+  check(`${label}: refused with the switch off`, processAction(strictly, { type: 'CRACK_ON', shipId: 's1' }) === strictly);
+
+  // Over many throws the spar goes about one time in six, and a damaged ship rolls slower.
+  let spars = 0;
+  let trials = 0;
+  for (let i = 0; i < 300; i++) {
+    let t = place(fresh(on, `crack-${i}`), 's1', 'liverpool');
+    t = processAction(t, { type: 'ROLL' });
+    const after = processAction(t, { type: 'CRACK_ON', shipId: 's1' });
+    trials++;
+    if (shipOf(after, 's1').damaged) spars++;
+  }
+  check(`${label}: spars go about one throw in six`, spars / trials > 0.08 && spars / trials < 0.26, `${spars}/${trials}`);
+
+  const sound = place(fresh(on, 'dmg'), 's1', 'liverpool');
+  const hurt = { ...sound, ships: sound.ships.map(x => (x.id === 's1' ? { ...x, damaged: true } : x)) };
+  const rolledSound = processAction(sound, { type: 'ROLL' });
+  const rolledHurt = processAction(hurt, { type: 'ROLL' });
+  equal(`${label}: a damaged ship sails ${DAMAGE_SPEED_PENALTY} slower`,
+    rolledHurt.sailPoints.s1, Math.max(0, rolledSound.sailPoints.s1 - DAMAGE_SPEED_PENALTY));
+  check(`${label}: and cannot crack on`, processAction(rolledHurt, { type: 'CRACK_ON', shipId: 's1' }) === rolledHurt);
+  const repaired = processAction(rolledHurt, { type: 'REPAIR_SHIP', shipId: 's1' });
+  check(`${label}: repair makes her good`, shipOf(repaired, 's1').damaged === false);
+  equal(`${label}: at the stated price`, cash(repaired, 'p1'), cash(rolledHurt, 'p1') - REPAIR_PRICE);
+  check(`${label}: and a sound ship needs none`, processAction(rolledSound, { type: 'REPAIR_SHIP', shipId: 's1' }) === rolledSound);
+
+  // --- Encounters.
+  let e = place(fresh(on, 'enc'), 's1', 'liverpool');
+  e = processAction(e, { type: 'ROLL' });
+  e = processAction(e, { type: 'SAIL_TO', shipId: 's1', destination: 'cape_town' });
+  check(`${label}: no encounter, nothing to resolve`, processAction(e, { type: 'RESOLVE_ENCOUNTER', shipId: 's1', accept: true }) === e);
+  const offer = (kind: Encounter['kind'], extra: Partial<Encounter> = {}): GameState => ({
+    ...e,
+    encounters: { s1: { kind, shipId: 's1', headline: kind, detail: '', ...extra } },
+  });
+  const derelict = processAction(offer('derelict', { good: 'silk', points: 3 }), { type: 'RESOLVE_ENCOUNTER', shipId: 's1', accept: true });
+  const lot = shipOf(derelict, 's1').hold.at(-1);
+  equal(`${label}: salvage is aboard`, lot?.good, 'silk');
+  equal(`${label}: for nothing`, lot?.paid, 0);
+  equal(`${label}: and marked as taken at sea`, lot?.atSea, 'derelict');
+  equal(`${label}: heaving to costs ground`, pointsLeft(shipOf(derelict, 's1')), pointsLeft(shipOf(e, 's1')) + 3);
+  equal(`${label}: and the offer is spent`, derelict.encounters?.s1, undefined);
+  const declined = processAction(offer('castaways', { reward: 40, points: 2 }), { type: 'RESOLVE_ENCOUNTER', shipId: 's1', accept: false });
+  equal(`${label}: declining costs nothing`, cash(declined, 'p1'), cash(e, 'p1'));
+  equal(`${label}: and clears it`, declined.encounters?.s1, undefined);
+  const rescued = processAction(offer('castaways', { reward: 40, points: 2 }), { type: 'RESOLVE_ENCOUNTER', shipId: 's1', accept: true });
+  equal(`${label}: castaways pay their reward`, cash(rescued, 'p1'), cash(e, 'p1') + 40);
+  const traded = processAction(offer('trader', { good: 'silk', price: 30 }), { type: 'RESOLVE_ENCOUNTER', shipId: 's1', accept: true });
+  equal(`${label}: a country trader's lot costs his price`, cash(traded, 'p1'), cash(e, 'p1') - 30);
+  equal(`${label}: an unanswered offer is flagged before the turn ends`, offersAwaiting(offer('pilot', { price: 25, points: 4 }), 'p1').length, 1);
+  equal(`${label}: only to its own captain`, offersAwaiting(offer('pilot', { price: 25, points: 4 }), 'p2').length, 0);
+  equal(`${label}: and not once answered`, offersAwaiting(declined, 'p1').length, 0);
+  const ended = processAction(offer('pilot', { price: 25, points: 4 }), { type: 'END_TURN' });
+  check(`${label}: an unanswered offer lapses at the end of the turn`, !ended.encounters || Object.keys(ended.encounters).length === 0);
+
+  // Offered on their own, with the switch on.
+  let offered = 0;
+  for (let i = 0; i < 60; i++) {
+    let t = place(fresh(on, `enc-${i}`), 's1', 'liverpool');
+    t = processAction(t, { type: 'ROLL' });
+    t = processAction(t, { type: 'SAIL_TO', shipId: 's1', destination: 'cape_town' });
+    t = { ...t, activeIndex: 0, phase: 'roll' };
+    t = processAction(t, { type: 'ROLL' });
+    if (t.encounters?.s1) offered++;
+  }
+  check(`${label}: ships at sea meet things`, offered > 0 && offered < 30, `${offered}/60`);
+}
+
+/**
+ * Selling a hull back to the yard: the softlock escape for standing costs.
+ */
+function testShipSale() {
+  const label = 'ship sale';
+  const base = {
+    weather: false, piracy: false, events: false, hostileBids: false, quaysideSales: false,
+    wages: true, loans: false, deadlines: false, shipClasses: false, stocks: false, agents: false,
+  };
+  let g = createInitialState('t-sell', 'Sell', { humanNames: ['A'], aiCount: 1, seed: 'sell', hazards: base });
+  g = setCash(g, 'p1', 1000);
+  g = processAction(g, { type: 'ROLL' });
+  g = processAction(g, { type: 'BUY_SHIP' });
+  const fleet = g.ships.filter(x => x.ownerId === 'p1');
+  equal(`${label}: two ships to start`, fleet.length, 2);
+  const second = fleet[1].id;
+
+  const owing = { ...g, captains: g.captains.map(c => (c.id === 'p1' ? { ...c, cash: 0, arrears: 40 } : c)) };
+  const sold = processAction(owing, { type: 'SELL_SHIP', shipId: second });
+  check(`${label}: a docked hull can be sold`, sold !== owing);
+  equal(`${label}: she is gone`, sold.ships.some(x => x.id === second), false);
+  equal(`${label}: arrears are paid first`, sold.captains.find(c => c.id === 'p1')!.arrears, 0);
+  equal(`${label}: the rest is cash`, cash(sold, 'p1'), shipSalePrice(undefined) - 40);
+  check(`${label}: never the last ship`, processAction(sold, { type: 'SELL_SHIP', shipId: fleet[0].id }) === sold);
+
+  const board = { ...g, hazards: { ...base, wages: false } };
+  check(`${label}: refused when neither wages nor loans are on`, processAction(board, { type: 'SELL_SHIP', shipId: second }) === board);
+
+  const sailing = processAction(g, { type: 'SAIL_TO', shipId: fleet[0].id, destination: 'cape_town' });
+  check(`${label}: never a ship at sea`, processAction(sailing, { type: 'SELL_SHIP', shipId: fleet[0].id }) === sailing);
+}
+
+/**
+ * Owners' charters and ship renown.
+ */
+function testChartersAndRenown() {
+  const label = 'charters';
+  const off = {
+    weather: false, piracy: false, events: false, hostileBids: false, quaysideSales: false,
+    wages: false, loans: false, deadlines: false, shipClasses: false, stocks: false, agents: false,
+  };
+  const on = { ...off, charters: true, renown: true };
+
+  const bare = createInitialState('t-ch0', 'C', { humanNames: ['A'], aiCount: 1, seed: 'ch', hazards: off });
+  check(`${label}: none dealt with the switch off`, bare.captains.every(c => !c.charters));
+
+  let g = createInitialState('t-ch', 'C', { humanNames: ['A'], aiCount: 1, seed: 'ch', hazards: on });
+  for (const c of g.captains) {
+    equal(`${label}: ${c.name} holds ${CHARTERS_HELD}`, c.charters?.length, CHARTERS_HELD);
+    check(`${label}: ${c.name}'s are different kinds`, new Set(c.charters!.map(x => x.kind)).size === c.charters!.length);
+  }
+  const replay = createInitialState('t-ch', 'C', { humanNames: ['A'], aiCount: 1, seed: 'ch', hazards: on });
+  check(`${label}: dealt from the seed`, JSON.stringify(replay.captains) === JSON.stringify(g.captains));
+
+  // Advance and complete one through a real delivery: a first-home charter one short of done.
+  const nearly = { id: 999, kind: 'firstHome' as const, target: 3, progress: 2, reward: CHARTER_TERMS.firstHome.reward };
+  const other = g.captains[0].charters!.find(c => c.kind !== 'firstHome')!;
+  g = { ...g, captains: g.captains.map(c => (c.id === 'p1' ? { ...c, charters: [nearly, other], cash: 1000 } : c)) };
+  const price = GOOD_BY_ID.tea.basePrice;
+  g = forceContract(g, { id: 'ch-card', good: 'tea', destination: 'liverpool', price });
+  g = place(g, 's1', 'liverpool', [{ good: 'tea', paid: price, boughtAt: 'foochow', boughtOnTurn: 0 }]);
+  g = processAction(g, { type: 'ROLL' });
+  const before = cash(g, 'p1');
+  const landed = processAction(g, { type: 'DELIVER', shipId: 's1', contractId: 'ch-card' });
+  const p1 = landed.captains.find(c => c.id === 'p1')!;
+  equal(`${label}: completion pays the reward on top of the card`, cash(landed, 'p1') - before, price * 4 + nearly.reward);
+  equal(`${label}: and is counted`, p1.chartersDone, 1);
+  check(`${label}: the finished charter is gone`, !p1.charters!.some(c => c.id === 999));
+  equal(`${label}: and replaced, so the hand stays full`, p1.charters!.length, CHARTERS_HELD);
+  check(`${label}: replacement is a new kind`, new Set(p1.charters!.map(c => c.kind)).size === CHARTERS_HELD);
+
+  // Renown came with that first home.
+  equal(`renown: first home earns ${RENOWN_FOR.firstHome}`, shipOf(landed, 's1').renown, RENOWN_FOR.firstHome);
+
+  // The pure progress rules.
+  const spread = { id: 1, kind: 'spread' as const, target: 3, progress: 0, reward: 10, regions: [] as string[] };
+  const once = advance(spread, { kind: 'landed', port: 'london', good: 'tea', units: 3, rank: 1 });
+  equal(`${label}: spread counts a region once per region`, once.progress, 1);
+  const twice = advance(once, { kind: 'landed', port: 'liverpool', good: 'tea', units: 1, rank: null });
+  check(`${label}: and not again for another port in it`, twice === once);
+  const region = { id: 2, kind: 'regionTrade' as const, target: 5, progress: 4, reward: 10, region: 'britain' };
+  equal(`${label}: region trade counts units, capped at the target`, advance(region, { kind: 'landed', port: 'london', good: 'tea', units: 3, rank: 2 }).progress, 5);
+  check(`${label}: and ignores other regions`, advance(region, { kind: 'landed', port: 'bombay', good: 'tea', units: 3, rank: 2 }) === region);
+  const race = { id: 3, kind: 'teaRace' as const, target: 1, progress: 0, reward: 10 };
+  check(`${label}: a race placing completes the race charter`, isComplete(advance(race, { kind: 'racePlaced' })));
+
+  // A fleet charter through a real purchase.
+  let f = createInitialState('t-chf', 'F', { humanNames: ['A'], aiCount: 1, seed: 'chf', hazards: on });
+  const fleet = { id: 7, kind: 'fleet' as const, target: 2, progress: 1, reward: 50 };
+  f = { ...f, captains: f.captains.map(c => (c.id === 'p1' ? { ...c, charters: [fleet], cash: 1000 } : c)) };
+  f = processAction(f, { type: 'ROLL' });
+  const bought = processAction(f, { type: 'BUY_SHIP' });
+  equal(`${label}: a fleet charter completes on the purchase`, bought.captains.find(c => c.id === 'p1')!.chartersDone, 1);
+
+  // Renown: capped, and worth speed only at its thresholds.
+  equal('renown: nothing below a smart ship', renownSpeed(RENOWN_SMART - 1), 0);
+  equal('renown: a smart ship sails a point faster', renownSpeed(RENOWN_SMART), 1);
+  equal('renown: a famous clipper two', renownSpeed(RENOWN_FAMOUS), 2);
+  const fast = { ...bare, hazards: { ...off, renown: true }, ships: bare.ships.map(x => (x.id === 's1' ? { ...x, renown: RENOWN_FAMOUS } : x)) };
+  const plain = { ...bare, hazards: { ...off, renown: true } };
+  equal('renown: a famous ship rolls two points further', processAction(fast, { type: 'ROLL' }).sailPoints.s1, processAction(plain, { type: 'ROLL' }).sailPoints.s1 + 2);
+  const switchedOff = { ...fast, hazards: off };
+  equal('renown: and nothing with the switch off', processAction(switchedOff, { type: 'ROLL' }).sailPoints.s1, processAction(plain, { type: 'ROLL' }).sailPoints.s1);
+}
+
+/**
+ * Captain careers and eras.
+ */
+function testCareerAndEras() {
+  const label = 'career';
+  const off = {
+    weather: false, piracy: false, events: false, hostileBids: false, quaysideSales: false,
+    wages: false, loans: false, deadlines: false, shipClasses: false, stocks: false, agents: false,
+  };
+  const on = { ...off, career: true };
+  let g = createInitialState('t-car', 'C', { humanNames: ['A'], aiCount: 1, seed: 'car', hazards: on });
+  g = setCash(g, 'p1', 2000);
+
+  // Experience from a real first-home delivery.
+  const price = GOOD_BY_ID.tea.basePrice;
+  g = forceContract(g, { id: 'car-card', good: 'tea', destination: 'liverpool', price });
+  const lot = { good: 'tea', paid: price, boughtAt: 'foochow', boughtOnTurn: 0 };
+  g = place(g, 's1', 'liverpool', [{ ...lot }, { ...lot }]);
+  g = processAction(g, { type: 'ROLL' });
+  const landed = processAction(g, { type: 'DELIVER', shipId: 's1', contractId: 'car-card' });
+  equal(`${label}: experience for two lots, first home`, landed.captains[0].xp, XP_FOR.lotLanded * 2 + XP_FOR.firstHome);
+  check(`${label}: none with the switch off`, processAction({ ...g, hazards: off }, { type: 'DELIVER', shipId: 's1', contractId: 'car-card' }).captains[0].xp === undefined);
+
+  equal(`${label}: level 1 to start`, levelFor(0), 1);
+  equal(`${label}: level 2 at its threshold`, levelFor(LEVEL_XP[1]), 2);
+  equal(`${label}: and not a point before`, levelFor(LEVEL_XP[1] - 1), 1);
+  equal(`${label}: a captain behind on shares learns faster`, xpEarned(10, 0, 2), Math.round(10 * (1 + 2 * XP_CATCH_UP)));
+  equal(`${label}: the leader learns at the plain rate`, xpEarned(10, 3, 3), 10);
+
+  // The tree: points, order, the switch.
+  const at = (xp: number, skills: SkillId[] = []) => ({ ...g, captains: g.captains.map(c => (c.id === 'p1' ? { ...c, xp, skills } : c)) });
+  const novice = at(0);
+  check(`${label}: no point, no skill`, processAction(novice, { type: 'LEARN_SKILL', skill: 'haggler' }) === novice);
+  const one = at(LEVEL_XP[1]);
+  check(`${label}: never out of order`, processAction(one, { type: 'LEARN_SKILL', skill: 'merchantPrince' }) === one);
+  const learned = processAction(one, { type: 'LEARN_SKILL', skill: 'haggler' });
+  check(`${label}: a point buys a first-tier skill`, learned.captains[0].skills?.includes('haggler') === true);
+  check(`${label}: and is spent`, processAction(learned, { type: 'LEARN_SKILL', skill: 'bosun' }) === learned);
+  const strict = { ...one, hazards: off };
+  check(`${label}: refused with the switch off`, processAction(strict, { type: 'LEARN_SKILL', skill: 'haggler' }) === strict);
+
+  // Effects that can be measured exactly.
+  check(`${label}: a haggler lades cheaper`, ladingPrice(learned, 'p1', 'foochow', 'tea') < ladingPrice(one, 'p1', 'foochow', 'tea'));
+  const nav = at(LEVEL_XP[3], ['weatherEye', 'driver', 'navigator']);
+  const plainRoll = { ...at(0), phase: 'roll' as const };
+  const navRoll = { ...nav, phase: 'roll' as const };
+  equal(`${label}: a navigator's ships make a point more`, processAction(navRoll, { type: 'ROLL' }).sailPoints.s1, processAction(plainRoll, { type: 'ROLL' }).sailPoints.s1 + SKILL_EFFECT.navigatorBonus);
+  const hurt = (st: GameState) => ({ ...st, ships: st.ships.map(x => (x.id === 's1' ? { ...x, damaged: true } : x)) });
+  const bosun = hurt(at(LEVEL_XP[1], ['bosun']));
+  equal(`${label}: a bosun repairs at half price`, cash(processAction(bosun, { type: 'REPAIR_SHIP', shipId: 's1' }), 'p1'), cash(bosun, 'p1') - Math.round(REPAIR_PRICE * SKILL_EFFECT.bosunRepair));
+
+  // A commodore's third charter.
+  let cm = createInitialState('t-com', 'C', { humanNames: ['A'], aiCount: 1, seed: 'com', hazards: { ...on, charters: true } });
+  cm = { ...cm, captains: cm.captains.map(c => (c.id === 'p1' ? { ...c, xp: LEVEL_XP[3], skills: ['bosun', 'gunner'] as SkillId[] } : c)) };
+  cm = processAction(cm, { type: 'ROLL' });
+  const commodore = processAction(cm, { type: 'LEARN_SKILL', skill: 'commodore' });
+  equal(`${label}: a commodore holds a third charter`, commodore.captains[0].charters?.length, CHARTERS_HELD + 1);
+
+  // --- Eras.
+  const plan = { ...off, weather: true, piracy: true, events: true, deadlines: true, teaRace: true, hostileBids: false, ramp: true };
+  let e = createInitialState('t-era', 'E', { humanNames: [], aiCount: 2, seed: 'era', hazards: plan });
+  equal('eras: era I to start', e.era, 1);
+  equal('eras: pirates held back', e.hazards?.piracy, false);
+  equal('eras: the wind is there from the start', e.hazards?.weather, true);
+  check('eras: the whole plan is kept', e.rampPlan?.piracy === true && e.rampPlan?.teaRace === true);
+  const turnTo = (st: GameState, round: number) => {
+    let s2 = { ...st, round: round - 1, activeIndex: st.captains.length - 1, phase: 'act' as const };
+    return runAiTurn(s2);
+  };
+  const two = turnTo(e, ERAS[1].from);
+  equal('eras: era II on its round', two.era, 2);
+  check('eras: pirates and events arrive', two.hazards?.piracy === true && two.hazards?.events === true);
+  equal('eras: the race still waits', two.hazards?.teaRace, false);
+  check('eras: and is announced', two.log.some(x => x.kind === 'era' && x.data?.era === 2));
+  const three = turnTo(two, ERAS[2].from);
+  equal('eras: era III on its round', three.era, 3);
+  check('eras: the race and the clock arrive', three.hazards?.teaRace === true && three.hazards?.deadlines === true);
+  equal('eras: a rule switched off never arrives', three.hazards?.hostileBids, false);
+  check('eras: the cards on the board start their clock today', three.contracts.every(c => (c.postedOn ?? 0) >= ERAS[2].from));
+  check('eras: and the tea race opens with the era', three.teaRace !== undefined);
+}
+
 function main() {
   testPayoutLadder();
   testCargoRules();
@@ -2374,6 +2826,10 @@ function main() {
   testPortPrices();
   testSourcelessCards();
   testWorldEvents();
+  testSeamanship();
+  testShipSale();
+  testChartersAndRenown();
+  testCareerAndEras();
   testDeterminism();
 
   const reports: [string, GameReport][] = [];
@@ -2410,6 +2866,22 @@ function main() {
   if (slow.length) {
     console.log(`  slow games (>250 rounds): ${slow.map(([seed, r]) => `${seed}:${r.rounds}`).join(', ')}`);
   }
+  const sum = (f: (r: GameReport) => number) => reports.reduce((n, [, r]) => n + f(r), 0);
+  console.log(
+    `  seamanship: ${sum(r => r.teaPlacings)} tea race placings, ${sum(r => r.seaLanded)} lots landed ` +
+      `that were taken at sea, ${sum(r => r.crackOns)} crack-ons (${sum(r => r.spars)} spars), ` +
+      `${sum(r => r.offersSeen)} encounters offered`,
+  );
+  // The new rules have to actually happen in play, not merely pass their unit checks: a race nobody
+  // enters, or a die nobody throws, is a feature the AI has silently stopped using.
+  const longGames = reports.filter(([, r]) => r.rounds >= 30);
+  check('seamanship: tea races are contested', sum(r => r.teaPlacings) >= longGames.length, `${sum(r => r.teaPlacings)} placings over ${longGames.length} games past round 30`);
+  check('seamanship: captains crack on', sum(r => r.crackOns) > 0);
+  const sparRate = sum(r => r.spars) / Math.max(1, sum(r => r.crackOns));
+  check('seamanship: spars go at a plausible rate', sparRate > 0.1 && sparRate < 0.3, `${(sparRate * 100).toFixed(1)}%`);
+  check('seamanship: ships meet things at sea', sum(r => r.offersSeen) > 0);
+  console.log(`  charters: ${sum(r => r.chartersPaid)} completed across the seed set`);
+  check('charters: captains complete them in play', sum(r => r.chartersPaid) >= reports.length);
 
   // The owner's complaint as a number: is the game over by round 30?
   const judged = reports.filter(([, r]) => r.leaderAt30Won !== null);
@@ -2440,7 +2912,10 @@ function main() {
   );
   check(
     'AI games: captains actually trade',
-    reports.every(([, r]) => r.deliveries >= 10),
+    // Ten, or one every two rounds for a game that ends before ten were possible. The seed set once
+    // produced a fourteen-round win built on a single £1,020 ivory delivery in round four — a game
+    // that traded hard and finished early, which is what this check must not confuse with a stall.
+    reports.every(([, r]) => r.deliveries >= Math.min(10, r.rounds / 2)),
     `deliveries per game: ${reports.map(([, r]) => r.deliveries).join(', ')}`,
   );
 

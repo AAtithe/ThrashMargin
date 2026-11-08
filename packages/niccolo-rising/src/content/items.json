@@ -1,0 +1,37 @@
+[
+  { "id": "ale", "name": "Jug of Hoegaarden ale", "kind": "consumable", "price": 40, "value": 20, "effect": { "nerve": 2 }, "blurb": "Courage at a groat a cup." },
+  { "id": "malmsey", "name": "Flask of Malmsey", "kind": "consumable", "price": 220, "value": 110, "effect": { "nerve": 6 }, "blurb": "Sweet Cretan wine, the kind that ends in a wager." },
+  { "id": "marchpane", "name": "Marchpane", "kind": "consumable", "price": 60, "value": 30, "effect": { "spirits": 75 }, "blurb": "Almonds and sugar pressed into the shape of a swan." },
+  { "id": "almonds", "name": "Box of sugared almonds", "kind": "consumable", "price": 260, "value": 130, "effect": { "spirits": 350 }, "blurb": "Bought for a lady; eaten on the way." },
+  { "id": "bandage", "name": "Linen bandages", "kind": "consumable", "price": 80, "value": 40, "effect": { "health": 40, "infirmaryMinutes": 15 }, "blurb": "Boiled, if you are lucky." },
+  { "id": "theriac", "name": "Venetian theriac", "kind": "consumable", "price": 450, "value": 220, "effect": { "health": 200, "infirmaryMinutes": 60 }, "blurb": "Sixty-four ingredients, viper flesh among them. Tobie disapproves and uses it anyway." },
+  { "id": "qahwa", "name": "Qahwa of the Turk", "kind": "consumable", "price": 0, "value": 900, "effect": { "energy": 25 }, "blurb": "A black bitter drink the Sufis take to stay awake. Unknown in Bruges; worth a great deal to whoever discovers it." },
+
+  { "id": "cudgel", "name": "Cudgel", "kind": "weapon", "price": 60, "value": 25, "damage": 1.15, "accuracy": 0, "blurb": "Ash, with a lump of lead knotted in." },
+  { "id": "dagger", "name": "Rondel dagger", "kind": "weapon", "price": 300, "value": 140, "damage": 1.3, "accuracy": 6, "blurb": "Made for the gap between plates." },
+  { "id": "falchion", "name": "Falchion", "kind": "weapon", "price": 1200, "value": 600, "damage": 1.6, "accuracy": 2, "blurb": "A heavy single-edged blade, half sword and half cleaver." },
+  { "id": "arming_sword", "name": "Milanese arming sword", "kind": "weapon", "price": 4500, "value": 2200, "damage": 1.95, "accuracy": 8, "blurb": "From the Missaglia workshops. The steel is the advertisement." },
+  { "id": "arbalest", "name": "Steel arbalest", "kind": "weapon", "price": 9000, "value": 4400, "damage": 2.4, "accuracy": 12, "blurb": "Spanned with a windlass. Astorre's men swear by them and at them." },
+
+  { "id": "jack", "name": "Padded jack", "kind": "armour", "price": 150, "value": 70, "armour": 0.08, "blurb": "Twenty layers of linen, stitched tight." },
+  { "id": "leather", "name": "Cuir-bouilli cuirass", "kind": "armour", "price": 900, "value": 420, "armour": 0.16, "blurb": "Boiled leather, hard as wood." },
+  { "id": "brigandine", "name": "Brigandine", "kind": "armour", "price": 3800, "value": 1800, "armour": 0.26, "blurb": "Small plates riveted inside velvet. A merchant's armour: it looks like a doublet." },
+  { "id": "harness", "name": "Milanese harness", "kind": "armour", "price": 14000, "value": 6800, "armour": 0.38, "blurb": "Full plate, fitted. You will be noticed." },
+
+  { "id": "satchel", "name": "Courier's satchel", "kind": "kit", "price": 500, "value": 200, "carry": 2, "blurb": "The Charetty couriers' own pattern. Two more items home from abroad." },
+  { "id": "mule", "name": "Pack mule", "kind": "kit", "price": 2400, "value": 1000, "carry": 3, "blurb": "Stubborn, but she carries. Three more items home from abroad." },
+
+  { "id": "woad", "name": "Bale of woad", "kind": "trade", "price": 0, "value": 70, "blurb": "Blue, from the Toulouse country." },
+  { "id": "wine_gascon", "name": "Cask of Gascon wine", "kind": "trade", "price": 0, "value": 90, "blurb": "Bordeaux claret, which London drinks faster than it can pay for." },
+  { "id": "wool", "name": "Sack of English wool", "kind": "trade", "price": 0, "value": 110, "blurb": "The Staple at Calais insists. Flemish looms insist louder." },
+  { "id": "salmon", "name": "Barrel of salt salmon", "kind": "trade", "price": 0, "value": 85, "blurb": "From Leith, where the Scots trade with anyone." },
+  { "id": "stockfish", "name": "Bundle of stockfish", "kind": "trade", "price": 0, "value": 120, "blurb": "Dried cod from Iceland, hard enough to build with." },
+  { "id": "silk", "name": "Bolt of Lucchese silk", "kind": "trade", "price": 0, "value": 380, "blurb": "Figured velvet the colour of blood." },
+  { "id": "glass", "name": "Crate of Murano glass", "kind": "trade", "price": 0, "value": 300, "blurb": "Packed in straw and prayers." },
+  { "id": "alum", "name": "Sack of alum", "kind": "trade", "price": 0, "value": 260, "blurb": "Every dyer in Flanders needs it. Every cardinal wants to own it." },
+  { "id": "kermes", "name": "Pot of kermes", "kind": "trade", "price": 0, "value": 520, "blurb": "Scarlet from insects. Worth more than its weight in most things." },
+  { "id": "sugar", "name": "Loaf of Cyprus sugar", "kind": "trade", "price": 0, "value": 420, "blurb": "From the Lusignan cane fields at Kouklia." },
+  { "id": "spices", "name": "Chest of pepper", "kind": "trade", "price": 0, "value": 700, "blurb": "The trade everyone else's trade is measured against." },
+  { "id": "gold_dust", "name": "Pouch of gold dust", "kind": "trade", "price": 0, "value": 1500, "blurb": "From beyond the desert, by the salt road." },
+  { "id": "ivory", "name": "Tusk of ivory", "kind": "trade", "price": 0, "value": 1100, "blurb": "Carved into madonnas in Paris and sold back to Africa as relics." }
+]

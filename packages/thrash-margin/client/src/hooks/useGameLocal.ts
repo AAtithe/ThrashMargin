@@ -1,115 +1,84 @@
-import { useState, useCallback } from 'react';
-import { createInitialState, DEFAULT_CONFIG, processAction } from 'shared/engine-reference';
-import type { GameState, GameAction, GameConfig } from 'shared/types';
+import { useCallback, useRef, useState } from 'react';
+import { createInitialState, migrateState, processAction } from 'shared/sim';
+import type { GameAction, GameConfig, GameState } from 'shared/sim';
+import { metaOf, newSeed, type GameHook, type SaveMeta } from './types';
 
 const INDEX_KEY = 'tm_saves';
 const stateKey = (id: string) => `tm_save_${id}`;
 
-export interface SaveMeta {
-  id: string;
-  name: string;
-  turn: number;
-  status: 'active' | 'victory' | 'defeated';
-  diff: string;
-  savedAt: number; // ms timestamp
-  campaignScenario?: number;
-  achievements?: string[];
-}
-
 function readIndex(): SaveMeta[] {
-  const raw = localStorage.getItem(INDEX_KEY);
-  if (!raw) {
-    // One-time migration from the old single-slot format
-    const old = localStorage.getItem('tm_local_game');
-    if (old) {
-      try {
-        const s = JSON.parse(old) as GameState;
-        if (s?.id) {
-          const meta: SaveMeta[] = [{
-            id: s.id, name: 'Imported Campaign',
-            turn: s.turn, status: s.status as SaveMeta['status'],
-            diff: s.config?.diff ?? 'normal', savedAt: Date.now(),
-          }];
-          localStorage.setItem(INDEX_KEY, JSON.stringify(meta));
-          localStorage.setItem(stateKey(s.id), old);
-          localStorage.removeItem('tm_local_game');
-          return meta;
-        }
-      } catch { /* ignore */ }
-    }
+  try {
+    return JSON.parse(localStorage.getItem(INDEX_KEY) ?? '[]') as SaveMeta[];
+  } catch {
     return [];
   }
-  try { return JSON.parse(raw) as SaveMeta[]; }
-  catch { return []; }
 }
 
-function writeIndex(idx: SaveMeta[]) {
-  localStorage.setItem(INDEX_KEY, JSON.stringify(idx));
+function write(s: GameState, name?: string): SaveMeta[] {
+  try {
+    localStorage.setItem(stateKey(s.id), JSON.stringify(s));
+    const idx = readIndex();
+    const existing = idx.find(e => e.id === s.id);
+    const meta = metaOf(s, name ?? existing?.name);
+    const next = existing ? idx.map(e => (e.id === s.id ? meta : e)) : [meta, ...idx];
+    localStorage.setItem(INDEX_KEY, JSON.stringify(next));
+    return next;
+  } catch {
+    return readIndex();
+  }
 }
 
-function upsertIndex(s: GameState, nameOverride?: string): SaveMeta[] {
-  const idx = readIndex();
-  const existing = idx.find(e => e.id === s.id);
-  const meta: SaveMeta = {
-    id: s.id,
-    name: nameOverride ?? existing?.name ?? 'Campaign',
-    turn: s.turn,
-    status: s.status as SaveMeta['status'],
-    diff: s.config?.diff ?? 'normal',
-    savedAt: Date.now(),
-    ...(s.config?.campaignScenario !== undefined && { campaignScenario: s.config.campaignScenario }),
-    ...(s.achievements?.length && { achievements: s.achievements }),
-  };
-  const newIdx = existing
-    ? idx.map(e => e.id === s.id ? meta : e)
-    : [meta, ...idx];
-  writeIndex(newIdx);
-  return newIdx;
-}
-
-export function useGameLocal() {
+/** Browser-only persistence: used when there is no sign-in token (see useGameHybrid). */
+export function useGameLocal(): GameHook {
   const [state, setState] = useState<GameState | null>(null);
-  const [loading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saves, setSaves] = useState<SaveMeta[]>(readIndex);
+  const ref = useRef<GameState | null>(null);
 
-  const createGame = useCallback((config?: Partial<GameConfig>, name?: string): string => {
-    const idx = readIndex();
-    const id = crypto.randomUUID();
-    const s = createInitialState(id, { ...DEFAULT_CONFIG, ...config });
-    const campaignName = name?.trim() || `Campaign #${idx.length + 1}`;
-    localStorage.setItem(stateKey(id), JSON.stringify(s));
-    setSaves(upsertIndex(s, campaignName));
+  const commit = useCallback((s: GameState) => {
+    ref.current = s;
     setState(s);
+    setSaves(write(s));
+  }, []);
+
+  const createGame = useCallback(async (config: Partial<GameConfig>, name?: string) => {
+    const id = crypto.randomUUID();
+    const label = name?.trim() || `Campaign ${readIndex().length + 1}`;
+    const s = createInitialState(id, config, { seed: newSeed(), createdAt: Date.now(), name: label });
+    ref.current = s;
+    setState(s);
+    setSaves(write(s, label));
     return id;
   }, []);
 
-  const loadGame = useCallback((gameId: string) => {
+  const loadGame = useCallback(async (id: string) => {
+    setError(null);
     try {
-      const raw = localStorage.getItem(stateKey(gameId));
-      if (!raw) { setError('Save not found'); return; }
-      setState(JSON.parse(raw) as GameState);
+      const raw = localStorage.getItem(stateKey(id));
+      if (!raw) { setError('Save not found.'); return; }
+      const s = migrateState(JSON.parse(raw));
+      ref.current = s;
+      setState(s);
     } catch {
-      setError('Could not load save');
+      setError('That save could not be read.');
     }
   }, []);
 
-  const sendAction = useCallback(async (_gameId: string, action: GameAction) => {
-    setState(prev => {
-      if (!prev) return prev;
-      const next = processAction(prev, action);
-      localStorage.setItem(stateKey(next.id), JSON.stringify(next));
-      setSaves(upsertIndex(next));
-      return next;
-    });
+  const dispatch = useCallback((action: GameAction) => {
+    const prev = ref.current;
+    if (!prev) return null;
+    const next = processAction(prev, action);
+    if (next === prev) return null;
+    commit(next);
+    return next;
+  }, [commit]);
+
+  const deleteGame = useCallback(async (id: string) => {
+    localStorage.removeItem(stateKey(id));
+    const next = readIndex().filter(e => e.id !== id);
+    localStorage.setItem(INDEX_KEY, JSON.stringify(next));
+    setSaves(next);
   }, []);
 
-  const deleteGame = useCallback((gameId: string) => {
-    localStorage.removeItem(stateKey(gameId));
-    const newIdx = readIndex().filter(e => e.id !== gameId);
-    writeIndex(newIdx);
-    setSaves(newIdx);
-  }, []);
-
-  return { state, loading, error, saves, createGame, loadGame, sendAction, deleteGame };
+  return { state, error, loading: false, saveStatus: 'saved', saves, createGame, loadGame, dispatch, restore: commit, deleteGame };
 }

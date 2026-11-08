@@ -1,0 +1,66 @@
+[
+  {"id": "ghent", "name": "Ghent", "minutes": 15, "fare": 10, "blurb": "Bruges's larger, angrier neighbour.",
+    "market": [
+      {"item": "woad", "cost": 50, "stock": 30},
+      {"item": "ale", "cost": 20, "stock": 40}
+    ] },
+  {"id": "calais", "name": "Calais", "minutes": 30, "fare": 40, "blurb": "England's toehold on the continent, and the Wool Staple's market.",
+    "market": [
+      {"item": "wool", "cost": 77, "stock": 25},
+      {"item": "wine_gascon", "cost": 63, "stock": 15}
+    ] },
+  {"id": "london", "name": "London", "minutes": 45, "fare": 80, "blurb": "The Hanse Steelyard, the Lombards and a king losing a war.",
+    "market": [
+      {"item": "wool", "cost": 75, "stock": 30},
+      {"item": "wine_gascon", "cost": 60, "stock": 20},
+      {"item": "bandage", "cost": 50, "stock": 10}
+    ] },
+  {"id": "leith", "name": "Leith", "minutes": 75, "fare": 120, "blurb": "The port of Edinburgh. The Scots have long memories and short purses.",
+    "market": [
+      {"item": "salmon", "cost": 55, "stock": 30},
+      {"item": "wool", "cost": 80, "stock": 15}
+    ] },
+  {"id": "geneva", "name": "Geneva", "minutes": 70, "fare": 140, "blurb": "Fair town of Savoy, where the Medici keep a branch for the exchange.",
+    "market": [
+      {"item": "kermes", "cost": 340, "stock": 6},
+      {"item": "malmsey", "cost": 140, "stock": 8}
+    ] },
+  {"id": "venice", "name": "Venice", "minutes": 100, "fare": 220, "blurb": "The Serenissima. Everything is for sale, including the truth.",
+    "market": [
+      {"item": "glass", "cost": 185, "stock": 18},
+      {"item": "spices", "cost": 475, "stock": 8},
+      {"item": "theriac", "cost": 260, "stock": 10},
+      {"item": "malmsey", "cost": 110, "stock": 15}
+    ] },
+  {"id": "florence", "name": "Florence", "minutes": 110, "fare": 230, "blurb": "Cosimo's city, and the Medici bank's head office.",
+    "market": [
+      {"item": "silk", "cost": 235, "stock": 15},
+      {"item": "almonds", "cost": 150, "stock": 10}
+    ] },
+  {"id": "iceland", "name": "Iceland", "minutes": 150, "fare": 260, "blurb": "Bristol men and Hansards fight over the fishing stations.",
+    "market": [
+      {"item": "stockfish", "cost": 72, "stock": 40}
+    ] },
+  {"id": "cyprus", "name": "Cyprus", "minutes": 190, "fare": 420, "blurb": "A disputed throne, a sugar fortune, and the Knights of Rhodes next door.",
+    "market": [
+      {"item": "sugar", "cost": 245, "stock": 14},
+      {"item": "malmsey", "cost": 90, "stock": 20}
+    ] },
+  {"id": "trebizond", "name": "Trebizond", "minutes": 240, "fare": 520, "requiresCourse": "greek", "blurb": "The last Greek empire, gold and silk at the end of the Silk Road, with the Turk at the gate.",
+    "market": [
+      {"item": "silk", "cost": 190, "stock": 20},
+      {"item": "alum", "cost": 130, "stock": 20},
+      {"item": "qahwa", "cost": 300, "stock": 3}
+    ] },
+  {"id": "alexandria", "name": "Alexandria", "minutes": 210, "fare": 480, "requiresCourse": "arabic", "blurb": "The Mamluk port. Pepper from the Indies, if the Sultan's men allow it.",
+    "market": [
+      {"item": "spices", "cost": 365, "stock": 15},
+      {"item": "sugar", "cost": 250, "stock": 10},
+      {"item": "qahwa", "cost": 280, "stock": 5}
+    ] },
+  {"id": "timbuktu", "name": "Timbuktu", "minutes": 300, "fare": 900, "requiresCourse": "arabic", "blurb": "Across the desert, the city of scholars and of gold. Few Flemings have seen it and come back.",
+    "market": [
+      {"item": "gold_dust", "cost": 825, "stock": 8},
+      {"item": "ivory", "cost": 600, "stock": 6}
+    ] }
+]

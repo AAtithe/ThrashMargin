@@ -42,7 +42,7 @@ export default function HandoverCard({
 const backdrop: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(6, 11, 14, 0.92)',
+  background: UI.cover,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

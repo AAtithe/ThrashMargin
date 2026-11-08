@@ -1,7 +1,8 @@
 # The Thrash Margin portal — working notes
 
-Four games served from one deployment, one Postgres/Supabase instance, and one account system:
-`packages/thrash-margin`, `packages/niccolo`, `packages/steady-eddie`, `packages/tea-race`.
+Five games served from one deployment, one Postgres/Supabase instance, and one account system:
+`packages/thrash-margin`, `packages/niccolo`, `packages/niccolo-rising`, `packages/steady-eddie`,
+`packages/tea-race`.
 Each game's design document is at the repo root (`tea-race-design.md`, and so on) and carries its own
 build log; read the relevant one before changing a game's rules.
 
@@ -11,7 +12,7 @@ build log; read the relevant one before changing a game's rules.
 
 ### 1. Every game requires a signed-in account. There is no guest path.
 
-All four lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
+All five lobbies gate on `if (!user)` and show a sign-in panel. **Do not add a guest, anonymous,
 demo, or "try it without an account" route back in**, and do not relax the gate to make local
 development or testing easier. A guest path existed once and was deliberately removed
 (`7c0e0a0`); it is not an oversight and it is not a TODO.
@@ -22,6 +23,7 @@ The gate lives at:
 |---|---|
 | Thrash Margin | `packages/thrash-margin/client/src/pages/Lobby.tsx` |
 | Banco di Niccolò | `packages/niccolo/src/pages/Lobby.tsx` |
+| Niccolò Rising | `packages/niccolo-rising/src/pages/Lobby.tsx` |
 | Steady Eddie | `packages/steady-eddie/src/pages/Lobby.tsx` |
 | The Tea Race | `packages/tea-race/src/pages/Lobby.tsx` |
 
@@ -47,11 +49,13 @@ localStorage.setItem('tm_user', JSON.stringify({ userId: 'local-dev', username: 
 Use that for local UI checks. Never change the gate, add an env-var escape hatch, or stub
 `getUser` to make a test pass.
 
-### 2. `packages/tea-race/src/sim/` is pure
+### 2. `packages/tea-race/src/sim/` and `packages/niccolo-rising/src/sim/` are pure
 
 No `Math.random`, no clock. Dice come from `rng.ts` against the persisted `rngSeed`, and
-`createdAt` is passed in by the caller. This is what makes a game replay byte-identically and what
-makes `scripts/drive.ts` a real test rather than a smoke test.
+`createdAt` is passed in by the caller. Niccolò Rising runs in real time, so every one of its
+actions carries its own `at` timestamp and the reducer never reads a clock either. This is what
+makes a game replay byte-identically and what makes `scripts/drive.ts` a real test rather than a
+smoke test.
 
 An **illegal action returns the same state object** (reference equality). The AI loop uses that to
 detect a rejected move and the save hooks use it to skip a pointless write.
@@ -65,9 +69,30 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
 
 ## Working practices that have earned their place
 
+- **`npm run check` before pushing.** Every typecheck and every game's test suite in one command.
+  The Vercel build runs it first and does not deploy on failure; GitHub Actions runs it on every
+  push (`.github/workflows/ci.yml`).
+- **`npm run test:api` after touching anything under `api/`.** The server code against a real
+  Postgres that includes Supabase's own `auth.users` table, built from `db/schema.sql`, plus a second
+  pass on a pre-existing database to test the API's automatic setup. Needs
+  `API_TEST_DATABASE_URL` pointing at a local database (it is wiped). An admin bug once passed every
+  test and failed live because the test database lacked Supabase's tables.
+- **Shared portal code lives once, in `shared/portal/`** (server: auth, database, CORS, schema,
+  saves, rate limits; browser: session, save queue). Each game gets a generated copy in its own
+  `api/_lib/` and `src/lib/`; never edit a copy. Edit the original, run `npm run sync-shared`, and
+  `npm run check` fails while any copy differs. Copies, not imports, because a cross-package import
+  once broke production: Vercel left the file out of the deployed function (see PROGRESS.md).
+- **Adding a game:** one entry in `packages/thrash-margin/shared/games.ts` (feedback, profile and
+  admin read it), one line in `api/play/[kind].ts` (its saves endpoint), and its build in
+  `scripts/build-portal.sh` and `scripts/check.sh`. No new Vercel function.
+- **Schema changes** go in `db/schema.sql` and, for the live database, in
+  `packages/thrash-margin/api/_lib/schema.ts`, which applies them automatically on first use.
 - **`npm run drive` before trusting anything.** ~370,000 assertions over 20 seeds in a couple of
   seconds. Use a wide seed set: pathologies in this codebase's history showed up in some seeds and
   not others, and a five-seed run once reported two bugs fixed while they were still there.
+- **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and
+  difficulty). Its engine (`packages/thrash-margin/shared/sim/`) follows the same purity rule as the
+  Tea Race's `sim/`: no `Math.random`, no clock, illegal actions return the same state object.
 - **Typecheck before trusting any measurement taken mid-refactor.** `tsx` transpiles without
   typechecking, so a half-finished rename makes every game look broken and can cost half a session.
 - **Win-rate comparisons need 150+ seeds.** At 20 the noise is about ±10 points and at 40 about ±8;
@@ -80,5 +105,12 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   there and nowhere else: a step whose predicate reads true before the run begins, a step that can
   un-complete itself, and a spotlight measured while a smooth scroll is still moving the target.
   None of them are visible to `tsc` or to `npm run drive`, which never render anything.
+- **Light and dark mode: colours are CSS variables.** Each game's `theme.ts` hands out
+  `var(--…)` strings; the values, one block per mode, are in that game's `styles.css` (portal
+  chrome in `portal.css`, identical in every package). `lib/colorScheme.ts` stores the choice under
+  `tm_theme`, shared by all five games and the landing page, and `theme-init.js` (an external file,
+  because the CSP forbids inline scripts) applies it before first paint. Both live in
+  `shared/portal/client/` and are copied out by `npm run sync-shared`. A new colour is a token in both blocks, never a hex literal in a component, and never
+  hex alpha appended to a token (`${UI.bad}55` is invalid CSS). Check both modes in the browser.
 - **Never `git add -A` without reading `git status` first.** A commit in this repo once swept four
   other games' uncommitted lobby changes in under an unrelated message. Stage deliberately.

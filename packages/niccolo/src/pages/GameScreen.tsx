@@ -40,6 +40,7 @@ import EventOverlay from '../components/EventOverlay';
 import TutorialOverlay, { hasSeenTutorial, hasSeenChapter0Tutorial } from '../components/TutorialOverlay';
 import GuidedTour from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
+import ThemeToggle from '../components/ThemeToggle';
 
 /**
  * One entry per popup section. Fleet selection, giving a vessel her orders (the old 'city' section
@@ -591,6 +592,7 @@ export default function GameScreen() {
               Chronicle
             </button>
           )}
+          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
           <button
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textFaint }}
             onClick={() => nav('/')}

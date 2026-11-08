@@ -1,13 +1,74 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import bcrypt from 'bcryptjs';
 import { v4 as uuid } from 'uuid';
+import type { Pool } from 'pg';
 import { getDb } from '../_lib/db';
 import { signToken } from '../_lib/auth';
+import { isAdmin } from '../_lib/admin';
+import { ensureSchema } from '../_lib/schema';
+import { isEmail, MIN_PASSWORD } from '../_lib/validate';
+import { clientAddress, isOverLimit, LIMITS, recordEvent } from '../_lib/rateLimit';
 import { handleCors } from '../_lib/cors';
 
 // Combines what were two separate functions (login.ts, register.ts) into one, dispatching on
 // the [mode] route param — Vercel's Hobby plan caps a deployment at 12 serverless functions.
 // URLs are unchanged: /api/auth/login and /api/auth/register still resolve here.
+
+// Sign-in attempt limits, on failed attempts only, keyed on the lower-cased username whether or not
+// the account exists (so the response does not reveal which usernames are real):
+//   - one network, one username: 10 in 15 minutes. Stops password guessing from one place.
+//   - one network, any usernames: 30 in 15 minutes. Stops one place trying a few passwords
+//     against every account in turn.
+//   - one username, every network: 100 in an hour. Caps guessing spread across many networks.
+// The limit used to be per username alone, so anyone anywhere could keep a named player locked out
+// with 10 wrong passwords every 15 minutes. Now a stranger's failures lock out only the stranger's
+// own network; locking out the player everywhere takes 100 failures an hour from many networks.
+// An admin's password reset clears every count for that username.
+//
+// Fails open: if the count cannot be read, sign-in proceeds. Locking every player out because the
+// limiter's own table is unavailable would be the worse failure.
+const PER_PAIR = 10;
+const PER_NETWORK = 30;
+const PER_USERNAME_HOURLY = 100;
+
+async function tooManyFailures(db: Pool, key: string, address: string): Promise<boolean> {
+  try {
+    await ensureSchema(db);
+    const { rows } = await db.query(
+      `SELECT
+         COUNT(*) FILTER (WHERE username_key = $1 AND address = $2 AND at > NOW() - INTERVAL '15 minutes')::int AS pair,
+         COUNT(*) FILTER (WHERE address = $2 AND at > NOW() - INTERVAL '15 minutes')::int AS network,
+         COUNT(*) FILTER (WHERE username_key = $1)::int AS username
+       FROM login_failures
+       WHERE (username_key = $1 OR address = $2) AND at > NOW() - INTERVAL '1 hour'`,
+      [key, address],
+    );
+    const r = rows[0];
+    return r.pair >= PER_PAIR || r.network >= PER_NETWORK || r.username >= PER_USERNAME_HOURLY;
+  } catch (err) {
+    console.error('login limiter read failed', err);
+    return false;
+  }
+}
+
+async function recordFailure(db: Pool, key: string, address: string): Promise<void> {
+  try {
+    await db.query('INSERT INTO login_failures (username_key, address) VALUES ($1, $2)', [key, address]);
+    // Keeps the table small; nothing older than the window is ever read.
+    await db.query(`DELETE FROM login_failures WHERE at < NOW() - INTERVAL '1 day'`);
+  } catch (err) {
+    console.error('login limiter write failed', err);
+  }
+}
+
+// Compared against when the username does not exist, so an unknown name takes as long to refuse as
+// a wrong password. Answering before bcrypt ran made real usernames measurably slower (~200 ms).
+// Made on first use rather than at load, so it does not add to every cold start.
+let dummyHash: string | null = null;
+function timingDummy(): string {
+  if (!dummyHash) dummyHash = bcrypt.hashSync('timing-equaliser-not-a-password', 12);
+  return dummyHash;
+}
 
 async function login(req: VercelRequest, res: VercelResponse) {
   const { username, password } = req.body ?? {};
@@ -16,16 +77,25 @@ async function login(req: VercelRequest, res: VercelResponse) {
   }
 
   const db = getDb();
+  const key = String(username).toLowerCase().slice(0, 64);
+  const address = clientAddress(req);
+  if (await tooManyFailures(db, key, address)) {
+    return res.status(429).json({
+      message: 'Too many failed sign-in attempts. Try again in 15 minutes, or ask an admin to reset your password.',
+    });
+  }
   try {
     const { rows } = await db.query(
       'SELECT id, username, password FROM users WHERE username = $1',
       [username],
     );
     const user = rows[0];
-    if (!user) return res.status(401).json({ message: 'Invalid credentials' });
-
-    const match = await bcrypt.compare(String(password), user.password);
-    if (!match) return res.status(401).json({ message: 'Invalid credentials' });
+    const match = await bcrypt.compare(String(password), user ? user.password : timingDummy());
+    if (!user || !match) {
+      await recordFailure(db, key, address);
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
+    db.query('DELETE FROM login_failures WHERE username_key = $1', [key]).catch(() => {});
 
     // Non-blocking: a failed timestamp update shouldn't fail the login itself.
     db.query('UPDATE users SET last_login_at = NOW() WHERE id = $1', [user.id]).catch(err =>
@@ -33,7 +103,9 @@ async function login(req: VercelRequest, res: VercelResponse) {
     );
 
     const token = signToken({ userId: user.id, username: user.username });
-    return res.json({ token, userId: user.id, username: user.username });
+    // For the nav's Admin link only. Presentational: every admin endpoint re-checks the role.
+    const admin = await isAdmin(db, user.id);
+    return res.json({ token, userId: user.id, username: user.username, isAdmin: admin });
   } catch (err) {
     console.error('login error', err);
     return res.status(500).json({ message: 'Server error' });
@@ -48,18 +120,38 @@ async function register(req: VercelRequest, res: VercelResponse) {
   if (typeof username !== 'string' || username.length < 3 || username.length > 32) {
     return res.status(400).json({ message: 'username must be 3–32 characters' });
   }
+  // Same floor as /api/profile's password change, which previously was the only place it applied.
+  // The type check also stops a non-string body value reaching bcrypt and surfacing as a 500.
+  if (typeof password !== 'string' || password.length < MIN_PASSWORD) {
+    return res.status(400).json({ message: `password must be at least ${MIN_PASSWORD} characters` });
+  }
+  if (!isEmail(email)) return res.status(400).json({ message: 'Enter a valid email address' });
 
   const db = getDb();
+  // At most 5 new accounts per network address per hour, so a script cannot fill the portal with
+  // accounts. Counted only on success, so typos and taken names do not use up the allowance.
+  const address = clientAddress(req);
+  if (await isOverLimit(db, LIMITS.register, address)) {
+    return res.status(429).json({ message: 'Too many new accounts from this network. Try again in an hour.' });
+  }
   try {
+    // The UNIQUE constraint on users.username is case-sensitive, so 'Tom' and 'tom' could both
+    // register and pass for each other in feedback, the admin list and anywhere a name is shown.
+    const { rowCount } = await db.query('SELECT 1 FROM users WHERE LOWER(username) = LOWER($1)', [username]);
+    if (rowCount) return res.status(409).json({ message: 'Username or email already taken' });
+
     const hash = await bcrypt.hash(password, 12);
     const id = uuid();
+    // One statement, so an account is either fully created or not at all. It used to be followed
+    // by a second insert into player_stats (a table nothing read); if that failed, the player was
+    // told "Server error" while the account already existed, and their retry was refused as taken.
     await db.query(
       'INSERT INTO users (id, username, email, password) VALUES ($1, $2, $3, $4)',
-      [id, username, String(email).toLowerCase(), hash],
+      [id, username, email.toLowerCase(), hash],
     );
-    await db.query('INSERT INTO player_stats (user_id) VALUES ($1)', [id]);
+    await recordEvent(db, LIMITS.register, address);
     const token = signToken({ userId: id, username });
-    return res.status(201).json({ token, userId: id, username });
+    return res.status(201).json({ token, userId: id, username, isAdmin: false });
   } catch (err: any) {
     if (err.code === '23505') {
       return res.status(409).json({ message: 'Username or email already taken' });

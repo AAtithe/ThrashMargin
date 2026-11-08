@@ -1,6 +1,8 @@
 import { SHARE_MAJORITY, VICTORY_CASH } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel } from './ui';
+import { TeaChest } from './Art';
+import { careerOn, levelFor } from '../sim/career';
 import { assetValue } from '../sim/actions';
 import type { GameState } from '../sim/types';
 
@@ -30,6 +32,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
             <th style={th}>Cash</th>
             <th style={th}>{freePlay ? 'Worth' : 'Shares'}</th>
             <th style={th}>Ships</th>
+            {careerOn(state) && <th style={th}>Lvl</th>}
           </tr>
         </thead>
         <tbody>
@@ -47,6 +50,16 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                       {captain.kind === 'ai' ? '' : ' ·'}
                     </span>
                     {isDeclarer && <span style={{ color: UI.warn, fontSize: '0.7rem' }}>claimed</span>}
+                    {(captain.teaRaceWins ?? 0) + (captain.teaRaceSeconds ?? 0) > 0 && (
+                      <span
+                        title={`Tea race: ${captain.teaRaceWins ?? 0} won, ${captain.teaRaceSeconds ?? 0} second`}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.15rem', color: UI.brass, fontSize: '0.66rem' }}
+                      >
+                        <TeaChest size={11} />
+                        {captain.teaRaceWins ?? 0}
+                        {captain.teaRaceSeconds ? `/${captain.teaRaceSeconds}` : ''}
+                      </span>
+                    )}
                   </span>
                 </td>
                 <td
@@ -71,6 +84,11 @@ export default function CaptainsTable({ state }: { state: GameState }) {
                   {freePlay ? money(worthOf(captain)) : captain.shares}
                 </td>
                 <td style={{ ...td, color: UI.textSoft }}>{ships}</td>
+                {careerOn(state) && (
+                  <td style={{ ...td, color: UI.verdigris }} title={`${captain.xp ?? 0} experience; ${(captain.skills ?? []).length} skills`}>
+                    {levelFor(captain.xp)}
+                  </td>
+                )}
               </tr>
             );
           })}
@@ -81,6 +99,7 @@ export default function CaptainsTable({ state }: { state: GameState }) {
         {freePlay
           ? 'Worth counts cash, cargo, hulls and holdings, less anything owed.'
           : `Cash turns green past ${money(VICTORY_CASH)}.`}
+        {state.hazards?.teaRace && !freePlay ? ' A tea chest counts tea races won, then seconds.' : ''}
       </p>
     </Panel>
   );

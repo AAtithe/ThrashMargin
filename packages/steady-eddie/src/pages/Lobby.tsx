@@ -182,7 +182,7 @@ export default function Lobby() {
               Sign in to keep your campaigns on your account.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              <Button tone="primary" onClick={() => { window.location.href = '/thrash-margin/login'; }}>
+              <Button tone="primary" onClick={() => { window.location.href = '/thrash-margin/login?next=/steady-eddie/'; }}>
                 Sign in / Register →
               </Button>
             </div>
@@ -616,7 +616,7 @@ const checkRow: React.CSSProperties = {
 
 const errorBanner: React.CSSProperties = {
   border: `1px solid ${UI.bad}`,
-  background: 'rgba(194, 96, 106, 0.1)',
+  background: UI.tintBad,
   color: UI.bad,
   padding: '0.6rem 0.8rem',
   marginBottom: '1.2rem',

@@ -22,6 +22,7 @@ import HandoverCard from '../components/HandoverCard';
 import { Button, bodySmall, dataText } from '../components/ui';
 import GuidedTour, { hasSeenGuidedTour, planFirstRun, type TourPlan } from '../components/GuidedTour';
 import type { Contract, DepotId } from '../sim/types';
+import ThemeToggle from '../components/ThemeToggle';
 
 export default function GameScreen() {
   const { id } = useParams();
@@ -186,7 +187,8 @@ export default function GameScreen() {
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '0.4rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
           {/* Offered whenever a run can actually be planned from where the fleet stands, not only
               on day one: a player who skipped it, or who came back to a half-played game, should
               still be able to ask for it. */}
@@ -476,13 +478,13 @@ const seasonBanner: React.CSSProperties = {
   flexWrap: 'wrap',
   padding: '0.4rem 1rem',
   borderBottom: `1px solid ${UI.rule}`,
-  background: 'rgba(111, 176, 164, 0.07)',
+  background: UI.tintVerdigris,
 };
 
 const declarationBanner: React.CSSProperties = {
   padding: '0.5rem 1rem',
   borderBottom: `1px solid ${UI.rule}`,
-  background: 'rgba(217, 164, 65, 0.09)',
+  background: UI.tintWarn,
   fontFamily: FONT.body,
   fontSize: '0.82rem',
   color: UI.textSoft,
@@ -539,7 +541,7 @@ const turnBar: React.CSSProperties = {
 const backdrop: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(6, 11, 14, 0.92)',
+  background: UI.cover,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',

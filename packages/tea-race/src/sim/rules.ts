@@ -774,14 +774,22 @@ export const PRESETS = {
       shipClasses: false,
       stocks: false,
       agents: false,
+      teaRace: false,
+      pressSail: false,
+      encounters: false,
+      charters: false,
+      renown: false,
+      career: false,
+      ramp: false,
     },
   },
   merchant: {
     label: "A merchant's game",
     blurb:
       'Money, not weather. Crew wages to pay, loans to raise, hulls to choose between, cargo you ' +
-      'can sell off at a loss, and an exchange to read. Nothing random but the dice, and the ' +
-      'longest of the four — wages make every season count.',
+      'can sell off at a loss, an exchange to read, owners with charters to fill, a captain\'s ' +
+      'career to build, and a tea race every summer. Nothing random but the dice, and the longest ' +
+      'of the four — wages make every season count.',
     hazards: {
       weather: false,
       piracy: false,
@@ -794,14 +802,22 @@ export const PRESETS = {
       shipClasses: true,
       stocks: true,
       agents: true,
+      teaRace: true,
+      pressSail: true,
+      encounters: false,
+      charters: true,
+      renown: true,
+      career: true,
+      ramp: false,
     },
   },
   highSeas: {
     label: 'The high seas',
     blurb:
-      'Weather, not money. A seasonal wind chart, storms, pirates worth arming against, a world ' +
-      'that throws strikes and gluts at you, and commissions that will not wait. Quick and ' +
-      'dangerous — the expiring cards keep everybody moving.',
+      'Weather, not money. A seasonal wind chart, storms, pirates worth arming against, derelicts ' +
+      'and castaways to stop for, ships that make a name for themselves, a world that throws ' +
+      'strikes and gluts at you, and commissions that will not wait — arriving in eras, so the ' +
+      'sea gets rougher as the game goes on.',
     hazards: {
       weather: true,
       piracy: true,
@@ -814,13 +830,20 @@ export const PRESETS = {
       shipClasses: false,
       stocks: false,
       agents: false,
+      teaRace: true,
+      pressSail: true,
+      encounters: true,
+      charters: false,
+      renown: true,
+      career: false,
+      ramp: true,
     },
   },
   full: {
     label: 'The full race',
     blurb:
-      'Everything at once, and the one with the most to go wrong. Not the longest, though — the ' +
-      'expiring commissions drive it along faster than the merchant\'s game.',
+      'Everything, ramping up in eras: trade and the wind first, then pirates and the world, then ' +
+      'the tea race and the clock. Your captain levels up and learns skills as it goes.',
     hazards: {
       weather: true,
       piracy: true,
@@ -833,6 +856,13 @@ export const PRESETS = {
       shipClasses: true,
       stocks: true,
       agents: true,
+      teaRace: true,
+      pressSail: true,
+      encounters: true,
+      charters: true,
+      renown: true,
+      career: true,
+      ramp: true,
     },
   },
 } as const;
@@ -883,3 +913,126 @@ export const SHIP_NAMES = [
   'Deerfoot',
   'Ellen Rodger',
 ];
+
+// ---------------------------------------------------------------------------
+// Seamanship: the Great Tea Race, cracking on, and encounters at sea
+//
+// All AUTHORED. The 1988 board has none of them, and all three are off in its preset. They exist
+// because the owner found the turn itself one-dimensional: roll, click a port, watch the ship go.
+// Each adds a decision to the part of the turn that had none — what to do with a ship already at
+// sea — and the race gives the whole table one contest everybody can see coming.
+// ---------------------------------------------------------------------------
+
+/**
+ * AUTHORED — the round of each 24-round year on which the new season's tea comes down to the China
+ * ports: the first round of summer, as the real races loaded at Foochow in late May and June.
+ */
+export const TEA_RACE_OPENS_IN_YEAR = 7;
+
+/** AUTHORED — how many rounds a year's race stays open if two ships have not placed. */
+export const TEA_RACE_ROUNDS = 18;
+
+/** AUTHORED — where the race finishes. The real ones docked in the Thames. */
+export const TEA_RACE_FINISH = 'london';
+
+/** AUTHORED — the purse for first and second home, on top of the premium on the tea itself. */
+export const TEA_RACE_PURSE: Record<1 | 2, number> = { 1: 150, 2: 75 };
+
+/**
+ * AUTHORED — what the new season's tea fetches per lot on the day it lands, as a multiple of tea's
+ * reckoned price. First home with three lots takes about what a first-place card pays, plus the
+ * purse; the point is not a bigger number but a contest the whole table can see coming.
+ */
+export const TEA_RACE_PREMIUM: Record<1 | 2, number> = { 1: 3, 2: 2 };
+
+/**
+ * AUTHORED — cracking on. A ship driven hard throws one extra die; on this value or below she
+ * carries away a spar instead and gains nothing. One worse rounding a great cape.
+ */
+export const SPAR_CARRIED_ON = 1;
+
+/** AUTHORED — sail points a damaged ship loses on every roll until repaired. */
+export const DAMAGE_SPEED_PENALTY = 2;
+
+/** AUTHORED — the price of making her good at a quay. */
+export const REPAIR_PRICE = 40;
+
+/**
+ * AUTHORED — chance per ship per turn at sea of meeting something that asks for a decision. About
+ * one in seven: often enough that a long passage usually has one, rare enough to stay an event.
+ */
+export const ENCOUNTER_CHANCE = 0.14;
+
+/**
+ * AUTHORED — a hull sold back to the yard fetches this fraction of her new price, fittings and any
+ * cargo aboard thrown in for nothing.
+ *
+ * The softlock escape for standing costs, on the same reasoning as selling a share back (§2.2).
+ * With wages and loans on, a captain with no cash and nothing aboard cannot buy a lot, so cannot
+ * earn, so falls further into arrears every round. The harness found whole tables stuck there for
+ * three hundred rounds. Only offered when wages or loans are in play, since those are what make the
+ * trap, and never for a captain's last ship — a fleet of none cannot trade or win.
+ */
+export const SHIP_SALE_FRACTION = 0.5;
+
+export const shipSalePrice = (shipClass: ShipClassId | undefined): number =>
+  Math.round(SHIP_CLASSES[shipClass ?? DEFAULT_SHIP_CLASS].price * SHIP_SALE_FRACTION);
+
+// ---------------------------------------------------------------------------
+// Owners' charters and ship renown
+//
+// AUTHORED, both off in the 1988 board. Charters exist because every captain otherwise wants the
+// same thing every turn — the best card on the board — so the table converges on one plan. A
+// personal objective pulls captains apart and gives each a reason to prefer one run over another
+// that pays the same. Renown exists because ships were interchangeable: the clipper that has won
+// three races was no different from the one bought yesterday.
+// ---------------------------------------------------------------------------
+
+/** AUTHORED — charters each captain holds at once. */
+export const CHARTERS_HELD = 2;
+
+/**
+ * AUTHORED — what each kind asks and pays. Roughly one good lot's profit: worth bending a route for,
+ * never worth more than winning the card itself.
+ *
+ * The first cut paid £120–£200 and was measured, not guessed: captains completed eleven or twelve a
+ * game, about £2,000 of new money each, and the merchant's game fell from a median of 101 rounds to
+ * 69 with one full race won in ten. Charters are meant to pull plans apart, not to print money.
+ */
+export const CHARTER_TERMS = {
+  regionTrade: { target: 6, reward: 75 },
+  firstHome: { target: 3, reward: 75 },
+  goodTrade: { target: 5, reward: 65 },
+  spread: { target: 5, reward: 75 },
+  teaRace: { target: 1, reward: 60 },
+  fleet: { target: 3, reward: 45 },
+} as const;
+
+/** AUTHORED — renown earned, and where it tells. */
+export const RENOWN_FOR = { firstHome: 1, raceWin: 3, raceSecond: 1 } as const;
+export const RENOWN_CAP = 15;
+
+/** Where renown starts to tell: a smart ship, then a famous one. */
+export const RENOWN_SMART = 6;
+export const RENOWN_FAMOUS = 12;
+
+/** Sail points a ship's renown is worth on every roll. */
+export const renownSpeed = (renown: number | undefined): number =>
+  (renown ?? 0) >= RENOWN_FAMOUS ? 2 : (renown ?? 0) >= RENOWN_SMART ? 1 : 0;
+
+export const renownTitle = (renown: number | undefined): string | null =>
+  (renown ?? 0) >= RENOWN_FAMOUS ? 'a famous clipper' : (renown ?? 0) >= RENOWN_SMART ? 'a smart ship' : null;
+
+/**
+ * AUTHORED — what a charter actually pays this captain: its terms, plus this much for every share
+ * she trails the leader by.
+ *
+ * Measured over 300 seeds, flat-rate charters lifted the round-30 share leader's win rate from 40%
+ * to 45%, and charters alone to 46%: they pay whoever trades most, and the leader trades most. The
+ * same lesson as the hostile bid (§ session 7): a reward the leader can collect at full rate favours
+ * the leader. Paying the trailing captain more is the owners of a struggling line sweetening the deal.
+ */
+export const CHARTER_CATCH_UP = 20;
+
+export const charterReward = (base: number, shares: number, leaderShares: number): number =>
+  base + CHARTER_CATCH_UP * Math.max(0, leaderShares - shares);

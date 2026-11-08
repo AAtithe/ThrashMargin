@@ -163,6 +163,7 @@ export function observedSpread(): { min: number; max: number } {
 // price, which is what the port table and the AI's route scoring want.
 
 import { AGENT_LADING_DISCOUNT, AGENT_SALE_UPLIFT, hasAgent } from './agents';
+import { SKILL_EFFECT, careerOn, hasSkill } from './career';
 import type { GameState } from './types';
 
 /** What this captain actually pays for a lot here. */
@@ -173,8 +174,13 @@ export function ladingPrice(
   good: GoodId,
 ): number {
   const market = priceAt(port, good);
-  if (!hasAgent(state, captainId, port)) return market;
-  return Math.max(1, Math.round(market * (1 - AGENT_LADING_DISCOUNT)));
+  // A haggling captain's career knocks a little off every quay, agent or none.
+  const haggler =
+    careerOn(state) && hasSkill(state.captains.find(c => c.id === captainId), 'haggler')
+      ? 1 - SKILL_EFFECT.hagglerDiscount
+      : 1;
+  if (!hasAgent(state, captainId, port)) return haggler === 1 ? market : Math.max(1, Math.round(market * haggler));
+  return Math.max(1, Math.round(market * (1 - AGENT_LADING_DISCOUNT) * haggler));
 }
 
 /** What this captain actually gets for selling a lot off here. */

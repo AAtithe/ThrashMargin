@@ -41,6 +41,9 @@ import {
   slotsOf,
   VICTORY_CASH,
   sharePriceFor,
+  REPAIR_PRICE,
+  SHIP_PRICE,
+  shipSalePrice,
 } from './rules';
 import { activeCaptain, shipsOf } from './state';
 import { seasonOf, turnsBetween } from './weather';
@@ -49,7 +52,11 @@ import { priceAt, quaysidePrice } from './pricing';
 import { COMPANIES, STOCK_IDS } from './stocks';
 import { bestSpreads, buyersFor, livePrice } from './voyage';
 import { AGENT_PRICE, canPlaceAgent } from './agents';
-import type { AiProfile, Captain, Contract, GameAction, GameState, PortId, Ship } from './types';
+import { RACE_FINISH, canCrackOn, openRace, raceLots } from './seamanship';
+import { charterValue } from './charters';
+import { canLearn, careerOn, type SkillId } from './career';
+import { pointsToDestination } from './movement';
+import type { AiProfile, Captain, CargoLot, Contract, Encounter, GameAction, GameState, PortId, Ship } from './types';
 import type { ShipClassId } from './rules';
 
 /** This captain's playing strength: her own level if she has one, else the table's. */
@@ -93,6 +100,17 @@ const TEMPERAMENTS: Record<AiProfile, Temperament> = {
 
 const temperamentOf = (c: Captain): Temperament => TEMPERAMENTS[c.aiProfile ?? 'racer'];
 
+/**
+ * Which skills each temperament reaches for, in order. A racer wants speed, a speculator margin, a
+ * financier a cheaper, safer fleet. Each list holds every skill, so no captain ever banks a point
+ * for want of something on her list; `canLearn` enforces the tree's order.
+ */
+const SKILL_ORDER: Record<AiProfile, SkillId[]> = {
+  racer: ['weatherEye', 'driver', 'navigator', 'bosun', 'gunner', 'commodore', 'haggler', 'factor', 'merchantPrince'],
+  speculator: ['haggler', 'factor', 'merchantPrince', 'weatherEye', 'driver', 'navigator', 'bosun', 'gunner', 'commodore'],
+  financier: ['bosun', 'haggler', 'gunner', 'factor', 'commodore', 'merchantPrince', 'weatherEye', 'driver', 'navigator'],
+};
+
 const turnsFor = (points: number) => Math.max(1, points / POINTS_PER_TURN);
 
 /**
@@ -123,7 +141,40 @@ function piracyDrag(s: GameState, from: string, to: string): number {
   return Math.min(0.3, piracyRating(from, to) * 0.04);
 }
 
-const liveContracts = (s: GameState): Contract[] => s.contracts.filter(c => c.fills.length < 2);
+/** The id of the Great Tea Race when the AI reasons about it as if it were a card. */
+const RACE_ID = 'tea-race';
+
+/**
+ * The Great Tea Race, dressed as a card so the AI's one scoring routine can weigh it against the
+ * five on the board. Tea, wanted at London, reckoned at tea's price — first home's purse and 3x
+ * premium land within a few pounds of what a 4x card would pay, which is close enough for a greedy
+ * opponent. Never dealt to the board: only the AI ever sees it.
+ */
+function raceCard(s: GameState): Contract | null {
+  const race = openRace(s);
+  if (!race) return null;
+  return {
+    id: RACE_ID,
+    good: 'tea',
+    destination: RACE_FINISH,
+    price: GOOD_BY_ID.tea?.basePrice ?? 60,
+    fills: race.placings.map(p => ({ captainId: p.captainId, rank: p.rank, paid: p.paid, onTurn: 0 })),
+  };
+}
+
+const liveContracts = (s: GameState): Contract[] => {
+  const live = s.contracts.filter(c => c.fills.length < 2);
+  const race = raceCard(s);
+  return race ? [...live, race] : live;
+};
+
+/** Does this lot answer this card? For the race, only this year's new-season tea does. */
+function answers(s: GameState, lot: CargoLot, contract: Contract): boolean {
+  if (lot.good !== contract.good) return false;
+  if (contract.id !== RACE_ID) return true;
+  const race = openRace(s);
+  return race !== null && lot.season === race.year;
+}
 
 /** The cheapest lot on any quay. Below this a captain literally cannot trade. */
 // The cheapest lot obtainable anywhere on the chart. Measured across quays, not off base prices,
@@ -204,7 +255,16 @@ function bestRunForEmptyShip(s: GameState, from: string, owner: string): Run | n
       // Paid at this quay's price, landed at the card's reckoning: the margin is the whole reason to
       // sail past a nearer supplier for a cheaper one, so it has to be in the score.
       const cost = priceAt(source, contract.good);
-      const profit = landedValue(s, contract.good, contract.price, multiplier) - cost;
+      // Plus whatever this run is worth to her owners' charters — the private reason to prefer one
+      // card over another that pays the same, which is what pulls the table's plans apart.
+      const charter = charterValue(
+        s.captains.find(c => c.id === owner),
+        contract.destination,
+        contract.good,
+        1,
+        multiplier === 4,
+      );
+      const profit = landedValue(s, contract.good, contract.price, multiplier) - cost + charter;
 
       const turns =
         passageTurns(s, from, source, toSource, skill.usesWind) +
@@ -223,7 +283,7 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
   const skill = levelOf(s, ship.ownerId);
   let best: Run | null = null;
   for (const contract of liveContracts(s)) {
-    if (!ship.hold.some(lot => lot.good === contract.good)) continue;
+    if (!ship.hold.some(lot => answers(s, lot, contract))) continue;
     const distance = distanceBetween(ship.location, contract.destination);
     if (!isFinite(distance)) continue;
 
@@ -241,11 +301,16 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
       const roundsLeft = CONTRACT_LIFE_ROUNDS - (s.round - contract.postedOn);
       if (turns / Math.max(1, s.captains.length) > roundsLeft) continue;
     }
+    // Nor for a race that will have closed. Turns here are the ship's own, one per round.
+    if (contract.id === RACE_ID) {
+      const race = openRace(s);
+      if (!race || turns > race.closesOn - s.round + 1) continue;
+    }
 
     const drag = piracyDrag(s, ship.location, contract.destination);
     // Every matching slot lands together and is paid per unit, so three lots are worth three times
     // the trip. That is what makes filling the hull with one good the right move.
-    const units = ship.hold.filter(lot => lot.good === contract.good);
+    const units = ship.hold.filter(lot => answers(s, lot, contract));
     const multiplier = payoutFor(contract) / contract.price;
     // Landed on the card's reckoning per unit, not on what was paid for the lot — the reducer pays
     // that way and the AI must score it that way or it will chase the wrong cards. Discounted for
@@ -255,7 +320,14 @@ function bestRunForLoadedShip(s: GameState, ship: Ship): Run | null {
       const full = landedValue(s, lot.good, contract.price, multiplier);
       return n + (spoils ? full * freshness(s.turn + turns - lot.boughtOnTurn) : full);
     }, 0);
-    const score = (gross * (1 - drag)) / Math.max(0.5, turns);
+    const charter = charterValue(
+      s.captains.find(c => c.id === ship.ownerId),
+      contract.destination,
+      contract.good,
+      units.length,
+      multiplier === 4,
+    );
+    const score = ((gross + charter) * (1 - drag)) / Math.max(0.5, turns);
     if (!best || score > best.score) best = { contract, source: null, score };
   }
   return best;
@@ -284,6 +356,70 @@ function bestSpeculativeLoad(s: GameState, budget: number, portId: string): stri
     }
   }
   return best;
+}
+
+// ---------------------------------------------------------------------------
+// Seamanship
+// ---------------------------------------------------------------------------
+
+/** Is this ship carrying tea in a race that is still open? Racing ships do not stop for anything. */
+function isRacing(s: GameState, ship: Ship): boolean {
+  const race = openRace(s);
+  return race !== null && raceLots(ship, race).length > 0;
+}
+
+/** Is some face-up card still paying for this good? */
+const cardWants = (s: GameState, good: string): boolean =>
+  s.contracts.some(c => c.good === good && c.fills.length < 2);
+
+/** Whether to take up what the sea has offered. Simple rules of thumb, never a lookahead. */
+function wantsEncounter(s: GameState, ship: Ship, enc: Encounter, spendable: number): boolean {
+  const racing = isRacing(s, ship);
+  switch (enc.kind) {
+    case 'derelict':
+      // Free cargo for three points — but only cargo somebody might pay for, and never at the cost of
+      // the race. Junk in the hold is a slot gone and a wage bill.
+      return !racing && !!enc.good && (cardWants(s, enc.good) || (GOOD_BY_ID[enc.good]?.basePrice ?? 0) >= 50);
+    case 'castaways':
+      return !racing;
+    case 'trader': {
+      if (!enc.good || enc.price === undefined) return false;
+      if (spendable - enc.price < TRADING_FLOAT) return false;
+      return cardWants(s, enc.good);
+    }
+    case 'pilot':
+      return ship.hold.length > 0 && enc.price !== undefined && spendable - enc.price >= TRADING_FLOAT;
+  }
+}
+
+/**
+ * Answer the sea, make good a damaged hull, drive the ships worth driving.
+ *
+ * Every encounter is answered one way or the other, so the AI loop always makes progress. Cracking
+ * on is for laden ships only — an empty hull racing to a supplier gains little from a spar's risk —
+ * and only by a captain who fits out; the gentle ones sail as they are told.
+ */
+function seamanshipAction(s: GameState, captain: Captain, ships: Ship[], spendable: number): GameAction | null {
+  for (const ship of ships) {
+    const enc = s.encounters?.[ship.id];
+    if (enc) return { type: 'RESOLVE_ENCOUNTER', shipId: ship.id, accept: wantsEncounter(s, ship, enc, spendable) };
+  }
+  for (const ship of ships) {
+    if (!ship.damaged || !ship.location || portStruck(s, ship.location)) continue;
+    if (spendable >= REPAIR_PRICE + TRADING_FLOAT / 2) return { type: 'REPAIR_SHIP', shipId: ship.id };
+  }
+  if (!s.hazards?.pressSail || !levelOf(s, captain.id).fitsOut) return null;
+  for (const ship of ships) {
+    if (!ship.voyage || ship.hold.length === 0 || !canCrackOn(s, ship)) continue;
+    // Only when it can decide something: one die could bring her in this turn, or she is in the race.
+    // Driving every laden ship every turn was measured and loses money — about one throw in six
+    // costs a £40 repair and a slower ship, for three and a half points on a passage of thirty.
+    const close = pointsToDestination(ship) <= 6;
+    if (close || isRacing(s, ship)) {
+      return { type: 'CRACK_ON', shipId: ship.id };
+    }
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -386,6 +522,10 @@ function loanAction(s: GameState, captain: Captain): GameAction | null {
 
   // Squeezed means: cannot cover the coming bill and still trade.
   if (captain.cash >= nextBill + TRADING_FLOAT) return null;
+  // Never more than a hull's price per hull. Without this cap she borrowed to pay the interest on
+  // what she had already borrowed: one captain carried £2,000 against a single ship, whose interest
+  // alone was more than that ship could earn, and the table never finished.
+  if ((captain.debt ?? 0) + LOAN_STEP > ships.length * SHIP_PRICE) return null;
   if ((captain.debt ?? 0) + LOAN_STEP > loanCeilingFor(ships.length, captain.shares)) return null;
   return { type: 'TAKE_LOAN' };
 }
@@ -527,6 +667,11 @@ const canRaid = (s: GameState, captain: Captain): boolean =>
  * looked up.
  */
 function voyageAction(s: GameState, captain: Captain): GameAction | null {
+  // The sea makes the same offers in free play, and a captain who ignored them would be handing the
+  // human a free edge. Same rules of thumb as the classic game.
+  const seaman = seamanshipAction(s, captain, shipsOf(s, captain.id), captain.cash);
+  if (seaman) return seaman;
+
   const ships = shipsOf(s, captain.id).filter(sh => sh.location !== null);
   const skill = levelOf(s, captain.id);
 
@@ -599,6 +744,13 @@ export function nextAiAction(s: GameState): GameAction | null {
   // itself falls back to, and the two called each other until the stack gave out.
   if (s.rules === 'voyage') return voyageAction(s, captain);
 
+  // A skill point is never worth sitting on: spend it the moment she has it, down the branch that
+  // suits her temperament, taking the next skill she can actually learn.
+  if (careerOn(s)) {
+    const pick = SKILL_ORDER[captain.aiProfile ?? 'racer'].find(id => canLearn(captain, id));
+    if (pick) return { type: 'LEARN_SKILL', skill: pick };
+  }
+
   // Winning beats everything else on the board — but only claim it holding the cash the claim
   // actually requires.
   //
@@ -622,6 +774,10 @@ export function nextAiAction(s: GameState): GameAction | null {
    */
   const declarer = s.declaration?.captainId === captain.id;
   const spendable = declarer ? Math.max(0, captain.cash - VICTORY_CASH) : captain.cash;
+
+  // 0. Seamanship: answer the sea, repair, crack on.
+  const seaman = seamanshipAction(s, captain, ships, spendable);
+  if (seaman) return seaman;
 
   // 1. Land anything that can be landed this instant.
   for (const ship of docked) {
@@ -712,6 +868,21 @@ export function nextAiAction(s: GameState): GameAction | null {
       }
       return { type: 'JETTISON', shipId: ship.id };
     }
+
+    // Spare slots and nothing aboard worth steering for: find work for the empty ones, exactly as
+    // an empty ship would. Without this a hull holding one unwanted lot sat in port for the rest of
+    // the game — neither empty enough to go hunting nor full enough to clear. Salvage and country
+    // traders made that common enough to stall whole tables into wage arrears.
+    if (!run && ship.hold.length < slotsOf(ship.shipClass)) {
+      const hunt = bestRunForEmptyShip(s, ship.location!, captain.id);
+      if (hunt?.source === ship.location) {
+        if (spendable >= priceAt(ship.location!, hunt.contract.good)) {
+          return { type: 'BUY_CARGO', shipId: ship.id, good: hunt.contract.good };
+        }
+      } else if (hunt?.source) {
+        return { type: 'SAIL_TO', shipId: ship.id, destination: hunt.source };
+      }
+    }
   }
 
   // 3b. Raise money before the bill falls due, rather than sliding into arrears.
@@ -730,6 +901,26 @@ export function nextAiAction(s: GameState): GameAction | null {
   //    worth nothing, so sell one and trade back up.
   if (captain.shares > 0 && captain.cash < CHEAPEST_LOT && !ships.some(sh => sh.hold.length > 0)) {
     return { type: 'SELL_SHARE' };
+  }
+
+  // 4b. In arrears with nothing in hand and nothing under way: raise money from the fleet itself.
+  //
+  //     With wages on, a captain who cannot buy a lot cannot earn, and falls further behind every
+  //     round. The harness found whole tables in that hole for three hundred rounds. A hull sold at a
+  //     loss is better than a fleet that never sails again; failing that, a share.
+  const owing = (captain.arrears ?? 0) > 0;
+  const underWay = ships.some(sh => sh.voyage && sh.hold.length > 0);
+  if (owing && captain.cash < CHEAPEST_LOT && !underWay) {
+    if (ships.length > 1) {
+      const sale = [...docked].sort(
+        (a, b) =>
+          a.hold.reduce((n, l) => n + l.paid, 0) - b.hold.reduce((n, l) => n + l.paid, 0) ||
+          shipSalePrice(a.shipClass) - shipSalePrice(b.shipClass),
+      )[0];
+      if (sale) return { type: 'SELL_SHIP', shipId: sale.id };
+    } else if (captain.shares > 0) {
+      return { type: 'SELL_SHARE' };
+    }
   }
 
   // 4a. Empty ships in port: load here if this is the source, otherwise sail for one.

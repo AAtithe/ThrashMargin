@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { priceAt } from '../sim/pricing';
-import { sourcesFor, GOOD_BY_ID, PORTS, distanceBetween } from '../sim/content';
+import { sourcesFor, GOOD_BY_ID, PORTS, REGION_NAMES, REGION_ORDER, distanceBetween } from '../sim/content';
 import { FONT, UI, money } from '../theme';
 import { Panel } from './ui';
 import type { Contract, GoodId, PortId, Ship } from '../sim/types';
@@ -13,34 +13,6 @@ interface Props {
   onPortClick: (portId: PortId) => void;
   targetPort: PortId | null;
 }
-
-const REGION_NAMES: Record<string, string> = {
-  britain: 'Britain',
-  europe: 'Europe & the Mediterranean',
-  north_america: 'North America',
-  caribbean: 'The Caribbean',
-  south_america: 'South America',
-  pacific_america: 'The Pacific coast',
-  africa: 'Africa',
-  indian_ocean: 'India & the Indian Ocean',
-  east_indies: 'The East Indies',
-  far_east: 'The Far East',
-  australasia: 'Australasia',
-};
-
-const REGION_ORDER = [
-  'britain',
-  'europe',
-  'north_america',
-  'caribbean',
-  'south_america',
-  'pacific_america',
-  'africa',
-  'indian_ocean',
-  'east_indies',
-  'far_east',
-  'australasia',
-];
 
 type Mode = 'sells' | 'buys';
 

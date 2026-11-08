@@ -19,6 +19,26 @@ export const HOME_PORT: PortId = (PORTS.find(p => p.home) ?? PORTS[0]).id;
 export const portName = (id: PortId): string => PORT_BY_ID[id]?.name ?? id;
 export const goodName = (id: GoodId): string => GOOD_BY_ID[id]?.name ?? id;
 
+/** The chart's regions, in reading order, and what to call them. */
+export const REGION_NAMES: Record<string, string> = {
+  britain: 'Britain',
+  europe: 'Europe & the Mediterranean',
+  north_america: 'North America',
+  caribbean: 'The Caribbean',
+  south_america: 'South America',
+  pacific_america: 'The Pacific coast',
+  africa: 'Africa',
+  indian_ocean: 'India & the Indian Ocean',
+  east_indies: 'The East Indies',
+  far_east: 'The Far East',
+  australasia: 'Australasia',
+};
+
+export const REGION_ORDER = Object.keys(REGION_NAMES);
+
+export const regionOf = (port: PortId): string => PORT_BY_ID[port]?.region ?? '';
+export const regionName = (region: string): string => REGION_NAMES[region] ?? region;
+
 /** Undirected adjacency: port -> [{ to, distance }]. */
 export const ADJACENCY: Record<PortId, { to: PortId; distance: number }[]> = (() => {
   const adj: Record<PortId, { to: PortId; distance: number }[]> = {};

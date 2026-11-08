@@ -1,0 +1,68 @@
+/* Niccolò has no other global styles: inline styles carry everything else. */
+
+/*
+ * The palette, one set per mode. theme.ts hands out var(--…) references to these. The dark set is
+ * the original chart-room chrome; the light set is the same room by daylight, matched to the
+ * printed chart it frames. `data-theme` on <html> is set before first paint by index.html (see
+ * lib/colorScheme.ts).
+ */
+:root {
+  --ui-ground: #ece6d9;
+  --ui-panel: #f8f4eb;
+  --ui-panel-raised: #e6ddcb;
+  --ui-rule: #d4c9b3;
+  --ui-rule-strong: #b0a38a;
+  --ui-text: #2a251e;
+  --ui-text-soft: #5a5345;
+  --ui-text-faint: #847b68;
+  --ui-brass: #8b5e17;
+  --ui-verdigris: #2c6f66;
+  --ui-ensign: #a8342f;
+  --ui-good: #3d7434;
+  --ui-warn: #8f6210;
+  --ui-bad: #a8342f;
+  --ui-scrim: rgba(42, 37, 30, 0.45);
+  --ui-scrim-light: rgba(42, 37, 30, 0.18);
+  --ui-cover: rgba(226, 218, 202, 0.97);
+  --ui-shadow: rgba(60, 45, 20, 0.22);
+  --ui-tint-verdigris: rgba(44, 111, 102, 0.08);
+  --ui-tint-warn: rgba(143, 98, 16, 0.09);
+  --ui-tint-bad: rgba(168, 52, 47, 0.08);
+  --ui-tint-brass: rgba(139, 94, 23, 0.1);
+  --ui-bad-rule: rgba(168, 52, 47, 0.35);
+}
+:root[data-theme="dark"] {
+  --ui-ground: #0d1419;
+  --ui-panel: #141e25;
+  --ui-panel-raised: #1b272f;
+  --ui-rule: #26343d;
+  --ui-rule-strong: #3a4b56;
+  --ui-text: #e6ddc9;
+  --ui-text-soft: #93a3ad;
+  --ui-text-faint: #63737d;
+  --ui-brass: #d09a4e;
+  --ui-verdigris: #6fb0a4;
+  --ui-ensign: #c2606a;
+  --ui-good: #7fb069;
+  --ui-warn: #d9a441;
+  --ui-bad: #c2606a;
+  --ui-scrim: rgba(13, 20, 25, 0.78);
+  --ui-scrim-light: rgba(13, 20, 25, 0.35);
+  --ui-cover: rgba(6, 11, 14, 0.92);
+  --ui-shadow: rgba(0, 0, 0, 0.55);
+  --ui-tint-verdigris: rgba(111, 176, 164, 0.07);
+  --ui-tint-warn: rgba(217, 164, 65, 0.09);
+  --ui-tint-bad: rgba(194, 96, 106, 0.1);
+  --ui-tint-brass: rgba(208, 154, 78, 0.09);
+  --ui-bad-rule: rgba(194, 96, 106, 0.4);
+}
+
+body {
+  background: var(--ui-ground);
+  color: var(--ui-text);
+}
+
+:focus-visible {
+  outline: 2px solid var(--ui-brass);
+  outline-offset: 2px;
+}

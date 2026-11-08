@@ -37,6 +37,10 @@ export interface ChartPalette {
   windFoul: string;
   /** Waters that carry a piracy rating. */
   piracy: string;
+  /** The Great Tea Race: the tea ports, the finish, a ship carrying the new season. */
+  tea: string;
+  /** Ships damaged by driving or a reef. */
+  damage: string;
 }
 
 export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
@@ -58,6 +62,8 @@ export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
     windFair: '#7fb069',
     windFoul: '#c2606a',
     piracy: '#c2606a',
+    tea: '#e0ae55',
+    damage: '#e0707a',
   },
   // Pale, like a printed board on a table.
   printed: {
@@ -77,6 +83,8 @@ export const CHART_PALETTES: Record<ChartStyleName, ChartPalette> = {
     windFair: '#2f6b3a',
     windFoul: '#a8342f',
     piracy: '#8c2b26',
+    tea: '#9a6b12',
+    damage: '#b3261e',
   },
 };
 
@@ -86,25 +94,41 @@ export const CHART_STYLE: ChartStyleName = 'printed';
 export const CHART = CHART_PALETTES[CHART_STYLE];
 
 /** The chrome the chart sits in. */
+/*
+ * Every colour below is a CSS variable reference; the light and dark values live in styles.css and
+ * lib/colorScheme.ts picks between them. Never append hex alpha (`${UI.bad}55`): add a token.
+ */
 export const UI = {
-  ground: '#0d1419',
-  panel: '#141e25',
-  panelRaised: '#1b272f',
-  rule: '#26343d',
-  ruleStrong: '#3a4b56',
+  ground: 'var(--ui-ground)',
+  panel: 'var(--ui-panel)',
+  panelRaised: 'var(--ui-panel-raised)',
+  rule: 'var(--ui-rule)',
+  ruleStrong: 'var(--ui-rule-strong)',
 
-  text: '#e6ddc9',
-  textSoft: '#93a3ad',
-  textFaint: '#63737d',
+  text: 'var(--ui-text)',
+  textSoft: 'var(--ui-text-soft)',
+  textFaint: 'var(--ui-text-faint)',
 
-  brass: '#d09a4e',
-  verdigris: '#6fb0a4',
-  ensign: '#c2606a',
+  brass: 'var(--ui-brass)',
+  verdigris: 'var(--ui-verdigris)',
+  ensign: 'var(--ui-ensign)',
 
   /** Semantic, and separate from the accent hue above. */
-  good: '#7fb069',
-  warn: '#d9a441',
-  bad: '#c2606a',
+  good: 'var(--ui-good)',
+  warn: 'var(--ui-warn)',
+  bad: 'var(--ui-bad)',
+
+  /** Overlay backdrops, the hotseat privacy cover, and drop shadows. */
+  scrim: 'var(--ui-scrim)',
+  scrimLight: 'var(--ui-scrim-light)',
+  cover: 'var(--ui-cover)',
+  shadow: 'var(--ui-shadow)',
+  /** Faint washes behind callouts. */
+  tintVerdigris: 'var(--ui-tint-verdigris)',
+  tintWarn: 'var(--ui-tint-warn)',
+  tintBad: 'var(--ui-tint-bad)',
+  tintBrass: 'var(--ui-tint-brass)',
+  badRule: 'var(--ui-bad-rule)',
 } as const;
 
 export const FONT = {

@@ -1,5 +1,5 @@
 import { Delaunay } from 'd3-delaunay';
-import type { Territory } from 'shared/types';
+import type { Territory } from 'shared/sim';
 
 export interface MapGeometry {
   /** Smoothed, organic SVG path per territory id — the region's fill/stroke shape. */

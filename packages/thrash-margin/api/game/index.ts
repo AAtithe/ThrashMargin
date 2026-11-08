@@ -1,10 +1,10 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
-import { getUser } from '../_lib/auth';
+import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
-import { createInitialState, DEFAULT_CONFIG } from '../../shared/engine-reference';
-import type { GameConfig } from '../../shared/types';
+import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
+import { createInitialState, sanitizeConfig } from '../../shared/sim';
 
 /**
  * Same `games` table Niccolo and The Tea Race use (same Postgres/Supabase instance, same
@@ -14,7 +14,9 @@ import type { GameConfig } from '../../shared/types';
 const GAME_KIND = 'thrash_margin';
 
 /**
- * One Vercel function covering both `/api/game` (list/create) and `/api/game?id=:id`
+ * Served at /api/play/<game> through api/play/[kind].ts, which all five games now share.
+ *
+ * Originally one Vercel function of its own, covering both `/api/play/thrash-margin` (list/create) and `/api/play/thrash-margin?id=:id`
  * (load/save/delete) as a single function — the two were separate functions until a 4th
  * game's own pair would have pushed the Hobby-plan function count past its 12-function ceiling.
  * A path-based `[[...id]].ts` catch-all doesn't work here — that's a Next.js routing
@@ -26,27 +28,32 @@ const GAME_KIND = 'thrash_margin';
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
 
-  let user;
-  try { user = getUser(req); } catch { return res.status(401).json({ message: 'Unauthorized' }); }
+  const user = await requireUser(req, res);
+  if (!user) return;
 
   const db = getDb();
   const idParam = req.query.id;
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  // A malformed id cannot exist; answered here rather than as a database error.
+  if (id !== undefined && !isGameId(id)) return res.status(404).json({ message: 'Game not found' });
 
   if (id === undefined) {
     if (req.method === 'POST') {
-      const config: Partial<GameConfig> = req.body?.config ?? {};
-      const name: string = ((req.body?.name as string | undefined) ?? 'Campaign').trim();
+      // sanitizeConfig copies only known keys through a clamp, so the body cannot smuggle in an
+      // out-of-range or unknown setting.
+      const config = sanitizeConfig(req.body?.config ?? {});
+      const name = cleanName(req.body?.name, 'Campaign');
+      const rawSeed = Number(req.body?.seed);
+      const seed = Number.isFinite(rawSeed) ? rawSeed >>> 0 : Math.floor(Math.random() * 0xffffffff) >>> 0;
       const newId = uuid();
-      const mergedConfig = { ...DEFAULT_CONFIG, ...config };
-      const state = createInitialState(newId, mergedConfig);
-      (state as unknown as Record<string, unknown>).name = name;
+      const state = createInitialState(newId, config, { seed, createdAt: Date.now(), name });
       try {
-        await db.query(
-          'INSERT INTO games (id, owner_id, game, mode, status, turn, state, config) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-          [newId, user.userId, GAME_KIND, 'single', state.status, state.turn, JSON.stringify(state), JSON.stringify(mergedConfig)],
-        );
-        return res.status(201).json({ gameId: newId, state });
+        const created = await createGame(db, {
+          id: newId, ownerId: user.userId, game: GAME_KIND,
+          status: state.status, turn: state.turn, state, config: state.config,
+        });
+        if (!created) return sendGameLimit(res);
+        return res.status(201).json({ gameId: newId, state, version: 0 });
       } catch (err) {
         console.error('create game error', err);
         return res.status(500).json({ message: 'Server error' });
@@ -59,6 +66,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           `SELECT id, status, turn,
                   state->>'name' AS name,
                   config->>'diff' AS diff,
+                  config->>'mapId' AS map_id,
                   (config->>'campaignScenario')::int AS campaign_scenario,
                   state->'achievements' AS achievements,
                   EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
@@ -68,9 +76,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const saves = rows.map(r => ({
           id: r.id,
           name: r.name ?? 'Campaign',
-          turn: Number(r.turn) ?? 1,
+          turn: Number(r.turn) || 1,
           status: r.status,
           diff: r.diff ?? 'normal',
+          ...(r.map_id ? { mapId: r.map_id } : {}),
           savedAt: Math.round(parseFloat(r.saved_at)),
           ...(r.campaign_scenario != null && { campaignScenario: Number(r.campaign_scenario) }),
           ...(Array.isArray(r.achievements) && r.achievements.length && { achievements: r.achievements }),
@@ -88,11 +97,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     try {
       const { rows } = await db.query(
-        'SELECT state FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
+        'SELECT state, version FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
         [id, user.userId, GAME_KIND],
       );
       if (!rows[0]) return res.status(404).json({ message: 'Game not found' });
-      return res.json({ state: rows[0].state });
+      return res.json({ state: rows[0].state, version: rows[0].version });
     } catch (err) {
       console.error('get game error', err);
       return res.status(500).json({ message: 'Server error' });
@@ -106,11 +115,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
       const newStatus = state.status === 'victory' ? 'victory'
         : state.status === 'defeated' ? 'defeated' : 'active';
-      await db.query(
-        'UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW() WHERE id = $4 AND owner_id = $5 AND game = $6',
-        [JSON.stringify(state), newStatus, state.turn, id, user.userId, GAME_KIND],
-      );
-      return res.json({ success: true });
+      const result = await saveState(db, {
+        id, ownerId: user.userId, game: GAME_KIND, state, status: newStatus, turn: state.turn,
+        version: req.body?.version,
+      });
+      return sendSaveResult(res, result);
     } catch (err) {
       console.error('save state error', err);
       return res.status(500).json({ message: 'Server error' });

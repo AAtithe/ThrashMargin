@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Hero } from '../components/Art';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser } from '../lib/portalAuth';
 import {
@@ -107,6 +108,55 @@ const SWITCHES: { key: keyof Hazards & string; group: SwitchGroup; name: string;
     name: 'Port agents',
     blurb:
       'A permanent man on the ground at one quay: cheaper lading, a better price for cargo sold off, and word ahead of the market. Where you trade becomes a position you hold.',
+  },
+  {
+    key: 'teaRace',
+    group: 'The race',
+    name: 'The Great Tea Race',
+    blurb:
+      'Every summer the new season\'s tea comes down to Foochow, Shanghai and Hong Kong, and the first two ships to land it in London take a purse and a premium. One contest a year the whole table can see coming.',
+  },
+  {
+    key: 'pressSail',
+    group: 'The race',
+    name: 'Cracking on',
+    blurb:
+      'Drive any ship for one more die of distance, once a turn. A bad throw carries away a spar: nothing gained, and slower until repaired. Ships at sea finally have a decision of their own.',
+  },
+  {
+    key: 'encounters',
+    group: 'The world',
+    name: 'Encounters at sea',
+    blurb:
+      'Derelicts to salvage, castaways to take off, country traders with cargo going cheap, and pilots who know the reefs. Each one a choice: the ground it costs against what it brings.',
+  },
+  {
+    key: 'charters',
+    group: 'The race',
+    name: "Owners' charters",
+    blurb:
+      'Two personal objectives each from your owners: land cargo in a region, be first home three times, trade into five regions, place in the tea race. Paid on completion and replaced. Public, so you can read what a rival is working towards.',
+  },
+  {
+    key: 'renown',
+    group: 'The race',
+    name: 'Ship renown',
+    blurb:
+      'A ship that keeps winning earns a name, and the best hands sign on with her: a smart ship sails a point faster, a famous clipper two. Your fleet stops being interchangeable.',
+  },
+  {
+    key: 'career',
+    group: 'The race',
+    name: 'Captain careers',
+    blurb:
+      'Experience from everything you do well, levels, and a skill tree of nine: Seamanship, Trade and Command. Choose a build and grow into it. A captain behind on shares learns faster.',
+  },
+  {
+    key: 'ramp',
+    group: 'The world',
+    name: 'Eras',
+    blurb:
+      'The game ramps up as it goes. Era I is trade and the wind; pirates, encounters and world events arrive in Era II at round 13; the tea race, the commission clock and hostile bids in Era III at round 31. Only rules you have switched on ever arrive.',
   },
   {
     key: 'stocks',
@@ -222,7 +272,7 @@ export default function Lobby() {
               Sign in to keep your campaigns on your account.
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-              <Button tone="primary" onClick={() => { window.location.href = '/thrash-margin/login'; }}>
+              <Button tone="primary" onClick={() => { window.location.href = '/thrash-margin/login?next=/tea-race/'; }}>
                 Sign in / Register →
               </Button>
             </div>
@@ -238,7 +288,8 @@ export default function Lobby() {
       <PortalNav />
       <main style={content}>
         <header style={{ marginBottom: '2rem' }}>
-          <p style={eyebrow}>After Ocean Trader, Clipper Games, 1988</p>
+          <Hero />
+          <p style={{ ...eyebrow, marginTop: '1rem' }}>After Ocean Trader, Clipper Games, 1988</p>
           <h1 style={title}>The Tea Race</h1>
           {/* Kept honest: a commission names the buyer and the price, never a source port — that
               stopped being true when cards lost their source, and this paragraph still claimed it. */}
@@ -717,7 +768,7 @@ const checkRow: React.CSSProperties = {
 
 const errorBanner: React.CSSProperties = {
   border: `1px solid ${UI.bad}`,
-  background: 'rgba(194, 96, 106, 0.1)',
+  background: UI.tintBad,
   color: UI.bad,
   padding: '0.6rem 0.8rem',
   marginBottom: '1.2rem',

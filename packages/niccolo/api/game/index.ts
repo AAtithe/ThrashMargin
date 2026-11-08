@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { v4 as uuid } from 'uuid';
 import { getDb } from '../_lib/db';
-import { getUser } from '../_lib/auth';
+import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
+import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
 import { createInitialState } from '../../src/sim/state';
 import type { FreeplayGoal, RivalCount } from '../../src/sim/freeplay';
 
@@ -14,7 +15,9 @@ import type { FreeplayGoal, RivalCount } from '../../src/sim/freeplay';
 const GAME_KIND = 'niccolo';
 
 /**
- * One Vercel function covering both `/api/niccolo/game` (list/create) and `/api/niccolo/game?id=:id`
+ * Served at /api/play/<game> through api/play/[kind].ts, which all five games now share.
+ *
+ * Originally one Vercel function of its own, covering both `/api/play/niccolo` (list/create) and `/api/play/niccolo?id=:id`
  * (load/save/delete) as a single function — the two were separate functions until a 4th
  * game's own pair would have pushed the Hobby-plan function count past its 12-function ceiling.
  * A path-based `[[...id]].ts` catch-all doesn't work here — that's a Next.js routing
@@ -26,24 +29,22 @@ const GAME_KIND = 'niccolo';
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (handleCors(req, res)) return;
 
-  let user;
-  try {
-    user = getUser(req);
-  } catch {
-    return res.status(401).json({ message: 'Unauthorized' });
-  }
+  const user = await requireUser(req, res);
+  if (!user) return;
 
   const db = getDb();
   const idParam = req.query.id;
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
+  // A malformed id cannot exist; answered here rather than as a database error.
+  if (id !== undefined && !isGameId(id)) return res.status(404).json({ message: 'Game not found' });
 
   if (id === undefined) {
     if (req.method === 'POST') {
-      const name: string = ((req.body?.name as string | undefined) ?? 'Campaign').trim();
+      const name = cleanName(req.body?.name, 'Campaign');
       const skipPrologue = req.body?.skipPrologue === true;
       const hideObjectives = req.body?.hideObjectives === true;
       const hotseatHouseId: string | null =
-        typeof req.body?.hotseatHouseId === 'string' ? req.body.hotseatHouseId : null;
+        typeof req.body?.hotseatHouseId === 'string' ? req.body.hotseatHouseId.slice(0, 64) : null;
       const freeplay = req.body?.freeplay === true;
       // Clamped rather than trusted: this arrives over the wire, and `createRivals` slices a fixed
       // seat list by it, so a nonsense value would silently produce a game with no opponents.
@@ -59,12 +60,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const state = createInitialState(newId, name, { skipPrologue, hideObjectives, hotseatHouseId, freeplay, rivals, freeplayGoal });
 
       try {
-        await db.query(
-          `INSERT INTO games (id, owner_id, game, mode, status, turn, state, config)
-           VALUES ($1, $2, $3, 'single', 'active', $4, $5, '{}')`,
-          [newId, user.userId, GAME_KIND, state.week, JSON.stringify(state)],
-        );
-        return res.status(201).json({ gameId: newId, state });
+        const created = await createGame(db, {
+          id: newId, ownerId: user.userId, game: GAME_KIND, status: 'active', turn: state.week, state, config: {},
+        });
+        if (!created) return sendGameLimit(res);
+        return res.status(201).json({ gameId: newId, state, version: 0 });
       } catch (err) {
         console.error('create niccolo game error', err);
         return res.status(500).json({ message: 'Server error' });
@@ -99,11 +99,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     try {
       const { rows } = await db.query(
-        'SELECT state FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
+        'SELECT state, version FROM games WHERE id = $1 AND owner_id = $2 AND game = $3',
         [id, user.userId, GAME_KIND],
       );
       if (!rows[0]) return res.status(404).json({ message: 'Game not found' });
-      return res.json({ state: rows[0].state });
+      return res.json({ state: rows[0].state, version: rows[0].version });
     } catch (err) {
       console.error('get niccolo game error', err);
       return res.status(500).json({ message: 'Server error' });
@@ -117,12 +117,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!state) return res.status(400).json({ message: 'state required' });
     try {
       const status = state.insolvent ? 'defeated' : state.flags?.chapter8_complete ? 'victory' : 'active';
-      await db.query(
-        `UPDATE games SET state = $1, status = $2, turn = $3, updated_at = NOW()
-         WHERE id = $4 AND owner_id = $5 AND game = $6`,
-        [JSON.stringify(state), status, state.week ?? 0, id, user.userId, GAME_KIND],
-      );
-      return res.json({ success: true });
+      const result = await saveState(db, {
+        id, ownerId: user.userId, game: GAME_KIND, state, status: status, turn: state.week ?? 0,
+        version: req.body?.version,
+      });
+      return sendSaveResult(res, result);
     } catch (err) {
       console.error('save niccolo state error', err);
       return res.status(500).json({ message: 'Server error' });

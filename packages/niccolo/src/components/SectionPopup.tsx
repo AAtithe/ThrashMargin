@@ -24,7 +24,7 @@ import { UI } from '../theme';
 const SCRIM: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
-  background: 'rgba(13, 20, 25, 0.35)',
+  background: UI.scrimLight,
   zIndex: 55,
 };
 
@@ -38,7 +38,7 @@ const DRAWER: React.CSSProperties = {
   flexDirection: 'column',
   background: UI.panelRaised,
   borderRight: `1px solid ${UI.rule}`,
-  boxShadow: '8px 0 32px rgba(0,0,0,0.55)',
+  boxShadow: `8px 0 32px ${UI.shadow}`,
   zIndex: 60,
   animation: 'niccolo-drawer-in 160ms ease-out',
 };

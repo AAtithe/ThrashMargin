@@ -1,0 +1,14 @@
+{
+  "//": "Typechecks the portal's Vercel entry points in /api, including the save dispatcher that imports every game's handler. Run via `npm run check`.",
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "noEmit": true
+  },
+  "include": ["api/**/*.ts"]
+}

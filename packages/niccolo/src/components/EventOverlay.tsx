@@ -4,7 +4,7 @@ import { UI, FONT } from '../theme';
 const BACKDROP: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(13, 20, 25, 0.78)',
+  background: UI.scrim,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -15,7 +15,7 @@ const BACKDROP: React.CSSProperties = {
 const CARD: React.CSSProperties = {
   background: UI.panelRaised,
   border: `1px solid ${UI.rule}`,
-  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px rgba(0,0,0,0.6)`,
+  boxShadow: `0 0 0 1px ${UI.ground}, 0 8px 40px ${UI.shadow}`,
   maxWidth: '32rem',
   padding: '1.8rem',
   fontFamily: FONT.body,

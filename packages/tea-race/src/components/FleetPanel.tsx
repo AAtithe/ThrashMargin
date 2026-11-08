@@ -4,6 +4,8 @@ import { SHIP_CLASSES, slotsOf } from '../sim/rules';
 import { destinationOf, pointsToDestination } from '../sim/movement';
 import { FONT, UI, money } from '../theme';
 import { Label, Panel, Pill, bodySmall, dataText } from './ui';
+import { Die, RenownStars, ShipProfile, TeaChest } from './Art';
+import { RENOWN_FAMOUS, RENOWN_SMART, renownSpeed, renownTitle } from '../sim/rules';
 import type { Captain, Ship } from '../sim/types';
 
 interface Props {
@@ -18,6 +20,12 @@ interface Props {
   /** The turn now, and whether cargo spoils at all, for the freshness marker on each lot. */
   turn: number;
   deadlines: boolean;
+  /** The year of the tea race now running, if one is, so new-season tea can be marked. */
+  raceYear?: number | null;
+  /** The extra die each ship threw cracking on this turn. */
+  crackedOn?: Record<string, number>;
+  /** Whether ships earn renown in this game. */
+  renownOn?: boolean;
 }
 
 /** The active captain's ships: where each one is, what she's carrying, what wind she has left. */
@@ -31,6 +39,9 @@ export default function FleetPanel({
   rolled,
   turn,
   deadlines,
+  raceYear = null,
+  crackedOn = {},
+  renownOn = false,
 }: Props) {
   return (
     <Panel
@@ -43,6 +54,8 @@ export default function FleetPanel({
           const points = sailPoints[ship.id] ?? 0;
           const roll = dice[ship.id];
           const dest = destinationOf(ship);
+          const racing = raceYear !== null && ship.hold.some(l => l.good === 'tea' && l.season === raceYear);
+          const extra = crackedOn[ship.id];
 
 
           return (
@@ -57,22 +70,49 @@ export default function FleetPanel({
                 background: selected ? UI.panelRaised : 'transparent',
               }}
             >
-              <span style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '0.5rem' }}>
-                <span style={{ fontFamily: FONT.display, fontSize: '0.9rem', color: UI.text }}>
-                  {ship.name}
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
+                <ShipProfile
+                  shipClass={ship.shipClass}
+                  colour={captain.colour}
+                  width={50}
+                  damaged={ship.damaged}
+                  pennant={racing ? UI.brass : undefined}
+                />
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: FONT.display, fontSize: '0.9rem', color: UI.text }}>
+                    {ship.name}
+                    {ship.damaged && (
+                      <span style={{ ...dataText, fontSize: '0.62rem', color: UI.bad, marginLeft: '0.35rem' }}>DAMAGED</span>
+                    )}
+                  </span>
+                  {rolled && roll && (
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.2rem' }}>
+                      <Die value={roll[0]} size={17} tone={points > 0 ? UI.brass : UI.textFaint} faint={points === 0} />
+                      <Die value={roll[1]} size={17} tone={points > 0 ? UI.brass : UI.textFaint} faint={points === 0} />
+                      {extra !== undefined && (
+                        <Die value={extra} size={17} tone={ship.damaged ? UI.bad : UI.good} title={`cracked on: ${extra}`} />
+                      )}
+                      <span style={{ ...dataText, color: points > 0 ? UI.brass : UI.textFaint, fontSize: '0.72rem', marginLeft: '0.15rem' }}>
+                        {points > 0 ? `${points} pts` : 'spent'}
+                      </span>
+                    </span>
+                  )}
+                  {rolled && !roll && (
+                    <span style={{ ...dataText, color: UI.textFaint, fontSize: '0.72rem' }}>no wind</span>
+                  )}
                 </span>
-                {rolled &&
-                  (points > 0 ? (
-                    <span style={{ ...dataText, color: UI.brass, fontSize: '0.72rem' }}>
-                      {points} pts{roll ? ` (${roll[0]}+${roll[1]})` : ''}
-                    </span>
-                  ) : (
-                    <span style={{ ...dataText, color: UI.textFaint, fontSize: '0.72rem' }}>
-                      {roll ? `${roll[0]}+${roll[1]} spent` : 'no wind'}
-                    </span>
-                  ))}
               </span>
 
+              {renownOn && (
+                <span
+                  style={{ ...dataText, fontSize: '0.66rem', color: UI.brass, display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                  title={`Renown ${ship.renown ?? 0}. First home on a card earns 1, a tea race win 3. A smart ship at ${RENOWN_SMART} sails a point faster, a famous clipper at ${RENOWN_FAMOUS} two.`}
+                >
+                  <RenownStars level={renownSpeed(ship.renown) as 0 | 1 | 2} />
+                  {renownTitle(ship.renown) ?? `renown ${ship.renown ?? 0} of ${RENOWN_SMART}`}
+                  {renownSpeed(ship.renown) > 0 && <span style={{ color: UI.good }}>+{renownSpeed(ship.renown)} a roll</span>}
+                </span>
+              )}
               <span style={{ ...bodySmall, fontSize: '0.78rem' }}>
                 {ship.shipClass && ship.shipClass !== 'clipper' && (
                   <span style={{ color: UI.textFaint }}>
@@ -109,7 +149,10 @@ export default function FleetPanel({
                       const keeps = deadlines ? freshness(turn - lot.boughtOnTurn) : 1;
                       return (
                         <Pill key={i} colour={g?.colour ?? UI.textSoft}>
-                          {g?.name ?? lot.good} {money(lot.paid)}
+                          {raceYear !== null && lot.good === 'tea' && lot.season === raceYear && (
+                            <span title="New-season tea, running in this year's race"><TeaChest size={10} /> </span>
+                          )}
+                          {g?.name ?? lot.good} {lot.atSea === 'derelict' ? 'salvage' : money(lot.paid)}
                           {keeps < 1 && (
                             <span style={{ color: UI.warn }}> ·{Math.round(keeps * 100)}%</span>
                           )}

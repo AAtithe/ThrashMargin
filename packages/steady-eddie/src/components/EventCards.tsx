@@ -166,7 +166,7 @@ const card: React.CSSProperties = {
   font: 'inherit',
   width: '100%',
   boxSizing: 'border-box',
-  boxShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
+  boxShadow: `0 6px 18px ${UI.shadow}`,
 };
 
 const glyph: React.CSSProperties = {
