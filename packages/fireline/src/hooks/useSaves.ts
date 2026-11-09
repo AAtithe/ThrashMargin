@@ -1,4 +1,4 @@
-import type { MapType } from '../sim/rules';
+import type { MapType, SideMode } from '../sim/rules';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API, authHeaders } from '../lib/api';
 import { readJson, serverFailure } from '../lib/apiReply';
@@ -6,6 +6,7 @@ import { getToken } from '../lib/portalAuth';
 import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/saveQueue';
 import { campaignSaveStatus, campaignSaveTurn, isCampaignSave, migrateCampaignSave, newCampaignSave } from '../campaign/save';
 import type { CampaignSave } from '../campaign/types';
+import { wonBy } from '../sim/sides';
 import { createInitialState, migrateState, type NewGameOptions } from '../sim/state';
 import type { GameState } from '../sim/types';
 
@@ -36,19 +37,24 @@ export interface SaveMeta {
   kind?: 'campaign';
   /** The map type a skirmish was drawn on, when it was set up with one. */
   mapType?: MapType;
+  /** A battle of three or four sides: how many, and whether as teams. Absent for two sides. */
+  sides?: 3 | 4;
+  mode?: SideMode;
 }
 
 /** What a save row holds: a skirmish battle or a whole campaign (tell them apart with isCampaignSave). */
 export type LoadedSave = GameState | CampaignSave;
 
 export const statusOf = (s: GameState): SaveMeta['status'] =>
-  s.winner === null ? 'active' : s.winner === 0 ? 'victory' : 'defeated';
+  s.winner === null ? 'active' : wonBy(s, 0) ? 'victory' : 'defeated';
 
 function metaOf(s: LoadedSave): SaveMeta {
   if (isCampaignSave(s)) {
     return { id: s.id, name: s.name, turn: campaignSaveTurn(s), status: campaignSaveStatus(s), savedAt: Date.now(), kind: 'campaign' };
   }
-  return { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now(), ...(s.mapType ? { mapType: s.mapType } : {}) };
+  return { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now(), ...(s.mapType ? { mapType: s.mapType } : {}),
+    ...(s.players.length > 2 ? { sides: s.players.length as 3 | 4, mode: s.setup?.mode === 'teams' ? ('teams' as const) : ('ffa' as const) } : {}),
+  };
 }
 
 /** Either kind of save, made current; null if it is neither. */

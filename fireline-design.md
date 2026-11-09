@@ -329,3 +329,207 @@ the mirror 45% to 54%, Hard on side 1 wins 91% (61% before the fix) and Easy 0%.
 because haulers now deliver all game, so Hard's 25% income bonus and Easy's 20% cut compound. Before
 the fix a 900-seed mirror per map type read 45% to 54% except plains (42% for side 0); not yet
 re-measured, so left open below.
+
+### 2026-11-09: Two, three or four sides (the round-4 foundation)
+
+The engine no longer assumes two sides. `Owner` runs 0 to 3; a battle has 2, 3 or 4 players, each
+on a team (`s.teams`), and every "who is the enemy" question goes through `src/sim/sides.ts`
+(`isEnemy`, `isAlly`, `enemiesOf`, `wonBy` and the rest) instead of `1 - owner`. Targeting, splash,
+attack orders, Spy detection, the computer's enemy lists, mission objectives, production, power,
+blackouts, support powers and the computer's memory are all per side. Allies share sight (side 0's
+fog is its team's), never hit each other, and win or lose together: the battle ends when side 0's
+team is out or is the last team standing. Structure fronts face away from the middle of the map
+by where each side starts, which gives exactly the old rule on every two-sided map. The map's size
+is now a state property (`s.mapW`, `s.mapH`), read by the simulation, the renderer, the terrain
+painter, the effects and the minimap; every map is still 64 by 64. Sides 2 and 3 have names
+(Verdant Front, Ochre Legion), canvas colours with their own emblems, and chrome tokens in both
+modes. No lobby option creates more than two sides yet: that, air power and campaign act two are
+round 4's three workstreams, whose contract is `fireline-round4-design.md`.
+
+Two-sided battles replay byte-identically: 14 whole battles (normal, easy, hard and every map
+type) hashed the same at every 3,000 ticks before and after, and every summary line of
+`npm run drive:fire` is unchanged. Saves from before load as two sides, free for all, on 64 by 64,
+and play on exactly. New drive sections build three-sided battles by hand and check the helpers,
+teams, shared sight, allies holding fire (splash included), victory with two allies left, defeat
+only when the whole team is out, side 2's production and commander, and exact replay.
+
+### 2026-11-09: Air power and research (round 4, workstream A)
+
+Advanced tech only, as the contract (`fireline-round4-design.md` section 3) sets out. On standard
+tech, in a mission and in every save from before, nothing changes: no Air tab, no Lab, and the
+computer builds none of it.
+
+| Structure | Size | Cost | Power | Needs |
+|---|---|---|---|---|
+| Helipad | 2x2 | 1500 | -40 | War Factory, Comms Uplink; builds and rearms two aircraft |
+| Flak Cannon | 1x1 | 700 | -25 | Barracks; flak, range 7.5, air only |
+| Research Lab | 2x2 | 1500 | -50 | War Factory; one upgrade at a time |
+
+| Unit | Cost | Role |
+|---|---|---|
+| Gunship | 1400 | Rockets (38, range 4.5) at ground targets; 8 loads, a load every 1.2s on its pad |
+| Bomber | 2000 | Fast (2.2 tiles/s); a run of 6 bombs (110, splash 1.3) in a line about 4.4 tiles long; a load every 2.5s on its pad. Needs a Tech Centre |
+| Flak Track | 700 | Mobile flak, range 6.5, air only |
+| Skyhunter | 350 | Anti-air missiles, range 6, air only |
+
+| Upgrade | Cost | Time | Effect |
+|---|---|---|---|
+| Refinery efficiency | 2000 | 70s | ore pays 15% more |
+| Armour plating | 1500 | 60s | vehicles' full health +20% (standing ones keep the damage they have taken) |
+| Engine tuning | 1200 | 50s | vehicles 15% faster |
+| Weapon calibration | 2000 | 75s | every weapon, units and structures, +15% damage (needs a Tech Centre) |
+| Air frames | 1500 | 60s | aircraft health +25%, rearming 40% sooner (needs a Helipad) |
+
+How it plays (`src/sim/air.ts`, `src/sim/research.ts`, `src/sim/aiAir.ts`):
+
+- Aircraft fly straight lines over water, rock and structures, kept half a tile inside the map,
+  and are left out of crowd separation, so they never push or block anything on the ground; a
+  structure may go up under one. Sight and fog treat them like any unit.
+- Only bullets (at 35%) and the anti-air weapons reach the air, and the anti-air weapons reach
+  nothing else. Targeting, attack orders (`canAttack`), splash (anti-air splash stays in the air,
+  every other splash, bombs included, on the ground) and returning fire all follow that: a tank
+  shot by a gunship neither turns on it nor chases it.
+- Out of loads an aircraft flies home and rearms; its pad gone, it takes another with room, and
+  with none it waits where it is. Full, it stays parked on the pad, and a parked Gunship fires at
+  ground targets in reach without leaving. A Bomber's run, once begun, is always finished
+  (`Unit.bombRun`, an optional field the contract did not list).
+- Research is paid in full on starting, refunded in full on cancelling, half speed on low power,
+  paused while no Lab stands. Effects are read where the number is used: health through `maxHp`,
+  damage in `fire`, speed in the movement step, income at the refinery, rearming in `air.ts`.
+- The computer, after its own decisions: anti-air in proportion to the opponent's aircraft (none
+  while it has none), paid for by taking back units it has queued but not started; then, once its
+  refineries and turrets stand and its army at home is up to the next wave and to the opponent's,
+  a Research Lab, Helipads (two on Hard), aircraft (Easy one Gunship, Normal a Gunship and a
+  Bomber, Hard two of each), and research in a fixed order by difficulty. Gunships strike haulers
+  and artillery where the fewest anti-air guns cover them; Bombers the thickest knot of
+  structures. Aircraft not on a strike stay parked, so the ground waves never take them along.
+  Nothing new goes on air once the map holds under 20,000 credits of ore, and with the ore all
+  gone and no army left it sells its air structures and puts what it has into infantry: without
+  those two rules the extra spending left both sides with nothing in the last minutes of a long
+  battle, and 2 of the 12 advanced-tech drive battles ran to the tick cap.
+
+Interface: an Air tab after Vehicles (advanced tech only; Tab skips it otherwise), the Research
+block at the foot of the Structures tab once a Lab stands, hotkeys B, N and D for the 12th to 14th
+items of the now longer Structures list, the ammunition and rearming state of a selected aircraft,
+an Aircraft panel in How to play. Art: the seven new looks in any side's colours, aircraft drawn in
+one pass after every ground unit, lifted over a shadow (lower when parked), with a turning rotor or
+contrails; bombs falling, bomb blasts, flak bursts at the aircraft's height; aircraft on the
+minimap with a wing bar. Chrome tokens `--ui-research-*` in both modes.
+
+Two lines outside the contract's list were unavoidable and are kept to the minimum: the
+`newPlayer` in `mission.ts` gives a mission's players an empty air queue (its return type demands
+it), and `ai.ts` widens its private `ArmorClass` to the new armour class. In `drive.ts`, besides the
+two markers, the invariants let aircraft stand over water and structures.
+
+Numbers. `npm run drive:fire`: the mission and standard-tech lines unchanged; the advanced-tech
+lines are now "12/12 finished, average 26.8 game minutes; side 0 won 4, side 1 won 8" (classic
+side 1 in 28 and 33 min, river side 1 in 25 and side 0 in 27, highlands side 0 in 34 and side 1 in
+33, lakes side 1 and side 0 in 17, plains side 1 in 27 and 24, canyon side 1 in 31 and side 0 in
+27). In all 304,822 assertions, about 7,900 more than before, in 167s. AI ladder, 150 seeds,
+random map, advanced tech, side 0 Normal throughout (before, then after): the mirror 45% to 54% (1
+unfinished), then 49% to 49% (3 unfinished); Hard on side 1 wins 91%, then 89%; Easy 0%, then 0%.
+
+### 2026-11-09: Bigger battles, three and four sides (round 4, workstream B)
+
+The lobby offers 2, 3 or 4 sides and, with more than two, free for all or teams (`SkirmishSetup`
+gains `sides` and `mode`; `normaliseSetup` repairs anything else to two sides, free for all, and two
+sides are always free for all). Teams come only from `teamsFor`: a 2 against 2 is sides 0 and 2
+against 1 and 3, and three sides as teams is sides 0 and 2 against side 1. Side 1, alone, starts
+with `LONE_SIDE_CREDITS` (2.25) times the setup's credits: over 60 computer battles at 2.25 the
+pair won 48%; over 40 each, it won 70% at 2, 33% at 2.5 and 3% at 4. Starting credits were the
+handicap chosen because income is read in `tick.ts`, which this workstream does not touch. Two sides take exactly the old code path.
+
+Maps (`generateSkirmishMap(seed, type, ore, sides)`): 80 tiles square for three sides, 96 for four.
+The generator draws side 0's wedge (a quarter, or a third) mirrored about its own axis and turns it
+round the centre, so a feature at the edge of a wedge meets its turned copy. Four sides are exactly
+symmetric (tile (x, y) matches (95-y, x)): side 0 bottom left, 1 top right, 2 bottom right, 3 top
+left. Three sides are turned by -0.5 and 0.8660254037844386, rounded to tiles, on a disc with rock
+corners; side 0 bottom centre, 1 upper right, 2 upper left. `sidesProblem` (called by `mapProblem`
+when there are more than two starts) checks the size, the symmetry, every site in one half, the
+yards clear, everything connected, a home field by every site, a contested field, and fairness:
+over 20 seeds of every type the largest spread between three sites was 9.4% in buildable ground,
+7.1% in home ore and 6.9% in walking distance (eight ways, as units path), inside the stated
+tolerance of 12% (`SIDES_TOLERANCE`). Each wedge holds a home field, a track to the centre and to
+each neighbour, a field on each border shared by the two neighbours, and a rich field in the
+centre; the map types add rivers or ridges along the borders, lakes, or a ring of cliffs.
+
+The computer (`src/sim/aiSides.ts`): `chooseEnemy` aims each commander's waves at one enemy, the
+nearest standing base by walking distance weighted by that side's strength (weaker counts nearer),
+a quarter nearer if an ally is already attacking it, kept for `FOCUS_TICKS` (two minutes) unless it
+falls. Near ties break the same way round the map for every seat: before that rule, both of side
+0's neighbours chose side 0 first. `alliedPlan` sends half the idle reserve to an ally hit within
+the last 20 seconds, unless its own base is under threat, and brings strays home. Defence still
+answers every enemy. With one enemy and no ally both are no-ops, so the summary lines of
+`npm run drive:fire` for two sides are unchanged.
+
+Seat fairness, 4 sides free for all, advanced tech, 120 seeds played to the last side standing
+(`scripts/sides-fairness.ts`): side 0 won 26.7%, side 1 25.0%, side 2 26.7%, side 3 21.7%, every
+seat within the 7.9 points two standard errors allow. The interface: Sides and Mode in the lobby
+with every map preview drawn for the chosen number of sides and a line naming each side and its
+team, "2 against 2" or "3 sides, free for all" in the saves list (the server reads the player count
+and mode from the saved state), each computer side named in its colour in the top bar (allies
+marked, a side that is out struck through), and the end card naming the winning team.
+
+### 2026-11-09: Campaign act two (round 4, workstream C)
+
+Six more missions, 9 to 14, on a second theatre map: the northern coast and the highlands behind
+it. Winning mission 8 opens mission 9; the campaign is complete when mission 14 is won. The act
+brings in the round-3 advanced tech one or two arms at a time, in the enemy's hands first and then
+the player's: sandbag walls and Grenadiers (Iron Coast), Medics and the Repair Bay (Convoy North),
+Rocket Turrets and Missile Carriers (The Long Hold), the Tech Centre and Flame Tanks (Firestorm),
+Bastions and the Strike Command (Bastion Line), and everything in the final assault on a full
+Combine base, a normal commander on hard (Last Light). Specs are in `src/campaign/act2.ts`; the
+design is section 9 of `fireline-campaign-design.md`.
+
+New in the simulation (`mission.ts`, all pure):
+
+- **escort**: a mission's `convoy` (side 0's units) is placed when the mission is built and sent
+  along its route as a move and queued moves; the player may stop or redirect it. Done when
+  `count` convoy units are within `r` of the point, failed when fewer than `count` are left;
+  progress is how far along the route the leading unit is.
+- **destroyWithin**: counted like destroy, failed once the tick passes its limit.
+- **holdZone with `reset`**: an enemy alone in the zone drops the count to nothing; contested, it
+  only pauses, as before.
+- **structurePowers** on a mission: structures grant support powers for both sides as in an
+  advanced skirmish (Uplink, Tech Centre, Strike Command), never touching powers the mission gave
+  at the start, and the computer side calls its barrage and missile once charged (the missile at
+  side 0's densest structures, the barrage at a knot of three or more units). The computer's own
+  commander still plays standard tech in a mission, so this is how the enemy's Tech Centre and
+  Strike Command matter.
+
+Interface: the objectives panel's Show button follows the convoy's leading vehicle, a timed
+objective shows its time left, the escort point has a ring, and the campaign screen offers both
+acts as tabs once act two is open, opening on the act of the next unfinished mission.
+
+Tests: `scripts/drive-act2.ts` (91 assertions inside `npm run drive:fire`) proves each new kind
+with hand-built missions, from labels to saves and replay. `npm run campaign:fire` checks all
+fourteen specs against their maps (the convoy's route walked leg by leg), builds and runs each
+act-two mission, checks progression from 8 to 14 and saves from before act two, and plays four
+act-two missions to a win: Convoy North escorted by script (and lost if left alone), The Long Hold
+held by a garrison kept supplied (and overrun, its count reset, without one), Iron Coast by the
+skirmish commander, Bastion Line by the commander with the army sent at the turrets. Firestorm's
+Commando, placed at the Strike Command, stops the first missile. Every summary line of
+`npm run drive:fire` is unchanged.
+
+### 2026-11-09: Round 4 integration
+
+The foundation (sides, then the contract) went first; air, bigger battles and act two were built
+in parallel on it and merged with conflicts only in the docs. Putting them together found:
+
+- Act two's air slots filled: gunship raids on Graystone Ford (mission 11) with Skyhunters for the
+  garrison and two more tanks, because Skyhunters cannot fire at the ground and without the tanks
+  the scripted garrison lost the ford; bomber runs on the base in Firestorm (12) with Flak Cannons
+  cleared; the whole air arm for both sides in Last Light (14), whose Combine base now has Helipads,
+  a Research Lab and Flak Cannons, so its raiders go home and rearm.
+- A Bomber on attack-move flew to the point and hovered with a full bay. It now bombs the first
+  enemy structure it comes near, then rearms.
+- Ground units no longer chase aircraft on attack-move or the aggressive stance; they fire at what
+  comes in range. An explicit attack order still pursues.
+- The sides harness's invariants now let aircraft stand over water and structures, as drive's do.
+- A mission with no base opens the camera on the player's units, not the map's corner.
+
+Numbers at integration: drive 344,186 assertions, campaign-check 2,595 (fourteen missions), both
+tours (desktop, and touch on three phones), 27 loading checks and 573 server tests pass. AI ladder,
+150 seeds, random maps, advanced tech: the mirror 51% to 47% (2 unfinished), Hard on side 1 wins
+91%, Easy 0%.
+

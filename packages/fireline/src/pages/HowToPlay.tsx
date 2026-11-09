@@ -7,6 +7,7 @@ import { Controls } from './GameScreen';
 import { statsOf } from '../game/Sidebar';
 import { TECH_TEXT } from '../components/SkirmishSetup';
 import {
+  AIR_MENU,
   BUILD_MENU,
   BUILDINGS,
   HERO_ABILITY,
@@ -74,7 +75,7 @@ export default function HowToPlay() {
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>T</kbd> <kbd>Y</kbd> press the build buttons of the open list in order;
-              with advanced tech the list runs on to <kbd>U</kbd> <kbd>I</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd>. Each button shows its letter. <kbd>Tab</kbd> moves to the next list. Hold <kbd>Shift</kbd> to queue five infantry or
+              with advanced tech the list runs on to <kbd>U</kbd> <kbd>I</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd> <kbd>B</kbd> <kbd>N</kbd> <kbd>D</kbd>. Each button shows its letter. <kbd>Tab</kbd> moves to the next list. Hold <kbd>Shift</kbd> to queue five infantry or
               vehicles in one go.
             </li>
             <li>Hover any build button, or a unit or structure in the selection panel, for its full card: cost, build time, armour, weapon, range, reload and speed.</li>
@@ -203,6 +204,14 @@ export default function HowToPlay() {
         </Panel>
         <Panel title="Vehicles">
           <Grid kinds={VEHICLE_MENU} />
+        </Panel>
+        <Panel title="Aircraft">
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
+            Advanced tech only. A Helipad builds and rearms two aircraft. They fly over water, rock and structures, and only
+            anti-air (Skyhunters, Flak Tracks, Flak Cannons) and machine guns can reach them. Once a Research Lab stands, the foot
+            of the Structures list offers five upgrades, one at a time, that last the rest of the battle.
+          </p>
+          <Grid kinds={AIR_MENU} />
         </Panel>
         <Panel title="Controls">
           <Controls campaign skirmish />

@@ -333,7 +333,8 @@ function SaveRow({
             'In progress'
           )}
           {!campaign && ` · ${s.turn} min`}
-          {!campaign && mapTypeOf(s) && ` · ${MAP_TYPE_NAMES[mapTypeOf(s)!]}`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+          {!campaign && mapTypeOf(s) && ` · ${MAP_TYPE_NAMES[mapTypeOf(s)!]}`}
+          {!campaign && sidesOfSave(s) && ` · ${sidesOfSave(s)}`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
         </span>
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -365,6 +366,13 @@ function SaveRow({
 const mapTypeOf = (s: SaveMeta): MapType | null => {
   const t = (s as SaveMeta & { mapType?: unknown }).mapType;
   return typeof t === 'string' && t in MAP_TYPE_NAMES ? (t as MapType) : null;
+};
+
+/** "3 sides, free for all", "2 against 2" or "2 against 1" for a battle of more than two sides; null for two. */
+const sidesOfSave = (s: SaveMeta): string | null => {
+  const n = (s as SaveMeta & { sides?: unknown }).sides;
+  if (n !== 3 && n !== 4) return null;
+  return s.mode === 'teams' ? (n === 4 ? '2 against 2' : '2 against 1') : `${n} sides, free for all`;
 };
 
 const page: CSSProperties = { minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, color: UI.text, fontFamily: FONT.body };

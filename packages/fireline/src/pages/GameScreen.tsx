@@ -7,11 +7,13 @@ import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import FullscreenToggle from '../components/FullscreenToggle';
 import MotionToggle from '../components/MotionToggle';
 import ThemeToggle from '../components/ThemeToggle';
-import { TILE } from '../game/art';
+import { AIR_LIFT, TILE } from '../game/art';
 import { useLayout } from '../game/layout';
 import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
-import { BUILD_KEYS, BuildPanel, SelectionPanel, TAB_ORDER, menuFor, pressBuild, type Tab } from '../game/Sidebar';
+import { BUILD_KEYS, BuildPanel, SelectionPanel, menuFor, pressBuild, tabsFor, type Tab } from '../game/Sidebar';
+import { airRoom } from '../sim/air';
+import { researchProblem } from '../sim/research';
 import { sound } from '../game/sound';
 import { statusOf, useSaves } from '../hooks/useSaves';
 import CampaignFlow from './Campaign';
@@ -27,8 +29,6 @@ import {
   DIFFICULTIES,
   HERO_ABILITY,
   HERO_KINDS,
-  MAP_H,
-  MAP_W,
   MAX_QUEUE,
   POWERS,
   TICKS_PER_SECOND,
@@ -38,7 +38,8 @@ import {
   type SupportPower,
   type UnitKind,
 } from '../sim/rules';
-import { costOf, powerOf, readyStructure, unlocked } from '../sim/state';
+import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
+import { costOf, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 
@@ -164,9 +165,16 @@ export function Battle({
   const savedState = useRef<GameState>(initial);
   const acc = useRef(0);
   const renderer = useRef<Renderer | null>(null);
-  if (!renderer.current) renderer.current = new Renderer(initial.tiles);
+  if (!renderer.current) renderer.current = new Renderer(initial.tiles, undefined, initial.mapW, initial.mapH);
+  // Open on the Command Yard; in a mission with no base, on the middle of our units.
   const hq = initial.buildings.find(b => b.owner === 0 && b.kind === 'hq');
-  const cam = useRef<Camera>({ x: hq ? hq.x * TILE - 300 : 0, y: hq ? hq.y * TILE - 260 : 0, zoom: 1, w: 800, h: 600 });
+  const ours = initial.units.filter(u => u.owner === 0);
+  const opening = hq
+    ? { x: hq.x, y: hq.y }
+    : ours.length
+      ? { x: ours.reduce((a, u) => a + u.x, 0) / ours.length - 1, y: ours.reduce((a, u) => a + u.y, 0) / ours.length - 1 }
+      : null;
+  const cam = useRef<Camera>({ x: opening ? opening.x * TILE - 300 : 0, y: opening ? opening.y * TILE - 260 : 0, zoom: 1, w: 800, h: 600 });
   const overlay = useRef<Overlay>({ selected: new Set(), hover: 0, placement: null, drag: null, pings: [] });
   const keys = useRef(new Set<string>());
   const mouse = useRef({ x: -1, y: -1, inside: false, downX: 0, downY: 0, down: false, pan: false, panX: 0, panY: 0, camX: 0, camY: 0, lastClick: 0 });
@@ -280,12 +288,19 @@ export function Battle({
             showToast(`Needs a ${needs.filter(r => !s.buildings.some(b => b.owner === 0 && b.kind === r)).map(r => BUILDINGS[r].name).join(' and a ')}`);
           } else if (a.category === 'building' && q.length) showToast('One structure at a time');
           else if (q.length >= MAX_QUEUE) showToast('Queue full');
+          else if (a.category === 'air' && airRoom(s, 0) <= 0) showToast('Every Helipad is full: build another');
           else if (s.players[0].credits < costOf(a.kind)) showToast('Insufficient funds');
+        }
+        if (a.type === 'research') {
+          sound.play('denied');
+          const why = researchProblem(cur.current, 0, a.upgrade);
+          if (why === 'Not enough credits') showToast('Insufficient funds');
+          else if (why) showToast(why);
         }
         return false;
       }
       cur.current = next;
-      if (a.type === 'queue' || a.type === 'cancel') sound.play('queue');
+      if (a.type === 'queue' || a.type === 'cancel' || a.type === 'research' || a.type === 'cancelResearch') sound.play('queue');
       else if (a.type === 'place') sound.play('place');
       else if (a.type === 'move' || a.type === 'attack' || a.type === 'harvest' || a.type === 'rally' || a.type === 'stop' || a.type === 'ability' || a.type === 'power')
         sound.play('order');
@@ -310,9 +325,10 @@ export function Battle({
     let best = 0;
     let bestD = Infinity;
     for (const u of s.units) {
-      if (u.owner !== 0 && !vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
+      if (u.owner !== 0 && !vis[Math.floor(u.y) * s.mapW + Math.floor(u.x)]) continue;
       const r = UNITS[u.kind].category === 'infantry' ? 0.35 : 0.55;
-      const d = Math.hypot(u.x - wx, u.y - wy);
+      // Aircraft are drawn lifted above their shadow: pick them where they are drawn.
+      const d = Math.hypot(u.x - wx, u.y - (UNITS[u.kind].category === 'air' ? AIR_LIFT : 0) - wy);
       if (d < r && d < bestD) {
         bestD = d;
         best = u.id;
@@ -322,7 +338,7 @@ export function Battle({
     for (const b of s.buildings) {
       const spec = BUILDINGS[b.kind];
       if (wx >= b.x && wx < b.x + spec.w && wy >= b.y && wy < b.y + spec.h) {
-        if (b.owner !== 0 && s.explored.charCodeAt(b.y * MAP_W + b.x) !== 49) continue;
+        if (b.owner !== 0 && s.explored.charCodeAt(b.y * s.mapW + b.x) !== 49) continue;
         return b.id;
       }
     }
@@ -335,7 +351,7 @@ export function Battle({
     const c = cam.current;
     c.x = tx * TILE - c.w / c.zoom / 2;
     c.y = ty * TILE - c.h / c.zoom / 2;
-    clampCam(c);
+    clampCam(c, cur.current);
   }, []);
 
   const jumpToAlert = useCallback(() => {
@@ -501,7 +517,7 @@ export function Battle({
         ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
         return;
       }
-      const tile = Math.floor(wy) * MAP_W + Math.floor(wx);
+      const tile = Math.floor(wy) * s.mapW + Math.floor(wx);
       if (haulerIds.length && s.ore[tile] > 0 && s.explored.charCodeAt(tile) === 49) {
         dispatch({ type: 'harvest', ids: haulerIds, tile });
         if (others.length) dispatch({ type: 'move', ids: others, x: wx, y: wy, attackMove: forceAttackMove });
@@ -563,6 +579,7 @@ export function Battle({
     if (b && b.owner === 0) {
       if (b.kind === 'barracks') setTab('infantry');
       if (b.kind === 'factory') setTab('vehicle');
+      if (b.kind === 'helipad') setTab('air');
       if (b.kind === 'hq') setTab('building');
     }
     sound.play('select');
@@ -670,14 +687,14 @@ export function Battle({
       c.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, (g.zoom * p.dist) / g.dist));
       c.x = wx - p.midX / c.zoom;
       c.y = wy - p.midY / c.zoom;
-      clampCam(c);
+      clampCam(c, cur.current);
       return;
     }
     if (g.kind === 'tap' && Math.hypot(sx - g.x0, sy - g.y0) > TAP_SLOP) g.kind = boxRef.current ? 'box' : 'pan';
     if (g.kind === 'pan') {
       c.x = g.camX - (sx - g.x0) / c.zoom;
       c.y = g.camY - (sy - g.y0) / c.zoom;
-      clampCam(c);
+      clampCam(c, cur.current);
     } else if (g.kind === 'box') {
       overlay.current.drag = { x0: g.x0, y0: g.y0, x1: sx, y1: sy };
     }
@@ -792,7 +809,7 @@ export function Battle({
     if (m.pan) {
       cam.current.x = m.camX - (sx - m.panX) / cam.current.zoom;
       cam.current.y = m.camY - (sy - m.panY) / cam.current.zoom;
-      clampCam(cam.current);
+      clampCam(cam.current, cur.current);
       return;
     }
     if (m.down && Math.hypot(sx - m.downX, sy - m.downY) > 5) {
@@ -873,7 +890,7 @@ export function Battle({
     c.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, c.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
     c.x = before.x - sx / c.zoom;
     c.y = before.y - sy / c.zoom;
-    clampCam(c);
+    clampCam(c, cur.current);
   };
 
   // ---- Keyboard -----------------------------------------------------------------------------
@@ -885,15 +902,16 @@ export function Battle({
       const k = e.key.toLowerCase();
       const buildIndex = (BUILD_KEYS as readonly string[]).indexOf(k);
       if (buildIndex >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Q W E R T Y (then U I J K L): the open list's items in order; Shift queues five units.
+        // Q W E R T Y (then U I J K L B N D): the open list's items in order; Shift queues five units.
         const kind = menuFor(tabRef.current, cur.current)[buildIndex];
         if (kind) pressBuild(cur.current, tabRef.current, kind, placingRef.current, dispatch, choosePlacing, e.shiftKey);
         return;
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        const i = TAB_ORDER.indexOf(tabRef.current);
-        setTab(TAB_ORDER[(i + (e.shiftKey ? TAB_ORDER.length - 1 : 1)) % TAB_ORDER.length]);
+        const order = tabsFor(cur.current);
+        const i = Math.max(0, order.indexOf(tabRef.current));
+        setTab(order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length]);
         return;
       }
       const heroKey = (HERO_KEYS as readonly string[]).indexOf(k);
@@ -1031,7 +1049,7 @@ export function Battle({
           opened.current = true;
           if (w < 700 && hq) centreOn(hq.x + 1.5, hq.y + 1.5);
         }
-        clampCam(c);
+        clampCam(c, cur.current);
 
         // Scrolling: arrow keys, or the pointer resting at the edge of the view.
         const pan = (dt / 1000) * 700 / c.zoom;
@@ -1053,7 +1071,7 @@ export function Battle({
         if (dx || dy) {
           c.x += dx;
           c.y += dy;
-          clampCam(c);
+          clampCam(c, cur.current);
           if (placingRef.current) updatePlacement(m.x, m.y);
         }
 
@@ -1152,7 +1170,7 @@ export function Battle({
           const result = cur.current.mission?.result;
           if ((cur.current.winner !== null || result) && !heardWinner) {
             heardWinner = true;
-            sound.play((result ? result === 'won' : cur.current.winner === 0) ? 'victory' : 'defeat');
+            sound.play((result ? result === 'won' : wonBy(cur.current, 0)) ? 'victory' : 'defeat');
           }
           if (cur.current.winner !== null || result) doSave();
           refresh();
@@ -1265,7 +1283,7 @@ export function Battle({
   const barLift = layout.touch && !ended ? 56 : 0;
   const zones = mission ? missionZones(s) : [];
   const missiles = s.projectiles.filter(p => p.weapon === 'missile');
-  const incoming = ended ? null : missiles.filter(p => p.owner === 1).sort((a, b) => a.hitAt - b.hitAt)[0] ?? null;
+  const incoming = ended ? null : missiles.filter(p => isEnemy(s, 0, p.owner)).sort((a, b) => a.hitAt - b.hitAt)[0] ?? null;
   const skirmishPowers = !mission && !ended && !!s.powers && s.setup?.tech === 'advanced';
   const leave = () => {
     doSave();
@@ -1285,6 +1303,7 @@ export function Battle({
             {s.name} · {DIFFICULTIES[s.difficulty].label}
           </span>
         )}
+        {!layout.stacked && <SideNames state={s} />}
         <span style={{ fontFamily: FONT.mono, fontSize: '0.85rem', color: UI.text }} data-testid="clock">
           {clock}
         </span>
@@ -1324,6 +1343,7 @@ export function Battle({
             <div style={{ fontSize: '0.85rem', color: UI.textSoft }}>
               {s.name} · {DIFFICULTIES[s.difficulty].label}
             </div>
+            <SideNames state={s} />
             {saveStatus}
             <div style={menuRow}>
               <span style={menuLabel}>Speed</span>
@@ -1619,11 +1639,14 @@ function missionZones(s: GameState): { x: number; y: number; r: number; label: s
     const sp = o.spec;
     if (sp.kind === 'reach') out.push({ x: sp.x, y: sp.y, r: sp.r, label: sp.who === 'any' ? 'Rendezvous' : 'Extraction', done: o.done });
     else if (sp.kind === 'holdZone') out.push({ x: sp.x, y: sp.y, r: sp.r, label: 'Hold', done: o.done });
+    else if (sp.kind === 'escort') out.push({ x: sp.x, y: sp.y, r: sp.r, label: 'Convoy', done: o.done });
   }
   return out;
 }
 
-function clampCam(c: Camera) {
+function clampCam(c: Camera, s: GameState) {
+  const MAP_W = s.mapW;
+  const MAP_H = s.mapH;
   const vw = c.w / c.zoom;
   const vh = c.h / c.zoom;
   // Room to scroll past the edge, so a structure in a corner can be brought out from under the
@@ -1647,7 +1670,7 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['S', 'Stop'],
     ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
     ['Q W E R T Y', 'Build or train the first to sixth item in the open list (the letter is on each button)'],
-    ['U I J K L', 'With advanced tech: the seventh to eleventh item in the open list'],
+    ['U I J K L B N D', 'With advanced tech: the seventh to fourteenth item in the open list'],
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
     ['Tab', 'Next build list: Structures, Infantry, Vehicles (Shift + Tab goes back)'],
     ['G', 'Toggle repair on the selected structure'],
@@ -1705,16 +1728,70 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
   );
 }
 
+/** True while a side still has a structure standing. */
+const standingSide = (state: GameState, o: number) => state.buildings.some(b => b.owner === o && isStructure(b));
+
+/**
+ * The computer sides of a battle of three or four, each named in its colour, allies marked, and a
+ * side that is out struck through. Nothing in a two-sided battle.
+ */
+function SideNames({ state }: { state: GameState }) {
+  if (state.players.length <= 2) return null;
+  return (
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 8, fontSize: '0.78rem' }} data-testid="side-names">
+      {sidesOf(state)
+        .filter(o => o !== 0)
+        .map(o => {
+          const out = !standingSide(state, o);
+          return (
+            <span
+              key={o}
+              style={{ color: UI.side[o], fontWeight: 600, whiteSpace: 'nowrap', textDecoration: out ? 'line-through' : undefined, opacity: out ? 0.6 : 1 }}
+              title={`${state.players[o].name}: ${isAlly(state, 0, o) ? 'your ally' : 'enemy'}${out ? ', out of the battle' : ''}`}
+            >
+              {state.players[o].name}
+              <span style={{ color: UI.textFaint, fontWeight: 400 }}> {isAlly(state, 0, o) ? '(ally)' : ''}</span>
+            </span>
+          );
+        })}
+    </span>
+  );
+}
+
+/** Names joined as "A", "A and B" or "A, B and C". */
+const andList = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
+/**
+ * Who won, for a battle of three or four sides: the winning team by name, or in a free-for-all the
+ * player alone (a victory) or the sides still standing when the player fell (a defeat).
+ */
+function winningLine(state: GameState): string | null {
+  if (state.players.length <= 2 || state.winner === null) return null;
+  const names = (os: number[]) => andList(os.map(o => (o === 0 ? 'you' : state.players[o].name)));
+  const team = sidesOf(state).filter(o => isAlly(state, o, state.winner!));
+  if (team.length > 1) return `Winning team: ${names(team)}.`;
+  if (state.winner === 0) return 'You are the last side standing.';
+  const left = sidesOf(state).filter(o => o !== 0 && standingSide(state, o));
+  return left.length ? `Still standing: ${names(left)}.` : null;
+}
+
 function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) {
-  const won = state.winner === 0;
-  const [me, them] = state.players;
+  const won = wonBy(state, 0);
   const secs = Math.floor(state.tick / TICKS_PER_SECOND);
-  const rows: [string, number, number][] = [
-    ['Structures built', me.stats.built, them.stats.built],
-    ['Units trained', me.stats.trained, them.stats.trained],
-    ['Enemy destroyed', me.stats.killed, them.stats.killed],
-    ['Losses', me.stats.lost, them.stats.lost],
-    ['Credits harvested', me.stats.harvested, them.stats.harvested],
+  // One column per side: You and Enemy in a two-sided battle, each side by name with more.
+  const two = state.players.length === 2;
+  const cols = sidesOf(state).map(o => ({
+    o,
+    label: o === 0 ? 'You' : two ? 'Enemy' : state.players[o].name,
+    colour: two ? (o === 0 ? UI.team : UI.enemy) : UI.side[o],
+  }));
+  const stat = (k: keyof GameState['players'][number]['stats']) => state.players.map(p => p.stats[k]);
+  const rows: [string, number[]][] = [
+    ['Structures built', stat('built')],
+    ['Units trained', stat('trained')],
+    ['Enemy destroyed', stat('killed')],
+    ['Losses', stat('lost')],
+    ['Credits harvested', stat('harvested')],
   ];
   return (
     <div style={scrim}>
@@ -1723,23 +1800,34 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
           {won ? 'VICTORY' : 'DEFEAT'}
         </h2>
         <p style={{ margin: 0, color: UI.textSoft, fontSize: '0.85rem' }}>
-          {won ? 'The Ashen Combine has been driven from the field' : 'Your last structure has fallen'} after {Math.floor(secs / 60)} minutes{' '}
+          {won ? (two ? 'The Ashen Combine has been driven from the field' : 'Every enemy has been driven from the field') : 'Your last structure has fallen'} after {Math.floor(secs / 60)} minutes{' '}
           {secs % 60} seconds.
         </p>
+        {winningLine(state) && (
+          <p style={{ margin: 0, color: UI.text, fontSize: '0.85rem' }} data-testid="winning-team">
+            {winningLine(state)}
+          </p>
+        )}
         <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem', width: '100%' }}>
           <thead>
             <tr style={{ color: UI.textFaint }}>
               <th />
-              <th style={{ textAlign: 'right', padding: '2px 6px', color: UI.team }}>You</th>
-              <th style={{ textAlign: 'right', padding: '2px 6px', color: UI.enemy }}>Enemy</th>
+              {cols.map(c => (
+                <th key={c.o} style={{ textAlign: 'right', padding: '2px 6px', color: c.colour }}>
+                  {c.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map(([l, a, b]) => (
+            {rows.map(([l, vals]) => (
               <tr key={l}>
                 <td style={{ textAlign: 'left', padding: '2px 6px 2px 0', color: UI.textSoft }}>{l}</td>
-                <td style={{ textAlign: 'right', padding: '2px 6px', fontFamily: FONT.mono }}>{Math.floor(a).toLocaleString('en-GB')}</td>
-                <td style={{ textAlign: 'right', padding: '2px 6px', fontFamily: FONT.mono }}>{Math.floor(b).toLocaleString('en-GB')}</td>
+                {vals.map((v, o) => (
+                  <td key={o} style={{ textAlign: 'right', padding: '2px 6px', fontFamily: FONT.mono }}>
+                    {Math.floor(v).toLocaleString('en-GB')}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>

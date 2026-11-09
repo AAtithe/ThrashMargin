@@ -5,20 +5,22 @@ import {
   CAPTURE_TICKS,
   CHARGE_FUSE,
   ENGINEER_REPAIR_RANGE,
-  MAP_H,
-  MAP_W,
+  MAP_H as DEFAULT_MAP_H,
+  MAP_W as DEFAULT_MAP_W,
   MEDIC_RANGE,
   POWERS,
   REPAIR_BAY_RANGE,
+  AIR_AMMO,
   TICKS_PER_SECOND,
   UNITS,
   type BuildingKind,
   type MapType,
 } from '../sim/rules';
-import { buildTicksOf, powerOf, producerFor, visibility } from '../sim/state';
+import { sidesOf } from '../sim/sides';
+import { buildTicksOf, powerOf, producerFor, teamVisibility } from '../sim/state';
 import type { Building, Effect, GameState, Projectile, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
-import { drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
+import { AIR_LIFT, drawAirShadow, drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
 import { drawCampaignEffect, drawCaptureRing, drawChargeOnBuilding, drawOverdriveGlow, drawReconArea, startCampaignEffect } from './fx/campaign';
 import { Atmosphere } from './fx/atmosphere';
 import { Particles } from './fx/particles';
@@ -96,15 +98,16 @@ interface Activity {
   bayAim: Map<number, number>;
   medics: Set<number>;
   /** Per side: missile cooldown left, or -1 when the side has no missile. */
-  missileCd: [number, number];
+  missileCd: number[];
 }
 
 function activityOf(s: GameState): Activity {
   const joins = new Map<number, number>();
   const wallAt = new Map<number, Building>();
+  const MAP_W = s.mapW;
   for (const b of s.buildings) if (BUILDINGS[b.kind].wall) wallAt.set(b.y * MAP_W + b.x, b);
   for (const b of wallAt.values()) {
-    const same = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && wallAt.get(y * MAP_W + x)?.owner === b.owner;
+    const same = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < s.mapH && wallAt.get(y * MAP_W + x)?.owner === b.owner;
     joins.set(b.id, (same(b.x, b.y - 1) ? 1 : 0) | (same(b.x + 1, b.y) ? 2 : 0) | (same(b.x, b.y + 1) ? 4 : 0) | (same(b.x - 1, b.y) ? 8 : 0));
   }
   const bayAim = new Map<number, number>();
@@ -127,8 +130,7 @@ function activityOf(s: GameState): Activity {
           busy.add(m.id);
         }
     }
-  const cd = (o: 0 | 1) => s.powers?.[o]?.missile ?? -1;
-  return { joins, bayAim, medics: busy, missileCd: [cd(0), cd(1)] };
+  return { joins, bayAim, medics: busy, missileCd: sidesOf(s).map(o => s.powers?.[o]?.missile ?? -1) };
 }
 
 /**
@@ -182,7 +184,10 @@ export class Renderer {
   private painted = false;
   private actFor: GameState | null = null;
   private act: Activity = { joins: new Map(), bayAim: new Map(), medics: new Set(), missileCd: [-1, -1] };
-  private atmosphere = new Atmosphere();
+  private atmosphere: Atmosphere;
+  /** The map's size in tiles (GameState mapW, mapH). */
+  private mapW: number;
+  private mapH: number;
   /** Structures producing something right now, cached per state object. */
   private workingFor: GameState | null = null;
   private working = new Set<number>();
@@ -190,7 +195,7 @@ export class Renderer {
   /** False until the first frame, which marks what is already on the field as seen, silently. */
   private primed = false;
   private visFor: GameState | null = null;
-  private vis: Uint8Array = new Uint8Array(MAP_W * MAP_H);
+  private vis: Uint8Array = new Uint8Array(0);
   private lastNow = 0;
 
   /**
@@ -198,9 +203,14 @@ export class Renderer {
    * left out, the first state drawn supplies it (GameState.mapType), and without one the ground
    * is the original map's.
    */
-  constructor(tiles: string, mapType?: MapType) {
+  constructor(tiles: string, mapType?: MapType, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H) {
     this.tiles = tiles;
     this.mapType = mapType;
+    this.mapW = mapW;
+    this.mapH = mapH;
+    const MAP_W = mapW;
+    const MAP_H = mapH;
+    this.atmosphere = new Atmosphere(mapW, mapH);
     this.fog = document.createElement('canvas');
     this.fog.width = MAP_W;
     this.fog.height = MAP_H;
@@ -210,22 +220,24 @@ export class Renderer {
 
   private paint(mapType: MapType | undefined) {
     this.painted = true;
-    this.terrain = paintTerrain(this.tiles, mapType);
+    this.terrain = paintTerrain(this.tiles, mapType, this.mapW, this.mapH);
     this.scars = new Scars(this.terrain, this.tiles);
     this.water = new Water(this.tiles, this.terrain);
     this.scars.onRepaint = (x, y, w, h) => this.water.invalidate(x, y, w, h);
   }
 
-  /** What side 0 can see right now. Cached per state object. */
+  /** What side 0 (with its allies) can see right now. Cached per state object. */
   visible(s: GameState): Uint8Array {
     if (this.visFor !== s) {
-      this.vis = visibility(s, 0);
+      this.vis = teamVisibility(s, 0);
       this.visFor = s;
     }
     return this.vis;
   }
 
   draw(ctx: CanvasRenderingContext2D, cur: GameState, prev: GameState, alpha: number, cam: Camera, ov: Overlay, now: number, dpr: number): void {
+    const MAP_W = this.mapW;
+    const MAP_H = this.mapH;
     const dt = Math.min(0.1, this.lastNow ? (now - this.lastNow) / 1000 : 0);
     this.lastNow = now;
     const t = now / 1000;
@@ -284,7 +296,7 @@ export class Renderer {
       }
 
     // 4. Structures, back to front.
-    const low: [boolean, boolean] = [powerOf(cur, 0).low, powerOf(cur, 1).low];
+    const low = sidesOf(cur).map(o => powerOf(cur, o).low);
     const seenBuilding = (b: Building) => {
       if (b.owner === 0) return true;
       const spec = BUILDINGS[b.kind];
@@ -296,7 +308,7 @@ export class Renderer {
     const working = this.workingSet(cur);
     for (const b of buildings) {
       if (b.kind !== 'refinery') continue;
-      const d = dockTile(b);
+      const d = dockTile(cur, b);
       drawDock(ctx, d.x * TILE, d.y * TILE);
     }
     for (const b of buildings) {
@@ -364,6 +376,7 @@ export class Renderer {
     // 5. Units, interpolated, back to front.
     const prevById = new Map(prev.units.map(u => [u.id, u]));
     const drawn: { u: Unit; x: number; y: number }[] = [];
+    const aloft: { u: Unit; x: number; y: number }[] = [];
     for (const u of cur.units) {
       const p = prevById.get(u.id) ?? u;
       const x = (p.x + (u.x - p.x) * alpha) * TILE;
@@ -373,10 +386,13 @@ export class Renderer {
         if (!vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
         if (u.kind === 'spy' && !spySeen(cur, u)) continue;
       }
-      drawn.push({ u, x, y });
+      // Aircraft are drawn in their own pass, after every ground unit (below).
+      if (UNITS[u.kind].category === 'air') aloft.push({ u, x, y });
+      else drawn.push({ u, x, y });
     }
     drawn.sort((a, b) => a.y - b.y);
-    this.orderLines(ctx, cur, drawn, ov, t);
+    aloft.sort((a, b) => a.y - b.y);
+    this.orderLines(ctx, cur, drawn.concat(aloft), ov, t);
     for (const { u, x, y } of drawn) {
       const spec = UNITS[u.kind];
       const r = spec.category === 'infantry' ? 8 : u.kind === 'bastion' ? 20 : 14;
@@ -453,6 +469,10 @@ export class Renderer {
       if (group !== undefined) groupBadge(ctx, x, y + r + 1, group);
       if (u.hero) drawHeroBadge(ctx, x - r + 4, y - r - 13, u.hero.level);
     }
+
+    // 5b. Aircraft, in one pass over every ground unit: the shadow on the ground, then the craft
+    // lifted above it with its rotor turning or a contrail behind it.
+    this.aircraft(ctx, cur, prevById, aloft, ov, alpha, t, dt);
 
     // 6. Shells, grenades, rockets and missiles in flight.
     let byId: Map<number, Unit> | null = null;
@@ -534,6 +554,35 @@ export class Renderer {
         const tx = x - Math.cos(ang) * 6;
         const ty = y - Math.sin(ang) * 6;
         this.fx.add({ kind: 'smoke', x: tx, y: ty, z: lift, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: big ? 1.1 : 0.55, size: big ? 2.6 : 2, grow: big ? 3 : 2.4 });
+      } else if (p.weapon === 'bomb') {
+        // A bomb falling from the Bomber's height, its shadow closing on it.
+        const lift = (1 - f) * AIR_LIFT * TILE;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(x, y, 2.4, 1.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#3e4232';
+        ctx.beginPath();
+        ctx.ellipse(x, y - lift, 1.8, 2.8, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (p.weapon === 'flak' || p.weapon === 'aamissile') {
+        // Climbing from the gun to the aircraft's height.
+        const lift = f * AIR_LIFT * TILE;
+        if (p.weapon === 'aamissile') {
+          const ang = Math.atan2(p.toY - p.fromY - AIR_LIFT, p.toX - p.fromX);
+          ctx.save();
+          ctx.translate(x, y - lift);
+          ctx.rotate(ang);
+          ctx.fillStyle = '#e8e6de';
+          ctx.fillRect(-4, -0.9, 7, 1.8);
+          ctx.fillStyle = '#ff7a4a';
+          ctx.fillRect(-6, -1, 2, 2);
+          ctx.restore();
+          this.fx.add({ kind: 'smoke', x: x - Math.cos(ang) * 5, y: y - Math.sin(ang) * 5, z: lift, vx: 0, vy: 0, life: 0.6, size: 1.6, grow: 2 });
+        } else {
+          ctx.fillStyle = '#fff1b8';
+          ctx.fillRect(x - 1, y - lift - 1, 2, 2);
+        }
       } else {
         ctx.fillStyle = '#ffe9b0';
         ctx.beginPath();
@@ -552,10 +601,13 @@ export class Renderer {
     for (const e of cur.effects) {
       const age = rt - e.at + 1;
       const x = e.x * TILE;
-      const y = e.y * TILE;
+      // Anti-air bursts happen at the aircraft's height.
+      const y = e.y * TILE - (e.weapon === 'flak' || e.weapon === 'aamissile' ? AIR_LIFT * TILE : 0);
       if (!this.seen.has(e.id)) {
         this.seen.add(e.id);
-        if (e.kind === 'boom') this.burst(x, y, e.size, e.weapon);
+        if (e.kind === 'boom' && (e.weapon === 'flak' || e.weapon === 'aamissile')) this.flakBurst(x, y, e.weapon === 'aamissile');
+        else if (e.kind === 'boom') this.burst(x, y, e.size, e.weapon);
+        if (e.kind === 'bomb') this.burst(x, y, 1, 'bomb');
         if (e.kind === 'sold') for (let i = 0; i < 18; i++) this.fx.spark(x, y);
         if (e.kind === 'repair') for (let i = 0; i < 4; i++) this.fx.spark(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 8);
         if (e.kind === 'muzzle' && e.weapon === 'flame') this.fx.flameSpray(x, y, (e.x2 ?? e.x) * TILE, (e.y2 ?? e.y) * TILE);
@@ -594,6 +646,30 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(x, y, e.weapon === 'bullet' ? 3 : e.weapon === 'artillery' ? 8 : 5.5, 0, Math.PI * 2);
         ctx.fill();
+      } else if (e.kind === 'bomb') {
+        // A bomb's blast: brighter and wider than a shell's, over in a moment.
+        if (age > 2.5) continue;
+        const f = age / 2.5;
+        const R = e.size * TILE * (0.6 + f * 0.6);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = (1 - f) * (1 - f);
+        ctx.drawImage(sprites().fire, x - R, y - R, R * 2, R * 2);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+      } else if (e.kind === 'boom' && (e.weapon === 'flak' || e.weapon === 'aamissile')) {
+        // A puff of flak or a missile's burst: a small dark cloud with a hot centre.
+        if (age > 6) continue;
+        const f = age / 6;
+        ctx.fillStyle = `rgba(40,40,38,${0.45 * (1 - f)})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 4 + f * 5, 0, Math.PI * 2);
+        ctx.fill();
+        if (age < 1.5) {
+          ctx.fillStyle = `rgba(255,214,140,${1 - age / 1.5})`;
+          ctx.beginPath();
+          ctx.arc(x, y, 3, 0, Math.PI * 2);
+          ctx.fill();
+        }
       } else if (e.kind === 'boom') {
         // The white-hot instant of the blast; the fireball, smoke and debris are particles.
         const dur = e.size >= 2 ? 3 : 2;
@@ -718,7 +794,7 @@ export class Renderer {
    * middle of the view, and silent under the fog, so sound never reveals what the player cannot see.
    */
   private hear(e: GameState['effects'][number], cam: Camera, vis: Uint8Array, cur: GameState) {
-    const k = Math.floor(e.y) * MAP_W + Math.floor(e.x);
+    const k = Math.floor(e.y) * this.mapW + Math.floor(e.x);
     // A recon sweep, a barrage or a missile is called by a commander and heard on the radio, fog
     // or not; so is a missile's impact, which its marker has already shown to both sides.
     const radio = e.kind === 'recon' || e.kind === 'barrage' || e.kind === 'missile' || (e.kind === 'boom' && e.weapon === 'missile');
@@ -736,7 +812,17 @@ export class Renderer {
       gain = 0.6;
     } else if (e.kind === 'muzzle') {
       if (e.weapon === 'artillery' && grenadierAt(cur, e.x, e.y)) kind = 'grenade';
-      else kind = e.weapon === 'bullet' ? 'bullet' : e.weapon === 'rocket' ? 'rocket' : e.weapon === 'artillery' ? 'artillery' : e.weapon === 'flame' ? 'flame' : 'shell';
+      else
+        kind =
+          e.weapon === 'bullet' || e.weapon === 'flak'
+            ? 'bullet'
+            : e.weapon === 'rocket' || e.weapon === 'aamissile'
+              ? 'rocket'
+              : e.weapon === 'artillery'
+                ? 'artillery'
+                : e.weapon === 'flame'
+                  ? 'flame'
+                  : 'shell';
     } else if (e.kind === 'sold') kind = 'sold';
     else if (e.kind === 'boom' && e.weapon === 'missile') kind = 'missileImpact';
     else if (e.kind === 'boom' && e.weapon === 'flame') return;
@@ -754,6 +840,90 @@ export class Renderer {
     const dTiles = Math.hypot(sx - half, sy - cam.h / 2) / (TILE * cam.zoom);
     gain *= radio && (kind === 'missileLaunch' || kind === 'missileImpact') ? 1 : Math.max(0.12, Math.min(1, 1.15 - dTiles / 30)) * (inView ? 1 : 0.45);
     sound.play(kind, pan, gain);
+  }
+
+  /** A flak or anti-air missile burst in the air: a few sparks and a little smoke, no scorch on the ground. */
+  private flakBurst(x: number, y: number, missile: boolean) {
+    for (let i = 0; i < (missile ? 8 : 3); i++) this.fx.spark(x, y);
+    this.fx.add({ kind: 'smoke', x, y, z: 0, vx: (Math.random() - 0.5) * 4, vy: (Math.random() - 0.5) * 4, life: 0.9, size: missile ? 3 : 2, grow: 2.5 });
+  }
+
+  /**
+   * Aircraft: the shadow on the ground at the unit's position, the craft AIR_LIFT tiles above it,
+   * a contrail behind a moving Bomber and a rotor wash under a Gunship, the selection ring round the
+   * craft, and its health bar. Units under the fog are already left out of `aloft`.
+   */
+  private aircraft(
+    ctx: CanvasRenderingContext2D,
+    cur: GameState,
+    prevById: Map<number, Unit>,
+    aloft: { u: Unit; x: number; y: number }[],
+    ov: Overlay,
+    alpha: number,
+    t: number,
+    dt: number,
+  ) {
+    const lift = AIR_LIFT * TILE;
+    for (const { u, x, y } of aloft) {
+      const p = prevById.get(u.id) ?? u;
+      const hull = Math.atan2(p.fy + (u.fy - p.fy) * alpha, p.fx + (u.fx - p.fx) * alpha);
+      drawAirShadow(ctx, u.kind, x, y, hull);
+    }
+    for (const { u, x, y } of aloft) {
+      const p = prevById.get(u.id) ?? u;
+      const moving = Math.abs(u.x - p.x) + Math.abs(u.y - p.y) > 0.001;
+      const w = UNITS[u.kind].weapon;
+      const sinceShot = w && u.cooldown > 0 && u.order.type !== 'rearm' ? (w.cooldown - u.cooldown) / TICKS_PER_SECOND : 9;
+      const max = AIR_AMMO[u.kind] ?? 1;
+      const pose: UnitPoseX = {
+        hull: Math.atan2(p.fy + (u.fy - p.fy) * alpha, p.fx + (u.fx - p.fx) * alpha),
+        turret: Math.atan2(p.ty + (u.ty - p.ty) * alpha, p.tx + (u.tx - p.tx) * alpha),
+        t: t + u.id * 0.37,
+        moving,
+        cargo: (u.ammo ?? max) / max,
+        sinceShot,
+        hp: u.hp / maxHpOf(u),
+        firing: sinceShot < FIRING_WINDOW,
+      };
+      if (ov.selected.has(u.id) || ov.hover === u.id) {
+        ctx.strokeStyle = u.owner === 0 ? ART.select : ART.selectEnemy;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.ellipse(x, y - lift, 18, 13, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      // Parked on its pad it sits low; in flight it rides AIR_LIFT above its shadow.
+      const h = !moving && u.order.type === 'rearm' ? lift * 0.3 : lift;
+      drawUnit(ctx, u.kind, u.owner, x, y - h, pose);
+      if (u.kind === 'bomber' && moving && Math.random() < dt * 30) {
+        // Contrails from the outer engines.
+        for (const side of [-1, 1]) {
+          const ox = Math.cos(pose.hull) * -6 - Math.sin(pose.hull) * side * 13;
+          const oy = Math.sin(pose.hull) * -6 + Math.cos(pose.hull) * side * 13;
+          this.fx.add({ kind: 'smoke', x: x + ox, y: y + oy, z: lift, vx: 0, vy: 0, life: 1.4, size: 1.4, grow: 1.6 });
+        }
+      }
+      if (u.kind === 'gunship' && Math.random() < dt * 4) this.fx.add({ kind: 'dust', x: x + (Math.random() - 0.5) * 18, y: y + (Math.random() - 0.5) * 12, z: 0, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 8, life: 0.7, size: 2.2, grow: 2.4 });
+    }
+    for (const { u, x, y } of aloft) {
+      const frac = u.hp / maxHpOf(u);
+      const top = y - lift - 20;
+      if (ov.selected.has(u.id) || ov.hover === u.id) hpBar(ctx, x - 14, top, 28, frac);
+      else if (frac < 1) hpBar(ctx, x - 14, top + 2, 28, frac, true);
+      if (u.owner === 0 && ov.selected.has(u.id) && AIR_AMMO[u.kind]) {
+        // Ammunition under the health bar.
+        const share = (u.ammo ?? 0) / (AIR_AMMO[u.kind] ?? 1);
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(x - 14, top + 4, 28, 2.5);
+        ctx.fillStyle = '#e8d27a';
+        ctx.fillRect(x - 14, top + 4, 28 * share, 2.5);
+      }
+      const vet = u.vet ?? 0;
+      if (vet > 0) chevrons(ctx, x + 16, top + 2, Math.min(2, vet));
+      const group = u.owner === 0 ? ov.groupOf?.get(u.id) : undefined;
+      if (group !== undefined) groupBadge(ctx, x, y + 6, group);
+    }
+    void cur;
   }
 
   private burst(x: number, y: number, size: number, weapon?: string) {
@@ -863,13 +1033,15 @@ export class Renderer {
     const set = new Set<number>();
     for (const owner of [0, 1] as const) {
       const q = s.players[owner].queues;
-      for (const cat of ['building', 'infantry', 'vehicle'] as const) {
-        const head = q[cat][0];
+      for (const cat of ['building', 'infantry', 'vehicle', 'air'] as const) {
+        const head = q[cat]?.[0];
         if (!head || head.progress >= buildTicksOf(head.kind)) continue;
         const b = producerFor(s, owner, cat);
         if (b) set.add(b.id);
       }
     }
+    // A Research Lab at work: every Lab of a side researching.
+    for (const b of s.buildings) if (b.kind === 'researchlab' && s.players[b.owner]?.research) set.add(b.id);
     for (const u of s.units) if (u.order.type === 'harvest' && u.order.phase === 'unload' && u.order.refinery) set.add(u.order.refinery);
     this.working = set;
     return set;
@@ -889,7 +1061,7 @@ export class Renderer {
       if (age < 0 || age >= LIGHT_TICKS) continue;
       const x = e.x * TILE;
       const y = e.y * TILE;
-      if (!inView(x, y, 60) || !vis[Math.floor(e.y) * MAP_W + Math.floor(e.x)]) continue;
+      if (!inView(x, y, 60) || !vis[Math.floor(e.y) * this.mapW + Math.floor(e.x)]) continue;
       if (!lit) {
         ctx.globalCompositeOperation = 'lighter';
         lit = true;

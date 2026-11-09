@@ -7,13 +7,15 @@ import {
   BUILDINGS,
   DEFAULT_SETUP,
   INFANTRY_MENU,
-  MAP_H,
   MAP_TYPE_BLURBS,
+  MAP_TYPE_BLURBS_SIDES,
   MAP_TYPE_NAMES,
   MAP_TYPES,
-  MAP_W,
   POWERS,
+  LONE_SIDE_CREDITS,
   SETUP_CREDIT_CHOICES,
+  SIDE_COUNTS,
+  SIDE_NAMES,
   SKIRMISH_POWERS,
   STANDARD_TECH,
   UNITS,
@@ -21,13 +23,16 @@ import {
   type BuildingKind,
   type MapType,
   type OreLevel,
+  type Owner,
+  type SideMode,
   type SkirmishSetup,
   type SupportPower,
   type TechLevel,
   type UnitKind,
 } from '../sim/rules';
 import { paintMiniTerrain } from '../game/terrain';
-import { TEAM } from '../theme';
+import { teamsFor } from '../sim/sides';
+import { TEAM, UI } from '../theme';
 import { Label } from './ui';
 
 /**
@@ -49,6 +54,8 @@ export function readStoredSetup(): SkirmishSetup {
       tech: r.tech === 'standard' || r.tech === 'advanced' ? r.tech : DEFAULT_SETUP.tech,
       credits: SETUP_CREDIT_CHOICES.includes(r.credits as number) ? (r.credits as number) : DEFAULT_SETUP.credits,
       ore: r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : DEFAULT_SETUP.ore,
+      sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
+      mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
     };
   } catch {
     return DEFAULT_SETUP;
@@ -116,9 +123,9 @@ export default function SkirmishSetupPanel({
   const seed = seedNumber(settled);
   const maps = useMemo(() => {
     const out = {} as Record<MapType, GeneratedMap>;
-    for (const t of MAP_TYPES) out[t] = generateSkirmishMap(seed, t, value.ore);
+    for (const t of MAP_TYPES) out[t] = generateSkirmishMap(seed, t, value.ore, value.sides);
     return out;
-  }, [seed, value.ore]);
+  }, [seed, value.ore, value.sides]);
   const drawn = randomMapType(seed);
   const set = (patch: Partial<SkirmishSetup>) => onChange({ ...value, ...patch });
 
@@ -142,17 +149,46 @@ export default function SkirmishSetupPanel({
                 <MapThumb map={maps[type]} label={`${t === 'random' ? 'Random: ' : ''}${MAP_TYPE_NAMES[type]} map preview`} />
                 <span className="fl-map-name">{t === 'random' ? 'Random' : MAP_TYPE_NAMES[t]}</span>
                 <span className="fl-map-blurb">
-                  {t === 'random' ? `Any of the six, chosen by the seed. This one draws ${MAP_TYPE_NAMES[drawn]}.` : MAP_TYPE_BLURBS[t]}
+                  {t === 'random' ? `Any of the six, chosen by the seed. This one draws ${MAP_TYPE_NAMES[drawn]}.` : value.sides > 2 ? MAP_TYPE_BLURBS_SIDES[t] : MAP_TYPE_BLURBS[t]}
                 </span>
               </button>
             );
           })}
         </div>
         <p className="fl-setup-note">
-          Previews show the real map for this seed: your base is blue, the enemy's red, ore gold. Every map is mirrored, so
-          both sides start with the same ground and the same ore.
+          {value.sides === 2
+            ? "Previews show the real map for this seed: your base is blue, the enemy's red, ore gold. Every map is mirrored, so both sides start with the same ground and the same ore."
+            : `Previews show the real map for this seed: each base in its side's colour, yours blue, ore gold. Every base's share of the map is the same share turned round the centre, so every side starts with ${value.sides === 4 ? 'the same' : 'close to the same'} ground and ore.`}
         </p>
       </div>
+
+      <div className="fl-setup-row">
+        <div className="fl-setup-field">
+          <Label>Sides</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Sides">
+            {SIDE_COUNTS.map(n => (
+              <button key={n} type="button" role="radio" aria-checked={value.sides === n} data-testid={`sides-${n}`} onClick={() => set({ sides: n, mode: n === 2 ? 'ffa' : value.mode })}>
+                {n}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{value.sides === 2 ? 'You against one computer commander.' : `You and ${value.sides - 1} computer commanders, on a larger map.`}</p>
+        </div>
+        {value.sides > 2 && (
+          <div className="fl-setup-field">
+            <Label>Mode</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Mode">
+              {(['ffa', 'teams'] as SideMode[]).map(m => (
+                <button key={m} type="button" role="radio" aria-checked={value.mode === m} data-testid={`mode-${m}`} onClick={() => set({ mode: m })}>
+                  {m === 'ffa' ? 'Free for all' : 'Teams'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{MODE_TEXT[value.sides === 4 ? 4 : 3][value.mode]}</p>
+          </div>
+        )}
+      </div>
+      <SideLine setup={value} />
 
       <div className="fl-setup-field">
         <Label>Tech level</Label>
@@ -176,7 +212,13 @@ export default function SkirmishSetupPanel({
               </button>
             ))}
           </div>
-          <p className="fl-setup-note">Both sides start with the same.</p>
+          <p className="fl-setup-note">
+            {value.sides === 3 && value.mode === 'teams'
+              ? `Every side starts with the same, except the ${SIDE_NAMES[1]}, alone against two, which starts with ${LONE_SIDE_CREDITS} times as much.`
+              : value.sides === 2
+                ? 'Both sides start with the same.'
+                : 'Every side starts with the same.'}
+          </p>
         </div>
         <div className="fl-setup-field">
           <Label>Ore</Label>
@@ -194,22 +236,61 @@ export default function SkirmishSetupPanel({
   );
 }
 
+const MODE_TEXT: Record<3 | 4, Record<SideMode, string>> = {
+  3: {
+    ffa: 'Every side for itself. You win when every other side is out.',
+    teams: 'Two against one: you and an ally against a commander with more starting credits.',
+  },
+  4: {
+    ffa: 'Every side for itself. You win when every other side is out.',
+    teams: 'Two against two: you and the ally beside you against the two across the map.',
+  },
+};
+
+/** Who is in the battle and whose team each is on, every side named in its colour. */
+function SideLine({ setup }: { setup: SkirmishSetup }) {
+  if (setup.sides === 2) return null;
+  const teams = teamsFor(setup.sides, setup.mode);
+  const name = (o: Owner) => (
+    <strong key={o} style={{ color: UI.side[o] }}>
+      {SIDE_NAMES[o]}
+      {o === 0 ? ' (you)' : ''}
+    </strong>
+  );
+  const sidesList = (Array.from({ length: setup.sides }, (_, i) => i) as Owner[]);
+  const join = (os: Owner[]) =>
+    os.flatMap((o, i) => [i === 0 ? '' : i === os.length - 1 ? ' and ' : ', ', name(o)]);
+  if (setup.mode === 'ffa')
+    return (
+      <p className="fl-setup-note fl-side-line" data-testid="side-line">
+        Every side for itself: {join(sidesList)}.
+      </p>
+    );
+  const ours = sidesList.filter(o => teams[o] === teams[0]);
+  const theirs = sidesList.filter(o => teams[o] !== teams[0]);
+  return (
+    <p className="fl-setup-note fl-side-line" data-testid="side-line">
+      Your team: {join(ours)}. Against you: {join(theirs)}.
+    </p>
+  );
+}
+
 /** A map drawn small: the terrain, the ore and both Command Yards. Canvas paint, so hex is fine here. */
 function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    const S = 2;
+    const S = map.w > 64 ? 1.5 : 2;
     const ctx = c.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(paintMiniTerrain(map.tiles), 0, 0, MAP_W * S, MAP_H * S);
+    ctx.drawImage(paintMiniTerrain(map.tiles, map.w, map.h), 0, 0, map.w * S, map.h * S);
     ctx.fillStyle = '#d9b23a';
     for (let k = 0; k < map.ore.length; k++) {
-      if (map.ore[k] > 0) ctx.fillRect((k % MAP_W) * S, ((k / MAP_W) | 0) * S, S, S);
+      if (map.ore[k] > 0) ctx.fillRect((k % map.w) * S, ((k / map.w) | 0) * S, S, S);
     }
     map.starts.forEach((st, owner) => {
-      const team = TEAM[owner as 0 | 1];
+      const team = TEAM[owner as Owner];
       ctx.fillStyle = team.main;
       ctx.fillRect(st.x * S - 2, st.y * S - 2, 3 * S + 4, 3 * S + 4);
       ctx.strokeStyle = team.light;
@@ -217,5 +298,6 @@ function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
       ctx.strokeRect(st.x * S - 2.5, st.y * S - 2.5, 3 * S + 5, 3 * S + 5);
     });
   }, [map]);
-  return <canvas ref={ref} width={MAP_W * 2} height={MAP_H * 2} className="fl-map-thumb" role="img" aria-label={label} />;
+  const S = map.w > 64 ? 1.5 : 2;
+  return <canvas ref={ref} width={map.w * S} height={map.h * S} className="fl-map-thumb" role="img" aria-label={label} />;
 }

@@ -42,7 +42,7 @@ import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
-import { DIFFICULTIES, MAP_TYPES, type Difficulty, type MapType, type SkirmishSetup } from '../src/sim/rules';
+import { DIFFICULTIES, MAP_TYPES, type Difficulty, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
 import { baselineAi } from './ai-baseline';
 import { prevAi } from './ai-prev';
@@ -59,7 +59,7 @@ interface Match {
 interface Result {
   match: number;
   seed: number;
-  winner: 0 | 1 | null;
+  winner: Owner | null;
   tick: number;
   /** The map type drawn ('legacy' for the original map). */
   map: string;

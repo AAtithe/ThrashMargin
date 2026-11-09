@@ -21,7 +21,6 @@ import {
   FLIGHT_TICKS,
   HARVEST_PER_SCOOP,
   HAULER_CAPACITY,
-  MAP_W as W,
   ORE_REGROW_AMOUNT,
   ORE_REGROW_TICKS,
   ORE_TILE_MAX,
@@ -50,11 +49,15 @@ import {
   REPAIR_BAY_RANGE,
   REPAIR_BAY_TICKS,
   SELF_REPAIR_TICKS,
+  hitsAir,
+  hitsGround,
   type Category,
   type Owner,
   type UnitKind,
   type Weapon,
 } from './rules';
+import { canHit, isAir, launchAircraft, updateAircraft, type AirHooks } from './air';
+import { damageMulOf, incomeMulOf, researchStep, upgradeNewUnit, vehicleSpeedOf } from './research';
 import { spawnSurvivors } from './commands';
 import {
   completeCapture,
@@ -79,9 +82,9 @@ import {
   syncSkirmishPowers,
   updateExplored,
 } from './state';
+import { computerSides, enemiesOf, isAlly, isEnemy, sidesOf, teamOf } from './sides';
 import type { Building, GameState, Projectile, Unit } from './types';
 
-const MAP_W = W;
 
 /**
  * One tick of the battle, applied in place to a state the caller has already cloned.
@@ -97,12 +100,17 @@ interface Ctx {
   buildings: Map<number, Building>;
   /** Path searches still allowed this tick. Spreads the cost of a big group order over ticks. */
   pathBudget: number;
-  power: [boolean, boolean];
+  /** Per side: true while its power is short. */
+  power: boolean[];
   /** Dock pads and factory doors, which idle units step off. */
   keepClear: Set<number>;
+  /** Per side: its vehicles' speed multiplier (Engine tuning), 1 without. */
+  vehicleSpeed: number[];
+  /** What the aircraft borrow from here (air.ts). */
+  air: AirHooks;
 }
 
-const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle'];
+const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle', 'air'];
 
 export function step(s: GameState): void {
   if (s.winner !== null) return;
@@ -112,27 +120,37 @@ export function step(s: GameState): void {
     units: new Map(s.units.map(u => [u.id, u])),
     buildings: new Map(s.buildings.map(b => [b.id, b])),
     pathBudget: 24,
-    power: [powerOf(s, 0).low, powerOf(s, 1).low],
+    power: sidesOf(s).map(o => powerOf(s, o).low),
     keepClear: new Set(),
+    vehicleSpeed: sidesOf(s).map(o => vehicleSpeedOf(s, o)),
+    air: null as unknown as AirHooks,
+  };
+  ctx.air = {
+    lookup: id => lookup(ctx, id),
+    acquire: (owner, x, y, range, w) => acquire(s, owner, x, y, range, false, w),
+    fire: (owner, sx, sy, w, t, shooter, mul) => fire(s, owner, sx, sy, w, t, shooter, mul),
+    nextOrder,
   };
 
   campaignTimers(s);
   production(s, ctx);
 
+  // Each computer side decides every `period` ticks: side 1 on the period, sides 2 and 3 a quarter
+  // and three quarters of the way through it, and side 0 (the harness's autopilot) half way.
   const d = DIFFICULTIES[s.difficulty];
-  if (s.tick % d.period === 0) runAi(s, 1);
+  for (const o of computerSides(s)) if (s.tick % d.period === (o === 1 ? 0 : Math.floor((d.period * (o === 2 ? 1 : 3)) / 4))) runAi(s, o);
   if (s.autopilot && s.tick % DIFFICULTIES[s.autopilotDifficulty ?? s.difficulty].period === Math.floor(DIFFICULTIES[s.autopilotDifficulty ?? s.difficulty].period / 2)) runAi(s, 0);
   // The AI may have placed a structure or ordered units; refresh what it could have changed.
   ctx.occ = occupancy(s);
   ctx.buildings = new Map(s.buildings.map(b => [b.id, b]));
   ctx.units = new Map(s.units.map(u => [u.id, u]));
+  const MAP_W = s.mapW;
   for (const b of s.buildings) {
     if (b.kind === 'refinery') {
-      const d = dockTile(b);
+      const d = dockTile(s, b);
       ctx.keepClear.add(d.x + d.y * MAP_W);
     } else if (b.kind === 'barracks' || b.kind === 'factory') {
-      const spec = BUILDINGS[b.kind];
-      const door = doorTile(b);
+      const door = doorTile(s, b);
       ctx.keepClear.add(door.x + door.y * MAP_W);
     }
   }
@@ -188,7 +206,7 @@ function heroes(s: GameState, ctx: Ctx): void {
     else if (a?.kind === 'capture') {
       const b = ctx.buildings.get(a.target);
       const moved = u.order.type !== 'idle' || u.path.length > 0;
-      if (!b || b.hp <= 0 || b.owner === u.owner || moved || distToTarget(u.x, u.y, { building: b }) > HERO_ABILITY.engineer.range + 0.6) {
+      if (!b || b.hp <= 0 || isAlly(s, b.owner, u.owner) || moved || distToTarget(u.x, u.y, { building: b }) > HERO_ABILITY.engineer.range + 0.6) {
         delete h.active;
         if (u.owner === 0) log(s, 'Capture interrupted.', 'bad');
       } else {
@@ -223,7 +241,8 @@ function charges(s: GameState): void {
     const commando = s.units.find(v => v.id === by);
     if (b.hp <= 0) {
       b.hp = 0;
-      const side: Owner = b.owner === 0 ? 1 : 0;
+      // The Commando's side takes the kill; if he has fallen since, the first enemy of the owner.
+      const side: Owner = commando && isEnemy(s, commando.owner, b.owner) ? commando.owner : (enemiesOf(s, b.owner)[0] ?? b.owner);
       credit(s, side, b.owner, commando && commando.owner === side ? commando : undefined, { building: b });
     } else if (b.owner === 0) alarm(s, 'base', 'Our base is under attack.', 300);
   }
@@ -247,12 +266,14 @@ function credit(s: GameState, by: Owner, victimOwner: Owner, killer: Unit | unde
 // Production
 
 function production(s: GameState, ctx: Ctx): void {
-  for (const owner of [0, 1] as Owner[]) {
+  for (const owner of sidesOf(s)) {
     const p = s.players[owner];
     const perk = owner === 0 && s.perks ? s.perks.buildSpeedMul : 1;
     const rate = (ctx.power[owner] ? 0.5 : 1) * perk;
+    if (p.research) researchStep(s, owner, ctx.power[owner]);
     for (const cat of CATEGORIES) {
-      const head = p.queues[cat][0];
+      // A mission's players have no air queue.
+      const head = p.queues[cat]?.[0];
       if (!head) continue;
       const total = buildTicksOf(head.kind);
       if (head.progress >= total) {
@@ -276,17 +297,30 @@ const nameOf = (kind: string) => (kind in UNITS ? UNITS[kind as UnitKind].name :
 function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): void {
   const producer = producerFor(s, owner, cat);
   if (!producer) return;
-  const spec = BUILDINGS[producer.kind];
-  const door = doorTile(producer);
+  if (cat === 'air') {
+    // Aircraft lift off the Helipad itself: no door, no ground to clear.
+    const head = s.players[owner].queues.air.shift()!;
+    const a = addUnit(s, owner, head.kind as UnitKind, producer.x + 1, producer.y + 1);
+    launchAircraft(s, a, producer);
+    upgradeNewUnit(s, a);
+    ctx.units.set(a.id, a);
+    s.players[owner].stats.trained++;
+    if (producer.rally) a.order = { type: 'move', x: producer.rally.x, y: producer.rally.y };
+    if (owner === 0) log(s, `${UNITS[a.kind].name} ready.`);
+    return;
+  }
+  const door = doorTile(s, producer);
   const ex = door.x + 0.5;
   const ey = door.y + 0.5;
   const k = nearestPassable(s, ctx.occ, ex, ey, 5);
   if (k < 0) return; // Exit blocked: stays finished at the head of the queue and tries next tick.
   const head = s.players[owner].queues[cat].shift()!;
   const kind = head.kind as UnitKind;
+  const MAP_W = s.mapW;
   const u = addUnit(s, owner, kind, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5);
   u.fx = 0;
-  u.fy = frontDir(owner);
+  u.fy = frontDir(s, owner);
+  upgradeNewUnit(s, u);
   ctx.units.set(u.id, u);
   s.players[owner].stats.trained++;
   if (kind === 'hauler') {
@@ -295,7 +329,7 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): vo
     u.order = { type: 'move', x: producer.rally.x, y: producer.rally.y };
   } else {
     // Step clear of the door.
-    u.order = { type: 'move', x: u.x, y: Math.max(0.5, Math.min(u.y + 1.5 * frontDir(owner), 63.5)) };
+    u.order = { type: 'move', x: u.x, y: Math.max(0.5, Math.min(u.y + 1.5 * frontDir(s, owner), s.mapH - 0.5)) };
   }
   if (owner === 0) log(s, `${UNITS[kind].name} ready.`);
 }
@@ -304,7 +338,10 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): vo
 // Movement
 
 function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popOnArrive: boolean): boolean {
-  const sp = overdrive(u) ? UNITS[u.kind].speed * OVERDRIVE_SPEED : UNITS[u.kind].speed;
+  let sp = overdrive(u) ? UNITS[u.kind].speed * OVERDRIVE_SPEED : UNITS[u.kind].speed;
+  // Engine tuning (research): vehicles only.
+  const tuned = ctx.vehicleSpeed[u.owner];
+  if (tuned !== 1 && UNITS[u.kind].category === 'vehicle') sp *= tuned;
   const dx = tx - u.x;
   const dy = ty - u.y;
   const d = Math.sqrt(dx * dx + dy * dy);
@@ -371,7 +408,8 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
 function travel(s: GameState, ctx: Ctx, u: Unit, gx: number, gy: number): boolean {
   const goal = nearestPassable(s, ctx.occ, gx, gy, 6);
   if (goal < 0) return true;
-  const here = tileOf(u);
+  const MAP_W = s.mapW;
+  const here = tileOf(s, u);
   if (here === goal && u.path.length === 0) {
     // Last stretch inside the goal tile: walk straight to the point if it is in this tile.
     const inTile = Math.floor(gx) + Math.floor(gy) * MAP_W === goal;
@@ -426,12 +464,19 @@ function lookup(ctx: Ctx, id: number): Target | null {
   return null;
 }
 
-/** Nearest enemy within range, preferring things that shoot back over things that do not. */
-function acquire(s: GameState, owner: Owner, x: number, y: number, range: number, unitsOnly = false): number {
+/**
+ * Nearest enemy within range, preferring things that shoot back over things that do not. Only what
+ * the weapon can reach: aircraft when it hits the air (hitsAir), the ground when it hits the ground.
+ */
+function acquire(s: GameState, owner: Owner, x: number, y: number, range: number, unitsOnly: boolean, w: Weapon): number {
+  const team = teamOf(s, owner);
+  const air = hitsAir(w);
+  const ground = hitsGround(w);
   let best = 0;
   let bestScore = Infinity;
   for (const e of s.units) {
-    if (e.owner === owner || e.hp <= 0) continue;
+    if (e.hp <= 0 || teamOf(s, e.owner) === team) continue;
+    if (UNITS[e.kind].category === 'air' ? !air : !ground) continue;
     const d = dist(x, y, e.x, e.y);
     if (d > range) continue;
     // A Spy nobody has spotted is never picked as a target.
@@ -442,9 +487,9 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
       best = e.id;
     }
   }
-  if (unitsOnly) return best;
+  if (unitsOnly || !ground) return best;
   for (const b of s.buildings) {
-    if (b.owner === owner || b.hp <= 0) continue;
+    if (b.hp <= 0 || teamOf(s, b.owner) === team) continue;
     const d = distToTarget(x, y, { building: b });
     if (d > range) continue;
     const score = d + (BUILDINGS[b.kind].weapon ? 0.5 : 3);
@@ -457,6 +502,9 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
 }
 
 function fire(s: GameState, owner: Owner, sx: number, sy: number, w: Weapon, t: Target, shooter: number, damageMul = 1): void {
+  // Weapon calibration (research): every weapon of the side.
+  const calibrated = damageMulOf(s, owner);
+  if (calibrated !== 1) damageMul *= calibrated;
   const tp = targetPoint(t);
   let toX = tp.x;
   let toY = tp.y;
@@ -493,14 +541,20 @@ function fire(s: GameState, owner: Owner, sx: number, sy: number, w: Weapon, t: 
 
 function hit(s: GameState, p: Projectile, shooter = 0): void {
   if (p.splash > 0) {
+    // Splash spares the firing side and its allies. Anti-air splash reaches only aircraft; every
+    // other splash (bombs included) only the ground.
+    const team = teamOf(s, p.owner);
+    const antiAir = p.weapon === 'flak' || p.weapon === 'aamissile';
     for (const u of s.units) {
-      if (u.owner === p.owner || u.hp <= 0) continue;
+      if (u.hp <= 0 || teamOf(s, u.owner) === team) continue;
+      if ((UNITS[u.kind].category === 'air') !== antiAir) continue;
       const d = dist(p.toX, p.toY, u.x, u.y);
       if (d > p.splash) continue;
       hurt(s, { unit: u }, p.damage * (1 - (0.5 * d) / p.splash), p, shooter);
     }
     for (const b of s.buildings) {
-      if (b.owner === p.owner || b.hp <= 0) continue;
+      if (antiAir) break;
+      if (b.hp <= 0 || teamOf(s, b.owner) === team) continue;
       const d = distToTarget(p.toX, p.toY, { building: b });
       if (d > p.splash) continue;
       hurt(s, { building: b }, p.damage * (1 - (0.5 * d) / p.splash), p, shooter);
@@ -508,10 +562,17 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
   } else {
     const u = s.units.find(v => v.id === p.target && v.hp > 0);
     const b = u ? undefined : s.buildings.find(v => v.id === p.target && v.hp > 0);
-    if (u) hurt(s, { unit: u }, p.damage, p, shooter);
+    // Only bullets and anti-air reach an aircraft; anti-air reaches nothing else.
+    const airShot = p.weapon === 'flak' || p.weapon === 'aamissile';
+    if (u && (UNITS[u.kind].category === 'air' ? !airShot && p.weapon !== 'bullet' : airShot)) {
+      // Missed: it cannot touch that.
+    } else if (b && airShot) {
+      // Nor a structure.
+    } else if (u) hurt(s, { unit: u }, p.damage, p, shooter);
     else if (b) hurt(s, { building: b }, p.damage, p, shooter);
   }
-  if (p.weapon !== 'bullet')
+  if (p.weapon === 'bomb') s.effects.push({ id: s.nextId++, kind: 'bomb', x: p.toX, y: p.toY, at: s.tick, size: p.splash, weapon: p.weapon });
+  else if (p.weapon !== 'bullet')
     s.effects.push({ id: s.nextId++, kind: 'boom', x: p.toX, y: p.toY, at: s.tick, size: p.weapon === 'missile' ? 2 : 0, weapon: p.weapon });
 }
 
@@ -533,9 +594,12 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
     // Units under fire defend themselves: an idle unit turns on its attacker (unless that is a
     // Spy it cannot see, or it is itself a Spy, which never picks fights).
     const vu = t.unit!;
-    if (vu.order.type === 'idle' && vu.stance !== 'hold' && UNITS[vu.kind].weapon && !vu.engage && shooter && vu.kind !== 'spy') {
+    // Aircraft pick their own targets (air.ts), and nobody turns on what its weapon cannot reach.
+    if (vu.order.type === 'idle' && vu.stance !== 'hold' && UNITS[vu.kind].weapon && !vu.engage && shooter && vu.kind !== 'spy' && !isAir(vu)) {
       const from = s.units.find(v => v.id === shooter);
-      if (!from || from.kind !== 'spy' || isDetected(s, from, vu.owner)) vu.engage = shooter;
+      if (from && !canHit(UNITS[vu.kind].weapon!, { unit: from })) {
+        // Out of its reach: it cannot answer.
+      } else if (!from || from.kind !== 'spy' || isDetected(s, from, vu.owner)) vu.engage = shooter;
     }
   }
   // An Engineer under fire loses his grip on a capture.
@@ -554,6 +618,10 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
 
 function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
   const spec = UNITS[u.kind];
+  if (spec.category === 'air') {
+    updateAircraft(s, u, ctx.air);
+    return;
+  }
   const w = spec.weapon;
   if (u.cooldown > 0) u.cooldown--;
 
@@ -575,7 +643,8 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
 
   const order = u.order;
   if (order.type === 'attack') {
-    if (!lookup(ctx, order.target)) nextOrder(u);
+    const t = lookup(ctx, order.target);
+    if (!t || (w && !canHit(w, t))) nextOrder(u);
     else u.engage = order.target;
   }
   if (u.order.type === 'move') u.engage = 0;
@@ -592,7 +661,7 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
     // The Spy never picks targets of its own: it fires only when ordered to.
     if (u.kind !== 'spy' && (s.tick + u.id) % 4 === 0 && (!current || u.order.type === 'idle')) {
       const range = u.order.type === 'idle' && stance !== 'aggressive' ? w.range + 0.5 : spec.sight + 1;
-      const found = acquire(s, u.owner, u.x, u.y, range);
+      const found = acquire(s, u.owner, u.x, u.y, range, false, w);
       if (found && (!current || u.order.type === 'attackMove')) u.engage = found;
     }
   }
@@ -600,7 +669,7 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
   let firing = false;
   if (u.engage && w) {
     const t = lookup(ctx, u.engage);
-    if (!t) {
+    if (!t || !canHit(w, t)) {
       u.engage = 0;
     } else {
       const d = distToTarget(u.x, u.y, t);
@@ -617,7 +686,10 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
         }
       } else if (
         u.order.type === 'attack' ||
-        ((u.order.type === 'attackMove' || (u.order.type === 'idle' && stance === 'aggressive')) && d <= spec.sight + 3)
+        // Aircraft are shot at when they come in range but never chased unless ordered: a ground
+        // army on attack-move once followed two fleeing gunships across a river into the enemy
+        // base and was lost to its defences.
+        ((u.order.type === 'attackMove' || (u.order.type === 'idle' && stance === 'aggressive')) && d <= spec.sight + 3 && !(t.unit && isAir(t.unit)))
       ) {
         firing = true;
         if (d < (w.minRange ?? 0)) {
@@ -642,9 +714,9 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
       if (travel(s, ctx, u, o.x, o.y)) nextOrder(u);
     }
     // Idle on a dock pad or in a factory door: step aside.
-    if (u.order.type === 'idle' && (s.tick + u.id) % 10 === 0 && ctx.keepClear.has(tileOf(u))) {
+    if (u.order.type === 'idle' && (s.tick + u.id) % 10 === 0 && ctx.keepClear.has(tileOf(s, u))) {
       const k = clearSpot(s, ctx, u.x, u.y);
-      if (k >= 0) u.order = { type: 'move', x: (k % MAP_W) + 0.5, y: ((k / MAP_W) | 0) + 0.5 };
+      if (k >= 0) u.order = { type: 'move', x: (k % s.mapW) + 0.5, y: ((k / s.mapW) | 0) + 0.5 };
     }
     // Turret drifts back to the hull's heading.
     u.tx += (u.fx - u.tx) * 0.2;
@@ -702,7 +774,7 @@ function clearSpot(s: GameState, ctx: Ctx, x: number, y: number): number {
       for (let dx = -r; dx <= r; dx++) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         if (!passable(s, ctx.occ, cx + dx, cy + dy)) continue;
-        const k = (cy + dy) * MAP_W + cx + dx;
+        const k = (cy + dy) * s.mapW + cx + dx;
         if (!ctx.keepClear.has(k)) return k;
       }
   return -1;
@@ -737,6 +809,7 @@ function findOre(s: GameState, u: Unit): number {
     if (v.id !== u.id && v.owner === u.owner && v.order.type === 'harvest' && v.order.tile >= 0) claimed.add(v.order.tile);
   let best = -1;
   let bestD = Infinity;
+  const MAP_W = s.mapW;
   for (let k = 0; k < s.ore.length; k++) {
     if (s.ore[k] <= 0) continue;
     const x = (k % MAP_W) + 0.5;
@@ -754,6 +827,7 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
   const h = u.order;
   if (h.type !== 'harvest') return;
   const p = s.players[u.owner];
+  const MAP_W = s.mapW;
   switch (h.phase) {
     case 'seek': {
       if (u.cargo >= HAULER_CAPACITY) {
@@ -772,7 +846,7 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
       const tx = (h.tile % MAP_W) + 0.5;
       const ty = ((h.tile / MAP_W) | 0) + 0.5;
       const arrived = travel(s, ctx, u, tx, ty);
-      if (tileOf(u) === h.tile) {
+      if (tileOf(s, u) === h.tile) {
         h.phase = 'gather';
         halt(u);
       } else if (arrived) {
@@ -782,7 +856,7 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
       return;
     }
     case 'gather': {
-      if (tileOf(u) !== h.tile || s.ore[h.tile] <= 0) {
+      if (tileOf(s, u) !== h.tile || s.ore[h.tile] <= 0) {
         h.phase = 'seek';
         if (s.ore[h.tile] <= 0) h.tile = -1;
         return;
@@ -808,7 +882,7 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
         let bestD = Infinity;
         for (const b of s.buildings) {
           if (b.owner !== u.owner || b.kind !== 'refinery' || b.hp <= 0) continue;
-          const dk = dockTile(b);
+          const dk = dockTile(s, b);
           const d = dist(u.x, u.y, dk.x + 0.5, dk.y + 0.5);
           if (d < bestD) {
             bestD = d;
@@ -819,14 +893,14 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
         halt(u);
       }
       if (!ref) return; // Nowhere to unload: wait.
-      const dk = dockTile(ref);
+      const dk = dockTile(s, ref);
       travel(s, ctx, u, dk.x + 0.5, dk.y + 0.5);
       if (dist(u.x, u.y, dk.x + 0.5, dk.y + 0.5) < 0.1) {
         h.phase = 'unload';
         u.fx = 0;
         u.fy = -1;
         halt(u);
-      } else if (u.path.length === 0 && u.pathGoal !== -1 && tileOf(u) !== dk.x + dk.y * MAP_W && s.tick - u.pathTick > 40) {
+      } else if (u.path.length === 0 && u.pathGoal !== -1 && tileOf(s, u) !== dk.x + dk.y * s.mapW && s.tick - u.pathTick > 40) {
         // Dock unreachable for a long while: forget this refinery and look again.
         h.refinery = 0;
       }
@@ -841,9 +915,12 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
       }
       const amount = Math.min(UNLOAD_PER_TICK, u.cargo);
       u.cargo -= amount;
-      // Only the computer side gets the difficulty's income multiplier (1 on Normal).
+      // Only the computer sides get the difficulty's income multiplier (1 on Normal).
       // Side 0's Logistics perk raises its income in a campaign.
-      const mul = u.owner === 1 ? DIFFICULTIES[s.difficulty].income : s.perks ? s.perks.harvestMul : 1;
+      let mul = u.owner !== 0 ? DIFFICULTIES[s.difficulty].income : s.perks ? s.perks.harvestMul : 1;
+      // Refinery efficiency (research).
+      const refined = incomeMulOf(s, u.owner);
+      if (refined !== 1) mul *= refined;
       const credits = Math.round(amount * mul);
       p.credits += credits;
       p.stats.harvested += credits;
@@ -881,10 +958,10 @@ function updateBuilding(s: GameState, ctx: Ctx, b: Building): void {
   const cx = b.x + spec.w / 2;
   const cy = b.y + spec.h / 2;
   let t = b.engage ? lookup(ctx, b.engage) : null;
-  if (t && distToTarget(cx, cy, t) > w.range) t = null;
+  if (t && (distToTarget(cx, cy, t) > w.range || !canHit(w, t))) t = null;
   if (t?.unit && t.unit.kind === 'spy' && !isDetected(s, t.unit, b.owner)) t = null;
   if (!t && (s.tick + b.id) % 4 === 0) {
-    const found = acquire(s, b.owner, cx, cy, w.range, true);
+    const found = acquire(s, b.owner, cx, cy, w.range, true, w);
     t = found ? lookup(ctx, found) : null;
   }
   b.engage = t ? (t.unit ? t.unit.id : t.building!.id) : 0;
@@ -934,9 +1011,11 @@ function landProjectiles(s: GameState, _ctx: Ctx): void {
 
 function separate(s: GameState, ctx: Ctx): void {
   const buckets = new Map<number, Unit[]>();
+  const MAP_W = s.mapW;
   for (const u of s.units) {
-    if (u.hp <= 0) continue;
-    const k = tileOf(u);
+    // Aircraft are never pushed and never push: they are not in the crowd at all.
+    if (u.hp <= 0 || UNITS[u.kind].category === 'air') continue;
+    const k = tileOf(s, u);
     const list = buckets.get(k);
     if (list) list.push(u);
     else buckets.set(k, [u]);
@@ -954,7 +1033,7 @@ function separate(s: GameState, ctx: Ctx): void {
     } else push.set(u.id, [x, y]);
   };
   for (const u of s.units) {
-    if (u.hp <= 0) continue;
+    if (u.hp <= 0 || UNITS[u.kind].category === 'air') continue;
     const ux = Math.floor(u.x);
     const uy = Math.floor(u.y);
     for (let dy = -1; dy <= 1; dy++)
@@ -1020,7 +1099,8 @@ function removeDead(s: GameState): void {
       const spec = BUILDINGS[b.kind];
       s.effects.push({ id: s.nextId++, kind: 'boom', x: b.x + spec.w / 2, y: b.y + spec.h / 2, at: s.tick, size: 2 });
       if (b.owner === 0) log(s, `${spec.name} destroyed.`, 'bad');
-      else log(s, `Enemy ${spec.name} destroyed.`, 'good');
+      else if (isEnemy(s, 0, b.owner)) log(s, `Enemy ${spec.name} destroyed.`, 'good');
+      else log(s, `Allied ${spec.name} destroyed.`, 'bad');
       noteDestroyed(s, b);
     }
     fallen = s.buildings.filter(b => b.hp <= 0);
@@ -1033,12 +1113,30 @@ function removeDead(s: GameState): void {
   }
 }
 
+/**
+ * A side is out when it has no structure left (walls are not structures, so a side with nothing but
+ * sandbags left has lost); a team is out when all its sides are. The battle ends when the human's
+ * team is out (defeat) or is the only team left (victory). `winner` is then the lowest-numbered
+ * side of the winning team: side 0 for a victory; for a defeat, the first surviving enemy, or the
+ * first enemy at all if nobody is left. Two sides: exactly the original rule (side 1 wins when both
+ * fall together).
+ */
 function checkVictory(s: GameState): void {
-  const has = [false, false];
-  // Walls are not structures: a side with nothing but sandbags left has lost.
+  const has: boolean[] = s.players.map(() => false);
   for (const b of s.buildings) if (isStructure(b)) has[b.owner] = true;
-  if (has[0] && has[1]) return;
-  if (!has[0] && !has[1]) s.winner = 1;
-  else s.winner = has[0] ? 0 : 1;
-  log(s, s.winner === 0 ? 'Victory. The Ashen Combine has been driven from the field.' : 'Defeat. Our last structure has fallen.', s.winner === 0 ? 'good' : 'bad');
+  const sides = sidesOf(s);
+  const alive = (o: Owner) => has[o] || sides.some(a => has[a] && isAlly(s, a, o));
+  const ours = alive(0);
+  const foes = enemiesOf(s, 0);
+  if (ours && foes.some(alive)) return;
+  s.winner = ours ? 0 : (foes.find(o => has[o]) ?? foes.find(alive) ?? foes[0]);
+  const won = s.winner === 0;
+  const text = won
+    ? sides.length === 2
+      ? 'Victory. The Ashen Combine has been driven from the field.'
+      : 'Victory. Every enemy has been driven from the field.'
+    : sides.length === 2 || !has[0]
+      ? 'Defeat. Our last structure has fallen.'
+      : 'Defeat. Our last ally has fallen.';
+  log(s, text, won ? 'good' : 'bad');
 }

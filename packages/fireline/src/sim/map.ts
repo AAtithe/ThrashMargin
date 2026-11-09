@@ -8,10 +8,13 @@ import { MAP_H, MAP_W, ORE_TILE_MAX } from './rules';
  */
 
 export interface GeneratedMap {
+  /** Size in tiles; tiles and ore are w * h long. Both generators build MAP_W by MAP_H today. */
+  w: number;
+  h: number;
   tiles: string;
   ore: number[];
-  /** Top-left tile of each side's Command Yard. */
-  starts: [{ x: number; y: number }, { x: number; y: number }];
+  /** Top-left tile of each side's Command Yard, one per side. */
+  starts: { x: number; y: number }[];
 }
 
 export const idx = (x: number, y: number) => y * MAP_W + x;
@@ -168,7 +171,7 @@ export function generateMap(seed: number): GeneratedMap {
     }
   }
 
-  return { tiles: t.join(''), ore, starts: [START_0, START_1] };
+  return { w: MAP_W, h: MAP_H, tiles: t.join(''), ore, starts: [START_0, START_1] };
 }
 
 export const isWalkable = (c: string) => c === 'g' || c === 'd';

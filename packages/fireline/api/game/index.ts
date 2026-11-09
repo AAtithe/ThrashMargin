@@ -27,7 +27,12 @@ function readDifficulty(raw: unknown): (typeof DIFFICULTIES)[number] | undefined
 /** Saves report minutes of battle in the `turn` column, which the lobby shows. */
 const minutes = (state: { tick?: unknown }) => (typeof state.tick === 'number' ? Math.floor(state.tick / 600) : 0);
 
-const statusOf = (state: { winner?: unknown }) => (state.winner === 0 ? 'victory' : state.winner === 1 ? 'defeated' : 'active');
+/**
+ * A finished battle names its winner by side (0 to 3). Side 0 is the player, and `winner` is 0
+ * whenever the player's team won (see GameState.winner), so any other side means a defeat.
+ */
+const statusOf = (state: { winner?: unknown }) =>
+  state.winner === 0 ? 'victory' : state.winner === 1 || state.winner === 2 || state.winner === 3 ? 'defeated' : 'active';
 
 /**
  * A campaign is one row holding the whole career (`kind: 'campaign'`). Its `turn` is missions won and
@@ -102,6 +107,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const { rows } = await db.query(
           `SELECT id, status, turn, state->>'name' AS name, state->>'kind' AS kind, state->>'mapType' AS map_type,
+                  CASE WHEN jsonb_typeof(state->'players') = 'array' THEN jsonb_array_length(state->'players') END AS sides,
+                  state->'setup'->>'mode' AS mode,
                   EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
            FROM games WHERE owner_id = $1 AND game = $2 ORDER BY updated_at DESC LIMIT 50`,
           [user.userId, GAME_KIND],
@@ -114,6 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           savedAt: Math.round(parseFloat(r.saved_at)),
           ...(r.kind === 'campaign' ? { kind: 'campaign' as const } : {}),
           ...(typeof r.map_type === 'string' && (MAP_TYPES as readonly string[]).includes(r.map_type) ? { mapType: r.map_type } : {}),
+          // Battles of three or four sides: how many, and whether they were played as teams.
+          ...(Number(r.sides) === 3 || Number(r.sides) === 4 ? { sides: Number(r.sides), mode: r.mode === 'teams' ? 'teams' : 'ffa' } : {}),
         }));
         return res.json({ saves });
       } catch (err) {

@@ -6,7 +6,6 @@ import {
   HERO_ABILITY,
   HERO_COOLDOWN_PER_LEVEL,
   HERO_HP_PER_LEVEL,
-  MAP_W,
   HERO_LEVEL_XP,
   HERO_MAX_LEVEL,
   POWERS,
@@ -74,10 +73,25 @@ function readOpen(): boolean {
 function objectiveTarget(s: GameState, o: ObjectiveRuntime): { x: number; y: number } | null {
   const sp = o.spec;
   if (sp.kind === 'reach' || sp.kind === 'holdZone') return { x: sp.x, y: sp.y };
-  if (sp.kind !== 'infiltrate' && sp.kind !== 'capture' && sp.kind !== 'destroy') return null;
+  if (sp.kind === 'escort') {
+    // The convoy's leading vehicle while it travels: that is where the player needs to look.
+    const ids = s.mission?.convoy ?? [];
+    let best: { x: number; y: number } | null = null;
+    let bestD = Infinity;
+    for (const u of s.units) {
+      if (u.owner !== 0 || !ids.includes(u.id)) continue;
+      const d = Math.hypot(u.x - sp.x, u.y - sp.y);
+      if (d < bestD) {
+        bestD = d;
+        best = { x: u.x, y: u.y };
+      }
+    }
+    return best ?? { x: sp.x, y: sp.y };
+  }
+  if (sp.kind !== 'infiltrate' && sp.kind !== 'capture' && sp.kind !== 'destroy' && sp.kind !== 'destroyWithin') return null;
   for (const b of s.buildings) {
     if (b.owner === 0 || b.kind !== sp.building) continue;
-    if (s.explored.charCodeAt(b.y * MAP_W + b.x) !== 49) continue;
+    if (s.explored.charCodeAt(b.y * s.mapW + b.x) !== 49) continue;
     const spec = BUILDINGS[b.kind];
     return { x: b.x + spec.w / 2, y: b.y + spec.h / 2 };
   }
@@ -150,7 +164,7 @@ export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: 
         <>
           <ul>
             {m.objectives.map((o, i) => (
-              <ObjectiveRow key={`p${i}`} o={o} at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} />
+              <ObjectiveRow key={`p${i}`} o={o} at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} />
             ))}
           </ul>
           {m.bonus.length > 0 && (
@@ -158,7 +172,7 @@ export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: 
               <p className="fl-objectives-sub">Bonus, optional: a star each</p>
               <ul>
                 {m.bonus.map((o, i) => (
-                  <ObjectiveRow key={`b${i}`} o={o} bonus at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} />
+                  <ObjectiveRow key={`b${i}`} o={o} bonus at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} left={timeLeft(s, o)} />
                 ))}
               </ul>
             </>
@@ -169,16 +183,24 @@ export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: 
   );
 }
 
+/** Ticks left on an objective with its own clock (destroyWithin), or null. */
+function timeLeft(s: GameState, o: ObjectiveRuntime): number | null {
+  return o.spec.kind === 'destroyWithin' && !o.done && !o.failed ? Math.max(0, o.spec.ticks - s.tick) : null;
+}
+
 function ObjectiveRow({
   o,
   bonus = false,
   at,
   onLocate,
+  left = null,
 }: {
   o: ObjectiveRuntime;
   bonus?: boolean;
   at?: { x: number; y: number } | null;
   onLocate?: (x: number, y: number) => void;
+  /** Ticks left on the objective's own clock, if it has one. */
+  left?: number | null;
 }) {
   const state = o.failed ? 'failed' : o.done ? 'done' : 'open';
   return (
@@ -188,6 +210,12 @@ function ObjectiveRow({
       </span>
       <span className="fl-objective-text">
         {o.label}
+        {left !== null && (
+          <span className="fl-objective-clock" data-low={left < 60 * TICKS_PER_SECOND ? '1' : '0'} title="Time left for this objective">
+            {' '}
+            {clockOf(left)} left
+          </span>
+        )}
         {state === 'open' && o.progress > 0 && o.progress < 1 && (
           <span className="fl-bar" aria-hidden="true">
             <span style={{ width: `${Math.round(o.progress * 100)}%` }} />

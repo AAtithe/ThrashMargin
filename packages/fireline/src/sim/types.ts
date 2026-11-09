@@ -1,8 +1,8 @@
-import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, SkirmishSetup, SupportPower, UnitKind, WeaponKind } from './rules';
+import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
- * `y * MAP_W + x`. Every list here is replaced, never mutated in place, by the reducer: an action
+ * `y * s.mapW + x` (tileAt in grid.ts). Every list here is replaced, never mutated in place, by the reducer: an action
  * clones the state once and works on the clone, so the state passed in is never touched.
  */
 
@@ -18,7 +18,12 @@ export type Order =
       tile: number;
       /** The refinery being returned to, or 0. */
       refinery: number;
-    };
+    }
+  /**
+   * Aircraft only: fly to this Helipad, land and take on ammunition. Once full it stays parked on
+   * the pad with this order until given another (or runs the next queued one).
+   */
+  | { type: 'rearm'; pad: number };
 
 /** Orders a unit can hold in its waypoint queue, run one after another. */
 export type QueuedOrder = Extract<Order, { type: 'move' } | { type: 'attackMove' } | { type: 'attack' }>;
@@ -70,6 +75,12 @@ export interface Unit {
    * and hero levels. Absent means UNITS[kind].hp. Read it through maxHpOf() in state.ts.
    */
   maxHp?: number;
+  /** Aircraft only: loads left (AIR_AMMO); 0 means it must rearm. */
+  ammo?: number;
+  /** Aircraft only: the Helipad it belongs to, or 0 for none. */
+  pad?: number;
+  /** Bombers only: present while a bomb run is under way (it always finishes the run). */
+  bombRun?: true;
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -122,8 +133,13 @@ export interface PlayerState {
   owner: Owner;
   name: string;
   credits: number;
+  /** One queue per category, 'air' included (migrateAir gives older saves an empty one). */
   queues: Record<Category, QueueItem[]>;
   stats: { built: number; trained: number; lost: number; killed: number; harvested: number };
+  /** Upgrades researched, in the order they were finished. Absent: none. */
+  upgrades?: UpgradeId[];
+  /** The upgrade being researched, already paid for; ticks of work done. Absent or null: none. */
+  research?: { id: UpgradeId; progress: number } | null;
 }
 
 export interface Projectile {
@@ -146,7 +162,22 @@ export interface Projectile {
 /** Things that happened, kept for a few seconds so the renderer can draw them. Never read back. */
 export interface Effect {
   id: number;
-  kind: 'muzzle' | 'boom' | 'sold' | 'infiltrate' | 'captured' | 'charge' | 'levelup' | 'recon' | 'barrage' | 'reinforce' | 'missile' | 'heal' | 'repair';
+  kind:
+    | 'muzzle'
+    | 'boom'
+    | 'sold'
+    | 'infiltrate'
+    | 'captured'
+    | 'charge'
+    | 'levelup'
+    | 'recon'
+    | 'barrage'
+    | 'reinforce'
+    | 'missile'
+    | 'heal'
+    | 'repair'
+    /** A bomb's impact in a Bomber's line; size is the splash radius. */
+    | 'bomb';
   x: number;
   y: number;
   at: number;
@@ -188,6 +219,9 @@ export interface AiMemory {
   raidIds: number[];
   raidTarget: number;
   nextRaid: number;
+  /** Aircraft out on a strike (aiAir.ts), and the tick the next strike may go. */
+  airIds?: number[];
+  nextAirStrike?: number;
 }
 
 export interface GameState {
@@ -203,17 +237,40 @@ export interface GameState {
   tiles: string;
   /** Ore held by each tile, 0 for none. */
   ore: number[];
-  /** Tiles the player has ever seen, one character each: '1' seen, '0' not. */
+  /**
+   * Map size in tiles. Every per-tile string and array (tiles, ore, explored) is mapW * mapH long.
+   * Saves from before this field are 64 by 64 (migrateState fills it in). Never changes.
+   */
+  mapW: number;
+  mapH: number;
+  /**
+   * Tiles side 0 (the human) has ever seen, one character each: '1' seen, '0' not. Side 0 sees
+   * what its whole team sees. Computer sides see the whole map (a stated rule), so they need none.
+   */
   explored: string;
   units: Unit[];
   buildings: Building[];
-  players: [PlayerState, PlayerState];
+  /** One per side, indexed by Owner. Its length is the number of sides: 2, 3 or 4. */
+  players: PlayerState[];
+  /**
+   * The team each side is on, indexed by Owner, one entry per side. Sides on the same team are
+   * allies: they never target or splash each other and win or lose together. Two sides: [0, 1].
+   * Free-for-all: side i on team i. Saves from before this field get the free-for-all default
+   * (migrateState). Never changes during a battle. Read it through teamOf/isEnemy in sides.ts.
+   */
+  teams: number[];
   projectiles: Projectile[];
   effects: Effect[];
-  ai: [AiMemory, AiMemory];
+  /** One per side, indexed by Owner. Side 0's is used only when the computer plays it (autopilot). */
+  ai: AiMemory[];
   /** When true the computer also plays side 0. Used by the test harness only. */
   autopilot: boolean;
   nextId: number;
+  /**
+   * Who won, once the battle is over. With teams, the lowest-numbered side of the winning team
+   * (side 0 whenever the human's team won, even if side 0 itself was wiped out). Ask
+   * `wonBy(s, owner)` in sides.ts rather than comparing this to a side.
+   */
   winner: Owner | null;
   log: LogEntry[];
   /** Last tick each kind of warning was logged, so alarms do not flood the log. */
@@ -226,8 +283,11 @@ export interface GameState {
   setup?: SkirmishSetup;
   /** The map type actually generated (setup.map may say 'random'). Absent: the original map. */
   mapType?: MapType;
-  /** Top-left tile of each side's starting Command Yard. Absent: START_0 and START_1 (map.ts). */
-  starts?: [{ x: number; y: number }, { x: number; y: number }];
+  /**
+   * Top-left tile of each side's starting Command Yard, one per side. Absent: START_0 and START_1
+   * (map.ts), which only a two-sided battle may rely on. Read it through startOf in sides.ts.
+   */
+  starts?: { x: number; y: number }[];
 
   // ---- Campaign (all optional: a skirmish has none of these) ------------------------------------
   /** The mission being played, with its objectives; null or absent in a skirmish. */
@@ -239,11 +299,11 @@ export interface GameState {
    * mission sets its own; a skirmish on advanced tech gets them from its structures (SKIRMISH_POWERS,
    * kept in step by syncSkirmishPowers in state.ts).
    */
-  powers?: [Partial<Record<SupportPower, number>>, Partial<Record<SupportPower, number>>];
+  powers?: Partial<Record<SupportPower, number>>[];
   /** Kinds side 0 may queue in this battle; null or absent means everything. */
   allowed?: (BuildingKind | UnitKind)[] | null;
-  /** Power cut for a side until this tick (spy on a generator). */
-  blackoutUntil?: [number, number];
+  /** Power cut for each side until this tick (spy on a generator), one entry per side. */
+  blackoutUntil?: number[];
   /** Tiles revealed to side 0 by a recon sweep until a tick: [centre x, centre y, radius, until]. */
   recon?: [number, number, number, number][];
 }
@@ -258,9 +318,21 @@ export type ObjectiveSpec =
   | { kind: 'infiltrate'; building: BuildingKind }
   | { kind: 'capture'; building: BuildingKind }
   | { kind: 'reach'; who: HeroKind | 'any'; x: number; y: number; r: number }
-  | { kind: 'holdZone'; x: number; y: number; r: number; ticks: number }
+  | {
+      kind: 'holdZone';
+      x: number;
+      y: number;
+      r: number;
+      ticks: number;
+      /** False (the default): progress pauses while the zone is contested. True: it drops to 0 whenever an enemy stands in it with none of ours. */
+      reset?: boolean;
+    }
   | { kind: 'harvest'; credits: number }
-  | { kind: 'build'; building: BuildingKind; count: number };
+  | { kind: 'build'; building: BuildingKind; count: number }
+  /** The mission's convoy (MissionSpec.convoy): done when `count` of its units are within `r` of (x, y); failed when fewer than `count` are left alive. */
+  | { kind: 'escort'; x: number; y: number; r: number; count: number }
+  /** Like destroy, and failed once the battle passes `ticks` with it not done. */
+  | { kind: 'destroyWithin'; building: BuildingKind; count: number; ticks: number };
 
 export interface ObjectiveRuntime {
   spec: ObjectiveSpec;
@@ -273,7 +345,7 @@ export interface ObjectiveRuntime {
 }
 
 export interface SpawnSpec {
-  owner: 0 | 1;
+  owner: Owner;
   kind: UnitKind;
   count: number;
   x: number;
@@ -328,6 +400,13 @@ export interface MissionSpec {
   timeLimit?: number;
   triggers: TriggerSpec[];
   rewards: { xp: number; unlockHeroes?: HeroKind[]; unlockTech?: (BuildingKind | UnitKind)[] };
+  /** Side 0's convoy for an escort objective: placed at (x, y) and sent along `route` (queued moves). */
+  convoy?: { kinds: UnitKind[]; x: number; y: number; route: { x: number; y: number }[] };
+  /**
+   * Structures grant support powers in this mission as they do in an advanced skirmish
+   * (SKIRMISH_POWERS), for both sides; the computer side calls its barrage and missile when charged.
+   */
+  structurePowers?: boolean;
 }
 
 export interface MissionRuntime {
@@ -345,6 +424,12 @@ export interface MissionRuntime {
   triggers?: TriggerSpec[];
   /** Heroes that fell in this battle, with the experience they had: out for the rest of it. */
   fallen?: Partial<Record<HeroKind, number>>;
+  /** Ids of the convoy's units, set when the mission is built. */
+  convoy?: number[];
+  /** The convoy's way: where it started, then each point of its route. Escort progress is measured along it. */
+  convoyRoute?: { x: number; y: number }[];
+  /** Copied from the spec. Per side, the powers its structures currently grant (never one the mission gave at the start). */
+  structurePowers?: SupportPower[][];
 }
 
 /** What the campaign layer is told when a mission ends. */
@@ -398,4 +483,6 @@ export type GameAction =
   | { type: 'repair'; id: number }
   | { type: 'rally'; id: number; x: number; y: number }
   | { type: 'ability'; id: number; target?: number }
-  | { type: 'power'; power: SupportPower; x: number; y: number };
+  | { type: 'power'; power: SupportPower; x: number; y: number }
+  | { type: 'research'; upgrade: UpgradeId }
+  | { type: 'cancelResearch' };

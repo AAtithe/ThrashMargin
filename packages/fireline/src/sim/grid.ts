@@ -1,9 +1,5 @@
-import { idx } from './map';
-import { BUILDINGS, MAP_H as H, MAP_W as W, type Owner } from './rules';
-
-// Local copies: these are read in the innermost loops, where a module binding costs a lookup.
-const MAP_W = W;
-const MAP_H = H;
+import { BUILDINGS, type Owner } from './rules';
+import { frontDir as sideFront } from './sides';
 import type { Building, GameState, Unit } from './types';
 
 /**
@@ -11,18 +7,26 @@ import type { Building, GameState, Unit } from './types';
  * Everything here is a pure function of the state it is given.
  */
 
+/** The index of tile (x, y) in this battle's per-tile strings and arrays. */
+export const tileAt = (s: GameState, x: number, y: number): number => y * s.mapW + x;
+
+/** True for a tile on this battle's map. */
+export const onMap = (s: GameState, x: number, y: number): boolean => x >= 0 && y >= 0 && x < s.mapW && y < s.mapH;
+
 /** Building id on each tile, 0 for none. Rebuilt whenever the reducer needs it. */
 export function occupancy(s: GameState): Int32Array {
-  const occ = new Int32Array(MAP_W * MAP_H);
+  const MAP_W = s.mapW;
+  const occ = new Int32Array(MAP_W * s.mapH);
   for (const b of s.buildings) {
     const spec = BUILDINGS[b.kind];
-    for (let y = b.y; y < b.y + spec.h; y++) for (let x = b.x; x < b.x + spec.w; x++) occ[idx(x, y)] = b.id;
+    for (let y = b.y; y < b.y + spec.h; y++) for (let x = b.x; x < b.x + spec.w; x++) occ[y * MAP_W + x] = b.id;
   }
   return occ;
 }
 
 export function passable(s: GameState, occ: Int32Array, x: number, y: number): boolean {
-  if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return false;
+  const MAP_W = s.mapW;
+  if (x < 0 || y < 0 || x >= MAP_W || y >= s.mapH) return false;
   const k = y * MAP_W + x;
   if (occ[k] !== 0) return false;
   const c = s.tiles.charCodeAt(k);
@@ -30,36 +34,38 @@ export function passable(s: GameState, occ: Int32Array, x: number, y: number): b
 }
 
 /**
- * The row in front of a structure, where its door and dock are: below it for side 0 and above it
- * for side 1. Side 0's base is in the bottom-left and side 1's in the top-right, so for both the
- * front faces away from the enemy. Until this existed every front was the south edge, which faced
- * away from the enemy for side 0 but towards it for side 1: side 1's units and haulers came out on
- * the near side of its base, and it won 78% of mirror games (the round-1 AI ladder, 150 seeds).
+ * The row in front of a structure, where its door and dock are: below it for a side whose base is
+ * in the bottom half of the map and above it for one in the top half (frontDir in sides.ts), so
+ * the front faces away from the fighting. In a two-sided battle that is side 0 south and side 1
+ * north. Until this existed every front was the south edge, which faced away from the enemy for
+ * side 0 but towards it for side 1: side 1's units and haulers came out on the near side of its
+ * base, and it won 78% of mirror games (the round-1 AI ladder, 150 seeds).
  */
-export function frontRow(owner: Owner, y: number, h: number): number {
-  return owner === 0 ? y + h : y - 1;
+export function frontRow(s: GameState, owner: Owner, y: number, h: number): number {
+  return sideFront(s, owner) === 1 ? y + h : y - 1;
 }
 
 /** One row further out than the front row: kept clear so units can leave. */
-export function laneRow(owner: Owner, y: number, h: number): number {
-  return owner === 0 ? y + h + 1 : y - 2;
+export function laneRow(s: GameState, owner: Owner, y: number, h: number): number {
+  return sideFront(s, owner) === 1 ? y + h + 1 : y - 2;
 }
 
 /** Which way a unit faces leaving a structure (the y component of its facing). */
-export const frontDir = (owner: Owner) => (owner === 0 ? 1 : -1);
+export const frontDir = (s: GameState, owner: Owner): 1 | -1 => sideFront(s, owner);
 
 /** The tile a refinery's haulers dock on: centre of its front row. */
-export function dockTile(b: Building): { x: number; y: number } {
-  return { x: b.x + 1, y: frontRow(b.owner, b.y, BUILDINGS[b.kind].h) };
+export function dockTile(s: GameState, b: Building): { x: number; y: number } {
+  return { x: b.x + 1, y: frontRow(s, b.owner, b.y, BUILDINGS[b.kind].h) };
 }
 
 /** The tile in front of a structure's door, where trained units step out. */
-export function doorTile(b: Building): { x: number; y: number } {
+export function doorTile(s: GameState, b: Building): { x: number; y: number } {
   const spec = BUILDINGS[b.kind];
-  return { x: b.x + Math.floor(spec.w / 2), y: frontRow(b.owner, b.y, spec.h) };
+  return { x: b.x + Math.floor(spec.w / 2), y: frontRow(s, b.owner, b.y, spec.h) };
 }
 
-export const tileOf = (u: { x: number; y: number }) => idx(Math.floor(u.x), Math.floor(u.y));
+/** The index of the tile a unit stands on. */
+export const tileOf = (s: GameState, u: { x: number; y: number }) => Math.floor(u.y) * s.mapW + Math.floor(u.x);
 
 /** Distance from a point to the nearest point of a structure's footprint. */
 export function distToBuilding(px: number, py: number, b: Building): number {
@@ -90,7 +96,7 @@ export function targetPoint(t: Target): { x: number; y: number } {
 export function nearestPassable(s: GameState, occ: Int32Array, x: number, y: number, maxR = 8): number {
   const cx = Math.floor(x);
   const cy = Math.floor(y);
-  if (passable(s, occ, cx, cy)) return idx(cx, cy);
+  if (passable(s, occ, cx, cy)) return tileAt(s, cx, cy);
   for (let r = 1; r <= maxR; r++) {
     let best = -1;
     let bestD = Infinity;
@@ -103,7 +109,7 @@ export function nearestPassable(s: GameState, occ: Int32Array, x: number, y: num
         const d = (nx + 0.5 - x) ** 2 + (ny + 0.5 - y) ** 2;
         if (d < bestD) {
           bestD = d;
-          best = idx(nx, ny);
+          best = tileAt(s, nx, ny);
         }
       }
     if (best >= 0) return best;
@@ -113,6 +119,7 @@ export function nearestPassable(s: GameState, occ: Int32Array, x: number, y: num
 
 /** True when a straight walk between two tile centres crosses only passable tiles. */
 export function lineClear(s: GameState, occ: Int32Array, a: number, b: number): boolean {
+  const MAP_W = s.mapW;
   let x0 = a % MAP_W;
   let y0 = (a / MAP_W) | 0;
   const x1 = b % MAP_W;
@@ -160,7 +167,8 @@ const DIRS: [number, number, number][] = [
  */
 export function findPath(s: GameState, occ: Int32Array, start: number, goal: number): number[] {
   if (start === goal) return [];
-  const total = MAP_W * MAP_H;
+  const MAP_W = s.mapW;
+  const total = MAP_W * s.mapH;
   const gScore = new Float64Array(total).fill(Infinity);
   const came = new Int32Array(total).fill(-1);
   const closed = new Uint8Array(total);

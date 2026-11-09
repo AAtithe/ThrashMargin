@@ -21,11 +21,16 @@ import { setAutopilotAi } from '../src/sim/ai';
  * battle rather than a stalemate.
  */
 import { processAction } from '../src/sim/actions';
+// round4:A. Air power and research: its import (scripts/drive-air.ts) goes on the line below.
+import { sections as airSections } from './drive-air';
 import { canQueue, placementProblem } from '../src/sim/commands';
 import { dist, distToBuilding, occupancy, passable } from '../src/sim/grid';
 import { generateMap, isWalkable, START_0, START_1 } from '../src/sim/map';
 import { generateSkirmishMap, mapProblem, oreFields, randomMapType, secondRoute, shortestWalk } from '../src/sim/maps';
 import { seedFromString } from '../src/sim/rng';
+// round4:B. Bigger battles: its import (scripts/drive-sides.ts) goes on the line below.
+import { sections as sidesSections } from './drive-sides';
+
 import {
   BUILD_MENU,
   DAMAGE_VS,
@@ -48,6 +53,13 @@ import {
   type WeaponKind,
 } from '../src/sim/rules';
 import { normaliseSetup, setupOf, startOf, techAllowed } from '../src/sim/state';
+import { newAiMemory, teamVisibility } from '../src/sim/state';
+import * as sides from '../src/sim/sides';
+// round4:C. Campaign act two: its import (scripts/drive-act2.ts) goes on the line below.
+import { sections as act2Sections } from './drive-act2';
+
+import { frontDir as gridFront } from '../src/sim/grid';
+import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
 import { abilityProblem, createMissionState, doPower, isDetected, missionOutcome, objectiveLabel, powerProblem } from '../src/sim/mission';
 import {
   BARRAGE_SHELLS,
@@ -109,7 +121,8 @@ function invariants(s: GameState, label: string): void {
     ok(u.hp > 0 && u.hp <= maxHpOf(u), `${label}: unit ${u.id} hp in range (${u.hp})`);
     ok(u.x >= 0 && u.y >= 0 && u.x < MAP_W && u.y < MAP_H, `${label}: unit ${u.id} on the map`);
     const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
-    ok(isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
+    // Aircraft fly over water, rock and structures (round 4, workstream A).
+    ok(UNITS[u.kind].category === 'air' || isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
     ok(u.cargo >= 0 && u.cargo <= 600, `${label}: cargo in range`);
     ok(Number.isFinite(u.fx) && Number.isFinite(u.tx), `${label}: facings finite`);
     ok(u.vet === vetFor(u.kills), `${label}: unit ${u.id} rank matches its ${u.kills} kills (${u.vet})`);
@@ -119,7 +132,7 @@ function invariants(s: GameState, label: string): void {
   const occ = occupancy(s);
   for (const u of s.units) {
     const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
-    ok(occ[k] === 0, `${label}: unit ${u.id} (${u.kind}) not inside a structure`);
+    ok(occ[k] === 0 || UNITS[u.kind].category === 'air', `${label}: unit ${u.id} (${u.kind}) not inside a structure`);
   }
   for (const b of s.buildings) {
     ok(!ids.has(b.id), `${label}: building id ${b.id} unique`);
@@ -129,7 +142,7 @@ function invariants(s: GameState, label: string): void {
   for (const p of s.players) {
     ok(p.credits >= 0, `${label}: ${p.name} credits never negative (${p.credits})`);
     ok(p.queues.building.length <= 1, `${label}: one structure at a time`);
-    ok(p.queues.infantry.length <= 5 && p.queues.vehicle.length <= 5, `${label}: queues capped`);
+    ok(p.queues.infantry.length <= 5 && p.queues.vehicle.length <= 5 && (p.queues.air?.length ?? 0) <= 5, `${label}: queues capped`);
   }
   ok(s.ore.every(o => o >= 0 && o <= 500), `${label}: ore in range`);
   ok(s.explored.length === MAP_W * MAP_H, `${label}: explored map intact`);
@@ -654,6 +667,224 @@ function legacySaves(): void {
     migrateState(null) === null && migrateState({ ...old, version: 2 }) === null && migrateState({ ...old, units: 3 }) === null,
     'things that are not a battle are refused',
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Sides: 2, 3 or 4 sides on teams (src/sim/sides.ts). No lobby option makes a battle of more than
+// two sides yet, so the three-sided battles here are built by hand on a two-sided skirmish.
+
+/** A two-sided plains skirmish with a third side added in the bottom-right quarter, then migrated. */
+function threeSided(teams: number[] | undefined, label: string): GameState {
+  const base = createInitialState(`three-${label}`, label, {
+    seed: 'three-sides',
+    createdAt: 0,
+    setup: { map: 'plains', tech: 'standard', credits: 3000, ore: 'normal' },
+  });
+  const c = JSON.parse(JSON.stringify(base)) as GameState;
+  c.players.push({
+    owner: 2,
+    name: SIDE_NAMES[2],
+    credits: 3000,
+    queues: { building: [], infantry: [], vehicle: [] },
+    stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
+  });
+  c.ai.push(newAiMemory(DIFFICULTIES.normal.firstAttack));
+  if (teams) c.teams = teams;
+  else delete (c as Partial<GameState>).teams;
+  // A clear site in the bottom-right quarter, well away from side 0's yard.
+  const occ = occupancy(c);
+  const s0 = c.starts![0];
+  let site: { x: number; y: number } | null = null;
+  for (let y = c.mapH - 6; y > c.mapH / 2 + 2 && !site; y--)
+    for (let x = c.mapW - 6; x > c.mapW / 2 && !site; x--) {
+      if (Math.hypot(x - s0.x, y - s0.y) < 18) continue;
+      let clear = true;
+      for (let ty = y - 4; ty <= y + 3 && clear; ty++)
+        for (let tx = x - 4; tx <= x + 3; tx++) {
+          const k = ty * c.mapW + tx;
+          if (!isWalkable(c.tiles[k]) || c.ore[k] > 0 || occ[k]) clear = false;
+        }
+      if (clear) site = { x, y };
+    }
+  ok(!!site, `${label}: a site for the third side`);
+  c.starts = [c.starts![0], c.starts![1], site ?? { x: c.mapW - 8, y: c.mapH - 8 }];
+  const st = c.starts[2];
+  addBuilding(c, 2, 'hq', st.x, st.y, -100);
+  for (let i = 0; i < 3; i++) addUnit(c, 2, 'rifleman', st.x + 0.6 + i * 0.9, st.y - 1.5);
+  const m = migrateState(JSON.parse(JSON.stringify(c)));
+  ok(m !== null, `${label}: a three-sided battle loads`);
+  if (!m) return c;
+  // Explored as it would be from the start (side 0 with any ally).
+  return processAction(m, { type: 'tick', n: 5 });
+}
+
+/** The state with every structure of these sides gone, as if destroyed. */
+function without(s: GameState, owners: number[]): GameState {
+  const c = JSON.parse(JSON.stringify(s)) as GameState;
+  c.buildings = c.buildings.filter(b => !owners.includes(b.owner));
+  return c;
+}
+
+function sideTests(): void {
+  // Two sides: the helpers say what `1 - owner` used to.
+  const two = createInitialState('sides-two', 'two', { seed: 'sides-two', createdAt: 0 });
+  ok(sides.sideCount(two) === 2 && sides.sidesOf(two).join() === '0,1', 'two sides: 0 and 1');
+  ok(two.teams.join() === '0,1' && sides.teamOf(two, 0) === 0 && sides.teamOf(two, 1) === 1, 'two sides: teams [0, 1]');
+  ok(sides.isEnemy(two, 0, 1) && sides.isEnemy(two, 1, 0) && !sides.isEnemy(two, 0, 0) && !sides.isEnemy(two, 1, 1), "two sides: each the other's enemy");
+  ok(sides.isAlly(two, 0, 0) && !sides.isAlly(two, 0, 1), 'two sides: each its own ally only');
+  ok(sides.enemiesOf(two, 0).join() === '1' && sides.enemiesOf(two, 1).join() === '0', 'two sides: enemiesOf');
+  ok(sides.alliesOf(two, 0).length === 0 && sides.computerSides(two).join() === '1', 'two sides: no allies; side 1 is the computer');
+  ok(!sides.wonBy(two, 0) && !sides.wonBy(two, 1), 'nobody has won a battle still running');
+  ok(two.mapW === 64 && two.mapH === 64 && two.tiles.length === two.mapW * two.mapH, 'the map size is on the state');
+  ok(sides.frontDir(two, 0) === 1 && sides.frontDir(two, 1) === -1, 'the original map: side 0 faces south, side 1 north');
+  ok(gridFront(two, 0) === 1 && gridFront(two, 1) === -1, 'and grid.ts agrees');
+  ok(sides.defaultTeams(3).join() === '0,1,2' && sides.defaultTeams(4).join() === '0,1,2,3', 'free-for-all teams');
+  ok(sides.normaliseTeams(undefined, 3).join() === '0,1,2', 'no teams: free-for-all');
+  ok(sides.normaliseTeams([0, 0, 0], 3).join() === '0,1,2', 'one team for everyone is refused');
+  ok(sides.normaliseTeams([0, 1], 3).join() === '0,1,2', 'a teams list of the wrong length is refused');
+  ok(sides.normaliseTeams([0, 1, 9], 3).join() === '0,1,2' && sides.normaliseTeams([0, 'a', 1], 3).join() === '0,1,2', 'junk teams are refused');
+  ok(sides.normaliseTeams([0, 1, 0, 1], 4).join() === '0,1,0,1', 'a 2 against 2 is kept');
+  ok(
+    sides.teamsFor(2, 'teams').join() === '0,1' && sides.teamsFor(3, 'ffa').join() === '0,1,2' && sides.teamsFor(3, 'teams').join() === '0,1,0' && sides.teamsFor(4, 'teams').join() === '0,1,0,1',
+    'teamsFor: two sides always [0, 1]; teams pair side 0 with side 2',
+  );
+  ok(MAX_SIDES === 4 && Object.keys(SIDE_NAMES).length === 4, 'four sides have names');
+
+  // Every generated two-sided map: side 0 faces south and side 1 north, as before.
+  let fronts = true;
+  for (const map of MAP_TYPES)
+    for (let i = 0; i < 6; i++) {
+      const s = createInitialState(`front-${map}-${i}`, 'f', { seed: `front-${map}-${i}`, createdAt: 0, setup: { map } });
+      if (sides.frontDir(s, 0) !== 1 || sides.frontDir(s, 1) !== -1) fronts = false;
+      const hq0 = s.buildings.find(b => b.owner === 0 && b.kind === 'hq')!;
+      const hq1 = s.buildings.find(b => b.owner === 1 && b.kind === 'hq')!;
+      if (hq0.tx !== 0.7071 || hq0.ty !== -0.7071 || hq1.tx !== -0.7071 || hq1.ty !== 0.7071) fronts = false;
+      if (s.units.some(u => u.fy !== (u.owner === 0 ? -1 : 1))) fronts = false;
+    }
+  ok(fronts, 'every map type: fronts, turret and unit facings as before sides were generalised');
+
+  // Old saves: no teams, no map size. They load as two sides on a 64 by 64 map, and play on exactly.
+  let run = createInitialState('sides-old', 'old', { seed: 'sides-old', createdAt: 0, autopilot: true });
+  run = processAction(run, { type: 'tick', n: 600 });
+  const old = JSON.parse(JSON.stringify(run));
+  delete old.teams;
+  delete old.mapW;
+  delete old.mapH;
+  const m = migrateState(old);
+  ok(!!m && m.teams.join() === '0,1' && m.mapW === 64 && m.mapH === 64, 'a save from before sides loads with teams [0, 1] on 64 by 64');
+  // Compared with keys sorted: the migrated save has the new fields last.
+  const canon = (v: unknown) => JSON.stringify(v, (_k, x) => (x && typeof x === 'object' && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1))) : x));
+  if (m) ok(canon(processAction(m, { type: 'tick', n: 300 })) === canon(processAction(run, { type: 'tick', n: 300 })), 'and plays on exactly as before');
+  ok(migrateState({ ...old, players: [old.players[0]] }) === null, 'a battle of one side is refused');
+  ok(migrateState({ ...old, players: [...old.players, ...old.players, old.players[0]] }) === null, 'a battle of five sides is refused');
+  ok(migrateState({ ...old, mapW: 80 }) === null, 'a map size that does not match the tiles is refused');
+
+  // Three sides, free for all.
+  const ffa = threeSided(undefined, 'ffa');
+  ok(sides.sideCount(ffa) === 3 && ffa.teams.join() === '0,1,2' && ffa.ai.length === 3 && ffa.starts!.length === 3, 'ffa: three sides, three teams, three memories, three sites');
+  ok(sides.isEnemy(ffa, 0, 1) && sides.isEnemy(ffa, 0, 2) && sides.isEnemy(ffa, 1, 2), 'ffa: everyone fights everyone');
+  ok(sides.enemiesOf(ffa, 0).join() === '1,2' && sides.enemiesOf(ffa, 2).join() === '0,1', 'ffa: enemiesOf');
+  ok(sides.frontDir(ffa, 2) === 1, 'ffa: a site in the bottom half faces south');
+  {
+    const c = JSON.parse(JSON.stringify(ffa));
+    delete c.starts;
+    ok(migrateState(c) === null, 'three sides without their start sites are refused');
+    const t = processAction(ffa, { type: 'tick', n: 1 });
+    ok(t !== ffa && t.players.length === 3 && t.ai.length === 3, 'ffa: a tick keeps three sides');
+    ok(processAction(without(ffa, [1]), { type: 'tick', n: 1 }).winner === null, 'ffa: one side out, two left: the battle goes on');
+    const w = processAction(without(ffa, [1, 2]), { type: 'tick', n: 1 });
+    ok(w.winner === 0 && sides.wonBy(w, 0) && !sides.wonBy(w, 2), 'ffa: the last side standing wins');
+    const l = processAction(without(ffa, [0]), { type: 'tick', n: 1 });
+    ok(l.winner === 1 && !sides.wonBy(l, 0), 'ffa: side 0 out is a defeat, the first enemy standing named');
+    const l2 = processAction(without(ffa, [0, 1]), { type: 'tick', n: 1 });
+    ok(l2.winner === 2 && sides.wonBy(l2, 2), 'ffa: and the winner is a side still standing');
+  }
+
+  // Three sides, side 2 allied with side 0.
+  const allied = threeSided([0, 1, 0], 'allied');
+  ok(sides.isAlly(allied, 0, 2) && sides.isEnemy(allied, 1, 2) && sides.isEnemy(allied, 0, 1), 'teams: 0 and 2 against 1');
+  ok(
+    sides.enemiesOf(allied, 1).join() === '0,2' && sides.alliesOf(allied, 0).join() === '2' && sides.enemiesOf(allied, 2).join() === '1',
+    'teams: enemiesOf and alliesOf',
+  );
+  {
+    const w = processAction(without(allied, [1]), { type: 'tick', n: 1 });
+    ok(w.winner === 0 && sides.wonBy(w, 0) && sides.wonBy(w, 2) && !sides.wonBy(w, 1), 'victory with two allies left');
+    const on = processAction(without(allied, [0]), { type: 'tick', n: 1 });
+    ok(on.winner === null, 'side 0 out but its ally standing: the battle goes on');
+    const lost = processAction(without(allied, [0, 2]), { type: 'tick', n: 1 });
+    ok(lost.winner === 1 && !sides.wonBy(lost, 0) && !sides.wonBy(lost, 2), 'the whole team out: defeat');
+    // Allies share sight: side 0 sees side 2's base, which it cannot see on its own.
+    const st = allied.starts![2];
+    const k = (st.y + 1) * allied.mapW + st.x + 1;
+    ok(visibility(allied, 0)[k] === 0 && teamVisibility(allied, 0)[k] === 1, "an ally's base is in side 0's sight");
+    ok(allied.explored[k] === '1', 'and is explored');
+    const fk = (ffa.starts![2].y + 1) * ffa.mapW + ffa.starts![2].x + 1;
+    ok(teamVisibility(ffa, 0)[fk] === 0 && ffa.explored[fk] === '0', "a free-for-all rival's base is not");
+  }
+
+  // Allies hold their fire; rivals do not. Commanders off, so only the engine's targeting acts.
+  noCommander(() => {
+    setAutopilotAi(() => {}, 2);
+    try {
+      for (const [label, base, friendly] of [
+        ['allied', allied, true],
+        ['ffa', ffa, false],
+      ] as const) {
+        const c = JSON.parse(JSON.stringify(base)) as GameState;
+        const x = c.starts![2].x - 2.5;
+        const y = c.starts![2].y + 5.5;
+        const a = put(c, 0, 'rifleman', x, y);
+        const b = put(c, 2, 'rifleman', x + 1.5, y);
+        const t = processAction(c, { type: 'tick', n: 40 });
+        const hurt = (id: number) => (unitIn(t, id)?.hp ?? 0) < UNITS.rifleman.hp;
+        if (friendly) ok(!hurt(a.id) && !hurt(b.id), `${label}: allied riflemen side by side never fire on each other`);
+        else ok(hurt(a.id) || hurt(b.id), `${label}: rival riflemen side by side fight`);
+        // Splash: a grenadier's shell aimed at an enemy beside an ally spares the ally.
+        const g = JSON.parse(JSON.stringify(base)) as GameState;
+        const gx = g.starts![2].x - 3.5;
+        const gy = g.starts![2].y + 5.5;
+        put(g, 0, 'grenadier', gx, gy);
+        const foe = put(g, 1, 'rifleman', gx + 3.5, gy, { stance: 'hold' });
+        const mate = put(g, 2, 'rifleman', gx + 3.5, gy + 0.6, { stance: 'hold' });
+        const after = processAction(g, { type: 'tick', n: 60 });
+        ok((unitIn(after, foe.id)?.hp ?? 0) < UNITS.rifleman.hp, `${label}: the grenadier hits the enemy`);
+        if (friendly) ok((unitIn(after, mate.id)?.hp ?? 0) === UNITS.rifleman.hp, `${label}: and its splash spares the ally beside it`);
+      }
+    } finally {
+      setAutopilotAi(null, 2);
+    }
+  })();
+
+  // Production, power and the computer's memory work for side 2 like any other side.
+  {
+    const c = JSON.parse(JSON.stringify(ffa)) as GameState;
+    const st = c.starts![2];
+    addBuilding(c, 2, 'power', st.x - 3, st.y, -100);
+    addBuilding(c, 2, 'barracks', st.x - 3, st.y - 3, -100);
+    c.players[2].queues.infantry.push({ kind: 'rifleman', progress: 0 });
+    ok(!powerOf(c, 2).low, 'side 2 has power');
+    noCommander(() => {
+      setAutopilotAi(() => {}, 2);
+      try {
+        const t = processAction(c, { type: 'tick', n: UNITS.rifleman.buildTicks + 5 });
+        ok(t.players[2].stats.trained === 1 && t.units.filter(u => u.owner === 2).length === 4, 'side 2 trains a rifleman');
+      } finally {
+        setAutopilotAi(null, 2);
+      }
+    })();
+    // With its commander on, side 2 makes its own decisions and keeps its own memory.
+    let r = ffa;
+    for (let i = 0; i < 12; i++) r = processAction(r, { type: 'tick', n: 100 });
+    ok(r.players[2].stats.built > 0 || r.players[2].queues.building.length > 0, "side 2's commander builds");
+    ok(r.ai.length === 3 && r.ai[2] !== r.ai[1], 'each side keeps its own memory');
+    const before = JSON.stringify(r);
+    processAction(r, { type: 'tick', n: 50 });
+    ok(JSON.stringify(r) === before, 'a three-sided tick does not touch its input');
+    let r2 = threeSided(undefined, 'ffa');
+    for (let i = 0; i < 12; i++) r2 = processAction(r2, { type: 'tick', n: 100 });
+    ok(JSON.stringify(r2) === JSON.stringify(r), 'a three-sided battle replays exactly');
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -2420,6 +2651,9 @@ const sections: [string, () => void][] = [
   ['Mission replay and saves', missionReplay],
   ['Mission AI modes', missionAiModes],
   ['Mission battles', missionBattles],
+  // round4:C. Campaign act two (fireline-round4-design.md): its sections, imported from
+  // scripts/drive-act2.ts, go on the lines below this comment.
+  ...act2Sections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
 ];
 if (!CAMPAIGN_ONLY) {
   console.log('Orders and rejections');
@@ -2434,6 +2668,8 @@ if (!CAMPAIGN_ONLY) {
   survivors();
   console.log('Older saves');
   legacySaves();
+  console.log('Sides');
+  sideTests();
   const freeplay: [string, () => void][] = [
     ['New tech: stats, menus and requirements', newTech],
     ['Standard tech and mission tech lists', standardTech],
@@ -2445,6 +2681,12 @@ if (!CAMPAIGN_ONLY) {
     ['The missile strike', noCommander(missileTests)],
     ['Skirmish setup options', setupTests],
     ['Map types', mapTests],
+    // round4:A. Air power and research (fireline-round4-design.md): its sections, imported from
+    // scripts/drive-air.ts, go on the lines below this comment.
+    ...airSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round4:B. Bigger battles (fireline-round4-design.md): its sections, imported from
+    // scripts/drive-sides.ts, go on the lines below this comment.
+    ...sidesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

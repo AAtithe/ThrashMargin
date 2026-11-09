@@ -27,8 +27,26 @@ export interface CampaignMapNode {
   hover: boolean;
 }
 
-/** The campaign's length, for laying out the route. Orders beyond it sit at the far end. */
-const ROUTE_LENGTH = 8;
+/**
+ * The campaign is in two acts, each on its own theatre map: act one (missions 1 to 8) on the
+ * southern coast, act two (9 to 14) on the northern coast and highlands. Each act lays its own
+ * missions out along its own route, counted from its first mission.
+ */
+const ACTS = [
+  { first: 1, length: 8 },
+  { first: 9, length: 6 },
+] as const;
+
+/** Which act (0 or 1) a mission of this order belongs to. */
+export function campaignActOf(order: number): 0 | 1 {
+  return order >= ACTS[1].first ? 1 : 0;
+}
+
+/** A mission's place along its act's route, 0-based, and that route's length. Orders beyond the end sit at the far end. */
+function routeStep(order: number): { k: number; length: number } {
+  const act = ACTS[campaignActOf(order)];
+  return { k: Math.max(0, Math.min(act.length - 1, order - act.first)), length: act.length };
+}
 
 function hash(n: number): number {
   let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b);
@@ -58,7 +76,7 @@ function toScreen(fx: number, fy: number, w: number, h: number): [number, number
 
 /** Where a node of this order sits, in canvas pixels: the UI hit-tests clicks against this. */
 export function campaignNodePosition(order: number, w: number, h: number): { x: number; y: number } {
-  const k = Math.max(0, Math.min(ROUTE_LENGTH - 1, order - 1));
+  const { k } = routeStep(order);
   const zig = k % 2 === 0 ? 0.13 : -0.13;
   const fx = mapFx(order, portrait(w, h));
   const fy = 0.47 + zig + (hash(k * 7 + 3) - 0.5) * 0.08;
@@ -73,8 +91,8 @@ export function campaignNodeRadius(w: number, h: number): number {
 
 /** How far east a node sits in map space. A tall map keeps clear of the side names top and bottom. */
 function mapFx(order: number, tall: boolean): number {
-  const k = Math.max(0, Math.min(ROUTE_LENGTH - 1, order - 1));
-  return tall ? 0.14 + (k / (ROUTE_LENGTH - 1)) * 0.72 : 0.09 + (k / (ROUTE_LENGTH - 1)) * 0.82;
+  const { k, length } = routeStep(order);
+  return tall ? 0.14 + (k / (length - 1)) * 0.72 : 0.09 + (k / (length - 1)) * 0.82;
 }
 
 /** The coastline in map space: a wavy edge along the south, with a bay in the middle. */
@@ -86,15 +104,29 @@ for (let i = 0; i <= 80; i++) {
   COAST.push([fx, fy]);
 }
 
-/** Traces the land (everything north of the coast) as the current path. */
-function traceLand(g: Ctx, w: number, h: number) {
+/**
+ * Act two's coastline: the sea to the north this time, a ragged shore cut by two fjords running
+ * south into the highlands, at fx 0.31 and 0.74.
+ */
+const NORTH_COAST: [number, number][] = [];
+for (let i = 0; i <= 120; i++) {
+  const fx = -0.05 + (i / 120) * 1.1;
+  const fjord = Math.exp(-(((fx - 0.31) / 0.018) ** 2)) * 0.16 + Math.exp(-(((fx - 0.74) / 0.022) ** 2)) * 0.13;
+  const fy = 0.17 + fjord + (noise1(fx * 11, 61) - 0.5) * 0.07 + (noise1(fx * 37, 62) - 0.5) * 0.025;
+  NORTH_COAST.push([fx, fy]);
+}
+
+/** Traces the land as the current path: north of the coast in act one, south of it in act two. */
+function traceLand(g: Ctx, w: number, h: number, act: 0 | 1 = 0) {
   g.beginPath();
-  let [sx, sy] = toScreen(-0.05, -0.05, w, h);
+  const edge = act === 0 ? -0.05 : 1.05;
+  const coast = act === 0 ? COAST : NORTH_COAST;
+  let [sx, sy] = toScreen(-0.05, edge, w, h);
   g.moveTo(sx, sy);
-  [sx, sy] = toScreen(1.05, -0.05, w, h);
+  [sx, sy] = toScreen(1.05, edge, w, h);
   g.lineTo(sx, sy);
-  for (let i = COAST.length - 1; i >= 0; i--) {
-    const [x, y] = toScreen(COAST[i][0], COAST[i][1], w, h);
+  for (let i = coast.length - 1; i >= 0; i--) {
+    const [x, y] = toScreen(coast[i][0], coast[i][1], w, h);
     g.lineTo(x, y);
   }
   g.closePath();
@@ -104,8 +136,8 @@ function traceLand(g: Ctx, w: number, h: number) {
 
 const terrainCache = new Map<string, HTMLCanvasElement>();
 
-function paintTerrain(w: number, h: number, res: number): HTMLCanvasElement {
-  const key = `${w}x${h}@${res}`;
+function paintTerrain(w: number, h: number, res: number, act: 0 | 1 = 0): HTMLCanvasElement {
+  const key = `${w}x${h}@${res}#${act}`;
   const hit = terrainCache.get(key);
   if (hit) return hit;
   if (terrainCache.size > 6) terrainCache.clear();
@@ -114,6 +146,15 @@ function paintTerrain(w: number, h: number, res: number): HTMLCanvasElement {
   c.height = Math.max(1, Math.round(h * res));
   const g = c.getContext('2d')!;
   g.scale(res, res);
+  if (act === 1) paintNorth(g, w, h);
+  else paintSouth(g, w, h);
+  paintPaper(g, w, h);
+  terrainCache.set(key, c);
+  return c;
+}
+
+/** Act one's theatre: a southern coast with a bay, two rivers, uplands and woods. */
+function paintSouth(g: Ctx, w: number, h: number) {
   const P = (fx: number, fy: number) => toScreen(fx, fy, w, h);
   const unit = Math.min(w, h);
 
@@ -220,8 +261,11 @@ function paintTerrain(w: number, h: number, res: number): HTMLCanvasElement {
     g.stroke();
   }
   g.restore();
+}
 
-  // Map grid and a paper grain over everything.
+/** Map grid, a paper grain and a vignette over either theatre. */
+function paintPaper(g: Ctx, w: number, h: number) {
+  const unit = Math.min(w, h);
   g.strokeStyle = 'rgba(240,230,200,0.07)';
   g.lineWidth = 1;
   g.beginPath();
@@ -244,8 +288,194 @@ function paintTerrain(w: number, h: number, res: number): HTMLCanvasElement {
   vig.addColorStop(1, 'rgba(0,0,0,0.42)');
   g.fillStyle = vig;
   g.fillRect(0, 0, w, h);
-  terrainCache.set(key, c);
-  return c;
+}
+
+/**
+ * Act two's theatre: the northern coast and the highlands behind it. A colder sea to the north
+ * with islands and two fjords, heath and moorland, grey mountains with snow on the peaks, dark
+ * pine forest in the valleys, and one river running down to the sea.
+ */
+function paintNorth(g: Ctx, w: number, h: number) {
+  const P = (fx: number, fy: number) => toScreen(fx, fy, w, h);
+  const unit = Math.min(w, h);
+
+  // Sea: colder and darker than the south's.
+  const sea = g.createLinearGradient(0, 0, w, h);
+  sea.addColorStop(0, '#1d3a4c');
+  sea.addColorStop(1, '#142a37');
+  g.fillStyle = sea;
+  g.fillRect(0, 0, w, h);
+  // Swell lines on the open water.
+  g.strokeStyle = 'rgba(160,200,215,0.08)';
+  g.lineWidth = 1;
+  for (let i = 0; i < 9; i++) {
+    g.beginPath();
+    const fy = 0.02 + i * 0.022;
+    for (let k = 0; k <= 30; k++) {
+      const fx = -0.05 + (k / 30) * 1.1;
+      const [x, y] = P(fx, fy + Math.sin(fx * 18 + i) * 0.004);
+      if (k) g.lineTo(x, y);
+      else g.moveTo(x, y);
+    }
+    g.stroke();
+  }
+  // Islands offshore: small rocky blobs with a pale rim.
+  for (let i = 0; i < 6; i++) {
+    const fx = 0.06 + hash(i * 19 + 4) * 0.88;
+    const fy = 0.04 + hash(i * 23 + 5) * 0.08;
+    const [x, y] = P(fx, fy);
+    const r = unit * (0.008 + hash(i * 29 + 6) * 0.014);
+    g.fillStyle = 'rgba(170,200,205,0.25)';
+    g.beginPath();
+    g.ellipse(x, y, r * 1.9, r * 1.3, hash(i) * 3, 0, TAU);
+    g.fill();
+    g.fillStyle = '#58604f';
+    g.beginPath();
+    g.ellipse(x, y, r * 1.4, r * 0.9, hash(i) * 3, 0, TAU);
+    g.fill();
+  }
+
+  const landPath = () => traceLand(g, w, h, 1);
+  landPath();
+  g.strokeStyle = 'rgba(130,180,195,0.3)';
+  g.lineWidth = unit * 0.03;
+  g.stroke();
+  g.strokeStyle = 'rgba(170,205,215,0.28)';
+  g.lineWidth = unit * 0.012;
+  g.stroke();
+  landPath();
+  const land = g.createLinearGradient(0, 0, w, h);
+  land.addColorStop(0, '#4f6446');
+  land.addColorStop(0.5, '#56654b');
+  land.addColorStop(1, '#5e6352');
+  g.fillStyle = land;
+  g.fill();
+  g.save();
+  landPath();
+  g.clip();
+  // Shingle along the shore.
+  g.beginPath();
+  NORTH_COAST.forEach(([fx, fy], i) => {
+    const [x, y] = P(fx, fy);
+    if (i) g.lineTo(x, y);
+    else g.moveTo(x, y);
+  });
+  g.strokeStyle = 'rgba(190,186,170,0.5)';
+  g.lineWidth = unit * 0.013;
+  g.stroke();
+  // Heather on the moors: faint purple-brown patches.
+  for (let i = 0; i < 10; i++) {
+    const [x, y] = P(hash(i * 41 + 7) * 1.0, 0.3 + hash(i * 43 + 8) * 0.6);
+    const r = unit * (0.04 + hash(i * 47 + 9) * 0.04);
+    const patch = g.createRadialGradient(x, y, 0, x, y, r);
+    patch.addColorStop(0, 'rgba(112,88,104,0.2)');
+    patch.addColorStop(1, 'rgba(112,88,104,0)');
+    g.fillStyle = patch;
+    g.beginPath();
+    g.arc(x, y, r, 0, TAU);
+    g.fill();
+  }
+  // The highlands: ranges of grey peaks, thickest to the south, each lit from the north-west with
+  // snow on the summit. Peaks stand upright on the screen whichever way the map is turned.
+  const peaks: [number, number, number][] = [];
+  for (let i = 0; i < 11; i++) {
+    const fx = 0.04 + hash(i * 3 + 101) * 0.92;
+    const fy = 0.58 + hash(i * 5 + 102) * 0.38;
+    const n = 2 + Math.floor(hash(i * 7 + 103) * 3);
+    for (let k = 0; k < n; k++) {
+      const [x, y] = P(fx + (k - (n - 1) / 2) * 0.035, fy + (hash(i * 31 + k) - 0.5) * 0.04);
+      peaks.push([x, y, unit * (0.03 + hash(i * 13 + k + 104) * 0.03)]);
+    }
+  }
+  // Back to front, so nearer peaks overlap those behind.
+  peaks.sort((a, b) => a[1] - b[1]);
+  for (const [x, y, b] of peaks) {
+    const top = y - b * 1.05;
+    // Shadow on the ground.
+    g.fillStyle = 'rgba(20,26,22,0.22)';
+    g.beginPath();
+    g.ellipse(x + b * 0.25, y + b * 0.08, b * 1.15, b * 0.22, 0, 0, TAU);
+    g.fill();
+    // The lit west face and the shaded east face.
+    g.fillStyle = '#8b8d84';
+    g.beginPath();
+    g.moveTo(x - b, y);
+    g.lineTo(x - b * 0.06, top);
+    g.lineTo(x + b * 0.1, y);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#5c5f58';
+    g.beginPath();
+    g.moveTo(x + b * 0.1, y);
+    g.lineTo(x - b * 0.06, top);
+    g.lineTo(x + b, y);
+    g.closePath();
+    g.fill();
+    // Snow on the summit, brighter on the lit side.
+    const sn = 0.36;
+    const ly = top + (y - top) * sn;
+    g.fillStyle = '#eef1f2';
+    g.beginPath();
+    g.moveTo(x - b * 0.06, top);
+    g.lineTo(x - b * 0.06 - (b * 0.94) * sn, ly);
+    g.lineTo(x - b * 0.2, ly + b * 0.06);
+    g.lineTo(x - b * 0.02, ly - b * 0.02);
+    g.closePath();
+    g.fill();
+    g.fillStyle = '#c3cbcf';
+    g.beginPath();
+    g.moveTo(x - b * 0.06, top);
+    g.lineTo(x - b * 0.02, ly - b * 0.02);
+    g.lineTo(x + b * 0.18, ly + b * 0.05);
+    g.lineTo(x - b * 0.06 + (b * 1.06) * sn, ly);
+    g.closePath();
+    g.fill();
+  }
+  // Pine forest: clusters of small dark triangles.
+  for (let i = 0; i < 16; i++) {
+    const fx = hash(i * 11 + 205) * 0.96 + 0.02;
+    const fy = 0.3 + hash(i * 13 + 206) * 0.5;
+    const [x, y] = P(fx, fy);
+    const n = 10 + Math.floor(hash(i * 17 + 207) * 10);
+    for (let k = 0; k < n; k++) {
+      const a = hash(i * 100 + k + 300) * TAU;
+      const d = Math.sqrt(hash(i * 100 + k + 350)) * unit * 0.045;
+      const s = unit * (0.008 + hash(i * 100 + k + 377) * 0.006);
+      const px = x + Math.cos(a) * d;
+      const py = y + Math.sin(a) * d * 0.8;
+      g.fillStyle = 'rgba(16,30,22,0.5)';
+      g.beginPath();
+      g.moveTo(px + s * 0.3, py - s * 1.1 + s * 0.3);
+      g.lineTo(px + s * 0.75 + s * 0.3, py + s * 0.6 + s * 0.3);
+      g.lineTo(px - s * 0.75 + s * 0.3, py + s * 0.6 + s * 0.3);
+      g.closePath();
+      g.fill();
+      g.fillStyle = 'rgba(34,62,44,0.92)';
+      g.beginPath();
+      g.moveTo(px, py - s * 1.1);
+      g.lineTo(px + s * 0.75, py + s * 0.6);
+      g.lineTo(px - s * 0.75, py + s * 0.6);
+      g.closePath();
+      g.fill();
+    }
+  }
+  // One river from the highlands north to the sea, through the eastern fjord.
+  g.beginPath();
+  for (let i = 0; i <= 40; i++) {
+    const fy = 1.02 - (i / 40) * 0.8;
+    const fx = 0.74 + (noise1(fy * 6, 71) - 0.5) * 0.16 * Math.min(1, (fy - 0.2) * 3) + Math.sin(fy * 15) * 0.01;
+    const [x, y] = P(fx, fy);
+    if (i) g.lineTo(x, y);
+    else g.moveTo(x, y);
+  }
+  g.strokeStyle = 'rgba(26,52,66,0.5)';
+  g.lineWidth = unit * 0.011;
+  g.lineCap = 'round';
+  g.stroke();
+  g.strokeStyle = '#5b93ac';
+  g.lineWidth = unit * 0.006;
+  g.stroke();
+  g.restore();
 }
 
 function haloText(ctx: Ctx, text: string, x: number, y: number, size: number, colour: string, weight = 700) {
@@ -298,16 +528,20 @@ export function drawCampaignMap(ctx: Ctx, w: number, h: number, nodes: CampaignM
   const m = ctx.getTransform();
   const res = Math.max(1, Math.min(3, Math.hypot(m.a, m.b)));
   ctx.save();
-  ctx.drawImage(paintTerrain(w, h, res), 0, 0, w, h);
+  const sorted = [...nodes].sort((a, b) => a.order - b.order);
+  // The theatre follows the missions shown: act two's northern map for missions 9 and on.
+  const act = campaignActOf(sorted.length ? sorted[0].order : 1);
+  ctx.drawImage(paintTerrain(w, h, res, act), 0, 0, w, h);
   const P = (fx: number, fy: number) => toScreen(fx, fy, w, h);
   const unit = Math.min(w, h);
   const tall = portrait(w, h);
 
   // Where the front stands: just past the furthest mission won.
-  const sorted = [...nodes].sort((a, b) => a.order - b.order);
   let furthest = 0;
   for (const n of sorted) if (n.state === 'won') furthest = Math.max(furthest, n.order);
-  const lastOrder = sorted.length ? sorted[sorted.length - 1].order : ROUTE_LENGTH;
+  const lastOrder = sorted.length ? sorted[sorted.length - 1].order : ACTS[act].first + ACTS[act].length - 1;
+  // Nothing won in this act yet: the front starts at its west edge.
+  if (furthest < ACTS[act].first) furthest = 0;
   const frontFx = furthest >= lastOrder ? 1.08 : furthest === 0 ? (tall ? 0.065 : 0.035) : (mapFx(furthest, tall) + mapFx(furthest + 1, tall)) / 2;
   const frontAt = (fy: number) => frontFx + (noise1(fy * 7, 41) - 0.5) * 0.05 + Math.sin(fy * 23 + t * 0.6) * 0.003;
 
@@ -327,7 +561,7 @@ export function drawCampaignMap(ctx: Ctx, w: number, h: number, nodes: CampaignM
     ctx.closePath();
   };
   ctx.save();
-  traceLand(ctx, w, h);
+  traceLand(ctx, w, h, act);
   ctx.clip();
   ctx.globalAlpha = 0.2;
   ctx.fillStyle = TEAM[0].main;
@@ -388,8 +622,9 @@ export function drawCampaignMap(ctx: Ctx, w: number, h: number, nodes: CampaignM
   const nameSize = Math.max(11, Math.min(22, unit * 0.04));
   ctx.globalAlpha = 0.75;
   {
-    const [x0, y0] = P(0.05, 0.08);
-    const [x1, y1] = P(0.95, 0.08);
+    const nameFy = act === 1 ? 0.95 : 0.08;
+    const [x0, y0] = P(0.05, nameFy);
+    const [x1, y1] = P(0.95, nameFy);
     ctx.save();
     ctx.font = `800 ${nameSize}px system-ui, sans-serif`;
     ctx.textBaseline = 'middle';

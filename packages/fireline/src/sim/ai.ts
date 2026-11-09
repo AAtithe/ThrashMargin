@@ -1,6 +1,6 @@
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
-import { buildingCentre, dist, distToBuilding, doorTile, dockTile, nearestPassable, occupancy, passable, laneRow } from './grid';
-import { idx, inBounds } from './map';
+import { buildingCentre, dist, distToBuilding, doorTile, dockTile, frontDir, nearestPassable, occupancy, onMap, passable, laneRow, tileAt } from './grid';
+import { airPlan } from './aiAir';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
 import {
@@ -8,8 +8,6 @@ import {
   BUILDINGS,
   DAMAGE_VS,
   DIFFICULTIES,
-  MAP_H,
-  MAP_W,
   MISSILE_DAMAGE,
   POWERS,
   SELL_RETURN,
@@ -22,6 +20,8 @@ import {
   type UnitKind,
 } from './rules';
 import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlocked } from './state';
+import { isAlly, isEnemy } from './sides';
+import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 
 /**
@@ -172,7 +172,7 @@ export type AiFn = (s: GameState, owner: Owner) => void;
  * first-build AI), to measure this one against it. Nothing in the game calls it, and with no
  * hook set (the default) both sides run the commander below.
  */
-const hooks: [AiFn | null, AiFn | null] = [null, null];
+const hooks: (AiFn | null)[] = [null, null, null, null];
 export function setAutopilotAi(fn: AiFn | null, owner: Owner = 0): void {
   hooks[owner] = fn;
 }
@@ -196,9 +196,9 @@ interface Pt {
   y: number;
 }
 
-/** How the computer behaves on this side: a mission's mode for side 1, 'normal' otherwise. */
+/** How the computer behaves on this side: a mission's mode for every computer side, 'normal' otherwise. */
 export function missionMode(s: GameState, owner: Owner): AiMode {
-  return owner === 1 && s.mission ? s.mission.ai : 'normal';
+  return owner !== 0 && s.mission ? s.mission.ai : 'normal';
 }
 
 /**
@@ -240,10 +240,16 @@ function commander(s: GameState, owner: Owner): void {
   // Walls are not structures: never the anchor, never a wave's target.
   const anchor = mine.find(b => b.kind === 'hq') ?? mine.find(isStructure) ?? mine[0];
   const home = buildingCentre(anchor);
-  const enemy = s.buildings.filter(b => b.owner !== owner && isStructure(b));
-  const enemyHome = enemy.length ? buildingCentre(enemy.find(b => b.kind === 'hq') ?? enemy[0]) : { x: MAP_W / 2, y: MAP_H / 2 };
+  // Everything on another team is the enemy. With several enemies the lists hold all of them and
+  // the first enemy Command Yard stands for "their base".
+  // round4:B begin. Choosing among several enemies (fireline-round4-design.md, workstream B) replaces
+  // the lines from here to "round4:B end", keeping the names enemy, enemyHome, units and foes.
+  // With several enemies, `enemy` and `enemyHome` are the chosen enemy's (chooseEnemy, aiSides.ts);
+  // `foes` is every enemy's units, so defence still answers anyone. One enemy: as before.
+  const { enemy, enemyHome } = enemyLists(s, owner, chooseEnemy(s, owner));
   const units = s.units.filter(u => u.owner === owner);
-  const foes = s.units.filter(u => u.owner !== owner);
+  const foes = s.units.filter(u => isEnemy(s, owner, u.owner));
+  // round4:B end.
   const p = s.players[owner];
   const vq = p.queues.vehicle;
   const iq = p.queues.infantry;
@@ -272,7 +278,7 @@ function commander(s: GameState, owner: Owner): void {
     let held = false;
     if (want && adv && isExtra(s, owner, want, d)) {
       const armed = units.filter(u => UNITS[u.kind].weapon).length;
-      const foeArmy = s.units.filter(u => u.owner !== owner && UNITS[u.kind].weapon).length;
+      const foeArmy = s.units.filter(u => isEnemy(s, owner, u.owner) && UNITS[u.kind].weapon).length;
       if (armed < Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9)) {
         want = null;
         held = true;
@@ -388,6 +394,10 @@ function commander(s: GameState, owner: Owner): void {
     }
   }
 
+  // round4:A. Air units, anti-air and research (fireline-round4-design.md, workstream A): one call
+  // into aiAir.ts goes on the line below this comment, and nothing else in this function changes.
+  airPlan(s, owner, home, enemy, foes);
+
   // Producers send new units to a staging point on the side facing the enemy.
   const stage = openGround(s, owner, toward(home, enemyHome, 10));
   for (const b of standing) {
@@ -434,7 +444,7 @@ function commander(s: GameState, owner: Owner): void {
     if (back.length) doMove(s, owner, back, retreatTo.x, retreatTo.y, false);
     mend.forEach((u, i) => {
       const k = bayTiles[(u.id + i) % bayTiles.length];
-      doMove(s, owner, [u.id], (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5, false);
+      doMove(s, owner, [u.id], (k % s.mapW) + 0.5, ((k / s.mapW) | 0) + 0.5, false);
     });
     raidIds = raidIds.filter(id => inRaid.has(id));
     if (mend.length) waveIds = waveIds.filter(id => inWave.has(id));
@@ -643,6 +653,10 @@ function commander(s: GameState, owner: Owner): void {
     useStrikes(s, owner, t, home, enemy, foes, mem.wavePhase === 2 ? waveIds.map(id => alive.get(id)!) : []);
   }
 
+  // round4:B. Allies (fireline-round4-design.md, workstream B): one call into aiSides.ts goes on the
+  // line below this comment.
+  alliedPlan(s, owner, home, stage, waveIds.concat(raidIds), !!threat);
+
   mem.waveIds = waveIds;
   mem.raidIds = raidIds;
 }
@@ -803,14 +817,14 @@ function toward(a: Pt, b: Pt, by: number): Pt {
 
 /**
  * The nearest point to `p` with clear ground two tiles all round: somewhere an army can wait.
- * Side 1 searches in the mirrored order, so on the point-symmetric map both sides choose the
+ * A side in the top half (side 1) searches in the mirrored order, so on the point-symmetric map both sides choose the
  * mirror image of each other's spot rather than both leaning top-left.
  */
 function openGround(s: GameState, owner: Owner, p: Pt): Pt {
   const occ = occupancy(s);
   const cx = Math.floor(p.x);
   const cy = Math.floor(p.y);
-  const sign = owner === 1 ? -1 : 1;
+  const sign = frontDir(s, owner);
   for (let r = 0; r <= 10; r++)
     for (let iy = -r; iy <= r; iy++)
       for (let ix = -r; ix <= r; ix++) {
@@ -929,13 +943,13 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
     let bestD = Infinity;
     for (let k = 0; k < s.ore.length; k++) {
       if (s.ore[k] <= 0) continue;
-      const d = dist(home.x, home.y, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5);
+      const d = dist(home.x, home.y, (k % s.mapW) + 0.5, ((k / s.mapW) | 0) + 0.5);
       if (d < bestD) {
         bestD = d;
         best = k;
       }
     }
-    if (best >= 0) focus = toward(home, { x: (best % MAP_W) + 0.5, y: ((best / MAP_W) | 0) + 0.5 }, Math.min(bestD * 0.6, 7));
+    if (best >= 0) focus = toward(home, { x: (best % s.mapW) + 0.5, y: ((best / s.mapW) | 0) + 0.5 }, Math.min(bestD * 0.6, 7));
   }
   const occ = occupancy(s);
   const candidates: [number, number, number][] = [];
@@ -943,28 +957,28 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
   const fy = Math.round(focus.y);
   for (let y = fy - 12; y <= fy + 12; y++)
     for (let x = fx - 12; x <= fx + 12; x++) {
-      if (!inBounds(x, y)) continue;
+      if (!onMap(s, x, y)) continue;
       const cx = x + spec.w / 2;
       const cy = y + spec.h / 2;
       candidates.push([x, y, (cx - focus.x) ** 2 + (cy - focus.y) ** 2]);
     }
   // Ties broken in mirrored order for side 1, so both sides build mirror-image bases.
-  const sign = owner === 1 ? -1 : 1;
+  const sign = frontDir(s, owner);
   candidates.sort((a, b) => a[2] - b[2] || sign * (a[1] - b[1]) || sign * (a[0] - b[0]));
   for (const [x, y] of candidates) {
     if (placementProblem(s, owner, kind, x, y, occ)) continue;
     let clear = true;
     for (let ty = y - 1; ty <= y + spec.h && clear; ty++)
       for (let tx = x - 1; tx <= x + spec.w; tx++) {
-        if (inBounds(tx, ty) && occ[idx(tx, ty)]) {
+        if (onMap(s, tx, ty) && occ[tileAt(s, tx, ty)]) {
           clear = false;
           break;
         }
       }
     // Leave the row below clear as well, where units come out of barracks and factories.
-    const lane = laneRow(owner, y, spec.h);
-    if (clear && inBounds(x, lane)) {
-      for (let tx = x - 1; tx <= x + spec.w; tx++) if (inBounds(tx, lane) && occ[idx(tx, lane)]) clear = false;
+    const lane = laneRow(s, owner, y, spec.h);
+    if (clear && onMap(s, x, lane)) {
+      for (let tx = x - 1; tx <= x + spec.w; tx++) if (onMap(s, tx, lane) && occ[tileAt(s, tx, lane)]) clear = false;
     }
     if (clear) return { x, y };
   }
@@ -1070,7 +1084,7 @@ function bayStands(s: GameState, bay: Building): number[] {
   for (let y = bay.y - 1; y <= bay.y + spec.h; y++)
     for (let x = bay.x - 1; x <= bay.x + spec.w; x++) {
       if (x >= bay.x && x < bay.x + spec.w && y >= bay.y && y < bay.y + spec.h) continue;
-      if (passable(s, occ, x, y)) out.push(idx(x, y));
+      if (passable(s, occ, x, y)) out.push(tileAt(s, x, y));
     }
   return out;
 }
@@ -1078,7 +1092,7 @@ function bayStands(s: GameState, bay: Building): number[] {
 /** Units within reach of an enemy missile's blast walk out of it while it is in the air. */
 function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
   for (const m of s.projectiles) {
-    if (m.weapon !== 'missile' || m.owner === owner) continue;
+    if (m.weapon !== 'missile' || isAlly(s, m.owner, owner)) continue;
     const r = m.splash + 1;
     for (const u of units) {
       if (u.kind === 'hauler' || u.order.type === 'harvest') continue;
@@ -1086,14 +1100,14 @@ function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
       if (d >= r) continue;
       if (u.order.type === 'move' && dist(u.order.x, u.order.y, m.toX, m.toY) >= r) continue;
       const away = d > 0.1 ? { x: m.toX + ((u.x - m.toX) / d) * (r + 1.5), y: m.toY + ((u.y - m.toY) / d) * (r + 1.5) } : { x: u.x + r + 1.5, y: u.y };
-      const x = Math.max(0.5, Math.min(MAP_W - 0.5, away.x));
-      const y = Math.max(0.5, Math.min(MAP_H - 0.5, away.y));
+      const x = Math.max(0.5, Math.min(s.mapW - 0.5, away.x));
+      const y = Math.max(0.5, Math.min(s.mapH - 0.5, away.y));
       doMove(s, owner, [u.id], x, y, false);
     }
   }
 }
 
-type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building';
+type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
 
 /**
  * The opponent's things a blast at (x, y) would hurt, in credits' worth destroyed: each one's cost
@@ -1200,8 +1214,8 @@ export function wallSpot(s: GameState, owner: Owner, home: Pt, enemyHome: Pt): P
   if (start < 0 || goal < 0) return null;
   const needed: number[] = [goal];
   for (const b of own) {
-    const pad = b.kind === 'barracks' || b.kind === 'factory' ? doorTile(b) : b.kind === 'refinery' ? dockTile(b) : null;
-    if (pad && passable(s, occ, pad.x, pad.y)) needed.push(idx(pad.x, pad.y));
+    const pad = b.kind === 'barracks' || b.kind === 'factory' ? doorTile(s, b) : b.kind === 'refinery' ? dockTile(s, b) : null;
+    if (pad && passable(s, occ, pad.x, pad.y)) needed.push(tileAt(s, pad.x, pad.y));
   }
   const before = walk(s, occ, start, -1);
   if (before[goal] < 0) return null;
@@ -1214,19 +1228,19 @@ export function wallSpot(s: GameState, owner: Owner, home: Pt, enemyHome: Pt): P
     for (const k of [0, -1, 1, -2, 2]) {
       const x = Math.floor(f.x + px * k);
       const y = Math.floor(f.y + py * k);
-      if (!inBounds(x, y) || placementProblem(s, owner, 'wall', x, y, occ)) continue;
+      if (!onMap(s, x, y) || placementProblem(s, owner, 'wall', x, y, occ)) continue;
       // A tile clear of every structure (walls may touch walls).
       let clear = true;
       for (let ty = y - 1; ty <= y + 1 && clear; ty++)
         for (let tx = x - 1; tx <= x + 1; tx++) {
-          const o = inBounds(tx, ty) ? occ[idx(tx, ty)] : 0;
+          const o = onMap(s, tx, ty) ? occ[tileAt(s, tx, ty)] : 0;
           if (o && !s.buildings.some(b => b.id === o && BUILDINGS[b.kind].wall)) {
             clear = false;
             break;
           }
         }
-      if (!clear || needed.includes(idx(x, y))) continue;
-      const after = walk(s, occ, start, idx(x, y));
+      if (!clear || needed.includes(tileAt(s, x, y))) continue;
+      const after = walk(s, occ, start, tileAt(s, x, y));
       if (needed.every(n => after[n] >= 0) && after[goal] <= before[goal] + 2) return { x, y };
     }
   }
@@ -1242,21 +1256,21 @@ const STEPS: [number, number][] = [
 
 /** Steps from `start` to every tile over open ground (4-way), with `blocked` also closed; -1 where unreachable. */
 function walk(s: GameState, occ: Int32Array, start: number, blocked: number): Int32Array {
-  const steps = new Int32Array(MAP_W * MAP_H).fill(-1);
-  const queue = new Int32Array(MAP_W * MAP_H);
+  const steps = new Int32Array(s.mapW * s.mapH).fill(-1);
+  const queue = new Int32Array(s.mapW * s.mapH);
   let head = 0;
   let tail = 0;
   steps[start] = 0;
   queue[tail++] = start;
   while (head < tail) {
     const k = queue[head++];
-    const x = k % MAP_W;
-    const y = (k / MAP_W) | 0;
+    const x = k % s.mapW;
+    const y = (k / s.mapW) | 0;
     for (const [dx, dy] of STEPS) {
       const nx = x + dx;
       const ny = y + dy;
       if (!passable(s, occ, nx, ny)) continue;
-      const n = idx(nx, ny);
+      const n = tileAt(s, nx, ny);
       if (n === blocked || steps[n] >= 0) continue;
       steps[n] = steps[k] + 1;
       queue[tail++] = n;

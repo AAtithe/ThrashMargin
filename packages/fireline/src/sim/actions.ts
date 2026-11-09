@@ -23,6 +23,7 @@ import {
   doStop,
 } from './commands';
 import { abilityProblem, doAbility, doPower, powerProblem } from './mission';
+import { canCancelResearch, canResearch, doCancelResearch, doResearch } from './research';
 import { cloneState } from './state';
 import { step } from './tick';
 import type { GameAction, GameState } from './types';
@@ -126,6 +127,18 @@ export function processAction(s: GameState, a: GameAction): GameState {
       if (typeof a.power !== 'string' || powerProblem(s, 0, a.power, a.x, a.y) !== null) return s;
       const c = cloneState(s);
       doPower(c, 0, a.power, a.x, a.y);
+      return c;
+    }
+    case 'research': {
+      if (!canResearch(s, 0, a.upgrade)) return s;
+      const c = cloneState(s);
+      doResearch(c, 0, a.upgrade);
+      return c;
+    }
+    case 'cancelResearch': {
+      if (!canCancelResearch(s, 0)) return s;
+      const c = cloneState(s);
+      doCancelResearch(c, 0);
       return c;
     }
     default:

@@ -7,7 +7,7 @@ round is being built by five parallel agents, one per workstream, each owning it
 Status key: [ ] not started, [~] in progress, [x] done.
 
 Round 1 (2026-11-08): all five workstreams built and integrated. Round 2 (campaign): built and integrated.
-Round 3 (freeplay depth, 2026-11-09): built and integrated.
+Round 3 (freeplay depth, 2026-11-09): built and integrated. Round 4: foundation in, three workstreams under way.
 
 ## A. Battlefield effects (renderer)
 
@@ -76,6 +76,27 @@ mission AI once the round-1 opponent work lands.
 - [x] Skirmish powers from structures: recon (uplink), barrage (Tech Centre), missile (Strike Command).
 - [x] Lobby setup (map, tech, credits, ore), validated on the server; saves list shows the map.
 - [x] Both commanders build and use the new tech.
+
+## H. Round 4 (contract: `fireline-round4-design.md`)
+
+- [x] Foundation: 2, 3 or 4 sides on teams, map size per battle, side colours (two-sided play unchanged).
+- [x] A. Air power and research: Helipad, Flak Cannon, Research Lab; Gunship, Bomber, Flak Track, Skyhunter; five upgrades.
+  - [x] Aircraft fly straight over anything, carry ammunition and rearm at their Helipad (two per pad); a Bomber's run is a line of six bombs.
+  - [x] Only bullets (at about a third) and anti-air reach the air; anti-air never fires at the ground; splash keeps to its own layer.
+  - [x] Research: refining, plating, engines, calibration, air frames, paid in full, refunded on cancel, half speed on low power.
+  - [x] The computer: a Lab and Helipads once its base stands, gunship and bomber strikes, research by difficulty, anti-air only against aircraft.
+  - [x] Air tab, Research block, hotkeys B N D for the longer Structures list, aircraft art with shadows, rotor and contrails.
+  - [ ] Aircraft are not mended anywhere (no pad repair); a damaged gunship stays damaged.
+- [x] B. Bigger battles: 3 and 4 sides, free for all or teams, fair maps, several-enemy commanders.
+  - [x] Seat fairness measured: 4 sides free for all within two standard errors over 120 seeds.
+  - [x] Two against one balanced by the lone side's starting credits (48% for the pair over 60 seeds).
+  - [ ] Side 3 is out first more often than the others in a free for all (38 of 120, against 30 expected).
+  - [ ] The camera opens on side 0's base only; nothing yet points at where the allies are.
+- [x] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
+  - [x] Objectives escort, destroyWithin and holdZone with reset; structure powers in a mission.
+  - [x] Both acts on the campaign screen; act two's northern theatre.
+  - [x] A no-base mission opens on the player's units (the opening camera looked only for a Command Yard).
+  - [x] Air in missions 11, 12 and 14 (integration).
 
 ## Found along the way
 

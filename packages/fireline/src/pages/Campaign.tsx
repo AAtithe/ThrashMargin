@@ -5,6 +5,7 @@ import { PERKS, RANKS, applyOutcome, buyPerk, heroesFor, missionContext, mission
 import type { CampaignSave, CampaignState, PerkBranch, PerkSpec } from '../campaign/types';
 import { HeroPortrait, RankInsignia } from '../components/CampaignArt';
 import { drawMap, hasCampaignArt, nodeHitRadius, nodePosition, type CampaignMapNode } from '../components/campaignArtBridge';
+import { campaignActOf } from '../game/campaignArt';
 import { clockOf, heroName, levelProgress } from '../components/CampaignHud';
 import ThemeToggle from '../components/ThemeToggle';
 import { createMissionState, missionOutcome, objectiveLabel } from '../sim/mission';
@@ -38,6 +39,19 @@ import { Battle, chromeBtn } from './GameScreen';
  */
 
 type Panel = null | 'commander' | 'heroes' | { briefing: string };
+
+/** The campaign's two acts, each on its own theatre map (see campaignArt.ts). */
+const ACT_NAMES = [
+  { title: 'Act one', place: 'The Southern Coast' },
+  { title: 'Act two', place: 'The Northern Front' },
+] as const;
+
+/** The act of the next mission not yet won (the last act once all are won), or act one while act two is shut. */
+function openingAct(c: CampaignState, missions: MissionSpec[], actTwoOpen: boolean): 0 | 1 {
+  if (!actTwoOpen) return 0;
+  const next = missions.find(m => !c.missions[m.id]?.won);
+  return next ? campaignActOf(next.order) : 1;
+}
 
 const kindName = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
 const maxStars = (spec: MissionSpec) => 1 + spec.bonus.length;
@@ -193,6 +207,13 @@ function CampaignMap({
   const inBattle = cs.battle?.mission ? missionById(cs.battle.mission.id) : undefined;
   const briefing = panel && typeof panel === 'object' ? missionById(panel.briefing) : undefined;
   const won = nodes.filter(n => n.state === 'won').length;
+  // Act two opens with its first mission; until then only act one is shown.
+  const firstOfActTwo = missions.find(m => campaignActOf(m.order) === 1);
+  const actTwoOpen = !!firstOfActTwo && missionUnlocked(c, firstOfActTwo.id);
+  const [chosenAct, setAct] = useState<0 | 1>(() => openingAct(c, missions, actTwoOpen));
+  const act: 0 | 1 = actTwoOpen ? chosenAct : 0;
+  const shown = missions.map((m, i) => ({ m, n: nodes[i] })).filter(x => campaignActOf(x.m.order) === act);
+  const shownNodes = shown.map(x => x.n);
 
   return (
     <div className="fl-camp" data-testid="campaign-map">
@@ -253,10 +274,34 @@ function CampaignMap({
             <p className="fl-camp-empty">The missions are still being written. Check back soon.</p>
           ) : (
             <>
-              <TheatreCanvas nodes={nodes} onOpen={id => setPanel({ briefing: id })} selected={briefing?.id} />
+              {actTwoOpen && (
+                <div className="fl-acts" role="tablist" aria-label="Campaign acts" data-testid="act-tabs">
+                  {ACT_NAMES.map((a, i) => {
+                    const inAct = missions.filter(m => campaignActOf(m.order) === i);
+                    const wonInAct = inAct.filter(m => c.missions[m.id]?.won).length;
+                    return (
+                      <button
+                        key={a.title}
+                        type="button"
+                        role="tab"
+                        aria-selected={act === i}
+                        className="fl-act-tab"
+                        data-on={act === i ? '1' : '0'}
+                        data-testid={`act-${i + 1}`}
+                        onClick={() => setAct(i as 0 | 1)}
+                      >
+                        <strong>{a.title}</strong>
+                        <span>
+                          {a.place} · {wonInAct} of {inAct.length}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <TheatreCanvas nodes={shownNodes} act={act} onOpen={id => setPanel({ briefing: id })} selected={briefing?.id} />
               <ol className="fl-missions" data-testid="mission-list">
-                {missions.map((m, i) => {
-                  const n = nodes[i];
+                {shown.map(({ m, n }) => {
                   return (
                     <li key={m.id} data-state={n.state}>
                       <button
@@ -303,7 +348,7 @@ function CampaignMap({
   );
 }
 
-function TheatreCanvas({ nodes, onOpen, selected }: { nodes: CampaignMapNode[]; onOpen: (id: string) => void; selected?: string }) {
+function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNode[]; act: 0 | 1; onOpen: (id: string) => void; selected?: string }) {
   const wrap = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -358,7 +403,7 @@ function TheatreCanvas({ nodes, onOpen, selected }: { nodes: CampaignMapNode[]; 
 
   const hovered = nodes.find(n => n.id === hover);
   return (
-    <div ref={wrap} className="fl-theatre" data-art={hasCampaignArt ? 'campaign' : 'stand-in'}>
+    <div ref={wrap} className="fl-theatre" data-art={hasCampaignArt ? 'campaign' : 'stand-in'} data-act={act + 1}>
       <canvas
         ref={ref}
         data-testid="campaign-canvas"
