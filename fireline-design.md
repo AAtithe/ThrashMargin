@@ -552,3 +552,23 @@ about 54 a second together and he killed one every two seconds, so at 160 he los
 His squad is four riflemen and two rocketeers (was three and two). campaign-check now plays the
 mission by script straight at the outpost and round its flank, and both must win.
 
+### 2026-11-09: Round 5 contract and groundwork
+
+The player asked for the tech tree in a pop-out window, repair trucks, larger maps and forward
+bases, for much longer games with more tech. That is four parallel workstreams, set out in
+`fireline-round5-design.md`: A the build window (interface only), B larger maps and long games, C
+engineering vehicles (the Repair Truck, and the Forward Base Truck that deploys into a Field Yard),
+D neutral sites (Oil Derrick, Field Hospital, Comms Relay) and tier three (Prototype Works,
+Fortress, Railgun Tank, Stealth Tank).
+
+The groundwork committed with the contract changes nothing in play: the build lists are one table
+in `rules.ts` (`MENUS`), a queue may be worked by more than its producer (`ALSO_PRODUCES`, read by
+`producerFor` and the new `hasProducer`), the setup carries an optional map `size` and `sites`
+switch (repaired by `normaliseSetup`; old setups read as standard size, no sites), `GameState`
+carries an optional list of neutral `Site`s (not structures, so `sides.ts`, targeting and victory
+are untouched), the reducer knows the `deploy` and `undeploy` actions by name and refuses both
+until workstream C, a selected unit or structure can offer its own commands through
+`src/game/selectionActions.ts` (a button each, and F in a skirmish), and marker comments mark every
+place a workstream adds lines to a shared file. Every printed line of `npm run drive:fire` is the
+same before and after; the assertion count rose by one (the new `'rail'` weapon kind's flight time).
+

@@ -306,6 +306,10 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
     case 'bomber':
       drawBomber(ctx, team, pose);
       break;
+    // round5:C begin. Engineering vehicles (fireline-round5-design.md): its units' cases, appended here.
+    // round5:C end.
+    // round5:D begin. Tier three (fireline-round5-design.md): its units' cases, appended here.
+    // round5:D end.
   }
   ctx.restore();
   ctx.globalAlpha = baseAlpha;
@@ -1616,6 +1620,10 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
     case 'researchlab':
       drawResearchLab(ctx, w, h, team, pose);
       break;
+    // round5:C begin. Engineering vehicles (fireline-round5-design.md): its structures' cases, appended here.
+    // round5:C end.
+    // round5:D begin. Tier three (fireline-round5-design.md): its structures' cases, appended here.
+    // round5:D end.
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
   if (pose.rise < 1) {
@@ -4013,3 +4021,10 @@ function drawResearchLab(ctx: Ctx, w: number, h: number, team: Team, p: Building
   ctx.stroke();
   lamp(ctx, w - 8, 6, on, work ? '#7dff8a' : '#ffb43a', p.t, work ? 8 : 2, work);
 }
+
+// round5:C begin. Engineering vehicles (fireline-round5-design.md): its drawing functions, appended here.
+// round5:C end.
+
+// round5:D begin. Neutral sites and tier three (fireline-round5-design.md): its drawing functions (drawSite
+// among them), appended here.
+// round5:D end.

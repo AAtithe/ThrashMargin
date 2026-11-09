@@ -311,6 +311,9 @@ export class Renderer {
       const d = dockTile(cur, b);
       drawDock(ctx, d.x * TILE, d.y * TILE);
     }
+    // round5:D begin. Neutral sites (fireline-round5-design.md): one call drawing every seen site
+    // (drawSite in art.ts) goes under this line, before the structures.
+    // round5:D end.
     for (const b of buildings) {
       const spec = BUILDINGS[b.kind];
       const px = b.x * TILE;

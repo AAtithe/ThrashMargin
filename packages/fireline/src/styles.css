@@ -1863,3 +1863,16 @@ kbd {
   color: var(--ui-bad);
   font-weight: 700;
 }
+
+/*
+ * Round 5 (fireline-round5-design.md). As in round 4: each workstream's tokens and rules go under
+ * its own heading below, as a light :root block and a :root[data-theme="dark"] block of its own.
+ */
+
+/* round5:A. The build window. */
+
+/* round5:B. Larger maps and long games. */
+
+/* round5:C. Engineering vehicles. */
+
+/* round5:D. Neutral sites and tier three. */

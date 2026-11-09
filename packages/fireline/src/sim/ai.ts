@@ -220,7 +220,10 @@ function tuned(d: DifficultySpec, mode: AiMode): DifficultySpec {
 function commander(s: GameState, owner: Owner): void {
   const diff = aiDifficulty(s, owner);
   const mode = missionMode(s, owner);
+  // round5:B begin. Larger maps (fireline-round5-design.md): B may replace the line below with one
+  // that scales the numbers for the map's size (a function in aiScale.ts); 'standard' maps unchanged.
   const d = tuned(DIFFICULTIES[diff], mode);
+  // round5:B end.
   const t = TACTICS[diff];
   const mem = s.ai[owner];
   normalise(mem);
@@ -404,6 +407,13 @@ function commander(s: GameState, owner: Owner): void {
   // round4:A. Air units, anti-air and research (fireline-round4-design.md, workstream A): one call
   // into aiAir.ts goes on the line below this comment, and nothing else in this function changes.
   airPlan(s, owner, home, enemy, foes);
+
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into aiEngineering.ts
+  // goes on the line below this comment, and nothing else in this function changes.
+  // round5:C end.
+  // round5:D begin. Neutral sites and tier three (fireline-round5-design.md): one call into
+  // aiSites.ts goes on the line below this comment, and nothing else in this function changes.
+  // round5:D end.
 
   // Producers send new units to a staging point on the side facing the enemy.
   const stage = openGround(s, owner, toward(home, enemyHome, 10));
