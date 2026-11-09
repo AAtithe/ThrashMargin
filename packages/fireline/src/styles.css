@@ -1668,6 +1668,124 @@ kbd {
  */
 
 /* ---- Round 4, workstream A: air power and research ---- */
+:root {
+  /* The Research block at the foot of the Structures list. */
+  --ui-research-bg: rgba(31, 124, 135, 0.07);
+  --ui-research-rule: #a9c9cc;
+  --ui-research-fill: #1f7c87;
+  --ui-research-track: rgba(20, 28, 24, 0.12);
+  --ui-research-done: #2f7d34;
+  --ui-research-button: #e3ece9;
+}
+:root[data-theme="dark"] {
+  --ui-research-bg: rgba(79, 179, 191, 0.07);
+  --ui-research-rule: #2c4a4f;
+  --ui-research-fill: #4fb3bf;
+  --ui-research-track: rgba(255, 255, 255, 0.08);
+  --ui-research-done: #6fbf73;
+  --ui-research-button: #22302f;
+}
+.fl-research {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--ui-research-rule);
+  border-radius: 4px;
+  background: var(--ui-research-bg);
+}
+.fl-research-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.66rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-text-soft);
+}
+.fl-research-slow {
+  font-size: 0.6rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ui-warn);
+}
+.fl-research-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 5px;
+  border-top: 1px solid var(--ui-research-rule);
+  font-size: 0.7rem;
+  color: var(--ui-text);
+}
+.fl-research-row[data-state="done"] {
+  color: var(--ui-text-faint);
+}
+.fl-research-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.fl-research-blurb {
+  font-size: 0.64rem;
+  line-height: 1.35;
+  color: var(--ui-text-soft);
+}
+.fl-research-time {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--ui-text-faint);
+}
+.fl-research-why {
+  color: var(--ui-text-faint);
+}
+.fl-research-done {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-research-done);
+}
+.fl-research-btn {
+  min-width: 52px;
+  padding: 2px 8px;
+  border: 1px solid var(--ui-research-rule);
+  border-radius: 3px;
+  background: var(--ui-research-button);
+  color: var(--ui-text);
+  font: inherit;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.66rem;
+  cursor: pointer;
+}
+.fl-research-btn:hover:not(:disabled) {
+  border-color: var(--ui-research-fill);
+}
+.fl-research-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.fl-research-btn[data-kind="cancel"] {
+  font-family: inherit;
+  color: var(--ui-bad);
+}
+.fl-research-bar {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ui-research-track);
+  overflow: hidden;
+}
+.fl-research-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ui-research-fill);
+}
+.fl-air-room {
+  margin: 0;
+  font-size: 0.68rem;
+  color: var(--ui-text-faint);
+}
 
 /* ---- Round 4, workstream B: bigger battles ---- */
 

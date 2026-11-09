@@ -6,11 +6,13 @@ import { HERO_KEYS, HeroBar, heroName, ObjectivesPanel, PowerBar, SkirmishPowerB
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import MotionToggle from '../components/MotionToggle';
 import ThemeToggle from '../components/ThemeToggle';
-import { TILE } from '../game/art';
+import { AIR_LIFT, TILE } from '../game/art';
 import { useLayout } from '../game/layout';
 import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
-import { BUILD_KEYS, BuildPanel, SelectionPanel, TAB_ORDER, menuFor, pressBuild, type Tab } from '../game/Sidebar';
+import { BUILD_KEYS, BuildPanel, SelectionPanel, menuFor, pressBuild, tabsFor, type Tab } from '../game/Sidebar';
+import { airRoom } from '../sim/air';
+import { researchProblem } from '../sim/research';
 import { sound } from '../game/sound';
 import { statusOf, useSaves } from '../hooks/useSaves';
 import CampaignFlow from './Campaign';
@@ -278,12 +280,19 @@ export function Battle({
             showToast(`Needs a ${needs.filter(r => !s.buildings.some(b => b.owner === 0 && b.kind === r)).map(r => BUILDINGS[r].name).join(' and a ')}`);
           } else if (a.category === 'building' && q.length) showToast('One structure at a time');
           else if (q.length >= MAX_QUEUE) showToast('Queue full');
+          else if (a.category === 'air' && airRoom(s, 0) <= 0) showToast('Every Helipad is full: build another');
           else if (s.players[0].credits < costOf(a.kind)) showToast('Insufficient funds');
+        }
+        if (a.type === 'research') {
+          sound.play('denied');
+          const why = researchProblem(cur.current, 0, a.upgrade);
+          if (why === 'Not enough credits') showToast('Insufficient funds');
+          else if (why) showToast(why);
         }
         return false;
       }
       cur.current = next;
-      if (a.type === 'queue' || a.type === 'cancel') sound.play('queue');
+      if (a.type === 'queue' || a.type === 'cancel' || a.type === 'research' || a.type === 'cancelResearch') sound.play('queue');
       else if (a.type === 'place') sound.play('place');
       else if (a.type === 'move' || a.type === 'attack' || a.type === 'harvest' || a.type === 'rally' || a.type === 'stop' || a.type === 'ability' || a.type === 'power')
         sound.play('order');
@@ -310,7 +319,8 @@ export function Battle({
     for (const u of s.units) {
       if (u.owner !== 0 && !vis[Math.floor(u.y) * s.mapW + Math.floor(u.x)]) continue;
       const r = UNITS[u.kind].category === 'infantry' ? 0.35 : 0.55;
-      const d = Math.hypot(u.x - wx, u.y - wy);
+      // Aircraft are drawn lifted above their shadow: pick them where they are drawn.
+      const d = Math.hypot(u.x - wx, u.y - (UNITS[u.kind].category === 'air' ? AIR_LIFT : 0) - wy);
       if (d < r && d < bestD) {
         bestD = d;
         best = u.id;
@@ -561,6 +571,7 @@ export function Battle({
     if (b && b.owner === 0) {
       if (b.kind === 'barracks') setTab('infantry');
       if (b.kind === 'factory') setTab('vehicle');
+      if (b.kind === 'helipad') setTab('air');
       if (b.kind === 'hq') setTab('building');
     }
     sound.play('select');
@@ -883,15 +894,16 @@ export function Battle({
       const k = e.key.toLowerCase();
       const buildIndex = (BUILD_KEYS as readonly string[]).indexOf(k);
       if (buildIndex >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Q W E R T Y (then U I J K L): the open list's items in order; Shift queues five units.
+        // Q W E R T Y (then U I J K L B N D): the open list's items in order; Shift queues five units.
         const kind = menuFor(tabRef.current, cur.current)[buildIndex];
         if (kind) pressBuild(cur.current, tabRef.current, kind, placingRef.current, dispatch, choosePlacing, e.shiftKey);
         return;
       }
       if (e.key === 'Tab') {
         e.preventDefault();
-        const i = TAB_ORDER.indexOf(tabRef.current);
-        setTab(TAB_ORDER[(i + (e.shiftKey ? TAB_ORDER.length - 1 : 1)) % TAB_ORDER.length]);
+        const order = tabsFor(cur.current);
+        const i = Math.max(0, order.indexOf(tabRef.current));
+        setTab(order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length]);
         return;
       }
       const heroKey = (HERO_KEYS as readonly string[]).indexOf(k);
@@ -1645,7 +1657,7 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['S', 'Stop'],
     ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
     ['Q W E R T Y', 'Build or train the first to sixth item in the open list (the letter is on each button)'],
-    ['U I J K L', 'With advanced tech: the seventh to eleventh item in the open list'],
+    ['U I J K L B N D', 'With advanced tech: the seventh to fourteenth item in the open list'],
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
     ['Tab', 'Next build list: Structures, Infantry, Vehicles (Shift + Tab goes back)'],
     ['G', 'Toggle repair on the selected structure'],

@@ -1,5 +1,5 @@
 import { BUILDINGS, UNITS, type BuildingKind, type HeroKind, type UnitKind } from '../sim/rules';
-import { drawBuilding, drawUnit, TILE, type BuildingPose } from './art';
+import { drawAirShadow, drawBuilding, drawUnit, TILE, type BuildingPose } from './art';
 import { drawHeroPortrait } from './campaignArt';
 
 /**
@@ -64,11 +64,14 @@ export function iconFor(kind: BuildingKind | UnitKind): string {
     ctx.restore();
   } else {
     const infantry = UNITS[kind as UnitKind].category === 'infantry';
-    const scale = kind === 'ace' ? 1.5 : kind === 'bastion' ? 1.3 : kind === 'commando' ? 2.4 : infantry ? 2.6 : 1.9;
+    const air = UNITS[kind as UnitKind].category === 'air';
+    const scale = kind === 'ace' ? 1.5 : kind === 'bastion' ? 1.3 : kind === 'commando' ? 2.4 : air ? 1.45 : infantry ? 2.6 : 1.9;
     ctx.save();
     ctx.translate(W / 2, H / 2);
     ctx.scale(scale, scale);
-    drawUnit(ctx, kind as UnitKind, 0, 0, 0, { hull: -0.35, turret: -0.35, t: 0, moving: false, cargo: kind === 'hauler' ? 0.8 : 0, sinceShot: 9 });
+    // Aircraft: the shadow on the ground, the craft lifted over it, fully loaded.
+    if (air) drawAirShadow(ctx, kind as UnitKind, 0, 4, -0.35);
+    drawUnit(ctx, kind as UnitKind, 0, 0, air ? -4 : 0, { hull: -0.35, turret: -0.35, t: 0.13, moving: false, cargo: kind === 'hauler' ? 0.8 : air ? 1 : 0, sinceShot: 9 });
     ctx.restore();
   }
   const url = c.toDataURL();

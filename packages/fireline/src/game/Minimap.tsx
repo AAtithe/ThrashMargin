@@ -124,6 +124,7 @@ export default function Minimap({
       if (u.owner !== 0 && !vis[k]) continue;
       ctx.fillStyle = TEAM[u.owner].light;
       ctx.fillRect(Math.floor(u.x * SCALE) - 1, Math.floor(u.y * SCALE) - 1, 2.5, 2.5);
+      if (u.ammo !== undefined) ctx.fillRect(Math.floor(u.x * SCALE) - 3, Math.floor(u.y * SCALE), 6.5, 0.9); // An aircraft: a wing bar.
     }
     // Fog.
     for (let k = 0; k < MAP_W * MAP_H; k++) {

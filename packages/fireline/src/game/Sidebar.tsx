@@ -1,5 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
+  AIR_AMMO,
+  AIR_MENU,
+  HELIPAD_SLOTS,
+  REARM_TICKS,
+  UPGRADES,
+  UPGRADE_ORDER,
+  hitsAir,
+  hitsGround,
   BUILD_MENU,
   BUILDINGS,
   DAMAGE_VS,
@@ -27,6 +35,8 @@ import {
   type WeaponKind,
 } from '../sim/rules';
 import { buildTicksOf, costFor, hasBuilding, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
+import { airCount, airRoom } from '../sim/air';
+import { hasUpgrade, researchProblem } from '../sim/research';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
@@ -37,12 +47,18 @@ const TABS: { key: Tab; label: string }[] = [
   { key: 'building', label: 'Structures' },
   { key: 'infantry', label: 'Infantry' },
   { key: 'vehicle', label: 'Vehicles' },
+  { key: 'air', label: 'Air' },
 ];
+
+/** The tabs this battle offers: the Air tab only with advanced tech (never in a mission or on standard tech). */
+export const tabsFor = (state?: GameState): Tab[] =>
+  TABS.map(t => t.key).filter(k => k !== 'air' || !state || techAllowed(state, 0, 'helipad'));
 
 const MENUS: Record<Tab, (BuildingKind | UnitKind)[]> = {
   building: BUILD_MENU,
   infantry: INFANTRY_MENU,
   vehicle: VEHICLE_MENU,
+  air: AIR_MENU,
 };
 
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
@@ -52,9 +68,10 @@ const needsOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as
 /**
  * The build hotkeys, in menu order: the first item on the open tab is Q, the second W, and so on.
  * Q to Y are the original six; U and I continue the top row, and J K L the row below, because O
- * (objectives), P (pause), A, S, G, H, M, F and Z to V already have jobs.
+ * (objectives), P (pause), A, S, G, H, M, F and Z to V already have jobs. B, N and D carry the
+ * Structures list on to its last three (Flak Cannon, Helipad and Research Lab on advanced tech).
  */
-export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l'] as const;
+export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l', 'b', 'n', 'd'] as const;
 
 /**
  * Items for a tab, in menu (and hotkey) order. Given the battle, only what can be built in it: a
@@ -65,7 +82,7 @@ export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l'
 export const menuFor = (tab: Tab, state?: GameState): (BuildingKind | UnitKind)[] =>
   state ? MENUS[tab].filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k)) : MENUS[tab];
 
-/** The order Tab cycles through. */
+/** The order Tab cycles through: every tab. A battle's own order is tabsFor(state). */
 export const TAB_ORDER: Tab[] = TABS.map(t => t.key);
 
 /** How many units a shift-click or shift+hotkey queues. */
@@ -95,8 +112,18 @@ export function pressBuild(
   for (let i = 0; i < n; i++) if (!dispatch({ type: 'queue', category: tab, kind })) break;
 }
 
-const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure' };
-const WEAPON_NAME: Record<WeaponKind, string> = { bullet: 'Machine gun', shell: 'Cannon', rocket: 'Rockets', artillery: 'Artillery shell', flame: 'Flamethrower', missile: 'Missile' };
+const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure', aircraft: 'Aircraft' };
+const WEAPON_NAME: Record<WeaponKind, string> = {
+  bullet: 'Machine gun',
+  shell: 'Cannon',
+  rocket: 'Rockets',
+  artillery: 'Artillery shell',
+  flame: 'Flamethrower',
+  missile: 'Missile',
+  flak: 'Flak',
+  aamissile: 'Anti-air missiles',
+  bomb: 'Bombs',
+};
 const secs = (ticks: number) => {
   const v = ticks / TICKS_PER_SECOND;
   return `${Number.isInteger(v) ? v : v.toFixed(1)}s`;
@@ -133,11 +160,22 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
     rows.push({ label: 'Reload', value: secs(w.cooldown) });
     if (w.splash) rows.push({ label: 'Splash', value: `${w.splash} tiles` });
     const vs = DAMAGE_VS[w.kind];
+    const against: Armor[] = [...(hitsGround(w) ? (['infantry', 'light', 'heavy', 'building'] as Armor[]) : []), ...(hitsAir(w) ? (['aircraft'] as Armor[]) : [])];
     rows.push({
       label: 'Damage vs',
-      value: (['infantry', 'light', 'heavy', 'building'] as Armor[]).map(a => `${ARMOR_NAME[a].toLowerCase()} ${Math.round(vs[a] * 100)}%`).join(' · '),
+      value: against.map(a => `${ARMOR_NAME[a].toLowerCase()} ${Math.round(vs[a] * 100)}%`).join(' · '),
     });
+    rows.push({ label: 'Targets', value: hitsGround(w) && hitsAir(w) ? 'Ground and air' : hitsAir(w) ? 'Aircraft only' : 'Ground only' });
   }
+  const ammo = AIR_AMMO[kind as UnitKind];
+  if (u && ammo)
+    rows.push({
+      label: 'Ammunition',
+      value: `${ammo} ${kind === 'bomber' ? 'bombs, dropped in one run' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
+    });
+  if (u?.category === 'air') rows.push({ label: 'Flies', value: 'Over water, rock and structures; only anti-air and bullets reach it' });
+  if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
+  if (kind === 'researchlab') rows.push({ label: 'Research', value: 'Upgrades listed at the foot of the Structures tab once it stands' });
   if (u?.medic) rows.push({ label: 'Heals', value: `${MEDIC_HEAL} hp to the most hurt infantry within ${MEDIC_RANGE} tiles every ${secs(MEDIC_HEAL_TICKS)}` });
   if (u?.selfRepair)
     rows.push({ label: 'Self-repair', value: `${u.selfRepair} hp every ${secs(SELF_REPAIR_TICKS)} when out of combat` });
@@ -325,7 +363,7 @@ export function BuildPanel({
       {!compact && <div id="fl-minimap">{minimap}</div>}
 
       <div role="tablist" style={{ display: 'flex', gap: 2 }}>
-        {TABS.map(t => {
+        {TABS.filter(t => tabsFor(state).includes(t.key)).map(t => {
           const producer = hasBuilding(state, 0, PRODUCER[t.key]);
           const busy = p.queues[t.key].length;
           return (
@@ -444,6 +482,14 @@ export function BuildPanel({
           );
         })}
       </div>
+      {tab === 'building' && hasBuilding(state, 0, 'researchlab') && techAllowed(state, 0, 'researchlab') && (
+        <ResearchBlock state={state} dispatch={dispatch} lowPower={pw.low} />
+      )}
+      {tab === 'air' && hasBuilding(state, 0, 'helipad') && (
+        <p className="fl-air-room" data-testid="air-room">
+          Helipads serve {airRoom(state, 0) + airCount(state, 0)} aircraft; {airCount(state, 0)} built or queued.
+        </p>
+      )}
       {tip && (
         <StatTip
           kind={tip.key}
@@ -453,6 +499,73 @@ export function BuildPanel({
       )}
     </div>
   );
+}
+
+/**
+ * Research, at the foot of the Structures list once a Research Lab stands: every upgrade with its
+ * cost, time and effect; the one under way with its progress and a cancel; those done ticked off.
+ * Starting one pays for it in full; cancelling refunds it in full.
+ */
+function ResearchBlock({ state, dispatch, lowPower }: { state: GameState; dispatch: (a: GameAction) => boolean; lowPower: boolean }) {
+  const p = state.players[0];
+  const busy = p.research ?? null;
+  return (
+    <section className="fl-research" data-testid="research" aria-label="Research">
+      <h3 className="fl-research-head">
+        Research
+        {busy && lowPower && <span className="fl-research-slow">half speed: power low</span>}
+      </h3>
+      {UPGRADE_ORDER.map(id => {
+        const spec = UPGRADES[id];
+        const done = hasUpgrade(state, 0, id);
+        const running = busy?.id === id;
+        const problem = researchProblem(state, 0, id);
+        const state0 = done ? 'done' : running ? 'running' : problem ? 'blocked' : 'ready';
+        return (
+          <div key={id} className="fl-research-row" data-testid={`research-${id}`} data-state={state0}>
+            <div className="fl-research-top">
+              <strong>{spec.name}</strong>
+              {done ? (
+                <span className="fl-research-done">Done</span>
+              ) : running ? (
+                <button type="button" className="fl-research-btn" data-kind="cancel" onClick={() => dispatch({ type: 'cancelResearch' })}>
+                  Cancel
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="fl-research-btn"
+                  disabled={!!problem && problem !== 'Not enough credits'}
+                  title={problem ?? `Research for ${spec.cost} credits`}
+                  onClick={() => dispatch({ type: 'research', upgrade: id })}
+                >
+                  {spec.cost}
+                </button>
+              )}
+            </div>
+            <span className="fl-research-blurb">
+              {spec.blurb} {!done && <span className="fl-research-time">{secs(spec.ticks)}</span>}
+              {!done && !running && problem && problem !== 'Not enough credits' && problem !== 'Already researching' && (
+                <span className="fl-research-why"> {problemText(problem)}</span>
+              )}
+            </span>
+            {running && (
+              <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((busy!.progress / spec.ticks) * 100)}>
+                <span style={{ width: `${Math.round((busy!.progress / spec.ticks) * 100)}%` }} />
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
+/** A research refusal in the player's words: requirements named as structures. */
+function problemText(problem: string): string {
+  if (!problem.startsWith('Needs: ')) return `${problem}.`;
+  const kind = problem.slice(7) as BuildingKind;
+  return `Needs a ${BUILDINGS[kind]?.name ?? kind}.`;
 }
 
 /** The live part of a build button's card: what stands in the way right now, and the keys. */
@@ -600,6 +713,20 @@ export function SelectionPanel({
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }}>
           Carrying {one.cargo} of 600 ore.{' '}
           {one.order.type === 'harvest' ? 'Harvesting.' : touch ? 'Idle: tap ore or a refinery.' : 'Idle: right-click ore or a refinery.'}
+        </span>
+      )}
+      {one && mine && AIR_AMMO[one.kind] && (
+        <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="air-ammo">
+          {one.kind === 'bomber' ? 'Bombs' : 'Rockets'} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
+          {one.order.type === 'rearm'
+            ? (one.ammo ?? 0) < (AIR_AMMO[one.kind] ?? 0)
+              ? one.order.pad
+                ? 'Rearming at its Helipad.'
+                : 'No Helipad with room: waiting.'
+              : 'Parked on its Helipad.'
+            : one.bombRun
+              ? 'On its bomb run.'
+              : 'In the air.'}
         </span>
       )}
       {one && (one.kills > 0 || one.vet > 0 || one.queue.length > 0) && (
