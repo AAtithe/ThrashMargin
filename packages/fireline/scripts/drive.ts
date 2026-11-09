@@ -11,6 +11,11 @@ import { setAutopilotAi } from '../src/sim/ai';
  * the campaign layer) and cover every ability, stealth, every power, every objective and trigger
  * kind, each way to win and lose, perks, allowed tech, blackout, sabotage and mission saves.
  *
+ * The freeplay sections cover the advanced tech (every new unit and structure: stats, requirements
+ * and behaviour), standard tech refusing it, skirmish support powers granted and lost with their
+ * structures, the missile, the setup options, every map type over many seeds (symmetry,
+ * reachability, buildable bases, ore fields, a second route), and battles on every map type.
+ *
  * What it proves: the reducer never mutates its input, an illegal action returns the same state
  * object, a seed replays byte-identically, and the economy, combat and AI produce a finished
  * battle rather than a stalemate.
@@ -18,8 +23,32 @@ import { setAutopilotAi } from '../src/sim/ai';
 import { processAction } from '../src/sim/actions';
 import { canQueue, placementProblem } from '../src/sim/commands';
 import { dist, distToBuilding, occupancy, passable } from '../src/sim/grid';
-import { isWalkable, START_0, START_1 } from '../src/sim/map';
-import { abilityProblem, createMissionState, isDetected, missionOutcome, objectiveLabel, powerProblem } from '../src/sim/mission';
+import { generateMap, isWalkable, START_0, START_1 } from '../src/sim/map';
+import { generateSkirmishMap, mapProblem, oreFields, randomMapType, secondRoute, shortestWalk } from '../src/sim/maps';
+import { seedFromString } from '../src/sim/rng';
+import {
+  BUILD_MENU,
+  DAMAGE_VS,
+  DEFAULT_SETUP,
+  INFANTRY_MENU,
+  LEGACY_SETUP,
+  MAP_TYPES,
+  MEDIC_HEAL,
+  MEDIC_HEAL_TICKS,
+  MISSILE_DAMAGE,
+  SETUP_CREDITS_MAX,
+  SETUP_CREDITS_MIN,
+  SKIRMISH_POWERS,
+  STANDARD_TECH,
+  VEHICLE_MENU,
+  type MapType,
+  type OreLevel,
+  type SkirmishSetup,
+  type SupportPower,
+  type WeaponKind,
+} from '../src/sim/rules';
+import { normaliseSetup, setupOf, startOf, techAllowed } from '../src/sim/state';
+import { abilityProblem, createMissionState, doPower, isDetected, missionOutcome, objectiveLabel, powerProblem } from '../src/sim/mission';
 import {
   BARRAGE_SHELLS,
   BUILDINGS,
@@ -117,8 +146,8 @@ function symmetric(s: GameState): boolean {
 /** Across all battles: ranks standing at the end, and riflemen that walked out of fallen structures. */
 const seen = { veterans: 0, elites: 0, survivors: 0 };
 
-function battle(seed: string, difficulty: Difficulty): GameState {
-  let s = createInitialState(`drive-${seed}`, seed, { seed, difficulty, createdAt: 0, autopilot: true });
+function battle(seed: string, difficulty: Difficulty, setup?: Partial<SkirmishSetup>): GameState {
+  let s = createInitialState(`drive-${seed}`, seed, { seed, difficulty, createdAt: 0, autopilot: true, ...(setup ? { setup } : {}) });
   ok(symmetric(s), `${seed}: map is point-symmetric`);
   ok(s.buildings.length === 2 && s.units.length === 6, `${seed}: each side starts with a yard and three riflemen`);
   invariants(s, `${seed}@0`);
@@ -1717,6 +1746,646 @@ function missionAiModes(): void {
   ok(!everQueuedStructure, 'outpost: its credits never go into a structure it cannot build');
 }
 
+// ---------------------------------------------------------------------------------------------
+// Freeplay depth: new tech, skirmish powers, the missile, setup options and the map types.
+
+const NEW_STRUCTURES: BuildingKind[] = ['techcentre', 'repairbay', 'wall', 'rocketturret', 'strikecommand'];
+const NEW_UNITS: UnitKind[] = ['grenadier', 'medic', 'flametank', 'missilecarrier', 'bastion'];
+const ADVANCED: Partial<SkirmishSetup> = { map: 'plains', tech: 'advanced', credits: 20000 };
+
+/** A skirmish with every option given, the computer quiet, the opening riflemen gone. */
+function advanced(seed = 'adv', setup: Partial<SkirmishSetup> = ADVANCED): GameState {
+  const s = quiet(copy(createInitialState(seed, seed, { seed, createdAt: 0, setup })));
+  s.units = [];
+  return s;
+}
+
+/** An advanced skirmish with an 11 by 11 patch of open ground, for unit behaviour. */
+function advArena(): { s: GameState; cx: number; cy: number } {
+  const s = advanced('adv-arena');
+  const occ = occupancy(s);
+  const clear = (cx: number, cy: number) => {
+    for (let y = cy - 5; y <= cy + 5; y++)
+      for (let x = cx - 5; x <= cx + 5; x++) {
+        if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return false;
+        const k = y * MAP_W + x;
+        if (!isWalkable(s.tiles[k]) || s.ore[k] > 0 || occ[k]) return false;
+      }
+    return true;
+  };
+  for (let r = 0; r < 30; r++)
+    for (let dy = -r; dy <= r; dy++)
+      for (let dx = -r; dx <= r; dx++) if (clear(32 + dx, 32 + dy)) return { s, cx: 32 + dx, cy: 32 + dy };
+  throw new Error('no open ground for the advanced arena');
+}
+
+const hqOf = (s: GameState, owner: Owner) => s.buildings.find(b => b.owner === owner && b.kind === 'hq')!;
+
+/** Adds every structure named for a side, far from anything (requirements only look for them). */
+function grant(s: GameState, owner: Owner, kinds: BuildingKind[]): void {
+  for (const k of kinds) addBuilding(s, owner, k, owner === 0 ? 1 : MAP_W - 4, owner === 0 ? 1 : MAP_H - 4, -100);
+}
+
+function newTech(): void {
+  for (const k of NEW_STRUCTURES) {
+    ok(k in BUILDINGS && BUILD_MENU.includes(k), `${k}: a structure, in the build menu`);
+    ok(!STANDARD_TECH.includes(k), `${k}: not part of the standard game`);
+  }
+  for (const k of NEW_UNITS) {
+    const menu = UNITS[k].category === 'infantry' ? INFANTRY_MENU : VEHICLE_MENU;
+    ok(k in UNITS && menu.includes(k) && !UNITS[k].hero, `${k}: a unit, in its menu`);
+    ok(!STANDARD_TECH.includes(k), `${k}: not part of the standard game`);
+  }
+  ok(STANDARD_TECH.length === 12, 'the standard game is six structures and six units');
+  for (const k of STANDARD_TECH) ok(BUILD_MENU.includes(k as BuildingKind) || INFANTRY_MENU.includes(k as UnitKind) || VEHICLE_MENU.includes(k as UnitKind), `${k} still on a menu`);
+  for (const w of Object.keys(DAMAGE_VS) as WeaponKind[]) ok(w in FLIGHT_TICKS, `${w}: has a flight time`);
+  for (const u of Object.values(UNITS)) if (u.weapon) ok(u.weapon.kind in DAMAGE_VS, `${u.name}: its weapon has a damage table`);
+
+  // Stats: the shapes and roles the design asks for.
+  const B = BUILDINGS;
+  ok(B.techcentre.w === 2 && B.techcentre.h === 2 && B.techcentre.cost >= 1500, 'Tech Centre: 2x2, about 2000');
+  ok(B.repairbay.w === 2 && B.repairbay.h === 2 && B.repairbay.cost <= 1000, 'Repair Bay: 2x2, about 800');
+  ok(B.wall.w === 1 && B.wall.h === 1 && B.wall.cost <= 100 && B.wall.power === 0 && !!B.wall.wall, 'Sandbag Wall: 1x1, cheap, no power, a wall');
+  ok(B.rocketturret.w === 1 && B.rocketturret.weapon?.kind === 'rocket' && B.rocketturret.weapon.range > B.turret.weapon!.range, 'Rocket Turret: 1x1, rockets, outranges the Gun Turret');
+  ok(B.strikecommand.w === 3 && B.strikecommand.h === 3 && B.strikecommand.power <= -100 && B.strikecommand.cost >= 3000, 'Strike Command: 3x3, heavy power draw, costly');
+  const req = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].requires : UNITS[k as UnitKind].requires);
+  const same = (a: BuildingKind[], b: BuildingKind[]) => a.length === b.length && a.every(x => b.includes(x));
+  ok(same(req('techcentre'), ['factory', 'uplink']), 'Tech Centre needs a War Factory and a Comms Uplink');
+  ok(same(req('repairbay'), ['factory']), 'Repair Bay needs a War Factory');
+  ok(same(req('wall'), ['barracks']), 'Sandbag Wall needs a Barracks');
+  ok(same(req('rocketturret'), ['uplink']), 'Rocket Turret needs a Comms Uplink');
+  ok(same(req('strikecommand'), ['techcentre']), 'Strike Command needs a Tech Centre');
+  ok(same(req('grenadier'), ['barracks']) && same(req('medic'), ['barracks']), 'Grenadier and Medic need a Barracks');
+  ok(req('flametank').includes('techcentre') && req('bastion').includes('techcentre'), 'Flame Tank and Bastion need a Tech Centre');
+  ok(req('missilecarrier').includes('uplink'), 'Missile Carrier needs a Comms Uplink');
+  const U = UNITS;
+  ok(U.grenadier.category === 'infantry' && (U.grenadier.weapon?.splash ?? 0) > 0, 'Grenadier: infantry with splash');
+  ok(DAMAGE_VS[U.grenadier.weapon!.kind].infantry >= 1 && DAMAGE_VS[U.grenadier.weapon!.kind].building >= 1, 'grenades: good against infantry and structures');
+  ok(U.medic.category === 'infantry' && !U.medic.weapon && !!U.medic.medic, 'Medic: unarmed infantry that heals');
+  ok(U.flametank.weapon?.kind === 'flame' && U.flametank.weapon.range < 3.5 && (U.flametank.weapon.splash ?? 0) > 0, 'Flame Tank: short range, splash');
+  ok(DAMAGE_VS.flame.infantry > 1 && DAMAGE_VS.flame.building > 1 && DAMAGE_VS.flame.heavy < 0.5, 'flame: deadly to infantry and structures, poor against armour');
+  ok((U.missilecarrier.weapon?.minRange ?? 0) > 0 && U.missilecarrier.weapon!.range >= 8 && U.missilecarrier.weapon!.kind === 'rocket', 'Missile Carrier: long-range rockets with a minimum range');
+  ok(U.bastion.hp >= 2 * U.tank.hp && U.bastion.speed < U.tank.speed && U.bastion.weapon!.damage > U.tank.weapon!.damage && (U.bastion.selfRepair ?? 0) > 0, 'Bastion: tough, slow, strong cannon, self-repair');
+
+  // Requirements, as the queue sees them.
+  const s = advanced();
+  const can = (st: GameState, k: BuildingKind | UnitKind, owner: Owner = 0) => canQueue(st, owner, categoryOfKind(k), k);
+  for (const k of [...NEW_STRUCTURES, ...NEW_UNITS]) ok(!can(s, k), `${k}: refused with only a Command Yard`);
+  const a = copy(s);
+  grant(a, 0, ['power', 'barracks']);
+  ok(can(a, 'wall') && can(a, 'grenadier') && can(a, 'medic'), 'a Barracks unlocks walls, grenadiers and medics');
+  ok(!can(a, 'repairbay') && !can(a, 'rocketturret'), 'but not the Repair Bay or Rocket Turret');
+  grant(a, 0, ['refinery', 'factory']);
+  ok(can(a, 'repairbay') && !can(a, 'techcentre') && !can(a, 'missilecarrier'), 'a War Factory unlocks the Repair Bay, not the Tech Centre');
+  grant(a, 0, ['uplink']);
+  ok(can(a, 'techcentre') && can(a, 'rocketturret') && can(a, 'missilecarrier'), 'an Uplink as well: Tech Centre, Rocket Turret, Missile Carrier');
+  ok(!can(a, 'strikecommand') && !can(a, 'flametank') && !can(a, 'bastion'), 'tier three waits for the Tech Centre');
+  grant(a, 0, ['techcentre']);
+  ok(can(a, 'strikecommand') && can(a, 'flametank') && can(a, 'bastion'), 'the Tech Centre unlocks tier three');
+  const q = act(a, { type: 'queue', category: 'building', kind: 'techcentre' }, 'queue a Tech Centre');
+  ok(q.players[0].credits === a.players[0].credits - BUILDINGS.techcentre.cost, 'a Tech Centre is paid for when queued');
+  const v = act(a, { type: 'queue', category: 'vehicle', kind: 'bastion' }, 'queue a Bastion');
+  ok(v.players[0].queues.vehicle.length === 1 && v.players[0].queues.vehicle[0].kind === 'bastion', 'a Bastion is queued');
+  grant(a, 1, ['power', 'barracks', 'refinery', 'factory', 'uplink', 'techcentre']);
+  a.players[1].credits = 50000;
+  ok(NEW_UNITS.every(k => can(a, k, 1)) && NEW_STRUCTURES.every(k => can(a, k, 1)), 'the computer side may build all of it too');
+}
+
+const categoryOfKind = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? 'building' : UNITS[k as UnitKind].category);
+
+function standardTech(): void {
+  const all: BuildingKind[] = ['power', 'refinery', 'barracks', 'factory', 'uplink', 'techcentre'];
+  const check = (s: GameState, label: string, allowNew: boolean) => {
+    const c = copy(s);
+    c.players[0].credits = c.players[1].credits = 50000;
+    grant(c, 0, all);
+    grant(c, 1, all);
+    for (const k of [...NEW_STRUCTURES, ...NEW_UNITS]) {
+      const cat = categoryOfKind(k);
+      ok(canQueue(c, 0, cat, k) === allowNew && canQueue(c, 1, cat, k) === allowNew, `${label}: ${k} ${allowNew ? 'allowed' : 'refused'} for both sides`);
+      if (!allowNew) refused(c, { type: 'queue', category: cat, kind: k }, `${label}: queueing ${k}`);
+    }
+    for (const k of STANDARD_TECH) ok(canQueue(c, 0, categoryOfKind(k), k), `${label}: ${k} still allowed`);
+  };
+  const std = createInitialState('std', 'std', { seed: 'std', createdAt: 0, setup: { map: 'classic', tech: 'standard' } });
+  check(std, 'standard tech', false);
+  const legacy = createInitialState('leg', 'leg', { seed: 'leg', createdAt: 0 });
+  check(legacy, 'no setup (the original game)', false);
+  ok(setupOf(legacy) === LEGACY_SETUP && LEGACY_SETUP.tech === 'standard' && LEGACY_SETUP.map === 'classic', 'no setup reads as the original game');
+  check(advanced(), 'advanced tech', true);
+  ok(DEFAULT_SETUP.tech === 'advanced' && DEFAULT_SETUP.map === 'random', 'a new game defaults to advanced tech on a random map');
+
+  // Standard tech has no support powers, whatever stands.
+  {
+    const c = quiet(copy(std));
+    addBuilding(c, 0, 'uplink', 1, 1, -100);
+    const t = processAction(c, { type: 'tick' });
+    ok(!t.powers, 'standard tech: an Uplink grants no recon');
+  }
+  // A mission: side 0 by its tech list, side 1 by the original game's.
+  {
+    const m = copy(createMissionState(mspec({ tech: ['power', 'barracks', 'rifleman', 'grenadier'] }), mctx()));
+    m.players[0].credits = m.players[1].credits = 5000;
+    grant(m, 0, ['power', 'barracks']);
+    grant(m, 1, ['power', 'barracks']);
+    ok(canQueue(m, 0, 'infantry', 'grenadier'), 'a mission whose tech list has it: side 0 may train grenadiers');
+    ok(!canQueue(m, 0, 'infantry', 'medic') && !canQueue(m, 0, 'building', 'wall'), 'but nothing the list leaves out');
+    ok(!canQueue(m, 1, 'infantry', 'grenadier') && !techAllowed(m, 1, 'bastion'), "the mission's enemy keeps to the original game");
+    ok(canQueue(m, 1, 'infantry', 'rifleman'), 'and may still train riflemen');
+  }
+}
+
+function wallTests(): void {
+  const s = advanced('walls');
+  const hq = hqOf(s, 0);
+  refused(s, { type: 'queue', category: 'building', kind: 'wall' }, 'a wall with no Barracks');
+  const a = copy(s);
+  grant(a, 0, ['barracks']);
+  // Build one through the queue and place it against the yard's corner, then another beside it.
+  let w = act(a, { type: 'queue', category: 'building', kind: 'wall' }, 'queue a wall');
+  w = tickUntil(w, x => readyStructure(x, 0) === 'wall', 100);
+  ok(readyStructure(w, 0) === 'wall', 'the wall is ready');
+  const row = hq.y - 2;
+  const x0 = hq.x;
+  ok(placementProblem(w, 0, 'wall', x0, row) === null, 'a wall goes down near the yard');
+  w = act(w, { type: 'place', kind: 'wall', x: x0, y: row }, 'place a wall');
+  ok(w.buildings.some(b => b.kind === 'wall' && b.x === x0 && b.y === row), 'the wall stands');
+  w = act(w, { type: 'queue', category: 'building', kind: 'wall' }, 'queue a second wall');
+  w = tickUntil(w, x => readyStructure(x, 0) === 'wall', 100);
+  ok(placementProblem(w, 0, 'wall', x0 + 1, row) === null, 'a wall may stand right against another');
+  w = act(w, { type: 'place', kind: 'wall', x: x0 + 1, y: row }, 'place it against the first');
+  // Walls do not extend the build radius.
+  const c = copy(w);
+  // A line of walls running up from the first, away from the yard.
+  for (let y = row - 1; y >= hq.y - 6; y--) addBuilding(c, 0, 'wall', x0, y, c.tick);
+  const far = { x: x0 + 1, y: hq.y - 6 };
+  ok(hq.y - far.y > 4, `test spot is beyond the build radius of the yard (${hq.y - far.y})`);
+  ok(placementProblem(c, 0, 'wall', far.x, far.y) === 'Too far from your base', 'a wall beside a far wall is still too far from the base');
+  ok(placementProblem(c, 0, 'power', far.x, far.y) === 'Too far from your base', 'so is a Generator');
+  ok(placementProblem(c, 0, 'wall', x0 + 1, hq.y - 4) === null, 'within the radius of the yard itself, fine');
+  // Selling a wall: a little back, nobody walks out.
+  const wall = w.buildings.find(b => b.kind === 'wall')!;
+  const sold = act(w, { type: 'sell', id: wall.id }, 'sell a wall');
+  ok(sold.units.length === w.units.length, 'nobody walks out of a sold wall');
+  ok(sold.players[0].credits === w.players[0].credits + Math.floor((BUILDINGS.wall.cost * 0.5) / 10) * 10, 'a sold wall returns half its cost');
+  // Destroyed: no crew either.
+  {
+    const d = copy(w);
+    d.buildings.find(b => b.id === wall.id)!.hp = 0;
+    const t = processAction(d, { type: 'tick' });
+    ok(!t.buildings.some(b => b.id === wall.id) && t.units.length === d.units.length, 'a destroyed wall leaves no survivors');
+  }
+  // Walls are not structures for victory.
+  {
+    const v = copy(s);
+    v.buildings = v.buildings.filter(b => b.owner === 0);
+    addBuilding(v, 1, 'wall', 40, 10, -100);
+    const t = processAction(v, { type: 'tick' });
+    ok(t.winner === 0, 'a side with only walls left has lost');
+    const v0 = copy(s);
+    v0.buildings = v0.buildings.filter(b => b.owner === 1);
+    addBuilding(v0, 0, 'wall', 20, 50, -100);
+    ok(processAction(v0, { type: 'tick' }).winner === 1, 'for either side');
+  }
+
+  // Blocking: a line of walls with open ends; a soldier sent across walks round it.
+  {
+    const { s: ar, cx, cy } = advArena();
+    for (let y = cy - 4; y <= cy + 4; y++) addBuilding(ar, 0, 'wall', cx, y, -100);
+    const r = put(ar, 0, 'rifleman', cx - 2.5, cy + 0.5, { stance: 'hold' });
+    let m = act(ar, { type: 'move', ids: [r.id], x: cx + 3.5, y: cy + 0.5 }, 'move across a wall');
+    let detour = 0;
+    let onWall = false;
+    for (let i = 0; i < 400; i++) {
+      m = processAction(m, { type: 'tick' });
+      const u = unitIn(m, r.id)!;
+      detour = Math.max(detour, Math.abs(u.y - (cy + 0.5)));
+      if (Math.floor(u.x) === cx && Math.floor(u.y) >= cy - 4 && Math.floor(u.y) <= cy + 4) onWall = true;
+      if (u.order.type === 'idle') break;
+    }
+    const u = unitIn(m, r.id)!;
+    ok(dist(u.x, u.y, cx + 3.5, cy + 0.5) < 1, `the soldier gets across (${u.x.toFixed(1)}, ${u.y.toFixed(1)})`);
+    ok(!onWall, 'never through a wall tile');
+    ok(detour >= 4.5, `he walks round the end of the line (${detour.toFixed(1)} tiles off the straight line)`);
+    // Walled in on every side: he cannot leave.
+    const box = copy(ar);
+    box.buildings = box.buildings.filter(b => b.kind !== 'wall');
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) if (dx || dy) addBuilding(box, 0, 'wall', cx + dx, cy + dy, -100);
+    const p = put(box, 0, 'rifleman', cx + 0.5, cy + 0.5, { stance: 'hold' });
+    let b2 = act(box, { type: 'move', ids: [p.id], x: cx + 4.5, y: cy + 0.5 }, 'move out of a walled box');
+    b2 = processAction(b2, { type: 'tick', n: 200 });
+    const pu = unitIn(b2, p.id)!;
+    ok(Math.floor(pu.x) === cx && Math.floor(pu.y) === cy, 'walled in on all sides, he stays inside');
+    ok(occupancy(box)[cy * MAP_W + cx + 1] !== 0, 'a wall tile is blocked ground');
+  }
+}
+
+function medicTests(): void {
+  const { s, cx, cy } = advArena();
+  const med = put(s, 0, 'medic', cx + 0.5, cy + 0.5);
+  const hurt = put(s, 0, 'rifleman', cx + 1.5, cy + 0.5, { hp: 20, stance: 'hold' });
+  const tank = put(s, 0, 'tank', cx + 0.5, cy + 2, { hp: 100, stance: 'hold' });
+  const foe = put(s, 1, 'rifleman', cx - 1, cy + 0.5, { hp: 20, stance: 'hold' });
+  refused(s, { type: 'attack', ids: [med.id], target: foe.id }, 'an attack order to an unarmed Medic');
+  const t = processAction(s, { type: 'tick', n: 25 });
+  const healed = unitIn(t, hurt.id)!.hp;
+  ok(healed > 20 && healed <= 20 + MEDIC_HEAL * Math.ceil(25 / MEDIC_HEAL_TICKS), `a Medic heals wounded infantry beside him (20 to ${healed})`);
+  ok(unitIn(t, tank.id)!.hp === 100, 'but not vehicles');
+  ok(unitIn(t, foe.id)!.hp === 20, 'nor the enemy');
+  ok(t.effects.some(e => e.kind === 'heal'), 'a heal effect is shown');
+  // Not himself.
+  {
+    const c = copy(s);
+    c.units = [];
+    const m2 = put(c, 0, 'medic', cx + 0.5, cy + 0.5, { hp: 30 });
+    ok(unitIn(processAction(c, { type: 'tick', n: 50 }), m2.id)!.hp === 30, 'a Medic does not heal himself');
+  }
+  // Idle, he walks to the wounded.
+  {
+    const c = copy(s);
+    c.units = [];
+    const m3 = put(c, 0, 'medic', cx - 3.5, cy + 0.5);
+    const w = put(c, 0, 'rifleman', cx + 1.5, cy + 0.5, { hp: 10, stance: 'hold' });
+    const after = processAction(c, { type: 'tick', n: 200 });
+    const m = unitIn(after, m3.id)!;
+    const wu = unitIn(after, w.id)!;
+    ok(dist(m.x, m.y, wu.x, wu.y) <= 2, `an idle Medic goes to a wounded soldier (${dist(m.x, m.y, wu.x, wu.y).toFixed(1)} tiles)`);
+    ok(wu.hp > 10, `and patches him up (${wu.hp})`);
+  }
+}
+
+function repairBayTests(): void {
+  const { s, cx, cy } = advArena();
+  const bay = addBuilding(s, 0, 'repairbay', cx, cy, -100);
+  s.players[0].credits = 1000;
+  const spot = beside(s, bay);
+  const tank = put(s, 0, 'tank', spot.x, spot.y, { hp: 200, stance: 'hold' });
+  const away = put(s, 0, 'tank', cx + 0.5, cy + 5.5, { hp: 200, stance: 'hold' });
+  const rif = put(s, 0, 'rifleman', bay.x - 0.5, bay.y + 0.5, { hp: 20, stance: 'hold' });
+  const t = processAction(s, { type: 'tick', n: 100 });
+  const got = unitIn(t, tank.id)!.hp - 200;
+  ok(got > 0, `a vehicle beside the Repair Bay is mended (+${got})`);
+  const spent = s.players[0].credits - t.players[0].credits;
+  const want = (got * UNITS.tank.cost * 0.4) / UNITS.tank.hp;
+  ok(Math.abs(spent - want) < 1, `and paid for as it goes (${spent.toFixed(2)} credits for ${got} hp)`);
+  ok(unitIn(t, away.id)!.hp === 200, 'a vehicle away from it is not');
+  ok(unitIn(t, rif.id)!.hp === 20, 'nor is infantry');
+  ok(t.effects.some(e => e.kind === 'repair'), 'a repair effect is shown');
+  const broke = copy(s);
+  broke.players[0].credits = 0;
+  ok(unitIn(processAction(broke, { type: 'tick', n: 100 }), tank.id)!.hp === 200, 'no credits, no repairs');
+  // Short of power it works half as fast: with a Generator, twice the work in the same time.
+  const powered = copy(s);
+  addBuilding(powered, 0, 'power', cx - 6, cy - 5, -100);
+  const got2 = unitIn(processAction(powered, { type: 'tick', n: 100 }), tank.id)!.hp - 200;
+  ok(powerOf(s, 0).low && !powerOf(powered, 0).low, 'the test bases: one short of power, one not');
+  ok(got2 >= got * 2 - 6 && got2 <= got * 2 + 6, `powered, it mends twice as fast (${got2} against ${got})`);
+}
+
+function weaponTests(): void {
+  // Grenades: arcing splash breaks up a clump.
+  {
+    const { s, cx, cy } = advArena();
+    const g = put(s, 0, 'grenadier', cx + 0.5, cy + 0.5);
+    const foes = [0, 1, 2].map(i => put(s, 1, 'rifleman', cx + 4 + (i % 2) * 0.4, cy + 0.2 + i * 0.3, { stance: 'hold' }));
+    const t = processAction(s, { type: 'tick', n: 60 });
+    const thrown = tickUntil(s, st => st.projectiles.some(p => p.shooter === g.id), 40);
+    ok(thrown.projectiles.some(p => p.shooter === g.id && p.weapon === 'artillery' && p.splash > 0), 'the Grenadier lobs a grenade');
+    const hurt = foes.filter(f => (unitIn(t, f.id)?.hp ?? 0) < UNITS.rifleman.hp).length;
+    ok(hurt >= 2, `one grenade hurts several soldiers (${hurt} of 3)`);
+  }
+  // Flame: deadly to infantry, with splash; far harder on a structure than a tank's shell is.
+  {
+    const { s, cx, cy } = advArena();
+    put(s, 0, 'flametank', cx + 0.5, cy + 0.5);
+    const foes = [put(s, 1, 'rifleman', cx + 2.5, cy + 0.5, { stance: 'hold' }), put(s, 1, 'rifleman', cx + 2.7, cy + 1.1, { stance: 'hold' })];
+    const t = processAction(s, { type: 'tick', n: 40 });
+    const hurt = foes.filter(f => (unitIn(t, f.id)?.hp ?? 0) < UNITS.rifleman.hp).length;
+    ok(hurt === 2, `the Flame Tank burns both soldiers (${hurt})`);
+    ok(foes.some(f => !unitIn(t, f.id)), 'and kills at least one within four seconds');
+    const vsBuilding = (kind: UnitKind) => {
+      const { s: a, cx: x, cy: y } = advArena();
+      const gen = addBuilding(a, 1, 'power', x + 3, y, -100);
+      const u = put(a, 0, kind, x + 1.5, y + 1);
+      const r = processAction(processAction(a, { type: 'attack', ids: [u.id], target: gen.id }), { type: 'tick', n: 80 });
+      return BUILDINGS.power.hp - (r.buildings.find(b => b.id === gen.id)?.hp ?? 0);
+    };
+    const flame = vsBuilding('flametank');
+    const shell = vsBuilding('tank');
+    ok(flame > shell * 1.5, `flame wrecks a structure faster than a tank's shells (${flame} against ${shell})`);
+  }
+  // The Missile Carrier: will not fire inside its minimum range, backs off, and fires from afar.
+  {
+    const { s, cx, cy } = advArena();
+    const mc = put(s, 0, 'missilecarrier', cx + 0.5, cy + 0.5);
+    const close = put(s, 1, 'tank', cx + 2, cy + 0.5, { stance: 'hold' });
+    let t = act(s, { type: 'attack', ids: [mc.id], target: close.id }, 'carrier attacks a tank too close');
+    t = processAction(t, { type: 'tick', n: 8 });
+    ok(!t.projectiles.some(p => p.shooter === mc.id) && !t.effects.some(e => e.kind === 'muzzle' && e.weapon === 'rocket'), 'no rocket inside the minimum range');
+    const m = unitIn(t, mc.id)!;
+    ok(dist(m.x, m.y, cx + 2, cy + 0.5) > 1.5, `it backs away from the target (${dist(m.x, m.y, cx + 2, cy + 0.5).toFixed(2)})`);
+    const { s: f, cx: x2, cy: y2 } = advArena();
+    const mc2 = put(f, 0, 'missilecarrier', x2 - 3.5, y2 + 0.5);
+    put(f, 1, 'tank', x2 + 3.5, y2 + 0.5, { stance: 'hold' });
+    const shot = tickUntil(f, st => st.projectiles.some(p => p.shooter === mc2.id), 80);
+    ok(shot.projectiles.some(p => p.shooter === mc2.id && p.weapon === 'rocket'), 'at seven tiles it fires a rocket');
+  }
+  // The Rocket Turret reaches what a Gun Turret cannot.
+  {
+    const { s, cx, cy } = advArena();
+    addBuilding(s, 0, 'rocketturret', cx, cy, -100);
+    put(s, 1, 'tank', cx + 7.3, cy + 0.5, { stance: 'hold' });
+    const t = processAction(s, { type: 'tick', n: 30 });
+    ok(t.effects.some(e => e.kind === 'muzzle' && e.weapon === 'rocket'), 'the Rocket Turret fires at a tank seven tiles off');
+    const g = copy(s);
+    g.buildings = g.buildings.map(b => (b.kind === 'rocketturret' ? { ...b, kind: 'turret' as BuildingKind } : b));
+    ok(!processAction(g, { type: 'tick', n: 30 }).effects.some(e => e.kind === 'muzzle'), 'a Gun Turret in the same place cannot reach');
+  }
+  // The Bastion mends itself out of combat, and not under fire.
+  {
+    const { s, cx, cy } = advArena();
+    const b = put(s, 0, 'bastion', cx + 0.5, cy + 0.5, { hp: 500 });
+    const tk = put(s, 0, 'tank', cx + 3.5, cy + 0.5, { hp: 200 });
+    const t = processAction(s, { type: 'tick', n: 100 });
+    ok(unitIn(t, b.id)!.hp === 500 + (UNITS.bastion.selfRepair ?? 0) * 10, `the Bastion regains ${UNITS.bastion.selfRepair} hp a second at rest (${unitIn(t, b.id)!.hp})`);
+    ok(unitIn(t, tk.id)!.hp === 200, 'a Battle Tank does not');
+    // Fighting a rocketeer that shoots back: never a hit point regained while engaged.
+    let f = copy(s);
+    put(f, 1, 'rocketeer', cx + 4.5, cy + 2.5);
+    let mended = false;
+    let fought = false;
+    for (let i = 0; i < 40; i++) {
+      const before = unitIn(f, b.id)!;
+      f = processAction(f, { type: 'tick' });
+      const after = unitIn(f, b.id);
+      if (!after) break;
+      if (before.engage) fought = true;
+      if (before.engage && after.engage && after.hp > before.hp) mended = true;
+    }
+    ok(fought && !mended, 'fighting, it does not mend');
+  }
+}
+
+function skirmishPowerTests(): void {
+  const s = advanced('powers');
+  ok(Array.isArray(s.powers) && Object.keys(s.powers![0]).length === 0 && Object.keys(s.powers![1]).length === 0, 'an advanced skirmish starts with no powers');
+  refused(s, { type: 'power', power: 'recon', x: 30, y: 30 }, 'recon with no Uplink');
+  for (const [power, kind] of Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]) {
+    for (const owner of [0, 1] as Owner[]) {
+      const c = copy(s);
+      const b = addBuilding(c, owner, kind, owner === 0 ? 2 : MAP_W - 5, owner === 0 ? 2 : MAP_H - 5, -100);
+      const t = processAction(c, { type: 'tick' });
+      ok(t.powers![owner][power] === POWERS[power].cooldown, `${BUILDINGS[kind].name} grants side ${owner} the ${POWERS[power].name}, charging`);
+      ok(t.powers![1 - owner][power] === undefined, `but not the other side`);
+      const gone = copy(t);
+      gone.buildings.find(v => v.id === b.id)!.hp = 0;
+      ok(processAction(gone, { type: 'tick' }).powers![owner][power] === undefined, `losing the ${BUILDINGS[kind].name} loses the ${POWERS[power].name}`);
+    }
+  }
+  // Through a real build: placing an Uplink grants recon at once; selling it takes it away.
+  {
+    const c = copy(s);
+    grant(c, 0, ['power', 'refinery']);
+    let t = act(c, { type: 'queue', category: 'building', kind: 'uplink' }, 'queue an uplink');
+    t = tickUntil(t, x => readyStructure(x, 0) === 'uplink', 300);
+    const spot = findSpot(t, 'uplink')!;
+    t = act(t, { type: 'place', kind: 'uplink', x: spot.x, y: spot.y }, 'place the uplink');
+    ok(t.powers![0].recon === POWERS.recon.cooldown, 'placing an Uplink grants recon, charging');
+    refused(t, { type: 'power', power: 'recon', x: 30, y: 30 }, 'recon while charging');
+    const ready = processAction(processAction(t, { type: 'tick', n: POWERS.recon.cooldown / 2 }), { type: 'tick', n: POWERS.recon.cooldown / 2 });
+    ok(ready.powers![0].recon === 0 && powerProblem(ready, 0, 'recon', 30, 30) === null, 'charged, it is ready');
+    const used = act(ready, { type: 'power', power: 'recon', x: 30.5, y: 12.5 }, 'recon in a skirmish');
+    ok(used.recon!.length === 1 && used.powers![0].recon === POWERS.recon.cooldown, 'the sweep is under way and recharging');
+    const up = used.buildings.find(b => b.kind === 'uplink' && b.owner === 0)!;
+    const sold = act(used, { type: 'sell', id: up.id }, 'sell the uplink');
+    ok(sold.powers![0].recon === undefined, 'selling the last Uplink loses recon at once');
+  }
+  // The computer's recon reveals nothing to the player; mission powers are left alone.
+  {
+    const c = copy(s);
+    c.powers = [{}, { recon: 0, missile: 0 }];
+    addBuilding(c, 1, 'uplink', MAP_W - 5, MAP_H - 5, -100);
+    addBuilding(c, 1, 'strikecommand', MAP_W - 9, MAP_H - 9, -100);
+    ok(powerProblem(c, 1, 'recon', 10, 50) === null, 'side 1 may call its powers');
+    doPowerOn(c, 1, 'recon', 10.5, 50.5);
+    ok((c.recon ?? []).length === 0 && c.powers![1].recon === POWERS.recon.cooldown, "side 1's sweep reveals nothing to the player, and recharges");
+    doPowerOn(c, 1, 'missile', 10.5, 50.5);
+    ok(c.effects.some(e => e.kind === 'missile') && c.log.some(l => l.tone === 'bad' && /missile/i.test(l.text)), 'an enemy missile is marked and announced');
+    const m = createMissionState(mspec({ powers: ['recon'], player: { credits: 1000, structures: ['hq', 'power', 'refinery', 'uplink'], units: [], heroes: [] } }), mctx());
+    const mt = processAction(m, { type: 'tick', n: 5 });
+    ok(JSON.stringify(Object.keys(mt.powers![0])) === '["recon"]' && Object.keys(mt.powers![1]).length === 0, 'a mission keeps its own powers whatever stands');
+  }
+}
+
+/** Calls a power for either side on a harness copy (the reducer only takes side 0's orders). */
+function doPowerOn(s: GameState, owner: Owner, power: SupportPower, x: number, y: number): void {
+  ok(powerProblem(s, owner, power, x, y) === null, `side ${owner} may call ${power}`);
+  doPower(s, owner, power, x, y);
+}
+
+function missileTests(): void {
+  const { s, cx, cy } = advArena();
+  addBuilding(s, 0, 'strikecommand', 2, 2, -100);
+  let a = processAction(s, { type: 'tick' });
+  ok(a.powers![0].missile === POWERS.missile.cooldown, 'Strike Command: the missile charges');
+  ok(POWERS.missile.cooldown >= 4200 && POWERS.missile.radius >= 3.5, 'about eight minutes between strikes, a radius of about four tiles');
+  a = copy(a);
+  a.powers![0].missile = 0;
+  const c = { x: cx + 0.5, y: cy + 0.5 };
+  const centre = put(a, 1, 'rifleman', c.x, c.y, { stance: 'hold' });
+  const tank = put(a, 1, 'tank', c.x + 2, c.y, { stance: 'hold' });
+  const gen = addBuilding(a, 1, 'power', cx - 2, cy - 2, -100);
+  const outside = put(a, 1, 'rifleman', c.x + 5.5, c.y, { stance: 'hold' });
+  const ours = put(a, 0, 'rifleman', c.x - 1, c.y + 1, { stance: 'hold' });
+  const fired = act(a, { type: 'power', power: 'missile', ...c }, 'missile strike');
+  const p = fired.projectiles.find(q => q.weapon === 'missile');
+  ok(!!p && p.hitAt === fired.tick + FLIGHT_TICKS.missile && p.splash === POWERS.missile.radius, 'one missile, landing a few seconds later, with a wide blast');
+  ok(fired.effects.some(e => e.kind === 'missile' && e.x === c.x && e.y === c.y && e.size === POWERS.missile.radius), 'the target is marked from the moment it is called');
+  ok(fired.powers![0].missile === POWERS.missile.cooldown, 'and the missile goes back to charging');
+  refused(fired, { type: 'power', power: 'missile', ...c }, 'a second missile at once');
+  const before = processAction(fired, { type: 'tick', n: FLIGHT_TICKS.missile - 1 });
+  ok(unitIn(before, centre.id)?.hp === UNITS.rifleman.hp && before.projectiles.some(q => q.weapon === 'missile'), 'nothing is hit before it lands');
+  ok(before.effects.some(e => e.kind === 'missile'), 'the marker is still shown just before impact');
+  const after = processAction(before, { type: 'tick', n: 2 });
+  ok(!after.projectiles.some(q => q.weapon === 'missile'), 'the missile has landed');
+  ok(!unitIn(after, centre.id), 'a soldier at the centre is killed');
+  const th = unitIn(after, tank.id)?.hp ?? 0;
+  ok(th < UNITS.tank.hp - MISSILE_DAMAGE * 0.5 * DAMAGE_VS.missile.heavy, `a tank two tiles off is badly hurt or worse (${th})`);
+  ok(!after.buildings.some(b => b.id === gen.id), 'a Generator in the blast is destroyed');
+  ok(unitIn(after, outside.id)?.hp === UNITS.rifleman.hp, 'outside the radius, untouched');
+  ok(unitIn(after, ours.id)?.hp === UNITS.rifleman.hp, 'our own troops are spared');
+  ok(after.effects.some(e => e.kind === 'boom' && e.weapon === 'missile' && e.size === 2), 'a big explosion is shown');
+  invariants(after, 'after the missile');
+}
+
+function setupTests(): void {
+  ok(JSON.stringify(normaliseSetup({})) === JSON.stringify(DEFAULT_SETUP), 'an empty setup is the default');
+  const junk = normaliseSetup({ map: 'moon' as never, tech: 'x' as never, ore: 'y' as never, credits: 999999 });
+  ok(junk.map === DEFAULT_SETUP.map && junk.tech === DEFAULT_SETUP.tech && junk.ore === DEFAULT_SETUP.ore, 'unknown choices fall back to the default');
+  ok(junk.credits === SETUP_CREDITS_MAX && normaliseSetup({ credits: 5 }).credits === SETUP_CREDITS_MIN, 'credits are clamped');
+  ok(normaliseSetup({ credits: 1234 }).credits === 1200 && normaliseSetup({ credits: NaN }).credits === DEFAULT_SETUP.credits, 'credits round to hundreds; NaN is the default');
+
+  const s = createInitialState('st', 'st', { seed: 'setup-1', createdAt: 0, setup: { map: 'river', credits: 10000, ore: 'rich' } });
+  ok(s.setup!.map === 'river' && s.mapType === 'river' && s.setup!.tech === 'advanced' && s.setup!.ore === 'rich', 'the setup is stored, unspecified fields from the default');
+  ok(s.players[0].credits === 10000 && s.players[1].credits === 10000, 'both sides start with the chosen credits');
+  ok(s.tiles === generateSkirmishMap(seedFromString('setup-1'), 'river', 'rich').tiles, 'the map is the skirmish generator\'s for that seed and type');
+  for (const owner of [0, 1] as Owner[]) {
+    const hq = hqOf(s, owner);
+    ok(hq.x === s.starts![owner].x && hq.y === s.starts![owner].y && startOf(s, owner) === s.starts![owner], `side ${owner}'s yard sits on its start`);
+  }
+  ok(s.buildings.length === 2 && s.units.length === 6, 'a yard and three riflemen each');
+  invariants(s, 'setup start');
+
+  const seen = new Set<MapType>();
+  for (let i = 0; i < 40; i++) {
+    const r = createInitialState('r', 'r', { seed: `rnd-${i}`, createdAt: 0, setup: { map: 'random' } });
+    ok(r.setup!.map === 'random' && MAP_TYPES.includes(r.mapType!), `random setup resolves to a type (${r.mapType})`);
+    ok(r.mapType === randomMapType(seedFromString(`rnd-${i}`)), 'from the seed');
+    seen.add(r.mapType!);
+  }
+  ok(seen.size >= 5, `random maps cover the types (${seen.size} of ${MAP_TYPES.length} in 40 games)`);
+  const counts = new Map<MapType, number>();
+  for (let i = 0; i < 1200; i++) {
+    const t = randomMapType(seedFromString(`r${i}`));
+    counts.set(t, (counts.get(t) ?? 0) + 1);
+  }
+  ok(MAP_TYPES.every(t => (counts.get(t) ?? 0) >= 120), `every type comes up often (${MAP_TYPES.map(t => counts.get(t) ?? 0).join(', ')} in 1200)`);
+
+  // Ore settings.
+  const total = (o: OreLevel) => generateSkirmishMap(seedFromString('ore'), 'plains', o).ore.reduce((a, b) => a + b, 0);
+  ok(total('poor') < total('normal') && total('normal') < total('rich'), `poor < normal < rich (${total('poor')}, ${total('normal')}, ${total('rich')})`);
+
+  // No setup: the original game on the original map.
+  const legacy = createInitialState('l', 'l', { seed: 'legacy-map', createdAt: 0 });
+  ok(!legacy.setup && !legacy.mapType && !legacy.starts, 'no setup: none recorded');
+  ok(legacy.tiles === generateMap(seedFromString('legacy-map')).tiles, 'no setup: the original generator');
+  ok(startOf(legacy, 0) === START_0 && startOf(legacy, 1) === START_1, 'no setup: the original start sites');
+  ok(legacy.players[0].credits === 3000, 'no setup: 3000 credits');
+
+  // Saves.
+  const round = migrateState(JSON.parse(JSON.stringify(s)));
+  ok(!!round && JSON.stringify(round) === JSON.stringify(s), 'a set-up skirmish survives a save and load unchanged');
+  const bad = migrateState({ ...JSON.parse(JSON.stringify(s)), setup: { map: 'moon', tech: 'standard', credits: 'lots', ore: 'rich' }, starts: 'here', mapType: 'moon' });
+  ok(!!bad && bad.setup!.map === 'classic' && bad.setup!.tech === 'standard' && bad.setup!.credits === 3000, 'a damaged setup is repaired from the original game');
+  ok(!!bad && bad.starts === undefined && bad.mapType === undefined, 'damaged starts and map type are dropped');
+  const old = migrateState(JSON.parse(JSON.stringify(legacy)));
+  ok(!!old && !old.setup && setupOf(old) === LEGACY_SETUP, 'an old save plays as the original game');
+
+  // A set-up battle replays exactly, through a save in the middle.
+  const go = (st: GameState, n: number) => {
+    for (let i = 0; i < n; i++) st = processAction(st, { type: 'tick', n: 100 });
+    return st;
+  };
+  const base = createInitialState('rp', 'rp', { seed: 'replay-adv', createdAt: 0, autopilot: true, setup: { map: 'canyon' } });
+  const one = go(base, 30);
+  const two = go(migrateState(JSON.parse(JSON.stringify(go(base, 15))))!, 15);
+  ok(JSON.stringify(one) === JSON.stringify(two), 'an advanced battle replays byte-identically through a save');
+}
+
+/** Every map type over many seeds: the rules every skirmish map must meet. */
+function mapTests(): void {
+  const per = Math.max(24, SEEDS + 10);
+  const ores: OreLevel[] = ['poor', 'normal', 'rich'];
+  const N = MAP_W * MAP_H;
+  for (const type of MAP_TYPES) {
+    const xs = new Set<number>();
+    let fieldsMin = 99;
+    let fieldsMax = 0;
+    let problems = 0;
+    for (let i = 0; i < per; i++) {
+      const ore = ores[i % 3];
+      const seed = `${type}-map-${i}`;
+      const m = generateSkirmishMap(seedFromString(seed), type, ore);
+      const label = `${type} ${seed}`;
+      const problem = mapProblem(m);
+      if (problem) problems++;
+      ok(problem === null, `${label}: ${problem}`);
+      // Independent checks, not trusting mapProblem.
+      let sym = true;
+      for (let k = 0; k < N; k++) if (m.tiles[k] !== m.tiles[N - 1 - k] || m.ore[k] !== m.ore[N - 1 - k]) sym = false;
+      ok(sym, `${label}: point-symmetric`);
+      const [s0, s1] = m.starts;
+      ok(s0.y >= MAP_H / 2 && s1.y + 3 <= MAP_H / 2, `${label}: side 0 starts in the bottom half, side 1 in the top`);
+      ok(s1.x === MAP_W - 3 - s0.x && s1.y === MAP_H - 3 - s0.y, `${label}: the starts mirror each other`);
+      xs.add(s0.x);
+      const a = (s0.y + 1) * MAP_W + s0.x + 1;
+      const b = (s1.y + 1) * MAP_W + s1.x + 1;
+      const walk = shortestWalk(m.tiles, a, b);
+      ok(walk.length > 0, `${label}: the bases are connected`);
+      // Everything walkable is reachable from side 0's base.
+      const reach = new Uint8Array(N);
+      const q = [a];
+      reach[a] = 1;
+      while (q.length) {
+        const k = q.pop()!;
+        const x = k % MAP_W;
+        const y = (k / MAP_W) | 0;
+        for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= MAP_W || ny >= MAP_H) continue;
+          const n = ny * MAP_W + nx;
+          if (reach[n] || !isWalkable(m.tiles[n])) continue;
+          reach[n] = 1;
+          q.push(n);
+        }
+      }
+      let stray = 0;
+      for (let k = 0; k < N; k++) if (isWalkable(m.tiles[k]) && !reach[k]) stray++;
+      ok(stray === 0, `${label}: all walkable ground reachable (${stray} stray tiles)`);
+      // Ore: four to eight fields, one near each base, one contested between them.
+      const fields = oreFields(m.ore).filter(f => f.length >= 5);
+      fieldsMin = Math.min(fieldsMin, fields.length);
+      fieldsMax = Math.max(fieldsMax, fields.length);
+      ok(fields.length >= 4 && fields.length <= 8, `${label}: ${fields.length} ore fields`);
+      const c0 = { x: s0.x + 1.5, y: s0.y + 1.5 };
+      const c1 = { x: s1.x + 1.5, y: s1.y + 1.5 };
+      const centroids = fields.map(f => {
+        let x = 0;
+        let y = 0;
+        for (const k of f) {
+          x += (k % MAP_W) + 0.5;
+          y += ((k / MAP_W) | 0) + 0.5;
+        }
+        return { x: x / f.length, y: y / f.length };
+      });
+      ok(centroids.some(p => dist(p.x, p.y, c0.x, c0.y) < 16), `${label}: an ore field near side 0's base`);
+      ok(centroids.some(p => Math.abs(dist(p.x, p.y, c0.x, c0.y) - dist(p.x, p.y, c1.x, c1.y)) < 3), `${label}: a contested field, as far from one base as the other`);
+      ok(centroids.filter(p => dist(p.x, p.y, c0.x, c0.y) < dist(p.x, p.y, c1.x, c1.y) - 3).length >= 2, `${label}: side 0 has its own field and an expansion`);
+      // Two routes: cut a band round the shortest walk and another way through remains.
+      const second = secondRoute(m);
+      ok(second.length > 0, `${label}: a second route when the shortest is cut`);
+      if (second.length) {
+        const first = new Set(walk);
+        const shared = second.filter(k => first.has(k)).length;
+        ok(shared < second.length * 0.6, `${label}: and it is a different way (${shared} of ${second.length} tiles shared)`);
+      }
+    }
+    // Both bases buildable, in a real battle on this map type.
+    for (let i = 0; i < 6; i++) {
+      const st = createInitialState('b', 'b', { seed: `${type}-base-${i}`, createdAt: 0, setup: { map: type, ore: ores[i % 3] } });
+      ok(st.mapType === type, `${type}: the setup's type is the one generated`);
+      const occ = occupancy(st);
+      for (const owner of [0, 1] as Owner[]) {
+        const hq = hqOf(st, owner);
+        let gens = 0;
+        let refineries = 0;
+        let factories = 0;
+        for (let y = hq.y - 7; y <= hq.y + 7; y++)
+          for (let x = hq.x - 7; x <= hq.x + 7; x++) {
+            if (placementProblem(st, owner, 'power', x, y, occ) === null) gens++;
+            if (placementProblem(st, owner, 'refinery', x, y, occ) === null) refineries++;
+            if (placementProblem(st, owner, 'factory', x, y, occ) === null) factories++;
+          }
+        ok(gens >= 40 && refineries >= 10 && factories >= 10, `${type} base ${i}, side ${owner}: room to build (${gens} Generator, ${refineries} Refinery, ${factories} War Factory sites)`);
+      }
+      invariants(st, `${type} base ${i}`);
+    }
+    ok(xs.size >= Math.min(8, per / 3), `${type}: the bases' position varies with the seed (${xs.size} different x positions)`);
+    console.log(`  ${type}: ${per} maps, ${problems} problems, ore fields ${fieldsMin}-${fieldsMax}, ${xs.size} base positions`);
+  }
+}
+
 const started = Date.now();
 const sections: [string, () => void][] = [
   ['Mission setup', missionSetup],
@@ -1747,6 +2416,24 @@ if (!CAMPAIGN_ONLY) {
   survivors();
   console.log('Older saves');
   legacySaves();
+  const freeplay: [string, () => void][] = [
+    ['New tech: stats, menus and requirements', newTech],
+    ['Standard tech and mission tech lists', standardTech],
+    ['Sandbag walls', noCommander(wallTests)],
+    ['The Medic', noCommander(medicTests)],
+    ['The Repair Bay', noCommander(repairBayTests)],
+    ['New weapons: splash, flame, minimum range, rocket turret, self-repair', noCommander(weaponTests)],
+    ['Skirmish support powers', noCommander(skirmishPowerTests)],
+    ['The missile strike', noCommander(missileTests)],
+    ['Skirmish setup options', setupTests],
+    ['Map types', mapTests],
+  ];
+  for (const [name, fn] of freeplay) {
+    const t0 = Date.now();
+    console.log(name);
+    fn();
+    if (Date.now() - t0 > 2000) console.log(`  (${((Date.now() - t0) / 1000).toFixed(1)}s)`);
+  }
 }
 for (const [name, fn] of sections) {
   console.log(name);
@@ -1792,6 +2479,33 @@ const wins0 = finished.filter(r => r.winner === 0).length;
 console.log(
   `  ${finished.length}/${runs.length} battles finished, average ${avg.toFixed(1)} game minutes; side 0 won ${wins0}, side 1 won ${finished.length - wins0}`,
 );
+
+// Every map type, advanced tech, computer against computer. The commander does not build the new
+// tech yet (ai.ts is its own workstream), but every battle runs the new rules, maps and powers.
+const mapRuns: { seed: string; map: MapType; winner: number | null; tick: number }[] = [];
+const perMap = Math.max(2, Math.round(SEEDS / 10));
+console.log(`Battles: ${perMap} on each map type, advanced tech`);
+for (const map of MAP_TYPES) {
+  for (let i = 1; i <= perMap; i++) {
+    const seed = `map-${map}-${i}`;
+    const s = battle(seed, 'normal', { map, tech: 'advanced' });
+    ok(s.mapType === map && s.setup?.tech === 'advanced', `${seed}: played on its map type`);
+    mapRuns.push({ seed, map, winner: s.winner, tick: s.tick });
+    ok(s.players[0].stats.harvested > 0 && s.players[1].stats.harvested > 0, `${seed}: both sides harvested ore`);
+    ok(s.players[0].stats.killed + s.players[1].stats.killed > 0, `${seed}: there was fighting`);
+  }
+}
+{
+  const done = mapRuns.filter(r => r.winner !== null);
+  ok(done.length >= Math.ceil(mapRuns.length * 0.85), `at least 85% of map-type battles finish (${done.length}/${mapRuns.length})`);
+  const avgM = done.reduce((a, r) => a + r.tick / 600, 0) / Math.max(1, done.length);
+  const w0 = done.filter(r => r.winner === 0).length;
+  console.log(`  ${done.length}/${mapRuns.length} finished, average ${avgM.toFixed(1)} game minutes; side 0 won ${w0}, side 1 won ${done.length - w0}`);
+  for (const map of MAP_TYPES) {
+    const rs = mapRuns.filter(r => r.map === map);
+    console.log(`    ${map}: ${rs.map(r => (r.winner === null ? 'unfinished' : `side ${r.winner} in ${Math.round(r.tick / 600)} min`)).join(', ')}`);
+  }
+}
 
 console.log(`  units standing at the end with rank: ${seen.veterans} veterans, ${seen.elites} elites; at least ${seen.survivors} survivors walked out of fallen structures`);
 ok(seen.veterans + seen.elites > 0, 'units earn rank in real battles');
