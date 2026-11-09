@@ -352,3 +352,44 @@ type) hashed the same at every 3,000 ticks before and after, and every summary l
 and play on exactly. New drive sections build three-sided battles by hand and check the helpers,
 teams, shared sight, allies holding fire (splash included), victory with two allies left, defeat
 only when the whole team is out, side 2's production and commander, and exact replay.
+
+### 2026-11-09: Bigger battles, three and four sides (round 4, workstream B)
+
+The lobby offers 2, 3 or 4 sides and, with more than two, free for all or teams (`SkirmishSetup`
+gains `sides` and `mode`; `normaliseSetup` repairs anything else to two sides, free for all, and two
+sides are always free for all). Teams come only from `teamsFor`: a 2 against 2 is sides 0 and 2
+against 1 and 3, and three sides as teams is sides 0 and 2 against side 1. Side 1, alone, starts
+with `LONE_SIDE_CREDITS` (2.25) times the setup's credits: over 60 computer battles at 2.25 the
+pair won 48%; over 40 each, it won 70% at 2, 33% at 2.5 and 3% at 4. Starting credits were the
+handicap chosen because income is read in `tick.ts`, which this workstream does not touch. Two sides take exactly the old code path.
+
+Maps (`generateSkirmishMap(seed, type, ore, sides)`): 80 tiles square for three sides, 96 for four.
+The generator draws side 0's wedge (a quarter, or a third) mirrored about its own axis and turns it
+round the centre, so a feature at the edge of a wedge meets its turned copy. Four sides are exactly
+symmetric (tile (x, y) matches (95-y, x)): side 0 bottom left, 1 top right, 2 bottom right, 3 top
+left. Three sides are turned by -0.5 and 0.8660254037844386, rounded to tiles, on a disc with rock
+corners; side 0 bottom centre, 1 upper right, 2 upper left. `sidesProblem` (called by `mapProblem`
+when there are more than two starts) checks the size, the symmetry, every site in one half, the
+yards clear, everything connected, a home field by every site, a contested field, and fairness:
+over 20 seeds of every type the largest spread between three sites was 9.4% in buildable ground,
+7.1% in home ore and 6.9% in walking distance (eight ways, as units path), inside the stated
+tolerance of 12% (`SIDES_TOLERANCE`). Each wedge holds a home field, a track to the centre and to
+each neighbour, a field on each border shared by the two neighbours, and a rich field in the
+centre; the map types add rivers or ridges along the borders, lakes, or a ring of cliffs.
+
+The computer (`src/sim/aiSides.ts`): `chooseEnemy` aims each commander's waves at one enemy, the
+nearest standing base by walking distance weighted by that side's strength (weaker counts nearer),
+a quarter nearer if an ally is already attacking it, kept for `FOCUS_TICKS` (two minutes) unless it
+falls. Near ties break the same way round the map for every seat: before that rule, both of side
+0's neighbours chose side 0 first. `alliedPlan` sends half the idle reserve to an ally hit within
+the last 20 seconds, unless its own base is under threat, and brings strays home. Defence still
+answers every enemy. With one enemy and no ally both are no-ops, so the summary lines of
+`npm run drive:fire` for two sides are unchanged.
+
+Seat fairness, 4 sides free for all, advanced tech, 120 seeds played to the last side standing
+(`scripts/sides-fairness.ts`): side 0 won 26.7%, side 1 25.0%, side 2 26.7%, side 3 21.7%, every
+seat within the 7.9 points two standard errors allow. The interface: Sides and Mode in the lobby
+with every map preview drawn for the chosen number of sides and a line naming each side and its
+team, "2 against 2" or "3 sides, free for all" in the saves list (the server reads the player count
+and mode from the saved state), each computer side named in its colour in the top bar (allies
+marked, a side that is out struck through), and the end card naming the winning team.
