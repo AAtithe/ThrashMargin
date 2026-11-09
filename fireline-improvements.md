@@ -82,7 +82,12 @@ mission AI once the round-1 opponent work lands.
 - [x] Foundation: 2, 3 or 4 sides on teams, map size per battle, side colours (two-sided play unchanged).
 - [ ] A. Air power and research: Helipad, Flak Cannon, Research Lab; Gunship, Bomber, Flak Track, Skyhunter; five upgrades.
 - [ ] B. Bigger battles: 3 and 4 sides, free for all or teams, fair maps, several-enemy commanders.
-- [ ] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
+- [x] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
+  - [x] Objectives escort, destroyWithin and holdZone with reset; structure powers in a mission.
+  - [x] Both acts on the campaign screen; act two's northern theatre.
+  - [ ] After integration: air in missions 11, 12 and 14 (the trigger slots are marked in act2.ts).
+  - [ ] A no-base mission opens with the view at the top-left corner of the map rather than on
+    the player's units (GameScreen's opening camera looks only for a Command Yard).
 
 ## Found along the way
 

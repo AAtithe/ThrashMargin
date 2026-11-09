@@ -109,7 +109,7 @@ function labels(ok: Ok): void {
     [{ kind: 'holdZone', x: 3, y: 3, r: 2, ticks: 1800 }, 'Hold the marked area for 3 minutes'],
   ];
   for (const [o, text] of want) ok(objectiveLabel(o) === text, `label: "${objectiveLabel(o)}" is "${text}"`);
-  for (const [o] of want) ok(!/—/.test(objectiveLabel(o)), 'labels carry no em dash');
+  for (const [o] of want) ok(!/\u2014/.test(objectiveLabel(o)), 'labels carry no em dash');
   // The label is also what the runtime objective carries.
   const s = createMissionState(mspec({ objectives: [want[0][0]], bonus: [want[5][0]] }), mctx());
   ok(s.mission!.objectives[0].label === want[0][1] && s.mission!.bonus[0].label === want[5][1], 'the runtime objectives carry the labels');
