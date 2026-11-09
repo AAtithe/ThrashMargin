@@ -29,6 +29,7 @@ import { generateMap, isWalkable, START_0, START_1 } from '../src/sim/map';
 import { generateSkirmishMap, mapProblem, oreFields, randomMapType, secondRoute, shortestWalk } from '../src/sim/maps';
 import { seedFromString } from '../src/sim/rng';
 // round4:B. Bigger battles: its import (scripts/drive-sides.ts) goes on the line below.
+import { sections as sidesSections } from './drive-sides';
 
 import {
   BUILD_MENU,
@@ -2682,6 +2683,7 @@ if (!CAMPAIGN_ONLY) {
 
     // round4:B. Bigger battles (fireline-round4-design.md): its sections, imported from
     // scripts/drive-sides.ts, go on the lines below this comment.
+    ...sidesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

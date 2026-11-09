@@ -804,15 +804,41 @@ export interface SkirmishSetup {
   /** Each side's starting credits. */
   credits: number;
   ore: OreLevel;
+  /** How many sides fight: side 0 (the player) and one, two or three computer commanders. */
+  sides: 2 | 3 | 4;
+  /** 'ffa': every side for itself. 'teams': two teams (see teamsFor in sides.ts). Always 'ffa' with 2 sides. */
+  mode: SideMode;
 }
 
+/** How the sides of a battle of three or four are grouped. */
+export type SideMode = 'ffa' | 'teams';
+
 /** What the lobby offers a new skirmish by default. */
-export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal' };
+export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa' };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
  * one. The original game exactly: the original map generator, standard tech, no skirmish powers.
  */
-export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal' };
+export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa' };
+/** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
+export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
+/** What each map type looks like with three or four sides, where the two-sided blurb does not fit. */
+export const MAP_TYPE_BLURBS_SIDES: Record<MapType, string> = {
+  classic: 'Mixed ground: woods, ridges and ponds, with tracks to every neighbour and the centre.',
+  river: 'Rivers between neighbours, each crossed at two fords, meeting at an island of ore in the centre.',
+  highlands: 'Ridges between neighbours and a ring of them round the centre; armies meet in narrow passes.',
+  lakes: 'Lakes all over, with land corridors and causeways between them.',
+  plains: 'Open country and plenty of ore. Few places to hide.',
+  canyon: 'A ring of cliffs round the centre, cut by wide corridors from every base.',
+};
+/** The number of sides the lobby offers. */
+export const SIDE_COUNTS: (2 | 3 | 4)[] = [2, 3, 4];
+/**
+ * Three sides played as teams is two against one: side 1, alone, starts with this many times the
+ * setup's credits (the rest of the rules are the same for every side). Measured over whole
+ * computer battles (fireline-design.md, round 4 build log).
+ */
+export const LONE_SIDE_CREDITS = 2.25;
 export const SETUP_CREDITS_MIN = 1000;
 export const SETUP_CREDITS_MAX = 20000;
 /** Starting-credit choices for the lobby. */
