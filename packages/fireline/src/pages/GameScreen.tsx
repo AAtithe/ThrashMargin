@@ -1123,7 +1123,7 @@ export function Battle({
               </div>
             ))}
           </div>
-          {mission && !ended && <ObjectivesPanel s={s} />}
+          {mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
           {mission && !ended && (
             <div className="fl-cbar">
               <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
@@ -1197,7 +1197,9 @@ function missionZones(s: GameState): { x: number; y: number; r: number; label: s
 function clampCam(c: Camera) {
   const vw = c.w / c.zoom;
   const vh = c.h / c.zoom;
-  const m = 64;
+  // Room to scroll past the edge, so a structure in a corner can be brought out from under the
+  // objectives panel, the hero bar or the alerts (a 64px margin left a corner uplink unclickable).
+  const m = Math.max(64, Math.min(vw, vh) * 0.4);
   c.x = Math.max(-m, Math.min(MAP_W * TILE - vw + m, c.x));
   c.y = Math.max(-m, Math.min(MAP_H * TILE - vh + m, c.y));
   if (vw > MAP_W * TILE + 2 * m) c.x = (MAP_W * TILE - vw) / 2;
@@ -1224,6 +1226,7 @@ export function Controls({ campaign = false }: { campaign?: boolean }) {
     ['Space', 'Jump to the last combat alert (pinged on the minimap)'],
     ['P', 'Pause'],
     ['M', 'Sound on or off'],
+    ['O', 'Hide or show the mission objectives (campaign)'],
     ['Esc', 'Cancel placement, attack-move or aiming; clear selection'],
   ];
   const campaignRows: [string, string][] = [

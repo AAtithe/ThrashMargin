@@ -1098,6 +1098,46 @@ kbd {
   color: var(--ui-bad);
   font-weight: 700;
 }
+.fl-objectives-hide,
+.fl-objective-show {
+  margin-left: auto;
+  padding: 1px 7px;
+  font: inherit;
+  font-size: 0.66rem;
+  color: var(--ui-text-soft);
+  background: var(--ui-panel-raised);
+  border: 1px solid var(--ui-rule);
+  border-radius: 3px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fl-objectives-hide:hover,
+.fl-objective-show:hover {
+  border-color: var(--ui-accent);
+  color: var(--ui-text);
+}
+.fl-objective-show {
+  align-self: flex-start;
+}
+.fl-objectives-pill {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+  background: var(--ui-hud);
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
 .fl-objectives ul {
   list-style: none;
   margin: 6px 0 0;
