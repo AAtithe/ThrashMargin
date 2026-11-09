@@ -117,7 +117,7 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   not others, and a five-seed run once reported two bugs fixed while they were still there.
 - **Fireline has its own harness: `npm run drive:fire`** (whole computer-against-computer battles over
   28 seeds, every order, and the campaign's heroes, powers, objectives and mission AI modes; about
-  210,000 assertions, about 80 seconds; `-- --seeds 60` for a wider sweep, `-- --campaign` for the
+  300,000 assertions, about 110 seconds; `-- --seeds 60` for a wider sweep, `-- --campaign` for the
   campaign sections alone). `npm run campaign:fire` checks progression and builds and runs all eight
   missions; both are in `npm run check`. `npm run ladder:fire` pits AI commanders over 150 seeds
   (about 10 minutes, so not in check); use it for any balance or AI change. Fireline is real time: it saves every 15 seconds of play rather than per action, and

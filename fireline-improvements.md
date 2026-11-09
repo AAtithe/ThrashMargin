@@ -7,6 +7,7 @@ round is being built by five parallel agents, one per workstream, each owning it
 Status key: [ ] not started, [~] in progress, [x] done.
 
 Round 1 (2026-11-08): all five workstreams built and integrated. Round 2 (campaign): built and integrated.
+Round 3 (freeplay depth, 2026-11-09): built and integrated.
 
 ## A. Battlefield effects (renderer)
 
@@ -67,7 +68,19 @@ mission AI once the round-1 opponent work lands.
 - [x] Support powers: recon sweep, artillery barrage, reinforcements.
 - [x] Mission AI modes: defend, raid, passive.
 
+## G. Freeplay depth (round 3)
+
+- [x] Random generated maps: six types (classic, river, highlands, lakes, plains, canyon), point-symmetric.
+- [x] Advanced tech: Tech Centre, Repair Bay, Sandbag Wall, Rocket Turret, Strike Command; Grenadier,
+  Medic, Flame Tank, Missile Carrier, Bastion.
+- [x] Skirmish powers from structures: recon (uplink), barrage (Tech Centre), missile (Strike Command).
+- [x] Lobby setup (map, tech, credits, ore), validated on the server; saves list shows the map.
+- [x] Both commanders build and use the new tech.
+
 ## Found along the way
+
+- [x] Haulers freezing on the way home (path clipped a blocked corner, or was cut by a new structure).
+- [ ] Plains map: side 0 wins 42% of mirror games.
 
 - [x] Seat imbalance: side 1 won 78% of mirror games (structure fronts faced the enemy for side 1).
   Now 43% to 56% over 150 games.
@@ -77,8 +90,7 @@ mission AI once the round-1 opponent work lands.
 
 ## Later rounds
 
-- Skirmish options: two computer opponents, starting credits, map size.
+- Skirmish options: two computer opponents, map size.
 - Touch controls (tap to select, tap-and-hold for orders).
 - Ambient music bed.
 - A scripted "human player" in the harness so balance can be measured without hand play.
-- Engineers that capture structures; walls and sandbags.

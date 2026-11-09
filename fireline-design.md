@@ -40,6 +40,31 @@ structures left.
 | Battle Tank | 800 | Main line unit |
 | Artillery | 1000 | Range 9, splash, minimum range 2 (needs uplink) |
 
+Freeplay on advanced tech (the default for a new freeplay game; the original set is the
+"standard" option, and every save from before has no setup at all and plays exactly as before):
+
+| Structure | Size | Cost | Power | Needs |
+|---|---|---|---|---|
+| Sandbag Wall | 1x1 | 50 | 0 | Barracks; not a structure for victory |
+| Repair Bay | 2x2 | 800 | -30 | War Factory |
+| Rocket Turret | 1x1 | 900 | -40 | Comms Uplink |
+| Tech Centre | 2x2 | 2000 | -60 | War Factory, Comms Uplink; grants the artillery barrage |
+| Strike Command | 3x3 | 3500 | -150 | Tech Centre; grants the missile strike every eight minutes |
+
+| Unit | Cost | Role |
+|---|---|---|
+| Grenadier | 250 | Short-arc splash, infantry and structures |
+| Medic | 300 | Unarmed, heals infantry within two tiles |
+| Flame Tank | 1100 | Close-range flame with splash (Tech Centre) |
+| Missile Carrier | 1300 | Range 8 anti-armour, minimum range 2.5 (Comms Uplink) |
+| Bastion | 1800 | Slow heavy siege tank, mends itself (Tech Centre) |
+
+The Comms Uplink also grants the recon sweep. A freeplay setup (lobby, saved in `state.setup`)
+picks the map (classic, river, highlands, lakes, plains, canyon, or random: drawn from the seed),
+the tech level, starting credits (clamped to 20,000) and ore. Maps come from
+`generateSkirmishMap` in `src/sim/maps.ts`: point-symmetric, so neither seat is favoured by the
+ground.
+
 Damage is weapon kind against armour class (`DAMAGE_VS`). Shells, rockets and artillery are
 projectiles with a flight time; artillery lands where the target was, with a little scatter.
 
@@ -242,3 +267,28 @@ Numbers at integration: drive 210,000+ assertions (about 80s), campaign-check 1,
 eight missions built and run 2,000 ticks, the guided tour passes, and a browser run through
 lobby, new campaign, map (clicking a node on the canvas), briefing, deploy, battle HUD, debrief
 and back to the map (mission 1 won, mission 2 open) with no page errors.
+
+### 2026-11-09 — Freeplay depth: new tech, random maps, a movement fix
+
+Contract first, then four builders in parallel (rules and simulation, maps, art, interface and the
+computer commander), then integration. Freeplay now defaults to a random map from six generated
+types and the advanced tech above; the lobby offers map, tech, credits and ore, the server
+validates the setup (`normaliseSetup`, junk falls back to defaults, no setup gives the original
+game) and the saves list shows the map type. Both commanders build and use the new tech.
+
+Integration found a movement bug that predates this round and was starving economies on every
+map: a hauler whose smoothed path clipped the corner of a blocked tile from an off-centre position,
+or whose path had since been cut by a new structure or wall, could stand still for the rest of the
+game. A blocked step only counted as stuck when the very next point was blocked, and re-pathing
+from the same tile gave the same line. `stepAlong` now looks a little further ahead, slides along
+an open axis or steps back to its tile centre when blocked, and only a clean step clears the stuck
+count, so a cut path is re-planned within a second. `npm run drive:fire` now fails any battle where
+a hauler carrying ore home to a standing refinery stands still for two minutes; on the old code that
+check failed 10 of the 28 standard battles.
+
+AI ladder after the fix, 150 seeds on random maps with advanced tech, side 0 Normal throughout:
+the mirror 45% to 54%, Hard on side 1 wins 91% (61% before the fix) and Easy 0%. The gaps widened
+because haulers now deliver all game, so Hard's 25% income bonus and Easy's 20% cut compound. Before
+the fix a 900-seed mirror per map type read 45% to 54% except plains (42% for side 0); not yet
+re-measured, so left open below.
+
