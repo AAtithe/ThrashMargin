@@ -261,6 +261,8 @@ export function BuildPanel({
   placing,
   setPlacing,
   minimap,
+  compact = false,
+  touch = false,
 }: {
   state: GameState;
   tab: Tab;
@@ -269,6 +271,9 @@ export function BuildPanel({
   placing: BuildingKind | null;
   setPlacing: (k: BuildingKind | null) => void;
   minimap: ReactNode;
+  /** A short or narrow panel: the minimap sits beside credits and power, and the list widens. */
+  compact?: boolean;
+  touch?: boolean;
 }) {
   const p = state.players[0];
   const pw = powerOf(state, 0);
@@ -277,13 +282,14 @@ export function BuildPanel({
   const { tip, bind, clear } = useTip<BuildingKind | UnitKind>();
   const menu = menuFor(tab, state);
   // More than six items (advanced tech) packs three to a row, so the whole list stays in view.
-  const compact = menu.length > 6;
+  const dense = menu.length > 6;
   // A tab change swaps the buttons out from under the pointer: drop the card with them.
   useEffect(clear, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'stretch', gap: 8 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
+      <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flex: 1, minWidth: 0, flexDirection: compact ? 'column' : 'row' }}>
         <div style={creditsBox} id="fl-credits" data-testid="credits" title="Credits. Haulers bring ore to a refinery to earn more.">
           <span style={tiny}>Credits</span>
           <Credits value={p.credits} />
@@ -309,7 +315,14 @@ export function BuildPanel({
         </div>
       </div>
 
-      <div id="fl-minimap">{minimap}</div>
+      {compact && (
+        <div id="fl-minimap" style={{ width: 104, flex: '0 0 104px' }}>
+          {minimap}
+        </div>
+      )}
+      </div>
+
+      {!compact && <div id="fl-minimap">{minimap}</div>}
 
       <div role="tablist" style={{ display: 'flex', gap: 2 }}>
         {TABS.map(t => {
@@ -325,7 +338,7 @@ export function BuildPanel({
               title={`${t.label} (Tab cycles the lists)`}
               style={{
                 flex: 1,
-                padding: '5px 2px',
+                padding: touch ? '10px 2px' : '5px 2px',
                 fontFamily: 'inherit',
                 fontSize: '0.72rem',
                 fontWeight: tab === t.key ? 700 : 500,
@@ -353,7 +366,13 @@ export function BuildPanel({
         </p>
       )}
 
-      <div className="fl-build-grid" data-compact={compact ? '1' : '0'} data-testid="build-grid">
+      {/* A short or narrow panel (phones) fits as many columns as the width allows. */}
+      <div
+        className="fl-build-grid"
+        data-compact={dense ? '1' : '0'}
+        data-testid="build-grid"
+        style={compact ? { gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))' } : undefined}
+      >
         {menu.map((kind, index) => {
           const q = p.queues[tab];
           const inQueue = q.filter(i => i.kind === kind).length;
@@ -368,10 +387,15 @@ export function BuildPanel({
           const affordable = p.credits >= cost;
           // Unaffordable stays clickable: the click is refused with a toast that says why.
           const disabled = !open || blockedByOther || (!isHead && !isReady && full);
-          const key = BUILD_KEYS[index]?.toUpperCase();
+          // A hotkey letter means nothing without a keyboard.
+          const key = touch ? undefined : BUILD_KEYS[index]?.toUpperCase();
+          const cancel = () => {
+            dispatch({ type: 'cancel', category: tab, kind });
+            if (placing === kind) setPlacing(null);
+          };
           return (
+            <div key={kind} style={{ position: 'relative', display: 'flex' }}>
             <button
-              key={kind}
               id={`fl-build-${kind}`}
               className={`fl-build${isReady ? ' ready' : ''}`}
               data-testid={`build-${kind}`}
@@ -381,16 +405,13 @@ export function BuildPanel({
               aria-label={`${nameOf(kind)}, ${cost} credits${key ? `, hotkey ${key}` : ''}`}
               aria-keyshortcuts={key}
               aria-pressed={placing === kind}
-              {...bind(kind)}
+              {...(touch ? {} : bind(kind))}
               onClick={e => pressBuild(state, tab, kind, placing, dispatch, setPlacing, e.shiftKey)}
               onContextMenu={e => {
                 e.preventDefault();
-                if (inQueue) {
-                  dispatch({ type: 'cancel', category: tab, kind });
-                  if (placing === kind) setPlacing(null);
-                }
+                if (inQueue) cancel();
               }}
-              style={{ borderColor: placing === kind ? UI.good : undefined, opacity: open ? 1 : 0.42 }}
+              style={{ flex: 1, minWidth: 0, borderColor: placing === kind ? UI.good : undefined, opacity: open ? 1 : 0.42 }}
             >
               <img src={iconFor(kind)} alt="" width={96} height={64} />
               <span className="fl-build-name">
@@ -405,8 +426,21 @@ export function BuildPanel({
                 </div>
               )}
               {isReady && <span style={{ ...badge, background: UI.good }}>{placing === kind ? 'Placing' : 'Ready'}</span>}
-              {inQueue > 1 && <span style={{ ...badge, background: UI.accent, left: 'auto', right: 3 }}>{inQueue}</span>}
+              {inQueue > 1 && <span style={{ ...badge, background: UI.accent, left: 'auto', right: 3, top: 'auto', bottom: 8 }}>{inQueue}</span>}
             </button>
+            {inQueue > 0 && (
+              <button
+                type="button"
+                className="fl-cancel"
+                data-testid={`cancel-${kind}`}
+                aria-label={`Cancel ${nameOf(kind)}`}
+                title="Cancel for a full refund"
+                onClick={cancel}
+              >
+                ×
+              </button>
+            )}
+            </div>
           );
         })}
       </div>
@@ -464,16 +498,25 @@ export function SelectionPanel({
   state,
   selected,
   dispatch,
+  touch = false,
 }: {
   state: GameState;
   selected: Set<number>;
   dispatch: (a: GameAction) => boolean;
+  touch?: boolean;
 }) {
   const units = state.units.filter(u => selected.has(u.id));
   const building = state.buildings.find(b => selected.has(b.id));
   const { tip, bind } = useTip<BuildingKind | UnitKind>();
   const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} />;
   if (!units.length && !building) {
+    if (touch) {
+      return (
+        <p style={{ margin: 0, fontSize: '0.74rem', color: UI.textFaint, lineHeight: 1.45 }}>
+          Tap a unit to select it, or use Army or Box on the map. With units selected, tap the ground to move and an enemy to attack.
+        </p>
+      );
+    }
     return (
       <p style={{ margin: 0, fontSize: '0.74rem', color: UI.textFaint, lineHeight: 1.45 }}>
         Drag a box or click to select. Right-click to move or attack. <kbd>A</kbd> attack-move, <kbd>S</kbd> stop,{' '}
@@ -503,7 +546,7 @@ export function SelectionPanel({
           <>
             <p style={{ margin: 0, fontSize: '0.72rem', color: UI.textSoft, lineHeight: 1.4 }}>
               {spec.blurb}
-              {(building.kind === 'barracks' || building.kind === 'factory') && ' Right-click the map to set where new units gather.'}
+              {(building.kind === 'barracks' || building.kind === 'factory') && (touch ? ' Tap the map to set where new units gather.' : ' Right-click the map to set where new units gather.')}
             </p>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
@@ -556,7 +599,7 @@ export function SelectionPanel({
       {one && one.kind === 'hauler' && mine && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }}>
           Carrying {one.cargo} of 600 ore.{' '}
-          {one.order.type === 'harvest' ? 'Harvesting.' : 'Idle: right-click ore or a refinery.'}
+          {one.order.type === 'harvest' ? 'Harvesting.' : touch ? 'Idle: tap ore or a refinery.' : 'Idle: right-click ore or a refinery.'}
         </span>
       )}
       {one && (one.kills > 0 || one.vet > 0 || one.queue.length > 0) && (
@@ -573,7 +616,7 @@ export function SelectionPanel({
       {mine && (
         <div style={{ display: 'flex', gap: 6 }}>
           <button style={smallBtn(UI.rule)} onClick={() => dispatch({ type: 'stop', ids: units.map(u => u.id) })}>
-            Stop (S)
+            {touch ? 'Stop' : 'Stop (S)'}
           </button>
         </div>
       )}

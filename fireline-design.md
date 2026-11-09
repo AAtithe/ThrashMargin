@@ -139,9 +139,37 @@ unit orders and selection, "ready" chimes, the under-attack alarm, victory and d
   not play a burst of stale explosions.
 - Renderer-side only: the simulation never touches it.
 
-## 7. Not built yet
+## 7. Phones and touch screens
 
-- Touch controls. The game is playable with a mouse and keyboard; orders are right-click.
+Every pointer event is routed by its own `pointerType`, so mouse and finger both work on the same
+device. `game/layout.ts` reads the window and decides the arrangement.
+
+- **Gestures on the battlefield.** One finger drags the view, two fingers pinch to zoom, and a
+  finger lifted without moving (10px slop) is a tap. With your units selected, a tap on open
+  ground, ore, a refinery or an enemy is the order a right-click would give; a tap on your own unit
+  or structure selects it. A selected Barracks or War Factory plus a tap sets the rally point.
+  Double-tap a unit for every unit of that kind on screen.
+- **Command bar** (touch screens only), along the foot of the map: Box (the next drag draws a
+  selection box), Army (every fighting unit you own), Attack (then tap: attack-move), Stop, Clear,
+  Base. While placing a structure or aiming a hero ability or support power it shrinks to one
+  Stop placing or Cancel button in the corner: centred, it sat under the ground near the base and
+  a phone's tap adjustment snapped map taps onto it. In a campaign battle the hero and power bar
+  and the feed sit above it, and a tap completes an ability or power the way a click does.
+- **Build buttons** carry a × to cancel, since iOS has no long-press context menu. On a touch
+  screen they drop the hotkey letter and the hover stat card, which would stick open after a tap.
+- **Layout.** An upright narrow window stacks the map over the build panel (the panel takes at
+  most 44%, and the selection moves to its top). A phone on its side keeps the sidebar, narrowed to
+  228px with the minimap beside credits and power. Under 1100px the top bar keeps Lobby, clock,
+  Pause and Menu; speed, sound, theme, motion, the tour and the controls sheet move into the Menu, which
+  pauses the battle and hides the tour card while open. The shell uses `100dvh`.
+- **Edge scrolling ignores mouse events within a second of a touch.** Browsers follow a tap with a
+  synthetic mouse move; without the guard, a tap near the edge of the map started edge-scrolling
+  and carried the view away from the base.
+- **Tour.** Steps say tap and name the command bar; Select your riflemen rings Army. On a narrow
+  screen the card goes full width above or below its target; on a phone on its side, a battlefield
+  step puts it over the build panel. `npm run tours -- fireline-touch` plays the whole run by touch
+  on an upright iPhone (CI's quick mode), the iPhone on its side, and a Pixel 7.
+
 
 ---
 
@@ -268,6 +296,16 @@ eight missions built and run 2,000 ticks, the guided tour passes, and a browser 
 lobby, new campaign, map (clicking a node on the canvas), briefing, deploy, battle HUD, debrief
 and back to the map (mission 1 won, mission 2 open) with no page errors.
 
+### 2026-11-08 — Playable on phones
+
+Touch gestures, the command bar, the phone layouts and the touch tour driver (§7). Until now the
+only way to give an order was a right-click, so a phone could build but never move a unit. The
+touch driver found three faults the desktop driver never could: the tour card covered the Menu
+(so the Menu could not be used during the tour); the echo of a tap started edge-scrolling and
+dragged the view off the base; and a centred Stop placing button swallowed taps aimed at the
+ground near the base. All three fixed. The desktop layout at 1100px and wider is unchanged.
+Rebuilt onto the campaign merge (#21), so hero abilities and support powers take a tap too.
+
 ### 2026-11-09 — Freeplay depth: new tech, random maps, a movement fix
 
 Contract first, then four builders in parallel (rules and simulation, maps, art, interface and the
@@ -291,4 +329,3 @@ the mirror 45% to 54%, Hard on side 1 wins 91% (61% before the fix) and Easy 0%.
 because haulers now deliver all game, so Hard's 25% income bonus and Easy's 20% cut compound. Before
 the fix a 900-seed mirror per map type read 45% to 54% except plains (42% for side 0); not yet
 re-measured, so left open below.
-

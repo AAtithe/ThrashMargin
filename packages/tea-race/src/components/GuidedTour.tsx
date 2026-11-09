@@ -550,7 +550,10 @@ function useTargetRect(targetId: string | null, stepIndex: number): DOMRect | nu
   const [measured, setMeasured] = useState<{ key: string; rect: DOMRect | null }>({ key, rect: null });
   const setRect = (rect: DOMRect | null) => setMeasured({ key, rect });
 
-  useEffect(() => {
+  // A layout effect, so the first measure of a new target lands before the browser paints. Measured
+  // after paint, a new step's first frame had no rect yet: the card was drawn in the middle of the
+  // screen under a full scrim, then jumped to its target.
+  useLayoutEffect(() => {
     if (!targetId) {
       setRect(null);
       return;
