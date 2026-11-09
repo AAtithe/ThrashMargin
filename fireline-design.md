@@ -510,3 +510,26 @@ held by a garrison kept supplied (and overrun, its count reset, without one), Ir
 skirmish commander, Bastion Line by the commander with the army sent at the turrets. Firestorm's
 Commando, placed at the Strike Command, stops the first missile. Every summary line of
 `npm run drive:fire` is unchanged.
+
+### 2026-11-09: Round 4 integration
+
+The foundation (sides, then the contract) went first; air, bigger battles and act two were built
+in parallel on it and merged with conflicts only in the docs. Putting them together found:
+
+- Act two's air slots filled: gunship raids on Graystone Ford (mission 11) with Skyhunters for the
+  garrison and two more tanks, because Skyhunters cannot fire at the ground and without the tanks
+  the scripted garrison lost the ford; bomber runs on the base in Firestorm (12) with Flak Cannons
+  cleared; the whole air arm for both sides in Last Light (14), whose Combine base now has Helipads,
+  a Research Lab and Flak Cannons, so its raiders go home and rearm.
+- A Bomber on attack-move flew to the point and hovered with a full bay. It now bombs the first
+  enemy structure it comes near, then rearms.
+- Ground units no longer chase aircraft on attack-move or the aggressive stance; they fire at what
+  comes in range. An explicit attack order still pursues.
+- The sides harness's invariants now let aircraft stand over water and structures, as drive's do.
+- A mission with no base opens the camera on the player's units, not the map's corner.
+
+Numbers at integration: drive 344,186 assertions, campaign-check 2,595 (fourteen missions), both
+tours (desktop, and touch on three phones), 27 loading checks and 573 server tests pass. AI ladder,
+150 seeds, random maps, advanced tech: the mirror 51% to 47% (2 unfinished), Hard on side 1 wins
+91%, Easy 0%.
+

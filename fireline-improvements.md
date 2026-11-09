@@ -87,7 +87,6 @@ mission AI once the round-1 opponent work lands.
   - [x] The computer: a Lab and Helipads once its base stands, gunship and bomber strikes, research by difficulty, anti-air only against aircraft.
   - [x] Air tab, Research block, hotkeys B N D for the longer Structures list, aircraft art with shadows, rotor and contrails.
   - [ ] Aircraft are not mended anywhere (no pad repair); a damaged gunship stays damaged.
-  - [ ] Air units in act two missions 11, 12 and 14 (integration, per the contract).
 - [x] B. Bigger battles: 3 and 4 sides, free for all or teams, fair maps, several-enemy commanders.
   - [x] Seat fairness measured: 4 sides free for all within two standard errors over 120 seeds.
   - [x] Two against one balanced by the lone side's starting credits (48% for the pair over 60 seeds).
@@ -96,9 +95,8 @@ mission AI once the round-1 opponent work lands.
 - [x] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
   - [x] Objectives escort, destroyWithin and holdZone with reset; structure powers in a mission.
   - [x] Both acts on the campaign screen; act two's northern theatre.
-  - [ ] After integration: air in missions 11, 12 and 14 (the trigger slots are marked in act2.ts).
-  - [ ] A no-base mission opens with the view at the top-left corner of the map rather than on
-    the player's units (GameScreen's opening camera looks only for a Command Yard).
+  - [x] A no-base mission opens on the player's units (the opening camera looked only for a Command Yard).
+  - [x] Air in missions 11, 12 and 14 (integration).
 
 ## Found along the way
 

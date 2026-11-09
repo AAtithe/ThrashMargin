@@ -165,8 +165,15 @@ export function Battle({
   const acc = useRef(0);
   const renderer = useRef<Renderer | null>(null);
   if (!renderer.current) renderer.current = new Renderer(initial.tiles, undefined, initial.mapW, initial.mapH);
+  // Open on the Command Yard; in a mission with no base, on the middle of our units.
   const hq = initial.buildings.find(b => b.owner === 0 && b.kind === 'hq');
-  const cam = useRef<Camera>({ x: hq ? hq.x * TILE - 300 : 0, y: hq ? hq.y * TILE - 260 : 0, zoom: 1, w: 800, h: 600 });
+  const ours = initial.units.filter(u => u.owner === 0);
+  const opening = hq
+    ? { x: hq.x, y: hq.y }
+    : ours.length
+      ? { x: ours.reduce((a, u) => a + u.x, 0) / ours.length - 1, y: ours.reduce((a, u) => a + u.y, 0) / ours.length - 1 }
+      : null;
+  const cam = useRef<Camera>({ x: opening ? opening.x * TILE - 300 : 0, y: opening ? opening.y * TILE - 260 : 0, zoom: 1, w: 800, h: 600 });
   const overlay = useRef<Overlay>({ selected: new Set(), hover: 0, placement: null, drag: null, pings: [] });
   const keys = useRef(new Set<string>());
   const mouse = useRef({ x: -1, y: -1, inside: false, downX: 0, downY: 0, down: false, pan: false, panX: 0, panY: 0, camX: 0, camY: 0, lastClick: 0 });
