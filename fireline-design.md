@@ -170,3 +170,75 @@ another structure occupies the queue, the queue and place steps ring that struct
 to clear it, instead of ringing a disabled button. The driver now re-reads the card before every
 click and checks the busy-queue path itself. Not reproducible locally even with the CPU slowed
 four-fold; the screenshot is what found it.
+
+### 2026-11-08 — Improvement round 1 (five parallel builders)
+
+Five agents, one workstream each, each in its own git worktree and owning its own files, worked
+against written contracts at the seams (pose fields, veterancy, group badges, AI measurement,
+waypoints and stances); the plan is `fireline-improvements.md`. Four branches merged without a
+conflict; the computer-opponent workstream hit a usage limit and is being re-run.
+
+- Effects (`game/fx/`): tread marks, wrecks and rubble baked into the terrain canvas and faded
+  back towards a pristine copy; layered explosions with debris and smoke columns; muzzle light;
+  animated water and shore foam drawn into the terrain canvas; cloud shadows and vignette folded
+  into the fog canvas; dashed order lines; veterancy chevrons; control-group badges.
+- Art: much richer vehicles, infantry with a firing pose, structures with working machinery,
+  damage drawn from health (scorch, holes, sparks, fire), per-pixel terrain with raised rock
+  plateaus and banded shores. A sprite cache stamps each unit look per facing at screen
+  resolution, which made the richer art faster than the old art in big battles.
+- Gameplay: veterancy at 3 and 7 kills; waypoint queues (Shift + right-click, up to 12);
+  aggressive, guard and hold-fire stances; survivors from destroyed and sold structures; shells
+  now credit the unit that fired them. Older saves migrate. Harness: 170,387 assertions.
+- Interface: build hotkeys Q to Y and Tab, Shift to queue five, combat alerts pinged on the
+  minimap with Space to jump, an animated credits counter, a low-power banner, refusal toasts,
+  stat cards from `rules.ts`, a hero banner and difficulty cards in the lobby. Repair moved from R
+  to G; P alone pauses.
+- Integration fixes: a selection of more than four units draws one order line per order rather
+  than a web of one per unit; a fuller scrim behind the lobby headline; the controls sheet and the
+  lobby's What is new strip now cover every workstream.
+
+Found and handed on: over 84 computer-against-computer battles side 1 won 59 to side 0's 25, and
+the same split appears on the code before this round, so the round did not cause it. The likely
+cause is the two sides deciding at different points in the AI's cycle (and the income multiplier
+applying only to side 1); it does not affect a human player but it skews harness win rates, and it
+is the AI workstream's to measure.
+
+Frame rate in headless Chromium (software rendering, no GPU): 60 fps on ordinary mid-battle saves
+in each builder's own measurement; 47 to 58 fps in 200-unit set pieces, at or above the old
+build in the same setup. Integrated measurements taken while a builder was running on the same
+machine read lower and are not comparable; a check on a real GPU browser is still owed.
+
+### 2026-11-08 — Round 1's computer opponent; even seats
+
+The opponent workstream re-ran after a usage limit and landed: economy first, repairs, counter-
+picked units, hauler raids, waves that gather, regroup and fall back, retreat below 30% health.
+`npm run ladder:fire` (scripts/ai-ladder.ts, 150 seeds a match, parallel workers) measured the new
+commander beating the old 82% of the time, and, from the same seat, the opponent winning 0% on
+Easy, 78% on Normal and 97% on Hard.
+
+The ladder also proved the seat imbalance first seen in round 1: side 1 won 78% of mirror games
+with either commander. Every structure's front (door, refinery dock) was its south edge, which
+faces away from the enemy for side 0 but towards it for side 1. `frontRow()` in grid.ts now puts
+the front away from the enemy for both; docks, doors, spawns, placement, the AI's lanes and the
+mission layout use it. The 150-game mirror now reads 43% to 56%, within about a margin of error
+of even. Side 0, the player, plays exactly as before. Cosmetic gap still open: side 1's refinery
+chute and factory door are drawn on the south face while its units leave from the north.
+
+### 2026-11-08 — Campaign (see fireline-campaign-design.md)
+
+Contract first, then four builders in parallel (simulation, campaign content and progression,
+art, interface), then integration. Integration found and fixed: missions built the AI's memory
+with five fields after round 1 had added seven more (now one `newAiMemory()` for both); the
+campaign map hit-tested clicks with the wrong signature for the art's node positions, so clicks
+missed the drawn nodes (now the same function and radius); the interface estimated hero health,
+prices and cooldowns itself (now the sim's `maxHpOf`, `costFor` and `abilityCooldown`). Harness
+tests written against the old AI broke under the new one, which rightly defends and refunds;
+ability tests now run with side 1's commander off (`noCommander`). Mission AI modes added:
+passive, defend, raid, and no structure queued by an outpost with no Command Yard; each is tested
+by what the enemy actually does over twelve minutes. A hero ordered to use a structure ability
+out of range now walks there and uses it on arrival.
+
+Numbers at integration: drive 210,000+ assertions (about 80s), campaign-check 1,209 with all
+eight missions built and run 2,000 ticks, the guided tour passes, and a browser run through
+lobby, new campaign, map (clicking a node on the canvas), briefing, deploy, battle HUD, debrief
+and back to the map (mission 1 won, mission 2 open) with no page errors.

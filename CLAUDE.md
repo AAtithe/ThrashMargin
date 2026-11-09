@@ -60,6 +60,12 @@ added later). `api/play/[kind].ts` refuses any game the account lacks with 403 b
 handler runs; that is the boundary. The lobbies' `hasGameAccess` check and the welcome page hiding
 cards are presentational, exactly like the sign-in gate. Logic: `packages/thrash-margin/api/_lib/access.ts`.
 
+Accounts also carry a `users.status`: `active`, `pending` (registered while the Admin page's "require
+approval" setting was on) or `suspended`. `getUser` refuses any session whose account is not active,
+on every request, so suspension takes effect at once; suspending also stamps `password_changed_at`,
+so reinstating does not revive an old session. Admin actions on accounts (approve, reject, suspend,
+delete) never target the caller or an admin, and every one is written to the access history.
+
 A game marked `optIn` in `shared/games.ts` (The Founder's Ledger) is the exception to "NULL means every
 game": no account has it until an admin turns it on, so adding one never shows it to every account.
 Its landing card is `hidden` in the HTML for the same reason. `npm run test:api` covers the rules.
@@ -110,8 +116,11 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   seconds. Use a wide seed set: pathologies in this codebase's history showed up in some seeds and
   not others, and a five-seed run once reported two bugs fixed while they were still there.
 - **Fireline has its own harness: `npm run drive:fire`** (whole computer-against-computer battles over
-  28 seeds plus every order, about 120,000 assertions, about 40 seconds; `-- --seeds 60` for a
-  wider sweep). Fireline is real time: it saves every 15 seconds of play rather than per action, and
+  28 seeds, every order, and the campaign's heroes, powers, objectives and mission AI modes; about
+  210,000 assertions, about 80 seconds; `-- --seeds 60` for a wider sweep, `-- --campaign` for the
+  campaign sections alone). `npm run campaign:fire` checks progression and builds and runs all eight
+  missions; both are in `npm run check`. `npm run ladder:fire` pits AI commanders over 150 seeds
+  (about 10 minutes, so not in check); use it for any balance or AI change. Fireline is real time: it saves every 15 seconds of play rather than per action, and
   its guided tour runs on the live battle (see `fireline-design.md` §5).
 - **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and
   difficulty). Its engine (`packages/thrash-margin/shared/sim/`) follows the same purity rule as the
@@ -164,8 +173,9 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   inside `#root` for the bundle download, with colours copied from the game's tokens; keep it, and
   keep the colours in step, when editing those files.
 - **`npm run check:loading` after touching a loading state** (the shared loader, a game screen's
-  load branch, a lobby's saves list, an `index.html`, or a game's palette). Drives all five games
-  in Chromium with the API intercepted, about 130 checks in a few minutes; starts and stops its
+  load branch, a lobby's saves list, an `index.html`, or a game's palette). Drives every game in
+  Chromium with the API intercepted (the Founder's Ledger, which has no lobby, through its own
+  routine), about 180 checks in a few minutes; starts and stops its
   own dev servers. Needs Playwright, so it is not part of `npm run check`.
 - **Never `git add -A` without reading `git status` first.** A commit in this repo once swept four
   other games' uncommitted lobby changes in under an unrelated message. Stage deliberately.

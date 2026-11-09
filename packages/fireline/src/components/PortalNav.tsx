@@ -1,4 +1,5 @@
 import { getStoredUser, clearToken, hasGameAccess } from '../lib/portalAuth';
+import MotionToggle from './MotionToggle';
 import ThemeToggle from './ThemeToggle';
 
 interface PortalNavProps {
@@ -86,6 +87,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
         )}
       </div>
       <div style={styles.right}>
+        <MotionToggle />
         <ThemeToggle />
         {user ? (
           <>

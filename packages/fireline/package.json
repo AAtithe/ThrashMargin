@@ -6,7 +6,9 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "drive": "tsx scripts/drive.ts"
+    "drive": "tsx scripts/drive.ts",
+    "campaign-check": "tsx scripts/campaign-check.ts",
+    "ladder": "tsx scripts/ai-ladder.ts"
   },
   "dependencies": {
     "react": "^18.2.0",

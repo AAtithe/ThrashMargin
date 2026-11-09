@@ -1,5 +1,6 @@
-import { BUILDINGS, type BuildingKind, type UnitKind } from '../sim/rules';
+import { BUILDINGS, UNITS, type BuildingKind, type HeroKind, type UnitKind } from '../sim/rules';
 import { drawBuilding, drawUnit, TILE } from './art';
+import { drawHeroPortrait } from './campaignArt';
 
 /**
  * Build-menu icons, drawn once with the same functions that draw the battlefield, then kept as
@@ -21,6 +22,18 @@ export function iconFor(kind: BuildingKind | UnitKind): string {
   g.addColorStop(1, '#2b3f1f');
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, W, H);
+  // A little ground texture (fixed, so every icon matches) and a soft vignette to seat the art.
+  for (let i = 0; i < 70; i++) {
+    const a = Math.sin(i * 12.9898) * 43758.5453;
+    const b = Math.sin(i * 78.233) * 12345.6789;
+    ctx.fillStyle = i % 2 ? 'rgba(110,140,70,0.35)' : 'rgba(25,40,15,0.35)';
+    ctx.fillRect((a - Math.floor(a)) * W, (b - Math.floor(b)) * H, 1.2, 2.2);
+  }
+  const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.62);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(0,0,0,0.35)');
+  ctx.fillStyle = v;
+  ctx.fillRect(0, 0, W, H);
   if (kind in BUILDINGS) {
     const spec = BUILDINGS[kind as BuildingKind];
     const s = Math.min((W - 10) / (spec.w * TILE), (H - 8) / (spec.h * TILE), 1.2);
@@ -30,14 +43,39 @@ export function iconFor(kind: BuildingKind | UnitKind): string {
     drawBuilding(ctx, kind as BuildingKind, 0, 0, 0, { t: 1, rise: 1, lowPower: false, turret: -0.6, sinceShot: 9 });
     ctx.restore();
   } else {
-    const infantry = kind === 'rifleman' || kind === 'rocketeer';
+    const infantry = UNITS[kind as UnitKind].category === 'infantry';
+    const scale = kind === 'ace' ? 1.5 : kind === 'commando' ? 2.4 : infantry ? 2.6 : 1.9;
     ctx.save();
     ctx.translate(W / 2, H / 2);
-    ctx.scale(infantry ? 2.6 : 1.9, infantry ? 2.6 : 1.9);
+    ctx.scale(scale, scale);
     drawUnit(ctx, kind as UnitKind, 0, 0, 0, { hull: -0.35, turret: -0.35, t: 0, moving: false, cargo: kind === 'hauler' ? 0.8 : 0, sinceShot: 9 });
     ctx.restore();
   }
   const url = c.toDataURL();
   cache.set(kind, url);
   return url;
+}
+
+const portraits = new Map<string, string>();
+
+/**
+ * A hero's portrait (campaignArt.drawHeroPortrait) as a square data URL, for hero cards, the hero
+ * bar and the roster. `size` is in CSS pixels; it is drawn at twice that for sharp screens.
+ */
+export function heroPortraitFor(kind: HeroKind, level: number, wounded: boolean, size = 64): string {
+  const key = `${kind}/${level}/${wounded ? 1 : 0}/${size}`;
+  const hit = portraits.get(key);
+  if (hit) return hit;
+  const c = document.createElement('canvas');
+  c.width = c.height = size * 2;
+  const ctx = c.getContext('2d')!;
+  drawHeroPortrait(ctx, kind, level, 0, 0, size * 2, wounded);
+  const url = c.toDataURL();
+  portraits.set(key, url);
+  return url;
+}
+
+/** A hero's battlefield figure on the build-menu ground, the same as iconFor (for stat cards). */
+export function heroIconFor(kind: HeroKind): string {
+  return iconFor(kind);
 }

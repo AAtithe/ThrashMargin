@@ -1359,22 +1359,18 @@ one at each of 880 to 960px with every animation frame recorded: no frame of any
 
 ### 2026-11-08 — The Tea Race full tour matrix: three phone failures, one of them a real game bug
 
-The full matrix (not the quick one CI runs) had failed three phone scenarios since before the fix
-above. Two causes, one in the game and one in the driver.
+The full matrix (not the quick one CI runs) failed three phone scenarios. This branch found and fixed
+them in parallel with #18, which landed on main first with the same diagnosis and a broader fix, so
+on merging main's code was kept and this branch's version dropped:
 
-- **`golf/board/phone/h1/lose`: the game.** A phone has room for one panel at a time. Rolling opens
-  the fleet and orders panel, which put the exchange away, and on "Lay off a course for the buyer"
-  the run was pointing into the exchange (the port ledger). The run's target had not changed, so
-  nothing opened the exchange again: the card asked for Alexandria in a panel the player could not
-  see, with no ring. Any phone player who waited at the quay on that step for a turn met it.
-  `GameScreen.tsx` now keeps the run's current target, and the open-orders-on-roll effect stands
-  down where only one panel fits and that target is in the exchange (and only while a run is on,
-  since a run skipped mid-step leaves its last target behind). Fails with that file reverted,
-  passes with it.
-- **`limas` and `mikes` `/phone/h1/ship`: the driver.** The perturbation buys a second clipper
-  while the run points into the exchange; on a phone the shipyard is in the closed fleet panel, and
-  the driver waited 30s on a hidden button. It now opens the panel with its launcher first, as a
-  player must. On desktop both panels are open, which is why only the phone runs failed.
+- `golf/board/phone/h1/lose`, a real game bug: on a phone the roll opened Fleet & orders and closed
+  the Exchange under a tour pointing into it. This branch stopped the roll opening Fleet & orders
+  while the tour pointed into the Exchange; #18 instead reopens the target's panel at each game
+  moment (turn, phase, seat), which also covers Steady Eddie and does not fight a player who opens
+  the other panel on purpose. Main's is the better rule.
+- `limas`/`mikes` `/phone/h1/ship`, a driver artefact: the shipyard was in the closed panel. Both
+  fixes open the panel with its launcher first, as a player must.
 
-**Verification.** The three scenarios seven times each (21 runs) and the full 32-run matrix: no
-problems. `npm run check` passes.
+Two sessions on one defect, twice in a day (see the entry above). The duplicated work was caught at
+merge and cost nothing in code, but it is the reason to claim a CI failure where others can see it
+before starting on it.
