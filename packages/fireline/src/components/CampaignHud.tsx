@@ -1,10 +1,12 @@
-import { useState, type CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { abilityCooldown, abilityProblem, heroUnit } from '../sim/mission';
 import { maxHpOf } from '../sim/state';
 import {
+  BUILDINGS,
   HERO_ABILITY,
   HERO_COOLDOWN_PER_LEVEL,
   HERO_HP_PER_LEVEL,
+  MAP_W,
   HERO_LEVEL_XP,
   HERO_MAX_LEVEL,
   POWERS,
@@ -52,28 +54,101 @@ export function abilityBlock(s: GameState, u: Unit): string | null {
   return null;
 }
 
-export function ObjectivesPanel({ s }: { s: GameState }) {
-  const [open, setOpen] = useState(true);
+const OBJECTIVES_KEY = 'fireline_objectives_open';
+
+function readOpen(): boolean {
+  try {
+    return localStorage.getItem(OBJECTIVES_KEY) !== '0';
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Where an objective's target is, if the player has seen it: the nearest explored enemy structure
+ * of the kind an infiltrate, capture or destroy objective names, or the point of a reach or hold.
+ * Null when there is nothing to show yet (the target is still under the fog).
+ */
+function objectiveTarget(s: GameState, o: ObjectiveRuntime): { x: number; y: number } | null {
+  const sp = o.spec;
+  if (sp.kind === 'reach' || sp.kind === 'holdZone') return { x: sp.x, y: sp.y };
+  if (sp.kind !== 'infiltrate' && sp.kind !== 'capture' && sp.kind !== 'destroy') return null;
+  for (const b of s.buildings) {
+    if (b.owner === 0 || b.kind !== sp.building) continue;
+    if (s.explored.charCodeAt(b.y * MAP_W + b.x) !== 49) continue;
+    const spec = BUILDINGS[b.kind];
+    return { x: b.x + spec.w / 2, y: b.y + spec.h / 2 };
+  }
+  return null;
+}
+
+/**
+ * The mission's objectives, top right of the battlefield. It can be hidden (button or O) down to a
+ * small pill, so it never sits over something the player needs to click; the choice is remembered.
+ * Objectives whose target has been seen carry a Show button that centres the view on it.
+ */
+export function ObjectivesPanel({ s, onLocate }: { s: GameState; onLocate?: (x: number, y: number) => void }) {
+  const [open, setOpenState] = useState(readOpen);
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    try {
+      localStorage.setItem(OBJECTIVES_KEY, v ? '1' : '0');
+    } catch {
+      /* not remembered: harmless */
+    }
+  };
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key.toLowerCase() === 'o' && !e.ctrlKey && !e.metaKey && !e.altKey) setOpenState(v => {
+        try {
+          localStorage.setItem(OBJECTIVES_KEY, v ? '0' : '1');
+        } catch {
+          /* ignore */
+        }
+        return !v;
+      });
+    };
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, []);
   const m = s.mission;
   if (!m) return null;
   const left = m.timeLimit !== null ? m.timeLimit - s.tick : null;
+  const done = m.objectives.filter(o => o.done).length;
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="fl-objectives-pill"
+        data-testid="objectives-show"
+        onClick={() => setOpen(true)}
+        title="Show the objectives (O)"
+      >
+        Objectives {done}/{m.objectives.length}
+        {left !== null && <span className="fl-mission-clock"> {clockOf(left)}</span>}
+        <kbd>O</kbd>
+      </button>
+    );
+  }
   return (
     <section className="fl-objectives" data-testid="objectives" aria-label="Objectives">
       <header>
-        <button type="button" className="fl-objectives-toggle" aria-expanded={open} onClick={() => setOpen(o => !o)}>
-          Objectives <span aria-hidden="true">{open ? '▾' : '▸'}</span>
-        </button>
+        <span className="fl-objectives-toggle">Objectives</span>
         {left !== null && (
           <span className="fl-mission-clock" data-low={left < 60 * TICKS_PER_SECOND ? '1' : '0'} data-testid="mission-clock" title="Time left to complete the objectives">
             {clockOf(left)}
           </span>
         )}
+        <button type="button" className="fl-objectives-hide" data-testid="objectives-hide" onClick={() => setOpen(false)} title="Hide the objectives (O)">
+          Hide <kbd>O</kbd>
+        </button>
       </header>
-      {open && (
+      {(
         <>
           <ul>
             {m.objectives.map((o, i) => (
-              <ObjectiveRow key={`p${i}`} o={o} />
+              <ObjectiveRow key={`p${i}`} o={o} at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} />
             ))}
           </ul>
           {m.bonus.length > 0 && (
@@ -81,7 +156,7 @@ export function ObjectivesPanel({ s }: { s: GameState }) {
               <p className="fl-objectives-sub">Bonus, optional: a star each</p>
               <ul>
                 {m.bonus.map((o, i) => (
-                  <ObjectiveRow key={`b${i}`} o={o} bonus />
+                  <ObjectiveRow key={`b${i}`} o={o} bonus at={onLocate ? objectiveTarget(s, o) : null} onLocate={onLocate} />
                 ))}
               </ul>
             </>
@@ -92,7 +167,17 @@ export function ObjectivesPanel({ s }: { s: GameState }) {
   );
 }
 
-function ObjectiveRow({ o, bonus = false }: { o: ObjectiveRuntime; bonus?: boolean }) {
+function ObjectiveRow({
+  o,
+  bonus = false,
+  at,
+  onLocate,
+}: {
+  o: ObjectiveRuntime;
+  bonus?: boolean;
+  at?: { x: number; y: number } | null;
+  onLocate?: (x: number, y: number) => void;
+}) {
   const state = o.failed ? 'failed' : o.done ? 'done' : 'open';
   return (
     <li className="fl-objective" data-state={state} data-bonus={bonus ? '1' : '0'}>
@@ -107,6 +192,11 @@ function ObjectiveRow({ o, bonus = false }: { o: ObjectiveRuntime; bonus?: boole
           </span>
         )}
       </span>
+      {state === 'open' && at && onLocate && (
+        <button type="button" className="fl-objective-show" onClick={() => onLocate(at.x, at.y)} title="Centre the view on it">
+          Show
+        </button>
+      )}
     </li>
   );
 }
