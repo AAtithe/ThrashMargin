@@ -56,6 +56,9 @@ const TRACKS: Partial<Record<UnitKind, { off: number; w: number; a: number }>> =
   hauler: { off: 8, w: 4.5, a: 0.16 },
   artillery: { off: 7, w: 3.5, a: 0.15 },
   buggy: { off: 5.5, w: 1.6, a: 0.2 },
+  flametank: { off: 7.8, w: 4.2, a: 0.16 },
+  missilecarrier: { off: 6.2, w: 2, a: 0.2 },
+  bastion: { off: 11.6, w: 6.4, a: 0.2 },
 };
 
 export class Scars {
@@ -117,6 +120,8 @@ export class Scars {
           for (let x = b.x; x < b.x + spec.w; x++) if (cur.explored.charCodeAt(y * MAP_W + x) === 49) seen = true;
         if (!seen) continue;
         this.rubble(b.x * TILE, b.y * TILE, spec.w * TILE, spec.h * TILE);
+        // A wall is sand and sacking: a scatter of rubble, but nothing left to burn.
+        if (spec.wall) continue;
         this.smoulders.push({ x: b.x * TILE, y: b.y * TILE, w: spec.w * TILE, h: spec.h * TILE, born: t, life: 30 });
       }
     }
@@ -133,8 +138,8 @@ export class Scars {
       this.fallen(x, y);
       return;
     }
-    this.stampScorch(x, y, 22);
-    const size = 60;
+    const size = u.kind === 'bastion' ? 84 : 60;
+    this.stampScorch(x, y, size === 60 ? 22 : 30);
     const c = document.createElement('canvas');
     c.width = size;
     c.height = size;
@@ -307,6 +312,75 @@ export class Scars {
     const rh = Math.min(this.pristine.height - ry, h + m * 2);
     this.dctx.drawImage(this.pristine, rx, ry, rw, rh, rx, ry, rw, rh);
     this.onRepaint?.(rx, ry, rw, rh);
+  }
+
+  /**
+   * A missile's crater, painted into the pristine terrain so it lasts the battle: a wide scorch, a
+   * dark bowl with a lit far rim, a raised lip of thrown earth, and rays of ejecta.
+   */
+  crater(x: number, y: number, r: number, t: number) {
+    const c = this.pctx;
+    const sp = sprites();
+    c.save();
+    c.globalAlpha = 1;
+    c.drawImage(sp.scorch, x - r * 2.2, y - r * 1.8, r * 4.4, r * 3.6);
+    c.drawImage(sp.scorch, x - r * 1.5, y - r * 1.2, r * 3, r * 2.4);
+    // Ejecta rays.
+    c.strokeStyle = 'rgba(40,30,20,0.35)';
+    c.lineCap = 'round';
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const l = r * (1.2 + Math.random() * 1.1);
+      c.lineWidth = 2 + Math.random() * 4;
+      c.beginPath();
+      c.moveTo(x + Math.cos(a) * r * 0.9, y + Math.sin(a) * r * 0.75);
+      c.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l * 0.8);
+      c.stroke();
+    }
+    // The lip: a ring of churned earth, lit on the far (top-left) side.
+    const lip = c.createRadialGradient(x, y, r * 0.75, x, y, r * 1.25);
+    lip.addColorStop(0, 'rgba(120,96,66,0.95)');
+    lip.addColorStop(0.5, 'rgba(96,76,52,0.85)');
+    lip.addColorStop(1, 'rgba(70,56,40,0)');
+    c.fillStyle = lip;
+    c.beginPath();
+    c.ellipse(x, y, r * 1.25, r * 1.05, 0, 0, Math.PI * 2);
+    c.fill();
+    // The bowl: dark, deepest just past the middle, with the lit inner wall on the far side.
+    const bowl = c.createRadialGradient(x + r * 0.18, y + r * 0.15, 0, x, y, r);
+    bowl.addColorStop(0, 'rgba(22,17,12,0.95)');
+    bowl.addColorStop(0.6, 'rgba(48,37,26,0.95)');
+    bowl.addColorStop(0.85, 'rgba(82,64,44,0.95)');
+    bowl.addColorStop(1, 'rgba(110,88,60,0.9)');
+    c.fillStyle = bowl;
+    c.beginPath();
+    c.ellipse(x, y, r, r * 0.82, 0, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = 'rgba(180,150,110,0.45)';
+    c.lineWidth = 2;
+    c.beginPath();
+    c.ellipse(x, y, r * 0.96, r * 0.78, 0, Math.PI * 0.95, Math.PI * 1.75);
+    c.stroke();
+    // Clods and stones on the lip.
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = r * (0.95 + Math.random() * 0.6);
+      const s = 1.2 + Math.random() * 2.6;
+      c.fillStyle = Math.random() < 0.5 ? 'rgba(70,58,44,0.9)' : 'rgba(130,112,86,0.9)';
+      c.beginPath();
+      c.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.82, s, s * 0.75, 0, 0, Math.PI * 2);
+      c.fill();
+    }
+    c.restore();
+    const m = r * 2.4;
+    const rx = Math.max(0, Math.floor(x - m));
+    const ry = Math.max(0, Math.floor(y - m));
+    const rw = Math.min(this.pristine.width - rx, Math.ceil(m * 2));
+    const rh = Math.min(this.pristine.height - ry, Math.ceil(m * 2));
+    if (rw <= 0 || rh <= 0) return;
+    this.dctx.drawImage(this.pristine, rx, ry, rw, rh, rx, ry, rw, rh);
+    this.onRepaint?.(rx, ry, rw, rh);
+    this.smoulders.push({ x: x - r, y: y - r * 0.8, w: r * 2, h: r * 1.6, born: t, life: 40 });
   }
 
   private touch(x: number, y: number, w: number, h: number) {

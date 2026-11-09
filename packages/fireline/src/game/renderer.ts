@@ -1,8 +1,22 @@
 import { dockTile } from '../sim/grid';
 import { isDetected } from '../sim/mission';
-import { BUILDINGS, CAPTURE_TICKS, CHARGE_FUSE, ENGINEER_REPAIR_RANGE, MAP_H, MAP_W, POWERS, TICKS_PER_SECOND, UNITS, type BuildingKind } from '../sim/rules';
+import {
+  BUILDINGS,
+  CAPTURE_TICKS,
+  CHARGE_FUSE,
+  ENGINEER_REPAIR_RANGE,
+  MAP_H,
+  MAP_W,
+  MEDIC_RANGE,
+  POWERS,
+  REPAIR_BAY_RANGE,
+  TICKS_PER_SECOND,
+  UNITS,
+  type BuildingKind,
+  type MapType,
+} from '../sim/rules';
 import { buildTicksOf, powerOf, producerFor, visibility } from '../sim/state';
-import type { Building, Effect, GameState, Unit } from '../sim/types';
+import type { Building, Effect, GameState, Projectile, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
 import { drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
 import { drawCampaignEffect, drawCaptureRing, drawChargeOnBuilding, drawOverdriveGlow, drawReconArea, startCampaignEffect } from './fx/campaign';
@@ -12,6 +26,7 @@ import { Scars } from './fx/scars';
 import { sprites } from './fx/sprites';
 import { Water } from './fx/water';
 import { sound, type SoundKind } from './sound';
+import { drawMissileMarker, drawMissileInFlight, flameJet, MISSILE_ARC } from './fx/strike';
 import { paintTerrain } from './terrain';
 
 /**
@@ -63,6 +78,59 @@ function engineerWelding(s: GameState, u: Unit): boolean {
   return false;
 }
 
+/** Distance from a point to a structure's footprint, in tiles (0 inside it). */
+function toFootprint(x: number, y: number, b: Building): number {
+  const spec = BUILDINGS[b.kind];
+  const dx = Math.max(b.x - x, 0, x - (b.x + spec.w));
+  const dy = Math.max(b.y - y, 0, y - (b.y + spec.h));
+  return Math.hypot(dx, dy);
+}
+
+/**
+ * What the structures and support units are doing in one state, for their poses: each wall's
+ * neighbours, which Repair Bays are mending something (and which way it lies), which Medics are
+ * treating someone, and each side's missile charge. Worked out once per state object.
+ */
+interface Activity {
+  joins: Map<number, number>;
+  bayAim: Map<number, number>;
+  medics: Set<number>;
+  /** Per side: missile cooldown left, or -1 when the side has no missile. */
+  missileCd: [number, number];
+}
+
+function activityOf(s: GameState): Activity {
+  const joins = new Map<number, number>();
+  const wallAt = new Map<number, Building>();
+  for (const b of s.buildings) if (BUILDINGS[b.kind].wall) wallAt.set(b.y * MAP_W + b.x, b);
+  for (const b of wallAt.values()) {
+    const same = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && wallAt.get(y * MAP_W + x)?.owner === b.owner;
+    joins.set(b.id, (same(b.x, b.y - 1) ? 1 : 0) | (same(b.x + 1, b.y) ? 2 : 0) | (same(b.x, b.y + 1) ? 4 : 0) | (same(b.x - 1, b.y) ? 8 : 0));
+  }
+  const bayAim = new Map<number, number>();
+  const bays = s.buildings.filter(b => b.kind === 'repairbay' && b.hp > 0);
+  const medics = s.units.filter(u => UNITS[u.kind].medic);
+  const busy = new Set<number>();
+  if (bays.length || medics.length)
+    for (const v of s.units) {
+      if (v.hp <= 0 || v.hp >= maxHpOf(v)) continue;
+      const cat = UNITS[v.kind].category;
+      if (cat === 'vehicle')
+        for (const b of bays) {
+          if (b.owner !== v.owner || bayAim.has(b.id) || toFootprint(v.x, v.y, b) > REPAIR_BAY_RANGE) continue;
+          const spec = BUILDINGS[b.kind];
+          bayAim.set(b.id, Math.atan2(v.y - (b.y + spec.h / 2), v.x - (b.x + spec.w / 2)));
+        }
+      else
+        for (const m of medics) {
+          if (m.owner !== v.owner || m.id === v.id || busy.has(m.id) || Math.hypot(m.x - v.x, m.y - v.y) > MEDIC_RANGE) continue;
+          busy.add(m.id);
+        }
+    }
+  const cd = (o: 0 | 1) => s.powers?.[o]?.missile ?? -1;
+  return { joins, bayAim, medics: busy, missileCd: [cd(0), cd(1)] };
+}
+
 /**
  * Draws one frame of the battlefield. Owns nothing the simulation reads: particles, scorch marks
  * and click pings live here and only here, so they can use Math.random and real time freely.
@@ -101,13 +169,19 @@ export interface Overlay {
 }
 
 export class Renderer {
-  private terrain: HTMLCanvasElement;
+  /** Painted on the first frame, when the state says which kind of map this is. */
+  private terrain!: HTMLCanvasElement;
   private fog: HTMLCanvasElement;
   private fogCtx: CanvasRenderingContext2D;
   private fogImg: ImageData;
   private fx = new Particles();
-  private scars: Scars;
-  private water: Water;
+  private scars!: Scars;
+  private water!: Water;
+  private tiles: string;
+  private mapType: MapType | undefined;
+  private painted = false;
+  private actFor: GameState | null = null;
+  private act: Activity = { joins: new Map(), bayAim: new Map(), medics: new Set(), missileCd: [-1, -1] };
   private atmosphere = new Atmosphere();
   /** Structures producing something right now, cached per state object. */
   private workingFor: GameState | null = null;
@@ -119,16 +193,27 @@ export class Renderer {
   private vis: Uint8Array = new Uint8Array(MAP_W * MAP_H);
   private lastNow = 0;
 
-  constructor(tiles: string) {
-    this.terrain = paintTerrain(tiles);
-    this.scars = new Scars(this.terrain, tiles);
-    this.water = new Water(tiles, this.terrain);
-    this.scars.onRepaint = (x, y, w, h) => this.water.invalidate(x, y, w, h);
+  /**
+   * `mapType` picks the look of the ground (river banks, highland cliffs, canyon walls); when it is
+   * left out, the first state drawn supplies it (GameState.mapType), and without one the ground
+   * is the original map's.
+   */
+  constructor(tiles: string, mapType?: MapType) {
+    this.tiles = tiles;
+    this.mapType = mapType;
     this.fog = document.createElement('canvas');
     this.fog.width = MAP_W;
     this.fog.height = MAP_H;
     this.fogCtx = this.fog.getContext('2d')!;
     this.fogImg = this.fogCtx.createImageData(MAP_W, MAP_H);
+  }
+
+  private paint(mapType: MapType | undefined) {
+    this.painted = true;
+    this.terrain = paintTerrain(this.tiles, mapType);
+    this.scars = new Scars(this.terrain, this.tiles);
+    this.water = new Water(this.tiles, this.terrain);
+    this.scars.onRepaint = (x, y, w, h) => this.water.invalidate(x, y, w, h);
   }
 
   /** What side 0 can see right now. Cached per state object. */
@@ -148,6 +233,12 @@ export class Renderer {
     const vis = this.visible(cur);
     const explored = cur.explored;
     const z = cam.zoom * dpr;
+    if (!this.painted) this.paint(this.mapType ?? cur.mapType);
+    if (this.actFor !== cur) {
+      this.act = activityOf(cur);
+      this.actFor = cur;
+    }
+    const act = this.act;
 
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#050707';
@@ -224,6 +315,12 @@ export class Renderer {
         hp: frac,
         working: working.has(b.id),
       };
+      if (b.kind === 'wall') bpose.joins = act.joins.get(b.id) ?? 0;
+      else if (b.kind === 'repairbay') {
+        const aim = act.bayAim.get(b.id);
+        bpose.working = aim !== undefined;
+        if (aim !== undefined) bpose.turret = aim;
+      } else if (b.kind === 'strikecommand') this.silo(cur, b, bpose, rt, act);
       drawBuilding(ctx, b.kind, b.owner, px, py, bpose);
       if (frac < 0.5 && Math.random() < dt * (frac < 0.25 ? 14 : 6)) {
         this.fx.smoke(px + Math.random() * spec.w * TILE, py + Math.random() * spec.h * TILE * 0.6, 1.6);
@@ -282,7 +379,7 @@ export class Renderer {
     this.orderLines(ctx, cur, drawn, ov, t);
     for (const { u, x, y } of drawn) {
       const spec = UNITS[u.kind];
-      const r = spec.category === 'infantry' ? 8 : 14;
+      const r = spec.category === 'infantry' ? 8 : u.kind === 'bastion' ? 20 : 14;
       if (ov.selected.has(u.id) || ov.hover === u.id) {
         ctx.strokeStyle = u.owner === 0 ? ART.select : ART.selectEnemy;
         ctx.lineWidth = 1.4;
@@ -307,6 +404,7 @@ export class Renderer {
         hp: u.hp / maxHpOf(u),
         firing: sinceShot < FIRING_WINDOW,
       };
+      if (act.medics.has(u.id)) upose.repairing = true;
       const hero = u.hero;
       if (hero) {
         upose.shimmer = u.kind === 'spy';
@@ -340,7 +438,7 @@ export class Renderer {
     for (const { u, x, y } of drawn) {
       const spec = UNITS[u.kind];
       const frac = u.hp / maxHpOf(u);
-      const r = spec.category === 'infantry' ? 9 : 14;
+      const r = spec.category === 'infantry' ? 9 : u.kind === 'bastion' ? 20 : 14;
       if (ov.selected.has(u.id) || ov.hover === u.id) hpBar(ctx, x - r, y - r - 7, r * 2, frac);
       else if (frac < 1) hpBar(ctx, x - r, y - r - 5, r * 2, frac, true);
       if (u.kind === 'hauler' && ov.selected.has(u.id)) {
@@ -356,14 +454,41 @@ export class Renderer {
       if (u.hero) drawHeroBadge(ctx, x - r + 4, y - r - 13, u.hero.level);
     }
 
-    // 6. Shells and rockets in flight.
+    // 6. Shells, grenades, rockets and missiles in flight.
+    let byId: Map<number, Unit> | null = null;
+    const shooterKind = (p: Projectile) => {
+      if (!p.shooter) return undefined;
+      if (!byId) byId = new Map(cur.units.map(u => [u.id, u]));
+      return byId.get(p.shooter)?.kind;
+    };
     for (const p of cur.projectiles) {
       const span = Math.max(1, p.hitAt - p.firedAt);
       const f = Math.min(1, Math.max(0, (rt - p.firedAt) / span));
+      if (p.weapon === 'missile') {
+        // Drawn from its silo, high over the map; the warning marker is drawn above the fog below.
+        const from = this.launchPoint(cur, p);
+        drawMissileInFlight(ctx, from.x, from.y, p.toX * TILE, p.toY * TILE, f, t, p.owner, this.fx, dt, inView);
+        continue;
+      }
       const x = (p.fromX + (p.toX - p.fromX) * f) * TILE;
       const y = (p.fromY + (p.toY - p.fromY) * f) * TILE;
       if (!inView(x, y)) continue;
-      if (p.weapon === 'artillery') {
+      if (p.weapon === 'artillery' && shooterKind(p) === 'grenadier') {
+        // A grenade: a short lob, tumbling, its shadow on the ground under it.
+        const d = Math.hypot(p.toX - p.fromX, p.toY - p.fromY) * TILE;
+        const lift = Math.sin(f * Math.PI) * Math.min(30, 8 + d * 0.22);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)';
+        ctx.beginPath();
+        ctx.ellipse(x, y, 2, 1.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#3f4a2c';
+        ctx.beginPath();
+        ctx.arc(x, y - lift, 2.1, 0, Math.PI * 2);
+        ctx.fill();
+        const spin = rt * 2.2 + p.id;
+        ctx.fillStyle = '#c9c4ad';
+        ctx.fillRect(x + Math.cos(spin) * 1.6 - 0.6, y - lift + Math.sin(spin) * 1.6 - 0.6, 1.2, 1.2);
+      } else if (p.weapon === 'artillery') {
         const lift = Math.sin(f * Math.PI) * 40;
         ctx.fillStyle = 'rgba(0,0,0,0.3)';
         ctx.beginPath();
@@ -375,16 +500,40 @@ export class Renderer {
         ctx.fill();
         if (Math.random() < 0.5) this.fx.add({ kind: 'smoke', x, y, z: lift, life: 0.5, size: 2, grow: 2 });
       } else if (p.weapon === 'rocket') {
-        const ang = Math.atan2(p.toY - p.fromY, p.toX - p.fromX);
+        // Missile Carriers' rockets are bigger, climb a little, and leave a long trail.
+        const big = shooterKind(p) === 'missilecarrier';
+        const lift = big ? Math.sin(f * Math.PI) * 18 : 0;
+        const ang = Math.atan2(p.toY - p.fromY - (big ? Math.cos(f * Math.PI) * 0.6 : 0), p.toX - p.fromX);
         ctx.save();
-        ctx.translate(x, y);
+        ctx.translate(x, y - lift);
         ctx.rotate(ang);
-        ctx.fillStyle = '#d8d8d0';
-        ctx.fillRect(-4, -1, 7, 2);
-        ctx.fillStyle = '#ffb347';
-        ctx.fillRect(-7, -1.2, 3, 2.4);
+        if (big) {
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.8;
+          ctx.drawImage(sprites().fire, -15, -5, 10, 10);
+          ctx.globalCompositeOperation = 'source-over';
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#e8e6de';
+          ctx.fillRect(-6, -1.4, 10, 2.8);
+          ctx.fillStyle = '#3a3d3e';
+          ctx.beginPath();
+          ctx.moveTo(4, -1.4);
+          ctx.lineTo(7, 0);
+          ctx.lineTo(4, 1.4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = '#2a2d2e';
+          ctx.fillRect(-6.5, -2.4, 2, 4.8);
+        } else {
+          ctx.fillStyle = '#d8d8d0';
+          ctx.fillRect(-4, -1, 7, 2);
+          ctx.fillStyle = '#ffb347';
+          ctx.fillRect(-7, -1.2, 3, 2.4);
+        }
         ctx.restore();
-        this.fx.add({ kind: 'smoke', x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: 0.55, size: 2, grow: 2.4 });
+        const tx = x - Math.cos(ang) * 6;
+        const ty = y - Math.sin(ang) * 6;
+        this.fx.add({ kind: 'smoke', x: tx, y: ty, z: lift, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: big ? 1.1 : 0.55, size: big ? 2.6 : 2, grow: big ? 3 : 2.4 });
       } else {
         ctx.fillStyle = '#ffe9b0';
         ctx.beginPath();
@@ -394,6 +543,7 @@ export class Renderer {
     }
 
     // 7. Flashes, tracers and explosions.
+    const markers: Effect[] = [];
     if (!this.primed) {
       // A loaded save carries a few seconds of old effects: neither replay them nor play them.
       for (const e of cur.effects) this.seen.add(e.id);
@@ -407,11 +557,23 @@ export class Renderer {
         this.seen.add(e.id);
         if (e.kind === 'boom') this.burst(x, y, e.size, e.weapon);
         if (e.kind === 'sold') for (let i = 0; i < 18; i++) this.fx.spark(x, y);
+        if (e.kind === 'repair') for (let i = 0; i < 4; i++) this.fx.spark(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 8);
+        if (e.kind === 'muzzle' && e.weapon === 'flame') this.fx.flameSpray(x, y, (e.x2 ?? e.x) * TILE, (e.y2 ?? e.y) * TILE);
         startCampaignEffect(e, this.fx);
-        if (age < 4) this.hear(e, cam, vis);
+        if (age < 4) this.hear(e, cam, vis, cur);
+      }
+      if (e.kind === 'missile') {
+        markers.push(e);
+        continue;
       }
       if (!inView(x, y, 120)) continue;
-      if (e.kind === 'muzzle' && age < 2.2) {
+      if (e.kind === 'muzzle' && e.weapon === 'flame') {
+        if (age < 4.5) flameJet(ctx, x, y, (e.x2 ?? e.x) * TILE, (e.y2 ?? e.y) * TILE, age / 4.5, t + e.id);
+      } else if (e.kind === 'heal') {
+        if (age < 6) this.healGlow(ctx, cur, e, x, y, age / 6, alpha);
+      } else if (e.kind === 'repair') {
+        if (age < 6) repairFlash(ctx, x, y, age / 6, t);
+      } else if (e.kind === 'muzzle' && age < 2.2) {
         const tx = (e.x2 ?? e.x) * TILE;
         const ty = (e.y2 ?? e.y) * TILE;
         const a = 1 - age / 2.2;
@@ -488,6 +650,12 @@ export class Renderer {
     }
     this.fogCtx.putImageData(this.fogImg, 0, 0);
     ctx.drawImage(this.fog, 0, 0, MAP_W * TILE, MAP_H * TILE);
+    // Missile strikes: the marker on the target, above the fog, so either side can see it coming.
+    for (const e of markers) {
+      const age = rt - e.at;
+      const left = Math.max(0, MISSILE_ARC - age) / TICKS_PER_SECOND;
+      if (age >= 0 && age <= MISSILE_ARC + 1) drawMissileMarker(ctx, e.x * TILE, e.y * TILE, e.size * TILE, age / MISSILE_ARC, left, t);
+    }
     // Recon sweeps: a soft scanning ring over the revealed area, above the fog.
     if (cur.recon)
       for (const [cx, cy, r, until] of cur.recon) {
@@ -506,7 +674,17 @@ export class Renderer {
       const { kind, tx, ty, ok } = ov.placement;
       const spec = BUILDINGS[kind];
       ctx.globalAlpha = 0.55;
-      drawBuilding(ctx, kind, 0, tx * TILE, ty * TILE, { t, rise: 1, lowPower: false, turret: -Math.PI / 4, sinceShot: 9 });
+      // A wall's ghost already joins the walls it would stand beside.
+      let joins = 0;
+      if (BUILDINGS[kind].wall)
+        for (const b of cur.buildings) {
+          if (b.owner !== 0 || !BUILDINGS[b.kind].wall) continue;
+          if (b.x === tx && b.y === ty - 1) joins |= 1;
+          else if (b.x === tx + 1 && b.y === ty) joins |= 2;
+          else if (b.x === tx && b.y === ty + 1) joins |= 4;
+          else if (b.x === tx - 1 && b.y === ty) joins |= 8;
+        }
+      drawBuilding(ctx, kind, 0, tx * TILE, ty * TILE, { t, rise: 1, lowPower: false, turret: -Math.PI / 4, sinceShot: 9, joins });
       ctx.globalAlpha = 1;
       ctx.fillStyle = ok ? 'rgba(90,255,120,0.28)' : 'rgba(255,70,60,0.35)';
       ctx.strokeStyle = ok ? 'rgba(120,255,140,0.9)' : 'rgba(255,90,80,0.9)';
@@ -539,16 +717,29 @@ export class Renderer {
    * The sound of an effect, placed on screen: panned by where it is, quieter the further from the
    * middle of the view, and silent under the fog, so sound never reveals what the player cannot see.
    */
-  private hear(e: GameState['effects'][number], cam: Camera, vis: Uint8Array) {
+  private hear(e: GameState['effects'][number], cam: Camera, vis: Uint8Array, cur: GameState) {
     const k = Math.floor(e.y) * MAP_W + Math.floor(e.x);
-    // A recon sweep or a barrage is called by a commander and heard on the radio, fog or not.
-    if (!vis[k] && e.kind !== 'recon' && e.kind !== 'barrage') return;
+    // A recon sweep, a barrage or a missile is called by a commander and heard on the radio, fog
+    // or not; so is a missile's impact, which its marker has already shown to both sides.
+    const radio = e.kind === 'recon' || e.kind === 'barrage' || e.kind === 'missile' || (e.kind === 'boom' && e.weapon === 'missile');
+    if (!vis[k] && !radio) return;
     let kind: SoundKind;
     let gain = 1;
     const campaign = CAMPAIGN_SOUND[e.kind];
     if (campaign) kind = campaign;
-    else if (e.kind === 'muzzle') kind = e.weapon === 'bullet' ? 'bullet' : e.weapon === 'rocket' ? 'rocket' : e.weapon === 'artillery' ? 'artillery' : 'shell';
-    else if (e.kind === 'sold') kind = 'sold';
+    else if (e.kind === 'missile') kind = 'missileLaunch';
+    else if (e.kind === 'heal') {
+      kind = 'heal';
+      gain = 0.5;
+    } else if (e.kind === 'repair') {
+      kind = 'repair';
+      gain = 0.6;
+    } else if (e.kind === 'muzzle') {
+      if (e.weapon === 'artillery' && grenadierAt(cur, e.x, e.y)) kind = 'grenade';
+      else kind = e.weapon === 'bullet' ? 'bullet' : e.weapon === 'rocket' ? 'rocket' : e.weapon === 'artillery' ? 'artillery' : e.weapon === 'flame' ? 'flame' : 'shell';
+    } else if (e.kind === 'sold') kind = 'sold';
+    else if (e.kind === 'boom' && e.weapon === 'missile') kind = 'missileImpact';
+    else if (e.kind === 'boom' && e.weapon === 'flame') return;
     else if (e.size >= 2) kind = 'boomBuilding';
     else if (e.size >= 1) kind = 'boomVehicle';
     else {
@@ -561,15 +752,108 @@ export class Renderer {
     const pan = Math.max(-0.9, Math.min(0.9, (sx - half) / half));
     const inView = sx >= 0 && sy >= 0 && sx <= cam.w && sy <= cam.h;
     const dTiles = Math.hypot(sx - half, sy - cam.h / 2) / (TILE * cam.zoom);
-    gain *= Math.max(0.12, Math.min(1, 1.15 - dTiles / 30)) * (inView ? 1 : 0.45);
+    gain *= radio && (kind === 'missileLaunch' || kind === 'missileImpact') ? 1 : Math.max(0.12, Math.min(1, 1.15 - dTiles / 30)) * (inView ? 1 : 0.45);
     sound.play(kind, pan, gain);
   }
 
   private burst(x: number, y: number, size: number, weapon?: string) {
+    if (weapon === 'missile') {
+      // The strike: a blast the size of its radius, and a crater that stays for the battle.
+      const r = POWERS.missile.radius * TILE;
+      this.fx.explode(x, y, 2, true);
+      this.fx.megaBlast(x, y, r);
+      this.scars.crater(x, y, r * 0.55, this.lastNow / 1000);
+      return;
+    }
+    if (weapon === 'flame') {
+      // Burning ground where the jet lands: it smoulders for a few seconds and leaves a scorch.
+      this.fx.burn(x + (Math.random() - 0.5) * 8, y + (Math.random() - 0.5) * 6, 7 + Math.random() * 4, 2.5 + Math.random() * 1.5);
+      if (Math.random() < 0.5) this.scars.stampScorch(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 8, 6);
+      return;
+    }
     this.fx.explode(x, y, size, weapon === 'artillery');
     // A structure's footprint gets rubble and a vehicle a scorch under its wreck, from Scars.
     if (size >= 1) return;
     this.scars.stampScorch(x, y, weapon === 'artillery' ? 14 : size >= 0.5 ? 9 : 5);
+  }
+
+  /** Where a missile leaves from: the owner's Strike Command nearest its launch point, else that point. */
+  private launchPoint(s: GameState, p: Projectile): { x: number; y: number } {
+    let best: Building | null = null;
+    let bestD = Infinity;
+    for (const b of s.buildings) {
+      if (b.kind !== 'strikecommand' || b.owner !== p.owner) continue;
+      const d = Math.hypot(b.x - p.fromX, b.y - p.fromY);
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    // The silo's centre (see art.ts drawStrikeCommand), in pixels.
+    return best ? { x: best.x * TILE + 38, y: best.y * TILE + 48 } : { x: p.fromX * TILE, y: p.fromY * TILE };
+  }
+
+  /** A Strike Command's silo: charge from the side's missile cooldown, doors, and a launch under way. */
+  private silo(s: GameState, b: Building, pose: BuildingPoseX, rt: number, act: Activity) {
+    const cd = act.missileCd[b.owner];
+    const ready = cd < 0 ? 0 : 1 - Math.min(1, cd / POWERS.missile.cooldown);
+    // The doors slide open over the last stretch of the charge, and stand open while it is ready.
+    let open = cd < 0 ? 0 : Math.max(0, Math.min(1, (ready - 0.985) / 0.015));
+    let launch: number | undefined;
+    for (const p of s.projectiles) {
+      if (p.weapon !== 'missile' || p.owner !== b.owner) continue;
+      const since = (rt - p.firedAt) / TICKS_PER_SECOND;
+      if (since >= 0 && (launch === undefined || since < launch)) launch = since;
+    }
+    if (launch !== undefined) open = Math.max(open, 1 - launch / 3);
+    pose.ready = ready;
+    pose.open = open;
+    pose.launch = launch;
+  }
+
+  /** A Medic's work: a green glow on the patient and a beam from the Medic treating them. */
+  private healGlow(ctx: CanvasRenderingContext2D, cur: GameState, e: Effect, x: number, y: number, f: number, alpha: number) {
+    let medic: Unit | null = null;
+    let best = MEDIC_RANGE + 0.6;
+    for (const u of cur.units) {
+      if (!UNITS[u.kind].medic) continue;
+      const d = Math.hypot(u.x - e.x, u.y - e.y);
+      if (d < best && d > 0.05) {
+        best = d;
+        medic = u;
+      }
+    }
+    const k = 1 - f;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    if (medic) {
+      const mx = medic.x * TILE;
+      const my = medic.y * TILE;
+      const g = ctx.createLinearGradient(mx, my, x, y);
+      g.addColorStop(0, `rgba(120,255,160,${0.15 * k})`);
+      g.addColorStop(1, `rgba(170,255,190,${0.75 * k})`);
+      ctx.strokeStyle = g;
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(mx, my);
+      ctx.quadraticCurveTo((mx + x) / 2 + Math.sin(alpha * 6 + e.id) * 3, (my + y) / 2 - 6, x, y);
+      ctx.stroke();
+      ctx.lineWidth = 0.8;
+      ctx.strokeStyle = `rgba(235,255,240,${0.8 * k})`;
+      ctx.stroke();
+    }
+    const r = 9 + f * 5;
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, r);
+    glow.addColorStop(0, `rgba(170,255,190,${0.55 * k})`);
+    glow.addColorStop(1, 'rgba(60,200,110,0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    // A small cross rising off the patient.
+    ctx.fillStyle = `rgba(210,255,220,${0.9 * k})`;
+    const cy = y - 8 - f * 10;
+    ctx.fillRect(x - 0.8, cy - 2.6, 1.6, 5.2);
+    ctx.fillRect(x - 2.6, cy - 0.8, 5.2, 1.6);
+    ctx.restore();
   }
 
   /** Structures producing right now: the head of a queue being worked, or a hauler unloading. */
@@ -611,7 +895,7 @@ export class Renderer {
         lit = true;
       }
       if (++lights > MAX_LIGHTS) break;
-      const r = e.weapon === 'bullet' ? 14 : e.weapon === 'rocket' ? 24 : e.weapon === 'artillery' ? 40 : 28;
+      const r = e.weapon === 'bullet' ? 14 : e.weapon === 'rocket' ? 24 : e.weapon === 'artillery' ? 40 : e.weapon === 'flame' ? 34 : 28;
       const k = 1 - age / LIGHT_TICKS;
       ctx.globalAlpha = k * k * (e.weapon === 'bullet' ? 0.55 : 0.85);
       ctx.drawImage(img, x - r, y - r * 0.8, r * 2, r * 1.6);
@@ -843,4 +1127,24 @@ function groupBadge(ctx: CanvasRenderingContext2D, x: number, y: number, digit: 
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(String(digit), x, y + 4.8);
+}
+
+/** Whether a Grenadier stands where a shot came from: its throw sounds unlike a howitzer. */
+function grenadierAt(s: GameState, x: number, y: number): boolean {
+  for (const u of s.units) if (u.kind === 'grenadier' && Math.abs(u.x - x) < 0.7 && Math.abs(u.y - y) < 0.7) return true;
+  return false;
+}
+
+/** A Repair Bay at work on a vehicle: a blue-white welding flash on the hull. */
+function repairFlash(ctx: CanvasRenderingContext2D, x: number, y: number, f: number, t: number) {
+  const k = (1 - f) * (0.6 + 0.4 * Math.sin(t * 40));
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 12);
+  g.addColorStop(0, `rgba(225,240,255,${0.8 * k})`);
+  g.addColorStop(0.3, `rgba(120,180,255,${0.35 * k})`);
+  g.addColorStop(1, 'rgba(80,140,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x - 12, y - 12, 24, 24);
+  ctx.restore();
 }
