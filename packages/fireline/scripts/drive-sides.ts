@@ -261,8 +261,10 @@ function invariants(ok: Ok, s: GameState, label: string): void {
     ok(u.hp > 0 && u.hp <= maxHpOf(u), `${label}: unit ${u.id} hp in range`);
     ok(u.x >= 0 && u.y >= 0 && u.x < s.mapW && u.y < s.mapH, `${label}: unit ${u.id} on the map`);
     const k = Math.floor(u.y) * s.mapW + Math.floor(u.x);
-    ok(isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
-    ok(occ[k] === 0, `${label}: unit ${u.id} not inside a structure`);
+    // Aircraft fly over water, rock and structures.
+    const air = UNITS[u.kind].category === 'air';
+    ok(air || isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
+    ok(air || occ[k] === 0, `${label}: unit ${u.id} (${u.kind}) not inside a structure`);
     ok(u.queue.length <= ORDER_QUEUE_MAX, `${label}: order queue capped`);
     ok(u.owner >= 0 && u.owner < s.players.length, `${label}: unit owner is a side`);
   }

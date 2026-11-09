@@ -686,7 +686,10 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
         }
       } else if (
         u.order.type === 'attack' ||
-        ((u.order.type === 'attackMove' || (u.order.type === 'idle' && stance === 'aggressive')) && d <= spec.sight + 3)
+        // Aircraft are shot at when they come in range but never chased unless ordered: a ground
+        // army on attack-move once followed two fleeing gunships across a river into the enemy
+        // base and was lost to its defences.
+        ((u.order.type === 'attackMove' || (u.order.type === 'idle' && stance === 'aggressive')) && d <= spec.sight + 3 && !(t.unit && isAir(t.unit)))
       ) {
         firing = true;
         if (d < (w.minRange ?? 0)) {

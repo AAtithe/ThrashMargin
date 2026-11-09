@@ -831,6 +831,8 @@ section('act two, played', () => {
           if (build) {
             for (const k of ['tank', 'tank', 'missilecarrier'] as const) s = processAction(s, { type: 'queue', category: 'vehicle', kind: k });
             s = processAction(s, { type: 'queue', category: 'infantry', kind: 'rocketeer' });
+            // Gunships raid the ford: a garrison kept supplied keeps Skyhunters with it.
+            if (s.units.filter(u => u.owner === 0 && u.kind === 'skyhunter').length < 4) s = processAction(s, { type: 'queue', category: 'infantry', kind: 'skyhunter' });
           }
         }
         s = processAction(s, { type: 'tick', n: 50 });

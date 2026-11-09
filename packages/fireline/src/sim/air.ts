@@ -1,6 +1,7 @@
 import { buildingCentre, dist, distToTarget, targetPoint, type Target } from './grid';
 import { AIR_AMMO, AIR_EDGE, BOMB_GAP, FLIGHT_TICKS, HELIPAD_SLOTS, REARM_TICKS, UNITS, VET_DAMAGE, hitsAir, hitsGround, type Owner, type Weapon } from './rules';
 import { damageMulOf, migrateResearch, rearmMulOf } from './research';
+import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 
 /**
@@ -174,6 +175,15 @@ export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
     }
     case 'attackMove': {
       if (u.kind === 'gunship' && engaged(s, u, h, w, UNITS[u.kind].sight + 1)) break;
+      // A Bomber on attack-move bombs the first enemy structure it comes near, then goes home to
+      // rearm: sent along a line it would otherwise fly to the point and hover with a full bay.
+      if (u.kind === 'bomber' && u.ammo > 0) {
+        const t = bomberMark(s, u, h, UNITS[u.kind].sight + 2);
+        if (t) {
+          bomberAttack(s, u, w, t);
+          break;
+        }
+      }
       if (fly(s, u, o.x, o.y)) h.nextOrder(u);
       break;
     }
@@ -241,6 +251,25 @@ function gunshipFight(s: GameState, u: Unit, h: AirHooks, w: Weapon, t: Target, 
 }
 
 const vetMul = (u: Unit) => VET_DAMAGE[u.vet] ?? 1;
+
+/** The enemy structure a Bomber on attack-move goes for: the one it has, else the nearest in reach. */
+function bomberMark(s: GameState, u: Unit, h: AirHooks, range: number): Target | null {
+  const held = u.engage ? h.lookup(u.engage) : null;
+  if (held && held.building) return held;
+  let best: Building | null = null;
+  let bestD = range;
+  for (const b of s.buildings) {
+    if (b.hp <= 0 || !isEnemy(s, u.owner, b.owner)) continue;
+    const c = buildingCentre(b);
+    const d = dist(u.x, u.y, c.x, c.y);
+    if (d < bestD) {
+      bestD = d;
+      best = b;
+    }
+  }
+  u.engage = best ? best.id : 0;
+  return best ? { building: best } : null;
+}
 
 /**
  * A Bomber on an attack order: flies at the target and, within the weapon's range and lined up on it

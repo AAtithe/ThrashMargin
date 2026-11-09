@@ -43,8 +43,10 @@ const STANDARD: (BuildingKind | UnitKind)[] = [
 const AFTER_9: (BuildingKind | UnitKind)[] = [...STANDARD, 'wall', 'grenadier'];
 const AFTER_10: (BuildingKind | UnitKind)[] = [...AFTER_9, 'medic', 'repairbay'];
 const AFTER_11: (BuildingKind | UnitKind)[] = [...AFTER_10, 'rocketturret', 'missilecarrier'];
-const AFTER_12: (BuildingKind | UnitKind)[] = [...AFTER_11, 'techcentre', 'flametank'];
-const AFTER_13: (BuildingKind | UnitKind)[] = [...AFTER_12, 'bastion', 'strikecommand'];
+const AFTER_12: (BuildingKind | UnitKind)[] = [...AFTER_11, 'skyhunter', 'techcentre', 'flametank'];
+const AFTER_13: (BuildingKind | UnitKind)[] = [...AFTER_12, 'flakcannon', 'bastion', 'strikecommand'];
+/** The final assault: the whole air arm and research, met in mission 14. */
+const AIR: (BuildingKind | UnitKind)[] = ['helipad', 'researchlab', 'gunship', 'bomber', 'flaktrack'];
 
 const enemyWave = (kind: UnitKind, count: number, x: number, y: number, tx: number, ty: number): SpawnSpec => ({
   owner: 1,
@@ -180,6 +182,7 @@ export const ACT_TWO: MissionSpec[] = [
       'Graystone Ford is the only crossing of the Vell for forty miles, and the Combine wants it badly. We need it held for four minutes while the main column comes up behind you.',
       'Not four minutes in total: four minutes unbroken. If the Combine stands on the ford with none of ours there, the count starts again.',
       'You have a base south of the river. Rocket Turrets and Missile Carriers are cleared: use them to break their armour before it reaches the water.',
+      'The Combine has gunships now. You have three Skyhunters, infantry with anti-air missiles, and can train more: keep them by the ford.',
     ],
     summary: 'Hold Graystone Ford for four unbroken minutes.',
     seed: 'the-long-hold',
@@ -187,7 +190,7 @@ export const ACT_TWO: MissionSpec[] = [
     player: {
       credits: 5000,
       structures: ['hq', 'power', 'power', 'refinery', 'barracks', 'factory'],
-      units: [...n('tank', 3), ...n('rifleman', 4), ...n('rocketeer', 2), ...n('grenadier', 2)],
+      units: [...n('tank', 5), ...n('rifleman', 4), ...n('rocketeer', 2), ...n('grenadier', 2), ...n('skyhunter', 3)],
       heroes: [],
     },
     enemy: {
@@ -197,7 +200,7 @@ export const ACT_TWO: MissionSpec[] = [
       units: [...n('tank', 2), ...n('rifleman', 4)],
       ai: 'raid',
     },
-    tech: AFTER_11,
+    tech: [...AFTER_11, 'skyhunter'],
     powers: [],
     objectives: [{ kind: 'holdZone', x: 31.5, y: 32.5, r: 3, ticks: 4 * MIN, reset: true }],
     bonus: [
@@ -209,10 +212,10 @@ export const ACT_TWO: MissionSpec[] = [
       { at: 4 * MIN, spawn: enemyWave('rifleman', 5, 40.5, 22.5, 31.5, 32.5), say: 'Infantry wading across from the north bank.' },
       { at: 6 * MIN, spawn: enemyWave('tank', 3, 44.5, 18.5, 31.5, 32.5), say: 'Heavier armour on the north road.' },
       { at: 8 * MIN, spawn: enemyWave('buggy', 4, 40.5, 22.5, 31.5, 32.5), say: 'Fast raiders making for the ford.' },
-      // after integration: air. Enemy gunship raids on the ford by trigger here (at 3 and 7 minutes),
-      // and the player given Skyhunters (a Skyhunter squad among the units, 'skyhunter' in the tech).
+      { at: 3 * MIN, spawn: enemyWave('gunship', 2, 50.5, 8.5, 31.5, 32.5), say: 'Combine gunships inbound on the ford. Skyhunters, eyes up.' },
+      { at: 7 * MIN, spawn: enemyWave('gunship', 3, 50.5, 8.5, 31.5, 32.5), say: 'A second flight of gunships from the north.' },
     ],
-    rewards: { xp: 800, unlockTech: ['rocketturret', 'missilecarrier'] },
+    rewards: { xp: 800, unlockTech: ['rocketturret', 'missilecarrier', 'skyhunter'] },
   },
 
   // 12 -----------------------------------------------------------------------------------------
@@ -224,6 +227,7 @@ export const ACT_TWO: MissionSpec[] = [
       'Reconnaissance has found a Strike Command at the Combine base on Cinder Tor. It is fuelling a missile now, and when it launches it will be aimed at us. Their Tech Centre is calling down artillery on anything that gathers in the open.',
       'Destroy the Strike Command, and the Tech Centre with it. The Spy can black out their power; the Commando can bring the Strike Command down with one charge. You now have a Tech Centre of your own to build, and Flame Tanks to burn a way in.',
       'Their first missile will be ready in eight minutes. Stop it if you can. If it flies, keep your structures spread out.',
+      'Expect bombers over our base. Flak Cannons are cleared: two or three by the yard will see them off.',
     ],
     summary: 'Destroy the Combine Strike Command before its missiles flatten you.',
     seed: 'firestorm',
@@ -256,7 +260,7 @@ export const ACT_TWO: MissionSpec[] = [
       units: [...n('tank', 2), ...n('rifleman', 4)],
       ai: 'normal',
     },
-    tech: AFTER_12,
+    tech: [...AFTER_12, 'flakcannon'],
     powers: ['recon'],
     structurePowers: true,
     objectives: [
@@ -270,10 +274,10 @@ export const ACT_TWO: MissionSpec[] = [
     triggers: [
       { at: 5 * MIN, spawn: enemyWave('tank', 3, 50.5, 14.5, 12.5, 50.5), say: 'A Combine armoured column is moving on our base.' },
       { afterObjective: 1, say: 'Their Tech Centre is down. No more barrages from Cinder Tor.' },
-      // after integration: air. Enemy bombers by trigger here (a bomber run on our base at 6 and
-      // 10 minutes), and the player given a Flak Cannon to build ('flakcannon' in the tech).
+      { at: 6 * MIN, spawn: enemyWave('bomber', 1, 56.5, 8.5, 12.5, 50.5), say: 'Bomber over Cinder Tor, heading for our base. Flak Cannons will bring it down.' },
+      { at: 10 * MIN, spawn: enemyWave('bomber', 2, 56.5, 8.5, 12.5, 50.5), say: 'Two more bombers on the same line.' },
     ],
-    rewards: { xp: 900, unlockTech: ['techcentre', 'flametank'] },
+    rewards: { xp: 900, unlockTech: ['techcentre', 'flametank', 'flakcannon'] },
   },
 
   // 13 -----------------------------------------------------------------------------------------
@@ -350,6 +354,7 @@ export const ACT_TWO: MissionSpec[] = [
       'This is the Combine, all of it: one fortress on the cliffs at Last Light, with every structure they know how to build and a commander who has learned from every defeat. It will build, it will attack, and it will fire its missiles at you.',
       'You have every hero, every support power and everything our factories can make, the Strike Command included. Destroy everything they have.',
       'Their Strike Command is the first thing to go if you can reach it. And bring the Commando home: we will need him for what comes after.',
+      'The whole air arm is yours for this: Helipads, Gunships, Bombers, Flak Tracks and the Research Lab. The Combine will fly everything it has left.',
     ],
     summary: 'The final assault on a full Combine fortress.',
     seed: 'last-light',
@@ -377,6 +382,13 @@ export const ACT_TWO: MissionSpec[] = [
         'techcentre',
         'repairbay',
         'strikecommand',
+        // Their air wing: the pads rearm the gunships and bombers that raid us by trigger.
+        'power',
+        'helipad',
+        'helipad',
+        'researchlab',
+        'flakcannon',
+        'flakcannon',
         'rocketturret',
         'rocketturret',
         'turret',
@@ -390,7 +402,7 @@ export const ACT_TWO: MissionSpec[] = [
       units: [...n('bastion', 2), ...n('flametank', 2), ...n('tank', 3), ...n('missilecarrier', 2), ...n('grenadier', 3)],
       ai: 'normal',
     },
-    tech: AFTER_13,
+    tech: [...AFTER_13, ...AIR],
     powers: ['recon', 'barrage', 'reinforce'],
     structurePowers: true,
     objectives: [{ kind: 'destroyAll' }],
@@ -406,10 +418,10 @@ export const ACT_TWO: MissionSpec[] = [
       },
       { at: 6 * MIN, spawn: enemyWave('flametank', 3, 60.5, 27.5, 12.5, 50.5), say: 'Flame Tanks along the eastern cliffs!' },
       { at: 12 * MIN, spawn: enemyWave('bastion', 3, 50.5, 14.5, 12.5, 50.5), say: 'Their Bastions are moving. This is the last of their armour.' },
-      // after integration: air. Both sides' full air and research here: the enemy with Helipads, a
-      // Research Lab and gunship and bomber strikes; the player with 'helipad', 'researchlab',
-      // 'gunship', 'bomber', 'flaktrack', 'skyhunter' and 'flakcannon' in the tech.
+      { at: 4 * MIN, spawn: enemyWave('gunship', 3, 60.5, 8.5, 12.5, 50.5), say: 'Gunships off the Combine pads. Get anti-air on the base.' },
+      { at: 9 * MIN, spawn: enemyWave('bomber', 2, 60.5, 8.5, 12.5, 50.5), say: 'Bombers on the north approach.' },
+      { at: 14 * MIN, spawn: enemyWave('gunship', 4, 60.5, 8.5, 12.5, 50.5), say: 'Their last air wing is up.' },
     ],
-    rewards: { xp: 1200 },
+    rewards: { xp: 1200, unlockTech: AIR },
   },
 ];
