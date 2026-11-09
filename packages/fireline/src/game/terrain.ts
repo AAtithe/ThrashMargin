@@ -1,4 +1,4 @@
-import { MAP_H, MAP_W } from '../sim/rules';
+import { MAP_H, MAP_W, type MapType } from '../sim/rules';
 import { ART } from '../theme';
 import { TILE } from './art';
 
@@ -11,9 +11,48 @@ import { TILE } from './art';
  *
  * Order: grass (base tone, soft patches, broad light and dry zones, blades, tufts, flowers), dirt,
  * water (sandy bank, wet sand, shallows, open water, deep water, foam, ripples), rock outcrops
- * (cast shadow, cliff face, lit rim, top, facets, cracks, scree at the foot), trees. Light comes
- * from the top left, as it does on the units and structures.
+ * (cast shadow, cliff face, lit rim, top, facets, cracks, scree at the foot), fords, reeds, trees.
+ * Light comes from the top left, as it does on the units and structures.
+ *
+ * Each skirmish map type has its own look (LOOKS): highland cliffs stand taller over heather and
+ * moss, the canyon's walls are banded sandstone over a dusty floor, lakes have wide beaches and
+ * lily pads, river banks are thick with reeds, and the plains are bright with flowers. Fords are
+ * found from the tiles alone: open ground with water on both sides of it, in a line, is shallow
+ * water over a stony bed, drawn so it reads as a crossing (it is walkable, like any dirt).
  */
+
+type Rgb = [number, number, number];
+
+interface Look {
+  /** A wash over all the grass, and how strongly. */
+  tint: Rgb | null;
+  tintAlpha: number;
+  /** Strength of the broad dry and lush zones. */
+  dry: number;
+  lush: number;
+  /** Chance of a flower cluster on a grass tile, and their colours. */
+  flowers: number;
+  flowerCols: string[];
+  /** Rock top and cliff face colours, cliff height in pixels, sandstone banding, moss on the tops. */
+  rockTop: Rgb;
+  rockFace: Rgb;
+  cliff: number;
+  strata: number;
+  moss: number;
+  /** Boulder and scree colours: light, mid, dark. */
+  stone: [string, string, string];
+  /** Where the sandy bank starts, on the blurred water field (lower is a wider beach). */
+  beach: number;
+  /** Chance per try of a reed clump on a shore tile, and of lily pads on water by the shore. */
+  reeds: number;
+  lilies: number;
+  /** Dirt colour, mid and dark. */
+  dirt: Rgb;
+  dirtDark: Rgb;
+  /** Gloom on the ground at the foot of the cliffs, and scrub growing on the tops. */
+  ao: number;
+  scrub: number;
+}
 
 function hash(n: number): number {
   let h = (n * 374761393) ^ 0x5bd1e995;
@@ -31,7 +70,108 @@ const DRY_GRASS = '#7a8440';
 const LUSH_GRASS = '#3b5a28';
 const FLOWERS = ['#ece6cf', '#e8c84a', '#b99ad6', '#e39bb2', '#f2f0e8'];
 
-export function paintTerrain(tiles: string): HTMLCanvasElement {
+const CLASSIC: Look = {
+  tint: null,
+  tintAlpha: 0,
+  dry: 0.2,
+  lush: 0.26,
+  flowers: 0.05,
+  flowerCols: FLOWERS,
+  rockTop: [124, 120, 111],
+  rockFace: [70, 66, 59],
+  cliff: 9,
+  strata: 0,
+  moss: 0,
+  stone: [ART.rockLight, ART.rock, ART.rockDark],
+  beach: 0.16,
+  reeds: 0.35,
+  lilies: 0,
+  dirt: [123, 100, 70],
+  dirtDark: [92, 73, 49],
+  ao: 0,
+  scrub: 0,
+};
+
+export const LOOKS: Record<MapType, Look> = {
+  classic: CLASSIC,
+  river: { ...CLASSIC, lush: 0.34, dry: 0.12, reeds: 1, lilies: 0.12 },
+  highlands: {
+    ...CLASSIC,
+    tint: [112, 104, 66],
+    tintAlpha: 0.16,
+    dry: 0.28,
+    lush: 0.18,
+    flowers: 0.09,
+    flowerCols: ['#8e5f9e', '#a874b4', '#7b4f8c', '#c9a6d4', '#e8d77a'],
+    rockTop: [118, 121, 112],
+    rockFace: [58, 59, 54],
+    cliff: 14,
+    moss: 0.45,
+    ao: 0.22,
+    scrub: 0.18,
+    stone: ['#a9ab9f', '#777a70', '#474a43'],
+    reeds: 0.25,
+  },
+  lakes: { ...CLASSIC, beach: 0.08, reeds: 0.8, lilies: 0.3, lush: 0.3 },
+  plains: {
+    ...CLASSIC,
+    tint: [168, 162, 74],
+    tintAlpha: 0.14,
+    dry: 0.3,
+    lush: 0.2,
+    flowers: 0.12,
+    flowerCols: ['#f2e15a', '#ece6cf', '#e39bb2', '#f5f3ea', '#e8a640'],
+    reeds: 0.4,
+  },
+  canyon: {
+    ...CLASSIC,
+    tint: [178, 150, 98],
+    tintAlpha: 0.24,
+    dry: 0.36,
+    lush: 0.1,
+    flowers: 0.015,
+    flowerCols: ['#e8c84a', '#e39b6a', '#f2f0e8'],
+    rockTop: [166, 124, 88],
+    rockFace: [112, 66, 42],
+    cliff: 16,
+    strata: 1,
+    moss: 0,
+    ao: 0.3,
+    scrub: 0.3,
+    stone: ['#d2a578', '#a8764e', '#6e4630'],
+    reeds: 0.2,
+    dirt: [146, 112, 76],
+    dirtDark: [112, 82, 54],
+  },
+};
+
+/**
+ * Fords: open ground (dirt) lying between water on both sides in a line, within three tiles each
+ * way. Returns, per tile, 0 for none, 1 for a crossing whose water lies east and west of it, 2 for
+ * one whose water lies north and south (the way the stream runs past it).
+ */
+export function fordsOf(tiles: string): Uint8Array {
+  const out = new Uint8Array(MAP_W * MAP_H);
+  const w = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && tiles[y * MAP_W + x] === 'w';
+  // Water on a side counts when there is a body of it, not a puddle: three or more water tiles
+  // in the three-wide band reaching out that way.
+  const reach = (x: number, y: number, dx: number, dy: number) => {
+    let n = 0;
+    for (let i = 1; i <= 3; i++) for (let j = -1; j <= 1; j++) if (w(x + dx * i + dy * j, y + dy * i + dx * j)) n++;
+    return n >= 3;
+  };
+  for (let y = 0; y < MAP_H; y++)
+    for (let x = 0; x < MAP_W; x++) {
+      if (tiles[y * MAP_W + x] !== 'd') continue;
+      if (reach(x, y, -1, 0) && reach(x, y, 1, 0)) out[y * MAP_W + x] = 1;
+      else if (reach(x, y, 0, -1) && reach(x, y, 0, 1)) out[y * MAP_W + x] = 2;
+    }
+  return out;
+}
+
+export function paintTerrain(tiles: string, mapType?: MapType): HTMLCanvasElement {
+  const L = (mapType && LOOKS[mapType]) || CLASSIC;
+  const fords = fordsOf(tiles);
   const c = document.createElement('canvas');
   c.width = MAP_W * TILE;
   c.height = MAP_H * TILE;
@@ -66,7 +206,7 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
     const g = ctx.createRadialGradient(px, py, 0, px, py, rad);
     g.addColorStop(0, i % 2 ? DRY_GRASS : LUSH_GRASS);
     g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.globalAlpha = i % 2 ? 0.2 : 0.26;
+    ctx.globalAlpha = i % 2 ? L.dry : L.lush;
     ctx.fillStyle = g;
     ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
   }
@@ -115,10 +255,10 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
         }
       }
       // Now and then a small cluster of flowers.
-      if (r() < 0.05) {
+      if (r() < L.flowers) {
         const fx = x * TILE + 6 + r() * (TILE - 12);
         const fy = y * TILE + 6 + r() * (TILE - 12);
-        const col = FLOWERS[Math.floor(r() * FLOWERS.length)];
+        const col = L.flowerCols[Math.floor(r() * L.flowerCols.length)];
         const m = 3 + Math.floor(r() * 5);
         for (let k = 0; k < m; k++) {
           const px = fx + (r() - 0.5) * 9;
@@ -132,6 +272,14 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
         }
       }
     }
+
+  // The type's wash over the grass, blades and flowers alike (the canyon's dust, the plains' gold).
+  if (L.tint) {
+    ctx.globalAlpha = L.tintAlpha;
+    ctx.fillStyle = `rgb(${L.tint[0]},${L.tint[1]},${L.tint[2]})`;
+    ctx.fillRect(0, 0, c.width, c.height);
+    ctx.globalAlpha = 1;
+  }
 
   // 2, 3 and 4. Dirt, water and rock, shaded per pixel in one pass over the painted ground. Each is a field
   // sampled smoothly between tile centres and roughened with noise, so its outline follows the
@@ -242,8 +390,8 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
     const dirtBin = fieldOf('d');
     const dirtBlur = blur(dirtBin, 1);
     const dirt = dirtBin.map((v, k) => v * 0.5 + dirtBlur[k] * 0.5);
-    const DIRT: [number, number, number] = [123, 100, 70];
-    const DIRT_DARK: [number, number, number] = [92, 73, 49];
+    const DIRT = L.dirt;
+    const DIRT_DARK = L.dirtDark;
     const DIRT_LIGHT: [number, number, number] = [150, 128, 92];
     for (let ty = 0; ty < MAP_H; ty++)
       for (let tx = 0; tx < MAP_W; tx++) {
@@ -285,10 +433,10 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
         for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
           for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
             const v = sample(water, x, y) + (noise(n6, x, y) - 0.5) * 0.12 + (noise(n40, x, y) - 0.5) * 0.22;
-            if (v < 0.16) continue;
+            if (v < L.beach) continue;
             const i = (y * W + x) * 4;
             if (v < 0.5) {
-              mix(i, SAND[0], SAND[1], SAND[2], ss(0.16, 0.32, v) * (0.85 + noise(n6, x + 300, y) * 0.15));
+              mix(i, SAND[0], SAND[1], SAND[2], ss(L.beach, L.beach + 0.16, v) * (0.85 + noise(n6, x + 300, y) * 0.15));
               mix(i, WET[0], WET[1], WET[2], ss(0.4, 0.47, v) * 0.9);
               mix(i, 222, 236, 232, (1 - Math.abs(v - 0.485) / 0.02) * 0.7);
             } else {
@@ -306,8 +454,44 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
           }
       }
 
+    // Fords: shallow water over a stony bed, fading into the banks at each end and into the deep
+    // water on each side, with the current's streaks running the way the stream flows.
+    const fordBin = new Float32Array(MAP_W * MAP_H);
+    for (let k = 0; k < fordBin.length; k++) fordBin[k] = fords[k] ? 1 : 0;
+    const fordBlur = blur(fordBin, 1);
+    const fordF = fordBin.map((v, k) => v * 0.6 + fordBlur[k] * 0.4);
+    const BED: Rgb = [128, 116, 92];
+    const SHOAL: Rgb = [86, 140, 146];
+    for (let ty = 0; ty < MAP_H; ty++)
+      for (let tx = 0; tx < MAP_W; tx++) {
+        if (!near(fordBin, tx, ty, 0)) continue;
+        const along = fords[ty * MAP_W + tx] || fords[ty * MAP_W + Math.min(MAP_W - 1, tx + 1)] || 1;
+        for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
+          for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
+            const v = sample(fordF, x, y) + (noise(n6, x + 70, y) - 0.5) * 0.18 + (noise(n14, x, y + 40) - 0.5) * 0.24;
+            if (v < 0.24) continue;
+            // Fading out over the deep water's edge, so the shallows shelve into it.
+            const wv = sample(water, x, y) + (noise(n14, x + 50, y) - 0.5) * 0.2;
+            const a = ss(0.24, 0.5, v) * (1 - ss(0.45, 0.95, wv));
+            if (a <= 0) continue;
+            const i = (y * W + x) * 4;
+            const m = noise(n6, x * 1.3 + 11, y * 1.3);
+            const bed = 0.82 + m * 0.3;
+            mix(i, BED[0] * bed, BED[1] * bed, BED[2] * bed, a);
+            // The water over it, deeper toward the middle of the crossing.
+            const depth = 0.35 + 0.35 * ss(0.4, 0.9, v);
+            mix(i, SHOAL[0], SHOAL[1], SHOAL[2], a * depth);
+            // Streaks of the current.
+            const sx = along === 1 ? x * 0.25 : x * 2.4;
+            const sy = along === 1 ? y * 2.4 : y * 0.25;
+            const streak = noise(n14, sx + 333, sy + 777);
+            if (streak > 0.68) mix(i, 205, 230, 232, a * (streak - 0.68) * 2.2);
+          }
+      }
+
     const rock = fieldOf('r');
-    const CLIFF_H = 9;
+    const rockAo = blur(rock, 1);
+    const CLIFF_H = L.cliff;
     // Heights are read several times per pixel (slope, cliff depth, shadow), so each is worked
     // out once and kept.
     const hcache = new Float32Array(W * H).fill(-1);
@@ -321,8 +505,8 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
       if (inside) hcache[y * W + x] = v;
       return v;
     };
-    const TOP: [number, number, number] = [124, 120, 111];
-    const FACE: [number, number, number] = [70, 66, 59];
+    const TOP = L.rockTop;
+    const FACE = L.rockFace;
     for (let ty = 0; ty < MAP_H; ty++)
       for (let tx = 0; tx < MAP_W; tx++) {
         if (!near(rock, tx, ty, 1)) continue;
@@ -342,18 +526,37 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
               const a = ss(0.45, 0.55, ht);
               if (a < 1 && hb > 0.5) mix(i, FACE[0], FACE[1], FACE[2], 1);
               mix(i, TOP[0] * k, TOP[1] * k, TOP[2] * k, a);
+              if (L.moss > 0) {
+                // Moss and turf in the hollows of the tops.
+                const ms = ss(0.55, 0.8, noise(n40, x + 2100, y + 900)) * ss(0.4, 0.7, noise(n6, x * 1.5, y * 1.5 + 300));
+                if (ms > 0) mix(i, 82 * k, 104 * k, 52 * k, a * ms * L.moss * 1.6);
+              }
+              if (L.strata > 0) {
+                // Sandstone bedding, faint across the tops.
+                const band = Math.sin((y + noise(n40, x, y + 500) * 30) * 0.42);
+                if (band > 0.6) mix(i, TOP[0] * 1.12, TOP[1] * 1.08, TOP[2] * 1.02, a * (band - 0.6) * 0.5 * L.strata);
+              }
             } else if (hb > 0.4) {
               // Cliff face: vertical strata, darker toward its foot.
               const streak = noise(n6, x * 2.2, y * 0.25);
               const foot = ss(0.4, 1, hb) * 0.25 + 0.75;
               let depth = 0;
               for (let d = 1; d <= CLIFF_H; d += 2) if (height(x, y + CLIFF_H - d) > 0.45) depth = d;
-              const k = (0.7 + streak * 0.45) * foot * (1 - (CLIFF_H - depth) * 0.03);
+              let k = (0.7 + streak * 0.45) * foot * (1 - (CLIFF_H - depth) * (0.27 / CLIFF_H));
+              if (L.strata > 0) {
+                // Banded sandstone: alternating light and dark layers, wavering a little.
+                const band = Math.sin((y + noise(n40, x * 0.5, y + 200) * 18) * 0.9);
+                k *= 1 + band * 0.13 * L.strata;
+              }
               mix(i, FACE[0] * k, FACE[1] * k, FACE[2] * k, ss(0.4, 0.5, hb));
             } else {
-              // Cast shadow, down and to the right of the plateau.
-              const hs = height(x - 5, y - 4);
-              if (hs > 0.2) mix(i, 0, 0, 0, ss(0.2, 0.7, hs) * 0.5);
+              // Cast shadow, down and to the right of the plateau, longer under taller cliffs; and
+              // the gloom at the foot of the walls, on every side, where they stand tall.
+              const sl = CLIFF_H / 9;
+              const hs = height(Math.round(x - 5 * sl), Math.round(y - 4 * sl));
+              let dark = hs > 0.2 ? ss(0.2, 0.7, hs) * 0.5 : 0;
+              if (L.ao > 0) dark = Math.max(dark, ss(0.04, 0.5, sample(rockAo, x, y)) * L.ao);
+              if (dark > 0) mix(i, 0, 0, 0, dark);
             }
           }
       }
@@ -396,9 +599,9 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
     pts.forEach(([qx, qy], k) => (k ? ctx.lineTo(qx + 2, qy + 2.5) : ctx.moveTo(qx + 2, qy + 2.5)));
     ctx.fill();
     const g = ctx.createLinearGradient(bx - rad, by - rad, bx + rad * 0.6, by + rad);
-    g.addColorStop(0, ART.rockLight);
-    g.addColorStop(0.55, ART.rock);
-    g.addColorStop(1, ART.rockDark);
+    g.addColorStop(0, L.stone[0]);
+    g.addColorStop(0.55, L.stone[1]);
+    g.addColorStop(1, L.stone[2]);
     ctx.fillStyle = g;
     ctx.beginPath();
     pts.forEach(([qx, qy], k) => (k ? ctx.lineTo(qx, qy) : ctx.moveTo(qx, qy)));
@@ -414,6 +617,29 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
       const r = rnd(y * MAP_W + x + 4444);
       if (here === 'r') {
         if (r() < 0.35) boulder(x * TILE + 8 + r() * 16, y * TILE + 2 + r() * 14, 3 + r() * 3, y * MAP_W + x + 13);
+        // Scrub on the tops, away from the edges (the tops are drawn lifted by the cliff height).
+        if (L.scrub > 0 && at(x, y - 1) === 'r' && at(x - 1, y) === 'r' && at(x + 1, y) === 'r' && r() < L.scrub) {
+          const sx = x * TILE + 6 + r() * 20;
+          const sy = y * TILE - L.cliff + 6 + r() * 20;
+          const n = 3 + Math.floor(r() * 3);
+          ctx.fillStyle = 'rgba(0,0,0,0.25)';
+          ctx.beginPath();
+          ctx.ellipse(sx + 2, sy + 2, 5, 3, 0, 0, TAU);
+          ctx.fill();
+          for (let k = 0; k < n; k++) {
+            const bx = sx + (r() - 0.5) * 7;
+            const by = sy + (r() - 0.5) * 5;
+            const br = 1.6 + r() * 1.6;
+            ctx.fillStyle = mapType === 'canyon' ? '#5f5a30' : '#46552a';
+            ctx.beginPath();
+            ctx.arc(bx, by, br, 0, TAU);
+            ctx.fill();
+            ctx.fillStyle = mapType === 'canyon' ? '#86804a' : '#677a3a';
+            ctx.beginPath();
+            ctx.arc(bx - br * 0.3, by - br * 0.3, br * 0.5, 0, TAU);
+            ctx.fill();
+          }
+        }
         continue;
       }
       if (here === 'w' || (at(x, y - 1) !== 'r' && at(x - 1, y) !== 'r')) continue;
@@ -426,7 +652,7 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
         ctx.beginPath();
         ctx.ellipse(sx + 1, sy + 1.3, sr, sr * 0.75, 0, 0, TAU);
         ctx.fill();
-        ctx.fillStyle = r() < 0.5 ? ART.rock : ART.rockLight;
+        ctx.fillStyle = r() < 0.5 ? L.stone[1] : L.stone[0];
         ctx.beginPath();
         ctx.ellipse(sx, sy, sr, sr * 0.75, 0, 0, TAU);
         ctx.fill();
@@ -436,7 +662,7 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
   // Pebbles on the dirt, each with a lit top.
   for (let y = 0; y < MAP_H; y++)
     for (let x = 0; x < MAP_W; x++) {
-      if (at(x, y) !== 'd' || at(x, y + 1) === 'r') continue;
+      if (at(x, y) !== 'd' || at(x, y + 1) === 'r' || fords[y * MAP_W + x]) continue;
       const r = rnd(y * MAP_W + x + 777);
       if (r() < 0.5) continue;
       const qx = x * TILE + 4 + r() * 24;
@@ -449,6 +675,110 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
       ctx.beginPath();
       ctx.ellipse(qx, qy, 1.6, 1.1, 0, 0, TAU);
       ctx.fill();
+    }
+
+  // Stepping stones and ripples on the fords.
+  for (let y = 0; y < MAP_H; y++)
+    for (let x = 0; x < MAP_W; x++) {
+      const along = fords[y * MAP_W + x];
+      if (!along) continue;
+      const r = rnd(y * MAP_W + x + 5150);
+      const n = 2 + Math.floor(r() * 3);
+      for (let i = 0; i < n; i++) {
+        const sx = x * TILE + 4 + r() * 24;
+        const sy = y * TILE + 4 + r() * 24;
+        const sr = 1.6 + r() * 2.4;
+        // A ripple trailing downstream of the stone, then the stone with its wet highlight.
+        ctx.strokeStyle = 'rgba(225,240,240,0.45)';
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        if (along === 1) {
+          ctx.moveTo(sx - sr - 1, sy - sr * 0.6);
+          ctx.quadraticCurveTo(sx - sr - 4, sy, sx - sr - 1, sy + sr * 0.6);
+        } else {
+          ctx.moveTo(sx - sr * 0.6, sy + sr + 1);
+          ctx.quadraticCurveTo(sx, sy + sr + 4, sx + sr * 0.6, sy + sr + 1);
+        }
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(0,0,0,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(sx + 0.8, sy + 1, sr, sr * 0.75, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = r() < 0.5 ? L.stone[1] : L.stone[0];
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, sr, sr * 0.75, 0, 0, TAU);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.35)';
+        ctx.beginPath();
+        ctx.ellipse(sx - sr * 0.3, sy - sr * 0.3, sr * 0.35, sr * 0.22, 0, 0, TAU);
+        ctx.fill();
+      }
+    }
+
+  // Reeds along the shore, on the land side, and lily pads on the water just off it.
+  const water4 = (x: number, y: number) => at(x - 1, y) === 'w' || at(x + 1, y) === 'w' || at(x, y - 1) === 'w' || at(x, y + 1) === 'w';
+  for (let y = 0; y < MAP_H; y++)
+    for (let x = 0; x < MAP_W; x++) {
+      const here = at(x, y);
+      const r = rnd(y * MAP_W + x + 6262);
+      if (here === 'w') {
+        const shore = at(x - 1, y) !== 'w' || at(x + 1, y) !== 'w' || at(x, y - 1) !== 'w' || at(x, y + 1) !== 'w';
+        if (L.lilies <= 0 || !shore || r() > L.lilies) continue;
+        const m = 1 + Math.floor(r() * 3);
+        for (let i = 0; i < m; i++) {
+          const lx = x * TILE + 6 + r() * 20;
+          const ly = y * TILE + 6 + r() * 20;
+          const lr = 2.2 + r() * 1.8;
+          const a0 = r() * TAU;
+          ctx.fillStyle = 'rgba(0,0,0,0.2)';
+          ctx.beginPath();
+          ctx.arc(lx + 0.8, ly + 1, lr, 0, TAU);
+          ctx.fill();
+          ctx.fillStyle = r() < 0.5 ? '#4f7f3a' : '#5d8c42';
+          ctx.beginPath();
+          ctx.moveTo(lx, ly);
+          ctx.arc(lx, ly, lr, a0 + 0.35, a0 + TAU - 0.05);
+          ctx.closePath();
+          ctx.fill();
+          if (r() < 0.25) {
+            ctx.fillStyle = r() < 0.5 ? '#f3eef0' : '#e8b4c6';
+            ctx.beginPath();
+            ctx.arc(lx + lr * 0.2, ly - lr * 0.2, 1.1, 0, TAU);
+            ctx.fill();
+          }
+        }
+        continue;
+      }
+      if (here === 'r' || here === 't' || fords[y * MAP_W + x] || !water4(x, y)) continue;
+      let n = 0;
+      for (let k = 0; k < 4; k++) if (r() < L.reeds) n++;
+      for (let k = 0; k < n; k++) {
+        // Clumps sit toward the water side of the tile.
+        const bx = x * TILE + 4 + r() * 24 + (at(x + 1, y) === 'w' ? 6 : at(x - 1, y) === 'w' ? -6 : 0);
+        const by = y * TILE + 6 + r() * 22 + (at(x, y + 1) === 'w' ? 5 : at(x, y - 1) === 'w' ? -5 : 0);
+        ctx.fillStyle = 'rgba(20,30,10,0.25)';
+        ctx.beginPath();
+        ctx.ellipse(bx + 2, by + 1, 4, 1.6, 0, 0, TAU);
+        ctx.fill();
+        ctx.lineWidth = 0.9;
+        for (let b = 0; b < 7; b++) {
+          const a = -Math.PI / 2 + (b - 3) * 0.16 + (r() - 0.5) * 0.15;
+          const len = 6 + r() * 6;
+          const ex = bx + (b - 3) * 0.6 + Math.cos(a) * len;
+          const ey = by + Math.sin(a) * len;
+          ctx.strokeStyle = b % 2 ? '#3f5a2a' : '#5f7d3a';
+          ctx.beginPath();
+          ctx.moveTo(bx + (b - 3) * 0.6, by);
+          ctx.lineTo(ex, ey);
+          ctx.stroke();
+          if (b % 3 === 0) {
+            ctx.fillStyle = '#6b4a2c';
+            ctx.beginPath();
+            ctx.ellipse(ex, ey + 1.6, 0.9, 2, a + Math.PI / 2, 0, TAU);
+            ctx.fill();
+          }
+        }
+      }
     }
 
   // 5. Trees: clustered canopies, each with its shadow, drawn top to bottom so they overlap well.
@@ -499,6 +829,7 @@ export function paintTerrain(tiles: string): HTMLCanvasElement {
 
 /** One pixel per tile, for the minimap. */
 export function paintMiniTerrain(tiles: string): HTMLCanvasElement {
+  const fords = fordsOf(tiles);
   const c = document.createElement('canvas');
   c.width = MAP_W;
   c.height = MAP_H;
@@ -512,7 +843,7 @@ export function paintMiniTerrain(tiles: string): HTMLCanvasElement {
     t: [36, 65, 31],
   };
   for (let k = 0; k < MAP_W * MAP_H; k++) {
-    const [r, g, b] = colour[tiles[k]] ?? colour.g;
+    const [r, g, b] = fords[k] ? [96, 132, 130] : (colour[tiles[k]] ?? colour.g);
     img.data[k * 4] = r;
     img.data[k * 4 + 1] = g;
     img.data[k * 4 + 2] = b;

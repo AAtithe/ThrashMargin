@@ -241,7 +241,10 @@ export interface UnitPose {
   firing?: boolean;
   /** Heroes: the Spy's cloak shimmer (drawn live over the stamp). */
   shimmer?: boolean;
-  /** Heroes: the Engineer is welding something right now (a live spark at his torch). */
+  /**
+   * Heroes: the Engineer is welding something right now (a live spark at his torch). The Medic:
+   * treating someone right now (a live green glow at his hands).
+   */
   repairing?: boolean;
 }
 
@@ -253,6 +256,8 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
   switch (kind) {
     case 'rifleman':
     case 'rocketeer':
+    case 'grenadier':
+    case 'medic':
     case 'spy':
     case 'commando':
     case 'engineer':
@@ -273,6 +278,15 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
     case 'artillery':
       drawVehicleCached(ctx, kind, owner, team, pose, drawArtillery);
       break;
+    case 'flametank':
+      drawVehicleCached(ctx, kind, owner, team, pose, drawFlameTank);
+      break;
+    case 'missilecarrier':
+      drawVehicleCached(ctx, kind, owner, team, pose, drawMissileCarrier);
+      break;
+    case 'bastion':
+      drawVehicleCached(ctx, kind, owner, team, pose, drawBastion);
+      break;
   }
   ctx.restore();
   ctx.globalAlpha = baseAlpha;
@@ -286,16 +300,25 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
 // right because it is baked per facing. Only sparks and flames are drawn live, over the stamp.
 
 type Layer = 'all' | 'hull' | 'turret';
-type VehicleKind = 'tank' | 'artillery' | 'buggy' | 'hauler' | 'ace';
-type TrooperKind = 'rifleman' | 'rocketeer' | 'spy' | 'commando' | 'engineer';
+type VehicleKind = 'tank' | 'artillery' | 'buggy' | 'hauler' | 'ace' | 'flametank' | 'missilecarrier' | 'bastion';
+type TrooperKind = 'rifleman' | 'rocketeer' | 'grenadier' | 'medic' | 'spy' | 'commando' | 'engineer';
 type VehicleFn = (ctx: Ctx, team: Team, p: UnitPose, layer: Layer) => void;
 
 const ANGLES = 48;
 const VANGLES = 64;
 /** Hull length and width, for placing live damage effects. */
-const HULL: Record<VehicleKind, [number, number]> = { tank: [22, 13], artillery: [20, 10], buggy: [17, 9], hauler: [26, 14], ace: [27, 15] };
+const HULL: Record<VehicleKind, [number, number]> = {
+  tank: [22, 13],
+  artillery: [20, 10],
+  buggy: [17, 9],
+  hauler: [26, 14],
+  ace: [27, 15],
+  flametank: [23, 14],
+  missilecarrier: [26, 11],
+  bastion: [34, 20],
+};
 /** Half the side of a vehicle's sprite canvas: the Ace's twin barrels and pennant reach further. */
-const VHALF: Record<VehicleKind, number> = { tank: 26, artillery: 26, buggy: 26, hauler: 26, ace: 31 };
+const VHALF: Record<VehicleKind, number> = { tank: 26, artillery: 26, buggy: 26, hauler: 26, ace: 31, flametank: 26, missilecarrier: 28, bastion: 40 };
 const SPRITE_BUDGET = 12_000_000;
 const sprites = new Map<string, HTMLCanvasElement>();
 let spritePixels = 0;
@@ -349,6 +372,7 @@ function drawTrooperCached(ctx: Ctx, kind: TrooperKind, owner: Owner, team: Team
   if (hp < 0.25) sparks(ctx, 0, -2, p.t, 2, 3);
   if (p.shimmer) cloakShimmer(ctx, p.t);
   if (p.repairing && kind === 'engineer') weldSpark(ctx, p.turret, p.t);
+  if (p.repairing && kind === 'medic') healPulse(ctx, p.turret, p.t);
 }
 
 function drawVehicleCached(ctx: Ctx, kind: VehicleKind, owner: Owner, team: Team, p: UnitPose, fn: VehicleFn) {
@@ -373,9 +397,13 @@ function drawVehicleCached(ctx: Ctx, kind: VehicleKind, owner: Owner, team: Team
   if (kind === 'hauler') return;
   const tf = Math.round(frac(p.turret / TAU) * VANGLES) % VANGLES;
   const rq = Math.min(8, Math.floor(p.sinceShot / 0.05));
-  sprite(ctx, `${kind}${owner}t${tf}/${rq}/${firing ? 1 : 0}/${p.moving ? frame : 'i'}`, VHALF[kind], g =>
-    fn(g, team, { hull: 0, turret: (tf / VANGLES) * TAU, t: tq, moving: p.moving, cargo: 0, sinceShot: rq === 8 ? 9 : rq * 0.05, hp: hpq, firing }, 'turret'),
+  // The Missile Carrier shows an empty rail for a few seconds after a launch, while it reloads.
+  const reload = kind === 'missilecarrier' && p.sinceShot < CARRIER_RELOAD_SHOWN ? 1 : 0;
+  sprite(ctx, `${kind}${owner}t${tf}/${rq}/${firing ? 1 : 0}/${p.moving ? frame : 'i'}/${reload}`, VHALF[kind], g =>
+    fn(g, team, { hull: 0, turret: (tf / VANGLES) * TAU, t: tq, moving: p.moving, cargo: reload, sinceShot: rq === 8 ? 9 : rq * 0.05, hp: hpq, firing }, 'turret'),
   );
+  // A Flame Tank's pilot light, flickering live at the nozzle.
+  if (kind === 'flametank') pilotLight(ctx, p.turret, p.t, firing);
 }
 
 function treads(ctx: Ctx, len: number, off: number, w: number, t: number, moving: boolean) {
@@ -790,10 +818,24 @@ function drawTrooper(ctx: Ctx, kind: TrooperKind, team: Team, p: UnitPose) {
     ctx.lineTo(-0.8 - step * 2.6, 1.8);
   }
   ctx.stroke();
-  // Pack.
-  ctx.fillStyle = '#3c3f31';
-  rrect(ctx, -3.6, -1.9, 2.2, 3.8, 0.8);
+  // Pack: the Medic carries a white kit with a green cross, the Grenadier a satchel of grenades.
+  ctx.fillStyle = kind === 'medic' ? '#e2e0d4' : '#3c3f31';
+  rrect(ctx, kind === 'medic' ? -4.2 : -3.6, -1.9, kind === 'medic' ? 2.8 : 2.2, 3.8, 0.8);
   ctx.fill();
+  if (kind === 'medic') {
+    ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+    ctx.lineWidth = 0.35;
+    ctx.stroke();
+    ctx.fillStyle = MEDIC_GREEN;
+    ctx.fillRect(-3.15, -1.2, 0.7, 2.4);
+    ctx.fillRect(-4, -0.35, 2.4, 0.7);
+  } else if (kind === 'grenadier') {
+    ctx.fillStyle = '#56603f';
+    for (const gy of [-1.1, 0, 1.1]) {
+      circle(ctx, -3.9, gy, 0.6);
+      ctx.fill();
+    }
+  }
   // Shoulders in team colour, lit on the side toward the light.
   ctx.fillStyle = litGrad(ctx, p.turret, 3, team.light, team.main);
   ctx.beginPath();
@@ -802,6 +844,27 @@ function drawTrooper(ctx: Ctx, kind: TrooperKind, team: Team, p: UnitPose) {
   ctx.strokeStyle = team.dark;
   ctx.lineWidth = 0.7;
   ctx.stroke();
+  if (kind === 'medic') {
+    // White armband with a green cross on the left shoulder.
+    ctx.fillStyle = '#f2f0e6';
+    ctx.fillRect(-1, -3.7, 2, 1.3);
+    ctx.fillStyle = MEDIC_GREEN;
+    ctx.fillRect(-0.2, -3.6, 0.45, 1.1);
+    ctx.fillRect(-0.55, -3.27, 1.15, 0.42);
+  } else if (kind === 'grenadier') {
+    // A bandolier of grenades across the chest.
+    ctx.strokeStyle = '#4a3c26';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(-1.4, -3);
+    ctx.lineTo(1.3, 2.9);
+    ctx.stroke();
+    ctx.fillStyle = '#5c6842';
+    for (let i = 0; i < 4; i++) {
+      circle(ctx, -1 + i * 0.75, -2.1 + i * 1.6, 0.55);
+      ctx.fill();
+    }
+  }
   // Arms and weapon.
   const skin = '#c8a07a';
   if (kind === 'rifleman') {
@@ -841,6 +904,10 @@ function drawTrooper(ctx: Ctx, kind: TrooperKind, team: Team, p: UnitPose) {
       circle(ctx, 1.6, 0.5, 0.55);
       ctx.fill();
     }
+  } else if (kind === 'grenadier') {
+    grenadierArms(ctx, team, p, firing, skin);
+  } else if (kind === 'medic') {
+    medicArms(ctx, team, p, skin);
   } else {
     // Rocket tube on the shoulder: level and forward when firing, angled back when carried.
     ctx.save();
@@ -868,10 +935,15 @@ function drawTrooper(ctx: Ctx, kind: TrooperKind, team: Team, p: UnitPose) {
     circle(ctx, firing ? 2.6 : 2, firing ? -1 : -0.6, 0.55);
     ctx.fill();
   }
-  // Helmet with a team band.
-  ctx.fillStyle = '#4b543f';
+  // Helmet with a team band (the Medic's is white with a green cross).
+  ctx.fillStyle = kind === 'medic' ? '#dcdcd0' : '#4b543f';
   circle(ctx, 0.4, 0, 1.9);
   ctx.fill();
+  if (kind === 'medic') {
+    ctx.fillStyle = MEDIC_GREEN;
+    ctx.fillRect(0.05, -0.95, 0.7, 1.9);
+    ctx.fillRect(-0.55, -0.35, 1.9, 0.7);
+  }
   ctx.strokeStyle = team.light;
   ctx.lineWidth = 0.55;
   ctx.beginPath();
@@ -1438,8 +1510,18 @@ export interface BuildingPose {
   sinceShot: number;
   /** Health fraction 0..1, for drawn damage. Missing means unhurt. */
   hp?: number;
-  /** Producing something right now (refinery unloading, factory or barracks building). */
+  /**
+   * Producing something right now (refinery unloading, factory or barracks building); for a Repair
+   * Bay, mending a vehicle beside it, which `turret` then points at.
+   */
   working?: boolean;
+  /** Sandbag Wall: which neighbouring tiles hold the same side's walls, N 1, E 2, S 4, W 8. */
+  joins?: number;
+  /** Strike Command: how far the missile is charged, 0..1, and how far its silo doors stand open, 0..1. */
+  ready?: number;
+  open?: number;
+  /** Strike Command: seconds since its missile left, while the launch is still smoking. */
+  launch?: number;
 }
 
 export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: number, y: number, pose: BuildingPose): void {
@@ -1457,7 +1539,7 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
     ctx.clip();
   }
   // Ground shadow, cast down and to the right, with a soft outer edge.
-  if (kind !== 'turret') {
+  if (kind !== 'turret' && kind !== 'rocketturret' && kind !== 'wall') {
     ctx.fillStyle = 'rgba(0,0,0,0.14)';
     rrect(ctx, 4, 5, w + 2, h + 2, 6);
     ctx.fill();
@@ -1488,8 +1570,23 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
     case 'uplink':
       drawUplink(ctx, w, h, team, pose);
       break;
+    case 'techcentre':
+      drawTechCentre(ctx, w, h, team, pose);
+      break;
+    case 'repairbay':
+      drawRepairBay(ctx, w, h, team, pose);
+      break;
+    case 'wall':
+      drawWall(ctx, team, pose);
+      break;
+    case 'rocketturret':
+      drawRocketTurret(ctx, w, h, team, pose);
+      break;
+    case 'strikecommand':
+      drawStrikeCommand(ctx, w, h, team, pose);
+      break;
   }
-  buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
+  if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
   if (pose.rise < 1) {
     ctx.strokeStyle = 'rgba(230,190,60,0.85)';
     ctx.lineWidth = 1.5;
@@ -2214,31 +2311,7 @@ function drawFactory(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose
 function drawTurret(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
   const cx = w / 2;
   const cy = h / 2;
-  const oct = (r: number, ox = 0, oy = 0) => {
-    ctx.beginPath();
-    for (let i = 0; i < 8; i++) {
-      const a = (i / 8) * TAU + Math.PI / 8;
-      ctx.lineTo(cx + ox + Math.cos(a) * r, cy + oy + Math.sin(a) * r);
-    }
-    ctx.closePath();
-  };
-  ctx.fillStyle = 'rgba(0,0,0,0.32)';
-  oct(15, 3, 4);
-  ctx.fill();
-  ctx.fillStyle = shade(ctx, cx - 15, cy - 15, 30, 30, '#9a9e9a', '#545855');
-  oct(15);
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-  ctx.fillStyle = '#5f6360';
-  oct(11.5);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(0,0,0,0.4)';
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * TAU;
-    ctx.fillRect(cx + Math.cos(a) * 13.2 - 0.6, cy + Math.sin(a) * 13.2 - 0.6, 1.2, 1.2);
-  }
+  turretBase(ctx, cx, cy);
   ctx.save();
   ctx.translate(cx, cy);
   ctx.rotate(p.turret);
@@ -2350,4 +2423,1072 @@ function drawUplink(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose)
   ctx.restore();
   lamp(ctx, 42, 14, on, '#6cf5ff', p.t * 2, 4, false);
   lamp(ctx, 56, 56, on, '#7dff8a', p.t, 2, true);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Advanced tech: the Grenadier, the Medic, the Flame Tank, the Missile Carrier and the Bastion.
+
+/** The Medic's cross: green on white, so it reads at a glance and is nobody's real emblem. */
+const MEDIC_GREEN = '#2fa35a';
+/** Seconds after a launch that the Missile Carrier's second rail shows empty. */
+const CARRIER_RELOAD_SHOWN = 3;
+
+/**
+ * The Grenadier's throwing arm, in the trooper's 1.6x frame. Idle, a grenade is held at the chest;
+ * firing, the arm swings over and forward, and for the instant of the throw the hand is empty.
+ */
+function grenadierArms(ctx: Ctx, team: Team, p: UnitPose, firing: boolean, skin: string) {
+  ctx.lineCap = 'round';
+  if (firing) {
+    const thrown = p.sinceShot < 0.08;
+    ctx.strokeStyle = team.main;
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(0.2, -2.4);
+    ctx.lineTo(thrown ? 3.9 : 2.2, thrown ? -1.6 : -4.4);
+    ctx.moveTo(0.2, 2.6);
+    ctx.lineTo(2.2, 2.4);
+    ctx.stroke();
+    ctx.fillStyle = skin;
+    circle(ctx, thrown ? 4 : 2.3, thrown ? -1.5 : -4.5, 0.6);
+    ctx.fill();
+    if (!thrown) {
+      ctx.fillStyle = '#4b5735';
+      circle(ctx, 2.6, -5.2, 0.85);
+      ctx.fill();
+      ctx.fillStyle = '#c9c4ad';
+      ctx.fillRect(2.4, -6.3, 0.5, 0.6);
+    }
+  } else {
+    ctx.strokeStyle = team.main;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0.2, -2.4);
+    ctx.lineTo(1.8, -0.7);
+    ctx.moveTo(0.2, 2.5);
+    ctx.lineTo(1.8, 0.8);
+    ctx.stroke();
+    ctx.fillStyle = '#4b5735';
+    circle(ctx, 2.4, 0, 0.95);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    circle(ctx, 2.15, -0.3, 0.35);
+    ctx.fill();
+    ctx.fillStyle = skin;
+    circle(ctx, 1.9, -0.7, 0.5);
+    ctx.fill();
+    circle(ctx, 1.9, 0.8, 0.5);
+    ctx.fill();
+  }
+}
+
+/** The Medic carries no weapon: both hands forward, a field dressing ready in one of them. */
+function medicArms(ctx: Ctx, team: Team, p: UnitPose, skin: string) {
+  const reach = p.moving ? 0 : 0.8;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = team.main;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0.2, -2.4);
+  ctx.lineTo(2 + reach, -1.2);
+  ctx.moveTo(0.2, 2.5);
+  ctx.lineTo(2 + reach, 1.2);
+  ctx.stroke();
+  ctx.fillStyle = skin;
+  circle(ctx, 2.1 + reach, -1.2, 0.55);
+  ctx.fill();
+  circle(ctx, 2.1 + reach, 1.2, 0.55);
+  ctx.fill();
+  ctx.fillStyle = '#f4f2ea';
+  ctx.fillRect(2.4 + reach, -0.7, 1.4, 1.4);
+}
+
+/** The Medic at work: a soft green glow between his hands, and small crosses drifting off it. */
+function healPulse(ctx: Ctx, facing: number, t: number) {
+  const x = Math.cos(facing) * 5.4;
+  const y = Math.sin(facing) * 5.4;
+  const f = 0.6 + 0.4 * Math.sin(t * 9);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const g = ctx.createRadialGradient(x, y, 0, x, y, 8);
+  g.addColorStop(0, `rgba(190,255,200,${0.75 * f})`);
+  g.addColorStop(0.4, `rgba(90,220,130,${0.35 * f})`);
+  g.addColorStop(1, 'rgba(60,200,110,0)');
+  alpha(ctx, 1);
+  ctx.fillStyle = g;
+  ctx.fillRect(x - 8, y - 8, 16, 16);
+  ctx.fillStyle = '#c8ffd2';
+  for (let i = 0; i < 2; i++) {
+    const q = frac(t * 0.9 + i * 0.5);
+    alpha(ctx, Math.sin(q * Math.PI) * 0.8);
+    const cx = x + (i ? 2.5 : -2.5);
+    const cy = y - q * 9;
+    ctx.fillRect(cx - 0.5, cy - 1.6, 1, 3.2);
+    ctx.fillRect(cx - 1.6, cy - 0.5, 3.2, 1);
+  }
+  alpha(ctx, 1);
+  ctx.restore();
+}
+
+/** The Flame Tank's pilot light: a small blue-and-amber flicker at the nozzle, brighter when firing. */
+function pilotLight(ctx: Ctx, turret: number, t: number, firing: boolean) {
+  const x = Math.cos(turret) * 13.2;
+  const y = Math.sin(turret) * 13.2;
+  const f = 0.55 + 0.45 * Math.sin(t * 31) * Math.sin(t * 17 + 1);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  const r = firing ? 6 : 3.2;
+  const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, `rgba(255,236,190,${0.85 * f})`);
+  g.addColorStop(0.4, firing ? `rgba(255,140,40,${0.6 * f})` : `rgba(110,170,255,${0.5 * f})`);
+  g.addColorStop(1, 'rgba(255,90,20,0)');
+  alpha(ctx, 1);
+  ctx.fillStyle = g;
+  ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  ctx.restore();
+}
+
+/** A fuel cylinder lying along the hull: shaded across, banded, with an end cap. */
+function fuelTank(ctx: Ctx, ang: number, x: number, y: number, len: number, r: number) {
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  rrect(ctx, x + 0.8, y - r + 1.2, len, r * 2, r);
+  ctx.fill();
+  // Which long side catches the light depends on which way the hull faces (light is top left).
+  const lit = Math.cos(ang) - Math.sin(ang) > 0;
+  const g = ctx.createLinearGradient(0, y - r, 0, y + r);
+  g.addColorStop(0, lit ? '#de7346' : '#74291a');
+  g.addColorStop(0.45, '#b04a28');
+  g.addColorStop(1, lit ? '#66220f' : '#d06540');
+  ctx.fillStyle = g;
+  rrect(ctx, x, y - r, len, r * 2, r);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  for (const bx of [x + len * 0.22, x + len * 0.7]) {
+    ctx.fillStyle = ART.hazard;
+    ctx.fillRect(bx, y - r, 1.4, r * 2);
+    ctx.fillStyle = '#222';
+    ctx.fillRect(bx + 1.4, y - r, 0.6, r * 2);
+  }
+  ctx.fillStyle = 'rgba(255,230,200,0.35)';
+  ctx.fillRect(x + 1, y - r * 0.55, len - 2, 0.7);
+  ctx.fillStyle = '#3a3532';
+  circle(ctx, x + len - 0.6, y, r * 0.45);
+  ctx.fill();
+}
+
+function drawFlameTank(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 26, 21, 4);
+    ctx.save();
+    ctx.rotate(p.hull);
+    treads(ctx, 26, 7.8, 5.6, p.t, p.moving);
+    // A boxier hull than the Battle Tank's, sooted dark round the bow.
+    ctx.fillStyle = litGrad(ctx, p.hull, 11, team.main, team.dark);
+    rrect(ctx, -11.5, -7, 23, 14, 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    const soot = ctx.createLinearGradient(6, 0, 11.5, 0);
+    soot.addColorStop(0, 'rgba(20,16,12,0)');
+    soot.addColorStop(1, 'rgba(20,16,12,0.45)');
+    ctx.fillStyle = soot;
+    ctx.fillRect(6, -7, 5.5, 14);
+    // Twin fuel tanks on the rear deck, and the feed pipes running forward to the turret ring.
+    fuelTank(ctx, p.hull, -11.2, -3.3, 9.5, 2.7);
+    fuelTank(ctx, p.hull, -11.2, 3.3, 9.5, 2.7);
+    ctx.strokeStyle = '#2b2725';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(-1.6, -3.3);
+    ctx.quadraticCurveTo(1, -3.3, 2, -1.5);
+    ctx.moveTo(-1.6, 3.3);
+    ctx.quadraticCurveTo(1, 3.3, 2, 1.5);
+    ctx.stroke();
+    // Headlights, and a hazard chevron on the glacis.
+    ctx.fillStyle = p.moving ? '#fff3c4' : '#c9c2a2';
+    ctx.fillRect(10.2, -5.9, 1.2, 1.6);
+    ctx.fillRect(10.2, 4.3, 1.2, 1.6);
+    ctx.fillStyle = ART.hazard;
+    ctx.beginPath();
+    ctx.moveTo(8, -2.4);
+    ctx.lineTo(10.6, 0);
+    ctx.lineTo(8, 2.4);
+    ctx.lineTo(8, 1.2);
+    ctx.lineTo(9.2, 0);
+    ctx.lineTo(8, -1.2);
+    ctx.closePath();
+    ctx.fill();
+    hullDamage(ctx, hp, p.t, 23, 14, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    const kick = firing ? 0.6 : 0;
+    // The projector: a short, fat barrel with a ribbed shroud and a flared nozzle.
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(4, -1.4, 10, 4.6);
+    ctx.fillStyle = '#2a2d2e';
+    ctx.fillRect(3.5 - kick, -2.3, 8.5, 4.6);
+    ctx.fillStyle = 'rgba(255,255,255,0.16)';
+    ctx.fillRect(3.5 - kick, -2.3, 8.5, 1.2);
+    ctx.fillStyle = '#1a1c1d';
+    for (let i = 0; i < 3; i++) ctx.fillRect(5 + i * 2.2 - kick, -2.6, 0.9, 5.2);
+    ctx.fillStyle = firing ? '#6b3a1e' : '#3b3f40';
+    ctx.beginPath();
+    ctx.moveTo(12 - kick, -2.3);
+    ctx.lineTo(14 - kick, -3);
+    ctx.lineTo(14 - kick, 3);
+    ctx.lineTo(12 - kick, 2.3);
+    ctx.closePath();
+    ctx.fill();
+    if (firing) {
+      ctx.fillStyle = 'rgba(255,170,70,0.9)';
+      ctx.fillRect(13.2 - kick, -2, 0.9, 4);
+    }
+    // A low, rounded turret in team colour, with a vision block and the emblem.
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    circle(ctx, 1, 1.2, 6.2);
+    ctx.fill();
+    ctx.fillStyle = litGrad(ctx, p.turret, 6, team.light, team.main);
+    ctx.beginPath();
+    ctx.ellipse(-0.5, 0, 6.6, 5.6, 0, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    ctx.fillStyle = team.dark;
+    ctx.fillRect(-6.6, -2.8, 1.8, 5.6);
+    ctx.fillStyle = '#1f2a33';
+    circle(ctx, -2, -1.6, 1.7);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 0.6;
+    ctx.stroke();
+    ctx.fillStyle = '#9fd6ff';
+    ctx.fillRect(2.4, -3.2, 1.3, 1.1);
+    emblem(ctx, team, -0.8, 2.4, 1.3);
+    ctx.restore();
+  }
+}
+
+/**
+ * A Missile Carrier: a six-wheeled truck with a launcher on its bed, two rails each holding a
+ * missile. In the turret layer, `cargo` is 1 while the second rail is empty (reloading).
+ */
+function drawMissileCarrier(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 28, 17, 3);
+    ctx.save();
+    ctx.rotate(p.hull);
+    const bounce = p.moving ? Math.sin(p.t * 24) * 0.3 : 0;
+    for (const wx of [-9, -3.4, 7.4])
+      for (const wy of [-6.2, 6.2]) {
+        ctx.fillStyle = '#151616';
+        rrect(ctx, wx - 2.8, wy - 1.8 + bounce, 5.6, 3.6, 1.3);
+        ctx.fill();
+        ctx.fillStyle = '#3a3c3c';
+        const ph = p.moving ? frac(p.t * 5) * 1.8 : 0;
+        ctx.fillRect(wx - 2 + ph, wy - 1.5 + bounce, 0.6, 3);
+        ctx.fillRect(wx - 0.2 + ph, wy - 1.5 + bounce, 0.6, 3);
+      }
+    // Chassis and the flat bed.
+    ctx.fillStyle = litGrad(ctx, p.hull, 10, '#7c8488', ART.metalDark);
+    rrect(ctx, -13, -5.4, 19, 10.8, 1.6);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    for (let i = 0; i < 5; i++) ctx.fillRect(-12 + i * 3.8, -5.4, 0.8, 10.8);
+    // Stabiliser jacks at the rear corners, in hazard paint.
+    ctx.fillStyle = ART.hazard;
+    ctx.fillRect(-13.6, -6.2, 2, 2);
+    ctx.fillRect(-13.6, 4.2, 2, 2);
+    // Cab, lit, with a wide windscreen.
+    ctx.fillStyle = litGrad(ctx, p.hull, 7, team.light, team.dark);
+    rrect(ctx, 6, -5.8, 7.6, 11.6, 2.2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(160,220,255,0.8)';
+    ctx.fillRect(11.4, -4.4, 1.6, 8.8);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
+    ctx.fillRect(11.6, -4.2, 0.6, 3);
+    ctx.fillStyle = p.moving ? '#fff3c4' : '#d8d0ae';
+    ctx.fillRect(13, -5, 0.9, 1.4);
+    ctx.fillRect(13, 3.6, 0.9, 1.4);
+    emblem(ctx, team, 8.4, 0, 1.4);
+    hullDamage(ctx, hp, p.t, 26, 11, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    const empty = p.cargo > 0.5;
+    const kick = Math.max(0, 1.6 - p.sinceShot * 8);
+    ctx.fillStyle = '#2d3132';
+    circle(ctx, 0, 0, 3.8);
+    ctx.fill();
+    // The launcher: a short cradle carrying two rails, each with a missile.
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(-5, -2.6, 13, 7.4);
+    ctx.fillStyle = litGrad(ctx, p.turret, 7, team.main, team.dark);
+    rrect(ctx, -6.5 - kick, -3.6, 13, 7.2, 1.2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    // The missiles: white bodies, red bands, dark noses and fins.
+    const missile = (y: number) => {
+      ctx.fillStyle = '#e8e6de';
+      rrect(ctx, -7.5 - kick, y - 1, 13.5, 2, 0.9);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      ctx.lineWidth = 0.45;
+      ctx.stroke();
+      ctx.fillStyle = '#3a3d3e';
+      ctx.beginPath();
+      ctx.moveTo(6 - kick, y - 1);
+      ctx.lineTo(8.6 - kick, y);
+      ctx.lineTo(6 - kick, y + 1);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#2a2d2e';
+      ctx.fillRect(-7.8 - kick, y - 1.7, 1.8, 0.7);
+      ctx.fillRect(-7.8 - kick, y + 1, 1.8, 0.7);
+      ctx.fillStyle = '#b8352a';
+      ctx.fillRect(1.6 - kick, y - 1, 0.8, 2);
+    };
+    missile(-1.7);
+    if (!empty) missile(1.7);
+    else {
+      ctx.fillStyle = '#1d2021';
+      ctx.fillRect(-6.5 - kick, 0.8, 13, 1.8);
+    }
+    if (firing && p.sinceShot < 0.12) {
+      ctx.fillStyle = 'rgba(230,220,200,0.6)';
+      circle(ctx, -10.5, 1.7, 3.2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,190,100,0.85)';
+      circle(ctx, -9, 1.7, 1.6);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+/** The Bastion: a siege tank half again the size of a Battle Tank, with twin barrels. */
+function drawBastion(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 38, 30, 5, 4, 5);
+    ctx.save();
+    ctx.rotate(p.hull);
+    treads(ctx, 37, 11.6, 7.2, p.t, p.moving);
+    // Bolted side skirts over the tracks.
+    ctx.fillStyle = '#2a2e30';
+    ctx.fillRect(-17, -15.4, 32, 2.6);
+    ctx.fillRect(-17, 12.8, 32, 2.6);
+    ctx.fillStyle = 'rgba(255,255,255,0.18)';
+    for (let i = 0; i < 6; i++) {
+      ctx.fillRect(-15 + i * 5.6, -14.6, 1, 1);
+      ctx.fillRect(-15 + i * 5.6, 13.6, 1, 1);
+    }
+    // The hull: a heavy slab in team colour with applique armour plates.
+    ctx.fillStyle = litGrad(ctx, p.hull, 16, team.main, team.dark);
+    rrect(ctx, -17.5, -10.6, 35, 21.2, 3);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+    for (const [px, py, pw, ph] of [
+      [-6, -10, 9, 4],
+      [-6, 6, 9, 4],
+      [5, -10, 7, 3.4],
+      [5, 6.6, 7, 3.4],
+    ]) {
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(px, py, pw, ph);
+      ctx.strokeStyle = 'rgba(255,255,255,0.14)';
+      ctx.lineWidth = 0.6;
+      ctx.strokeRect(px + 0.3, py + 0.3, pw - 0.6, ph - 0.6);
+    }
+    // Sloped glacis with a dozer blade, and an engine deck with two grilles and stacks.
+    ctx.fillStyle = 'rgba(255,255,255,0.16)';
+    ctx.beginPath();
+    ctx.moveTo(11, -10);
+    ctx.lineTo(16.8, -7);
+    ctx.lineTo(16.8, 7);
+    ctx.lineTo(11, 10);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#34383a';
+    ctx.fillRect(17, -9.5, 2.2, 19);
+    ctx.fillStyle = ART.hazard;
+    for (let i = 0; i < 4; i++) ctx.fillRect(17, -9 + i * 5, 2.2, 2);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(-16.5, -8, 7.5, 16);
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    for (let i = 0; i < 6; i++) ctx.fillRect(-16 + i * 1.2, -7.4, 0.6, 6);
+    for (let i = 0; i < 6; i++) ctx.fillRect(-16 + i * 1.2, 1.4, 0.6, 6);
+    ctx.fillStyle = '#262422';
+    circle(ctx, -15.5, -9.6, 1.6);
+    ctx.fill();
+    circle(ctx, -15.5, 9.6, 1.6);
+    ctx.fill();
+    ctx.fillStyle = p.moving ? '#fff3c4' : '#c9c2a2';
+    ctx.fillRect(15.4, -9.4, 1.3, 2);
+    ctx.fillRect(15.4, 7.4, 1.3, 2);
+    hullDamage(ctx, hp, p.t, 34, 20, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    const recoil = Math.max(0, 3.4 - p.sinceShot * 12);
+    for (const by of [-3, 3]) {
+      ctx.save();
+      ctx.translate(0, by);
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.fillRect(7 - recoil, 0.6, 21, 3.6);
+      barrel(ctx, 6, 21, 3.4, recoil, firing);
+      ctx.restore();
+    }
+    // A cast turret, wide and angular.
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.moveTo(-9, -7);
+    ctx.lineTo(7, -8);
+    ctx.lineTo(11, -3);
+    ctx.lineTo(11, 5);
+    ctx.lineTo(7, 10);
+    ctx.lineTo(-9, 9);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = litGrad(ctx, p.turret, 10, team.light, team.main);
+    ctx.beginPath();
+    ctx.moveTo(-10.5, -8.4);
+    ctx.lineTo(6, -9.2);
+    ctx.lineTo(10.6, -4);
+    ctx.lineTo(10.6, 4);
+    ctx.lineTo(6, 9.2);
+    ctx.lineTo(-10.5, 8.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Mantlet, bustle, cupola, periscopes, emblem.
+    ctx.fillStyle = team.dark;
+    ctx.fillRect(7.6, -6.6, 3, 13.2);
+    ctx.fillRect(-13, -6, 2.6, 12);
+    ctx.fillStyle = '#1f2a33';
+    circle(ctx, -4, -3.2, 2.8);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+    ctx.fillStyle = '#9fd6ff';
+    ctx.fillRect(-2.2, -5.6, 1.4, 1);
+    ctx.fillRect(3, -6.8, 1.6, 1.2);
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.fillRect(-6, 2.2, 4, 3);
+    emblem(ctx, team, 2.4, 3.6, 2);
+    const sway = p.moving ? Math.sin(p.t * 8) * 1.4 : 0.4;
+    ctx.strokeStyle = 'rgba(20,20,20,0.75)';
+    ctx.lineWidth = 0.55;
+    ctx.beginPath();
+    ctx.moveTo(-9, 6.5);
+    ctx.quadraticCurveTo(-14, 8 + sway * 0.5, -18, 9 + sway);
+    ctx.moveTo(-9, -6.5);
+    ctx.quadraticCurveTo(-13, -8 + sway * 0.5, -16, -9 + sway);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Advanced structures: the Tech Centre, the Repair Bay, the Sandbag Wall, the Rocket Turret and
+// the Strike Command.
+
+/** The octagonal concrete base both turrets stand on, with its own shadow. */
+function turretBase(ctx: Ctx, cx: number, cy: number) {
+  const oct = (r: number, ox = 0, oy = 0) => {
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU + Math.PI / 8;
+      ctx.lineTo(cx + ox + Math.cos(a) * r, cy + oy + Math.sin(a) * r);
+    }
+    ctx.closePath();
+  };
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  oct(15, 3, 4);
+  ctx.fill();
+  ctx.fillStyle = shade(ctx, cx - 15, cy - 15, 30, 30, '#9a9e9a', '#545855');
+  oct(15);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = '#5f6360';
+  oct(11.5);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * TAU;
+    ctx.fillRect(cx + Math.cos(a) * 13.2 - 0.6, cy + Math.sin(a) * 13.2 - 0.6, 1.2, 1.2);
+  }
+}
+
+function drawTechCentre(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  // Coolant pipes from the wing to the dome.
+  ctx.strokeStyle = '#3a3f3d';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(26, 22);
+  ctx.lineTo(34, 22);
+  ctx.moveTo(26, 30);
+  ctx.lineTo(32, 30);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(26, 21);
+  ctx.lineTo(34, 21);
+  ctx.stroke();
+  // The laboratory wing: team roof stripe, a row of lit windows, cooling fins.
+  block(ctx, 5, 6, 22, 48, shade(ctx, 5, 6, 22, 48, '#a3aaa6', '#6c7370'), '#545b58', 5);
+  ctx.fillStyle = team.main;
+  ctx.fillRect(5, 6, 22, 6);
+  emblem(ctx, team, 16, 9, 2.2);
+  for (let i = 0; i < 4; i++) {
+    const lit = on ? 0.55 + 0.45 * (hash(i * 17 + Math.floor(p.t * 0.6 + i)) > 0.3 ? 1 : 0.2) : 0.15;
+    ctx.fillStyle = `rgba(190,170,255,${lit})`;
+    ctx.fillRect(8, 15 + i * 6, 5, 3.2);
+    ctx.fillStyle = `rgba(150,230,255,${lit * 0.9})`;
+    ctx.fillRect(15, 15 + i * 6, 8, 3.2);
+  }
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  for (let i = 0; i < 7; i++) ctx.fillRect(8 + i * 2.6, 42, 1.2, 9);
+  stack(ctx, 22, 46, 2.4);
+  puffs(ctx, 22, 44, p.t, on ? 0.35 : 0.1, '190,196,200');
+  // The research dome: glass over a core that pulses, and a ring of light turning round it.
+  const dx = 44;
+  const dy = 22;
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  circle(ctx, dx + 3, dy + 4, 15);
+  ctx.fill();
+  ctx.fillStyle = '#4a504e';
+  circle(ctx, dx, dy, 15);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  const pulse = on ? 0.6 + 0.4 * Math.sin(p.t * 2.4) : 0.15;
+  const core = ctx.createRadialGradient(dx, dy, 0, dx, dy, 12);
+  core.addColorStop(0, `rgba(210,255,250,${0.95 * pulse})`);
+  core.addColorStop(0.35, `rgba(80,220,230,${0.75 * pulse})`);
+  core.addColorStop(1, 'rgba(20,70,90,0.9)');
+  ctx.fillStyle = core;
+  circle(ctx, dx, dy, 12.5);
+  ctx.fill();
+  if (on) {
+    ctx.strokeStyle = 'rgba(170,255,250,0.85)';
+    ctx.lineWidth = 1.6;
+    for (let k = 0; k < 3; k++) {
+      const a = p.t * 1.6 + (k * TAU) / 3;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 9, a, a + 0.9);
+      ctx.stroke();
+    }
+  }
+  // Glass: ribs and a highlight toward the light.
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  for (let k = 0; k < 6; k++) {
+    const a = (k / 6) * TAU;
+    ctx.moveTo(dx, dy);
+    ctx.lineTo(dx + Math.cos(a) * 12.5, dy + Math.sin(a) * 12.5);
+  }
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.32)';
+  ctx.beginPath();
+  ctx.ellipse(dx - 4.5, dy - 5, 5, 2.6, -0.7, 0, TAU);
+  ctx.fill();
+  // The low annex with a glowing skylight, and an array of three masts with lamps.
+  block(ctx, 31, 40, 27, 16, '#8d9390', '#5a605d', 4);
+  ctx.fillStyle = on ? `rgba(170,150,255,${0.45 + 0.25 * Math.sin(p.t * 1.3)})` : 'rgba(80,80,100,0.5)';
+  ctx.fillRect(34, 44, 21, 3.5);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(34, 50, 21, 2);
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  for (const mx of [37, 45, 53]) {
+    ctx.moveTo(mx, 40);
+    ctx.lineTo(mx, 33);
+  }
+  ctx.stroke();
+  lamp(ctx, 37, 33, on, '#6cf5ff', p.t, 5, true);
+  lamp(ctx, 45, 33, on, '#b49aff', p.t + 0.3, 5, true);
+  lamp(ctx, 53, 33, on, '#6cf5ff', p.t + 0.6, 5, true);
+}
+
+/**
+ * A two-bone arm reaching from `bx, by` toward `tx, ty`, bent on side `bend` (1 or -1): yellow
+ * booms, dark joints, and a clamp at the tip. Returns where the tip ended up.
+ */
+function arm(ctx: Ctx, bx: number, by: number, tx: number, ty: number, l1: number, l2: number, bend: number) {
+  const dx = tx - bx;
+  const dy = ty - by;
+  const d = Math.min(l1 + l2 - 0.5, Math.max(Math.abs(l1 - l2) + 0.5, Math.hypot(dx, dy)));
+  const base = Math.atan2(dy, dx);
+  const k = Math.acos(Math.max(-1, Math.min(1, (l1 * l1 + d * d - l2 * l2) / (2 * l1 * d))));
+  const a1 = base + bend * k;
+  const ex = bx + Math.cos(a1) * l1;
+  const ey = by + Math.sin(a1) * l1;
+  const hx = bx + Math.cos(base) * d;
+  const hy = by + Math.sin(base) * d;
+  ctx.lineCap = 'round';
+  for (const pass of [0, 1, 2]) {
+    const o = pass === 0 ? 3 : 0;
+    ctx.strokeStyle = pass === 0 ? 'rgba(0,0,0,0.3)' : pass === 1 ? '#3a3226' : ART.hazard;
+    ctx.lineWidth = pass === 1 ? 5.4 : 4;
+    ctx.beginPath();
+    ctx.moveTo(bx + o, by + o + 1);
+    ctx.lineTo(ex + o, ey + o + 1);
+    ctx.lineTo(hx + o, hy + o + 1);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(bx - 1, by - 1);
+  ctx.lineTo(ex - 1, ey - 1);
+  ctx.lineTo(hx - 1, hy - 1);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+  for (const [jx, jy, r] of [
+    [bx, by, 3.4],
+    [ex, ey, 2.4],
+  ]) {
+    ctx.fillStyle = '#2c3032';
+    circle(ctx, jx, jy, r);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    circle(ctx, jx - 0.6, jy - 0.6, r * 0.4);
+    ctx.fill();
+  }
+  // The clamp: two jaws either side of the tip.
+  const c = Math.cos(base);
+  const s = Math.sin(base);
+  ctx.strokeStyle = '#25282a';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(hx - s * 2.6, hy + c * 2.6);
+  ctx.lineTo(hx + c * 3 - s * 2, hy + s * 3 + c * 2);
+  ctx.moveTo(hx + s * 2.6, hy - c * 2.6);
+  ctx.lineTo(hx + c * 3 + s * 2, hy + s * 3 - c * 2);
+  ctx.stroke();
+  return { x: hx + c * 3, y: hy + s * 3 };
+}
+
+/**
+ * The Repair Bay: a pad with a turntable and two lifting arms. While it is mending a vehicle
+ * beside it (pose.working, pose.turret pointing at the vehicle) the arms reach out to it and weld.
+ */
+function drawRepairBay(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  const work = !!p.working;
+  // The pad, edged with hazard stripes.
+  ctx.fillStyle = '#4b514f';
+  rrect(ctx, 6, 6, w - 12, h - 12, 3);
+  ctx.fill();
+  hazardStripe(ctx, 6, 6, w - 12, 3);
+  hazardStripe(ctx, 6, h - 9, w - 12, 3);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  for (let i = 0; i < 4; i++) ctx.fillRect(12 + i * 11, 12, 1, h - 24);
+  // Turntable with grip ridges and a team ring.
+  const cx = w / 2;
+  const cy = h / 2;
+  ctx.fillStyle = '#5c6260';
+  circle(ctx, cx, cy, 14);
+  ctx.fill();
+  ctx.strokeStyle = team.main;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+  ctx.lineWidth = 0.8;
+  const spin = work && on ? p.t * 0.6 : 0;
+  ctx.beginPath();
+  for (let k = 0; k < 12; k++) {
+    const a = (k / 12) * TAU + spin;
+    ctx.moveTo(cx + Math.cos(a) * 4, cy + Math.sin(a) * 4);
+    ctx.lineTo(cx + Math.cos(a) * 12, cy + Math.sin(a) * 12);
+  }
+  ctx.stroke();
+  emblem(ctx, team, cx, cy, 3);
+  // Control booth in the corner.
+  block(ctx, 8, h - 24, 13, 11, '#8d9390', '#5a605d', 3);
+  ctx.fillStyle = on ? 'rgba(170,230,255,0.8)' : 'rgba(90,110,120,0.6)';
+  ctx.fillRect(10, h - 22, 9, 3);
+  // The arms: two posts on the side facing the work, each with a two-boom arm.
+  const a = work ? p.turret : -Math.PI / 2;
+  const ux = Math.cos(a);
+  const uy = Math.sin(a);
+  const px = -uy;
+  const py = ux;
+  const tips: { x: number; y: number }[] = [];
+  for (const side of [-1, 1]) {
+    const bx = cx + px * side * 13 + ux * 6;
+    const by = cy + py * side * 13 + uy * 6;
+    let tx: number;
+    let ty: number;
+    if (work) {
+      // Out past the edge of the pad, where the vehicle sits; a little working jitter.
+      const j = on ? Math.sin(p.t * (5 + side) + side) * 2 : 0;
+      tx = cx + ux * 40 + px * side * 6 + px * j;
+      ty = cy + uy * 40 + py * side * 6 + py * j;
+    } else {
+      // Parked: folded back over the pad.
+      tx = bx - ux * 28;
+      ty = by - uy * 28;
+    }
+    ctx.fillStyle = '#2c3032';
+    ctx.fillRect(bx - 4, by - 4, 8, 8);
+    ctx.fillStyle = ART.hazard;
+    ctx.fillRect(bx - 4, by - 4, 8, 1.6);
+    tips.push(arm(ctx, bx, by, tx, ty, 19, 18, work ? side : -side));
+  }
+  if (work && on) {
+    for (let i = 0; i < tips.length; i++) {
+      const { x, y } = tips[i];
+      const f = 0.55 + 0.45 * Math.sin(p.t * 33 + i * 2) * Math.sin(p.t * 19 + i);
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(x, y, 0, x, y, 7);
+      g.addColorStop(0, `rgba(230,245,255,${0.9 * f})`);
+      g.addColorStop(0.35, `rgba(130,190,255,${0.45 * f})`);
+      g.addColorStop(1, 'rgba(80,140,255,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(x - 7, y - 7, 14, 14);
+      ctx.restore();
+      sparks(ctx, x, y, p.t * 2.2 + i, 5, 11 + i * 5);
+    }
+  }
+  lamp(ctx, w - 10, 12, on, work ? '#7dff8a' : '#ffb43a', p.t, work ? 8 : 2, work);
+  lamp(ctx, w - 10, h - 12, on, work ? '#7dff8a' : '#ffb43a', p.t + 0.4, work ? 8 : 2, work);
+}
+
+/**
+ * A Sandbag Wall, one tile. Bags run toward each neighbouring wall of the same side (pose.joins), so
+ * a line of them reads as one wall; a lone one is a short stack. Damage tears bags open.
+ */
+function drawWall(ctx: Ctx, team: Team, p: BuildingPose) {
+  const j = p.joins ?? 0;
+  const n = (j & 1) !== 0;
+  const e = (j & 2) !== 0;
+  const so = (j & 4) !== 0;
+  const wv = (j & 8) !== 0;
+  const hp = clamp01(p.hp, 1);
+  const T = TILE;
+  const horiz = e || wv || !(n || so);
+  const vert = n || so;
+  // Extents of each run of bags, in the tile.
+  const hx0 = wv ? 0 : vert && !e ? 7 : 3;
+  const hx1 = e ? T : vert && !wv ? 25 : T - 3;
+  const vy0 = n ? 0 : 4;
+  const vy1 = so ? T : horiz ? 23 : T - 4;
+  const DEPTH = 4;
+  const bag = (x: number, y: number, bw: number, bh: number, seed: number) => {
+    const torn = hp < 0.6 && hash(seed) < (hp < 0.3 ? 0.45 : 0.2);
+    const g = ctx.createLinearGradient(x, y, x + bw * 0.5, y + bh);
+    g.addColorStop(0, torn ? '#8f7b55' : '#cdb98c');
+    g.addColorStop(1, torn ? '#5d4e33' : '#8c7650');
+    ctx.fillStyle = g;
+    rrect(ctx, x + 0.4, y + 0.4, bw - 0.8, bh - 0.8, Math.min(bw, bh) * 0.38);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(40,30,18,0.55)';
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+    // A tied end, and a fold catching the light.
+    ctx.strokeStyle = 'rgba(60,45,25,0.5)';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    if (bw > bh) {
+      ctx.moveTo(x + bw - 2, y + 1.2);
+      ctx.lineTo(x + bw - 2, y + bh - 1.2);
+    } else {
+      ctx.moveTo(x + 1.2, y + bh - 2);
+      ctx.lineTo(x + bw - 1.2, y + bh - 2);
+    }
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,245,215,0.28)';
+    ctx.fillRect(x + 1.4, y + 1.2, bw > bh ? bw * 0.45 : 1, bw > bh ? 1 : bh * 0.45);
+    if (torn) {
+      ctx.fillStyle = '#c9b07a';
+      for (let k = 0; k < 4; k++) ctx.fillRect(x + hash(seed + k) * bw, y + bh - 0.5 + hash(seed + k + 9) * 3, 1, 1);
+    }
+  };
+  const run = (x0: number, y0: number, x1: number, y1: number, along: 'x' | 'y') => {
+    // Shadow, then the hessian side face on the south, then two staggered courses of bags.
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(x0 + 3, y0 + 4, x1 - x0, y1 - y0 + (along === 'x' || !so ? DEPTH : 0));
+    ctx.fillStyle = '#6d5c3e';
+    if (along === 'x') ctx.fillRect(x0, y1, x1 - x0, DEPTH);
+    else if (!so) ctx.fillRect(x0, y1, x1 - x0, DEPTH);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x0, y0, x1 - x0, y1 - y0);
+    ctx.clip();
+    const L = 8;
+    if (along === 'x') {
+      const mid = (y0 + y1) / 2;
+      for (let k = -1; k <= T / L; k++) bag(k * L, y0, L, mid - y0, k * 7 + 1);
+      for (let k = -1; k <= T / L; k++) bag(k * L - L / 2, mid, L, y1 - mid, k * 7 + 3);
+    } else {
+      const mid = (x0 + x1) / 2;
+      for (let k = -1; k <= T / L; k++) bag(x0, k * L, mid - x0, L, k * 7 + 5);
+      for (let k = -1; k <= T / L; k++) bag(mid, k * L - L / 2, x1 - mid, L, k * 7 + 6);
+    }
+    ctx.restore();
+    // Rounded ends where the run stops short of the tile edge.
+    ctx.strokeStyle = 'rgba(40,30,18,0.5)';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(along === 'x' && !wv ? x0 + 0.4 : x0 - 1, along === 'y' && !n ? y0 + 0.4 : y0 - 1, x1 - x0 + 2, y1 - y0 + 2);
+    // A strip of team colour along the top edge of the south face.
+    ctx.fillStyle = team.main;
+    if (along === 'x' || !so) ctx.fillRect(x0, y1, x1 - x0, 1.1);
+  };
+  if (vert) run(7, vy0, 25, vy1, 'y');
+  if (horiz) run(hx0, 6, hx1, 23, 'x');
+  if (hp < 0.3) {
+    // A blown gap: scorch and spilled sand.
+    scorch(ctx, 16, 15, 8, 0.5);
+    ctx.fillStyle = 'rgba(200,180,130,0.7)';
+    for (let k = 0; k < 10; k++) ctx.fillRect(10 + hash(k * 3 + 1) * 12, 20 + hash(k * 5 + 2) * 8, 1.3, 1.1);
+  }
+}
+
+function drawRocketTurret(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  const cx = w / 2;
+  const cy = h / 2;
+  turretBase(ctx, cx, cy);
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(p.turret);
+  const kick = Math.max(0, 1.8 - p.sinceShot * 9);
+  // The pod: four tubes in two pairs, team-coloured, with a sensor box on its flank.
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(-6, -4.6, 15, 12);
+  ctx.fillStyle = litGrad(ctx, p.turret, 8, team.light, team.dark);
+  rrect(ctx, -8 - kick, -6.2, 15, 12.4, 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.fillRect(-8 - kick, -0.5, 15, 1);
+  const empty = p.sinceShot < 2;
+  for (const [ty, k] of [
+    [-3.4, 0],
+    [3.4, 1],
+  ] as const) {
+    ctx.fillStyle = '#1c1f20';
+    ctx.fillRect(6 - kick, ty - 2.3, 2.2, 4.6);
+    if (empty && k === 1) continue;
+    // Rocket noses poking out of the tubes.
+    ctx.fillStyle = '#e4e2da';
+    ctx.fillRect(6.6 - kick, ty - 1.5, 2.4, 3);
+    ctx.fillStyle = '#c0392b';
+    ctx.beginPath();
+    ctx.moveTo(9 - kick, ty - 1.5);
+    ctx.lineTo(11 - kick, ty);
+    ctx.lineTo(9 - kick, ty + 1.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.fillStyle = '#3a3f40';
+  ctx.fillRect(-4 - kick, -9, 6, 3);
+  ctx.fillStyle = '#9fd6ff';
+  ctx.fillRect(1 - kick, -8.6, 1, 2.2);
+  emblem(ctx, team, -3 - kick, 2.8, 1.5);
+  if (p.sinceShot < 0.15) {
+    ctx.fillStyle = 'rgba(230,220,200,0.55)';
+    circle(ctx, -11, 3.4, 3.6);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,190,100,0.85)';
+    circle(ctx, -9.6, 3.4, 1.8);
+    ctx.fill();
+  }
+  ctx.restore();
+  lamp(ctx, cx + 10, cy + 10, !p.lowPower, '#ffb43a', p.t, 4, true);
+}
+
+/**
+ * The Strike Command: a missile silo beside a hardened control bunker. The silo's doors slide
+ * open as the missile finishes charging (pose.open) and stand open, the nose cone showing, while
+ * it is ready; at a launch the pit blazes (pose.launch) and the doors close behind it. The
+ * bunker's gauge shows the charge (pose.ready).
+ */
+function drawStrikeCommand(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  const ready = clamp01(p.ready, 0);
+  const open = clamp01(p.open, 0);
+  const launch = p.launch;
+  const sx = 38;
+  const sy = 48;
+  const R = 24;
+  // Blast scorch round the silo, from launches past.
+  scorch(ctx, sx + 2, sy + 2, 36, 0.35);
+  // Fuel and power lines from the bunker.
+  ctx.strokeStyle = '#3a3f3d';
+  ctx.lineWidth = 3.4;
+  ctx.beginPath();
+  ctx.moveTo(68, 30);
+  ctx.lineTo(sx + R + 2, 30);
+  ctx.moveTo(68, 66);
+  ctx.lineTo(sx + R - 1, 66);
+  ctx.stroke();
+  // The silo collar: a thick concrete ring with a hazard band and bolts.
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  circle(ctx, sx + 3, sy + 4, R + 4);
+  ctx.fill();
+  ctx.fillStyle = shade(ctx, sx - R, sy - R, R * 2, R * 2, '#b2b6b1', '#5f6461');
+  circle(ctx, sx, sy, R + 4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  for (let k = 0; k < 24; k++) {
+    const a0 = (k / 24) * TAU;
+    ctx.strokeStyle = k % 2 ? ART.hazard : '#222';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(sx, sy, R + 1.6, a0, a0 + TAU / 24);
+    ctx.stroke();
+  }
+  // The pit: dark, with the missile's nose cone and fins seen from above, and service gantries.
+  ctx.save();
+  circle(ctx, sx, sy, R);
+  ctx.clip();
+  const pit = ctx.createRadialGradient(sx, sy, 2, sx, sy, R);
+  pit.addColorStop(0, '#2b2f30');
+  pit.addColorStop(1, '#0d0f10');
+  ctx.fillStyle = pit;
+  ctx.fillRect(sx - R, sy - R, R * 2, R * 2);
+  ctx.strokeStyle = '#3d4244';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(sx - R, sy - 6);
+  ctx.lineTo(sx - 10, sy - 6);
+  ctx.moveTo(sx + R, sy + 6);
+  ctx.lineTo(sx + 10, sy + 6);
+  ctx.stroke();
+  const fresh = launch !== undefined && launch < 2.5;
+  if (!fresh) {
+    ctx.fillStyle = '#26292a';
+    for (let k = 0; k < 4; k++) {
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(Math.PI / 4 + (k * Math.PI) / 2);
+      ctx.fillRect(4, -1.2, 9, 2.4);
+      ctx.restore();
+    }
+    ctx.fillStyle = team.main;
+    circle(ctx, sx, sy, 8);
+    ctx.fill();
+    const cone = ctx.createRadialGradient(sx - 2, sy - 2, 0, sx, sy, 6.5);
+    cone.addColorStop(0, '#ffffff');
+    cone.addColorStop(0.6, '#c9ccc6');
+    cone.addColorStop(1, '#7c807c');
+    ctx.fillStyle = cone;
+    circle(ctx, sx, sy, 6.2);
+    ctx.fill();
+    ctx.fillStyle = '#b8352a';
+    circle(ctx, sx, sy, 1.6);
+    ctx.fill();
+  }
+  if (launch !== undefined && launch < 4) {
+    // The launch: the pit blazes, then glows as it cools.
+    const k = 1 - launch / 4;
+    ctx.globalCompositeOperation = 'lighter';
+    const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
+    g.addColorStop(0, `rgba(255,245,210,${k})`);
+    g.addColorStop(0.4, `rgba(255,150,50,${0.8 * k})`);
+    g.addColorStop(1, `rgba(140,40,10,${0.4 * k})`);
+    ctx.fillStyle = g;
+    ctx.fillRect(sx - R, sy - R, R * 2, R * 2);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  // The doors: two heavy leaves sliding apart under the collar.
+  const slide = open * (R + 2);
+  for (const side of [-1, 1]) {
+    const x0 = side < 0 ? sx - R - slide : sx + slide;
+    ctx.fillStyle = shade(ctx, x0, sy - R, R, R * 2, '#8e9491', '#4e5452');
+    ctx.fillRect(x0, sy - R, R, R * 2);
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x0 + 0.5, sy - R + 0.5, R - 1, R * 2 - 1);
+    // Ribs, rivets, and hazard chevrons on the meeting edge.
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    for (let k = 1; k < 4; k++) ctx.fillRect(x0 + 2, sy - R + k * 12, R - 4, 1.4);
+    const edge = side < 0 ? x0 + R - 4 : x0;
+    for (let k = 0; k < 12; k++) {
+      ctx.fillStyle = k % 2 ? ART.hazard : '#222';
+      ctx.fillRect(edge, sy - R + k * 4, 4, 4);
+    }
+    ctx.fillStyle = team.main;
+    ctx.fillRect(side < 0 ? x0 + 4 : x0 + R - 8, sy - 3, 4, 6);
+  }
+  ctx.restore();
+  // Warning lamps round the collar: they run while the missile is ready.
+  for (let k = 0; k < 8; k++) {
+    const a = (k / 8) * TAU + Math.PI / 8;
+    const lit = on && ready >= 1 && Math.floor(frac(p.t * 1.2) * 8) === k;
+    ctx.fillStyle = lit ? '#ff5a3a' : on && ready >= 1 ? 'rgba(255,90,58,0.45)' : 'rgba(90,50,40,0.6)';
+    circle(ctx, sx + Math.cos(a) * (R + 2.5), sy + Math.sin(a) * (R + 2.5), lit ? 1.9 : 1.2);
+    ctx.fill();
+  }
+  if (launch !== undefined && launch < 6) puffs(ctx, sx, sy - 6, p.t, 1 - launch / 6, '200,196,190');
+  // The control bunker: team roof, a mast with a beacon, and the charge gauge.
+  block(ctx, 68, 8, 22, 36, shade(ctx, 68, 8, 22, 36, team.light, team.main), team.dark, 5);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.fillRect(71, 12, 16, 4);
+  ctx.fillStyle = on ? 'rgba(170,230,255,0.8)' : 'rgba(90,110,120,0.5)';
+  for (let i = 0; i < 3; i++) ctx.fillRect(72 + i * 5, 12.6, 3.5, 2.6);
+  emblem(ctx, team, 79, 30, 3.4);
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(84, 22);
+  ctx.lineTo(84, 4);
+  ctx.stroke();
+  lamp(ctx, 84, 4, on, '#ff4a3a', p.t, ready >= 1 ? 12 : 3, true);
+  block(ctx, 70, 52, 18, 36, '#8d9390', '#5a605d', 4);
+  ctx.fillStyle = '#1d2120';
+  ctx.fillRect(73, 55, 12, 30);
+  const cells = 8;
+  for (let i = 0; i < cells; i++) {
+    const lit = on && ready >= (i + 1) / cells - 1e-6;
+    const full = ready >= 1;
+    const y = 81 - i * 3.6;
+    ctx.fillStyle = !lit ? '#353b39' : full ? `rgba(255,${90 + 60 * Math.sin(p.t * 6)},70,1)` : i < 3 ? '#e8c440' : '#7dff8a';
+    ctx.fillRect(75, y, 8, 2.6);
+  }
+  hazardStripe(ctx, 70, 89, 18, 3);
 }

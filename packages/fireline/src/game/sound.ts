@@ -39,7 +39,14 @@ export type SoundKind =
   | 'levelup'
   | 'recon'
   | 'barrage'
-  | 'reinforce';
+  | 'reinforce'
+  // Advanced tech: new weapons, support units and the missile strike.
+  | 'flame'
+  | 'grenade'
+  | 'heal'
+  | 'repair'
+  | 'missileLaunch'
+  | 'missileImpact';
 
 const PREF_KEY = 'fireline_sound';
 
@@ -69,6 +76,12 @@ const GAP: Record<SoundKind, number> = {
   recon: 500,
   barrage: 800,
   reinforce: 1000,
+  flame: 140,
+  grenade: 90,
+  heal: 700,
+  repair: 500,
+  missileLaunch: 1500,
+  missileImpact: 1500,
 };
 
 const MAX_VOICES = 24;
@@ -345,6 +358,39 @@ export class SoundEngine {
         this.noiseHit(out, t + 0.1, { type: 'bandpass', freq: 1200, q: 2, peak: 0.08, decay: 0.3 });
         this.noiseHit(out, t + 0.42, { type: 'bandpass', freq: 2200, q: 1.4, peak: 0.2, decay: 0.06 });
         return 0.6;
+      case 'flame':
+        // A roaring whoosh: a swell of filtered noise over a low rumble.
+        this.noiseHit(out, t, { type: 'bandpass', freq: 520, to: 1300, q: 0.7, peak: 0.42, decay: 0.42, attack: 0.05 });
+        this.noiseHit(out, t, { type: 'lowpass', freq: 260, peak: 0.3, decay: 0.45, attack: 0.04 });
+        return 0.55;
+      case 'grenade':
+        // A soft launch thump and the rattle of the pin.
+        this.tone(out, t, { type: 'sine', freq: 300, to: 110, peak: 0.32, decay: 0.1 });
+        this.noiseHit(out, t, { type: 'highpass', freq: 2600, peak: 0.08, decay: 0.05 });
+        return 0.16;
+      case 'heal':
+        // A gentle rising chime.
+        this.tone(out, t, { type: 'sine', freq: 880, to: 1175, peak: 0.07, decay: 0.3, attack: 0.04 });
+        this.tone(out, t + 0.1, { type: 'sine', freq: 1318.5, peak: 0.05, decay: 0.35, attack: 0.04 });
+        return 0.5;
+      case 'repair':
+        // A ratchet's clicks and a hiss of welding.
+        for (let i = 0; i < 3; i++) this.tone(out, t + i * 0.06, { type: 'square', freq: 950, peak: 0.045, decay: 0.02 });
+        this.noiseHit(out, t + 0.2, { type: 'bandpass', freq: 3400, q: 1.2, peak: 0.09, decay: 0.3, attack: 0.02 });
+        return 0.55;
+      case 'missileLaunch':
+        // A long rising roar as the motor lights and the missile climbs away.
+        this.noiseHit(out, t, { type: 'lowpass', freq: 240, to: 2200, peak: 0.6, decay: 2.2, attack: 0.35 });
+        this.tone(out, t, { type: 'sawtooth', freq: 70, to: 170, peak: 0.07, decay: 2.1, attack: 0.3 });
+        this.tone(out, t + 0.5, { type: 'sine', freq: 600, to: 900, peak: 0.05, decay: 1.4, attack: 0.3 });
+        return 2.7;
+      case 'missileImpact':
+        // The biggest sound in the game: a deep blast, a long rolling rumble, debris pattering down.
+        this.noiseHit(out, t, { type: 'lowpass', freq: 600, to: 40, peak: 1, decay: 3.4, attack: 0.02 });
+        this.tone(out, t, { type: 'sine', freq: 48, to: 18, peak: 1, decay: 3 });
+        this.noiseHit(out, t + 0.05, { type: 'bandpass', freq: 1500, to: 300, q: 0.8, peak: 0.35, decay: 1.4 });
+        this.noiseHit(out, t + 0.9, { type: 'highpass', freq: 3000, peak: 0.08, decay: 1.2, attack: 0.2 });
+        return 4;
     }
   }
 }

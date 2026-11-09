@@ -1,3 +1,4 @@
+import type { MapType } from '../sim/rules';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { API, authHeaders } from '../lib/api';
 import { readJson, serverFailure } from '../lib/apiReply';
@@ -33,6 +34,8 @@ export interface SaveMeta {
   savedAt: number;
   /** Present on a campaign save; absent on a skirmish. */
   kind?: 'campaign';
+  /** The map type a skirmish was drawn on, when it was set up with one. */
+  mapType?: MapType;
 }
 
 /** What a save row holds: a skirmish battle or a whole campaign (tell them apart with isCampaignSave). */
@@ -45,7 +48,7 @@ function metaOf(s: LoadedSave): SaveMeta {
   if (isCampaignSave(s)) {
     return { id: s.id, name: s.name, turn: campaignSaveTurn(s), status: campaignSaveStatus(s), savedAt: Date.now(), kind: 'campaign' };
   }
-  return { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now() };
+  return { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now(), ...(s.mapType ? { mapType: s.mapType } : {}) };
 }
 
 /** Either kind of save, made current; null if it is neither. */
@@ -142,7 +145,8 @@ export function useSaves() {
         const res = await fetch(ENDPOINT, {
           method: 'POST',
           headers: authHeaders(),
-          body: JSON.stringify({ name, seed: opts.seed, difficulty: opts.difficulty }),
+          // The server validates the setup itself (normaliseSetup); this only carries the choice.
+          body: JSON.stringify({ name, seed: opts.seed, difficulty: opts.difficulty, setup: opts.setup }),
         });
         if (res.status === 401) {
           setExpired(true);

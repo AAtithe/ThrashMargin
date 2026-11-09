@@ -42,6 +42,14 @@ import {
   HERO_ABILITY,
   OVERDRIVE_RELOAD,
   OVERDRIVE_SPEED,
+  MEDIC_HEAL,
+  MEDIC_HEAL_TICKS,
+  MEDIC_RANGE,
+  MEDIC_SEEK,
+  REPAIR_BAY_HP,
+  REPAIR_BAY_RANGE,
+  REPAIR_BAY_TICKS,
+  SELF_REPAIR_TICKS,
   type Category,
   type Owner,
   type UnitKind,
@@ -58,7 +66,19 @@ import {
   noteDestroyed,
   noteFallen,
 } from './mission';
-import { addUnit, alarm, buildTicksOf, log, maxHpOf, powerOf, producerFor, sabotaged, updateExplored } from './state';
+import {
+  addUnit,
+  alarm,
+  buildTicksOf,
+  isStructure,
+  log,
+  maxHpOf,
+  powerOf,
+  producerFor,
+  sabotaged,
+  syncSkirmishPowers,
+  updateExplored,
+} from './state';
 import type { Building, GameState, Projectile, Unit } from './types';
 
 const MAP_W = W;
@@ -124,6 +144,8 @@ export function step(s: GameState): void {
   landProjectiles(s, ctx);
   separate(s, ctx);
   removeDead(s);
+  // Skirmish powers go with the last of their structures, at once.
+  syncSkirmishPowers(s);
 
   if (s.tick % ORE_REGROW_TICKS === 0) {
     for (let k = 0; k < s.ore.length; k++) {
@@ -297,7 +319,32 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
     nx = u.x + (dx / d) * sp;
     ny = u.y + (dy / d) * sp;
   }
-  if (!passable(s, ctx.occ, Math.floor(nx), Math.floor(ny))) {
+  // Look a little further than one step as well: a unit creeping toward a tile that has been
+  // blocked since its path was planned would otherwise keep taking clean steps inside its own tile
+  // and never notice.
+  const look = Math.min(d, Math.max(sp, 0.45));
+  const lx = d > 0.0001 ? u.x + (dx / d) * look : nx;
+  const ly = d > 0.0001 ? u.y + (dy / d) * look : ny;
+  if (!passable(s, ctx.occ, Math.floor(nx), Math.floor(ny)) || !passable(s, ctx.occ, Math.floor(lx), Math.floor(ly))) {
+    // Paths are smoothed between tile centres, so a unit standing off-centre can clip the corner
+    // of a blocked tile on a straight run. Slide along whichever axis is open; failing that, step
+    // back toward the centre of the tile it stands on, from where the smoothed line is clear.
+    // Without this a hauler could re-path to the same line forever and never move. The stuck
+    // count still rises while it slides, so a path that a new structure has cut is re-planned:
+    // only a clean step along the path clears it.
+    const cx = Math.floor(u.x) + 0.5;
+    const cy = Math.floor(u.y) + 0.5;
+    const minSlide = sp * 0.25;
+    if (Math.abs(nx - u.x) >= minSlide && passable(s, ctx.occ, Math.floor(nx), Math.floor(u.y))) u.x = nx;
+    else if (Math.abs(ny - u.y) >= minSlide && passable(s, ctx.occ, Math.floor(u.x), Math.floor(ny))) u.y = ny;
+    else {
+      const cd = dist(u.x, u.y, cx, cy);
+      if (cd > 0.01) {
+        const m = Math.min(sp, cd);
+        u.x += ((cx - u.x) / cd) * m;
+        u.y += ((cy - u.y) / cd) * m;
+      }
+    }
     u.stuck++;
     if (u.stuck > 8) {
       u.path = [];
@@ -464,7 +511,8 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
     if (u) hurt(s, { unit: u }, p.damage, p, shooter);
     else if (b) hurt(s, { building: b }, p.damage, p, shooter);
   }
-  if (p.weapon !== 'bullet') s.effects.push({ id: s.nextId++, kind: 'boom', x: p.toX, y: p.toY, at: s.tick, size: 0, weapon: p.weapon });
+  if (p.weapon !== 'bullet')
+    s.effects.push({ id: s.nextId++, kind: 'boom', x: p.toX, y: p.toY, at: s.tick, size: p.weapon === 'missile' ? 2 : 0, weapon: p.weapon });
 }
 
 function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: number): void {
@@ -519,6 +567,11 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
   if (u.vet >= 2 && !u.engage && u.hp < max && (s.tick + u.id) % VET_REPAIR_TICKS === 0) {
     u.hp = Math.min(max, u.hp + Math.max(1, Math.round(max * VET_REPAIR_SHARE)));
   }
+  // The Bastion mends its own armour, slowly, while not fighting.
+  if (spec.selfRepair && !u.engage && u.hp < max && (s.tick + u.id) % SELF_REPAIR_TICKS === 0) {
+    u.hp = Math.min(max, u.hp + spec.selfRepair);
+  }
+  if (spec.medic) medic(s, u);
 
   const order = u.order;
   if (order.type === 'attack') {
@@ -598,6 +651,46 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
     u.ty += (u.fy - u.ty) * 0.2;
     normaliseTurret(u);
   }
+}
+
+/**
+ * A Medic at work: every MEDIC_HEAL_TICKS the most hurt of its own side's infantry within
+ * MEDIC_RANGE (never itself) gets MEDIC_HEAL back. Idle and not holding, it walks to the nearest
+ * wounded soldier it can see within MEDIC_SEEK; given an order, it follows the order.
+ */
+function medic(s: GameState, u: Unit): void {
+  if ((s.tick + u.id) % MEDIC_HEAL_TICKS === 0) {
+    let best: Unit | null = null;
+    let bestShare = 1;
+    for (const v of s.units) {
+      if (v === u || v.owner !== u.owner || v.hp <= 0 || UNITS[v.kind].category !== 'infantry') continue;
+      const max = maxHpOf(v);
+      if (v.hp >= max || Math.abs(v.x - u.x) > MEDIC_RANGE || Math.abs(v.y - u.y) > MEDIC_RANGE) continue;
+      if (dist(u.x, u.y, v.x, v.y) > MEDIC_RANGE) continue;
+      const share = v.hp / max;
+      if (share < bestShare) {
+        bestShare = share;
+        best = v;
+      }
+    }
+    if (best) {
+      best.hp = Math.min(maxHpOf(best), best.hp + MEDIC_HEAL);
+      s.effects.push({ id: s.nextId++, kind: 'heal', x: best.x, y: best.y, at: s.tick, size: 0 });
+    }
+  }
+  if (u.order.type !== 'idle' || u.stance === 'hold' || (s.tick + u.id) % 10 !== 0) return;
+  let target: Unit | null = null;
+  let bestD = MEDIC_SEEK;
+  for (const v of s.units) {
+    if (v === u || v.owner !== u.owner || v.hp <= 0 || UNITS[v.kind].category !== 'infantry' || v.hp >= maxHpOf(v)) continue;
+    const d = dist(u.x, u.y, v.x, v.y);
+    if (d < bestD) {
+      bestD = d;
+      target = v;
+    }
+  }
+  // Close enough already: stay put and keep healing.
+  if (target && bestD > MEDIC_RANGE * 0.6) u.order = { type: 'move', x: target.x, y: target.y };
 }
 
 /** The nearest passable tile that is not a dock or a door, within a few tiles. */
@@ -780,6 +873,7 @@ function updateBuilding(s: GameState, ctx: Ctx, b: Building): void {
       } else b.repairing = false;
     }
   }
+  if (b.kind === 'repairbay') repairBay(s, ctx, b);
   const w = spec.weapon;
   if (!w || s.tick - b.placedAt < 15) return;
   // Short of power, a turret's guns cycle at half speed.
@@ -800,6 +894,28 @@ function updateBuilding(s: GameState, ctx: Ctx, b: Building): void {
   if (b.cooldown === 0) {
     fire(s, b.owner, cx + b.tx * 0.45, cy + b.ty * 0.45, w, t, 0);
     b.cooldown = w.cooldown;
+  }
+}
+
+/**
+ * A Repair Bay mends its side's vehicles standing on or beside it (within REPAIR_BAY_RANGE of its
+ * footprint), REPAIR_BAY_HP each every REPAIR_BAY_TICKS (half as often short of power), paid as it
+ * goes at REPAIR_COST_SHARE of the vehicle's cost per hit point. With no credits, nothing is mended.
+ */
+function repairBay(s: GameState, ctx: Ctx, b: Building): void {
+  const period = ctx.power[b.owner] ? REPAIR_BAY_TICKS * 2 : REPAIR_BAY_TICKS;
+  if ((s.tick + b.id) % period !== 0) return;
+  const p = s.players[b.owner];
+  for (const v of s.units) {
+    if (v.owner !== b.owner || v.hp <= 0 || UNITS[v.kind].category !== 'vehicle') continue;
+    const max = maxHpOf(v);
+    if (v.hp >= max || distToTarget(v.x, v.y, { building: b }) > REPAIR_BAY_RANGE) continue;
+    const amount = Math.min(REPAIR_BAY_HP, max - v.hp);
+    const cost = (amount * UNITS[v.kind].cost * REPAIR_COST_SHARE) / max;
+    if (p.credits < cost) continue;
+    p.credits = Math.round((p.credits - cost) * 100) / 100;
+    v.hp += amount;
+    if (Math.floor(s.tick / period) % 4 === 0) s.effects.push({ id: s.nextId++, kind: 'repair', x: v.x, y: v.y, at: s.tick, size: 0 });
   }
 }
 
@@ -913,13 +1029,14 @@ function removeDead(s: GameState): void {
   if (fallen) {
     // The crews walk out, unless that was the side's last structure and the battle is over.
     const occ = occupancy(s);
-    for (const b of fallen) if (s.buildings.some(o => o.owner === b.owner)) spawnSurvivors(s, b, occ);
+    for (const b of fallen) if (s.buildings.some(o => o.owner === b.owner && isStructure(o))) spawnSurvivors(s, b, occ);
   }
 }
 
 function checkVictory(s: GameState): void {
   const has = [false, false];
-  for (const b of s.buildings) has[b.owner] = true;
+  // Walls are not structures: a side with nothing but sandbags left has lost.
+  for (const b of s.buildings) if (isStructure(b)) has[b.owner] = true;
   if (has[0] && has[1]) return;
   if (!has[0] && !has[1]) s.winner = 1;
   else s.winner = has[0] ? 0 : 1;

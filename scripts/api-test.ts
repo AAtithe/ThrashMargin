@@ -353,6 +353,20 @@ async function suite(mode: 'fresh' | 'legacy') {
     const others = (GAMES as { slug: string }[]).filter(o => o.slug !== g.slug);
     ok((await play('GET', others[0].slug, A2, id)).status === 404, `${g.slug}: not visible through another game's endpoint`);
   }
+  // Fireline's skirmish setup travels in the create request and is validated on the server.
+  {
+    const made = await play('POST', 'fireline', A2, undefined, { name: 'setup test', seed: 'api', setup: { map: 'river', tech: 'standard', credits: 999999, ore: 'rich' } });
+    const st = made.body.state;
+    ok(made.status === 201 && st.mapType === 'river' && st.setup?.tech === 'standard' && st.setup?.ore === 'rich', 'fireline: a skirmish setup reaches the game');
+    ok(st.setup?.credits === 20000 && st.players[0].credits === 20000, 'fireline: setup credits are clamped on the server');
+    const junk = await play('POST', 'fireline', A2, undefined, { name: 'junk setup', setup: { map: 'moon', tech: 'godmode', credits: 'lots', ore: ['x'] } });
+    ok(junk.status === 201 && ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon'].includes(junk.body.state.mapType) && junk.body.state.setup.tech === 'advanced', 'fireline: unknown setup values fall back to the defaults');
+    const none = await play('POST', 'fireline', A2, undefined, { name: 'no setup' });
+    ok(none.status === 201 && !none.body.state.setup, 'fireline: no setup (an older client) gives the original game');
+    const listed = await play('GET', 'fireline', A2);
+    ok(listed.body.saves.some((s: { id: string; mapType?: string }) => s.id === made.body.gameId && s.mapType === 'river'), 'fireline: the saves list carries the map type');    // Leave the saves as they were: later checks count one save per game.
+    for (const g of [made, junk, none]) await play('DELETE', 'fireline', A2, g.body.gameId);
+  }
   ok((await play('GET', 'no-such-game', A2)).status === 404, 'play: unknown game 404');
   for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
     ok((await play('GET', k, A2)).status === 404, `play: '${k}' is an unknown game, not a hang or a crash`);

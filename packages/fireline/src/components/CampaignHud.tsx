@@ -10,8 +10,10 @@ import {
   HERO_LEVEL_XP,
   HERO_MAX_LEVEL,
   POWERS,
+  SKIRMISH_POWERS,
   TICKS_PER_SECOND,
   UNITS,
+  type BuildingKind,
   type HeroKind,
   type SupportPower,
 } from '../sim/rules';
@@ -25,7 +27,7 @@ import { HeroPortrait } from './CampaignArt';
 
 /** Keys that select heroes 1 to 4, in hero-bar order. */
 export const HERO_KEYS = ['z', 'x', 'c', 'v'] as const;
-export const POWER_ORDER: SupportPower[] = ['recon', 'barrage', 'reinforce'];
+export const POWER_ORDER: SupportPower[] = ['recon', 'barrage', 'reinforce', 'missile'];
 
 export type Targeting = { kind: 'ability'; heroId: number; hero: HeroKind } | { kind: 'power'; power: SupportPower } | null;
 
@@ -317,6 +319,47 @@ export function PowerBar({ s, targeting, onPower }: { s: GameState; targeting: T
           >
             <span>{POWERS[p].name}</span>
             <small>{cd > 0 ? clockOf(cd) : 'Ready'}</small>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The skirmish's support powers (advanced tech only): every power a structure can grant, in
+ * SKIRMISH_POWERS order. One whose structure is standing charges and then fires like the campaign's;
+ * one without says what to build, so the bar also teaches where the powers come from.
+ */
+export function SkirmishPowerBar({ s, targeting, onPower }: { s: GameState; targeting: Targeting; onPower: (p: SupportPower) => void }) {
+  if (s.mission || !s.powers || s.setup?.tech !== 'advanced') return null;
+  const mine = s.powers[0] ?? {};
+  const list = Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][];
+  return (
+    <div className="fl-powerbar" data-testid="skirmish-power-bar" role="group" aria-label="Support powers">
+      {list.map(([p, from]) => {
+        const held = mine[p] !== undefined;
+        const cd = mine[p] ?? 0;
+        const full = Math.max(1, POWERS[p].cooldown);
+        const sweep = held && cd > 0 ? Math.min(1, cd / full) : 0;
+        const title = held
+          ? `${POWERS[p].name}. ${POWERS[p].blurb}${cd > 0 ? ` Ready in ${Math.ceil(cd / TICKS_PER_SECOND)}s.` : ' Click, then click the map.'}`
+          : `${POWERS[p].name}. ${POWERS[p].blurb} Build a ${BUILDINGS[from].name} to gain it; it charges once built.`;
+        return (
+          <button
+            key={p}
+            type="button"
+            className="fl-power"
+            data-testid={`power-${p}`}
+            data-held={held ? '1' : '0'}
+            aria-pressed={targeting?.kind === 'power' && targeting.power === p}
+            disabled={!held || cd > 0}
+            onClick={() => onPower(p)}
+            title={title}
+            style={{ '--sweep': `${Math.round(sweep * 360)}deg` } as CSSProperties}
+          >
+            <span>{POWERS[p].name}</span>
+            <small>{!held ? `Needs ${BUILDINGS[from].name}` : cd > 0 ? clockOf(cd) : 'Ready'}</small>
           </button>
         );
       })}

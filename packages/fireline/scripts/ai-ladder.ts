@@ -6,11 +6,21 @@
  *   tsx scripts/ai-ladder.ts --seeds 40             fewer seeds (noisy: see below)
  *   tsx scripts/ai-ladder.ts --match new:hard,new:normal --match old:normal,new:normal
  *   tsx scripts/ai-ladder.ts --jobs 4 --cap 60000
+ *   tsx scripts/ai-ladder.ts --map random              a skirmish setup: advanced tech, map drawn per seed
+ *   tsx scripts/ai-ladder.ts --map mix                 every map type in turn (seed 1 classic, 2 river, ...)
+ *   tsx scripts/ai-ladder.ts --map river,canyon --tech standard --credits 5000 --ore rich
+ *   tsx scripts/ai-ladder.ts --map legacy              no setup at all: the original game (the default)
  *
  * A match is `side0,side1`, each side `commander:difficulty`, where the commander is `new` (the
- * AI in src/sim/ai.ts) or `old` (the frozen first build in scripts/ai-baseline.ts). Side 1 plays
- * at `s.difficulty`; side 0 at `s.autopilotDifficulty`. The old commander is swapped in through
- * ai.ts's setAutopilotAi hook, which nothing outside this script uses.
+ * AI in src/sim/ai.ts), `prev` (the frozen commander from before it learned the advanced tech, in
+ * scripts/ai-prev.ts) or `old` (the frozen first build in scripts/ai-baseline.ts). Side 1 plays
+ * at `s.difficulty`; side 0 at `s.autopilotDifficulty`. The frozen commanders are swapped in
+ * through ai.ts's setAutopilotAi hook, which nothing outside this script uses.
+ *
+ * With --map other than legacy every battle gets a skirmish setup (tech advanced unless --tech
+ * says otherwise), the card pits `new` against `prev` rather than `old`, and every match is also
+ * broken down by the map type actually drawn. For the mirror on every map type at 150 seeds
+ * each: `--map mix --seeds 900 --match new:normal,new:normal`.
  *
  * Two things to know when reading the numbers:
  * - Only side 1 gets its difficulty's income multiplier (the engine pays the computer side, and
@@ -32,11 +42,13 @@ import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
-import { DIFFICULTIES, type Difficulty } from '../src/sim/rules';
+import { DIFFICULTIES, MAP_TYPES, type Difficulty, type MapType, type SkirmishSetup } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
 import { baselineAi } from './ai-baseline';
+import { prevAi } from './ai-prev';
 
-type Commander = 'new' | 'old';
+type Commander = 'new' | 'prev' | 'old';
+const COMMANDERS: Commander[] = ['new', 'prev', 'old'];
 interface Side {
   ai: Commander;
   difficulty: Difficulty;
@@ -49,6 +61,8 @@ interface Result {
   seed: number;
   winner: 0 | 1 | null;
   tick: number;
+  /** The map type drawn ('legacy' for the original map). */
+  map: string;
 }
 
 const args = process.argv.slice(2);
@@ -59,14 +73,29 @@ const arg = (name: string, fallback: string) => {
 const SEEDS = Number(arg('--seeds', '150'));
 const CAP = Number(arg('--cap', '60000'));
 const JOBS = Math.max(1, Number(arg('--jobs', String(cpus().length))));
+const MAP = arg('--map', 'legacy');
+const TECH = arg('--tech', 'advanced');
+const CREDITS = Number(arg('--credits', '3000'));
+const ORE = arg('--ore', 'normal');
+const LEGACY = MAP === 'legacy';
+/** The map each seed plays on: 'random' (drawn from the seed), or a list cycled through by seed. */
+const MAP_LIST: (MapType | 'random')[] = LEGACY ? [] : MAP === 'mix' ? [...MAP_TYPES] : (MAP.split(',') as (MapType | 'random')[]);
+for (const m of MAP_LIST) if (m !== 'random' && !MAP_TYPES.includes(m)) throw new Error(`bad map "${m}"`);
+if (TECH !== 'standard' && TECH !== 'advanced') throw new Error(`bad tech "${TECH}"`);
+function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
+  if (LEGACY) return undefined;
+  return { map: MAP_LIST[(seed - 1) % MAP_LIST.length], tech: TECH as SkirmishSetup['tech'], credits: CREDITS, ore: ORE as SkirmishSetup['ore'] };
+}
+const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
 
 function parseSide(text: string): Side {
   const [ai, difficulty] = text.split(':');
-  if ((ai !== 'new' && ai !== 'old') || !(difficulty in DIFFICULTIES)) throw new Error(`bad side "${text}"`);
-  return { ai, difficulty: difficulty as Difficulty };
+  if (!COMMANDERS.includes(ai as Commander) || !(difficulty in DIFFICULTIES)) throw new Error(`bad side "${text}"`);
+  return { ai: ai as Commander, difficulty: difficulty as Difficulty };
 }
 
 function standardCard(): Match[] {
+  const base = LEGACY ? 'old' : 'prev';
   const pair = (a: string, b: string): Match[] => [
     { sides: [parseSide(a), parseSide(b)] },
     { sides: [parseSide(b), parseSide(a)] },
@@ -74,8 +103,19 @@ function standardCard(): Match[] {
   return [
     ...pair('new:hard', 'new:normal'),
     ...pair('new:normal', 'new:easy'),
-    ...pair('new:normal', 'old:normal'),
-    ...pair('new:hard', 'old:hard'),
+    // Against the frozen commander: the first build on the original game, the commander from
+    // before the advanced tech on a skirmish setup.
+    ...pair('new:normal', `${base}:normal`),
+    ...pair('new:hard', `${base}:hard`),
+    // Hard on side 1 earns a quarter more, which swamps everything else in a Hard pairing played
+    // both ways round. So each Hard commander also plays from side 0 (base income) against the
+    // same Normal opponent on side 1: the same seat against the same opponent.
+    ...(LEGACY
+      ? []
+      : [
+          { sides: [parseSide('new:hard'), parseSide('prev:normal')] } as Match,
+          { sides: [parseSide('prev:hard'), parseSide('prev:normal')] } as Match,
+        ]),
     // The mirror: how much the seat alone is worth, to read the rows above against.
     { sides: [parseSide('new:normal'), parseSide('new:normal')] },
   ];
@@ -92,16 +132,17 @@ function matchesFromArgs(): Match[] {
 }
 
 function play(m: Match, seed: number): Result & { match: number } {
-  setAutopilotAi(m.sides[0].ai === 'old' ? baselineAi : null, 0);
-  setAutopilotAi(m.sides[1].ai === 'old' ? baselineAi : null, 1);
+  setAutopilotAi(AIS[m.sides[0].ai], 0);
+  setAutopilotAi(AIS[m.sides[1].ai], 1);
   const name = `ladder-${seed}`;
-  let s = createInitialState(name, name, { seed: name, difficulty: m.sides[1].difficulty, createdAt: 0, autopilot: true });
+  const setup = setupFor(seed);
+  let s = createInitialState(name, name, { seed: name, difficulty: m.sides[1].difficulty, createdAt: 0, autopilot: true, ...(setup ? { setup } : {}) });
   s.autopilotDifficulty = m.sides[0].difficulty;
   s.ai[0].nextAttack = DIFFICULTIES[m.sides[0].difficulty].firstAttack;
   while (s.winner === null && s.tick < CAP) s = processAction(s, { type: 'tick', n: 50 });
   setAutopilotAi(null, 0);
   setAutopilotAi(null, 1);
-  return { match: -1, seed, winner: s.winner, tick: s.tick };
+  return { match: -1, seed, winner: s.winner, tick: s.tick, map: s.mapType ?? 'legacy' };
 }
 
 const label = (sd: Side) => `${sd.ai} ${sd.difficulty}`;
@@ -123,6 +164,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -132,7 +174,12 @@ if (workerAt >= 0) {
     new Promise<void>((resolve, reject) => {
       const child = spawn(
         process.execPath,
-        [...process.execArgv, script, '--worker', `${k}/${JOBS}`, '--spec', spec, '--seeds', String(SEEDS), '--cap', String(CAP)],
+        [
+          ...process.execArgv,
+          script,
+          ...['--worker', `${k}/${JOBS}`, '--spec', spec, '--seeds', String(SEEDS), '--cap', String(CAP)],
+          ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE],
+        ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );
       children.push(child);
@@ -180,6 +227,21 @@ if (workerAt >= 0) {
     const stuck = matches
       .map((m, mi) => [mi, results.filter(r => r.match === mi && r.winner === null).map(r => r.seed).sort((a, b) => a - b)] as const)
       .filter(([, seeds]) => seeds.length);
+    // By map type, where more than one was played: side 0's wins, side 1's, and unfinished.
+    const types = [...new Set(results.map(r => r.map))].sort();
+    if (types.length > 1) {
+      console.log('\nBy map type (side 0 wins / side 1 wins / unfinished):');
+      console.log(''.padEnd(28) + types.map(t => t.padEnd(13)).join(''));
+      matches.forEach((m, mi) => {
+        const cells = types.map(t => {
+          const rs = results.filter(r => r.match === mi && r.map === t);
+          const w0 = rs.filter(r => r.winner === 0).length;
+          const w1 = rs.filter(r => r.winner === 1).length;
+          return `${w0}/${w1}/${rs.length - w0 - w1}`.padEnd(13);
+        });
+        console.log(`${label(m.sides[0])} v ${label(m.sides[1])}`.padEnd(28) + cells.join(''));
+      });
+    }
     for (const [mi, seeds] of stuck) console.log(`  unfinished, ${label(matches[mi].sides[0])} v ${label(matches[mi].sides[1])}: seeds ${seeds.join(', ')}`);
     // Pairings played both ways round: the first-named side's wins over both orientations.
     const seen = new Set<number>();

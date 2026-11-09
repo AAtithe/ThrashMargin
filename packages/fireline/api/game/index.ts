@@ -5,7 +5,8 @@ import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
 import { queryParam } from '../_lib/query';
 import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
-import { createInitialState } from '../../src/sim/state';
+import { createInitialState, normaliseSetup } from '../../src/sim/state';
+import { DEFAULT_SETUP, MAP_TYPES } from '../../src/sim/rules';
 import { campaignSaveStatus, campaignSaveTurn, isCampaignSave, migrateCampaignSave, newCampaignSave } from '../../src/campaign/save';
 
 /**
@@ -74,10 +75,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const name = cleanName(req.body?.name, 'Battle');
       const seed = typeof req.body?.seed === 'string' ? req.body.seed.slice(0, 64) : undefined;
       const newId = uuid();
+      // A skirmish setup from the lobby (map type, tech, credits, ore). Untrusted: normaliseSetup keeps
+      // only known values and clamps credits. No setup (an older client) gives the original game.
+      const rawSetup = req.body?.setup;
+      const setup =
+        rawSetup && typeof rawSetup === 'object' && !Array.isArray(rawSetup) ? normaliseSetup(rawSetup, DEFAULT_SETUP) : undefined;
       const state = createInitialState(newId, name, {
         seed,
         difficulty: readDifficulty(req.body?.difficulty),
         createdAt: Date.now(),
+        setup,
       });
       try {
         const created = await createGame(db, {
@@ -94,7 +101,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (req.method === 'GET') {
       try {
         const { rows } = await db.query(
-          `SELECT id, status, turn, state->>'name' AS name, state->>'kind' AS kind,
+          `SELECT id, status, turn, state->>'name' AS name, state->>'kind' AS kind, state->>'mapType' AS map_type,
                   EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
            FROM games WHERE owner_id = $1 AND game = $2 ORDER BY updated_at DESC LIMIT 50`,
           [user.userId, GAME_KIND],
@@ -106,6 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           status: r.status,
           savedAt: Math.round(parseFloat(r.saved_at)),
           ...(r.kind === 'campaign' ? { kind: 'campaign' as const } : {}),
+          ...(typeof r.map_type === 'string' && (MAP_TYPES as readonly string[]).includes(r.map_type) ? { mapType: r.map_type } : {}),
         }));
         return res.json({ saves });
       } catch (err) {
