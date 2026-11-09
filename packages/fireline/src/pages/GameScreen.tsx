@@ -1,21 +1,43 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { isCampaignSave } from '../campaign/save';
+import type { CampaignSave } from '../campaign/types';
+import { HERO_KEYS, HeroBar, heroName, ObjectivesPanel, PowerBar, abilityBlock, type Targeting } from '../components/CampaignHud';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
+import MotionToggle from '../components/MotionToggle';
 import ThemeToggle from '../components/ThemeToggle';
 import { TILE } from '../game/art';
 import { useLayout } from '../game/layout';
-import Minimap from '../game/Minimap';
+import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
-import { BuildPanel, SelectionPanel, type Tab } from '../game/Sidebar';
+import { BUILD_KEYS, BuildPanel, SelectionPanel, TAB_ORDER, menuFor, pressBuild, type Tab } from '../game/Sidebar';
 import { sound } from '../game/sound';
 import { statusOf, useSaves } from '../hooks/useSaves';
+import CampaignFlow from './Campaign';
+import { campaignSaves } from './campaignSaves';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
 import { clearToken, getStoredUser } from '../lib/portalAuth';
 import { processAction } from '../sim/actions';
 import { placementProblem } from '../sim/commands';
 import { occupancy } from '../sim/grid';
-import { BUILDINGS, DIFFICULTIES, MAP_H, MAP_W, TICKS_PER_SECOND, UNITS, type BuildingKind } from '../sim/rules';
-import { powerOf, readyStructure } from '../sim/state';
+import { abilityProblem, heroUnit, powerProblem } from '../sim/mission';
+import {
+  BUILDINGS,
+  DIFFICULTIES,
+  HERO_ABILITY,
+  HERO_KINDS,
+  MAP_H,
+  MAP_W,
+  MAX_QUEUE,
+  POWERS,
+  TICKS_PER_SECOND,
+  UNITS,
+  type BuildingKind,
+  type HeroKind,
+  type SupportPower,
+  type UnitKind,
+} from '../sim/rules';
+import { costOf, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 
@@ -25,6 +47,11 @@ const ZOOM_MIN = 0.55;
 const ZOOM_MAX = 1.7;
 /** How far a finger may wander, in CSS pixels, and still count as a tap rather than a drag. */
 const TAP_SLOP = 10;
+/** How long the battlefield's "under attack" chip stays up after the last hit, in milliseconds. */
+const ALERT_CHIP_MS = 8000;
+/** Alerts closer than this (tiles) within this long (ms) of one already pinged share its ping. */
+const ALERT_MERGE_TILES = 6;
+const ALERT_MERGE_MS = 6000;
 const SPEEDS = [
   { label: 'Slow', value: 0.6 },
   { label: 'Normal', value: 1 },
@@ -40,10 +67,13 @@ export default function GameScreen() {
   const navigate = useNavigate();
   const user = getStoredUser();
   const saves = useSaves();
-  const [state, setState] = useState<GameState | null>(null);
+  // The campaign's calls (create, load, save of a CampaignSave) alongside the skirmish ones.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const camp = useMemo(() => campaignSaves(saves), [saves.cloud, saves.load, saves.save]);
+  const [state, setState] = useState<GameState | CampaignSave | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
-  const { load } = saves;
+  const { load } = camp;
 
   useEffect(() => {
     if (!user) {
@@ -96,21 +126,34 @@ export default function GameScreen() {
       />
     );
   }
+  if (isCampaignSave(state)) {
+    return <CampaignFlow initial={state} save={camp.save} saveError={saves.error} lastSaved={saves.lastSaved} cloud={saves.cloud} />;
+  }
   return <Battle initial={state} save={saves.save} saveError={saves.error} lastSaved={saves.lastSaved} cloud={saves.cloud} />;
 }
 
-function Battle({
+/** What a campaign battle adds to the screen: where "back" goes, and the debrief at the end. */
+export interface CampaignBattle {
+  leaveLabel: string;
+  onLeave: () => void;
+  /** Drawn over the battlefield once `s.mission.result` is set, in place of the skirmish end card. */
+  renderEnd: (s: GameState) => ReactNode;
+}
+
+export function Battle({
   initial,
   save,
   saveError,
   lastSaved,
   cloud,
+  campaign,
 }: {
   initial: GameState;
   save: (s: GameState) => void;
   saveError: string | null;
   lastSaved: number | null;
   cloud: boolean;
+  campaign?: CampaignBattle;
 }) {
   const navigate = useNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -151,6 +194,13 @@ function Battle({
   const [boxMode, setBoxMode] = useState(false);
   const boxRef = useRef(boxMode);
   boxRef.current = boxMode;
+  /** A building-target ability ordered out of range: the hero walks there and uses it on arrival. */
+  const pendingAbility = useRef<{ heroId: number; target: number; since: number } | null>(null);
+  // Combat alerts: every recent ping (drawn by the minimap) and the latest hit, which Space jumps to.
+  const alerts = useRef<Alert[]>([]);
+  const lastAlert = useRef<Alert | null>(null);
+  const [toast, setToast] = useState<{ text: string; n: number } | null>(null);
+  const toastTimer = useRef(0);
 
   const [, setHud] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -159,10 +209,19 @@ function Battle({
   const [attackMode, setAttackMode] = useState(false);
   const [tab, setTab] = useState<Tab>('building');
   const [help, setHelp] = useState(false);
+  // Campaign: a hero ability or support power waiting for its click on the map.
+  const [targeting, setTargetingState] = useState<Targeting>(null);
+  const targetingRef = useRef<Targeting>(null);
+  const ringRef = useRef<HTMLDivElement>(null);
+  const zoneRefs = useRef<(HTMLDivElement | null)[]>([]);
+  // Heroes fielded in this mission, kept after they fall so the bar can say so.
+  const fielded = useRef(new Set<HeroKind>());
+  if (!fielded.current.size) for (const u of initial.units) if (u.owner === 0 && u.hero) fielded.current.add(u.kind as HeroKind);
   // The guided run opens by itself on a fresh battle for anyone who has not finished or skipped it
   // in this browser; the Tour button reopens it at any time. Bumping `tourRun` remounts it, so a
   // reopened run always starts on the welcome card.
-  const [tourOpen, setTourOpen] = useState(() => !hasSeenGuidedTour() && initial.tick < 600 && initial.winner === null);
+  // The tour teaches a skirmish base; a campaign battle never opens it.
+  const [tourOpen, setTourOpen] = useState(() => !initial.mission && !hasSeenGuidedTour() && initial.tick < 600 && initial.winner === null);
   const [tourRun, setTourRun] = useState(0);
   const [soundPrefs, setSoundPrefs] = useState(sound.prefs);
   const changeSound = useCallback((p: Partial<typeof soundPrefs>) => {
@@ -174,10 +233,13 @@ function Battle({
   const speedRef = useRef(speed);
   const placingRef = useRef(placing);
   const attackRef = useRef(attackMode);
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
   pausedRef.current = paused || help || menu;
   speedRef.current = speed;
   placingRef.current = placing;
   attackRef.current = attackMode;
+  targetingRef.current = targeting;
 
   const refresh = useCallback(() => setHud(n => (n + 1) % 1000000), []);
 
@@ -187,21 +249,47 @@ function Battle({
     if (!k) overlay.current.placement = null;
   }, []);
 
+  const setTargeting = useCallback((t: Targeting) => {
+    setTargetingState(t);
+    targetingRef.current = t;
+    if (!t && ringRef.current) ringRef.current.style.display = 'none';
+  }, []);
+
+  const showToast = useCallback((text: string) => {
+    window.clearTimeout(toastTimer.current);
+    setToast(t => ({ text, n: (t?.n ?? 0) + 1 }));
+    toastTimer.current = window.setTimeout(() => setToast(null), 1800);
+  }, []);
+  useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
   const dispatch = useCallback(
     (a: GameAction): boolean => {
       const next = processAction(cur.current, a);
       if (next === cur.current) {
         if (a.type === 'queue' || a.type === 'place') sound.play('denied');
+        if (a.type === 'queue') {
+          // Say why, in the order the rules check it.
+          const s = cur.current;
+          const q = s.players[0].queues[a.category];
+          if (s.allowed && !s.allowed.includes(a.kind)) showToast('Not available in this mission');
+          else if (!unlocked(s, 0, a.kind)) {
+            const needs = (a.kind in BUILDINGS ? BUILDINGS[a.kind as BuildingKind] : UNITS[a.kind as UnitKind]).requires;
+            showToast(`Needs a ${needs.filter(r => !s.buildings.some(b => b.owner === 0 && b.kind === r)).map(r => BUILDINGS[r].name).join(' and a ')}`);
+          } else if (a.category === 'building' && q.length) showToast('One structure at a time');
+          else if (q.length >= MAX_QUEUE) showToast('Queue full');
+          else if (s.players[0].credits < costOf(a.kind)) showToast('Insufficient funds');
+        }
         return false;
       }
       cur.current = next;
       if (a.type === 'queue' || a.type === 'cancel') sound.play('queue');
       else if (a.type === 'place') sound.play('place');
-      else if (a.type === 'move' || a.type === 'attack' || a.type === 'harvest' || a.type === 'rally' || a.type === 'stop') sound.play('order');
+      else if (a.type === 'move' || a.type === 'attack' || a.type === 'harvest' || a.type === 'rally' || a.type === 'stop' || a.type === 'ability' || a.type === 'power')
+        sound.play('order');
       refresh();
       return true;
     },
-    [refresh],
+    [refresh, showToast],
   );
 
   const doSave = useCallback(() => {
@@ -247,6 +335,133 @@ function Battle({
     clampCam(c);
   }, []);
 
+  const jumpToAlert = useCallback(() => {
+    const a = lastAlert.current;
+    if (a) centreOn(a.x, a.y);
+  }, [centreOn]);
+
+  /** Placement from the build menu or its hotkeys: entering it leaves attack-move. */
+  const choosePlacing = useCallback(
+    (k: BuildingKind | null) => {
+      setPlacing(k);
+      if (k) {
+        setAttackMode(false);
+        setTargeting(null);
+      }
+    },
+    [setPlacing, setTargeting],
+  );
+
+  // ---- Campaign: heroes, abilities and support powers ------------------------------------------
+  const heroOrder = (): HeroKind[] => {
+    for (const u of cur.current.units) if (u.owner === 0 && u.hero) fielded.current.add(u.kind as HeroKind);
+    return HERO_KINDS.filter(k => fielded.current.has(k));
+  };
+
+  /** Select a hero; selecting the same one again centres the view on it. */
+  const selectHero = useCallback(
+    (kind: HeroKind) => {
+      const u = heroUnit(cur.current, 0, kind);
+      if (!u) return;
+      const ov = overlay.current;
+      if (ov.selected.size === 1 && ov.selected.has(u.id)) centreOn(u.x, u.y);
+      else {
+        ov.selected = new Set([u.id]);
+        sound.play('select');
+      }
+      refresh();
+    },
+    [centreOn, refresh],
+  );
+
+  /** Use a hero's ability: at once when it needs no target, otherwise wait for a click on a structure. */
+  const triggerAbility = useCallback(
+    (kind: HeroKind) => {
+      const s = cur.current;
+      const u = heroUnit(s, 0, kind);
+      if (!u) return;
+      const block = abilityBlock(s, u);
+      if (block) {
+        sound.play('denied');
+        showToast(block);
+        return;
+      }
+      if (HERO_ABILITY[kind].target === 'none') {
+        if (!dispatch({ type: 'ability', id: u.id })) showToast(abilityProblem(s, 0, u.id) ?? 'Not now');
+        return;
+      }
+      setPlacing(null);
+      setAttackMode(false);
+      const t = targetingRef.current;
+      setTargeting(t?.kind === 'ability' && t.heroId === u.id ? null : { kind: 'ability', heroId: u.id, hero: kind });
+    },
+    [dispatch, setPlacing, setTargeting, showToast],
+  );
+
+  const choosePower = useCallback(
+    (p: SupportPower) => {
+      setPlacing(null);
+      setAttackMode(false);
+      const t = targetingRef.current;
+      setTargeting(t?.kind === 'power' && t.power === p ? null : { kind: 'power', power: p });
+    },
+    [setPlacing, setTargeting],
+  );
+
+  /** The click that completes a targeting mode. Stays in the mode after a refused click, saying why. */
+  const fireTargeting = (wx: number, wy: number) => {
+    const t = targetingRef.current;
+    if (!t) return;
+    const s = cur.current;
+    const now = performance.now();
+    if (t.kind === 'power') {
+      const x = Math.floor(wx) + 0.5;
+      const y = Math.floor(wy) + 0.5;
+      const problem = powerProblem(s, 0, t.power, x, y);
+      if (problem || !dispatch({ type: 'power', power: t.power, x, y })) {
+        sound.play('denied');
+        showToast(problem ?? 'Not now');
+        return;
+      }
+      overlay.current.pings.push({ x, y, at: now, kind: 'attack' });
+      setTargeting(null);
+      return;
+    }
+    const id = pick(wx, wy);
+    const b = s.buildings.find(x => x.id === id);
+    if (!b || b.owner === 0) {
+      sound.play('denied');
+      showToast('Click an enemy structure');
+      return;
+    }
+    const problem = abilityProblem(s, 0, t.heroId, b.id);
+    if (problem === 'Move closer first') {
+      // Walk there and use it on arrival (checked every tick in the loop below).
+      const spec = BUILDINGS[b.kind];
+      if (dispatch({ type: 'move', ids: [t.heroId], x: b.x + spec.w / 2, y: b.y + spec.h / 2 })) {
+        pendingAbility.current = { heroId: t.heroId, target: b.id, since: s.tick };
+        showToast('Moving into position');
+        overlay.current.pings.push({ x: wx, y: wy, at: now, kind: 'attack' });
+        setTargeting(null);
+        return;
+      }
+    }
+    if (problem || !dispatch({ type: 'ability', id: t.heroId, target: b.id })) {
+      sound.play('denied');
+      showToast(problem ?? 'Not now');
+      return;
+    }
+    overlay.current.pings.push({ x: wx, y: wy, at: now, kind: 'attack' });
+    setTargeting(null);
+  };
+
+  /** Control-group badges for the renderer (contract 3): unit id to digit, newest group winning. */
+  const syncGroupBadges = () => {
+    const m = new Map<number, number>();
+    for (const [digit, ids] of groups.current) for (const id of ids) m.set(id, Number(digit));
+    (overlay.current as Overlay & { groupOf?: Map<number, number> }).groupOf = m;
+  };
+
   // ---- Orders -------------------------------------------------------------------------------
   const command = useCallback(
     (wx: number, wy: number, forceAttackMove: boolean) => {
@@ -263,13 +478,15 @@ function Battle({
       }
       if (!mine.length) return;
       const ids = mine.map(u => u.id);
+      // Shift held: add the order to the end of each unit's waypoint queue.
+      const queue = keys.current.has('Shift');
       const targetUnit = s.units.find(u => u.id === target);
       const targetBuilding = s.buildings.find(b => b.id === target);
       const enemy = (targetUnit && targetUnit.owner !== 0) || (targetBuilding && targetBuilding.owner !== 0);
       if (enemy) {
-        dispatch({ type: 'attack', ids, target });
+        dispatch({ type: 'attack', ids, target, queue });
         const haulers = mine.filter(u => !UNITS[u.kind].weapon).map(u => u.id);
-        if (haulers.length) dispatch({ type: 'move', ids: haulers, x: wx, y: wy });
+        if (haulers.length) dispatch({ type: 'move', ids: haulers, x: wx, y: wy, queue });
         ov.pings.push({ x: wx, y: wy, at: now, kind: 'attack' });
         return;
       }
@@ -288,7 +505,7 @@ function Battle({
         ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
         return;
       }
-      if (dispatch({ type: 'move', ids, x: wx, y: wy, attackMove: forceAttackMove })) {
+      if (dispatch({ type: 'move', ids, x: wx, y: wy, attackMove: forceAttackMove, queue })) {
         ov.pings.push({ x: wx, y: wy, at: now, kind: forceAttackMove ? 'attack' : 'move' });
       }
     },
@@ -369,6 +586,11 @@ function Battle({
   const tap = (sx: number, sy: number) => {
     const s = cur.current;
     const ov = overlay.current;
+    const w = toWorld(sx, sy);
+    if (targetingRef.current) {
+      fireTargeting(w.x, w.y);
+      return;
+    }
     if (placingRef.current) {
       updatePlacement(sx, sy);
       const p = ov.placement;
@@ -377,7 +599,6 @@ function Battle({
       refresh();
       return;
     }
-    const w = toWorld(sx, sy);
     if (attackRef.current) {
       command(w.x, w.y, true);
       setAttackMode(false);
@@ -426,8 +647,7 @@ function Battle({
     const c = cam.current;
     mouse.current.inside = false;
     if (touches.current.size === 2) {
-      const p = pinchOf();
-      Object.assign(g, { kind: 'pinch', zoom: c.zoom, camX: c.x, camY: c.y, ...p });
+      Object.assign(g, { kind: 'pinch', zoom: c.zoom, camX: c.x, camY: c.y, ...pinchOf() });
       overlay.current.drag = null;
     } else if (touches.current.size === 1) {
       Object.assign(g, { kind: 'tap', x0: sx, y0: sy, camX: c.x, camY: c.y });
@@ -497,12 +717,12 @@ function Battle({
     const { sx, sy } = local(e);
     const m = mouse.current;
     e.currentTarget.setPointerCapture(e.pointerId);
-    if (e.pointerType === 'touch') gesture.current.lastTouch = performance.now();
-    else if (echo(e)) return;
     if (e.pointerType === 'touch') {
+      gesture.current.lastTouch = performance.now();
       touchDown(e, sx, sy);
       return;
     }
+    if (echo(e)) return;
     if (e.button === 1) {
       m.pan = true;
       m.panX = sx;
@@ -513,6 +733,10 @@ function Battle({
       return;
     }
     if (e.button === 2) {
+      if (targetingRef.current) {
+        setTargeting(null);
+        return;
+      }
       if (placingRef.current) {
         setPlacing(null);
         return;
@@ -526,6 +750,11 @@ function Battle({
       return;
     }
     if (e.button !== 0) return;
+    if (targetingRef.current) {
+      const w = toWorld(sx, sy);
+      fireTargeting(w.x, w.y);
+      return;
+    }
     if (placingRef.current) {
       updatePlacement(sx, sy);
       const p = overlay.current.placement;
@@ -569,6 +798,23 @@ function Battle({
     const w = toWorld(sx, sy);
     overlay.current.hover = pick(w.x, w.y);
     updatePlacement(sx, sy);
+    placeRing(sx, sy);
+  };
+
+  /** The support power's area, following the pointer while a power is being aimed. */
+  const placeRing = (sx: number, sy: number) => {
+    const el = ringRef.current;
+    const t = targetingRef.current;
+    if (!el) return;
+    const r = t?.kind === 'power' ? POWERS[t.power].radius : 0;
+    if (!r || !mouse.current.inside) {
+      el.style.display = 'none';
+      return;
+    }
+    const d = r * 2 * TILE * cam.current.zoom;
+    el.style.display = 'block';
+    el.style.width = el.style.height = `${d}px`;
+    el.style.transform = `translate(${sx - d / 2}px, ${sy - d / 2}px)`;
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -634,8 +880,35 @@ function Battle({
       keys.current.add(e.key);
       const ov = overlay.current;
       const k = e.key.toLowerCase();
+      const buildIndex = (BUILD_KEYS as readonly string[]).indexOf(k);
+      if (buildIndex >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Q W E R T Y: the open list's items in order; Shift queues five units.
+        const kind = menuFor(tabRef.current)[buildIndex];
+        if (kind) pressBuild(cur.current, tabRef.current, kind, placingRef.current, dispatch, choosePlacing, e.shiftKey);
+        return;
+      }
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const i = TAB_ORDER.indexOf(tabRef.current);
+        setTab(TAB_ORDER[(i + (e.shiftKey ? TAB_ORDER.length - 1 : 1)) % TAB_ORDER.length]);
+        return;
+      }
+      const heroKey = (HERO_KEYS as readonly string[]).indexOf(k);
+      if (cur.current.mission && heroKey >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Z X C V: heroes 1 to 4 in bar order; twice to jump to the hero.
+        const kind = heroOrder()[heroKey];
+        if (kind) selectHero(kind);
+        return;
+      }
+      if (cur.current.mission && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // F: the selected hero's ability.
+        const u = cur.current.units.find(x => x.owner === 0 && x.hero && ov.selected.has(x.id));
+        if (u) triggerAbility(u.kind as HeroKind);
+        return;
+      }
       if (e.key === 'Escape') {
         if (help) setHelp(false);
+        else if (targetingRef.current) setTargeting(null);
         else if (placingRef.current) setPlacing(null);
         else if (attackRef.current) setAttackMode(false);
         else {
@@ -643,19 +916,27 @@ function Battle({
           refresh();
         }
       } else if (k === 'a' && !e.ctrlKey && !e.metaKey) {
-        if (ownSelectedUnits().length) setAttackMode(true);
+        if (ownSelectedUnits().length) {
+          setAttackMode(true);
+          setTargeting(null);
+        }
       } else if (k === 's' && !e.ctrlKey && !e.metaKey) {
         const ids = ownSelectedUnits().map(u => u.id);
         if (ids.length) dispatch({ type: 'stop', ids });
-      } else if (k === 'p' || e.key === ' ') {
-        e.preventDefault();
+      } else if (k === 'p' && !e.ctrlKey && !e.metaKey) {
         setPaused(p => !p);
+      } else if (e.key === ' ') {
+        // Space never presses a focused button here; it jumps to the latest combat alert.
+        e.preventDefault();
+        jumpToAlert();
       } else if (k === 'h' || e.key === 'Home') {
         goHome();
       } else if (/^[1-9]$/.test(e.key)) {
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
+          groups.current.delete(e.key);
           groups.current.set(e.key, ownSelectedUnits().map(u => u.id));
+          syncGroupBadges();
         } else {
           const live = new Set(cur.current.units.filter(u => u.owner === 0).map(u => u.id));
           const ids = (groups.current.get(e.key) ?? []).filter(id => live.has(id));
@@ -671,7 +952,7 @@ function Battle({
             refresh();
           }
         }
-      } else if (k === 'r') {
+      } else if (k === 'g' && !e.ctrlKey && !e.metaKey) {
         const b = cur.current.buildings.find(x => ov.selected.has(x.id) && x.owner === 0);
         if (b) dispatch({ type: 'repair', id: b.id });
       } else if (e.key === '?') {
@@ -691,7 +972,7 @@ function Battle({
       window.removeEventListener('blur', blur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, refresh, setPlacing, centreOn, help, changeSound]);
+  }, [dispatch, refresh, setPlacing, centreOn, help, changeSound, choosePlacing, jumpToAlert, selectHero, triggerAbility, setTargeting]);
 
   // Browsers only allow audio after the player has touched the page.
   useEffect(() => {
@@ -710,7 +991,19 @@ function Battle({
     let last = performance.now();
     let lastTick = cur.current.tick;
     let heardLog = cur.current.log.length ? cur.current.log[cur.current.log.length - 1] : null;
-    let heardWinner = cur.current.winner !== null;
+    let heardWinner = cur.current.winner !== null || !!cur.current.mission?.result;
+    // Hits already in a loaded save are not news.
+    let seenHurt = cur.current.ai[0].hurtTick;
+    let haulerHp = new Map<number, number>();
+    for (const u of cur.current.units) if (u.owner === 0 && u.kind === 'hauler') haulerHp.set(u.id, u.hp);
+    const raiseAlert = (x: number, y: number, kind: Alert['kind'], at: number) => {
+      lastAlert.current = { x, y, at, kind };
+      const list = alerts.current.filter(a => at - a.at < Math.max(ALERT_MS, ALERT_MERGE_MS));
+      if (!list.some(a => at - a.at < ALERT_MERGE_MS && Math.hypot(a.x - x, a.y - y) < ALERT_MERGE_TILES)) list.push({ x, y, at, kind });
+      // Mutated in place: the minimap holds this array and reads it every frame.
+      alerts.current.length = 0;
+      alerts.current.push(...list);
+    };
     const frame = (now: number) => {
       const dt = Math.min(250, now - last);
       last = now;
@@ -762,7 +1055,7 @@ function Battle({
         }
 
         let alpha = 1;
-        if (!pausedRef.current && cur.current.winner === null) {
+        if (!pausedRef.current && cur.current.winner === null && !cur.current.mission?.result) {
           acc.current += dt * speedRef.current;
           let n = 0;
           while (acc.current >= TICK_MS && n < 4) {
@@ -778,7 +1071,38 @@ function Battle({
         }
         const ctx = canvas.getContext('2d');
         if (ctx) renderer.current!.draw(ctx, cur.current, prev.current, alpha, c, overlay.current, now, dpr);
+        // Campaign: rings over the places an objective sends you (extraction, a zone to hold).
+        const zones = zoneRefs.current;
+        if (zones.length) {
+          const goals = missionZones(cur.current);
+          zones.forEach((el, i) => {
+            const z = goals[i];
+            if (!el || !z) return;
+            const d = z.r * 2 * TILE * c.zoom;
+            el.style.width = el.style.height = `${d}px`;
+            el.style.transform = `translate(${(z.x * TILE - c.x) * c.zoom - d / 2}px, ${(z.y * TILE - c.y) * c.zoom - d / 2}px)`;
+          });
+        }
+        if (targetingRef.current?.kind === 'power') placeRing(m.x, m.y);
         if (cur.current.tick !== lastTick) {
+          const pa = pendingAbility.current;
+          if (pa) {
+            const st = cur.current;
+            const hero = st.units.find(u => u.id === pa.heroId);
+            const target = st.buildings.find(b => b.id === pa.target);
+            const walking = hero && (hero.order.type === 'move' || hero.order.type === 'idle');
+            if (!hero || !target || target.owner === 0 || !walking || st.tick - pa.since > 600) pendingAbility.current = null;
+            else {
+              const why = abilityProblem(st, 0, pa.heroId, pa.target);
+              if (!why) {
+                pendingAbility.current = null;
+                dispatch({ type: 'ability', id: pa.heroId, target: pa.target });
+              } else if (why !== 'Move closer first') {
+                pendingAbility.current = null;
+                showToast(why);
+              }
+            }
+          }
           lastTick = cur.current.tick;
           // Drop selections of things that have died.
           const sel = overlay.current.selected;
@@ -789,6 +1113,20 @@ function Battle({
             if (alive.size !== sel.size) overlay.current.selected = alive;
           }
           if (placingRef.current && readyStructure(cur.current, 0) !== placingRef.current) setPlacing(null);
+          // Combat alerts: a structure hit (the side's own memory of it) or a hauler losing health.
+          const mem = cur.current.ai[0];
+          if (mem.hurtTick > seenHurt) {
+            seenHurt = mem.hurtTick;
+            raiseAlert(mem.hurtX, mem.hurtY, 'base', now);
+          }
+          const hp = new Map<number, number>();
+          for (const u of cur.current.units) {
+            if (u.owner !== 0 || u.kind !== 'hauler') continue;
+            const was = haulerHp.get(u.id);
+            if (was !== undefined && u.hp < was) raiseAlert(u.x, u.y, 'hauler', now);
+            hp.set(u.id, u.hp);
+          }
+          haulerHp = hp;
           // Interface sounds from what the battle reported this tick.
           const log = cur.current.log;
           let from = heardLog ? log.lastIndexOf(heardLog) + 1 : 0;
@@ -799,11 +1137,12 @@ function Battle({
             else if (/ ready/i.test(l.text)) sound.play('ready');
           }
           if (log.length) heardLog = log[log.length - 1];
-          if (cur.current.winner !== null && !heardWinner) {
+          const result = cur.current.mission?.result;
+          if ((cur.current.winner !== null || result) && !heardWinner) {
             heardWinner = true;
-            sound.play(cur.current.winner === 0 ? 'victory' : 'defeat');
+            sound.play((result ? result === 'won' : cur.current.winner === 0) ? 'victory' : 'defeat');
           }
-          if (cur.current.winner !== null) doSave();
+          if (cur.current.winner !== null || result) doSave();
           refresh();
         }
       }
@@ -839,11 +1178,18 @@ function Battle({
   // ---- Render -------------------------------------------------------------------------------
   const s = cur.current;
   const vis = renderer.current!.visible(s);
-  const uplinkOnline = s.buildings.some(b => b.owner === 0 && b.kind === 'uplink') && !powerOf(s, 0).low;
+  const power = powerOf(s, 0);
+  const uplinkOnline = s.buildings.some(b => b.owner === 0 && b.kind === 'uplink') && !power.low;
+  const alert = lastAlert.current && performance.now() - lastAlert.current.at < ALERT_CHIP_MS ? lastAlert.current : null;
   const secs = Math.floor(s.tick / TICKS_PER_SECOND);
   const clock = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
   const recent = s.log.slice(-5).reverse();
+  const cursor = placing ? 'copy' : attackMode || targeting ? 'crosshair' : overlay.current.hover ? 'pointer' : 'default';
+  const mission = s.mission ?? null;
+  const ended = s.winner !== null || !!mission?.result;
   const big = layout.touch ? touchBtn : null;
+  const verb = layout.touch ? 'tap' : 'click';
+  const stopHint = layout.touch ? 'Tap the button below to stop.' : 'Right-click or Esc to stop.';
   const saveStatus = (
     <span style={{ fontSize: '0.72rem', color: saveError ? UI.bad : UI.textFaint }} title={saveError ?? undefined}>
       {saveError ? 'Not saving' : lastSaved ? `Saved ${cloud ? 'to your account' : 'in this browser'}` : 'Saves every 15s'}
@@ -886,7 +1232,8 @@ function Battle({
       />
     </div>
   );
-  const tourButton = (
+  // The tour teaches a skirmish base; a campaign battle has no Tour button.
+  const tourButton = mission ? null : (
     <button
       style={{ ...chromeBtn, ...big }}
       data-testid="tour-button"
@@ -900,19 +1247,22 @@ function Battle({
     </button>
   );
   const ownSelected = s.units.some(u => u.owner === 0 && overlay.current.selected.has(u.id));
-  const cursor = placing ? 'copy' : attackMode ? 'crosshair' : overlay.current.hover ? 'pointer' : 'default';
+  const modal = !!(placing || targeting);
+  // On a touch screen the command bar takes the foot of the map; the campaign's hero and power
+  // bar and the battle feed sit above it.
+  const barLift = layout.touch && !ended ? 56 : 0;
+  const zones = mission ? missionZones(s) : [];
+  const leave = () => {
+    doSave();
+    if (campaign) campaign.onLeave();
+    else navigate('/');
+  };
 
   return (
     <div style={shell} className="fl-shell">
       <header style={layout.compact ? { ...topBar, flexWrap: 'nowrap', gap: 6 } : topBar}>
-        <button
-          style={chromeBtn}
-          onClick={() => {
-            doSave();
-            navigate('/');
-          }}
-        >
-          ← Lobby
+        <button style={{ ...chromeBtn, ...big }} onClick={leave} data-testid="leave">
+          ← {campaign ? campaign.leaveLabel : 'Lobby'}
         </button>
         {!layout.stacked && <strong style={{ fontFamily: FONT.display, fontSize: '1rem', letterSpacing: '0.04em' }}>FIRELINE</strong>}
         {!layout.compact && (
@@ -927,16 +1277,10 @@ function Battle({
         {layout.compact ? (
           <>
             {saveError && <span style={{ fontSize: '0.72rem', color: UI.bad }}>Not saving</span>}
-            <button style={{ ...chromeBtn, ...(layout.touch ? touchBtn : null), minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
+            <button style={{ ...chromeBtn, ...big, minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
               {paused ? 'Resume' : 'Pause'}
             </button>
-            <button
-              style={{ ...chromeBtn, ...(layout.touch ? touchBtn : null) }}
-              aria-expanded={menu}
-              aria-haspopup="dialog"
-              data-testid="menu-button"
-              onClick={() => setMenu(m => !m)}
-            >
+            <button style={{ ...chromeBtn, ...big }} aria-expanded={menu} aria-haspopup="dialog" data-testid="menu-button" onClick={() => setMenu(m => !m)}>
               Menu
             </button>
           </>
@@ -952,6 +1296,7 @@ function Battle({
             <button style={chromeBtn} onClick={() => setHelp(true)} aria-label="Controls">
               ?
             </button>
+            <MotionToggle style={{ padding: '4px 8px' }} />
             <ThemeToggle style={{ padding: '4px 8px' }} />
           </>
         )}
@@ -973,8 +1318,9 @@ function Battle({
               {soundControls}
             </div>
             <div style={menuRow}>
-              <span style={menuLabel}>Theme</span>
+              <span style={menuLabel}>Display</span>
               <ThemeToggle style={{ padding: '6px 10px' }} />
+              <MotionToggle style={{ padding: '6px 10px' }} />
             </div>
             <div style={{ ...menuRow, justifyContent: 'flex-end' }}>
               {tourButton}
@@ -1010,26 +1356,71 @@ function Battle({
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
             onPointerCancel={onPointerUp}
-            onPointerLeave={() => (mouse.current.inside = false)}
+            onPointerLeave={() => {
+              mouse.current.inside = false;
+              if (ringRef.current) ringRef.current.style.display = 'none';
+            }}
             onContextMenu={e => e.preventDefault()}
             onWheel={onWheel}
           />
-          {(placing || attackMode) && (
-            <div style={hint}>
-              {placing
-                ? layout.touch
-                  ? `Place the ${BUILDINGS[placing].name}: tap open ground near your base. Drag to look around.`
-                  : `Place the ${BUILDINGS[placing].name}: click open ground near your base. Right-click or Esc to stop.`
-                : `Attack-move: ${layout.touch ? 'tap' : 'click'} where to go. Units fight anything they meet on the way.`}
+          {zones.map((z, i) => (
+            <div
+              key={i}
+              ref={el => {
+                zoneRefs.current[i] = el;
+              }}
+              className="fl-zone"
+              data-done={z.done ? '1' : '0'}
+              aria-hidden="true"
+            >
+              <span>{z.label}</span>
+            </div>
+          ))}
+          <div ref={ringRef} className="fl-target-ring" aria-hidden="true" />
+          <div className="fl-banners">
+            {(placing || attackMode || targeting) && (
+              <div className="fl-hint" data-testid="hint">
+                {placing
+                  ? `Place the ${BUILDINGS[placing].name}: ${verb} open ground near your base. ${layout.touch ? 'Drag to look around.' : stopHint}`
+                  : targeting?.kind === 'ability'
+                    ? `${HERO_ABILITY[targeting.hero].name}: ${verb} an enemy structure for ${heroName(targeting.hero)}. ${stopHint}`
+                    : targeting?.kind === 'power'
+                      ? `${POWERS[targeting.power].name}: ${verb} the map to call it in. ${stopHint}`
+                      : `Attack-move: ${verb} where to go. Units fight anything they meet on the way.`}
+              </div>
+            )}
+            {power.low && !ended && (
+              <div className="fl-lowpower" role="status" data-testid="low-power">
+                <strong>Low power</strong> {power.made}/{power.used}. Production at half speed, turrets slowed, radar down. Build a
+                Generator.
+              </div>
+            )}
+          </div>
+          {alert && !ended && (
+            <button type="button" className="fl-alert-chip" data-testid="alert-chip" data-kind={alert.kind} onClick={jumpToAlert}>
+              <span className="fl-alert-dot" aria-hidden="true" />
+              {alert.kind === 'base' ? 'Base under attack' : 'Hauler under attack'}
+              <kbd>Space</kbd>
+            </button>
+          )}
+          {toast && (
+            <div key={toast.n} className="fl-toast" role="status" data-testid="toast">
+              {toast.text}
             </div>
           )}
-          {layout.touch && (
-            // While placing, the one button goes to the corner: centred, it sat under the ground near
-            // the base, and a phone's tap adjustment snapped taps meant for the map onto it.
-            <div style={placing ? { ...commandBar, left: 'auto' } : commandBar} data-testid="command-bar">
-              {placing ? (
-                <button style={barBtn(false)} onClick={() => setPlacing(null)}>
-                  Stop placing
+          {layout.touch && !ended && (
+            // While placing or aiming, the one button goes to the corner: centred, it sat under the
+            // ground near the base, and a phone's tap adjustment snapped taps meant for the map onto it.
+            <div style={modal ? { ...commandBar, left: 'auto' } : commandBar} data-testid="command-bar">
+              {modal ? (
+                <button
+                  style={barBtn(false)}
+                  onClick={() => {
+                    setPlacing(null);
+                    setTargeting(null);
+                  }}
+                >
+                  {placing ? 'Stop placing' : 'Cancel'}
                 </button>
               ) : (
                 <>
@@ -1083,14 +1474,24 @@ function Battle({
               )}
             </div>
           )}
-          <div style={{ ...feed, bottom: layout.touch ? 62 : 10, maxWidth: layout.stacked ? '90%' : '60%' }} aria-live="polite">
+          <div
+            style={{ ...feed, bottom: (mission && !ended ? 78 : 10) + barLift, maxWidth: layout.stacked ? '90%' : '60%' }}
+            aria-live="polite"
+          >
             {(layout.stacked ? recent.slice(0, 3) : recent).map(l => (
               <div key={`${l.tick}-${l.text}`} style={{ color: l.tone === 'bad' ? '#ff9a8c' : l.tone === 'good' ? '#a8f0ae' : '#e4ebe8', opacity: Math.max(0.25, 1 - (s.tick - l.tick) / 300) }}>
                 {l.text}
               </div>
             ))}
           </div>
-          {paused && !help && s.winner === null && (
+          {mission && !ended && <ObjectivesPanel s={s} />}
+          {mission && !ended && (
+            <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
+              <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
+              <PowerBar s={s} targeting={targeting} onPower={choosePower} />
+            </div>
+          )}
+          {paused && !help && !ended && (
             <div style={scrim}>
               <div style={card}>
                 <h2 style={{ margin: 0, fontFamily: FONT.display }}>Paused</h2>
@@ -1105,14 +1506,14 @@ function Battle({
             <div style={scrim} onClick={() => setHelp(false)}>
               <div style={{ ...card, maxWidth: 520, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
                 <h2 style={{ margin: 0, fontFamily: FONT.display }}>Controls</h2>
-                <Controls touch={layout.touch} />
+                <Controls campaign={!!mission} touch={layout.touch} />
                 <button style={{ ...chromeBtn, alignSelf: 'flex-end' }} onClick={() => setHelp(false)}>
                   Close
                 </button>
               </div>
             </div>
           )}
-          {s.winner !== null && <EndCard state={s} onLobby={() => navigate('/')} />}
+          {mission && campaign ? (mission.result ? campaign.renderEnd(s) : null) : s.winner !== null && <EndCard state={s} onLobby={() => navigate('/')} />}
         </div>
 
         {tourOpen && (
@@ -1120,7 +1521,7 @@ function Battle({
             key={tourRun}
             view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch }}
             onFinish={() => setTourOpen(false)}
-            hidden={paused || help || menu || s.winner !== null}
+            hidden={paused || help || menu || ended}
           />
         )}
 
@@ -1147,11 +1548,8 @@ function Battle({
             setTab={setTab}
             dispatch={dispatch}
             placing={placing}
-            setPlacing={k => {
-              setPlacing(k);
-              if (k) setAttackMode(false);
-            }}
-            minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} />}
+            setPlacing={choosePlacing}
+            minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} alerts={alerts.current} />}
           />
           {!(layout.stacked && overlay.current.selected.size > 0) && (
             <div style={{ borderTop: `1px solid ${UI.rule}`, paddingTop: 8 }}>
@@ -1164,6 +1562,17 @@ function Battle({
   );
 }
 
+/** Places on the map an objective sends the player to, for the rings drawn over the battlefield. */
+function missionZones(s: GameState): { x: number; y: number; r: number; label: string; done: boolean }[] {
+  const out: { x: number; y: number; r: number; label: string; done: boolean }[] = [];
+  for (const o of s.mission?.objectives ?? []) {
+    const sp = o.spec;
+    if (sp.kind === 'reach') out.push({ x: sp.x, y: sp.y, r: sp.r, label: sp.who === 'any' ? 'Rendezvous' : 'Extraction', done: o.done });
+    else if (sp.kind === 'holdZone') out.push({ x: sp.x, y: sp.y, r: sp.r, label: 'Hold', done: o.done });
+  }
+  return out;
+}
+
 function clampCam(c: Camera) {
   const vw = c.w / c.zoom;
   const vh = c.h / c.zoom;
@@ -1174,12 +1583,57 @@ function clampCam(c: Camera) {
   if (vh > MAP_H * TILE + 2 * m) c.y = (MAP_H * TILE - vh) / 2;
 }
 
-export function Controls({ touch = false }: { touch?: boolean }) {
-  const rows: [string, string][] = touch ? TOUCH_ROWS : MOUSE_ROWS;
+/** The key table. Campaign keys are listed in a campaign battle and on How to play. */
+export function Controls({ campaign = false, touch = false }: { campaign?: boolean; touch?: boolean }) {
+  const mouseRows: [string, string][] = [
+    ['Left-click / drag', 'Select a unit or structure; drag a box to select a group'],
+    ['Double-click', 'Select every unit of that kind on screen'],
+    ['Right-click', 'Move, attack, harvest, or set a rally point for a selected producer'],
+    ['A then click', 'Attack-move: go there, fighting anything met on the way'],
+    ['Shift + right-click', 'Queue another order after the current one (waypoints, up to 12)'],
+    ['Stance buttons', 'Aggressive chases anything in sight; Guard (default) holds and returns fire; Hold fire never shoots unordered'],
+    ['S', 'Stop'],
+    ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
+    ['Q W E R T Y', 'Build or train the first to sixth item in the open list (the letter is on each button)'],
+    ['Shift + click or key', 'Queue five infantry or vehicles at once'],
+    ['Tab', 'Next build list: Structures, Infantry, Vehicles (Shift + Tab goes back)'],
+    ['G', 'Toggle repair on the selected structure'],
+    ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
+    ['H', 'Jump to your Command Yard'],
+    ['Space', 'Jump to the last combat alert (pinged on the minimap)'],
+    ['P', 'Pause'],
+    ['M', 'Sound on or off'],
+    ['Esc', 'Cancel placement, attack-move or aiming; clear selection'],
+  ];
+  const touchRows: [string, string][] = [
+    ['Tap', 'Select one of your units or structures'],
+    ['Tap with units selected', 'Move to open ground, attack an enemy, harvest ore, or unload at a refinery'],
+    ['Double-tap a unit', 'Select every unit of that kind on screen'],
+    ['Box, then drag', 'Select the units inside the box'],
+    ['Army', 'Select every fighting unit you own'],
+    ['Attack, then tap', 'Attack-move: go there, fighting anything met on the way'],
+    ['Barracks or Factory, then tap', 'Set where new units gather'],
+    ['Stance buttons', 'Aggressive chases anything in sight; Guard (default) holds and returns fire; Hold fire never shoots unordered'],
+    ['Drag / pinch', 'Look around / zoom'],
+    ['Minimap', 'Tap to jump there, once a Comms Uplink is powered'],
+    ['× on a build button', 'Cancel it for a full refund'],
+    ['Base', 'Jump to your Command Yard'],
+  ];
+  const rows = touch ? touchRows : mouseRows;
+  const campaignRows: [string, string][] = touch
+    ? [
+        ['Hero bar', 'Campaign: tap a hero to select it, twice to jump to it; tap its ability, then an enemy structure if it needs one'],
+        ['Power button, then tap', 'Campaign: call a support power (Recon sweep, Artillery barrage, Reinforcements) on that spot'],
+      ]
+    : [
+    ['Z X C V', 'Campaign: select hero 1 to 4 in the hero bar; twice to jump to it'],
+    ['F', "Campaign: the selected hero's ability (Infiltrate, Demolition charge and Capture then want a click on an enemy structure)"],
+    ['Power button, then click', 'Campaign: call a support power (Recon sweep, Artillery barrage, Reinforcements) on that spot'],
+      ];
   return (
     <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem' }}>
       <tbody>
-        {rows.map(([k, v]) => (
+        {(campaign ? [...rows, ...campaignRows] : rows).map(([k, v]) => (
           <tr key={k}>
             <td style={{ padding: '3px 12px 3px 0', whiteSpace: 'nowrap', fontWeight: 600, verticalAlign: 'top' }}>{k}</td>
             <td style={{ padding: '3px 0', color: UI.textSoft }}>{v}</td>
@@ -1189,35 +1643,6 @@ export function Controls({ touch = false }: { touch?: boolean }) {
     </table>
   );
 }
-
-const TOUCH_ROWS: [string, string][] = [
-  ['Tap', 'Select one of your units or structures'],
-  ['Tap with units selected', 'Move to open ground, attack an enemy, harvest ore, or unload at a refinery'],
-  ['Double-tap a unit', 'Select every unit of that kind on screen'],
-  ['Box, then drag', 'Select the units inside the box'],
-  ['Army', 'Select every fighting unit you own'],
-  ['Attack, then tap', 'Attack-move: go there, fighting anything met on the way'],
-  ['Barracks or Factory, then tap', 'Set where new units gather'],
-  ['Drag / pinch', 'Look around / zoom'],
-  ['Minimap', 'Tap to jump there, once a Comms Uplink is powered'],
-  ['× on a build button', 'Cancel it for a full refund'],
-  ['Base', 'Jump to your Command Yard'],
-];
-
-const MOUSE_ROWS: [string, string][] = [
-    ['Left-click / drag', 'Select a unit or structure; drag a box to select a group'],
-    ['Double-click', 'Select every unit of that kind on screen'],
-    ['Right-click', 'Move, attack, harvest, or set a rally point for a selected producer'],
-    ['A then click', 'Attack-move: go there, fighting anything met on the way'],
-    ['S', 'Stop'],
-    ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
-    ['R', 'Toggle repair on the selected structure'],
-    ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
-    ['H', 'Jump to your Command Yard'],
-    ['P or Space', 'Pause'],
-    ['M', 'Sound on or off'],
-    ['Esc', 'Cancel placement or attack-move; clear selection'],
-];
 
 function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) {
   const won = state.winner === 0;
@@ -1372,21 +1797,6 @@ export const chromeBtn: CSSProperties = {
   color: UI.text,
   borderRadius: 3,
   cursor: 'pointer',
-};
-
-const hint: CSSProperties = {
-  position: 'absolute',
-  top: 10,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  background: 'rgba(8,12,12,0.82)',
-  color: '#e9f0ec',
-  padding: '6px 12px',
-  borderRadius: 4,
-  fontSize: '0.8rem',
-  pointerEvents: 'none',
-  maxWidth: '90%',
-  textAlign: 'center',
 };
 
 const feed: CSSProperties = {

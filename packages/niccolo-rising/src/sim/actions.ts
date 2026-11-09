@@ -343,13 +343,13 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
       d.schemeSkill += 0.5;
       if (roll(d) < scheme.caught.chance) {
         const mins = steenMinutes(d, scheme.caught.minutes);
-        d.status = { kind: 'steen', until: at + mins * MINUTE, reason: scheme.name };
+        d.status = { kind: 'steen', since: at, until: at + mins * MINUTE, reason: scheme.name };
         log(d, at, `${scheme.name}: the Watch has you. ${mins} minutes in the Steen.`, 'bad');
         award(d, at, 'steen');
       } else if (roll(d) < scheme.hurt.chance) {
         const mins = infirmaryMinutes(d, scheme.hurt.minutes);
         setHealth(d, d.bars.health.cur - barMax(d, 'health') * 0.3, at);
-        d.status = { kind: 'infirmary', until: at + mins * MINUTE, reason: scheme.name };
+        d.status = { kind: 'infirmary', since: at, until: at + mins * MINUTE, reason: scheme.name };
         log(d, at, `${scheme.name}: it goes badly wrong and you are carried off. ${mins} minutes in the Infirmary.`, 'bad');
       } else {
         log(d, at, `${scheme.name}: you lose your nerve at the last moment and walk away.`);
@@ -561,7 +561,7 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
       } else if (result.outcome === 'lost') {
         setHealth(d, 1, at);
         const mins = infirmaryMinutes(d, 15 + opp.level * 5);
-        d.status = { kind: 'infirmary', until: at + mins * MINUTE, reason: `beaten by ${opp.name}` };
+        d.status = { kind: 'infirmary', since: at, until: at + mins * MINUTE, reason: `beaten by ${opp.name}` };
         d.counters.duelsLost++;
         log(d, at, `${opp.name} beats you senseless. ${mins} minutes in the Infirmary.`, 'bad');
       } else {
@@ -642,7 +642,7 @@ function applyVerb(d: GameState, a: GameAction, at: number, events: MissionEvent
       if (r.infirmaryMinutes) {
         const mins = infirmaryMinutes(d, r.infirmaryMinutes);
         setHealth(d, Math.min(d.bars.health.cur, barMax(d, 'health') * 0.25), at);
-        d.status = { kind: 'infirmary', until: at + mins * MINUTE, reason: m.title.toLowerCase() };
+        d.status = { kind: 'infirmary', since: at, until: at + mins * MINUTE, reason: m.title.toLowerCase() };
         log(d, at, `${mins} minutes in the Infirmary.`, 'bad');
       }
       return;

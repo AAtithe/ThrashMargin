@@ -74,8 +74,8 @@ export default function ChapterCompleteCard({ chapterNumber, title, progress, on
   const resolved = counted.filter(p => p.status !== 'pending').length;
 
   return (
-    <div style={BACKDROP}>
-      <div style={CARD}>
+    <div style={BACKDROP} className="tm-anim-fade">
+      <div style={CARD} className="tm-anim-pop">
         <p style={LABEL}>Chapter {chapterNumber} complete</p>
         <h2 style={TITLE}>{title}</h2>
         {progress.length > 0 && (

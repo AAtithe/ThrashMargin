@@ -2,6 +2,7 @@ import { UI } from '../theme';
 import { findCity } from '../sim/content';
 import { CURRENCIES, findCurrency, toFlorins } from '../sim/currency';
 import type { ExchangeRates, Obligation, ObligationKind } from '../sim/types';
+import { Florins } from './motionKit';
 
 const LABEL: React.CSSProperties = {
   fontSize: '0.75rem',
@@ -85,9 +86,9 @@ export default function LedgerPanel({ week, cash, exchangeRates, obligations, fl
     <div>
       <p style={LABEL}>Ledger</p>
       <p style={{ fontSize: '0.75rem', margin: 0, color: UI.textSoft }}>
-        Owed to others: <span style={{ color: UI.bad }}>{payableTotal}f</span>
+        Owed to others: <span style={{ color: UI.bad }}><Florins value={payableTotal} /></span>
         {' · '}
-        Owed to you: <span style={{ color: UI.good }}>{receivableTotal}f</span>
+        Owed to you: <span style={{ color: UI.good }}><Florins value={receivableTotal} /></span>
       </p>
 
       <p style={LABEL}>Exchange rates (florins per unit)</p>
@@ -125,7 +126,7 @@ export default function LedgerPanel({ week, cash, exchangeRates, obligations, fl
           );
         })}
       </div>
-      <p style={{ fontSize: '0.65rem', color: UI.textFaint, margin: '0.3rem 0 0' }}>Cash on hand: {Math.round(cash)}f</p>
+      <p style={{ fontSize: '0.65rem', color: UI.textFaint, margin: '0.3rem 0 0' }}>Cash on hand: <Florins value={cash} /></p>
     </div>
   );
 }

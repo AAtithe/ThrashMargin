@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { CHART, FONT } from '../theme';
-import { sourcesFor, LEGS, PORTS, PORT_BY_ID } from '../sim/content';
+import { sourcesFor, LEGS, PORTS, PORT_BY_ID, planRoute } from '../sim/content';
 import {
   CHART as BACKDROP,
   PORT_POINTS,
@@ -12,7 +12,8 @@ import {
   wrapPanX,
 } from '../sim/geography';
 import { destinationOf } from '../sim/movement';
-import { stormRating, windFor, type Season } from '../sim/weather';
+import { planFastestRoute, stormRating, windFor, type Season } from '../sim/weather';
+import { easeInOut, paced, usePace, useSkipOnInput, useTween } from '../lib/motion';
 import { piracyRating } from '../sim/hazards';
 import { RENOWN_FAMOUS, RENOWN_SMART } from '../sim/rules';
 import type { Captain, Contract, PortId, Ship } from '../sim/types';
@@ -508,6 +509,7 @@ export default function MapView({
           captainName={nameOf[ship.ownerId] ?? ''}
           isRival={ship.ownerId !== viewerId}
           racing={race?.runners.has(ship.id) ?? false}
+          season={season}
           lift={lift}
         />
       ))}
@@ -635,6 +637,7 @@ function ShipMarker({
   captainName,
   isRival,
   racing,
+  season,
   lift = 1,
 }: {
   ship: Ship;
@@ -643,20 +646,61 @@ function ShipMarker({
   captainName: string;
   isRival: boolean;
   racing: boolean;
+  season: Season | null;
   /** Enlargement so she stays visible when the chart is drawn small (see MIN_LABEL_PX). */
   lift?: number;
 }) {
   // Positioned at her true place, so a move glides but a zoom (which changes `lift`) does not.
   const pos = shipPosition(ship);
+  const pace = usePace();
   // Where she was drawn last time, so a move can glide rather than jump. Skipped on the first draw
   // and on a Pacific crossing, where the chart wraps and a glide would sweep across the whole world.
+  // This straight CSS glide is what motion "off" keeps, unchanged; at full and quick pace the
+  // sailing below replaces it.
   const last = useRef<{ x: number; y: number } | null>(null);
-  const glide = pos !== null && last.current !== null && Math.abs(pos.x - last.current.x) < VB_WIDTH / 3;
+  const glide =
+    pace === 'off' && pos !== null && last.current !== null && Math.abs(pos.x - last.current.x) < VB_WIDTH / 3;
+
+  // Sailing: when her position changes she follows the route port by port from where she was last
+  // drawn, rather than cutting straight across land to the new spot. Display only — the reducer
+  // has already moved her; this is the chart catching up.
+  const prevShip = useRef<Ship | null>(null);
+  const sailSeq = useRef(0);
+  // `baseMs` is the full-pace duration; the shared tween paces it.
+  const [sail, setSail] = useState<{ id: number; pts: Pt[]; baseMs: number } | null>(null);
+  useLayoutEffect(() => {
+    const before = prevShip.current;
+    prevShip.current = ship;
+    if (!before || !pos || pace === 'off' || anchorOf(before) === anchorOf(ship)) return;
+    const from = last.current ?? shipPosition(before);
+    if (!from) return;
+    const via = waypointsBetween(before, ship, season);
+    if (via === null && Math.abs(pos.x - from.x) >= VB_WIDTH / 3) {
+      setSail(null);
+      return;
+    }
+    const pts = unwrapPath([from, ...(via ?? []).map(id => PORT_POINTS[id]).filter(Boolean), pos]);
+    const length = pathLength(pts);
+    if (length < 0.5) return;
+    // Long enough to read as a passage, short enough never to hold the eye.
+    const baseMs = Math.min(950, Math.max(380, 260 + length * 1.2));
+    if (paced(baseMs, pace) <= 0) return;
+    setSail({ id: ++sailSeq.current, pts, baseMs });
+    // `pos` is derived from `ship`; watching the anchor is watching her position.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchorOf(ship)]);
+  // The shared tween is key-aware: the very render that starts a passage already reads t = 0, so
+  // she is never drawn one frame at the destination first.
+  const { t, playing: underWay, skip } = useTween(sail ? sail.id : null, sail ? sail.baseMs : 0);
+  useSkipOnInput(underWay, skip);
+  const at = underWay && sail ? pointAlong(sail.pts, easeInOut(t)) : null;
+
   useEffect(() => {
-    if (pos) last.current = { x: pos.x, y: pos.y };
+    if (at) last.current = { x: at.x, y: at.y };
+    else if (pos) last.current = { x: pos.x, y: pos.y };
   });
   if (!pos) return null;
-  const { x, y, heading, wake } = pos;
+  const { x, y, heading, wake } = at ? { ...pos, x: at.x, y: at.y, heading: at.heading, wake: null } : pos;
 
   const dest = destinationOf(ship);
   const laden = ship.hold.length > 0;
@@ -778,6 +822,96 @@ function ShipMarker({
       </title>
     </g>
   );
+}
+
+type Pt = { x: number; y: number };
+
+/** Everything about a ship's position that changes when she moves. */
+function anchorOf(ship: Ship): string {
+  if (ship.location) return ship.location;
+  const v = ship.voyage;
+  return v ? `${v.legFrom}>${v.route.join('>')}:${v.legRemaining}/${v.legDistance}` : '';
+}
+
+/**
+ * The ports a ship sailed through between two of her positions, in order, or null when that cannot
+ * be told for certain (then she glides straight, as she always did).
+ *
+ * At sea the remaining route is in her voyage. Leaving port it is not — the reducer plotted it — so
+ * it is planned again the way doSailTo plans it (fastest for the season with weather, shortest
+ * without) and accepted only if it agrees with where she actually is now.
+ */
+function waypointsBetween(before: Ship, after: Ship, season: Season | null): PortId[] | null {
+  const here = after.location ?? after.voyage?.legFrom ?? null;
+  if (!here) return null;
+  if (before.voyage) {
+    if (here === before.voyage.legFrom) return [];
+    const k = before.voyage.route.indexOf(here);
+    if (k < 0) return null;
+    // Arriving in port, the last stop is her berth, drawn as the end point.
+    return before.voyage.route.slice(0, after.location ? k : k + 1);
+  }
+  if (!before.location) return null;
+  if (here === before.location) return [];
+  const dest = after.location ?? destinationOf(after);
+  if (!dest) return null;
+  // A player may pick the shortest course over the fastest, so both are tried.
+  const from = before.location;
+  const candidates = [
+    season ? planFastestRoute(from, dest, season, before.fittings?.copper) : null,
+    planRoute(from, dest),
+  ];
+  for (const planned of candidates) {
+    if (!planned) continue;
+    const full = [from, ...planned.path];
+    const k = full.indexOf(here);
+    if (k < 0) continue;
+    if (after.voyage && full[k + 1] !== after.voyage.route[0]) continue;
+    // Her remaining route must be the rest of this one, or it is not the course she was given.
+    if (after.voyage && full.slice(k + 1).join('>') !== after.voyage.route.join('>')) continue;
+    return full.slice(1, after.location ? k : k + 1);
+  }
+  return null;
+}
+
+/** Make each step take the short way round the wrapped chart. */
+function unwrapPath(pts: Pt[]): Pt[] {
+  const out: Pt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const prev = out[i - 1];
+    out.push({ x: prev.x + wrapDx(prev.x, pts[i].x), y: pts[i].y });
+  }
+  // The last point is where she is really drawn; keep it exact when the unwrap agrees.
+  return out;
+}
+
+function pathLength(pts: Pt[]): number {
+  let n = 0;
+  for (let i = 1; i < pts.length; i++) n += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  return n;
+}
+
+/** The point a fraction `t` of the way along a polyline, and the heading of that stretch. */
+function pointAlong(pts: Pt[], t: number): Pt & { heading: number } {
+  const total = pathLength(pts);
+  let left = total * Math.min(1, Math.max(0, t));
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const seg = Math.hypot(b.x - a.x, b.y - a.y);
+    if (seg === 0) continue;
+    if (left <= seg || i === pts.length - 1) {
+      const f = Math.min(1, left / seg);
+      return {
+        x: a.x + (b.x - a.x) * f,
+        y: a.y + (b.y - a.y) * f,
+        heading: (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI + 90,
+      };
+    }
+    left -= seg;
+  }
+  const end = pts[pts.length - 1];
+  return { ...end, heading: 0 };
 }
 
 /** Where a ship is drawn, which way she heads, and the start of her leg for the wake. */

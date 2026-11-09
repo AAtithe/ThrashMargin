@@ -3,6 +3,7 @@ import { UI } from '../../theme';
 import { duration, gr } from '../../lib/format';
 import { Blurb, Meta, Panel, Row } from '../ui';
 import ActButton from './ActButton';
+import { TimerBar } from '../motion';
 import type { PlaceProps } from '../types';
 
 export default function Travel(p: PlaceProps) {
@@ -13,6 +14,7 @@ export default function Travel(p: PlaceProps) {
     const total = st.arrives - st.departs;
     return (
       <Panel title={`On the road to ${st.to === 'bruges' ? 'Bruges' : DESTINATION[st.to]?.name}`}>
+        <TimerBar start={st.departs} end={st.arrives} now={now} colour={UI.verdigris} style={{ height: 6, marginTop: 0, marginBottom: '0.5rem' }} />
         <Meta colour={UI.verdigris}>
           Arriving in {duration(st.arrives - now)} of {duration(total)}. Your bars refill on the road, so a journey is
           the best use of an empty Energy bar.

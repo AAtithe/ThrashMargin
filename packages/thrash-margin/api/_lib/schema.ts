@@ -118,8 +118,22 @@ async function apply(c: PoolClient): Promise<void> {
     await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS game_access JSONB`);
   }
 
-  // Portal-wide settings changed on the Admin page, one row per setting. Today only
-  // 'new_account_games': the games a newly registered account starts with.
+  // Account status (Admin page): 'active', 'pending' (registered while approval was required, not yet
+  // approved) or 'suspended'. Only 'active' accounts can sign in or use a session (auth.ts). Every
+  // existing account becomes 'active', so nobody is locked out when this is added.
+  if (!(await hasColumn(c, 'users', 'status'))) {
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'active'`);
+    await c.query(`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_constraint
+                       WHERE conname = 'users_status_check' AND conrelid = 'users'::regclass) THEN
+          ALTER TABLE users ADD CONSTRAINT users_status_check CHECK (status IN ('active', 'pending', 'suspended'));
+        END IF;
+      END $$;`);
+  }
+
+  // Portal-wide settings changed on the Admin page, one row per setting. 'new_account_games': the
+  // games a newly registered account starts with; 'require_approval': whether it must be approved first.
   if (!(await hasTable(c, 'portal_settings'))) {
     await c.query(`
       CREATE TABLE IF NOT EXISTS portal_settings (

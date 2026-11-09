@@ -40,7 +40,7 @@ export function AttackOrders({ state, target, visible, columns, setColumns, act,
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <Icon name="attack" color={UI.attack} size={16} />
           <h3 style={{ margin: 0, fontFamily: FONT.display, fontSize: 18, fontWeight: 600, flex: 1 }}>Assault on {t.name}</h3>
-          <button type="button" onClick={onCancel} aria-label="Cancel" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer' }}><Icon name="close" /></button>
+          <button type="button" id="tm-attack-cancel" onClick={onCancel} aria-label="Cancel" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer' }}><Icon name="close" /></button>
         </div>
         <Muted style={{ marginTop: 4 }}>
           <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: fc.fill, marginRight: 6 }} />

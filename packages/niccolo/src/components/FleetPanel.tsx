@@ -7,6 +7,7 @@ import { Button, Label, Panel, bodySmall } from './ui';
 import ConvoyPanel from './ConvoyPanel';
 import ShipyardPanel from './ShipyardPanel';
 import type { Character, GameState } from '../sim/types';
+import { useWeekStagger } from './motionKit';
 
 interface FleetPanelProps {
   state: GameState;
@@ -54,6 +55,16 @@ export default function FleetPanel({
     (c): c is Character & { assignment: { type: 'aboard'; vesselId: string } } => c.assignment.type === 'aboard',
   );
   const notAboardRoster = activeRoster.filter(c => c.assignment.type !== 'aboard');
+  // This week's reports (a storm, sabotage, the expedition's health) land one after another when the
+  // week turns, rather than all appearing in the same frame. Older reports are left alone.
+  const freshReports = [
+    state.lastVoyageEvent?.week === state.week,
+    state.lastSabotageEvent?.week === state.week,
+    state.lastExpeditionEvent?.week === state.week,
+  ];
+  const freshIndex = (slot: number) => (freshReports[slot] ? freshReports.slice(0, slot).filter(Boolean).length : -1);
+  const reveal = useWeekStagger(state.week, freshReports.filter(Boolean).length);
+  const revealReport = (slot: number) => (freshIndex(slot) >= 0 ? reveal(freshIndex(slot)) : {});
   const expeditionVessel = state.expedition
     ? state.vessels.find(v => v.id === state.expedition!.vesselId)
     : undefined;
@@ -149,7 +160,7 @@ export default function FleetPanel({
       </div>
 
       {state.lastVoyageEvent && (
-        <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0 }}>
+        <p className={revealReport(0).className} style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, ...revealReport(0).style }}>
           Week {state.lastVoyageEvent.week}: storm struck {state.lastVoyageEvent.vesselName} — lost{' '}
           {state.lastVoyageEvent.quantityLost} {state.lastVoyageEvent.goodId}.{' '}
           {state.lastVoyageEvent.insured ? (
@@ -161,7 +172,7 @@ export default function FleetPanel({
       )}
 
       {state.lastSabotageEvent && (
-        <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0 }}>
+        <p className={revealReport(1).className} style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, ...revealReport(1).style }}>
           Week {state.lastSabotageEvent.week}: {state.lastSabotageEvent.houseName} got to{' '}
           {state.lastSabotageEvent.vesselName}'s cargo at{' '}
           {findCity(state.lastSabotageEvent.cityId)?.name ?? state.lastSabotageEvent.cityId} — lost{' '}
@@ -170,7 +181,7 @@ export default function FleetPanel({
       )}
 
       {state.lastExpeditionEvent && (
-        <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0 }}>
+        <p className={revealReport(2).className} style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, ...revealReport(2).style }}>
           Week {state.lastExpeditionEvent.week}: {state.lastExpeditionEvent.vesselName}'s crew turn{' '}
           {state.lastExpeditionEvent.healthStatus} — {state.lastExpeditionEvent.cashCost}f spent on physicians and delay.
         </p>

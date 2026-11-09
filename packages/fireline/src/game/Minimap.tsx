@@ -8,6 +8,17 @@ import { paintMiniTerrain } from './terrain';
 
 const SCALE = 3;
 
+/** A combat alert: somewhere side 0 is being hit. `at` is performance.now() when it was raised. */
+export interface Alert {
+  x: number;
+  y: number;
+  at: number;
+  kind: 'base' | 'hauler';
+}
+
+/** How long a ping keeps expanding on the radar, in milliseconds. */
+export const ALERT_MS = 3200;
+
 /**
  * The radar. Online only while you own a powered Comms Uplink: until then it shows static, which
  * is the genre's oldest reason to build one. Click or drag on it to move the view.
@@ -18,14 +29,59 @@ export default function Minimap({
   online,
   cam,
   onJump,
+  alerts,
 }: {
   state: GameState;
   vis: Uint8Array;
   online: boolean;
   cam: Camera;
   onJump: (x: number, y: number) => void;
+  /** Live list, appended to by the battle screen; read every frame for the pings. */
+  alerts?: Alert[];
 }) {
   const ref = useRef<HTMLCanvasElement>(null);
+  const pingRef = useRef<HTMLCanvasElement>(null);
+  const alertsRef = useRef(alerts);
+  alertsRef.current = alerts;
+
+  // Alert pings: a second canvas on top, animated on its own frame loop so the rings expand
+  // smoothly while the radar beneath redraws only when the battle ticks. Pings show even while
+  // the radar is offline: the alarm has already told you, and this says where.
+  useEffect(() => {
+    let raf = 0;
+    let drawn = false;
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      const c = pingRef.current;
+      const list = alertsRef.current;
+      if (!c || !list) return;
+      const live = list.filter(a => now - a.at < ALERT_MS);
+      if (!live.length && !drawn) return;
+      const ctx = c.getContext('2d')!;
+      ctx.clearRect(0, 0, c.width, c.height);
+      drawn = live.length > 0;
+      for (const a of live) {
+        const t = (now - a.at) / ALERT_MS;
+        const x = a.x * SCALE;
+        const y = a.y * SCALE;
+        const colour = a.kind === 'base' ? '255, 92, 72' : '255, 196, 64';
+        for (let ring = 0; ring < 2; ring++) {
+          const k = (t * 2.5 + ring * 0.5) % 1;
+          ctx.strokeStyle = `rgba(${colour}, ${(1 - k) * (1 - t * 0.6)})`;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(x, y, 3 + k * 26, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.fillStyle = `rgba(${colour}, ${1 - t * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, []);
   const terrain = useMemo(() => paintMiniTerrain(state.tiles), [state.tiles]);
   const dragging = useRef(false);
 
@@ -106,6 +162,14 @@ export default function Minimap({
         onPointerMove={e => dragging.current && jump(e)}
         onPointerUp={() => (dragging.current = false)}
         onPointerCancel={() => (dragging.current = false)}
+      />
+      <canvas
+        ref={pingRef}
+        width={MAP_W * SCALE}
+        height={MAP_H * SCALE}
+        aria-hidden="true"
+        data-testid="minimap-pings"
+        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 1 }}
       />
       {!online && (
         <div

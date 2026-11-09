@@ -31,7 +31,15 @@ export type SoundKind =
   | 'select'
   | 'alarm'
   | 'victory'
-  | 'defeat';
+  | 'defeat'
+  // Campaign: hero abilities and support powers.
+  | 'infiltrate'
+  | 'charge'
+  | 'capture'
+  | 'levelup'
+  | 'recon'
+  | 'barrage'
+  | 'reinforce';
 
 const PREF_KEY = 'fireline_sound';
 
@@ -54,6 +62,13 @@ const GAP: Record<SoundKind, number> = {
   alarm: 4000,
   victory: 5000,
   defeat: 5000,
+  infiltrate: 400,
+  charge: 300,
+  capture: 400,
+  levelup: 600,
+  recon: 500,
+  barrage: 800,
+  reinforce: 1000,
 };
 
 const MAX_VOICES = 24;
@@ -287,6 +302,49 @@ export class SoundEngine {
         notes.forEach((f, i) => this.tone(out, t + i * 0.24, { type: 'sawtooth', freq: f, peak: 0.1, decay: i === 3 ? 1.1 : 0.26 }));
         return 2.0;
       }
+      case 'infiltrate':
+        // A soft two-note chime over a hiss of radio static: data slipping out.
+        this.tone(out, t, { type: 'sine', freq: 1046.5, peak: 0.14, decay: 0.5, attack: 0.02 });
+        this.tone(out, t + 0.12, { type: 'sine', freq: 1568, peak: 0.1, decay: 0.6, attack: 0.02 });
+        this.noiseHit(out, t, { type: 'bandpass', freq: 3200, q: 0.7, peak: 0.07, decay: 0.55, attack: 0.08 });
+        this.noiseHit(out, t + 0.3, { type: 'highpass', freq: 5000, peak: 0.05, decay: 0.25 });
+        return 0.8;
+      case 'charge':
+        // A charge armed: three quick beeps, rising.
+        for (let i = 0; i < 3; i++) this.tone(out, t + i * 0.14, { type: 'square', freq: 1400 + i * 220, peak: 0.08, decay: 0.06 });
+        return 0.5;
+      case 'capture':
+        // A structure taken: a clunk and a confident major third.
+        this.tone(out, t, { type: 'sine', freq: 140, to: 70, peak: 0.4, decay: 0.12 });
+        this.tone(out, t + 0.08, { type: 'triangle', freq: 523.25, peak: 0.18, decay: 0.25 });
+        this.tone(out, t + 0.2, { type: 'triangle', freq: 659.25, peak: 0.18, decay: 0.25 });
+        this.tone(out, t + 0.32, { type: 'triangle', freq: 783.99, peak: 0.2, decay: 0.5 });
+        return 0.9;
+      case 'levelup': {
+        // A rising arpeggio, ending on a held octave with a shimmer above it.
+        const notes = [523.25, 659.25, 783.99, 1046.5, 1318.5];
+        notes.forEach((f, i) => this.tone(out, t + i * 0.07, { type: 'triangle', freq: f, peak: 0.14, decay: i === 4 ? 0.7 : 0.14 }));
+        this.tone(out, t + 0.28, { type: 'sine', freq: 2093, peak: 0.05, decay: 0.6 });
+        return 1.1;
+      }
+      case 'recon':
+        // A radar ping: a pure tone with a long, falling tail, echoed once.
+        this.tone(out, t, { type: 'sine', freq: 1750, to: 1500, peak: 0.2, decay: 0.9, attack: 0.003 });
+        this.tone(out, t + 0.45, { type: 'sine', freq: 1750, to: 1500, peak: 0.06, decay: 0.6, attack: 0.003 });
+        return 1.2;
+      case 'barrage':
+        // Incoming: a falling whistle; the shells' own blasts are the normal booms.
+        this.tone(out, t, { type: 'sine', freq: 2400, to: 520, peak: 0.12, decay: 1.2, attack: 0.15 });
+        this.tone(out, t + 0.25, { type: 'sine', freq: 2100, to: 480, peak: 0.07, decay: 1.0, attack: 0.15 });
+        return 1.5;
+      case 'reinforce':
+        // Radio squelch, a clipped burst of chatter, squelch again.
+        this.noiseHit(out, t, { type: 'bandpass', freq: 1800, q: 1.4, peak: 0.22, decay: 0.08 });
+        this.tone(out, t + 0.1, { type: 'square', freq: 310, to: 360, peak: 0.05, decay: 0.12 });
+        this.tone(out, t + 0.24, { type: 'square', freq: 280, to: 330, peak: 0.05, decay: 0.1 });
+        this.noiseHit(out, t + 0.1, { type: 'bandpass', freq: 1200, q: 2, peak: 0.08, decay: 0.3 });
+        this.noiseHit(out, t + 0.42, { type: 'bandpass', freq: 2200, q: 1.4, peak: 0.2, decay: 0.06 });
+        return 0.6;
     }
   }
 }

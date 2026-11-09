@@ -126,13 +126,16 @@ device. `game/layout.ts` reads the window and decides the arrangement.
   Double-tap a unit for every unit of that kind on screen.
 - **Command bar** (touch screens only), along the foot of the map: Box (the next drag draws a
   selection box), Army (every fighting unit you own), Attack (then tap: attack-move), Stop, Clear,
-  Base. While placing a structure it shrinks to one Stop placing button in the corner: centred, it
-  sat under the ground near the base and a phone's tap adjustment snapped map taps onto it.
-- **Build buttons** carry a × to cancel, since iOS has no long-press context menu.
+  Base. While placing a structure or aiming a hero ability or support power it shrinks to one
+  Stop placing or Cancel button in the corner: centred, it sat under the ground near the base and
+  a phone's tap adjustment snapped map taps onto it. In a campaign battle the hero and power bar
+  and the feed sit above it, and a tap completes an ability or power the way a click does.
+- **Build buttons** carry a × to cancel, since iOS has no long-press context menu. On a touch
+  screen they drop the hotkey letter and the hover stat card, which would stick open after a tap.
 - **Layout.** An upright narrow window stacks the map over the build panel (the panel takes at
   most 44%, and the selection moves to its top). A phone on its side keeps the sidebar, narrowed to
   228px with the minimap beside credits and power. Under 1100px the top bar keeps Lobby, clock,
-  Pause and Menu; speed, sound, theme, the tour and the controls sheet move into the Menu, which
+  Pause and Menu; speed, sound, theme, motion, the tour and the controls sheet move into the Menu, which
   pauses the battle and hides the tour card while open. The shell uses `100dvh`.
 - **Edge scrolling ignores mouse events within a second of a touch.** Browsers follow a tap with a
   synthetic mouse move; without the guard, a tap near the edge of the map started edge-scrolling
@@ -141,6 +144,7 @@ device. `game/layout.ts` reads the window and decides the arrangement.
   screen the card goes full width above or below its target; on a phone on its side, a battlefield
   step puts it over the build panel. `npm run tours -- fireline-touch` plays the whole run by touch
   on an upright iPhone (CI's quick mode), the iPhone on its side, and a Pixel 7.
+
 
 ---
 
@@ -195,6 +199,78 @@ to clear it, instead of ringing a disabled button. The driver now re-reads the c
 click and checks the busy-queue path itself. Not reproducible locally even with the CPU slowed
 four-fold; the screenshot is what found it.
 
+### 2026-11-08 — Improvement round 1 (five parallel builders)
+
+Five agents, one workstream each, each in its own git worktree and owning its own files, worked
+against written contracts at the seams (pose fields, veterancy, group badges, AI measurement,
+waypoints and stances); the plan is `fireline-improvements.md`. Four branches merged without a
+conflict; the computer-opponent workstream hit a usage limit and is being re-run.
+
+- Effects (`game/fx/`): tread marks, wrecks and rubble baked into the terrain canvas and faded
+  back towards a pristine copy; layered explosions with debris and smoke columns; muzzle light;
+  animated water and shore foam drawn into the terrain canvas; cloud shadows and vignette folded
+  into the fog canvas; dashed order lines; veterancy chevrons; control-group badges.
+- Art: much richer vehicles, infantry with a firing pose, structures with working machinery,
+  damage drawn from health (scorch, holes, sparks, fire), per-pixel terrain with raised rock
+  plateaus and banded shores. A sprite cache stamps each unit look per facing at screen
+  resolution, which made the richer art faster than the old art in big battles.
+- Gameplay: veterancy at 3 and 7 kills; waypoint queues (Shift + right-click, up to 12);
+  aggressive, guard and hold-fire stances; survivors from destroyed and sold structures; shells
+  now credit the unit that fired them. Older saves migrate. Harness: 170,387 assertions.
+- Interface: build hotkeys Q to Y and Tab, Shift to queue five, combat alerts pinged on the
+  minimap with Space to jump, an animated credits counter, a low-power banner, refusal toasts,
+  stat cards from `rules.ts`, a hero banner and difficulty cards in the lobby. Repair moved from R
+  to G; P alone pauses.
+- Integration fixes: a selection of more than four units draws one order line per order rather
+  than a web of one per unit; a fuller scrim behind the lobby headline; the controls sheet and the
+  lobby's What is new strip now cover every workstream.
+
+Found and handed on: over 84 computer-against-computer battles side 1 won 59 to side 0's 25, and
+the same split appears on the code before this round, so the round did not cause it. The likely
+cause is the two sides deciding at different points in the AI's cycle (and the income multiplier
+applying only to side 1); it does not affect a human player but it skews harness win rates, and it
+is the AI workstream's to measure.
+
+Frame rate in headless Chromium (software rendering, no GPU): 60 fps on ordinary mid-battle saves
+in each builder's own measurement; 47 to 58 fps in 200-unit set pieces, at or above the old
+build in the same setup. Integrated measurements taken while a builder was running on the same
+machine read lower and are not comparable; a check on a real GPU browser is still owed.
+
+### 2026-11-08 — Round 1's computer opponent; even seats
+
+The opponent workstream re-ran after a usage limit and landed: economy first, repairs, counter-
+picked units, hauler raids, waves that gather, regroup and fall back, retreat below 30% health.
+`npm run ladder:fire` (scripts/ai-ladder.ts, 150 seeds a match, parallel workers) measured the new
+commander beating the old 82% of the time, and, from the same seat, the opponent winning 0% on
+Easy, 78% on Normal and 97% on Hard.
+
+The ladder also proved the seat imbalance first seen in round 1: side 1 won 78% of mirror games
+with either commander. Every structure's front (door, refinery dock) was its south edge, which
+faces away from the enemy for side 0 but towards it for side 1. `frontRow()` in grid.ts now puts
+the front away from the enemy for both; docks, doors, spawns, placement, the AI's lanes and the
+mission layout use it. The 150-game mirror now reads 43% to 56%, within about a margin of error
+of even. Side 0, the player, plays exactly as before. Cosmetic gap still open: side 1's refinery
+chute and factory door are drawn on the south face while its units leave from the north.
+
+### 2026-11-08 — Campaign (see fireline-campaign-design.md)
+
+Contract first, then four builders in parallel (simulation, campaign content and progression,
+art, interface), then integration. Integration found and fixed: missions built the AI's memory
+with five fields after round 1 had added seven more (now one `newAiMemory()` for both); the
+campaign map hit-tested clicks with the wrong signature for the art's node positions, so clicks
+missed the drawn nodes (now the same function and radius); the interface estimated hero health,
+prices and cooldowns itself (now the sim's `maxHpOf`, `costFor` and `abilityCooldown`). Harness
+tests written against the old AI broke under the new one, which rightly defends and refunds;
+ability tests now run with side 1's commander off (`noCommander`). Mission AI modes added:
+passive, defend, raid, and no structure queued by an outpost with no Command Yard; each is tested
+by what the enemy actually does over twelve minutes. A hero ordered to use a structure ability
+out of range now walks there and uses it on arrival.
+
+Numbers at integration: drive 210,000+ assertions (about 80s), campaign-check 1,209 with all
+eight missions built and run 2,000 ticks, the guided tour passes, and a browser run through
+lobby, new campaign, map (clicking a node on the canvas), briefing, deploy, battle HUD, debrief
+and back to the map (mission 1 won, mission 2 open) with no page errors.
+
 ### 2026-11-08 — Playable on phones
 
 Touch gestures, the command bar, the phone layouts and the touch tour driver (§7). Until now the
@@ -203,3 +279,4 @@ touch driver found three faults the desktop driver never could: the tour card co
 (so the Menu could not be used during the tour); the echo of a tap started edge-scrolling and
 dragged the view off the base; and a centred Stop placing button swallowed taps aimed at the
 ground near the base. All three fixed. The desktop layout at 1100px and wider is unchanged.
+Rebuilt onto the campaign merge (#21), so hero abilities and support powers take a tap too.

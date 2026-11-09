@@ -21,6 +21,16 @@ import { ensureSchema } from './schema';
 
 export const NEW_ACCOUNT_GAMES = 'new_account_games';
 
+// Approval of new accounts. When the portal setting `require_approval` is true, a new account is created
+// with status 'pending' and cannot sign in until an admin approves it on the Admin page; approving it
+// copies on the "new accounts" games as they stand at that moment. Off until an admin turns it on.
+export const REQUIRE_APPROVAL = 'require_approval';
+
+export async function requiresApproval(db: { query: Pool['query'] }): Promise<boolean> {
+  const { rows } = await db.query('SELECT value FROM portal_settings WHERE key = $1', [REQUIRE_APPROVAL]);
+  return rows[0]?.value === true;
+}
+
 /** A stored value as the list of games it allows. Unknown keys are dropped; NULL is every game but the opt-in ones. */
 export function resolveAccess(raw: unknown): string[] {
   if (raw === null || raw === undefined) return [...DEFAULT_GAME_KEYS];
