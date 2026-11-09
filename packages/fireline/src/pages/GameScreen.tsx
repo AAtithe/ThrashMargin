@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { isCampaignSave } from '../campaign/save';
 import type { CampaignSave } from '../campaign/types';
-import { HERO_KEYS, HeroBar, heroName, ObjectivesPanel, PowerBar, abilityBlock, type Targeting } from '../components/CampaignHud';
+import { HERO_KEYS, HeroBar, heroName, ObjectivesPanel, PowerBar, SkirmishPowerBar, abilityBlock, type Targeting } from '../components/CampaignHud';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import MotionToggle from '../components/MotionToggle';
 import ThemeToggle from '../components/ThemeToggle';
@@ -185,6 +185,8 @@ export function Battle({
   const targetingRef = useRef<Targeting>(null);
   const ringRef = useRef<HTMLDivElement>(null);
   const zoneRefs = useRef<(HTMLDivElement | null)[]>([]);
+  // Missiles in flight, by projectile id: a ring on each target, moved with the view every frame.
+  const missileRefs = useRef(new Map<number, HTMLDivElement>());
   // Heroes fielded in this mission, kept after they fall so the bar can say so.
   const fielded = useRef(new Set<HeroKind>());
   if (!fielded.current.size) for (const u of initial.units) if (u.owner === 0 && u.hero) fielded.current.add(u.kind as HeroKind);
@@ -671,8 +673,8 @@ export function Battle({
       const k = e.key.toLowerCase();
       const buildIndex = (BUILD_KEYS as readonly string[]).indexOf(k);
       if (buildIndex >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Q W E R T Y: the open list's items in order; Shift queues five units.
-        const kind = menuFor(tabRef.current)[buildIndex];
+        // Q W E R T Y (then U I J K L): the open list's items in order; Shift queues five units.
+        const kind = menuFor(tabRef.current, cur.current)[buildIndex];
         if (kind) pressBuild(cur.current, tabRef.current, kind, placingRef.current, dispatch, choosePlacing, e.shiftKey);
         return;
       }
@@ -867,6 +869,15 @@ export function Battle({
             el.style.transform = `translate(${(z.x * TILE - c.x) * c.zoom - d / 2}px, ${(z.y * TILE - c.y) * c.zoom - d / 2}px)`;
           });
         }
+        if (missileRefs.current.size) {
+          for (const [id, el] of missileRefs.current) {
+            const p = cur.current.projectiles.find(x => x.id === id);
+            if (!p) continue;
+            const d = POWERS.missile.radius * 2 * TILE * c.zoom;
+            el.style.width = el.style.height = `${d}px`;
+            el.style.transform = `translate(${(p.toX * TILE - c.x) * c.zoom - d / 2}px, ${(p.toY * TILE - c.y) * c.zoom - d / 2}px)`;
+          }
+        }
         if (targetingRef.current?.kind === 'power') placeRing(m.x, m.y);
         if (cur.current.tick !== lastTick) {
           const pa = pendingAbility.current;
@@ -917,7 +928,7 @@ export function Battle({
           if (from === 0 && heardLog) from = Math.max(0, log.length - 2);
           for (let i = from; i < log.length; i++) {
             const l = log[i];
-            if (/under attack/i.test(l.text)) sound.play('alarm');
+            if (/under attack|missile launch/i.test(l.text)) sound.play('alarm');
             else if (/ ready/i.test(l.text)) sound.play('ready');
           }
           if (log.length) heardLog = log[log.length - 1];
@@ -972,6 +983,9 @@ export function Battle({
   const mission = s.mission ?? null;
   const ended = s.winner !== null || !!mission?.result;
   const zones = mission ? missionZones(s) : [];
+  const missiles = s.projectiles.filter(p => p.weapon === 'missile');
+  const incoming = ended ? null : missiles.filter(p => p.owner === 1).sort((a, b) => a.hitAt - b.hitAt)[0] ?? null;
+  const skirmishPowers = !mission && !ended && !!s.powers && s.setup?.tech === 'advanced';
   const leave = () => {
     doSave();
     if (campaign) campaign.onLeave();
@@ -1084,6 +1098,21 @@ export function Battle({
               <span>{z.label}</span>
             </div>
           ))}
+          {missiles.map(p => (
+            <div
+              key={p.id}
+              ref={el => {
+                if (el) missileRefs.current.set(p.id, el);
+                else missileRefs.current.delete(p.id);
+              }}
+              className="fl-missile-mark"
+              data-owner={p.owner}
+              data-testid="missile-mark"
+              aria-hidden="true"
+            >
+              <span>{Math.max(0, Math.ceil((p.hitAt - s.tick) / TICKS_PER_SECOND))}</span>
+            </div>
+          ))}
           <div ref={ringRef} className="fl-target-ring" aria-hidden="true" />
           <div className="fl-banners">
             {(placing || attackMode || targeting) && (
@@ -1096,6 +1125,19 @@ export function Battle({
                       ? `${POWERS[targeting.power].name}: click the map to call it in. Right-click or Esc to stop.`
                       : 'Attack-move: click where to go. Units fight anything they meet on the way.'}
               </div>
+            )}
+            {incoming && (
+              <button
+                type="button"
+                className="fl-missile-warn"
+                role="alert"
+                data-testid="missile-warning"
+                onClick={() => centreOn(incoming.toX, incoming.toY)}
+                title="Jump to the target"
+              >
+                <strong>Enemy missile incoming</strong>
+                <span>Impact in {Math.max(0, Math.ceil((incoming.hitAt - s.tick) / TICKS_PER_SECOND))}s. Move everything out of the red ring.</span>
+              </button>
             )}
             {power.low && !ended && (
               <div className="fl-lowpower" role="status" data-testid="low-power">
@@ -1116,7 +1158,7 @@ export function Battle({
               {toast.text}
             </div>
           )}
-          <div style={mission && !ended ? { ...feed, bottom: 78 } : feed} aria-live="polite">
+          <div style={(mission && !ended) || skirmishPowers ? { ...feed, bottom: 78 } : feed} aria-live="polite">
             {recent.map(l => (
               <div key={`${l.tick}-${l.text}`} style={{ color: l.tone === 'bad' ? '#ff9a8c' : l.tone === 'good' ? '#a8f0ae' : '#e4ebe8', opacity: Math.max(0.25, 1 - (s.tick - l.tick) / 300) }}>
                 {l.text}
@@ -1128,6 +1170,11 @@ export function Battle({
             <div className="fl-cbar">
               <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
               <PowerBar s={s} targeting={targeting} onPower={choosePower} />
+            </div>
+          )}
+          {skirmishPowers && (
+            <div className="fl-cbar">
+              <SkirmishPowerBar s={s} targeting={targeting} onPower={choosePower} />
             </div>
           )}
           {paused && !help && !ended && (
@@ -1207,7 +1254,7 @@ function clampCam(c: Camera) {
 }
 
 /** The key table. Campaign keys are listed in a campaign battle and on How to play. */
-export function Controls({ campaign = false }: { campaign?: boolean }) {
+export function Controls({ campaign = false, skirmish = !campaign }: { campaign?: boolean; skirmish?: boolean }) {
   const rows: [string, string][] = [
     ['Left-click / drag', 'Select a unit or structure; drag a box to select a group'],
     ['Double-click', 'Select every unit of that kind on screen'],
@@ -1218,6 +1265,7 @@ export function Controls({ campaign = false }: { campaign?: boolean }) {
     ['S', 'Stop'],
     ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
     ['Q W E R T Y', 'Build or train the first to sixth item in the open list (the letter is on each button)'],
+    ['U I J K L', 'With advanced tech: the seventh to eleventh item in the open list'],
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
     ['Tab', 'Next build list: Structures, Infantry, Vehicles (Shift + Tab goes back)'],
     ['G', 'Toggle repair on the selected structure'],
@@ -1234,10 +1282,13 @@ export function Controls({ campaign = false }: { campaign?: boolean }) {
     ['F', "Campaign: the selected hero's ability (Infiltrate, Demolition charge and Capture then want a click on an enemy structure)"],
     ['Power button, then click', 'Campaign: call a support power (Recon sweep, Artillery barrage, Reinforcements) on that spot'],
   ];
+  const skirmishRows: [string, string][] = [
+    ['Skirmish power, then click', 'Advanced tech: a Comms Uplink grants a Recon sweep, a Tech Centre an Artillery barrage, a Strike Command a Missile strike'],
+  ];
   return (
     <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem' }}>
       <tbody>
-        {(campaign ? [...rows, ...campaignRows] : rows).map(([k, v]) => (
+        {[...rows, ...(campaign ? campaignRows : []), ...(skirmish ? skirmishRows : [])].map(([k, v]) => (
           <tr key={k}>
             <td style={{ padding: '3px 12px 3px 0', whiteSpace: 'nowrap', fontWeight: 600, verticalAlign: 'top' }}>{k}</td>
             <td style={{ padding: '3px 0', color: UI.textSoft }}>{v}</td>

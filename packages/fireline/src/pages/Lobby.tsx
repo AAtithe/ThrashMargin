@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
+import SkirmishSetupPanel, { freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
 import { campaignSaves, isCampaignMeta } from './campaignSaves';
@@ -12,7 +13,10 @@ import {
   BUILDINGS,
   DEFAULT_DIFFICULTY,
   DIFFICULTIES,
+  MAP_TYPE_NAMES,
   TICKS_PER_SECOND,
+  type MapType,
+  type SkirmishSetup,
   type BuildingKind,
   type Difficulty,
   type Owner,
@@ -35,6 +39,15 @@ export default function Lobby() {
   const [campError, setCampError] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [seed, setSeed] = useState('');
+  // A blank seed field still has a seed: this one, shown as the placeholder, so the previews draw
+  // the very map the battle will use. "New map" draws another.
+  const [autoSeed, setAutoSeed] = useState(freshSeed);
+  const [setup, setSetupState] = useState<SkirmishSetup>(readStoredSetup);
+  const setSetup = (v: SkirmishSetup) => {
+    setSetupState(v);
+    storeSetup(v);
+  };
+  const seedText = seed.trim() || autoSeed;
   const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -43,7 +56,7 @@ export default function Lobby() {
     if (busy) return;
     setBusy(true);
     try {
-      const id = await create(name.trim() || 'Operation Fireline', { seed: seed.trim() || undefined, difficulty: level });
+      const id = await create(name.trim() || 'Operation Fireline', { seed: seedText, difficulty: level, setup });
       if (id) navigate(`/game/${id}`);
     } finally {
       setBusy(false);
@@ -221,13 +234,32 @@ export default function Lobby() {
             </p>
           </div>
           <div style={field}>
-            <Label>Map seed (optional)</Label>
-            <input style={{ ...input, width: 200 }} value={seed} placeholder="leave blank for a fresh map" maxLength={64} onChange={e => setSeed(e.target.value)} />
+            <Label>Map seed</Label>
+            <div className="fl-seed">
+              <input
+                style={{ ...input, width: 200 }}
+                value={seed}
+                placeholder={autoSeed}
+                aria-label="Map seed"
+                data-testid="seed"
+                maxLength={64}
+                onChange={e => setSeed(e.target.value)}
+              />
+              <Button
+                tone="quiet"
+                onClick={() => {
+                  setSeed('');
+                  setAutoSeed(freshSeed());
+                }}
+              >
+                New map
+              </Button>
+            </div>
             <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }}>
-              The same seed always draws the same battlefield. Every map is mirrored, so both sides start with the same
-              ground and the same ore.
+              Leave it as it is for a fresh map, or type any word: the same seed and settings always draw the same battlefield.
             </p>
           </div>
+          <SkirmishSetupPanel value={setup} onChange={setSetup} seedText={seedText} />
           <div>
             <Button tone="primary" disabled={busy} onClick={begin}>
               {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
@@ -300,7 +332,8 @@ function SaveRow({
           ) : (
             'In progress'
           )}
-          {!campaign && ` · ${s.turn} min`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+          {!campaign && ` · ${s.turn} min`}
+          {!campaign && mapTypeOf(s) && ` · ${MAP_TYPE_NAMES[mapTypeOf(s)!]}`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
         </span>
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -327,6 +360,12 @@ function SaveRow({
     </div>
   );
 }
+
+/** The battle's map type, when the saves list carries it (older rows and servers do not). */
+const mapTypeOf = (s: SaveMeta): MapType | null => {
+  const t = (s as SaveMeta & { mapType?: unknown }).mapType;
+  return typeof t === 'string' && t in MAP_TYPE_NAMES ? (t as MapType) : null;
+};
 
 const page: CSSProperties = { minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, color: UI.text, fontFamily: FONT.body };
 const content: CSSProperties = { flex: 1, width: '100%', maxWidth: 820, margin: '0 auto', padding: '2rem 1rem 3rem' };
@@ -476,6 +515,11 @@ function HeroScene() {
       lastNow = now;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const cw = box.clientWidth;
+      if (cw <= 0) {
+        // Not laid out yet: a zero-width canvas cannot be drawn. Try again next frame.
+        if (!still) raf = requestAnimationFrame(draw);
+        return;
+      }
       if (cw !== w || !ground) {
         w = cw;
         canvas.width = Math.round(w * dpr);
@@ -592,11 +636,13 @@ const minutes = (ticks: number) => {
 
 /** What changed lately, in a line each. */
 const WHATS_NEW: { title: string; text: string }[] = [
+  { title: 'Six battlefields', text: 'River, Highlands, Lakes, Plains, Canyon or Classic, or let the seed choose. See each map before you deploy.' },
+  { title: 'Advanced tech', text: 'Grenadiers, Medics, Flame Tanks, Missile Carriers, the Bastion, walls, a Repair Bay, and powers: recon, barrage, missile.' },
   { title: 'The campaign', text: 'Eight missions, a Commander who ranks up and learns perks, four heroes who level up, and support powers.' },
   { title: 'A battlefield that remembers', text: 'Tread marks, burnt-out wrecks and rubble where structures fell. Bigger explosions, living water, drifting cloud.' },
   { title: 'Richer art', text: 'Detailed tanks and structures with working machinery, and damage you can see: scorch, holes, sparks and fire.' },
   { title: 'Veterans and stances', text: 'Units promote at 3 and 7 kills. Set each group to aggressive, guard or hold fire.' },
   { title: 'Waypoints', text: 'Shift + right-click queues orders. Crews run out of fallen structures.' },
-  { title: 'Faster commands', text: 'Q W E R T Y build from the open list, Tab switches lists, Shift queues five. Hover anything for its numbers.' },
+  { title: 'Faster commands', text: 'The letter on each build button builds it, Tab switches lists, Shift queues five. Hover anything for its numbers.' },
   { title: 'Combat alerts', text: 'Attacks on your base or haulers ping the radar; Space jumps there. Low power and short funds are flagged.' },
 ];

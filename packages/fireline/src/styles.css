@@ -45,6 +45,9 @@
   --ui-zone-done: rgba(125, 255, 138, 0.9);
   --ui-target: rgba(255, 106, 82, 0.95);
   --ui-target-fill: rgba(255, 106, 82, 0.12);
+  --ui-missile-bg: rgba(150, 30, 22, 0.94);
+  --ui-missile-fill: rgba(220, 40, 30, 0.16);
+  --ui-preview-frame: #c9d0cb;
 }
 :root[data-theme="dark"] {
   --ui-ground: #0e1214;
@@ -85,6 +88,9 @@
   --ui-zone-done: rgba(125, 255, 138, 0.9);
   --ui-target: rgba(255, 106, 82, 0.95);
   --ui-target-fill: rgba(255, 106, 82, 0.12);
+  --ui-missile-bg: rgba(120, 20, 14, 0.94);
+  --ui-missile-fill: rgba(240, 60, 46, 0.18);
+  --ui-preview-frame: #3a4542;
 }
 
 * {
@@ -161,6 +167,55 @@ kbd {
 }
 
 /* ---- Build menu extras ------------------------------------------------------------------- */
+
+.fl-build-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 5px;
+}
+.fl-build img {
+  width: 100%;
+  height: auto;
+  border-radius: 2px;
+  display: block;
+}
+.fl-build-name {
+  font-weight: 600;
+  line-height: 1.1;
+  text-align: center;
+}
+.fl-build-cost {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+/* Advanced tech: up to eleven items on a tab, three to a row with shorter pictures. */
+.fl-build-grid[data-compact="1"] {
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.fl-build-grid[data-compact="1"] .fl-build {
+  padding: 3px 2px 4px;
+  font-size: 0.62rem;
+  gap: 1px;
+}
+.fl-build-grid[data-compact="1"] .fl-build img {
+  height: 38px;
+  object-fit: cover;
+}
+.fl-build-grid[data-compact="1"] .fl-key {
+  /* The letter sits on the picture's lower right, so the name below keeps its own line. */
+  position: absolute;
+  top: 27px;
+  right: 5px;
+  background: var(--ui-panel-raised);
+}
+.fl-build-grid[data-compact="1"] .fl-build-name {
+  min-height: 2.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2px;
+}
 
 .fl-key {
   display: inline-block;
@@ -467,6 +522,116 @@ kbd {
   font-size: 0.72rem;
   color: var(--ui-text-faint);
   line-height: 1.4;
+}
+
+.fl-level[aria-checked="true"] {
+  border-color: var(--ui-accent);
+  background: var(--ui-tint-accent);
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
+}
+
+/* ---- Skirmish setup ------------------------------------------------------------------------ */
+
+.fl-setup-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+  min-width: 0;
+}
+.fl-setup-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0 16px;
+}
+.fl-setup-note {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.45;
+  color: var(--ui-text-faint);
+}
+.fl-maps {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+.fl-map {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  text-align: left;
+  font: inherit;
+  color: var(--ui-text);
+  background: var(--ui-panel-raised);
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 0;
+}
+.fl-map:hover {
+  border-color: var(--ui-rule-strong);
+}
+.fl-map[aria-checked="true"] {
+  border-color: var(--ui-accent);
+  background: var(--ui-tint-accent);
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
+}
+.fl-map-thumb {
+  width: 100%;
+  aspect-ratio: 1;
+  display: block;
+  image-rendering: pixelated;
+  border-radius: 3px;
+  border: 1px solid var(--ui-preview-frame);
+}
+.fl-map-name {
+  font-weight: 700;
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+}
+.fl-map-blurb {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--ui-text-faint);
+}
+.fl-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.fl-seg button {
+  flex: 1 1 0;
+  min-width: 64px;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text);
+  background: var(--ui-panel-raised);
+  border: 1px solid var(--ui-rule);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.fl-seg button:hover {
+  border-color: var(--ui-rule-strong);
+}
+.fl-seg button[aria-checked="true"] {
+  border-color: var(--ui-accent);
+  background: var(--ui-tint-accent);
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
+  font-weight: 700;
+}
+.fl-seed {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+@media (max-width: 480px) {
+  .fl-maps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .fl-badge {
@@ -1327,6 +1492,71 @@ kbd {
 }
 .fl-power {
   width: 84px;
+}
+.fl-power[data-held="0"] {
+  color: var(--ui-text-faint);
+  border-style: dashed;
+}
+.fl-power[data-held="0"] small {
+  color: var(--ui-text-faint);
+}
+
+/* An enemy missile in flight: a banner that counts down, and a ring on the target. */
+.fl-missile-warn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--ui-on-art);
+  background: var(--ui-missile-bg);
+  border: 1px solid var(--ui-bad);
+  border-radius: 4px;
+  box-shadow: 0 2px 12px var(--ui-shadow);
+  cursor: pointer;
+  pointer-events: auto;
+  animation: fl-missile-blink 0.5s ease-in-out infinite alternate;
+}
+.fl-missile-warn strong {
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.fl-missile-warn span {
+  font-variant-numeric: tabular-nums;
+}
+@keyframes fl-missile-blink {
+  from { border-color: var(--ui-bad); }
+  to { border-color: var(--ui-on-art); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-missile-warn { animation: none; }
+}
+:root[data-motion="off"] .fl-missile-warn { animation: none; }
+.fl-missile-mark {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 3px solid var(--ui-bad);
+  border-radius: 50%;
+  background: var(--ui-missile-fill);
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+}
+.fl-missile-mark[data-owner="0"] {
+  border-color: var(--ui-target);
+  border-style: dashed;
+  background: var(--ui-target-fill);
+}
+.fl-missile-mark span {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-on-art);
+  text-shadow: 0 1px 2px #000;
+  font-variant-numeric: tabular-nums;
 }
 
 .fl-zone {
