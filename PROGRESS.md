@@ -1324,3 +1324,53 @@ Where each one is reachable, which is the part worth recording:
 that the theme work touched: Thrash Margin 8/8, Tea Race 14/14, Steady Eddie 14/14, Niccolò Rising
 7/7, Banco di Niccolò 11/11. No console or page errors in any run. The colour audit found no hex
 literals and no hex alpha appended to a token in any of the five.
+
+### 2026-11-08 — The Tea Race outro card measured off screen: a flaky CI tour traced to a stale first frame
+
+The "Tutorials played in a browser" job failed and passed on the same commit (82a8ca79, runs
+42483462955 and 42483548185) with `alpha/board/desktop/h1: step 13 "That is the loop": card off
+screen`. Not a scroll this time; two stale values and a transition, together.
+
+- On the first render of a new step, `useTargetRect` still returned the *previous* step's rect (it
+  cleared it in a passive effect, after the render), and the card height was the previous card's.
+  So the outro, which has no target, was placed for a frame under "Take up a share" with the share
+  card's height, before it was re-placed in the middle.
+- The card carries a 0.2s `top` transition, so it then *slid* from that spot to the middle, with the
+  outro's taller copy (245px against 204px) hanging below it throughout.
+- Whether that overflowed depended on where the fonts put the share button. On CI's Linux fallback
+  fonts the button sits about 30px higher than on a dev box, low enough for the share card to go
+  *below* it, and the outro's first frame ran past the bottom of a 900px window. The driver checks
+  a manual step's card straight away, so it failed whenever its probe landed inside the slide.
+  Reproduced locally by setting the window to 930px tall: before the fix every frame was recorded and
+  the outro was painted at top 691, bottom 936.
+
+Fix, in `GuidedTour.tsx`. A parallel session reached the same diagnosis from CI's own numbers and
+landed it on main first (`9a2c74c`, `25040cd`): the rect is keyed to the step and target it was
+measured for, the card height is a layout effect, and a new card is placed directly, gliding only
+once it has been on screen for two frames at its step. This branch independently wrote the same
+three changes; on merging, main's version was kept, since it also covers the card coming back after
+a replay. The one addition kept from this branch: the target is also first measured in a layout
+effect, so a new step's first painted frame is never the card in the middle of the screen before it
+jumps to its target.
+
+**Verification.** 20 runs at 1400x900 under 4x CPU throttling, 20 at the failing 930px height, and
+one at each of 880 to 960px with every animation frame recorded: no frame of any card off screen.
+`npm run tours -- tea-race --quick` passes; `npm run check` passes.
+
+### 2026-11-08 — The Tea Race full tour matrix: three phone failures, one of them a real game bug
+
+The full matrix (not the quick one CI runs) failed three phone scenarios. This branch found and fixed
+them in parallel with #18, which landed on main first with the same diagnosis and a broader fix, so
+on merging main's code was kept and this branch's version dropped:
+
+- `golf/board/phone/h1/lose`, a real game bug: on a phone the roll opened Fleet & orders and closed
+  the Exchange under a tour pointing into it. This branch stopped the roll opening Fleet & orders
+  while the tour pointed into the Exchange; #18 instead reopens the target's panel at each game
+  moment (turn, phase, seat), which also covers Steady Eddie and does not fight a player who opens
+  the other panel on purpose. Main's is the better rule.
+- `limas`/`mikes` `/phone/h1/ship`, a driver artefact: the shipyard was in the closed panel. Both
+  fixes open the panel with its launcher first, as a player must.
+
+Two sessions on one defect, twice in a day (see the entry above). The duplicated work was caught at
+merge and cost nothing in code, but it is the reason to claim a CI failure where others can see it
+before starting on it.
