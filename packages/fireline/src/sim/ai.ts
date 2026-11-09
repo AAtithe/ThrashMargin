@@ -1,22 +1,27 @@
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
-import { buildingCentre, dist, distToBuilding, occupancy, passable, laneRow } from './grid';
+import { buildingCentre, dist, distToBuilding, doorTile, dockTile, nearestPassable, occupancy, passable, laneRow } from './grid';
 import { idx, inBounds } from './map';
+import { doPower, powerProblem } from './mission';
 import { next } from './rng';
 import {
+  BARRAGE_DAMAGE,
   BUILDINGS,
   DAMAGE_VS,
   DIFFICULTIES,
   MAP_H,
   MAP_W,
+  MISSILE_DAMAGE,
+  POWERS,
   SELL_RETURN,
   UNITS,
   type BuildingKind,
   type Difficulty,
   type DifficultySpec,
   type Owner,
+  type SupportPower,
   type UnitKind,
 } from './rules';
-import { countBuildings, powerOf, readyStructure, unlocked } from './state';
+import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlocked } from './state';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 
 /**
@@ -39,6 +44,18 @@ import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
  *     the opponent's haulers (Normal and Hard), and attack waves gather at a staging point, go
  *     in together, regroup when strung out, pick off haulers, artillery and turrets first, and
  *     fall back when broken.
+ *
+ * In a skirmish on advanced tech (techAllowed: never in a mission, never on standard tech, where
+ * all of this is skipped and the commander plays exactly as before) it also:
+ *  - builds through the Tech Centre, a Repair Bay, Rocket Turrets, a short sandbag screen in front
+ *    of its forward turrets (Normal and Hard, and only where it leaves every route open), and on
+ *    Hard a Strike Command;
+ *  - trains grenadiers, medics, flame tanks, missile carriers and Bastions, weighted against what
+ *    the opponent fields;
+ *  - sends hurt vehicles to its Repair Bay, keeps medics with the wave's infantry, and pulls its
+ *    units out from under an incoming missile;
+ *  - calls its support powers: a recon sweep as a wave sets off, the barrage on the densest knot of
+ *    defences or troops it can find, the missile on the opponent's most valuable ground.
  */
 
 /** How each difficulty fights, beyond the numbers in rules.ts that the lobby describes. */
@@ -63,6 +80,23 @@ interface Tactics {
   counter: boolean;
   /** Share of a wave that must reach the staging point before it sets off. */
   gatherShare: number;
+  // ---- Advanced tech only ----
+  /** Rocket Turrets wanted. */
+  rocketTurrets: number;
+  /** Sandbag walls in the screen in front of the forward turrets. */
+  walls: number;
+  /** Builds a Strike Command. */
+  strike: boolean;
+  /** Refineries wanted once the Tech Centre stands (more income for the heavy units). */
+  lateRefineries: number;
+  /** Aims its barrage and missile at the best target in sight; otherwise at the nearest structure. */
+  aimPowers: boolean;
+  /** Smallest value (credits' worth of the opponent's things) the barrage is spent on. */
+  barrageWorth: number;
+  /** Moves its units out from under an enemy missile. */
+  dodge: boolean;
+  /** Vehicles under this share of health go to the Repair Bay (0 for never). */
+  bayBelow: number;
 }
 
 const TACTICS: Record<Difficulty, Tactics> = {
@@ -78,6 +112,14 @@ const TACTICS: Record<Difficulty, Tactics> = {
     regroup: false,
     counter: false,
     gatherShare: 0.6,
+    rocketTurrets: 0,
+    walls: 0,
+    strike: false,
+    lateRefineries: 1,
+    aimPowers: false,
+    barrageWorth: 0,
+    dodge: false,
+    bayBelow: 0,
   },
   normal: {
     extraHaulers: 1,
@@ -91,6 +133,14 @@ const TACTICS: Record<Difficulty, Tactics> = {
     regroup: true,
     counter: true,
     gatherShare: 0.75,
+    rocketTurrets: 1,
+    walls: 3,
+    strike: false,
+    lateRefineries: 3,
+    aimPowers: true,
+    barrageWorth: 1500,
+    dodge: true,
+    bayBelow: 0.4,
   },
   hard: {
     extraHaulers: 2,
@@ -104,6 +154,14 @@ const TACTICS: Record<Difficulty, Tactics> = {
     regroup: true,
     counter: true,
     gatherShare: 0.8,
+    rocketTurrets: 2,
+    walls: 5,
+    strike: true,
+    lateRefineries: 3,
+    aimPowers: true,
+    barrageWorth: 1200,
+    dodge: true,
+    bayBelow: 0.5,
   },
 };
 
@@ -174,11 +232,15 @@ function commander(s: GameState, owner: Owner): void {
   }
   // Raid: the first wave comes at the raid timing, not the skirmish one the memory started with.
   if (mode === 'raid' && mem.wave === 0) mem.nextAttack = Math.min(mem.nextAttack, d.firstAttack);
+  // The advanced tech: a skirmish set up with it. Never a mission, never standard tech, where none
+  // of the advanced play below runs and the commander plays exactly as it always has.
+  const adv = !s.mission && techAllowed(s, owner, 'techcentre');
   const mine = s.buildings.filter(b => b.owner === owner);
   if (!mine.length) return;
-  const anchor = mine.find(b => b.kind === 'hq') ?? mine[0];
+  // Walls are not structures: never the anchor, never a wave's target.
+  const anchor = mine.find(b => b.kind === 'hq') ?? mine.find(isStructure) ?? mine[0];
   const home = buildingCentre(anchor);
-  const enemy = s.buildings.filter(b => b.owner !== owner);
+  const enemy = s.buildings.filter(b => b.owner !== owner && isStructure(b));
   const enemyHome = enemy.length ? buildingCentre(enemy.find(b => b.kind === 'hq') ?? enemy[0]) : { x: MAP_W / 2, y: MAP_H / 2 };
   const units = s.units.filter(u => u.owner === owner);
   const foes = s.units.filter(u => u.owner !== owner);
@@ -197,13 +259,32 @@ function commander(s: GameState, owner: Owner): void {
   let saving = false;
   const ready = readyStructure(s, owner);
   if (ready) {
-    const spot = findSpot(s, owner, ready, home, enemyHome);
+    const spot = ready === 'wall' ? wallSpot(s, owner, home, enemyHome) : findSpot(s, owner, ready, home, enemyHome);
     if (spot) doPlace(s, owner, ready, spot.x, spot.y);
     else doCancel(s, owner, 'building', ready);
   } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq')) {
     // Only with a Command Yard: a mission outpost has none, and a structure it queued could never
     // be built, leaving its credits stuck in the queue.
-    const want = nextStructure(s, owner, d, noHauler && !canBuildHauler);
+    let want = nextStructure(s, owner, d, noHauler && !canBuildHauler, adv ? diff : null);
+    // With the advanced tech, the costly extras wait until the army at home is up to the next
+    // wave's size and to the opponent's army: until then the credits go on units, and the extra
+    // is bought out of the surplus.
+    let held = false;
+    if (want && adv && isExtra(s, owner, want, d)) {
+      const armed = units.filter(u => UNITS[u.kind].weapon).length;
+      const foeArmy = s.units.filter(u => u.owner !== owner && UNITS[u.kind].weapon).length;
+      if (armed < Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9)) {
+        want = null;
+        held = true;
+      }
+    }
+    // Once the turrets stand (the plan done, or only an extra left), a sandbag screen in front of
+    // them, a wall at a time, only where one fits without closing a route, and tried every few
+    // seconds rather than every decision.
+    if ((!want || held) && adv && t.walls && !crisis && p.credits > 500 && s.tick % 240 < d.period) {
+      if (countBuildings(s, owner, 'wall') < t.walls && countBuildings(s, owner, 'turret') >= d.turrets && wallSpot(s, owner, home, enemyHome))
+        want = 'wall';
+    }
     if (want) {
       if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);
       else if (unlocked(s, owner, want)) {
@@ -225,22 +306,45 @@ function commander(s: GameState, owner: Owner): void {
   }
 
   // Broke: no hauler, none queued, no refinery on the way and not enough to buy one.
+  // With the advanced tech, also broke when the map's ore is all gone: no income can come, so
+  // waiting only lets the army waste away (and the extras are sold off below for one last push).
+  const dry = adv && !s.ore.some(o => o > 0);
   const broke =
-    !s.units.some(u => u.owner === owner && u.kind === 'hauler') &&
-    !vq.some(q => q.kind === 'hauler') &&
-    !p.queues.building.some(q => q.kind === 'refinery') &&
-    p.credits < UNITS.hauler.cost;
+    (dry && p.credits < 1000) ||
+    (!s.units.some(u => u.owner === owner && u.kind === 'hauler') &&
+      !vq.some(q => q.kind === 'hauler') &&
+      !p.queues.building.some(q => q.kind === 'refinery') &&
+      p.credits < UNITS.hauler.cost);
+  if (dry && p.credits < 300 && !p.queues.building.length && standingProducer(s, owner)) {
+    const extra = (['strikecommand', 'repairbay', 'techcentre', 'uplink', 'wall'] as BuildingKind[])
+      .map(k => s.buildings.find(b => b.owner === owner && b.kind === k))
+      .find(b => !!b);
+    if (extra) doSell(s, owner, extra.id);
+  }
 
   // 2. Repairs, most important structures first, two at a time, while credits allow.
-  const repairOrder: BuildingKind[] = ['hq', 'refinery', 'factory', 'turret', 'power', 'barracks', 'uplink'];
-  const standing = s.buildings.filter(b => b.owner === owner); // raiseFunds may have sold one
+  const repairOrder: BuildingKind[] = [
+    'hq',
+    'refinery',
+    'factory',
+    'turret',
+    'rocketturret',
+    'power',
+    'techcentre',
+    'strikecommand',
+    'barracks',
+    'repairbay',
+    'uplink',
+  ];
+  // raiseFunds may have sold one. Walls are never repaired: a new one costs less.
+  const standing = s.buildings.filter(b => b.owner === owner && isStructure(b));
   let repairing = standing.filter(b => b.repairing).length;
   if ((saving || crisis) && repairing) {
     for (const b of standing) if (b.repairing) doRepair(s, b.id);
     repairing = 0;
   } else {
     const hurt = standing
-      .filter(b => !b.repairing && b.hp < BUILDINGS[b.kind].hp * t.repairBelow)
+      .filter(b => !b.repairing && b.hp < BUILDINGS[b.kind].hp * t.repairBelow && repairOrder.includes(b.kind))
       .sort((a, b) => repairOrder.indexOf(a.kind) - repairOrder.indexOf(b.kind) || a.id - b.id);
     for (const b of hurt) {
       if (repairing >= 2 || p.credits < t.repairReserve) break;
@@ -253,9 +357,12 @@ function commander(s: GameState, owner: Owner): void {
   const foeArmed = foes.filter(u => UNITS[u.kind].weapon);
   const foeInfantry = foeArmed.filter(u => UNITS[u.kind].armor === 'infantry').length;
   const foeArmour = foeArmed.length - foeInfantry;
-  const foeTurrets = enemy.filter(b => b.kind === 'turret').length;
+  const foeTurrets = enemy.filter(b => b.kind === 'turret' || b.kind === 'rocketturret').length;
   const raidBuggies = units.filter(u => u.kind === 'buggy').length;
-  if (!saving) {
+  if (!saving && adv) {
+    const nextRaid = mem.raidIds.length > 0 ? Infinity : Math.max(mem.nextRaid, t.firstRaid);
+    advancedUnits(s, owner, t, units, foeInfantry, foeArmour, foeTurrets, raidBuggies, nextRaid);
+  } else if (!saving) {
     if (iq.length < 2) {
       let riflemen = 0.6;
       if (t.counter && foeArmed.length >= 4) riflemen = foeInfantry > foeArmour * 1.5 ? 0.8 : foeArmour > foeInfantry * 1.5 ? 0.35 : 0.6;
@@ -295,20 +402,46 @@ function commander(s: GameState, owner: Owner): void {
   const inWave = new Set(waveIds);
   const inRaid = new Set(raidIds);
   const retreatTo = openGround(s, owner, toward(home, enemyHome, 4));
-  const retreating = (u: Unit) => u.order.type === 'move' && dist(u.order.x, u.order.y, retreatTo.x, retreatTo.y) < 3;
+  // Advanced tech: hurt vehicles go to the Repair Bay instead, to the free tiles round it.
+  const bay = adv && t.bayBelow > 0 ? nearestOwn(standing, 'repairbay', home.x, home.y) : null;
+  const bayTiles = bay ? bayStands(s, bay) : [];
+  const bayC = bay ? buildingCentre(bay) : null;
+  const atBay = (x: number, y: number) => !!bay && distToBuilding(x, y, bay) < 2.5;
+  const retreating = (u: Unit) =>
+    u.order.type === 'move' && (dist(u.order.x, u.order.y, retreatTo.x, retreatTo.y) < 3 || (!!bayC && atBay(u.order.x, u.order.y)));
+  const toBay = (u: Unit) => !!bayTiles.length && UNITS[u.kind].category === 'vehicle';
+  const maxHp = (u: Unit) => u.maxHp ?? UNITS[u.kind].hp;
 
   // Badly hurt units outside a wave come home rather than die for nothing.
   if (t.retreatBelow > 0) {
     const back: number[] = [];
+    const mend: Unit[] = [];
     for (const u of army) {
+      if (toBay(u)) {
+        // A vehicle outside a wave, or one in a wave that is out of the fight and nearly done for.
+        const share = inWave.has(u.id) ? t.bayBelow * 0.5 : t.bayBelow;
+        if (u.hp >= maxHp(u) * share || (inWave.has(u.id) && u.engage) || atBay(u.x, u.y) || retreating(u)) continue;
+        mend.push(u);
+        if (inRaid.has(u.id)) inRaid.delete(u.id);
+        if (inWave.has(u.id)) inWave.delete(u.id);
+        continue;
+      }
       if (inWave.has(u.id) || u.hp >= UNITS[u.kind].hp * t.retreatBelow) continue;
       if (dist(u.x, u.y, home.x, home.y) < 9 || retreating(u)) continue;
       back.push(u.id);
       if (inRaid.has(u.id)) inRaid.delete(u.id);
     }
     if (back.length) doMove(s, owner, back, retreatTo.x, retreatTo.y, false);
+    mend.forEach((u, i) => {
+      const k = bayTiles[(u.id + i) % bayTiles.length];
+      doMove(s, owner, [u.id], (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5, false);
+    });
     raidIds = raidIds.filter(id => inRaid.has(id));
+    if (mend.length) waveIds = waveIds.filter(id => inWave.has(id));
   }
+
+  // Advanced tech: get out from under an enemy missile while it is in the air.
+  if (adv && t.dodge) dodgeMissiles(s, owner, units);
 
   const reserve = army.filter(u => !inWave.has(u.id) && !inRaid.has(u.id) && !retreating(u));
   const free = (u: Unit) => u.order.type === 'idle' || (u.order.type === 'move' && dist(u.order.x, u.order.y, stage.x, stage.y) < 4);
@@ -447,6 +580,8 @@ function commander(s: GameState, owner: Owner): void {
       mem.waveSize = members.length;
       const target = pickTarget(enemy, foes, stage, t.focus, home);
       doMove(s, owner, waveIds, target.x, target.y, true);
+      // A recon sweep over where the wave is going, as it sets off.
+      if (adv && powerProblem(s, owner, 'recon', target.x, target.y) === null) doPower(s, owner, 'recon', target.x, target.y);
     } else if (!threat) {
       const lost = members.filter(u => u.order.type === 'idle' && dist(u.x, u.y, stage.x, stage.y) >= 6).map(u => u.id);
       if (lost.length) doMove(s, owner, lost, stage.x, stage.y, true);
@@ -498,6 +633,16 @@ function commander(s: GameState, owner: Owner): void {
     }
   }
 
+  if (adv) {
+    // Medics keep with the wave's infantry while it is out, and wait at the staging point otherwise.
+    const waveInf = mem.wavePhase === 2 ? waveIds.map(id => alive.get(id)!).filter(u => UNITS[u.kind].category === 'infantry') : [];
+    const meet = waveInf.length >= 2 ? middle(waveInf) : stage;
+    const near = waveInf.length >= 2 ? 3 : 6;
+    const follow = units.filter(u => UNITS[u.kind].medic && u.order.type === 'idle' && dist(u.x, u.y, meet.x, meet.y) > near).map(u => u.id);
+    if (follow.length) doMove(s, owner, follow, meet.x, meet.y, false);
+    useStrikes(s, owner, t, home, enemy, foes, mem.wavePhase === 2 ? waveIds.map(id => alive.get(id)!) : []);
+  }
+
   mem.waveIds = waveIds;
   mem.raidIds = raidIds;
 }
@@ -533,10 +678,14 @@ function raiseFunds(s: GameState, owner: Owner, need: number): void {
   // Selling only helps if there is no income coming: with a hauler working, wait for it.
   if (s.units.some(u => u.owner === owner && u.kind === 'hauler') && countBuildings(s, owner, 'refinery') > 0) return;
   // And only if selling everything spare would actually reach the sum: otherwise keep it all.
-  const spare = s.buildings.filter(v => v.owner === owner && (v.kind === 'uplink' || v.kind === 'turret' || v.kind === 'barracks'));
+  // With the advanced tech, the expensive extras go first: the economy comes before all of them.
+  const order: BuildingKind[] = !s.mission && techAllowed(s, owner, 'techcentre')
+    ? ['strikecommand', 'repairbay', 'uplink', 'rocketturret', 'turret', 'techcentre', 'barracks']
+    : ['uplink', 'turret', 'barracks'];
+  const spare = s.buildings.filter(v => v.owner === owner && order.includes(v.kind));
   const refund = (b: Building) => Math.floor((BUILDINGS[b.kind].cost * SELL_RETURN * (b.hp / BUILDINGS[b.kind].hp)) / 10) * 10;
   if (p.credits + spare.reduce((a, b) => a + refund(b), 0) < need) return;
-  for (const kind of ['uplink', 'turret', 'barracks'] as BuildingKind[]) {
+  for (const kind of order) {
     const b = spare.find(v => v.kind === kind);
     if (b) {
       doSell(s, owner, b.id);
@@ -551,7 +700,19 @@ function raiseFunds(s: GameState, owner: Owner, need: number): void {
  */
 function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, home: Pt): Pt {
   if (!focus) return buildingCentre(nearestBuilding(enemy, home.x, home.y));
-  const bonus: Partial<Record<BuildingKind, number>> = { turret: 8, refinery: 6, factory: 4, uplink: 3, power: 2, barracks: 2, hq: 1 };
+  const bonus: Partial<Record<BuildingKind, number>> = {
+    turret: 8,
+    rocketturret: 8,
+    refinery: 6,
+    strikecommand: 6,
+    techcentre: 5,
+    factory: 4,
+    uplink: 3,
+    repairbay: 3,
+    power: 2,
+    barracks: 2,
+    hq: 1,
+  };
   let best: Pt = buildingCentre(enemy[0]);
   let bestScore = Infinity;
   for (const b of enemy) {
@@ -563,7 +724,7 @@ function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, h
     }
   }
   for (const u of foes) {
-    if (u.kind !== 'hauler' && u.kind !== 'artillery') continue;
+    if (u.kind !== 'hauler' && u.kind !== 'artillery' && u.kind !== 'missilecarrier') continue;
     const score = dist(from.x, from.y, u.x, u.y) - 9;
     if (score < bestScore) {
       bestScore = score;
@@ -581,18 +742,20 @@ function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, h
  */
 function focusFire(s: GameState, owner: Owner, members: Unit[], foes: Unit[], enemy: Building[]): void {
   const priority: { id: number; x: number; y: number; armor: 'heavy' | 'light' | 'building'; b?: Building }[] = [];
-  for (const u of foes) if (u.kind === 'hauler' || u.kind === 'artillery') priority.push({ id: u.id, x: u.x, y: u.y, armor: UNITS[u.kind].armor as 'heavy' | 'light' });
-  for (const b of enemy) if (b.kind === 'turret') priority.push({ id: b.id, x: b.x + 0.5, y: b.y + 0.5, armor: 'building', b });
+  for (const u of foes)
+    if (u.kind === 'hauler' || u.kind === 'artillery' || u.kind === 'missilecarrier') priority.push({ id: u.id, x: u.x, y: u.y, armor: UNITS[u.kind].armor as 'heavy' | 'light' });
+  for (const b of enemy) if (b.kind === 'turret' || b.kind === 'rocketturret') priority.push({ id: b.id, x: b.x + 0.5, y: b.y + 0.5, armor: 'building', b });
   if (!priority.length) return;
   const ids = new Set(priority.map(q => q.id));
-  const armed = new Set(foes.filter(f => UNITS[f.kind].weapon && f.kind !== 'artillery').map(f => f.id));
+  const armed = new Set(foes.filter(f => UNITS[f.kind].weapon && f.kind !== 'artillery' && f.kind !== 'missilecarrier').map(f => f.id));
   const orders = new Map<number, number[]>();
   for (const u of members) {
     if (u.order.type === 'attack' && ids.has(u.order.target)) continue;
     if (u.order.type !== 'attackMove' && u.order.type !== 'idle') continue;
     // Never turn away from something that is shooting back: that fight comes first.
     if (u.engage && armed.has(u.engage)) continue;
-    const w = UNITS[u.kind].weapon!;
+    const w = UNITS[u.kind].weapon;
+    if (!w) continue;
     let best = 0;
     // Only targets about to come into range, so nobody chases across the map.
     let bestD = w.range + 1;
@@ -680,12 +843,29 @@ function nearestBuilding(list: Building[], x: number, y: number): Building {
   return best;
 }
 
+/** True while this side has a Barracks or a War Factory to spend credits in. */
+function standingProducer(s: GameState, owner: Owner): boolean {
+  return s.buildings.some(b => b.owner === owner && (b.kind === 'barracks' || b.kind === 'factory'));
+}
+
+/** A structure beyond what the economy and the basic defences need (advanced tech only). */
+function isExtra(s: GameState, owner: Owner, kind: BuildingKind, d: DifficultySpec): boolean {
+  if (kind === 'refinery') return countBuildings(s, owner, 'refinery') >= d.refineries;
+  return kind === 'techcentre' || kind === 'strikecommand' || kind === 'repairbay' || kind === 'rocketturret';
+}
+
 /**
  * The next structure to build. A refinery comes first whenever there is none, and whenever there
  * is no hauler and no factory to build one (a refinery brings its own). A generator goes up
  * before a structure would take power below a safe margin, never after the lights dim.
  */
-function nextStructure(s: GameState, owner: Owner, d: DifficultySpec, needRefineryForHauler: boolean): BuildingKind | null {
+function nextStructure(
+  s: GameState,
+  owner: Owner,
+  d: DifficultySpec,
+  needRefineryForHauler: boolean,
+  advanced: Difficulty | null,
+): BuildingKind | null {
   const pw = powerOf(s, owner);
   const headroom = pw.made - pw.used;
   const count = (k: BuildingKind) => countBuildings(s, owner, k);
@@ -696,15 +876,35 @@ function nextStructure(s: GameState, owner: Owner, d: DifficultySpec, needRefine
   if (count('refinery') === 0) return powerFor('refinery');
   if (needRefineryForHauler && count('refinery') < 4) return powerFor('refinery');
   if (headroom < 25 && count('power') < 12) return 'power';
-  const plan: [BuildingKind, number][] = [
-    ['barracks', 1],
-    ['factory', 1],
-    ['refinery', d.refineries],
-    ['turret', 1],
-    ['uplink', 1],
-    ['turret', d.turrets],
-    ['factory', d.factories],
-  ];
+  const t = advanced ? TACTICS[advanced] : null;
+  const plan: [BuildingKind, number][] = t
+    ? [
+        // Advanced tech: the original base first (the early army matters more than any tech),
+        // then the Repair Bay, the Tech Centre, Rocket Turrets, a refinery more to pay for the
+        // heavy units, and on Hard the Strike Command.
+        ['barracks', 1],
+        ['factory', 1],
+        ['refinery', d.refineries],
+        ['turret', 1],
+        ['uplink', 1],
+        ['turret', d.turrets],
+        ['factory', d.factories],
+        ['repairbay', t.bayBelow > 0 ? 1 : 0],
+        ['techcentre', 1],
+        ['rocketturret', t.rocketTurrets],
+        ['refinery', Math.max(d.refineries, t.lateRefineries)],
+        ['strikecommand', t.strike ? 1 : 0],
+        ['repairbay', 1],
+      ]
+    : [
+        ['barracks', 1],
+        ['factory', 1],
+        ['refinery', d.refineries],
+        ['turret', 1],
+        ['uplink', 1],
+        ['turret', d.turrets],
+        ['factory', d.factories],
+      ];
   for (const [k, n] of plan) {
     if (count(k) >= n) continue;
     if (!unlocked(s, owner, k)) continue;
@@ -720,7 +920,10 @@ function nextStructure(s: GameState, owner: Owner, d: DifficultySpec, needRefine
 function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enemyHome: Pt): Pt | null {
   const spec = BUILDINGS[kind];
   let focus = home;
-  if (kind === 'turret') focus = toward(home, enemyHome, 7);
+  if (kind === 'turret' || kind === 'rocketturret') focus = toward(home, enemyHome, 7);
+  // The Repair Bay on the near side, where the army comes home; the costliest structures behind.
+  if (kind === 'repairbay') focus = toward(home, enemyHome, 4);
+  if (kind === 'techcentre' || kind === 'strikecommand') focus = toward(home, enemyHome, -4);
   if (kind === 'refinery') {
     let best = -1;
     let bestD = Infinity;
@@ -766,4 +969,298 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
     if (clear) return { x, y };
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Advanced tech (a skirmish set up with it): the new units, walls, the Repair Bay and the powers.
+
+/**
+ * One draw over weighted choices, leaving out what this side cannot train yet. Null when nothing
+ * is left (the caller falls back to the basic unit). `fixed` is a roll to use instead of a draw.
+ */
+function weighted(s: GameState, owner: Owner, choices: [UnitKind, number][], fixed?: number): UnitKind | null {
+  const open = choices.filter(([k, w]) => w > 0 && techAllowed(s, owner, k) && unlocked(s, owner, k));
+  const total = open.reduce((a, [, w]) => a + w, 0);
+  if (!total) return null;
+  let roll = (fixed ?? draw(s)) * total;
+  for (const [k, w] of open) {
+    roll -= w;
+    if (roll < 0) return k;
+  }
+  return open[open.length - 1][0];
+}
+
+/**
+ * Units with the advanced tech: a medic for every six soldiers (one at most on Easy), grenadiers
+ * as the backbone of the infantry, and tanks and flame tanks as the backbone of the vehicles,
+ * with artillery, missile carriers and Bastions alongside. Normal and Hard weight it all against
+ * what the opponent fields: grenades and flame against infantry, rockets, tanks, missiles and
+ * Bastions against armour, artillery, missiles and Bastions (which outrange or outlast turrets)
+ * against a ring of turrets. The weights come from equal-credit fights between the kinds in the
+ * open: grenadiers beat riflemen and rocketeers outright, tanks and flame tanks beat everything on
+ * foot, and missile carriers and Bastions lose a straight fight for their price.
+ */
+function advancedUnits(
+  s: GameState,
+  owner: Owner,
+  t: Tactics,
+  units: Unit[],
+  foeInfantry: number,
+  foeArmour: number,
+  foeTurrets: number,
+  raidBuggies: number,
+  nextRaid: number,
+): void {
+  const p = s.players[owner];
+  const iq = p.queues.infantry;
+  const vq = p.queues.vehicle;
+  const read = t.counter && foeInfantry + foeArmour >= 4;
+  const infantryHeavy = read && foeInfantry > foeArmour * 1.5;
+  const armourHeavy = read && foeArmour > foeInfantry * 1.5;
+  const fortified = t.counter && foeTurrets >= 3;
+  // Vehicles first. The choice is fixed until something more is trained (a roll from the count
+  // trained, not a draw), so a dear vehicle is saved for rather than re-rolled into a cheap one;
+  // while it is saved for, the infantry queue holds one at a time once there are a few soldiers.
+  let waiting = 0;
+  let waitingFor: UnitKind | null = null;
+  const soldiers = units.filter(u => UNITS[u.kind].category === 'infantry' && UNITS[u.kind].weapon && !UNITS[u.kind].hero).length;
+  if (vq.length < 1 && countBuildings(s, owner, 'factory') > 0) {
+    const roll = next((p.stats.trained + 1) * 7919 + owner * 104729).value;
+    let kind =
+      weighted(s, owner, [
+        ['tank', armourHeavy ? 6 : 5],
+        ['buggy', (infantryHeavy ? 1.5 : armourHeavy ? 0.3 : 1) * (fortified ? 0.5 : 1)],
+        ['artillery', 0.8 + (infantryHeavy ? 0.7 : 0) + (fortified ? 1.2 : 0)],
+        ['missilecarrier', 0.5 + (armourHeavy ? 0.7 : 0) + (fortified ? 1.5 : 0)],
+        ['flametank', infantryHeavy ? 5 : armourHeavy ? 1 : 3],
+        ['bastion', 0.5 + (armourHeavy ? 0.5 : 0) + (fortified ? 1 : 0)],
+      ], roll) ?? 'tank';
+    // Keep the raiding party up to strength in time for the next raid (not while one is out).
+    if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
+    if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
+    else if (unlocked(s, owner, kind)) {
+      waiting = UNITS[kind].cost;
+      waitingFor = kind;
+    }
+  }
+  // With ten soldiers, a vehicle being saved for holds the infantry back altogether; against
+  // massed infantry it takes fourteen (grenadiers are worth more there than any vehicle short of
+  // a flame tank).
+  const holdInfantry = waiting > 0 && soldiers >= (infantryHeavy && waitingFor !== 'flametank' ? 14 : 10) && p.credits < waiting + 250;
+  if (iq.length < (holdInfantry ? 0 : waiting ? 1 : 2)) {
+    const medics = units.filter(u => UNITS[u.kind].medic).length + iq.filter(q => q.kind === 'medic').length;
+    let kind: UnitKind | null = null;
+    if (medics < Math.min(t.counter ? 3 : 1, Math.floor(soldiers / 6))) kind = 'medic';
+    else
+      kind = weighted(s, owner, [
+        ['rifleman', infantryHeavy ? 1 : armourHeavy ? 1 : 2],
+        ['rocketeer', infantryHeavy ? 1 : armourHeavy ? 5 : 1.5],
+        ['grenadier', (infantryHeavy ? 6 : armourHeavy ? 2 : 4) + (fortified ? 1 : 0)],
+      ]);
+    kind = kind ?? 'rifleman';
+    if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
+  }
+}
+
+/** The free tiles beside a Repair Bay's footprint, where a vehicle is mended. */
+function bayStands(s: GameState, bay: Building): number[] {
+  const occ = occupancy(s);
+  const spec = BUILDINGS[bay.kind];
+  const out: number[] = [];
+  for (let y = bay.y - 1; y <= bay.y + spec.h; y++)
+    for (let x = bay.x - 1; x <= bay.x + spec.w; x++) {
+      if (x >= bay.x && x < bay.x + spec.w && y >= bay.y && y < bay.y + spec.h) continue;
+      if (passable(s, occ, x, y)) out.push(idx(x, y));
+    }
+  return out;
+}
+
+/** Units within reach of an enemy missile's blast walk out of it while it is in the air. */
+function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
+  for (const m of s.projectiles) {
+    if (m.weapon !== 'missile' || m.owner === owner) continue;
+    const r = m.splash + 1;
+    for (const u of units) {
+      if (u.kind === 'hauler' || u.order.type === 'harvest') continue;
+      const d = dist(u.x, u.y, m.toX, m.toY);
+      if (d >= r) continue;
+      if (u.order.type === 'move' && dist(u.order.x, u.order.y, m.toX, m.toY) >= r) continue;
+      const away = d > 0.1 ? { x: m.toX + ((u.x - m.toX) / d) * (r + 1.5), y: m.toY + ((u.y - m.toY) / d) * (r + 1.5) } : { x: u.x + r + 1.5, y: u.y };
+      const x = Math.max(0.5, Math.min(MAP_W - 0.5, away.x));
+      const y = Math.max(0.5, Math.min(MAP_H - 0.5, away.y));
+      doMove(s, owner, [u.id], x, y, false);
+    }
+  }
+}
+
+type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building';
+
+/**
+ * The opponent's things a blast at (x, y) would hurt, in credits' worth destroyed: each one's cost
+ * times the share of its hit points the blast would take (all of it at most). Structures count in
+ * full and defences a little more; units count for less (`unitShare`), since they can move.
+ */
+function blastWorth(
+  enemy: Building[],
+  foes: Unit[],
+  x: number,
+  y: number,
+  radius: number,
+  damageAt: (d: number, armor: ArmorClass) => number,
+  unitShare: number,
+): number {
+  let worth = 0;
+  for (const b of enemy) {
+    const d = distToBuilding(x, y, b);
+    if (d > radius) continue;
+    const spec = BUILDINGS[b.kind];
+    worth += spec.cost * Math.min(1, damageAt(d, 'building') / Math.max(1, b.hp)) * (spec.weapon ? 1.25 : 1);
+  }
+  for (const u of foes) {
+    const d = dist(x, y, u.x, u.y);
+    if (d > radius) continue;
+    const spec = UNITS[u.kind];
+    worth += spec.cost * Math.min(1, damageAt(d, spec.armor) / Math.max(1, u.hp)) * unitShare;
+  }
+  return worth;
+}
+
+/** The point among the opponent's structures and units where a blast is worth most. */
+function bestBlast(
+  enemy: Building[],
+  foes: Unit[],
+  radius: number,
+  damageAt: (d: number, armor: ArmorClass) => number,
+  unitShare: number,
+  bonus: (x: number, y: number) => number,
+): { x: number; y: number; worth: number } | null {
+  let best: { x: number; y: number; worth: number } | null = null;
+  const candidates: Pt[] = [...enemy.map(b => buildingCentre(b)), ...foes.map(u => ({ x: u.x, y: u.y }))];
+  for (const c of candidates) {
+    const worth = blastWorth(enemy, foes, c.x, c.y, radius, damageAt, unitShare) * bonus(c.x, c.y);
+    if (!best || worth > best.worth) best = { x: c.x, y: c.y, worth };
+  }
+  return best;
+}
+
+/**
+ * The barrage and the missile, when charged. Normal and Hard aim: the barrage at the densest knot
+ * of defences or troops (worth half as much again near its own attacking wave, which it softens up
+ * the way in for), the missile at the opponent's most valuable ground. Easy simply fires at the
+ * nearest of the opponent's structures.
+ */
+function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Building[], foes: Unit[], wave: Unit[]): void {
+  const pw = s.powers?.[owner];
+  if (!pw || !enemy.length) return;
+  const fire = (power: SupportPower, at: Pt) => {
+    if (powerProblem(s, owner, power, at.x, at.y) === null) doPower(s, owner, power, at.x, at.y);
+  };
+  const crude = () => buildingCentre(nearestBuilding(enemy, home.x, home.y));
+  const centre = wave.length >= 3 ? middle(wave) : null;
+  if (pw.barrage === 0) {
+    if (!t.aimPowers) fire('barrage', crude());
+    else {
+      // Eight shells over the area: a point inside it takes about two of them.
+      const r = POWERS.barrage.radius;
+      const at = bestBlast(
+        enemy,
+        foes,
+        r,
+        (_d, armor) => 2 * BARRAGE_DAMAGE * 0.75 * DAMAGE_VS.artillery[armor],
+        0.6,
+        (x, y) => (centre && dist(x, y, centre.x, centre.y) < 10 ? 1.5 : 1),
+      );
+      if (at && at.worth >= t.barrageWorth) fire('barrage', at);
+    }
+  }
+  if (pw.missile === 0) {
+    if (!t.aimPowers) fire('missile', crude());
+    else {
+      const r = POWERS.missile.radius;
+      const at = bestBlast(enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1);
+      if (at && at.worth >= 1500) fire('missile', at);
+    }
+  }
+}
+
+/**
+ * A tile for the next sandbag wall: a short line across the way in, two tiles in front of a
+ * forward turret, facing the opponent. Only a tile clear of every structure, and only if, with
+ * the wall in place, every door and dock in the base is still reachable from the staging ground
+ * and the walk to the opponent's base is no more than two tiles longer.
+ */
+export function wallSpot(s: GameState, owner: Owner, home: Pt, enemyHome: Pt): Pt | null {
+  const occ = occupancy(s);
+  const own = s.buildings.filter(b => b.owner === owner);
+  const towers = own.filter(b => (b.kind === 'turret' || b.kind === 'rocketturret') && dist(b.x, b.y, home.x, home.y) < 14);
+  if (!towers.length) return null;
+  const stage = openGround(s, owner, toward(home, enemyHome, 10));
+  const start = nearestPassable(s, occ, stage.x, stage.y);
+  const goal = nearestPassable(s, occ, enemyHome.x, enemyHome.y, 10);
+  if (start < 0 || goal < 0) return null;
+  const needed: number[] = [goal];
+  for (const b of own) {
+    const pad = b.kind === 'barracks' || b.kind === 'factory' ? doorTile(b) : b.kind === 'refinery' ? dockTile(b) : null;
+    if (pad && passable(s, occ, pad.x, pad.y)) needed.push(idx(pad.x, pad.y));
+  }
+  const before = walk(s, occ, start, -1);
+  if (before[goal] < 0) return null;
+  for (const tw of towers) {
+    const c = buildingCentre(tw);
+    const f = toward(c, enemyHome, 2.5);
+    const len = dist(c.x, c.y, enemyHome.x, enemyHome.y) || 1;
+    const px = -(enemyHome.y - c.y) / len;
+    const py = (enemyHome.x - c.x) / len;
+    for (const k of [0, -1, 1, -2, 2]) {
+      const x = Math.floor(f.x + px * k);
+      const y = Math.floor(f.y + py * k);
+      if (!inBounds(x, y) || placementProblem(s, owner, 'wall', x, y, occ)) continue;
+      // A tile clear of every structure (walls may touch walls).
+      let clear = true;
+      for (let ty = y - 1; ty <= y + 1 && clear; ty++)
+        for (let tx = x - 1; tx <= x + 1; tx++) {
+          const o = inBounds(tx, ty) ? occ[idx(tx, ty)] : 0;
+          if (o && !s.buildings.some(b => b.id === o && BUILDINGS[b.kind].wall)) {
+            clear = false;
+            break;
+          }
+        }
+      if (!clear || needed.includes(idx(x, y))) continue;
+      const after = walk(s, occ, start, idx(x, y));
+      if (needed.every(n => after[n] >= 0) && after[goal] <= before[goal] + 2) return { x, y };
+    }
+  }
+  return null;
+}
+
+const STEPS: [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+/** Steps from `start` to every tile over open ground (4-way), with `blocked` also closed; -1 where unreachable. */
+function walk(s: GameState, occ: Int32Array, start: number, blocked: number): Int32Array {
+  const steps = new Int32Array(MAP_W * MAP_H).fill(-1);
+  const queue = new Int32Array(MAP_W * MAP_H);
+  let head = 0;
+  let tail = 0;
+  steps[start] = 0;
+  queue[tail++] = start;
+  while (head < tail) {
+    const k = queue[head++];
+    const x = k % MAP_W;
+    const y = (k / MAP_W) | 0;
+    for (const [dx, dy] of STEPS) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (!passable(s, occ, nx, ny)) continue;
+      const n = idx(nx, ny);
+      if (n === blocked || steps[n] >= 0) continue;
+      steps[n] = steps[k] + 1;
+      queue[tail++] = n;
+    }
+  }
+  return steps;
 }
