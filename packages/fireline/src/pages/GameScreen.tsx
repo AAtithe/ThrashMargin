@@ -37,8 +37,8 @@ import {
   type SupportPower,
   type UnitKind,
 } from '../sim/rules';
-import { isEnemy, sidesOf, wonBy } from '../sim/sides';
-import { costOf, powerOf, readyStructure, unlocked } from '../sim/state';
+import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
+import { costOf, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 
@@ -1295,6 +1295,7 @@ export function Battle({
             {s.name} · {DIFFICULTIES[s.difficulty].label}
           </span>
         )}
+        {!layout.stacked && <SideNames state={s} />}
         <span style={{ fontFamily: FONT.mono, fontSize: '0.85rem', color: UI.text }} data-testid="clock">
           {clock}
         </span>
@@ -1333,6 +1334,7 @@ export function Battle({
             <div style={{ fontSize: '0.85rem', color: UI.textSoft }}>
               {s.name} · {DIFFICULTIES[s.difficulty].label}
             </div>
+            <SideNames state={s} />
             {saveStatus}
             <div style={menuRow}>
               <span style={menuLabel}>Speed</span>
@@ -1714,6 +1716,53 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
   );
 }
 
+/** True while a side still has a structure standing. */
+const standingSide = (state: GameState, o: number) => state.buildings.some(b => b.owner === o && isStructure(b));
+
+/**
+ * The computer sides of a battle of three or four, each named in its colour, allies marked, and a
+ * side that is out struck through. Nothing in a two-sided battle.
+ */
+function SideNames({ state }: { state: GameState }) {
+  if (state.players.length <= 2) return null;
+  return (
+    <span style={{ display: 'inline-flex', flexWrap: 'wrap', gap: 8, fontSize: '0.78rem' }} data-testid="side-names">
+      {sidesOf(state)
+        .filter(o => o !== 0)
+        .map(o => {
+          const out = !standingSide(state, o);
+          return (
+            <span
+              key={o}
+              style={{ color: UI.side[o], fontWeight: 600, whiteSpace: 'nowrap', textDecoration: out ? 'line-through' : undefined, opacity: out ? 0.6 : 1 }}
+              title={`${state.players[o].name}: ${isAlly(state, 0, o) ? 'your ally' : 'enemy'}${out ? ', out of the battle' : ''}`}
+            >
+              {state.players[o].name}
+              <span style={{ color: UI.textFaint, fontWeight: 400 }}> {isAlly(state, 0, o) ? '(ally)' : ''}</span>
+            </span>
+          );
+        })}
+    </span>
+  );
+}
+
+/** Names joined as "A", "A and B" or "A, B and C". */
+const andList = (xs: string[]) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
+/**
+ * Who won, for a battle of three or four sides: the winning team by name, or in a free-for-all the
+ * player alone (a victory) or the sides still standing when the player fell (a defeat).
+ */
+function winningLine(state: GameState): string | null {
+  if (state.players.length <= 2 || state.winner === null) return null;
+  const names = (os: number[]) => andList(os.map(o => (o === 0 ? 'you' : state.players[o].name)));
+  const team = sidesOf(state).filter(o => isAlly(state, o, state.winner!));
+  if (team.length > 1) return `Winning team: ${names(team)}.`;
+  if (state.winner === 0) return 'You are the last side standing.';
+  const left = sidesOf(state).filter(o => o !== 0 && standingSide(state, o));
+  return left.length ? `Still standing: ${names(left)}.` : null;
+}
+
 function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) {
   const won = wonBy(state, 0);
   const secs = Math.floor(state.tick / TICKS_PER_SECOND);
@@ -1742,6 +1791,11 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
           {won ? (two ? 'The Ashen Combine has been driven from the field' : 'Every enemy has been driven from the field') : 'Your last structure has fallen'} after {Math.floor(secs / 60)} minutes{' '}
           {secs % 60} seconds.
         </p>
+        {winningLine(state) && (
+          <p style={{ margin: 0, color: UI.text, fontSize: '0.85rem' }} data-testid="winning-team">
+            {winningLine(state)}
+          </p>
+        )}
         <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem', width: '100%' }}>
           <thead>
             <tr style={{ color: UI.textFaint }}>

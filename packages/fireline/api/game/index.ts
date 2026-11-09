@@ -107,6 +107,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       try {
         const { rows } = await db.query(
           `SELECT id, status, turn, state->>'name' AS name, state->>'kind' AS kind, state->>'mapType' AS map_type,
+                  CASE WHEN jsonb_typeof(state->'players') = 'array' THEN jsonb_array_length(state->'players') END AS sides,
+                  state->'setup'->>'mode' AS mode,
                   EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
            FROM games WHERE owner_id = $1 AND game = $2 ORDER BY updated_at DESC LIMIT 50`,
           [user.userId, GAME_KIND],
@@ -119,6 +121,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           savedAt: Math.round(parseFloat(r.saved_at)),
           ...(r.kind === 'campaign' ? { kind: 'campaign' as const } : {}),
           ...(typeof r.map_type === 'string' && (MAP_TYPES as readonly string[]).includes(r.map_type) ? { mapType: r.map_type } : {}),
+          // Battles of three or four sides: how many, and whether they were played as teams.
+          ...(Number(r.sides) === 3 || Number(r.sides) === 4 ? { sides: Number(r.sides), mode: r.mode === 'teams' ? 'teams' : 'ffa' } : {}),
         }));
         return res.json({ saves });
       } catch (err) {

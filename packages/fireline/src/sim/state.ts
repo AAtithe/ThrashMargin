@@ -8,6 +8,7 @@ import {
   DEFAULT_SETUP,
   DIFFICULTIES,
   LEGACY_SETUP,
+  LONE_SIDE_CREDITS,
   MAP_H,
   MAP_TYPES,
   MAP_W,
@@ -29,11 +30,12 @@ import {
   type Difficulty,
   type MapType,
   type Owner,
+  type SideMode,
   type SkirmishSetup,
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf } from './sides';
+import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf, teamsFor } from './sides';
 import type { AiMemory, Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
 
 export { startOf };
@@ -61,7 +63,11 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const credits = Number.isFinite(r.credits)
     ? Math.max(SETUP_CREDITS_MIN, Math.min(SETUP_CREDITS_MAX, Math.round(r.credits! / 100) * 100))
     : base.credits;
-  return { map, tech, credits, ore };
+  // Sides and mode: anything but 2, 3 or 4 sides falls back to the base's; anything but 'ffa' or
+  // 'teams' is 'ffa'; two sides are always 'ffa'.
+  const sides = r.sides === 2 || r.sides === 3 || r.sides === 4 ? r.sides : base.sides === 3 || base.sides === 4 ? base.sides : 2;
+  const mode: SideMode = sides > 2 && r.mode === 'teams' ? 'teams' : 'ffa';
+  return { map, tech, credits, ore, sides, mode };
 }
 
 /** How this battle was set up. Saves from before setups, and missions, read as LEGACY_SETUP. */
@@ -115,6 +121,20 @@ function newPlayer(owner: Owner, credits = START_CREDITS): PlayerState {
   };
 }
 
+/** Sides 0 to n - 1. */
+const sideList = (n: number): Owner[] => Array.from({ length: n }, (_, i) => i as Owner);
+
+/**
+ * A side's starting credits: the setup's, except a side alone on its team against a team of
+ * several (three sides played as teams: side 1 against sides 0 and 2), which gets LONE_SIDE_CREDITS
+ * times as much.
+ */
+function startCredits(credits: number, owner: Owner, teams: number[]): number {
+  const mine = teams.filter(t => t === teams[owner]).length;
+  const most = Math.max(...teams.map(t => teams.filter(u => u === t).length));
+  return mine === 1 && most > 1 ? Math.round(credits * LONE_SIDE_CREDITS) : credits;
+}
+
 /** A computer commander's starting memory. The one place it is built, for skirmish and missions alike. */
 export function newAiMemory(firstAttack: number): AiMemory {
   return { nextAttack: firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0, waveIds: [], wavePhase: 0, waveTick: 0, waveSize: 0, raidIds: [], raidTarget: 0, nextRaid: 0 };
@@ -127,10 +147,14 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
   // drawn from the seed) from the skirmish generator, and the setup stored on the state.
   const setup = opts.setup ? normaliseSetup(opts.setup) : null;
   const mapType: MapType | null = setup ? (setup.map === 'random' ? randomMapType(rngSeed) : setup.map) : null;
-  const map = setup && mapType ? generateSkirmishMap(rngSeed, mapType, setup.ore) : generateMap(rngSeed);
+  // Two sides (every setup before round 4, and every battle without a setup) take exactly the
+  // original path. Three or four: a larger map with one start per side, and teams from teamsFor.
+  const n = setup ? setup.sides : 2;
+  const map = setup && mapType ? (n > 2 ? generateSkirmishMap(rngSeed, mapType, setup.ore, n) : generateSkirmishMap(rngSeed, mapType, setup.ore)) : generateMap(rngSeed);
   const credits = setup ? setup.credits : START_CREDITS;
   const difficulty = opts.difficulty && opts.difficulty in DIFFICULTIES ? opts.difficulty : DEFAULT_DIFFICULTY;
   const d = DIFFICULTIES[difficulty];
+  const teams = setup && n > 2 ? teamsFor(n, setup.mode) : [0, 1];
 
   const s: GameState = {
     version: 1,
@@ -148,11 +172,11 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     explored: '0'.repeat(map.w * map.h),
     units: [],
     buildings: [],
-    players: [newPlayer(0, credits), newPlayer(1, credits)],
-    teams: [0, 1],
+    players: n > 2 ? sideList(n).map(o => newPlayer(o, startCredits(credits, o, teams))) : [newPlayer(0, credits), newPlayer(1, credits)],
+    teams,
     projectiles: [],
     effects: [],
-    ai: [
+    ai: n > 2 ? sideList(n).map(() => newAiMemory(d.firstAttack)) : [
       newAiMemory(d.firstAttack),
       newAiMemory(d.firstAttack),
     ],

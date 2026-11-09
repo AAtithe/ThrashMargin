@@ -21,6 +21,7 @@ import {
 } from './rules';
 import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
+import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 
 /**
@@ -243,8 +244,9 @@ function commander(s: GameState, owner: Owner): void {
   // the first enemy Command Yard stands for "their base".
   // round4:B begin. Choosing among several enemies (fireline-round4-design.md, workstream B) replaces
   // the lines from here to "round4:B end", keeping the names enemy, enemyHome, units and foes.
-  const enemy = s.buildings.filter(b => isEnemy(s, owner, b.owner) && isStructure(b));
-  const enemyHome = enemy.length ? buildingCentre(enemy.find(b => b.kind === 'hq') ?? enemy[0]) : { x: s.mapW / 2, y: s.mapH / 2 };
+  // With several enemies, `enemy` and `enemyHome` are the chosen enemy's (chooseEnemy, aiSides.ts);
+  // `foes` is every enemy's units, so defence still answers anyone. One enemy: as before.
+  const { enemy, enemyHome } = enemyLists(s, owner, chooseEnemy(s, owner));
   const units = s.units.filter(u => u.owner === owner);
   const foes = s.units.filter(u => isEnemy(s, owner, u.owner));
   // round4:B end.
@@ -653,6 +655,7 @@ function commander(s: GameState, owner: Owner): void {
 
   // round4:B. Allies (fireline-round4-design.md, workstream B): one call into aiSides.ts goes on the
   // line below this comment.
+  alliedPlan(s, owner, home, stage, waveIds.concat(raidIds), !!threat);
 
   mem.waveIds = waveIds;
   mem.raidIds = raidIds;

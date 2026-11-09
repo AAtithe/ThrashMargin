@@ -88,7 +88,11 @@ mission AI once the round-1 opponent work lands.
   - [x] Air tab, Research block, hotkeys B N D for the longer Structures list, aircraft art with shadows, rotor and contrails.
   - [ ] Aircraft are not mended anywhere (no pad repair); a damaged gunship stays damaged.
   - [ ] Air units in act two missions 11, 12 and 14 (integration, per the contract).
-- [ ] B. Bigger battles: 3 and 4 sides, free for all or teams, fair maps, several-enemy commanders.
+- [x] B. Bigger battles: 3 and 4 sides, free for all or teams, fair maps, several-enemy commanders.
+  - [x] Seat fairness measured: 4 sides free for all within two standard errors over 120 seeds.
+  - [x] Two against one balanced by the lone side's starting credits (48% for the pair over 60 seeds).
+  - [ ] Side 3 is out first more often than the others in a free for all (38 of 120, against 30 expected).
+  - [ ] The camera opens on side 0's base only; nothing yet points at where the allies are.
 - [ ] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
 
 ## Found along the way
