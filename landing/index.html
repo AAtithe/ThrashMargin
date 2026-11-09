@@ -190,6 +190,19 @@
         color: var(--se-tag);
         border-color: var(--se-rule);
       }
+      /* What's new: the latest three published pieces (portal.js fills it; hidden until there are any). */
+      .news { margin-top: 3rem; }
+      .news[hidden] { display: none; }
+      .news-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+      .news-head h2 { font-family: Georgia, 'Times New Roman', serif; font-weight: normal; font-size: 1.5rem; margin: 0; color: var(--heading); }
+      .news-head a { color: var(--soft); font-size: 0.85rem; text-decoration: none; }
+      .news-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1rem; }
+      a.news-item { display: block; text-decoration: none; padding: 1.2rem 1.3rem; border-radius: 10px; border: 1px solid var(--card-rule);
+        border-top: 3px solid var(--tag); background: linear-gradient(160deg, var(--card-a) 0%, var(--card-b) 100%); }
+      a.news-item:hover { border-color: var(--card-hover); border-top-color: var(--tag); }
+      .news-item .eyebrow { font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--tag); margin-bottom: 0.5rem; }
+      .news-item h3 { font-family: Georgia, 'Times New Roman', serif; font-weight: normal; font-size: 1.15rem; line-height: 1.3; margin: 0 0 0.45rem; color: var(--heading); }
+      .news-item p { margin: 0; font-size: 0.85rem; line-height: 1.5; color: var(--card-text); }
     </style>
   </head>
   <body>
@@ -197,6 +210,7 @@
       <span id="signed-in-as"></span>
       <button id="theme-toggle" type="button"></button>
       <a class="admin" id="admin-link" href="/thrash-margin/admin" hidden>Admin</a>
+      <a href="/thrash-margin/news">What's new</a>
       <a href="/thrash-margin/profile">Profile</a>
       <button id="sign-out" type="button">Sign out</button>
     </div>
@@ -257,6 +271,13 @@
         </a>
       </div>
       <p class="subtitle" id="no-games" hidden>No games are turned on for your account yet. Ask an admin to give you access.</p>
+      <section class="news" id="news" hidden>
+        <div class="news-head">
+          <h2>What's new</h2>
+          <a href="/thrash-margin/news">All the news &rarr;</a>
+        </div>
+        <div class="news-list" id="news-list"></div>
+      </section>
       <p class="footer"><a href="/privacy.html">Privacy notice</a></p>
     </main>
     <script src="/portal.js" data-part="account"></script>

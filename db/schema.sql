@@ -25,6 +25,11 @@ CREATE TABLE IF NOT EXISTS users (
   -- 'active' | 'pending' (waiting for an admin's approval) | 'suspended'. Only active accounts can
   -- sign in or use a session (shared/portal/server/auth.ts).
   status         VARCHAR(16) NOT NULL DEFAULT 'active' CONSTRAINT users_status_check CHECK (status IN ('active', 'pending', 'suspended')),
+  -- News emails: opt-in only, off by default. The token lets an email's unsubscribe link work
+  -- without signing in; it can only turn this off.
+  marketing_opt_in     BOOLEAN NOT NULL DEFAULT false,
+  marketing_opt_in_at  TIMESTAMPTZ,
+  unsubscribe_token    VARCHAR(64),
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -36,6 +41,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(16) NOT NULL DEFAULT 'us
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS game_access JSONB;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS status VARCHAR(16) NOT NULL DEFAULT 'active';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_opt_in BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_opt_in_at TIMESTAMPTZ;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS unsubscribe_token VARCHAR(64);
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint
                  WHERE conname = 'users_status_check' AND conrelid = 'users'::regclass) THEN
@@ -130,11 +138,44 @@ CREATE TABLE IF NOT EXISTS portal_settings (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- The portal's news (Admin page, News tab): shown on the "What's new" page once published, and
+-- emailed to accounts that opted in. `sections` is a JSON array of { heading, body, game? }, plain
+-- text only (packages/thrash-margin/shared/news.ts).
+CREATE TABLE IF NOT EXISTS announcements (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  kind          VARCHAR(16) NOT NULL,             -- 'new_game' | 'update' | 'newsletter'
+  title         VARCHAR(120) NOT NULL,
+  summary       TEXT NOT NULL,
+  game          VARCHAR(16),                      -- a game key, or NULL
+  sections      JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status        VARCHAR(16) NOT NULL DEFAULT 'draft',  -- 'draft' | 'published'
+  created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  published_at  TIMESTAMPTZ,
+  emailed_at    TIMESTAMPTZ
+);
+
+-- One row per news email sent or failed, so an interrupted send resumes without duplicates.
+CREATE TABLE IF NOT EXISTS email_sends (
+  id               BIGSERIAL PRIMARY KEY,
+  announcement_id  UUID NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+  user_id          UUID REFERENCES users(id) ON DELETE SET NULL,
+  email            VARCHAR(255) NOT NULL,
+  status           VARCHAR(16) NOT NULL,          -- 'sent' | 'failed' | 'test'
+  provider_id      VARCHAR(128),
+  error            TEXT,
+  at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- player_stats and game_actions, from the original single-game server, were never read by this API
 -- and are no longer created. The API drops them from an existing database while they are empty.
 
 -- Indexes
 CREATE INDEX IF NOT EXISTS idx_rate_events ON rate_events (bucket, key, at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unsubscribe_token ON users (unsubscribe_token);
+CREATE INDEX IF NOT EXISTS idx_announcements_published ON announcements (status, published_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_email_sends_once ON email_sends (announcement_id, user_id) WHERE status = 'sent';
 CREATE INDEX IF NOT EXISTS idx_login_failures_key_at ON login_failures (username_key, at);
 CREATE INDEX IF NOT EXISTS idx_login_failures_address_at ON login_failures (address, at);
 CREATE INDEX IF NOT EXISTS idx_admin_audit_at ON admin_audit (at DESC);
@@ -171,13 +212,15 @@ ALTER TABLE login_failures ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_audit    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_events    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE portal_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE announcements   ENABLE ROW LEVEL SECURITY;
+ALTER TABLE email_sends     ENABLE ROW LEVEL SECURITY;
 
 DO $$
 DECLARE r TEXT;
 BEGIN
   FOREACH r IN ARRAY ARRAY['anon', 'authenticated'] LOOP
     IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-      EXECUTE format('REVOKE ALL ON users, games, feedback, login_failures, admin_audit, rate_events, portal_settings FROM %I', r);
+      EXECUTE format('REVOKE ALL ON users, games, feedback, login_failures, admin_audit, rate_events, portal_settings, announcements, email_sends FROM %I', r);
       EXECUTE format('REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM %I', r);
     END IF;
   END LOOP;

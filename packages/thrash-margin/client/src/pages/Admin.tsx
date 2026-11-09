@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getToken, getStoredUser } from '../lib/token';
 import PortalNav from '../components/PortalNav';
+import AdminNews from '../components/AdminNews';
 import { GAMES, FEEDBACK_TOPICS } from 'shared/games';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -29,7 +30,7 @@ interface AuditEntry {
   target: string;
   action:
     | 'grant_admin' | 'remove_admin' | 'reset_password' | 'grant_game' | 'revoke_game' | 'set_new_account_games'
-    | 'set_require_approval' | 'approve_account' | 'reject_account' | 'suspend' | 'unsuspend' | 'delete_account';
+    | 'set_require_approval' | 'approve_account' | 'reject_account' | 'suspend' | 'unsuspend' | 'delete_account' | 'send_news';
   detail: string | null;
 }
 
@@ -56,6 +57,9 @@ function auditSentence(e: AuditEntry): { before: string; target: string | null; 
     const game = GAME_LABEL[e.detail ?? ''] ?? e.detail ?? 'a game';
     const verb = e.action === 'grant_game' ? 'turned on' : 'turned off';
     return group ? { before: `${verb} ${game} for ${group}`, target: null, after: '' } : { before: `${verb} ${game} for`, target: e.target, after: '' };
+  }
+  if (e.action === 'send_news') {
+    return { before: `emailed the news piece "${e.detail ?? ''}"`, target: null, after: '' };
   }
   if (e.action === 'set_require_approval') {
     return { before: `turned ${e.detail === 'on' ? 'on' : 'off'} approval for new accounts`, target: null, after: '' };
@@ -100,7 +104,7 @@ export default function Admin() {
   const [roleError, setRoleError] = useState<string | null>(null);
   const [audit, setAudit] = useState<AuditEntry[]>([]);
   const [tempPassword, setTempPassword] = useState<{ username: string; password: string } | null>(null);
-  const [tab, setTab] = useState<'access' | 'feedback' | 'history'>('access');
+  const [tab, setTab] = useState<'access' | 'news' | 'feedback' | 'history'>('access');
   const [newAccountGames, setNewAccountGames] = useState<string[] | null>(null);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
   const [requireApproval, setRequireApproval] = useState<boolean | null>(null);
@@ -389,6 +393,7 @@ export default function Admin() {
         <div style={s.tabs} role="tablist">
           {([
             ['access', 'Users and game access'],
+            ['news', 'News and email'],
             ['feedback', `Feedback (${openFeedback} open)`],
             ['history', 'Access history'],
           ] as const).map(([key, label]) => (
@@ -580,6 +585,12 @@ export default function Admin() {
               </div>
             </section>
           </>
+        )}
+
+        {tab === 'news' && (
+          <section style={s.section}>
+            <AdminNews onChange={refreshAudit} />
+          </section>
         )}
 
         {tab === 'history' && (

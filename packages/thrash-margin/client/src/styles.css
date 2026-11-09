@@ -62,6 +62,26 @@
   --map-terrain-mountain: #b7ad9c;
   --map-terrain-coast: #a6c2cf;
   --map-terrain-desert: #e3cd92;
+  /* The What's new page (pages/News.tsx). The accents match the news emails (shared/news.ts),
+     which cannot use these variables; the dark values are the same hues, lifted to read on black. */
+  --news-paper: #f4f1ea;
+  --news-card: #ffffff;
+  --news-ink: #14151a;
+  --news-text: #2a2d33;
+  --news-soft: #5b616b;
+  --news-rule: #e6e1d6;
+  --news-band: #14151a;
+  --news-band-text: #9aa0aa;
+  --news-band-ink: #f1eee7;
+  --news-house: #a8843f;
+  --news-accent-thrash_margin: #b4532a;
+  --news-accent-niccolo: #8a6d1f;
+  --news-accent-niccolo_rising: #6b4fa0;
+  --news-accent-tea_race: #1f6f8b;
+  --news-accent-steady_eddie: #2f7d4f;
+  --news-accent-fireline: #b8322a;
+  --news-accent-founders_ledger: #3d4f7a;
+  --news-on-accent: #ffffff;
 }
 :root[data-theme="dark"] {
   --ui-ground: #0e1115;
@@ -118,6 +138,24 @@
   --map-terrain-mountain: #5a5650;
   --map-terrain-coast: #36586a;
   --map-terrain-desert: #7a6640;
+  --news-paper: #0f1013;
+  --news-card: #17181d;
+  --news-ink: #eceae4;
+  --news-text: #cfd2d8;
+  --news-soft: #9aa0aa;
+  --news-rule: #2a2d35;
+  --news-band: #08090b;
+  --news-band-text: #8a8f98;
+  --news-band-ink: #eceae4;
+  --news-house: #c9a45a;
+  --news-accent-thrash_margin: #e07a4f;
+  --news-accent-niccolo: #d1ad55;
+  --news-accent-niccolo_rising: #a68ad8;
+  --news-accent-tea_race: #5fb3cf;
+  --news-accent-steady_eddie: #62c08a;
+  --news-accent-fireline: #ec6a5f;
+  --news-accent-founders_ledger: #8ea3d6;
+  --news-on-accent: #0f1013;
 }
 
 * { box-sizing: border-box; }

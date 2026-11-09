@@ -70,6 +70,10 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
           </>
         )}
         <span style={styles.sep}>·</span>
+        <a href="/thrash-margin/news" style={styles.link}>
+          📰 What's new
+        </a>
+        <span style={styles.sep}>·</span>
         <a href="/thrash-margin/feedback" style={styles.link}>
           💬 Feedback
         </a>

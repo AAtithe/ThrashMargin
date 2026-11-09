@@ -82,6 +82,32 @@
           }
         })
         .catch(function () {});
+      // What's new: the latest three published pieces. Built with textContent only, never innerHTML,
+      // so nothing written on the Admin page can become markup here.
+      fetch('/api/news/feed', { headers: { Authorization: 'Bearer ' + localStorage.getItem('tm_token') } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (d) {
+          var items = d && Array.isArray(d.items) ? d.items.slice(0, 3) : [];
+          if (!items.length) return;
+          var EYEBROW = { new_game: 'Now playing', update: 'Just shipped', newsletter: 'The monthly roundup' };
+          var list = document.getElementById('news-list');
+          items.forEach(function (it) {
+            var a = document.createElement('a');
+            a.className = 'news-item';
+            a.href = '/thrash-margin/news/' + encodeURIComponent(it.id);
+            var eb = document.createElement('div');
+            eb.className = 'eyebrow';
+            eb.textContent = EYEBROW[it.kind] || 'News';
+            var h = document.createElement('h3');
+            h.textContent = it.title;
+            var p = document.createElement('p');
+            p.textContent = it.summary;
+            a.appendChild(eb); a.appendChild(h); a.appendChild(p);
+            list.appendChild(a);
+          });
+          document.getElementById('news').hidden = false;
+        })
+        .catch(function () {});
       // Light or dark, shared with every game through the same tm_theme key (theme-init.js).
       var toggle = document.getElementById('theme-toggle');
       function label() {

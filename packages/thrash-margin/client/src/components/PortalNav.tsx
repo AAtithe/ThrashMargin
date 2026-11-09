@@ -67,6 +67,10 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
           </>
         )}
         <span style={styles.sep}>·</span>
+        <a href={`${import.meta.env.BASE_URL}news`} style={styles.link}>
+          📰 What's new
+        </a>
+        <span style={styles.sep}>·</span>
         {/* Base-relative, like the Sign in link below — this is Thrash Margin's own route. */}
         <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>
           💬 Feedback

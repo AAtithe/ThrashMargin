@@ -130,6 +130,53 @@ async function apply(c: PoolClient): Promise<void> {
       END $$;`);
   }
 
+  // News emails (packages/thrash-margin/api/_lib/news.ts). Consent is opt-in and off by default, as
+  // UK law requires for marketing email: nobody, existing or new, is emailed until they tick it.
+  // The unsubscribe token lets an email's one-click link turn it off without signing in.
+  if (!(await hasColumn(c, 'users', 'marketing_opt_in'))) {
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_opt_in BOOLEAN NOT NULL DEFAULT false`);
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_opt_in_at TIMESTAMPTZ`);
+    await c.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS unsubscribe_token VARCHAR(64)`);
+    await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_unsubscribe_token ON users (unsubscribe_token)`);
+  }
+
+  // The portal's news: what the "What's new" page shows and the emails carry.
+  if (!(await hasTable(c, 'announcements'))) {
+    await c.query(`
+      CREATE TABLE IF NOT EXISTS announcements (
+        id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        kind          VARCHAR(16) NOT NULL,
+        title         VARCHAR(120) NOT NULL,
+        summary       TEXT NOT NULL,
+        game          VARCHAR(16),
+        sections      JSONB NOT NULL DEFAULT '[]'::jsonb,
+        status        VARCHAR(16) NOT NULL DEFAULT 'draft',
+        created_by    UUID REFERENCES users(id) ON DELETE SET NULL,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        published_at  TIMESTAMPTZ,
+        emailed_at    TIMESTAMPTZ
+      )`);
+    await c.query(`CREATE INDEX IF NOT EXISTS idx_announcements_published ON announcements (status, published_at DESC)`);
+  }
+
+  // One row per email sent (or failed), so a send that stops part-way resumes without anyone
+  // receiving it twice: at most one 'sent' row per announcement and account.
+  if (!(await hasTable(c, 'email_sends'))) {
+    await c.query(`
+      CREATE TABLE IF NOT EXISTS email_sends (
+        id               BIGSERIAL PRIMARY KEY,
+        announcement_id  UUID NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+        user_id          UUID REFERENCES users(id) ON DELETE SET NULL,
+        email            VARCHAR(255) NOT NULL,
+        status           VARCHAR(16) NOT NULL,
+        provider_id      VARCHAR(128),
+        error            TEXT,
+        at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+    await c.query(`CREATE UNIQUE INDEX IF NOT EXISTS idx_email_sends_once ON email_sends (announcement_id, user_id) WHERE status = 'sent'`);
+  }
+
   // Portal-wide settings changed on the Admin page, one row per setting. 'new_account_games': the
   // games a newly registered account starts with; 'require_approval': whether it must be approved first.
   if (!(await hasTable(c, 'portal_settings'))) {
@@ -184,7 +231,7 @@ async function apply(c: PoolClient): Promise<void> {
  * failure is logged loudly and the rest of the setup still commits, rather than every request in
  * every game failing. db/schema.sql applies the same statements; keep the two in step.
  */
-export const SECURED_TABLES = ['users', 'games', 'feedback', 'login_failures', 'admin_audit', 'rate_events', 'portal_settings'];
+export const SECURED_TABLES = ['users', 'games', 'feedback', 'login_failures', 'admin_audit', 'rate_events', 'portal_settings', 'announcements', 'email_sends'];
 const DATA_API_ROLES = ['anon', 'authenticated'];
 
 async function secureTables(c: PoolClient): Promise<void> {

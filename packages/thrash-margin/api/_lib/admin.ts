@@ -75,7 +75,8 @@ export interface AuditEntry {
     | 'reject_account'
     | 'suspend'
     | 'unsuspend'
-    | 'delete_account';
+    | 'delete_account'
+    | 'send_news';
   detail?: string;
 }
 

@@ -70,6 +70,20 @@ A game marked `optIn` in `shared/games.ts` (The Founder's Ledger) is the excepti
 game": no account has it until an admin turns it on, so adding one never shows it to every account.
 Its landing card is `hidden` in the HTML for the same reason. `npm run test:api` covers the rules.
 
+### News and email consent
+
+The Admin page's News tab writes pieces (`shared/news.ts`, plain text only, never HTML), publishes them
+to the What's new page (`/thrash-margin/news`) and emails them through Resend (`api/_lib/mailer.ts`,
+`api/_lib/newsEmail.ts`, `api/news/[action].ts`). Email goes only to active accounts with
+`users.marketing_opt_in`, which is **off by default and only ever set by the player** (the unticked
+sign-up box, Profile, the What's new page): UK PECR requires consent for marketing email, so never
+default it on, back-fill it, or opt anyone in on their behalf. A piece about one game reaches only
+accounts that can play it. `POST /api/news/unsubscribe` is the one deliberately unauthenticated
+endpoint: its 48-character token can only turn that account's emails off, grants no session and no
+game access, and is required by law and by Gmail/Yahoo's sender rules. It is not a guest path.
+Sending is configured by `RESEND_API_KEY`, `NEWS_FROM` and `PORTAL_URL` in Vercel; without them
+everything but the send works.
+
 ### 2. `packages/tea-race/src/sim/`, `packages/niccolo-rising/src/sim/` and `packages/fireline/src/sim/` are pure
 
 No `Math.random`, no clock. Dice come from `rng.ts` against the persisted `rngSeed`, and

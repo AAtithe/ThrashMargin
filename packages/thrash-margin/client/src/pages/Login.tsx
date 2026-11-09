@@ -28,6 +28,8 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  // Unticked by default: news emails need the player's own say-so (UK PECR).
+  const [newsOptIn, setNewsOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Registered while the portal requires approval: no session yet, so say so rather than sign in.
   const [notice, setNotice] = useState<string | null>(null);
@@ -45,7 +47,7 @@ export default function Login() {
     setLoading(true);
     try {
       const body = mode === 'register'
-        ? { username, email, password }
+        ? { username, email, password, newsOptIn }
         : { username, password };
       const res = await fetch(`${API}/api/auth/${mode}`, {
         method: 'POST',
@@ -107,6 +109,12 @@ export default function Login() {
             style={s.input} type="password" placeholder="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             value={password} onChange={e => setPassword(e.target.value)} required
           />
+          {mode === 'register' && (
+            <label style={s.check}>
+              <input type="checkbox" checked={newsOptIn} onChange={e => setNewsOptIn(e.target.checked)} style={{ margin: '2px 0 0' }} />
+              <span>Email me news: new games, features as they ship, and a monthly roundup. Optional; unsubscribe any time.</span>
+            </label>
+          )}
           {new URLSearchParams(window.location.search).get('deleted') === '1' && !error && (
             <p style={{ color: '#3fb950', fontSize: 13, margin: 0 }}>Your account and saved games have been deleted.</p>
           )}
@@ -138,6 +146,7 @@ const s: Record<string, React.CSSProperties> = {
   form:    { display: 'flex', flexDirection: 'column', gap: 10 },
   input:   { padding: '9px 12px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none' },
   error:   { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
+  check:   { display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 12.5, lineHeight: 1.45, color: 'var(--portal-soft)', cursor: 'pointer', textAlign: 'left' },
   notice:  { color: 'var(--portal-good)', fontSize: 13, margin: 0, lineHeight: 1.45 },
   btn:     { marginTop: 6, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
 };

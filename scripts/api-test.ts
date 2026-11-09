@@ -144,10 +144,13 @@ async function resetDatabase(mode: 'fresh' | 'legacy') {
       ALTER TABLE users DROP COLUMN password_changed_at;
       ALTER TABLE users DROP COLUMN game_access;
       ALTER TABLE users DROP COLUMN status;
+      ALTER TABLE users DROP COLUMN marketing_opt_in, DROP COLUMN marketing_opt_in_at, DROP COLUMN unsubscribe_token;
       ALTER TABLE games DROP COLUMN version;
       DROP TABLE login_failures;
       DROP TABLE admin_audit;
       DROP TABLE rate_events;
+      DROP TABLE email_sends;
+      DROP TABLE announcements;
       DROP TABLE portal_settings;
       CREATE TABLE player_stats (user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         games_played INTEGER NOT NULL DEFAULT 0, games_won INTEGER NOT NULL DEFAULT 0,
@@ -180,6 +183,7 @@ async function suite(mode: 'fresh' | 'legacy') {
   handlers = {
     auth: require(path.join(ROOT, 'api/auth/[mode]')).default,
     admin: require(path.join(ROOT, 'api/admin/[resource]')).default,
+    news: require(path.join(ROOT, 'api/news/[action]')).default,
     profile: require(path.join(ROOT, 'api/profile')).default,
     feedback: require(path.join(ROOT, 'api/feedback')).default,
     play: require(path.join(ROOT, 'api/play/[kind]')).default,
@@ -589,6 +593,124 @@ async function suite(mode: 'fresh' | 'legacy') {
       ?.gamesByTitle.niccolo_rising === 1,
     'admin: per-game counts include Niccolò Rising',
   );
+
+  // --- News: the What's new page and the emails ------------------------------------------------------
+  const news = (method: string, action: string, token: string | undefined, body?: unknown, query: Record<string, string> = {}) =>
+    call(handlers.news, method, { action, ...query }, body, token);
+  ok((await news('GET', 'feed', undefined)).status === 401, 'news: the feed needs a sign-in');
+  ok((await news('GET', 'prefs', A2)).body.emailOptIn === false, 'news: nobody is opted in by default');
+  ok((await news('PATCH', 'prefs', A2, { emailOptIn: 'yes' })).status === 400, 'news: consent must be true or false');
+  ok((await news('PATCH', 'prefs', A2, { emailOptIn: true })).body.emailOptIn === true, 'news: ann opts in');
+  ok((await news('GET', 'prefs', A2)).body.emailOptIn === true, 'news: and it is kept');
+  await news('PATCH', 'prefs', T, { emailOptIn: true });
+  const hal = await auth('register', { username: 'hal', email: 'hal@x.test', password: 'secret11', newsOptIn: true }, '10.6.7.1');
+  ok((await news('GET', 'prefs', hal.body.token)).body.emailOptIn === true, 'news: the sign-up box records consent');
+  const ivy = await auth('register', { username: 'ivy', email: 'ivy@x.test', password: 'secret11' }, '10.6.7.2');
+  ok((await news('GET', 'prefs', ivy.body.token)).body.emailOptIn === false, 'news: no box ticked, no consent');
+
+  ok((await news('GET', 'admin', A2)).status === 403, 'news: a non-admin cannot see the drafts');
+  ok((await news('POST', 'save', A2, { kind: 'update', title: 'x', summary: 'y', sections: [{ heading: 'h', body: 'b' }] })).status === 403, 'news: a non-admin cannot write');
+  ok((await news('POST', 'save', T, { kind: 'update', title: '', summary: 'y', sections: [] })).status === 400, 'news: a title is required');
+  ok((await news('POST', 'save', T, { kind: 'update', title: 'x', summary: 'y', sections: [] })).status === 400, 'news: at least one section');
+  ok((await news('POST', 'save', T, { kind: 'update', title: 'x', summary: 'y', game: 'nope', sections: [{ heading: 'h', body: 'b' }] })).status === 400, 'news: an unknown game refused');
+  const piece = {
+    kind: 'update', title: 'Faster maps <script>alert(1)</script>', summary: 'Every board now loads in half the time.',
+    sections: [{ heading: 'What changed', body: 'One.\n\nTwo & three.', game: 'tea_race' }], extra: 'dropped',
+  };
+  const made = await news('POST', 'save', T, piece);
+  ok(made.status === 201 && made.body.item.status === 'draft' && !('extra' in made.body.item), 'news: a draft saved, unknown fields dropped');
+  const pid = made.body.item.id as string;
+  const preview = await news('POST', 'render', T, piece);
+  ok(preview.status === 200 && preview.body.html.includes('&lt;script&gt;') && !preview.body.html.includes('<script>'), 'news: the email escapes everything typed');
+  ok(preview.body.html.includes('Two &amp; three.') && preview.body.html.includes('/tea-race/'), 'news: paragraphs and the game link are in the email');
+  ok(!(await news('GET', 'feed', A2)).body.items.some((i: any) => i.id === pid), 'news: a draft is not on the feed');
+  ok((await news('POST', 'send', T, { id: pid })).status === 503, 'news: no email service configured, nothing sent');
+
+  // Email set up, with the service stubbed: the tests see exactly what would be sent.
+  process.env.RESEND_API_KEY = 're_test';
+  process.env.NEWS_FROM = 'The Games Portal <news@x.test>';
+  process.env.PORTAL_URL = 'https://portal.x.test';
+  const realFetch = globalThis.fetch;
+  const outbox: any[] = [];
+  let failNext = false;
+  globalThis.fetch = (async (url: string, init: any) => {
+    const body = JSON.parse(init.body);
+    if (failNext) return new Response(JSON.stringify({ message: 'domain not verified' }), { status: 403 });
+    const list = Array.isArray(body) ? body : [body];
+    outbox.push(...list);
+    return new Response(JSON.stringify(Array.isArray(body) ? { data: list.map((_, i) => ({ id: `e${outbox.length + i}` })) } : { id: 'single' }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    ok((await news('POST', 'send', T, { id: pid })).status === 409, 'news: an unpublished piece cannot be emailed');
+    const pub = await news('POST', 'publish', T, { id: pid });
+    ok(pub.status === 200 && pub.body.item.status === 'published' && pub.body.item.publishedAt, 'news: published');
+    ok((await news('GET', 'feed', A2)).body.items.some((i: any) => i.id === pid), 'news: on the feed once published');
+    const test = await news('POST', 'send-test', T, { id: pid });
+    ok(test.status === 200 && outbox.length === 1 && outbox[0].to[0] === 'tom@x.test' && outbox[0].subject.startsWith('[Test]'), 'news: a test goes to the admin only');
+    outbox.length = 0;
+    const sent = await news('POST', 'send', T, { id: pid });
+    const to = outbox.map(m => m.to[0]).sort();
+    ok(sent.status === 200 && sent.body.sent === 3 && sent.body.remaining === 0, `news: sent to the three who opted in (got ${JSON.stringify(sent.body)})`);
+    ok(JSON.stringify(to) === JSON.stringify(['ann@x.test', 'hal@x.test', 'tom@x.test']), `news: exactly the opted-in accounts (got ${JSON.stringify(to)})`);
+    const one = outbox.find(m => m.to[0] === 'ann@x.test');
+    const oneClick = one.headers['List-Unsubscribe'];
+    ok(/^<https:\/\/portal\.x\.test\/api\/news\/unsubscribe\?token=[0-9a-f]{48}>$/.test(oneClick) && one.headers['List-Unsubscribe-Post'] === 'List-Unsubscribe=One-Click', 'news: each email carries one-click unsubscribe');
+    ok(one.html.includes('https://portal.x.test/unsubscribe.html?token=') && one.text.includes('Unsubscribe: '), 'news: and an unsubscribe link in both versions');
+    outbox.length = 0;
+    const again = await news('POST', 'send', T, { id: pid });
+    ok(again.body.sent === 0 && again.body.remaining === 0 && outbox.length === 0, 'news: sending again sends nobody a second copy');
+
+    // A piece about an opt-in game goes only to accounts that can play it.
+    const ledger = await news('POST', 'save', T, { kind: 'new_game', title: 'The Ledger', summary: 'A coaching game.', game: 'founders_ledger', sections: [{ heading: 'h', body: 'b' }] });
+    await news('POST', 'publish', T, { id: ledger.body.item.id });
+    ok(!(await news('GET', 'feed', hal.body.token)).body.items.some((i: any) => i.id === ledger.body.item.id), 'news: a piece about a game is hidden from accounts without it');
+    outbox.length = 0;
+    await news('POST', 'send', T, { id: ledger.body.item.id });
+    const ledgerTo = outbox.map(m => m.to[0]).sort();
+    ok(!ledgerTo.includes('hal@x.test') && ledgerTo.includes('ann@x.test'), `news: and is emailed only to accounts that can play it (got ${JSON.stringify(ledgerTo)})`);
+
+    // The service refusing a send: nothing is marked sent, and the next send retries.
+    const second = await news('POST', 'save', T, { kind: 'update', title: 'Second', summary: 's', sections: [{ heading: 'h', body: 'b' }] });
+    await news('POST', 'publish', T, { id: second.body.item.id });
+    failNext = true;
+    const refused = await news('POST', 'send', T, { id: second.body.item.id });
+    ok(refused.body.sent === 0 && refused.body.failed === 3 && refused.body.remaining === 3 && /domain not verified/.test(refused.body.error), 'news: a refused send is reported, not hidden');
+    failNext = false;
+    outbox.length = 0;
+    const retried = await news('POST', 'send', T, { id: second.body.item.id });
+    ok(retried.body.sent === 3 && retried.body.remaining === 0 && outbox.length === 3, 'news: and the next send delivers it');
+
+    // Unsubscribing, with no sign-in, from the token in the email.
+    const token = /token=([0-9a-f]{48})/.exec(oneClick)![1];
+    ok((await news('POST', 'unsubscribe', undefined, { token: 'nope' })).status === 400, 'unsubscribe: a malformed token refused');
+    ok((await news('POST', 'unsubscribe', undefined, { token: 'a'.repeat(48) })).status === 404, 'unsubscribe: an unknown token refused');
+    ok((await news('POST', 'unsubscribe', undefined, { 'List-Unsubscribe': 'One-Click' }, { token })).status === 200, 'unsubscribe: one-click from a mail client, no sign-in');
+    ok((await news('GET', 'prefs', A2)).body.emailOptIn === false, 'unsubscribe: ann is opted out');
+    const third = await news('POST', 'save', T, { kind: 'update', title: 'Third', summary: 's', sections: [{ heading: 'h', body: 'b' }] });
+    await news('POST', 'publish', T, { id: third.body.item.id });
+    outbox.length = 0;
+    await news('POST', 'send', T, { id: third.body.item.id });
+    ok(!outbox.some(m => m.to[0] === 'ann@x.test') && outbox.length === 2, 'unsubscribe: she gets nothing after');
+  } finally {
+    globalThis.fetch = realFetch;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.NEWS_FROM;
+    delete process.env.PORTAL_URL;
+  }
+
+  // The monthly roundup, drafted from what was published.
+  const round = await news('POST', 'roundup', T, {});
+  const titles = (round.body.item.sections as { heading: string }[]).map(s => s.heading);
+  ok(round.status === 201 && round.body.item.kind === 'newsletter' && round.body.item.status === 'draft', 'roundup: drafted, not published');
+  ok(['Faster maps <script>alert(1)</script>', 'The Ledger', 'Second', 'Third'].every(t => titles.includes(t)), `roundup: one section per piece published (got ${JSON.stringify(titles)})`);
+  ok((await news('POST', 'delete', T, { id: pid })).status === 409, 'news: a published piece cannot be deleted');
+  await news('POST', 'unpublish', T, { id: pid });
+  ok((await news('POST', 'delete', T, { id: pid })).status === 409, 'news: an emailed piece is kept as a record');
+  ok((await news('POST', 'delete', T, { id: round.body.item.id })).status === 200, 'news: a draft can be deleted');
+  const listing = await news('GET', 'admin', T);
+  ok(listing.status === 200 && listing.body.emailConfigured === false && listing.body.subscribers === 2, `news: the admin list reports set-up and subscribers (got ${listing.body.subscribers})`);
+  const sendAudit = (await adminApi('GET', 'audit', T)).body.entries.filter((e: any) => e.action === 'send_news');
+  ok(sendAudit.length === 4 && sendAudit.every((e: any) => e.actor === 'Tom'), 'news: every send is in the access history');
 
   // --- Storage limits ---------------------------------------------------------------------------------
   // The Founder's Ledger keeps one ledger per account, so a second create returns the first (checked

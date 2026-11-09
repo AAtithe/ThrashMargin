@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getToken, getStoredUser, setStoredUser, setToken, clearToken } from '../lib/token';
 import PortalNav from '../components/PortalNav';
+import NewsEmailToggle from '../components/NewsEmailToggle';
 import { GAMES } from 'shared/games';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -187,6 +188,14 @@ export default function Profile() {
               {saved && <p style={s.success}>✓ Saved.</p>}
               <button style={s.btn} type="submit" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button>
             </form>
+          </section>
+
+          <section style={s.card} data-testid="profile-news">
+            <h2 style={s.h2}>News by email</h2>
+            <NewsEmailToggle />
+            <p style={{ color: 'var(--portal-soft)', fontSize: 12, lineHeight: 1.5, margin: '12px 0 0' }}>
+              Everything is also on the <a href={`${import.meta.env.BASE_URL}news`} style={{ color: 'var(--portal-link)' }}>What's new</a> page, whether or not you get the emails.
+            </p>
           </section>
 
           <section style={{ ...s.card, borderColor: '#5a1e1e' }}>

@@ -10,6 +10,7 @@ import { ensureSchema } from '../_lib/schema';
 import { isEmail, MIN_PASSWORD } from '../_lib/validate';
 import { clientAddress, isOverLimit, LIMITS, recordEvent } from '../_lib/rateLimit';
 import { handleCors } from '../_lib/cors';
+import { newUnsubscribeToken } from '../_lib/mailer';
 import { queryParam } from '../_lib/query';
 
 // Combines what were two separate functions (login.ts, register.ts) into one, dispatching on
@@ -129,7 +130,7 @@ async function login(req: VercelRequest, res: VercelResponse) {
 }
 
 async function register(req: VercelRequest, res: VercelResponse) {
-  const { username, email, password } = req.body ?? {};
+  const { username, email, password, newsOptIn } = req.body ?? {};
   if (!username || !email || !password) {
     return res.status(400).json({ message: 'username, email and password required' });
   }
@@ -169,8 +170,13 @@ async function register(req: VercelRequest, res: VercelResponse) {
     const access = await newAccountAccess(db);
     const pending = await requiresApproval(db);
     await db.query(
-      'INSERT INTO users (id, username, email, password, game_access, status) VALUES ($1, $2, $3, $4, $5::jsonb, $6)',
-      [id, username, email.toLowerCase(), hash, access === null ? null : JSON.stringify(access), pending ? 'pending' : 'active'],
+      `INSERT INTO users (id, username, email, password, game_access, status, marketing_opt_in, marketing_opt_in_at, unsubscribe_token)
+       VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, CASE WHEN $7 THEN NOW() END, $8)`,
+      [
+        id, username, email.toLowerCase(), hash, access === null ? null : JSON.stringify(access), pending ? 'pending' : 'active',
+        // News emails only on a box the player ticked themselves (UK PECR: consent, not a default).
+        newsOptIn === true, newUnsubscribeToken(),
+      ],
     );
     await recordEvent(db, LIMITS.register, address);
     if (pending) {
