@@ -21,12 +21,14 @@ import {
   RECON_TICKS,
   REINFORCEMENTS,
   SIDE_NAMES,
+  SKIRMISH_POWERS,
   SPY_BLACKOUT_TICKS,
   SPY_DETECT_RANGE,
   SPY_SABOTAGE_TICKS,
   SPY_STEAL_MAX,
   SPY_STEAL_SHARE,
   UNITS,
+  ORDER_QUEUE_MAX,
   heroLevelFor,
   CHARGE_FUSE,
   type BuildingKind,
@@ -35,8 +37,8 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { isAlly, isEnemy, sidesOf, startOf } from './sides';
-import { addBuilding, addUnit, log, newAiMemory, updateExplored } from './state';
+import { computerSides, isAlly, isEnemy, sidesOf, startOf } from './sides';
+import { addBuilding, addUnit, isStructure, log, newAiMemory, updateExplored } from './state';
 import type {
   Building,
   GameState,
@@ -139,7 +141,9 @@ function placeNear(s: GameState, owner: Owner, kind: BuildingKind, focus: { x: n
 
 /** Where a structure of this kind goes in an opening layout: turrets out front, refineries toward ore. */
 function focusFor(s: GameState, kind: BuildingKind, home: { x: number; y: number }, enemy: { x: number; y: number }) {
-  if (kind === 'turret') return toward(home, enemy, 6);
+  if (kind === 'turret' || kind === 'rocketturret') return toward(home, enemy, 6);
+  // Sandbags in a band ahead of the turrets: the base's outer line.
+  if (kind === 'wall') return toward(home, enemy, 8);
   if (kind === 'refinery') {
     let best = -1;
     let bestD = Infinity;
@@ -257,6 +261,7 @@ export function createMissionState(spec: MissionSpec, ctx: MissionContext): Game
       fired: [],
       result: null,
       triggers: spec.triggers.map(t => ({ ...t, ...('spawn' in t && t.spawn ? { spawn: { ...t.spawn } } : {}) })),
+      ...(spec.structurePowers ? { structurePowers: [[], []] } : {}),
     },
     perks,
     powers: [powers0, {}],
@@ -291,8 +296,27 @@ export function createMissionState(spec: MissionSpec, ctx: MissionContext): Game
     u.hp = carried.wounded ? Math.max(1, Math.round(max / 2)) : max;
   }
   placeUnits(s, 1, spec.enemy.units, muster1.x, muster1.y);
+  if (spec.convoy) placeConvoy(s, spec.convoy);
+  if (spec.structurePowers) syncStructurePowers(s);
   updateExplored(s);
   return s;
+}
+
+/**
+ * The convoy: side 0's units at (x, y), sent along the route as one move order and the rest
+ * queued, so the player may take over at any point. Its ids and its way are kept on the mission.
+ */
+function placeConvoy(s: GameState, c: NonNullable<MissionSpec['convoy']>): void {
+  const route = c.route.filter(p => Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 1 + ORDER_QUEUE_MAX);
+  const units = placeUnits(s, 0, c.kinds, c.x, c.y);
+  if (route.length) {
+    for (const u of units) {
+      u.order = { type: 'move', x: route[0].x, y: route[0].y };
+      u.queue = route.slice(1).map(p => ({ type: 'move', x: p.x, y: p.y }));
+    }
+  }
+  s.mission!.convoy = units.map(u => u.id);
+  s.mission!.convoyRoute = [{ x: c.x, y: c.y }, ...route.map(p => ({ x: p.x, y: p.y }))];
 }
 
 function newObjective(spec: ObjectiveSpec): ObjectiveRuntime {
@@ -342,12 +366,21 @@ export function objectiveLabel(o: ObjectiveSpec): string {
     case 'reach':
       return o.who === 'any' ? 'Reach the marked point' : `Get ${heroName(o.who)} to the marked point`;
     case 'holdZone':
-      return `Hold the marked area for ${duration(o.ticks)}`;
+      return o.reset
+        ? `Hold the marked area for ${duration(o.ticks)} without losing it`
+        : `Hold the marked area for ${duration(o.ticks)}`;
     case 'harvest':
       return `Harvest ${o.credits} credits of ore`;
     case 'build': {
       const name = BUILDINGS[o.building]?.name ?? o.building;
       return o.count === 1 ? `Build ${article(name)} ${name}` : `Build ${o.count} ${plural(name)}`;
+    }
+    case 'escort':
+      return o.count === 1 ? 'Bring a convoy vehicle to the marked point' : `Bring ${o.count} convoy vehicles to the marked point`;
+    case 'destroyWithin': {
+      const name = BUILDINGS[o.building]?.name ?? o.building;
+      const what = o.count === 1 ? `the enemy ${name}` : `${o.count} enemy ${plural(name)}`;
+      return `Destroy ${what} within ${duration(o.ticks)}`;
     }
   }
 }
@@ -729,7 +762,7 @@ export function noteDestroyed(s: GameState, b: Building): void {
   if (!s.mission || !isEnemy(s, 0, b.owner)) return;
   for (const o of [...s.mission.objectives, ...s.mission.bonus]) {
     const sp = o.spec;
-    if (sp.kind !== 'destroy' || sp.building !== b.kind || o.done) continue;
+    if ((sp.kind !== 'destroy' && sp.kind !== 'destroyWithin') || sp.building !== b.kind || o.done || o.failed) continue;
     const count = Math.max(1, sp.count);
     const n = Math.round(o.progress * count) + 1;
     o.progress = Math.min(1, n / count);
@@ -803,9 +836,33 @@ function evalObjective(s: GameState, o: ObjectiveRuntime): void {
         const n = Math.round(o.progress * total) + 1;
         o.progress = Math.min(1, n / total);
         if (n >= total) o.done = true;
-      }
+      } else if (sp.reset && theirs && !mine) o.progress = 0;
       return;
     }
+    case 'escort': {
+      const ids = s.mission!.convoy ?? [];
+      const need = Math.max(1, sp.count);
+      let alive = 0;
+      let there = 0;
+      let lead = 0;
+      const route = s.mission!.convoyRoute ?? [];
+      for (const u of s.units) {
+        if (u.owner !== 0 || u.hp <= 0 || !ids.includes(u.id)) continue;
+        alive++;
+        if (dist(u.x, u.y, sp.x, sp.y) <= sp.r) there++;
+        lead = Math.max(lead, alongRoute(route, u.x, u.y));
+      }
+      if (there >= need) {
+        o.done = true;
+        o.progress = 1;
+      } else if (alive < need) o.failed = true;
+      else o.progress = Math.min(1, lead);
+      return;
+    }
+    case 'destroyWithin':
+      // The count moves in noteDestroyed; the clock is checked here.
+      if (s.tick > sp.ticks) o.failed = true;
+      return;
     case 'harvest':
       o.progress = Math.min(1, s.players[0].stats.harvested / Math.max(1, sp.credits));
       if (s.players[0].stats.harvested >= sp.credits) o.done = true;
@@ -823,6 +880,125 @@ function evalObjective(s: GameState, o: ObjectiveRuntime): void {
   }
 }
 
+/** How far along a route (0 at its start, 1 at its end) the point of it nearest (x, y) lies. */
+function alongRoute(route: { x: number; y: number }[], x: number, y: number): number {
+  if (route.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < route.length; i++) total += dist(route[i - 1].x, route[i - 1].y, route[i].x, route[i].y);
+  if (total <= 0) return 1;
+  let best = Infinity;
+  let at = 0;
+  let acc = 0;
+  for (let i = 1; i < route.length; i++) {
+    const a = route[i - 1];
+    const b = route[i];
+    const len = dist(a.x, a.y, b.x, b.y);
+    const t = len > 0 ? Math.max(0, Math.min(1, ((x - a.x) * (b.x - a.x) + (y - a.y) * (b.y - a.y)) / (len * len))) : 0;
+    const d = dist(x, y, a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
+    if (d < best) {
+      best = d;
+      at = acc + t * len;
+    }
+    acc += len;
+  }
+  return at / total;
+}
+
+/**
+ * A mission with structurePowers: each side holds the support power its structures grant
+ * (SKIRMISH_POWERS), granted on full cooldown when the first stands and lost with the last. A power
+ * the mission gave at the start is never touched. Works in place; the lists are replaced, not edited.
+ */
+function syncStructurePowers(s: GameState): void {
+  const m = s.mission;
+  if (!m || !m.structurePowers) return;
+  const powers: NonNullable<GameState['powers']> = s.powers ?? sidesOf(s).map(() => ({}));
+  const held = sidesOf(s).map(o => m.structurePowers![o] ?? []);
+  let changed = false;
+  for (const o of sidesOf(s)) {
+    for (const [power, kind] of Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]) {
+      const has = s.buildings.some(b => b.owner === o && b.kind === kind && b.hp > 0);
+      const mine = held[o].includes(power);
+      if (has && !mine && powers[o]?.[power] === undefined) {
+        powers[o] = { ...powers[o], [power]: POWERS[power].cooldown };
+        held[o] = [...held[o], power];
+        changed = true;
+      } else if (!has && mine) {
+        const next = { ...powers[o] };
+        delete next[power];
+        powers[o] = next;
+        held[o] = held[o].filter(p => p !== power);
+        changed = true;
+      }
+    }
+  }
+  if (!changed) return;
+  s.powers = powers;
+  m.structurePowers = held;
+}
+
+/** Side 0's structure with the most of side 0's structures within r of its centre: the costliest place for a blast. */
+function densestStructure(s: GameState, r: number): { x: number; y: number } | null {
+  let best: { x: number; y: number } | null = null;
+  let bestN = -1;
+  for (const b of s.buildings) {
+    if (b.owner !== 0 || b.hp <= 0 || !isStructure(b)) continue;
+    const c = buildingCentre(b);
+    let n = 0;
+    for (const e of s.buildings) if (e.owner === 0 && e.hp > 0 && isStructure(e) && distToBuilding(c.x, c.y, e) <= r) n++;
+    if (n > bestN) {
+      bestN = n;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/**
+ * The computer's barrage and missile in a mission with structurePowers, called once charged: the
+ * missile at side 0's densest cluster of structures, the barrage at a knot of three or more of
+ * side 0's units, else at side 0's structure nearest the caller's base. A passive enemy never fires.
+ */
+function missionStrikes(s: GameState): void {
+  if (!s.powers || s.mission!.ai === 'passive') return;
+  for (const o of computerSides(s)) {
+    if (!isEnemy(s, 0, o)) continue;
+    const pw = s.powers[o];
+    if (!pw) continue;
+    if (pw.missile === 0) {
+      const at = densestStructure(s, POWERS.missile.radius);
+      if (at && powerProblem(s, o, 'missile', at.x, at.y) === null) doPower(s, o, 'missile', at.x, at.y);
+    }
+    if (pw.barrage === 0) {
+      const r = POWERS.barrage.radius;
+      let at: { x: number; y: number } | null = null;
+      let bestN = 2;
+      for (const u of s.units) {
+        if (u.owner !== 0 || u.hp <= 0) continue;
+        let n = 0;
+        for (const v of s.units) if (v.owner === 0 && v.hp > 0 && Math.abs(v.x - u.x) <= r && Math.abs(v.y - u.y) <= r && dist(v.x, v.y, u.x, u.y) <= r) n++;
+        if (n > bestN) {
+          bestN = n;
+          at = { x: u.x, y: u.y };
+        }
+      }
+      if (!at) {
+        const home = baseCentre(s, o);
+        let bestD = Infinity;
+        for (const b of s.buildings) {
+          if (b.owner !== 0 || b.hp <= 0 || !isStructure(b)) continue;
+          const d = distToBuilding(home.x, home.y, b);
+          if (d < bestD) {
+            bestD = d;
+            at = buildingCentre(b);
+          }
+        }
+      }
+      if (at && powerProblem(s, o, 'barrage', at.x, at.y) === null) doPower(s, o, 'barrage', at.x, at.y);
+    }
+  }
+}
+
 const satisfied = (o: ObjectiveRuntime) => o.done || (o.spec.kind === 'keepAlive' && !o.failed);
 
 /**
@@ -834,6 +1010,10 @@ export function evaluateMission(s: GameState): void {
   if (!m || m.result) return;
   for (const o of m.objectives) evalObjective(s, o);
   for (const o of m.bonus) evalObjective(s, o);
+  if (m.structurePowers) {
+    syncStructurePowers(s);
+    missionStrikes(s);
+  }
 
   if (m.triggers)
     m.triggers.forEach((t, i) => {
@@ -847,7 +1027,15 @@ export function evaluateMission(s: GameState): void {
 
   const failed = m.objectives.find(o => o.failed);
   let lost: string | null = null;
-  if (failed) lost = failed.spec.kind === 'keepAlive' ? `${UNITS[failed.spec.hero].name} fell.` : `${failed.label}: failed.`;
+  if (failed)
+    lost =
+      failed.spec.kind === 'keepAlive'
+        ? `${UNITS[failed.spec.hero].name} fell.`
+        : failed.spec.kind === 'escort'
+          ? 'Too much of the convoy was lost.'
+          : failed.spec.kind === 'destroyWithin'
+            ? `${failed.label}: time ran out.`
+            : `${failed.label}: failed.`;
   const won = !lost && m.objectives.some(o => o.spec.kind !== 'keepAlive') && m.objectives.every(satisfied);
   if (!won && !lost) {
     if (m.timeLimit !== null && s.tick >= m.timeLimit) lost = 'Time ran out.';

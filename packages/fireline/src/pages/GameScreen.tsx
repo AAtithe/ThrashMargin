@@ -1615,6 +1615,7 @@ function missionZones(s: GameState): { x: number; y: number; r: number; label: s
     const sp = o.spec;
     if (sp.kind === 'reach') out.push({ x: sp.x, y: sp.y, r: sp.r, label: sp.who === 'any' ? 'Rendezvous' : 'Extraction', done: o.done });
     else if (sp.kind === 'holdZone') out.push({ x: sp.x, y: sp.y, r: sp.r, label: 'Hold', done: o.done });
+    else if (sp.kind === 'escort') out.push({ x: sp.x, y: sp.y, r: sp.r, label: 'Convoy', done: o.done });
   }
   return out;
 }

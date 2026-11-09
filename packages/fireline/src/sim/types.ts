@@ -284,9 +284,21 @@ export type ObjectiveSpec =
   | { kind: 'infiltrate'; building: BuildingKind }
   | { kind: 'capture'; building: BuildingKind }
   | { kind: 'reach'; who: HeroKind | 'any'; x: number; y: number; r: number }
-  | { kind: 'holdZone'; x: number; y: number; r: number; ticks: number }
+  | {
+      kind: 'holdZone';
+      x: number;
+      y: number;
+      r: number;
+      ticks: number;
+      /** False (the default): progress pauses while the zone is contested. True: it drops to 0 whenever an enemy stands in it with none of ours. */
+      reset?: boolean;
+    }
   | { kind: 'harvest'; credits: number }
-  | { kind: 'build'; building: BuildingKind; count: number };
+  | { kind: 'build'; building: BuildingKind; count: number }
+  /** The mission's convoy (MissionSpec.convoy): done when `count` of its units are within `r` of (x, y); failed when fewer than `count` are left alive. */
+  | { kind: 'escort'; x: number; y: number; r: number; count: number }
+  /** Like destroy, and failed once the battle passes `ticks` with it not done. */
+  | { kind: 'destroyWithin'; building: BuildingKind; count: number; ticks: number };
 
 export interface ObjectiveRuntime {
   spec: ObjectiveSpec;
@@ -354,6 +366,13 @@ export interface MissionSpec {
   timeLimit?: number;
   triggers: TriggerSpec[];
   rewards: { xp: number; unlockHeroes?: HeroKind[]; unlockTech?: (BuildingKind | UnitKind)[] };
+  /** Side 0's convoy for an escort objective: placed at (x, y) and sent along `route` (queued moves). */
+  convoy?: { kinds: UnitKind[]; x: number; y: number; route: { x: number; y: number }[] };
+  /**
+   * Structures grant support powers in this mission as they do in an advanced skirmish
+   * (SKIRMISH_POWERS), for both sides; the computer side calls its barrage and missile when charged.
+   */
+  structurePowers?: boolean;
 }
 
 export interface MissionRuntime {
@@ -371,6 +390,12 @@ export interface MissionRuntime {
   triggers?: TriggerSpec[];
   /** Heroes that fell in this battle, with the experience they had: out for the rest of it. */
   fallen?: Partial<Record<HeroKind, number>>;
+  /** Ids of the convoy's units, set when the mission is built. */
+  convoy?: number[];
+  /** The convoy's way: where it started, then each point of its route. Escort progress is measured along it. */
+  convoyRoute?: { x: number; y: number }[];
+  /** Copied from the spec. Per side, the powers its structures currently grant (never one the mission gave at the start). */
+  structurePowers?: SupportPower[][];
 }
 
 /** What the campaign layer is told when a mission ends. */

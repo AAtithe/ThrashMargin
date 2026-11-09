@@ -357,20 +357,49 @@ section('save helpers', () => {
   let c = s.campaign;
   for (const m of MISSIONS) c = applyOutcome(c, m, outcome(m, {}));
   ok(campaignSaveStatus({ ...s, campaign: c }) === 'victory' && campaignSaveTurn({ ...s, campaign: c }) === MISSIONS.length, 'finished save: victory');
-  ok(CAMPAIGN_LENGTH === 8, 'eight missions');
+  ok(CAMPAIGN_LENGTH === 14, 'fourteen missions');
 });
 
 // ---- Mission specs against their maps --------------------------------------------------------
+
+/** Steps on the shortest walk between two points over walkable tiles (structures ignored), or -1. */
+function walkSteps(tiles: string, a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const start = Math.floor(a.y) * MAP_W + Math.floor(a.x);
+  const goal = Math.floor(b.y) * MAP_W + Math.floor(b.x);
+  const seen = new Int32Array(MAP_W * MAP_H).fill(-1);
+  seen[start] = 0;
+  const queue = [start];
+  for (let q = 0; q < queue.length; q++) {
+    const k = queue[q];
+    if (k === goal) return seen[k];
+    const x = k % MAP_W;
+    const y = (k / MAP_W) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const X = x + dx;
+      const Y = y + dy;
+      if (X < 0 || Y < 0 || X >= MAP_W || Y >= MAP_H) continue;
+      const j = Y * MAP_W + X;
+      if (seen[j] >= 0 || !isWalkable(tiles[j])) continue;
+      seen[j] = seen[k] + 1;
+      queue.push(j);
+    }
+  }
+  return -1;
+}
 const isBuilding = (k: string): k is BuildingKind => k in BUILDINGS;
 const isUnit = (k: string): k is UnitKind => k in UNITS && !UNITS[k as UnitKind].hero;
 const isHero = (k: string): k is HeroKind => (HERO_KINDS as string[]).includes(k);
 
 section('mission specs', () => {
-  ok(MISSIONS.length === 8, 'eight missions');
+  ok(MISSIONS.length === 14, 'fourteen missions: act one and act two');
   ok(new Set(MISSIONS.map(m => m.id)).size === MISSIONS.length, 'mission ids unique');
   ok(new Set(MISSIONS.map(m => m.seed)).size === MISSIONS.length, 'mission seeds unique');
   MISSIONS.forEach((m, i) => ok(m.order === i + 1, `${m.id} is mission ${i + 1}`));
-  ok(MISSIONS[MISSIONS.length - 1].id === 'fireline' && MISSIONS[0].id === 'first-light', 'starts with First Light, ends with Fireline');
+  ok(MISSIONS[0].id === 'first-light' && MISSIONS[7].id === 'fireline', 'act one: First Light to Fireline');
+  ok(
+    JSON.stringify(MISSIONS.slice(8).map(m => m.id)) === JSON.stringify(['iron-coast', 'convoy-north', 'the-long-hold', 'firestorm', 'bastion-line', 'last-light']),
+    'act two, in order: Iron Coast to Last Light',
+  );
 
   // Tech and heroes available so far, along the arc.
   const tech = new Set<string>(MISSIONS[0].tech);
@@ -422,7 +451,8 @@ section('mission specs', () => {
 
     // Tech and powers, and the unlock arc.
     for (const t of m.tech) ok(isBuilding(t) || isUnit(t), `${L}: tech ${t} is a real, buildable kind`);
-    for (const t of m.tech) ok(tech.has(t), `${L}: tech ${t} is unlocked by this point in the campaign`);
+    // A mission may offer what it introduces (its rewards unlock it), as it may field the hero it introduces.
+    for (const t of m.tech) ok(tech.has(t) || (m.rewards.unlockTech ?? []).includes(t), `${L}: tech ${t} is unlocked by this point in the campaign, or introduced here`);
     for (const p of m.powers) ok(p in POWERS, `${L}: power ${p}`);
     for (const h of m.player.heroes) ok(heroes.has(h) || (m.rewards.unlockHeroes ?? []).includes(h), `${L}: hero ${h} unlocked or introduced here`);
     for (const h of m.rewards.unlockHeroes ?? []) {
@@ -474,6 +504,22 @@ section('mission specs', () => {
         case 'build':
           ok(isBuilding(o.building) && o.count > 0 && hasBase && m.tech.includes(o.building), `${what}: build something buildable`);
           break;
+        case 'escort':
+          ok(!!m.convoy, `${what}: an escort needs a convoy`);
+          ok(Number.isInteger(o.count) && o.count > 0 && o.count <= (m.convoy?.kinds.length ?? 0), `${what}: count within the convoy's size`);
+          ok(o.r > 0 && o.r <= 6, `${what}: escort radius`);
+          point(o.x, o.y, `${what} point`, 1);
+          if (m.convoy?.route.length) {
+            const end = m.convoy.route[m.convoy.route.length - 1];
+            ok(Math.hypot(end.x - o.x, end.y - o.y) <= o.r, `${what}: the convoy's route ends inside the escort point`);
+          }
+          break;
+        case 'destroyWithin':
+          ok(isBuilding(o.building) && Number.isInteger(o.count) && o.count > 0, `${what}: destroy count`);
+          ok(enemyHas(o.building) >= o.count, `${what}: the enemy starts with ${o.count} ${o.building}`);
+          ok(Number.isInteger(o.ticks) && o.ticks >= 600, `${what}: at least a minute to do it`);
+          ok(!m.timeLimit || o.ticks <= m.timeLimit, `${what}: inside the time limit`);
+          break;
         default:
           ok(false, `${what}: unknown objective ${(o as { kind: string }).kind}`);
       }
@@ -484,6 +530,25 @@ section('mission specs', () => {
     ok(m.bonus.length === 2, `${L}: two bonus objectives (three stars at most)`);
     m.bonus.forEach((o, i) => objective(o, `${L} bonus ${i}`));
     if (m.timeLimit !== undefined) ok(Number.isInteger(m.timeLimit) && m.timeLimit > 0, `${L}: time limit`);
+
+    // The convoy: real units on open ground, a route every leg of which can be walked.
+    if (m.convoy) {
+      const c = m.convoy;
+      ok(c.kinds.length > 0 && c.kinds.length <= 8 && c.kinds.every(isUnit), `${L}: convoy of 1 to 8 real, non-hero units`);
+      ok(c.route.length > 0 && c.route.length <= 13, `${L}: convoy route of 1 to 13 points (a move and a full waypoint queue)`);
+      ok([...m.objectives, ...m.bonus].some(o => o.kind === 'escort'), `${L}: a convoy is there to be escorted`);
+      point(c.x, c.y, `${L} convoy start`);
+      c.route.forEach((p, i) => point(p.x, p.y, `${L} convoy route ${i}`));
+      const legs = [{ x: c.x, y: c.y }, ...c.route];
+      for (let i = 1; i < legs.length; i++) {
+        const steps = walkSteps(map.tiles, legs[i - 1], legs[i]);
+        ok(steps >= 0, `${L}: convoy leg ${i} walkable, (${legs[i - 1].x}, ${legs[i - 1].y}) to (${legs[i].x}, ${legs[i].y})`);
+      }
+    }
+    if (m.order >= 9) {
+      ok(m.player.structures.length === 0 || m.player.structures.includes('hq'), `${L}: a base mission has a Command Yard`);
+      ok(!m.timeLimit || m.timeLimit >= 10 * 600, `${L}: at least ten minutes on the clock`);
+    }
 
     // Triggers.
     m.triggers.forEach((t, i) => {
@@ -566,6 +631,274 @@ section('missions in the simulation', () => {
   }
   if (skipped) return 'SKIPPED: createMissionState is not implemented yet in this build';
   return `${ran} missions built and run`;
+});
+
+// ---- Act two ---------------------------------------------------------------------------------
+section('act two: progression and old saves', () => {
+  const act2 = MISSIONS.filter(m => m.order >= 9);
+  ok(act2.length === 6 && act2.every((m, i) => m.order === 9 + i), 'six act-two missions, orders 9 to 14');
+  // A campaign with act one won: what a save from before act two holds.
+  let c: CampaignState = newCampaign('Veteran');
+  for (const m of MISSIONS.slice(0, 8)) {
+    const heroes: MissionOutcome['heroes'] = {};
+    for (const h of heroesFor(c, m)) heroes[h] = { xp: c.heroes[h].xp + 40, alive: true };
+    c = applyOutcome(c, m, outcome(m, { heroes }));
+  }
+  const m9 = missionById('iron-coast')!;
+  ok(missionUnlocked(c, m9.id), 'winning mission 8 opens mission 9');
+  ok(!campaignComplete(c), 'act one won is no longer the end of the campaign');
+  for (const m of act2.slice(1)) ok(!missionUnlocked(c, m.id), `${m.id} still locked after act one`);
+  const lost8 = { ...c, missions: { ...c.missions, fireline: { won: false, stars: 0, bestTicks: null } } };
+  ok(!missionUnlocked(lost8, m9.id), 'mission 9 stays shut until mission 8 is won');
+
+  // The save as it was written before act two existed: it loads, keeps everything, and goes on.
+  const old = {
+    version: 1,
+    kind: 'campaign',
+    id: 'old-1',
+    name: 'Before act two',
+    createdAt: 5,
+    campaign: clone(c),
+    battle: null,
+  };
+  const loaded = migrateCampaignSave(clone(old));
+  ok(!!loaded && JSON.stringify(loaded.campaign) === JSON.stringify(c), 'a save from before act two loads unchanged');
+  if (loaded) {
+    ok(campaignSaveStatus(loaded) === 'active' && campaignSaveTurn(loaded) === 8, 'it reads as active, 8 of 14 won');
+    ok(missionUnlocked(loaded.campaign, m9.id), 'and offers mission 9');
+  }
+  // One with a battle of act one still in progress also loads, the battle intact.
+  const m8 = missionById('fireline')!;
+  const battle = createMissionState(m8, missionContext(c, m8, 'old-1', 5));
+  const withBattle = migrateCampaignSave({ ...clone(old), battle: clone(battle) });
+  ok(withBattle?.battle?.mission?.id === 'fireline' && withBattle.battle.tick === 0, 'with an act-one battle in progress, too');
+
+  // On through act two: each win opens the next, tech arrives as the arc says, the last win ends it.
+  const arc: Record<string, string[]> = {
+    'iron-coast': ['wall', 'grenadier'],
+    'convoy-north': ['medic', 'repairbay'],
+    'the-long-hold': ['rocketturret', 'missilecarrier'],
+    firestorm: ['techcentre', 'flametank'],
+    'bastion-line': ['bastion', 'strikecommand'],
+    'last-light': [],
+  };
+  for (const m of act2) {
+    ok(missionUnlocked(c, m.id), `${m.id} open after the mission before it`);
+    for (const t of arc[m.id]) ok(!c.tech.includes(t as never), `${m.id}: ${t} not unlocked before it`);
+    const heroes: MissionOutcome['heroes'] = {};
+    for (const h of heroesFor(c, m)) heroes[h] = { xp: c.heroes[h].xp + 40, alive: true };
+    ok(heroesFor(c, m).length === m.player.heroes.length, `${m.id}: every hero it asks for is unlocked by now`);
+    const before = c;
+    c = applyOutcome(c, m, outcome(m, { heroes }));
+    for (const t of arc[m.id]) ok(c.tech.includes(t as never), `${m.id}: winning it unlocks ${t}`);
+    ok(campaignComplete(c) === (m.order === 14), `${m.id}: campaign complete only after mission 14`);
+    ok(c.commander.xp > before.commander.xp, `${m.id}: pays xp`);
+  }
+  ok(campaignSaveStatus({ ...old, kind: 'campaign', campaign: c } as never) === 'victory', 'winning mission 14 is victory in the saves list');
+  // Every advanced structure and unit has arrived by the final assault.
+  const adv = ['wall', 'grenadier', 'medic', 'repairbay', 'rocketturret', 'missilecarrier', 'techcentre', 'flametank', 'bastion', 'strikecommand'];
+  const last = missionById('last-light')!;
+  for (const t of adv) ok(last.tech.includes(t as never), `Last Light offers ${t}`);
+  ok(last.difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander on hard, with a full base');
+  const kinds = new Set<string>(['hq', ...last.enemy.structures]);
+  for (const b of Object.keys(BUILDINGS)) if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
+  // The new objective kinds are used across the act.
+  const used = new Set(act2.flatMap(m => [...m.objectives, ...m.bonus].map(o => (o.kind === 'holdZone' && o.reset ? 'holdZone reset' : o.kind))));
+  for (const k of ['escort', 'destroyWithin', 'holdZone reset']) ok(used.has(k), `act two uses ${k}`);
+  for (const m of act2) ok(m.bonus.length === 2 && m.rewards.xp > 0, `${m.id}: two bonus objectives and a reward`);
+  return `act two: ${c.commander.xp} xp after a clean run`;
+});
+
+section('act two in the simulation', () => {
+  let c: CampaignState = newCampaign('Check');
+  for (const m of MISSIONS) {
+    const heroes: MissionOutcome['heroes'] = {};
+    for (const h of heroesFor(c, m)) heroes[h] = { xp: c.heroes[h].xp, alive: true };
+    if (m.order >= 9) {
+      const s = createMissionState(m, missionContext(c, m, `act2-${m.id}`, 1000));
+      // Every structure in the spec stands: none left out for want of room.
+      for (const [owner, list] of [[0, m.player.structures], [1, [...(m.enemy.base === 'full' ? ['hq'] : []), ...m.enemy.structures]]] as [number, string[]][]) {
+        const want = new Map<string, number>();
+        for (const k of list) want.set(k, (want.get(k) ?? 0) + 1);
+        for (const [k, nWant] of want) {
+          const have = s.buildings.filter(b => b.owner === owner && b.kind === k).length;
+          ok(have === nWant, `${m.id}: side ${owner} starts with ${nWant} ${k} (has ${have})`);
+        }
+      }
+      ok(JSON.stringify(s.teams) === '[0,1]' && s.players.length === 2, `${m.id}: two sides, the enemy is side 1`);
+      // Structure powers: the enemy holds what its structures grant, charging.
+      if (m.structurePowers) {
+        const enemy = new Set(m.enemy.structures);
+        ok(!!s.mission!.structurePowers, `${m.id}: structure powers switched on`);
+        if (enemy.has('strikecommand')) ok(s.powers?.[1]?.missile === POWERS.missile.cooldown, `${m.id}: the enemy Strike Command's missile is charging`);
+        if (enemy.has('techcentre')) ok(s.powers?.[1]?.barrage === POWERS.barrage.cooldown, `${m.id}: the enemy Tech Centre's barrage is charging`);
+      } else ok(!s.mission!.structurePowers && JSON.stringify(s.powers?.[1]) === '{}', `${m.id}: no powers for the enemy`);
+      // The convoy: on the field, under orders along its route.
+      if (m.convoy) {
+        const ids = s.mission!.convoy ?? [];
+        ok(ids.length === m.convoy.kinds.length, `${m.id}: the whole convoy is placed`);
+        const units = s.units.filter(u => ids.includes(u.id));
+        ok(units.every(u => u.owner === 0 && u.order.type === 'move' && u.queue.length === m.convoy!.route.length - 1), `${m.id}: the convoy is under way along its route`);
+        // With every enemy gone, the convoy drives itself to the point: the route really is drivable.
+        let q = clone(s);
+        q.units = q.units.filter(u => u.owner === 0 && ids.includes(u.id));
+        q.buildings = q.buildings.filter(b => b.owner !== 1 || b.kind === 'power');
+        q.mission!.triggers = [];
+        let n = 0;
+        const esc = q.mission!.objectives.findIndex(o => o.spec.kind === 'escort');
+        let last = 0;
+        let rising = true;
+        while (!q.mission!.objectives[esc].done && n < 6000) {
+          q = processAction(q, { type: 'tick', n: 50 });
+          n += 50;
+          const p = q.mission!.objectives[esc].progress;
+          if (p + 0.02 < last) rising = false;
+          last = Math.max(last, p);
+        }
+        ok(q.mission!.objectives[esc].done, `${m.id}: the convoy reaches its point unaided (${n} ticks)`);
+        ok(rising, `${m.id}: escort progress rises as the convoy drives`);
+        ok(q.mission!.result === 'won', `${m.id}: and the escort wins the mission`);
+      }
+      // Run it for 2,000 ticks untouched, but for the convoy, which is held back as a player would
+      // hold it while the road is cleared (left alone it drives into the Combine posts: see below).
+      let cur = m.convoy ? processAction(s, { type: 'stop', ids: s.mission!.convoy ?? [] }) : s;
+      for (let i = 0; i < 200 && !cur.mission!.result; i++) cur = processAction(cur, { type: 'tick', n: 10 });
+      ok(cur.tick >= 2000, `${m.id}: runs 2000 ticks (${cur.tick})`);
+    }
+    c = applyOutcome(c, m, outcome(m, { heroes }));
+  }
+});
+
+// ---- Act two, played ---------------------------------------------------------------------------
+const clockText = (ticks: number) => `${Math.floor(ticks / 600)} min ${Math.round((ticks % 600) / 10)} s`;
+
+/** The campaign as it stands on reaching this mission, every mission before it won. */
+function campaignBefore(id: string): CampaignState {
+  let c: CampaignState = newCampaign('Check');
+  for (const m of MISSIONS) {
+    if (m.id === id) break;
+    const heroes: MissionOutcome['heroes'] = {};
+    for (const h of heroesFor(c, m)) heroes[h] = { xp: c.heroes[h].xp, alive: true };
+    c = applyOutcome(c, m, outcome(m, { heroes }));
+  }
+  return c;
+}
+const startOf = (id: string): GameState => {
+  const m = missionById(id)!;
+  return createMissionState(m, missionContext(campaignBefore(id), m, `played-${id}`, 1000));
+};
+const centreOf = (b: { x: number; y: number; kind: BuildingKind }) => ({ x: b.x + BUILDINGS[b.kind].w / 2, y: b.y + BUILDINGS[b.kind].h / 2 });
+
+section('act two, played', () => {
+  const notes: string[] = [];
+  // Convoy North: left alone, the convoy drives into the Combine posts and is lost; escorted (the
+  // escort clears each post with the convoy held back, then the convoy goes on), it gets through.
+  {
+    let s = startOf('convoy-north');
+    while (!s.mission!.result && s.tick < 8400) s = processAction(s, { type: 'tick', n: 50 });
+    ok(s.mission!.result === 'lost' && s.mission!.lostBecause === 'Too much of the convoy was lost.', `convoy-north: an unescorted convoy is lost (${s.mission!.result} at ${s.tick})`);
+    s = startOf('convoy-north');
+    const convoy = s.mission!.convoy!;
+    s = processAction(s, { type: 'stop', ids: convoy });
+    const escort = () => s.units.filter(u => u.owner === 0 && !convoy.includes(u.id)).map(u => u.id);
+    for (const p of [{ x: 16.5, y: 40.5 }, { x: 8.5, y: 23.5 }, { x: 17.5, y: 9.5 }, { x: 22.5, y: 4.5 }]) {
+      s = processAction(s, { type: 'move', ids: escort(), x: p.x, y: p.y, attackMove: true });
+      for (let i = 0; i < 40 && !s.mission!.result; i++) {
+        s = processAction(s, { type: 'tick', n: 50 });
+        const foes = s.units.filter(u => u.owner === 1 && Math.hypot(u.x - p.x, u.y - p.y) < 8).length;
+        const ours = s.units.filter(u => u.owner === 0 && !convoy.includes(u.id) && Math.hypot(u.x - p.x, u.y - p.y) < 4).length;
+        if (!foes && ours) break;
+      }
+    }
+    const route = missionById('convoy-north')!.convoy!.route;
+    s = processAction(s, { type: 'move', ids: convoy, x: route[0].x, y: route[0].y });
+    for (const p of route.slice(1)) s = processAction(s, { type: 'move', ids: convoy, x: p.x, y: p.y, queue: true });
+    while (!s.mission!.result && s.tick < 8400) s = processAction(s, { type: 'tick', n: 50 });
+    ok(s.mission!.result === 'won', `convoy-north: an escorted convoy gets through and wins (${s.mission!.result} at ${s.tick})`);
+    notes.push(`convoy escorted in ${clockText(s.tick)}`);
+  }
+  // The Long Hold: troops sent to the ford and kept coming hold it; the count resets when the
+  // Combine has it alone. Starting troops with no reinforcement lose it.
+  {
+    const play = (build: boolean) => {
+      let s = startOf('the-long-hold');
+      let reset = false;
+      let best = 0;
+      for (let i = 0; i < 300 && !s.mission!.result; i++) {
+        const army = s.units.filter(u => u.owner === 0 && u.kind !== 'hauler').map(u => u.id);
+        if (i % 4 === 0) {
+          s = processAction(s, { type: 'move', ids: army, x: 31.5, y: 32.5, attackMove: true });
+          if (build) {
+            for (const k of ['tank', 'tank', 'missilecarrier'] as const) s = processAction(s, { type: 'queue', category: 'vehicle', kind: k });
+            s = processAction(s, { type: 'queue', category: 'infantry', kind: 'rocketeer' });
+          }
+        }
+        s = processAction(s, { type: 'tick', n: 50 });
+        const p = s.mission!.objectives[0].progress;
+        if (p === 0 && best > 0.2) reset = true;
+        best = Math.max(best, p);
+      }
+      return { s, reset, best };
+    };
+    const held = play(true);
+    ok(held.s.mission!.result === 'won', `the-long-hold: a supplied garrison holds the ford (${held.s.mission!.result} at ${held.s.tick})`);
+    const thin = play(false);
+    ok(thin.s.mission!.result !== 'won' && thin.reset && thin.best > 0.2, `the-long-hold: starting troops alone are overrun and the count resets (best ${thin.best.toFixed(2)})`);
+    notes.push(`ford held in ${clockText(held.s.tick)}`);
+  }
+  // Iron Coast: the skirmish commander, playing side 0 with what the mission gives, clears the shore.
+  {
+    let s = startOf('iron-coast');
+    s.autopilot = true;
+    while (!s.mission!.result && s.tick < 18000) s = processAction(s, { type: 'tick', n: 100 });
+    ok(s.mission!.result === 'won', `iron-coast: won by the skirmish commander playing side 0 (${s.mission!.result} at ${s.tick})`);
+    notes.push(`shore cleared in ${clockText(s.tick)}`);
+  }
+  // Bastion Line: the skirmish commander runs the base; from six minutes the army is sent at each
+  // Rocket Turret in turn, then onto the ground to hold. The line breaks and the ground is held.
+  {
+    let s = startOf('bastion-line');
+    s.autopilot = true;
+    for (let i = 0; i < 1200 && !s.mission!.result; i++) {
+      if (i % 8 === 0 && s.tick > 3600) {
+        const army = s.units.filter(u => u.owner === 0 && u.kind !== 'hauler' && !u.hero).map(u => u.id);
+        const turret = s.buildings.find(b => b.owner === 1 && b.kind === 'rocketturret');
+        const goal = turret ? centreOf(turret) : { x: 42.5, y: 24.5 };
+        if (army.length >= 10) s = processAction(s, { type: 'move', ids: army, x: goal.x, y: goal.y, attackMove: true });
+      }
+      s = processAction(s, { type: 'tick', n: 25 });
+    }
+    ok(s.mission!.result === 'won', `bastion-line: the line is broken and the ground held (${s.mission!.result} at ${s.tick})`);
+    notes.push(`line broken in ${clockText(s.tick)}`);
+  }
+  // Firestorm: the Commando at the Strike Command inside eight minutes stops the first missile.
+  {
+    let s = clone(startOf('firestorm'));
+    const sc = s.buildings.find(b => b.owner === 1 && b.kind === 'strikecommand')!;
+    ok(s.powers![1].missile === POWERS.missile.cooldown, 'firestorm: the Strike Command is charging its first missile');
+    const cmd = s.units.find(u => u.owner === 0 && u.kind === 'commando')!;
+    // The harness walks him to its door; everything that would shoot him first is cleared away.
+    s.units = s.units.filter(u => u.owner === 0);
+    s.buildings = s.buildings.filter(b => b.owner === 0 || !BUILDINGS[b.kind].weapon);
+    const c = centreOf(sc);
+    cmd.x = c.x;
+    cmd.y = sc.y + BUILDINGS.strikecommand.h + 0.5;
+    s = processAction(s, { type: 'ability', id: cmd.id, target: sc.id });
+    for (let i = 0; i < 10; i++) s = processAction(s, { type: 'tick', n: 10 });
+    ok(!s.buildings.some(b => b.id === sc.id), 'firestorm: one charge brings the Strike Command down');
+    ok(s.mission!.objectives[0].done && s.mission!.bonus[0].done, 'firestorm: its objective and the eight-minute bonus are done');
+    ok(s.powers![1].missile === undefined, 'firestorm: the enemy has no missile left');
+    s = processAction(s, { type: 'tick', n: 5000 });
+    ok(!s.projectiles.some(p => p.owner === 1 && p.weapon === 'missile') && !s.log.some(l => l.text.startsWith('Enemy missile')), 'firestorm: and none is ever launched');
+  }
+  // Last Light: both sides' structure powers, the enemy's on hard.
+  {
+    const s = startOf('last-light');
+    ok(s.difficulty === 'hard' && s.powers![1].missile !== undefined && s.powers![1].barrage !== undefined, 'last-light: the enemy holds the missile and the barrage');
+    ok(s.powers![0].recon === 0 && s.powers![0].barrage === 0 && s.powers![0].reinforce === 0, 'last-light: our three powers are ready at the start');
+    ok(s.powers![0].missile === undefined, 'last-light: no missile for us until we build a Strike Command');
+  }
+  return notes.join('; ');
 });
 
 // ---- Summary ---------------------------------------------------------------------------------
