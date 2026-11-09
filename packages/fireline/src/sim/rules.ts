@@ -13,7 +13,11 @@ export const MAP_H = 64;
 export type Owner = 0 | 1;
 
 export type Armor = 'infantry' | 'light' | 'heavy' | 'building';
-export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery';
+/**
+ * 'flame' is the Flame Tank's short-range burst; 'missile' is the Strike Command's one huge strike
+ * (a support power, never a unit's weapon). Grenadiers lob 'artillery' (it arcs and scatters).
+ */
+export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile';
 
 /** How hard each weapon hits each armour class. Riflemen shred infantry and scratch a tank. */
 export const DAMAGE_VS: Record<WeaponKind, Record<Armor, number>> = {
@@ -21,10 +25,12 @@ export const DAMAGE_VS: Record<WeaponKind, Record<Armor, number>> = {
   shell: { infantry: 0.45, light: 0.9, heavy: 1, building: 0.75 },
   rocket: { infantry: 0.3, light: 1, heavy: 1.15, building: 0.9 },
   artillery: { infantry: 1, light: 0.8, heavy: 0.55, building: 1 },
+  flame: { infantry: 1.25, light: 0.7, heavy: 0.3, building: 1.1 },
+  missile: { infantry: 1, light: 1, heavy: 0.9, building: 1 },
 };
 
 /** Ticks a projectile of each kind spends in the air before it lands. Bullets are instant. */
-export const FLIGHT_TICKS: Record<WeaponKind, number> = { bullet: 0, shell: 2, rocket: 4, artillery: 9 };
+export const FLIGHT_TICKS: Record<WeaponKind, number> = { bullet: 0, shell: 2, rocket: 4, artillery: 9, flame: 0, missile: 40 };
 
 export interface Weapon {
   kind: WeaponKind;
@@ -41,8 +47,32 @@ export interface Weapon {
 /** Named special characters. Campaign-only: never in a build menu, never in a skirmish. */
 export type HeroKind = 'spy' | 'commando' | 'engineer' | 'ace';
 export const HERO_KINDS: HeroKind[] = ['spy', 'commando', 'engineer', 'ace'];
-export type UnitKind = 'rifleman' | 'rocketeer' | 'hauler' | 'buggy' | 'tank' | 'artillery' | HeroKind;
-export type BuildingKind = 'hq' | 'power' | 'refinery' | 'barracks' | 'factory' | 'turret' | 'uplink';
+export type UnitKind =
+  | 'rifleman'
+  | 'rocketeer'
+  | 'hauler'
+  | 'buggy'
+  | 'tank'
+  | 'artillery'
+  | 'grenadier'
+  | 'medic'
+  | 'flametank'
+  | 'missilecarrier'
+  | 'bastion'
+  | HeroKind;
+export type BuildingKind =
+  | 'hq'
+  | 'power'
+  | 'refinery'
+  | 'barracks'
+  | 'factory'
+  | 'turret'
+  | 'uplink'
+  | 'techcentre'
+  | 'repairbay'
+  | 'wall'
+  | 'rocketturret'
+  | 'strikecommand';
 export type Category = 'building' | 'infantry' | 'vehicle';
 
 export interface UnitSpec {
@@ -60,6 +90,10 @@ export interface UnitSpec {
   blurb: string;
   /** True for the four named heroes (campaign only). */
   hero?: true;
+  /** Heals own infantry nearby (the Medic): see MEDIC_* below. */
+  medic?: true;
+  /** Hit points regained every SELF_REPAIR_TICKS while not fighting (the Bastion). */
+  selfRepair?: number;
 }
 
 export interface BuildingSpec {
@@ -75,6 +109,11 @@ export interface BuildingSpec {
   weapon?: Weapon;
   requires: BuildingKind[];
   blurb: string;
+  /**
+   * A wall: blocks movement and may stand against other walls, but is not a structure for victory,
+   * for the build radius, or for the crew that walks out when one falls. Absent on the rest.
+   */
+  wall?: true;
 }
 
 export const UNITS: Record<UnitKind, UnitSpec> = {
@@ -154,6 +193,72 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     weapon: { kind: 'artillery', damage: 90, range: 9, cooldown: 55, splash: 1.2, minRange: 2 },
     requires: ['factory', 'uplink'],
     blurb: 'Long-range shells that land with splash. Outranges turrets; needs an escort.',
+  },
+  grenadier: {
+    name: 'Grenadier',
+    category: 'infantry',
+    cost: 250,
+    buildTicks: 70,
+    hp: 65,
+    armor: 'infantry',
+    speed: 0.06,
+    sight: 6,
+    weapon: { kind: 'artillery', damage: 34, range: 4.5, cooldown: 32, splash: 1, minRange: 1.25 },
+    requires: ['barracks'],
+    blurb: 'Lobs grenades over a short arc. The splash breaks up infantry and cracks structures.',
+  },
+  medic: {
+    name: 'Medic',
+    category: 'infantry',
+    cost: 300,
+    buildTicks: 70,
+    hp: 70,
+    armor: 'infantry',
+    speed: 0.065,
+    sight: 6,
+    requires: ['barracks'],
+    blurb: 'Unarmed. Patches up wounded infantry within two tiles, and goes to them when idle.',
+    medic: true,
+  },
+  flametank: {
+    name: 'Flame Tank',
+    category: 'vehicle',
+    cost: 1100,
+    buildTicks: 120,
+    hp: 480,
+    armor: 'heavy',
+    speed: 0.09,
+    sight: 5,
+    weapon: { kind: 'flame', damage: 26, range: 2.75, cooldown: 7, splash: 0.9 },
+    requires: ['factory', 'techcentre'],
+    blurb: 'Short-range jets of fire with splash. Deadly to infantry and structures; must get close.',
+  },
+  missilecarrier: {
+    name: 'Missile Carrier',
+    category: 'vehicle',
+    cost: 1300,
+    buildTicks: 130,
+    hp: 240,
+    armor: 'light',
+    speed: 0.08,
+    sight: 7,
+    weapon: { kind: 'rocket', damage: 75, range: 8, cooldown: 60, minRange: 2.5 },
+    requires: ['factory', 'uplink'],
+    blurb: 'Long-range anti-armour rockets. Cannot fire at anything closer than two and a half tiles.',
+  },
+  bastion: {
+    name: 'Bastion',
+    category: 'vehicle',
+    cost: 1800,
+    buildTicks: 190,
+    hp: 900,
+    armor: 'heavy',
+    speed: 0.06,
+    sight: 6,
+    weapon: { kind: 'shell', damage: 85, range: 5.5, cooldown: 32 },
+    requires: ['factory', 'techcentre'],
+    blurb: 'A slow, heavy siege tank with a great cannon. Mends its own armour out of combat.',
+    selfRepair: 3,
   },
   // ---- Heroes (campaign only). Numbers are at level 1; HERO_LEVELS scales them. ----------------
   spy: {
@@ -299,12 +404,105 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     requires: ['refinery'],
     blurb: 'Brings the minimap online while powered, and unlocks artillery.',
   },
+  techcentre: {
+    name: 'Tech Centre',
+    w: 2,
+    h: 2,
+    cost: 2000,
+    buildTicks: 180,
+    hp: 900,
+    power: -60,
+    sight: 4,
+    requires: ['factory', 'uplink'],
+    blurb: 'Unlocks the heaviest arms: Flame Tanks, Bastions and the Strike Command. Grants the artillery barrage.',
+  },
+  repairbay: {
+    name: 'Repair Bay',
+    w: 2,
+    h: 2,
+    cost: 800,
+    buildTicks: 100,
+    hp: 700,
+    power: -30,
+    sight: 4,
+    requires: ['factory'],
+    blurb: 'Mends your vehicles parked on or beside it, paid as it goes.',
+  },
+  wall: {
+    name: 'Sandbag Wall',
+    w: 1,
+    h: 1,
+    cost: 50,
+    buildTicks: 15,
+    hp: 350,
+    power: 0,
+    sight: 1,
+    requires: ['barracks'],
+    blurb: 'Blocks the way. Walls may be laid side by side; they do not count as structures.',
+    wall: true,
+  },
+  rocketturret: {
+    name: 'Rocket Turret',
+    w: 1,
+    h: 1,
+    cost: 900,
+    buildTicks: 110,
+    hp: 500,
+    power: -40,
+    sight: 8,
+    weapon: { kind: 'rocket', damage: 60, range: 7.5, cooldown: 40 },
+    requires: ['uplink'],
+    blurb: 'Long-range anti-armour defence. Weak against infantry; slows when power is short.',
+  },
+  strikecommand: {
+    name: 'Strike Command',
+    w: 3,
+    h: 3,
+    cost: 3500,
+    buildTicks: 300,
+    hp: 1400,
+    power: -150,
+    sight: 5,
+    requires: ['techcentre'],
+    blurb: 'Draws heavy power. Grants the missile strike: one huge blast, every eight minutes.',
+  },
 };
 
 /** Structures in the order the build menu offers them. */
-export const BUILD_MENU: BuildingKind[] = ['power', 'refinery', 'barracks', 'factory', 'turret', 'uplink'];
-export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer'];
-export const VEHICLE_MENU: UnitKind[] = ['hauler', 'buggy', 'tank', 'artillery'];
+export const BUILD_MENU: BuildingKind[] = [
+  'power',
+  'refinery',
+  'barracks',
+  'factory',
+  'turret',
+  'uplink',
+  'wall',
+  'repairbay',
+  'rocketturret',
+  'techcentre',
+  'strikecommand',
+];
+export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic'];
+export const VEHICLE_MENU: UnitKind[] = ['hauler', 'buggy', 'tank', 'artillery', 'missilecarrier', 'flametank', 'bastion'];
+
+/**
+ * The original game: six structures (and the Command Yard) and six units. A skirmish set up with
+ * 'standard' tech offers these alone, and a mission's enemy is held to them.
+ */
+export const STANDARD_TECH: readonly (BuildingKind | UnitKind)[] = [
+  'power',
+  'refinery',
+  'barracks',
+  'factory',
+  'turret',
+  'uplink',
+  'rifleman',
+  'rocketeer',
+  'hauler',
+  'buggy',
+  'tank',
+  'artillery',
+];
 
 /** Which structure each queue needs before it will make progress. */
 export const PRODUCER: Record<Category, BuildingKind> = {
@@ -355,6 +553,25 @@ export function survivorsFor(w: number, h: number): number {
   const area = w * h;
   return area >= 9 ? 3 : area >= 6 ? 2 : 1;
 }
+
+/** Medic: heals the most hurt own infantry (not itself) within range, this much every so often. */
+export const MEDIC_RANGE = 2;
+export const MEDIC_HEAL = 4;
+export const MEDIC_HEAL_TICKS = 5;
+/** How far an idle Medic looks for wounded infantry to walk to. */
+export const MEDIC_SEEK = 6;
+
+/** The Bastion: UnitSpec.selfRepair hit points every this many ticks, out of combat. */
+export const SELF_REPAIR_TICKS = 10;
+
+/**
+ * Repair Bay: own vehicles within this distance of its footprint regain REPAIR_BAY_HP every
+ * REPAIR_BAY_TICKS (half as often when power is short), paying REPAIR_COST_SHARE of their cost per
+ * hit point, as structure repair does.
+ */
+export const REPAIR_BAY_RANGE = 1;
+export const REPAIR_BAY_HP = 6;
+export const REPAIR_BAY_TICKS = 5;
 
 /** Selling returns this share of the cost, scaled by remaining health. */
 export const SELL_RETURN = 0.5;
@@ -504,7 +721,7 @@ export function heroLevelFor(xp: number): number {
   return l;
 }
 
-export type SupportPower = 'recon' | 'barrage' | 'reinforce';
+export type SupportPower = 'recon' | 'barrage' | 'reinforce' | 'missile';
 
 export interface PowerSpec {
   name: string;
@@ -518,6 +735,77 @@ export const POWERS: Record<SupportPower, PowerSpec> = {
   recon: { name: 'Recon sweep', blurb: 'Reveal a wide area of the map, and any Spies in it, for 15 seconds.', cooldown: 1200, radius: 9 },
   barrage: { name: 'Artillery barrage', blurb: 'Eight shells land across the target area over four seconds.', cooldown: 1800, radius: 3 },
   reinforce: { name: 'Reinforcements', blurb: 'Four riflemen and a tank arrive at the map edge nearest your base.', cooldown: 2400, radius: 0 },
+  missile: {
+    name: 'Missile strike',
+    blurb: 'One missile, one huge blast. The target is marked for everyone to see four seconds before it lands.',
+    cooldown: 4800,
+    radius: 4,
+  },
+};
+
+/** Missile strike: damage at the centre (half at the edge of POWERS.missile.radius). Lands FLIGHT_TICKS.missile after the call. */
+export const MISSILE_DAMAGE = 800;
+
+/**
+ * Skirmish support powers, for both sides, with 'advanced' tech: each is held while a structure of
+ * this kind stands, and lost with the last of them. A power is granted on cooldown (it charges
+ * first). Missions keep their own powers and ignore this.
+ */
+export const SKIRMISH_POWERS: Partial<Record<SupportPower, BuildingKind>> = {
+  recon: 'uplink',
+  barrage: 'techcentre',
+  missile: 'strikecommand',
+};
+
+// ---- Skirmish setup ---------------------------------------------------------------------------
+
+export type MapType = 'classic' | 'river' | 'highlands' | 'lakes' | 'plains' | 'canyon';
+export const MAP_TYPES: MapType[] = ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon'];
+export const MAP_TYPE_NAMES: Record<MapType, string> = {
+  classic: 'Classic',
+  river: 'River',
+  highlands: 'Highlands',
+  lakes: 'Lakes',
+  plains: 'Plains',
+  canyon: 'Canyon',
+};
+export const MAP_TYPE_BLURBS: Record<MapType, string> = {
+  classic: 'Mixed ground: woods, ridges and ponds, with tracks between the bases.',
+  river: 'A river across the middle, crossed at three fords, with an island of ore midstream.',
+  highlands: 'Rock ridges cut the field; armies meet in narrow passes.',
+  lakes: 'Lakes all over, with land corridors between them.',
+  plains: 'Open country and plenty of ore. Few places to hide.',
+  canyon: 'Cliffs split the middle into two or three long corridors.',
+};
+
+export type TechLevel = 'standard' | 'advanced';
+export type OreLevel = 'poor' | 'normal' | 'rich';
+
+export interface SkirmishSetup {
+  map: MapType | 'random';
+  /** 'standard': the original six structures and six units, no support powers. 'advanced': everything. */
+  tech: TechLevel;
+  /** Each side's starting credits. */
+  credits: number;
+  ore: OreLevel;
+}
+
+/** What the lobby offers a new skirmish by default. */
+export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal' };
+/**
+ * A battle with no setup recorded: saves from before setups, and createInitialState called without
+ * one. The original game exactly: the original map generator, standard tech, no skirmish powers.
+ */
+export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal' };
+export const SETUP_CREDITS_MIN = 1000;
+export const SETUP_CREDITS_MAX = 20000;
+/** Starting-credit choices for the lobby. */
+export const SETUP_CREDIT_CHOICES = [2000, 3000, 5000, 10000];
+/** Ore per tile and field size by setting. */
+export const ORE_LEVELS: Record<OreLevel, { amount: number; radius: number }> = {
+  poor: { amount: 0.55, radius: 0 },
+  normal: { amount: 1, radius: 0 },
+  rich: { amount: 1.3, radius: 1 },
 };
 /** How long a recon sweep keeps its area revealed. */
 export const RECON_TICKS = 150;

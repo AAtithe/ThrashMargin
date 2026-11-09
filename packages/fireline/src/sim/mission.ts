@@ -19,6 +19,7 @@ import {
   MAP_W,
   OVERDRIVE_TICKS,
   POWERS,
+  MISSILE_DAMAGE,
   RECON_TICKS,
   REINFORCEMENTS,
   SIDE_NAMES,
@@ -68,8 +69,9 @@ const newPlayer = (owner: Owner, credits: number): PlayerState => ({
   stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
 });
 
-const startCentre = (owner: Owner) => {
-  const st = owner === 0 ? START_0 : START_1;
+/** The centre of a side's Command Yard site: a skirmish's own (s.starts), else the original sites missions use. */
+const startCentre = (owner: Owner, s?: GameState) => {
+  const st = s?.starts?.[owner] ?? (owner === 0 ? START_0 : START_1);
   return { x: st.x + 1.5, y: st.y + 1.5 };
 };
 
@@ -577,7 +579,7 @@ export function baseCentre(s: GameState, owner: Owner): { x: number; y: number }
       x += u.x;
       y += u.y;
     }
-  return n ? { x: x / n, y: y / n } : startCentre(owner);
+  return n ? { x: x / n, y: y / n } : startCentre(owner, s);
 }
 
 /** The passable tile on the edge of the map nearest a point. -1 if the whole edge is blocked. */
@@ -617,11 +619,39 @@ export function doPower(s: GameState, owner: Owner, power: SupportPower, x: numb
   s.powers = powers;
   const say = (text: string) => owner === 0 && log(s, text, 'good');
   if (power === 'recon') {
+    // s.recon is what side 0 sees. The computer (side 1 in a skirmish) already sees the whole
+    // map, so its sweep reveals nothing to anyone and leaves no mark.
+    if (owner !== 0) return;
     const r = POWERS.recon.radius;
     s.recon = [...(s.recon ?? []), [x, y, r, s.tick + RECON_TICKS]];
     s.effects.push({ id: s.nextId++, kind: 'recon', x, y, at: s.tick, size: r });
-    if (owner === 0) updateExplored(s);
+    updateExplored(s);
     say('Recon sweep under way.');
+    return;
+  }
+  if (power === 'missile') {
+    // One missile from the base, landing FLIGHT_TICKS.missile later. The marker at the target is
+    // drawn for both sides from the moment it is called, so the target has a few seconds to scatter.
+    const r = POWERS.missile.radius;
+    const from = baseCentre(s, owner);
+    s.projectiles.push({
+      id: s.nextId++,
+      owner,
+      weapon: 'missile',
+      fromX: from.x,
+      fromY: from.y,
+      toX: x,
+      toY: y,
+      firedAt: s.tick,
+      hitAt: s.tick + FLIGHT_TICKS.missile,
+      target: 0,
+      damage: MISSILE_DAMAGE,
+      splash: r,
+      shooter: 0,
+    });
+    s.effects.push({ id: s.nextId++, kind: 'missile', x, y, at: s.tick, size: r });
+    if (owner === 0) say('Missile launched.');
+    else log(s, 'Enemy missile launch detected. Clear the marked area.', 'bad');
     return;
   }
   if (power === 'barrage') {

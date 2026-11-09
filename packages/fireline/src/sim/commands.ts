@@ -20,8 +20,11 @@ import {
   buildTicksOf,
   categoryOf,
   costFor,
+  isStructure,
   log,
   readyStructure,
+  syncSkirmishPowers,
+  techAllowed,
   unlocked,
 } from './state';
 import type { Building, GameState, QueuedOrder, Stance, Unit } from './types';
@@ -43,8 +46,9 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   // Heroes are campaign characters, never built.
   if (kind in UNITS && UNITS[kind as UnitKind].hero) return false;
   if (categoryOf(kind) !== category) return false;
-  // A mission limits what side 0 may build to what the campaign has unlocked.
-  if (owner === 0 && s.allowed && !s.allowed.includes(kind)) return false;
+  // A mission limits what side 0 may build to what the campaign has unlocked; a skirmish on
+  // standard tech, and a mission's enemy, to the original game's kinds.
+  if (!techAllowed(s, owner, kind)) return false;
   const p = s.players[owner];
   if (p.queues[category].length >= (category === 'building' ? 1 : MAX_QUEUE)) return false;
   if (!unlocked(s, owner, kind)) return false;
@@ -101,9 +105,9 @@ export function placementProblem(s: GameState, owner: Owner, kind: BuildingKind,
     const d = { x: x + 1, y: frontRow(owner, y, spec.h) };
     if (!inBounds(d.x, d.y) || !isWalkable(s.tiles[idx(d.x, d.y)]) || occ[idx(d.x, d.y)]) return 'The dock pad below needs clear ground';
   }
-  // Near something we already own.
+  // Near something we already own (walls do not count: they cannot creep a base across the map).
   const near = s.buildings.some(b => {
-    if (b.owner !== owner) return false;
+    if (b.owner !== owner || !isStructure(b)) return false;
     const bs = BUILDINGS[b.kind];
     const gapX = Math.max(0, b.x - (x + spec.w - 1), x - (b.x + bs.w - 1));
     const gapY = Math.max(0, b.y - (y + spec.h - 1), y - (b.y + bs.h - 1));
@@ -127,6 +131,7 @@ export function doPlace(s: GameState, owner: Owner, kind: BuildingKind, x: numbe
     const h = addUnit(s, owner, 'hauler', d.x + 0.5, d.y + 0.5);
     h.order = { type: 'harvest', phase: 'seek', tile: -1, refinery: b.id };
   }
+  syncSkirmishPowers(s);
   if (owner === 0) log(s, `${BUILDINGS[kind].name} placed.`, 'good');
 }
 
@@ -143,7 +148,8 @@ export function doSell(s: GameState, owner: Owner, id: number): void {
   s.effects.push({ id: s.nextId++, kind: 'sold', x: b.x + spec.w / 2, y: b.y + spec.h / 2, at: s.tick, size: Math.max(spec.w, spec.h) });
   if (owner === 0) log(s, `${spec.name} sold for ${refund} credits.`);
   // The crew walks out, unless that was the last structure and the battle is over.
-  if (s.buildings.some(o => o.owner === owner)) spawnSurvivors(s, b, occupancy(s));
+  if (s.buildings.some(o => o.owner === owner && isStructure(o))) spawnSurvivors(s, b, occupancy(s));
+  syncSkirmishPowers(s);
 }
 
 /**
@@ -154,7 +160,8 @@ export function doSell(s: GameState, owner: Owner, id: number): void {
  */
 export function spawnSurvivors(s: GameState, b: Building, occ: Int32Array): number {
   const spec = BUILDINGS[b.kind];
-  const want = survivorsFor(spec.w, spec.h);
+  // Sandbags have no crew.
+  const want = spec.wall ? 0 : survivorsFor(spec.w, spec.h);
   const taken = new Set<number>();
   for (const u of s.units) if (u.hp > 0) taken.add(Math.floor(u.y) * MAP_W + Math.floor(u.x));
   let made = 0;

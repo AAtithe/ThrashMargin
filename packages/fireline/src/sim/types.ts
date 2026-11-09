@@ -1,4 +1,4 @@
-import type { BuildingKind, Category, Difficulty, HeroKind, Owner, SupportPower, UnitKind, WeaponKind } from './rules';
+import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, SkirmishSetup, SupportPower, UnitKind, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
@@ -146,11 +146,16 @@ export interface Projectile {
 /** Things that happened, kept for a few seconds so the renderer can draw them. Never read back. */
 export interface Effect {
   id: number;
-  kind: 'muzzle' | 'boom' | 'sold' | 'infiltrate' | 'captured' | 'charge' | 'levelup' | 'recon' | 'barrage' | 'reinforce';
+  kind: 'muzzle' | 'boom' | 'sold' | 'infiltrate' | 'captured' | 'charge' | 'levelup' | 'recon' | 'barrage' | 'reinforce' | 'missile' | 'heal' | 'repair';
   x: number;
   y: number;
   at: number;
-  /** Explosion size: 0 small hit, 1 vehicle, 2 structure. */
+  /**
+   * Explosion size: 0 small hit, 1 vehicle, 2 structure. For 'missile' (the warning marker at the
+   * target, from the call until impact FLIGHT_TICKS.missile later), 'recon' and 'barrage': the
+   * radius in tiles. 'heal' (a Medic at work) and 'repair' (a Repair Bay at work) sit on the unit
+   * being mended, with size 0.
+   */
   size: number;
   weapon?: WeaponKind;
   /** For muzzle flashes: where the shot is going. */
@@ -216,12 +221,24 @@ export interface GameState {
   /** Difficulty the computer plays side 0 with in the harness; defaults to s.difficulty. */
   autopilotDifficulty?: Difficulty;
 
+  // ---- Skirmish setup (optional: absent on older saves and missions; read it through setupOf) ---
+  /** How this skirmish was set up. Absent means LEGACY_SETUP: the original game. */
+  setup?: SkirmishSetup;
+  /** The map type actually generated (setup.map may say 'random'). Absent: the original map. */
+  mapType?: MapType;
+  /** Top-left tile of each side's starting Command Yard. Absent: START_0 and START_1 (map.ts). */
+  starts?: [{ x: number; y: number }, { x: number; y: number }];
+
   // ---- Campaign (all optional: a skirmish has none of these) ------------------------------------
   /** The mission being played, with its objectives; null or absent in a skirmish. */
   mission?: MissionRuntime | null;
   /** Commander perks applied to side 0 for this battle. */
   perks?: Perks;
-  /** Support powers per side: ticks until each is ready again (absent means not available). */
+  /**
+   * Support powers per side: ticks until each is ready again (absent means not available). A
+   * mission sets its own; a skirmish on advanced tech gets them from its structures (SKIRMISH_POWERS,
+   * kept in step by syncSkirmishPowers in state.ts).
+   */
   powers?: [Partial<Record<SupportPower, number>>, Partial<Record<SupportPower, number>>];
   /** Kinds side 0 may queue in this battle; null or absent means everything. */
   allowed?: (BuildingKind | UnitKind)[] | null;
