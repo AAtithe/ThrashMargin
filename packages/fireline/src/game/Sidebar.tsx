@@ -75,7 +75,7 @@ export function pressBuild(
 }
 
 const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure' };
-const WEAPON_NAME: Record<WeaponKind, string> = { bullet: 'Machine gun', shell: 'Cannon', rocket: 'Rockets', artillery: 'Artillery shell' };
+const WEAPON_NAME: Record<WeaponKind, string> = { bullet: 'Machine gun', shell: 'Cannon', rocket: 'Rockets', artillery: 'Artillery shell', flame: 'Flamethrower', missile: 'Missile' };
 const secs = (ticks: number) => {
   const v = ticks / TICKS_PER_SECOND;
   return `${Number.isInteger(v) ? v : v.toFixed(1)}s`;
