@@ -1,14 +1,23 @@
-import { generateMap, idx } from './map';
+import { generateMap, idx, START_0, START_1 } from './map';
+import { generateSkirmishMap, randomMapType } from './maps';
 import { seedFromString } from './rng';
 import {
   BUILDINGS,
   DEFAULT_DIFFICULTY,
+  DEFAULT_SETUP,
   DIFFICULTIES,
+  LEGACY_SETUP,
   MAP_H,
+  MAP_TYPES,
   MAP_W,
   PRODUCER,
+  SETUP_CREDITS_MAX,
+  SETUP_CREDITS_MIN,
   SIDE_NAMES,
   ORDER_QUEUE_MAX,
+  POWERS,
+  SKIRMISH_POWERS,
+  STANDARD_TECH,
   START_CREDITS,
   heroLevelFor,
   UNITS,
@@ -16,7 +25,10 @@ import {
   type BuildingKind,
   type Category,
   type Difficulty,
+  type MapType,
   type Owner,
+  type SkirmishSetup,
+  type SupportPower,
   type UnitKind,
 } from './rules';
 import type { AiMemory, Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
@@ -27,13 +39,78 @@ export interface NewGameOptions {
   createdAt: number;
   /** Test harness only: the computer plays both sides. */
   autopilot?: boolean;
+  /**
+   * The skirmish setup. Absent: the original game (LEGACY_SETUP: the original map generator,
+   * standard tech, 3000 credits). The lobby passes DEFAULT_SETUP or the player's choices; any
+   * field left out takes DEFAULT_SETUP's value.
+   */
+  setup?: Partial<SkirmishSetup>;
 }
 
-function newPlayer(owner: Owner): PlayerState {
+/** A setup with every field valid: unknown values fall back to DEFAULT_SETUP's, credits are clamped. */
+export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, base: SkirmishSetup = DEFAULT_SETUP): SkirmishSetup {
+  const r = raw && typeof raw === 'object' ? raw : {};
+  const map = r.map === 'random' || MAP_TYPES.includes(r.map as MapType) ? (r.map as SkirmishSetup['map']) : base.map;
+  const tech = r.tech === 'standard' || r.tech === 'advanced' ? r.tech : base.tech;
+  const ore = r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : base.ore;
+  const credits = Number.isFinite(r.credits)
+    ? Math.max(SETUP_CREDITS_MIN, Math.min(SETUP_CREDITS_MAX, Math.round(r.credits! / 100) * 100))
+    : base.credits;
+  return { map, tech, credits, ore };
+}
+
+/** How this battle was set up. Saves from before setups, and missions, read as LEGACY_SETUP. */
+export const setupOf = (s: GameState): SkirmishSetup => s.setup ?? LEGACY_SETUP;
+
+/** Top-left tile of a side's starting Command Yard: the state's own, else the original sites. */
+export function startOf(s: GameState, owner: Owner): { x: number; y: number } {
+  const st = s.starts?.[owner];
+  return st ?? (owner === 0 ? START_0 : START_1);
+}
+
+/**
+ * Whether this side may build or train this kind at all in this battle (requirements aside). A
+ * mission: side 0 by its tech list, side 1 by the original game's. A skirmish: everything with
+ * 'advanced' tech, the original game's with 'standard'.
+ */
+export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): boolean {
+  if (owner === 0 && s.allowed && !s.allowed.includes(kind)) return false;
+  if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
+  return setupOf(s).tech === 'advanced' || STANDARD_TECH.includes(kind);
+}
+
+/** True for a structure that counts as one: for victory, for the build radius, for survivors. Walls do not. */
+export const isStructure = (b: Building): boolean => !BUILDINGS[b.kind].wall;
+
+/**
+ * Skirmish support powers follow their structures (SKIRMISH_POWERS), for both sides: a power is
+ * granted on full cooldown when the first of its structures stands, and taken away with the last.
+ * Only in a skirmish on 'advanced' tech; a mission's powers are its own and are never touched.
+ * Works in place, on a state the reducer has cloned.
+ */
+export function syncSkirmishPowers(s: GameState): void {
+  if (s.mission || !s.setup || s.setup.tech !== 'advanced') return;
+  const powers = s.powers ?? ([{}, {}] as NonNullable<GameState['powers']>);
+  for (const owner of [0, 1] as Owner[]) {
+    let side = powers[owner];
+    for (const [power, kind] of Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]) {
+      const has = s.buildings.some(b => b.owner === owner && b.kind === kind && b.hp > 0);
+      const held = side[power] !== undefined;
+      if (has === held) continue;
+      side = { ...side };
+      if (has) side[power] = POWERS[power].cooldown;
+      else delete side[power];
+    }
+    powers[owner] = side;
+  }
+  s.powers = powers;
+}
+
+function newPlayer(owner: Owner, credits = START_CREDITS): PlayerState {
   return {
     owner,
     name: SIDE_NAMES[owner],
-    credits: START_CREDITS,
+    credits,
     queues: { building: [], infantry: [], vehicle: [] },
     stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
   };
@@ -47,7 +124,12 @@ export function newAiMemory(firstAttack: number): AiMemory {
 export function createInitialState(id: string, name: string, opts: NewGameOptions): GameState {
   const seedText = opts.seed && opts.seed.trim() ? opts.seed.trim().slice(0, 64) : `${id}`;
   const rngSeed = seedFromString(seedText);
-  const map = generateMap(rngSeed);
+  // No setup: the original game, on the original map. With one: the setup's map type ('random'
+  // drawn from the seed) from the skirmish generator, and the setup stored on the state.
+  const setup = opts.setup ? normaliseSetup(opts.setup) : null;
+  const mapType: MapType | null = setup ? (setup.map === 'random' ? randomMapType(rngSeed) : setup.map) : null;
+  const map = setup && mapType ? generateSkirmishMap(rngSeed, mapType, setup.ore) : generateMap(rngSeed);
+  const credits = setup ? setup.credits : START_CREDITS;
   const difficulty = opts.difficulty && opts.difficulty in DIFFICULTIES ? opts.difficulty : DEFAULT_DIFFICULTY;
   const d = DIFFICULTIES[difficulty];
 
@@ -65,7 +147,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     explored: '0'.repeat(MAP_W * MAP_H),
     units: [],
     buildings: [],
-    players: [newPlayer(0), newPlayer(1)],
+    players: [newPlayer(0, credits), newPlayer(1, credits)],
     projectiles: [],
     effects: [],
     ai: [
@@ -78,6 +160,13 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     log: [{ tick: 0, text: 'Battlefield control established. Build a Generator, then a Refinery.', tone: 'info' }],
     alarms: {},
   };
+  if (setup && mapType) {
+    s.setup = setup;
+    s.mapType = mapType;
+    s.starts = [{ ...map.starts[0] }, { ...map.starts[1] }];
+    // Support powers come with their structures (SKIRMISH_POWERS); none stand yet.
+    if (setup.tech === 'advanced') s.powers = [{}, {}];
+  }
 
   for (const owner of [0, 1] as Owner[]) {
     const st = map.starts[owner];
@@ -356,6 +445,19 @@ export function migrateState(raw: unknown): GameState | null {
     return out;
   });
   const out: GameState = { ...(s as GameState), units };
+  // A skirmish setup, its map type and its start sites: repaired or dropped, never trusted blind.
+  // A save without a setup plays as it always did (LEGACY_SETUP).
+  if (s.setup !== undefined) {
+    if (s.setup && typeof s.setup === 'object') out.setup = normaliseSetup(s.setup, LEGACY_SETUP);
+    else delete out.setup;
+  }
+  if (s.mapType !== undefined && !MAP_TYPES.includes(s.mapType)) delete out.mapType;
+  if (s.starts !== undefined) {
+    const okSite = (p: unknown) =>
+      !!p && typeof p === 'object' && Number.isInteger((p as { x: number }).x) && Number.isInteger((p as { y: number }).y);
+    if (Array.isArray(s.starts) && s.starts.length === 2 && s.starts.every(okSite)) out.starts = [{ ...s.starts[0] }, { ...s.starts[1] }];
+    else delete out.starts;
+  }
   // A campaign battle: its mission must at least have its objective lists, or it is not trusted.
   if (s.mission !== undefined && s.mission !== null) {
     const m = s.mission as Partial<MissionRuntime>;
