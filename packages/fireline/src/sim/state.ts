@@ -8,15 +8,18 @@ import {
   MAP_W,
   PRODUCER,
   SIDE_NAMES,
+  ORDER_QUEUE_MAX,
   START_CREDITS,
+  heroLevelFor,
   UNITS,
+  vetFor,
   type BuildingKind,
   type Category,
   type Difficulty,
   type Owner,
   type UnitKind,
 } from './rules';
-import type { Building, GameState, PlayerState, Unit } from './types';
+import type { AiMemory, Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
 
 export interface NewGameOptions {
   seed?: string;
@@ -34,6 +37,11 @@ function newPlayer(owner: Owner): PlayerState {
     queues: { building: [], infantry: [], vehicle: [] },
     stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
   };
+}
+
+/** A computer commander's starting memory. The one place it is built, for skirmish and missions alike. */
+export function newAiMemory(firstAttack: number): AiMemory {
+  return { nextAttack: firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0, waveIds: [], wavePhase: 0, waveTick: 0, waveSize: 0, raidIds: [], raidTarget: 0, nextRaid: 0 };
 }
 
 export function createInitialState(id: string, name: string, opts: NewGameOptions): GameState {
@@ -61,8 +69,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     projectiles: [],
     effects: [],
     ai: [
-      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0 },
-      { nextAttack: d.firstAttack, wave: 0, hurtTick: -9999, hurtX: 0, hurtY: 0 },
+      newAiMemory(d.firstAttack),
+      newAiMemory(d.firstAttack),
     ],
     autopilot: !!opts.autopilot,
     nextId: 1,
@@ -106,13 +114,15 @@ export function addBuilding(s: GameState, owner: Owner, kind: BuildingKind, x: n
 
 export function addUnit(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number): Unit {
   const fy = owner === 0 ? -1 : 1;
+  const hpMul = owner === 0 && s.perks ? s.perks.unitHpMul : 1;
+  const maxHp = hpMul !== 1 ? Math.max(1, Math.round(UNITS[kind].hp * hpMul)) : 0;
   const u: Unit = {
     id: s.nextId++,
     owner,
     kind,
     x,
     y,
-    hp: UNITS[kind].hp,
+    hp: maxHp || UNITS[kind].hp,
     fx: 0,
     fy,
     tx: 0,
@@ -126,10 +136,17 @@ export function addUnit(s: GameState, owner: Owner, kind: UnitKind, x: number, y
     cargo: 0,
     stuck: 0,
     kills: 0,
+    vet: 0,
+    queue: [],
+    stance: 'guard',
   };
+  if (maxHp) u.maxHp = maxHp;
   s.units.push(u);
   return u;
 }
+
+/** A unit's full health: perks and hero levels raise it above UNITS[kind].hp. */
+export const maxHpOf = (u: Unit): number => u.maxHp ?? UNITS[u.kind].hp;
 
 /**
  * The one copy an action makes. Everything the reducer can change is copied; `tiles` never changes
@@ -140,7 +157,12 @@ export function cloneState(s: GameState): GameState {
   return {
     ...s,
     ore: s.ore.slice(),
-    units: s.units.map(u => ({ ...u, order: { ...u.order }, path: u.path.slice() })),
+    // Queued orders are never edited in place (a popped one is copied), so the array copy is enough.
+    units: s.units.map(u => {
+      const c = { ...u, order: { ...u.order }, path: u.path.slice(), queue: u.queue.slice() };
+      if (u.hero) c.hero = u.hero.active ? { ...u.hero, active: { ...u.hero.active } } : { ...u.hero };
+      return c;
+    }),
     buildings: s.buildings.map(b => ({ ...b, rally: b.rally ? { ...b.rally } : null })),
     players: s.players.map(p => ({
       ...p,
@@ -156,18 +178,35 @@ export function cloneState(s: GameState): GameState {
     ai: s.ai.map(a => ({ ...a })) as GameState['ai'],
     log: s.log.slice(),
     alarms: { ...s.alarms },
+    ...(s.mission
+      ? {
+          mission: {
+            ...s.mission,
+            objectives: s.mission.objectives.map(o => ({ ...o })),
+            bonus: s.mission.bonus.map(o => ({ ...o })),
+            fired: s.mission.fired.slice(),
+            ...(s.mission.fallen ? { fallen: { ...s.mission.fallen } } : {}),
+          },
+        }
+      : {}),
+    ...(s.powers ? { powers: [{ ...s.powers[0] }, { ...s.powers[1] }] as GameState['powers'] } : {}),
+    ...(s.blackoutUntil ? { blackoutUntil: [s.blackoutUntil[0], s.blackoutUntil[1]] as [number, number] } : {}),
+    ...(s.recon ? { recon: s.recon.slice() } : {}),
   };
 }
 
 export function powerOf(s: GameState, owner: Owner): { made: number; used: number; low: boolean } {
   let made = 0;
   let used = 0;
+  const blackout = !!s.blackoutUntil && s.tick < s.blackoutUntil[owner];
   for (const b of s.buildings) {
     if (b.owner !== owner) continue;
     const p = BUILDINGS[b.kind].power;
     if (p > 0) made += Math.round(p * Math.max(0.5, b.hp / BUILDINGS[b.kind].hp));
     else used -= p;
   }
+  // A Spy on a Generator: the side's power has failed, whatever it has standing.
+  if (blackout) return { made: 0, used, low: true };
   return { made, used, low: used > made };
 }
 
@@ -196,17 +235,36 @@ export function costOf(kind: BuildingKind | UnitKind): number {
   return kind in BUILDINGS ? BUILDINGS[kind as BuildingKind].cost : UNITS[kind as UnitKind].cost;
 }
 
+/** What this side pays for it in this battle: side 0's Procurement perk takes a share off. */
+export function costFor(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): number {
+  const base = costOf(kind);
+  const mul = owner === 0 && s.perks ? s.perks.costMul : 1;
+  return mul === 1 ? base : Math.round(base * mul);
+}
+
 export function buildTicksOf(kind: BuildingKind | UnitKind): number {
   return kind in BUILDINGS ? BUILDINGS[kind as BuildingKind].buildTicks : UNITS[kind as UnitKind].buildTicks;
 }
 
-/** The structure a queue's finished item comes out of (lowest id wins when there are several). */
+/**
+ * The structure a queue's finished item comes out of (lowest id wins when there are several). One
+ * stopped by a Spy is passed over while another is working; if all are stopped, the first is
+ * returned and `sabotaged(s, b)` says so.
+ */
 export function producerFor(s: GameState, owner: Owner, category: Category): Building | undefined {
   const kind = PRODUCER[category];
   let found: Building | undefined;
-  for (const b of s.buildings) if (b.owner === owner && b.kind === kind && (!found || b.id < found.id)) found = b;
-  return found;
+  let working: Building | undefined;
+  for (const b of s.buildings) {
+    if (b.owner !== owner || b.kind !== kind) continue;
+    if (!found || b.id < found.id) found = b;
+    if (!sabotaged(s, b) && (!working || b.id < working.id)) working = b;
+  }
+  return working ?? found;
 }
+
+/** True while a Spy's sabotage keeps this producer idle. */
+export const sabotaged = (s: GameState, b: Building): boolean => b.sabotagedUntil !== undefined && s.tick < b.sabotagedUntil;
 
 /** A finished structure waiting to be placed, if any. */
 export function readyStructure(s: GameState, owner: Owner): BuildingKind | null {
@@ -228,6 +286,8 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
       }
   };
   for (const u of s.units) if (u.owner === owner) mark(u.x, u.y, UNITS[u.kind].sight);
+  // Recon sweeps are side 0's, and show their area until they run out.
+  if (owner === 0 && s.recon) for (const r of s.recon) if (s.tick < r[3]) mark(r[0], r[1], r[2]);
   for (const b of s.buildings)
     if (b.owner === owner) {
       const spec = BUILDINGS[b.kind];
@@ -262,8 +322,10 @@ export function alarm(s: GameState, key: string, text: string, gap: number, tone
 }
 
 /**
- * A save from an older build is passed through this before use. There is only one shape so far;
- * anything that does not look like it is refused rather than crashing the reducer.
+ * A save from an older build is passed through this before use. Anything that does not look like
+ * a battle is refused rather than crashing the reducer. Saves from before veterancy, waypoint
+ * queues and stances get those fields filled with their defaults (rookie, empty queue, guard), so
+ * a battle in progress keeps loading. Returns a new object; the input is not modified.
  */
 export function migrateState(raw: unknown): GameState | null {
   const s = raw as Partial<GameState> | null;
@@ -271,7 +333,41 @@ export function migrateState(raw: unknown): GameState | null {
   if (typeof s.tiles !== 'string' || !Array.isArray(s.ore) || typeof s.explored !== 'string') return null;
   if (!Array.isArray(s.units) || !Array.isArray(s.buildings) || !Array.isArray(s.players)) return null;
   if (!Array.isArray(s.projectiles) || !Array.isArray(s.effects) || !Array.isArray(s.ai)) return null;
-  return s as GameState;
+  const units = s.units.map(raw => {
+    const u = raw as Partial<Unit> & Unit;
+    const kills = Number.isFinite(u.kills) ? u.kills : 0;
+    const vet = u.vet === 0 || u.vet === 1 || u.vet === 2 ? u.vet : vetFor(kills);
+    const queue = Array.isArray(u.queue)
+      ? u.queue.filter(o => o && (o.type === 'move' || o.type === 'attackMove' || o.type === 'attack')).slice(0, ORDER_QUEUE_MAX)
+      : [];
+    const stance: Stance = u.stance === 'aggressive' || u.stance === 'hold' ? u.stance : 'guard';
+    const out: Unit = { ...u, kills, vet, queue, stance };
+    if (u.hero !== undefined) {
+      const h = u.hero as Partial<HeroState> | null;
+      if (!h || typeof h !== 'object' || !UNITS[u.kind]?.hero) delete out.hero;
+      else {
+        const xp = Number.isFinite(h.xp) && h.xp! > 0 ? h.xp! : 0;
+        const abilityCd = Number.isFinite(h.abilityCd) && h.abilityCd! > 0 ? Math.round(h.abilityCd!) : 0;
+        const active = h.active && (h.active.kind === 'overdrive' || h.active.kind === 'capture') ? { ...h.active } : undefined;
+        out.hero = { level: heroLevelFor(xp), xp, abilityCd, ...(active ? { active } : {}) };
+      }
+    }
+    if (u.maxHp !== undefined && !(Number.isFinite(u.maxHp) && u.maxHp > 0)) delete out.maxHp;
+    return out;
+  });
+  const out: GameState = { ...(s as GameState), units };
+  // A campaign battle: its mission must at least have its objective lists, or it is not trusted.
+  if (s.mission !== undefined && s.mission !== null) {
+    const m = s.mission as Partial<MissionRuntime>;
+    if (typeof m !== 'object' || !Array.isArray(m.objectives) || !Array.isArray(m.bonus)) return null;
+    out.mission = {
+      ...(m as MissionRuntime),
+      fired: Array.isArray(m.fired) ? m.fired.filter(n => Number.isInteger(n)) : [],
+      timeLimit: Number.isFinite(m.timeLimit) ? m.timeLimit! : null,
+      result: m.result === 'won' || m.result === 'lost' ? m.result : null,
+    };
+  }
+  return out;
 }
 
 export { idx };

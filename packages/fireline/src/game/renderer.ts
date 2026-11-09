@@ -1,11 +1,67 @@
 import { dockTile } from '../sim/grid';
-import { BUILDINGS, MAP_H, MAP_W, TICKS_PER_SECOND, UNITS, type BuildingKind } from '../sim/rules';
-import { powerOf, visibility } from '../sim/state';
-import type { Building, GameState, Unit } from '../sim/types';
+import { isDetected } from '../sim/mission';
+import { BUILDINGS, CAPTURE_TICKS, CHARGE_FUSE, ENGINEER_REPAIR_RANGE, MAP_H, MAP_W, POWERS, TICKS_PER_SECOND, UNITS, type BuildingKind } from '../sim/rules';
+import { buildTicksOf, powerOf, producerFor, visibility } from '../sim/state';
+import type { Building, Effect, GameState, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
-import { drawBuilding, drawDock, drawUnit, TILE } from './art';
+import { drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
+import { drawCampaignEffect, drawCaptureRing, drawChargeOnBuilding, drawOverdriveGlow, drawReconArea, startCampaignEffect } from './fx/campaign';
+import { Atmosphere } from './fx/atmosphere';
+import { Particles } from './fx/particles';
+import { Scars } from './fx/scars';
+import { sprites } from './fx/sprites';
+import { Water } from './fx/water';
 import { sound, type SoundKind } from './sound';
 import { paintTerrain } from './terrain';
+
+/**
+ * The pose fields art.ts reads for damage, recoil flashes and working structures. Declared here as
+ * optional extras so this file compiles whether or not art.ts has them yet; once it does, these
+ * intersections change nothing.
+ */
+type UnitPoseX = UnitPose & { hp?: number; firing?: boolean };
+type BuildingPoseX = BuildingPose & { hp?: number; working?: boolean };
+
+/** Seconds after a shot that a unit still counts as firing, for its muzzle pose. */
+const FIRING_WINDOW = 0.15;
+/** How long, in ticks, a shot lights the ground, and the most such lights in one frame. */
+const LIGHT_TICKS = 1.3;
+const MAX_LIGHTS = 32;
+
+/** Full health of a unit: a per-unit maxHp if the simulation sets one (perks, hero levels), else the kind's. */
+const maxHpOf = (u: Unit) => (u as { maxHp?: number }).maxHp ?? UNITS[u.kind].hp;
+
+/** The sound each campaign effect makes. */
+const CAMPAIGN_SOUND: Partial<Record<Effect['kind'], SoundKind>> = {
+  infiltrate: 'infiltrate',
+  captured: 'capture',
+  charge: 'charge',
+  levelup: 'levelup',
+  recon: 'recon',
+  barrage: 'barrage',
+  reinforce: 'reinforce',
+};
+
+/**
+ * Whether side 0 can see this enemy Spy. Until the simulation's isDetected exists it throws, and
+ * an enemy Spy is then simply not drawn.
+ */
+function spySeen(s: GameState, u: Unit): boolean {
+  try {
+    return isDetected(s, u, 0);
+  } catch {
+    return false;
+  }
+}
+
+/** The Engineer is welding: an own vehicle beside him is short of health. */
+function engineerWelding(s: GameState, u: Unit): boolean {
+  for (const v of s.units) {
+    if (v.owner !== u.owner || UNITS[v.kind].category !== 'vehicle' || v.hp >= maxHpOf(v)) continue;
+    if (Math.hypot(v.x - u.x, v.y - u.y) <= ENGINEER_REPAIR_RANGE) return true;
+  }
+  return false;
+}
 
 /**
  * Draws one frame of the battlefield. Owns nothing the simulation reads: particles, scorch marks
@@ -40,17 +96,8 @@ export interface Overlay {
   /** Screen-space drag rectangle. */
   drag: { x0: number; y0: number; x1: number; y1: number } | null;
   pings: Ping[];
-}
-
-interface Particle {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  max: number;
-  size: number;
-  kind: 'fire' | 'smoke' | 'debris' | 'spark';
+  /** Control group of each own unit that has one (unit id to digit), for the badge under it. */
+  groupOf?: Map<number, number>;
 }
 
 export class Renderer {
@@ -58,8 +105,13 @@ export class Renderer {
   private fog: HTMLCanvasElement;
   private fogCtx: CanvasRenderingContext2D;
   private fogImg: ImageData;
-  private particles: Particle[] = [];
-  private scorches: { x: number; y: number; r: number }[] = [];
+  private fx = new Particles();
+  private scars: Scars;
+  private water: Water;
+  private atmosphere = new Atmosphere();
+  /** Structures producing something right now, cached per state object. */
+  private workingFor: GameState | null = null;
+  private working = new Set<number>();
   private seen = new Set<number>();
   /** False until the first frame, which marks what is already on the field as seen, silently. */
   private primed = false;
@@ -69,6 +121,9 @@ export class Renderer {
 
   constructor(tiles: string) {
     this.terrain = paintTerrain(tiles);
+    this.scars = new Scars(this.terrain, tiles);
+    this.water = new Water(tiles, this.terrain);
+    this.scars.onRepaint = (x, y, w, h) => this.water.invalidate(x, y, w, h);
     this.fog = document.createElement('canvas');
     this.fog.width = MAP_W;
     this.fog.height = MAP_H;
@@ -114,19 +169,19 @@ export class Renderer {
     const sy = ty0 * TILE;
     const sw = (tx1 - tx0 + 1) * TILE;
     const sh = (ty1 - ty0 + 1) * TILE;
+    // The terrain canvas carries the battle's marks (tread marks, scorches, fallen soldiers,
+    // rubble; see fx/scars.ts) and the water's animation (fx/water.ts), so one copy draws them all.
+    this.scars.update(cur, vis, now);
+    this.scars.step(dt, now, this.fx);
+    this.water.update(t, tx0, ty0, tx1, ty1);
     ctx.drawImage(this.terrain, sx, sy, sw, sh, sx, sy, sw, sh);
 
-    // 2. Scorch marks from past explosions.
-    for (const m of this.scorches) {
-      if (!inView(m.x, m.y)) continue;
-      const g = ctx.createRadialGradient(m.x, m.y, 0, m.x, m.y, m.r);
-      g.addColorStop(0, 'rgba(20,16,12,0.55)');
-      g.addColorStop(1, 'rgba(20,16,12,0)');
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(m.x, m.y, m.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    // 2. Burnt-out wrecks.
+    this.scars.draw(ctx, now, inView);
+
+    // 2b. Light on the ground: muzzle flashes, blasts, and their shockwaves.
+    this.groundLight(ctx, cur, rt, vis, inView);
+    this.fx.drawGround(ctx, inView);
 
     // 3. Ore.
     for (let y = ty0; y <= ty1; y++)
@@ -147,6 +202,7 @@ export class Renderer {
       return false;
     };
     const buildings = cur.buildings.filter(b => seenBuilding(b)).sort((a, b) => a.y - b.y || a.x - b.x);
+    const working = this.workingSet(cur);
     for (const b of buildings) {
       if (b.kind !== 'refinery') continue;
       const d = dockTile(b);
@@ -158,18 +214,20 @@ export class Renderer {
       const py = b.y * TILE;
       if (!inView(px + (spec.w * TILE) / 2, py + (spec.h * TILE) / 2, 120)) continue;
       const w = spec.weapon;
-      drawBuilding(ctx, b.kind, b.owner, px, py, {
+      const frac = b.hp / spec.hp;
+      const bpose: BuildingPoseX = {
         t,
         rise: Math.min(1, Math.max(0, (rt - b.placedAt) / 15)),
         lowPower: low[b.owner],
         turret: Math.atan2(b.ty, b.tx),
         sinceShot: w && b.cooldown > 0 ? (w.cooldown - b.cooldown) / TICKS_PER_SECOND : 9,
-      });
-      const frac = b.hp / spec.hp;
+        hp: frac,
+        working: working.has(b.id),
+      };
+      drawBuilding(ctx, b.kind, b.owner, px, py, bpose);
       if (frac < 0.5 && Math.random() < dt * (frac < 0.25 ? 14 : 6)) {
-        this.particles.push(smoke(px + Math.random() * spec.w * TILE, py + Math.random() * spec.h * TILE * 0.6, 1.6));
-        if (frac < 0.25 && Math.random() < 0.6)
-          this.particles.push(fire(px + TILE * 0.3 + Math.random() * (spec.w - 0.6) * TILE, py + Math.random() * spec.h * TILE * 0.7));
+        this.fx.smoke(px + Math.random() * spec.w * TILE, py + Math.random() * spec.h * TILE * 0.6, 1.6);
+        if (frac < 0.25 && Math.random() < 0.6) this.fx.fire(px + TILE * 0.3 + Math.random() * (spec.w - 0.6) * TILE, py + Math.random() * spec.h * TILE * 0.7);
       }
       const selected = ov.selected.has(b.id);
       if (selected || ov.hover === b.id) {
@@ -186,6 +244,10 @@ export class Renderer {
         ctx.fillRect(cx - 7, cy - 2, 14, 4);
         ctx.fillRect(cx - 2, cy - 7, 4, 14);
         ctx.globalAlpha = 1;
+      }
+      if (b.chargeAt !== undefined && b.chargeAt + 1 > rt) {
+        const left = Math.max(0, Math.min(1, (b.chargeAt - rt) / CHARGE_FUSE));
+        drawChargeOnBuilding(ctx, px, py, spec.w * TILE, spec.h * TILE, left, t);
       }
       if (selected && b.owner === 0 && b.rally) {
         const cx = px + (spec.w * TILE) / 2;
@@ -210,10 +272,14 @@ export class Renderer {
       const x = (p.x + (u.x - p.x) * alpha) * TILE;
       const y = (p.y + (u.y - p.y) * alpha) * TILE;
       if (!inView(x, y)) continue;
-      if (u.owner !== 0 && !vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
+      if (u.owner !== 0) {
+        if (!vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
+        if (u.kind === 'spy' && !spySeen(cur, u)) continue;
+      }
       drawn.push({ u, x, y });
     }
     drawn.sort((a, b) => a.y - b.y);
+    this.orderLines(ctx, cur, drawn, ov, t);
     for (const { u, x, y } of drawn) {
       const spec = UNITS[u.kind];
       const r = spec.category === 'infantry' ? 8 : 14;
@@ -228,22 +294,52 @@ export class Renderer {
     for (const { u, x, y } of drawn) {
       const p = prevById.get(u.id) ?? u;
       const moving = Math.abs(u.x - p.x) + Math.abs(u.y - p.y) > 0.001;
-      const w = UNITS[u.kind].weapon;
-      drawUnit(ctx, u.kind, u.owner, x, y, {
+      const spec = UNITS[u.kind];
+      const w = spec.weapon;
+      const sinceShot = w && u.cooldown > 0 ? (w.cooldown - u.cooldown) / TICKS_PER_SECOND : 9;
+      const upose: UnitPoseX = {
         hull: Math.atan2(p.fy + (u.fy - p.fy) * alpha, p.fx + (u.fx - p.fx) * alpha),
         turret: Math.atan2(p.ty + (u.ty - p.ty) * alpha, p.tx + (u.tx - p.tx) * alpha),
         t: t + u.id * 0.37,
         moving,
         cargo: u.cargo / 600,
-        sinceShot: w && u.cooldown > 0 ? (w.cooldown - u.cooldown) / TICKS_PER_SECOND : 9,
-      });
-      if (moving && UNITS[u.kind].category === 'vehicle' && Math.random() < dt * 8) {
-        this.particles.push({ x: x - u.fx * 10, y: y - u.fy * 10, vx: 0, vy: -4, life: 0.7, max: 0.7, size: 3, kind: 'smoke' });
+        sinceShot,
+        hp: u.hp / maxHpOf(u),
+        firing: sinceShot < FIRING_WINDOW,
+      };
+      const hero = u.hero;
+      if (hero) {
+        upose.shimmer = u.kind === 'spy';
+        upose.repairing = u.kind === 'engineer' && engineerWelding(cur, u);
+        const act = hero.active;
+        if (act && act.kind === 'overdrive' && act.until > cur.tick) {
+          drawOverdriveGlow(ctx, x, y, upose.hull, t, (act.until - rt) / TICKS_PER_SECOND);
+          if (moving && Math.random() < dt * 20) this.fx.fire(x - u.fx * 14, y - u.fy * 14);
+        }
+      }
+      // Your own Spy is cloaked: drawn at about half strength.
+      const cloaked = u.kind === 'spy' && u.owner === 0;
+      if (cloaked) ctx.globalAlpha = 0.55;
+      drawUnit(ctx, u.kind, u.owner, x, y, upose);
+      if (cloaked) ctx.globalAlpha = 1;
+      if (spec.category === 'vehicle' && moving) {
+        this.scars.track(u, x, y, this.fx, dt);
+        if (Math.random() < dt * 5) this.fx.exhaust(x - u.fx * 10, y - u.fy * 10);
       }
     }
     for (const { u, x, y } of drawn) {
+      const act = u.hero?.active;
+      if (!act || act.kind !== 'capture') continue;
+      const b = cur.buildings.find(v => v.id === act.target);
+      if (!b) continue;
+      const bs = BUILDINGS[b.kind];
+      // Progress may be kept as ticks or as a fraction; either reads as 0..1 here.
+      const prog = act.progress > 1 || Number.isInteger(act.progress) ? act.progress / CAPTURE_TICKS : act.progress;
+      drawCaptureRing(ctx, x, y, b.x * TILE, b.y * TILE, bs.w * TILE, bs.h * TILE, Math.max(0, Math.min(1, prog)), TEAM[u.owner].main, t);
+    }
+    for (const { u, x, y } of drawn) {
       const spec = UNITS[u.kind];
-      const frac = u.hp / spec.hp;
+      const frac = u.hp / maxHpOf(u);
       const r = spec.category === 'infantry' ? 9 : 14;
       if (ov.selected.has(u.id) || ov.hover === u.id) hpBar(ctx, x - r, y - r - 7, r * 2, frac);
       else if (frac < 1) hpBar(ctx, x - r, y - r - 5, r * 2, frac, true);
@@ -253,6 +349,11 @@ export class Renderer {
         ctx.fillStyle = ART.ore;
         ctx.fillRect(x - r, y - r - 3, r * 2 * (u.cargo / 600), 2.5);
       }
+      const vet = (u as unknown as { vet?: number }).vet ?? 0;
+      if (vet > 0) chevrons(ctx, x + r + 2, y - r - 2, Math.min(2, vet));
+      const group = u.owner === 0 ? ov.groupOf?.get(u.id) : undefined;
+      if (group !== undefined) groupBadge(ctx, x, y + r + 1, group);
+      if (u.hero) drawHeroBadge(ctx, x - r + 4, y - r - 13, u.hero.level);
     }
 
     // 6. Shells and rockets in flight.
@@ -272,7 +373,7 @@ export class Renderer {
         ctx.beginPath();
         ctx.arc(x, y - lift, 2.6, 0, Math.PI * 2);
         ctx.fill();
-        if (Math.random() < 0.5) this.particles.push({ x, y: y - lift, vx: 0, vy: 0, life: 0.4, max: 0.4, size: 2, kind: 'smoke' });
+        if (Math.random() < 0.5) this.fx.add({ kind: 'smoke', x, y, z: lift, life: 0.5, size: 2, grow: 2 });
       } else if (p.weapon === 'rocket') {
         const ang = Math.atan2(p.toY - p.fromY, p.toX - p.fromX);
         ctx.save();
@@ -283,7 +384,7 @@ export class Renderer {
         ctx.fillStyle = '#ffb347';
         ctx.fillRect(-7, -1.2, 3, 2.4);
         ctx.restore();
-        this.particles.push({ x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: 0.5, max: 0.5, size: 2.2, kind: 'smoke' });
+        this.fx.add({ kind: 'smoke', x, y, vx: (Math.random() - 0.5) * 6, vy: (Math.random() - 0.5) * 6, life: 0.55, size: 2, grow: 2.4 });
       } else {
         ctx.fillStyle = '#ffe9b0';
         ctx.beginPath();
@@ -305,7 +406,8 @@ export class Renderer {
       if (!this.seen.has(e.id)) {
         this.seen.add(e.id);
         if (e.kind === 'boom') this.burst(x, y, e.size, e.weapon);
-        if (e.kind === 'sold') for (let i = 0; i < 18; i++) this.particles.push(spark(x, y));
+        if (e.kind === 'sold') for (let i = 0; i < 18; i++) this.fx.spark(x, y);
+        startCampaignEffect(e, this.fx);
         if (age < 4) this.hear(e, cam, vis);
       }
       if (!inView(x, y, 120)) continue;
@@ -331,32 +433,24 @@ export class Renderer {
         ctx.arc(x, y, e.weapon === 'bullet' ? 3 : e.weapon === 'artillery' ? 8 : 5.5, 0, Math.PI * 2);
         ctx.fill();
       } else if (e.kind === 'boom') {
-        const dur = e.size >= 2 ? 14 : e.size >= 1 ? 10 : 6;
+        // The white-hot instant of the blast; the fireball, smoke and debris are particles.
+        const dur = e.size >= 2 ? 3 : 2;
         if (age > dur) continue;
         const f = age / dur;
-        const R = (e.size >= 2 ? 44 : e.size >= 1 ? 22 : e.weapon === 'artillery' ? 18 : 9) * (0.4 + f * 0.8);
-        const g = ctx.createRadialGradient(x, y, 0, x, y, R);
-        g.addColorStop(0, `rgba(255,250,220,${1 - f})`);
-        g.addColorStop(0.35, `rgba(255,170,60,${0.9 * (1 - f)})`);
-        g.addColorStop(0.75, `rgba(170,60,20,${0.6 * (1 - f)})`);
-        g.addColorStop(1, 'rgba(60,30,20,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(x, y, R, 0, Math.PI * 2);
-        ctx.fill();
-        if (age < 1.5 && e.size >= 1) {
-          ctx.strokeStyle = `rgba(255,255,255,${0.5 * (1 - age / 1.5)})`;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(x, y, R * 1.6, 0, Math.PI * 2);
-          ctx.stroke();
-        }
+        const R = (e.size >= 2 ? 40 : e.size >= 1 ? 22 : e.weapon === 'artillery' ? 18 : 9) * (0.7 + f * 0.6);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = (1 - f) * (1 - f);
+        ctx.drawImage(sprites().fire, x - R, y - R, R * 2, R * 2);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
       } else if (e.kind === 'sold' && age < 12) {
         ctx.strokeStyle = `rgba(255,230,120,${1 - age / 12})`;
         ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.arc(x, y, e.size * 10 * (age / 6), 0, Math.PI * 2);
         ctx.stroke();
+      } else if (e.kind !== 'muzzle' && e.kind !== 'sold') {
+        drawCampaignEffect(ctx, e, age, cur, t);
       }
     }
     if (this.seen.size > 4000) {
@@ -365,7 +459,8 @@ export class Renderer {
     }
 
     // 8. Particles.
-    this.stepParticles(ctx, dt);
+    this.fx.step(dt);
+    this.fx.drawAir(ctx, inView);
 
     // 9. Order pings.
     ov.pings = ov.pings.filter(p => now - p.at < 600);
@@ -379,17 +474,26 @@ export class Renderer {
     }
 
     // 10. Fog: unexplored is black, explored but unwatched is dimmed. Drawn from a one-pixel-per-
-    // tile canvas scaled up with smoothing, which is what gives it soft edges.
+    // tile canvas scaled up with smoothing, which is what gives it soft edges. Cloud shadows and
+    // the vignette ride in the same canvas (see fx/atmosphere.ts), so they cost no extra fill.
     const d = this.fogImg.data;
     const [fr, fg, fb] = ART.fog;
+    const shade = this.atmosphere.shade(t, cam, tx0, ty0, tx1, ty1);
     for (let k = 0; k < MAP_W * MAP_H; k++) {
       d[k * 4] = fr;
       d[k * 4 + 1] = fg;
       d[k * 4 + 2] = fb;
-      d[k * 4 + 3] = explored.charCodeAt(k) !== 49 ? 255 : vis[k] ? 0 : 120;
+      const a = explored.charCodeAt(k) !== 49 ? 255 : vis[k] ? 0 : 120;
+      d[k * 4 + 3] = 255 - ((255 - a) * (255 - shade[k])) / 255;
     }
     this.fogCtx.putImageData(this.fogImg, 0, 0);
     ctx.drawImage(this.fog, 0, 0, MAP_W * TILE, MAP_H * TILE);
+    // Recon sweeps: a soft scanning ring over the revealed area, above the fog.
+    if (cur.recon)
+      for (const [cx, cy, r, until] of cur.recon) {
+        if (until <= cur.tick) continue;
+        drawReconArea(ctx, cx * TILE, cy * TILE, r * TILE, t, (until - rt) / TICKS_PER_SECOND);
+      }
     // Edges of the world.
     ctx.fillStyle = '#050707';
     ctx.fillRect(-400, -400, MAP_W * TILE + 800, 400);
@@ -437,10 +541,13 @@ export class Renderer {
    */
   private hear(e: GameState['effects'][number], cam: Camera, vis: Uint8Array) {
     const k = Math.floor(e.y) * MAP_W + Math.floor(e.x);
-    if (!vis[k]) return;
+    // A recon sweep or a barrage is called by a commander and heard on the radio, fog or not.
+    if (!vis[k] && e.kind !== 'recon' && e.kind !== 'barrage') return;
     let kind: SoundKind;
     let gain = 1;
-    if (e.kind === 'muzzle') kind = e.weapon === 'bullet' ? 'bullet' : e.weapon === 'rocket' ? 'rocket' : e.weapon === 'artillery' ? 'artillery' : 'shell';
+    const campaign = CAMPAIGN_SOUND[e.kind];
+    if (campaign) kind = campaign;
+    else if (e.kind === 'muzzle') kind = e.weapon === 'bullet' ? 'bullet' : e.weapon === 'rocket' ? 'rocket' : e.weapon === 'artillery' ? 'artillery' : 'shell';
     else if (e.kind === 'sold') kind = 'sold';
     else if (e.size >= 2) kind = 'boomBuilding';
     else if (e.size >= 1) kind = 'boomVehicle';
@@ -459,69 +566,163 @@ export class Renderer {
   }
 
   private burst(x: number, y: number, size: number, weapon?: string) {
-    const n = size >= 2 ? 40 : size >= 1 ? 18 : weapon === 'artillery' ? 12 : 4;
-    for (let i = 0; i < n; i++) {
-      const r = Math.random();
-      if (r < 0.4) this.particles.push(fire(x + (Math.random() - 0.5) * 10 * (size + 0.5), y + (Math.random() - 0.5) * 10 * (size + 0.5)));
-      else if (r < 0.75) this.particles.push(smoke(x + (Math.random() - 0.5) * 14 * (size + 0.5), y + (Math.random() - 0.5) * 14 * (size + 0.5), 1 + size));
-      else {
-        const a = Math.random() * Math.PI * 2;
-        const v = 40 + Math.random() * 90 * (size + 0.5);
-        this.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5 + Math.random() * 0.4, max: 0.9, size: 1.5 + Math.random() * 1.5, kind: 'debris' });
-      }
-    }
-    if (size >= 0.5 || weapon === 'artillery') this.scorches.push({ x, y, r: size >= 2 ? 40 : size >= 1 ? 20 : 12 });
-    if (this.scorches.length > 160) this.scorches.splice(0, this.scorches.length - 160);
+    this.fx.explode(x, y, size, weapon === 'artillery');
+    // A structure's footprint gets rubble and a vehicle a scorch under its wreck, from Scars.
+    if (size >= 1) return;
+    this.scars.stampScorch(x, y, weapon === 'artillery' ? 14 : size >= 0.5 ? 9 : 5);
   }
 
-  private stepParticles(ctx: CanvasRenderingContext2D, dt: number) {
-    const keep: Particle[] = [];
-    for (const p of this.particles) {
-      p.life -= dt;
-      if (p.life <= 0) continue;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      if (p.kind === 'debris') {
-        p.vx *= 0.92;
-        p.vy *= 0.92;
+  /** Structures producing right now: the head of a queue being worked, or a hauler unloading. */
+  private workingSet(s: GameState): Set<number> {
+    if (this.workingFor === s) return this.working;
+    this.workingFor = s;
+    const set = new Set<number>();
+    for (const owner of [0, 1] as const) {
+      const q = s.players[owner].queues;
+      for (const cat of ['building', 'infantry', 'vehicle'] as const) {
+        const head = q[cat][0];
+        if (!head || head.progress >= buildTicksOf(head.kind)) continue;
+        const b = producerFor(s, owner, cat);
+        if (b) set.add(b.id);
       }
-      const f = p.life / p.max;
-      if (p.kind === 'fire') {
-        ctx.fillStyle = `rgba(255,${120 + Math.floor(100 * f)},40,${f})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.size * (0.6 + f * 0.6), 0, Math.PI * 2);
-        ctx.fill();
-      } else if (p.kind === 'smoke') {
-        const s = p.size * (1 + (1 - f) * 2.5);
-        ctx.fillStyle = `rgba(55,52,48,${0.45 * f})`;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, s, 0, Math.PI * 2);
-        ctx.fill();
-      } else if (p.kind === 'debris') {
-        ctx.fillStyle = `rgba(40,34,28,${f})`;
-        ctx.fillRect(p.x, p.y, p.size, p.size);
-      } else {
-        ctx.fillStyle = `rgba(255,230,130,${f})`;
-        ctx.fillRect(p.x, p.y, 2, 2);
-      }
-      keep.push(p);
     }
-    this.particles = keep.length > 1500 ? keep.slice(keep.length - 1500) : keep;
+    for (const u of s.units) if (u.order.type === 'harvest' && u.order.phase === 'unload' && u.order.refinery) set.add(u.order.refinery);
+    this.working = set;
+    return set;
   }
-}
 
-function fire(x: number, y: number): Particle {
-  return { x, y, vx: (Math.random() - 0.5) * 10, vy: -18 - Math.random() * 20, life: 0.35 + Math.random() * 0.4, max: 0.75, size: 2.5 + Math.random() * 3, kind: 'fire' };
-}
+  /**
+   * Light thrown on the ground by each shot fired in the last moments: an additive pool of warm
+   * light around the gun. Only where the player can see, like the sound.
+   */
+  private groundLight(ctx: CanvasRenderingContext2D, cur: GameState, rt: number, vis: Uint8Array, inView: (x: number, y: number, m?: number) => boolean) {
+    const img = sprites().light;
+    let lit = false;
+    let lights = 0;
+    for (const e of cur.effects) {
+      if (e.kind !== 'muzzle') continue;
+      const age = rt - e.at + 1;
+      if (age < 0 || age >= LIGHT_TICKS) continue;
+      const x = e.x * TILE;
+      const y = e.y * TILE;
+      if (!inView(x, y, 60) || !vis[Math.floor(e.y) * MAP_W + Math.floor(e.x)]) continue;
+      if (!lit) {
+        ctx.globalCompositeOperation = 'lighter';
+        lit = true;
+      }
+      if (++lights > MAX_LIGHTS) break;
+      const r = e.weapon === 'bullet' ? 14 : e.weapon === 'rocket' ? 24 : e.weapon === 'artillery' ? 40 : 28;
+      const k = 1 - age / LIGHT_TICKS;
+      ctx.globalAlpha = k * k * (e.weapon === 'bullet' ? 0.55 : 0.85);
+      ctx.drawImage(img, x - r, y - r * 0.8, r * 2, r * 1.6);
+    }
+    if (lit) {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    }
+  }
 
-function smoke(x: number, y: number, scale: number): Particle {
-  return { x, y, vx: 4 + (Math.random() - 0.5) * 6, vy: -10 - Math.random() * 12, life: 1 + Math.random() * 1.2, max: 2.2, size: 3 * scale, kind: 'smoke' };
-}
-
-function spark(x: number, y: number): Particle {
-  const a = Math.random() * Math.PI * 2;
-  const v = 30 + Math.random() * 50;
-  return { x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.6, max: 0.6, size: 2, kind: 'spark' };
+  /**
+   * Where each selected unit of the player's is heading: a dashed line from the unit through any
+   * queued waypoints to its goal, marching towards it, with a marker at the end. Green for a move,
+   * amber for an attack-move, red to an attack target. More than four units share lines (below).
+   */
+  private orderLines(ctx: CanvasRenderingContext2D, cur: GameState, drawn: { u: Unit; x: number; y: number }[], ov: Overlay, t: number) {
+    if (!ov.selected.size) return;
+    const lines: [number[], number[], number[]] = [[], [], []];
+    const ends: [number[], number[], number[]] = [[], [], []];
+    let targets: Map<number, { x: number; y: number }> | null = null;
+    const chains: { lane: number; pts: number[] }[] = [];
+    for (const { u, x, y } of drawn) {
+      if (u.owner !== 0 || !ov.selected.has(u.id)) continue;
+      const o = u.order;
+      const pts: number[] = [x, y];
+      let lane = 0;
+      if (o.type === 'move' || o.type === 'attackMove') {
+        lane = o.type === 'move' ? 0 : 1;
+        pts.push(o.x * TILE, o.y * TILE);
+      } else if (o.type === 'attack') {
+        if (!targets) {
+          targets = new Map();
+          for (const v of cur.units) targets.set(v.id, { x: v.x * TILE, y: v.y * TILE });
+          for (const b of cur.buildings) {
+            const spec = BUILDINGS[b.kind];
+            targets.set(b.id, { x: (b.x + spec.w / 2) * TILE, y: (b.y + spec.h / 2) * TILE });
+          }
+        }
+        const tg = targets.get(o.target);
+        if (!tg) continue;
+        lane = 2;
+        pts.push(tg.x, tg.y);
+      }
+      // Queued waypoints, read loosely: any list of points with x and y in tiles.
+      const queue = (u as unknown as { queue?: unknown }).queue;
+      if (Array.isArray(queue))
+        for (const q of queue) {
+          const w = q as { x?: unknown; y?: unknown } | null;
+          if (w && typeof w.x === 'number' && typeof w.y === 'number') pts.push(w.x * TILE, w.y * TILE);
+        }
+      if (pts.length < 4) continue;
+      chains.push({ lane, pts });
+    }
+    // A big selection draws one line per order, from the group's middle through the average of its
+    // waypoints, rather than one line per unit: twenty units sent somewhere made a spider's web.
+    let shown = chains;
+    if (chains.length > 4) {
+      const groups = new Map<string, { lane: number; sum: number[]; n: number }>();
+      for (const c of chains) {
+        const key = `${c.lane}:${c.pts.length}`;
+        const g = groups.get(key) ?? { lane: c.lane, sum: new Array(c.pts.length).fill(0), n: 0 };
+        for (let i = 0; i < c.pts.length; i++) g.sum[i] += c.pts[i];
+        g.n++;
+        groups.set(key, g);
+      }
+      shown = [...groups.values()].map(g => ({ lane: g.lane, pts: g.sum.map(v => v / g.n) }));
+    }
+    for (const { lane, pts } of shown) {
+      const l = lines[lane];
+      for (let i = 0; i + 3 < pts.length; i += 2) l.push(pts[i], pts[i + 1], pts[i + 2], pts[i + 3]);
+      for (let i = 2; i < pts.length; i += 2) ends[lane].push(pts[i], pts[i + 1]);
+    }
+    const cols = ['rgba(125,255,138,', 'rgba(255,196,90,', 'rgba(255,110,90,'];
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([4, 5]);
+    ctx.lineDashOffset = -(t * 14) % 9;
+    for (let lane = 0; lane < 3; lane++) {
+      const l = lines[lane];
+      if (!l.length) continue;
+      ctx.strokeStyle = cols[lane] + '0.6)';
+      ctx.beginPath();
+      for (let i = 0; i < l.length; i += 4) {
+        ctx.moveTo(l[i], l[i + 1]);
+        ctx.lineTo(l[i + 2], l[i + 3]);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
+    for (let lane = 0; lane < 3; lane++) {
+      const e = ends[lane];
+      if (!e.length) continue;
+      ctx.strokeStyle = cols[lane] + '0.85)';
+      ctx.fillStyle = cols[lane] + '0.25)';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      for (let i = 0; i < e.length; i += 2) {
+        ctx.moveTo(e[i] + 4, e[i + 1]);
+        ctx.ellipse(e[i], e[i + 1], 4, 2.8, 0, 0, Math.PI * 2);
+      }
+      ctx.fill();
+      ctx.stroke();
+      if (lane === 2) continue;
+      ctx.beginPath();
+      for (let i = 0; i < e.length; i += 2) {
+        ctx.moveTo(e[i], e[i + 1]);
+        ctx.lineTo(e[i], e[i + 1] - 7);
+      }
+      ctx.stroke();
+    }
+  }
 }
 
 function oreHash(n: number): number {
@@ -610,4 +811,36 @@ function flag(ctx: CanvasRenderingContext2D, x: number, y: number) {
   ctx.lineTo(x, y - 9);
   ctx.closePath();
   ctx.fill();
+}
+
+/** Rank chevrons for a veteran (one) or elite (two) unit, gold with a dark edge. */
+function chevrons(ctx: CanvasRenderingContext2D, x: number, y: number, n: number) {
+  ctx.lineJoin = 'miter';
+  for (let i = 0; i < n; i++) {
+    const cy = y - i * 3.6;
+    ctx.beginPath();
+    ctx.moveTo(x - 3.5, cy - 2);
+    ctx.lineTo(x, cy + 0.8);
+    ctx.lineTo(x + 3.5, cy - 2);
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.strokeStyle = n >= 2 ? '#ffd75a' : '#e8c460';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+}
+
+/** The control-group digit under a grouped unit. */
+function groupBadge(ctx: CanvasRenderingContext2D, x: number, y: number, digit: number) {
+  ctx.fillStyle = 'rgba(8,12,10,0.78)';
+  ctx.fillRect(x - 4.5, y, 9, 9);
+  ctx.strokeStyle = 'rgba(125,255,138,0.6)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(x - 4.5, y, 9, 9);
+  ctx.fillStyle = '#d8ffd9';
+  ctx.font = 'bold 8px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(digit), x, y + 4.8);
 }

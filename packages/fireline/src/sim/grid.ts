@@ -1,5 +1,5 @@
 import { idx } from './map';
-import { BUILDINGS, MAP_H as H, MAP_W as W } from './rules';
+import { BUILDINGS, MAP_H as H, MAP_W as W, type Owner } from './rules';
 
 // Local copies: these are read in the innermost loops, where a module binding costs a lookup.
 const MAP_W = W;
@@ -29,9 +29,34 @@ export function passable(s: GameState, occ: Int32Array, x: number, y: number): b
   return c === 103 || c === 100; // 'g' or 'd'
 }
 
-/** The tile a refinery's haulers dock on: centre of the row just below it. */
+/**
+ * The row in front of a structure, where its door and dock are: below it for side 0 and above it
+ * for side 1. Side 0's base is in the bottom-left and side 1's in the top-right, so for both the
+ * front faces away from the enemy. Until this existed every front was the south edge, which faced
+ * away from the enemy for side 0 but towards it for side 1: side 1's units and haulers came out on
+ * the near side of its base, and it won 78% of mirror games (the round-1 AI ladder, 150 seeds).
+ */
+export function frontRow(owner: Owner, y: number, h: number): number {
+  return owner === 0 ? y + h : y - 1;
+}
+
+/** One row further out than the front row: kept clear so units can leave. */
+export function laneRow(owner: Owner, y: number, h: number): number {
+  return owner === 0 ? y + h + 1 : y - 2;
+}
+
+/** Which way a unit faces leaving a structure (the y component of its facing). */
+export const frontDir = (owner: Owner) => (owner === 0 ? 1 : -1);
+
+/** The tile a refinery's haulers dock on: centre of its front row. */
 export function dockTile(b: Building): { x: number; y: number } {
-  return { x: b.x + 1, y: b.y + BUILDINGS[b.kind].h };
+  return { x: b.x + 1, y: frontRow(b.owner, b.y, BUILDINGS[b.kind].h) };
+}
+
+/** The tile in front of a structure's door, where trained units step out. */
+export function doorTile(b: Building): { x: number; y: number } {
+  const spec = BUILDINGS[b.kind];
+  return { x: b.x + Math.floor(spec.w / 2), y: frontRow(b.owner, b.y, spec.h) };
 }
 
 export const tileOf = (u: { x: number; y: number }) => idx(Math.floor(u.x), Math.floor(u.y));

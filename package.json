@@ -23,6 +23,8 @@
     "drive:fl": "npm run drive --workspace=packages/founders-ledger",
     "drive:tm": "npm run drive --workspace=packages/thrash-margin",
     "drive:fire": "npm run drive --workspace=packages/fireline",
+    "campaign:fire": "npm run campaign-check --workspace=packages/fireline",
+    "ladder:fire": "npm run ladder --workspace=packages/fireline",
     "build:portal": "bash scripts/build-portal.sh",
     "check": "bash scripts/check.sh",
     "check:loading": "node scripts/loading-check.cjs",

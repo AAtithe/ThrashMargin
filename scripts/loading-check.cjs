@@ -158,7 +158,9 @@ async function checkGame(browser, g) {
     await p.goto(base + '/');
     await wait(900);
     ok(g.key, `[${theme}] lobby shows placeholder rows while saves load`, (await p.locator('[data-testid=loading-rows]').count()) > 0);
-    const gone = await p.locator('[data-testid=loading-rows]').waitFor({ state: 'detached', timeout: 8000 }).then(() => true, () => false);
+    // Wait for none at all: a lobby may hold several lists (Fireline lists campaigns and battles), and
+    // locator.waitFor demands exactly one match, so it errors, rather than waits, when there are two.
+    const gone = await p.waitForFunction(() => !document.querySelector('[data-testid=loading-rows]'), null, { timeout: 8000 }).then(() => true, () => false);
     ok(g.key, `[${theme}] placeholder rows go once the list answers`, gone);
     await c.close();
   }

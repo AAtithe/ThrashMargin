@@ -1,0 +1,379 @@
+import { BUILDINGS, MAP_H, MAP_W, UNITS, type UnitKind } from '../../sim/rules';
+import type { GameState, Unit } from '../../sim/types';
+import { ART } from '../../theme';
+import { drawUnit, TILE } from '../art';
+import type { Particles } from './particles';
+import { sprites } from './sprites';
+
+/**
+ * The marks a battle leaves on the ground, drawn under the units.
+ *
+ * - Tread and tyre marks, small scorches and fallen soldiers are stamped straight into the
+ *   terrain canvas, so they arrive with the terrain blit the renderer does anyway and cost nothing
+ *   per frame however many there are. To make them fade, the terrain is blended back towards a
+ *   pristine copy of itself, one 128-pixel chunk at a time (about one chunk a frame, 20% each
+ *   time, only chunks that have been marked), so a mark is gone in about a minute.
+ * - A structure's rubble and scorched footprint is painted into the pristine copy and copied into
+ *   the terrain, so the fading never touches it: it stays for the rest of the session.
+ * - A destroyed vehicle leaves a burnt-out hull for about 25 seconds: a dark copy of the vehicle,
+ *   rendered once into a small sprite when it dies, which smoulders while it lasts.
+ *
+ * Deaths are found by comparing the units and structures of the last state seen with the current
+ * one. Nothing is marked where the player cannot see, so the scars never reveal what the fog hides.
+ */
+
+const CHUNK = 128;
+const CHUNKS = Math.ceil((MAP_W * TILE) / CHUNK);
+/** Seconds between two fades of the same chunk, and how much each fade takes away. */
+const FADE_PERIOD = 4;
+const FADE_ALPHA = 0.2;
+/** Fades after the last stamp before a chunk is surely clean (0.8^25 is under 1/255). */
+const FADES_TO_CLEAR = 25;
+
+const WRECK_LIFE = 25;
+const WRECK_SOLID = 18;
+const MAX_WRECKS = 48;
+
+interface Wreck {
+  x: number;
+  y: number;
+  sprite: HTMLCanvasElement;
+  born: number;
+  big: boolean;
+}
+
+interface Smoulder {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  born: number;
+  life: number;
+}
+
+const TRACKS: Partial<Record<UnitKind, { off: number; w: number; a: number }>> = {
+  tank: { off: 7.5, w: 4, a: 0.16 },
+  hauler: { off: 8, w: 4.5, a: 0.16 },
+  artillery: { off: 7, w: 3.5, a: 0.15 },
+  buggy: { off: 5.5, w: 1.6, a: 0.2 },
+};
+
+export class Scars {
+  /** The terrain as painted, plus rubble: what the marks fade back to. */
+  private pristine: HTMLCanvasElement;
+  private pctx: CanvasRenderingContext2D;
+  /** The live terrain canvas the renderer draws; marks go here. */
+  private dctx: CanvasRenderingContext2D;
+  /** Told about each region the fading repaints, so animated water there can redraw itself. */
+  onRepaint: ((x: number, y: number, w: number, h: number) => void) | null = null;
+  /** Per chunk: 0 clean, otherwise fades applied since the last stamp, plus one. */
+  private dirty = new Uint8Array(CHUNKS * CHUNKS);
+  private fadeClock = 0;
+  private nextChunk = 0;
+  private trackAt = new Map<number, { x: number; y: number }>();
+  private wrecks: Wreck[] = [];
+  private smoulders: Smoulder[] = [];
+  private last: GameState | null = null;
+  private tiles: string;
+
+  constructor(terrain: HTMLCanvasElement, tiles: string) {
+    this.tiles = tiles;
+    this.dctx = terrain.getContext('2d')!;
+    this.pristine = document.createElement('canvas');
+    this.pristine.width = terrain.width;
+    this.pristine.height = terrain.height;
+    this.pctx = this.pristine.getContext('2d')!;
+    this.pctx.drawImage(terrain, 0, 0);
+  }
+
+  /** Finds what died since the last call and marks the ground for it. */
+  update(cur: GameState, vis: Uint8Array, now: number): void {
+    const last = this.last;
+    this.last = cur;
+    if (!last || last === cur) return;
+    const t = now / 1000;
+    if (last.units.length) {
+      const alive = new Set<number>();
+      for (const u of cur.units) alive.add(u.id);
+      for (const u of last.units) {
+        if (alive.has(u.id)) continue;
+        this.trackAt.delete(u.id);
+        if (!vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
+        this.unitDied(u, t);
+      }
+    }
+    if (last.buildings.length !== cur.buildings.length || last.buildings.some((b, i) => cur.buildings[i]?.id !== b.id)) {
+      const alive = new Set<number>();
+      for (const b of cur.buildings) alive.add(b.id);
+      for (const b of last.buildings) {
+        if (alive.has(b.id)) continue;
+        const spec = BUILDINGS[b.kind];
+        const cx = b.x + spec.w / 2;
+        const cy = b.y + spec.h / 2;
+        // Sold, not destroyed: it leaves clean ground.
+        if (cur.effects.some(e => e.kind === 'sold' && e.at > last.tick - 1 && Math.abs(e.x - cx) < 0.6 && Math.abs(e.y - cy) < 0.6)) continue;
+        let seen = b.owner === 0;
+        for (let y = b.y; y < b.y + spec.h && !seen; y++)
+          for (let x = b.x; x < b.x + spec.w; x++) if (cur.explored.charCodeAt(y * MAP_W + x) === 49) seen = true;
+        if (!seen) continue;
+        this.rubble(b.x * TILE, b.y * TILE, spec.w * TILE, spec.h * TILE);
+        this.smoulders.push({ x: b.x * TILE, y: b.y * TILE, w: spec.w * TILE, h: spec.h * TILE, born: t, life: 30 });
+      }
+    }
+    if (this.trackAt.size > 600) {
+      const alive = new Set(cur.units.map(u => u.id));
+      for (const id of this.trackAt.keys()) if (!alive.has(id)) this.trackAt.delete(id);
+    }
+  }
+
+  private unitDied(u: Unit, t: number) {
+    const x = u.x * TILE;
+    const y = u.y * TILE;
+    if (UNITS[u.kind].category === 'infantry') {
+      this.fallen(x, y);
+      return;
+    }
+    this.stampScorch(x, y, 22);
+    const size = 60;
+    const c = document.createElement('canvas');
+    c.width = size;
+    c.height = size;
+    const sc = c.getContext('2d')!;
+    drawUnit(sc, u.kind, u.owner, size / 2, size / 2, {
+      hull: Math.atan2(u.fy, u.fx),
+      turret: Math.atan2(u.ty, u.tx) + (Math.random() - 0.5) * 0.8,
+      t: 0,
+      moving: false,
+      cargo: 0,
+      sinceShot: 9,
+    });
+    // Burn it out: everything drawn becomes charred metal, with a few rust-red scorches.
+    sc.globalCompositeOperation = 'source-atop';
+    sc.fillStyle = 'rgba(24,20,17,0.84)';
+    sc.fillRect(0, 0, size, size);
+    for (let i = 0; i < 7; i++) {
+      sc.fillStyle = Math.random() < 0.5 ? 'rgba(110,52,26,0.45)' : 'rgba(70,64,58,0.5)';
+      sc.beginPath();
+      sc.arc(size / 2 + (Math.random() - 0.5) * 22, size / 2 + (Math.random() - 0.5) * 16, 1.5 + Math.random() * 3, 0, Math.PI * 2);
+      sc.fill();
+    }
+    this.wrecks.push({ x, y, sprite: c, born: t, big: u.kind !== 'buggy' });
+    if (this.wrecks.length > MAX_WRECKS) this.wrecks.splice(0, this.wrecks.length - MAX_WRECKS);
+  }
+
+  /** A soldier's fall: a dark patch and a small prone shape, on the fading layer. */
+  private fallen(x: number, y: number) {
+    const d = this.dctx;
+    const sp = sprites();
+    d.globalAlpha = 0.55;
+    d.drawImage(sp.scorch, x - 7, y - 5, 14, 10);
+    d.globalAlpha = 1;
+    const a = Math.random() * Math.PI * 2;
+    d.save();
+    d.translate(x, y);
+    d.rotate(a);
+    d.fillStyle = 'rgba(38,42,32,0.85)';
+    d.beginPath();
+    d.ellipse(0, 0, 4.2, 1.8, 0, 0, Math.PI * 2);
+    d.fill();
+    d.fillStyle = 'rgba(52,58,44,0.9)';
+    d.beginPath();
+    d.arc(4.6, 0, 1.6, 0, Math.PI * 2);
+    d.fill();
+    d.strokeStyle = 'rgba(28,30,26,0.8)';
+    d.lineWidth = 0.9;
+    d.beginPath();
+    d.moveTo(-1, 1.5);
+    d.lineTo(3, 4);
+    d.stroke();
+    d.restore();
+    this.touch(x - 8, y - 8, 16, 16);
+  }
+
+  stampScorch(x: number, y: number, r: number) {
+    const sp = sprites();
+    this.dctx.globalAlpha = 0.8;
+    this.dctx.drawImage(sp.scorch, x - r, y - r * 0.8, r * 2, r * 1.6);
+    this.dctx.globalAlpha = 1;
+    this.touch(x - r, y - r, r * 2, r * 2);
+  }
+
+  /**
+   * Called for every vehicle drawn while it moves. Lays tread (or tyre) marks from where it was
+   * last stamped to where it is now; a dust puff on dirt.
+   */
+  track(u: Unit, x: number, y: number, fx: Particles, dt: number) {
+    const spec = TRACKS[u.kind];
+    if (!spec) return;
+    const at = this.trackAt.get(u.id);
+    if (!at) {
+      this.trackAt.set(u.id, { x, y });
+      return;
+    }
+    const dx = x - at.x;
+    const dy = y - at.y;
+    const d2 = dx * dx + dy * dy;
+    const k = Math.floor(y / TILE) * MAP_W + Math.floor(x / TILE);
+    const ground = this.tiles[k];
+    if (ground === 'd' && Math.random() < dt * (u.kind === 'buggy' ? 5 : 2.5)) fx.dust(x - (dx / (Math.sqrt(d2) || 1)) * 10, y - (dy / (Math.sqrt(d2) || 1)) * 8, u.kind === 'buggy' ? 0.9 : 1.2);
+    if (d2 < 9) return;
+    if (d2 > 1600) {
+      at.x = x;
+      at.y = y;
+      return;
+    }
+    if (ground !== 'w') {
+      const d = Math.sqrt(d2);
+      const nx = -dy / d;
+      const ny = dx / d;
+      const c = this.dctx;
+      c.strokeStyle = ground === 'd' ? `rgba(52,38,22,${spec.a + 0.06})` : `rgba(30,26,16,${spec.a})`;
+      c.lineWidth = spec.w;
+      c.lineCap = 'butt';
+      c.beginPath();
+      for (const side of [-1, 1]) {
+        c.moveTo(at.x + nx * spec.off * side, at.y + ny * spec.off * side);
+        c.lineTo(x + nx * spec.off * side, y + ny * spec.off * side);
+      }
+      c.stroke();
+      this.touch(Math.min(x, at.x) - 10, Math.min(y, at.y) - 10, Math.abs(dx) + 20, Math.abs(dy) + 20);
+    }
+    at.x = x;
+    at.y = y;
+  }
+
+  /** Rubble and a scorched footprint, painted into the pristine terrain: it never goes away. */
+  private rubble(px: number, py: number, w: number, h: number) {
+    const c = this.pctx;
+    const sp = sprites();
+    const cx = px + w / 2;
+    const cy = py + h / 2;
+    c.save();
+    c.globalAlpha = 0.95;
+    c.drawImage(sp.scorch, cx - w * 0.62, cy - h * 0.62, w * 1.24, h * 1.24);
+    c.globalAlpha = 1;
+    // The foundation's outline, cracked.
+    c.strokeStyle = 'rgba(20,18,15,0.45)';
+    c.lineWidth = 2;
+    c.setLineDash([7, 3, 2, 4]);
+    c.strokeRect(px + 3, py + 3, w - 6, h - 6);
+    c.setLineDash([]);
+    const n = Math.round((w * h) / 70);
+    const cols = [ART.concrete, ART.concreteDark, ART.metalDark, '#4a443c', '#2a2622'];
+    for (let i = 0; i < n; i++) {
+      // Heaped towards the middle.
+      const rx = cx + (Math.random() + Math.random() - 1) * w * 0.55;
+      const ry = cy + (Math.random() + Math.random() - 1) * h * 0.55;
+      const r = 1.5 + Math.random() * (Math.random() < 0.15 ? 6 : 3.5);
+      const sides = 3 + Math.floor(Math.random() * 3);
+      const pts: [number, number][] = [];
+      for (let k = 0; k < sides; k++) {
+        const a = (k / sides) * Math.PI * 2 + Math.random() * 0.8;
+        const d = r * (0.6 + Math.random() * 0.5);
+        pts.push([rx + Math.cos(a) * d, ry + Math.sin(a) * d]);
+      }
+      c.fillStyle = 'rgba(0,0,0,0.35)';
+      c.beginPath();
+      pts.forEach(([x, y], k) => (k ? c.lineTo(x + 1.5, y + 2) : c.moveTo(x + 1.5, y + 2)));
+      c.fill();
+      c.fillStyle = cols[Math.floor(Math.random() * cols.length)];
+      c.globalAlpha = 0.75 + Math.random() * 0.25;
+      c.beginPath();
+      pts.forEach(([x, y], k) => (k ? c.lineTo(x, y) : c.moveTo(x, y)));
+      c.closePath();
+      c.fill();
+      c.globalAlpha = 1;
+    }
+    // Charred beams.
+    c.strokeStyle = 'rgba(22,18,14,0.85)';
+    c.lineCap = 'round';
+    for (let i = 0; i < Math.max(2, Math.round(w / 24)); i++) {
+      const bx = px + 6 + Math.random() * (w - 12);
+      const by = py + 6 + Math.random() * (h - 12);
+      const a = Math.random() * Math.PI;
+      const l = 8 + Math.random() * 14;
+      c.lineWidth = 2 + Math.random() * 1.5;
+      c.beginPath();
+      c.moveTo(bx - Math.cos(a) * l / 2, by - Math.sin(a) * l / 2);
+      c.lineTo(bx + Math.cos(a) * l / 2, by + Math.sin(a) * l / 2);
+      c.stroke();
+    }
+    c.restore();
+    // Into the live terrain too: the footprint and its margin, replacing any marks there.
+    const m = Math.ceil(w * 0.12) + 2;
+    const rx = Math.max(0, px - m);
+    const ry = Math.max(0, py - m);
+    const rw = Math.min(this.pristine.width - rx, w + m * 2);
+    const rh = Math.min(this.pristine.height - ry, h + m * 2);
+    this.dctx.drawImage(this.pristine, rx, ry, rw, rh, rx, ry, rw, rh);
+    this.onRepaint?.(rx, ry, rw, rh);
+  }
+
+  private touch(x: number, y: number, w: number, h: number) {
+    const c0 = Math.max(0, Math.floor(x / CHUNK));
+    const r0 = Math.max(0, Math.floor(y / CHUNK));
+    const c1 = Math.min(CHUNKS - 1, Math.floor((x + w) / CHUNK));
+    const r1 = Math.min(CHUNKS - 1, Math.floor((y + h) / CHUNK));
+    for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) this.dirty[r * CHUNKS + c] = 1;
+  }
+
+  /** Fades the marks a little, one marked chunk at a time, and keeps wrecks smoking. */
+  step(dt: number, now: number, fx: Particles) {
+    this.fadeClock += dt;
+    const every = FADE_PERIOD / (CHUNKS * CHUNKS);
+    let budget = 4;
+    while (this.fadeClock >= every && budget-- > 0) {
+      this.fadeClock -= every;
+      const k = this.nextChunk;
+      this.nextChunk = (k + 1) % (CHUNKS * CHUNKS);
+      if (!this.dirty[k]) continue;
+      const d = this.dctx;
+      const x = (k % CHUNKS) * CHUNK;
+      const y = Math.floor(k / CHUNKS) * CHUNK;
+      const done = ++this.dirty[k] > FADES_TO_CLEAR;
+      // Blend towards the pristine ground; the last pass copies it outright.
+      d.globalAlpha = done ? 1 : FADE_ALPHA;
+      d.drawImage(this.pristine, x, y, CHUNK, CHUNK, x, y, CHUNK, CHUNK);
+      d.globalAlpha = 1;
+      if (done) this.dirty[k] = 0;
+      this.onRepaint?.(x, y, CHUNK, CHUNK);
+    }
+    if (this.fadeClock > every * 8) this.fadeClock = 0;
+
+    const t = now / 1000;
+    this.wrecks = this.wrecks.filter(w => t - w.born < WRECK_LIFE);
+    for (const w of this.wrecks) {
+      const age = t - w.born;
+      const rate = Math.max(0, 1 - age / 22) * (w.big ? 2.6 : 1.6);
+      if (Math.random() < dt * rate) fx.smoke(w.x + (Math.random() - 0.5) * 10, w.y + (Math.random() - 0.5) * 8, 1.1 + Math.random() * 0.6, 4);
+      if (age < 7 && Math.random() < dt * 5) fx.fire(w.x + (Math.random() - 0.5) * 12, w.y + (Math.random() - 0.5) * 8);
+    }
+    this.smoulders = this.smoulders.filter(s => t - s.born < s.life);
+    for (const s of this.smoulders) {
+      const k = 1 - (t - s.born) / s.life;
+      const rate = k * (2 + (s.w * s.h) / 2048);
+      if (Math.random() < dt * rate) fx.smoke(s.x + Math.random() * s.w, s.y + Math.random() * s.h * 0.8, 1.4 + Math.random(), 2);
+      if (k > 0.6 && Math.random() < dt * rate * 0.6) fx.fire(s.x + 6 + Math.random() * (s.w - 12), s.y + 6 + Math.random() * (s.h - 12));
+    }
+  }
+
+  /** The wrecks in view. (The marks are already in the terrain.) */
+  draw(ctx: CanvasRenderingContext2D, now: number, inView: (x: number, y: number, m?: number) => boolean) {
+    const t = now / 1000;
+    for (const w of this.wrecks) {
+      if (!inView(w.x, w.y)) continue;
+      const age = t - w.born;
+      ctx.globalAlpha = age < WRECK_SOLID ? 1 : Math.max(0, 1 - (age - WRECK_SOLID) / (WRECK_LIFE - WRECK_SOLID));
+      const s = w.sprite.width;
+      ctx.drawImage(w.sprite, w.x - s / 2, w.y - s / 2);
+      if (age < 9) {
+        // Embers glowing in the hull, dying down.
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = (1 - age / 9) * (0.35 + 0.25 * Math.sin(t * 9 + w.x));
+        ctx.drawImage(sprites().fire, w.x - 8, w.y - 7, 16, 14);
+        ctx.globalCompositeOperation = 'source-over';
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+}
