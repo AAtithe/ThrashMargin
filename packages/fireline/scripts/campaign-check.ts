@@ -789,6 +789,40 @@ const startOf = (id: string): GameState => {
 };
 const centreOf = (b: { x: number; y: number; kind: BuildingKind }) => ({ x: b.x + BUILDINGS[b.kind].w / 2, y: b.y + BUILDINGS[b.kind].h / 2 });
 
+section('Demolition, played', () => {
+  // Mission 4 could not be won: its outpost ran a refinery on 'defend' and trained a rifleman every
+  // five seconds, its turrets outranged the Commando, and the buggies sent after the extraction
+  // spawned on top of him. Played by script both ways in: straight at the base, and round its flank.
+  const plans: Record<string, { x: number; y: number }[]> = {
+    straight: [{ x: 45, y: 20 }, { x: 54, y: 10 }],
+    flank: [{ x: 40, y: 40 }, { x: 61, y: 20 }, { x: 61, y: 6 }],
+  };
+  for (const [plan, way] of Object.entries(plans)) {
+    let s = startOf('demolition');
+    const mine = () => s.units.filter(u => u.owner === 0);
+    let wi = 0;
+    while (!s.mission!.result && s.tick < 20 * 600) {
+      const c = mine().find(u => u.kind === 'commando');
+      if (!c) break;
+      const gens = s.buildings.filter(b => b.owner === 1 && b.kind === 'power');
+      if (!gens.length) {
+        if (s.tick % 50 === 0) s = processAction(s, { type: 'move', ids: mine().map(u => u.id), x: 58.5, y: 56.5 });
+      } else if (wi < way.length) {
+        const p = way[wi];
+        if (s.tick % 50 === 0) s = processAction(s, { type: 'move', ids: mine().map(u => u.id), x: p.x, y: p.y, attackMove: true });
+        if (Math.hypot(c.x - p.x, c.y - p.y) < 2.5) wi++;
+      } else {
+        const g = gens.map(b => ({ b, d: Math.hypot(b.x + 1 - c.x, b.y + 1 - c.y) })).sort((a, b) => a.d - b.d)[0].b;
+        if (c.hero!.abilityCd === 0) s = processAction(s, { type: 'ability', id: c.id, target: g.id });
+        if (s.tick % 50 === 0) s = processAction(s, { type: 'move', ids: mine().filter(u => u.kind !== 'commando').map(u => u.id), x: g.x + 1, y: g.y + 1, attackMove: true });
+      }
+      s = processAction(s, { type: 'tick', n: 10 });
+    }
+    ok(s.mission!.result === 'won', `demolition: won ${plan === 'straight' ? 'straight at the outpost' : 'round its flank'} (${s.mission!.result} at ${s.tick})`);
+    ok(s.players[1].stats.trained === 0, `demolition: the outpost trains nothing (${s.players[1].stats.trained})`);
+  }
+});
+
 section('act two, played', () => {
   const notes: string[] = [];
   // Convoy North: left alone, the convoy drives into the Combine posts and is lost; escorted (the

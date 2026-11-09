@@ -197,18 +197,20 @@ export const MISSIONS: MissionSpec[] = [
     briefing: [
       'Three Generators power the Combine outpost at Ferris Cut, and everything on that hill runs off them. Command is sending in a specialist.',
       'The Commando cuts down infantry at range and carries demolition charges that bring a structure down three seconds after they are planted. Take out all three Generators, then get him to the extraction point in the south-east.',
-      'A small squad goes with him. The Commando must come home.',
+      'A small squad goes with him. Their Gun Turrets outrange him: let the squad draw their fire, or come round to the north-east, beyond their reach. The Commando must come home.',
     ],
     summary: 'Bring down three Generators with the Commando, then extract.',
     seed: 'demolition',
     difficulty: 'normal',
-    player: { credits: 0, structures: [], units: [...n('rifleman', 3), ...n('rocketeer', 2)], heroes: ['commando'] },
+    player: { credits: 0, structures: [], units: [...n('rifleman', 4), ...n('rocketeer', 2)], heroes: ['commando'] },
+    // A fixed garrison the Commando picks apart (passive: it trains nothing). On 'defend' it ran its
+    // refinery and trained a rifleman every five seconds, and the mission could not be won.
     enemy: {
       credits: 0,
       base: 'outpost',
-      structures: ['power', 'power', 'power', 'barracks', 'refinery', 'turret', 'turret', 'turret'],
-      units: [...n('rifleman', 6), ...n('rocketeer', 2)],
-      ai: 'defend',
+      structures: ['power', 'power', 'power', 'barracks', 'refinery', 'turret', 'turret'],
+      units: [...n('rifleman', 4), ...n('rocketeer', 1)],
+      ai: 'passive',
     },
     tech: [],
     powers: [],
@@ -219,7 +221,7 @@ export const MISSIONS: MissionSpec[] = [
     ],
     bonus: [
       { kind: 'destroy', building: 'refinery', count: 1 },
-      { kind: 'destroy', building: 'turret', count: 3 },
+      { kind: 'destroy', building: 'turret', count: 2 },
     ],
     timeLimit: 20 * MIN,
     triggers: [
@@ -230,8 +232,8 @@ export const MISSIONS: MissionSpec[] = [
       },
       {
         afterObjective: 0,
-        spawn: enemyWave('buggy', 3, 55.5, 10.5, 58.5, 56.5),
-        say: 'Lights out at Ferris Cut. Buggies are heading for the extraction point: get there first.',
+        spawn: enemyWave('rifleman', 5, 6.5, 8.5, 58.5, 56.5),
+        say: 'Lights out at Ferris Cut. A Combine squad is making for the extraction point from the north-west: get there first.',
       },
     ],
     rewards: { xp: 300, unlockHeroes: ['commando'] },
