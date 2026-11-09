@@ -4,6 +4,7 @@ import { isCampaignSave } from '../campaign/save';
 import type { CampaignSave } from '../campaign/types';
 import { HERO_KEYS, HeroBar, heroName, ObjectivesPanel, PowerBar, SkirmishPowerBar, abilityBlock, type Targeting } from '../components/CampaignHud';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
+import FullscreenToggle from '../components/FullscreenToggle';
 import MotionToggle from '../components/MotionToggle';
 import ThemeToggle from '../components/ThemeToggle';
 import { TILE } from '../game/art';
@@ -1312,6 +1313,7 @@ export function Battle({
             </button>
             <MotionToggle style={{ padding: '4px 8px' }} />
             <ThemeToggle style={{ padding: '4px 8px' }} />
+            <FullscreenToggle style={{ padding: '4px 8px' }} />
           </>
         )}
       </header>
@@ -1335,6 +1337,7 @@ export function Battle({
               <span style={menuLabel}>Display</span>
               <ThemeToggle style={{ padding: '6px 10px' }} />
               <MotionToggle style={{ padding: '6px 10px' }} />
+              <FullscreenToggle style={{ padding: '6px 10px' }} />
             </div>
             <div style={{ ...menuRow, justifyContent: 'flex-end' }}>
               {tourButton}
@@ -1655,6 +1658,7 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['M', 'Sound on or off'],
     ['O', 'Hide or show the mission objectives (campaign)'],
     ['Esc', 'Cancel placement, attack-move or aiming; clear selection'],
+    ['Fullscreen button', 'Fill the whole screen with the battle; Esc leaves fullscreen'],
   ];
   const touchRows: [string, string][] = [
     ['Tap', 'Select one of your units or structures'],
