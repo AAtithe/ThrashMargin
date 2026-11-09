@@ -1,6 +1,9 @@
 import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
 import { isWalkable } from './map';
 import { isEnemy } from './sides';
+import { airRoom, canHit, isAir } from './air';
+import { upgradeNewUnit } from './research';
+import type { Target } from './grid';
 import {
   BUILD_RADIUS,
   BUILDINGS,
@@ -50,8 +53,10 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   // standard tech, and a mission's enemy, to the original game's kinds.
   if (!techAllowed(s, owner, kind)) return false;
   const p = s.players[owner];
-  if (p.queues[category].length >= (category === 'building' ? 1 : MAX_QUEUE)) return false;
+  if ((p.queues[category]?.length ?? MAX_QUEUE) >= (category === 'building' ? 1 : MAX_QUEUE)) return false;
   if (!unlocked(s, owner, kind)) return false;
+  // Aircraft: no more than the Helipads serve, counting those already queued.
+  if (category === 'air' && airRoom(s, owner) <= 0) return false;
   return p.credits >= costFor(s, owner, kind);
 }
 
@@ -93,6 +98,8 @@ export function placementProblem(s: GameState, owner: Owner, kind: BuildingKind,
       if (occ[k]) return 'Something is already there';
     }
   for (const u of s.units) {
+    // Aircraft overhead are no obstacle.
+    if (isAir(u)) continue;
     if (u.x >= x - 0.2 && u.x < x + spec.w + 0.2 && u.y >= y - 0.2 && u.y < y + spec.h + 0.2) return 'Units in the way';
   }
   // Never cover a refinery's dock, and a new refinery needs its own dock clear.
@@ -130,6 +137,7 @@ export function doPlace(s: GameState, owner: Owner, kind: BuildingKind, x: numbe
     const d = dockTile(s, b);
     const h = addUnit(s, owner, 'hauler', d.x + 0.5, d.y + 0.5);
     h.order = { type: 'harvest', phase: 'seek', tile: -1, refinery: b.id };
+    upgradeNewUnit(s, h);
   }
   syncSkirmishPowers(s);
   if (owner === 0) log(s, `${BUILDINGS[kind].name} placed.`, 'good');
@@ -164,7 +172,7 @@ export function spawnSurvivors(s: GameState, b: Building, occ: Int32Array): numb
   const want = spec.wall ? 0 : survivorsFor(spec.w, spec.h);
   const taken = new Set<number>();
   const MAP_W = s.mapW;
-  for (const u of s.units) if (u.hp > 0) taken.add(Math.floor(u.y) * MAP_W + Math.floor(u.x));
+  for (const u of s.units) if (u.hp > 0 && !isAir(u)) taken.add(Math.floor(u.y) * MAP_W + Math.floor(u.x));
   let made = 0;
   // The footprint first, then the ring around it, each in row order, so a replay picks the same.
   for (let ring = 0; ring <= 1 && made < want; ring++)
@@ -193,7 +201,7 @@ export function doRepair(s: GameState, id: number): void {
 export function canRally(s: GameState, owner: Owner, id: number, x: number, y: number): boolean {
   if (!validPoint(s, x, y)) return false;
   const b = s.buildings.find(v => v.id === id && v.owner === owner);
-  return !!b && (b.kind === 'barracks' || b.kind === 'factory');
+  return !!b && (b.kind === 'barracks' || b.kind === 'factory' || b.kind === 'helipad');
 }
 
 export function doRally(s: GameState, id: number, x: number, y: number): void {
@@ -246,7 +254,8 @@ export function doMove(s: GameState, owner: Owner, ids: number[], x: number, y: 
     const [ox, oy] = slots[i] ?? [0, 0];
     let tx = x + ox;
     let ty = y + oy;
-    const k = nearestPassable(s, occ, tx, ty, 4);
+    // Aircraft go to their slot whatever the ground there; air.ts keeps them on the map.
+    const k = isAir(u) ? -1 : nearestPassable(s, occ, tx, ty, 4);
     if (k >= 0 && (Math.floor(tx) !== k % MAP_W || Math.floor(ty) !== ((k / MAP_W) | 0))) {
       tx = (k % MAP_W) + 0.5;
       ty = ((k / MAP_W) | 0) + 0.5;
@@ -267,15 +276,30 @@ function formation(n: number): [number, number][] {
   return SLOTS.slice(0, Math.max(1, Math.min(n, SLOTS.length)));
 }
 
-export function canAttack(s: GameState, owner: Owner, ids: number[], target: number, queue = false): boolean {
-  const enemy =
-    s.units.some(u => u.id === target && isEnemy(s, owner, u.owner)) || s.buildings.some(b => b.id === target && isEnemy(s, owner, b.owner));
-  return enemy && ownUnits(s, owner, ids).some(u => UNITS[u.kind].weapon && (!queue || acceptsQueued(u)));
+/** The enemy unit or structure with this id, or null. */
+function enemyTarget(s: GameState, owner: Owner, target: number): Target | null {
+  const u = s.units.find(v => v.id === target && isEnemy(s, owner, v.owner));
+  if (u) return { unit: u };
+  const b = s.buildings.find(v => v.id === target && isEnemy(s, owner, v.owner));
+  return b ? { building: b } : null;
 }
 
+/** Legal when at least one of the units named has a weapon that can reach the target (air or ground). */
+export function canAttack(s: GameState, owner: Owner, ids: number[], target: number, queue = false): boolean {
+  const t = enemyTarget(s, owner, target);
+  if (!t) return false;
+  return ownUnits(s, owner, ids).some(u => {
+    const w = UNITS[u.kind].weapon;
+    return !!w && canHit(w, t) && (!queue || acceptsQueued(u));
+  });
+}
+
+/** Units whose weapons cannot reach the target (a tank and an aircraft, flak and a tank) ignore the order. */
 export function doAttack(s: GameState, owner: Owner, ids: number[], target: number, queue = false): void {
+  const t = enemyTarget(s, owner, target);
   for (const u of ownUnits(s, owner, ids)) {
-    if (!UNITS[u.kind].weapon) continue;
+    const w = UNITS[u.kind].weapon;
+    if (!w || (t && !canHit(w, t))) continue;
     give(u, { type: 'attack', target }, queue);
   }
 }

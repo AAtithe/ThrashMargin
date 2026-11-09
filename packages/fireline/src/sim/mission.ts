@@ -64,7 +64,7 @@ const newPlayer = (owner: Owner, credits: number): PlayerState => ({
   owner,
   name: SIDE_NAMES[owner],
   credits,
-  queues: { building: [], infantry: [], vehicle: [] },
+  queues: { building: [], infantry: [], vehicle: [], air: [] },
   stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
 });
 

@@ -22,7 +22,7 @@ import { setAutopilotAi } from '../src/sim/ai';
  */
 import { processAction } from '../src/sim/actions';
 // round4:A. Air power and research: its import (scripts/drive-air.ts) goes on the line below.
-
+import { sections as airSections } from './drive-air';
 import { canQueue, placementProblem } from '../src/sim/commands';
 import { dist, distToBuilding, occupancy, passable } from '../src/sim/grid';
 import { generateMap, isWalkable, START_0, START_1 } from '../src/sim/map';
@@ -119,7 +119,8 @@ function invariants(s: GameState, label: string): void {
     ok(u.hp > 0 && u.hp <= maxHpOf(u), `${label}: unit ${u.id} hp in range (${u.hp})`);
     ok(u.x >= 0 && u.y >= 0 && u.x < MAP_W && u.y < MAP_H, `${label}: unit ${u.id} on the map`);
     const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
-    ok(isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
+    // Aircraft fly over water, rock and structures (round 4, workstream A).
+    ok(UNITS[u.kind].category === 'air' || isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
     ok(u.cargo >= 0 && u.cargo <= 600, `${label}: cargo in range`);
     ok(Number.isFinite(u.fx) && Number.isFinite(u.tx), `${label}: facings finite`);
     ok(u.vet === vetFor(u.kills), `${label}: unit ${u.id} rank matches its ${u.kills} kills (${u.vet})`);
@@ -129,7 +130,7 @@ function invariants(s: GameState, label: string): void {
   const occ = occupancy(s);
   for (const u of s.units) {
     const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
-    ok(occ[k] === 0, `${label}: unit ${u.id} (${u.kind}) not inside a structure`);
+    ok(occ[k] === 0 || UNITS[u.kind].category === 'air', `${label}: unit ${u.id} (${u.kind}) not inside a structure`);
   }
   for (const b of s.buildings) {
     ok(!ids.has(b.id), `${label}: building id ${b.id} unique`);
@@ -139,7 +140,7 @@ function invariants(s: GameState, label: string): void {
   for (const p of s.players) {
     ok(p.credits >= 0, `${label}: ${p.name} credits never negative (${p.credits})`);
     ok(p.queues.building.length <= 1, `${label}: one structure at a time`);
-    ok(p.queues.infantry.length <= 5 && p.queues.vehicle.length <= 5, `${label}: queues capped`);
+    ok(p.queues.infantry.length <= 5 && p.queues.vehicle.length <= 5 && (p.queues.air?.length ?? 0) <= 5, `${label}: queues capped`);
   }
   ok(s.ore.every(o => o >= 0 && o <= 500), `${label}: ore in range`);
   ok(s.explored.length === MAP_W * MAP_H, `${label}: explored map intact`);
@@ -2679,7 +2680,7 @@ if (!CAMPAIGN_ONLY) {
     ['Map types', mapTests],
     // round4:A. Air power and research (fireline-round4-design.md): its sections, imported from
     // scripts/drive-air.ts, go on the lines below this comment.
-
+    ...airSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round4:B. Bigger battles (fireline-round4-design.md): its sections, imported from
     // scripts/drive-sides.ts, go on the lines below this comment.
   ];

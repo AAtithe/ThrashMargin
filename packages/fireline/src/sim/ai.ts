@@ -1,5 +1,6 @@
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
 import { buildingCentre, dist, distToBuilding, doorTile, dockTile, frontDir, nearestPassable, occupancy, onMap, passable, laneRow, tileAt } from './grid';
+import { airPlan } from './aiAir';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
 import {
@@ -393,6 +394,7 @@ function commander(s: GameState, owner: Owner): void {
 
   // round4:A. Air units, anti-air and research (fireline-round4-design.md, workstream A): one call
   // into aiAir.ts goes on the line below this comment, and nothing else in this function changes.
+  airPlan(s, owner, home, enemy, foes);
 
   // Producers send new units to a staging point on the side facing the enemy.
   const stage = openGround(s, owner, toward(home, enemyHome, 10));
@@ -1102,7 +1104,7 @@ function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
   }
 }
 
-type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building';
+type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
 
 /**
  * The opponent's things a blast at (x, y) would hurt, in credits' worth destroyed: each one's cost

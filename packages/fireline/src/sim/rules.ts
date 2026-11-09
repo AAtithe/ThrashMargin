@@ -24,25 +24,42 @@ export type Owner = 0 | 1 | 2 | 3;
 /** The most sides a battle can have. */
 export const MAX_SIDES = 4;
 
-export type Armor = 'infantry' | 'light' | 'heavy' | 'building';
+export type Armor = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
 /**
  * 'flame' is the Flame Tank's short-range burst; 'missile' is the Strike Command's one huge strike
  * (a support power, never a unit's weapon). Grenadiers lob 'artillery' (it arcs and scatters).
  */
-export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile';
+export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb';
 
-/** How hard each weapon hits each armour class. Riflemen shred infantry and scratch a tank. */
+/**
+ * How hard each weapon hits each armour class. Riflemen shred infantry and scratch a tank. The
+ * aircraft column only matters for weapons that can reach the air (hitsAir): bullets at a reduced
+ * effect, flak and anti-air missiles in full. The rest never hit an aircraft, whatever it says.
+ */
 export const DAMAGE_VS: Record<WeaponKind, Record<Armor, number>> = {
-  bullet: { infantry: 1, light: 0.6, heavy: 0.22, building: 0.15 },
-  shell: { infantry: 0.45, light: 0.9, heavy: 1, building: 0.75 },
-  rocket: { infantry: 0.3, light: 1, heavy: 1.15, building: 0.9 },
-  artillery: { infantry: 1, light: 0.8, heavy: 0.55, building: 1 },
-  flame: { infantry: 1.25, light: 0.7, heavy: 0.3, building: 1.1 },
-  missile: { infantry: 1, light: 1, heavy: 0.9, building: 1 },
+  bullet: { infantry: 1, light: 0.6, heavy: 0.22, building: 0.15, aircraft: 0.35 },
+  shell: { infantry: 0.45, light: 0.9, heavy: 1, building: 0.75, aircraft: 0 },
+  rocket: { infantry: 0.3, light: 1, heavy: 1.15, building: 0.9, aircraft: 0 },
+  artillery: { infantry: 1, light: 0.8, heavy: 0.55, building: 1, aircraft: 0 },
+  flame: { infantry: 1.25, light: 0.7, heavy: 0.3, building: 1.1, aircraft: 0 },
+  missile: { infantry: 1, light: 1, heavy: 0.9, building: 1, aircraft: 0 },
+  flak: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1 },
+  aamissile: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1 },
+  bomb: { infantry: 0.9, light: 0.9, heavy: 0.8, building: 1.1, aircraft: 0 },
 };
 
 /** Ticks a projectile of each kind spends in the air before it lands. Bullets are instant. */
-export const FLIGHT_TICKS: Record<WeaponKind, number> = { bullet: 0, shell: 2, rocket: 4, artillery: 9, flame: 0, missile: 40 };
+export const FLIGHT_TICKS: Record<WeaponKind, number> = {
+  bullet: 0,
+  shell: 2,
+  rocket: 4,
+  artillery: 9,
+  flame: 0,
+  missile: 40,
+  flak: 3,
+  aamissile: 5,
+  bomb: 6,
+};
 
 export interface Weapon {
   kind: WeaponKind;
@@ -54,7 +71,16 @@ export interface Weapon {
   splash?: number;
   /** Cannot fire at anything closer than this. */
   minRange?: number;
+  /** Can fire at aircraft. Read it through hitsAir(): absent means bullets only. */
+  canHitAir?: boolean;
+  /** Can fire at ground units and structures. Read it through hitsGround(): absent means yes. */
+  canHitGround?: boolean;
 }
+
+/** True when this weapon can fire at an aircraft. Every ground weapon but bullets cannot. */
+export const hitsAir = (w: Weapon): boolean => w.canHitAir ?? w.kind === 'bullet';
+/** True when this weapon can fire at something on the ground (units and structures). */
+export const hitsGround = (w: Weapon): boolean => w.canHitGround ?? true;
 
 /** Named special characters. Campaign-only: never in a build menu, never in a skirmish. */
 export type HeroKind = 'spy' | 'commando' | 'engineer' | 'ace';
@@ -71,6 +97,10 @@ export type UnitKind =
   | 'flametank'
   | 'missilecarrier'
   | 'bastion'
+  | 'gunship'
+  | 'bomber'
+  | 'flaktrack'
+  | 'skyhunter'
   | HeroKind;
 export type BuildingKind =
   | 'hq'
@@ -84,12 +114,15 @@ export type BuildingKind =
   | 'repairbay'
   | 'wall'
   | 'rocketturret'
-  | 'strikecommand';
-export type Category = 'building' | 'infantry' | 'vehicle';
+  | 'strikecommand'
+  | 'helipad'
+  | 'flakcannon'
+  | 'researchlab';
+export type Category = 'building' | 'infantry' | 'vehicle' | 'air';
 
 export interface UnitSpec {
   name: string;
-  category: 'infantry' | 'vehicle';
+  category: 'infantry' | 'vehicle' | 'air';
   cost: number;
   buildTicks: number;
   hp: number;
@@ -328,6 +361,59 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     blurb: 'A veteran tank commander in a prototype tank. Overdrive: faster and firing faster for a while.',
     hero: true,
   },
+  // ---- Air power (round 4, workstream A): advanced tech only --------------------------------
+  gunship: {
+    name: 'Gunship',
+    category: 'air',
+    cost: 1400,
+    buildTicks: 150,
+    hp: 320,
+    armor: 'aircraft',
+    speed: 0.13,
+    sight: 7,
+    weapon: { kind: 'rocket', damage: 38, range: 4.5, cooldown: 18, canHitAir: false },
+    requires: ['helipad'],
+    blurb: 'Attack helicopter. Flies over anything and rockets ground targets, then returns to its Helipad to rearm.',
+  },
+  bomber: {
+    name: 'Bomber',
+    category: 'air',
+    cost: 2000,
+    buildTicks: 200,
+    hp: 280,
+    armor: 'aircraft',
+    speed: 0.22,
+    sight: 6,
+    weapon: { kind: 'bomb', damage: 110, range: 3.5, cooldown: 4, splash: 1.3, canHitAir: false },
+    requires: ['helipad', 'techcentre'],
+    blurb: 'Fast. Flies over its target dropping a line of bombs, then returns to its Helipad to rearm.',
+  },
+  flaktrack: {
+    name: 'Flak Track',
+    category: 'vehicle',
+    cost: 700,
+    buildTicks: 90,
+    hp: 260,
+    armor: 'light',
+    speed: 0.1,
+    sight: 8,
+    weapon: { kind: 'flak', damage: 26, range: 6.5, cooldown: 10, splash: 0.8, canHitAir: true, canHitGround: false },
+    requires: ['factory'],
+    blurb: 'Mobile anti-air guns. Shreds aircraft; cannot fire at anything on the ground.',
+  },
+  skyhunter: {
+    name: 'Skyhunter',
+    category: 'infantry',
+    cost: 350,
+    buildTicks: 80,
+    hp: 55,
+    armor: 'infantry',
+    speed: 0.06,
+    sight: 7,
+    weapon: { kind: 'aamissile', damage: 60, range: 6, cooldown: 32, canHitAir: true, canHitGround: false },
+    requires: ['barracks'],
+    blurb: 'Shoulder-launched anti-air missiles. Brings down aircraft; helpless against anything on the ground.',
+  },
 };
 
 export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
@@ -478,6 +564,44 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     requires: ['techcentre'],
     blurb: 'Draws heavy power. Grants the missile strike: one huge blast, every eight minutes.',
   },
+  // ---- Air power and research (round 4, workstream A): advanced tech only -------------------
+  helipad: {
+    name: 'Helipad',
+    w: 2,
+    h: 2,
+    cost: 1500,
+    buildTicks: 150,
+    hp: 700,
+    power: -40,
+    sight: 5,
+    requires: ['factory', 'uplink'],
+    blurb: 'Builds aircraft and rearms them. Each Helipad serves two aircraft.',
+  },
+  flakcannon: {
+    name: 'Flak Cannon',
+    w: 1,
+    h: 1,
+    cost: 700,
+    buildTicks: 90,
+    hp: 450,
+    power: -25,
+    sight: 8,
+    weapon: { kind: 'flak', damage: 30, range: 7.5, cooldown: 9, splash: 0.8, canHitAir: true, canHitGround: false },
+    requires: ['barracks'],
+    blurb: 'Anti-air turret. Shreds aircraft; cannot fire at anything on the ground. Slows when power is short.',
+  },
+  researchlab: {
+    name: 'Research Lab',
+    w: 2,
+    h: 2,
+    cost: 1500,
+    buildTicks: 150,
+    hp: 650,
+    power: -50,
+    sight: 4,
+    requires: ['factory'],
+    blurb: 'Researches upgrades that last the rest of the battle, one at a time.',
+  },
 };
 
 /** Structures in the order the build menu offers them. */
@@ -493,9 +617,12 @@ export const BUILD_MENU: BuildingKind[] = [
   'rocketturret',
   'techcentre',
   'strikecommand',
+  'flakcannon',
+  'helipad',
+  'researchlab',
 ];
-export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic'];
-export const VEHICLE_MENU: UnitKind[] = ['hauler', 'buggy', 'tank', 'artillery', 'missilecarrier', 'flametank', 'bastion'];
+export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic', 'skyhunter'];
+export const VEHICLE_MENU: UnitKind[] = ['hauler', 'buggy', 'tank', 'artillery', 'missilecarrier', 'flametank', 'bastion', 'flaktrack'];
 
 /**
  * The original game: six structures (and the Command Yard) and six units. A skirmish set up with
@@ -521,6 +648,7 @@ export const PRODUCER: Record<Category, BuildingKind> = {
   building: 'hq',
   infantry: 'barracks',
   vehicle: 'factory',
+  air: 'helipad',
 };
 
 export const MAX_QUEUE = 5;
@@ -846,3 +974,89 @@ export const BARRAGE_GAP = 5;
 export const REINFORCEMENTS: UnitKind[] = ['rifleman', 'rifleman', 'rifleman', 'rifleman', 'tank'];
 /** Xp a hero earns for a successful infiltration or capture (the same as destroying a structure). */
 export const HERO_XP_ABILITY = HERO_XP_STRUCTURE;
+
+// ---- Air power and research (round 4, workstream A; fireline-round4-design.md) ------------------
+//
+// Advanced tech only: on standard tech and in a mission none of this is offered. The simulation is
+// in air.ts (aircraft) and research.ts (upgrades); the computer's side of it in aiAir.ts.
+
+/** Aircraft in the order the Air tab offers them. */
+export const AIR_MENU: UnitKind[] = ['gunship', 'bomber'];
+
+/** How many aircraft one Helipad serves: it builds for them and rearms them. */
+export const HELIPAD_SLOTS = 2;
+
+/** True for an aircraft: any unit whose category is 'air'. */
+export const isAirKind = (kind: UnitKind): boolean => UNITS[kind].category === 'air';
+
+/**
+ * Loads an aircraft carries. A Gunship fires one rocket per load; a Bomber drops one bomb per load,
+ * all of them in one run. With none left it flies back to its Helipad to rearm.
+ */
+export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber: 6 };
+/** Ticks on its Helipad to put back one load (Air frames shortens it). */
+export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25 };
+/** Ticks between bombs in a run: with the Bomber's speed, a bomb about every 0.9 tiles. */
+export const BOMB_GAP = 4;
+/** Aircraft keep at least this far from the map's edge. */
+export const AIR_EDGE = 0.5;
+
+export type UpgradeId = 'plating' | 'calibration' | 'engines' | 'refining' | 'airframes';
+
+export interface UpgradeSpec {
+  name: string;
+  blurb: string;
+  cost: number;
+  ticks: number;
+  /** Always includes 'researchlab'. */
+  requires: BuildingKind[];
+}
+
+export const UPGRADES: Record<UpgradeId, UpgradeSpec> = {
+  plating: {
+    name: 'Armour plating',
+    blurb: 'Vehicles have a fifth more health.',
+    cost: 1500,
+    ticks: 600,
+    requires: ['researchlab'],
+  },
+  calibration: {
+    name: 'Weapon calibration',
+    blurb: 'Every weapon you field, units and structures alike, hits 15% harder.',
+    cost: 2000,
+    ticks: 750,
+    requires: ['researchlab', 'techcentre'],
+  },
+  engines: {
+    name: 'Engine tuning',
+    blurb: 'Vehicles move 15% faster.',
+    cost: 1200,
+    ticks: 500,
+    requires: ['researchlab'],
+  },
+  refining: {
+    name: 'Refinery efficiency',
+    blurb: 'Every load of ore pays 15% more.',
+    cost: 2000,
+    ticks: 700,
+    requires: ['researchlab'],
+  },
+  airframes: {
+    name: 'Air frames',
+    blurb: 'Aircraft have a quarter more health and rearm 40% sooner.',
+    cost: 1500,
+    ticks: 600,
+    requires: ['researchlab', 'helipad'],
+  },
+};
+
+/** Upgrades in the order the Research block lists them. */
+export const UPGRADE_ORDER: UpgradeId[] = ['refining', 'plating', 'engines', 'calibration', 'airframes'];
+
+/** What each upgrade does to the number it changes. */
+export const PLATING_HP = 1.2;
+export const CALIBRATION_DAMAGE = 1.15;
+export const ENGINES_SPEED = 1.15;
+export const REFINING_INCOME = 1.15;
+export const AIRFRAMES_HP = 1.25;
+export const AIRFRAMES_REARM = 0.6;

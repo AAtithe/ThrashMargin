@@ -1,4 +1,4 @@
-import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, SkirmishSetup, SupportPower, UnitKind, WeaponKind } from './rules';
+import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
@@ -18,7 +18,12 @@ export type Order =
       tile: number;
       /** The refinery being returned to, or 0. */
       refinery: number;
-    };
+    }
+  /**
+   * Aircraft only: fly to this Helipad, land and take on ammunition. Once full it stays parked on
+   * the pad with this order until given another (or runs the next queued one).
+   */
+  | { type: 'rearm'; pad: number };
 
 /** Orders a unit can hold in its waypoint queue, run one after another. */
 export type QueuedOrder = Extract<Order, { type: 'move' } | { type: 'attackMove' } | { type: 'attack' }>;
@@ -70,6 +75,12 @@ export interface Unit {
    * and hero levels. Absent means UNITS[kind].hp. Read it through maxHpOf() in state.ts.
    */
   maxHp?: number;
+  /** Aircraft only: loads left (AIR_AMMO); 0 means it must rearm. */
+  ammo?: number;
+  /** Aircraft only: the Helipad it belongs to, or 0 for none. */
+  pad?: number;
+  /** Bombers only: present while a bomb run is under way (it always finishes the run). */
+  bombRun?: true;
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -122,8 +133,13 @@ export interface PlayerState {
   owner: Owner;
   name: string;
   credits: number;
+  /** One queue per category, 'air' included (migrateAir gives older saves an empty one). */
   queues: Record<Category, QueueItem[]>;
   stats: { built: number; trained: number; lost: number; killed: number; harvested: number };
+  /** Upgrades researched, in the order they were finished. Absent: none. */
+  upgrades?: UpgradeId[];
+  /** The upgrade being researched, already paid for; ticks of work done. Absent or null: none. */
+  research?: { id: UpgradeId; progress: number } | null;
 }
 
 export interface Projectile {
@@ -146,7 +162,22 @@ export interface Projectile {
 /** Things that happened, kept for a few seconds so the renderer can draw them. Never read back. */
 export interface Effect {
   id: number;
-  kind: 'muzzle' | 'boom' | 'sold' | 'infiltrate' | 'captured' | 'charge' | 'levelup' | 'recon' | 'barrage' | 'reinforce' | 'missile' | 'heal' | 'repair';
+  kind:
+    | 'muzzle'
+    | 'boom'
+    | 'sold'
+    | 'infiltrate'
+    | 'captured'
+    | 'charge'
+    | 'levelup'
+    | 'recon'
+    | 'barrage'
+    | 'reinforce'
+    | 'missile'
+    | 'heal'
+    | 'repair'
+    /** A bomb's impact in a Bomber's line; size is the splash radius. */
+    | 'bomb';
   x: number;
   y: number;
   at: number;
@@ -188,6 +219,9 @@ export interface AiMemory {
   raidIds: number[];
   raidTarget: number;
   nextRaid: number;
+  /** Aircraft out on a strike (aiAir.ts), and the tick the next strike may go. */
+  airIds?: number[];
+  nextAirStrike?: number;
 }
 
 export interface GameState {
@@ -424,4 +458,6 @@ export type GameAction =
   | { type: 'repair'; id: number }
   | { type: 'rally'; id: number; x: number; y: number }
   | { type: 'ability'; id: number; target?: number }
-  | { type: 'power'; power: SupportPower; x: number; y: number };
+  | { type: 'power'; power: SupportPower; x: number; y: number }
+  | { type: 'research'; upgrade: UpgradeId }
+  | { type: 'cancelResearch' };
