@@ -352,3 +352,80 @@ type) hashed the same at every 3,000 ticks before and after, and every summary l
 and play on exactly. New drive sections build three-sided battles by hand and check the helpers,
 teams, shared sight, allies holding fire (splash included), victory with two allies left, defeat
 only when the whole team is out, side 2's production and commander, and exact replay.
+
+### 2026-11-09: Air power and research (round 4, workstream A)
+
+Advanced tech only, as the contract (`fireline-round4-design.md` section 3) sets out. On standard
+tech, in a mission and in every save from before, nothing changes: no Air tab, no Lab, and the
+computer builds none of it.
+
+| Structure | Size | Cost | Power | Needs |
+|---|---|---|---|---|
+| Helipad | 2x2 | 1500 | -40 | War Factory, Comms Uplink; builds and rearms two aircraft |
+| Flak Cannon | 1x1 | 700 | -25 | Barracks; flak, range 7.5, air only |
+| Research Lab | 2x2 | 1500 | -50 | War Factory; one upgrade at a time |
+
+| Unit | Cost | Role |
+|---|---|---|
+| Gunship | 1400 | Rockets (38, range 4.5) at ground targets; 8 loads, a load every 1.2s on its pad |
+| Bomber | 2000 | Fast (2.2 tiles/s); a run of 6 bombs (110, splash 1.3) in a line about 4.4 tiles long; a load every 2.5s on its pad. Needs a Tech Centre |
+| Flak Track | 700 | Mobile flak, range 6.5, air only |
+| Skyhunter | 350 | Anti-air missiles, range 6, air only |
+
+| Upgrade | Cost | Time | Effect |
+|---|---|---|---|
+| Refinery efficiency | 2000 | 70s | ore pays 15% more |
+| Armour plating | 1500 | 60s | vehicles' full health +20% (standing ones keep the damage they have taken) |
+| Engine tuning | 1200 | 50s | vehicles 15% faster |
+| Weapon calibration | 2000 | 75s | every weapon, units and structures, +15% damage (needs a Tech Centre) |
+| Air frames | 1500 | 60s | aircraft health +25%, rearming 40% sooner (needs a Helipad) |
+
+How it plays (`src/sim/air.ts`, `src/sim/research.ts`, `src/sim/aiAir.ts`):
+
+- Aircraft fly straight lines over water, rock and structures, kept half a tile inside the map,
+  and are left out of crowd separation, so they never push or block anything on the ground; a
+  structure may go up under one. Sight and fog treat them like any unit.
+- Only bullets (at 35%) and the anti-air weapons reach the air, and the anti-air weapons reach
+  nothing else. Targeting, attack orders (`canAttack`), splash (anti-air splash stays in the air,
+  every other splash, bombs included, on the ground) and returning fire all follow that: a tank
+  shot by a gunship neither turns on it nor chases it.
+- Out of loads an aircraft flies home and rearms; its pad gone, it takes another with room, and
+  with none it waits where it is. Full, it stays parked on the pad, and a parked Gunship fires at
+  ground targets in reach without leaving. A Bomber's run, once begun, is always finished
+  (`Unit.bombRun`, an optional field the contract did not list).
+- Research is paid in full on starting, refunded in full on cancelling, half speed on low power,
+  paused while no Lab stands. Effects are read where the number is used: health through `maxHp`,
+  damage in `fire`, speed in the movement step, income at the refinery, rearming in `air.ts`.
+- The computer, after its own decisions: anti-air in proportion to the opponent's aircraft (none
+  while it has none), paid for by taking back units it has queued but not started; then, once its
+  refineries and turrets stand and its army at home is up to the next wave and to the opponent's,
+  a Research Lab, Helipads (two on Hard), aircraft (Easy one Gunship, Normal a Gunship and a
+  Bomber, Hard two of each), and research in a fixed order by difficulty. Gunships strike haulers
+  and artillery where the fewest anti-air guns cover them; Bombers the thickest knot of
+  structures. Aircraft not on a strike stay parked, so the ground waves never take them along.
+  Nothing new goes on air once the map holds under 20,000 credits of ore, and with the ore all
+  gone and no army left it sells its air structures and puts what it has into infantry: without
+  those two rules the extra spending left both sides with nothing in the last minutes of a long
+  battle, and 2 of the 12 advanced-tech drive battles ran to the tick cap.
+
+Interface: an Air tab after Vehicles (advanced tech only; Tab skips it otherwise), the Research
+block at the foot of the Structures tab once a Lab stands, hotkeys B, N and D for the 12th to 14th
+items of the now longer Structures list, the ammunition and rearming state of a selected aircraft,
+an Aircraft panel in How to play. Art: the seven new looks in any side's colours, aircraft drawn in
+one pass after every ground unit, lifted over a shadow (lower when parked), with a turning rotor or
+contrails; bombs falling, bomb blasts, flak bursts at the aircraft's height; aircraft on the
+minimap with a wing bar. Chrome tokens `--ui-research-*` in both modes.
+
+Two lines outside the contract's list were unavoidable and are kept to the minimum: the
+`newPlayer` in `mission.ts` gives a mission's players an empty air queue (its return type demands
+it), and `ai.ts` widens its private `ArmorClass` to the new armour class. In `drive.ts`, besides the
+two markers, the invariants let aircraft stand over water and structures.
+
+Numbers. `npm run drive:fire`: the mission and standard-tech lines unchanged; the advanced-tech
+lines are now "12/12 finished, average 26.8 game minutes; side 0 won 4, side 1 won 8" (classic
+side 1 in 28 and 33 min, river side 1 in 25 and side 0 in 27, highlands side 0 in 34 and side 1 in
+33, lakes side 1 and side 0 in 17, plains side 1 in 27 and 24, canyon side 1 in 31 and side 0 in
+27). In all 304,822 assertions, about 7,900 more than before, in 167s. AI ladder, 150 seeds,
+random map, advanced tech, side 0 Normal throughout (before, then after): the mirror 45% to 54% (1
+unfinished), then 49% to 49% (3 unfinished); Hard on side 1 wins 91%, then 89%; Easy 0%, then 0%.
+

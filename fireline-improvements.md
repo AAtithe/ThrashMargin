@@ -80,7 +80,14 @@ mission AI once the round-1 opponent work lands.
 ## H. Round 4 (contract: `fireline-round4-design.md`)
 
 - [x] Foundation: 2, 3 or 4 sides on teams, map size per battle, side colours (two-sided play unchanged).
-- [ ] A. Air power and research: Helipad, Flak Cannon, Research Lab; Gunship, Bomber, Flak Track, Skyhunter; five upgrades.
+- [x] A. Air power and research: Helipad, Flak Cannon, Research Lab; Gunship, Bomber, Flak Track, Skyhunter; five upgrades.
+  - [x] Aircraft fly straight over anything, carry ammunition and rearm at their Helipad (two per pad); a Bomber's run is a line of six bombs.
+  - [x] Only bullets (at about a third) and anti-air reach the air; anti-air never fires at the ground; splash keeps to its own layer.
+  - [x] Research: refining, plating, engines, calibration, air frames, paid in full, refunded on cancel, half speed on low power.
+  - [x] The computer: a Lab and Helipads once its base stands, gunship and bomber strikes, research by difficulty, anti-air only against aircraft.
+  - [x] Air tab, Research block, hotkeys B N D for the longer Structures list, aircraft art with shadows, rotor and contrails.
+  - [ ] Aircraft are not mended anywhere (no pad repair); a damaged gunship stays damaged.
+  - [ ] Air units in act two missions 11, 12 and 14 (integration, per the contract).
 - [ ] B. Bigger battles: 3 and 4 sides, free for all or teams, fair maps, several-enemy commanders.
 - [ ] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
 
