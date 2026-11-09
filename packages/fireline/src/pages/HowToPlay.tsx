@@ -5,7 +5,27 @@ import { Button, Panel, bodySmall } from '../components/ui';
 import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
 import { statsOf } from '../game/Sidebar';
-import { BUILD_MENU, BUILDINGS, HERO_ABILITY, HERO_KINDS, INFANTRY_MENU, UNITS, VEHICLE_MENU, type BuildingKind, type UnitKind } from '../sim/rules';
+import { TECH_TEXT } from '../components/SkirmishSetup';
+import {
+  BUILD_MENU,
+  BUILDINGS,
+  HERO_ABILITY,
+  HERO_KINDS,
+  INFANTRY_MENU,
+  MAP_TYPE_BLURBS,
+  MAP_TYPE_NAMES,
+  MAP_TYPES,
+  MISSILE_DAMAGE,
+  POWERS,
+  SKIRMISH_POWERS,
+  STANDARD_TECH,
+  TICKS_PER_SECOND,
+  UNITS,
+  VEHICLE_MENU,
+  type BuildingKind,
+  type SupportPower,
+  type UnitKind,
+} from '../sim/rules';
 import { FONT, UI } from '../theme';
 
 /** The rules, generated from the same tables the simulation reads, so they cannot drift apart. */
@@ -54,7 +74,7 @@ export default function HowToPlay() {
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>T</kbd> <kbd>Y</kbd> press the build buttons of the open list in order;
-              each button shows its letter. <kbd>Tab</kbd> moves to the next list. Hold <kbd>Shift</kbd> to queue five infantry or
+              with advanced tech the list runs on to <kbd>U</kbd> <kbd>I</kbd> <kbd>J</kbd> <kbd>K</kbd> <kbd>L</kbd>. Each button shows its letter. <kbd>Tab</kbd> moves to the next list. Hold <kbd>Shift</kbd> to queue five infantry or
               vehicles in one go.
             </li>
             <li>Hover any build button, or a unit or structure in the selection panel, for its full card: cost, build time, armour, weapon, range, reload and speed.</li>
@@ -64,6 +84,73 @@ export default function HowToPlay() {
             </li>
             <li>A red banner on the battlefield means power is short. Build a Generator before anything else.</li>
           </ul>
+        </Panel>
+
+        <Panel title="Setting up a skirmish">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              <strong>Battlefield.</strong> Pick a map type, or Random to let the seed choose. Each card in the lobby shows the
+              real map for the current seed, so you see the layout before you deploy; <strong>New map</strong> draws another.
+              Every map is mirrored, so both sides get the same ground and the same ore.
+            </li>
+            <li>
+              <strong>Tech level.</strong> {TECH_TEXT.standard.name}: {TECH_TEXT.standard.text} {TECH_TEXT.advanced.name}:{' '}
+              {TECH_TEXT.advanced.text}
+            </li>
+            <li>
+              <strong>Starting credits</strong> are the same for both sides. <strong>Ore</strong> sets how rich the fields are:
+              poor fields run dry quickly, rich ones are denser and wider.
+            </li>
+          </ul>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+            {MAP_TYPES.map(t => (
+              <div key={t} style={{ ...tile, flexDirection: 'column', gap: 4 }}>
+                <strong style={{ fontSize: '0.88rem' }}>{MAP_TYPE_NAMES[t]}</strong>
+                <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>{MAP_TYPE_BLURBS[t]}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
+
+        <Panel title="Advanced tech">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              The build lists grow to three buttons a row. Items marked <span style={advBadge}>Advanced</span> below appear only
+              with advanced tech; the computer builds from the same list.
+            </li>
+            <li>
+              <strong>Medics</strong> heal hurt infantry near them and walk to the wounded. <strong>Grenadiers</strong> lob
+              grenades over cover but cannot hit anything right beside them. <strong>Flame Tanks</strong> burn infantry and
+              structures at short range. <strong>Missile Carriers</strong> outrange turrets but back away from anything that gets
+              close. The <strong>Bastion</strong> is slow and enormous, and mends itself out of combat.
+            </li>
+            <li>
+              <strong>Sandbag Walls</strong> are cheap and block movement. They do not extend your build area and do not count as
+              structures for victory. A <strong>Repair Bay</strong> mends vehicles parked beside it, paid as it goes.
+            </li>
+            <li>
+              <strong>Support powers</strong> come with structures and go when the last of them falls. Each charges first, then
+              sits in the bar at the bottom of the battlefield: click it, then click the map.
+            </li>
+          </ul>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+            {(Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).map(([p, b]) => (
+              <div key={p} style={{ ...tile, flexDirection: 'column', gap: 4 }}>
+                <strong style={{ fontSize: '0.88rem' }}>{POWERS[p].name}</strong>
+                <span style={{ fontSize: '0.72rem', color: UI.textFaint, fontFamily: FONT.mono }}>
+                  From a {BUILDINGS[b].name} · recharges in {duration(POWERS[p].cooldown)}
+                </span>
+                <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>
+                  {POWERS[p].blurb}
+                  {p === 'missile' && ` Up to ${MISSILE_DAMAGE} damage at the centre.`}
+                </span>
+              </div>
+            ))}
+          </div>
+          <p style={{ ...bodySmall, margin: 0 }}>
+            When the enemy launches a missile at you, a red banner counts down to impact and a red ring marks the target. Click
+            the banner to jump there, and move everything you can out of the ring.
+          </p>
         </Panel>
 
         <Panel title="Campaign">
@@ -118,7 +205,7 @@ export default function HowToPlay() {
           <Grid kinds={VEHICLE_MENU} />
         </Panel>
         <Panel title="Controls">
-          <Controls campaign />
+          <Controls campaign skirmish />
         </Panel>
       </main>
       <PortalNav variant="footer" />
@@ -146,7 +233,10 @@ function Grid({ kinds }: { kinds: (BuildingKind | UnitKind)[] }) {
           <div key={k} style={tile}>
             <img src={iconFor(k)} alt="" width={96} height={64} style={{ borderRadius: 3, flexShrink: 0 }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
-              <strong style={{ fontSize: '0.88rem' }}>{spec.name}</strong>
+              <strong style={{ fontSize: '0.88rem' }}>
+                {spec.name}
+                {!STANDARD_TECH.includes(k) && <span style={{ ...advBadge, marginLeft: 6 }}>Advanced</span>}
+              </strong>
               <span style={{ fontSize: '0.72rem', color: UI.textFaint, fontFamily: FONT.mono }}>{facts.join(' · ')}</span>
               <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>{spec.blurb}</span>
               <details style={{ fontSize: '0.72rem', color: UI.textSoft }}>
@@ -176,4 +266,23 @@ const tile: CSSProperties = {
   border: `1px solid ${UI.rule}`,
   borderRadius: 4,
   background: UI.panelRaised,
+};
+
+const advBadge: CSSProperties = {
+  display: 'inline-block',
+  padding: '0 5px',
+  fontSize: '0.62rem',
+  fontWeight: 600,
+  letterSpacing: '0.08em',
+  textTransform: 'uppercase',
+  verticalAlign: '1px',
+  color: UI.accent,
+  border: `1px solid ${UI.accent}`,
+  borderRadius: 3,
+};
+
+/** A cooldown in words: seconds under two minutes, else minutes. */
+const duration = (ticks: number) => {
+  const secs = Math.round(ticks / TICKS_PER_SECOND);
+  return secs < 120 ? `${secs}s` : `${Math.round((secs / 60) * 10) / 10} min`;
 };

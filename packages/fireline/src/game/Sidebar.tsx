@@ -5,17 +5,28 @@ import {
   DAMAGE_VS,
   INFANTRY_MENU,
   MAX_QUEUE,
+  MEDIC_HEAL,
+  MEDIC_HEAL_TICKS,
+  MEDIC_RANGE,
+  POWERS,
+  REPAIR_BAY_HP,
+  REPAIR_BAY_RANGE,
+  REPAIR_BAY_TICKS,
+  SELF_REPAIR_TICKS,
+  SKIRMISH_POWERS,
   PRODUCER,
+  STANDARD_TECH,
   UNITS,
   TICKS_PER_SECOND,
   VEHICLE_MENU,
   type Armor,
   type BuildingKind,
   type Category,
+  type SupportPower,
   type UnitKind,
   type WeaponKind,
 } from '../sim/rules';
-import { buildTicksOf, costFor, hasBuilding, maxHpOf, powerOf, readyStructure, unlocked } from '../sim/state';
+import { buildTicksOf, costFor, hasBuilding, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
@@ -38,11 +49,21 @@ const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as 
 const blurbOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].blurb : UNITS[k as UnitKind].blurb);
 const needsOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].requires : UNITS[k as UnitKind].requires);
 
-/** The build hotkeys, in menu order: the first item on the open tab is Q, the second W, and so on. */
-export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y'] as const;
+/**
+ * The build hotkeys, in menu order: the first item on the open tab is Q, the second W, and so on.
+ * Q to Y are the original six; U and I continue the top row, and J K L the row below, because O
+ * (objectives), P (pause), A, S, G, H, M, F and Z to V already have jobs.
+ */
+export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l'] as const;
 
-/** Items for each tab, in menu (and hotkey) order. */
-export const menuFor = (tab: Tab) => MENUS[tab];
+/**
+ * Items for a tab, in menu (and hotkey) order. Given the battle, only what can be built in it: a
+ * skirmish on standard tech, or a mission, shows the original items alone (still greyed until
+ * their requirements stand, as ever), and advanced tech adds the rest. A mission's own tech list
+ * keeps greying the original items it leaves out, so the campaign looks as it always has.
+ */
+export const menuFor = (tab: Tab, state?: GameState): (BuildingKind | UnitKind)[] =>
+  state ? MENUS[tab].filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k)) : MENUS[tab];
 
 /** The order Tab cycles through. */
 export const TAB_ORDER: Tab[] = TABS.map(t => t.key);
@@ -117,6 +138,14 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
       value: (['infantry', 'light', 'heavy', 'building'] as Armor[]).map(a => `${ARMOR_NAME[a].toLowerCase()} ${Math.round(vs[a] * 100)}%`).join(' · '),
     });
   }
+  if (u?.medic) rows.push({ label: 'Heals', value: `${MEDIC_HEAL} hp to the most hurt infantry within ${MEDIC_RANGE} tiles every ${secs(MEDIC_HEAL_TICKS)}` });
+  if (u?.selfRepair)
+    rows.push({ label: 'Self-repair', value: `${u.selfRepair} hp every ${secs(SELF_REPAIR_TICKS)} when out of combat` });
+  if (kind === 'repairbay')
+    rows.push({ label: 'Repairs', value: `Vehicles within ${REPAIR_BAY_RANGE} tile: ${REPAIR_BAY_HP} hp every ${secs(REPAIR_BAY_TICKS)}, paid as it goes` });
+  if (b?.wall) rows.push({ label: 'Note', value: 'Blocks movement. Does not extend the build area or count as a structure.' });
+  const grants = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).find(([, k]) => k === kind);
+  if (grants) rows.push({ label: 'Grants', value: `${POWERS[grants[0]].name} (skirmish, advanced tech)` });
   if (spec.requires.length) rows.push({ label: 'Needs', value: spec.requires.map(r => BUILDINGS[r].name).join(', ') });
   return rows;
 }
@@ -246,6 +275,9 @@ export function BuildPanel({
   const ready = readyStructure(state, 0);
   const max = Math.max(pw.made, pw.used, 100);
   const { tip, bind, clear } = useTip<BuildingKind | UnitKind>();
+  const menu = menuFor(tab, state);
+  // More than six items (advanced tech) packs three to a row, so the whole list stays in view.
+  const compact = menu.length > 6;
   // A tab change swaps the buttons out from under the pointer: drop the card with them.
   useEffect(clear, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -321,8 +353,8 @@ export function BuildPanel({
         </p>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 5 }}>
-        {MENUS[tab].map((kind, index) => {
+      <div className="fl-build-grid" data-compact={compact ? '1' : '0'} data-testid="build-grid">
+        {menu.map((kind, index) => {
           const q = p.queues[tab];
           const inQueue = q.filter(i => i.kind === kind).length;
           const head = q[0];
@@ -360,11 +392,13 @@ export function BuildPanel({
               }}
               style={{ borderColor: placing === kind ? UI.good : undefined, opacity: open ? 1 : 0.42 }}
             >
-              <img src={iconFor(kind)} alt="" width={96} height={64} style={{ width: '100%', height: 'auto', borderRadius: 2, display: 'block' }} />
-              <span style={{ fontWeight: 600, lineHeight: 1.1, textAlign: 'center' }}>
+              <img src={iconFor(kind)} alt="" width={96} height={64} />
+              <span className="fl-build-name">
                 {key && <kbd className="fl-key">{key}</kbd>} {nameOf(kind)}
               </span>
-              <span style={{ fontFamily: FONT.mono, color: affordable ? UI.textSoft : UI.bad }}>{cost}</span>
+              <span className="fl-build-cost" style={{ color: affordable ? UI.textSoft : UI.bad }}>
+                {cost}
+              </span>
               {isHead && !isReady && (
                 <div style={progressWrap}>
                   <div style={{ ...progressFill, width: `${Math.round(progress * 100)}%` }} />
@@ -380,7 +414,7 @@ export function BuildPanel({
         <StatTip
           kind={tip.key}
           anchor={tip.el}
-          extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={BUILD_KEYS[MENUS[tab].indexOf(tip.key)]} lowPower={pw.low} />}
+          extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={BUILD_KEYS[menu.indexOf(tip.key)]} lowPower={pw.low} />}
         />
       )}
     </div>
@@ -443,7 +477,7 @@ export function SelectionPanel({
     return (
       <p style={{ margin: 0, fontSize: '0.74rem', color: UI.textFaint, lineHeight: 1.45 }}>
         Drag a box or click to select. Right-click to move or attack. <kbd>A</kbd> attack-move, <kbd>S</kbd> stop,{' '}
-        <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> to group. <kbd>Q</kbd>–<kbd>Y</kbd> build from the open list, <kbd>Tab</kbd>{' '}
+        <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> to group. The letter on each build button builds it, <kbd>Tab</kbd>{' '}
         switches lists, <kbd>Space</kbd> jumps to the last alert.
       </p>
     );
