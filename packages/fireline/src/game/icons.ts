@@ -1,5 +1,5 @@
 import { BUILDINGS, UNITS, type BuildingKind, type HeroKind, type UnitKind } from '../sim/rules';
-import { drawBuilding, drawUnit, TILE } from './art';
+import { drawBuilding, drawUnit, TILE, type BuildingPose } from './art';
 import { drawHeroPortrait } from './campaignArt';
 
 /**
@@ -7,6 +7,11 @@ import { drawHeroPortrait } from './campaignArt';
  * data URLs. A structure is scaled to fit; a unit is drawn large and facing right.
  */
 const cache = new Map<string, string>();
+
+/** Structures shown in their most telling state: the Strike Command armed, its silo open. */
+const ICON_POSE: Partial<Record<BuildingKind, Partial<BuildingPose>>> = {
+  strikecommand: { ready: 1, open: 1 },
+};
 
 export function iconFor(kind: BuildingKind | UnitKind): string {
   const hit = cache.get(kind);
@@ -34,17 +39,32 @@ export function iconFor(kind: BuildingKind | UnitKind): string {
   v.addColorStop(1, 'rgba(0,0,0,0.35)');
   ctx.fillStyle = v;
   ctx.fillRect(0, 0, W, H);
-  if (kind in BUILDINGS) {
+  if (kind === 'wall') {
+    // One tile reads as nothing much: a short run with a corner shows what walls do.
+    const s = 0.88;
+    const tiles: [number, number, number][] = [
+      [0, 1, 2],
+      [1, 1, 10],
+      [2, 1, 9],
+      [2, 0, 4],
+    ];
+    ctx.save();
+    ctx.translate((W - 3 * TILE * s) / 2, (H - 2 * TILE * s) / 2 - 2);
+    ctx.scale(s, s);
+    for (const [x, y, joins] of tiles)
+      drawBuilding(ctx, 'wall', 0, x * TILE, y * TILE, { t: 1, rise: 1, lowPower: false, turret: 0, sinceShot: 9, joins });
+    ctx.restore();
+  } else if (kind in BUILDINGS) {
     const spec = BUILDINGS[kind as BuildingKind];
-    const s = Math.min((W - 10) / (spec.w * TILE), (H - 8) / (spec.h * TILE), 1.2);
+    const s = Math.min((W - 10) / (spec.w * TILE), (H - 8) / (spec.h * TILE), spec.w === 1 ? 1.65 : 1.2);
     ctx.save();
     ctx.translate((W - spec.w * TILE * s) / 2 - 2, (H - spec.h * TILE * s) / 2 - 2);
     ctx.scale(s, s);
-    drawBuilding(ctx, kind as BuildingKind, 0, 0, 0, { t: 1, rise: 1, lowPower: false, turret: -0.6, sinceShot: 9 });
+    drawBuilding(ctx, kind as BuildingKind, 0, 0, 0, { t: 1, rise: 1, lowPower: false, turret: -0.6, sinceShot: 9, ...ICON_POSE[kind as BuildingKind] });
     ctx.restore();
   } else {
     const infantry = UNITS[kind as UnitKind].category === 'infantry';
-    const scale = kind === 'ace' ? 1.5 : kind === 'commando' ? 2.4 : infantry ? 2.6 : 1.9;
+    const scale = kind === 'ace' ? 1.5 : kind === 'bastion' ? 1.3 : kind === 'commando' ? 2.4 : infantry ? 2.6 : 1.9;
     ctx.save();
     ctx.translate(W / 2, H / 2);
     ctx.scale(scale, scale);

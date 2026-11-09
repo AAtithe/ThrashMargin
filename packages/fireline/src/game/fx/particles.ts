@@ -37,7 +37,8 @@ export interface AirParticle {
 }
 
 export interface GroundFx {
-  kind: 'flash' | 'ring';
+  /** 'burn' is burning ground: a flickering glow that keeps throwing up flames while it lasts. */
+  kind: 'flash' | 'ring' | 'burn';
   x: number;
   y: number;
   r: number;
@@ -150,6 +151,80 @@ export class Particles {
   }
 
   /**
+   * The missile strike, on top of an ordinary structure blast: a flash and shockwaves the size of
+   * its radius `R` (pixels), fireballs across it, a column of smoke with a spreading cap, debris
+   * thrown far, and fires left burning round the crater.
+   */
+  megaBlast(x: number, y: number, R: number): void {
+    this.addGround('flash', x, y, R * 2.6, 1.6, 1);
+    this.addGround('ring', x, y, R * 2.8, 1.3, 1);
+    this.addGround('ring', x, y, R * 1.7, 0.9, 0.8);
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = Math.sqrt(Math.random()) * R * 0.75;
+      this.add({
+        kind: 'fireball',
+        x: x + Math.cos(a) * d,
+        y: y + Math.sin(a) * d * 0.75,
+        z: Math.random() * R * 0.2,
+        vz: 20 + Math.random() * 40,
+        life: 0.9 + Math.random() * 0.8,
+        size: R * (0.22 + Math.random() * 0.22),
+        grow: 2.2,
+        delay: Math.random() * 0.45,
+      });
+    }
+    // The column, then the cap: puffs that start high and spread outward.
+    for (let i = 0; i < 12; i++)
+      this.add({ kind: 'smoke', x: x + (Math.random() - 0.5) * R * 0.3, y, z: i * R * 0.1, vx: 3, vz: 40 + Math.random() * 30, life: 5 + Math.random() * 2, size: R * 0.22, grow: 2.6, delay: 0.2 + i * 0.05 });
+    for (let i = 0; i < 14; i++) {
+      const a = (i / 14) * Math.PI * 2;
+      this.add({ kind: 'smoke', x, y, z: R * 1.3, vx: Math.cos(a) * R * 0.5, vy: Math.sin(a) * R * 0.25, vz: 18, life: 6 + Math.random() * 2, size: R * 0.25, grow: 2.4, delay: 0.7 + Math.random() * 0.4 });
+    }
+    for (let i = 0; i < 40; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 80 + Math.random() * 160;
+      this.add({ kind: 'debris', x, y, z: 4, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.75, vz: 120 + Math.random() * 200, life: 1.4 + Math.random() * 1, size: 1.8 + Math.random() * 3.2, vr: (Math.random() - 0.5) * 18, rot: Math.random() * 6 });
+    }
+    for (let i = 0; i < 30; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = 60 + Math.random() * 140;
+      this.add({ kind: 'ember', x, y, z: 6, vx: Math.cos(a) * v, vy: Math.sin(a) * v * 0.7, vz: 120 + Math.random() * 160, life: 0.9 + Math.random() * 0.9, size: 1.8 });
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const d = R * (0.4 + Math.random() * 0.6);
+      this.burn(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.8, 8 + Math.random() * 6, 6 + Math.random() * 6);
+    }
+    this.trim();
+  }
+
+  /** Burning ground, `r` pixels across, for `life` seconds (flamethrower hits, the missile's fires). */
+  burn(x: number, y: number, r: number, life: number): void {
+    this.addGround('burn', x, y, r, life, 1);
+  }
+
+  /** A flamethrower's spray: burning fuel thrown from the nozzle toward the target. */
+  flameSpray(x0: number, y0: number, x1: number, y1: number): void {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const d = Math.hypot(dx, dy) || 1;
+    const sx = x0 + (dx / d) * 12;
+    const sy = y0 + (dy / d) * 12;
+    for (let i = 0; i < 5; i++) {
+      if (this.busy()) return;
+      const life = 0.3 + Math.random() * 0.15;
+      const v = (d - 12) / life;
+      const spread = (Math.random() - 0.5) * 0.3;
+      const c = Math.cos(spread);
+      const s = Math.sin(spread);
+      const ux = (dx / d) * c - (dy / d) * s;
+      const uy = (dx / d) * s + (dy / d) * c;
+      this.add({ kind: 'fire', x: sx, y: sy, z: 3, vx: ux * v, vy: uy * v, vz: 6 + Math.random() * 8, life, size: 3 + Math.random() * 2, grow: 2.6, delay: i * 0.03 });
+    }
+  }
+
+  /**
    * True when ambient emitters (smoke, dust, exhaust, flames) should skip this particle: the
    * fuller the pool, the more they skip, so a huge firefight thins its haze instead of its frame
    * rate. Explosions themselves are never thinned.
@@ -238,6 +313,12 @@ export class Particles {
     for (let i = 0; i < g.length; i++) {
       const f = g[i];
       f.life -= dt;
+      if (f.kind === 'burn' && f.life > 0) {
+        // Burning ground keeps throwing up flames, fewer as it dies down, and a little smoke.
+        const k = f.life / f.max;
+        if (Math.random() < dt * 16 * Math.min(1, k * 2)) this.fire(f.x + (Math.random() - 0.5) * f.r * 1.4, f.y + (Math.random() - 0.5) * f.r);
+        if (Math.random() < dt * 2.5 * k) this.smoke(f.x, f.y, 0.9, 6);
+      }
       if (f.life > 0) g[m++] = f;
     }
     g.length = m;
@@ -250,7 +331,14 @@ export class Particles {
     for (const f of this.ground) {
       if (!inView(f.x, f.y, f.r)) continue;
       const k = f.life / f.max;
-      if (f.kind === 'flash') {
+      if (f.kind === 'burn') {
+        ctx.globalCompositeOperation = 'lighter';
+        const flick = 0.75 + 0.25 * Math.sin(f.life * 23 + f.x) * Math.sin(f.life * 13 + f.y);
+        ctx.globalAlpha = Math.min(1, k * 2) * 0.55 * flick;
+        const r = f.r * 2.2;
+        ctx.drawImage(sp.light, f.x - r, f.y - r * 0.75, r * 2, r * 1.5);
+        ctx.globalCompositeOperation = 'source-over';
+      } else if (f.kind === 'flash') {
         ctx.globalCompositeOperation = 'lighter';
         ctx.globalAlpha = Math.min(1, k * k * f.strength);
         const r = f.r * (0.7 + 0.3 * (1 - k));
