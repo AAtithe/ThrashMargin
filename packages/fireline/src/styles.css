@@ -27,6 +27,11 @@
   --ui-hud: rgba(247, 248, 246, 0.92);
   --ui-team: #2f6fc4;
   --ui-enemy: #c23a30;
+  /* Each side's colour in the chrome, by side number (theme.ts UI.side). */
+  --ui-side-0: #2f6fc4;
+  --ui-side-1: #c23a30;
+  --ui-side-2: #2e7d38;
+  --ui-side-3: #9a6a00;
   /* Text laid over canvas art, which looks the same in both modes. */
   --ui-on-art: #f4f7f3;
   --ui-on-art-soft: rgba(244, 247, 243, 0.82);
@@ -72,6 +77,10 @@
   --ui-hud: rgba(14, 18, 20, 0.9);
   --ui-team: #5b9cf0;
   --ui-enemy: #e6584c;
+  --ui-side-0: #5b9cf0;
+  --ui-side-1: #e6584c;
+  --ui-side-2: #6cc576;
+  --ui-side-3: #eab54a;
   --ui-on-art: #f4f7f3;
   --ui-on-art-soft: rgba(244, 247, 243, 0.82);
   --ui-art-scrim: rgba(6, 10, 8, 0.74);
@@ -1651,3 +1660,15 @@ kbd {
 :root[data-motion="off"] .fl-bar-anim > span {
   transition: none;
 }
+
+/*
+ * Round 4 (fireline-round4-design.md). Each workstream adds its own tokens and rules under its own
+ * heading below, as a light :root block and a :root[data-theme="dark"] block of its own, so the
+ * three merge without touching each other's lines.
+ */
+
+/* ---- Round 4, workstream A: air power and research ---- */
+
+/* ---- Round 4, workstream B: bigger battles ---- */
+
+/* ---- Round 4, workstream C: campaign act two ---- */

@@ -27,6 +27,8 @@ export const UI = {
   hud: 'var(--ui-hud)',
   team: 'var(--ui-team)',
   enemy: 'var(--ui-enemy)',
+  /** Each side's colour in the chrome (names, scoreboard rows), indexed by Owner. */
+  side: ['var(--ui-side-0)', 'var(--ui-side-1)', 'var(--ui-side-2)', 'var(--ui-side-3)'] as const,
 };
 
 export const FONT = {
@@ -35,10 +37,17 @@ export const FONT = {
   mono: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
 };
 
-/** Team colours on the battlefield. */
+/**
+ * Team colours on the battlefield, indexed by Owner: canvas paint, the same in both modes like the
+ * rest of ART (the chrome's own side colours are the --ui-side-N tokens in styles.css, UI.side).
+ * `mark` is the emblem painted on every unit and structure, so sides read apart without colour.
+ * Sides 2 and 3 exist for battles of three or four sides.
+ */
 export const TEAM = {
-  0: { main: '#3b7ddd', dark: '#1d4683', light: '#9cc8ff', name: 'Meridian Corps' },
-  1: { main: '#d4443a', dark: '#7a1d17', light: '#ffab9c', name: 'Ashen Combine' },
+  0: { main: '#3b7ddd', dark: '#1d4683', light: '#9cc8ff', name: 'Meridian Corps', mark: 'diamond' },
+  1: { main: '#d4443a', dark: '#7a1d17', light: '#ffab9c', name: 'Ashen Combine', mark: 'triangle' },
+  2: { main: '#3f9d4a', dark: '#1d5124', light: '#a8e6a0', name: 'Verdant Front', mark: 'circle' },
+  3: { main: '#d99a1e', dark: '#7a5208', light: '#ffd98a', name: 'Ochre Legion', mark: 'square' },
 } as const;
 
 export const ART = {

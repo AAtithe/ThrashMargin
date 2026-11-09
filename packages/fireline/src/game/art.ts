@@ -94,15 +94,22 @@ function bodyShadow(ctx: Ctx, ang: number, w: number, h: number, r: number, ox =
   ctx.restore();
 }
 
-/** A small team mark: Meridian's is a diamond with a bar, the Combine's an inverted triangle. */
+/**
+ * A small team mark with a bar across it: Meridian's a diamond, the Combine's an inverted triangle,
+ * the Verdant Front's a disc and the Ochre Legion's a square (TEAM[owner].mark).
+ */
 function emblem(ctx: Ctx, team: Team, x: number, y: number, s: number) {
   ctx.fillStyle = team.light;
   ctx.beginPath();
-  if (team.name === TEAM[0].name) {
+  if (team.mark === 'diamond') {
     ctx.moveTo(x, y - s);
     ctx.lineTo(x + s * 0.8, y);
     ctx.lineTo(x, y + s);
     ctx.lineTo(x - s * 0.8, y);
+  } else if (team.mark === 'circle') {
+    ctx.arc(x, y, s * 0.85, 0, TAU);
+  } else if (team.mark === 'square') {
+    ctx.rect(x - s * 0.75, y - s * 0.75, s * 1.5, s * 1.5);
   } else {
     ctx.moveTo(x - s, y - s * 0.7);
     ctx.lineTo(x + s, y - s * 0.7);

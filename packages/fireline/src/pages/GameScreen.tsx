@@ -26,8 +26,6 @@ import {
   DIFFICULTIES,
   HERO_ABILITY,
   HERO_KINDS,
-  MAP_H,
-  MAP_W,
   MAX_QUEUE,
   POWERS,
   TICKS_PER_SECOND,
@@ -37,6 +35,7 @@ import {
   type SupportPower,
   type UnitKind,
 } from '../sim/rules';
+import { isEnemy, sidesOf, wonBy } from '../sim/sides';
 import { costOf, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
@@ -163,7 +162,7 @@ export function Battle({
   const savedState = useRef<GameState>(initial);
   const acc = useRef(0);
   const renderer = useRef<Renderer | null>(null);
-  if (!renderer.current) renderer.current = new Renderer(initial.tiles);
+  if (!renderer.current) renderer.current = new Renderer(initial.tiles, undefined, initial.mapW, initial.mapH);
   const hq = initial.buildings.find(b => b.owner === 0 && b.kind === 'hq');
   const cam = useRef<Camera>({ x: hq ? hq.x * TILE - 300 : 0, y: hq ? hq.y * TILE - 260 : 0, zoom: 1, w: 800, h: 600 });
   const overlay = useRef<Overlay>({ selected: new Set(), hover: 0, placement: null, drag: null, pings: [] });
@@ -309,7 +308,7 @@ export function Battle({
     let best = 0;
     let bestD = Infinity;
     for (const u of s.units) {
-      if (u.owner !== 0 && !vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
+      if (u.owner !== 0 && !vis[Math.floor(u.y) * s.mapW + Math.floor(u.x)]) continue;
       const r = UNITS[u.kind].category === 'infantry' ? 0.35 : 0.55;
       const d = Math.hypot(u.x - wx, u.y - wy);
       if (d < r && d < bestD) {
@@ -321,7 +320,7 @@ export function Battle({
     for (const b of s.buildings) {
       const spec = BUILDINGS[b.kind];
       if (wx >= b.x && wx < b.x + spec.w && wy >= b.y && wy < b.y + spec.h) {
-        if (b.owner !== 0 && s.explored.charCodeAt(b.y * MAP_W + b.x) !== 49) continue;
+        if (b.owner !== 0 && s.explored.charCodeAt(b.y * s.mapW + b.x) !== 49) continue;
         return b.id;
       }
     }
@@ -334,7 +333,7 @@ export function Battle({
     const c = cam.current;
     c.x = tx * TILE - c.w / c.zoom / 2;
     c.y = ty * TILE - c.h / c.zoom / 2;
-    clampCam(c);
+    clampCam(c, cur.current);
   }, []);
 
   const jumpToAlert = useCallback(() => {
@@ -500,7 +499,7 @@ export function Battle({
         ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
         return;
       }
-      const tile = Math.floor(wy) * MAP_W + Math.floor(wx);
+      const tile = Math.floor(wy) * s.mapW + Math.floor(wx);
       if (haulerIds.length && s.ore[tile] > 0 && s.explored.charCodeAt(tile) === 49) {
         dispatch({ type: 'harvest', ids: haulerIds, tile });
         if (others.length) dispatch({ type: 'move', ids: others, x: wx, y: wy, attackMove: forceAttackMove });
@@ -669,14 +668,14 @@ export function Battle({
       c.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, (g.zoom * p.dist) / g.dist));
       c.x = wx - p.midX / c.zoom;
       c.y = wy - p.midY / c.zoom;
-      clampCam(c);
+      clampCam(c, cur.current);
       return;
     }
     if (g.kind === 'tap' && Math.hypot(sx - g.x0, sy - g.y0) > TAP_SLOP) g.kind = boxRef.current ? 'box' : 'pan';
     if (g.kind === 'pan') {
       c.x = g.camX - (sx - g.x0) / c.zoom;
       c.y = g.camY - (sy - g.y0) / c.zoom;
-      clampCam(c);
+      clampCam(c, cur.current);
     } else if (g.kind === 'box') {
       overlay.current.drag = { x0: g.x0, y0: g.y0, x1: sx, y1: sy };
     }
@@ -791,7 +790,7 @@ export function Battle({
     if (m.pan) {
       cam.current.x = m.camX - (sx - m.panX) / cam.current.zoom;
       cam.current.y = m.camY - (sy - m.panY) / cam.current.zoom;
-      clampCam(cam.current);
+      clampCam(cam.current, cur.current);
       return;
     }
     if (m.down && Math.hypot(sx - m.downX, sy - m.downY) > 5) {
@@ -872,7 +871,7 @@ export function Battle({
     c.zoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, c.zoom * (e.deltaY < 0 ? 1.1 : 1 / 1.1)));
     c.x = before.x - sx / c.zoom;
     c.y = before.y - sy / c.zoom;
-    clampCam(c);
+    clampCam(c, cur.current);
   };
 
   // ---- Keyboard -----------------------------------------------------------------------------
@@ -1030,7 +1029,7 @@ export function Battle({
           opened.current = true;
           if (w < 700 && hq) centreOn(hq.x + 1.5, hq.y + 1.5);
         }
-        clampCam(c);
+        clampCam(c, cur.current);
 
         // Scrolling: arrow keys, or the pointer resting at the edge of the view.
         const pan = (dt / 1000) * 700 / c.zoom;
@@ -1052,7 +1051,7 @@ export function Battle({
         if (dx || dy) {
           c.x += dx;
           c.y += dy;
-          clampCam(c);
+          clampCam(c, cur.current);
           if (placingRef.current) updatePlacement(m.x, m.y);
         }
 
@@ -1151,7 +1150,7 @@ export function Battle({
           const result = cur.current.mission?.result;
           if ((cur.current.winner !== null || result) && !heardWinner) {
             heardWinner = true;
-            sound.play((result ? result === 'won' : cur.current.winner === 0) ? 'victory' : 'defeat');
+            sound.play((result ? result === 'won' : wonBy(cur.current, 0)) ? 'victory' : 'defeat');
           }
           if (cur.current.winner !== null || result) doSave();
           refresh();
@@ -1264,7 +1263,7 @@ export function Battle({
   const barLift = layout.touch && !ended ? 56 : 0;
   const zones = mission ? missionZones(s) : [];
   const missiles = s.projectiles.filter(p => p.weapon === 'missile');
-  const incoming = ended ? null : missiles.filter(p => p.owner === 1).sort((a, b) => a.hitAt - b.hitAt)[0] ?? null;
+  const incoming = ended ? null : missiles.filter(p => isEnemy(s, 0, p.owner)).sort((a, b) => a.hitAt - b.hitAt)[0] ?? null;
   const skirmishPowers = !mission && !ended && !!s.powers && s.setup?.tech === 'advanced';
   const leave = () => {
     doSave();
@@ -1620,7 +1619,9 @@ function missionZones(s: GameState): { x: number; y: number; r: number; label: s
   return out;
 }
 
-function clampCam(c: Camera) {
+function clampCam(c: Camera, s: GameState) {
+  const MAP_W = s.mapW;
+  const MAP_H = s.mapH;
   const vw = c.w / c.zoom;
   const vh = c.h / c.zoom;
   // Room to scroll past the edge, so a structure in a corner can be brought out from under the
@@ -1702,15 +1703,22 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
 }
 
 function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) {
-  const won = state.winner === 0;
-  const [me, them] = state.players;
+  const won = wonBy(state, 0);
   const secs = Math.floor(state.tick / TICKS_PER_SECOND);
-  const rows: [string, number, number][] = [
-    ['Structures built', me.stats.built, them.stats.built],
-    ['Units trained', me.stats.trained, them.stats.trained],
-    ['Enemy destroyed', me.stats.killed, them.stats.killed],
-    ['Losses', me.stats.lost, them.stats.lost],
-    ['Credits harvested', me.stats.harvested, them.stats.harvested],
+  // One column per side: You and Enemy in a two-sided battle, each side by name with more.
+  const two = state.players.length === 2;
+  const cols = sidesOf(state).map(o => ({
+    o,
+    label: o === 0 ? 'You' : two ? 'Enemy' : state.players[o].name,
+    colour: two ? (o === 0 ? UI.team : UI.enemy) : UI.side[o],
+  }));
+  const stat = (k: keyof GameState['players'][number]['stats']) => state.players.map(p => p.stats[k]);
+  const rows: [string, number[]][] = [
+    ['Structures built', stat('built')],
+    ['Units trained', stat('trained')],
+    ['Enemy destroyed', stat('killed')],
+    ['Losses', stat('lost')],
+    ['Credits harvested', stat('harvested')],
   ];
   return (
     <div style={scrim}>
@@ -1719,23 +1727,29 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
           {won ? 'VICTORY' : 'DEFEAT'}
         </h2>
         <p style={{ margin: 0, color: UI.textSoft, fontSize: '0.85rem' }}>
-          {won ? 'The Ashen Combine has been driven from the field' : 'Your last structure has fallen'} after {Math.floor(secs / 60)} minutes{' '}
+          {won ? (two ? 'The Ashen Combine has been driven from the field' : 'Every enemy has been driven from the field') : 'Your last structure has fallen'} after {Math.floor(secs / 60)} minutes{' '}
           {secs % 60} seconds.
         </p>
         <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem', width: '100%' }}>
           <thead>
             <tr style={{ color: UI.textFaint }}>
               <th />
-              <th style={{ textAlign: 'right', padding: '2px 6px', color: UI.team }}>You</th>
-              <th style={{ textAlign: 'right', padding: '2px 6px', color: UI.enemy }}>Enemy</th>
+              {cols.map(c => (
+                <th key={c.o} style={{ textAlign: 'right', padding: '2px 6px', color: c.colour }}>
+                  {c.label}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
-            {rows.map(([l, a, b]) => (
+            {rows.map(([l, vals]) => (
               <tr key={l}>
                 <td style={{ textAlign: 'left', padding: '2px 6px 2px 0', color: UI.textSoft }}>{l}</td>
-                <td style={{ textAlign: 'right', padding: '2px 6px', fontFamily: FONT.mono }}>{Math.floor(a).toLocaleString('en-GB')}</td>
-                <td style={{ textAlign: 'right', padding: '2px 6px', fontFamily: FONT.mono }}>{Math.floor(b).toLocaleString('en-GB')}</td>
+                {vals.map((v, o) => (
+                  <td key={o} style={{ textAlign: 'right', padding: '2px 6px', fontFamily: FONT.mono }}>
+                    {Math.floor(v).toLocaleString('en-GB')}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>

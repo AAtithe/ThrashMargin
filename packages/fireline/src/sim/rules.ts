@@ -7,10 +7,22 @@
  */
 
 export const TICKS_PER_SECOND = 10;
+/**
+ * The size of every map before map size became a state property, and still the size of every
+ * two-sided map. A battle's own size is `s.mapW` by `s.mapH`: read that, never these, in the
+ * simulation and the renderer. Generators that know no state (map.ts, maps.ts) still build 64 by 64.
+ */
 export const MAP_W = 64;
 export const MAP_H = 64;
 
-export type Owner = 0 | 1;
+/**
+ * A side in the battle. Side 0 is always the human player; sides 1 to 3 are computer commanders.
+ * A battle has 2, 3 or 4 sides (`s.players.length`), each on a team (`s.teams`). Ask who is whose
+ * enemy through `src/sim/sides.ts` (isEnemy, isAlly, enemiesOf), never with `1 - owner`.
+ */
+export type Owner = 0 | 1 | 2 | 3;
+/** The most sides a battle can have. */
+export const MAX_SIDES = 4;
 
 export type Armor = 'infantry' | 'light' | 'heavy' | 'building';
 /**
@@ -645,7 +657,11 @@ export const DIFFICULTIES: Record<Difficulty, DifficultySpec> = {
 
 export const DEFAULT_DIFFICULTY: Difficulty = 'normal';
 
-export const SIDE_NAMES: Record<Owner, string> = { 0: 'Meridian Corps', 1: 'Ashen Combine' };
+/**
+ * Each side's name. Sides 2 and 3 exist for battles of three or four sides; no lobby option creates
+ * them yet (see fireline-round4-design.md, workstream B), but every system handles them.
+ */
+export const SIDE_NAMES: Record<Owner, string> = { 0: 'Meridian Corps', 1: 'Ashen Combine', 2: 'Verdant Front', 3: 'Ochre Legion' };
 
 // ---- Heroes, abilities and support powers (campaign) ------------------------------------------
 //

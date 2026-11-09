@@ -6,6 +6,7 @@ import { getToken } from '../lib/portalAuth';
 import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/saveQueue';
 import { campaignSaveStatus, campaignSaveTurn, isCampaignSave, migrateCampaignSave, newCampaignSave } from '../campaign/save';
 import type { CampaignSave } from '../campaign/types';
+import { wonBy } from '../sim/sides';
 import { createInitialState, migrateState, type NewGameOptions } from '../sim/state';
 import type { GameState } from '../sim/types';
 
@@ -42,7 +43,7 @@ export interface SaveMeta {
 export type LoadedSave = GameState | CampaignSave;
 
 export const statusOf = (s: GameState): SaveMeta['status'] =>
-  s.winner === null ? 'active' : s.winner === 0 ? 'victory' : 'defeated';
+  s.winner === null ? 'active' : wonBy(s, 0) ? 'victory' : 'defeated';
 
 function metaOf(s: LoadedSave): SaveMeta {
   if (isCampaignSave(s)) {

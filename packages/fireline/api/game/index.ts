@@ -27,7 +27,12 @@ function readDifficulty(raw: unknown): (typeof DIFFICULTIES)[number] | undefined
 /** Saves report minutes of battle in the `turn` column, which the lobby shows. */
 const minutes = (state: { tick?: unknown }) => (typeof state.tick === 'number' ? Math.floor(state.tick / 600) : 0);
 
-const statusOf = (state: { winner?: unknown }) => (state.winner === 0 ? 'victory' : state.winner === 1 ? 'defeated' : 'active');
+/**
+ * A finished battle names its winner by side (0 to 3). Side 0 is the player, and `winner` is 0
+ * whenever the player's team won (see GameState.winner), so any other side means a defeat.
+ */
+const statusOf = (state: { winner?: unknown }) =>
+  state.winner === 0 ? 'victory' : state.winner === 1 || state.winner === 2 || state.winner === 3 ? 'defeated' : 'active';
 
 /**
  * A campaign is one row holding the whole career (`kind: 'campaign'`). Its `turn` is missions won and

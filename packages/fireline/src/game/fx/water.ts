@@ -1,4 +1,3 @@
-import { MAP_H, MAP_W } from '../../sim/rules';
 import { TILE } from '../art';
 
 /**
@@ -101,12 +100,15 @@ function paintAtlas(): HTMLCanvasElement {
 
 export class Water {
   /** Per tile: -1 not animated, else the land mask (which sides face land). */
-  private mask = new Int8Array(MAP_W * MAP_H).fill(-1);
-  private phase = new Float32Array(MAP_W * MAP_H);
+  private mask: Int8Array;
+  private phase: Float32Array;
   /** Per tile: the frame now painted into the terrain, or -1. */
-  private shown = new Int8Array(MAP_W * MAP_H).fill(-1);
+  private shown: Int8Array;
   /** Per tile: where its untouched ground sits in `base`, or -1. */
-  private slot = new Int32Array(MAP_W * MAP_H).fill(-1);
+  private slot: Int32Array;
+  /** The map's size in tiles, read from the terrain canvas. */
+  private mapW: number;
+  private mapH: number;
   private base: HTMLCanvasElement | null = null;
   private atlas: HTMLCanvasElement | null = null;
   private terrain: HTMLCanvasElement;
@@ -116,6 +118,12 @@ export class Water {
   constructor(tiles: string, terrain: HTMLCanvasElement) {
     this.terrain = terrain;
     this.tctx = terrain.getContext('2d')!;
+    const MAP_W = (this.mapW = Math.round(terrain.width / TILE));
+    const MAP_H = (this.mapH = Math.round(terrain.height / TILE));
+    this.mask = new Int8Array(MAP_W * MAP_H).fill(-1);
+    this.phase = new Float32Array(MAP_W * MAP_H);
+    this.shown = new Int8Array(MAP_W * MAP_H).fill(-1);
+    this.slot = new Int32Array(MAP_W * MAP_H).fill(-1);
     const at = (x: number, y: number) => (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H ? 'w' : tiles[y * MAP_W + x]);
     for (let y = 0; y < MAP_H; y++)
       for (let x = 0; x < MAP_W; x++) {
@@ -134,6 +142,8 @@ export class Water {
 
   /** Something repainted this region of the terrain: its water tiles must redraw. */
   invalidate(x: number, y: number, w: number, h: number): void {
+    const MAP_W = this.mapW;
+    const MAP_H = this.mapH;
     const x0 = Math.max(0, Math.floor(x / TILE));
     const y0 = Math.max(0, Math.floor(y / TILE));
     const x1 = Math.min(MAP_W - 1, Math.floor((x + w - 1) / TILE));
@@ -144,6 +154,8 @@ export class Water {
   /** Brings the water tiles in the given window up to date, in the terrain canvas. */
   update(t: number, tx0: number, ty0: number, tx1: number, ty1: number): void {
     if (!this.count) return;
+    const MAP_W = this.mapW;
+    const MAP_H = this.mapH;
     if (!this.atlas) {
       this.atlas = paintAtlas();
       // Save every animated tile's ground before the first frame is drawn over it.

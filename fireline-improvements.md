@@ -7,7 +7,7 @@ round is being built by five parallel agents, one per workstream, each owning it
 Status key: [ ] not started, [~] in progress, [x] done.
 
 Round 1 (2026-11-08): all five workstreams built and integrated. Round 2 (campaign): built and integrated.
-Round 3 (freeplay depth, 2026-11-09): built and integrated.
+Round 3 (freeplay depth, 2026-11-09): built and integrated. Round 4: foundation in, three workstreams under way.
 
 ## A. Battlefield effects (renderer)
 
@@ -76,6 +76,13 @@ mission AI once the round-1 opponent work lands.
 - [x] Skirmish powers from structures: recon (uplink), barrage (Tech Centre), missile (Strike Command).
 - [x] Lobby setup (map, tech, credits, ore), validated on the server; saves list shows the map.
 - [x] Both commanders build and use the new tech.
+
+## H. Round 4 (contract: `fireline-round4-design.md`)
+
+- [x] Foundation: 2, 3 or 4 sides on teams, map size per battle, side colours (two-sided play unchanged).
+- [ ] A. Air power and research: Helipad, Flak Cannon, Research Lab; Gunship, Bomber, Flak Track, Skyhunter; five upgrades.
+- [ ] B. Bigger battles: 3 and 4 sides, free for all or teams, fair maps, several-enemy commanders.
+- [ ] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
 
 ## Found along the way
 

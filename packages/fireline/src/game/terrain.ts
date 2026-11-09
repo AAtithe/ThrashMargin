@@ -1,4 +1,6 @@
-import { MAP_H, MAP_W, type MapType } from '../sim/rules';
+import { MAP_H as DEFAULT_MAP_H, MAP_W as DEFAULT_MAP_W, type MapType } from '../sim/rules';
+
+// Every painter takes the map's size (GameState mapW, mapH); left out, the original 64 by 64.
 import { ART } from '../theme';
 import { TILE } from './art';
 
@@ -150,7 +152,9 @@ export const LOOKS: Record<MapType, Look> = {
  * way. Returns, per tile, 0 for none, 1 for a crossing whose water lies east and west of it, 2 for
  * one whose water lies north and south (the way the stream runs past it).
  */
-export function fordsOf(tiles: string): Uint8Array {
+export function fordsOf(tiles: string, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H): Uint8Array {
+  const MAP_W = mapW;
+  const MAP_H = mapH;
   const out = new Uint8Array(MAP_W * MAP_H);
   const w = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && tiles[y * MAP_W + x] === 'w';
   // Water on a side counts when there is a body of it, not a puddle: three or more water tiles
@@ -169,9 +173,11 @@ export function fordsOf(tiles: string): Uint8Array {
   return out;
 }
 
-export function paintTerrain(tiles: string, mapType?: MapType): HTMLCanvasElement {
+export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H): HTMLCanvasElement {
+  const MAP_W = mapW;
+  const MAP_H = mapH;
   const L = (mapType && LOOKS[mapType]) || CLASSIC;
-  const fords = fordsOf(tiles);
+  const fords = fordsOf(tiles, MAP_W, MAP_H);
   const c = document.createElement('canvas');
   c.width = MAP_W * TILE;
   c.height = MAP_H * TILE;
@@ -828,8 +834,10 @@ export function paintTerrain(tiles: string, mapType?: MapType): HTMLCanvasElemen
 }
 
 /** One pixel per tile, for the minimap. */
-export function paintMiniTerrain(tiles: string): HTMLCanvasElement {
-  const fords = fordsOf(tiles);
+export function paintMiniTerrain(tiles: string, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H): HTMLCanvasElement {
+  const MAP_W = mapW;
+  const MAP_H = mapH;
+  const fords = fordsOf(tiles, MAP_W, MAP_H);
   const c = document.createElement('canvas');
   c.width = MAP_W;
   c.height = MAP_H;

@@ -741,7 +741,7 @@ function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enem
         }
       }
     // Leave the row below clear as well, where units come out of barracks and factories.
-    const lane = laneRow(owner, y, spec.h);
+    const lane = laneRow(s, owner, y, spec.h);
     if (clear && inBounds(x, lane)) {
       for (let tx = x - 1; tx <= x + spec.w; tx++) if (inBounds(tx, lane) && occ[idx(tx, lane)]) clear = false;
     }

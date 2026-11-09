@@ -404,7 +404,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
       ore[k] = 0;
     }
   }
-  return { tiles: t.join(''), ore, starts: [start0, start1] };
+  return { w: MAP_W, h: MAP_H, tiles: t.join(''), ore, starts: [start0, start1] };
 }
 
 /** Terrain noise thresholds by type: below `water` is water, a band `ridge` wide is rock, above `trees` is woods. */

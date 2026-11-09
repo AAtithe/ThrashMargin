@@ -5,8 +5,8 @@ import {
   CAPTURE_TICKS,
   CHARGE_FUSE,
   ENGINEER_REPAIR_RANGE,
-  MAP_H,
-  MAP_W,
+  MAP_H as DEFAULT_MAP_H,
+  MAP_W as DEFAULT_MAP_W,
   MEDIC_RANGE,
   POWERS,
   REPAIR_BAY_RANGE,
@@ -15,7 +15,8 @@ import {
   type BuildingKind,
   type MapType,
 } from '../sim/rules';
-import { buildTicksOf, powerOf, producerFor, visibility } from '../sim/state';
+import { sidesOf } from '../sim/sides';
+import { buildTicksOf, powerOf, producerFor, teamVisibility } from '../sim/state';
 import type { Building, Effect, GameState, Projectile, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
 import { drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
@@ -96,15 +97,16 @@ interface Activity {
   bayAim: Map<number, number>;
   medics: Set<number>;
   /** Per side: missile cooldown left, or -1 when the side has no missile. */
-  missileCd: [number, number];
+  missileCd: number[];
 }
 
 function activityOf(s: GameState): Activity {
   const joins = new Map<number, number>();
   const wallAt = new Map<number, Building>();
+  const MAP_W = s.mapW;
   for (const b of s.buildings) if (BUILDINGS[b.kind].wall) wallAt.set(b.y * MAP_W + b.x, b);
   for (const b of wallAt.values()) {
-    const same = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && wallAt.get(y * MAP_W + x)?.owner === b.owner;
+    const same = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < s.mapH && wallAt.get(y * MAP_W + x)?.owner === b.owner;
     joins.set(b.id, (same(b.x, b.y - 1) ? 1 : 0) | (same(b.x + 1, b.y) ? 2 : 0) | (same(b.x, b.y + 1) ? 4 : 0) | (same(b.x - 1, b.y) ? 8 : 0));
   }
   const bayAim = new Map<number, number>();
@@ -127,8 +129,7 @@ function activityOf(s: GameState): Activity {
           busy.add(m.id);
         }
     }
-  const cd = (o: 0 | 1) => s.powers?.[o]?.missile ?? -1;
-  return { joins, bayAim, medics: busy, missileCd: [cd(0), cd(1)] };
+  return { joins, bayAim, medics: busy, missileCd: sidesOf(s).map(o => s.powers?.[o]?.missile ?? -1) };
 }
 
 /**
@@ -182,7 +183,10 @@ export class Renderer {
   private painted = false;
   private actFor: GameState | null = null;
   private act: Activity = { joins: new Map(), bayAim: new Map(), medics: new Set(), missileCd: [-1, -1] };
-  private atmosphere = new Atmosphere();
+  private atmosphere: Atmosphere;
+  /** The map's size in tiles (GameState mapW, mapH). */
+  private mapW: number;
+  private mapH: number;
   /** Structures producing something right now, cached per state object. */
   private workingFor: GameState | null = null;
   private working = new Set<number>();
@@ -190,7 +194,7 @@ export class Renderer {
   /** False until the first frame, which marks what is already on the field as seen, silently. */
   private primed = false;
   private visFor: GameState | null = null;
-  private vis: Uint8Array = new Uint8Array(MAP_W * MAP_H);
+  private vis: Uint8Array = new Uint8Array(0);
   private lastNow = 0;
 
   /**
@@ -198,9 +202,14 @@ export class Renderer {
    * left out, the first state drawn supplies it (GameState.mapType), and without one the ground
    * is the original map's.
    */
-  constructor(tiles: string, mapType?: MapType) {
+  constructor(tiles: string, mapType?: MapType, mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H) {
     this.tiles = tiles;
     this.mapType = mapType;
+    this.mapW = mapW;
+    this.mapH = mapH;
+    const MAP_W = mapW;
+    const MAP_H = mapH;
+    this.atmosphere = new Atmosphere(mapW, mapH);
     this.fog = document.createElement('canvas');
     this.fog.width = MAP_W;
     this.fog.height = MAP_H;
@@ -210,22 +219,24 @@ export class Renderer {
 
   private paint(mapType: MapType | undefined) {
     this.painted = true;
-    this.terrain = paintTerrain(this.tiles, mapType);
+    this.terrain = paintTerrain(this.tiles, mapType, this.mapW, this.mapH);
     this.scars = new Scars(this.terrain, this.tiles);
     this.water = new Water(this.tiles, this.terrain);
     this.scars.onRepaint = (x, y, w, h) => this.water.invalidate(x, y, w, h);
   }
 
-  /** What side 0 can see right now. Cached per state object. */
+  /** What side 0 (with its allies) can see right now. Cached per state object. */
   visible(s: GameState): Uint8Array {
     if (this.visFor !== s) {
-      this.vis = visibility(s, 0);
+      this.vis = teamVisibility(s, 0);
       this.visFor = s;
     }
     return this.vis;
   }
 
   draw(ctx: CanvasRenderingContext2D, cur: GameState, prev: GameState, alpha: number, cam: Camera, ov: Overlay, now: number, dpr: number): void {
+    const MAP_W = this.mapW;
+    const MAP_H = this.mapH;
     const dt = Math.min(0.1, this.lastNow ? (now - this.lastNow) / 1000 : 0);
     this.lastNow = now;
     const t = now / 1000;
@@ -284,7 +295,7 @@ export class Renderer {
       }
 
     // 4. Structures, back to front.
-    const low: [boolean, boolean] = [powerOf(cur, 0).low, powerOf(cur, 1).low];
+    const low = sidesOf(cur).map(o => powerOf(cur, o).low);
     const seenBuilding = (b: Building) => {
       if (b.owner === 0) return true;
       const spec = BUILDINGS[b.kind];
@@ -296,7 +307,7 @@ export class Renderer {
     const working = this.workingSet(cur);
     for (const b of buildings) {
       if (b.kind !== 'refinery') continue;
-      const d = dockTile(b);
+      const d = dockTile(cur, b);
       drawDock(ctx, d.x * TILE, d.y * TILE);
     }
     for (const b of buildings) {
@@ -718,7 +729,7 @@ export class Renderer {
    * middle of the view, and silent under the fog, so sound never reveals what the player cannot see.
    */
   private hear(e: GameState['effects'][number], cam: Camera, vis: Uint8Array, cur: GameState) {
-    const k = Math.floor(e.y) * MAP_W + Math.floor(e.x);
+    const k = Math.floor(e.y) * this.mapW + Math.floor(e.x);
     // A recon sweep, a barrage or a missile is called by a commander and heard on the radio, fog
     // or not; so is a missile's impact, which its marker has already shown to both sides.
     const radio = e.kind === 'recon' || e.kind === 'barrage' || e.kind === 'missile' || (e.kind === 'boom' && e.weapon === 'missile');
@@ -889,7 +900,7 @@ export class Renderer {
       if (age < 0 || age >= LIGHT_TICKS) continue;
       const x = e.x * TILE;
       const y = e.y * TILE;
-      if (!inView(x, y, 60) || !vis[Math.floor(e.y) * MAP_W + Math.floor(e.x)]) continue;
+      if (!inView(x, y, 60) || !vis[Math.floor(e.y) * this.mapW + Math.floor(e.x)]) continue;
       if (!lit) {
         ctx.globalCompositeOperation = 'lighter';
         lit = true;

@@ -1,5 +1,5 @@
-import { buildingCentre, dist, distToBuilding, dockTile, frontRow, laneRow, occupancy, passable } from './grid';
-import { generateMap, idx, inBounds, isWalkable, START_0, START_1 } from './map';
+import { buildingCentre, dist, distToBuilding, dockTile, frontRow, laneRow, occupancy, onMap, passable, tileAt } from './grid';
+import { generateMap, isWalkable } from './map';
 import { next, seedFromString } from './rng';
 import {
   BARRAGE_DAMAGE,
@@ -15,8 +15,6 @@ import {
   HERO_HP_PER_LEVEL,
   HERO_XP_ABILITY,
   HERO_XP_STRUCTURE,
-  MAP_H,
-  MAP_W,
   OVERDRIVE_TICKS,
   POWERS,
   MISSILE_DAMAGE,
@@ -37,6 +35,7 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
+import { isAlly, isEnemy, sidesOf, startOf } from './sides';
 import { addBuilding, addUnit, log, newAiMemory, updateExplored } from './state';
 import type {
   Building,
@@ -70,8 +69,8 @@ const newPlayer = (owner: Owner, credits: number): PlayerState => ({
 });
 
 /** The centre of a side's Command Yard site: a skirmish's own (s.starts), else the original sites missions use. */
-const startCentre = (owner: Owner, s?: GameState) => {
-  const st = s?.starts?.[owner] ?? (owner === 0 ? START_0 : START_1);
+const startCentre = (s: GameState, owner: Owner) => {
+  const st = startOf(s, owner);
   return { x: st.x + 1.5, y: st.y + 1.5 };
 };
 
@@ -88,26 +87,26 @@ function toward(a: { x: number; y: number }, b: { x: number; y: number }, by: nu
  */
 function siteOk(s: GameState, occ: Int32Array, owner: Owner, kind: BuildingKind, x: number, y: number): boolean {
   const spec = BUILDINGS[kind];
-  const lane = laneRow(owner, y, spec.h);
-  if (!inBounds(x - 1, y - 1) || !inBounds(x + spec.w, y + spec.h) || !inBounds(x, lane)) return false;
+  const lane = laneRow(s, owner, y, spec.h);
+  if (!onMap(s, x - 1, y - 1) || !onMap(s, x + spec.w, y + spec.h) || !onMap(s, x, lane)) return false;
   for (let ty = y - 1; ty <= y + spec.h; ty++)
     for (let tx = x - 1; tx <= x + spec.w; tx++) {
-      const k = idx(tx, ty);
+      const k = tileAt(s, tx, ty);
       if (occ[k]) return false;
       const inside = tx >= x && tx < x + spec.w && ty >= y && ty < y + spec.h;
       if (inside && (!isWalkable(s.tiles[k]) || s.ore[k] > 0)) return false;
     }
   // The lane in front stays clear too: units leave barracks and factories there.
-  for (let tx = x - 1; tx <= x + spec.w; tx++) if (inBounds(tx, lane) && occ[idx(tx, lane)]) return false;
+  for (let tx = x - 1; tx <= x + spec.w; tx++) if (onMap(s, tx, lane) && occ[tileAt(s, tx, lane)]) return false;
   for (const u of s.units) if (u.x >= x - 0.2 && u.x < x + spec.w + 0.2 && u.y >= y - 0.2 && u.y < y + spec.h + 0.2) return false;
   for (const b of s.buildings) {
     if (b.kind !== 'refinery') continue;
-    const d = dockTile(b);
+    const d = dockTile(s, b);
     if (d.x >= x && d.x < x + spec.w && d.y >= y && d.y < y + spec.h) return false;
   }
   if (kind === 'refinery') {
-    const fy = frontRow(owner, y, spec.h);
-    if (!inBounds(x + 1, fy) || !isWalkable(s.tiles[idx(x + 1, fy)])) return false;
+    const fy = frontRow(s, owner, y, spec.h);
+    if (!onMap(s, x + 1, fy) || !isWalkable(s.tiles[tileAt(s, x + 1, fy)])) return false;
   }
   return true;
 }
@@ -121,7 +120,7 @@ function placeNear(s: GameState, owner: Owner, kind: BuildingKind, focus: { x: n
   const cands: [number, number, number][] = [];
   for (let y = fy - 16; y <= fy + 16; y++)
     for (let x = fx - 16; x <= fx + 16; x++) {
-      if (!inBounds(x, y)) continue;
+      if (!onMap(s, x, y)) continue;
       cands.push([x, y, (x + spec.w / 2 - focus.x) ** 2 + (y + spec.h / 2 - focus.y) ** 2]);
     }
   cands.sort((a, b) => a[2] - b[2] || a[1] - b[1] || a[0] - b[0]);
@@ -129,7 +128,7 @@ function placeNear(s: GameState, owner: Owner, kind: BuildingKind, focus: { x: n
     if (!siteOk(s, occ, owner, kind, x, y)) continue;
     const b = addBuilding(s, owner, kind, x, y, -100);
     if (kind === 'refinery') {
-      const d = dockTile(b);
+      const d = dockTile(s, b);
       const h = addUnit(s, owner, 'hauler', d.x + 0.5, d.y + 0.5);
       h.order = { type: 'harvest', phase: 'seek', tile: -1, refinery: b.id };
     }
@@ -146,13 +145,13 @@ function focusFor(s: GameState, kind: BuildingKind, home: { x: number; y: number
     let bestD = Infinity;
     for (let k = 0; k < s.ore.length; k++) {
       if (s.ore[k] <= 0) continue;
-      const d = dist(home.x, home.y, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5);
+      const d = dist(home.x, home.y, (k % s.mapW) + 0.5, ((k / s.mapW) | 0) + 0.5);
       if (d < bestD) {
         bestD = d;
         best = k;
       }
     }
-    if (best >= 0) return toward(home, { x: (best % MAP_W) + 0.5, y: ((best / MAP_W) | 0) + 0.5 }, Math.min(bestD * 0.6, 7));
+    if (best >= 0) return toward(home, { x: (best % s.mapW) + 0.5, y: ((best / s.mapW) | 0) + 0.5 }, Math.min(bestD * 0.6, 7));
   }
   return home;
 }
@@ -170,7 +169,7 @@ function freeTile(s: GameState, occ: Int32Array, taken: Set<number>, x: number, 
         const nx = cx + dx;
         const ny = cy + dy;
         if (!passable(s, occ, nx, ny)) continue;
-        const k = idx(nx, ny);
+        const k = tileAt(s, nx, ny);
         if (taken.has(k)) continue;
         const d = (nx + 0.5 - x) ** 2 + (ny + 0.5 - y) ** 2;
         if (d < bestD) {
@@ -187,14 +186,14 @@ function freeTile(s: GameState, occ: Int32Array, taken: Set<number>, x: number, 
 function placeUnits(s: GameState, owner: Owner, kinds: UnitKind[], x: number, y: number): Unit[] {
   const occ = occupancy(s);
   const taken = new Set<number>();
-  for (const u of s.units) taken.add(idx(Math.floor(u.x), Math.floor(u.y)));
+  for (const u of s.units) taken.add(tileAt(s, Math.floor(u.x), Math.floor(u.y)));
   const out: Unit[] = [];
   for (const kind of kinds) {
     if (!(kind in UNITS)) continue;
     const k = freeTile(s, occ, taken, x, y);
     if (k < 0) continue;
     taken.add(k);
-    out.push(addUnit(s, owner, kind, (k % MAP_W) + 0.5, ((k / MAP_W) | 0) + 0.5));
+    out.push(addUnit(s, owner, kind, (k % s.mapW) + 0.5, ((k / s.mapW) | 0) + 0.5));
   }
   return out;
 }
@@ -234,10 +233,13 @@ export function createMissionState(spec: MissionSpec, ctx: MissionContext): Game
     tick: 0,
     tiles: map.tiles,
     ore: map.ore,
-    explored: '0'.repeat(MAP_W * MAP_H),
+    mapW: map.w,
+    mapH: map.h,
+    explored: '0'.repeat(map.w * map.h),
     units: [],
     buildings: [],
     players: [newPlayer(0, Math.max(0, spec.player.credits + perks.extraStartCredits)), newPlayer(1, Math.max(0, spec.enemy.credits))],
+    teams: [0, 1],
     projectiles: [],
     effects: [],
     ai: [newAiMemory(d.firstAttack), newAiMemory(d.firstAttack)],
@@ -263,13 +265,15 @@ export function createMissionState(spec: MissionSpec, ctx: MissionContext): Game
     recon: [],
   };
 
-  const home0 = startCentre(0);
-  const home1 = startCentre(1);
+  const home0 = startCentre(s, 0);
+  const home1 = startCentre(s, 1);
+  const site0 = startOf(s, 0);
+  const site1 = startOf(s, 1);
   // Side 0: a Command Yard only if the spec asks for one.
-  if (spec.player.structures.includes('hq')) addBuilding(s, 0, 'hq', START_0.x, START_0.y, -100);
+  if (spec.player.structures.includes('hq')) addBuilding(s, 0, 'hq', site0.x, site0.y, -100);
   for (const k of spec.player.structures) if (k !== 'hq' && k in BUILDINGS) placeNear(s, 0, k, focusFor(s, k, home0, home1));
   // Side 1: a full base has a Command Yard; an outpost is its structures alone, laid out the same way.
-  if (spec.enemy.base === 'full') addBuilding(s, 1, 'hq', START_1.x, START_1.y, -100);
+  if (spec.enemy.base === 'full') addBuilding(s, 1, 'hq', site1.x, site1.y, -100);
   for (const k of spec.enemy.structures) if (k !== 'hq' && k in BUILDINGS) placeNear(s, 1, k, focusFor(s, k, home1, home0));
 
   // Troops stand on the side of their base that faces the middle of the map.
@@ -356,16 +360,20 @@ export function heroUnit(s: GameState, owner: Owner, kind: HeroKind): Unit | und
   return s.units.find(u => u.owner === owner && u.kind === kind && u.hp > 0 && !!u.hero);
 }
 
-/** Whether side `by` can currently see this unit (Spies are hidden unless detected). */
+/**
+ * Whether side `by` can currently see this unit (Spies are hidden unless detected). Allies share
+ * what they detect: a Spy within range of any unit or structure of `by`'s team is seen by all of it,
+ * and side 0's recon sweeps show Spies to side 0's team.
+ */
 export function isDetected(s: GameState, u: Unit, by: Owner): boolean {
-  if (u.kind !== 'spy' || u.owner === by) return true;
+  if (u.kind !== 'spy' || isAlly(s, u.owner, by)) return true;
   const r = SPY_DETECT_RANGE;
   for (const e of s.units) {
-    if (e.owner !== by || e.hp <= 0) continue;
+    if (e.hp <= 0 || !isAlly(s, e.owner, by)) continue;
     if (Math.abs(e.x - u.x) <= r && Math.abs(e.y - u.y) <= r && dist(e.x, e.y, u.x, u.y) <= r) return true;
   }
-  for (const b of s.buildings) if (b.owner === by && b.hp > 0 && distToBuilding(u.x, u.y, b) <= r) return true;
-  if (by === 0 && s.recon) for (const a of s.recon) if (s.tick < a[3] && dist(a[0], a[1], u.x, u.y) <= a[2]) return true;
+  for (const b of s.buildings) if (b.hp > 0 && isAlly(s, b.owner, by) && distToBuilding(u.x, u.y, b) <= r) return true;
+  if (isAlly(s, by, 0) && s.recon) for (const a of s.recon) if (s.tick < a[3] && dist(a[0], a[1], u.x, u.y) <= a[2]) return true;
   return false;
 }
 
@@ -382,7 +390,7 @@ export function abilityProblem(s: GameState, owner: Owner, heroId: number, targe
   if (u.hero.abilityCd > 0) return `${spec.name} is not ready`;
   if (spec.target === 'none') return null;
   const b = Number.isInteger(target) ? s.buildings.find(v => v.id === target && v.hp > 0) : undefined;
-  if (!b || b.owner === owner) return 'Choose an enemy structure';
+  if (!b || !isEnemy(s, owner, b.owner)) return 'Choose an enemy structure';
   if (kind === 'engineer' && b.kind === 'hq') return 'A Command Yard cannot be captured';
   if (kind === 'spy' && b.kind === 'turret') return 'Nothing to learn in a Gun Turret';
   if (kind === 'commando' && b.chargeAt !== undefined) return 'A charge is already set there';
@@ -397,7 +405,7 @@ export function powerProblem(s: GameState, owner: Owner, power: SupportPower, x:
   const cd = s.powers?.[owner]?.[power];
   if (cd === undefined) return `${POWERS[power].name} is not available`;
   if (cd > 0) return `${POWERS[power].name} is not ready`;
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !inBounds(Math.floor(x), Math.floor(y))) return 'Choose a point on the map';
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !onMap(s, Math.floor(x), Math.floor(y))) return 'Choose a point on the map';
   return null;
 }
 
@@ -450,9 +458,9 @@ export const killXp = (victim: { kind: string }, isBuilding: boolean): number =>
 
 function revealArea(s: GameState, cx: number, cy: number, r: number): void {
   const chars = s.explored.split('');
-  for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(MAP_H - 1, Math.ceil(cy + r)); y++)
-    for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(MAP_W - 1, Math.ceil(cx + r)); x++)
-      if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r) chars[idx(x, y)] = '1';
+  for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(s.mapH - 1, Math.ceil(cy + r)); y++)
+    for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(s.mapW - 1, Math.ceil(cx + r)); x++)
+      if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r * r) chars[tileAt(s, x, y)] = '1';
   s.explored = chars.join('');
 }
 
@@ -502,14 +510,14 @@ export function doAbility(s: GameState, owner: Owner, heroId: number, target?: n
       break;
     }
     case 'power': {
-      const until: [number, number] = s.blackoutUntil ? [s.blackoutUntil[0], s.blackoutUntil[1]] : [0, 0];
+      const until = sidesOf(s).map(o => s.blackoutUntil?.[o] ?? 0);
       until[enemy] = Math.max(until[enemy], s.tick + SPY_BLACKOUT_TICKS);
       s.blackoutUntil = until;
       say('The Spy cut the enemy power for 60 seconds.');
       break;
     }
     case 'uplink':
-      if (owner === 0) s.explored = '1'.repeat(MAP_W * MAP_H);
+      if (owner === 0) s.explored = '1'.repeat(s.mapW * s.mapH);
       say('The Spy tapped the enemy Uplink: the whole map is revealed.');
       break;
     case 'factory':
@@ -579,7 +587,7 @@ export function baseCentre(s: GameState, owner: Owner): { x: number; y: number }
       x += u.x;
       y += u.y;
     }
-  return n ? { x: x / n, y: y / n } : startCentre(owner, s);
+  return n ? { x: x / n, y: y / n } : startCentre(s, owner);
 }
 
 /** The passable tile on the edge of the map nearest a point. -1 if the whole edge is blocked. */
@@ -591,16 +599,16 @@ function edgeTileNear(s: GameState, occ: Int32Array, p: { x: number; y: number }
     const d = (x + 0.5 - p.x) ** 2 + (y + 0.5 - p.y) ** 2;
     if (d < bestD) {
       bestD = d;
-      best = idx(x, y);
+      best = tileAt(s, x, y);
     }
   };
-  for (let x = 0; x < MAP_W; x++) {
+  for (let x = 0; x < s.mapW; x++) {
     consider(x, 0);
-    consider(x, MAP_H - 1);
+    consider(x, s.mapH - 1);
   }
-  for (let y = 1; y < MAP_H - 1; y++) {
+  for (let y = 1; y < s.mapH - 1; y++) {
     consider(0, y);
-    consider(MAP_W - 1, y);
+    consider(s.mapW - 1, y);
   }
   return best;
 }
@@ -614,7 +622,7 @@ function draw(s: GameState): number {
 /** Calls a support power that powerProblem has passed, on a cloned state. */
 export function doPower(s: GameState, owner: Owner, power: SupportPower, x: number, y: number): void {
   const mul = owner === 0 && s.perks ? s.perks.powerCooldownMul : 1;
-  const powers = s.powers ? s.powers : ([{}, {}] as NonNullable<GameState['powers']>);
+  const powers: NonNullable<GameState['powers']> = s.powers ? s.powers : sidesOf(s).map(() => ({}));
   powers[owner] = { ...powers[owner], [power]: Math.max(1, Math.round(POWERS[power].cooldown * mul)) };
   s.powers = powers;
   const say = (text: string) => owner === 0 && log(s, text, 'good');
@@ -651,7 +659,8 @@ export function doPower(s: GameState, owner: Owner, power: SupportPower, x: numb
     });
     s.effects.push({ id: s.nextId++, kind: 'missile', x, y, at: s.tick, size: r });
     if (owner === 0) say('Missile launched.');
-    else log(s, 'Enemy missile launch detected. Clear the marked area.', 'bad');
+    else if (isEnemy(s, 0, owner)) log(s, 'Enemy missile launch detected. Clear the marked area.', 'bad');
+    else log(s, 'Allied missile launched.', 'info');
     return;
   }
   if (power === 'barrage') {
@@ -666,8 +675,8 @@ export function doPower(s: GameState, owner: Owner, power: SupportPower, x: numb
         dy = draw(s) * 2 - 1;
         if (dx * dx + dy * dy <= 1) break;
       }
-      const toX = Math.max(0, Math.min(MAP_W - 0.01, x + dx * r));
-      const toY = Math.max(0, Math.min(MAP_H - 0.01, y + dy * r));
+      const toX = Math.max(0, Math.min(s.mapW - 0.01, x + dx * r));
+      const toY = Math.max(0, Math.min(s.mapH - 0.01, y + dy * r));
       s.projectiles.push({
         id: s.nextId++,
         owner,
@@ -693,8 +702,8 @@ export function doPower(s: GameState, owner: Owner, power: SupportPower, x: numb
   const occ = occupancy(s);
   const edge = edgeTileNear(s, occ, home);
   if (edge < 0) return;
-  const ex = (edge % MAP_W) + 0.5;
-  const ey = ((edge / MAP_W) | 0) + 0.5;
+  const ex = (edge % s.mapW) + 0.5;
+  const ey = ((edge / s.mapW) | 0) + 0.5;
   const units = placeUnits(s, owner, REINFORCEMENTS, ex, ey);
   const goal = toward({ x: ex, y: ey }, home, Math.min(6, dist(ex, ey, home.x, home.y)));
   for (const u of units) u.order = { type: 'move', x: goal.x, y: goal.y };
@@ -717,7 +726,7 @@ export function noteEvent(s: GameState, kind: 'infiltrate' | 'capture', building
 
 /** An enemy structure has been destroyed: counts toward "destroy" objectives. */
 export function noteDestroyed(s: GameState, b: Building): void {
-  if (!s.mission || b.owner !== 1) return;
+  if (!s.mission || !isEnemy(s, 0, b.owner)) return;
   for (const o of [...s.mission.objectives, ...s.mission.bonus]) {
     const sp = o.spec;
     if (sp.kind !== 'destroy' || sp.building !== b.kind || o.done) continue;
@@ -760,8 +769,8 @@ function evalObjective(s: GameState, o: ObjectiveRuntime): void {
   switch (sp.kind) {
     case 'destroyAll': {
       let left = 0;
-      for (const b of s.buildings) if (b.owner === 1) left++;
-      for (const u of s.units) if (u.owner === 1) left++;
+      for (const b of s.buildings) if (isEnemy(s, 0, b.owner)) left++;
+      for (const u of s.units) if (isEnemy(s, 0, u.owner)) left++;
       const killed = s.players[0].stats.killed;
       o.progress = left === 0 ? 1 : killed / (killed + left);
       if (left === 0) o.done = true;
@@ -787,7 +796,7 @@ function evalObjective(s: GameState, o: ObjectiveRuntime): void {
       for (const u of s.units) {
         if (dist(u.x, u.y, sp.x, sp.y) > sp.r) continue;
         if (u.owner === 0) mine = true;
-        else theirs = true;
+        else if (isEnemy(s, 0, u.owner)) theirs = true;
       }
       if (mine && !theirs) {
         const total = Math.max(1, sp.ticks);

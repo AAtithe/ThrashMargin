@@ -1,4 +1,4 @@
-import { BUILDINGS, MAP_H, MAP_W, UNITS, type UnitKind } from '../../sim/rules';
+import { BUILDINGS, UNITS, type UnitKind } from '../../sim/rules';
 import type { GameState, Unit } from '../../sim/types';
 import { ART } from '../../theme';
 import { drawUnit, TILE } from '../art';
@@ -23,7 +23,6 @@ import { sprites } from './sprites';
  */
 
 const CHUNK = 128;
-const CHUNKS = Math.ceil((MAP_W * TILE) / CHUNK);
 /** Seconds between two fades of the same chunk, and how much each fade takes away. */
 const FADE_PERIOD = 4;
 const FADE_ALPHA = 0.2;
@@ -70,7 +69,11 @@ export class Scars {
   /** Told about each region the fading repaints, so animated water there can redraw itself. */
   onRepaint: ((x: number, y: number, w: number, h: number) => void) | null = null;
   /** Per chunk: 0 clean, otherwise fades applied since the last stamp, plus one. */
-  private dirty = new Uint8Array(CHUNKS * CHUNKS);
+  private dirty: Uint8Array;
+  /** Chunks across (and down: the grid is square, sized to the longer side of the map). */
+  private chunks: number;
+  /** The map's width in tiles, read from the terrain canvas. */
+  private mapW: number;
   private fadeClock = 0;
   private nextChunk = 0;
   private trackAt = new Map<number, { x: number; y: number }>();
@@ -81,6 +84,9 @@ export class Scars {
 
   constructor(terrain: HTMLCanvasElement, tiles: string) {
     this.tiles = tiles;
+    this.mapW = Math.round(terrain.width / TILE);
+    this.chunks = Math.ceil(Math.max(terrain.width, terrain.height) / CHUNK);
+    this.dirty = new Uint8Array(this.chunks * this.chunks);
     this.dctx = terrain.getContext('2d')!;
     this.pristine = document.createElement('canvas');
     this.pristine.width = terrain.width;
@@ -101,7 +107,7 @@ export class Scars {
       for (const u of last.units) {
         if (alive.has(u.id)) continue;
         this.trackAt.delete(u.id);
-        if (!vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
+        if (!vis[Math.floor(u.y) * this.mapW + Math.floor(u.x)]) continue;
         this.unitDied(u, t);
       }
     }
@@ -117,7 +123,7 @@ export class Scars {
         if (cur.effects.some(e => e.kind === 'sold' && e.at > last.tick - 1 && Math.abs(e.x - cx) < 0.6 && Math.abs(e.y - cy) < 0.6)) continue;
         let seen = b.owner === 0;
         for (let y = b.y; y < b.y + spec.h && !seen; y++)
-          for (let x = b.x; x < b.x + spec.w; x++) if (cur.explored.charCodeAt(y * MAP_W + x) === 49) seen = true;
+          for (let x = b.x; x < b.x + spec.w; x++) if (cur.explored.charCodeAt(y * this.mapW + x) === 49) seen = true;
         if (!seen) continue;
         this.rubble(b.x * TILE, b.y * TILE, spec.w * TILE, spec.h * TILE);
         // A wall is sand and sacking: a scatter of rubble, but nothing left to burn.
@@ -218,7 +224,7 @@ export class Scars {
     const dx = x - at.x;
     const dy = y - at.y;
     const d2 = dx * dx + dy * dy;
-    const k = Math.floor(y / TILE) * MAP_W + Math.floor(x / TILE);
+    const k = Math.floor(y / TILE) * this.mapW + Math.floor(x / TILE);
     const ground = this.tiles[k];
     if (ground === 'd' && Math.random() < dt * (u.kind === 'buggy' ? 5 : 2.5)) fx.dust(x - (dx / (Math.sqrt(d2) || 1)) * 10, y - (dy / (Math.sqrt(d2) || 1)) * 8, u.kind === 'buggy' ? 0.9 : 1.2);
     if (d2 < 9) return;
@@ -386,6 +392,7 @@ export class Scars {
   private touch(x: number, y: number, w: number, h: number) {
     const c0 = Math.max(0, Math.floor(x / CHUNK));
     const r0 = Math.max(0, Math.floor(y / CHUNK));
+    const CHUNKS = this.chunks;
     const c1 = Math.min(CHUNKS - 1, Math.floor((x + w) / CHUNK));
     const r1 = Math.min(CHUNKS - 1, Math.floor((y + h) / CHUNK));
     for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) this.dirty[r * CHUNKS + c] = 1;
@@ -394,6 +401,7 @@ export class Scars {
   /** Fades the marks a little, one marked chunk at a time, and keeps wrecks smoking. */
   step(dt: number, now: number, fx: Particles) {
     this.fadeClock += dt;
+    const CHUNKS = this.chunks;
     const every = FADE_PERIOD / (CHUNKS * CHUNKS);
     let budget = 4;
     while (this.fadeClock >= every && budget-- > 0) {

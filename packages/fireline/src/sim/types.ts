@@ -2,7 +2,7 @@ import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, Skir
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
- * `y * MAP_W + x`. Every list here is replaced, never mutated in place, by the reducer: an action
+ * `y * s.mapW + x` (tileAt in grid.ts). Every list here is replaced, never mutated in place, by the reducer: an action
  * clones the state once and works on the clone, so the state passed in is never touched.
  */
 
@@ -203,17 +203,40 @@ export interface GameState {
   tiles: string;
   /** Ore held by each tile, 0 for none. */
   ore: number[];
-  /** Tiles the player has ever seen, one character each: '1' seen, '0' not. */
+  /**
+   * Map size in tiles. Every per-tile string and array (tiles, ore, explored) is mapW * mapH long.
+   * Saves from before this field are 64 by 64 (migrateState fills it in). Never changes.
+   */
+  mapW: number;
+  mapH: number;
+  /**
+   * Tiles side 0 (the human) has ever seen, one character each: '1' seen, '0' not. Side 0 sees
+   * what its whole team sees. Computer sides see the whole map (a stated rule), so they need none.
+   */
   explored: string;
   units: Unit[];
   buildings: Building[];
-  players: [PlayerState, PlayerState];
+  /** One per side, indexed by Owner. Its length is the number of sides: 2, 3 or 4. */
+  players: PlayerState[];
+  /**
+   * The team each side is on, indexed by Owner, one entry per side. Sides on the same team are
+   * allies: they never target or splash each other and win or lose together. Two sides: [0, 1].
+   * Free-for-all: side i on team i. Saves from before this field get the free-for-all default
+   * (migrateState). Never changes during a battle. Read it through teamOf/isEnemy in sides.ts.
+   */
+  teams: number[];
   projectiles: Projectile[];
   effects: Effect[];
-  ai: [AiMemory, AiMemory];
+  /** One per side, indexed by Owner. Side 0's is used only when the computer plays it (autopilot). */
+  ai: AiMemory[];
   /** When true the computer also plays side 0. Used by the test harness only. */
   autopilot: boolean;
   nextId: number;
+  /**
+   * Who won, once the battle is over. With teams, the lowest-numbered side of the winning team
+   * (side 0 whenever the human's team won, even if side 0 itself was wiped out). Ask
+   * `wonBy(s, owner)` in sides.ts rather than comparing this to a side.
+   */
   winner: Owner | null;
   log: LogEntry[];
   /** Last tick each kind of warning was logged, so alarms do not flood the log. */
@@ -226,8 +249,11 @@ export interface GameState {
   setup?: SkirmishSetup;
   /** The map type actually generated (setup.map may say 'random'). Absent: the original map. */
   mapType?: MapType;
-  /** Top-left tile of each side's starting Command Yard. Absent: START_0 and START_1 (map.ts). */
-  starts?: [{ x: number; y: number }, { x: number; y: number }];
+  /**
+   * Top-left tile of each side's starting Command Yard, one per side. Absent: START_0 and START_1
+   * (map.ts), which only a two-sided battle may rely on. Read it through startOf in sides.ts.
+   */
+  starts?: { x: number; y: number }[];
 
   // ---- Campaign (all optional: a skirmish has none of these) ------------------------------------
   /** The mission being played, with its objectives; null or absent in a skirmish. */
@@ -239,11 +265,11 @@ export interface GameState {
    * mission sets its own; a skirmish on advanced tech gets them from its structures (SKIRMISH_POWERS,
    * kept in step by syncSkirmishPowers in state.ts).
    */
-  powers?: [Partial<Record<SupportPower, number>>, Partial<Record<SupportPower, number>>];
+  powers?: Partial<Record<SupportPower, number>>[];
   /** Kinds side 0 may queue in this battle; null or absent means everything. */
   allowed?: (BuildingKind | UnitKind)[] | null;
-  /** Power cut for a side until this tick (spy on a generator). */
-  blackoutUntil?: [number, number];
+  /** Power cut for each side until this tick (spy on a generator), one entry per side. */
+  blackoutUntil?: number[];
   /** Tiles revealed to side 0 by a recon sweep until a tick: [centre x, centre y, radius, until]. */
   recon?: [number, number, number, number][];
 }
@@ -273,7 +299,7 @@ export interface ObjectiveRuntime {
 }
 
 export interface SpawnSpec {
-  owner: 0 | 1;
+  owner: Owner;
   kind: UnitKind;
   count: number;
   x: number;

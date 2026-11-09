@@ -1,4 +1,4 @@
-import { MAP_H, MAP_W } from '../../sim/rules';
+import { MAP_H as DEFAULT_MAP_H, MAP_W as DEFAULT_MAP_W } from '../../sim/rules';
 import { TILE } from '../art';
 
 /**
@@ -27,9 +27,13 @@ export interface View {
 
 export class Atmosphere {
   private lattice = new Float32Array(CELLS * CELLS);
-  private out = new Uint8Array(MAP_W * MAP_H);
+  private out: Uint8Array;
+  /** The map's width in tiles. */
+  private mapW: number;
 
-  constructor() {
+  constructor(mapW = DEFAULT_MAP_W, mapH = DEFAULT_MAP_H) {
+    this.mapW = mapW;
+    this.out = new Uint8Array(mapW * mapH);
     // Value noise, part blurred (big soft masses) and part raw (ragged edges), stretched to 0..1.
     const a = new Float32Array(CELLS * CELLS).map(() => Math.random());
     const at = (x: number, y: number) => a[((y + CELLS) % CELLS) * CELLS + ((x + CELLS) % CELLS)];
@@ -86,7 +90,7 @@ export class Atmosphere {
         const d = Math.sqrt(sxn * sxn + syn * syn);
         const e = d > 0.7 ? Math.min(1, (d - 0.7) / 0.7) : 0;
         const vig = e * e * 0.5;
-        out[y * MAP_W + x] = Math.round(255 * (1 - (1 - cloud) * (1 - vig)));
+        out[y * this.mapW + x] = Math.round(255 * (1 - (1 - cloud) * (1 - vig)));
       }
     }
     return out;

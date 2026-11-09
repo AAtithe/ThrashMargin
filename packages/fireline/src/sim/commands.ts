@@ -1,9 +1,9 @@
-import { dockTile, frontRow, nearestPassable, occupancy, passable } from './grid';
-import { idx, inBounds, isWalkable } from './map';
+import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
+import { isWalkable } from './map';
+import { isEnemy } from './sides';
 import {
   BUILD_RADIUS,
   BUILDINGS,
-  MAP_W,
   MAX_QUEUE,
   ORDER_QUEUE_MAX,
   SELL_RETURN,
@@ -82,11 +82,11 @@ export function placementProblem(s: GameState, owner: Owner, kind: BuildingKind,
   const spec = BUILDINGS[kind];
   if (!spec || kind === 'hq') return 'Cannot build that';
   if (!Number.isInteger(x) || !Number.isInteger(y)) return 'Off the map';
-  if (!inBounds(x, y) || !inBounds(x + spec.w - 1, y + spec.h - 1)) return 'Off the map';
+  if (!onMap(s, x, y) || !onMap(s, x + spec.w - 1, y + spec.h - 1)) return 'Off the map';
   const foot = new Set<number>();
   for (let ty = y; ty < y + spec.h; ty++)
     for (let tx = x; tx < x + spec.w; tx++) {
-      const k = idx(tx, ty);
+      const k = tileAt(s, tx, ty);
       foot.add(k);
       if (!isWalkable(s.tiles[k])) return 'Ground is not clear';
       if (s.ore[k] > 0) return 'Cannot build on ore';
@@ -98,12 +98,12 @@ export function placementProblem(s: GameState, owner: Owner, kind: BuildingKind,
   // Never cover a refinery's dock, and a new refinery needs its own dock clear.
   for (const b of s.buildings) {
     if (b.kind !== 'refinery') continue;
-    const d = dockTile(b);
-    if (foot.has(idx(d.x, d.y))) return 'Blocks a refinery dock';
+    const d = dockTile(s, b);
+    if (foot.has(tileAt(s, d.x, d.y))) return 'Blocks a refinery dock';
   }
   if (kind === 'refinery') {
-    const d = { x: x + 1, y: frontRow(owner, y, spec.h) };
-    if (!inBounds(d.x, d.y) || !isWalkable(s.tiles[idx(d.x, d.y)]) || occ[idx(d.x, d.y)]) return 'The dock pad below needs clear ground';
+    const d = { x: x + 1, y: frontRow(s, owner, y, spec.h) };
+    if (!onMap(s, d.x, d.y) || !isWalkable(s.tiles[tileAt(s, d.x, d.y)]) || occ[tileAt(s, d.x, d.y)]) return 'The dock pad below needs clear ground';
   }
   // Near something we already own (walls do not count: they cannot creep a base across the map).
   const near = s.buildings.some(b => {
@@ -127,7 +127,7 @@ export function doPlace(s: GameState, owner: Owner, kind: BuildingKind, x: numbe
   const b = addBuilding(s, owner, kind, x, y);
   s.players[owner].stats.built++;
   if (kind === 'refinery') {
-    const d = dockTile(b);
+    const d = dockTile(s, b);
     const h = addUnit(s, owner, 'hauler', d.x + 0.5, d.y + 0.5);
     h.order = { type: 'harvest', phase: 'seek', tile: -1, refinery: b.id };
   }
@@ -163,6 +163,7 @@ export function spawnSurvivors(s: GameState, b: Building, occ: Int32Array): numb
   // Sandbags have no crew.
   const want = spec.wall ? 0 : survivorsFor(spec.w, spec.h);
   const taken = new Set<number>();
+  const MAP_W = s.mapW;
   for (const u of s.units) if (u.hp > 0) taken.add(Math.floor(u.y) * MAP_W + Math.floor(u.x));
   let made = 0;
   // The footprint first, then the ring around it, each in row order, so a replay picks the same.
@@ -190,7 +191,7 @@ export function doRepair(s: GameState, id: number): void {
 }
 
 export function canRally(s: GameState, owner: Owner, id: number, x: number, y: number): boolean {
-  if (!Number.isFinite(x) || !Number.isFinite(y) || !inBounds(Math.floor(x), Math.floor(y))) return false;
+  if (!validPoint(s, x, y)) return false;
   const b = s.buildings.find(v => v.id === id && v.owner === owner);
   return !!b && (b.kind === 'barracks' || b.kind === 'factory');
 }
@@ -200,8 +201,8 @@ export function doRally(s: GameState, id: number, x: number, y: number): void {
   b.rally = { x, y };
 }
 
-const validPoint = (x: number, y: number) =>
-  Number.isFinite(x) && Number.isFinite(y) && inBounds(Math.floor(x), Math.floor(y));
+const validPoint = (s: GameState, x: number, y: number) =>
+  Number.isFinite(x) && Number.isFinite(y) && onMap(s, Math.floor(x), Math.floor(y));
 
 /** True when this unit's current order is one a queued order waits behind. */
 const busy = (u: Unit) => u.order.type === 'move' || u.order.type === 'attackMove' || u.order.type === 'attack';
@@ -210,7 +211,7 @@ const busy = (u: Unit) => u.order.type === 'move' || u.order.type === 'attackMov
 const acceptsQueued = (u: Unit) => !busy(u) || u.queue.length < ORDER_QUEUE_MAX;
 
 export function canMove(s: GameState, owner: Owner, ids: number[], x: number, y: number, queue = false): boolean {
-  if (!validPoint(x, y)) return false;
+  if (!validPoint(s, x, y)) return false;
   const units = ownUnits(s, owner, ids);
   return queue ? units.some(acceptsQueued) : units.length > 0;
 }
@@ -239,6 +240,7 @@ function give(u: Unit, o: QueuedOrder, queue: boolean): void {
 export function doMove(s: GameState, owner: Owner, ids: number[], x: number, y: number, attackMove: boolean, queue = false): void {
   const units = ownUnits(s, owner, ids);
   const occ = occupancy(s);
+  const MAP_W = s.mapW;
   const slots = formation(units.length);
   units.forEach((u, i) => {
     const [ox, oy] = slots[i] ?? [0, 0];
@@ -267,7 +269,7 @@ function formation(n: number): [number, number][] {
 
 export function canAttack(s: GameState, owner: Owner, ids: number[], target: number, queue = false): boolean {
   const enemy =
-    s.units.some(u => u.id === target && u.owner !== owner) || s.buildings.some(b => b.id === target && b.owner !== owner);
+    s.units.some(u => u.id === target && isEnemy(s, owner, u.owner)) || s.buildings.some(b => b.id === target && isEnemy(s, owner, b.owner));
   return enemy && ownUnits(s, owner, ids).some(u => UNITS[u.kind].weapon && (!queue || acceptsQueued(u)));
 }
 

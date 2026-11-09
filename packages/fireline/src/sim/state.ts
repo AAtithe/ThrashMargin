@@ -1,4 +1,4 @@
-import { generateMap, idx, START_0, START_1 } from './map';
+import { generateMap, idx } from './map';
 import { generateSkirmishMap, randomMapType } from './maps';
 import { seedFromString } from './rng';
 import {
@@ -10,6 +10,7 @@ import {
   MAP_H,
   MAP_TYPES,
   MAP_W,
+  MAX_SIDES,
   PRODUCER,
   SETUP_CREDITS_MAX,
   SETUP_CREDITS_MIN,
@@ -31,7 +32,10 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
+import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf } from './sides';
 import type { AiMemory, Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
+
+export { startOf };
 
 export interface NewGameOptions {
   seed?: string;
@@ -62,12 +66,6 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
 /** How this battle was set up. Saves from before setups, and missions, read as LEGACY_SETUP. */
 export const setupOf = (s: GameState): SkirmishSetup => s.setup ?? LEGACY_SETUP;
 
-/** Top-left tile of a side's starting Command Yard: the state's own, else the original sites. */
-export function startOf(s: GameState, owner: Owner): { x: number; y: number } {
-  const st = s.starts?.[owner];
-  return st ?? (owner === 0 ? START_0 : START_1);
-}
-
 /**
  * Whether this side may build or train this kind at all in this battle (requirements aside). A
  * mission: side 0 by its tech list, side 1 by the original game's. A skirmish: everything with
@@ -90,8 +88,8 @@ export const isStructure = (b: Building): boolean => !BUILDINGS[b.kind].wall;
  */
 export function syncSkirmishPowers(s: GameState): void {
   if (s.mission || !s.setup || s.setup.tech !== 'advanced') return;
-  const powers = s.powers ?? ([{}, {}] as NonNullable<GameState['powers']>);
-  for (const owner of [0, 1] as Owner[]) {
+  const powers: NonNullable<GameState['powers']> = s.powers ?? sidesOf(s).map(() => ({}));
+  for (const owner of sidesOf(s)) {
     let side = powers[owner];
     for (const [power, kind] of Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]) {
       const has = s.buildings.some(b => b.owner === owner && b.kind === kind && b.hp > 0);
@@ -144,10 +142,13 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     tick: 0,
     tiles: map.tiles,
     ore: map.ore,
-    explored: '0'.repeat(MAP_W * MAP_H),
+    mapW: map.w,
+    mapH: map.h,
+    explored: '0'.repeat(map.w * map.h),
     units: [],
     buildings: [],
     players: [newPlayer(0, credits), newPlayer(1, credits)],
+    teams: [0, 1],
     projectiles: [],
     effects: [],
     ai: [
@@ -163,16 +164,16 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
   if (setup && mapType) {
     s.setup = setup;
     s.mapType = mapType;
-    s.starts = [{ ...map.starts[0] }, { ...map.starts[1] }];
+    s.starts = map.starts.map(st => ({ ...st }));
     // Support powers come with their structures (SKIRMISH_POWERS); none stand yet.
-    if (setup.tech === 'advanced') s.powers = [{}, {}];
+    if (setup.tech === 'advanced') s.powers = sidesOf(s).map(() => ({}));
   }
 
-  for (const owner of [0, 1] as Owner[]) {
+  for (const owner of sidesOf(s)) {
     const st = map.starts[owner];
     addBuilding(s, owner, 'hq', st.x, st.y, -100);
     // Three riflemen beside the yard, on the side facing the middle of the map.
-    const dir = owner === 0 ? 1 : -1;
+    const dir = frontDir(s, owner);
     for (let i = 0; i < 3; i++) {
       addUnit(s, owner, 'rifleman', st.x + 1.5 + dir * (i - 1) * 0.9, st.y + 1.5 - dir * 2.6);
     }
@@ -182,6 +183,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
 }
 
 export function addBuilding(s: GameState, owner: Owner, kind: BuildingKind, x: number, y: number, placedAt = s.tick): Building {
+  const aim = inwardDiagonal(s, owner);
   const b: Building = {
     id: s.nextId++,
     owner,
@@ -194,15 +196,16 @@ export function addBuilding(s: GameState, owner: Owner, kind: BuildingKind, x: n
     rally: null,
     cooldown: 0,
     engage: 0,
-    tx: owner === 0 ? 0.7071 : -0.7071,
-    ty: owner === 0 ? -0.7071 : 0.7071,
+    tx: aim.x,
+    ty: aim.y,
   };
   s.buildings.push(b);
   return b;
 }
 
 export function addUnit(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number): Unit {
-  const fy = owner === 0 ? -1 : 1;
+  // Facing the middle of the map: north for a base in the bottom half, south for one in the top.
+  const fy = -frontDir(s, owner);
   const hpMul = owner === 0 && s.perks ? s.perks.unitHpMul : 1;
   const maxHp = hpMul !== 1 ? Math.max(1, Math.round(UNITS[kind].hp * hpMul)) : 0;
   const u: Unit = {
@@ -238,9 +241,9 @@ export function addUnit(s: GameState, owner: Owner, kind: UnitKind, x: number, y
 export const maxHpOf = (u: Unit): number => u.maxHp ?? UNITS[u.kind].hp;
 
 /**
- * The one copy an action makes. Everything the reducer can change is copied; `tiles` never changes
- * and is shared. Effects, projectiles and log entries are never edited after creation, so copying
- * their arrays is enough.
+ * The one copy an action makes. Everything the reducer can change is copied; `tiles` and `teams`
+ * never change and are shared. Effects, projectiles and log entries are never edited after
+ * creation, so copying their arrays is enough.
  */
 export function cloneState(s: GameState): GameState {
   return {
@@ -261,10 +264,10 @@ export function cloneState(s: GameState): GameState {
         vehicle: p.queues.vehicle.map(q => ({ ...q })),
       },
       stats: { ...p.stats },
-    })) as [PlayerState, PlayerState],
+    })),
     projectiles: s.projectiles.slice(),
     effects: s.effects.slice(),
-    ai: s.ai.map(a => ({ ...a })) as GameState['ai'],
+    ai: s.ai.map(a => ({ ...a })),
     log: s.log.slice(),
     alarms: { ...s.alarms },
     ...(s.mission
@@ -278,8 +281,8 @@ export function cloneState(s: GameState): GameState {
           },
         }
       : {}),
-    ...(s.powers ? { powers: [{ ...s.powers[0] }, { ...s.powers[1] }] as GameState['powers'] } : {}),
-    ...(s.blackoutUntil ? { blackoutUntil: [s.blackoutUntil[0], s.blackoutUntil[1]] as [number, number] } : {}),
+    ...(s.powers ? { powers: s.powers.map(p => ({ ...p })) } : {}),
+    ...(s.blackoutUntil ? { blackoutUntil: s.blackoutUntil.slice() } : {}),
     ...(s.recon ? { recon: s.recon.slice() } : {}),
   };
 }
@@ -287,7 +290,7 @@ export function cloneState(s: GameState): GameState {
 export function powerOf(s: GameState, owner: Owner): { made: number; used: number; low: boolean } {
   let made = 0;
   let used = 0;
-  const blackout = !!s.blackoutUntil && s.tick < s.blackoutUntil[owner];
+  const blackout = !!s.blackoutUntil && s.tick < (s.blackoutUntil[owner] ?? 0);
   for (const b of s.buildings) {
     if (b.owner !== owner) continue;
     const p = BUILDINGS[b.kind].power;
@@ -364,8 +367,8 @@ export function readyStructure(s: GameState, owner: Owner): BuildingKind | null 
 
 /** Every tile within sight of something side `owner` owns. */
 export function visibility(s: GameState, owner: Owner): Uint8Array {
-  const MW = MAP_W;
-  const MH = MAP_H;
+  const MW = s.mapW;
+  const MH = s.mapH;
   const vis = new Uint8Array(MW * MH);
   const mark = (cx: number, cy: number, r: number) => {
     const r2 = r * r;
@@ -385,9 +388,23 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
   return vis;
 }
 
-/** Folds what side 0 can currently see into the explored map. */
+/**
+ * Every tile within sight of `owner` or any ally: what a side sees, since allies share their sight.
+ * With no ally (every two-sided battle) this is exactly visibility(s, owner).
+ */
+export function teamVisibility(s: GameState, owner: Owner): Uint8Array {
+  const vis = visibility(s, owner);
+  for (const o of sidesOf(s)) {
+    if (o === owner || !isAlly(s, owner, o)) continue;
+    const more = visibility(s, o);
+    for (let k = 0; k < vis.length; k++) vis[k] |= more[k];
+  }
+  return vis;
+}
+
+/** Folds what side 0 (with its allies) can currently see into the explored map. */
 export function updateExplored(s: GameState): void {
-  const vis = visibility(s, 0);
+  const vis = teamVisibility(s, 0);
   const e = s.explored;
   let k = 0;
   for (; k < vis.length; k++) if (vis[k] && e.charCodeAt(k) === 48) break;
@@ -444,7 +461,24 @@ export function migrateState(raw: unknown): GameState | null {
     if (u.maxHp !== undefined && !(Number.isFinite(u.maxHp) && u.maxHp > 0)) delete out.maxHp;
     return out;
   });
-  const out: GameState = { ...(s as GameState), units };
+  // Sides: saves from before 3 and 4 sides have two players, no teams and a 64 by 64 map.
+  const n = s.players.length;
+  if (n < 2 || n > MAX_SIDES) return null;
+  const mapW = Number.isInteger(s.mapW) && s.mapW! > 0 ? s.mapW! : MAP_W;
+  const mapH = Number.isInteger(s.mapH) && s.mapH! > 0 ? s.mapH! : MAP_H;
+  if (s.tiles.length !== mapW * mapH || s.ore.length !== mapW * mapH || s.explored.length !== mapW * mapH) return null;
+  const ai = s.ai.slice(0, n);
+  for (let i = ai.length; i < n; i++) ai.push(newAiMemory(DIFFICULTIES[DEFAULT_DIFFICULTY].firstAttack));
+  const out: GameState = { ...(s as GameState), units, mapW, mapH, teams: normaliseTeams(s.teams, n), ai };
+  if (s.powers !== undefined) {
+    if (Array.isArray(s.powers)) {
+      out.powers = sidesOf(out).map(o => (s.powers![o] && typeof s.powers![o] === 'object' ? { ...s.powers![o] } : {}));
+    } else delete out.powers;
+  }
+  if (s.blackoutUntil !== undefined) {
+    if (Array.isArray(s.blackoutUntil)) out.blackoutUntil = sidesOf(out).map(o => (Number.isFinite(s.blackoutUntil![o]) ? s.blackoutUntil![o] : 0));
+    else delete out.blackoutUntil;
+  }
   // A skirmish setup, its map type and its start sites: repaired or dropped, never trusted blind.
   // A save without a setup plays as it always did (LEGACY_SETUP).
   if (s.setup !== undefined) {
@@ -455,9 +489,11 @@ export function migrateState(raw: unknown): GameState | null {
   if (s.starts !== undefined) {
     const okSite = (p: unknown) =>
       !!p && typeof p === 'object' && Number.isInteger((p as { x: number }).x) && Number.isInteger((p as { y: number }).y);
-    if (Array.isArray(s.starts) && s.starts.length === 2 && s.starts.every(okSite)) out.starts = [{ ...s.starts[0] }, { ...s.starts[1] }];
+    if (Array.isArray(s.starts) && s.starts.length === n && s.starts.every(okSite)) out.starts = s.starts.map(p => ({ ...p }));
     else delete out.starts;
   }
+  // Only two sides may fall back on the original start sites.
+  if (n > 2 && !out.starts) return null;
   // A campaign battle: its mission must at least have its objective lists, or it is not trusted.
   if (s.mission !== undefined && s.mission !== null) {
     const m = s.mission as Partial<MissionRuntime>;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { BUILDINGS, MAP_H, MAP_W } from '../sim/rules';
+import { BUILDINGS } from '../sim/rules';
 import type { GameState } from '../sim/types';
 import { TEAM } from '../theme';
 import { TILE } from './art';
@@ -82,7 +82,9 @@ export default function Minimap({
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
   }, []);
-  const terrain = useMemo(() => paintMiniTerrain(state.tiles), [state.tiles]);
+  const terrain = useMemo(() => paintMiniTerrain(state.tiles, state.mapW, state.mapH), [state.tiles, state.mapW, state.mapH]);
+  const MAP_W = state.mapW;
+  const MAP_H = state.mapH;
   const dragging = useRef(false);
 
   useEffect(() => {

@@ -6,7 +6,6 @@ import {
   HERO_ABILITY,
   HERO_COOLDOWN_PER_LEVEL,
   HERO_HP_PER_LEVEL,
-  MAP_W,
   HERO_LEVEL_XP,
   HERO_MAX_LEVEL,
   POWERS,
@@ -77,7 +76,7 @@ function objectiveTarget(s: GameState, o: ObjectiveRuntime): { x: number; y: num
   if (sp.kind !== 'infiltrate' && sp.kind !== 'capture' && sp.kind !== 'destroy') return null;
   for (const b of s.buildings) {
     if (b.owner === 0 || b.kind !== sp.building) continue;
-    if (s.explored.charCodeAt(b.y * MAP_W + b.x) !== 49) continue;
+    if (s.explored.charCodeAt(b.y * s.mapW + b.x) !== 49) continue;
     const spec = BUILDINGS[b.kind];
     return { x: b.x + spec.w / 2, y: b.y + spec.h / 2 };
   }

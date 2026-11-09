@@ -7,11 +7,9 @@ import {
   BUILDINGS,
   DEFAULT_SETUP,
   INFANTRY_MENU,
-  MAP_H,
   MAP_TYPE_BLURBS,
   MAP_TYPE_NAMES,
   MAP_TYPES,
-  MAP_W,
   POWERS,
   SETUP_CREDIT_CHOICES,
   SKIRMISH_POWERS,
@@ -21,6 +19,7 @@ import {
   type BuildingKind,
   type MapType,
   type OreLevel,
+  type Owner,
   type SkirmishSetup,
   type SupportPower,
   type TechLevel,
@@ -203,13 +202,13 @@ function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
     const S = 2;
     const ctx = c.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(paintMiniTerrain(map.tiles), 0, 0, MAP_W * S, MAP_H * S);
+    ctx.drawImage(paintMiniTerrain(map.tiles, map.w, map.h), 0, 0, map.w * S, map.h * S);
     ctx.fillStyle = '#d9b23a';
     for (let k = 0; k < map.ore.length; k++) {
-      if (map.ore[k] > 0) ctx.fillRect((k % MAP_W) * S, ((k / MAP_W) | 0) * S, S, S);
+      if (map.ore[k] > 0) ctx.fillRect((k % map.w) * S, ((k / map.w) | 0) * S, S, S);
     }
     map.starts.forEach((st, owner) => {
-      const team = TEAM[owner as 0 | 1];
+      const team = TEAM[owner as Owner];
       ctx.fillStyle = team.main;
       ctx.fillRect(st.x * S - 2, st.y * S - 2, 3 * S + 4, 3 * S + 4);
       ctx.strokeStyle = team.light;
@@ -217,5 +216,5 @@ function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
       ctx.strokeRect(st.x * S - 2.5, st.y * S - 2.5, 3 * S + 5, 3 * S + 5);
     });
   }, [map]);
-  return <canvas ref={ref} width={MAP_W * 2} height={MAP_H * 2} className="fl-map-thumb" role="img" aria-label={label} />;
+  return <canvas ref={ref} width={map.w * 2} height={map.h * 2} className="fl-map-thumb" role="img" aria-label={label} />;
 }

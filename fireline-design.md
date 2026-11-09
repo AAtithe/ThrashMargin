@@ -329,3 +329,26 @@ the mirror 45% to 54%, Hard on side 1 wins 91% (61% before the fix) and Easy 0%.
 because haulers now deliver all game, so Hard's 25% income bonus and Easy's 20% cut compound. Before
 the fix a 900-seed mirror per map type read 45% to 54% except plains (42% for side 0); not yet
 re-measured, so left open below.
+
+### 2026-11-09: Two, three or four sides (the round-4 foundation)
+
+The engine no longer assumes two sides. `Owner` runs 0 to 3; a battle has 2, 3 or 4 players, each
+on a team (`s.teams`), and every "who is the enemy" question goes through `src/sim/sides.ts`
+(`isEnemy`, `isAlly`, `enemiesOf`, `wonBy` and the rest) instead of `1 - owner`. Targeting, splash,
+attack orders, Spy detection, the computer's enemy lists, mission objectives, production, power,
+blackouts, support powers and the computer's memory are all per side. Allies share sight (side 0's
+fog is its team's), never hit each other, and win or lose together: the battle ends when side 0's
+team is out or is the last team standing. Structure fronts face away from the middle of the map
+by where each side starts, which gives exactly the old rule on every two-sided map. The map's size
+is now a state property (`s.mapW`, `s.mapH`), read by the simulation, the renderer, the terrain
+painter, the effects and the minimap; every map is still 64 by 64. Sides 2 and 3 have names
+(Verdant Front, Ochre Legion), canvas colours with their own emblems, and chrome tokens in both
+modes. No lobby option creates more than two sides yet: that, air power and campaign act two are
+round 4's three workstreams, whose contract is `fireline-round4-design.md`.
+
+Two-sided battles replay byte-identically: 14 whole battles (normal, easy, hard and every map
+type) hashed the same at every 3,000 ticks before and after, and every summary line of
+`npm run drive:fire` is unchanged. Saves from before load as two sides, free for all, on 64 by 64,
+and play on exactly. New drive sections build three-sided battles by hand and check the helpers,
+teams, shared sight, allies holding fire (splash included), victory with two allies left, defeat
+only when the whole team is out, side 2's production and commander, and exact replay.
