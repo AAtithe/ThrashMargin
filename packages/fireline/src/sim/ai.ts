@@ -359,7 +359,14 @@ function commander(s: GameState, owner: Owner): void {
     }
   }
 
-  // 3. Units.
+  // 3. Units. A defending mission enemy only replaces losses up to the garrison it started with: with
+  // a refinery and no cap, the outpost in Demolition trained a rifleman every five seconds and had
+  // over fifty by the time the Commando arrived.
+  if (mode === 'defend') {
+    const armed = units.filter(u => UNITS[u.kind].weapon && !u.hero).length;
+    if (mem.garrison === undefined) mem.garrison = armed;
+    if (armed >= mem.garrison) saving = true;
+  }
   const foeArmed = foes.filter(u => UNITS[u.kind].weapon);
   const foeInfantry = foeArmed.filter(u => UNITS[u.kind].armor === 'infantry').length;
   const foeArmour = foeArmed.length - foeInfantry;

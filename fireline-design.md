@@ -533,3 +533,22 @@ tours (desktop, and touch on three phones), 27 loading checks and 573 server tes
 150 seeds, random maps, advanced tech: the mirror 51% to 47% (2 unfinished), Hard on side 1 wins
 91%, Easy 0%.
 
+### 2026-11-09: Demolition (mission 4) made winnable; the Commando strengthened
+
+Reported unbeatable. Played by script it was lost every way in, and for three separate reasons:
+
+- The outpost ran a refinery on 'defend' and trained a rifleman every five seconds: 13 at one
+  minute, over 50 by the time the Commando arrived. It is now 'passive' (a fixed garrison of four
+  riflemen and a rocketeer that fights what comes close and trains nothing), and 'defend' itself now
+  only replaces losses up to the garrison it started with (`AiMemory.garrison`), in every mission.
+- Its Gun Turrets (range 5.5) outranged the Commando (4.5): he died in four shells without firing.
+  Two turrets now, not three, and the briefing says where they cannot reach.
+- The buggies sent after the extraction spawned where the last Generator stood, on top of the
+  Commando, and buggies are two and a half times his speed: no race was possible. A squad of five
+  riflemen now marches from the north-west corner instead, the Commando's own strength.
+
+The Commando himself: health 160 to 240, range 4.5 to 5, reload 9 ticks to 7. Six riflemen deal
+about 54 a second together and he killed one every two seconds, so at 160 he lost any open fight.
+His squad is four riflemen and two rocketeers (was three and two). campaign-check now plays the
+mission by script straight at the outpost and round its flank, and both must win.
+

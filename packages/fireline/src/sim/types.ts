@@ -222,6 +222,11 @@ export interface AiMemory {
   /** Aircraft out on a strike (aiAir.ts), and the tick the next strike may go. */
   airIds?: number[];
   nextAirStrike?: number;
+  /**
+   * A defending mission enemy's garrison: its armed units at its first decision. It trains only to
+   * replace losses up to this, never beyond (scripted reinforcements do not raise it).
+   */
+  garrison?: number;
 }
 
 export interface GameState {

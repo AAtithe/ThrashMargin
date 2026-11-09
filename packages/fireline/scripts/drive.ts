@@ -1401,7 +1401,7 @@ function commandoTests(): void {
     x = processAction(x, { type: 'tick', n: CHARGE_FUSE });
     const h = heroOf(x, 'commando');
     ok(h.hero!.level === 2 && h.hero!.xp === 130, `the Commando reaches level 2 (${h.hero!.level})`);
-    ok(maxHpOf(h) === Math.round(160 * (1 + HERO_HP_PER_LEVEL)) && h.hp === maxHpOf(h), `and his health rises with it (${h.hp}/${maxHpOf(h)})`);
+    ok(maxHpOf(h) === Math.round(UNITS.commando.hp * (1 + HERO_HP_PER_LEVEL)) && h.hp === maxHpOf(h), `and his health rises with it (${h.hp}/${maxHpOf(h)})`);
     ok(x.effects.some(e => e.kind === 'levelup'), 'a level-up effect is shown');
     ok(x.log.some(l => l.text === 'The Commando reached level 2.'), 'and logged');
     invariants(x, 'level up');
