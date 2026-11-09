@@ -152,7 +152,24 @@ function battle(seed: string, difficulty: Difficulty, setup?: Partial<SkirmishSe
   ok(s.buildings.length === 2 && s.units.length === 6, `${seed}: each side starts with a yard and three riflemen`);
   invariants(s, `${seed}@0`);
   let n = 0;
+  // A hauler carrying ore home to a standing refinery must keep moving. One once froze for good
+  // against the corner of a lake: its smoothed path clipped a blocked tile from where it stood.
+  const still = new Map<number, { x: number; y: number; since: number }>();
+  let frozen = '';
   while (s.winner === null && s.tick < TICK_CAP) {
+    if (!frozen) {
+      for (const u of s.units) {
+        const homeward = u.kind === 'hauler' && u.order.type === 'harvest' && u.order.phase === 'return';
+        const refinery = homeward && s.buildings.some(b => b.owner === u.owner && b.kind === 'refinery' && b.hp > 0);
+        if (!refinery) {
+          still.delete(u.id);
+          continue;
+        }
+        const p = still.get(u.id);
+        if (!p || Math.hypot(p.x - u.x, p.y - u.y) > 0.25) still.set(u.id, { x: u.x, y: u.y, since: s.tick });
+        else if (s.tick - p.since >= 1200) frozen = `hauler #${u.id} at ${u.x.toFixed(2)},${u.y.toFixed(2)} since tick ${p.since}`;
+      }
+    }
     const before = n % 15 === 0 ? JSON.stringify(s) : null;
     const nextS = processAction(s, { type: 'tick', n: 50 });
     if (before) ok(JSON.stringify(s) === before, `${seed}: tick did not mutate its input`);
@@ -169,6 +186,7 @@ function battle(seed: string, difficulty: Difficulty, setup?: Partial<SkirmishSe
     if (s.tick % 1000 === 0) invariants(s, `${seed}@${s.tick}`);
   }
   invariants(s, `${seed}@end`);
+  ok(!frozen, `${seed}: no hauler stands still on its way home${frozen ? ` (${frozen})` : ''}`);
   return s;
 }
 
@@ -2480,8 +2498,8 @@ console.log(
   `  ${finished.length}/${runs.length} battles finished, average ${avg.toFixed(1)} game minutes; side 0 won ${wins0}, side 1 won ${finished.length - wins0}`,
 );
 
-// Every map type, advanced tech, computer against computer. The commander does not build the new
-// tech yet (ai.ts is its own workstream), but every battle runs the new rules, maps and powers.
+// Every map type, advanced tech, computer against computer: both commanders build the new tech,
+// so every battle runs the new rules, maps and powers.
 const mapRuns: { seed: string; map: MapType; winner: number | null; tick: number }[] = [];
 const perMap = Math.max(2, Math.round(SEEDS / 10));
 console.log(`Battles: ${perMap} on each map type, advanced tech`);

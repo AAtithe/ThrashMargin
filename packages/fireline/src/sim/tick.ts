@@ -319,7 +319,32 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
     nx = u.x + (dx / d) * sp;
     ny = u.y + (dy / d) * sp;
   }
-  if (!passable(s, ctx.occ, Math.floor(nx), Math.floor(ny))) {
+  // Look a little further than one step as well: a unit creeping toward a tile that has been
+  // blocked since its path was planned would otherwise keep taking clean steps inside its own tile
+  // and never notice.
+  const look = Math.min(d, Math.max(sp, 0.45));
+  const lx = d > 0.0001 ? u.x + (dx / d) * look : nx;
+  const ly = d > 0.0001 ? u.y + (dy / d) * look : ny;
+  if (!passable(s, ctx.occ, Math.floor(nx), Math.floor(ny)) || !passable(s, ctx.occ, Math.floor(lx), Math.floor(ly))) {
+    // Paths are smoothed between tile centres, so a unit standing off-centre can clip the corner
+    // of a blocked tile on a straight run. Slide along whichever axis is open; failing that, step
+    // back toward the centre of the tile it stands on, from where the smoothed line is clear.
+    // Without this a hauler could re-path to the same line forever and never move. The stuck
+    // count still rises while it slides, so a path that a new structure has cut is re-planned:
+    // only a clean step along the path clears it.
+    const cx = Math.floor(u.x) + 0.5;
+    const cy = Math.floor(u.y) + 0.5;
+    const minSlide = sp * 0.25;
+    if (Math.abs(nx - u.x) >= minSlide && passable(s, ctx.occ, Math.floor(nx), Math.floor(u.y))) u.x = nx;
+    else if (Math.abs(ny - u.y) >= minSlide && passable(s, ctx.occ, Math.floor(u.x), Math.floor(ny))) u.y = ny;
+    else {
+      const cd = dist(u.x, u.y, cx, cy);
+      if (cd > 0.01) {
+        const m = Math.min(sp, cd);
+        u.x += ((cx - u.x) / cd) * m;
+        u.y += ((cy - u.y) / cd) * m;
+      }
+    }
     u.stuck++;
     if (u.stuck > 8) {
       u.path = [];
