@@ -33,7 +33,10 @@ const fresh = () => createLedger(null);
     ok(c.opts.length === 3 && c.opts.filter((o: { v: string }) => o.v === 'best').length === 1, `content: ${c.id} has three options and one world-class call`);
     ok(c.todo && c.todo.text && ['Start', 'Stop', 'Keep'].includes(c.todo.type), `content: ${c.id} puts a real action on the list`);
   }
-  const text = JSON.stringify([l.FOUNDING, l.BANK, l.WILD, l.LETTER_Q, l.GAMES]);
+  for (const q of l.LETTER_Q) ok((l.LETTER_PICKS[q.id] || []).length >= 3, `tap-first: letter question ${q.id} offers at least three lines to pick`);
+  for (const k of ['hours', 'oneThing', 'protect', 'good', 'space', 'inSystem', 'change', 'decline', 'score']) ok(l.PICK[k].length >= 3, `tap-first: ${k} offers at least three answers`);
+  for (const k of Object.keys(l.state.future.pillars)) ok((l.PICK.pillars[k] || []).length >= 3, `tap-first: pillar ${k} offers at least three answers`);
+  const text = JSON.stringify([l.FOUNDING, l.BANK, l.WILD, l.LETTER_Q, l.GAMES, l.PICK, l.LETTER_PICKS]);
   ok(!/[—–]/.test(text), 'content: no em or en dashes in the coaching copy');
 }
 

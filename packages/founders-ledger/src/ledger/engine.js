@@ -145,6 +145,52 @@ const LETTER_Q=[
  {id:'game',label:'The game',q:'What game were you playing that got you here, and what did you have to let go of?',hint:'Which of the default games did you stop playing? Being needed, firefighting, proving yourself?',eg:'I stopped needing to be needed. I let go of being the best accountant in the building.'},
  {id:'thank',label:'The first step',q:'What will 2030 you thank 2026 you for starting this week?',hint:'One action. It goes on your list.',eg:'Writing the finance manager job spec.'}
 ];
+/* Tap-first answers. On a phone every text box is a reason to stop, so each place the game used to ask
+   for typing now offers answers from the player's own world, with "Something else" for the rest. */
+const PICK={
+  hours:['35','40','45','50','55','60','65','70+'],
+  oneThing:['Stop reviewing every client pack myself','Hand over the CFO work','Protect my mornings for thinking','Say no to work outside our model','Fix the clients that lose us money','Have the hard people conversations sooner','Take proper time off'],
+  protect:['Monday numbers meeting','Time with our key clients','One-to-ones with my managers','Training and exercise','Evenings with family','Nothing yet'],
+  good:['Someone solved it without me','A client thanked us','We hit a number','A pack went out on time','A manager made a good call','I left on time','Good energy all day','Time with family'],
+  space:['A clear hour to think','A cancelled meeting I kept free','A decision that did not need me','An evening fully off','A calm morning','None this week'],
+  inSystem:['Chased people for updates','Fixed an error myself','Checked work line by line','Answered a question that has a written answer','Did a task I had handed over','Sat in a meeting I was not needed in','None this week'],
+  change:['No email before 9:30','Protect a two-hour thinking block','Leave by 6 two nights this week','Ask what they recommend before I answer','Cancel one recurring meeting','Hand over one task for good','Take one full day off'],
+  decline:['Not now, next quarter','Already doing something like it','Does not fit the life I am building','The firm is not ready for it'],
+  score:['Profit per hour of my time','Weeks the firm runs without me','Days fully off a year','Leaders I have developed','Client margin and retention'],
+  pillars:{
+    health:['Fit, strong and sleeping well','Training four times a week','Energy all day, every day'],
+    family:['Every school run on a Friday','Evenings and weekends protected','A long holiday together every year'],
+    wealth:['Mortgage gone','A dividend I can rely on','Investments that would let me stop'],
+    firm:['Runs without me day to day','The firm operators recommend','Strong margin on every client'],
+    growth:['Reading every week','Mentoring other founders','Learning something new each year'],
+    adventure:['Six weeks fully off a year','A sabbatical month','A big trip every year'],
+  },
+};
+const LETTER_PICKS={
+  day:['At home, 7am. No laptop until 9.','Out on a run before the day starts.','Breakfast with the family, then a slow start.','At a client site, because I chose to be.'],
+  firm:['150 hospitality clients, £4m in fees, 30 percent EBITDA.','The firm operators recommend to each other, growing without me chasing it.','Twice the size, with the same margin and a waiting list.','Smaller and more profitable: fewer, better clients.'],
+  role:['I chair the leadership team and own pricing. I have not reviewed a month end since 2027.','My time goes on strategy, our top clients and our people. Nothing else.','I coach the firm\'s leaders. Delivery runs without me.','I own the firm and attend one board meeting a month.'],
+  week:['Four days, about 35 hours. Fridays are mine.','Three days in the firm, two on my own projects.','Five short days, home by 6 every night.','Six weeks fully off a year, and normal weeks around 40 hours.'],
+  money:['£400k a year from the firm. The mortgage has gone.','Enough that I say yes without checking the account.','A set dividend every quarter, whatever happens.','Investments that would let me stop tomorrow.'],
+  people:['A managing director I promoted runs it day to day.','A finance director who came up through our client team.','A leadership team of four, each owning a part of the firm.','Managers who make the calls I used to make, and make them well.'],
+  health:['Fitter than at 40. I train four mornings a week.','I sleep seven hours and have energy all day.','I walk every day and feel ten years younger.','I have run a marathon since 2026.'],
+  family:['Every Friday school run is mine.','Dinner with friends every fortnight, phone in the car.','One long holiday a year with the whole family.','Sunday evenings are family time, laptop closed.'],
+  adventure:['Six weeks in Japan.','I learned to sail.','I opened a small restaurant of my own, for the love of it.','A sabbatical month every year.'],
+  game:['I stopped needing to be needed.','I let go of being the best accountant in the building.','I stopped firefighting and fixed the system instead.','I stopped saying yes to every deal.'],
+  thank:['Writing the finance manager job spec.','Blocking my mornings for thinking.','Repricing the clients that lose us money.','Booking two weeks fully off.'],
+};
+/* One row of tap targets. `act` makes a tap act at once; otherwise the row is read with picked() on submit. */
+function chipRow(group,options,o={}){
+  const sel=[].concat(o.selected||[]);
+  return `<div class="chips-row" data-group="${group}" data-multi="${o.multi?1:0}" data-max="${o.max||0}">${options.map(v=>`<button type="button" class="pick ${sel.includes(v)?'sel':''}" data-pick-group="${group}" data-val="${esc(v)}"${o.act?` data-pact="${o.act}"`:''}>${esc(v)}</button>`).join('')}${o.other?`<button type="button" class="pick other" data-other="${group}">Something else</button>`:''}</div>${o.other?`<input type="text" class="other-in" id="other-${group}" hidden placeholder="In your own words" aria-label="Something else">`:''}`;
+}
+function picked(group){
+  const vals=[...ROOT.querySelectorAll(`[data-pick-group="${group}"].sel`)].map(b=>b.dataset.val);
+  const o=ROOT.querySelector('#other-'+group);
+  if(o&&!o.hidden&&o.value.trim())vals.push(o.value.trim());
+  return vals;
+}
+const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x,10));let best=opts[0];opts.forEach(x=>{if(Math.abs(x-n)<Math.abs(best-n))best=x;});return best>=70?'70+':String(best);};
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
@@ -252,8 +298,10 @@ function vToday(){
   ${S.pendingCall||call?`<div class="card"><div class="spread"><div><div class="eyebrow">This week’s call</div><h3>${call?esc(call.title):'Your review unlocked a new call'}</h3></div>${call?`<button class="btn small" data-opencall="${call.id}">Play it</button>`:`<button class="btn small" data-act="dealCall">Deal this week’s call</button>`}</div>${call?`<p class="muted">${esc(call.scene)}</p>`:`<p class="muted">${AI?'Written from what you logged this week.':'Dealt from the coaching bank after your review.'} It adds one action to your list.</p>`}</div>`:''}
   <div class="big3"><div class="eyebrow">This week’s big three</div>${stars.length?`<ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol>`:'<p class="muted">Star up to three actions in Actions. Three is the most a CEO moves properly in one week.</p>'}</div>
   <div class="card"><div class="eyebrow">Notice</div><h3>What went well? Where was there space?</h3>
-   <p class="muted small">Log it the moment you see it. Three a week score points. Training your eye for what is working is how you find out what to repeat.</p>
-   <form class="row" id="noticeForm" style="flex-wrap:nowrap"><input type="text" id="noticeText" placeholder="e.g. Sam handled the Corrigans query without me" aria-label="What you noticed"><button class="btn small" type="submit" data-kind="good">Good</button><button class="btn small ghost" type="submit" data-kind="space">Space</button></form>
+   <p class="muted small">One tap the moment you see it. Three a week score points.</p>
+   <div class="lbl small">Went well</div>${chipRow('n-good',PICK.good,{act:'note-good'})}
+   <div class="lbl small">Space</div>${chipRow('n-space',PICK.space.filter(x=>x!=='None this week'),{act:'note-space'})}
+   <details class="own"><summary>Something else</summary><form class="row" id="noticeForm" style="flex-wrap:nowrap"><input type="text" id="noticeText" placeholder="In your own words" aria-label="What you noticed"><button class="btn small" type="submit" data-kind="good">Good</button><button class="btn small ghost" type="submit" data-kind="space">Space</button></form></details>
    <div class="notes">${S.notes.slice(-5).reverse().map(n=>`<div class="note"><span class="kd ${n.kind}">${n.kind==='good'?'Good':'Space'}</span><span>${esc(n.text)} <span class="muted small">${fmtDate(n.ts)}</span></span></div>`).join('')||'<div class="empty">Nothing logged yet this week.</div>'}</div></div>
   <div class="grid2">
    <div class="card"><div class="eyebrow">The game you are playing</div>
@@ -299,11 +347,12 @@ function vLetter(){
   const read=(S.letterReads||[]).some(t=>monthKey(t)===monthKey(Date.now()));
   const c=S.letterCoach;
   return `<div class="card" id="letter"><div class="spread"><div><div class="eyebrow">The 2030 letter</div><h3>Write it with a coach, one question at a time</h3></div><span class="small muted">${n}/${LETTER_Q.length} answered &middot; ${words} words written</span></div>
-   <p class="small muted">Answer as if it is already November 2030 and it all happened. Short answers are fine. ${AI?'When you have three or more, Claude drafts the letter in your voice and you edit it until it sounds like you.':'When you have three or more, your answers are set out as a first draft and you rewrite it until it sounds like you.'}</p>
+   <p class="small muted">Tap the line closest to the life you want, or write your own. ${AI?'When you have three or more, Claude drafts the letter in your voice and you edit it until it sounds like you.':'When you have three or more, your answers are set out as a first draft and you rewrite it until it sounds like you.'}</p>
    <div class="bar"><i style="width:${Math.round(n/LETTER_Q.length*100)}%"></i></div>
    <div class="dots">${LETTER_Q.map((x,i)=>`<button class="dot ${(ans[x.id]||'').trim()?'done':''} ${i===step?'cur':''}" data-lqstep="${i}" aria-label="${esc(x.label)}">${i+1}</button>`).join('')}</div>
-   <div class="lq"><div class="eyebrow">${step+1} of ${LETTER_Q.length} &middot; ${esc(cur.label)}</div><div class="scene" style="font-size:20px">${esc(cur.q)}</div><p class="small muted">${esc(cur.hint)}</p>
-    <textarea id="lq-${cur.id}" data-lq="${cur.id}" aria-label="${esc(cur.label)}" placeholder="${esc('For example: '+cur.eg)}">${esc(ans[cur.id]||'')}</textarea>
+   <div class="lq"><div class="eyebrow">${step+1} of ${LETTER_Q.length} &middot; ${esc(cur.label)}</div><div class="scene" style="font-size:20px">${esc(cur.q)}</div>
+    ${chipRow('lq-'+cur.id,LETTER_PICKS[cur.id]||[],{act:'lq',selected:ans[cur.id]||''})}
+    <details class="own" ${ans[cur.id]&&!(LETTER_PICKS[cur.id]||[]).includes(ans[cur.id])?'open':''}><summary>Write my own line</summary><textarea id="lq-${cur.id}" data-lq="${cur.id}" aria-label="${esc(cur.label)}" placeholder="In your own words">${esc(ans[cur.id]||'')}</textarea></details>
     <div class="row"><button class="btn small ghost" data-act="lqPrev" ${step?'':'disabled'}>Back</button><button class="btn small" data-act="lqNext">${step<LETTER_Q.length-1?'Next question':'Finish the questions'}</button></div></div>
    <div class="row"><button class="btn" data-act="draftLetter" ${n>=3?'':'disabled'}>Draft my letter from these answers</button><span class="small muted">${n>=3?'Your answers, your numbers, your pillars and your chosen game go into the draft.':'Answer at least three questions first.'}</span></div>
    ${S.letterDraft?`<div class="coach"><div class="eyebrow">First draft${S.letterDraftBy==='claude'?' by Claude':''}</div><div style="white-space:pre-wrap;max-width:66ch">${esc(S.letterDraft)}</div><div class="row"><button class="btn small" data-act="useDraft">${f.letter.trim()?'Replace my letter with this draft':'Use this draft'}</button><button class="btn small ghost" data-act="discardDraft">Discard</button></div></div>`:''}
@@ -325,16 +374,16 @@ function vWildMonth(){
   const w=WILD.find(x=>x.id===wm.id);
   return `<div class="wcard"><span class="tag">Wildcard of the month &middot; ${HORIZONS[w.h]}</span><h3>${esc(w.title)}</h3><p>${esc(w.what)}</p>
    ${wm.decision?`<p class="small ${wm.decision==='accepted'?'delta-up':'muted'}">${wm.decision==='accepted'?'Taken on. It is in Actions.':'Declined'+(wm.reason?': '+esc(wm.reason):'.')}</p>`:
-   `<div class="row"><button class="btn small" data-act="wildAccept">Take it on</button><input type="text" id="wildReason" placeholder="Or the reason you are declining" style="max-width:340px" aria-label="Reason for declining"><button class="btn small ghost" data-act="wildDecline">Decline</button></div>`}</div>`;
+   `<div class="row"><button class="btn small" data-act="wildAccept">Take it on</button></div><div class="lbl small">Or decline it, because:</div>${chipRow('decline',PICK.decline,{act:'decline'})}`}</div>`;
 }
 function vBaseline(){
   const a={happiness:5,earnings:5,time:5,focus:5,hours:55,protect:'',oneThing:''};
   return `<section><div class="card"><div><div class="eyebrow">Opening position</div><h2>Score yourself honestly. Nobody else sees this.</h2></div>
    <p class="muted">Rate each line out of ten as it is today. This is the line every Friday review is measured against.</p>
    <div class="grid2">${METERS.map(m=>`<div class="field"><label for="b-${m.k}">${m.name}</label><span class="hint">${m.hint}</span><div class="rate-line"><input type="range" id="b-${m.k}" min="1" max="10" value="${a[m.k]}" data-out="ob-${m.k}"><output id="ob-${m.k}">${a[m.k]}</output></div></div>`).join('')}</div>
-   <div class="grid2"><div class="field"><label for="b-hours">Hours worked last week</label><input type="number" id="b-hours" min="0" max="120" value="55"></div>
-   <div class="field"><label for="b-one">The one change that would make the biggest difference</label><input type="text" id="b-one" placeholder="e.g. Stop reviewing every client pack myself"></div></div>
-   <div class="field"><label for="b-protect">What is working that you must protect?</label><input type="text" id="b-protect" placeholder="e.g. Monday numbers meeting with the leadership team"></div>
+   <div class="field"><span class="lbl">Hours worked last week</span>${chipRow('b-hours',PICK.hours,{selected:'55'})}</div>
+   <div class="field"><span class="lbl">The one change that would make the biggest difference</span>${chipRow('b-one',PICK.oneThing,{other:true})}</div>
+   <div class="field"><span class="lbl">What is working that you must protect?</span>${chipRow('b-protect',PICK.protect,{other:true})}</div>
    <div class="row"><button class="btn" data-act="saveBaseline">Lock the opening position</button></div></div></section>`;
 }
 
@@ -345,29 +394,28 @@ function vReview(){
   const sameWeek=S.reviews.length&&Date.now()-S.reviews[S.reviews.length-1].ts<4*DAY;
   return `<section>
   <div class="card"><div><div class="eyebrow">Friday review &middot; ten minutes</div><h2>Close your own week in three days or less.</h2></div>
-   <p class="muted">${sameWeek?'You logged a review on '+fmtDate(S.reviews[S.reviews.length-1].ts)+'. Logging again replaces it.':'Same order every week: what you did, what went well, which game you played, and what changes. The trend matters more than any single week.'}</p></div>
+   <p class="muted">${sameWeek?'You logged a review on '+fmtDate(S.reviews[S.reviews.length-1].ts)+'. Logging again replaces it.':'All taps, no typing. Same five steps every week.'}</p></div>
 
   <div class="card"><div class="eyebrow">1. What you did</div><h3>Tick what got done</h3>
    ${open.length?open.map(t=>`<label class="item" style="cursor:pointer"><input type="checkbox" data-done="${t.id}"><span class="txt"><span>${esc(t.text)}</span><span class="meta"><span class="pill ${t.type}">${t.type}</span><span class="pill">+${PTS[t.type]} pts</span>${t.hours?`<span class="pill">${t.hours} hrs/wk back</span>`:''}</span></span><span></span></label>`).join(''):'<p class="empty">Nothing open for this week. Add actions in Actions.</p>'}
-   <div class="grid2"><div class="field"><label for="rv-hours">Hours worked this week</label><span class="hint">Your target is ${S.future.targetHours} (set in Future).</span><input type="number" id="rv-hours" min="0" max="120" value="${l.hours}"></div></div></div>
+   <div class="field"><span class="lbl">Hours worked this week</span><span class="hint">Your target is ${S.future.targetHours} (set in Future).</span>${chipRow('rv-hours',PICK.hours,{selected:hoursChip(l.hours)})}</div></div>
 
   <div class="card"><div class="eyebrow">2. Re-score</div><h3>Where are the four lines now?</h3>
    <div class="grid2">${METERS.map(m=>`<div class="field"><label for="rv-${m.k}">${m.name}</label><div class="rate-line"><input type="range" id="rv-${m.k}" min="1" max="10" value="${l[m.k]}" data-out="ov-${m.k}"><output id="ov-${m.k}">${l[m.k]}</output></div></div>`).join('')}</div></div>
 
   <div class="card"><div class="eyebrow">3. Notice</div><h3>Three good things, and where there was space</h3>
-   <p class="small muted">Not gratitude for its own sake. Each good thing has a cause. Find it and you can repeat it.</p>
-   ${[0,1,2].map(i=>`<input type="text" id="rv-good${i}" placeholder="${['Something that went right, and why','Something a team member did well','Something outside work'][i]}" aria-label="Good thing ${i+1}">`).join('')}
-   <div class="field"><label for="rv-space">Where did you notice space this week?</label><span class="hint">A clear hour, a calm moment, a decision that did not need you. If there was none, say so.</span><input type="text" id="rv-space"></div></div>
+   <p class="small muted">Tap up to three. Each good thing has a cause: find it and you can repeat it.</p>
+   ${chipRow('rv-good',PICK.good,{multi:true,max:3,other:true})}
+   <div class="field"><span class="lbl">Where did you notice space?</span>${chipRow('rv-space',PICK.space,{other:true})}</div></div>
 
   <div class="card"><div class="eyebrow">4. The game</div><h3>Which game actually ran your week?</h3>
    <p class="small muted">Be honest. Red are the default games most founders play without noticing. Green are the ones worth choosing.</p>
    <div class="games">${GAMES.map(g=>`<button class="game" data-game="${g.id}" type="button"><span class="gk ${g.kind}">${g.kind==='default'?'Default game':'Chosen game'}</span><span class="gn">${esc(g.name)}</span><span class="gd">Pays: ${esc(g.payoff)}</span></button>`).join('')}</div>
    <div id="gameNote"></div>
-   <div class="field"><label for="rv-system">Where did you work in the system instead of on it?</label><span class="hint">A task you did that a better process would have removed. It goes on your list as a design job.</span><input type="text" id="rv-system" placeholder="e.g. Chased three late timesheets by hand"></div></div>
+   <div class="field"><span class="lbl">Where did you work in the system instead of on it?</span><span class="hint">It goes on your list as a job to design out.</span>${chipRow('rv-system',PICK.inSystem,{other:true})}</div></div>
 
   <div class="card"><div class="eyebrow">5. Next week</div>
-   <div class="field"><label for="rv-win">Win of the week</label><input type="text" id="rv-win"></div>
-   <div class="field"><label for="rv-change">The one thing you will do differently</label><span class="hint">Specific enough to check next Friday. It goes on your list.</span><input type="text" id="rv-change"></div>
+   <div class="field"><span class="lbl">The one thing you will do differently</span><span class="hint">It goes on your list, to check next Friday.</span>${chipRow('rv-change',PICK.change,{other:true})}</div>
    <div class="row"><button class="btn" data-act="review">Log the week</button></div></div>
 
   ${S.reviews.length?`<div class="card"><h3>The trend</h3><div class="tbl-wrap"><table><thead><tr><th>Week</th>${METERS.map(m=>`<th class="num">${m.name}</th>`).join('')}<th class="num">Hours</th><th>Game</th><th>Win</th></tr></thead><tbody>
@@ -389,7 +437,7 @@ function vActions(){
    <p class="small muted">Stop scores ${PTS.Stop}, Start ${PTS.Start}, Keep ${PTS.Keep}. Wildcards add 20. Put an honest estimate on the hours each one gives back a week: once ticked, those hours count up every week on your scoreboard. You are buying back ${bb.perWeek.toFixed(1)} hours a week so far.</p>
    ${S.todos.length?'':'<p class="empty">Play a call, take on a wildcard or add your own below.</p>'}
    ${groups}
-   <form class="add-row" id="addForm"><input type="text" id="addText" placeholder="Add your own action" aria-label="New action"><select id="addType" aria-label="Type"><option>Start</option><option>Stop</option><option>Keep</option></select><select id="addH" aria-label="When">${Object.entries(HORIZONS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><input type="number" id="addHrs" min="0" max="40" step="0.5" value="0" aria-label="Hours back per week"><button class="btn small" type="submit">Add</button></form></div>
+   <details class="own"><summary>Add your own action</summary><form class="add-row" id="addForm"><input type="text" id="addText" placeholder="Add your own action" aria-label="New action"><select id="addType" aria-label="Type"><option>Start</option><option>Stop</option><option>Keep</option></select><select id="addH" aria-label="When">${Object.entries(HORIZONS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select><input type="number" id="addHrs" min="0" max="40" step="0.5" value="0" aria-label="Hours back per week"><button class="btn small" type="submit">Add</button></form></details></div>
    <div class="card"><h3>How to work the list</h3><p class="muted">Stops come first because removing a drain frees the time for every start. Anything still open after three Fridays is either not important or owned by the wrong person. Decide which, then delete or delegate it. Deleting an action you no longer believe in is a good decision, not a failure.</p></div>
   </section>`;
 }
@@ -480,7 +528,8 @@ function vFuture(){
   <div class="card"><div class="eyebrow">The game you choose</div><h3>What game are you playing in real life?</h3>
    <p class="small muted">Every founder is playing a game, chosen or not. The defaults are being needed, firefighting, proving yourself, pleasing everyone. Choose one on purpose, then check each Friday whether that is the one that ran your week.</p>
    <div class="games">${chosenGames.map(g=>`<button class="game ${f.game===g.id?'sel':''}" data-choose="${g.id}" type="button"><span class="gk chosen">Chosen game</span><span class="gn">${esc(g.name)}</span><span class="gd">${esc(g.move)}</span></button>`).join('')}</div>
-   <div class="field"><label for="f-gameWords">In your own words: how do you win this game, and what is the score that counts?</label><textarea id="f-gameWords" data-future="gameWords" placeholder="e.g. I win when the firm hits its numbers in a month I took a week off. The score is profit per partner hour.">${esc(f.gameWords)}</textarea></div></div>
+   <div class="field"><span class="lbl">The score that counts in your game (pick up to two)</span>${chipRow('score',PICK.score,{multi:true,max:2,act:'score',selected:PICK.score.filter(s=>(f.gameWords||'').includes(s))})}</div>
+   <details class="own"><summary>In my own words</summary><textarea id="f-gameWords" data-future="gameWords" placeholder="How you win, and the score that counts">${esc(f.gameWords)}</textarea></details></div>
 
   <div class="card"><div class="eyebrow">Your numbers</div><h3>The ideal week in figures</h3>
    <div class="grid2">
@@ -492,8 +541,8 @@ function vFuture(){
    ${f.income&&f.targetHours?`<p class="small">Your target income over ${f.targetHours} hours a week for 46 weeks values your time at ${gbp(f.income/(f.targetHours*46))} an hour.</p>`:''}</div>
 
   <div class="card"><div class="eyebrow">Life pillars</div><h3>What does ten out of ten look like?</h3>
-   <p class="small muted">Score each pillar as it is now, and write what ten looks like in 2030. The gap is where the next wildcard should come from.</p>
-   <div class="pillars">${PILLARS.map(([k,n])=>`<div class="field"><label for="p-${k}">${n}</label><div class="rate-line"><input type="range" id="p-${k}" min="1" max="10" value="${f.pillars[k].now}" data-pillar="${k}" data-out="op-${k}"><output id="op-${k}">${f.pillars[k].now}</output></div><input type="text" id="pt-${k}" data-pillarten="${k}" value="${esc(f.pillars[k].ten)}" placeholder="Ten looks like..."></div>`).join('')}</div></div>
+   <p class="small muted">Score each pillar as it is now, and tap what ten looks like in 2030. The gap is where the next wildcard should come from.</p>
+   <div class="pillars">${PILLARS.map(([k,n])=>`<div class="field"><label for="p-${k}">${n}</label><div class="rate-line"><input type="range" id="p-${k}" min="1" max="10" value="${f.pillars[k].now}" data-pillar="${k}" data-out="op-${k}"><output id="op-${k}">${f.pillars[k].now}</output></div><span class="hint">Ten looks like:</span>${chipRow('pt-'+k,PICK.pillars[k],{act:'pillar',selected:f.pillars[k].ten})}<details class="own"><summary>My own words</summary><input type="text" id="pt-${k}" data-pillarten="${k}" value="${esc(f.pillars[k].ten)}" placeholder="Ten looks like..."></details></div>`).join('')}</div></div>
 
   ${vLetter()}
 
@@ -627,6 +676,27 @@ on('change',e=>{
 });
 on('click',async e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+  if(d.other){const i=byId('other-'+d.other);if(i){i.hidden=!i.hidden;b.classList.toggle('sel',!i.hidden);if(!i.hidden)i.focus();}return;}
+  if(d.pickGroup){
+    const row=b.closest('.chips-row');const multi=row&&row.dataset.multi==='1';const max=Number(row&&row.dataset.max)||0;
+    if(multi){
+      if(!b.classList.contains('sel')&&max&&row.querySelectorAll('.pick.sel:not(.other)').length>=max){setStatus(`Pick up to ${max}.`);return;}
+      b.classList.toggle('sel');
+    }else{
+      row.querySelectorAll('.pick').forEach(x=>{if(x!==b)x.classList.remove('sel');});b.classList.add('sel');
+      const o=byId('other-'+d.pickGroup);if(o)o.hidden=true;
+    }
+    const v=d.val;
+    switch(d.pact){
+      case 'note-good':case 'note-space':{const kind=d.pact==='note-good'?'good':'space';S.notes.push({ts:Date.now(),kind,text:v});if(S.notes.length>400)S.notes=S.notes.slice(-400);save();render();setStatus(kind==='good'?'Noticed. Find the cause and you can repeat it.':'Noticed. Protect the next one before it fills.');break;}
+      case 'lq':{const id=d.pickGroup.slice(3);S.letterQ.answers[id]=v;const st=S.letterQ.step||0;if(st<LETTER_Q.length-1)S.letterQ.step=st+1;save();renderLetter();setStatus('Saved. Next question.');
+        if(st>=LETTER_Q.length-1){addTodo({text:v,type:'Start',h:'week',hours:0,source:'letter-thank'});save();setStatus('Your first step is on the list. Now draft the letter.');}break;}
+      case 'decline':{S.wildMonth.decision='declined';S.wildMonth.reason=v;S.wildLog.push({month:S.wildMonth.month,id:S.wildMonth.id,decision:'declined',reason:v});save();render();break;}
+      case 'score':{const s=picked('score');S.future.gameWords=s.length?'The score that counts: '+s.join(' and ')+'.':'';save();const ta=byId('f-gameWords');if(ta)ta.value=S.future.gameWords;break;}
+      case 'pillar':{const k=d.pickGroup.slice(3);S.future.pillars[k].ten=v;save();const i=byId('pt-'+k);if(i)i.value=v;break;}
+    }
+    return;
+  }
   if(d.tab){S.view=d.tab;save();render();window.scrollTo({top:0});return;}
   if(d.goto){S.view='future';save();render();const el=byId(d.goto);if(el)el.scrollIntoView({block:'start'});return;}
   if(d.lqstep!=null){S.letterQ.step=Number(d.lqstep);save();renderLetter();return;}
@@ -643,14 +713,17 @@ on('click',async e=>{
   if(d.choose){S.future.game=d.choose;save();render();return;}
   switch(d.act){
     case 'saveBaseline':{
-      const bl={hours:Number($('#b-hours').value)||0,oneThing:$('#b-one').value.trim(),protect:$('#b-protect').value.trim()};
+      const keep=picked('b-protect')[0]||'';
+      const bl={hours:parseInt(picked('b-hours')[0]||'55',10),oneThing:picked('b-one')[0]||'',protect:keep==='Nothing yet'?'':keep};
       METERS.forEach(m=>bl[m.k]=Number($('#b-'+m.k).value));
       S.baseline=bl;S.baselineTs=Date.now();
       if(bl.oneThing)addTodo({text:bl.oneThing,type:'Start',h:'week',hours:2,source:'audit-one'});
       if(bl.protect)addTodo({text:'Protect: '+bl.protect,type:'Keep',h:'week',hours:0,source:'audit-keep'});
       save();render();break;}
     case 'review':{
-      const r={ts:Date.now(),hours:Number($('#rv-hours').value)||0,good:[0,1,2].map(i=>$('#rv-good'+i).value.trim()).filter(Boolean),space:$('#rv-space').value.trim(),game:reviewGame,inSystem:$('#rv-system').value.trim(),win:$('#rv-win').value.trim(),change:$('#rv-change').value.trim()};
+      const none=v=>v&&v!=='None this week'?v:'';
+      const good=picked('rv-good').slice(0,3);
+      const r={ts:Date.now(),hours:parseInt(picked('rv-hours')[0]||'0',10),good,space:none(picked('rv-space')[0]),game:reviewGame,inSystem:none(picked('rv-system')[0]),win:good[0]||'',change:picked('rv-change')[0]||''};
       METERS.forEach(m=>r[m.k]=Number($('#rv-'+m.k).value));
       const before=points();
       if(S.reviews.length&&r.ts-S.reviews[S.reviews.length-1].ts<4*DAY)S.reviews[S.reviews.length-1]=r;else{S.reviews.push(r);S.pendingCall=true;}
@@ -703,7 +776,7 @@ return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
   migrate, points, streak, boughtBack, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
-  FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS,
+  FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS, PICK, LETTER_PICKS,
   mount() {
     ROOT.innerHTML = MARKUP;
     attach();
