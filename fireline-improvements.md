@@ -93,7 +93,12 @@ mission AI once the round-1 opponent work lands.
   - [x] Two against one balanced by the lone side's starting credits (48% for the pair over 60 seeds).
   - [ ] Side 3 is out first more often than the others in a free for all (38 of 120, against 30 expected).
   - [ ] The camera opens on side 0's base only; nothing yet points at where the allies are.
-- [ ] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
+- [x] C. Campaign act two: missions 9 to 14, escort and timed objectives, a second theatre map.
+  - [x] Objectives escort, destroyWithin and holdZone with reset; structure powers in a mission.
+  - [x] Both acts on the campaign screen; act two's northern theatre.
+  - [ ] After integration: air in missions 11, 12 and 14 (the trigger slots are marked in act2.ts).
+  - [ ] A no-base mission opens with the view at the top-left corner of the map rather than on
+    the player's units (GameScreen's opening camera looks only for a Command Yard).
 
 ## Found along the way
 

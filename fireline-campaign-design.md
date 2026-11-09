@@ -165,3 +165,55 @@ Interfaces between them:
   starting state builds and runs 2,000 ticks without error.
 - A browser run through Lobby → new campaign → map → briefing → mission 1 → debrief → map, in
   light and dark, with screenshots; the guided first battle still passes in skirmish.
+
+## 9. Act two: the northern front (round 4)
+
+Contract: `fireline-round4-design.md`, section 5. Specs: `src/campaign/act2.ts`, appended to
+`MISSIONS` on one line. Two-sided like act one (the enemy is side 1, teams `[0, 1]`).
+
+| # | Id | Title | Kind | New arms | Objectives (new kinds in bold) |
+|---|---|---|---|---|---|
+| 9 | `iron-coast` | Iron Coast | Base against a raiding outpost | Walls, Grenadiers; enemy Rocket Turrets | Destroy everything; bonus: 8 walls, **2 Rocket Turrets within 12 minutes** |
+| 10 | `convoy-north` | Convoy North | No base: the Ace, the Engineer, tanks, Medics | Medics, Repair Bay | **Escort 3 of 4 haulers**; bonus: **all 4**, the Engineer lives |
+| 11 | `the-long-hold` | The Long Hold | Base against a raiding full base | Rocket Turrets, Missile Carriers | **Hold the ford 4 minutes unbroken** (`reset`); bonus: 2 Rocket Turrets, harvest 5,000 |
+| 12 | `firestorm` | Firestorm | Base against a full base with a Tech Centre and a Strike Command | Tech Centre, Flame Tanks | **Strike Command within 15 minutes**, the Tech Centre; bonus: **Strike Command within 8**, infiltrate a Generator |
+| 13 | `bastion-line` | Bastion Line | Base against a fortified line | Bastions, Strike Command | 4 Rocket Turrets, hold the ground 2 minutes; bonus: **Tech Centre within 15 minutes**, the Ace lives |
+| 14 | `last-light` | Last Light | Full base against a full base with every structure, hard | Everything | Destroy everything; bonus: **Strike Command within 10 minutes**, the Commando lives |
+
+Decisions the contract left open:
+
+- **A mission may offer the tech it introduces.** As a mission may field the hero it introduces,
+  its own tech list may include what its rewards unlock, so the player meets each arm in the
+  mission that brings it in. The campaign check reads "unlocked by now, or introduced here".
+- **Structure powers in a mission** (`MissionSpec.structurePowers`, copied to the runtime). The
+  computer's commander plays standard tech in every mission, so without this an enemy Tech Centre
+  or Strike Command would be decoration. With it, structures grant their skirmish powers to both
+  sides and the mission fires the enemy's barrage and missile when charged. Firestorm, Bastion Line
+  and Last Light use it. Two runtime fields beyond the contract: `convoyRoute` (the convoy's way,
+  for escort progress) and `structurePowers` (per side, the powers its structures hold).
+- **Convoy North's posts.** The convoy follows its route alone, and haulers outrun everything, so
+  three Combine posts are placed on the road by triggers at tick 1. Left alone the convoy is lost
+  at the second post in about a minute and a half; escorted, it gets through in about three
+  minutes. The briefing says so, and that the convoy can be stopped.
+- **Bastion Line's enemy is an outpost with no Refinery.** A defending base with income trains
+  without end (over a hundred units by forty minutes); without it, the line fights with what it
+  has, and two timed attacks come out of it.
+- **Labels.** "Bring 3 convoy vehicles to the marked point", "Destroy the enemy Tech Centre within
+  8 minutes", "Hold the marked area for 4 minutes without losing it". A failed timed objective
+  reads "...: time ran out."; a lost convoy, "Too much of the convoy was lost."
+- **The theatre map.** Act two's map has the sea to the north, two fjords, islands, heath, pine
+  forest and snow-capped ranges; nodes 9 to 14 sit along its own route, counted from 9
+  (`campaignNodePosition`), and the front starts at its west edge again. `campaignActOf(order)` is
+  exported from `campaignArt.ts` for the campaign screen, which shows one act at a time with a tab
+  for each once mission 9 is open.
+
+Difficulty: missions were tuned against act one's equivalents rather than measured by hand play.
+Left alone, Firestorm's base falls at about the same time as Blackout's (just under eight
+minutes); the skirmish commander playing side 0 loses Last Light at about the same time as it
+loses Fireline. Four act-two missions are won by scripted or computer players in
+`campaign:fire`; Firestorm and Last Light are not, and want a human with heroes.
+
+After integration (workstream A's air units): mission 11 gets enemy gunship raids by trigger and
+Skyhunters for the player; mission 12 enemy bombers by trigger and a Flak Cannon to build; mission
+14 both sides' full air and research. The trigger slots are marked `// after integration: air` in
+`act2.ts`. Each of these missions passes `campaign:fire` without them.

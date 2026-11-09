@@ -1790,3 +1790,76 @@ kbd {
 /* ---- Round 4, workstream B: bigger battles ---- */
 
 /* ---- Round 4, workstream C: campaign act two ---- */
+
+:root {
+  --ui-act-tab-on: rgba(168, 106, 12, 0.14);
+  --ui-act-theatre: #2d4220;
+  --ui-act-theatre-north: #23352c;
+}
+:root[data-theme="dark"] {
+  --ui-act-tab-on: rgba(224, 164, 58, 0.16);
+  --ui-act-theatre: #22331a;
+  --ui-act-theatre-north: #1a2922;
+}
+/* The campaign's two acts, as tabs above the theatre map. */
+.fl-acts {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.fl-act-tab {
+  flex: 1 1 180px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 12px;
+  font: inherit;
+  text-align: left;
+  color: var(--ui-text-soft);
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.fl-act-tab strong {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.fl-act-tab span {
+  font-size: 0.82rem;
+}
+.fl-act-tab:hover {
+  border-color: var(--ui-accent);
+}
+.fl-act-tab[data-on="1"] {
+  color: var(--ui-text);
+  background: var(--ui-act-tab-on);
+  border-color: var(--ui-accent);
+}
+.fl-act-tab[data-on="1"] strong {
+  color: var(--ui-accent);
+}
+.fl-act-tab:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+.fl-theatre[data-act="1"] {
+  background: var(--ui-act-theatre);
+}
+.fl-theatre[data-act="2"] {
+  background: var(--ui-act-theatre-north);
+}
+/* An objective with its own clock (destroy within a time): the time left beside its words. */
+.fl-objective-clock {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.82em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-soft);
+}
+.fl-objective-clock[data-low="1"] {
+  color: var(--ui-bad);
+  font-weight: 700;
+}

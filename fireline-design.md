@@ -469,3 +469,44 @@ with every map preview drawn for the chosen number of sides and a line naming ea
 team, "2 against 2" or "3 sides, free for all" in the saves list (the server reads the player count
 and mode from the saved state), each computer side named in its colour in the top bar (allies
 marked, a side that is out struck through), and the end card naming the winning team.
+
+### 2026-11-09: Campaign act two (round 4, workstream C)
+
+Six more missions, 9 to 14, on a second theatre map: the northern coast and the highlands behind
+it. Winning mission 8 opens mission 9; the campaign is complete when mission 14 is won. The act
+brings in the round-3 advanced tech one or two arms at a time, in the enemy's hands first and then
+the player's: sandbag walls and Grenadiers (Iron Coast), Medics and the Repair Bay (Convoy North),
+Rocket Turrets and Missile Carriers (The Long Hold), the Tech Centre and Flame Tanks (Firestorm),
+Bastions and the Strike Command (Bastion Line), and everything in the final assault on a full
+Combine base, a normal commander on hard (Last Light). Specs are in `src/campaign/act2.ts`; the
+design is section 9 of `fireline-campaign-design.md`.
+
+New in the simulation (`mission.ts`, all pure):
+
+- **escort**: a mission's `convoy` (side 0's units) is placed when the mission is built and sent
+  along its route as a move and queued moves; the player may stop or redirect it. Done when
+  `count` convoy units are within `r` of the point, failed when fewer than `count` are left;
+  progress is how far along the route the leading unit is.
+- **destroyWithin**: counted like destroy, failed once the tick passes its limit.
+- **holdZone with `reset`**: an enemy alone in the zone drops the count to nothing; contested, it
+  only pauses, as before.
+- **structurePowers** on a mission: structures grant support powers for both sides as in an
+  advanced skirmish (Uplink, Tech Centre, Strike Command), never touching powers the mission gave
+  at the start, and the computer side calls its barrage and missile once charged (the missile at
+  side 0's densest structures, the barrage at a knot of three or more units). The computer's own
+  commander still plays standard tech in a mission, so this is how the enemy's Tech Centre and
+  Strike Command matter.
+
+Interface: the objectives panel's Show button follows the convoy's leading vehicle, a timed
+objective shows its time left, the escort point has a ring, and the campaign screen offers both
+acts as tabs once act two is open, opening on the act of the next unfinished mission.
+
+Tests: `scripts/drive-act2.ts` (91 assertions inside `npm run drive:fire`) proves each new kind
+with hand-built missions, from labels to saves and replay. `npm run campaign:fire` checks all
+fourteen specs against their maps (the convoy's route walked leg by leg), builds and runs each
+act-two mission, checks progression from 8 to 14 and saves from before act two, and plays four
+act-two missions to a win: Convoy North escorted by script (and lost if left alone), The Long Hold
+held by a garrison kept supplied (and overrun, its count reset, without one), Iron Coast by the
+skirmish commander, Bastion Line by the commander with the army sent at the turrets. Firestorm's
+Commando, placed at the Strike Command, stops the first missile. Every summary line of
+`npm run drive:fire` is unchanged.

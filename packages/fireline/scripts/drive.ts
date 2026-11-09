@@ -56,6 +56,7 @@ import { normaliseSetup, setupOf, startOf, techAllowed } from '../src/sim/state'
 import { newAiMemory, teamVisibility } from '../src/sim/state';
 import * as sides from '../src/sim/sides';
 // round4:C. Campaign act two: its import (scripts/drive-act2.ts) goes on the line below.
+import { sections as act2Sections } from './drive-act2';
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -2652,6 +2653,7 @@ const sections: [string, () => void][] = [
   ['Mission battles', missionBattles],
   // round4:C. Campaign act two (fireline-round4-design.md): its sections, imported from
   // scripts/drive-act2.ts, go on the lines below this comment.
+  ...act2Sections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
 ];
 if (!CAMPAIGN_ONLY) {
   console.log('Orders and rejections');

@@ -1,5 +1,6 @@
 import type { BuildingKind, UnitKind } from '../sim/rules';
 import type { MissionSpec, SpawnSpec } from '../sim/types';
+import { ACT_TWO } from './act2';
 
 /**
  * The campaign, in order: the Meridian Corps against the Ashen Combine.
@@ -431,6 +432,8 @@ export const MISSIONS: MissionSpec[] = [
     ],
     rewards: { xp: 650 },
   },
+  // Act two, missions 9 to 14 (act2.ts), opened by winning mission 8.
+  ...ACT_TWO,
 ];
 
 export function missionById(id: string): MissionSpec | undefined {
