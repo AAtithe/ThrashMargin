@@ -817,3 +817,29 @@ Left for integration: sites in B's map previews (`siteSpots` with the battle's `
 selected site's line in A's panel (`siteAt`), the lobby's stored setup forgetting `sites`
 (`readStoredSetup` is B's), the minimap showing an enemy Stealth Tank in sight (one condition in
 B's units loop), and C's expansion aiming at sites.
+
+### 2026-11-10: Round 5 integration
+
+The contract went first; the four workstreams (the build window, larger maps, engineering vehicles,
+sites and tier three) were built in parallel. A container restart stopped the run partway; the
+finished work was on disk in each worktree and three builders resumed in place. The branches merged
+with conflicts only in the docs, the Last Light check (both C and D taught it to skip skirmish-only
+structures) and one renderer import.
+
+Seams closed at integration:
+- The radar no longer draws an enemy Spy or Stealth Tank that the battlefield hides.
+- The lobby previews mark the neutral sites, placed exactly where the battle puts them (checked for
+  every size and side count), and say what the grey diamonds are.
+- The lobby remembers the sites switch, and a new lobby starts with sites on; DEFAULT_SETUP keeps
+  them off because it also fills in setups saved before sites existed.
+
+Checked on real large and huge maps (three seeds each, Normal mirror, sites on): the computer took
+every site, sent out a Forward Base Truck between minutes 8 and 17 and deployed it, and fielded
+Repair Trucks by minute 13. With sites on, these battles ran 20 to 38 minutes; without them, larger
+maps ran 45 to 48 minutes on average (workstream B's figures). The Derricks' income speeds both
+sides up.
+
+Numbers at integration: drive 367,688 assertions (about 5.7 minutes), campaign-check 2,595, both
+tours (desktop, and touch on three phones), 27 loading checks. AI ladder, 150 seeds, random maps,
+advanced tech: the mirror 45% to 53%, Hard on side 1 wins 93%, Easy 0%.
+

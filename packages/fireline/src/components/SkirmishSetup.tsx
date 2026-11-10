@@ -187,6 +187,7 @@ export default function SkirmishSetupPanel({
           {value.sides === 2
             ? "Previews show the real map for this seed: your base is blue, the enemy's red, ore gold. Every map is mirrored, so both sides start with the same ground and the same ore."
             : `Previews show the real map for this seed: each base in its side's colour, yours blue, ore gold. Every base's share of the map is the same share turned round the centre, so every side starts with ${value.sides === 4 ? 'the same' : 'close to the same'} ground and ore.`}
+          {value.sites ? ' Grey diamonds are the neutral sites any side can capture.' : ''}
         </p>
       </div>
 
