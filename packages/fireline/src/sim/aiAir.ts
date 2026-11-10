@@ -2,11 +2,11 @@ import { airRoom, ammoMax, isAir, parkAircraft } from './air';
 import { canQueue, doAttack, doQueue, doSell } from './commands';
 import { buildingCentre, dist, distToBuilding } from './grid';
 import { doLoadout, loadoutCost, loadoutOf, loadoutProblem } from './loadout';
-import { canResearch, doDoctrine, doResearch, doctrineProblem } from './research';
+import { canResearch, doDoctrine, doResearch, doctrineProblem, researchCostOf } from './research';
 import {
   BUILDINGS,
-  DIFFICULTIES,
   MAX_QUEUE,
+  PACED_ORE_FLOOR,
   MODULES,
   UNITS,
   UPGRADES,
@@ -18,7 +18,7 @@ import {
   type UnitKind,
   type UpgradeId,
 } from './rules';
-import { costFor, countBuildings, powerOf, researchModeOf, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, difficultyFor, pacedResearch, powerOf, researchModeOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 
@@ -45,8 +45,12 @@ interface AirTactics {
   helipads: number;
   gunships: number;
   bombers: number;
-  /** Research order: `classic` is the round 4 list; `lines` for a development-lines battle. */
-  research: { classic: UpgradeId[]; lines: UpgradeId[] };
+  /**
+   * Research order: `classic` is the round 4 list; `lines` for a development-lines battle; `paced`
+   * replaces `lines` when the battle's size uses paced research (round 6): each line's Mk II
+   * straight after its Mk I.
+   */
+  research: { classic: UpgradeId[]; lines: UpgradeId[]; paced: UpgradeId[] };
   /** Development lines only: the modules wanted per vehicle kind, in the order they are fitted. */
   loadouts: Partial<Record<UnitKind, ModuleId[]>>;
   /** Gunships that go together on a strike. */
@@ -70,7 +74,7 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
     helipads: 1,
     gunships: 1,
     bombers: 0,
-    research: { classic: ['refining'], lines: ['refining'] },
+    research: { classic: ['refining'], lines: ['refining'], paced: ['refining', 'plating', 'refining2', 'plating2'] },
     loadouts: {},
     gunshipGroup: 1,
     strikeInterval: 3000,
@@ -85,6 +89,7 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
     research: {
       classic: ['refining', 'plating', 'calibration', 'airframes', 'engines'],
       lines: ['refining', 'plating', 'calibration', 'airframes', 'engines', 'refining2', 'plating2', 'reactive'],
+      paced: ['refining', 'engines', 'engines2', 'fieldrepair', 'refining2', 'plating', 'plating2', 'reactive', 'calibration', 'autoloaders', 'airframes'],
     },
     loadouts: { tank: ['longbarrel'], hauler: ['orecage'] },
     gunshipGroup: 1,
@@ -100,6 +105,7 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
     research: {
       classic: ['refining', 'calibration', 'plating', 'engines', 'airframes'],
       lines: ['refining', 'calibration', 'plating', 'engines', 'airframes', 'refining2', 'plating2', 'autoloaders', 'heat', 'composite', 'engines2'],
+      paced: ['refining', 'engines', 'engines2', 'fieldrepair', 'refining2', 'calibration', 'autoloaders', 'heat', 'plating', 'plating2', 'composite', 'airframes'],
     },
     loadouts: {
       tank: ['longbarrel', 'tracks'],
@@ -137,7 +143,7 @@ function danger(cover: { x: number; y: number; r: number; b?: Building }[], x: n
 export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number }, enemy: Building[], foes: Unit[]): void {
   if (s.mission || !techAllowed(s, owner, 'helipad')) return;
   const diff: Difficulty = owner === 0 && s.autopilotDifficulty ? s.autopilotDifficulty : s.difficulty;
-  const d = DIFFICULTIES[diff];
+  const d = difficultyFor(s, diff);
   const t = AIR_TACTICS[diff];
   const p = s.players[owner];
   const count = (k: BuildingKind) => countBuildings(s, owner, k);
@@ -173,6 +179,27 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // With the map's ore running low, what credits are left go on the army, not on structures,
   // aircraft or research that pay back only over time; with it all gone, the last stand below.
   if (ore <= 0) lastStand(s, owner, armed);
+  // Paced research (round 6, development lines at a size above Quick): the Lab comes early and
+  // research starts without waiting for the army or the aircraft, while the map has ore to pay for
+  // it. Short of the price, the commander notes what it is saving for (the hold in ai.ts reads it).
+  const paced = pacedResearch(s);
+  if (paced) {
+    delete mem.researchFor;
+    if (!crisis && ore >= PACED_ORE_FLOOR && count('researchlab') < 1 && !p.queues.building.some(q => q.kind === 'researchlab'))
+      if (count('factory') > 0 && count('refinery') >= d.refineries && count('turret') >= 1) queueStructure(s, owner, 'researchlab');
+    if (!p.research && count('researchlab') > 0 && !crisis && ore >= PACED_ORE_FLOOR) {
+      const next = nextResearch(s, owner, t.research.paced, true);
+      if (next && UPGRADE_LINE[next].mark === 3) {
+        const line = UPGRADE_LINE[next].line;
+        if (!p.doctrines?.[line] && doctrineProblem(s, owner, line, next) === null) doDoctrine(s, owner, line, next);
+      }
+      if (next) {
+        const cost = researchCostOf(s, next);
+        if (p.credits >= cost && canResearch(s, owner, next)) doResearch(s, owner, next);
+        else mem.researchFor = cost;
+      }
+    }
+  }
   if (crisis || !armyReady || ore < AIR_ORE_FLOOR) {
     strikes(s, owner, t, home, enemy, foes, mine.filter(isAir));
     return;
@@ -196,25 +223,32 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   }
 
   // 4. Research, in the difficulty's order, once the Helipads stand and the aircraft are on their way.
-  if (!saving && !p.research && count('researchlab') > 0) {
+  // Skipped when paced: the paced block above has already done the research.
+  if (!paced && !saving && !p.research && count('researchlab') > 0) {
     const list = lines ? t.research.lines : t.research.classic;
-    const next = list.find(
-      id =>
-        !(p.upgrades ?? []).includes(id) &&
-        UPGRADES[id].requires.every(k => count(k) > 0) &&
-        // A branch whose line already holds the other doctrine is closed (never happens to the plan, but defend).
-        !(lines && UPGRADE_LINE[id].mark === 3 && p.doctrines?.[UPGRADE_LINE[id].line] && p.doctrines[UPGRADE_LINE[id].line] !== id),
-    );
+    const next = nextResearch(s, owner, list, lines);
     if (next && lines && UPGRADE_LINE[next].mark === 3) {
       // Doctrines are free: commit the line first.
       const line = UPGRADE_LINE[next].line;
       if (!p.doctrines?.[line] && doctrineProblem(s, owner, line, next) === null) doDoctrine(s, owner, line, next);
     }
-    if (next && fund(s, owner, UPGRADES[next].cost) && canResearch(s, owner, next)) doResearch(s, owner, next);
+    if (next && fund(s, owner, researchCostOf(s, next)) && canResearch(s, owner, next)) doResearch(s, owner, next);
   }
 
   // 5. Strikes.
   strikes(s, owner, t, home, enemy, foes, mine.filter(isAir));
+}
+
+/** The first item of a research list not yet done, whose structures stand, and whose branch is not closed. */
+function nextResearch(s: GameState, owner: Owner, list: UpgradeId[], lines: boolean): UpgradeId | undefined {
+  const p = s.players[owner];
+  return list.find(
+    id =>
+      !(p.upgrades ?? []).includes(id) &&
+      UPGRADES[id].requires.every(k => countBuildings(s, owner, k) > 0) &&
+      // A branch whose line already holds the other doctrine is closed (never happens to the plan, but defend).
+      !(lines && UPGRADE_LINE[id].mark === 3 && p.doctrines?.[UPGRADE_LINE[id].line] && p.doctrines[UPGRADE_LINE[id].line] !== id),
+  );
 }
 
 /**

@@ -234,6 +234,8 @@ export interface AiMemory {
   /** Aircraft out on a strike (aiAir.ts), and the tick the next strike may go. */
   airIds?: number[];
   nextAirStrike?: number;
+  /** Paced research (round 6): credits the commander is saving for its next research, or absent. */
+  researchFor?: number;
 }
 
 export interface GameState {

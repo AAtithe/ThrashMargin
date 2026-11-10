@@ -1,7 +1,7 @@
 import { buildingCentre, dist, distToTarget, targetPoint, type Target } from './grid';
 import { AIR_AMMO, AIR_EDGE, BOMB_GAP, FLIGHT_TICKS, HELIPAD_SLOTS, REARM_TICKS, UNITS, VET_DAMAGE, hitsAir, hitsGround, type Owner, type Weapon } from './rules';
 import { migrateLoadouts } from './loadout';
-import { airDamageMulOf, airSpeedOf, damageMulOf, migrateResearch, rearmMulOf, splashMulOf } from './research';
+import { airDamageMulOf, airSpeedOf, damageMulOf, migrateResearch, rearmMulOf, researchTicksOf, splashMulOf } from './research';
 import { researchModeOf } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
@@ -387,7 +387,7 @@ export function airRoom(s: GameState, owner: Owner): number {
 export function migrateAir(s: GameState): void {
   const mode = researchModeOf(s);
   s.players = s.players.map(p => {
-    const fixed = migrateResearch(p, mode);
+    const fixed = migrateResearch(p, mode, id => researchTicksOf(s, id));
     const queues = p.queues && typeof p.queues === 'object' ? p.queues : ({} as GameState['players'][number]['queues']);
     const out = {
       ...p,

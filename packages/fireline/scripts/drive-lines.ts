@@ -167,7 +167,8 @@ function rulesAndPresets(ok: Ok): void {
   ok(DEFAULT_SETUP.research === 'lines', 'a new skirmish defaults to development lines');
   // Toggle-leak guard: every preset states every field, and in the same order as the normalised setup.
   const keys = Object.keys(normaliseSetup({}));
-  ok(keys[keys.length - 1] === 'research', 'research is the last field of a setup');
+  // Round 6 added size after research (fireline-round6-design.md); drive-size.ts checks it in full.
+  ok(keys[keys.length - 1] === 'size' && keys[keys.length - 2] === 'research', 'research is second to last, before size');
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     ok(JSON.stringify(Object.keys(preset)) === JSON.stringify(keys), `${name} states every setup field, research included`);
     for (const k of keys) ok((preset as unknown as Record<string, unknown>)[k] !== undefined, `${name}.${k} is stated`);

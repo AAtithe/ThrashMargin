@@ -52,7 +52,7 @@ import {
   type HeroKind,
   type UnitKind,
 } from '../src/sim/rules';
-import { createInitialState } from '../src/sim/state';
+import { createInitialState, pacedResearch, sizeOf } from '../src/sim/state';
 import type { GameState, MissionOutcome, MissionSpec, ObjectiveSpec } from '../src/sim/types';
 
 let assertions = 0;
@@ -601,6 +601,8 @@ section('missions in the simulation', () => {
       continue;
     }
     ok(!!s.mission && s.mission.id === m.id, `${m.id}: state carries the mission`);
+    // Game size (fireline-round6-design.md): a mission always plays at Quick, today's numbers.
+    ok(sizeOf(s) === 'quick' && !pacedResearch(s), `${m.id}: plays at the Quick size, no paced research`);
     ok(s.mission?.objectives.length === m.objectives.length && s.mission?.bonus.length === m.bonus.length, `${m.id}: objectives built`);
     ok(s.seedText === m.seed || s.rngSeed === seedFromString(m.seed), `${m.id}: map from the mission seed`);
     ok(s.tiles === generateMap(seedFromString(m.seed)).tiles, `${m.id}: tiles match the generated map`);

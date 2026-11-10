@@ -47,6 +47,16 @@ type Ok = (cond: unknown, what: string) => void;
 
 const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 const hash = (x: unknown): string => createHash('sha256').update(JSON.stringify(x)).digest('hex').slice(0, 16);
+/**
+ * A skirmish state as hashed before round 6 added `setup.size`. Round 6 records Quick, which means
+ * the earlier numbers exactly, so the field is checked and then left out of the hash.
+ */
+const preSize = (s: GameState): unknown => {
+  if (!s.setup) return s;
+  const { size, ...rest } = s.setup as typeof s.setup & { size?: string };
+  if (size !== 'quick') throw new Error(`skirmish recorded size ${size}, expected quick`);
+  return { ...s, setup: rest };
+};
 const tick = (s: GameState, n: number): GameState => {
   for (let i = 0; i < n; i += 600) s = processAction(s, { type: 'tick', n: Math.min(600, n - i) });
   return s;
@@ -731,9 +741,9 @@ function storyTests(ok: Ok): void {
         if (sides === 2 && mode === 'teams') continue;
         k++;
         let s = createInitialState('sk', 'Sk', { seed: `hash${k}`, createdAt: 0, autopilot: true, setup: { map, tech: k % 2 ? 'advanced' : 'standard', credits: 5000, ore: 'normal', sides, mode, research: k % 3 ? 'lines' : 'classic' } });
-        ok(hash(s) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:0`], `skirmish ${sides} ${mode} ${map} byte-identical at tick 0`);
+        ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:0`], `skirmish ${sides} ${mode} ${map} byte-identical at tick 0`);
         s = tick(s, 1500);
-        ok(hash(s) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:1500`], `skirmish ${sides} ${mode} ${map} byte-identical after 1,500 ticks`);
+        ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:1500`], `skirmish ${sides} ${mode} ${map} byte-identical after 1,500 ticks`);
       }
   let s = createInitialState('legacy', 'L', { seed: 'legacy', createdAt: 0, autopilot: true });
   ok(hash(s) === SKIRMISH_HASHES['legacy:0'], 'the original game byte-identical at tick 0');

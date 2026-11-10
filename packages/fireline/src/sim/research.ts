@@ -24,6 +24,8 @@ import {
   REACTIVE_TAKEN,
   REFINING2_INCOME,
   REFINING_INCOME,
+  RESEARCH_COST_STEP,
+  GAME_SIZES,
   SMOKE_TAKEN,
   UNITS,
   UPGRADES,
@@ -36,7 +38,7 @@ import {
   type UpgradeId,
   type WeaponKind,
 } from './rules';
-import { hasBuilding, log, maxHpOf, researchModeOf, techAllowed } from './state';
+import { hasBuilding, log, maxHpOf, researchModeOf, sizeOf, techAllowed } from './state';
 import type { GameState, PlayerState, Unit } from './types';
 
 /**
@@ -64,6 +66,27 @@ export function hasUpgrade(s: GameState, owner: Owner, id: UpgradeId): boolean {
   return !!u && u.includes(id);
 }
 
+/**
+ * What this upgrade costs this side in this battle (round 6). Classic research, and every battle
+ * whose size leaves research at full price ('quick'): UPGRADES[id].cost exactly, with no arithmetic.
+ */
+export function researchCostOf(s: GameState, id: UpgradeId): number {
+  const base = UPGRADES[id].cost;
+  if (researchModeOf(s) !== 'lines') return base;
+  const m = GAME_SIZES[sizeOf(s)].researchCost[UPGRADE_LINE[id].mark - 1];
+  if (m === 1) return base;
+  return Math.max(RESEARCH_COST_STEP, Math.round((base * m) / RESEARCH_COST_STEP) * RESEARCH_COST_STEP);
+}
+
+/** How many ticks of progress this upgrade takes in this battle (round 6). Classic and 'quick': UPGRADES[id].ticks exactly. */
+export function researchTicksOf(s: GameState, id: UpgradeId): number {
+  const base = UPGRADES[id].ticks;
+  if (researchModeOf(s) !== 'lines') return base;
+  const m = GAME_SIZES[sizeOf(s)].researchTicks[UPGRADE_LINE[id].mark - 1];
+  if (m === 1) return base;
+  return Math.max(1, Math.round(base * m));
+}
+
 /** Why this side cannot start this upgrade now, or null if it can. Shared with the Research block. */
 export function researchProblem(s: GameState, owner: Owner, id: UpgradeId): string | null {
   if (!isUpgrade(id)) return 'No such upgrade';
@@ -87,7 +110,7 @@ export function researchProblem(s: GameState, owner: Owner, id: UpgradeId): stri
   if (p.research) return p.research.id === id ? 'Researching' : 'Already researching';
   const missing = spec.requires.find(k => !hasBuilding(s, owner, k));
   if (missing) return missing === 'researchlab' ? 'Needs a Research Lab' : `Needs: ${missing}`;
-  if (p.credits < spec.cost) return 'Not enough credits';
+  if (p.credits < researchCostOf(s, id)) return 'Not enough credits';
   return null;
 }
 
@@ -97,7 +120,7 @@ export function canResearch(s: GameState, owner: Owner, id: UpgradeId): boolean 
 
 export function doResearch(s: GameState, owner: Owner, id: UpgradeId): void {
   const p = s.players[owner];
-  p.credits -= UPGRADES[id].cost;
+  p.credits -= researchCostOf(s, id);
   p.research = { id, progress: 0 };
   if (owner === 0) log(s, `Researching ${UPGRADES[id].name}.`);
 }
@@ -110,7 +133,7 @@ export function canCancelResearch(s: GameState, owner: Owner): boolean {
 export function doCancelResearch(s: GameState, owner: Owner): void {
   const p = s.players[owner];
   const r = p.research!;
-  p.credits += UPGRADES[r.id].cost;
+  p.credits += researchCostOf(s, r.id);
   p.research = null;
   if (owner === 0) log(s, `${UPGRADES[r.id].name} cancelled.`);
 }
@@ -121,7 +144,7 @@ export function researchStep(s: GameState, owner: Owner, lowPower: boolean): voi
   const r = p.research;
   if (!r) return;
   if (!hasBuilding(s, owner, 'researchlab')) return; // Paused until a Lab stands again.
-  const total = UPGRADES[r.id].ticks;
+  const total = researchTicksOf(s, r.id);
   r.progress = Math.min(total, r.progress + (lowPower ? 0.5 : 1));
   if (r.progress < total) return;
   p.upgrades = [...(p.upgrades ?? []), r.id];
@@ -243,6 +266,7 @@ type ResearchFields = Pick<PlayerState, 'upgrades' | 'research' | 'doctrines'>;
 export function migrateResearch(
   p: { upgrades?: unknown; research?: unknown; doctrines?: unknown },
   mode: ResearchMode = 'classic',
+  ticksOf: (id: UpgradeId) => number = id => UPGRADES[id].ticks,
 ): { upgrades?: UpgradeId[]; research?: { id: UpgradeId; progress: number } | null; doctrines?: ResearchFields['doctrines'] | null } {
   const out: { upgrades?: UpgradeId[]; research?: { id: UpgradeId; progress: number } | null; doctrines?: ResearchFields['doctrines'] | null } = {};
   const doctrines: Partial<Record<LineId, UpgradeId>> = {};
@@ -267,7 +291,7 @@ export function migrateResearch(
     const r = p.research as { id?: unknown; progress?: unknown } | null;
     out.research =
       r && typeof r === 'object' && isUpgrade(r.id) && allowed(r.id) && Number.isFinite(r.progress) && (r.progress as number) >= 0
-        ? { id: r.id, progress: Math.min(UPGRADES[r.id].ticks, r.progress as number) }
+        ? { id: r.id, progress: Math.min(ticksOf(r.id), r.progress as number) }
         : null;
   }
   if (p.doctrines !== undefined) out.doctrines = mode === 'lines' && Object.keys(doctrines).length ? doctrines : null;

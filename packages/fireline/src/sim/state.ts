@@ -7,6 +7,8 @@ import {
   DEFAULT_DIFFICULTY,
   DEFAULT_SETUP,
   DIFFICULTIES,
+  GAME_SIZE_ORDER,
+  GAME_SIZES,
   LEGACY_SETUP,
   LONE_SIDE_CREDITS,
   MAP_H,
@@ -22,12 +24,15 @@ import {
   SKIRMISH_POWERS,
   STANDARD_TECH,
   START_CREDITS,
+  difficultyForSize,
   heroLevelFor,
   UNITS,
   vetFor,
   type BuildingKind,
   type Category,
   type Difficulty,
+  type DifficultySpec,
+  type GameSize,
   type HeroKind,
   type MapType,
   type Owner,
@@ -76,12 +81,22 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   const mode: SideMode = sides > 2 && r.mode === 'teams' ? 'teams' : 'ffa';
   // Research mode (round 5): standard tech is always 'classic'.
   const research: ResearchMode = tech === 'standard' ? 'classic' : r.research === 'classic' || r.research === 'lines' ? r.research : base.research;
-  return { map, tech, credits, ore, sides, mode, research };
+  // Game size (round 6): anything not a size takes the base's. Kept on standard tech too: the
+  // attack timing applies to any tech; research scaling needs development lines.
+  const size: GameSize = GAME_SIZE_ORDER.includes(r.size as GameSize) ? (r.size as GameSize) : base.size;
+  return { map, tech, credits, ore, sides, mode, research, size };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
 export const researchModeOf = (s: GameState): ResearchMode =>
   !s.mission && s.setup && s.setup.tech === 'advanced' && s.setup.research === 'lines' ? 'lines' : 'classic';
+
+/** The size in force. A mission, a battle without a setup and a save without the field: 'quick'. */
+export const sizeOf = (s: GameState): GameSize => (!s.mission && s.setup ? s.setup.size ?? 'quick' : 'quick');
+/** The difficulty's numbers for this battle (difficultyForSize with sizeOf). */
+export const difficultyFor = (s: GameState, diff: Difficulty): DifficultySpec => difficultyForSize(diff, sizeOf(s));
+/** True when the commander uses paced research: development lines and a paced size. */
+export const pacedResearch = (s: GameState): boolean => researchModeOf(s) === 'lines' && GAME_SIZES[sizeOf(s)].paced;
 
 /** How this battle was set up. Saves from before setups, and missions, read as LEGACY_SETUP. */
 export const setupOf = (s: GameState): SkirmishSetup => s.setup ?? LEGACY_SETUP;
@@ -168,7 +183,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
   const map = setup && mapType ? (n > 2 ? generateSkirmishMap(rngSeed, mapType, setup.ore, n) : generateSkirmishMap(rngSeed, mapType, setup.ore)) : generateMap(rngSeed);
   const credits = setup ? setup.credits : START_CREDITS;
   const difficulty = opts.difficulty && opts.difficulty in DIFFICULTIES ? opts.difficulty : DEFAULT_DIFFICULTY;
-  const d = DIFFICULTIES[difficulty];
+  const d = setup ? difficultyForSize(difficulty, setup.size) : DIFFICULTIES[difficulty];
   const teams = setup && n > 2 ? (opts.teams !== undefined ? normaliseTeams(opts.teams, n) : teamsFor(n, setup.mode)) : [0, 1];
 
   const s: GameState = {
@@ -535,6 +550,14 @@ export function migrateState(raw: unknown): GameState | null {
     else delete out.setup;
   }
   migrateAir(out);
+  // Paced research (round 6): the commander's saving target is kept only in a paced battle.
+  const paced = pacedResearch(out);
+  out.ai = out.ai.map(m => {
+    if (!m || typeof m !== 'object' || !('researchFor' in m)) return m;
+    if (paced && Number.isFinite(m.researchFor) && m.researchFor! > 0) return m;
+    const { researchFor: _drop, ...rest } = m;
+    return rest as AiMemory;
+  });
   if (s.powers !== undefined) {
     if (Array.isArray(s.powers)) {
       out.powers = sidesOf(out).map(o => (s.powers![o] && typeof s.powers![o] === 'object' ? { ...s.powers![o] } : {}));

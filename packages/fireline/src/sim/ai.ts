@@ -7,8 +7,10 @@ import {
   BARRAGE_DAMAGE,
   BUILDINGS,
   DAMAGE_VS,
-  DIFFICULTIES,
   MISSILE_DAMAGE,
+  PACED_HOLD_ARMY,
+  PACED_HOLD_RADIUS,
+  PACED_ORE_FLOOR,
   POWERS,
   SELL_RETURN,
   UNITS,
@@ -19,7 +21,7 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlocked } from './state';
+import { countBuildings, difficultyFor, isStructure, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
@@ -221,7 +223,8 @@ function tuned(d: DifficultySpec, mode: AiMode): DifficultySpec {
 function commander(s: GameState, owner: Owner): void {
   const diff = aiDifficulty(s, owner);
   const mode = missionMode(s, owner);
-  const d = tuned(DIFFICULTIES[diff], mode);
+  // The game size (round 6) scales the attack timing; a mission always reads 'quick'.
+  const d = tuned(difficultyFor(s, diff), mode);
   const t = TACTICS[diff];
   const mem = s.ai[owner];
   normalise(mem);
@@ -269,7 +272,9 @@ function commander(s: GameState, owner: Owner): void {
     const spot = ready === 'wall' ? wallSpot(s, owner, home, enemyHome) : findSpot(s, owner, ready, home, enemyHome);
     if (spot) doPlace(s, owner, ready, spot.x, spot.y);
     else doCancel(s, owner, 'building', ready);
-  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq')) {
+  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq') && !(adv && pacedResearch(s) && !s.ore.some(o => o > 0))) {
+    // (Paced research, round 6: on a mined-out map no new structure is bought. Credits that can
+    // never be earned again go on units for the last push, not on a structure lost late.)
     // Only with a Command Yard: a mission outpost has none, and a structure it queued could never
     // be built, leaving its credits stuck in the queue.
     let want = nextStructure(s, owner, d, noHauler && !canBuildHauler, adv ? diff : null);
@@ -323,7 +328,12 @@ function commander(s: GameState, owner: Owner): void {
       !p.queues.building.some(q => q.kind === 'refinery') &&
       p.credits < vehiclePrice(s, owner, 'hauler'));
   if (dry && p.credits < 300 && !p.queues.building.length && standingProducer(s, owner)) {
-    const extra = (['strikecommand', 'repairbay', 'techcentre', 'uplink', 'wall'] as BuildingKind[])
+    // Paced research (round 6): the defences go too, so two sides that have spent everything on a
+    // mined-out map still find the credits for a last push, and the battle ends.
+    const sell: BuildingKind[] = pacedResearch(s)
+      ? ['strikecommand', 'repairbay', 'techcentre', 'uplink', 'wall', 'researchlab', 'rocketturret', 'turret']
+      : ['strikecommand', 'repairbay', 'techcentre', 'uplink', 'wall'];
+    const extra = sell
       .map(k => s.buildings.find(b => b.owner === owner && b.kind === k))
       .find(b => !!b);
     if (extra) doSell(s, owner, extra.id);
@@ -366,6 +376,13 @@ function commander(s: GameState, owner: Owner): void {
   const foeArmour = foeArmed.length - foeInfantry;
   const foeTurrets = enemy.filter(b => b.kind === 'turret' || b.kind === 'rocketturret').length;
   const raidBuggies = units.filter(u => u.kind === 'buggy').length;
+  // Paced research (round 6): short of the next research, with an army at home and no enemy near
+  // it, the unit purchases below wait so the credits build up.
+  if (!saving && adv && pacedResearch(s) && mem.researchFor && p.credits < mem.researchFor) {
+    const armedHome = units.filter(u => UNITS[u.kind].weapon && u.kind !== 'hauler').length;
+    const threat = foes.some(u => UNITS[u.kind].weapon && dist(u.x, u.y, home.x, home.y) < PACED_HOLD_RADIUS);
+    if (armedHome >= PACED_HOLD_ARMY && !threat) saving = true;
+  }
   if (!saving && adv) {
     const nextRaid = mem.raidIds.length > 0 ? Infinity : Math.max(mem.nextRaid, t.firstRaid);
     advancedUnits(s, owner, t, units, foeInfantry, foeArmour, foeTurrets, raidBuggies, nextRaid);
@@ -863,8 +880,26 @@ function standingProducer(s: GameState, owner: Owner): boolean {
   return s.buildings.some(b => b.owner === owner && (b.kind === 'barracks' || b.kind === 'factory'));
 }
 
+/**
+ * Paced research (round 6) with ore enough on the map to research (PACED_ORE_FLOOR): the Tech
+ * Centre is built early, in the plan. Once the map is nearly mined out it is an extra again, as in
+ * round 5, so a side that has lost its Tech Centre late never saves for one instead of buying units.
+ */
+function pacedTech(s: GameState): boolean {
+  return pacedResearch(s) && mapOre(s) >= PACED_ORE_FLOOR;
+}
+
+/** Ore left on the map, in credits. */
+function mapOre(s: GameState): number {
+  let ore = 0;
+  for (const o of s.ore) ore += o;
+  return ore;
+}
+
 /** A structure beyond what the economy and the basic defences need (advanced tech only). */
 function isExtra(s: GameState, owner: Owner, kind: BuildingKind, d: DifficultySpec): boolean {
+  // Paced research (round 6): the Tech Centre is part of the plan, not an extra the army gate holds.
+  if (kind === 'techcentre' && pacedTech(s)) return false;
   if (kind === 'refinery') return countBuildings(s, owner, 'refinery') >= d.refineries;
   return kind === 'techcentre' || kind === 'strikecommand' || kind === 'repairbay' || kind === 'rocketturret';
 }
@@ -903,6 +938,8 @@ function nextStructure(
         ['turret', 1],
         ['uplink', 1],
         ['turret', d.turrets],
+        // Paced research (round 6): the Tech Centre before the second factory, for the Mk IIs.
+        ...(pacedTech(s) ? [['techcentre', 1] as [BuildingKind, number]] : []),
         ['factory', d.factories],
         ['repairbay', t.bayBelow > 0 ? 1 : 0],
         ['techcentre', 1],

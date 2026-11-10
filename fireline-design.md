@@ -609,3 +609,33 @@ Not built yet: a guided tour for the war, a `ladder:planet` for balance (compute
 sign open-ended trade pacts and rarely fight one another after the truce, so most wars end on the
 turn limit), and a check that a full battle fought by hand reaches its end card in the browser.
 
+
+### 2026-11-10: Game size and deep research in skirmishes (round 6)
+
+The contract and the full build log are in `fireline-round6-design.md`. Round 5's ladder showed
+that at 3000 credits a skirmish ends before the computer gets past Mk I, so doctrines and modules
+rarely mattered. A skirmish now opens on a **game size** screen: four cards, Quick, Standard
+(checked for a new player), Long and Epic, each with its credits and ore, how long a battle lasts,
+how far research gets, and Begin or Customise. Quick is the game as it was; the three paced sizes
+give more credits and richer ore, scale every upgrade's price and research time on the
+development-lines tree, delay the computer's first attack, and give the computer a paced research
+list that saves for its next item. The detailed setup keeps every control and gains a Size row; a
+setup changed by hand reads "Customised" on its card. Classic research and standard tech keep their
+prices at every size. Every campaign mission, every battle without a setup and every save from
+before this round reads as Quick and plays exactly as before (30 pre-round-6 battles hashed and
+unchanged).
+
+Ladder, 150 seeds, `--map random`, development lines, each size's preset, 1650 battles a size.
+Depth counts new against new, Normal and Hard sides only.
+
+| Size | Credits, ore | Normal Mk II / Mk III | Hard Mk II / Mk III | Normal mirror median (p10 to p90) | Hard beats Normal | Normal beats Easy | Unfinished |
+|---|---|---|---|---|---|---|---|
+| Quick | 3000, normal | 0% / 0% | 0% / 0% | 23.9 (16.0 to 33.6) | 68.0% | 99.3% | 11 |
+| Standard | 3000, normal | 70% / 51% | 93% / 82% | 23.7 (16.0 to 32.5) | 79.7% | 100% | 0 |
+| Long | 5000, rich | 96% / 85% | 100% / 93% | 23.8 (16.4 to 32.5) | 58.3% | 99.7% | 0 |
+| Epic | 10000, rich | 100% / 97% | 100% / 98% | 21.3 (19.8 to 30.3) | 58.7% | 99.7% | 0 |
+
+Quick matches round 5's table in every cell. Every card says 15 to 35 minutes, because at today's
+map sizes battles last about as long at every size: the sizes differ in how deep research gets.
+Larger maps would make the bigger sizes longer, and are out of scope for this round. `drive:fire`
+gains 582 assertions (about 345,700 in all, about 8 to 9 minutes).
