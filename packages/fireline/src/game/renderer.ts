@@ -30,6 +30,9 @@ import { Water } from './fx/water';
 import { sound, type SoundKind } from './sound';
 import { drawMissileMarker, drawMissileInFlight, flameJet, MISSILE_ARC } from './fx/strike';
 import { paintTerrain } from './terrain';
+// round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
+import { drawSiteLayer } from './art';
+import { stealthSeen } from '../sim/sites';
 
 /**
  * The pose fields art.ts reads for damage, recoil flashes and working structures. Declared here as
@@ -313,6 +316,7 @@ export class Renderer {
     }
     // round5:D begin. Neutral sites (fireline-round5-design.md): one call drawing every seen site
     // (drawSite in art.ts) goes under this line, before the structures.
+    drawSiteLayer(ctx, cur, explored, vis, rt, t);
     // round5:D end.
     for (const b of buildings) {
       const spec = BUILDINGS[b.kind];
@@ -388,6 +392,7 @@ export class Renderer {
       if (u.owner !== 0) {
         if (!vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
         if (u.kind === 'spy' && !spySeen(cur, u)) continue;
+        if (UNITS[u.kind].stealth && !stealthSeen(cur, u, 0)) continue;
       }
       // Aircraft are drawn in their own pass, after every ground unit (below).
       if (UNITS[u.kind].category === 'air') aloft.push({ u, x, y });
@@ -435,7 +440,7 @@ export class Renderer {
         }
       }
       // Your own Spy is cloaked: drawn at about half strength.
-      const cloaked = u.kind === 'spy' && u.owner === 0;
+      const cloaked = (u.kind === 'spy' || !!spec.stealth) && u.owner === 0;
       if (cloaked) ctx.globalAlpha = 0.55;
       drawUnit(ctx, u.kind, u.owner, x, y, upose);
       if (cloaked) ctx.globalAlpha = 1;

@@ -28,6 +28,24 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { FONT, UI } from '../theme';
+// round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
+import {
+  DERRICK_INCOME,
+  DERRICK_TICKS,
+  HOSPITAL_HEAL,
+  HOSPITAL_RANGE,
+  HOSPITAL_TICKS,
+  MAP_SIZE_NAMES,
+  MAP_SIZES,
+  RELAY_RADIUS,
+  SITE_CAPTURE_RANGE,
+  SITE_CAPTURE_TICKS,
+  SITE_KINDS,
+  SITES,
+  SITES_PER_SIDE,
+  STEALTH_DETECT_RANGE,
+  STEALTH_REVEAL_TICKS,
+} from '../sim/rules';
 
 /** The rules, generated from the same tables the simulation reads, so they cannot drift apart. */
 export default function HowToPlay() {
@@ -158,6 +176,7 @@ export default function HowToPlay() {
         {/* round5:B. Larger maps and long games: its panel goes on the line below. */}
         {/* round5:C. Engineering vehicles: its panel goes on the line below. */}
         {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
+        <SitesPanel />
 
         <Panel title="Campaign">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -300,3 +319,67 @@ const duration = (ticks: number) => {
   const secs = Math.round(ticks / TICKS_PER_SECOND);
   return secs < 120 ? `${secs}s` : `${Math.round((secs / 60) * 10) / 10} min`;
 };
+
+// round5:D begin. Neutral sites and tier three: the panel, from the same numbers the battle reads.
+const seconds = (ticks: number) => `${ticks / TICKS_PER_SECOND} second${ticks === TICKS_PER_SECOND ? '' : 's'}`;
+const SITE_EFFECT: Record<(typeof SITE_KINDS)[number], string> = {
+  derrick: `${DERRICK_INCOME} credits every ${seconds(DERRICK_TICKS)} to its holder: ${(DERRICK_INCOME * 600) / DERRICK_TICKS} a minute, half a Hauler's load.`,
+  hospital: `${HOSPITAL_HEAL} health every ${seconds(HOSPITAL_TICKS)} to each of its holder's infantry within ${HOSPITAL_RANGE} tiles.`,
+  relay: `Its holder and the holder's allies see everything within ${RELAY_RADIUS} tiles of it.`,
+};
+
+function SitesPanel() {
+  return (
+    <Panel title="Neutral sites and tier three">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Neutral sites</strong> in the lobby and every side's share of the map holds the same set of sites, at
+          the same distances from every base. They start neutral, with a grey flag.
+        </li>
+        <li>
+          <strong>Infantry take a site</strong>: stand them within {SITE_CAPTURE_RANGE} tiles of it for {seconds(SITE_CAPTURE_TICKS)}{' '}
+          and it flies your colours. A ring round the site fills as they work. If an enemy's infantry are there too, the ring
+          stops; walk away and it empties again. Vehicles and aircraft cannot take sites, and allies never take each other's.
+        </li>
+        <li>
+          A site is not a structure: nothing can shoot it, it never shoots, and it does not keep you in the battle. A side that is
+          out loses its sites, which go back to neutral.
+        </li>
+      </ul>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+        {SITE_KINDS.map(k => (
+          <div key={k} style={{ ...tile, flexDirection: 'column', gap: 4 }}>
+            <strong style={{ fontSize: '0.88rem' }}>{SITES[k].name}</strong>
+            <span style={{ fontSize: '0.72rem', color: UI.textFaint, fontFamily: FONT.mono }}>
+              {MAP_SIZES.map(z => `${MAP_SIZE_NAMES[z]} ${SITES_PER_SIDE[z][k]}`).join(' · ')} per side
+            </span>
+            <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>{SITE_EFFECT[k]}</span>
+          </div>
+        ))}
+      </div>
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          <strong>Tier three</strong> comes with advanced tech. A <strong>{BUILDINGS.protoworks.name}</strong> needs a{' '}
+          {BUILDINGS.researchlab.name} and a {BUILDINGS.techcentre.name}, and unlocks the {UNITS.railtank.name}, the{' '}
+          {UNITS.stealthtank.name} and the {BUILDINGS.fortress.name}. The {BUILDINGS.protoworks.name} and the{' '}
+          {BUILDINGS.fortress.name} are the fifteenth and sixteenth Structures, so they have no hotkey: click them in the build
+          list.
+        </li>
+        <li>
+          The <strong>{UNITS.railtank.name}</strong> fires a slug that lands the instant it fires: the heaviest hit on armour in
+          the game, and little use against infantry.
+        </li>
+        <li>
+          The <strong>{UNITS.stealthtank.name}</strong> cannot be seen or targeted by an enemy unless one of that enemy's units or
+          structures is within {STEALTH_DETECT_RANGE} tiles of it, or for {seconds(STEALTH_REVEAL_TICKS)} after it fires. Yours
+          are drawn faint. A recon sweep shows them too.
+        </li>
+        <li>
+          The computer turns to tier three late in a long battle, and on a map with sites sends small parties of infantry to take
+          them, the nearest first.
+        </li>
+      </ul>
+    </Panel>
+  );
+}
+// round5:D end.
