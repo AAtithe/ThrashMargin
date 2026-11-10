@@ -528,7 +528,9 @@ function computer(ok: Ok): void {
   let early = false;
   let works = -1;
   const units = new Set<UnitKind>();
-  while (l.tick < TIER3_AI_TICKS + 6000 && l.winner === null) {
+  // Fifteen minutes past the start of tier three (ten before the air war): with Troop Carriers and
+  // Interceptors to buy as well, the Hard commander's first Railgun Tank came at minute 37 or 38.
+  while (l.tick < TIER3_AI_TICKS + 9000 && l.winner === null) {
     l = tick(l, 500);
     hold(l);
     const has = l.buildings.some(b => b.kind === 'protoworks') || l.players.some(p => p.queues.building.some(q => q.kind === 'protoworks'));

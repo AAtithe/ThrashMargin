@@ -269,6 +269,8 @@ export interface AiMemory {
    * An airlift under way (aiAir.ts): the Troop Carrier, the infantry it is taking, where it sets
    * them down and what they then attack, the step ('board', 'fly') and when that step began.
    */
+  /** The tick before which no new airlift sets out. */
+  nextAirlift?: number;
   airlift?: { carrier: number; ids: number[]; x: number; y: number; target: number; phase: 'board' | 'fly'; since: number } | null;
   /**
    * A defending mission enemy's garrison: its armed units at its first decision. It trains only to

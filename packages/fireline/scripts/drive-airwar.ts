@@ -457,7 +457,7 @@ function computer(ok: Ok): void {
   // Airlift: a Hard commander with a Troop Carrier and infantry at home flies them at a refinery.
   {
     let s = quiet('aw-ai-airlift', 'air');
-    s.ai[1].nextAirStrike = 0;
+    s.ai[1].nextAirlift = 0;
     let lifted = 0;
     let setDown = false;
     for (let k = 0; k < 200 && !setDown; k++) {

@@ -341,7 +341,10 @@ function strikes(
   const due = s.tick >= (mem.nextAirStrike ?? 0);
   // Gunships: a group of full ones parked at home, at the safest hauler or artillery piece.
   const ready = craft.filter(u => u.kind === 'gunship' && parked(u) && full(u) && !out.includes(u.id));
-  if (due && enemy.length && ready.length >= t.gunshipGroup) {
+  // A group as large as the plan, or as all the Gunships it has: a lone survivor once sat parked
+  // for fourteen minutes waiting for a partner that never came.
+  const gunships = craft.filter(u => u.kind === 'gunship').length;
+  if (due && enemy.length && ready.length > 0 && ready.length >= Math.min(t.gunshipGroup, gunships)) {
     const target = pickFor(home);
     if (target) {
       const ids = ready.map(u => u.id);
@@ -436,7 +439,7 @@ const AIRLIFT_FLY_TICKS = 1800;
  * Airlift raids (Normal and Hard): a parked Troop Carrier takes `airliftSize` idle infantry from home
  * to the opponent's refinery (any structure, without one) that the fewest anti-air guns cover, sets
  * them down three tiles short of it, and they attack-move on it while the carrier flies home. One at
- * a time, on the strike timer; boarding gives up after a minute (going with whoever is aboard), the
+ * a time, every two strike intervals (its own timer, not the strikes'); boarding gives up after a minute (going with whoever is aboard), the
  * flight after three.
  */
 function airlift(s: GameState, owner: Owner, t: AirTactics, home: { x: number; y: number }, enemy: Building[], craft: Unit[], cover: { x: number; y: number; r: number; b?: Building }[]): void {
@@ -481,7 +484,7 @@ function airlift(s: GameState, owner: Owner, t: AirTactics, home: { x: number; y
     return;
   }
   // A new one: a parked carrier, enough idle infantry at home, a target, and the strike timer.
-  if (s.tick < (mem.nextAirStrike ?? 0) || !enemy.length) return;
+  if (s.tick < (mem.nextAirlift ?? 0) || !enemy.length) return;
   const c = craft.find(u => u.kind === 'carrier' && u.order.type === 'rearm' && !u.carried?.length && isStill(s, u));
   if (!c) return;
   const busy = new Set([...(mem.waveIds ?? []), ...(mem.raidIds ?? []), ...(mem.siteParties ?? []).flatMap(p => p.ids)]);
@@ -508,5 +511,6 @@ function airlift(s: GameState, owner: Owner, t: AirTactics, home: { x: number; y
   const y = ctr.y + ((home.y - ctr.y) / d) * 3;
   doBoard(s, owner, idle.map(u => u.id), c.id);
   mem.airlift = { carrier: c.id, ids: idle.map(u => u.id), x, y, target: best.id, phase: 'board', since: s.tick };
-  mem.nextAirStrike = s.tick + t.strikeInterval;
+  // Its own timer: sharing the strikes' once held the Bombers back for good.
+  mem.nextAirlift = s.tick + t.strikeInterval * 2;
 }
