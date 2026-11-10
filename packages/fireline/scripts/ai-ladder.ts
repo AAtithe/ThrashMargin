@@ -10,6 +10,8 @@
  *   tsx scripts/ai-ladder.ts --map mix                 every map type in turn (seed 1 classic, 2 river, ...)
  *   tsx scripts/ai-ladder.ts --map river,canyon --tech standard --credits 5000 --ore rich
  *   tsx scripts/ai-ladder.ts --map legacy              no setup at all: the original game (the default)
+ *   tsx scripts/ai-ladder.ts --map random --size large a larger map (round 5): large or huge; the cap
+ *                                                      defaults to 72000 ticks on large, 108000 on huge
  *
  * A match is `side0,side1`, each side `commander:difficulty`, where the commander is `new` (the
  * AI in src/sim/ai.ts), `prev` (the frozen commander from before it learned the advanced tech, in
@@ -42,7 +44,8 @@ import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
-import { DIFFICULTIES, MAP_TYPES, type Difficulty, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
+import { scaledFor } from '../src/sim/aiScale';
+import { DIFFICULTIES, MAP_SIZES, MAP_TYPES, type Difficulty, type MapSize, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
 import { baselineAi } from './ai-baseline';
 import { prevAi } from './ai-prev';
@@ -71,7 +74,9 @@ const arg = (name: string, fallback: string) => {
   return i >= 0 ? args[i + 1] : fallback;
 };
 const SEEDS = Number(arg('--seeds', '150'));
-const CAP = Number(arg('--cap', '60000'));
+const SIZE = arg('--size', 'standard') as MapSize;
+if (!MAP_SIZES.includes(SIZE)) throw new Error(`bad size "${SIZE}"`);
+const CAP = Number(arg('--cap', SIZE === 'huge' ? '108000' : SIZE === 'large' ? '72000' : '60000'));
 const JOBS = Math.max(1, Number(arg('--jobs', String(cpus().length))));
 const MAP = arg('--map', 'legacy');
 const TECH = arg('--tech', 'advanced');
@@ -84,7 +89,13 @@ for (const m of MAP_LIST) if (m !== 'random' && !MAP_TYPES.includes(m)) throw ne
 if (TECH !== 'standard' && TECH !== 'advanced') throw new Error(`bad tech "${TECH}"`);
 function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
   if (LEGACY) return undefined;
-  return { map: MAP_LIST[(seed - 1) % MAP_LIST.length], tech: TECH as SkirmishSetup['tech'], credits: CREDITS, ore: ORE as SkirmishSetup['ore'] };
+  return {
+    map: MAP_LIST[(seed - 1) % MAP_LIST.length],
+    tech: TECH as SkirmishSetup['tech'],
+    credits: CREDITS,
+    ore: ORE as SkirmishSetup['ore'],
+    ...(SIZE !== 'standard' ? { size: SIZE } : {}),
+  };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
 
@@ -138,7 +149,8 @@ function play(m: Match, seed: number): Result & { match: number } {
   const setup = setupFor(seed);
   let s = createInitialState(name, name, { seed: name, difficulty: m.sides[1].difficulty, createdAt: 0, autopilot: true, ...(setup ? { setup } : {}) });
   s.autopilotDifficulty = m.sides[0].difficulty;
-  s.ai[0].nextAttack = DIFFICULTIES[m.sides[0].difficulty].firstAttack;
+  // Side 0's first attack at its own difficulty, scaled for the map's size as side 1's already is.
+  s.ai[0].nextAttack = scaledFor(s, DIFFICULTIES[m.sides[0].difficulty]).firstAttack;
   while (s.winner === null && s.tick < CAP) s = processAction(s, { type: 'tick', n: 50 });
   setAutopilotAi(null, 0);
   setAutopilotAi(null, 1);
@@ -164,7 +176,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, ${SIZE} size`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -178,7 +190,7 @@ if (workerAt >= 0) {
           ...process.execArgv,
           script,
           ...['--worker', `${k}/${JOBS}`, '--spec', spec, '--seeds', String(SEEDS), '--cap', String(CAP)],
-          ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE],
+          ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE, '--size', SIZE],
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );

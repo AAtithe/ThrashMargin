@@ -29,7 +29,12 @@ export type Armor = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
  * 'flame' is the Flame Tank's short-range burst; 'missile' is the Strike Command's one huge strike
  * (a support power, never a unit's weapon). Grenadiers lob 'artillery' (it arcs and scatters).
  */
-export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb';
+/**
+ * 'rail' (round 5, workstream D: the Railgun Tank) is declared ahead of its first user so the
+ * exhaustive tables (DAMAGE_VS, FLIGHT_TICKS, the build tip's weapon names) are complete; nothing
+ * fires it until workstream D adds a unit that carries it.
+ */
+export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb' | 'rail';
 
 /**
  * How hard each weapon hits each armour class. Riflemen shred infantry and scratch a tank. The
@@ -46,6 +51,8 @@ export const DAMAGE_VS: Record<WeaponKind, Record<Armor, number>> = {
   flak: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1 },
   aamissile: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1 },
   bomb: { infantry: 0.9, light: 0.9, heavy: 0.8, building: 1.1, aircraft: 0 },
+  // Round 5, workstream D: a hypervelocity slug. Starting numbers; D tunes them and states them.
+  rail: { infantry: 0.35, light: 1, heavy: 1.25, building: 0.8, aircraft: 0 },
 };
 
 /** Ticks a projectile of each kind spends in the air before it lands. Bullets are instant. */
@@ -59,6 +66,7 @@ export const FLIGHT_TICKS: Record<WeaponKind, number> = {
   flak: 3,
   aamissile: 5,
   bomb: 6,
+  rail: 0,
 };
 
 export interface Weapon {
@@ -101,6 +109,14 @@ export type UnitKind =
   | 'bomber'
   | 'flaktrack'
   | 'skyhunter'
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its unit kinds.
+  | 'repairtruck'
+  | 'basetruck'
+  // round5:C end.
+  // round5:D begin. Tier three (fireline-round5-design.md, workstream D): its unit kinds.
+  | 'railtank'
+  | 'stealthtank'
+  // round5:D end.
   | HeroKind;
 export type BuildingKind =
   | 'hq'
@@ -117,7 +133,15 @@ export type BuildingKind =
   | 'strikecommand'
   | 'helipad'
   | 'flakcannon'
-  | 'researchlab';
+  | 'researchlab'
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its structure kinds.
+  | 'fieldyard'
+  // round5:C end.
+  // round5:D begin. Tier three (fireline-round5-design.md, workstream D): its structure kinds.
+  | 'protoworks'
+  | 'fortress'
+  // round5:D end.
+  ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air';
 
 export interface UnitSpec {
@@ -139,6 +163,15 @@ export interface UnitSpec {
   medic?: true;
   /** Hit points regained every SELF_REPAIR_TICKS while not fighting (the Bastion). */
   selfRepair?: number;
+  /** Round 5, workstream C: mends its own side's vehicles nearby (the Repair Truck). Absent on the rest. */
+  mender?: true;
+  /** Round 5, workstream C: deploys into this structure where it stands (the Forward Base truck). */
+  deploysTo?: BuildingKind;
+  /**
+   * Round 5, workstream D: unseen and untargetable by enemies except close up or just after it
+   * fires (the Stealth Tank). Absent on the rest; the Spy keeps its own rule in mission.ts.
+   */
+  stealth?: true;
 }
 
 export interface BuildingSpec {
@@ -159,6 +192,13 @@ export interface BuildingSpec {
    * for the build radius, or for the crew that walks out when one falls. Absent on the rest.
    */
   wall?: true;
+  /**
+   * Round 5, workstream C: structures may be placed within this many tiles of it, instead of
+   * BUILD_RADIUS (the Field Yard). Absent: BUILD_RADIUS.
+   */
+  buildRadius?: number;
+  /** Round 5, workstream C: packs up into this unit where it stands (the Field Yard). */
+  undeploysTo?: UnitKind;
 }
 
 export const UNITS: Record<UnitKind, UnitSpec> = {
@@ -414,6 +454,64 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     requires: ['barracks'],
     blurb: 'Shoulder-launched anti-air missiles. Brings down aircraft; helpless against anything on the ground.',
   },
+  // round5:C begin. Engineering vehicles: its units, appended here.
+  repairtruck: {
+    name: 'Repair Truck',
+    category: 'vehicle',
+    cost: 900,
+    buildTicks: 110,
+    hp: 300,
+    armor: 'light',
+    speed: 0.085,
+    sight: 6,
+    requires: ['factory', 'repairbay'],
+    blurb: 'Unarmed. Mends your vehicles beside it, free, and drives to damaged ones nearby when idle.',
+    mender: true,
+  },
+  basetruck: {
+    name: 'Forward Base Truck',
+    category: 'vehicle',
+    cost: 2500,
+    buildTicks: 250,
+    hp: 900,
+    armor: 'heavy',
+    speed: 0.055,
+    sight: 5,
+    requires: ['factory', 'uplink'],
+    blurb: 'Unarmed. Deploys where it stands into a Field Yard: a second base that builds structures. Three at most.',
+    deploysTo: 'fieldyard',
+  },
+  // round5:C end.
+  // round5:D begin. Tier three: its units, appended here.
+  // ---- Tier three (round 5, workstream D): advanced tech only, from the Prototype Works ----------
+  railtank: {
+    name: 'Railgun Tank',
+    category: 'vehicle',
+    cost: 1800,
+    buildTicks: 200,
+    hp: 650,
+    armor: 'heavy',
+    speed: 0.085,
+    sight: 6,
+    weapon: { kind: 'rail', damage: 150, range: 6.5, cooldown: 45 },
+    requires: ['factory', 'protoworks'],
+    blurb: 'A magnetic slug that lands the instant it fires. Breaks heavy armour; poor against infantry.',
+  },
+  stealthtank: {
+    name: 'Stealth Tank',
+    category: 'vehicle',
+    cost: 1400,
+    buildTicks: 160,
+    hp: 380,
+    armor: 'light',
+    speed: 0.11,
+    sight: 6,
+    weapon: { kind: 'rocket', damage: 45, range: 5, cooldown: 30 },
+    requires: ['factory', 'protoworks'],
+    blurb: 'Unseen and untargetable unless the enemy is within two and a half tiles, or for three seconds after it fires.',
+    stealth: true,
+  },
+  // round5:D end.
 };
 
 export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
@@ -602,6 +700,49 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     requires: ['factory'],
     blurb: 'Researches upgrades that last the rest of the battle, one at a time.',
   },
+  // round5:C begin. Engineering vehicles: its structures, appended here.
+  fieldyard: {
+    name: 'Field Yard',
+    w: 2,
+    h: 2,
+    cost: 2500,
+    buildTicks: 250,
+    hp: 1000,
+    power: 0,
+    sight: 5,
+    requires: [],
+    blurb: 'A deployed Forward Base Truck. Builds structures within six tiles of itself; packs up to move on.',
+    buildRadius: 6,
+    undeploysTo: 'basetruck',
+  },
+  // round5:C end.
+  // round5:D begin. Tier three: its structures, appended here (neutral sites are not structures).
+  protoworks: {
+    name: 'Prototype Works',
+    w: 3,
+    h: 3,
+    cost: 2500,
+    buildTicks: 240,
+    hp: 1200,
+    power: -100,
+    sight: 4,
+    requires: ['researchlab', 'techcentre'],
+    blurb: 'Tier three. Unlocks the Railgun Tank, the Stealth Tank and the Fortress. Draws heavy power.',
+  },
+  fortress: {
+    name: 'Fortress',
+    w: 2,
+    h: 2,
+    cost: 2400,
+    buildTicks: 220,
+    hp: 2200,
+    power: -70,
+    sight: 8,
+    weapon: { kind: 'shell', damage: 75, range: 7, cooldown: 24, splash: 0.8 },
+    requires: ['protoworks'],
+    blurb: 'A heavy gun emplacement: long range, splash and a great deal of armour. Slows when power is short.',
+  },
+  // round5:D end.
 };
 
 /** Structures in the order the build menu offers them. */
@@ -620,9 +761,32 @@ export const BUILD_MENU: BuildingKind[] = [
   'flakcannon',
   'helipad',
   'researchlab',
+  // round5:D begin. Tier three: its structures, appended here (data only; the build window reads them).
+  'protoworks',
+  'fortress',
+  // round5:D end.
 ];
 export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic', 'skyhunter'];
-export const VEHICLE_MENU: UnitKind[] = ['hauler', 'buggy', 'tank', 'artillery', 'missilecarrier', 'flametank', 'bastion', 'flaktrack'];
+export const VEHICLE_MENU: UnitKind[] = [
+  'hauler',
+  'buggy',
+  'tank',
+  'artillery',
+  'missilecarrier',
+  'flametank',
+  'bastion',
+  'flaktrack',
+  // round5:C begin. Engineering vehicles: its units, appended here.
+  'repairtruck',
+  'basetruck',
+  // round5:C end.
+  // round5:D begin. Tier three: its units, appended here.
+  'railtank',
+  'stealthtank',
+  // round5:D end.
+];
+/** Aircraft in the order the Air tab offers them. */
+export const AIR_MENU: UnitKind[] = ['gunship', 'bomber'];
 
 /**
  * The original game: six structures (and the Command Yard) and six units. A skirmish set up with
@@ -643,12 +807,35 @@ export const STANDARD_TECH: readonly (BuildingKind | UnitKind)[] = [
   'artillery',
 ];
 
+/**
+ * Every build list by queue, in menu (and hotkey) order: the one table the build window, How to
+ * play and the harness read. A new item joins a list above (BUILD_MENU, INFANTRY_MENU,
+ * VEHICLE_MENU, AIR_MENU) and nowhere else; the build window lays out any item from its spec's
+ * `requires`, including ones it has never seen (fireline-round5-design.md).
+ */
+export const MENUS: Record<Category, readonly (BuildingKind | UnitKind)[]> = {
+  building: BUILD_MENU,
+  infantry: INFANTRY_MENU,
+  vehicle: VEHICLE_MENU,
+  air: AIR_MENU,
+};
+
 /** Which structure each queue needs before it will make progress. */
 export const PRODUCER: Record<Category, BuildingKind> = {
   building: 'hq',
   infantry: 'barracks',
   vehicle: 'factory',
   air: 'helipad',
+};
+
+/**
+ * Structures that also work a queue besides its PRODUCER. Empty before round 5; workstream C adds
+ * the Field Yard (Structures) between its markers. Read through producerFor and hasProducer.
+ */
+export const ALSO_PRODUCES: Partial<Record<BuildingKind, Category>> = {
+  // round5:C begin. The Field Yard works the Structures queue.
+  fieldyard: 'building',
+  // round5:C end.
 };
 
 export const MAX_QUEUE = 5;
@@ -936,20 +1123,74 @@ export interface SkirmishSetup {
   sides: 2 | 3 | 4;
   /** 'ffa': every side for itself. 'teams': two teams (see teamsFor in sides.ts). Always 'ffa' with 2 sides. */
   mode: SideMode;
+  /**
+   * Round 5, workstream B: how big the map is for the number of sides (MAP_SIZE_TILES). Absent on
+   * setups saved before round 5, which normaliseSetup reads as 'standard': the size they always had.
+   */
+  size?: MapSize;
+  /**
+   * Round 5, workstream D: neutral sites (Oil Derricks, Field Hospitals, Comms Relays) on the map.
+   * Absent on setups saved before round 5, which normaliseSetup reads as false.
+   */
+  sites?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
 export type SideMode = 'ffa' | 'teams';
 
 /** What the lobby offers a new skirmish by default. */
-export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa' };
+export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', size: 'standard', sites: false };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
  * one. The original game exactly: the original map generator, standard tech, no skirmish powers.
  */
-export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa' };
+export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', size: 'standard', sites: false };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
+
+// round5:B begin. Larger maps (fireline-round5-design.md, workstream B): the numbers below are the
+// contract's starting points; B measures, may lower them (never raise past MAP_TILES_MAX without a
+// stated measurement), and adds its constants inside this block.
+export type MapSize = 'standard' | 'large' | 'huge';
+/** The sizes the lobby offers, smallest first. */
+export const MAP_SIZES: MapSize[] = ['standard', 'large', 'huge'];
+export const MAP_SIZE_NAMES: Record<MapSize, string> = { standard: 'Standard', large: 'Large', huge: 'Huge' };
+/** A skirmish map's width and height in tiles, by size and number of sides. 'standard' is MAP_SIZE_FOR exactly. */
+export const MAP_SIZE_TILES: Record<MapSize, Record<2 | 3 | 4, number>> = {
+  standard: MAP_SIZE_FOR,
+  large: { 2: 96, 3: 112, 4: 128 },
+  huge: { 2: 128, 3: 144, 4: 160 },
+};
+/** No map is wider or taller than this (pathfinding, fog and the terrain prerender are sized for it). */
+export const MAP_TILES_MAX = 160;
+/** A setup's map width and height in tiles. Setups from before round 5 have no size: 'standard'. */
+export const mapTilesFor = (setup: Pick<SkirmishSetup, 'sides' | 'size'>): number => MAP_SIZE_TILES[setup.size ?? 'standard'][setup.sides];
+/** What the lobby says about each size: roughly how long a battle against the computer runs (measured, round 5 build log). */
+export const MAP_SIZE_BLURBS: Record<MapSize, string> = {
+  standard: 'The original size. Battles run about 20 minutes.',
+  large: 'Half as wide again, with more ore and room to expand. Battles run about 30 to 40 minutes.',
+  huge: 'Twice as wide, with ore all over. Battles run 45 minutes or more.',
+};
+/**
+ * Ore that spreads back (large and huge maps only): every ORE_SPREAD_TICKS, a tile of an ore field
+ * that has been worked out, beside a tile that still holds ore and with nothing standing on it,
+ * regains ORE_SPREAD_AMOUNT. A field never vanishes while one tile of it is left. Standard maps:
+ * none, exactly as before.
+ */
+export const ORE_SPREAD_TICKS = 300;
+export const ORE_SPREAD_AMOUNT = 60;
+/**
+ * Path searches allowed per tick. Standard maps: 24, as always. On larger maps a walk is longer and
+ * each search costs more, so fewer are allowed per tick, but each may expand further
+ * (pathExpandLimitFor) so a long walk still finds its way rather than stopping short and searching
+ * again.
+ */
+export const pathBudgetFor = (size: MapSize): number => (size === 'standard' ? 24 : 16);
+/** How many tiles one path search may expand: 6000 on standard maps, as always; on larger maps 60% of the map. */
+export const pathExpandLimitFor = (size: MapSize, tiles: number): number => (size === 'standard' ? 6000 : Math.max(6000, Math.round(tiles * 0.6)));
+/** Ticks between fog updates (the explored map): 5 on standard maps, as always; 10 on larger maps. */
+export const exploreTicksFor = (size: MapSize): number => (size === 'standard' ? 5 : 10);
+// round5:B end.
 /** What each map type looks like with three or four sides, where the two-sided blurb does not fit. */
 export const MAP_TYPE_BLURBS_SIDES: Record<MapType, string> = {
   classic: 'Mixed ground: woods, ridges and ponds, with tracks to every neighbour and the centre.',
@@ -1005,9 +1246,6 @@ export const HERO_XP_ABILITY = HERO_XP_STRUCTURE;
 //
 // Advanced tech only: on standard tech and in a mission none of this is offered. The simulation is
 // in air.ts (aircraft) and research.ts (upgrades); the computer's side of it in aiAir.ts.
-
-/** Aircraft in the order the Air tab offers them. */
-export const AIR_MENU: UnitKind[] = ['gunship', 'bomber'];
 
 /** How many aircraft one Helipad serves: it builds for them and rearms them. */
 export const HELIPAD_SLOTS = 2;
@@ -1086,3 +1324,74 @@ export const ENGINES_SPEED = 1.15;
 export const REFINING_INCOME = 1.15;
 export const AIRFRAMES_HP = 1.25;
 export const AIRFRAMES_REARM = 0.6;
+
+// ---- Round 5 (fireline-round5-design.md) --------------------------------------------------------
+//
+// Each workstream appends its constants inside its own block below and nowhere else in this
+// section. Its specs go at the end of UNITS and BUILDINGS, its kinds in the unions and its items in
+// the menus, each between its own round5 markers above.
+
+// round5:C begin. Engineering vehicles: the Repair Truck, the Forward Base truck and the Field Yard.
+//
+// Advanced tech, skirmish only (none of the three is in STANDARD_TECH). The simulation is in
+// engineering.ts, the computer's side of it in aiEngineering.ts.
+
+/** Repair Truck: mends the most damaged of its side's vehicles within this many tiles, centre to centre. */
+export const REPAIR_TRUCK_RANGE = 2;
+/** Hit points each mend gives back. */
+export const REPAIR_TRUCK_HP = 8;
+/** Ticks between mends: 16 health a second (the Repair Bay gives 12, and is paid for). */
+export const REPAIR_TRUCK_TICKS = 5;
+/** How far an idle Repair Truck looks for a damaged vehicle to drive to. */
+export const REPAIR_TRUCK_SEEK = 8;
+/** Field Yards a side may have, counting Forward Base Trucks standing and queued. */
+export const MAX_FIELD_YARDS = 3;
+// round5:C end.
+
+// round5:D begin. Neutral sites and tier three.
+/** A neutral site's kind (Site in types.ts): Oil Derrick, Field Hospital, Comms Relay. D adds SITES, their numbers. */
+export type SiteKind = 'derrick' | 'hospital' | 'relay';
+export const SITE_KINDS: SiteKind[] = ['derrick', 'hospital', 'relay'];
+
+/** A neutral site's look and footprint. Every site is 2 by 2 and blocks the ground under it. */
+export interface SiteSpec {
+  name: string;
+  w: number;
+  h: number;
+  blurb: string;
+}
+export const SITES: Record<SiteKind, SiteSpec> = {
+  derrick: { name: 'Oil Derrick', w: 2, h: 2, blurb: 'Pays its holder 25 credits every five seconds: 300 a minute.' },
+  hospital: { name: 'Field Hospital', w: 2, h: 2, blurb: "Heals its holder's infantry within three tiles." },
+  relay: { name: 'Comms Relay', w: 2, h: 2, blurb: 'Shows its holder and allies everything within ten tiles.' },
+};
+/** Ticks of one team's infantry beside a site, alone, to take it: 10 seconds. */
+export const SITE_CAPTURE_TICKS = 100;
+/** How close infantry must stand to capture: tiles from the footprint's edge. */
+export const SITE_CAPTURE_RANGE = 1.5;
+/** An Oil Derrick pays its holder this much every DERRICK_TICKS: 300 a minute (a Hauler's load is 600). */
+export const DERRICK_INCOME = 25;
+export const DERRICK_TICKS = 50;
+/** A Field Hospital heals each of its holder's infantry within this many tiles of its footprint. */
+export const HOSPITAL_RANGE = 3;
+export const HOSPITAL_HEAL = 5;
+export const HOSPITAL_TICKS = 10;
+/** Tiles a Comms Relay reveals round its centre, to its holder and the holder's allies. */
+export const RELAY_RADIUS = 10;
+/** Sites of each kind in every side's share of the map, by map size. */
+export const SITES_PER_SIDE: Record<MapSize, Record<SiteKind, number>> = {
+  standard: { derrick: 1, hospital: 0, relay: 0 },
+  large: { derrick: 2, hospital: 1, relay: 1 },
+  huge: { derrick: 3, hospital: 1, relay: 2 },
+};
+/** Placement: a site's centre is at least this far from every start's yard centre, and from every other site's. */
+export const SITE_YARD_GAP = 10;
+export const SITE_GAP = 6;
+
+/** An enemy unit or structure within this many tiles sees a Stealth Tank (and can then target it). */
+export const STEALTH_DETECT_RANGE = 2.5;
+/** A Stealth Tank is seen by everyone for this many ticks after it fires. */
+export const STEALTH_REVEAL_TICKS = 30;
+/** The computer turns to tier three no sooner than this: 25 minutes. */
+export const TIER3_AI_TICKS = 15000;
+// round5:D end.

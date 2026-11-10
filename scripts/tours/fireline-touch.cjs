@@ -59,7 +59,7 @@ async function play(browser, name) {
     // The tour must step aside for the menu, or the menu cannot be used.
     await page.getByTestId('menu-button').tap();
     await page.getByRole('button', { name: 'Fast' }).tap({ timeout: 3000 });
-    await page.getByRole('button', { name: 'Close' }).tap({ timeout: 3000 });
+    await page.getByRole('button', { name: 'Close', exact: true }).tap({ timeout: 3000 });
 
     let cs = await cardState(page);
     if (!cs || cs.step !== 0) return await fail(`the run did not open on the welcome card: ${JSON.stringify(cs)}`);
@@ -114,7 +114,9 @@ async function play(browser, name) {
       cs = await cardState(page);
     }
     if (!cs || cs.step !== 11) return await fail(`the run ended on ${JSON.stringify(cs)}, not the last card`);
-    await page.getByRole('button', { name: 'Close' }).tap();
+    await page.locator('[data-tour-step]').getByRole('button', { name: 'Close', exact: true }).tap();
+    // The run ends with the build window open (its last cards ring its close button): close it.
+    if (await page.locator('#fl-build-window').count()) await page.locator('#fl-build-close').tap();
 
     // A one-finger drag pans: the paused battlefield must look different afterwards.
     await page.getByTestId('pause').tap();

@@ -1,6 +1,7 @@
-import { idx, inBounds, isWalkable, type GeneratedMap } from './map';
-import { stream } from './rng';
-import { MAP_H, MAP_SIZE_FOR, MAP_TYPES, MAP_W, ORE_LEVELS, ORE_TILE_MAX, type MapType, type OreLevel } from './rules';
+import { isWalkable, type GeneratedMap } from './map';
+import { seedFromString, stream } from './rng';
+import type { GameState } from './types';
+import { MAP_SIZE_FOR, MAP_SIZE_TILES, MAP_SIZES, MAP_TYPES, MAP_W, ORE_LEVELS, ORE_SPREAD_AMOUNT, ORE_TILE_MAX, type MapSize, type MapType, type OreLevel } from './rules';
 
 /**
  * Skirmish battlefields, one generator per map type. The campaign never comes here: its missions
@@ -20,14 +21,13 @@ import { MAP_H, MAP_SIZE_FOR, MAP_TYPES, MAP_W, ORE_LEVELS, ORE_TILE_MAX, type M
  * checks is thrown away and the next is drawn from the same seed, so the result is deterministic.
  */
 
-const N = MAP_W * MAP_H;
-const mirrorOf = (k: number) => N - 1 - k;
-
 /** Buildable tiles (walkable, no ore, not the yard) required within 8 tiles (Chebyshev) of each yard's centre. */
 export const MIN_BASE_GROUND = 140;
 /** Ore fields: tiles with ore, 8-connected. */
 export const MIN_ORE_FIELDS = 4;
 export const MAX_ORE_FIELDS = 8;
+/** Large and huge maps (round 5): more ore fields, so more may be counted. */
+export const MAX_ORE_FIELDS_LARGE = 24;
 /** Radius kept clear and buildable round each Command Yard. */
 const CLEARING = 8.5;
 const ATTEMPTS = 24;
@@ -39,21 +39,24 @@ export function randomMapType(seed: number): MapType {
   return MAP_TYPES[Math.floor(r.float() * MAP_TYPES.length)];
 }
 
-export function generateSkirmishMap(seed: number, type: MapType, ore: OreLevel = 'normal', sides: 2 | 3 | 4 = 2): GeneratedMap {
+export function generateSkirmishMap(seed: number, type: MapType, ore: OreLevel = 'normal', sides: 2 | 3 | 4 = 2, size: MapSize = 'standard'): GeneratedMap {
   const kind: MapType = MAP_TYPES.includes(type) ? type : 'classic';
   const level: OreLevel = ore in ORE_LEVELS ? ore : 'normal';
-  // Three or four sides: their own generator, below. Two sides: exactly the original path.
-  if (sides === 3 || sides === 4) return generateSidesMap(seed, kind, level, sides);
+  // Round 5: anything but a known size is standard.
+  const z: MapSize = MAP_SIZES.includes(size) ? size : 'standard';
+  // Three or four sides: their own generator, below. Two sides: exactly the original path (at
+  // standard size; larger sizes stretch the same layout, draftSkirmishMap).
+  if (sides === 3 || sides === 4) return generateSidesMap(seed, kind, level, sides, z);
   let last: GeneratedMap | null = null;
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     const sub = (seed + Math.imul(attempt, 0x9e3779b1)) >>> 0;
-    const m = draftSkirmishMap(sub, kind, level);
+    const m = draftSkirmishMap(sub, kind, level, z);
     if (mapProblem(m) === null) return m;
     last = m;
   }
   // Every type passes within a few attempts on every seed the harness sweeps; this is a guard.
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-    const m = draftSkirmishMap((seed + 0x51ed27 + attempt) >>> 0, 'plains', level);
+    const m = draftSkirmishMap((seed + 0x51ed27 + attempt) >>> 0, 'plains', level, z);
     if (mapProblem(m) === null) return m;
   }
   return last!;
@@ -67,14 +70,27 @@ interface Pt {
 }
 
 /** One attempt at a map, before the checks: exported for the harness to measure how often attempts pass. */
-export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel): GeneratedMap {
+export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel, size: MapSize = 'standard'): GeneratedMap {
   const rng = stream(seed);
-  const t: string[] = new Array(N).fill('g');
-  const ore: number[] = new Array(N).fill(0);
+  // The map's own size. Standard: MAP_W by MAP_H, and every scaled number below is exactly the
+  // original (k = 1). Large and huge: the same layout stretched by k, with more of everything.
+  const W = MAP_SIZE_TILES[size][2];
+  const H = W;
+  const NN = W * H;
+  const ks = W / MAP_W;
+  const big = size !== 'standard';
+  /** A length on the standard map, scaled to this one (unchanged on standard). */
+  const sc = (v: number) => v * ks;
+  const si = (v: number) => Math.round(v * ks);
+  const idx = (x: number, y: number) => y * W + x;
+  const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < H;
+  const mirrorOf = (i: number) => NN - 1 - i;
+  const t: string[] = new Array(NN).fill('g');
+  const ore: number[] = new Array(NN).fill(0);
 
   const lattice = (step: number) => {
-    const gw = Math.ceil(MAP_W / step) + 2;
-    const gh = Math.ceil(MAP_H / step) + 2;
+    const gw = Math.ceil(W / step) + 2;
+    const gh = Math.ceil(H / step) + 2;
     const g: number[] = [];
     for (let i = 0; i < gw * gh; i++) g.push(rng.float() * 2 - 1);
     return (x: number, y: number) => {
@@ -95,7 +111,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   /** Smooth 1-D noise in [-1, 1], for wobbling lines. */
   const wobble = (step: number) => {
     const g: number[] = [];
-    for (let i = 0; i < Math.ceil(MAP_W / step) + 3; i++) g.push(rng.float() * 2 - 1);
+    for (let i = 0; i < Math.ceil(W / step) + 3; i++) g.push(rng.float() * 2 - 1);
     return (x: number) => {
       const f = Math.max(0, x) / step;
       const i = Math.floor(f);
@@ -111,8 +127,8 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   const ridges = lattice(7);
   const woods = lattice(5);
   const soil = lattice(6);
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
+  for (let y = 0; y < H; y++)
+    for (let x = 0; x < W; x++) {
       const w = lakes(x, y);
       const r = ridges(x, y);
       const f = woods(x, y) + rng.float() * 0.25;
@@ -122,7 +138,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
       else if (f > P.trees) c = 't';
       t[idx(x, y)] = c;
     }
-  for (let k = 0; k < N / 2; k++) t[k] = t[mirrorOf(k)];
+  for (let k = 0; k < NN / 2; k++) t[k] = t[mirrorOf(k)];
 
   /** The symmetric brush. */
   const paint = (x: number, y: number, c: string) => {
@@ -140,14 +156,14 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   };
 
   // 2. Where the bases go: side 0 low on the map, its x drawn from the seed; side 1 is its mirror.
-  const sx = rng.int(5, MAP_W - 8);
-  const sy = MAP_H - rng.int(9, 11);
+  const sx = rng.int(si(5), W - si(8));
+  const sy = H - rng.int(si(9), si(11));
   const start0 = { x: sx, y: sy };
-  const start1 = { x: MAP_W - 1 - (sx + 2), y: MAP_H - 1 - (sy + 2) };
+  const start1 = { x: W - 1 - (sx + 2), y: H - 1 - (sy + 2) };
   const b0: Pt = { x: sx + 1.5, y: sy + 1.5 };
-  const b1: Pt = { x: MAP_W - b0.x, y: MAP_H - b0.y };
-  const CX = MAP_W / 2;
-  const CY = MAP_H / 2;
+  const b1: Pt = { x: W - b0.x, y: H - b0.y };
+  const CX = W / 2;
+  const CY = H / 2;
   /** Which way the middle of the map lies from side 0's base, across. */
   const inward = b0.x < CX - 4 ? 1 : b0.x > CX + 4 ? -1 : rng.float() < 0.5 ? -1 : 1;
   /** Across the map at right angles to the line between the bases: every point C + k * perp is as far from one base as the other. */
@@ -177,24 +193,29 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   if (type === 'classic') {
     // Wobbling dirt tracks between the bases and up a flank, as the original map has.
     carve(b0.x, b0.y, b1.x, b1.y);
-    carve(b0.x, b0.y - 8, CX + inward * rng.int(-6, 6), 6);
+    carve(b0.x, b0.y - 8, CX + inward * rng.int(si(-6), si(6)), si(6));
+    // Larger maps: a second track up the other flank as well.
+    if (big) carve(b0.x, b0.y - 8, CX - inward * rng.int(si(10), si(16)), si(6));
     contested.push({ x: CX, y: CY });
   } else if (type === 'river') {
     // A river along the middle, wobbling, narrowing to nothing at the centre column so the two
     // painted halves meet. Three crossings: a ford on each flank and an island midstream.
     const wob = wobble(9);
     const width = 2 + rng.float() * 0.8;
-    const centreY = (x: number) => CY + wob(x) * 3.5 * Math.min(1, Math.max(0, (CX - (x + 0.5)) / 6));
+    const centreY = (x: number) => CY + wob(x) * sc(3.5) * Math.min(1, Math.max(0, (CX - (x + 0.5)) / 6));
     for (let x = 0; x < CX; x++)
-      for (let y = 20; y < 44; y++) {
+      for (let y = CY - si(12); y < CY + si(12); y++) {
         const d = Math.abs(y + 0.5 - centreY(x));
         if (d < width) paint(x, y, 'w');
         else if (d < width + 1.2 && t[idx(x, y)] !== 'w') paint(x, y, 'd');
       }
-    const ford = rng.int(5, 20);
+    const ford = rng.int(si(5), si(20));
     const fw = rng.int(3, 4);
-    for (let x = ford; x < ford + fw; x++)
-      for (let y = 20; y < 44; y++) if (Math.abs(y + 0.5 - centreY(x)) < width + 1.2) paint(x, y, 'd');
+    // Larger maps: a second ford on each flank, between the first and the island.
+    const fords = big ? [ford, rng.int(si(20) + 5, CX - 9)] : [ford];
+    for (const f of fords)
+      for (let x = f; x < f + fw; x++)
+        for (let y = CY - si(12); y < CY + si(12); y++) if (Math.abs(y + 0.5 - centreY(x)) < width + 1.2) paint(x, y, 'd');
     // The island and the shallows that reach it from both banks.
     disc(CX, CY, 3.6, 'g', 0.6);
     for (let x = CX - 2; x < CX + 2; x++) for (let y = CY - 6; y < CY + 6; y++) if (t[idx(x, y)] === 'w') paint(x, y, 'd');
@@ -203,7 +224,9 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     // A ridge right across the middle, broken by three narrow passes (the middle one holding the
     // contested ore), and shorter spurs of rock on each side that split the approaches.
     const wob = wobble(8);
-    const passes = [rng.int(4, 19), CX - 2];
+    const passes = [rng.int(si(4), si(19)), CX - 2];
+    // Larger maps: a third pass on each flank.
+    if (big) passes.push(rng.int(si(19) + 5, CX - 9));
     // Painted on the left half only, its wobble fading to nothing at the centre column so the
     // brush's right half meets it.
     for (let x = 0; x < CX; x++) {
@@ -217,9 +240,9 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
       if (rng.float() < 0.4) paint(x, y + 2, 'r');
     }
     // Spurs: short ridges, on side 0's half (the brush mirrors them), clear of the base.
-    const spurs = rng.int(3, 5);
-    for (let i = 0, tries = 0; i < spurs && tries < 40; tries++) {
-      const a = { x: 2 + rng.float() * (MAP_W - 4), y: CY + 4 + rng.float() * 16 };
+    const spurs = Math.round(rng.int(3, 5) * ks * ks);
+    for (let i = 0, tries = 0; i < spurs && tries < 40 * ks * ks; tries++) {
+      const a = { x: 2 + rng.float() * (W - 4), y: CY + 4 + rng.float() * sc(16) };
       const len = 7 + rng.float() * 9;
       const dx = rng.float() * 2 - 1;
       const dy = (rng.float() * 2 - 1) * 0.6;
@@ -227,7 +250,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
       const b = { x: a.x + (dx / m) * len, y: a.y + (dy / m) * len };
       if (dist(a, b0) < CLEARING + 3 || dist(b, b0) < CLEARING + 3 || dist({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, b0) < CLEARING + 2) continue;
       if (b.y < CY + 3) continue;
-      const nearPass = (p: Pt) => passes.some(q => dist(p, { x: q + 1.5, y: CY }) < 9 || dist(p, { x: MAP_W - q - 1.5, y: CY }) < 9);
+      const nearPass = (p: Pt) => passes.some(q => dist(p, { x: q + 1.5, y: CY }) < 9 || dist(p, { x: W - q - 1.5, y: CY }) < 9);
       if (nearPass(a) || nearPass(b)) continue;
       for (let s = 0; s <= len; s++) {
         const x = Math.round(a.x + ((b.x - a.x) * s) / len);
@@ -247,11 +270,11 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     }
     contested.push({ x: CX, y: CY });
   } else if (type === 'lakes') {
-    const pairs = rng.int(3, 4);
+    const pairs = Math.round(rng.int(3, 4) * ks * ks);
     let placed = 0;
-    for (let tries = 0; tries < 60 && placed < pairs; tries++) {
+    for (let tries = 0; tries < 60 * ks * ks && placed < pairs; tries++) {
       const r = 2.5 + rng.float() * 3;
-      const p = { x: 3 + rng.float() * (MAP_W - 6), y: CY + 2 + rng.float() * 20 };
+      const p = { x: 3 + rng.float() * (W - 6), y: CY + 2 + rng.float() * sc(20) };
       if (dist(p, b0) < CLEARING + r + 2 || dist(p, b1) < CLEARING + r + 2) continue;
       disc(p.x, p.y, r, 'w', 1.2);
       placed++;
@@ -259,8 +282,8 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     if (rng.float() < 0.65) {
       // A lake in the very middle: the contested ore lies either side of it.
       disc(CX, CY, 2.5 + rng.float() * 2, 'w', 1);
-      const k = rng.int(9, 13);
-      const side = { x: CX + perp.x * k, y: CY + perp.y * k };
+      const off = rng.int(si(9), si(13));
+      const side = { x: CX + perp.x * off, y: CY + perp.y * off };
       contested.push(side);
       // Tracks from both bases to the ground beside it (the brush adds the other side's).
       carve(b0.x, b0.y, side.x, side.y);
@@ -272,34 +295,36 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     }
   } else if (type === 'plains') {
     extraFields = 1;
-    const k = rng.float() < 0.5 ? 0 : rng.int(8, 12);
-    contested.push({ x: CX + perp.x * k, y: CY + perp.y * k });
+    const off = rng.float() < 0.5 ? 0 : rng.int(si(8), si(12));
+    contested.push({ x: CX + perp.x * off, y: CY + perp.y * off });
   } else {
     // Canyon: cliffs fill the middle band, cut by long corridors running from one side to the other.
-    const top = rng.int(16, 19);
-    for (let y = top; y < MAP_H - top; y++) for (let x = 0; x < MAP_W; x++) paint(x, y, 'r');
+    const top = rng.int(si(16), si(19));
+    for (let y = top; y < H - top; y++) for (let x = 0; x < W; x++) paint(x, y, 'r');
     /**
      * One corridor down the band (the brush adds its mirror), with tracks from both bases to its
      * ends so neither end is a dead end. Returns where it crosses the middle row.
      */
     const corridor = (cx: number, amp: number, half: number) => {
       const wob = wobble(7);
-      for (let y = top - 1; y <= MAP_H - top; y++) {
+      for (let y = top - 1; y <= H - top; y++) {
         const c = cx + wob(y) * amp;
         for (let x = Math.floor(c - half); x <= Math.ceil(c + half); x++)
           if (Math.abs(x + 0.5 - c) <= half) paint(x, y, rng.float() < 0.2 ? 'd' : 'g');
       }
-      carve(b0.x, b0.y, cx + wob(MAP_H - top) * amp, MAP_H - top + 1);
+      carve(b0.x, b0.y, cx + wob(H - top) * amp, H - top + 1);
       carve(cx + wob(top - 1) * amp, top - 2, b1.x, b1.y);
       return (y: number) => cx + wob(y) * amp;
     };
-    const flankX = corridor(rng.int(9, 19), 3, 2.6);
+    const flankX = corridor(rng.int(si(9), si(19)), 3, 2.6);
+    // Larger maps: a second corridor on each flank.
+    if (big) corridor(rng.int(si(19) + 6, CX - 8), 3, 2.6);
     // Two corridors: the contested ore sits in them, where each crosses the line of points as far
     // from one base as the other. If that is outside the cliffs, or by chance, a third corridor
     // down the middle holds it instead.
     let mid: Pt | null = null;
     let best = 1.5;
-    for (let y = top + 4; y <= MAP_H - top - 4; y++) {
+    for (let y = top + 4; y <= H - top - 4; y++) {
       const x = flankX(y);
       const off = Math.abs((x - CX) * (b1.x - b0.x) + (y - CY) * (b1.y - b0.y)) / span;
       if (off < best) {
@@ -333,14 +358,14 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
         const amount = Math.round((ORE_TILE_MAX * rich * lv.amount * (1.15 - d / (r + 1)) * (0.75 + rng.float() * 0.25)) / 10) * 10;
         ore[k] = ore[mirrorOf(k)] = Math.max(60, Math.min(ORE_TILE_MAX, amount));
       }
-    fields.push(c, { x: MAP_W - c.x, y: MAP_H - c.y });
+    fields.push(c, { x: W - c.x, y: H - c.y });
   };
   /** Whether a field of radius r fits at c: clear of the bases' ground, other fields and its own mirror, mostly on land. */
   const fits = (c: Pt, r: number, nearBase = false) => {
-    if (c.x < r + 1 || c.y < r + 1 || c.x > MAP_W - r - 1 || c.y > MAP_H - r - 1) return false;
+    if (c.x < r + 1 || c.y < r + 1 || c.x > W - r - 1 || c.y > H - r - 1) return false;
     const minBase = nearBase ? CLEARING + r - 0.5 : CLEARING + r + 3;
     if (dist(c, b0) < minBase || dist(c, b1) < minBase) return false;
-    const m = { x: MAP_W - c.x, y: MAP_H - c.y };
+    const m = { x: W - c.x, y: H - c.y };
     if (!(c.x === m.x && c.y === m.y) && dist(c, m) < 2 * r + 4) return false;
     if (fields.some(f => dist(f, c) < 2 * r + 4)) return false;
     let land = 0;
@@ -359,7 +384,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   // perpendicular bisector of the bases, through the centre). Off the centre it comes as a pair,
   // one either side, each as far from both bases.
   const bisector = (k: number): Pt => ({ x: CX + perp.x * k, y: CY + perp.y * k });
-  const middles = [...contested, ...[0, 3, -3, 6, -6, 9, -9, 12, -12].map(bisector)];
+  const middles = [...contested, ...[0, 3, -3, 6, -6, 9, -9, 12, -12].map(v => bisector(sc(v)))];
   for (const r of [3.5, 2.5]) {
     const c = middles.find(p => fits(p, r));
     if (c) {
@@ -383,12 +408,35 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     const small = homeTries.find(p => fits(p, 2.5, true));
     if (small) field(small, 2.5, 1.2);
   }
-  // Expansions: further out, still on side 0's half (the brush gives side 1 the mirror).
-  for (let i = 0; i < 1 + extraFields; i++) {
+  // Larger maps: a second field of each side's own, behind or beside its base, where a later
+  // refinery is safe; and contested fields out on the flanks, each pair as far from both bases.
+  if (big) {
+    const backTries: Pt[] = [
+      { x: b0.x - inward * 12, y: b0.y + 3 },
+      { x: b0.x - inward * 10, y: b0.y + 7 },
+      { x: b0.x + inward * 12, y: b0.y + 3 },
+      { x: b0.x + inward * 10, y: b0.y + 7 },
+      { x: b0.x - inward * 14, y: b0.y - 2 },
+      { x: b0.x + inward * 14, y: b0.y - 2 },
+      { x: b0.x - inward * 9, y: b0.y - 12 },
+    ];
+    const back = backTries.find(p => fits(p, 3, true));
+    if (back) field(back, 3, 0.95);
+    const flanks = size === 'huge' ? 2 : 1;
+    const offsets = [16, 20, 24, 28, 32, 36, 40].flatMap(v => [sc(v), -sc(v)]);
+    for (let i = 0; i < flanks; i++) {
+      const c = offsets.map(bisector).find(p => fits(p, 3));
+      if (c) field(c, 3, 1);
+    }
+  }
+  // Expansions: further out, still on side 0's half (the brush gives side 1 the mirror). Larger
+  // maps have more of them, further out.
+  const expansions = 1 + extraFields + (size === 'huge' ? 3 : size === 'large' ? 2 : 0);
+  for (let i = 0; i < expansions; i++) {
     for (let tries = 0; tries < 50; tries++) {
-      const p = { x: 4 + rng.float() * (MAP_W - 8), y: CY + 5 + rng.float() * (MAP_H - CY - 9) };
+      const p = { x: 4 + rng.float() * (W - 8), y: CY + 5 + rng.float() * (H - CY - 9) };
       const d = dist(p, b0);
-      if (d < 14 || d > 30) continue;
+      if (d < 14 || d > sc(30)) continue;
       if (!fits(p, 3.5)) continue;
       field(p, 3.5, 0.95);
       break;
@@ -398,15 +446,15 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
   // 6. Anything a unit cannot reach from the bases becomes rock, and loses its ore.
   // (From both, so the result stays symmetric even when they are cut off from each other, which
   // the checks then refuse.)
-  const reach = flood(t, idx(Math.floor(b0.x), Math.floor(b0.y)));
-  const reach1 = flood(t, idx(Math.floor(b1.x), Math.floor(b1.y)));
-  for (let k = 0; k < N; k++) {
+  const reach = flood(t, idx(Math.floor(b0.x), Math.floor(b0.y)), undefined, W);
+  const reach1 = flood(t, idx(Math.floor(b1.x), Math.floor(b1.y)), undefined, W);
+  for (let k = 0; k < NN; k++) {
     if (!reach[k] && !reach1[k] && isWalkable(t[k])) {
       t[k] = 'r';
       ore[k] = 0;
     }
   }
-  return { w: MAP_W, h: MAP_H, tiles: t.join(''), ore, starts: [start0, start1] };
+  return { w: W, h: H, tiles: t.join(''), ore, starts: [start0, start1] };
 }
 
 /** Terrain noise thresholds by type: below `water` is water, a band `ridge` wide is rock, above `trees` is woods. */
@@ -422,19 +470,19 @@ const TERRAIN: Record<MapType, { water: number; ridge: number; trees: number }> 
 const dist = (a: Pt, b: Pt) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 
 /** Walkable tiles reachable from `from`, four ways (units never cut corners, so this is what they can walk). */
-function flood(t: string[] | string, from: number, blocked?: Uint8Array): Uint8Array {
-  const reach = new Uint8Array(N);
+function flood(t: string[] | string, from: number, blocked?: Uint8Array, W = MAP_W): Uint8Array {
+  const reach = new Uint8Array((W * W));
   if (!isWalkable(t[from]) || blocked?.[from]) return reach;
   const q: number[] = [from];
   reach[from] = 1;
   while (q.length) {
     const k = q.pop()!;
-    const x = k % MAP_W;
-    const y = (k / MAP_W) | 0;
+    const x = k % W;
+    const y = (k / W) | 0;
     if (x > 0) visit(k - 1);
-    if (x < MAP_W - 1) visit(k + 1);
-    if (y > 0) visit(k - MAP_W);
-    if (y < MAP_H - 1) visit(k + MAP_W);
+    if (x < W - 1) visit(k + 1);
+    if (y > 0) visit(k - W);
+    if (y < W - 1) visit(k + W);
   }
   return reach;
   function visit(n: number) {
@@ -445,16 +493,16 @@ function flood(t: string[] | string, from: number, blocked?: Uint8Array): Uint8A
 }
 
 /** Shortest walk between two tiles (four ways), as tile indices from `a` to `b`; empty if there is none. */
-export function shortestWalk(tiles: string, a: number, b: number, blocked?: Uint8Array): number[] {
-  const came = new Int32Array(N).fill(-1);
+export function shortestWalk(tiles: string, a: number, b: number, blocked?: Uint8Array, W = Math.round(Math.sqrt(tiles.length))): number[] {
+  const came = new Int32Array((W * W)).fill(-1);
   came[a] = a;
   let q = [a];
   while (q.length && came[b] < 0) {
     const nq: number[] = [];
     for (const k of q) {
-      const x = k % MAP_W;
-      const y = (k / MAP_W) | 0;
-      const ns = [x > 0 ? k - 1 : -1, x < MAP_W - 1 ? k + 1 : -1, y > 0 ? k - MAP_W : -1, y < MAP_H - 1 ? k + MAP_W : -1];
+      const x = k % W;
+      const y = (k / W) | 0;
+      const ns = [x > 0 ? k - 1 : -1, x < W - 1 ? k + 1 : -1, y > 0 ? k - W : -1, y < W - 1 ? k + W : -1];
       for (const n of ns) {
         if (n < 0 || came[n] >= 0 || !isWalkable(tiles[n]) || blocked?.[n]) continue;
         came[n] = k;
@@ -476,29 +524,34 @@ export function shortestWalk(tiles: string, a: number, b: number, blocked?: Uint
  * another. Returns the second route, or an empty list if cutting the first leaves none.
  */
 export function secondRoute(m: GeneratedMap, spare = 11): number[] {
+  const W = m.w;
+  const idx = (x: number, y: number) => y * W + x;
+  const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < W;
   const a = idx(m.starts[0].x + 1, m.starts[0].y + 1);
   const b = idx(m.starts[1].x + 1, m.starts[1].y + 1);
-  const first = shortestWalk(m.tiles, a, b);
+  const first = shortestWalk(m.tiles, a, b, undefined, W);
   if (!first.length) return [];
   const ax = m.starts[0].x + 1.5;
   const ay = m.starts[0].y + 1.5;
   const bx = m.starts[1].x + 1.5;
   const by = m.starts[1].y + 1.5;
-  const blocked = new Uint8Array(N);
+  const blocked = new Uint8Array((W * W));
   for (const k of first) {
-    const x = k % MAP_W;
-    const y = (k / MAP_W) | 0;
+    const x = k % W;
+    const y = (k / W) | 0;
     if (Math.hypot(x + 0.5 - ax, y + 0.5 - ay) <= spare || Math.hypot(x + 0.5 - bx, y + 0.5 - by) <= spare) continue;
     for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (inBounds(x + dx, y + dy)) blocked[idx(x + dx, y + dy)] = 1;
   }
-  return shortestWalk(m.tiles, a, b, blocked);
+  return shortestWalk(m.tiles, a, b, blocked, W);
 }
 
 /** Ore fields: groups of ore tiles touching (eight ways). Returns each field's tiles. */
-export function oreFields(ore: number[]): number[][] {
-  const seen = new Uint8Array(N);
+export function oreFields(ore: number[], W = Math.round(Math.sqrt(ore.length))): number[][] {
+  const idx = (x: number, y: number) => y * W + x;
+  const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < W;
+  const seen = new Uint8Array((W * W));
   const out: number[][] = [];
-  for (let k = 0; k < N; k++) {
+  for (let k = 0; k < (W * W); k++) {
     if (seen[k] || ore[k] <= 0) continue;
     const group: number[] = [];
     const q = [k];
@@ -506,8 +559,8 @@ export function oreFields(ore: number[]): number[][] {
     while (q.length) {
       const c = q.pop()!;
       group.push(c);
-      const x = c % MAP_W;
-      const y = (c / MAP_W) | 0;
+      const x = c % W;
+      const y = (c / W) | 0;
       for (let dy = -1; dy <= 1; dy++)
         for (let dx = -1; dx <= 1; dx++) {
           if (!inBounds(x + dx, y + dy)) continue;
@@ -526,18 +579,21 @@ export function oreFields(ore: number[]): number[][] {
 export const HOME_FIELD_RANGE = 16;
 
 /** The middle of an ore field, in tile coordinates. */
-export function fieldCentre(tiles: number[]): { x: number; y: number } {
+export function fieldCentre(tiles: number[], W = MAP_W): { x: number; y: number } {
   let x = 0;
   let y = 0;
   for (const k of tiles) {
-    x += (k % MAP_W) + 0.5;
-    y += ((k / MAP_W) | 0) + 0.5;
+    x += (k % W) + 0.5;
+    y += ((k / W) | 0) + 0.5;
   }
   return { x: x / tiles.length, y: y / tiles.length };
 }
 
 /** Buildable tiles (walkable, no ore, outside the yard) within 8 tiles of a yard placed at `st`. */
 export function baseGround(m: GeneratedMap, st: { x: number; y: number }): number {
+  const W = m.w;
+  const idx = (x: number, y: number) => y * W + x;
+  const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < W;
   let n = 0;
   for (let y = st.y + 1 - 8; y <= st.y + 1 + 8; y++)
     for (let x = st.x + 1 - 8; x <= st.x + 1 + 8; x++) {
@@ -552,11 +608,18 @@ export function baseGround(m: GeneratedMap, st: { x: number; y: number }): numbe
 /** What is wrong with a skirmish map, or null if it meets every rule above. */
 export function mapProblem(m: GeneratedMap): string | null {
   if (m.starts.length > 2) return sidesProblem(m);
-  if (m.tiles.length !== N || m.ore.length !== N) return 'wrong size';
-  for (let k = 0; k < N / 2; k++) if (m.tiles[k] !== m.tiles[mirrorOf(k)] || m.ore[k] !== m.ore[mirrorOf(k)]) return 'not symmetric';
+  // Two sides: 64 tiles square (standard) or one of the larger sizes, MAP_SIZE_TILES.
+  const W = m.w;
+  if (m.h !== W || !MAP_SIZES.some(z => MAP_SIZE_TILES[z][2] === W)) return 'wrong size';
+  const big = W !== MAP_W;
+  const idx = (x: number, y: number) => y * W + x;
+  const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < W && y < W;
+  const mirrorOf = (i: number) => W * W - 1 - i;
+  if (m.tiles.length !== (W * W) || m.ore.length !== (W * W)) return 'wrong size';
+  for (let k = 0; k < (W * W) / 2; k++) if (m.tiles[k] !== m.tiles[mirrorOf(k)] || m.ore[k] !== m.ore[mirrorOf(k)]) return 'not symmetric';
   const [s0, s1] = m.starts;
-  if (s1.x !== MAP_W - 1 - (s0.x + 2) || s1.y !== MAP_H - 1 - (s0.y + 2)) return 'starts not mirrored';
-  if (s0.y < MAP_H / 2 || s1.y + 3 > MAP_H / 2) return 'side 0 must start in the bottom half, side 1 in the top';
+  if (s1.x !== W - 1 - (s0.x + 2) || s1.y !== W - 1 - (s0.y + 2)) return 'starts not mirrored';
+  if (s0.y < W / 2 || s1.y + 3 > W / 2) return 'side 0 must start in the bottom half, side 1 in the top';
   for (const st of m.starts)
     for (let y = st.y; y < st.y + 3; y++)
       for (let x = st.x; x < st.x + 3; x++) {
@@ -566,18 +629,18 @@ export function mapProblem(m: GeneratedMap): string | null {
       }
   for (const st of m.starts) if (baseGround(m, st) < MIN_BASE_GROUND) return 'too little buildable ground by a base';
   const a = idx(s0.x + 1, s0.y + 1);
-  const reach = flood(m.tiles, a);
+  const reach = flood(m.tiles, a, undefined, W);
   if (!reach[idx(s1.x + 1, s1.y + 1)]) return 'bases not connected';
-  for (let k = 0; k < N; k++) {
+  for (let k = 0; k < (W * W); k++) {
     if (isWalkable(m.tiles[k]) && !reach[k]) return 'unreachable ground';
     if (m.ore[k] > 0 && !isWalkable(m.tiles[k])) return 'ore on unwalkable ground';
   }
-  const fields = oreFields(m.ore).filter(f => f.length >= 5);
-  if (fields.length < MIN_ORE_FIELDS || fields.length > MAX_ORE_FIELDS) return `${fields.length} ore fields`;
+  const fields = oreFields(m.ore, W).filter(f => f.length >= 5);
+  if (fields.length < MIN_ORE_FIELDS || fields.length > (big ? MAX_ORE_FIELDS_LARGE : MAX_ORE_FIELDS)) return `${fields.length} ore fields`;
   // One near each base, an expansion of each side's own, and one contested between them.
   const c0 = { x: s0.x + 1.5, y: s0.y + 1.5 };
   const c1 = { x: s1.x + 1.5, y: s1.y + 1.5 };
-  const centres = fields.map(fieldCentre);
+  const centres = fields.map(f => fieldCentre(f, W));
   if (!centres.some(p => dist(p, c0) < HOME_FIELD_RANGE)) return 'no ore field near the bases';
   if (centres.filter(p => dist(p, c0) < dist(p, c1) - 3).length < 2) return 'no expansion';
   if (!centres.some(p => Math.abs(dist(p, c0) - dist(p, c1)) < 3)) return 'no contested ore field';
@@ -634,25 +697,31 @@ function inWedge0(n: 3 | 4, v: Vec): boolean {
   return n === 4 ? v.dx <= 0 && v.dy >= 0 : v.dy > 0 && v.dx * v.dx <= 3 * v.dy * v.dy;
 }
 
-function generateSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n: 3 | 4): GeneratedMap {
+function generateSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n: 3 | 4, size: MapSize = 'standard'): GeneratedMap {
   let last: GeneratedMap | null = null;
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
     const sub = (seed + Math.imul(attempt, 0x9e3779b1)) >>> 0;
-    const m = draftSidesMap(sub, type, oreLevel, n);
+    const m = draftSidesMap(sub, type, oreLevel, n, size);
     if (sidesProblem(m) === null) return m;
     last = m;
   }
   // A guard, as for two sides: every type passes within a few attempts on every seed swept.
   for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
-    const m = draftSidesMap((seed + 0x51ed27 + attempt) >>> 0, 'plains', oreLevel, n);
+    const m = draftSidesMap((seed + 0x51ed27 + attempt) >>> 0, 'plains', oreLevel, n, size);
     if (sidesProblem(m) === null) return m;
   }
   return last!;
 }
 
 /** One attempt at a map of three or four sides, before the checks. Exported for the harness. */
-export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n: 3 | 4): GeneratedMap {
-  const S = MAP_SIZE_FOR[n];
+export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n: 3 | 4, size: MapSize = 'standard'): GeneratedMap {
+  const S = MAP_SIZE_TILES[size][n];
+  // Round 5: larger maps stretch the same wedge by ks (1 on standard, where every number below is
+  // exactly the original) and add fields; see the build log.
+  const ks = S / MAP_SIZE_FOR[n];
+  const big = size !== 'standard';
+  const sc = (v: number) => v * ks;
+  const si = (v: number) => Math.round(v * ks);
   const NN = S * S;
   const C = S / 2;
   const rng = stream(seed);
@@ -753,8 +822,8 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
 
   // 2. Side 0's base. Four sides: on the diagonal of the bottom-left quarter. Three: bottom centre
   // (the yard is three tiles wide, so its centre sits half a tile left of the axis).
-  const sx = n === 4 ? rng.int(13, 18) : C - 2;
-  const sy = n === 4 ? S - 3 - sx : S - rng.int(13, 16);
+  const sx = n === 4 ? rng.int(si(13), si(18)) : C - 2;
+  const sy = n === 4 ? S - 3 - sx : S - rng.int(si(13), si(16));
   const yard0: Pt = { x: sx + 1.5, y: sy + 1.5 };
   /** Side 0's base on the axis, for laying out the wedge. */
   const b0: Pt = n === 4 ? yard0 : { x: C, y: yard0.y };
@@ -781,7 +850,7 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
     // across water from each other. They cross at the track's ford, at an outer ford, or through
     // the centre, an island of ore every side reaches by its own track.
     const wob = wobble(9);
-    const outer = rN + rng.int(10, 14);
+    const outer = rN + rng.int(si(10), si(14));
     for (let y = 0; y < S; y++)
       for (let x = 0; x < S; x++) {
         const e = fromEdge(x, y);
@@ -796,7 +865,7 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
     // Ridges down each edge of the wedge and an arc across it between the base and the centre:
     // the tracks cut passes through them, and one more pass opens each edge further out.
     const wob = wobble(8);
-    const pass = rN + rng.int(8, 12);
+    const pass = rN + rng.int(si(8), si(12));
     const arc = d * (0.5 + rng.float() * 0.1);
     for (let y = 0; y < S; y++)
       for (let x = 0; x < S; x++) {
@@ -805,8 +874,8 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
         if (Math.abs(radius(x, y) - arc) < 1.1 && inWedge0(n, { dx: x + 0.5 - C, dy: y + 0.5 - C })) paint(x, y, 'r');
       }
   } else if (type === 'lakes') {
-    const count = rng.int(2, 4);
-    for (let placed = 0, tries = 0; placed < count && tries < 60; tries++) {
+    const count = Math.round(rng.int(2, 4) * ks * ks);
+    for (let placed = 0, tries = 0; placed < count && tries < 60 * ks * ks; tries++) {
       const r = 2.5 + rng.float() * 3;
       const u = rng.float();
       const out = 8 + rng.float() * (d + 4);
@@ -819,7 +888,7 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
     }
   } else if (type === 'canyon') {
     // A ring of cliffs between the bases and the centre, cut only by the tracks, made wide.
-    const inner = 7 + rng.float() * 2;
+    const inner = sc(7 + rng.float() * 2);
     const outerR = d - CLEARING - 1.5;
     for (let y = 0; y < S; y++)
       for (let x = 0; x < S; x++) {
@@ -857,6 +926,16 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
   field(home, 3.5, 1);
   const out = rN + 7;
   field({ x: C + edge.dx * out, y: C + edge.dy * out }, 3, 0.95);
+  if (big) {
+    // Larger maps: a second home field behind the base, an expansion half way to the centre, and
+    // a second field on each border further out. The turn copies them to every side.
+    // Behind: four sides, toward the map's corner; three sides, beside the base (the mirror makes it a pair).
+    field(n === 4 ? { x: b0.x + axis.dx * 11, y: b0.y + axis.dy * 11 } : { x: b0.x + 12, y: b0.y + 2 }, 3, 0.95);
+    const midway = d * 0.5;
+    field({ x: C + axis.dx * midway + axis.dy * 6, y: C + axis.dy * midway - axis.dx * 6 }, 3, 1);
+    const out2 = Math.min(out + sc(12), C - 7);
+    field({ x: C + edge.dx * out2, y: C + edge.dy * out2 }, 3, 1);
+  }
 
   // 6. The map: every tile copies the tile it turns back onto in side 0's wedge. Three sides: the
   // corners outside the disc are rock.
@@ -1077,8 +1156,9 @@ export const spreadOf = (xs: number[]): number => {
 export function sidesProblem(m: GeneratedMap): string | null {
   const n = m.starts.length;
   if (n !== 3 && n !== 4) return 'wrong number of sides';
-  const S = MAP_SIZE_FOR[n];
-  if (m.w !== S || m.h !== S || m.tiles.length !== S * S || m.ore.length !== S * S) return 'wrong size';
+  const S = m.w;
+  if (!MAP_SIZES.some(z => MAP_SIZE_TILES[z][n] === S) || m.h !== S || m.tiles.length !== S * S || m.ore.length !== S * S) return 'wrong size';
+  const big = S !== MAP_SIZE_FOR[n];
   const at = (x: number, y: number) => y * S + x;
   if (n === 4) {
     for (let y = 0; y < S; y++)
@@ -1111,7 +1191,7 @@ export function sidesProblem(m: GeneratedMap): string | null {
     if (m.ore[k] > 0 && !isWalkable(m.tiles[k])) return 'ore on unwalkable ground';
   }
   const fields = fieldsOf(m.ore, S).filter(f => f.size >= 5);
-  if (fields.length < n + 1 || fields.length > 3 * n + 2) return `${fields.length} ore fields`;
+  if (fields.length < n + 1 || fields.length > (big ? 10 * n + 2 : 3 * n + 2)) return `${fields.length} ore fields`;
   const centres = m.starts.map(st => ({ x: st.x + 1.5, y: st.y + 1.5 }));
   for (const c of centres) if (!fields.some(f => dist(f, c) < HOME_FIELD_RANGE)) return 'no ore field near a base';
   const contested = fields.some(f => {
@@ -1129,4 +1209,66 @@ export function sidesProblem(m: GeneratedMap): string | null {
   if (pairs.some(p => p < 0)) return 'bases not connected';
   if (n === 3 && spreadOf(pairs) > SIDES_TOLERANCE) return 'walking distances differ between sites';
   return null;
+}
+
+// ---- Round 5: where the ore was (fireline-round5-design.md, workstream B) ---------------------
+
+const bedCache = new Map<string, Int32Array>();
+
+/**
+ * The tiles of a skirmish battle's map that held ore when the battle began, as tile indices in
+ * order: the beds ore spreads back over on large and huge maps (ORE_SPREAD_TICKS). Drawn again
+ * from the generator, which is pure, so nothing new is kept on the state and old saves need no
+ * migration; remembered here by setup and seed (a cache, never part of the result). Null without
+ * a skirmish setup.
+ */
+export function oreBed(s: Pick<GameState, 'seedText' | 'setup' | 'mapType' | 'mapW'>): Int32Array | null {
+  if (!s.setup || !s.mapType || typeof s.seedText !== 'string') return null;
+  // The map was drawn from the seed the battle began with (createInitialState), not s.rngSeed,
+  // which is the battle's running random stream and moves on with every roll.
+  const seed = seedFromString(s.seedText);
+  const size = s.setup.size ?? 'standard';
+  const key = `${seed}|${s.mapType}|${s.setup.ore}|${s.setup.sides}|${size}`;
+  let bed = bedCache.get(key);
+  if (!bed) {
+    const m = generateSkirmishMap(seed, s.mapType, s.setup.ore, s.setup.sides, size);
+    const list: number[] = [];
+    if (m.w === s.mapW) for (let k = 0; k < m.ore.length; k++) if (m.ore[k] > 0) list.push(k);
+    bed = Int32Array.from(list);
+    if (bedCache.size >= 16) bedCache.delete(bedCache.keys().next().value!);
+    bedCache.set(key, bed);
+  }
+  return bed;
+}
+
+/**
+ * Round 5, large and huge maps: every tile of an ore bed (where ore lay when the battle began) that
+ * is empty, walkable, has nothing standing on it and touches a tile with ore (eight ways) regains
+ * ORE_SPREAD_AMOUNT. One ring per pass: tiles that regain ore this pass do not count as neighbours
+ * until the next.
+ */
+export function spreadOre(s: GameState, occ: Int32Array): void {
+  const bed = oreBed(s);
+  if (!bed) return;
+  const W = s.mapW;
+  const H = s.mapH;
+  const grow: number[] = [];
+  for (let i = 0; i < bed.length; i++) {
+    const k = bed[i];
+    if (s.ore[k] > 0 || occ[k] !== 0 || !isWalkable(s.tiles[k])) continue;
+    const x = k % W;
+    const y = (k / W) | 0;
+    let near = false;
+    for (let dy = -1; dy <= 1 && !near; dy++)
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if ((dx || dy) && nx >= 0 && ny >= 0 && nx < W && ny < H && s.ore[ny * W + nx] > 0) {
+          near = true;
+          break;
+        }
+      }
+    if (near) grow.push(k);
+  }
+  for (const k of grow) s.ore[k] = ORE_SPREAD_AMOUNT;
 }

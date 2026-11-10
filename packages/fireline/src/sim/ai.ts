@@ -1,8 +1,10 @@
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
 import { buildingCentre, dist, distToBuilding, doorTile, dockTile, frontDir, nearestPassable, occupancy, onMap, passable, laneRow, tileAt } from './grid';
 import { airPlan } from './aiAir';
+import { engineeringPlan, expansionSpot } from './aiEngineering';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
+import { reserveRadius, scaledFor, stageDistance } from './aiScale';
 import {
   BARRAGE_DAMAGE,
   BUILDINGS,
@@ -23,6 +25,8 @@ import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlo
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
+// round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
+import { sitesPlan } from './aiSites';
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -220,7 +224,10 @@ function tuned(d: DifficultySpec, mode: AiMode): DifficultySpec {
 function commander(s: GameState, owner: Owner): void {
   const diff = aiDifficulty(s, owner);
   const mode = missionMode(s, owner);
-  const d = tuned(DIFFICULTIES[diff], mode);
+  // round5:B begin. Larger maps (fireline-round5-design.md): B may replace the line below with one
+  // that scales the numbers for the map's size (a function in aiScale.ts); 'standard' maps unchanged.
+  const d = scaledFor(s, tuned(DIFFICULTIES[diff], mode));
+  // round5:B end.
   const t = TACTICS[diff];
   const mem = s.ai[owner];
   normalise(mem);
@@ -265,10 +272,10 @@ function commander(s: GameState, owner: Owner): void {
   let saving = false;
   const ready = readyStructure(s, owner);
   if (ready) {
-    const spot = ready === 'wall' ? wallSpot(s, owner, home, enemyHome) : findSpot(s, owner, ready, home, enemyHome);
+    const spot = ready === 'wall' ? wallSpot(s, owner, home, enemyHome) : (expansionSpot(s, owner, ready, enemyHome) ?? findSpot(s, owner, ready, home, enemyHome));
     if (spot) doPlace(s, owner, ready, spot.x, spot.y);
     else doCancel(s, owner, 'building', ready);
-  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq')) {
+  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq' || b.kind === 'fieldyard')) {
     // Only with a Command Yard: a mission outpost has none, and a structure it queued could never
     // be built, leaving its credits stuck in the queue.
     let want = nextStructure(s, owner, d, noHauler && !canBuildHauler, adv ? diff : null);
@@ -405,8 +412,17 @@ function commander(s: GameState, owner: Owner): void {
   // into aiAir.ts goes on the line below this comment, and nothing else in this function changes.
   airPlan(s, owner, home, enemy, foes);
 
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into aiEngineering.ts
+  // goes on the line below this comment, and nothing else in this function changes.
+  engineeringPlan(s, owner, home, enemyHome, units, foes);
+  // round5:C end.
+  // round5:D begin. Neutral sites and tier three (fireline-round5-design.md): one call into
+  // aiSites.ts goes on the line below this comment, and nothing else in this function changes.
+  sitesPlan(s, owner, home, enemyHome, units, foes);
+  // round5:D end.
+
   // Producers send new units to a staging point on the side facing the enemy.
-  const stage = openGround(s, owner, toward(home, enemyHome, 10));
+  const stage = openGround(s, owner, toward(home, enemyHome, stageDistance(s)));
   for (const b of standing) {
     if ((b.kind === 'barracks' || b.kind === 'factory') && !b.rally) doRally(s, b.id, stage.x, stage.y);
   }
@@ -562,7 +578,7 @@ function commander(s: GameState, owner: Owner): void {
     // Leave the raiders' buggies at home for the next raid.
     let keep = broke ? 0 : t.raidSize;
     return reserve.filter(u => {
-      if (!broke && (u.hp < UNITS[u.kind].hp * 0.45 || dist(u.x, u.y, home.x, home.y) > 30)) return false;
+      if (!broke && (u.hp < UNITS[u.kind].hp * 0.45 || dist(u.x, u.y, home.x, home.y) > reserveRadius(s))) return false;
       if (u.order.type !== 'idle' && u.order.type !== 'move' && u.order.type !== 'attackMove') return false;
       if (u.kind === 'buggy' && keep > 0) {
         keep--;

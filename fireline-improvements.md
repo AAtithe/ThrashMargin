@@ -98,6 +98,29 @@ mission AI once the round-1 opponent work lands.
   - [x] A no-base mission opens on the player's units (the opening camera looked only for a Command Yard).
   - [x] Air in missions 11, 12 and 14 (integration).
 
+## I. Round 5 (contract: `fireline-round5-design.md`)
+
+- [x] Contract and groundwork: one menu table, extra producers, map size and sites in the setup, neutral sites in the state, selection commands (no change in play).
+- [x] A. The build window: the build lists in a pop-out tech tree, opened by a Build button or the backquote key.
+  - Tiers worked out from `requires` alone, lines to every structure needed, ghosts for other lists' structures.
+  - Draggable panel on a desktop (place remembered), full-screen sheet on phones; a Research tab once a Lab stands.
+  - Production strip under the Build button; placing a structure steps the window aside and brings it back.
+  - Both guided tours walk it; `scripts/tours/fireline-build-window.cjs` checks it, including a kind it has never seen.
+- [x] B. Larger maps and long games: large and huge maps, ore that spreads back, the computer scaled for distance, performance at 160 tiles.
+- [x] C. Engineering vehicles: Repair Truck, Forward Base Truck and Field Yard; the computer expands on large maps.
+  - [x] The Repair Truck mends its side's ground vehicles beside it, free, and seeks the damaged when idle; Stay put and Roam set it.
+  - [x] Deploy and Pack up from the selection panel (and F); the Field Yard builds within 6 tiles and works the Structures list.
+  - [x] The computer saves for engineering (`engineeringFund`), fields Repair Trucks, and on large setups expands to a far ore field.
+  - [ ] The expansion aims at ore fields only; aiming at D's neutral sites is the integrator's seam.
+  - [ ] Measured on a 64-tile map with a large setup; rerun the computer's expansion on B's real large and huge maps.
+- [x] D. Neutral sites and tier three: Oil Derricks, Field Hospitals, Comms Relays; Prototype Works, Fortress, Railgun Tank, Stealth Tank.
+  - [x] Sites placed by the map's own symmetry, captured by infantry, never a target or a structure; a lobby switch.
+  - [x] Stealth: unseen and untargetable beyond 2.5 tiles except for 3 seconds after firing, for the computer too.
+  - [x] The computer takes sites with small infantry parties and turns to tier three after 25 minutes.
+  - [ ] The minimap still draws an enemy Stealth Tank in sight (and an enemy Spy): one condition in B's units loop.
+  - [ ] An attack order given straight to a unit on a hidden Stealth Tank fires once before it is dropped (the player cannot give one; the computer never does).
+  - [ ] Sites in the map previews, a selected site's panel line, and placement measured on large and huge maps (integration).
+
 ## Found along the way
 
 - [x] Haulers freezing on the way home (path clipped a blocked corner, or was cut by a new structure).

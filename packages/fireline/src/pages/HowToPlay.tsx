@@ -6,6 +6,7 @@ import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
 import { statsOf } from '../game/Sidebar';
 import { TECH_TEXT } from '../components/SkirmishSetup';
+import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
 import {
   AIR_MENU,
   BUILD_MENU,
@@ -28,6 +29,22 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { FONT, UI } from '../theme';
+// round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
+import {
+  DERRICK_INCOME,
+  DERRICK_TICKS,
+  HOSPITAL_HEAL,
+  HOSPITAL_RANGE,
+  HOSPITAL_TICKS,
+  RELAY_RADIUS,
+  SITE_CAPTURE_RANGE,
+  SITE_CAPTURE_TICKS,
+  SITE_KINDS,
+  SITES,
+  SITES_PER_SIDE,
+  STEALTH_DETECT_RANGE,
+  STEALTH_REVEAL_TICKS,
+} from '../sim/rules';
 
 /** The rules, generated from the same tables the simulation reads, so they cannot drift apart. */
 export default function HowToPlay() {
@@ -45,7 +62,7 @@ export default function HowToPlay() {
         <Panel title="The first five minutes">
           <ol style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
-              Open <strong>Structures</strong> and click <strong>Generator</strong>. When it says Ready, click it again and
+              Click <strong>Build</strong> (or press <kbd>`</kbd>), then <strong>Generator</strong>. When it says Ready, click it again and
               place it on open ground near your Command Yard.
             </li>
             <li>Build a <strong>Refinery</strong> close to the nearest ore. It comes with a hauler, which starts work by itself.</li>
@@ -116,7 +133,7 @@ export default function HowToPlay() {
         <Panel title="Advanced tech">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
-              The build lists grow to three buttons a row. Items marked <span style={advBadge}>Advanced</span> below appear only
+              The build window gains an Air tab and a longer tree. Items marked <span style={advBadge}>Advanced</span> below appear only
               with advanced tech; the computer builds from the same list.
             </li>
             <li>
@@ -153,6 +170,83 @@ export default function HowToPlay() {
             the banner to jump there, and move everything you can out of the ring.
           </p>
         </Panel>
+
+        {/* round5:A. The build window (fireline-round5-design.md): its panel goes on the line below. */}
+        <Panel title="The build window">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Everything you can build is in the <strong>build window</strong>. Open it with the <strong>Build</strong> button in
+              the sidebar or the <kbd>`</kbd> key; close it the same way, with <kbd>Esc</kbd>, or with its ×. The battle keeps
+              running while it is open, and on a computer you can drag it by its title bar to wherever suits you.
+            </li>
+            <li>
+              Each list is a <strong>tech tree</strong>: items in tiers from left to right, a line from each one to every structure
+              it needs. A greyed item names what is missing under it. A structure from another list shows as a small box at the
+              start of the tree.
+            </li>
+            <li>
+              The letter keys work with the window open or closed, on the list the Build button names; <kbd>Tab</kbd> changes the
+              list. A list's fifteenth item onwards has no key: click it in the tree.
+            </li>
+            <li>
+              When a structure is ready and you pick it up, the window steps aside while you place it and comes back afterwards.
+              Under the Build button, the <strong>production strip</strong> shows everything under way; click a ready structure
+              there to place it, or anything else to cancel the last one queued.
+            </li>
+            <li>Once a Research Lab stands, the window gains a <strong>Research</strong> tab for upgrades.</li>
+          </ul>
+        </Panel>
+        {/* round5:B. Larger maps and long games: its panel goes on the line below. */}
+        <Panel title="Larger maps and long games">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Choose the <strong>Map size</strong> in the lobby. Standard is the original size; Large and Huge spread the bases
+              further apart and lay out more ore, with a second field behind each base and more out on the flanks.
+            </li>
+            <li>
+              {MAP_SIZES.map(z => `${MAP_SIZE_NAMES[z]}: ${MAP_SIZE_TILES[z][2]}, ${MAP_SIZE_TILES[z][3]} or ${MAP_SIZE_TILES[z][4]} tiles across for two, three or four sides.`).join(' ')}
+            </li>
+            <li>
+              On Large and Huge maps a worked-out ore field grows back from its edges: while one tile of a field still holds
+              ore, the empty tiles beside it slowly fill again. Nothing grows under a structure.
+            </li>
+            <li>
+              The computer plays the long game on a larger map: it builds more refineries and turrets, waits longer before
+              its first attack and sends bigger waves less often. Expect battles of 30 minutes to an hour.
+            </li>
+          </ul>
+        </Panel>
+        {/* round5:C. Engineering vehicles: its panel goes on the line below. */}
+        <Panel title="Engineering vehicles">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Two unarmed vehicles from the War Factory, with advanced tech only. Neither appears in a campaign mission.
+            </li>
+            <li>
+              The <strong>{UNITS.repairtruck.name}</strong> ({UNITS.repairtruck.cost} credits, needs a Repair Bay) mends the most
+              damaged of your vehicles right beside it, free and a little faster than the Repair Bay. It never mends infantry,
+              aircraft or itself. Left idle, it drives to a damaged vehicle nearby; select it and press <strong>Stay put</strong> to keep
+              it where you parked it, and <strong>Roam</strong> to let it go looking again. The computer sends its own with its attack waves.
+            </li>
+            <li>
+              The <strong>{UNITS.basetruck.name}</strong> ({UNITS.basetruck.cost} credits, needs a Comms Uplink) drives anywhere
+              and <strong>deploys</strong> where it stands into a <strong>{BUILDINGS.fieldyard.name}</strong>: select it and press{' '}
+              <strong>Deploy</strong> (or F). It needs a clear 2x2 patch of open ground, but not near your base.
+            </li>
+            <li>
+              A Field Yard is a second base. You may build within {BUILDINGS.fieldyard.buildRadius} tiles of it, and it works the
+              Structures list, so you can keep building if your Command Yard falls. It counts as a structure for victory. Select it
+              and press <strong>Pack up</strong> to turn it back into a truck, as long as something else of yours still stands.
+              You may have three Field Yards and trucks at once.
+            </li>
+            <li>
+              On large and huge maps the computer sends a Forward Base Truck to a distant ore field and builds a Refinery and a
+              Gun Turret beside it.
+            </li>
+          </ul>
+        </Panel>
+        {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
+        <SitesPanel />
 
         <Panel title="Campaign">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -208,8 +302,8 @@ export default function HowToPlay() {
         <Panel title="Aircraft">
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             Advanced tech only. A Helipad builds and rearms two aircraft. They fly over water, rock and structures, and only
-            anti-air (Skyhunters, Flak Tracks, Flak Cannons) and machine guns can reach them. Once a Research Lab stands, the foot
-            of the Structures list offers five upgrades, one at a time, that last the rest of the battle.
+            anti-air (Skyhunters, Flak Tracks, Flak Cannons) and machine guns can reach them. Once a Research Lab stands, the build
+            window's Research tab offers five upgrades, one at a time, that last the rest of the battle.
           </p>
           <Grid kinds={AIR_MENU} />
         </Panel>
@@ -295,3 +389,67 @@ const duration = (ticks: number) => {
   const secs = Math.round(ticks / TICKS_PER_SECOND);
   return secs < 120 ? `${secs}s` : `${Math.round((secs / 60) * 10) / 10} min`;
 };
+
+// round5:D begin. Neutral sites and tier three: the panel, from the same numbers the battle reads.
+const seconds = (ticks: number) => `${ticks / TICKS_PER_SECOND} second${ticks === TICKS_PER_SECOND ? '' : 's'}`;
+const SITE_EFFECT: Record<(typeof SITE_KINDS)[number], string> = {
+  derrick: `${DERRICK_INCOME} credits every ${seconds(DERRICK_TICKS)} to its holder: ${(DERRICK_INCOME * 600) / DERRICK_TICKS} a minute, half a Hauler's load.`,
+  hospital: `${HOSPITAL_HEAL} health every ${seconds(HOSPITAL_TICKS)} to each of its holder's infantry within ${HOSPITAL_RANGE} tiles.`,
+  relay: `Its holder and the holder's allies see everything within ${RELAY_RADIUS} tiles of it.`,
+};
+
+function SitesPanel() {
+  return (
+    <Panel title="Neutral sites and tier three">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Neutral sites</strong> in the lobby and every side's share of the map holds the same set of sites, at
+          the same distances from every base. They start neutral, with a grey flag.
+        </li>
+        <li>
+          <strong>Infantry take a site</strong>: stand them within {SITE_CAPTURE_RANGE} tiles of it for {seconds(SITE_CAPTURE_TICKS)}{' '}
+          and it flies your colours. A ring round the site fills as they work. If an enemy's infantry are there too, the ring
+          stops; walk away and it empties again. Vehicles and aircraft cannot take sites, and allies never take each other's.
+        </li>
+        <li>
+          A site is not a structure: nothing can shoot it, it never shoots, and it does not keep you in the battle. A side that is
+          out loses its sites, which go back to neutral.
+        </li>
+      </ul>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+        {SITE_KINDS.map(k => (
+          <div key={k} style={{ ...tile, flexDirection: 'column', gap: 4 }}>
+            <strong style={{ fontSize: '0.88rem' }}>{SITES[k].name}</strong>
+            <span style={{ fontSize: '0.72rem', color: UI.textFaint, fontFamily: FONT.mono }}>
+              {MAP_SIZES.map(z => `${MAP_SIZE_NAMES[z]} ${SITES_PER_SIDE[z][k]}`).join(' · ')} per side
+            </span>
+            <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>{SITE_EFFECT[k]}</span>
+          </div>
+        ))}
+      </div>
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          <strong>Tier three</strong> comes with advanced tech. A <strong>{BUILDINGS.protoworks.name}</strong> needs a{' '}
+          {BUILDINGS.researchlab.name} and a {BUILDINGS.techcentre.name}, and unlocks the {UNITS.railtank.name}, the{' '}
+          {UNITS.stealthtank.name} and the {BUILDINGS.fortress.name}. The {BUILDINGS.protoworks.name} and the{' '}
+          {BUILDINGS.fortress.name} are the fifteenth and sixteenth Structures, so they have no hotkey: click them in the build
+          list.
+        </li>
+        <li>
+          The <strong>{UNITS.railtank.name}</strong> fires a slug that lands the instant it fires: the heaviest hit on armour in
+          the game, and little use against infantry.
+        </li>
+        <li>
+          The <strong>{UNITS.stealthtank.name}</strong> cannot be seen or targeted by an enemy unless one of that enemy's units or
+          structures is within {STEALTH_DETECT_RANGE} tiles of it, or for {seconds(STEALTH_REVEAL_TICKS)} after it fires. Yours
+          are drawn faint. A recon sweep shows them too.
+        </li>
+        <li>
+          The computer turns to tier three late in a long battle, and on a map with sites sends small parties of infantry to take
+          them, the nearest first.
+        </li>
+      </ul>
+    </Panel>
+  );
+}
+// round5:D end.

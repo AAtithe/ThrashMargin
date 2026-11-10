@@ -1,4 +1,5 @@
 import { runAi } from './ai';
+import { spreadOre } from './maps';
 import {
   dist,
   distToTarget,
@@ -23,6 +24,9 @@ import {
   HAULER_CAPACITY,
   ORE_REGROW_AMOUNT,
   ORE_REGROW_TICKS,
+  ORE_SPREAD_TICKS,
+  exploreTicksFor,
+  pathBudgetFor,
   ORE_TILE_MAX,
   REPAIR_COST_SHARE,
   SCOOP_TICKS,
@@ -59,6 +63,7 @@ import {
 import { canHit, isAir, launchAircraft, updateAircraft, type AirHooks } from './air';
 import { damageMulOf, incomeMulOf, researchStep, upgradeNewUnit, vehicleSpeedOf } from './research';
 import { spawnSurvivors } from './commands';
+import { menderStep } from './engineering';
 import {
   completeCapture,
   evaluateMission,
@@ -84,6 +89,8 @@ import {
 } from './state';
 import { computerSides, enemiesOf, isAlly, isEnemy, sidesOf, teamOf } from './sides';
 import type { Building, GameState, Projectile, Unit } from './types';
+// round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
+import { seenBy, sitesStep } from './sites';
 
 
 /**
@@ -119,7 +126,7 @@ export function step(s: GameState): void {
     occ: occupancy(s),
     units: new Map(s.units.map(u => [u.id, u])),
     buildings: new Map(s.buildings.map(b => [b.id, b])),
-    pathBudget: 24,
+    pathBudget: pathBudgetFor(s.setup?.size ?? 'standard'),
     power: sidesOf(s).map(o => powerOf(s, o).low),
     keepClear: new Set(),
     vehicleSpeed: sidesOf(s).map(o => vehicleSpeedOf(s, o)),
@@ -158,6 +165,10 @@ export function step(s: GameState): void {
   for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
   if (s.mission) heroes(s, ctx);
   for (const b of s.buildings) if (b.hp > 0) updateBuilding(s, ctx, b);
+  // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
+  // derrick income, hospital healing), under this line. A no-op without s.sites.
+  sitesStep(s);
+  // round5:D end.
   charges(s);
   landProjectiles(s, ctx);
   separate(s, ctx);
@@ -171,7 +182,9 @@ export function step(s: GameState): void {
       if (o > 0 && o < ORE_TILE_MAX) s.ore[k] = Math.min(ORE_TILE_MAX, o + ORE_REGROW_AMOUNT);
     }
   }
-  if (s.tick % 5 === 0) updateExplored(s);
+  // Round 5: on large and huge maps a worked-out field spreads back from its edges (rules.ts).
+  if (s.tick % ORE_SPREAD_TICKS === 0 && (s.setup?.size ?? 'standard') !== 'standard') spreadOre(s, ctx.occ);
+  if (s.tick % exploreTicksFor(s.setup?.size ?? 'standard') === 0) updateExplored(s);
   if (s.effects.length && s.effects[0].at < s.tick - 40) s.effects = s.effects.filter(e => e.at >= s.tick - 40);
 
   // A mission is decided by its objectives; a skirmish by who still has structures.
@@ -480,7 +493,7 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
     const d = dist(x, y, e.x, e.y);
     if (d > range) continue;
     // A Spy nobody has spotted is never picked as a target.
-    if (e.kind === 'spy' && !isDetected(s, e, owner)) continue;
+    if ((e.kind === 'spy' || UNITS[e.kind].stealth) && !seenBy(s, e, owner)) continue;
     const score = d + (UNITS[e.kind].weapon ? 0 : 1.5);
     if (score < bestScore) {
       bestScore = score;
@@ -599,7 +612,7 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
       const from = s.units.find(v => v.id === shooter);
       if (from && !canHit(UNITS[vu.kind].weapon!, { unit: from })) {
         // Out of its reach: it cannot answer.
-      } else if (!from || from.kind !== 'spy' || isDetected(s, from, vu.owner)) vu.engage = shooter;
+      } else if (!from || (from.kind !== 'spy' && !UNITS[from.kind].stealth) || seenBy(s, from, vu.owner)) vu.engage = shooter;
     }
   }
   // An Engineer under fire loses his grip on a capture.
@@ -640,6 +653,10 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
     u.hp = Math.min(max, u.hp + spec.selfRepair);
   }
   if (spec.medic) medic(s, u);
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into engineering.ts
+  // for a unit whose spec has `mender`, under this line.
+  if (spec.mender) menderStep(s, u);
+  // round5:C end.
 
   const order = u.order;
   if (order.type === 'attack') {
@@ -656,7 +673,7 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
   } else if (w && (u.order.type === 'idle' || u.order.type === 'attackMove')) {
     let current = u.engage ? lookup(ctx, u.engage) : null;
     // A Spy that has slipped out of sight is dropped as a target.
-    if (current?.unit && current.unit.kind === 'spy' && !isDetected(s, current.unit, u.owner)) current = null;
+    if (current?.unit && (current.unit.kind === 'spy' || UNITS[current.unit.kind].stealth) && !seenBy(s, current.unit, u.owner)) current = null;
     if (!current) u.engage = 0;
     // The Spy never picks targets of its own: it fires only when ordered to.
     if (u.kind !== 'spy' && (s.tick + u.id) % 4 === 0 && (!current || u.order.type === 'idle')) {
@@ -959,7 +976,7 @@ function updateBuilding(s: GameState, ctx: Ctx, b: Building): void {
   const cy = b.y + spec.h / 2;
   let t = b.engage ? lookup(ctx, b.engage) : null;
   if (t && (distToTarget(cx, cy, t) > w.range || !canHit(w, t))) t = null;
-  if (t?.unit && t.unit.kind === 'spy' && !isDetected(s, t.unit, b.owner)) t = null;
+  if (t?.unit && (t.unit.kind === 'spy' || UNITS[t.unit.kind].stealth) && !seenBy(s, t.unit, b.owner)) t = null;
   if (!t && (s.tick + b.id) % 4 === 0) {
     const found = acquire(s, b.owner, cx, cy, w.range, true, w);
     t = found ? lookup(ctx, found) : null;

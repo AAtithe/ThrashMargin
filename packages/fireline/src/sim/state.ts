@@ -1,4 +1,5 @@
 import { migrateAir } from './air';
+import { scaledFor } from './aiScale';
 import { generateMap, idx } from './map';
 import { generateSkirmishMap, randomMapType } from './maps';
 import { seedFromString } from './rng';
@@ -10,10 +11,12 @@ import {
   LEGACY_SETUP,
   LONE_SIDE_CREDITS,
   MAP_H,
+  MAP_SIZES,
   MAP_TYPES,
   MAP_W,
   MAX_SIDES,
   PRODUCER,
+  ALSO_PRODUCES,
   SETUP_CREDITS_MAX,
   SETUP_CREDITS_MIN,
   SIDE_NAMES,
@@ -28,6 +31,7 @@ import {
   type BuildingKind,
   type Category,
   type Difficulty,
+  type MapSize,
   type MapType,
   type Owner,
   type SideMode,
@@ -37,6 +41,9 @@ import {
 } from './rules';
 import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf, teamsFor } from './sides';
 import type { AiMemory, Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
+// round5:D. Neutral sites (fireline-round5-design.md, workstream D).
+import { migrateSites, placeSites, relaysOf } from './sites';
+import { RELAY_RADIUS } from './rules';
 
 export { startOf };
 
@@ -67,7 +74,11 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // 'teams' is 'ffa'; two sides are always 'ffa'.
   const sides = r.sides === 2 || r.sides === 3 || r.sides === 4 ? r.sides : base.sides === 3 || base.sides === 4 ? base.sides : 2;
   const mode: SideMode = sides > 2 && r.mode === 'teams' ? 'teams' : 'ffa';
-  return { map, tech, credits, ore, sides, mode };
+  // Round 5: map size and neutral sites. Anything but a known size falls back to the base's (and a
+  // base from before round 5 has none: 'standard'); sites are on only when exactly true.
+  const size: MapSize = MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : (base.size ?? 'standard');
+  const sites = typeof r.sites === 'boolean' ? r.sites : (base.sites ?? false);
+  return { map, tech, credits, ore, sides, mode, size, sites };
 }
 
 /** How this battle was set up. Saves from before setups, and missions, read as LEGACY_SETUP. */
@@ -150,7 +161,16 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
   // Two sides (every setup before round 4, and every battle without a setup) take exactly the
   // original path. Three or four: a larger map with one start per side, and teams from teamsFor.
   const n = setup ? setup.sides : 2;
-  const map = setup && mapType ? (n > 2 ? generateSkirmishMap(rngSeed, mapType, setup.ore, n) : generateSkirmishMap(rngSeed, mapType, setup.ore)) : generateMap(rngSeed);
+  // Round 5: a larger map when the setup asks for one; standard size takes exactly the old path.
+  const size = setup?.size ?? 'standard';
+  const map =
+    setup && mapType
+      ? size !== 'standard'
+        ? generateSkirmishMap(rngSeed, mapType, setup.ore, n, size)
+        : n > 2
+          ? generateSkirmishMap(rngSeed, mapType, setup.ore, n)
+          : generateSkirmishMap(rngSeed, mapType, setup.ore)
+      : generateMap(rngSeed);
   const credits = setup ? setup.credits : START_CREDITS;
   const difficulty = opts.difficulty && opts.difficulty in DIFFICULTIES ? opts.difficulty : DEFAULT_DIFFICULTY;
   const d = DIFFICULTIES[difficulty];
@@ -192,6 +212,15 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     s.starts = map.starts.map(st => ({ ...st }));
     // Support powers come with their structures (SKIRMISH_POWERS); none stand yet.
     if (setup.tech === 'advanced') s.powers = sidesOf(s).map(() => ({}));
+    // round5:D begin. Neutral sites (fireline-round5-design.md, workstream D): one call into sites.ts
+    // when setup.sites is on, filling s.sites. Nothing else here changes.
+    if (setup.sites) placeSites(s);
+    // round5:D end.
+    // Round 5: on a larger map the computer's first attack comes later (aiScale.ts).
+    if (size !== 'standard') {
+      const first = scaledFor(s, d).firstAttack;
+      for (const mem of s.ai) mem.nextAttack = first;
+    }
   }
 
   for (const owner of sidesOf(s)) {
@@ -313,6 +342,9 @@ export function cloneState(s: GameState): GameState {
     ...(s.powers ? { powers: s.powers.map(p => ({ ...p })) } : {}),
     ...(s.blackoutUntil ? { blackoutUntil: s.blackoutUntil.slice() } : {}),
     ...(s.recon ? { recon: s.recon.slice() } : {}),
+    // round5:D begin. Neutral sites: s.sites copied one object deep, only when present.
+    ...(s.sites ? { sites: s.sites.map(x => ({ ...x })) } : {}),
+    // round5:D end.
   };
 }
 
@@ -377,12 +409,19 @@ export function producerFor(s: GameState, owner: Owner, category: Category): Bui
   let found: Building | undefined;
   let working: Building | undefined;
   for (const b of s.buildings) {
-    if (b.owner !== owner || b.kind !== kind) continue;
+    if (b.owner !== owner || (b.kind !== kind && ALSO_PRODUCES[b.kind] !== category)) continue;
     if (!found || b.id < found.id) found = b;
     if (!sabotaged(s, b) && (!working || b.id < working.id)) working = b;
   }
   return working ?? found;
 }
+
+/**
+ * True when this side has something standing that works this queue: its PRODUCER, or a structure
+ * that also does (ALSO_PRODUCES; round 5's Field Yard works Structures). Sabotaged or not. The
+ * build window greys a list on this, never on PRODUCER alone.
+ */
+export const hasProducer = (s: GameState, owner: Owner, category: Category): boolean => !!producerFor(s, owner, category);
 
 /** True while a Spy's sabotage keeps this producer idle. */
 export const sabotaged = (s: GameState, b: Building): boolean => b.sabotagedUntil !== undefined && s.tick < b.sabotagedUntil;
@@ -414,6 +453,9 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
       const spec = BUILDINGS[b.kind];
       mark(b.x + spec.w / 2, b.y + spec.h / 2, spec.sight + Math.max(spec.w, spec.h) / 2);
     }
+  // round5:D begin. A Comms Relay this side holds reveals its area (one loop calling mark).
+  if (s.sites) for (const c of relaysOf(s, owner)) mark(c.x, c.y, RELAY_RADIUS);
+  // round5:D end.
   return vis;
 }
 
@@ -522,6 +564,13 @@ export function migrateState(raw: unknown): GameState | null {
     if (Array.isArray(s.starts) && s.starts.length === n && s.starts.every(okSite)) out.starts = s.starts.map(p => ({ ...p }));
     else delete out.starts;
   }
+  // round5:D begin. Neutral sites: s.sites repaired or dropped, never trusted blind.
+  if (s.sites !== undefined) {
+    const sites = migrateSites(s.sites, out);
+    if (sites) out.sites = sites;
+    else delete out.sites;
+  }
+  // round5:D end.
   // Only two sides may fall back on the original start sites.
   if (n > 2 && !out.starts) return null;
   // A campaign battle: its mission must at least have its objective lists, or it is not trusted.

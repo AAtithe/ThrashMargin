@@ -1,3 +1,5 @@
+import { siteSpots, type SiteSpot } from '../sim/sites';
+import { SITE_ART } from '../game/art';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { generateSkirmishMap, randomMapType } from '../sim/maps';
 import type { GeneratedMap } from '../sim/map';
@@ -13,6 +15,10 @@ import {
   MAP_TYPES,
   POWERS,
   LONE_SIDE_CREDITS,
+  MAP_SIZE_BLURBS,
+  MAP_SIZE_NAMES,
+  MAP_SIZE_TILES,
+  MAP_SIZES,
   SETUP_CREDIT_CHOICES,
   SIDE_COUNTS,
   SIDE_NAMES,
@@ -21,6 +27,7 @@ import {
   UNITS,
   VEHICLE_MENU,
   type BuildingKind,
+  type MapSize,
   type MapType,
   type OreLevel,
   type Owner,
@@ -34,6 +41,17 @@ import { paintMiniTerrain } from '../game/terrain';
 import { teamsFor } from '../sim/sides';
 import { TEAM, UI } from '../theme';
 import { Label } from './ui';
+// round5:D. Neutral sites (fireline-round5-design.md, workstream D).
+import { SITE_KINDS, SITES, SITES_PER_SIDE } from '../sim/rules';
+
+/** What the Neutral sites field says each side gets at this map size. */
+function sitesNote(setup: SkirmishSetup): string {
+  if (!setup.sites) return 'No sites: ore is the only income.';
+  const per = SITES_PER_SIDE[setup.size ?? 'standard'];
+  const parts = SITE_KINDS.filter(k => per[k] > 0).map(k => `${per[k] === 1 ? 'an' : per[k]} ${SITES[k].name}${per[k] === 1 ? '' : 's'}`.replace(/^an (?=[^AEIOU])/, 'a '));
+  const each = parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return `${each.charAt(0).toUpperCase()}${each.slice(1)} in every side's share of the map, neutral at the start. Infantry beside one for ten seconds take it.`;
+}
 
 /**
  * The skirmish's setup: map type (with a preview of each, drawn from the real generator and the
@@ -47,7 +65,9 @@ const STORE_KEY = 'fireline_setup';
 export function readStoredSetup(): SkirmishSetup {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return DEFAULT_SETUP;
+    // Sites are on for a new lobby (the player asked for bases to fight over); DEFAULT_SETUP keeps
+    // them off, because it also fills in setups saved before sites existed.
+    if (!raw) return { ...DEFAULT_SETUP, sites: true };
     const r = JSON.parse(raw) as Partial<SkirmishSetup>;
     return {
       map: r.map === 'random' || MAP_TYPES.includes(r.map as MapType) ? (r.map as SkirmishSetup['map']) : DEFAULT_SETUP.map,
@@ -56,9 +76,11 @@ export function readStoredSetup(): SkirmishSetup {
       ore: r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : DEFAULT_SETUP.ore,
       sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
+      size: MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : 'standard',
+      sites: r.sites !== false,
     };
   } catch {
-    return DEFAULT_SETUP;
+    return { ...DEFAULT_SETUP, sites: true };
   }
 }
 
@@ -123,9 +145,15 @@ export default function SkirmishSetupPanel({
   const seed = seedNumber(settled);
   const maps = useMemo(() => {
     const out = {} as Record<MapType, GeneratedMap>;
-    for (const t of MAP_TYPES) out[t] = generateSkirmishMap(seed, t, value.ore, value.sides);
+    for (const t of MAP_TYPES) out[t] = generateSkirmishMap(seed, t, value.ore, value.sides, value.size ?? 'standard');
     return out;
-  }, [seed, value.ore, value.sides]);
+  }, [seed, value.ore, value.sides, value.size]);
+  // The battle places sites from its own seed (rngSeed), which is this same number.
+  const siteMarks = useMemo(() => {
+    const out = {} as Record<MapType, SiteSpot[]>;
+    for (const t of MAP_TYPES) out[t] = value.sites ? siteSpots(maps[t], { size: value.size ?? 'standard' }, seed) : [];
+    return out;
+  }, [maps, seed, value.sites, value.size]);
   const drawn = randomMapType(seed);
   const set = (patch: Partial<SkirmishSetup>) => onChange({ ...value, ...patch });
 
@@ -146,7 +174,7 @@ export default function SkirmishSetupPanel({
                 data-testid={`map-${t}`}
                 onClick={() => set({ map: t })}
               >
-                <MapThumb map={maps[type]} label={`${t === 'random' ? 'Random: ' : ''}${MAP_TYPE_NAMES[type]} map preview`} />
+                <MapThumb map={maps[type]} sites={siteMarks[type]} label={`${t === 'random' ? 'Random: ' : ''}${MAP_TYPE_NAMES[type]} map preview`} />
                 <span className="fl-map-name">{t === 'random' ? 'Random' : MAP_TYPE_NAMES[t]}</span>
                 <span className="fl-map-blurb">
                   {t === 'random' ? `Any of the six, chosen by the seed. This one draws ${MAP_TYPE_NAMES[drawn]}.` : value.sides > 2 ? MAP_TYPE_BLURBS_SIDES[t] : MAP_TYPE_BLURBS[t]}
@@ -159,6 +187,7 @@ export default function SkirmishSetupPanel({
           {value.sides === 2
             ? "Previews show the real map for this seed: your base is blue, the enemy's red, ore gold. Every map is mirrored, so both sides start with the same ground and the same ore."
             : `Previews show the real map for this seed: each base in its side's colour, yours blue, ore gold. Every base's share of the map is the same share turned round the centre, so every side starts with ${value.sides === 4 ? 'the same' : 'close to the same'} ground and ore.`}
+          {value.sites ? ' Grey diamonds are the neutral sites any side can capture.' : ''}
         </p>
       </div>
 
@@ -231,8 +260,43 @@ export default function SkirmishSetupPanel({
           </div>
           <p className="fl-setup-note">{ORE_TEXT[value.ore].text}</p>
         </div>
+        {/* round5:B. Larger maps (fireline-round5-design.md): the Map size field goes on the line below. */}
+        <MapSizeField value={value} onPick={size => set({ size })} />
+        {/* round5:D. Neutral sites (fireline-round5-design.md): the Neutral sites field goes on the line below. */}
+        <div className="fl-setup-field">
+          <Label>Neutral sites</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Neutral sites">
+            {[false, true].map(on => (
+              <button key={on ? 'on' : 'off'} type="button" role="radio" aria-checked={!!value.sites === on} data-testid={`sites-${on ? 'on' : 'off'}`} onClick={() => set({ sites: on })}>
+                {on ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{sitesNote(value)}</p>
+        </div>
       </div>
     </>
+  );
+}
+
+/** Round 5: the map's size, each with its tiles for this many sides and how long a battle runs. */
+function MapSizeField({ value, onPick }: { value: SkirmishSetup; onPick: (size: MapSize) => void }) {
+  const size = value.size ?? 'standard';
+  const tiles = MAP_SIZE_TILES[size][value.sides];
+  return (
+    <div className="fl-setup-field">
+      <Label>Map size</Label>
+      <div className="fl-seg" role="radiogroup" aria-label="Map size">
+        {MAP_SIZES.map(z => (
+          <button key={z} type="button" role="radio" aria-checked={size === z} data-testid={`size-${z}`} onClick={() => onPick(z)}>
+            {MAP_SIZE_NAMES[z]}
+          </button>
+        ))}
+      </div>
+      <p className="fl-setup-note" data-testid="size-note">
+        {tiles} by {tiles} tiles for {value.sides} sides. {MAP_SIZE_BLURBS[size]}
+      </p>
+    </div>
   );
 }
 
@@ -275,13 +339,19 @@ function SideLine({ setup }: { setup: SkirmishSetup }) {
   );
 }
 
+/**
+ * Pixels per tile in a map preview: 2 for the 64-tile map, 1.5 for 80 and 96, and on the larger
+ * maps of round 5 whatever keeps the preview about 144 pixels across.
+ */
+const thumbScale = (w: number): number => (w <= 64 ? 2 : Math.min(1.5, 144 / w));
+
 /** A map drawn small: the terrain, the ore and both Command Yards. Canvas paint, so hex is fine here. */
-function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
+function MapThumb({ map, label, sites }: { map: GeneratedMap; label: string; sites: SiteSpot[] }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    const S = map.w > 64 ? 1.5 : 2;
+    const S = thumbScale(map.w);
     const ctx = c.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(paintMiniTerrain(map.tiles, map.w, map.h), 0, 0, map.w * S, map.h * S);
@@ -297,7 +367,24 @@ function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
       ctx.lineWidth = 1.5;
       ctx.strokeRect(st.x * S - 2.5, st.y * S - 2.5, 3 * S + 5, 3 * S + 5);
     });
-  }, [map]);
-  const S = map.w > 64 ? 1.5 : 2;
+    // Neutral sites: a grey diamond with a light rim, each at the centre of its footprint.
+    for (const p of sites) {
+      const cx = (p.x + SITES[p.kind].w / 2) * S;
+      const cy = (p.y + SITES[p.kind].h / 2) * S;
+      const r = Math.max(2.5, S * 1.4);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r, cy);
+      ctx.closePath();
+      ctx.fillStyle = SITE_ART.neutral;
+      ctx.fill();
+      ctx.strokeStyle = SITE_ART.neutralLight;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }, [map, sites]);
+  const S = thumbScale(map.w);
   return <canvas ref={ref} width={map.w * S} height={map.h * S} className="fl-map-thumb" role="img" aria-label={label} />;
 }

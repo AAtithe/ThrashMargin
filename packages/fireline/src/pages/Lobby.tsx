@@ -334,6 +334,7 @@ function SaveRow({
           )}
           {!campaign && ` · ${s.turn} min`}
           {!campaign && mapTypeOf(s) && ` · ${MAP_TYPE_NAMES[mapTypeOf(s)!]}`}
+          {!campaign && sizeOfSave(s) && ` · ${sizeOfSave(s)}`}
           {!campaign && sidesOfSave(s) && ` · ${sidesOfSave(s)}`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
         </span>
       </div>
@@ -366,6 +367,12 @@ function SaveRow({
 const mapTypeOf = (s: SaveMeta): MapType | null => {
   const t = (s as SaveMeta & { mapType?: unknown }).mapType;
   return typeof t === 'string' && t in MAP_TYPE_NAMES ? (t as MapType) : null;
+};
+
+/** "Large map" or "Huge map" for a battle on a larger map (round 5); null for standard size and older rows. */
+const sizeOfSave = (s: SaveMeta): string | null => {
+  const z = (s as SaveMeta & { size?: unknown }).size;
+  return z === 'large' ? 'Large map' : z === 'huge' ? 'Huge map' : null;
 };
 
 /** "3 sides, free for all", "2 against 2" or "2 against 1" for a battle of more than two sides; null for two. */
