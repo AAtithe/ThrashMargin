@@ -701,7 +701,11 @@ section('act two: progression and old saves', () => {
   for (const t of adv) ok(last.tech.includes(t as never), `Last Light offers ${t}`);
   ok(last.difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander on hard, with a full base');
   const kinds = new Set<string>(['hq', ...last.enemy.structures]);
-  for (const b of Object.keys(BUILDINGS)) if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
+  // A Field Yard (round 5) is never built, only deployed from a truck, and never in a mission.
+  for (const b of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
+    if (BUILDINGS[b].undeploysTo) continue;
+    if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
+  }
   // The new objective kinds are used across the act.
   const used = new Set(act2.flatMap(m => [...m.objectives, ...m.bonus].map(o => (o.kind === 'holdZone' && o.reset ? 'holdZone reset' : o.kind))));
   for (const k of ['escort', 'destroyWithin', 'holdZone reset']) ok(used.has(k), `act two uses ${k}`);

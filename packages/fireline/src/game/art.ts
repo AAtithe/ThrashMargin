@@ -307,6 +307,12 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
       drawBomber(ctx, team, pose);
       break;
     // round5:C begin. Engineering vehicles (fireline-round5-design.md): its units' cases, appended here.
+    case 'repairtruck':
+      drawEngineeringCached(ctx, kind, owner, team, pose, 22, [24, 13]);
+      break;
+    case 'basetruck':
+      drawEngineeringCached(ctx, kind, owner, team, pose, 30, [32, 16]);
+      break;
     // round5:C end.
     // round5:D begin. Tier three (fireline-round5-design.md): its units' cases, appended here.
     // round5:D end.
@@ -1621,6 +1627,9 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
       drawResearchLab(ctx, w, h, team, pose);
       break;
     // round5:C begin. Engineering vehicles (fireline-round5-design.md): its structures' cases, appended here.
+    case 'fieldyard':
+      drawFieldYard(ctx, w, h, team, pose);
+      break;
     // round5:C end.
     // round5:D begin. Tier three (fireline-round5-design.md): its structures' cases, appended here.
     // round5:D end.
@@ -4023,6 +4032,261 @@ function drawResearchLab(ctx: Ctx, w: number, h: number, team: Team, p: Building
 }
 
 // round5:C begin. Engineering vehicles (fireline-round5-design.md): its drawing functions, appended here.
+/**
+ * Engineering vehicles are stamped from the sprite cache as one layer (they have no turret): by
+ * kind, side, hull facing, track frame and damage, with live damage drawn over the stamp.
+ */
+function drawEngineeringCached(ctx: Ctx, kind: 'repairtruck' | 'basetruck', owner: Owner, team: Team, p: UnitPose, half: number, hull: [number, number]) {
+  const hp = clamp01(p.hp, 1);
+  const hurt = hp < 0.25 ? 3 : hp < 0.5 ? 2 : hp < 0.7 ? 1 : 0;
+  const hpq = [1, 0.6, 0.4, 0.2][hurt];
+  const frame = p.moving ? Math.floor(frac(p.t * 2) * 6) : 0;
+  const hf = Math.round(frac(p.hull / TAU) * VANGLES) % VANGLES;
+  sprite(ctx, `${kind}${owner}h${hf}/${p.moving ? frame : 'i'}/${hurt}`, half, g => {
+    const pose: UnitPose = { hull: (hf / VANGLES) * TAU, turret: 0, t: frame / 12, moving: p.moving, cargo: 0, sinceShot: 9, hp: hpq };
+    if (kind === 'repairtruck') drawRepairTruck(g, team, pose);
+    else drawBaseTruck(g, team, pose);
+  });
+  if (hp < 0.5) {
+    ctx.save();
+    ctx.rotate(p.hull);
+    hullDamage(ctx, hp, p.t, hull[0], hull[1], 'live');
+    ctx.restore();
+  }
+}
+
+/** Wheels, two rows of them, with tread marks that roll while it drives. */
+function wheels(ctx: Ctx, xs: number[], off: number, r: number, t: number, moving: boolean) {
+  for (const side of [-1, 1])
+    for (const x of xs) {
+      ctx.fillStyle = '#1b1d1d';
+      rrect(ctx, x - r, side * off - r * 0.6, r * 2, r * 1.2, 1.2);
+      ctx.fill();
+      ctx.fillStyle = side < 0 ? '#4a4e4d' : '#353837';
+      const tread = moving ? frac(t * 6) * 2 : 0;
+      for (let i = -r + 0.6 + tread; i < r - 0.4; i += 2) ctx.fillRect(x + i, side * off - r * 0.6 + 0.4, 0.8, r * 1.2 - 0.8);
+    }
+}
+
+/**
+ * The Repair Truck: a wheeled cab in the side's colours, a flat bed with a folded crane, a tool
+ * locker and a green cross, and an amber beacon that turns while it drives.
+ */
+function drawRepairTruck(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  bodyShadow(ctx, p.hull, 26, 18, 4);
+  ctx.save();
+  ctx.rotate(p.hull);
+  wheels(ctx, [-8, 7], 7.2, 3.4, p.t, p.moving);
+  // Bed and chassis.
+  ctx.fillStyle = litGrad(ctx, p.hull, 9, '#7d8589', ART.metalDark);
+  rrect(ctx, -13, -6.4, 17, 12.8, 1.8);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  // Tool locker along one side, hazard edge at the tail.
+  ctx.fillStyle = '#5a6164';
+  ctx.fillRect(-11.6, -5.4, 13, 3.2);
+  ctx.fillStyle = 'rgba(255,255,255,0.2)';
+  ctx.fillRect(-11.6, -5.4, 13, 0.8);
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  for (let i = 0; i < 3; i++) ctx.fillRect(-10.6 + i * 4.3, -4.6, 0.6, 1.8);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = i % 2 ? ART.hazard : '#222';
+    ctx.fillRect(-13, -6.4 + i * 3.2, 1.4, 3.2);
+  }
+  // The crane: a turntable at the back and its boom folded forward over the bed, hook hanging.
+  ctx.fillStyle = '#2c3032';
+  circle(ctx, -7.5, 2, 2.8);
+  ctx.fill();
+  ctx.strokeStyle = ART.hazard;
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.moveTo(-7.5, 2);
+  ctx.lineTo(2.5, 1.2);
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(-6.5, 3);
+  ctx.lineTo(2.5, 2.2);
+  ctx.stroke();
+  ctx.fillStyle = '#1b1c1b';
+  circle(ctx, 2.6, 1.4, 1);
+  ctx.fill();
+  // Cab.
+  ctx.fillStyle = litGrad(ctx, p.hull, 7, team.light, team.dark);
+  rrect(ctx, 4.2, -6.6, 9.4, 13.2, 2.4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(160,220,255,0.8)';
+  ctx.fillRect(10.4, -4.8, 2, 9.6);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillRect(10.6, -4.6, 0.7, 3.6);
+  // The green cross of a mender on the cab roof.
+  ctx.fillStyle = '#f4f6f2';
+  rrect(ctx, 5.4, -2.8, 4.6, 5.6, 0.8);
+  ctx.fill();
+  ctx.fillStyle = '#3fb456';
+  ctx.fillRect(7.1, -2.2, 1.2, 4.4);
+  ctx.fillRect(5.5, -0.6, 4.4, 1.2);
+  const beacon = p.moving ? 0.5 + 0.5 * Math.sin(p.t * 9) : 0.25;
+  ctx.fillStyle = `rgba(255,170,40,${0.35 + 0.65 * beacon})`;
+  circle(ctx, 6, -5.2, 1.1);
+  ctx.fill();
+  emblem(ctx, team, -3, 2.6, 1.5);
+  hullDamage(ctx, hp, p.t, 24, 13, 'static');
+  ctx.restore();
+}
+
+/**
+ * The Forward Base Truck: a long, heavy tracked carrier with the Field Yard folded on its back, a
+ * concrete-grey module edged in hazard stripes with the side's roof panel, a mast and outriggers.
+ */
+function drawBaseTruck(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  bodyShadow(ctx, p.hull, 36, 24, 5);
+  ctx.save();
+  ctx.rotate(p.hull);
+  treads(ctx, 34, 9.6, 5.6, p.t, p.moving);
+  // Chassis.
+  ctx.fillStyle = litGrad(ctx, p.hull, 12, '#6f777b', ART.metalDark);
+  rrect(ctx, -17, -8.4, 34, 16.8, 2.4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // Outrigger feet folded at the four corners.
+  ctx.fillStyle = '#2c3032';
+  for (const [x, y] of [
+    [-15.5, -9.6],
+    [-15.5, 7.4],
+    [6.5, -9.6],
+    [6.5, 7.4],
+  ])
+    ctx.fillRect(x, y, 4, 2.2);
+  // The folded yard module.
+  ctx.fillStyle = litGrad(ctx, p.hull, 10, ART.concreteLight, ART.concreteDark);
+  rrect(ctx, -15, -6.8, 21, 13.6, 1.6);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  for (let i = 0; i * 3 < 21; i++) {
+    ctx.fillStyle = i % 2 ? ART.hazard : '#222';
+    ctx.fillRect(-15 + i * 3, -6.8, Math.min(3, 21 - i * 3), 1.4);
+    ctx.fillRect(-15 + i * 3, 5.4, Math.min(3, 21 - i * 3), 1.4);
+  }
+  ctx.fillStyle = litGrad(ctx, p.hull, 8, team.light, team.dark);
+  rrect(ctx, -12, -4, 12, 8, 1.2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  emblem(ctx, team, -6, 0, 2);
+  // Folded mast along the module, its beacon at the tip.
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(2, -4.6);
+  ctx.lineTo(-13, -4.6);
+  ctx.stroke();
+  const beacon = p.moving ? 0.5 + 0.5 * Math.sin(p.t * 7) : 0.3;
+  ctx.fillStyle = `rgba(255,170,40,${0.35 + 0.65 * beacon})`;
+  circle(ctx, -13, -4.6, 1.1);
+  ctx.fill();
+  // Cab at the front.
+  ctx.fillStyle = litGrad(ctx, p.hull, 7, team.light, team.dark);
+  rrect(ctx, 8, -7.6, 9, 15.2, 2.4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(160,220,255,0.8)';
+  ctx.fillRect(14, -5.6, 2, 11.2);
+  ctx.fillStyle = 'rgba(255,255,255,0.5)';
+  ctx.fillRect(14.2, -5.4, 0.7, 4);
+  ctx.fillStyle = '#262625';
+  circle(ctx, 9.8, -5.6, 1.2);
+  ctx.fill();
+  hullDamage(ctx, hp, p.t, 32, 16, 'static');
+  ctx.restore();
+}
+
+/**
+ * The Field Yard: the truck's module unfolded on its outriggers over a hazard-edged pad, a prefab
+ * office in the side's colours, a small crane that swings while the yard builds, a mast with a
+ * beacon, and stacked materials.
+ */
+function drawFieldYard(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  const work = !!p.working;
+  ctx.fillStyle = '#4b514f';
+  rrect(ctx, 5, 5, w - 10, h - 10, 3);
+  ctx.fill();
+  hazardStripe(ctx, 5, 5, w - 10, 2.6);
+  hazardStripe(ctx, 5, h - 7.6, w - 10, 2.6);
+  // Outrigger feet at the corners, struts in to the module.
+  const feet: [number, number][] = [
+    [9, 11],
+    [w - 9, 11],
+    [9, h - 11],
+    [w - 9, h - 11],
+  ];
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (const [fx, fy] of feet) {
+    ctx.moveTo(fx, fy);
+    ctx.lineTo(w / 2 + (fx < w / 2 ? -10 : 10), h / 2 + (fy < h / 2 ? -7 : 7));
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#1e2120';
+  for (const [fx, fy] of feet) ctx.fillRect(fx - 2.5, fy - 2.5, 5, 5);
+  // The unfolded module: a prefab office with the side's roof and a window strip.
+  block(ctx, 14, 16, w - 28, 22, ART.concreteLight, ART.concreteDark, 4);
+  ctx.fillStyle = team.main;
+  ctx.fillRect(16, 18, w - 32, 8);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fillRect(16, 18, w - 32, 1.5);
+  ctx.fillStyle = on ? 'rgba(170,230,255,0.8)' : 'rgba(90,110,120,0.6)';
+  ctx.fillRect(18, 30, w - 36, 3);
+  emblem(ctx, team, w / 2, 22, 2.6);
+  // Stacked materials in a corner.
+  ctx.fillStyle = '#8a6a44';
+  ctx.fillRect(9, h - 20, 9, 3);
+  ctx.fillRect(10, h - 23, 7, 3);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(9, h - 17.6, 9, 0.6);
+  // The crane, swinging while the yard is building something.
+  const a = work && on ? -Math.PI / 2 + Math.sin(p.t * 0.7) * 0.9 : -2.4;
+  const bx = w - 16;
+  const by = h - 16;
+  ctx.fillStyle = '#2c3032';
+  circle(ctx, bx, by, 3.4);
+  ctx.fill();
+  ctx.strokeStyle = ART.hazard;
+  ctx.lineWidth = 2.4;
+  ctx.beginPath();
+  ctx.moveTo(bx, by);
+  ctx.lineTo(bx + Math.cos(a) * 20, by + Math.sin(a) * 20);
+  ctx.stroke();
+  ctx.fillStyle = '#1b1c1b';
+  circle(ctx, bx + Math.cos(a) * 20, by + Math.sin(a) * 20, 1.2);
+  ctx.fill();
+  // Mast with a beacon.
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(12, h - 26);
+  ctx.lineTo(12, 9);
+  ctx.stroke();
+  lamp(ctx, 12, 9, on, work ? '#7dff8a' : '#ffb43a', p.t, work ? 8 : 2, work);
+}
 // round5:C end.
 
 // round5:D begin. Neutral sites and tier three (fireline-round5-design.md): its drawing functions (drawSite

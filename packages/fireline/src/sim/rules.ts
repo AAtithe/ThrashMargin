@@ -110,6 +110,8 @@ export type UnitKind =
   | 'flaktrack'
   | 'skyhunter'
   // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its unit kinds.
+  | 'repairtruck'
+  | 'basetruck'
   // round5:C end.
   // round5:D begin. Tier three (fireline-round5-design.md, workstream D): its unit kinds.
   // round5:D end.
@@ -131,6 +133,7 @@ export type BuildingKind =
   | 'flakcannon'
   | 'researchlab'
   // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its structure kinds.
+  | 'fieldyard'
   // round5:C end.
   // round5:D begin. Tier three (fireline-round5-design.md, workstream D): its structure kinds.
   // round5:D end.
@@ -448,6 +451,32 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     blurb: 'Shoulder-launched anti-air missiles. Brings down aircraft; helpless against anything on the ground.',
   },
   // round5:C begin. Engineering vehicles: its units, appended here.
+  repairtruck: {
+    name: 'Repair Truck',
+    category: 'vehicle',
+    cost: 900,
+    buildTicks: 110,
+    hp: 300,
+    armor: 'light',
+    speed: 0.085,
+    sight: 6,
+    requires: ['factory', 'repairbay'],
+    blurb: 'Unarmed. Mends your vehicles beside it, free, and drives to damaged ones nearby when idle.',
+    mender: true,
+  },
+  basetruck: {
+    name: 'Forward Base Truck',
+    category: 'vehicle',
+    cost: 2500,
+    buildTicks: 250,
+    hp: 900,
+    armor: 'heavy',
+    speed: 0.055,
+    sight: 5,
+    requires: ['factory', 'uplink'],
+    blurb: 'Unarmed. Deploys where it stands into a Field Yard: a second base that builds structures. Three at most.',
+    deploysTo: 'fieldyard',
+  },
   // round5:C end.
   // round5:D begin. Tier three: its units, appended here.
   // round5:D end.
@@ -640,6 +669,20 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     blurb: 'Researches upgrades that last the rest of the battle, one at a time.',
   },
   // round5:C begin. Engineering vehicles: its structures, appended here.
+  fieldyard: {
+    name: 'Field Yard',
+    w: 2,
+    h: 2,
+    cost: 2500,
+    buildTicks: 250,
+    hp: 1000,
+    power: 0,
+    sight: 5,
+    requires: [],
+    blurb: 'A deployed Forward Base Truck. Builds structures within six tiles of itself; packs up to move on.',
+    buildRadius: 6,
+    undeploysTo: 'basetruck',
+  },
   // round5:C end.
   // round5:D begin. Tier three: its structures, appended here (neutral sites are not structures).
   // round5:D end.
@@ -675,6 +718,8 @@ export const VEHICLE_MENU: UnitKind[] = [
   'bastion',
   'flaktrack',
   // round5:C begin. Engineering vehicles: its units, appended here.
+  'repairtruck',
+  'basetruck',
   // round5:C end.
   // round5:D begin. Tier three: its units, appended here.
   // round5:D end.
@@ -728,6 +773,7 @@ export const PRODUCER: Record<Category, BuildingKind> = {
  */
 export const ALSO_PRODUCES: Partial<Record<BuildingKind, Category>> = {
   // round5:C begin. The Field Yard works the Structures queue.
+  fieldyard: 'building',
   // round5:C end.
 };
 
@@ -1225,6 +1271,20 @@ export const AIRFRAMES_REARM = 0.6;
 // the menus, each between its own round5 markers above.
 
 // round5:C begin. Engineering vehicles: the Repair Truck, the Forward Base truck and the Field Yard.
+//
+// Advanced tech, skirmish only (none of the three is in STANDARD_TECH). The simulation is in
+// engineering.ts, the computer's side of it in aiEngineering.ts.
+
+/** Repair Truck: mends the most damaged of its side's vehicles within this many tiles, centre to centre. */
+export const REPAIR_TRUCK_RANGE = 2;
+/** Hit points each mend gives back. */
+export const REPAIR_TRUCK_HP = 8;
+/** Ticks between mends: 16 health a second (the Repair Bay gives 12, and is paid for). */
+export const REPAIR_TRUCK_TICKS = 5;
+/** How far an idle Repair Truck looks for a damaged vehicle to drive to. */
+export const REPAIR_TRUCK_SEEK = 8;
+/** Field Yards a side may have, counting Forward Base Trucks standing and queued. */
+export const MAX_FIELD_YARDS = 3;
 // round5:C end.
 
 // round5:D begin. Neutral sites and tier three.

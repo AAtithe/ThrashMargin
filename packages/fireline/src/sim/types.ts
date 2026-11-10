@@ -260,6 +260,20 @@ export interface AiMemory {
   // round5:B begin. Larger maps: optional AiMemory fields (wave sizing for distance).
   // round5:B end.
   // round5:C begin. Engineering vehicles: optional AiMemory fields (its trucks, its expansion).
+  /**
+   * A Forward Base expansion under way (aiEngineering.ts), or null or absent for none. `truck` is the
+   * Forward Base Truck's id (0 while it is queued), (x, y) the Field Yard's top-left tile, `since` the
+   * tick the current step began; `yard` is the Field Yard's id once deployed.
+   */
+  expansion?: { truck: number; x: number; y: number; since: number; yard?: number } | null;
+  /** The tick before which no new expansion is tried (after a failure, two minutes). */
+  expandAfter?: number;
+  /**
+   * Credits the computer has set aside for its engineering (a Repair Truck, or its expansion: the
+   * truck, then the yard's structures), held here so its other spending cannot reach them; handed
+   * back when they are spent or it gives up.
+   */
+  engineeringFund?: number;
   // round5:C end.
   // round5:D begin. Neutral sites and tier three: optional AiMemory fields (its capture parties).
   // round5:D end.

@@ -694,3 +694,62 @@ in play is gated on the size, so a standard battle, a mission or an old save pla
   standard with the same seeds). Four battles rather than two, because two seeds once read shorter
   than standard. The sections add about 90 seconds to `drive:fire`. `scripts/long-games.ts` is the
   longer sweep. Every standard-size line of `drive:fire` is unchanged.
+
+
+### 2026-11-10: Round 5, workstream C: engineering vehicles
+
+The Repair Truck, and the Forward Base Truck that deploys into a Field Yard, as set out in
+`fireline-round5-design.md` section 5. Advanced tech, skirmish only: none of the three kinds is in
+`STANDARD_TECH`, so no mission and no standard-tech battle sees them.
+
+- **Numbers as the contract started them.** Repair Truck 900 credits, 110 ticks, 300 health,
+  light, mends 8 health every 5 ticks (16 a second, free) within 2 tiles, seeks within 8. Forward
+  Base Truck 2500, 250 ticks, 900 health, heavy. Field Yard 2x2, 1000 health, build radius 6. Three
+  yards and trucks a side at most, counting trucks queued.
+- **Simulation** (`src/sim/engineering.ts`): `menderStep` from `updateUnit`; `deployProblem` and
+  `doDeploy` (the yard's top-left is the truck's rounded tile less one, placement as any structure
+  but with no "near your base" rule and the truck not in its own way; a truck moving or
+  attack-moving may deploy, one on any other errand is "Busy"); `undeployProblem` and `doUndeploy`
+  (refused for the side's last structure, and for the only producer while a structure is ready to
+  place). Health carries over by share both ways. `placementProblem` takes options for the two
+  exceptions and reads each structure's `buildRadius`. Packing up leaves the same ring and chime as
+  a sale, which also tells the renderer to leave clean ground rather than rubble.
+- **The Repair Truck takes a stance**, though unarmed: on Hold it stays where it is put. The stance
+  buttons (the sidebar's, not this workstream's) show only for armed units, so the selection panel
+  gains **Stay put** and **Roam** for Repair Trucks, beside **Deploy** and **Pack up**.
+- **The computer** (`src/sim/aiEngineering.ts`). It spends every credit on units, so neither the
+  trucks nor the expansion could ever be afforded: in the first measurements the computer never once
+  held 2500. Engineering now saves: at each decision half its credits go into
+  `AiMemory.engineeringFund`, out of reach of the rest of the commander, until the purchase can be
+  paid for, and the fund goes back when it gives up. Repair Trucks: one once it fields 6 ground
+  vehicles (haulers count, the trucks do not; counting only armed vehicles, a real battle rarely
+  reached 6 at once), one per 8 after that, at most 3. Expansion on large and huge setups: with two
+  refineries and no threat at home, the nearest ore field 24 tiles from its structures with no enemy
+  within 12; truck, yard, then a Refinery and a Gun Turret round it (the commander asks
+  `expansionSpot` before its own spot). Until workstream B lands, a large setup still generates a
+  64-tile map, which is what the harness plays.
+- **Campaign check**: the test that Last Light's enemy has every structure kind now skips the
+  Field Yard (a structure only ever deployed). Missions are unchanged.
+
+Measured (`npm run drive:fire`, 354,122 assertions, 0 failed; was 343,756): the four mission and
+standard-tech lines are unchanged. Advanced lines now read:
+
+```
+  12/12 finished, average 26.1 game minutes; side 0 won 4, side 1 won 8
+    classic: side 1 in 30 min, side 1 in 18 min
+    river: side 1 in 25 min, side 0 in 25 min
+    highlands: side 1 in 36 min, side 1 in 31 min
+    lakes: side 1 in 21 min, side 0 in 31 min
+    plains: side 1 in 18 min, side 0 in 17 min
+    canyon: side 0 in 29 min, side 1 in 32 min
+```
+
+and in the round-4 sides block "12/12 finished, average 21.8 game minutes" (was 20.3), with the
+four advanced battles moved: river three sides teams side 1 in 27 min (was side 0 in 12), river four
+free for all side 3 in 17 (18), lakes three teams side 0 in 13 (17), canyon three teams side 1 in 32
+(side 0 in 25). The hard air battle now reads "side 1 won at 21 min; 12 bombs, 5 gunship rockets, 4
+aircraft at most; upgrades 0 and 0" (was 22 min, 10 rockets, upgrades 0 and 1): the fund draws on
+the same credits research would. Advanced battles run a little longer, as the request wanted. The
+engineering sections add 182 assertions and about 7 seconds. In the whole-battle section a hard
+advanced battle on a large setup fields a Repair Truck that mends, and two Field Yards go down.
+`npm run campaign:fire`: 2,595 assertions, 0 failures, all fourteen missions unchanged.
