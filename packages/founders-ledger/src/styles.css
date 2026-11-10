@@ -182,3 +182,6 @@ details.own[open] summary{margin-bottom:8px}
 .receipt p{margin:0;font-size:17px;line-height:1.45}
 span.dot{display:inline-flex;align-items:center;justify-content:center;cursor:default}
 .checks li.loud{grid-template-columns:1fr auto}
+/* On a phone the scoreboard fills the first screen, so the Reset gets a button above it. */
+.reset-top{display:none}
+@media (max-width:660px){.reset-top{display:block;width:100%;margin:4px 0 14px;min-height:48px}.reset-top[hidden]{display:none}}

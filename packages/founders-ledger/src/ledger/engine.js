@@ -10,7 +10,7 @@
  * reads storage or the network itself. On the portal `ai` is false: the weekly call is dealt from the
  * built-in bank and the 2030 letter draft is the player's own answers set out as a letter.
  */
-const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
+const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Loud day? Reset in three minutes</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
 
 export function mountLedger(root, opts = {}) {
   return createLedger(opts.initial, { ...opts, root }).mount();
@@ -815,6 +815,7 @@ function vFuture(){
 
 function render(){
   renderBoard();renderTabs();
+  const rt=byId('resetTop');if(rt)rt.hidden=S.view==='reset';
   const v={today:vToday,reset:vReset,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
   $('#view').innerHTML=v();
 }
@@ -863,7 +864,7 @@ async function dealCall(btn){
     call=JSON.parse(JSON.stringify(pick));call.bank=pick.id;call.gen='bank';
   }
   call.id='c'+uid();call.ts=Date.now();
-  S.calls.push(call);S.pendingCall=false;S.view='calls';S.callId=call.id;save();render();window.scrollTo({top:0});
+  S.calls.push(call);S.pendingCall=false;S.view='calls';S.callId=call.id;save();render();toTop();
 }
 
 /* ---------- 2030 letter ---------- */
@@ -915,10 +916,12 @@ async function coachLetter(btn){
   S.letterCoach=out;save();renderLetter();
 }
 
+/* The Reset sits below the scoreboard, so on a phone "top" means its own steps, not the page. */
+function toTop(){if(S.view==='reset'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
 function endReset(o){
   if(!RD||!RD.loud||!RD.sort)return;
   const entry=finishReset({loud:RD.loud,sort:RD.sort,receipt:RD.receipt,move:o.move,todoId:o.todoId});
-  RD={step:'done',entry};save();render();window.scrollTo({top:0});
+  RD={step:'done',entry};save();render();toTop();
 }
 function attach(){
 /* ---------- Events ---------- */
@@ -961,14 +964,14 @@ on('click',async e=>{
         if(st>=LETTER_Q.length-1){addTodo({text:v,type:'Start',h:'week',hours:0,source:'letter-thank'});save();setStatus('Your first step is on the list. Now draft the letter.');}break;}
       case 'decline':{S.wildMonth.decision='declined';S.wildMonth.reason=v;S.wildLog.push({month:S.wildMonth.month,id:S.wildMonth.id,decision:'declined',reason:v});save();render();break;}
       case 'score':{const s=picked('score');S.future.gameWords=s.length?'The score that counts: '+s.join(' and ')+'.':'';save();const ta=byId('f-gameWords');if(ta)ta.value=S.future.gameWords;break;}
-      case 'reset-loud':{const L=LOUD.find(x=>x.name===v);if(!L)break;RD={step:'sort',loud:L.k};render();window.scrollTo({top:0});break;}
-      case 'reset-sort':{const so=SORT.find(x=>x.name===v);if(!so||!RD)break;RD.sort=so.k;RD.receipt=receiptFor((S.resets||[]).length);RD.step='receipt';render();window.scrollTo({top:0});break;}
+      case 'reset-loud':{const L=LOUD.find(x=>x.name===v);if(!L)break;RD={step:'sort',loud:L.k};render();toTop();break;}
+      case 'reset-sort':{const so=SORT.find(x=>x.name===v);if(!so||!RD)break;RD.sort=so.k;RD.receipt=receiptFor((S.resets||[]).length);RD.step='receipt';render();toTop();break;}
       case 'reset-move':endReset({move:v});break;
       case 'pillar':{const k=d.pickGroup.slice(3);S.future.pillars[k].ten=v;save();const i=byId('pt-'+k);if(i)i.value=v;break;}
     }
     return;
   }
-  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;S.view=d.tab;save();render();window.scrollTo({top:0});return;}
+  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;S.view=d.tab;save();render();toTop();return;}
   if(d.goto){S.view='future';save();render();const el=byId(d.goto);if(el)el.scrollIntoView({block:'start'});return;}
   if(d.lqstep!=null){S.letterQ.step=Number(d.lqstep);save();renderLetter();return;}
   if(d.keep){const w=WILD.find(x=>x.id===d.keep);const ex=S.todos.find(t=>t.source===w.id);
@@ -1002,24 +1005,24 @@ on('click',async e=>{
       if(r.space)S.notes.push({ts:r.ts,kind:'space',text:r.space});
       if(r.change)addTodo({text:r.change,type:'Start',h:'week',hours:0,source:'review-'+r.ts});
       if(r.inSystem)addTodo({text:'Design out: '+r.inSystem,type:'Stop',h:'month',hours:1,source:'review-sys-'+r.ts});
-      reviewGame='';S.view='today';save();render();window.scrollTo({top:0});
+      reviewGame='';S.view='today';save();render();toTop();
       const gained=points()-before;
       $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Week closed. +${gained} points, streak ${streak()} week${streak()===1?'':'s'}.</strong><span class="small">${S.pendingCall?'Your next call is ready to deal below.':'Review updated.'}</span></div>`);
       break;}
     case 'dealCall':dealCall(b);break;
     case 'resetStart':RD={step:'loud'};render();break;
     case 'resetBack':{const order=['loud','sort','receipt','move'];const i=order.indexOf(RD&&RD.step);if(i>0)RD.step=order[i-1];render();break;}
-    case 'resetNext':if(RD)RD.step='move';render();window.scrollTo({top:0});break;
+    case 'resetNext':if(RD)RD.step='move';render();toTop();break;
     case 'resetOwn':{const t=(byId('other-rs-move')||{}).value;const txt=(t||'').trim();if(!txt){const o=byId('other-rs-move');if(o){o.hidden=false;o.focus();}setStatus('Write the move in a few words, then tap Use my own words.');return;}endReset({move:txt});break;}
     case 'resetTodo':endReset({todoId:d.id});break;
     case 'resetDone':{const t=S.todos.find(x=>x.id===d.id);if(!t)return;const before=points();if(!t.done){t.done=true;t.doneAt=Date.now();t.star=false;}
-      if(RD&&RD.step!=='loud')RD=null;save();S.view='today';render();window.scrollTo({top:0});
+      if(RD&&RD.step!=='loud')RD=null;save();S.view='today';render();toTop();
       $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Done. That is the move made.</strong><span class="small">${points()>before?'+'+(points()-before)+' points. ':''}You were in charge of the next step, and you took it.</span></div>`);break;}
-    case 'resetCall':{if(!RD||!RD.entry)return;const c=pressureFor(RD.entry.loud);RD.step='call';RD.call=c.id;RD.pick=null;render();window.scrollTo({top:0});break;}
+    case 'resetCall':{if(!RD||!RD.entry)return;const c=pressureFor(RD.entry.loud);RD.step='call';RD.call=c.id;RD.pick=null;render();toTop();break;}
     case 'resetPick':{if(!RD||RD.pick!=null)return;RD.pick=Number(d.i);const e=S.resets.find(r=>r.ts===RD.entry.ts);if(e){e.call={id:RD.call,pick:RD.pick};save();}render();break;}
     case 'addFix':{const fx=FIX[d.k];if(!fx)return;addTodo(Object.assign({},fx,{source:'fix-'+d.k+'-'+weekNo(Date.now())}));save();render();setStatus('On your list. That is the system fix, not the symptom.');break;}
-    case 'nextCall':{const i=FOUNDING.findIndex(c=>c.id===S.callId);const nx=FOUNDING.slice(i+1).find(c=>S.answers[c.id]==null)||FOUNDING.find(c=>S.answers[c.id]==null);S.callId=nx?nx.id:'results';save();render();window.scrollTo({top:0});break;}
-    case 'replay':{const pr=practice();S.practiceRuns=(S.practiceRuns||[]).concat({ts:Date.now(),judgement:pr.judgement,best:pr.best.length,traps:pr.traps.length,index:pr.index});FOUNDING.forEach(c=>delete S.answers[c.id]);S.callId=FOUNDING[0].id;S.deck={drawn:[],redraws:2};save();render();window.scrollTo({top:0});break;}
+    case 'nextCall':{const i=FOUNDING.findIndex(c=>c.id===S.callId);const nx=FOUNDING.slice(i+1).find(c=>S.answers[c.id]==null)||FOUNDING.find(c=>S.answers[c.id]==null);S.callId=nx?nx.id:'results';save();render();toTop();break;}
+    case 'replay':{const pr=practice();S.practiceRuns=(S.practiceRuns||[]).concat({ts:Date.now(),judgement:pr.judgement,best:pr.best.length,traps:pr.traps.length,index:pr.index});FOUNDING.forEach(c=>delete S.answers[c.id]);S.callId=FOUNDING[0].id;S.deck={drawn:[],redraws:2};save();render();toTop();break;}
     case 'draw':{const dk=S.deck=S.deck||{drawn:[],redraws:2};if(dk.drawn.length){if(!dk.redraws)return;dk.redraws--;}
       const kept=new Set(S.todos.filter(t=>t.source&&t.source.startsWith('w')).map(t=>t.source));
       let pool=WILD.filter(w=>!kept.has(w.id)&&!dk.drawn.includes(w.id));if(pool.length<3)pool=WILD.filter(w=>!kept.has(w.id));if(pool.length<3)pool=WILD.slice();
