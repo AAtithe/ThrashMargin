@@ -1,6 +1,7 @@
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
 import { buildingCentre, dist, distToBuilding, doorTile, dockTile, frontDir, nearestPassable, occupancy, onMap, passable, laneRow, tileAt } from './grid';
 import { airPlan } from './aiAir';
+import { engineeringPlan, expansionSpot } from './aiEngineering';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
 import {
@@ -268,10 +269,10 @@ function commander(s: GameState, owner: Owner): void {
   let saving = false;
   const ready = readyStructure(s, owner);
   if (ready) {
-    const spot = ready === 'wall' ? wallSpot(s, owner, home, enemyHome) : findSpot(s, owner, ready, home, enemyHome);
+    const spot = ready === 'wall' ? wallSpot(s, owner, home, enemyHome) : (expansionSpot(s, owner, ready, enemyHome) ?? findSpot(s, owner, ready, home, enemyHome));
     if (spot) doPlace(s, owner, ready, spot.x, spot.y);
     else doCancel(s, owner, 'building', ready);
-  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq')) {
+  } else if (p.queues.building.length === 0 && mine.some(b => b.kind === 'hq' || b.kind === 'fieldyard')) {
     // Only with a Command Yard: a mission outpost has none, and a structure it queued could never
     // be built, leaving its credits stuck in the queue.
     let want = nextStructure(s, owner, d, noHauler && !canBuildHauler, adv ? diff : null);
@@ -410,6 +411,7 @@ function commander(s: GameState, owner: Owner): void {
 
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into aiEngineering.ts
   // goes on the line below this comment, and nothing else in this function changes.
+  engineeringPlan(s, owner, home, enemyHome, units, foes);
   // round5:C end.
   // round5:D begin. Neutral sites and tier three (fireline-round5-design.md): one call into
   // aiSites.ts goes on the line below this comment, and nothing else in this function changes.
