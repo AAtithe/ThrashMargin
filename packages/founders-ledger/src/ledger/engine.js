@@ -10,7 +10,7 @@
  * reads storage or the network itself. On the portal `ai` is false: the weekly call is dealt from the
  * built-in bank and the 2030 letter draft is the player's own answers set out as a letter.
  */
-const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
+const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Loud day? Reset in three minutes</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
 
 export function mountLedger(root, opts = {}) {
   return createLedger(opts.initial, { ...opts, root }).mount();
@@ -129,6 +129,132 @@ const WILD=[
  {id:'wcfo',title:'A date to stop being CFO',what:'Pick a date after which you do no CFO execution. Tell the team the date.',todo:'Set and announce the date I stop doing CFO execution.',type:'Stop',h:'month',hours:6},
  {id:'wone',title:'One number a day',what:'Pick the one firm metric that best predicts profit and read it daily.',todo:'Choose the one firm metric that best predicts profit and put it on my screen daily.',type:'Keep',h:'week',hours:0}
 ];
+/* ---------- The Reset: three minutes, played as often as a hard day needs, always ending in a move ----------
+   Built for days that are loud. Name it, sort it, see one receipt from your own ledger, pick one move under
+   fifteen minutes, then go and do it. A reset never takes points away and never touches the streak. Its move
+   scores only when ticked, and only the first three a day score, so the ledger never rewards reaching for it. */
+const RESET_CAP=6;
+const LOUD=[
+ {k:'cash',name:'Cash'},
+ {k:'client',name:'A client'},
+ {k:'person',name:'Someone on the team'},
+ {k:'load',name:'Too much on'},
+ {k:'mistake',name:'A mistake'},
+ {k:'future',name:'Where the firm is heading'},
+ {k:'heavy',name:'Nothing specific, just heavy'}
+];
+const SORT=[
+ {k:'decide',name:'Mine to decide',coach:'Then it is a decision, not a worry. Decisions get made, scheduled or handed over. Worries just loop.'},
+ {k:'influence',name:'Mine to influence',coach:'You cannot decide it alone, but you can move it. One conversation or one message usually moves it most.'},
+ {k:'not',name:'Not mine',coach:'Then carrying it is not leadership, it is weight. Write it down, park it, and put your next hour where it counts.'}
+];
+const MOVES={
+  cash:['Write today’s bank balance down, actual not feared','Chase the oldest debtor with one email','Sketch the next 13 weeks of cash on one page','Ask for a cash forecast on my desk by Friday'],
+  client:['Write the one sentence I want the client to hear','Ask the account manager for their recommendation','Book a 15-minute call with the client','Write what a fair outcome looks like for both sides'],
+  person:['Write the standard they are missing in one sentence','Book the conversation in the diary this week','Ask how they see it before I say how I see it','Thank someone who got something right today'],
+  load:['Write everything down, then circle one','Hand one item over with an owner and a date','Cancel or shorten one meeting today','Close email for the next 60 minutes'],
+  mistake:['Write what happened in three lines, facts only','Tell the person affected, today, plainly','Name the check that would have caught it','Name who owns the fix to the cause'],
+  future:['Read my 2030 letter','Write the one decision that would move the firm most this quarter','Book a two-hour thinking block this week','Write down three things going well that nobody has noticed'],
+  heavy:['Ten-minute walk, no phone','Water, five slow breaths, then one small task','Tell someone I trust how today is going','Finish one small thing I have been putting off'],
+  not:['Write it down and park it until Friday','Name who does own it and tell them','Ten-minute walk, no phone']
+};
+/* When the same thing is loud on three days in a week it is a system problem, and the Friday review says so. */
+const FIX={
+  cash:{text:'Build a 13-week cash flow and read it every Monday at 9.',type:'Start',h:'week',hours:1},
+  client:{text:'Write the client standard: what we do, what we charge, and when we walk away.',type:'Start',h:'month',hours:1},
+  person:{text:'Hold the overdue conversation: gap, standard, thirty days, support.',type:'Start',h:'week',hours:1},
+  load:{text:'Cut one recurring commitment for good and tell the people affected.',type:'Stop',h:'week',hours:2},
+  mistake:{text:'Add the missing check to the process and give it a named owner.',type:'Start',h:'month',hours:1},
+  future:{text:'Book a monthly two-hour strategy block with one question written down.',type:'Start',h:'month',hours:0},
+  heavy:{text:'Book a proper conversation with someone outside the firm about how this year is going.',type:'Start',h:'week',hours:0}
+};
+/* Short calls for a pressure moment. Answering scores nothing and adds nothing to the list: the move does that. */
+const PRESSURE=[
+ {id:'p-cash1',k:'cash',title:'Thursday’s forecast',scene:'The cash forecast shows a dip below your comfort line in three weeks. Payroll is the week after.',
+  opts:[{t:'Lie awake running the numbers.',v:'trap',n:'You did the worrying and none of the work. The numbers are the same at 7am.'},{t:'List the three levers: collect, delay, draw. Pick the first one and act on it today.',v:'best',n:'A dip you can see three weeks out is a plan, not a crisis.'},{t:'Wait for next week’s forecast to confirm it.',v:'ok',n:'Sometimes right. Usually it burns a week you will want back.'}],
+  coach:['You tell clients every week that a forecast is a gift: it shows the problem while there is still time. Take your own advice.']},
+ {id:'p-cash2',k:'cash',title:'The slow payer',scene:'Your second-largest client is 60 days late. They are friendly and always apologetic.',
+  opts:[{t:'Leave it. The relationship matters more.',v:'trap',n:'They are using your balance sheet as their overdraft, at your expense.'},{t:'Call the owner, agree a date, and put the account on terms from next month.',v:'best',n:'Clear, kind and done in one conversation.'},{t:'Have the team send a firmer reminder.',v:'ok',n:'It may work. The owner-to-owner call works faster.'}],
+  coach:['A client who pays late is borrowing from you without asking. Saying so plainly is not rude. It is the job.']},
+ {id:'p-cash3',k:'cash',title:'3am arithmetic',scene:'You wake at 3am and start rebuilding the P&L in your head.',
+  opts:[{t:'Get up and open the laptop.',v:'trap',n:'Tired judgement on half the facts. Tomorrow pays for tonight.'},{t:'Write the worry on paper by the bed, one line, then back to sleep. Look at it at 9.',v:'best',n:'The thought is parked where you can find it. Your head is allowed to stop.'},{t:'Lie there and try not to think about it.',v:'ok',n:'Trying not to think about something is still thinking about it.'}],
+  coach:['Nothing at 3am has ever been improved by a spreadsheet at 3am. Park it in writing. The 9am version of you is the CFO.']},
+ {id:'p-cash4',k:'cash',title:'The quiet month',scene:'New business is slow this month and you start to wonder if the firm is in trouble.',
+  opts:[{t:'Discount the next three proposals to win them.',v:'trap',n:'You have turned a quiet month into a lower-margin year.'},{t:'Check the facts: pipeline, retention, cash. Then decide whether it is a month or a trend.',v:'best',n:'One month is noise. Three is a trend. Know which you are looking at.'},{t:'Spend the week personally chasing leads.',v:'ok',n:'Useful energy. It also tells the team sales depend on you.'}],
+  coach:['You would never let a client panic over one soft week of covers. Look at the trend, not the week.']},
+ {id:'p-client1',k:'client',title:'The angry email',scene:'4pm. A client emails the whole team: the pack was late and they are “seriously reconsidering”.',
+  opts:[{t:'Reply in full within ten minutes, defending the team.',v:'trap',n:'Fast and defensive. It reads as panic and escalates.'},{t:'Acknowledge within the hour, call tomorrow morning with the facts and the fix.',v:'best',n:'Calm, quick and specific. Most angry clients want to be heard and then to see a plan.'},{t:'Forward it to the manager to handle.',v:'ok',n:'Right owner, but a threatened exit deserves your voice once.'}],
+  coach:['Speed of acknowledgement and speed of reply are different things. Acknowledge fast. Reply when you have the facts.']},
+ {id:'p-client2',k:'client',title:'The fee conversation',scene:'You need to raise a long-standing client’s fee by 15 percent and you have put it off twice.',
+  opts:[{t:'Put it off to the year end.',v:'trap',n:'Another quarter of work below cost, and a harder conversation later.'},{t:'Book it this week. Show what they get, the new fee, and the date it starts.',v:'best',n:'Value first, number second, date third. Done.'},{t:'Send it by email and hope they do not notice.',v:'ok',n:'They will notice. Say it to them.'}],
+  coach:['The conversation you avoid does not get easier. It gets more expensive. Every month you wait is paid for in margin.']},
+ {id:'p-client3',k:'client',title:'They want you, not the team',scene:'A big client says they only want to deal with you.',
+  opts:[{t:'Agree. They are too important to risk.',v:'trap',n:'You have just made yourself the ceiling on that account.'},{t:'Introduce the manager in person, stay in the first two meetings, then step back on a stated date.',v:'best',n:'They get continuity and you get your time back.'},{t:'Hand them over by email.',v:'ok',n:'Correct direction, rough landing.'}],
+  coach:['Clients ask for the founder because they have not yet met anyone as good. Your job is to introduce them to someone who is.']},
+ {id:'p-client4',k:'client',title:'The lost client',scene:'A client you liked has moved to a cheaper firm.',
+  opts:[{t:'Decide the firm is slipping.',v:'trap',n:'One loss is a data point, not a verdict.'},{t:'Ask them for ten honest minutes on why. Write down what you learn.',v:'best',n:'The cheapest research you will ever buy.'},{t:'Move on and say nothing.',v:'ok',n:'Dignified, and you learn nothing.'}],
+  coach:['Some clients should leave. Find out whether this was one of them before you decide what it means.']},
+ {id:'p-person1',k:'person',title:'The resignation',scene:'A good manager hands in their notice.',
+  opts:[{t:'Counter-offer straight away, whatever it takes.',v:'trap',n:'Money rarely fixes the reason. They often leave within the year anyway.'},{t:'Ask why, listen properly, then decide. Start the handover plan either way.',v:'best',n:'You learn something and the firm is protected.'},{t:'Take their work on yourself for now.',v:'trap',n:'Now you have their job and yours.'}],
+  coach:['People leave. Firms that survive it have the work written down and more than one person who can do it.']},
+ {id:'p-person2',k:'person',title:'The difficult conversation',scene:'You need to tell someone senior their work is below standard. It is booked for tomorrow.',
+  opts:[{t:'Soften it until the message is lost.',v:'trap',n:'They leave the room thinking it went well.'},{t:'Write the gap, the standard and the support on one card. Say it plainly and kindly.',v:'best',n:'Clear is kind. They know where they stand.'},{t:'Postpone it a week to prepare more.',v:'ok',n:'You are already prepared. The delay is for you, not them.'}],
+  coach:['The kindest version of a hard message is the one that is understood the first time.']},
+ {id:'p-person3',k:'person',title:'Team morale',scene:'The office feels flat. Two people seem quietly fed up.',
+  opts:[{t:'Book a team social and hope.',v:'ok',n:'Nice. It treats the mood, not the cause.'},{t:'Have two short one-to-ones this week. Ask what is getting in their way.',v:'best',n:'You find the cause, and they see you noticed.'},{t:'Ignore it. Everyone has flat weeks.',v:'trap',n:'Sometimes true. Flat weeks become resignations when nobody asks.'}],
+  coach:['Morale follows clarity and progress more than perks. Ask what is in the way and remove one thing.']},
+ {id:'p-person4',k:'person',title:'The hire you are unsure about',scene:'Six weeks in, a new hire is slower than you hoped.',
+  opts:[{t:'Decide they were a mistake.',v:'trap',n:'Six weeks is early. Most slow starts are onboarding problems.'},{t:'Check what they were given: training, standards, a named buddy. Fix the gaps, review at twelve weeks.',v:'best',n:'Fair to them and honest about your part.'},{t:'Redo their work yourself quietly.',v:'trap',n:'They never learn and you never stop.'}],
+  coach:['Before judging a new starter, audit the start you gave them. That part was yours.']},
+ {id:'p-load1',k:'load',title:'Forty things',scene:'Your list has forty things on it and they all feel urgent.',
+  opts:[{t:'Work late and clear as many as possible.',v:'trap',n:'You will clear the easy ones and the hard ones will still be there.'},{t:'Pick the three that matter this week. Hand five over. Park the rest with a review date.',v:'best',n:'A list you can finish is a list you can lead from.'},{t:'Start with the oldest.',v:'ok',n:'Fair, but old is not the same as important.'}],
+  coach:['Overwhelm is usually an undecided list, not a long one. Deciding is the work that makes it shorter.']},
+ {id:'p-load2',k:'load',title:'Everyone needs you today',scene:'Five people want ten minutes with you before lunch.',
+  opts:[{t:'See them all, one after another.',v:'trap',n:'Fifty minutes gone and five decisions taken off five people.'},{t:'Ask each for their recommendation in one line by message. Approve or discuss only the ones that need you.',v:'best',n:'Most will not need you once they have written it down.'},{t:'Tell them all to wait until tomorrow.',v:'ok',n:'Protects your morning and moves the queue to tomorrow.'}],
+  coach:['If everyone needs you today, the firm has a decision-rights problem, not a time problem.']},
+ {id:'p-load3',k:'load',title:'The holiday you cannot take',scene:'You have a week off booked and you are thinking of cancelling.',
+  opts:[{t:'Cancel. Now is not the time.',v:'trap',n:'There will never be a time, until your health chooses one for you.'},{t:'Keep it. Write the who-decides-what list today and switch off.',v:'best',n:'Whatever breaks becomes your delegation list.'},{t:'Go, but check email twice a day.',v:'ok',n:'Half a holiday and half a job. Neither done well.'}],
+  coach:['A firm that cannot survive a week without you is the clearest data you will get on what to fix next.']},
+ {id:'p-load4',k:'load',title:'Saying yes again',scene:'Someone asks you to sit on a committee. It would be useful. You are already full.',
+  opts:[{t:'Say yes. It would look bad to refuse.',v:'trap',n:'Your diary is now run by other people’s expectations.'},{t:'Check it against the 2030 letter. If it is not in there, decline kindly today.',v:'best',n:'Your letter said no for you.'},{t:'Say maybe and decide later.',v:'ok',n:'Maybe is a yes that costs you two more conversations.'}],
+  coach:['Every yes is a no to something else. Make sure you know what you are saying no to.']},
+ {id:'p-mistake1',k:'mistake',title:'The error in the pack',scene:'A client found an error in their management accounts. It was a team member’s, and you signed it off.',
+  opts:[{t:'Fix it yourself tonight and say nothing.',v:'trap',n:'The cause stays in place and the team learns nothing.'},{t:'Own it to the client, fix it, then find the check that would have caught it.',v:'best',n:'The client trusts you more for the honesty. The process gets better.'},{t:'Tell the team member off.',v:'trap',n:'Blame makes people hide errors. Hidden errors cost more.'}],
+  coach:['One error is a process problem until proven otherwise. Fix the check, not the person.']},
+ {id:'p-mistake2',k:'mistake',title:'Your own mistake',scene:'You made a call last month that turned out wrong. It cost the firm money.',
+  opts:[{t:'Go over it again and again tonight.',v:'trap',n:'Replaying it is not learning from it. It is paying for it twice.'},{t:'Write what you knew then, what you know now, and the one rule you will use next time.',v:'best',n:'A mistake turned into a rule is an asset.'},{t:'Never take that kind of decision again.',v:'ok',n:'Safe and limiting. Decisions are the job.'}],
+  coach:['Judge a decision by what you knew when you made it, not by how it turned out. Then write the rule and let it go.']},
+ {id:'p-mistake3',k:'mistake',title:'The deadline missed',scene:'A filing deadline was missed. A penalty is likely.',
+  opts:[{t:'Hide it and hope HMRC is slow.',v:'trap',n:'It always comes out, and later it comes out worse.'},{t:'Tell the client today, file now, appeal if there is a case, and pay the penalty if not.',v:'best',n:'Honest, quick and the cost is capped.'},{t:'Wait until you know the penalty amount.',v:'ok',n:'The client should hear it from you before the letter arrives.'}],
+  coach:['Bad news ages badly. The earlier the client hears it from you, the more they trust you afterwards.']},
+ {id:'p-mistake4',k:'mistake',title:'The snap reply',scene:'You were short with a team member this morning. You have been thinking about it since.',
+  opts:[{t:'Let it pass. They will have forgotten.',v:'trap',n:'They have not. People remember tone from the top.'},{t:'Find them, say you were short and that it was not about them. Thirty seconds.',v:'best',n:'Repair is a leadership skill. It costs almost nothing.'},{t:'Be extra nice for the rest of the week.',v:'ok',n:'Kind, but they are left guessing.'}],
+  coach:['You will get it wrong sometimes. What people remember is whether you came back and fixed it.']},
+ {id:'p-future1',k:'future',title:'Can I save this firm?',scene:'You catch yourself thinking the firm’s future rests entirely on you.',
+  opts:[{t:'Work harder. If it rests on you, give it more.',v:'trap',n:'More of you is the problem you are trying to solve.'},{t:'Write the three things only you can do this quarter. Hand everything else to someone named.',v:'best',n:'You lead it. The team carries it with you.'},{t:'Hire someone senior and hope.',v:'ok',n:'Help is right. Hope is not a brief.'}],
+  coach:['You do not save a firm alone. You lead the people who save it with you. Your part is the decisions, the standards and the people.']},
+ {id:'p-future2',k:'future',title:'The competitor',scene:'A rival announces a new product that looks like yours, at a lower price.',
+  opts:[{t:'Cut your prices to match.',v:'trap',n:'You have let them set your price and your margin.'},{t:'Ask five clients what they value most about WS. Lead with that.',v:'best',n:'Your clients tell you what to defend.'},{t:'Ignore it completely.',v:'ok',n:'Calm, but learn from it.'}],
+  coach:['A competitor copying you is a sign you were right. Compete on what they cannot copy: the way your people work with operators.']},
+ {id:'p-future3',k:'future',title:'The bad quarter',scene:'The quarter’s numbers are below plan and you feel like you are failing.',
+  opts:[{t:'Decide the plan was wrong and stop measuring against it.',v:'trap',n:'You lose the one tool that tells you what to fix.'},{t:'Find the two lines that caused most of the gap. Fix those. Leave the rest.',v:'best',n:'Variance analysis on yourself. You do it for clients every week.'},{t:'Ask the team to work harder next quarter.',v:'ok',n:'Effort was rarely the gap.'}],
+  coach:['A quarter below plan is a variance, not a verdict. Read it like you would read a client’s.']},
+ {id:'p-future4',k:'future',title:'Is this still what I want?',scene:'Driving home you wonder whether you even want to be doing this in five years.',
+  opts:[{t:'Push the thought away. There is too much to do.',v:'trap',n:'It will be back, louder.'},{t:'Book an hour this week to answer it on paper, using the 2030 letter.',v:'best',n:'A big question deserves a proper slot, not a car journey.'},{t:'Decide tonight.',v:'ok',n:'Big decisions made tired are made twice.'}],
+  coach:['That question is not a crisis. It is the most useful question a founder can ask. Give it time on purpose.']},
+ {id:'p-heavy1',k:'heavy',title:'The heavy morning',scene:'Nothing has gone wrong. It just feels heavy today.',
+  opts:[{t:'Push through and pretend it is fine.',v:'trap',n:'It leaks out in tone and decisions anyway.'},{t:'Lower today’s bar: three things that matter, a walk at lunch, home on time.',v:'best',n:'A smaller day done well beats a big day done badly.'},{t:'Cancel everything and go home.',v:'ok',n:'Sometimes right. Usually a lighter day is better than an empty one.'}],
+  coach:['Heavy days happen to every founder. Leading well on one means adjusting the load, not denying the weight.']},
+ {id:'p-heavy2',k:'heavy',title:'Am I enough?',scene:'You catch yourself thinking you are not good enough to run this firm.',
+  opts:[{t:'Work later to prove it.',v:'trap',n:'That is the Proving myself game. It never pays out.'},{t:'Check the evidence: what you built, what you have fixed, who you have grown. Then do the next thing.',v:'best',n:'Feelings are not a balance sheet. The ledger is.'},{t:'Keep it to yourself.',v:'ok',n:'Understandable. The thought gets lighter once said to someone you trust.'}],
+  coach:['You built a firm from nothing, eighteen years ago, and it is still here. That is not an opinion. It is the record.']},
+ {id:'p-heavy3',k:'heavy',title:'Comparing',scene:'You see another founder’s success online and feel behind.',
+  opts:[{t:'Set a bigger target to catch up.',v:'trap',n:'Their game, their score.'},{t:'Close it. Read the score you chose in Future. Measure against that only.',v:'best',n:'Your game, your rules.'},{t:'Message them to find out how they did it.',v:'ok',n:'Can be useful. Make sure it is curiosity, not comparison.'}],
+  coach:['You are comparing your inside with their outside. Nobody posts their 3am.']},
+ {id:'p-heavy4',k:'heavy',title:'Tired',scene:'You have slept badly three nights running and today is full.',
+  opts:[{t:'More coffee and keep going.',v:'trap',n:'Borrowed energy, paid back with interest on Thursday.'},{t:'Move one big decision to tomorrow, do the small things today, and go to bed early.',v:'best',n:'You protected the asset the firm depends on most.'},{t:'Take the afternoon off.',v:'ok',n:'Good if the diary allows it. Moving the big decision matters more.'}],
+  coach:['Tired judgement is the most expensive thing in the firm. Schedule the big calls for when you are rested.']}
+];
 const HOURS_BY_SOURCE={};FOUNDING.concat(BANK).forEach(c=>HOURS_BY_SOURCE[c.id]=c.todo.hours);WILD.forEach(w=>HOURS_BY_SOURCE[w.id]=w.hours);
 const HORIZONS={week:'This week',month:'This month',quarter:'This quarter'};
 const PILLARS=[['health','Health'],['family','Family and friends'],['wealth','Wealth'],['firm','The firm'],['growth','Growth and learning'],['adventure','Adventure and rest']];
@@ -194,7 +320,7 @@ const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
-const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
+const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
 
 function migrate(o){
   if(!o)return blank();
@@ -218,6 +344,10 @@ const gbp=n=>'£'+Math.round(n).toLocaleString('en-GB');
 const fmtDate=ts=>new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 const weekNo=ts=>Math.floor((ts/DAY+3)/7);
 const monthKey=ts=>{const d=new Date(ts);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');};
+const dayKey=ts=>{const d=new Date(ts);return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();};
+const RESET_PTS=5;
+const isResetMove=t=>!!(t.source&&t.source.startsWith('reset-'));
+const ptsFor=t=>isResetMove(t)?RESET_PTS:(PTS[t.type]||10)+(t.source&&t.source.startsWith('w')?20:0);
 const allCalls=()=>FOUNDING.concat(S.calls);
 const findCall=id=>allCalls().find(c=>c.id===id)||BANK.find(c=>c.id===id);
 
@@ -226,7 +356,10 @@ function streakAt(i){let n=1;for(let j=i;j>0;j--){if(S.reviews[j].ts-S.reviews[j
 function streak(){if(!S.reviews.length)return 0;const last=S.reviews[S.reviews.length-1];if(Date.now()-last.ts>10*DAY)return 0;return streakAt(S.reviews.length-1);}
 function points(){
   let p=0;
-  S.todos.forEach(t=>{if(t.done){p+=PTS[t.type]||10;if(t.source&&t.source.startsWith('w'))p+=20;}});
+  const resetDays={};
+  S.todos.forEach(t=>{if(!t.done)return;
+    if(isResetMove(t)){const k=dayKey(t.doneAt||0);resetDays[k]=(resetDays[k]||0)+1;if(resetDays[k]<=3)p+=RESET_PTS;return;}
+    p+=PTS[t.type]||10;if(t.source&&t.source.startsWith('w'))p+=20;});
   S.reviews.forEach((r,i)=>{p+=15+Math.min(5*(streakAt(i)-1),25);});
   const perWeek={};S.notes.forEach(n=>{const w=weekNo(n.ts);perWeek[w]=(perWeek[w]||0)+1;});
   Object.values(perWeek).forEach(c=>p+=3*Math.min(c,3));
@@ -263,6 +396,64 @@ function levels(){
   return {L,cur,next:L[cur+1]||null};
 }
 
+/* ---------- The Reset: derived numbers ---------- */
+function resetsToday(now=Date.now()){const k=dayKey(now);return (S.resets||[]).filter(r=>dayKey(r.ts)===k).length;}
+const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+/* Facts from the player's own ledger, never a slogan. Each one can be traced to something they did. */
+function receipts(){
+  const out=[];
+  const done=S.todos.filter(t=>t.done);
+  const real=done.filter(t=>!isResetMove(t));
+  if(real.length)out.push(`You have finished ${plural(real.length,'action')} on this ledger. Each one is a decision you made and carried through.`);
+  const stops=real.filter(t=>t.type==='Stop').length;
+  if(stops)out.push(`${stops} of them ${stops===1?'was a Stop':'were Stops'}: things you took off your own plate for good. That is the hardest kind of action, and you have done it.`);
+  const bb=boughtBack();
+  if(bb.perWeek>0)out.push(`You have bought back ${bb.perWeek.toFixed(1)} hours a week, and banked ${bb.total.toFixed(1)} hours so far. Those hours exist because you decided they would.`);
+  if(S.reviews.length){const st=streak();out.push(`You have closed ${plural(S.reviews.length,'week')} on this ledger.${st>1?` The streak is at ${st} weeks.`:''} Founders who close their own week are running the firm, not being run by it.`);}
+  const goods=S.notes.filter(n=>n.kind==='good');
+  if(goods.length){const g=goods[goods.length-1];out.push(`On ${fmtDate(g.ts)} you logged: "${g.text}". That did not happen by accident. Something you built made it happen.`);}
+  if(goods.length>=3)out.push(`You have logged ${plural(goods.length,'good thing')}. Most founders cannot name three from last month.`);
+  const without=goods.filter(n=>/without me|good call/i.test(n.text)).length;
+  if(without)out.push(`${without===1?'Once':without+' times'} so far, someone solved it or made the call without you. That is the firm you are building, already working.`);
+  const moved=done.filter(isResetMove).length;
+  if(moved)out.push(`${moved===1?'Once':moved+' times'} you have turned a heavy moment into a move and done it. That is control: not of the outcome, of the next step.`);
+  if(wc(S.future.letter)>=150)out.push('You have written down the life you are building. Most founders never get that far.');
+  const runs=S.practiceRuns||[];const best=Math.max(practice().judgement,...runs.map(r=>r.judgement));
+  if(best>=70)out.push(`Your best practice judgement score is ${best} out of 100. You know what good looks like under pressure.`);
+  const l=latest();
+  if(S.baseline&&l&&l!==S.baseline){METERS.forEach(m=>{const d=(Number(l[m.k])-Number(S.baseline[m.k]))*10;if(d>0)out.push(`Your ${m.name.toLowerCase()} line is up ${d} points on your opening position.`);});}
+  return out;
+}
+const RECEIPT_EMPTY='This ledger is new, so the receipts are still to come. Here is the first: you stopped and chose your next move instead of reacting. That is the job.';
+function receiptFor(n){const r=receipts();return r.length?r[n%r.length]:RECEIPT_EMPTY;}
+/* What was loud this week, for the Friday review. */
+function loudWeek(now=Date.now()){
+  const rs=(S.resets||[]).filter(r=>now-r.ts<7*DAY&&r.ts<=now);
+  const by={};LOUD.forEach(x=>by[x.k]={n:0,days:new Set()});
+  rs.forEach(r=>{if(by[r.loud]){by[r.loud].n++;by[r.loud].days.add(dayKey(r.ts));}});
+  const sorts={decide:0,influence:0,not:0};rs.forEach(r=>{if(sorts[r.sort]!=null)sorts[r.sort]++;});
+  const moves=rs.map(r=>S.todos.find(t=>t.id===r.todo)).filter(Boolean);
+  const perDay={};rs.forEach(r=>{const k=dayKey(r.ts);perDay[k]=(perDay[k]||0)+1;});
+  const signals=LOUD.filter(x=>by[x.k].days.size>=3).map(x=>({k:x.k,name:x.name,days:by[x.k].days.size}));
+  return {count:rs.length,by:LOUD.map(x=>({k:x.k,name:x.name,n:by[x.k].n,days:by[x.k].days.size})).filter(x=>x.n),sorts,
+    moves:moves.length,movesDone:moves.filter(t=>t.done).length,capDays:Object.values(perDay).filter(n=>n>=RESET_CAP).length,signals};
+}
+/* Logs a finished reset and puts its move on the list (or points at an action already there). */
+function finishReset(r){
+  const ts=r.ts||Date.now();
+  let todo=r.todoId?S.todos.find(t=>t.id===r.todoId):null;
+  if(!todo)todo=addTodo({text:r.move,type:'Start',h:'week',hours:0,source:'reset-'+ts,createdAt:ts});
+  const entry={ts,loud:r.loud,sort:r.sort,receipt:r.receipt||'',move:todo.text,todo:todo.id,call:null};
+  S.resets=(S.resets||[]).concat(entry);if(S.resets.length>600)S.resets=S.resets.slice(-600);
+  return entry;
+}
+function pressureFor(loud){
+  const recent=new Set((S.resets||[]).slice(-12).map(r=>r.call&&r.call.id).filter(Boolean));
+  const mine=PRESSURE.filter(c=>c.k===loud);const fresh=mine.filter(c=>!recent.has(c.id));
+  const pool=fresh.length?fresh:(mine.length?mine:PRESSURE);
+  return pool[(S.resets||[]).length%pool.length];
+}
+
 /* ---------- Scoreboard ---------- */
 function renderBoard(){
   const lv=levels(),st=streak(),bb=boughtBack();const due=reviewDue();
@@ -275,7 +466,7 @@ function renderBoard(){
 function renderTabs(){
   const open=S.todos.filter(t=>!t.done).length;
   const unplayed=S.calls.filter(c=>S.answers[c.id]==null).length+(S.pendingCall?1:0)+FOUNDING.filter(c=>S.answers[c.id]==null).length;
-  const tabs=[['today','Today',''],['review','Friday review',reviewDue()?'due':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
+  const tabs=[['today','Today',''],['reset','Reset',''],['review','Friday review',reviewDue()?'due':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
   $('#tabs').innerHTML=tabs.map(([k,l,n])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:''}</button>`).join('');
 }
 
@@ -294,6 +485,7 @@ function vToday(){
   const played=S.reviews.filter(r=>r.game);const onGame=chosen?played.filter(r=>r.game===chosen.id).length:0;
   const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
   return `<section>
+  ${vResetCard()}
   ${reviewDue()?`<div class="card call-to"><div class="spread"><div><div class="eyebrow">Friday review ${S.reviews.length?'due':'not started'}</div><h2>Close your own week. Ten minutes.</h2></div><button class="btn" data-tab="review">Start the review</button></div><p class="muted">The review is the game. It keeps the streak alive, earns ${15+Math.min(5*streak(),25)} points, and unlocks next week’s call.</p></div>`:''}
   ${S.pendingCall||call?`<div class="card"><div class="spread"><div><div class="eyebrow">This week’s call</div><h3>${call?esc(call.title):'Your review unlocked a new call'}</h3></div>${call?`<button class="btn small" data-opencall="${call.id}">Play it</button>`:`<button class="btn small" data-act="dealCall">Deal this week’s call</button>`}</div>${call?`<p class="muted">${esc(call.scene)}</p>`:`<p class="muted">${AI?'Written from what you logged this week.':'Dealt from the coaching bank after your review.'} It adds one action to your list.</p>`}</div>`:''}
   <div class="big3"><div class="eyebrow">This week’s big three</div>${stars.length?`<ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol>`:'<p class="muted">Star up to three actions in Actions. Three is the most a CEO moves properly in one week.</p>'}</div>
@@ -321,6 +513,76 @@ function vToday(){
    ${METERS.map(m=>{const v=Number(l[m.k])*10,d=(Number(l[m.k])-Number(b[m.k]))*10;return `<div class="meter"><span class="name">${m.name}</span><div class="bar"><i style="width:${v}%"></i></div><span class="val">${v}${d?` <span class="${d>0?'delta-up':'delta-down'}">${d>0?'+':''}${d}</span>`:''}</span></div>`;}).join('')}
    <p class="small muted">CEO index ${ceoIndex()}. These move only when you re-score yourself on a Friday.</p></div>
   </section>`;
+}
+/* ---------- Reset ---------- */
+let RD=null; // the reset in progress; not saved until it ends in a move
+function vResetCard(){
+  const n=resetsToday();
+  return `<div class="card reset-card"><div class="spread"><div><div class="eyebrow">Reset &middot; three minutes</div><h3>Loud day? Name it, sort it, pick one move.</h3></div><button class="btn small" data-tab="reset">Reset</button></div><p class="small muted">${n?`${plural(n,'reset')} today. `:''}It ends in one move under fifteen minutes, then you go and do it.</p></div>`;
+}
+function vReset(){
+  const n=resetsToday();
+  const steps=['loud','sort','receipt','move'];
+  const head=(i,t)=>`<div class="eyebrow">Reset &middot; ${i} of 4</div><h2>${t}</h2>`;
+  const last=(S.resets||[]).slice().reverse().find(r=>{const t=S.todos.find(x=>x.id===r.todo);return t&&!t.done;});
+  const lastT=last&&S.todos.find(x=>x.id===last.todo);
+  if(!RD){
+    if(n>=RESET_CAP){
+      const lw=loudWeek();
+      return `<section><div class="card"><div class="eyebrow">Reset &middot; ${plural(n,'reset')} today</div><h2>Six resets today. The pattern is the data.</h2>
+       <p>Today the loud thing has been ${esc(LOUD.filter(x=>(S.resets||[]).some(r=>dayKey(r.ts)===dayKey(Date.now())&&r.loud===x.k)).map(x=>x.name.toLowerCase()).join(', ')||'mixed')}. ${lw.movesDone?`You have done ${lw.movesDone} of this week’s ${lw.moves} moves.`:''}</p>
+       <p class="muted">Another reset will not change what the last six have told you. Step away from the screen for twenty minutes: walk, eat, or talk to someone. Friday’s review will read the pattern properly. If days like this keep coming, say it out loud to someone you trust, not just to this ledger.</p>
+       ${lastT?`<div class="added">Your open move: ${esc(lastT.text)} <button class="btn small" data-act="resetDone" data-id="${lastT.id}" style="margin-left:6px">Done it</button></div>`:''}
+       <div class="row"><button class="btn small ghost" data-act="resetStart">Reset anyway</button></div></div></section>`;
+    }
+    RD={step:'loud'};
+  }
+  let body='';
+  if(RD.step==='loud')body=`<div class="card">${head(1,'What is loud right now?')}
+    <p class="muted">One tap. Naming it is the first thing that makes it smaller.</p>
+    ${chipRow('rs-loud',LOUD.map(x=>x.name),{act:'reset-loud'})}
+    ${lastT?`<div class="added">Still open from an earlier reset: ${esc(lastT.text)} <button class="btn small ghost" data-act="resetDone" data-id="${lastT.id}" style="margin-left:6px">Done it</button></div>`:''}
+    ${n>=RESET_CAP-1?`<p class="small muted">This is reset ${n+1} today. Six is the most the ledger offers before it asks you to step away.</p>`:''}</div>`;
+  else if(RD.step==='sort'){const L=LOUD.find(x=>x.k===RD.loud);body=`<div class="card">${head(2,'Whose is it?')}
+    <p class="muted">${esc(L.name)}. Be honest about which of these it is. This is the one skill the whole reset is built on.</p>
+    ${chipRow('rs-sort',SORT.map(x=>x.name),{act:'reset-sort'})}
+    <div class="row"><button class="btn small ghost" data-act="resetBack">Back</button></div></div>`;}
+  else if(RD.step==='receipt'){const so=SORT.find(x=>x.k===RD.sort);body=`<div class="card">${head(3,'The receipts')}
+    <div class="coach"><p>${esc(so.coach)}</p></div>
+    <div class="receipt"><div class="eyebrow">From your ledger</div><p>${esc(RD.receipt)}</p></div>
+    <p class="small muted">Enough is not a feeling you wait for. It is a balance you can trace, and this is one line of it. You do not control how this turns out. You are in charge of the next move, and that part was always yours.</p>
+    <div class="row"><button class="btn" data-act="resetNext">Pick the move</button><button class="btn small ghost" data-act="resetBack">Back</button></div></div>`;}
+  else if(RD.step==='move'){
+    const moves=MOVES[RD.sort==='not'?'not':RD.loud]||MOVES.heavy;
+    const open=S.todos.filter(t=>!t.done&&!isResetMove(t)).sort((a,b)=>(b.star?1:0)-(a.star?1:0)).slice(0,3);
+    body=`<div class="card">${head(4,'One move, under fifteen minutes')}
+    <p class="muted">Small enough to start now. It goes on your list and scores when you tick it.</p>
+    ${chipRow('rs-move',moves,{act:'reset-move',other:true})}
+    <div class="row"><button class="btn small ghost" data-act="resetOwn">Use my own words</button></div>
+    ${open.length?`<div class="lbl small">Or one already on your list</div><div class="chips-row">${open.map(t=>`<button type="button" class="pick" data-act="resetTodo" data-id="${t.id}">${esc(t.text)}</button>`).join('')}</div>`:''}
+    <div class="row"><button class="btn small ghost" data-act="resetBack">Back</button></div></div>`;}
+  else if(RD.step==='done'){const e=RD.entry;body=`<div class="card">
+    <div class="eyebrow">Reset done</div><h2>Go and do it.</h2>
+    <div class="big3"><div class="eyebrow">Your move</div><p>${esc(e.move)}</p></div>
+    <p class="muted">Close this and start. The ledger will be here. Tick it in Actions or on the next reset when it is done.</p>
+    <div class="row"><button class="btn" data-act="resetDone" data-id="${e.todo}">Done it already</button><button class="btn small ghost" data-act="resetCall">One pressure call first</button></div></div>`;}
+  else if(RD.step==='call'){const c=PRESSURE.find(x=>x.id===RD.call);const a=RD.pick;
+    body=`<div class="card"><div class="eyebrow">Pressure call &middot; ${esc(c.title)}</div><div class="scene">${esc(c.scene)}</div>
+    <div class="opts">${c.opts.map((o,i)=>`<button class="opt ${a===i?'picked':a!=null?'dim':''}" data-act="resetPick" data-i="${i}"><span class="k">${'ABC'[i]}</span><span>${esc(o.t)}</span></button>`).join('')}</div>
+    ${a!=null?(()=>{const o=c.opts[a];const best=c.opts.find(x=>x.v==='best');return `<div class="row"><span class="verdict v-${o.v}">${{best:'World-class call',ok:'Workable',trap:'The trap'}[o.v]}</span></div><p>${esc(o.n)}</p>
+     <div class="coach"><div class="eyebrow">The coaching</div>${c.coach.map(p=>`<p>${esc(p)}</p>`).join('')}${o.v!=='best'?`<p class="muted">The world-class call: ${esc(best.t)}</p>`:''}</div>
+     <div class="big3"><div class="eyebrow">Now your move</div><p>${esc(RD.entry.move)}</p></div>
+     <div class="row"><button class="btn" data-tab="today">Close and go</button></div>`;})():''}</div>`;}
+  const dots=RD.step==='done'||RD.step==='call'?'':`<div class="dots">${steps.map((s,i)=>`<span class="dot ${steps.indexOf(RD.step)>i?'done':''} ${RD.step===s?'cur':''}">${i+1}</span>`).join('')}</div>`;
+  return `<section>${dots}${body}</section>`;
+}
+function vLoudWeek(){
+  const lw=loudWeek();if(!lw.count)return '';
+  return `<div class="card"><div class="eyebrow">What was loud this week</div><h3>${plural(lw.count,'reset')}, ${lw.movesDone} of ${plural(lw.moves,'move')} done</h3>
+   <ul class="checks">${lw.by.map(x=>`<li class="loud"><span>${esc(x.name)}</span><span class="prog">${plural(x.n,'time')} on ${plural(x.days,'day')}</span></li>`).join('')}</ul>
+   <p class="small muted">Sorted as yours to decide ${lw.sorts.decide}, to influence ${lw.sorts.influence}, not yours ${lw.sorts.not}.${lw.sorts.not>lw.count/2?' More than half of it was not yours to carry. Notice that.':''}</p>
+   ${lw.signals.map(x=>{const fx=FIX[x.k];const has=S.todos.some(t=>t.source&&t.source.startsWith('fix-'+x.k+'-')&&!t.done);return `<div class="coach"><p>${esc(x.name)} was loud on ${x.days} days this week. That is not a mood. It is a signal with a system behind it.</p><p>${esc(fx.text)}</p>${has?'<p class="small muted">Already on your list.</p>':`<div><button class="btn small" data-act="addFix" data-k="${x.k}">Add it to actions</button></div>`}</div>`;}).join('')}
+   ${lw.capDays?`<p class="small">You reached ${RESET_CAP} resets on ${plural(lw.capDays,'day')} this week. That is worth saying out loud to someone you trust, not just to this ledger.</p>`:''}</div>`;
 }
 function vLetterNudge(){
   const words=wc(S.future.letter);const ans=S.letterQ.answers||{};const n=LETTER_Q.filter(x=>(ans[x.id]||'').trim()).length;
@@ -395,9 +657,10 @@ function vReview(){
   return `<section>
   <div class="card"><div><div class="eyebrow">Friday review &middot; ten minutes</div><h2>Close your own week in three days or less.</h2></div>
    <p class="muted">${sameWeek?'You logged a review on '+fmtDate(S.reviews[S.reviews.length-1].ts)+'. Logging again replaces it.':'All taps, no typing. Same five steps every week.'}</p></div>
+  ${vLoudWeek()}
 
   <div class="card"><div class="eyebrow">1. What you did</div><h3>Tick what got done</h3>
-   ${open.length?open.map(t=>`<label class="item" style="cursor:pointer"><input type="checkbox" data-done="${t.id}"><span class="txt"><span>${esc(t.text)}</span><span class="meta"><span class="pill ${t.type}">${t.type}</span><span class="pill">+${PTS[t.type]} pts</span>${t.hours?`<span class="pill">${t.hours} hrs/wk back</span>`:''}</span></span><span></span></label>`).join(''):'<p class="empty">Nothing open for this week. Add actions in Actions.</p>'}
+   ${open.length?open.map(t=>`<label class="item" style="cursor:pointer"><input type="checkbox" data-done="${t.id}"><span class="txt"><span>${esc(t.text)}</span><span class="meta"><span class="pill ${t.type}">${t.type}</span><span class="pill">+${ptsFor(t)} pts</span>${t.hours?`<span class="pill">${t.hours} hrs/wk back</span>`:''}</span></span><span></span></label>`).join(''):'<p class="empty">Nothing open for this week. Add actions in Actions.</p>'}
    <div class="field"><span class="lbl">Hours worked this week</span><span class="hint">Your target is ${S.future.targetHours} (set in Future).</span>${chipRow('rv-hours',PICK.hours,{selected:hoursChip(l.hours)})}</div></div>
 
   <div class="card"><div class="eyebrow">2. Re-score</div><h3>Where are the four lines now?</h3>
@@ -442,7 +705,7 @@ function vActions(){
   </section>`;
 }
 function item(t){
-  const src=t.source?(t.source.startsWith('w')?'Wildcard':t.source.startsWith('audit')?'Opening':t.source.startsWith('review')?'Review':'Call'):'';
+  const src=t.source?(t.source.startsWith('w')?'Wildcard':t.source.startsWith('audit')?'Opening':t.source.startsWith('review')?'Review':t.source.startsWith('reset-')?'Reset':t.source.startsWith('fix-')?'Pattern':'Call'):'';
   return `<div class="item ${t.done?'done':''}"><input type="checkbox" ${t.done?'checked':''} data-done="${t.id}" aria-label="Done"><div class="txt"><span>${esc(t.text)}</span><div class="meta"><span class="pill ${t.type}">${t.type}</span>${src?`<span class="pill">${src}</span>`:''}<span class="hrs"><input type="number" min="0" max="40" step="0.5" value="${t.hours||0}" data-hrs="${t.id}" aria-label="Hours back per week"> hrs/wk back</span>${t.done&&t.doneAt?`<span class="small muted">done ${fmtDate(t.doneAt)}</span>`:''}</div></div><div class="acts">${t.done?'':`<button class="icon-btn ${t.star?'on':''}" data-star="${t.id}">${t.star?'Starred':'Star'}</button>`}<button class="icon-btn" data-del="${t.id}">Del</button></div></div>`;
 }
 
@@ -552,7 +815,8 @@ function vFuture(){
 
 function render(){
   renderBoard();renderTabs();
-  const v={today:vToday,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
+  const rt=byId('resetTop');if(rt)rt.hidden=S.view==='reset';
+  const v={today:vToday,reset:vReset,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
   $('#view').innerHTML=v();
 }
 
@@ -600,7 +864,7 @@ async function dealCall(btn){
     call=JSON.parse(JSON.stringify(pick));call.bank=pick.id;call.gen='bank';
   }
   call.id='c'+uid();call.ts=Date.now();
-  S.calls.push(call);S.pendingCall=false;S.view='calls';S.callId=call.id;save();render();window.scrollTo({top:0});
+  S.calls.push(call);S.pendingCall=false;S.view='calls';S.callId=call.id;save();render();toTop();
 }
 
 /* ---------- 2030 letter ---------- */
@@ -652,6 +916,13 @@ async function coachLetter(btn){
   S.letterCoach=out;save();renderLetter();
 }
 
+/* The Reset sits below the scoreboard, so on a phone "top" means its own steps, not the page. */
+function toTop(){if(S.view==='reset'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
+function endReset(o){
+  if(!RD||!RD.loud||!RD.sort)return;
+  const entry=finishReset({loud:RD.loud,sort:RD.sort,receipt:RD.receipt,move:o.move,todoId:o.todoId});
+  RD={step:'done',entry};save();render();toTop();
+}
 function attach(){
 /* ---------- Events ---------- */
 let reviewGame='';
@@ -672,7 +943,7 @@ on('submit',e=>{
 on('change',e=>{
   const id=e.target.dataset.done;
   if(id){const t=S.todos.find(x=>x.id===id);t.done=e.target.checked;t.doneAt=t.done?Date.now():null;if(t.done)t.star=false;save();
-    if(S.view==='review'){renderBoard();setStatus(t.done?`+${PTS[t.type]} points`:'Unticked');}else render();}
+    if(S.view==='review'){renderBoard();setStatus(t.done?`+${ptsFor(t)} points`:'Unticked');}else render();}
 });
 on('click',async e=>{
   const b=e.target.closest('button');if(!b)return;const d=b.dataset;
@@ -693,11 +964,14 @@ on('click',async e=>{
         if(st>=LETTER_Q.length-1){addTodo({text:v,type:'Start',h:'week',hours:0,source:'letter-thank'});save();setStatus('Your first step is on the list. Now draft the letter.');}break;}
       case 'decline':{S.wildMonth.decision='declined';S.wildMonth.reason=v;S.wildLog.push({month:S.wildMonth.month,id:S.wildMonth.id,decision:'declined',reason:v});save();render();break;}
       case 'score':{const s=picked('score');S.future.gameWords=s.length?'The score that counts: '+s.join(' and ')+'.':'';save();const ta=byId('f-gameWords');if(ta)ta.value=S.future.gameWords;break;}
+      case 'reset-loud':{const L=LOUD.find(x=>x.name===v);if(!L)break;RD={step:'sort',loud:L.k};render();toTop();break;}
+      case 'reset-sort':{const so=SORT.find(x=>x.name===v);if(!so||!RD)break;RD.sort=so.k;RD.receipt=receiptFor((S.resets||[]).length);RD.step='receipt';render();toTop();break;}
+      case 'reset-move':endReset({move:v});break;
       case 'pillar':{const k=d.pickGroup.slice(3);S.future.pillars[k].ten=v;save();const i=byId('pt-'+k);if(i)i.value=v;break;}
     }
     return;
   }
-  if(d.tab){S.view=d.tab;save();render();window.scrollTo({top:0});return;}
+  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;S.view=d.tab;save();render();toTop();return;}
   if(d.goto){S.view='future';save();render();const el=byId(d.goto);if(el)el.scrollIntoView({block:'start'});return;}
   if(d.lqstep!=null){S.letterQ.step=Number(d.lqstep);save();renderLetter();return;}
   if(d.keep){const w=WILD.find(x=>x.id===d.keep);const ex=S.todos.find(t=>t.source===w.id);
@@ -731,13 +1005,24 @@ on('click',async e=>{
       if(r.space)S.notes.push({ts:r.ts,kind:'space',text:r.space});
       if(r.change)addTodo({text:r.change,type:'Start',h:'week',hours:0,source:'review-'+r.ts});
       if(r.inSystem)addTodo({text:'Design out: '+r.inSystem,type:'Stop',h:'month',hours:1,source:'review-sys-'+r.ts});
-      reviewGame='';S.view='today';save();render();window.scrollTo({top:0});
+      reviewGame='';S.view='today';save();render();toTop();
       const gained=points()-before;
       $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Week closed. +${gained} points, streak ${streak()} week${streak()===1?'':'s'}.</strong><span class="small">${S.pendingCall?'Your next call is ready to deal below.':'Review updated.'}</span></div>`);
       break;}
     case 'dealCall':dealCall(b);break;
-    case 'nextCall':{const i=FOUNDING.findIndex(c=>c.id===S.callId);const nx=FOUNDING.slice(i+1).find(c=>S.answers[c.id]==null)||FOUNDING.find(c=>S.answers[c.id]==null);S.callId=nx?nx.id:'results';save();render();window.scrollTo({top:0});break;}
-    case 'replay':{const pr=practice();S.practiceRuns=(S.practiceRuns||[]).concat({ts:Date.now(),judgement:pr.judgement,best:pr.best.length,traps:pr.traps.length,index:pr.index});FOUNDING.forEach(c=>delete S.answers[c.id]);S.callId=FOUNDING[0].id;S.deck={drawn:[],redraws:2};save();render();window.scrollTo({top:0});break;}
+    case 'resetStart':RD={step:'loud'};render();break;
+    case 'resetBack':{const order=['loud','sort','receipt','move'];const i=order.indexOf(RD&&RD.step);if(i>0)RD.step=order[i-1];render();break;}
+    case 'resetNext':if(RD)RD.step='move';render();toTop();break;
+    case 'resetOwn':{const t=(byId('other-rs-move')||{}).value;const txt=(t||'').trim();if(!txt){const o=byId('other-rs-move');if(o){o.hidden=false;o.focus();}setStatus('Write the move in a few words, then tap Use my own words.');return;}endReset({move:txt});break;}
+    case 'resetTodo':endReset({todoId:d.id});break;
+    case 'resetDone':{const t=S.todos.find(x=>x.id===d.id);if(!t)return;const before=points();if(!t.done){t.done=true;t.doneAt=Date.now();t.star=false;}
+      if(RD&&RD.step!=='loud')RD=null;save();S.view='today';render();toTop();
+      $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Done. That is the move made.</strong><span class="small">${points()>before?'+'+(points()-before)+' points. ':''}You were in charge of the next step, and you took it.</span></div>`);break;}
+    case 'resetCall':{if(!RD||!RD.entry)return;const c=pressureFor(RD.entry.loud);RD.step='call';RD.call=c.id;RD.pick=null;render();toTop();break;}
+    case 'resetPick':{if(!RD||RD.pick!=null)return;RD.pick=Number(d.i);const e=S.resets.find(r=>r.ts===RD.entry.ts);if(e){e.call={id:RD.call,pick:RD.pick};save();}render();break;}
+    case 'addFix':{const fx=FIX[d.k];if(!fx)return;addTodo(Object.assign({},fx,{source:'fix-'+d.k+'-'+weekNo(Date.now())}));save();render();setStatus('On your list. That is the system fix, not the symptom.');break;}
+    case 'nextCall':{const i=FOUNDING.findIndex(c=>c.id===S.callId);const nx=FOUNDING.slice(i+1).find(c=>S.answers[c.id]==null)||FOUNDING.find(c=>S.answers[c.id]==null);S.callId=nx?nx.id:'results';save();render();toTop();break;}
+    case 'replay':{const pr=practice();S.practiceRuns=(S.practiceRuns||[]).concat({ts:Date.now(),judgement:pr.judgement,best:pr.best.length,traps:pr.traps.length,index:pr.index});FOUNDING.forEach(c=>delete S.answers[c.id]);S.callId=FOUNDING[0].id;S.deck={drawn:[],redraws:2};save();render();toTop();break;}
     case 'draw':{const dk=S.deck=S.deck||{drawn:[],redraws:2};if(dk.drawn.length){if(!dk.redraws)return;dk.redraws--;}
       const kept=new Set(S.todos.filter(t=>t.source&&t.source.startsWith('w')).map(t=>t.source));
       let pool=WILD.filter(w=>!kept.has(w.id)&&!dk.drawn.includes(w.id));if(pool.length<3)pool=WILD.filter(w=>!kept.has(w.id));if(pool.length<3)pool=WILD.slice();
@@ -775,7 +1060,8 @@ on('click',async e=>{
 return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
-  migrate, points, streak, boughtBack, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
+  migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
+  RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
   FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS, PICK, LETTER_PICKS,
   mount() {
     ROOT.innerHTML = MARKUP;

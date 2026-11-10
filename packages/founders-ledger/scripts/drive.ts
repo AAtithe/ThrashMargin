@@ -136,6 +136,91 @@ const fresh = () => createLedger(null);
   ok(good.every((c: { ok: boolean }) => c.ok), `letter: a specific, whole-life letter passes (failed: ${good.filter((c: { ok: boolean }) => !c.ok).map((c: { label: string }) => c.label).join(', ')})`);
 }
 
+const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, so nothing crosses midnight
+// --- The Reset ---------------------------------------------------------------------------------------
+// Played as often as a hard day needs. It must end in a move, never take points away, never touch the
+// streak, and never reward reaching for it: a move scores 5 when ticked, and only three a day score.
+{
+  const l = fresh();
+  const keys = l.LOUD.map((x: { k: string }) => x.k);
+  ok(keys.length >= 6, 'reset: at least six things can be loud');
+  for (const k of keys) {
+    ok((l.MOVES[k] || []).length >= 3, `reset: ${k} offers at least three moves`);
+    ok(l.FIX[k] && l.FIX[k].text && ['Start', 'Stop', 'Keep'].includes(l.FIX[k].type), `reset: ${k} has a system fix for the Friday review`);
+    ok(l.PRESSURE.filter((c: { k: string }) => c.k === k).length >= 3, `reset: ${k} has at least three pressure calls`);
+  }
+  ok(l.MOVES.not.length >= 3, 'reset: "not mine" has its own moves');
+  ok(l.SORT.length === 3, 'reset: three ways to sort it');
+  ok(new Set(l.PRESSURE.map((c: { id: string }) => c.id)).size === l.PRESSURE.length, 'reset: pressure call ids are unique');
+  for (const c of l.PRESSURE) {
+    ok(c.opts.length === 3 && c.opts.filter((o: { v: string }) => o.v === 'best').length === 1, `reset: ${c.id} has three options and one world-class call`);
+    ok(c.coach.length >= 1 && keys.includes(c.k), `reset: ${c.id} has coaching and a known loud key`);
+  }
+  const text = JSON.stringify([l.LOUD, l.SORT, l.MOVES, l.FIX, l.PRESSURE, l.receiptFor(0)]);
+  ok(!/[—–]/.test(text), 'reset: no em or en dashes in the copy');
+  ok(l.state.resets.length === 0 && l.resetsToday() === 0, 'reset: a new ledger has none');
+  ok(typeof l.receiptFor(0) === 'string' && l.receiptFor(0).length > 20, 'reset: a new ledger still gets an honest receipt');
+}
+{
+  const l = fresh();
+  for (let i = 3; i >= 0; i--) l.state.reviews.push({ ts: NOW - i * 7 * DAY, happiness: 6, earnings: 6, time: 6, focus: 6, hours: 50 });
+  const before = l.points();
+  const streakBefore = l.streak();
+  const entries = [];
+  for (let i = 0; i < 5; i++) entries.push(l.finishReset({ loud: 'cash', sort: 'decide', move: 'move ' + i, ts: T - 60_000 * (5 - i) }));
+  ok(l.points() === before, 'reset: logging resets scores nothing and takes nothing away');
+  ok(l.streak() === streakBefore, 'reset: resets never touch the streak');
+  ok(l.resetsToday(T) === 5, `reset: five today (got ${l.resetsToday(T)})`);
+  ok(l.state.todos.filter((t: { source: string }) => t.source && t.source.startsWith('reset-')).length === 5, 'reset: each move goes on the list');
+  ok(entries.every((e: { todo: string }) => l.state.todos.some((t: { id: string }) => t.id === e.todo)), 'reset: each entry points at its move');
+  for (const t of l.state.todos) { t.done = true; t.doneAt = T; }
+  ok(l.points() === before + 3 * l.RESET_PTS, `reset: five moves done in one day score three times ${l.RESET_PTS} (got ${l.points() - before})`);
+  const y = l.finishReset({ loud: 'load', sort: 'influence', move: 'yesterday', ts: T - DAY });
+  const yt = l.state.todos.find((t: { id: string }) => t.id === y.todo);
+  yt.done = true; yt.doneAt = T - DAY;
+  ok(l.points() === before + 4 * l.RESET_PTS, 'reset: the three-a-day limit is per day');
+  // Pointing at an action already on the list adds nothing new and scores it as normal.
+  const a = fresh();
+  const stop = a.addTodo({ text: 'cancel the meeting', type: 'Stop', h: 'week' });
+  const e = a.finishReset({ loud: 'load', sort: 'decide', todoId: stop.id, ts: T });
+  ok(a.state.todos.length === 1 && e.todo === stop.id && e.move === 'cancel the meeting', 'reset: an existing action can be the move');
+  stop.done = true; stop.doneAt = T;
+  ok(a.points() === 20, 'reset: an existing Stop picked as the move still scores 20');
+  // Receipts come from the ledger itself, and rotate.
+  const r = fresh();
+  const d = r.addTodo({ text: 'x', type: 'Stop', h: 'week', hours: 3 }); d.done = true; d.doneAt = T - 7 * DAY;
+  r.state.notes.push({ ts: T, kind: 'good', text: 'Someone solved it without me' });
+  const rc = r.receipts();
+  ok(rc.some((s: string) => s.includes('1 action')), 'receipts: counts actions done');
+  ok(rc.some((s: string) => s.includes('was a Stop')), 'receipts: names the Stops');
+  ok(rc.some((s: string) => s.includes('3.0 hours a week')), 'receipts: hours bought back');
+  ok(rc.some((s: string) => s.includes('Someone solved it without me')), 'receipts: quotes a logged good thing');
+  ok(rc.some((s: string) => s.startsWith('Once so far, someone solved it')), 'receipts: notices the firm working without you');
+  ok(!rc.some((s: string) => /closed .* week/.test(s)), 'receipts: never claims a week that was not closed');
+  ok(r.receiptFor(0) !== r.receiptFor(1), 'receipts: consecutive resets see different receipts');
+  // The pressure call follows what is loud.
+  ok(r.pressureFor('person').k === 'person', 'reset: the pressure call matches what is loud');
+}
+{
+  // The Friday review reads the week's pattern.
+  const l = fresh();
+  for (let i = 0; i < 3; i++) l.finishReset({ loud: 'cash', sort: 'decide', move: 'c' + i, ts: T - i * DAY });
+  l.finishReset({ loud: 'person', sort: 'not', move: 'p', ts: T });
+  l.finishReset({ loud: 'cash', sort: 'decide', move: 'old', ts: T - 9 * DAY });
+  const lw = l.loudWeek(T);
+  ok(lw.count === 4, `loud week: only the last seven days (got ${lw.count})`);
+  ok(lw.signals.length === 1 && lw.signals[0].k === 'cash' && lw.signals[0].days === 3, 'loud week: cash on three days is a signal');
+  ok(lw.sorts.decide === 3 && lw.sorts.not === 1, 'loud week: sorted counts');
+  ok(lw.moves === 4 && lw.movesDone === 0, 'loud week: moves and how many were done');
+  ok(lw.capDays === 0, 'loud week: no day hit the cap');
+  const c = fresh();
+  for (let i = 0; i < c.RESET_CAP; i++) c.finishReset({ loud: 'heavy', sort: 'not', move: 'm' + i, ts: T - i * 60_000 });
+  ok(c.resetsToday(T) === c.RESET_CAP && c.loudWeek(T).capDays === 1, 'loud week: a day at the cap is reported');
+  // An older v2 save without resets loads with an empty list.
+  const old = JSON.parse(JSON.stringify(fresh().state)); delete old.resets;
+  ok(Array.isArray(createLedger(old).state.resets), 'migrate: a save from before the Reset loads with no resets');
+}
+
 console.log(`\n${passed + failures.length} assertions, ${failures.length} failed`);
 if (failures.length) {
   for (const f of failures) console.error('  FAIL ' + f);

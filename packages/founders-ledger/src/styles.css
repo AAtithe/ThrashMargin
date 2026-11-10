@@ -176,3 +176,12 @@ a.btn{display:inline-block;text-decoration:none}
 .lbl.small{font-size:13px;color:var(--muted);font-weight:500}
 details.own summary{cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0}
 details.own[open] summary{margin-bottom:8px}
+/* Reset */
+.card.reset-card{border-color:var(--brass)}
+.receipt{background:var(--good-bg);border-radius:6px;padding:14px 16px;display:grid;gap:6px}
+.receipt p{margin:0;font-size:17px;line-height:1.45}
+span.dot{display:inline-flex;align-items:center;justify-content:center;cursor:default}
+.checks li.loud{grid-template-columns:1fr auto}
+/* On a phone the scoreboard fills the first screen, so the Reset gets a button above it. */
+.reset-top{display:none}
+@media (max-width:660px){.reset-top{display:block;width:100%;margin:4px 0 14px;min-height:48px}.reset-top[hidden]{display:none}}
