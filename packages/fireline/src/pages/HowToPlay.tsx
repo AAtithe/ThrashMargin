@@ -157,6 +157,34 @@ export default function HowToPlay() {
         {/* round5:A. The build window (fireline-round5-design.md): its panel goes on the line below. */}
         {/* round5:B. Larger maps and long games: its panel goes on the line below. */}
         {/* round5:C. Engineering vehicles: its panel goes on the line below. */}
+        <Panel title="Engineering vehicles">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Two unarmed vehicles from the War Factory, with advanced tech only. Neither appears in a campaign mission.
+            </li>
+            <li>
+              The <strong>{UNITS.repairtruck.name}</strong> ({UNITS.repairtruck.cost} credits, needs a Repair Bay) mends the most
+              damaged of your vehicles right beside it, free and a little faster than the Repair Bay. It never mends infantry,
+              aircraft or itself. Left idle, it drives to a damaged vehicle nearby; select it and press <strong>Stay put</strong> to keep
+              it where you parked it, and <strong>Roam</strong> to let it go looking again. The computer sends its own with its attack waves.
+            </li>
+            <li>
+              The <strong>{UNITS.basetruck.name}</strong> ({UNITS.basetruck.cost} credits, needs a Comms Uplink) drives anywhere
+              and <strong>deploys</strong> where it stands into a <strong>{BUILDINGS.fieldyard.name}</strong>: select it and press{' '}
+              <strong>Deploy</strong> (or F). It needs a clear 2x2 patch of open ground, but not near your base.
+            </li>
+            <li>
+              A Field Yard is a second base. You may build within {BUILDINGS.fieldyard.buildRadius} tiles of it, and it works the
+              Structures list, so you can keep building if your Command Yard falls. It counts as a structure for victory. Select it
+              and press <strong>Pack up</strong> to turn it back into a truck, as long as something else of yours still stands.
+              You may have three Field Yards and trucks at once.
+            </li>
+            <li>
+              On large and huge maps the computer sends a Forward Base Truck to a distant ore field and builds a Refinery and a
+              Gun Turret beside it.
+            </li>
+          </ul>
+        </Panel>
         {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
 
         <Panel title="Campaign">
