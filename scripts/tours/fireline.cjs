@@ -20,9 +20,14 @@
  * queue rather than ring a disabled Refinery button, then return once it is cancelled. No page or
  * console errors. Desktop only: the game asks for a mouse and keyboard.
  *
+ * The run's build steps go through the build window: the card rings the Build button while the
+ * window is closed, then the list tab, then the button. After the run, fireline-build-window.cjs
+ * checks the window itself on an advanced-tech battle of its own.
+ *
  * Screenshots only on failure, into TOUR_OUT. See scripts/tours/run.mjs.
  */
 const { chromium } = require('playwright');
+const { checkBuildWindow } = require('./fireline-build-window.cjs');
 const path = require('path');
 
 const BASE = process.env.TOUR_BASE || 'http://localhost:5306';
@@ -308,6 +313,10 @@ async function main() {
 
     for (const e of errors) problems.push(e);
     if (problems.length) await shot('end');
+
+    // The build window on its own battle: open and close, hotkeys, placement, every menu item, a
+    // kind it has never seen (fireline-build-window.cjs).
+    await checkBuildWindow(browser, BASE, problems, OUT);
   } finally {
     await browser.close();
   }

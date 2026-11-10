@@ -45,7 +45,7 @@ export default function HowToPlay() {
         <Panel title="The first five minutes">
           <ol style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
-              Open <strong>Structures</strong> and click <strong>Generator</strong>. When it says Ready, click it again and
+              Click <strong>Build</strong> (or press <kbd>`</kbd>), then <strong>Generator</strong>. When it says Ready, click it again and
               place it on open ground near your Command Yard.
             </li>
             <li>Build a <strong>Refinery</strong> close to the nearest ore. It comes with a hauler, which starts work by itself.</li>
@@ -116,7 +116,7 @@ export default function HowToPlay() {
         <Panel title="Advanced tech">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
-              The build lists grow to three buttons a row. Items marked <span style={advBadge}>Advanced</span> below appear only
+              The build window gains an Air tab and a longer tree. Items marked <span style={advBadge}>Advanced</span> below appear only
               with advanced tech; the computer builds from the same list.
             </li>
             <li>
@@ -155,6 +155,30 @@ export default function HowToPlay() {
         </Panel>
 
         {/* round5:A. The build window (fireline-round5-design.md): its panel goes on the line below. */}
+        <Panel title="The build window">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Everything you can build is in the <strong>build window</strong>. Open it with the <strong>Build</strong> button in
+              the sidebar or the <kbd>`</kbd> key; close it the same way, with <kbd>Esc</kbd>, or with its ×. The battle keeps
+              running while it is open, and on a computer you can drag it by its title bar to wherever suits you.
+            </li>
+            <li>
+              Each list is a <strong>tech tree</strong>: items in tiers from left to right, a line from each one to every structure
+              it needs. A greyed item names what is missing under it. A structure from another list shows as a small box at the
+              start of the tree.
+            </li>
+            <li>
+              The letter keys work with the window open or closed, on the list the Build button names; <kbd>Tab</kbd> changes the
+              list. A list's fifteenth item onwards has no key: click it in the tree.
+            </li>
+            <li>
+              When a structure is ready and you pick it up, the window steps aside while you place it and comes back afterwards.
+              Under the Build button, the <strong>production strip</strong> shows everything under way; click a ready structure
+              there to place it, or anything else to cancel the last one queued.
+            </li>
+            <li>Once a Research Lab stands, the window gains a <strong>Research</strong> tab for upgrades.</li>
+          </ul>
+        </Panel>
         {/* round5:B. Larger maps and long games: its panel goes on the line below. */}
         {/* round5:C. Engineering vehicles: its panel goes on the line below. */}
         {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
@@ -213,8 +237,8 @@ export default function HowToPlay() {
         <Panel title="Aircraft">
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             Advanced tech only. A Helipad builds and rearms two aircraft. They fly over water, rock and structures, and only
-            anti-air (Skyhunters, Flak Tracks, Flak Cannons) and machine guns can reach them. Once a Research Lab stands, the foot
-            of the Structures list offers five upgrades, one at a time, that last the rest of the battle.
+            anti-air (Skyhunters, Flak Tracks, Flak Cannons) and machine guns can reach them. Once a Research Lab stands, the build
+            window's Research tab offers five upgrades, one at a time, that last the rest of the battle.
           </p>
           <Grid kinds={AIR_MENU} />
         </Panel>

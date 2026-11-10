@@ -39,18 +39,30 @@ import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
 import { selectionActions, type Selection } from './selectionActions';
 
-export type Tab = Category;
+/** A tab of the build window: a build list, or Research once a Research Lab stands. */
+export type Tab = Category | 'research';
 
-const TABS: { key: Tab; label: string }[] = [
+export const TABS: { key: Tab; label: string }[] = [
   { key: 'building', label: 'Structures' },
   { key: 'infantry', label: 'Infantry' },
   { key: 'vehicle', label: 'Vehicles' },
   { key: 'air', label: 'Air' },
+  { key: 'research', label: 'Research' },
 ];
 
-/** The tabs this battle offers: the Air tab only with advanced tech (never in a mission or on standard tech). */
+export const tabLabel = (t: Tab): string => TABS.find(x => x.key === t)?.label ?? t;
+
+/** Whether this battle has a Research tab: a Research Lab stands, and the battle allows one. */
+export const researchOpen = (state: GameState): boolean => hasBuilding(state, 0, 'researchlab') && techAllowed(state, 0, 'researchlab');
+
+/**
+ * The tabs this battle offers: the Air tab only with advanced tech (never in a mission or on
+ * standard tech), and Research after the others once a Research Lab stands.
+ */
 export const tabsFor = (state?: GameState): Tab[] =>
-  TABS.map(t => t.key).filter(k => k !== 'air' || !state || techAllowed(state, 0, 'helipad'));
+  TABS.map(t => t.key).filter(k =>
+    k === 'research' ? !!state && researchOpen(state) : k !== 'air' || !state || techAllowed(state, 0, 'helipad'),
+  );
 
 
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
@@ -72,10 +84,11 @@ export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l'
  * keeps greying the original items it leaves out, so the campaign looks as it always has.
  */
 export const menuFor = (tab: Tab, state?: GameState): (BuildingKind | UnitKind)[] =>
-  state ? MENUS[tab].filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k)) : MENUS[tab].slice();
-
-/** The order Tab cycles through: every tab. A battle's own order is tabsFor(state). */
-export const TAB_ORDER: Tab[] = TABS.map(t => t.key);
+  tab === 'research'
+    ? []
+    : state
+      ? MENUS[tab].filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k))
+      : MENUS[tab].slice();
 
 /** How many units a shift-click or shift+hotkey queues. */
 export const BATCH = 5;
@@ -94,6 +107,7 @@ export function pressBuild(
   setPlacing: (k: BuildingKind | null) => void,
   batch: boolean,
 ): void {
+  if (tab === 'research') return;
   const head = state.players[0].queues[tab][0];
   if (tab === 'building' && readyStructure(state, 0) === kind) {
     setPlacing(placing === kind ? null : (kind as BuildingKind));
@@ -168,7 +182,7 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
     });
   if (u?.category === 'air') rows.push({ label: 'Flies', value: 'Over water, rock and structures; only anti-air and bullets reach it' });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
-  if (kind === 'researchlab') rows.push({ label: 'Research', value: 'Upgrades listed at the foot of the Structures tab once it stands' });
+  if (kind === 'researchlab') rows.push({ label: 'Research', value: 'Upgrades listed on the Research tab of the build window once it stands' });
   if (u?.medic) rows.push({ label: 'Heals', value: `${MEDIC_HEAL} hp to the most hurt infantry within ${MEDIC_RANGE} tiles every ${secs(MEDIC_HEAL_TICKS)}` });
   if (u?.selfRepair)
     rows.push({ label: 'Self-repair', value: `${u.selfRepair} hp every ${secs(SELF_REPAIR_TICKS)} when out of combat` });
@@ -192,9 +206,19 @@ export function StatTip({ kind, anchor, extra }: { kind: BuildingKind | UnitKind
     const el = ref.current;
     if (!el || !anchor.isConnected) return;
     const a = anchor.getBoundingClientRect();
-    // Clear of the whole sidebar, so the card never hides the neighbouring buttons.
-    const edge = (anchor.closest('aside') ?? anchor).getBoundingClientRect().left;
-    el.style.left = `${Math.max(8, edge - el.offsetWidth - 8)}px`;
+    const w = el.offsetWidth;
+    // Clear of the whole sidebar, or of the whole build window, so the card never hides the
+    // neighbouring buttons: to the left of the sidebar; beside the window, on whichever side has room.
+    const side = anchor.closest('aside');
+    const win = side ? null : anchor.closest('[data-tip-host]');
+    let left: number;
+    if (win) {
+      const r = win.getBoundingClientRect();
+      if (r.right + w + 8 <= window.innerWidth - 8) left = r.right + 8;
+      else if (r.left - w - 8 >= 8) left = r.left - w - 8;
+      else left = a.right + w + 8 <= window.innerWidth - 8 ? a.right + 8 : a.left - w - 8;
+    } else left = (side ?? anchor).getBoundingClientRect().left - w - 8;
+    el.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, left))}px`;
     el.style.top = `${Math.max(8, Math.min(window.innerHeight - el.offsetHeight - 8, a.top))}px`;
   });
   return (
@@ -215,7 +239,7 @@ export function StatTip({ kind, anchor, extra }: { kind: BuildingKind | UnitKind
 }
 
 /** Hover-or-focus state for a StatTip. */
-function useTip<K>() {
+export function useTip<K>() {
   const [tip, setTip] = useState<{ key: K; el: HTMLElement } | null>(null);
   const bind = (key: K) => ({
     onMouseEnter: (e: React.MouseEvent<HTMLElement>) => setTip({ key, el: e.currentTarget }),
@@ -223,7 +247,7 @@ function useTip<K>() {
     onFocus: (e: React.FocusEvent<HTMLElement>) => setTip({ key, el: e.currentTarget }),
     onBlur: () => setTip(null),
   });
-  return { tip: tip && tip.el.isConnected ? tip : null, bind, clear: () => setTip(null) };
+  return { tip: tip && tip.el.isConnected ? tip : null, bind, clear: () => setTip(null), show: (key: K, el: HTMLElement) => setTip({ key, el }) };
 }
 
 /**
@@ -281,41 +305,41 @@ function Credits({ value }: { value: number }) {
 }
 
 /**
- * Credits, power, the build menu and the queues. Everything here reads the live state handed in
- * on each HUD refresh; every button sends an ordinary action through `dispatch`.
+ * Credits, power, the minimap, the Build button and the production strip. The build lists
+ * themselves live in the build window (BuildWindow.tsx). Everything here reads the live state
+ * handed in on each HUD refresh; every button sends an ordinary action through `dispatch`.
  */
 export function BuildPanel({
   state,
   tab,
-  setTab,
   dispatch,
   placing,
   setPlacing,
   minimap,
+  buildOpen,
+  onToggleBuild,
+  onOpenTab,
   compact = false,
   touch = false,
 }: {
   state: GameState;
+  /** The build window's tab, named on the Build button. */
   tab: Tab;
-  setTab: (t: Tab) => void;
   dispatch: (a: GameAction) => boolean;
   placing: BuildingKind | null;
   setPlacing: (k: BuildingKind | null) => void;
   minimap: ReactNode;
-  /** A short or narrow panel: the minimap sits beside credits and power, and the list widens. */
+  buildOpen: boolean;
+  onToggleBuild: () => void;
+  /** Open the window on a tab (a tap on a production strip icon, touch). */
+  onOpenTab: (t: Tab) => void;
+  /** A short or narrow panel: the minimap sits beside credits and power. */
   compact?: boolean;
   touch?: boolean;
 }) {
   const p = state.players[0];
   const pw = powerOf(state, 0);
-  const ready = readyStructure(state, 0);
   const max = Math.max(pw.made, pw.used, 100);
-  const { tip, bind, clear } = useTip<BuildingKind | UnitKind>();
-  const menu = menuFor(tab, state);
-  // More than six items (advanced tech) packs three to a row, so the whole list stays in view.
-  const dense = menu.length > 6;
-  // A tab change swaps the buttons out from under the pointer: drop the card with them.
-  useEffect(clear, [tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -355,151 +379,284 @@ export function BuildPanel({
 
       {!compact && <div id="fl-minimap">{minimap}</div>}
 
-      <div role="tablist" style={{ display: 'flex', gap: 2 }}>
-        {TABS.filter(t => tabsFor(state).includes(t.key)).map(t => {
-          const producer = hasProducer(state, 0, t.key);
-          const busy = p.queues[t.key].length;
-          return (
-            <button
-              key={t.key}
-              id={`fl-tab-${t.key}`}
-              role="tab"
-              aria-selected={tab === t.key}
-              onClick={() => setTab(t.key)}
-              title={`${t.label} (Tab cycles the lists)`}
-              style={{
-                flex: 1,
-                padding: touch ? '10px 2px' : '5px 2px',
-                fontFamily: 'inherit',
-                fontSize: '0.72rem',
-                fontWeight: tab === t.key ? 700 : 500,
-                border: `1px solid ${tab === t.key ? UI.accent : UI.rule}`,
-                background: tab === t.key ? UI.tintAccent : 'transparent',
-                color: producer ? UI.text : UI.textFaint,
-                borderRadius: 3,
-                cursor: 'pointer',
-              }}
-            >
-              {t.label}
-              {busy > 0 && <span style={{ color: UI.accent }}> ·{busy}</span>}
-            </button>
-          );
-        })}
-      </div>
-
-      {!hasProducer(state, 0, tab) && (
-        <p style={{ margin: 0, fontSize: '0.72rem', color: UI.textFaint }}>
-          {tab === 'building'
-            ? state.mission && !state.players[0].stats.built && !state.buildings.some(b => b.owner === 0)
-              ? 'No base in this mission: your units are all you have.'
-              : 'Your Command Yard is gone. No new structures can be built.'
-            : `Build a ${BUILDINGS[PRODUCER[tab]].name} to unlock this list.`}
-        </p>
-      )}
-
-      {/* A short or narrow panel (phones) fits as many columns as the width allows. */}
-      <div
-        className="fl-build-grid"
-        data-compact={dense ? '1' : '0'}
-        data-testid="build-grid"
-        style={compact ? { gridTemplateColumns: 'repeat(auto-fill, minmax(84px, 1fr))' } : undefined}
+      <button
+        type="button"
+        id="fl-build-open"
+        data-testid="build-open"
+        className="fl-build-open"
+        aria-expanded={buildOpen}
+        aria-controls="fl-build-window"
+        aria-keyshortcuts={touch ? undefined : 'Backquote'}
+        title={buildOpen ? 'Close the build window' : 'Open the build window: every structure, unit and upgrade, laid out by what each needs'}
+        onClick={onToggleBuild}
+        data-open={buildOpen ? '1' : '0'}
       >
-        {menu.map((kind, index) => {
-          const q = p.queues[tab];
-          const inQueue = q.filter(i => i.kind === kind).length;
-          const head = q[0];
-          const isHead = head && head.kind === kind;
-          const progress = isHead ? head.progress / buildTicksOf(kind) : 0;
-          const open = unlocked(state, 0, kind);
-          const cost = costFor(state, 0, kind);
-          const isReady = tab === 'building' && ready === kind;
-          const blockedByOther = tab === 'building' && q.length > 0 && !isHead;
-          const full = tab !== 'building' && q.length >= MAX_QUEUE;
-          const affordable = p.credits >= cost;
-          // Unaffordable stays clickable: the click is refused with a toast that says why.
-          const disabled = !open || blockedByOther || (!isHead && !isReady && full);
-          // A hotkey letter means nothing without a keyboard.
-          const key = touch ? undefined : BUILD_KEYS[index]?.toUpperCase();
-          const cancel = () => {
-            dispatch({ type: 'cancel', category: tab, kind });
-            if (placing === kind) setPlacing(null);
-          };
-          return (
-            <div key={kind} style={{ position: 'relative', display: 'flex' }}>
+        <span className="fl-build-open-label">
+          Build: <strong>{tabLabel(tab)}</strong>
+        </span>
+        {!touch && <kbd>`</kbd>}
+      </button>
+
+      <ProductionStrip state={state} dispatch={dispatch} placing={placing} setPlacing={setPlacing} touch={touch} onOpenTab={onOpenTab} />
+    </div>
+  );
+}
+
+/**
+ * One small icon per queue with anything in it (the four build queues, and the research under
+ * way): the item at its head with its progress bar and the queue's count. A click cancels the last
+ * one queued (touch: the ×); a ready structure pulses, and a click on it picks it up to place.
+ */
+function ProductionStrip({
+  state,
+  dispatch,
+  placing,
+  setPlacing,
+  touch,
+  onOpenTab,
+}: {
+  state: GameState;
+  dispatch: (a: GameAction) => boolean;
+  placing: BuildingKind | null;
+  setPlacing: (k: BuildingKind | null) => void;
+  touch: boolean;
+  onOpenTab: (t: Tab) => void;
+}) {
+  const p = state.players[0];
+  const ready = readyStructure(state, 0);
+  const cats = (['building', 'infantry', 'vehicle', 'air'] as Category[]).filter(c => p.queues[c].length > 0);
+  const research = p.research ?? null;
+  if (!cats.length && !research) {
+    return (
+      <div id="fl-queue-strip" data-testid="queue-strip" className="fl-strip" data-empty="1">
+        <span className="fl-strip-empty">Nothing in production.</span>
+      </div>
+    );
+  }
+  return (
+    <div id="fl-queue-strip" data-testid="queue-strip" className="fl-strip" role="group" aria-label="In production">
+      {cats.map(c => {
+        const q = p.queues[c];
+        const head = q[0];
+        const last = q[q.length - 1];
+        const isReady = c === 'building' && ready === head.kind;
+        const progress = Math.min(1, head.progress / buildTicksOf(head.kind));
+        const name = nameOf(head.kind);
+        const cancelLast = () => {
+          dispatch({ type: 'cancel', category: c, kind: last.kind });
+          if (placing === last.kind) setPlacing(null);
+        };
+        const label = isReady
+          ? `${name} ready: ${touch ? 'tap' : 'click'} to place it`
+          : `${tabLabel(c)}: ${name}${q.length > 1 ? `, ${q.length} queued` : ''}, ${Math.round(progress * 100)}%. ${touch ? 'Tap to open the list; × cancels' : 'Click to cancel'} the last one queued (${nameOf(last.kind)}) for a full refund`;
+        return (
+          <div key={c} className="fl-strip-cell">
             <button
-              id={`fl-build-${kind}`}
-              className={`fl-build${isReady ? ' ready' : ''}`}
-              data-testid={`build-${kind}`}
-              data-state={!open ? 'locked' : isReady ? 'ready' : isHead ? 'building' : 'idle'}
-              data-afford={affordable ? '1' : '0'}
-              disabled={disabled}
-              aria-label={`${nameOf(kind)}, ${cost} credits${key ? `, hotkey ${key}` : ''}`}
-              aria-keyshortcuts={key}
-              aria-pressed={placing === kind}
-              {...(touch ? {} : bind(kind))}
-              onClick={e => pressBuild(state, tab, kind, placing, dispatch, setPlacing, e.shiftKey)}
+              type="button"
+              className={`fl-strip-item${isReady ? ' ready' : ''}`}
+              data-testid={`strip-${c}`}
+              data-state={isReady ? (placing === head.kind ? 'placing' : 'ready') : 'building'}
+              aria-label={label}
+              title={label}
+              onClick={() => {
+                if (isReady) setPlacing(placing === head.kind ? null : (head.kind as BuildingKind));
+                else if (touch) onOpenTab(c);
+                else cancelLast();
+              }}
               onContextMenu={e => {
                 e.preventDefault();
-                if (inQueue) cancel();
+                if (!touch) cancelLast();
               }}
-              style={{ flex: 1, minWidth: 0, borderColor: placing === kind ? UI.good : undefined, opacity: open ? 1 : 0.42 }}
             >
-              <img src={iconFor(kind)} alt="" width={96} height={64} />
-              <span className="fl-build-name">
-                {key && <kbd className="fl-key">{key}</kbd>} {nameOf(kind)}
-              </span>
-              <span className="fl-build-cost" style={{ color: affordable ? UI.textSoft : UI.bad }}>
-                {cost}
-              </span>
-              {isHead && !isReady && (
-                <div style={progressWrap}>
-                  <div style={{ ...progressFill, width: `${Math.round(progress * 100)}%` }} />
-                </div>
+              <img src={iconFor(head.kind)} alt="" width={48} height={32} />
+              {!isReady && (
+                <span className="fl-strip-bar" aria-hidden="true">
+                  <span style={{ width: `${Math.round(progress * 100)}%` }} />
+                </span>
               )}
-              {isReady && <span style={{ ...badge, background: UI.good }}>{placing === kind ? 'Placing' : 'Ready'}</span>}
-              {inQueue > 1 && <span style={{ ...badge, background: UI.accent, left: 'auto', right: 3, top: 'auto', bottom: 8 }}>{inQueue}</span>}
+              {q.length > 1 && <span className="fl-strip-count">{q.length}</span>}
+              {isReady && <span className="fl-strip-ready">{placing === head.kind ? 'Placing' : 'Ready'}</span>}
             </button>
-            {inQueue > 0 && (
-              <button
-                type="button"
-                className="fl-cancel"
-                data-testid={`cancel-${kind}`}
-                aria-label={`Cancel ${nameOf(kind)}`}
-                title="Cancel for a full refund"
-                onClick={cancel}
-              >
+            {touch && !isReady && (
+              <button type="button" className="fl-strip-x" data-testid={`strip-cancel-${c}`} aria-label={`Cancel the last ${nameOf(last.kind)}`} onClick={cancelLast}>
                 ×
               </button>
             )}
-            </div>
-          );
-        })}
-      </div>
-      {tab === 'building' && hasBuilding(state, 0, 'researchlab') && techAllowed(state, 0, 'researchlab') && (
-        <ResearchBlock state={state} dispatch={dispatch} lowPower={pw.low} />
-      )}
-      {tab === 'air' && hasBuilding(state, 0, 'helipad') && (
-        <p className="fl-air-room" data-testid="air-room">
-          Helipads serve {airRoom(state, 0) + airCount(state, 0)} aircraft; {airCount(state, 0)} built or queued.
-        </p>
-      )}
-      {tip && (
-        <StatTip
-          kind={tip.key}
-          anchor={tip.el}
-          extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={BUILD_KEYS[menu.indexOf(tip.key)]} lowPower={pw.low} />}
-        />
+          </div>
+        );
+      })}
+      {research && (
+        <div className="fl-strip-cell">
+          <button
+            type="button"
+            className="fl-strip-item"
+            data-testid="strip-research"
+            data-state="building"
+            aria-label={`Research: ${UPGRADES[research.id].name}, ${Math.round((research.progress / UPGRADES[research.id].ticks) * 100)}%. ${touch ? 'Tap to open Research; × cancels it' : 'Click to cancel it'} for a full refund`}
+            title={`Research: ${UPGRADES[research.id].name}. ${touch ? 'Tap to open Research; × cancels it' : 'Click to cancel it'} for a full refund`}
+            onClick={() => (touch ? onOpenTab('research') : dispatch({ type: 'cancelResearch' }))}
+            onContextMenu={e => {
+              e.preventDefault();
+              if (!touch) dispatch({ type: 'cancelResearch' });
+            }}
+          >
+            <img src={iconFor('researchlab')} alt="" width={48} height={32} />
+            <span className="fl-strip-bar research" aria-hidden="true">
+              <span style={{ width: `${Math.round(Math.min(1, research.progress / UPGRADES[research.id].ticks) * 100)}%` }} />
+            </span>
+          </button>
+          {touch && (
+            <button type="button" className="fl-strip-x" data-testid="strip-cancel-research" aria-label="Cancel the research" onClick={() => dispatch({ type: 'cancelResearch' })}>
+              ×
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
 }
 
 /**
- * Research, at the foot of the Structures list once a Research Lab stands: every upgrade with its
+ * One build button, as the build window lays it out: icon, name, cost, hotkey letter, queue count
+ * and progress, the Shift batch, the ready-to-place pulse, cancel by right-click (or the ×), and a
+ * line naming what it still needs when locked. The stat card shows on hover, focus or a long press.
+ */
+export function BuildButton({
+  state,
+  tab,
+  kind,
+  hotkey,
+  placing,
+  setPlacing,
+  dispatch,
+  touch,
+  tipBind,
+  onLongPress,
+}: {
+  state: GameState;
+  tab: Category;
+  kind: BuildingKind | UnitKind;
+  hotkey?: string;
+  placing: BuildingKind | null;
+  setPlacing: (k: BuildingKind | null) => void;
+  dispatch: (a: GameAction) => boolean;
+  touch: boolean;
+  tipBind: Record<string, unknown>;
+  onLongPress: (el: HTMLElement | null) => void;
+}) {
+  const p = state.players[0];
+  const q = p.queues[tab];
+  const inQueue = q.filter(i => i.kind === kind).length;
+  const head = q[0];
+  const isHead = !!head && head.kind === kind;
+  const progress = isHead ? head.progress / buildTicksOf(kind) : 0;
+  const open = unlocked(state, 0, kind);
+  const cost = costFor(state, 0, kind);
+  const isReady = tab === 'building' && readyStructure(state, 0) === kind;
+  const blockedByOther = tab === 'building' && q.length > 0 && !isHead;
+  const full = tab !== 'building' && q.length >= MAX_QUEUE;
+  const affordable = p.credits >= cost;
+  // Unaffordable stays clickable: the click is refused with a toast that says why.
+  const disabled = !open || blockedByOther || (!isHead && !isReady && full);
+  // A hotkey letter means nothing without a keyboard.
+  const key = touch ? undefined : hotkey?.toUpperCase();
+  const missing = needsOf(kind).filter(r => r !== 'hq' && !hasBuilding(state, 0, r));
+  const cancel = () => {
+    dispatch({ type: 'cancel', category: tab, kind });
+    if (placing === kind) setPlacing(null);
+  };
+  // A long press (touch) shows the stat card and swallows the tap that follows it.
+  const press = useRef<{ timer: number; fired: boolean; touch: boolean }>({ timer: 0, fired: false, touch: false });
+  const endPress = () => {
+    window.clearTimeout(press.current.timer);
+    if (press.current.fired) onLongPress(null);
+  };
+  useEffect(() => () => window.clearTimeout(press.current.timer), []);
+  return (
+    <div className="fl-tree-cell" data-node={kind} data-tier-item="1">
+      <div style={{ position: 'relative', display: 'flex' }}>
+        <button
+          id={`fl-build-${kind}`}
+          className={`fl-build${isReady ? ' ready' : ''}`}
+          data-testid={`build-${kind}`}
+          data-state={!open ? 'locked' : isReady ? 'ready' : isHead ? 'building' : 'idle'}
+          data-afford={affordable ? '1' : '0'}
+          disabled={disabled}
+          aria-label={`${nameOf(kind)}, ${cost} credits${key ? `, hotkey ${key}` : ''}${missing.length ? `, needs ${missing.map(r => BUILDINGS[r].name).join(', ')}` : ''}`}
+          aria-keyshortcuts={key}
+          aria-pressed={placing === kind}
+          {...tipBind}
+          onPointerDown={e => {
+            press.current.fired = false;
+            press.current.touch = e.pointerType === 'touch';
+            if (e.pointerType !== 'touch') return;
+            const el = e.currentTarget;
+            window.clearTimeout(press.current.timer);
+            press.current.timer = window.setTimeout(() => {
+              press.current.fired = true;
+              onLongPress(el);
+            }, 450);
+          }}
+          onPointerUp={endPress}
+          onPointerCancel={endPress}
+          onPointerLeave={endPress}
+          onClick={e => {
+            if (press.current.fired) {
+              press.current.fired = false;
+              return;
+            }
+            pressBuild(state, tab, kind, placing, dispatch, setPlacing, e.shiftKey);
+          }}
+          onContextMenu={e => {
+            e.preventDefault();
+            // A finger's long press raises contextmenu too; on touch only the × cancels.
+            if (inQueue && !press.current.touch) cancel();
+          }}
+          style={{ flex: 1, minWidth: 0, borderColor: placing === kind ? UI.good : undefined, opacity: open ? 1 : 0.42 }}
+        >
+          <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
+          <span className="fl-build-name">
+            {key && <kbd className="fl-key">{key}</kbd>} {nameOf(kind)}
+          </span>
+          <span className="fl-build-cost" style={{ color: affordable ? UI.textSoft : UI.bad }}>
+            {cost}
+          </span>
+          {isHead && !isReady && (
+            <div style={progressWrap}>
+              <div style={{ ...progressFill, width: `${Math.round(progress * 100)}%` }} />
+            </div>
+          )}
+          {isReady && <span style={{ ...badge, background: UI.good }}>{placing === kind ? 'Placing' : 'Ready'}</span>}
+          {inQueue > 1 && <span style={{ ...badge, background: UI.accent, left: 'auto', right: 3, top: 'auto', bottom: 8 }}>{inQueue}</span>}
+        </button>
+        {inQueue > 0 && (
+          <button
+            type="button"
+            className="fl-cancel"
+            data-testid={`cancel-${kind}`}
+            aria-label={`Cancel ${nameOf(kind)}`}
+            title="Cancel for a full refund"
+            onClick={cancel}
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {missing.length > 0 && (
+        <span className="fl-tree-needs" data-testid={`needs-${kind}`}>
+          Needs {missing.map(r => BUILDINGS[r].name).join(', ')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Research, on the build window's Research tab once a Research Lab stands: every upgrade with its
  * cost, time and effect; the one under way with its progress and a cancel; those done ticked off.
  * Starting one pays for it in full; cancelling refunds it in full.
  */
-function ResearchBlock({ state, dispatch, lowPower }: { state: GameState; dispatch: (a: GameAction) => boolean; lowPower: boolean }) {
+export function ResearchBlock({ state, dispatch, lowPower }: { state: GameState; dispatch: (a: GameAction) => boolean; lowPower: boolean }) {
   const p = state.players[0];
   const busy = p.research ?? null;
   return (
@@ -562,7 +719,7 @@ function problemText(problem: string): string {
 }
 
 /** The live part of a build button's card: what stands in the way right now, and the keys. */
-function BuildTipFooter({
+export function BuildTipFooter({
   state,
   tab,
   kind,
@@ -570,7 +727,7 @@ function BuildTipFooter({
   lowPower,
 }: {
   state: GameState;
-  tab: Tab;
+  tab: Category;
   kind: BuildingKind | UnitKind;
   hotkey?: string;
   lowPower: boolean;
