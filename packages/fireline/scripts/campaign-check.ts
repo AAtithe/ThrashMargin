@@ -701,7 +701,9 @@ section('act two: progression and old saves', () => {
   for (const t of adv) ok(last.tech.includes(t as never), `Last Light offers ${t}`);
   ok(last.difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander on hard, with a full base');
   const kinds = new Set<string>(['hq', ...last.enemy.structures]);
-  for (const b of Object.keys(BUILDINGS)) if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
+  // Round 5's structures are skirmish only (fireline-round5-design.md): no mission has them.
+  const skirmishOnly = new Set<string>(['protoworks', 'fortress']);
+  for (const b of Object.keys(BUILDINGS)) if ((b !== 'hq' || last.enemy.base === 'full') && !skirmishOnly.has(b)) ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
   // The new objective kinds are used across the act.
   const used = new Set(act2.flatMap(m => [...m.objectives, ...m.bonus].map(o => (o.kind === 'holdZone' && o.reset ? 'holdZone reset' : o.kind))));
   for (const k of ['escort', 'destroyWithin', 'holdZone reset']) ok(used.has(k), `act two uses ${k}`);
