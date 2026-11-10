@@ -46,7 +46,7 @@ import {
 } from '../sim/rules';
 import { buildTicksOf, costFor, hasBuilding, maxHpOf, powerOf, readyStructure, researchModeOf, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
-import { doctrineOf, doctrineProblem, hasUpgrade, researchProblem } from '../sim/research';
+import { doctrineOf, doctrineProblem, hasUpgrade, researchCostOf, researchProblem, researchTicksOf } from '../sim/research';
 import { cargoMaxOf, inModuleOrder, loadoutCost, loadoutOf, queueCostFor } from '../sim/loadout';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
@@ -568,22 +568,22 @@ function ResearchBlock({ state, dispatch, lowPower }: { state: GameState; dispat
                   type="button"
                   className="fl-research-btn"
                   disabled={!!problem && problem !== 'Not enough credits'}
-                  title={problem ?? `Research for ${spec.cost} credits`}
+                  title={problem ?? `Research for ${researchCostOf(state, id)} credits`}
                   onClick={() => dispatch({ type: 'research', upgrade: id })}
                 >
-                  {spec.cost}
+                  {researchCostOf(state, id)}
                 </button>
               )}
             </div>
             <span className="fl-research-blurb">
-              {spec.blurb} {!done && <span className="fl-research-time">{secs(spec.ticks)}</span>}
+              {spec.blurb} {!done && <span className="fl-research-time">{secs(researchTicksOf(state, id))}</span>}
               {!done && !running && problem && problem !== 'Not enough credits' && problem !== 'Already researching' && (
                 <span className="fl-research-why"> {problemText(problem)}</span>
               )}
             </span>
             {running && (
-              <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((busy!.progress / spec.ticks) * 100)}>
-                <span style={{ width: `${Math.round((busy!.progress / spec.ticks) * 100)}%` }} />
+              <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((busy!.progress / researchTicksOf(state, id)) * 100)}>
+                <span style={{ width: `${Math.round((busy!.progress / researchTicksOf(state, id)) * 100)}%` }} />
               </div>
             )}
           </div>
@@ -618,7 +618,7 @@ function nodeCaption(state: GameState, id: UpgradeId): string {
   const st = nodeState(state, id);
   if (st === 'done') return `${head} Done.`;
   if (st === 'closed') return `Closed: you adopted ${UPGRADES[doctrineOf(state, 0, line)!].name}.`;
-  const price = `${spec.cost} credits, ${secs(spec.ticks)}.`;
+  const price = `${researchCostOf(state, id)} credits, ${secs(researchTicksOf(state, id))}.`;
   if (st === 'running') return `${head} Researching.`;
   if (st === 'choose') return `${head} Adopt this doctrine to research it for ${price} The other one closes for the rest of the battle.`;
   const problem = researchProblem(state, 0, id);
@@ -711,8 +711,8 @@ function LineNode({
         <span className="fl-research-done">Done</span>
       ) : st === 'running' ? (
         <>
-          <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((busy!.progress / spec.ticks) * 100)}>
-            <span style={{ width: `${Math.round((busy!.progress / spec.ticks) * 100)}%` }} />
+          <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((busy!.progress / researchTicksOf(state, id)) * 100)}>
+            <span style={{ width: `${Math.round((busy!.progress / researchTicksOf(state, id)) * 100)}%` }} />
           </div>
           <button type="button" className="fl-research-btn" data-kind="cancel" onClick={() => dispatch({ type: 'cancelResearch' })}>
             Cancel
@@ -734,11 +734,11 @@ function LineNode({
           type="button"
           className="fl-research-btn"
           disabled={!!problem && problem !== 'Not enough credits'}
-          title={problem ? problemText(problem) : `Research for ${spec.cost} credits`}
-          aria-label={`Research ${spec.name} for ${spec.cost} credits`}
+          title={problem ? problemText(problem) : `Research for ${researchCostOf(state, id)} credits`}
+          aria-label={`Research ${spec.name} for ${researchCostOf(state, id)} credits`}
           onClick={() => dispatch({ type: 'research', upgrade: id })}
         >
-          {spec.cost}
+          {researchCostOf(state, id)}
         </button>
       )}
     </div>

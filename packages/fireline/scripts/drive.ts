@@ -25,6 +25,8 @@ import { processAction } from '../src/sim/actions';
 import { sections as airSections } from './drive-air';
 // round5. Development lines and loadouts (fireline-round5-design.md): its sections.
 import { sections as linesSections } from './drive-lines';
+// round6. Game size and paced research (fireline-round6-design.md): its sections.
+import { sections as sizeSections } from './drive-size';
 import { canQueue, placementProblem } from '../src/sim/commands';
 import { dist, distToBuilding, occupancy, passable } from '../src/sim/grid';
 import { generateMap, isWalkable, START_0, START_1 } from '../src/sim/map';
@@ -2690,6 +2692,9 @@ if (!CAMPAIGN_ONLY) {
     // round5. Development lines and loadouts (fireline-round5-design.md): its sections, imported
     // from scripts/drive-lines.ts.
     ...linesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6. Game size and paced research (fireline-round6-design.md): its sections, imported
+    // from scripts/drive-size.ts.
+    ...sizeSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round4:B. Bigger battles (fireline-round4-design.md): its sections, imported from
     // scripts/drive-sides.ts, go on the lines below this comment.
     ...sidesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),

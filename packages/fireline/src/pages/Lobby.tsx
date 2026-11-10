@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
-import SkirmishSetupPanel, { freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
+import GameSizePicker, { attackText } from '../components/GameSizePicker';
+import SkirmishSetupPanel, { ORE_TEXT, RESEARCH_TEXT, TECH_TEXT, freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
 import { campaignSaves, isCampaignMeta } from './campaignSaves';
@@ -13,8 +14,11 @@ import {
   BUILDINGS,
   DEFAULT_DIFFICULTY,
   DIFFICULTIES,
+  GAME_SIZES,
   MAP_TYPE_NAMES,
   TICKS_PER_SECOND,
+  applySize,
+  difficultyForSize,
   type MapType,
   type SkirmishSetup,
   type BuildingKind,
@@ -48,6 +52,19 @@ export default function Lobby() {
     storeSetup(v);
   };
   const seedText = seed.trim() || autoSeed;
+  // The new-battle panel opens on the game size cards every visit; Customise shows the full setup.
+  const [setupStep, setSetupStep] = useState<'size' | 'custom'>('size');
+  const newBattleRef = useRef<HTMLDivElement>(null);
+  const stepChanged = useRef(false);
+  useEffect(() => {
+    // Switching step replaces most of the panel: bring its top back into view, not on first render.
+    if (!stepChanged.current) {
+      stepChanged.current = true;
+      return;
+    }
+    const el = newBattleRef.current;
+    if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' });
+  }, [setupStep]);
   const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -204,71 +221,107 @@ export default function Lobby() {
           )}
         </Panel>
 
-        <Panel title="A new battle" aside={<Label>Skirmish</Label>} style={{ marginBottom: '1.5rem' }}>
-          <div style={field}>
-            <Label>Name this battle</Label>
-            <input style={input} value={name} placeholder="Operation Fireline" maxLength={60} onChange={e => setName(e.target.value)} />
-          </div>
-          <div style={field}>
-            <Label>Enemy commander</Label>
-            <div className="fl-levels" role="group" aria-label="Enemy commander">
-              {(Object.keys(DIFFICULTIES) as Difficulty[]).map(d => {
-                const spec = DIFFICULTIES[d];
-                return (
-                  <button key={d} type="button" className="fl-level" aria-pressed={level === d} data-testid={`level-${d}`} onClick={() => setLevel(d)}>
-                    <span className="fl-level-name">{spec.label}</span>
-                    <span className="fl-level-attack">First attack ~{minutes(spec.firstAttack)} min</span>
-                    <span className="fl-level-facts">
-                      Waves of {spec.firstWave}, growing to {spec.waveCap}, every ~{minutes(spec.attackInterval)} min.{' '}
-                      {spec.refineries} {spec.refineries === 1 ? 'refinery' : 'refineries'}, {spec.factories}{' '}
-                      {spec.factories === 1 ? 'factory' : 'factories'}, up to {spec.turrets} turrets
-                      {spec.income !== 1 ? `; income ×${spec.income}` : ''}.
-                    </span>
-                  </button>
-                );
-              })}
+        <div ref={newBattleRef} style={{ scrollMarginTop: '1rem' }}>
+          <Panel
+            title="A new battle"
+            aside={<Label>{setupStep === 'size' ? 'Skirmish' : `Skirmish, ${GAME_SIZES[setup.size].name}`}</Label>}
+            style={{ marginBottom: '1.5rem' }}
+          >
+            {setupStep === 'custom' && (
+              <div>
+                <Button tone="quiet" testId="setup-back" onClick={() => setSetupStep('size')}>
+                  ← Game size
+                </Button>
+              </div>
+            )}
+            <div style={field}>
+              <Label>Name this battle</Label>
+              <input style={input} value={name} placeholder="Operation Fireline" maxLength={60} onChange={e => setName(e.target.value)} />
             </div>
-            <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }}>
-              {DIFFICULTIES[level].blurb} At every level the computer sees the whole map, pays for everything it builds and
-              fights with the same units you do.
-            </p>
-          </div>
-          <div style={field}>
-            <Label>Map seed</Label>
-            <div className="fl-seed">
-              <input
-                style={{ ...input, width: 200 }}
-                value={seed}
-                placeholder={autoSeed}
-                aria-label="Map seed"
-                data-testid="seed"
-                maxLength={64}
-                onChange={e => setSeed(e.target.value)}
-              />
-              <Button
-                tone="quiet"
-                onClick={() => {
-                  setSeed('');
-                  setAutoSeed(freshSeed());
-                }}
-              >
-                New map
+            {setupStep === 'size' && (
+              <div style={field}>
+                <Label>Game size</Label>
+                <GameSizePicker value={setup} onPick={size => setSetup(applySize(setup, size))} />
+              </div>
+            )}
+            <div style={field}>
+              <Label>Enemy commander</Label>
+              <div className="fl-levels" role="group" aria-label="Enemy commander">
+                {(Object.keys(DIFFICULTIES) as Difficulty[]).map(d => {
+                  const spec = difficultyForSize(d, setup.size);
+                  return (
+                    <button key={d} type="button" className="fl-level" aria-pressed={level === d} data-testid={`level-${d}`} onClick={() => setLevel(d)}>
+                      <span className="fl-level-name">{spec.label}</span>
+                      <span className="fl-level-attack">First attack ~{minutes(spec.firstAttack)} min</span>
+                      <span className="fl-level-facts">
+                        Waves of {spec.firstWave}, growing to {spec.waveCap}, every ~{minutes(spec.attackInterval)} min.{' '}
+                        {spec.refineries} {spec.refineries === 1 ? 'refinery' : 'refineries'}, {spec.factories}{' '}
+                        {spec.factories === 1 ? 'factory' : 'factories'}, up to {spec.turrets} turrets
+                        {spec.income !== 1 ? `; income ×${spec.income}` : ''}.
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }}>
+                {DIFFICULTIES[level].blurb}
+                {GAME_SIZES[setup.size].attackMul !== 1 &&
+                  ` At ${GAME_SIZES[setup.size].name} size every attack comes ${attackText(GAME_SIZES[setup.size].attackMul).toLowerCase()}: the first at about ${minutes(difficultyForSize(level, setup.size).firstAttack)} minutes.`}{' '}
+                At every level the computer sees the whole map, pays for everything it builds and
+                fights with the same units you do.
+              </p>
+            </div>
+            {setupStep === 'custom' && (
+              <>
+                <div style={field}>
+                  <Label>Map seed</Label>
+                  <div className="fl-seed">
+                    <input
+                      style={{ ...input, width: 200 }}
+                      value={seed}
+                      placeholder={autoSeed}
+                      aria-label="Map seed"
+                      data-testid="seed"
+                      maxLength={64}
+                      onChange={e => setSeed(e.target.value)}
+                    />
+                    <Button
+                      tone="quiet"
+                      onClick={() => {
+                        setSeed('');
+                        setAutoSeed(freshSeed());
+                      }}
+                    >
+                      New map
+                    </Button>
+                  </div>
+                  <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }}>
+                    Leave it as it is for a fresh map, or type any word: the same seed and settings always draw the same battlefield.
+                  </p>
+                </div>
+                <SkirmishSetupPanel value={setup} onChange={setSetup} seedText={seedText} />
+              </>
+            )}
+            <div className="fl-begin-row">
+              <Button tone="primary" disabled={busy} onClick={begin}>
+                {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
               </Button>
+              {setupStep === 'size' && (
+                <Button tone="quiet" testId="setup-customise" onClick={() => setSetupStep('custom')}>
+                  Customise →
+                </Button>
+              )}
             </div>
-            <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }}>
-              Leave it as it is for a fresh map, or type any word: the same seed and settings always draw the same battlefield.
+            {setupStep === 'size' && (
+              <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }} data-testid="setup-summary">
+                {setupSummary(setup)}
+              </p>
+            )}
+            <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0, color: UI.textFaint }}>
+              Best with a mouse and keyboard on a laptop or desktop screen.
             </p>
-          </div>
-          <SkirmishSetupPanel value={setup} onChange={setSetup} seedText={seedText} />
-          <div>
-            <Button tone="primary" disabled={busy} onClick={begin}>
-              {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
-            </Button>
-          </div>
-          <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0, color: UI.textFaint }}>
-            Best with a mouse and keyboard on a laptop or desktop screen.
-          </p>
-        </Panel>
+          </Panel>
+        </div>
 
         <Panel title="Your battles" aside={saves.length > 0 ? <Label>{saves.length}</Label> : undefined}>
           {!savesLoaded ? (
@@ -635,6 +688,19 @@ function HeroScene() {
       </div>
     </div>
   );
+}
+
+/** The size step's one-line summary of what Customise holds, e.g. "Random map, Advanced tech, ...". */
+function setupSummary(v: SkirmishSetup): string {
+  const parts = [
+    v.map === 'random' ? 'Random map' : `${MAP_TYPE_NAMES[v.map]} map`,
+    `${TECH_TEXT[v.tech].name} tech`,
+    ...(v.tech === 'advanced' ? [v.research === 'lines' ? RESEARCH_TEXT.lines.name : 'Classic research'] : []),
+    `${v.sides} sides${v.sides > 2 && v.mode === 'teams' ? ' in teams' : ''}`,
+    `${v.credits.toLocaleString('en-GB')} credits`,
+    `${ORE_TEXT[v.ore].name.toLowerCase()} ore`,
+  ];
+  return `${parts.join(', ')}.`;
 }
 
 const minutes = (ticks: number) => {

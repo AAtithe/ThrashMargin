@@ -217,6 +217,11 @@ export default function HowToPlay() {
             the other closes for the rest of the battle. Research also unlocks modules: on the Vehicles tab, set a loadout for each
             vehicle type, and every one built afterwards carries it, for a little more money.
           </p>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
+            A new battle starts with its size. Quick is the original pace. Standard, Long and Epic give both sides more time
+            before the waves come, and with development lines make research cheaper and quicker, so Mk II and the doctrines
+            come within reach. Every size can be changed in Customise.
+          </p>
           <Grid kinds={AIR_MENU} />
         </Panel>
         <Panel title="Controls">

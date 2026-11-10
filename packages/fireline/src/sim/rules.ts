@@ -938,18 +938,23 @@ export interface SkirmishSetup {
   mode: SideMode;
   /** 'classic': the five flat upgrades. 'lines': development lines, doctrines and loadouts. Advanced tech only. */
   research: ResearchMode;
+  /**
+   * How big a battle: the commander's attack timing, and in development lines research cost and
+   * time and how the commander researches. 'quick' is the game before round 6 exactly.
+   */
+  size: GameSize;
 }
 
 /** How the sides of a battle of three or four are grouped. */
 export type SideMode = 'ffa' | 'teams';
 
 /** What the lobby offers a new skirmish by default. */
-export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', research: 'lines' };
+export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', research: 'lines', size: 'quick' };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
  * one. The original game exactly: the original map generator, standard tech, no skirmish powers.
  */
-export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', research: 'classic' };
+export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', research: 'classic', size: 'quick' };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
 /** What each map type looks like with three or four sides, where the two-sided blurb does not fit. */
@@ -1219,3 +1224,120 @@ export const LONG_BARREL_WEAPON: Partial<Record<UnitKind, Weapon>> = (() => {
   }
   return out;
 })();
+
+// ---- Game size (round 6; fireline-round6-design.md) ----
+
+export type GameSize = 'quick' | 'standard' | 'long' | 'epic';
+/** Sizes in the order the size screen shows them, left to right. */
+export const GAME_SIZE_ORDER: GameSize[] = ['quick', 'standard', 'long', 'epic'];
+/** The size the lobby selects for a player who has never chosen one. */
+export const LOBBY_DEFAULT_SIZE: GameSize = 'standard';
+
+export interface GameSizeSpec {
+  name: string;
+  /** One line under the name on the card. */
+  tagline: string;
+  /** Expected battle length in minutes against a Normal commander, as the card states it. */
+  minutes: [number, number];
+  /** What picking the card writes into the setup. Nothing else is touched. */
+  preset: { credits: number; ore: OreLevel };
+  /** What a player typically reaches, as the card states it (development lines). */
+  reach: string;
+  /** Multiplier on the commander's firstAttack and attackInterval (1 = unchanged). */
+  attackMul: number;
+  /** Development lines only: multipliers on research cost and ticks by mark [Mk I, Mk II, Mk III]. */
+  researchCost: [number, number, number];
+  researchTicks: [number, number, number];
+  /** Development lines only: the commander uses paced research (round 6, section 5). False: round 5's research step. */
+  paced: boolean;
+}
+
+export const GAME_SIZES: Record<GameSize, GameSizeSpec> = {
+  quick: {
+    name: 'Quick',
+    tagline: 'A straight fight: build, mass and strike.',
+    minutes: [15, 35],
+    preset: { credits: 3000, ore: 'normal' },
+    reach: 'Research rarely gets past Mk I. Doctrines almost never.',
+    attackMul: 1,
+    researchCost: [1, 1, 1],
+    researchTicks: [1, 1, 1],
+    paced: false,
+  },
+  standard: {
+    name: 'Standard',
+    tagline: 'Room to tech up before the big waves.',
+    minutes: [15, 35],
+    preset: { credits: 3000, ore: 'normal' },
+    reach: 'Mk II in most battles; a doctrine in about half.',
+    attackMul: 1.25,
+    researchCost: [0.5, 0.5, 0.5],
+    researchTicks: [0.6, 0.6, 0.6],
+    paced: true,
+  },
+  long: {
+    name: 'Long',
+    tagline: 'Richer fields and a slower enemy: the whole tree is in play.',
+    minutes: [15, 35],
+    preset: { credits: 5000, ore: 'rich' },
+    reach: 'Mk II in almost every battle; a doctrine in most, sometimes two.',
+    attackMul: 2,
+    researchCost: [0.5, 0.5, 0.5],
+    researchTicks: [0.6, 0.6, 0.6],
+    paced: true,
+  },
+  epic: {
+    name: 'Epic',
+    tagline: 'Deep pockets and a patient enemy: the deepest tech, on the same map.',
+    minutes: [15, 35],
+    preset: { credits: 10000, ore: 'rich' },
+    reach: 'Mk II in every battle; a doctrine in almost every battle, more than one in most.',
+    attackMul: 3,
+    researchCost: [0.5, 0.5, 0.5],
+    researchTicks: [0.6, 0.6, 0.6],
+    paced: true,
+  },
+};
+
+/** Paced research (round 6, section 5): ore left on the map below which the commander starts no research. */
+export const PACED_ORE_FLOOR = 12000;
+/** Paced research: armed units (haulers aside) the commander keeps before it holds unit spending for research. */
+export const PACED_HOLD_ARMY = 6;
+/** Paced research: an armed enemy unit this close (tiles) to the commander's home ends the hold. */
+export const PACED_HOLD_RADIUS = 20;
+/** Credits a researched upgrade's price is rounded to, after a size multiplier. */
+export const RESEARCH_COST_STEP = 50;
+
+/** The setup with a size's preset applied: size, credits and ore. Everything else kept. */
+export const applySize = (setup: SkirmishSetup, size: GameSize): SkirmishSetup => ({
+  ...setup,
+  size,
+  credits: GAME_SIZES[size].preset.credits,
+  ore: GAME_SIZES[size].preset.ore,
+});
+/** True when the setup's credits and ore are its size's preset (the card shows "Customised" otherwise). */
+export const isPresetSetup = (setup: SkirmishSetup): boolean =>
+  setup.credits === GAME_SIZES[setup.size].preset.credits && setup.ore === GAME_SIZES[setup.size].preset.ore;
+
+/**
+ * A difficulty's numbers for a size. 'quick' (and any size whose attackMul is 1) returns the
+ * DIFFICULTIES entry itself, the same object, so nothing downstream can differ by a rounding.
+ * Otherwise a copy with firstAttack and attackInterval multiplied by attackMul and rounded.
+ */
+export function difficultyForSize(diff: Difficulty, size: GameSize): DifficultySpec {
+  const base = DIFFICULTIES[diff];
+  const mul = (GAME_SIZES[size] ?? GAME_SIZES.quick).attackMul;
+  if (mul === 1) return base;
+  return { ...base, firstAttack: Math.round(base.firstAttack * mul), attackInterval: Math.round(base.attackInterval * mul) };
+}
+
+/** The map's side in tiles for a number of sides (64 for two, MAP_SIZE_FOR otherwise). */
+export const mapSizeFor = (sides: 2 | 3 | 4): number => (sides === 2 ? MAP_W : MAP_SIZE_FOR[sides]);
+
+/** "Research" line on a card: 'Full price and time' for 1, otherwise e.g. '50% price, 60% time'. */
+export function researchPaceText(size: GameSize): string {
+  const spec = GAME_SIZES[size];
+  if ([...spec.researchCost, ...spec.researchTicks].every(m => m === 1)) return 'Full price and time';
+  const pct = (m: number) => `${Math.round(m * 100)}%`;
+  return `${pct(spec.researchCost[1])} price, ${pct(spec.researchTicks[1])} time`;
+}

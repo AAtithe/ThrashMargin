@@ -6,7 +6,10 @@ import {
   BUILD_MENU,
   BUILDINGS,
   DEFAULT_SETUP,
+  GAME_SIZE_ORDER,
+  GAME_SIZES,
   INFANTRY_MENU,
+  LOBBY_DEFAULT_SIZE,
   MAP_TYPE_BLURBS,
   MAP_TYPE_BLURBS_SIDES,
   MAP_TYPE_NAMES,
@@ -20,7 +23,10 @@ import {
   STANDARD_TECH,
   UNITS,
   VEHICLE_MENU,
+  applySize,
+  researchPaceText,
   type BuildingKind,
+  type GameSize,
   type MapType,
   type OreLevel,
   type Owner,
@@ -44,11 +50,17 @@ import { Label } from './ui';
 
 const STORE_KEY = 'fireline_setup';
 
-/** The player's last setup, so the next battle starts from it. Per browser, and only a convenience. */
+/** What the lobby offers a player who has never chosen: the default setup at the lobby's default size. */
+const FIRST_SETUP: SkirmishSetup = applySize(DEFAULT_SETUP, LOBBY_DEFAULT_SIZE);
+
+/**
+ * The player's last setup, so the next battle starts from it. Per browser, and only a convenience.
+ * A setup stored before game sizes existed keeps its credits and ore and gets the lobby's default size.
+ */
 export function readStoredSetup(): SkirmishSetup {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return DEFAULT_SETUP;
+    if (!raw) return FIRST_SETUP;
     const r = JSON.parse(raw) as Partial<SkirmishSetup>;
     return {
       map: r.map === 'random' || MAP_TYPES.includes(r.map as MapType) ? (r.map as SkirmishSetup['map']) : DEFAULT_SETUP.map,
@@ -58,9 +70,10 @@ export function readStoredSetup(): SkirmishSetup {
       sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
       research: r.research === 'classic' || r.research === 'lines' ? r.research : DEFAULT_SETUP.research,
+      size: GAME_SIZE_ORDER.includes(r.size as GameSize) ? (r.size as GameSize) : LOBBY_DEFAULT_SIZE,
     };
   } catch {
-    return DEFAULT_SETUP;
+    return FIRST_SETUP;
   }
 }
 
@@ -82,7 +95,7 @@ export function freshSeed(): string {
 /** The seed text exactly as createInitialState will read it. */
 const seedNumber = (text: string) => seedFromString(text.trim().slice(0, 64));
 
-const ORE_TEXT: Record<OreLevel, { name: string; text: string }> = {
+export const ORE_TEXT: Record<OreLevel, { name: string; text: string }> = {
   poor: { name: 'Poor', text: 'Thin fields: every hauler trip counts, and expansions matter early.' },
   normal: { name: 'Normal', text: 'The standard amount.' },
   rich: { name: 'Rich', text: 'Denser, wider fields: bigger armies, sooner.' },
@@ -139,8 +152,26 @@ export default function SkirmishSetupPanel({
   const drawn = randomMapType(seed);
   const set = (patch: Partial<SkirmishSetup>) => onChange({ ...value, ...patch });
 
+  const lines = value.tech === 'advanced' && value.research === 'lines';
+
   return (
     <>
+      <div className="fl-setup-field">
+        <Label>Game size</Label>
+        {/* Customise sets the size alone: credits and ore stay as the player set them. */}
+        <div className="fl-seg" role="radiogroup" aria-label="Game size">
+          {GAME_SIZE_ORDER.map(k => (
+            <button key={k} type="button" role="radio" aria-checked={value.size === k} data-testid={`setup-size-${k}`} onClick={() => set({ size: k })}>
+              {GAME_SIZES[k].name}
+            </button>
+          ))}
+        </div>
+        <p className="fl-setup-note" data-testid="setup-size-note">
+          {GAME_SIZES[value.size].tagline}
+          {lines ? ` Research: ${researchPaceText(value.size).toLowerCase()}.` : ''}
+        </p>
+      </div>
+
       <div className="fl-setup-field">
         <Label>Battlefield</Label>
         <div className="fl-maps" role="radiogroup" aria-label="Battlefield">
