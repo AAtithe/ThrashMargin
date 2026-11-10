@@ -84,6 +84,8 @@ export interface Unit {
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): optional Unit fields.
   // round5:C end.
   // round5:D begin. Tier three: optional Unit fields (the Stealth Tank's last shot, for instance).
+  /** Stealth Tanks only: the tick it last fired, which shows it to everyone for STEALTH_REVEAL_TICKS. */
+  lastShot?: number;
   // round5:D end.
 }
 
@@ -262,6 +264,14 @@ export interface AiMemory {
   // round5:C begin. Engineering vehicles: optional AiMemory fields (its trucks, its expansion).
   // round5:C end.
   // round5:D begin. Neutral sites and tier three: optional AiMemory fields (its capture parties).
+  /** Infantry parties sent to take neutral sites (aiSites.ts): the site, the party, and when it set out. */
+  siteParties?: { site: number; ids: number[]; since: number }[];
+  /** Sites given up on, and the tick each may be tried again. */
+  siteRetry?: [number, number][];
+  /** Stealth Tanks out hunting haulers, their quarry (0 for none), and when the next hunt may go. */
+  stealthIds?: number[];
+  stealthTarget?: number;
+  nextStealthRaid?: number;
   // round5:D end.
 }
 

@@ -40,6 +40,9 @@ import {
 } from './rules';
 import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf, teamsFor } from './sides';
 import type { AiMemory, Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
+// round5:D. Neutral sites (fireline-round5-design.md, workstream D).
+import { migrateSites, placeSites, relaysOf } from './sites';
+import { RELAY_RADIUS } from './rules';
 
 export { startOf };
 
@@ -201,6 +204,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     if (setup.tech === 'advanced') s.powers = sidesOf(s).map(() => ({}));
     // round5:D begin. Neutral sites (fireline-round5-design.md, workstream D): one call into sites.ts
     // when setup.sites is on, filling s.sites. Nothing else here changes.
+    if (setup.sites) placeSites(s);
     // round5:D end.
   }
 
@@ -324,6 +328,7 @@ export function cloneState(s: GameState): GameState {
     ...(s.blackoutUntil ? { blackoutUntil: s.blackoutUntil.slice() } : {}),
     ...(s.recon ? { recon: s.recon.slice() } : {}),
     // round5:D begin. Neutral sites: s.sites copied one object deep, only when present.
+    ...(s.sites ? { sites: s.sites.map(x => ({ ...x })) } : {}),
     // round5:D end.
   };
 }
@@ -434,6 +439,7 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
       mark(b.x + spec.w / 2, b.y + spec.h / 2, spec.sight + Math.max(spec.w, spec.h) / 2);
     }
   // round5:D begin. A Comms Relay this side holds reveals its area (one loop calling mark).
+  if (s.sites) for (const c of relaysOf(s, owner)) mark(c.x, c.y, RELAY_RADIUS);
   // round5:D end.
   return vis;
 }
@@ -544,6 +550,11 @@ export function migrateState(raw: unknown): GameState | null {
     else delete out.starts;
   }
   // round5:D begin. Neutral sites: s.sites repaired or dropped, never trusted blind.
+  if (s.sites !== undefined) {
+    const sites = migrateSites(s.sites, out);
+    if (sites) out.sites = sites;
+    else delete out.sites;
+  }
   // round5:D end.
   // Only two sides may fall back on the original start sites.
   if (n > 2 && !out.starts) return null;

@@ -1,6 +1,8 @@
 import { BUILDINGS, type Owner } from './rules';
 import { frontDir as sideFront } from './sides';
 import type { Building, GameState, Unit } from './types';
+// round5:D. Neutral sites (fireline-round5-design.md, workstream D).
+import { occupySites } from './sites';
 
 /**
  * Spatial helpers: which tiles are blocked, A* pathfinding, and distances to units and structures.
@@ -22,6 +24,7 @@ export function occupancy(s: GameState): Int32Array {
     for (let y = b.y; y < b.y + spec.h; y++) for (let x = b.x; x < b.x + spec.w; x++) occ[y * MAP_W + x] = b.id;
   }
   // round5:D begin. Neutral sites block their tiles with their own id (fireline-round5-design.md).
+  if (s.sites) occupySites(s, occ);
   // round5:D end.
   return occ;
 }
