@@ -912,3 +912,10 @@ Interceptors fighting, Countermeasures measured on a Flak Cannon and a Skyhunter
 45) and not on a bullet, old saves, the computer (an Interceptor by minute 8 on Hard against
 Gunships, a Recon Plane by minute 7 against a Stealth Tank, which its side then sees; nothing on
 Easy), and a Hard battle that replays byte-identically.
+
+Numbers. `npm run drive:fire`: 373,669 assertions, 0 failed, 362s (was 367,688). The advanced-tech
+battle line now reads "12/12 finished, average 28.0 game minutes; side 0 won 4, side 1 won 8": the
+commanders fly Countermeasures research and, where the opponent flies or fields Stealth Tanks, the new
+aircraft. The air war battle: "aircraft gunship, interceptor; 1 interceptor missiles; side 1 won at 38
+min". `npm run campaign:fire` 2,595, unchanged. The AI ladder (150 seeds) has not yet been run on this
+change and should be before any balance work on it.
