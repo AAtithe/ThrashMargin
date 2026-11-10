@@ -104,7 +104,13 @@ mission AI once the round-1 opponent work lands.
 - [ ] A. The build window: the build lists in a pop-out tech tree, opened by a Build button or the backquote key.
 - [ ] B. Larger maps and long games: large and huge maps, ore that spreads back, the computer scaled for distance, performance at 160 tiles.
 - [ ] C. Engineering vehicles: Repair Truck, Forward Base Truck and Field Yard; the computer expands on large maps.
-- [ ] D. Neutral sites and tier three: Oil Derricks, Field Hospitals, Comms Relays; Prototype Works, Fortress, Railgun Tank, Stealth Tank.
+- [x] D. Neutral sites and tier three: Oil Derricks, Field Hospitals, Comms Relays; Prototype Works, Fortress, Railgun Tank, Stealth Tank.
+  - [x] Sites placed by the map's own symmetry, captured by infantry, never a target or a structure; a lobby switch.
+  - [x] Stealth: unseen and untargetable beyond 2.5 tiles except for 3 seconds after firing, for the computer too.
+  - [x] The computer takes sites with small infantry parties and turns to tier three after 25 minutes.
+  - [ ] The minimap still draws an enemy Stealth Tank in sight (and an enemy Spy): one condition in B's units loop.
+  - [ ] An attack order given straight to a unit on a hidden Stealth Tank fires once before it is dropped (the player cannot give one; the computer never does).
+  - [ ] Sites in the map previews, a selected site's panel line, and placement measured on large and huge maps (integration).
 
 ## Found along the way
 
