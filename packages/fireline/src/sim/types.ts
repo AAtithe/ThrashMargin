@@ -499,6 +499,8 @@ export interface MissionRuntime {
   convoyRoute?: { x: number; y: number }[];
   /** Copied from the spec. Per side, the powers its structures currently grant (never one the mission gave at the start). */
   structurePowers?: SupportPower[][];
+  /** The campaign difficulty this battle was built at; absent means Normal (and every older save). */
+  level?: Difficulty;
 }
 
 /** What the campaign layer is told when a mission ends. */
@@ -536,6 +538,8 @@ export interface MissionContext {
   /** Tech the campaign has unlocked so far, added to the mission's own list. */
   extraTech: (BuildingKind | UnitKind)[];
   extraPowers: SupportPower[];
+  /** The campaign difficulty the spec was scaled to (campaign/difficulty.ts), kept on the battle. */
+  level?: Difficulty;
 }
 
 export type GameAction =

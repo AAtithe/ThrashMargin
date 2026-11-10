@@ -246,19 +246,22 @@ export const MISSIONS: MissionSpec[] = [
     title: 'Borrowed Steel',
     briefing: [
       'We have the money for a tank column and nowhere to build one. The Combine has a War Factory at Orlen Yard. We are going to borrow it.',
-      'The Engineer can take over an enemy structure if he stands beside it for five seconds undisturbed. Get him to the War Factory, capture it, and build with the credits we have sent along.',
-      'Then clear the outpost with its own steel. Keep the Engineer alive: nobody else knows how to run that factory.',
+      'The Engineer can take over an enemy structure if he stands beside it for five seconds undisturbed. Three tanks and a squad go with him: clear the turrets and the garrison first, and keep him back until they are down. Beside our tanks he patches them up as they fight. Your troops will not fire on the War Factory unless you order them to.',
+      'Capture it, build with the credits we have sent along, then clear the outpost with its own steel. They will want it back. Keep the Engineer alive: nobody else knows how to run that factory.',
     ],
     summary: 'Capture a War Factory with the Engineer, then destroy the outpost.',
     seed: 'borrowed-steel',
     difficulty: 'normal',
-    player: { credits: 3000, structures: [], units: [...n('rifleman', 4), ...n('rocketeer', 2)], heroes: ['engineer'] },
+    player: { credits: 2400, structures: [], units: [...n('tank', 3), ...n('rifleman', 4), ...n('rocketeer', 2)], heroes: ['engineer'] },
+    // Three tanks go in with him, which he repairs as they fight, against a fixed garrison (passive: it
+    // trains nothing). As first written, six infantry faced three turrets, two tanks and five riflemen
+    // on 'defend', and played by script the Engineer never reached the factory by any way in.
     enemy: {
       credits: 0,
       base: 'outpost',
-      structures: ['factory', 'power', 'power', 'barracks', 'refinery', 'turret', 'turret', 'turret'],
-      units: [...n('rifleman', 5), ...n('tank', 2)],
-      ai: 'defend',
+      structures: ['factory', 'power', 'power', 'barracks', 'refinery', 'turret', 'turret'],
+      units: [...n('rifleman', 4), ...n('rocketeer', 1)],
+      ai: 'passive',
     },
     tech: ['rifleman', 'rocketeer', 'hauler', 'buggy', 'tank'],
     powers: [],
@@ -272,11 +275,13 @@ export const MISSIONS: MissionSpec[] = [
       { kind: 'capture', building: 'power' },
     ],
     triggers: [
-      { afterObjective: 0, say: 'The War Factory is ours. Credits are loaded: start building tanks.' },
+      // The counter-attack comes for the factory once it is taken, from the far west, so the first
+      // tanks are off the line before it arrives. At a fixed six minutes it could land before the
+      // capture, on a squad still fighting the garrison.
       {
-        at: 6 * MIN,
-        spawn: enemyWave('tank', 3, 40.5, 1.5, 54.5, 14.5),
-        say: 'Combine armour from the north. They want their factory back.',
+        afterObjective: 0,
+        spawn: enemyWave('tank', 2, 2.5, 4.5, 54.5, 12.5),
+        say: 'The War Factory is ours and the credits are loaded: start building tanks. Combine armour is coming from the west to take it back.',
       },
     ],
     rewards: { xp: 350, unlockHeroes: ['engineer'] },

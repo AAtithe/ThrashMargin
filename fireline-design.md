@@ -843,3 +843,49 @@ Numbers at integration: drive 367,688 assertions (about 5.7 minutes), campaign-c
 tours (desktop, and touch on three phones), 27 loading checks. AI ladder, 150 seeds, random maps,
 advanced tech: the mirror 45% to 53%, Hard on side 1 wins 93%, Easy 0%.
 
+
+### 2026-11-10: Borrowed Steel (mission 5) made winnable; campaign difficulty settings
+
+Reported unbeatable. Played by script straight at the outpost, round its north and round its east,
+it was lost every way, inside two minutes, with nothing of the enemy's killed. Three causes:
+
+- Six infantry and an unarmed Engineer against three Gun Turrets, two tanks and five riflemen on
+  'defend'. Turret shells kill riflemen in four hits and riflemen barely scratch a turret (bullets do
+  15% to structures). The squad is now three tanks, four riflemen and two rocketeers, which the
+  Engineer repairs as they fight; the outpost is passive (four riflemen, a rocketeer, two turrets,
+  trains nothing). Credits 3,000 to 2,400, still three tanks' worth.
+- Units auto-target structures, so attack-moving into the yard shot the War Factory down, and with
+  it gone the capture could never happen: no time limit, so the mission sat open forever. Now side
+  0's units never pick for themselves a structure that an unfinished primary capture or infiltrate
+  objective names (an explicit attack order still fires), and if one is destroyed anyway the
+  objective fails and the mission is lost with "The enemy War Factory was destroyed before it could
+  be captured."
+- `evaluateMission` judged objectives before firing triggers, so capturing the factory last won on
+  the spot and the counter-attack it triggers spawned into a finished battle. An enemy group a
+  trigger sends now reopens "destroy everything" on that tick. (Firing triggers first instead was
+  tried and broke three harness checks: tick-judged objectives fired their triggers a tick late,
+  and a say-only trigger on the final objective never spoke.) The counter-attack is now two tanks from the far west on the capture, not three from the
+  north at a fixed six minutes (which could land before the capture, on a squad still fighting).
+
+Campaign difficulty (`src/campaign/difficulty.ts`): Easy, Normal, Hard, on the campaign (default
+Normal, and every older save loads as Normal), chosen on any briefing and changeable between
+missions; a battle in progress keeps the level it started with (`MissionRuntime.level`). Normal is
+every mission as written. `scaleMission` adjusts the spec before the battle is built, so the
+briefing, the battle and the checks read the same numbers:
+
+| | Easy | Hard |
+|---|---|---|
+| Enemy starting troops, triggered enemy groups | x0.6 (each kind kept, at least one) | x1.3 |
+| Enemy credits | x0.5 | x1.5 |
+| Enemy commander tier | one step down | one step up |
+| Player credits | x1.5 | as written |
+| Player unit health (with the Armour perk) | x1.25 | as written |
+| Mission time limit | x1.5 | as written |
+
+Never changed: structures (bonuses such as "destroy 2 Gun Turrets" must stay possible), objectives
+and their timings (the briefings name durations in prose), our own reinforcements, and rewards.
+
+campaign-check plays Borrowed Steel by script three ways in at every level (Easy and Normal must win
+all three; Hard at least one), checks the scaling for every mission, and builds and runs all 14
+missions at Easy and Hard. drive.ts covers the spared structure, the failed capture and the trigger
+order.

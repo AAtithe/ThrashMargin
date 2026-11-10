@@ -1,4 +1,4 @@
-import type { BuildingKind, HeroKind, SupportPower, UnitKind } from '../sim/rules';
+import type { BuildingKind, Difficulty, HeroKind, SupportPower, UnitKind } from '../sim/rules';
 import type { GameState } from '../sim/types';
 
 /**
@@ -63,6 +63,8 @@ export interface CampaignState {
   tech: (BuildingKind | UnitKind)[];
   /** The mission last opened from the campaign map, for "Continue". */
   lastMission: string | null;
+  /** Campaign difficulty (campaign/difficulty.ts): applies to each mission when it is deployed. */
+  difficulty: Difficulty;
 }
 
 /**
