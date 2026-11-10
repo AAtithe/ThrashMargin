@@ -976,5 +976,29 @@ first version, run on the same machine:
 | Hard v Normal, both ways | 70.3% | 70.7% |
 
 Within a game or two on every row: the first version barely changed the computer's play, because
-it barely used the new aircraft (the census above). The final numbers, with the tuning, the
-carriers and the Heavy Bomber, are below.
+it barely used the new aircraft (the census above).
+
+**Two fixes the full harness forced.** The airlift shared the strike timer and held the Bombers back
+for good (the round-4 Hard battle dropped no bombs); it now has its own, every two strike intervals.
+And a Hard commander down to one Gunship never struck, waiting for a group of two; it now goes with
+what it has. The round-5 tier-three check's window is 15 minutes past the start of tier three (was
+10): with carriers and Interceptors to buy, the Hard commander's first Railgun Tank came at minute
+37 or 38.
+
+**Final ladder**, the same card, with everything above:
+
+| Match | Before the air war | Final |
+|---|---|---|
+| Normal mirror | 45% / 53% | 47% / 53% |
+| Normal v Hard | 6% / 93% | 5% / 94% |
+| Normal v Easy | 100% / 0% | 100% / 0% |
+| Hard beats Normal, both ways | 70.3% (65-76) | 73.0% (68-78) |
+| Normal beats Easy, both ways | 99.0% | 99.0% |
+
+The intervals overlap on every row: the difficulty ladder is where it was, with Hard a shade
+stronger for using its air arm properly. No number was changed to hold it there. Battles last as
+long as before (Normal mirror 23.4 to 24.1 minutes on average).
+
+Harness at the end: `npm run drive:fire` 371,018 assertions, 0 failed (the round-4 Hard battle now
+"side 1 won at 17 min; 6 bombs, 6 gunship rockets"; the air war battle "gunship, interceptor,
+bomber; 2 interceptor missiles; side 0 won at 31 min"); `npm run campaign:fire` 2,595, unchanged.
