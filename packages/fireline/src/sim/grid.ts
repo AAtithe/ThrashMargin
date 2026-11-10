@@ -1,4 +1,4 @@
-import { BUILDINGS, type Owner } from './rules';
+import { BUILDINGS, pathExpandLimitFor, type Owner } from './rules';
 import { frontDir as sideFront } from './sides';
 import type { Building, GameState, Unit } from './types';
 
@@ -221,7 +221,8 @@ export function findPath(s: GameState, occ: Int32Array, start: number, goal: num
   let best = start;
   let bestH = h(start);
   let expanded = 0;
-  while (heap.length && expanded < 6000) {
+  const limit = pathExpandLimitFor(s.setup?.size ?? 'standard', total);
+  while (heap.length && expanded < limit) {
     const k = pop();
     if (closed[k]) continue;
     closed[k] = 1;

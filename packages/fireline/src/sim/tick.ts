@@ -1,4 +1,5 @@
 import { runAi } from './ai';
+import { spreadOre } from './maps';
 import {
   dist,
   distToTarget,
@@ -23,6 +24,9 @@ import {
   HAULER_CAPACITY,
   ORE_REGROW_AMOUNT,
   ORE_REGROW_TICKS,
+  ORE_SPREAD_TICKS,
+  exploreTicksFor,
+  pathBudgetFor,
   ORE_TILE_MAX,
   REPAIR_COST_SHARE,
   SCOOP_TICKS,
@@ -119,7 +123,7 @@ export function step(s: GameState): void {
     occ: occupancy(s),
     units: new Map(s.units.map(u => [u.id, u])),
     buildings: new Map(s.buildings.map(b => [b.id, b])),
-    pathBudget: 24,
+    pathBudget: pathBudgetFor(s.setup?.size ?? 'standard'),
     power: sidesOf(s).map(o => powerOf(s, o).low),
     keepClear: new Set(),
     vehicleSpeed: sidesOf(s).map(o => vehicleSpeedOf(s, o)),
@@ -174,7 +178,9 @@ export function step(s: GameState): void {
       if (o > 0 && o < ORE_TILE_MAX) s.ore[k] = Math.min(ORE_TILE_MAX, o + ORE_REGROW_AMOUNT);
     }
   }
-  if (s.tick % 5 === 0) updateExplored(s);
+  // Round 5: on large and huge maps a worked-out field spreads back from its edges (rules.ts).
+  if (s.tick % ORE_SPREAD_TICKS === 0 && (s.setup?.size ?? 'standard') !== 'standard') spreadOre(s, ctx.occ);
+  if (s.tick % exploreTicksFor(s.setup?.size ?? 'standard') === 0) updateExplored(s);
   if (s.effects.length && s.effects[0].at < s.tick - 40) s.effects = s.effects.filter(e => e.at >= s.tick - 40);
 
   // A mission is decided by its objectives; a skirmish by who still has structures.

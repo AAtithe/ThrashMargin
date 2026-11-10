@@ -1,4 +1,5 @@
 import { migrateAir } from './air';
+import { scaledFor } from './aiScale';
 import { generateMap, idx } from './map';
 import { generateSkirmishMap, randomMapType } from './maps';
 import { seedFromString } from './rng';
@@ -157,7 +158,16 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
   // Two sides (every setup before round 4, and every battle without a setup) take exactly the
   // original path. Three or four: a larger map with one start per side, and teams from teamsFor.
   const n = setup ? setup.sides : 2;
-  const map = setup && mapType ? (n > 2 ? generateSkirmishMap(rngSeed, mapType, setup.ore, n) : generateSkirmishMap(rngSeed, mapType, setup.ore)) : generateMap(rngSeed);
+  // Round 5: a larger map when the setup asks for one; standard size takes exactly the old path.
+  const size = setup?.size ?? 'standard';
+  const map =
+    setup && mapType
+      ? size !== 'standard'
+        ? generateSkirmishMap(rngSeed, mapType, setup.ore, n, size)
+        : n > 2
+          ? generateSkirmishMap(rngSeed, mapType, setup.ore, n)
+          : generateSkirmishMap(rngSeed, mapType, setup.ore)
+      : generateMap(rngSeed);
   const credits = setup ? setup.credits : START_CREDITS;
   const difficulty = opts.difficulty && opts.difficulty in DIFFICULTIES ? opts.difficulty : DEFAULT_DIFFICULTY;
   const d = DIFFICULTIES[difficulty];
@@ -202,6 +212,11 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     // round5:D begin. Neutral sites (fireline-round5-design.md, workstream D): one call into sites.ts
     // when setup.sites is on, filling s.sites. Nothing else here changes.
     // round5:D end.
+    // Round 5: on a larger map the computer's first attack comes later (aiScale.ts).
+    if (size !== 'standard') {
+      const first = scaledFor(s, d).firstAttack;
+      for (const mem of s.ai) mem.nextAttack = first;
+    }
   }
 
   for (const owner of sidesOf(s)) {
