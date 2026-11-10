@@ -58,6 +58,7 @@ import * as sides from '../src/sim/sides';
 // round4:C. Campaign act two: its import (scripts/drive-act2.ts) goes on the line below.
 import { sections as act2Sections } from './drive-act2';
 // round5:B. Larger maps and long games: its import (scripts/drive-maps.ts) goes on the line below.
+import { sections as mapsSections } from './drive-maps';
 // round5:C. Engineering vehicles: its import (scripts/drive-engineering.ts) goes on the line below.
 // round5:D. Neutral sites and tier three: its import (scripts/drive-sites.ts) goes on the line below.
 
@@ -114,7 +115,11 @@ const seedArg = args.indexOf('--seeds');
 const SEEDS = seedArg >= 0 ? Number(args[seedArg + 1]) : 20;
 /** `--campaign` runs only the campaign sections (missions, heroes, powers, perks). */
 const CAMPAIGN_ONLY = args.includes('--campaign');
-const TICK_CAP = 45000;
+/**
+ * A battle's tick cap: 45000 (75 minutes) for every standard-size battle, as always; longer on the
+ * larger maps of round 5, where battles run longer (72000 large, 108000 huge).
+ */
+const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
 
 function invariants(s: GameState, label: string): void {
   const ids = new Set<number>();
@@ -172,7 +177,7 @@ function battle(seed: string, difficulty: Difficulty, setup?: Partial<SkirmishSe
   // against the corner of a lake: its smoothed path clipped a blocked tile from where it stood.
   const still = new Map<number, { x: number; y: number; since: number }>();
   let frozen = '';
-  while (s.winner === null && s.tick < TICK_CAP) {
+  while (s.winner === null && s.tick < capFor(setup)) {
     if (!frozen) {
       for (const u of s.units) {
         const homeward = u.kind === 'hauler' && u.order.type === 'harvest' && u.order.phase === 'return';
@@ -2692,6 +2697,7 @@ if (!CAMPAIGN_ONLY) {
     ...sidesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round5:B. Larger maps and long games (fireline-round5-design.md): its sections, imported from
     // scripts/drive-maps.ts, go on the line below this comment.
+    ...mapsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round5:C. Engineering vehicles (fireline-round5-design.md): its sections, imported from
     // scripts/drive-engineering.ts, go on the line below this comment.
     // round5:D. Neutral sites and tier three (fireline-round5-design.md): its sections, imported from

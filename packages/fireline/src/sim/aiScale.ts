@@ -29,17 +29,21 @@ export function mapScale(s: GameState): number {
 }
 
 /**
- * How each number grows with the scale above, per unit of (scale - 1). Measured with the AI ladder
- * over 150 seeds (round 5 build log): the first attack 60% later per unit, the interval 40%
- * longer, two more in the first wave and eight more in the largest.
+ * How each number grows with the scale above, per unit of (scale - 1), tuned with whole battles
+ * and the AI ladder on larger maps (round 5 build log): the first attack 150% later per unit, the
+ * interval twice as long, two more in the first wave, four more in the largest, one more refinery
+ * and eight more turrets. On a large two-sided map (scale 1.5) Normal's first attack comes at
+ * 1.75 times its standard tick, its interval 1.5 times.
  */
 export const AI_SCALE = {
-  firstAttack: 0.6,
-  attackInterval: 0.4,
+  firstAttack: 1.5,
+  attackInterval: 1,
   firstWave: 2,
-  waveCap: 8,
+  waveCap: 4,
   /** Extra refineries per unit of scale (the computer has more fields to work). */
   refineries: 1,
+  /** Extra turrets per unit of scale: a base holds out longer, so the battle runs longer. */
+  turrets: 8,
   /** The staging point: 10 tiles from home on a standard map, and this much further per unit. */
   stage: 8,
   /** The reserve a wave recruits from: within 30 tiles of home on a standard map, scaled with the map. */
@@ -58,6 +62,7 @@ export function scaledFor(s: GameState, d: DifficultySpec): DifficultySpec {
     firstWave: d.firstWave + Math.round(AI_SCALE.firstWave * e),
     waveCap: d.waveCap + Math.round(AI_SCALE.waveCap * e),
     refineries: d.refineries + Math.round(AI_SCALE.refineries * e),
+    turrets: d.turrets + Math.round(AI_SCALE.turrets * e),
   };
 }
 
