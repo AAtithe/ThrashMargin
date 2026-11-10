@@ -217,3 +217,13 @@ After integration (workstream A's air units): mission 11 gets enemy gunship raid
 Skyhunters for the player; mission 12 enemy bombers by trigger and a Flak Cannon to build; mission
 14 both sides' full air and research. The trigger slots are marked `// after integration: air` in
 `act2.ts`. Each of these missions passes `campaign:fire` without them.
+
+## 10. Campaign difficulty
+
+One setting per campaign, `CampaignState.difficulty` (Easy, Normal, Hard; Normal by default and
+for every save from before it), chosen on the briefing and changeable between missions. Missions are
+written at Normal; `scaleMission` in `src/campaign/difficulty.ts` derives Easy and Hard from them
+(enemy troops and triggered groups, enemy credits, commander tier, player credits, a time limit, and
+on Easy tougher troops through the perks). Structures, objectives and rewards are never scaled. The
+battle records its level on `MissionRuntime.level`. Numbers and reasons: `fireline-design.md`,
+2026-11-10.

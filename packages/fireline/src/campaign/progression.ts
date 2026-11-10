@@ -1,4 +1,5 @@
-import { HERO_KINDS, type HeroKind, type SupportPower } from '../sim/rules';
+import { HERO_KINDS, type Difficulty, type HeroKind, type SupportPower } from '../sim/rules';
+import { CAMPAIGN_LEVEL, isCampaignLevel, scaleMission } from './difficulty';
 import type { MissionContext, MissionOutcome, MissionSpec, Perks } from '../sim/types';
 import { MISSIONS } from './missions';
 import type { CampaignState, HeroRecord, PerkId, PerkSpec } from './types';
@@ -109,6 +110,7 @@ export function newCampaign(commanderName: string): CampaignState {
     missions: {},
     tech: [],
     lastMission: null,
+    difficulty: 'normal',
   };
 }
 
@@ -215,15 +217,37 @@ export function missionContext(c: CampaignState, spec: MissionSpec, id: string, 
     heroes[h] = { xp: rec.xp, wounded: rec.wounded };
   }
   const extraPowers: SupportPower[] = POWER_PERKS.filter(p => perkLevel(c, p.perk) > 0).map(p => p.power);
+  const level = campaignLevel(c);
+  const perks = perkModifiers(c);
   return {
     id,
     name: spec.title,
     createdAt,
-    perks: perkModifiers(c),
+    perks: { ...perks, unitHpMul: perks.unitHpMul * CAMPAIGN_LEVEL[level].playerHp },
     heroes,
     extraTech: [...c.tech],
     extraPowers,
+    level,
   };
+}
+
+/**
+ * The mission as this campaign fights it: the spec at the campaign's difficulty. Build a battle with
+ * createMissionState(campaignMission(c, spec), missionContext(c, spec, ...)).
+ */
+export function campaignMission(c: CampaignState, spec: MissionSpec): MissionSpec {
+  return scaleMission(spec, campaignLevel(c));
+}
+
+/** The campaign's difficulty, Normal for anything unrecognised. */
+export function campaignLevel(c: CampaignState): Difficulty {
+  return isCampaignLevel(c.difficulty) ? c.difficulty : 'normal';
+}
+
+/** The campaign at another difficulty; the same object when nothing changes. */
+export function setCampaignLevel(c: CampaignState, level: Difficulty): CampaignState {
+  if (!isCampaignLevel(level) || campaignLevel(c) === level) return c;
+  return { ...c, difficulty: level };
 }
 
 /** Commander xp a mission outcome is worth (see the constants above). */

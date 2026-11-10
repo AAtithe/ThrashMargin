@@ -56,6 +56,7 @@ import {
   hitsAir,
   hitsGround,
   type Category,
+  type BuildingKind,
   type Owner,
   type UnitKind,
   type Weapon,
@@ -478,6 +479,20 @@ function lookup(ctx: Ctx, id: number): Target | null {
 }
 
 /**
+ * Enemy structures side 0's units never pick for themselves: the kinds an unfinished primary capture or
+ * infiltrate objective names. Attack-moving through Orlen Yard in Borrowed Steel shot the War Factory down
+ * before the Engineer reached it, and with the factory gone the mission could never be won. An
+ * explicit attack order on one still goes through.
+ */
+function sparedKinds(s: GameState): BuildingKind[] | null {
+  const m = s.mission;
+  if (!m) return null;
+  let out: BuildingKind[] | null = null;
+  for (const o of m.objectives) if ((o.spec.kind === 'capture' || o.spec.kind === 'infiltrate') && !o.done && !o.failed) (out ??= []).push(o.spec.building);
+  return out;
+}
+
+/**
  * Nearest enemy within range, preferring things that shoot back over things that do not. Only what
  * the weapon can reach: aircraft when it hits the air (hitsAir), the ground when it hits the ground.
  */
@@ -501,8 +516,10 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
     }
   }
   if (unitsOnly || !ground) return best;
+  const spare = owner === 0 ? sparedKinds(s) : null;
   for (const b of s.buildings) {
     if (b.hp <= 0 || teamOf(s, b.owner) === team) continue;
+    if (spare && spare.includes(b.kind)) continue;
     const d = distToTarget(x, y, { building: b });
     if (d > range) continue;
     const score = d + (BUILDINGS[b.kind].weapon ? 0.5 : 3);
