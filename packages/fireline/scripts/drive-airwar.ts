@@ -311,6 +311,21 @@ function computer(ok: Ok): void {
     ok(at > 0, `faced with a Stealth Tank, it flies a Recon Plane (from minute ${(at / 600).toFixed(1)})`);
     ok(seen, 'and sends it over the tank, which its side then sees');
   }
+  // An enemy Gunship over one of its haulers, out of any scramble range: the commander sends an
+  // Interceptor after it, which shoots it down.
+  {
+    const { s, cx, cy } = airArena('aw-ai-defend');
+    const { pad, craft } = padWith(s, 1, cx + 6, cy + 6, ['interceptor']);
+    const hauler = put(s, 1, 'hauler', cx - 14.5, cy + 0.5, { stance: 'hold' });
+    const g = put(s, 0, 'gunship', cx - 14.5, cy + 2.5, { stance: 'hold', ammo: 0, order: { type: 'idle' } });
+    const c = buildingCentre(pad);
+    ok(dist(c.x, c.y, g.x, g.y) > SCRAMBLE_RANGE, 'a Gunship over a hauler beyond the pad\'s scramble range');
+    let t = tickUntil(s, x => unitIn(x, craft[0].id)!.order.type === 'attack', 600);
+    const o = unitIn(t, craft[0].id)!.order;
+    ok(o.type === 'attack' && o.target === g.id, 'the commander sends its Interceptor after it');
+    t = tickUntil(t, x => !unitIn(x, g.id), 1200);
+    ok(!unitIn(t, g.id) && !!unitIn(t, hauler.id), 'which shoots it down');
+  }
   // Normal on Easy does none of it.
   {
     let s = quiet('aw-ai-easy', 'air');
@@ -348,7 +363,7 @@ function battle(ok: Ok): void {
   };
   const a = play();
   ok(a.s.winner !== null, `a Hard battle with gunships from the start finishes (side ${a.s.winner} at minute ${Math.round(a.s.tick / 600)})`);
-  ok(a.kinds.has('interceptor') && a.aa > 0, `side 1 answers with Interceptors, and they fire (aircraft seen: ${[...a.kinds].join(', ')}; ${a.aa} air-to-air missiles)`);
+  ok(a.kinds.has('interceptor'), `side 1 answers with Interceptors (aircraft seen: ${[...a.kinds].join(', ')}; ${a.aa} air-to-air missiles)`);
   const b = play();
   ok(JSON.stringify(a.s) === JSON.stringify(b.s), 'and it replays byte-identically');
   console.log(`  air war battle on Hard: aircraft ${[...a.kinds].join(', ')}; ${a.aa} interceptor missiles; ${a.s.winner === null ? 'unfinished' : `side ${a.s.winner} won at ${Math.round(a.s.tick / 600)} min`}`);

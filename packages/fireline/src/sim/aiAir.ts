@@ -22,9 +22,11 @@ import type { Building, GameState, Unit } from './types';
  *    cover them; Bombers at the thickest cluster of its structures. Aircraft not on a strike are
  *    kept parked on their pads (a rearm order), so the ground army's waves never take them along.
  *  - The air war (2026-11-10): Interceptors in proportion to the opponent's aircraft (Normal and
- *    Hard), first in line for the Helipads' room and a Helipad more to hold them; they stay parked
- *    and scramble by themselves (air.ts). A Recon Plane (Normal and Hard) once the opponent fields
- *    a Stealth Tank, sent over the one nearest its base so its guns can see it.
+ *    Hard), bought as anti-air is (before the army is ready, once a Research Lab stands), with a
+ *    Helipad more to hold them. Parked, they scramble by themselves (air.ts); an enemy aircraft over
+ *    its haulers or structures, out of scramble range, draws one sent by the commander. A Recon
+ *    Plane (Normal and Hard) once the opponent fields a Stealth Tank, bought the same way, sent over
+ *    the one nearest its base and kept on it so its guns can see it.
  */
 
 interface AirTactics {
@@ -52,6 +54,8 @@ interface AirTactics {
  * with 50,000 to 75,000 and are mostly mined out between the 20th and 30th minute.
  */
 const AIR_ORE_FLOOR = 20000;
+/** Tiles from its haulers or structures within which an enemy aircraft draws one of its Interceptors. */
+const DEFEND_RANGE = 8;
 
 const AIR_TACTICS: Record<Difficulty, AirTactics> = {
   easy: {
@@ -146,6 +150,22 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
     const cannons = count('flakcannon') + (p.queues.building.some(q => q.kind === 'flakcannon') ? 1 : 0);
     if (cannons < Math.min(t.flakCannons, Math.ceil(foeAir / 2))) queueStructure(s, owner, 'flakcannon');
   }
+  // Interceptors are anti-air too, so they come before the army is ready, as Skyhunters do: once a
+  // Research Lab stands, one on the Helipads' room, or a Helipad more to hold them.
+  const interceptors = foeAir > 0 && !crisis ? Math.min(t.interceptorsMax, Math.ceil(foeAir * t.interceptorsPer)) : 0;
+  if (interceptors > 0 && count('researchlab') > 0 && queued('interceptor') < interceptors) {
+    if (airRoom(s, owner) > 0) {
+      if (p.queues.air.length === 0 && fund(s, owner, UNITS.interceptor.cost) && canQueue(s, owner, 'air', 'interceptor')) doQueue(s, owner, 'air', 'interceptor');
+    } else if (count('helipad') < t.helipads + 1) queueStructure(s, owner, 'helipad');
+  }
+  // A Recon Plane against Stealth Tanks, likewise ahead of the army: its guns cannot hit what they cannot see.
+  const stealthy = foes.filter(f => UNITS[f.kind].stealth && isEnemy(s, owner, f.owner));
+  const recon = t.recon && stealthy.length > 0 && !crisis ? 1 : 0;
+  if (recon && count('helipad') > 0 && queued('reconplane') < recon) {
+    if (airRoom(s, owner) > 0) {
+      if (p.queues.air.length === 0 && fund(s, owner, UNITS.reconplane.cost) && canQueue(s, owner, 'air', 'reconplane')) doQueue(s, owner, 'air', 'reconplane');
+    } else if (count('helipad') < t.helipads + 1) queueStructure(s, owner, 'helipad');
+  }
   // With the map's ore running low, what credits are left go on the army, not on structures,
   // aircraft or research that pay back only over time; with it all gone, the last stand below.
   let ore = 0;
@@ -158,9 +178,6 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
 
   // 2. A Research Lab and Helipads, once the economy and the turrets stand.
   // Interceptors and a Recon Plane, when the opponent gives a reason, take a Helipad more.
-  const interceptors = foeAir > 0 ? Math.min(t.interceptorsMax, Math.ceil(foeAir * t.interceptorsPer)) : 0;
-  const stealthy = foes.filter(f => UNITS[f.kind].stealth && isEnemy(s, owner, f.owner));
-  const recon = t.recon && stealthy.length > 0 ? 1 : 0;
   const pads = t.helipads + (interceptors + recon > 0 ? 1 : 0);
   const based = count('factory') > 0 && count('uplink') > 0 && count('refinery') >= d.refineries && count('turret') >= d.turrets;
   if (based) {
@@ -334,6 +351,35 @@ function strikes(
     }
   }
   mem.airIds = out;
+
+  // Interceptors: an enemy aircraft over its haulers or structures draws the nearest one fit to
+  // fight (parked full, or aloft with half its missiles), one each. Enemy gunships hunt haulers out
+  // at the ore, beyond any Helipad's scramble range, so the commander sends them itself.
+  const fighters = craft.filter(u => u.kind === 'interceptor' && u.stance !== 'hold');
+  if (fighters.length) {
+    const guarded: { x: number; y: number }[] = s.units.filter(u => u.owner === owner && u.kind === 'hauler' && u.hp > 0);
+    const mineB = s.buildings.filter(b => b.owner === owner && b.hp > 0);
+    const near = (f: Unit) => guarded.some(g => dist(g.x, g.y, f.x, f.y) <= DEFEND_RANGE) || mineB.some(b => distToBuilding(f.x, f.y, b) <= DEFEND_RANGE);
+    const chased = new Set(fighters.map(u => (u.order.type === 'attack' ? u.order.target : 0)));
+    for (const f of foes) {
+      if (!isAir(f) || !isEnemy(s, owner, f.owner) || chased.has(f.id) || !near(f)) continue;
+      let best: Unit | null = null;
+      let bestD = Infinity;
+      for (const u of fighters) {
+        const fit = parked(u) ? full(u) && u.order.type === 'rearm' : u.order.type !== 'attack' && (u.ammo ?? 0) * 2 >= ammoMax(u);
+        if (!fit || chased.has(-u.id)) continue;
+        const d = dist(u.x, u.y, f.x, f.y);
+        if (d < bestD) {
+          bestD = d;
+          best = u;
+        }
+      }
+      if (!best) break;
+      doAttack(s, owner, [best.id], f.id);
+      chased.add(f.id);
+      chased.add(-best.id);
+    }
+  }
 
   // The Recon Plane, fuelled and parked, over the enemy Stealth Tank nearest home, so the guns there
   // can see it. Without one it stays parked.

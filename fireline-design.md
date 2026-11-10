@@ -855,7 +855,7 @@ exactly as they did.
 | Unit | Cost | Needs | Role |
 |---|---|---|---|
 | Recon Plane | 700 | Helipad | Unarmed, fast (2.4 tiles/s), sight 11; a detector |
-| Interceptor | 1200 | Helipad, Research Lab | Air-to-air missiles (55, range 5), 6 loads; fastest aircraft (2.7 tiles/s) |
+| Interceptor | 1200 | Helipad, Research Lab | Air-to-air missiles (55, range 5, every 1s), 6 loads; fastest aircraft (2.7 tiles/s) |
 
 | Upgrade | Cost | Time | Effect |
 |---|---|---|---|
@@ -876,9 +876,9 @@ How it plays (`src/sim/air.ts`, numbers in `rules.ts` under "Air war"):
   the moment a Recon Plane comes over.
 - **Interceptor.** Fights like a Gunship but at aircraft only (its weapon is `aamissile`, which never
   reaches the ground). Left on its pad, full and not on hold, it **scrambles**: any enemy aircraft
-  within `SCRAMBLE_RANGE` (11 tiles) of the pad takes it up (`Unit.scramble`, an optional field), it
+  within `SCRAMBLE_RANGE` (14 tiles) of the pad takes it up (`Unit.scramble`, an optional field), it
   fights, takes the next intruder near the pad if there is one, and lands again. It never chases
-  beyond `SCRAMBLE_LEASH` (16 tiles) from the pad; a Bomber running for home at full speed gets away.
+  beyond `SCRAMBLE_LEASH` (20 tiles) from the pad; a Bomber running for home at full speed gets away.
   Any order ends a scramble. Ordered on attack-move with a strike, it takes on the fighters that come
   up to meet it.
 - **Countermeasures.** Read in `hurt` (tick.ts): flak or anti-air missile damage on an aircraft is

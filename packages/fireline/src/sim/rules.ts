@@ -485,7 +485,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     armor: 'aircraft',
     speed: 0.27,
     sight: 8,
-    weapon: { kind: 'aamissile', damage: 55, range: 5, cooldown: 14, canHitAir: true, canHitGround: false },
+    weapon: { kind: 'aamissile', damage: 55, range: 5, cooldown: 10, canHitAir: true, canHitGround: false },
     requires: ['helipad', 'researchlab'],
     blurb: 'Air-to-air fighter. Scrambles from its Helipad at enemy aircraft nearby; cannot fire at the ground.',
   },
@@ -1318,9 +1318,9 @@ export const DETECTOR_RANGE = 7;
 export const ORBIT_COS = 0.9928086358538663; // cos(0.12)
 export const ORBIT_SIN = 0.11971220728891936; // sin(0.12)
 /** Tiles from its Helipad within which a parked Interceptor scrambles at an enemy aircraft. */
-export const SCRAMBLE_RANGE = 11;
+export const SCRAMBLE_RANGE = 14;
 /** Tiles from its Helipad beyond which a scrambled Interceptor breaks off and goes home. */
-export const SCRAMBLE_LEASH = 16;
+export const SCRAMBLE_LEASH = 20;
 /** Countermeasures (research): what anti-air weapons do to this side's aircraft. */
 export const COUNTERMEASURES_DAMAGE = 0.75;
 
