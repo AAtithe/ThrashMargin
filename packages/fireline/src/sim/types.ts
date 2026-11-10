@@ -81,6 +81,8 @@ export interface Unit {
   pad?: number;
   /** Bombers only: present while a bomb run is under way (it always finishes the run). */
   bombRun?: true;
+  /** Interceptors only: present while it is up on a scramble from its pad, so it comes home after. */
+  scramble?: true;
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): optional Unit fields.
   // round5:C end.
   // round5:D begin. Tier three: optional Unit fields (the Stealth Tank's last shot, for instance).

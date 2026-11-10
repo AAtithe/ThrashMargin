@@ -843,3 +843,72 @@ Numbers at integration: drive 367,688 assertions (about 5.7 minutes), campaign-c
 tours (desktop, and touch on three phones), 27 loading checks. AI ladder, 150 seeds, random maps,
 advanced tech: the mirror 45% to 53%, Hard on side 1 wins 93%, Easy 0%.
 
+
+### 2026-11-10: The air war: recon, interceptors, countermeasures
+
+The player asked for air warfare to be more involved, recon planes among it. Air power had one job,
+striking the ground, and one answer, anti-air on the ground. It now has three jobs (scout, strike,
+defend) and the air can be contested from the air. Advanced tech only, like the rest of air power:
+standard tech, missions and saves from before are untouched, and two-sided standard battles replay
+exactly as they did.
+
+| Unit | Cost | Needs | Role |
+|---|---|---|---|
+| Recon Plane | 700 | Helipad | Unarmed, fast (2.4 tiles/s), sight 11; a detector |
+| Interceptor | 1200 | Helipad, Research Lab | Air-to-air missiles (55, range 5), 6 loads; fastest aircraft (2.7 tiles/s) |
+
+| Upgrade | Cost | Time | Effect |
+|---|---|---|---|
+| Countermeasures | 1500 | 60s | flak and anti-air missiles do 25% less to the side's aircraft (needs a Helipad) |
+
+How it plays (`src/sim/air.ts`, numbers in `rules.ts` under "Air war"):
+
+- **Recon Plane.** Its loads are fuel (12), one burnt every `FUEL_TICKS` (5 seconds) while it is off
+  its pad, none while parked. At `FUEL_RESERVE` (2) it turns for home, refuels a load a second and
+  stays parked. Sent to a point, by move or attack-move alike, it flies there and circles (its heading
+  turns 0.12 radians a tick; cos and sin are constants so a replay never rests on `Math.cos`), so a
+  sortie lasts about 45 seconds over the target. Shift-click waypoints make a patrol. It can never be
+  given an attack order.
+- **Detection.** A unit whose spec has `detector` (the Recon Plane) sees Stealth Tanks and Spies within
+  `DETECTOR_RANGE` (7 tiles), where anything else needs 2.5 (Stealth Tanks) or the Spy rule's range.
+  One condition in each of `stealthSeen` (sites.ts) and `isDetected` (mission.ts); allies share it as
+  they share everything else. A Gun Turret that cannot see a Stealth Tank four tiles off opens fire
+  the moment a Recon Plane comes over.
+- **Interceptor.** Fights like a Gunship but at aircraft only (its weapon is `aamissile`, which never
+  reaches the ground). Left on its pad, full and not on hold, it **scrambles**: any enemy aircraft
+  within `SCRAMBLE_RANGE` (11 tiles) of the pad takes it up (`Unit.scramble`, an optional field), it
+  fights, takes the next intruder near the pad if there is one, and lands again. It never chases
+  beyond `SCRAMBLE_LEASH` (16 tiles) from the pad; a Bomber running for home at full speed gets away.
+  Any order ends a scramble. Ordered on attack-move with a strike, it takes on the fighters that come
+  up to meet it.
+- **Countermeasures.** Read in `hurt` (tick.ts): flak or anti-air missile damage on an aircraft is
+  multiplied by `COUNTERMEASURES_DAMAGE` (0.75) for the victim's side. Bullets are unchanged.
+- An Interceptor's missile is drawn level at aircraft height, not climbing from the ground.
+
+The computer (`aiAir.ts`):
+- Interceptors on Normal (one) and Hard (two), half one per enemy aircraft, first in line for its
+  Helipads' room, with one Helipad more than its plan to hold them. They stay parked and scramble by
+  themselves. Easy flies neither new aircraft.
+- A Recon Plane on Normal and Hard once the opponent fields a Stealth Tank, flown over the one
+  nearest its base and kept on it as it moves, so its guns can see it. Without one it stays parked.
+- Interceptors count as anti-air cover when it picks a strike target.
+- Countermeasures last in its research order on Normal and Hard.
+- In a real Hard battle the commander only meets enemy aircraft if the other side flies; the
+  autopilot on side 0 in the existing battle seeds never builds air, so the new battle section gives
+  side 0 a Helipad and two Gunships at the start.
+
+Interface: the Air tab now offers Recon Plane, Gunship, Interceptor, Bomber; stat cards show fuel,
+detection and the scramble ranges; a selected aircraft's line reads Fuel or Missiles and says when it
+is circling, refuelling, low on fuel, scrambled or ready to scramble. Art: a twin-boom recon plane
+with a turning radar dome and a fuel strip, and a delta-wing interceptor with missiles under its
+wings and an afterburner trail; both have shadows. How to play's Aircraft panel explains the three
+jobs. Countermeasures takes the Research block's sixth row.
+
+Tests: `scripts/drive-airwar.ts`, eight sections in `npm run drive:fire` (helpers exported from
+`drive-air.ts`): rules and tech levels, the Recon Plane's fuel, orbit, return, refuel and patrol,
+detection of a Stealth Tank and a Spy (an ally's plane included), Interceptors against a Gunship and
+never the tank under it, a scramble, its range, hold, leash and the order that ends it, two
+Interceptors fighting, Countermeasures measured on a Flak Cannon and a Skyhunter hit (30 to 23, 60 to
+45) and not on a bullet, old saves, the computer (an Interceptor by minute 8 on Hard against
+Gunships, a Recon Plane by minute 7 against a Stealth Tank, which its side then sees; nothing on
+Easy), and a Hard battle that replays byte-identically.

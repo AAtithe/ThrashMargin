@@ -61,7 +61,7 @@ import {
   type Weapon,
 } from './rules';
 import { canHit, isAir, launchAircraft, updateAircraft, type AirHooks } from './air';
-import { damageMulOf, incomeMulOf, researchStep, upgradeNewUnit, vehicleSpeedOf } from './research';
+import { antiAirTakenMulOf, damageMulOf, incomeMulOf, researchStep, upgradeNewUnit, vehicleSpeedOf } from './research';
 import { spawnSurvivors } from './commands';
 import { menderStep } from './engineering';
 import {
@@ -591,6 +591,8 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
 
 function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: number): void {
   const armor = t.unit ? UNITS[t.unit.kind].armor : 'building';
+  // Countermeasures (research): anti-air does less to the side's aircraft.
+  if (armor === 'aircraft' && (p.weapon === 'flak' || p.weapon === 'aamissile')) raw *= antiAirTakenMulOf(s, t.unit!.owner);
   const amount = Math.max(1, Math.round(raw * DAMAGE_VS[p.weapon][armor]));
   const victim = t.unit ?? t.building!;
   if (victim.hp <= 0) return;

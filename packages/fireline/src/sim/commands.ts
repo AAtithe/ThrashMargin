@@ -275,6 +275,8 @@ function give(u: Unit, o: QueuedOrder, queue: boolean): void {
   u.path = [];
   u.pathGoal = -1;
   if (!queue) u.queue = [];
+  // An order of the player's (or the commander's) ends an Interceptor's scramble.
+  if (u.scramble) delete u.scramble;
 }
 
 /**

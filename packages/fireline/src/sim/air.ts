@@ -1,5 +1,24 @@
 import { buildingCentre, dist, distToTarget, targetPoint, type Target } from './grid';
-import { AIR_AMMO, AIR_EDGE, BOMB_GAP, FLIGHT_TICKS, HELIPAD_SLOTS, REARM_TICKS, UNITS, VET_DAMAGE, hitsAir, hitsGround, type Owner, type Weapon } from './rules';
+import {
+  AIR_AMMO,
+  AIR_EDGE,
+  BOMB_GAP,
+  FLIGHT_TICKS,
+  FUEL_RESERVE,
+  FUEL_TICKS,
+  HELIPAD_SLOTS,
+  ORBIT_COS,
+  ORBIT_SIN,
+  REARM_TICKS,
+  SCRAMBLE_LEASH,
+  SCRAMBLE_RANGE,
+  UNITS,
+  VET_DAMAGE,
+  hitsAir,
+  hitsGround,
+  type Owner,
+  type Weapon,
+} from './rules';
 import { damageMulOf, migrateResearch, rearmMulOf } from './research';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
@@ -22,6 +41,13 @@ import type { Building, GameState, Unit } from './types';
  * sent to attack flies at the target and, close enough and lined up, starts a run: one bomb every
  * BOMB_GAP ticks along its heading until all are gone. A run once begun is always finished; then it
  * goes home to rearm. Bombs never hit aircraft, and flak never hits the ground (tick.ts `hit`).
+ *
+ * The air war (2026-11-10) adds two more. The Recon Plane is unarmed: its loads are fuel, burnt one
+ * every FUEL_TICKS while it is off its pad, and it turns for home at FUEL_RESERVE. Sent to a point it
+ * circles there; its waypoint queue makes a patrol. It sees far and, as a detector, uncovers Stealth
+ * Tanks and Spies (sites.ts, mission.ts). The Interceptor fires anti-air missiles at aircraft only,
+ * fights like a Gunship, and parked full on its pad (not on hold) scrambles at enemy aircraft within
+ * SCRAMBLE_RANGE of the pad, breaks off beyond SCRAMBLE_LEASH, and lands again when the sky is clear.
  */
 
 /** What the air layer borrows from tick.ts, which owns targeting and firing for everything. */
@@ -113,6 +139,7 @@ function aimAt(u: Unit, x: number, y: number): void {
 function goRearm(s: GameState, u: Unit): void {
   u.order = { type: 'rearm', pad: homePad(s, u) };
   u.engage = 0;
+  if (u.scramble) delete u.scramble;
 }
 
 /**
@@ -132,10 +159,15 @@ export function canHit(w: Weapon, t: Target): boolean {
 
 /** One tick of one aircraft, on a state the reducer has already cloned. */
 export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
-  const w = UNITS[u.kind].weapon!;
   const max = ammoMax(u);
   if (u.ammo === undefined) u.ammo = max;
   if (u.cooldown > 0) u.cooldown--;
+  const w = UNITS[u.kind].weapon;
+  if (!w) {
+    reconStep(s, u, h, max);
+    return;
+  }
+  const fighter = u.kind === 'gunship' || u.kind === 'interceptor';
 
   // A Bomber's run, once begun, is always finished: straight on, a bomb every BOMB_GAP ticks.
   if (u.bombRun) {
@@ -168,13 +200,18 @@ export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
         h.nextOrder(u);
         break;
       }
+      // A scrambled Interceptor chases no further than its leash from the pad.
+      if (u.scramble && !onLeash(s, u)) {
+        goRearm(s, u);
+        break;
+      }
       u.engage = o.target;
       if (u.kind === 'bomber') bomberAttack(s, u, w, t);
       else gunshipFight(s, u, h, w, t, true);
       break;
     }
     case 'attackMove': {
-      if (u.kind === 'gunship' && engaged(s, u, h, w, UNITS[u.kind].sight + 1)) break;
+      if (fighter && engaged(s, u, h, w, UNITS[u.kind].sight + 1)) break;
       // A Bomber on attack-move bombs the first enemy structure it comes near, then goes home to
       // rearm: sent along a line it would otherwise fly to the point and hover with a full bay.
       if (u.kind === 'bomber' && u.ammo > 0) {
@@ -188,8 +225,14 @@ export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
       break;
     }
     default: {
-      // Idle: hovering. A Gunship with rockets guards the air it holds, or hunts when aggressive.
-      if (u.kind === 'gunship' && u.ammo > 0 && u.stance !== 'hold') {
+      // Back from a scramble with the target gone: the next intruder near the pad, else home.
+      if (u.scramble) {
+        if (!(u.ammo > 0 && scramble(s, u, h, w, true))) goRearm(s, u);
+        break;
+      }
+      // Idle: hovering. A Gunship with rockets guards the ground it holds, an Interceptor the air,
+      // or hunts when aggressive.
+      if (fighter && u.ammo > 0 && u.stance !== 'hold') {
         engaged(s, u, h, w, u.stance === 'aggressive' ? UNITS[u.kind].sight + 1 : w.range + 0.5);
       } else u.engage = 0;
       break;
@@ -342,10 +385,79 @@ function rearm(s: GameState, u: Unit, h: AirHooks, max: number): void {
     }
     return;
   }
-  // Full: on with the queue, or stay parked; a parked Gunship guards the ground in reach of its pad.
+  // Full: on with the queue, or stay parked; a parked Gunship guards the ground in reach of its pad,
+  // and a parked Interceptor scrambles at enemy aircraft near it.
   if (u.queue.length) h.nextOrder(u);
   else if (u.kind === 'gunship' && u.stance !== 'hold') engaged(s, u, h, UNITS.gunship.weapon!, UNITS.gunship.weapon!.range + 0.5);
+  else if (u.kind === 'interceptor' && u.stance !== 'hold') scramble(s, u, h, UNITS.interceptor.weapon!, false);
   else u.engage = 0;
+}
+
+/** The centre of this aircraft's own standing Helipad, or null. */
+function padCentre(s: GameState, u: Unit): { x: number; y: number } | null {
+  const pad = u.pad ? s.buildings.find(b => b.id === u.pad) : undefined;
+  return isPad(s, pad, u.owner) ? buildingCentre(pad) : null;
+}
+
+/** True while a scrambled Interceptor is within SCRAMBLE_LEASH of its pad (false with no pad). */
+function onLeash(s: GameState, u: Unit): boolean {
+  const c = padCentre(s, u);
+  return !!c && dist(u.x, u.y, c.x, c.y) <= SCRAMBLE_LEASH;
+}
+
+/**
+ * An Interceptor at (or back from) its pad looks for an enemy aircraft within SCRAMBLE_RANGE of the
+ * pad and, finding one, goes up after it. Parked, it looks every fourth tick; back from a chase
+ * (`now`) it looks at once, so it never lands between two intruders. True when it went up.
+ */
+function scramble(s: GameState, u: Unit, h: AirHooks, w: Weapon, now: boolean): boolean {
+  u.engage = 0;
+  if (!now && (s.tick + u.id) % 4 !== 0) return false;
+  const c = padCentre(s, u);
+  if (!c) return false;
+  const found = h.acquire(u.owner, c.x, c.y, SCRAMBLE_RANGE, w);
+  if (!found) return false;
+  u.order = { type: 'attack', target: found };
+  u.engage = found;
+  u.scramble = true;
+  return true;
+}
+
+/**
+ * One tick of a Recon Plane: unarmed, it burns a load of fuel every FUEL_TICKS while off its pad and
+ * turns for home at FUEL_RESERVE. Sent somewhere (move or attack-move alike) it flies there, and with
+ * nothing more queued circles the spot until its fuel runs low. Landed, it refuels like a rearm.
+ */
+function reconStep(s: GameState, u: Unit, h: AirHooks, max: number): void {
+  u.engage = 0;
+  if (u.order.type === 'rearm') {
+    rearm(s, u, h, max);
+    return;
+  }
+  if (u.cooldown === 0) {
+    u.ammo = Math.max(0, (u.ammo ?? 0) - 1);
+    u.cooldown = FUEL_TICKS;
+  }
+  if ((u.ammo ?? 0) <= FUEL_RESERVE) {
+    goRearm(s, u);
+    // Its timer was the fuel's; refuelling starts the moment it lands.
+    u.cooldown = 0;
+    return;
+  }
+  const o = u.order;
+  if (o.type === 'move' || o.type === 'attackMove') {
+    if (fly(s, u, o.x, o.y)) h.nextOrder(u);
+    return;
+  }
+  // Circling: the heading turns a fixed angle each tick and the plane flies along it.
+  const fx = u.fx * ORBIT_COS - u.fy * ORBIT_SIN;
+  const fy = u.fx * ORBIT_SIN + u.fy * ORBIT_COS;
+  const d = Math.sqrt(fx * fx + fy * fy) || 1;
+  u.fx = fx / d;
+  u.fy = fy / d;
+  fly(s, u, u.x + u.fx, u.y + u.fy);
+  u.tx = u.fx;
+  u.ty = u.fy;
 }
 
 /**
@@ -406,10 +518,12 @@ export function migrateAir(s: GameState): void {
       u.ammo = Number.isFinite(u.ammo) ? Math.max(0, Math.min(max, Math.round(u.ammo!))) : max;
       u.pad = Number.isInteger(u.pad) && u.pad! > 0 ? u.pad : 0;
       if (u.bombRun !== undefined && (u.bombRun !== true || u.kind !== 'bomber' || !u.ammo)) delete u.bombRun;
+      if (u.scramble !== undefined && (u.scramble !== true || u.kind !== 'interceptor')) delete u.scramble;
     } else {
       delete u.ammo;
       delete u.pad;
       delete u.bombRun;
+      delete u.scramble;
       if (u.order && u.order.type === 'rearm') u.order = { type: 'idle' };
     }
     if (u.order && u.order.type === 'rearm' && !Number.isInteger(u.order.pad)) u.order = { type: 'rearm', pad: 0 };

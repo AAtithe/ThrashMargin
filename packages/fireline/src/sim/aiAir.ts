@@ -1,5 +1,5 @@
 import { airRoom, ammoMax, isAir, parkAircraft } from './air';
-import { canQueue, doAttack, doQueue, doSell } from './commands';
+import { canQueue, doAttack, doMove, doQueue, doSell } from './commands';
 import { buildingCentre, dist, distToBuilding } from './grid';
 import { canResearch, doResearch } from './research';
 import { BUILDINGS, DIFFICULTIES, MAX_QUEUE, UNITS, UPGRADES, type BuildingKind, type Difficulty, type Owner, type UnitKind, type UpgradeId } from './rules';
@@ -21,6 +21,10 @@ import type { Building, GameState, Unit } from './types';
  *  - Strikes: Gunships at the opponent's haulers and artillery, where the fewest anti-air guns
  *    cover them; Bombers at the thickest cluster of its structures. Aircraft not on a strike are
  *    kept parked on their pads (a rearm order), so the ground army's waves never take them along.
+ *  - The air war (2026-11-10): Interceptors in proportion to the opponent's aircraft (Normal and
+ *    Hard), first in line for the Helipads' room and a Helipad more to hold them; they stay parked
+ *    and scramble by themselves (air.ts). A Recon Plane (Normal and Hard) once the opponent fields
+ *    a Stealth Tank, sent over the one nearest its base so its guns can see it.
  */
 
 interface AirTactics {
@@ -36,6 +40,11 @@ interface AirTactics {
   skyhuntersPer: number;
   flaktracksPer: number;
   flakCannons: number;
+  /** Interceptors wanted per enemy aircraft, and at most. */
+  interceptorsPer: number;
+  interceptorsMax: number;
+  /** A Recon Plane against Stealth Tanks. */
+  recon: boolean;
 }
 
 /**
@@ -55,28 +64,37 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
     skyhuntersPer: 1,
     flaktracksPer: 0,
     flakCannons: 1,
+    interceptorsPer: 0,
+    interceptorsMax: 0,
+    recon: false,
   },
   normal: {
     helipads: 1,
     gunships: 1,
     bombers: 1,
-    research: ['refining', 'plating', 'calibration', 'airframes', 'engines'],
+    research: ['refining', 'plating', 'calibration', 'airframes', 'engines', 'countermeasures'],
     gunshipGroup: 1,
     strikeInterval: 1500,
     skyhuntersPer: 2,
     flaktracksPer: 0.5,
     flakCannons: 2,
+    interceptorsPer: 0.5,
+    interceptorsMax: 1,
+    recon: true,
   },
   hard: {
     helipads: 2,
     gunships: 2,
     bombers: 2,
-    research: ['refining', 'calibration', 'plating', 'engines', 'airframes'],
+    research: ['refining', 'calibration', 'plating', 'engines', 'airframes', 'countermeasures'],
     gunshipGroup: 2,
     strikeInterval: 1200,
     skyhuntersPer: 2,
     flaktracksPer: 1,
     flakCannons: 3,
+    interceptorsPer: 0.5,
+    interceptorsMax: 2,
+    recon: true,
   },
 };
 
@@ -85,7 +103,7 @@ function coverOf(enemy: Building[], foes: Unit[]): { x: number; y: number; r: nu
   const out: { x: number; y: number; r: number; b?: Building }[] = [];
   for (const b of enemy) if (b.kind === 'flakcannon') out.push({ x: b.x + 0.5, y: b.y + 0.5, r: (BUILDINGS.flakcannon.weapon?.range ?? 7) + 1, b });
   for (const u of foes) {
-    if (u.kind !== 'flaktrack' && u.kind !== 'skyhunter') continue;
+    if (u.kind !== 'flaktrack' && u.kind !== 'skyhunter' && u.kind !== 'interceptor') continue;
     out.push({ x: u.x, y: u.y, r: (UNITS[u.kind].weapon?.range ?? 6) + 1 });
   }
   return out;
@@ -139,16 +157,30 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   }
 
   // 2. A Research Lab and Helipads, once the economy and the turrets stand.
+  // Interceptors and a Recon Plane, when the opponent gives a reason, take a Helipad more.
+  const interceptors = foeAir > 0 ? Math.min(t.interceptorsMax, Math.ceil(foeAir * t.interceptorsPer)) : 0;
+  const stealthy = foes.filter(f => UNITS[f.kind].stealth && isEnemy(s, owner, f.owner));
+  const recon = t.recon && stealthy.length > 0 ? 1 : 0;
+  const pads = t.helipads + (interceptors + recon > 0 ? 1 : 0);
   const based = count('factory') > 0 && count('uplink') > 0 && count('refinery') >= d.refineries && count('turret') >= d.turrets;
   if (based) {
     if (count('researchlab') < 1) queueStructure(s, owner, 'researchlab');
-    else if (count('helipad') < t.helipads) queueStructure(s, owner, 'helipad');
+    else if (count('helipad') < pads) queueStructure(s, owner, 'helipad');
   }
 
-  // 3. Aircraft, up to the plan and the Helipads' room.
-  let saving = based && (count('researchlab') < 1 || count('helipad') < t.helipads);
+  // 3. Aircraft, up to the plan and the Helipads' room: Interceptors and the Recon Plane first.
+  let saving = based && (count('researchlab') < 1 || count('helipad') < pads);
   if (airRoom(s, owner) > 0) {
-    const want: UnitKind | null = queued('gunship') < t.gunships ? 'gunship' : queued('bomber') < t.bombers ? 'bomber' : null;
+    const want: UnitKind | null =
+      queued('interceptor') < interceptors
+        ? 'interceptor'
+        : queued('reconplane') < recon
+          ? 'reconplane'
+          : queued('gunship') < t.gunships
+            ? 'gunship'
+            : queued('bomber') < t.bombers
+              ? 'bomber'
+              : null;
     if (want && unlocked(s, owner, want)) {
       saving = true;
       if (p.queues.air.length === 0 && fund(s, owner, UNITS[want].cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);
@@ -263,8 +295,8 @@ function strikes(
     const next = (u.ammo ?? 0) > 0 ? pickFor(u) : null;
     if (next) doAttack(s, owner, [u.id], next.id);
   }
-  // Anything else idle goes home to its pad.
-  for (const u of craft) if (u.order.type === 'idle') parkAircraft(s, u);
+  // Anything else idle goes home to its pad; a Recon Plane circling keeps circling until its fuel says.
+  for (const u of craft) if (u.order.type === 'idle' && u.kind !== 'reconplane') parkAircraft(s, u);
   out = out.filter(id => !parked(alive.get(id)!));
 
   const due = s.tick >= (mem.nextAirStrike ?? 0);
@@ -302,4 +334,26 @@ function strikes(
     }
   }
   mem.airIds = out;
+
+  // The Recon Plane, fuelled and parked, over the enemy Stealth Tank nearest home, so the guns there
+  // can see it. Without one it stays parked.
+  const stealthy = foes.filter(f => UNITS[f.kind].stealth && isEnemy(s, owner, f.owner));
+  if (stealthy.length) {
+    for (const u of craft) {
+      // Parked, only once refuelled; aloft, it follows the tank as it moves.
+      if (u.kind !== 'reconplane' || (parked(u) && !full(u))) continue;
+      let best: Unit | null = null;
+      let bestD = Infinity;
+      for (const f of stealthy) {
+        const d = dist(home.x, home.y, f.x, f.y);
+        if (d < bestD) {
+          bestD = d;
+          best = f;
+        }
+      }
+      const o = u.order;
+      const heading = o.type === 'move' ? { x: o.x, y: o.y } : o.type === 'idle' ? { x: u.x, y: u.y } : null;
+      if (best && (!heading || dist(heading.x, heading.y, best.x, best.y) > 3)) doMove(s, owner, [u.id], best.x, best.y, false);
+    }
+  }
 }

@@ -309,6 +309,12 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
     case 'bomber':
       drawBomber(ctx, team, pose);
       break;
+    case 'reconplane':
+      drawReconPlane(ctx, team, pose);
+      break;
+    case 'interceptor':
+      drawInterceptor(ctx, team, pose);
+      break;
     // round5:C begin. Engineering vehicles (fireline-round5-design.md): its units' cases, appended here.
     case 'repairtruck':
       drawEngineeringCached(ctx, kind, owner, team, pose, 22, [24, 13]);
@@ -3839,6 +3845,162 @@ function drawBomber(ctx: Ctx, team: Team, p: UnitPose) {
 }
 
 /**
+ * A Recon Plane, nose along +x: a slim pusher-prop scout with long straight wings, twin tail booms
+ * and a rotating radar dome on its back. Its fuel (pose.cargo) shows as a strip on the wing root.
+ */
+function drawReconPlane(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  ctx.save();
+  ctx.rotate(p.hull);
+  // Long straight wings, lit along the leading edge, with team-coloured tips.
+  ctx.fillStyle = litGrad(ctx, p.hull, 16, team.light, team.main);
+  ctx.beginPath();
+  ctx.moveTo(3, -1.5);
+  ctx.lineTo(1.5, -17);
+  ctx.lineTo(-2, -17);
+  ctx.lineTo(-2.5, -1.5);
+  ctx.lineTo(-2.5, 1.5);
+  ctx.lineTo(-2, 17);
+  ctx.lineTo(1.5, 17);
+  ctx.lineTo(3, 1.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.fillStyle = team.dark;
+  ctx.fillRect(-2, -17, 3.5, 2.4);
+  ctx.fillRect(-2, 14.6, 3.5, 2.4);
+  // Twin booms back to a tailplane.
+  ctx.fillStyle = team.dark;
+  for (const side of [-1, 1]) ctx.fillRect(-14, side * 5 - 0.8, 13, 1.6);
+  ctx.fillStyle = team.main;
+  ctx.fillRect(-15.5, -6.5, 2.6, 13);
+  // Pod fuselage.
+  ctx.fillStyle = litGrad(ctx, p.hull, 9, team.light, team.main);
+  ctx.beginPath();
+  ctx.ellipse(1, 0, 9.5, 2.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(25,45,60,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(7, 0, 2.6, 1.7, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(170,225,255,0.5)';
+  ctx.fillRect(7.4, -0.9, 1.3, 0.7);
+  // Fuel strip.
+  const fuel = Math.max(0, Math.min(1, p.cargo));
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(-6, -0.6, 6, 1.2);
+  ctx.fillStyle = fuel > 0.25 ? '#9fe08a' : '#ff8a5a';
+  ctx.fillRect(-6, -0.6, 6 * fuel, 1.2);
+  // Pusher propeller: a blur disc at the tail of the pod.
+  ctx.fillStyle = 'rgba(210,214,206,0.18)';
+  ctx.beginPath();
+  ctx.ellipse(-9, 0, 1.2, 4.6, 0, 0, TAU);
+  ctx.fill();
+  hullDamage(ctx, hp, p.t, 16, 6, 'both');
+  ctx.restore();
+  // Radar dome on top, turning whatever the heading.
+  ctx.fillStyle = '#d9dcd2';
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 4.4, 4.4, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  const a = p.t * 3;
+  ctx.strokeStyle = team.main;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-Math.cos(a) * 4, -Math.sin(a) * 4);
+  ctx.lineTo(Math.cos(a) * 4, Math.sin(a) * 4);
+  ctx.stroke();
+}
+
+/**
+ * An Interceptor, nose along +x: a small delta-wing jet with a single fin, a missile under each wing
+ * while it has them (pose.cargo), and an afterburner glow when moving.
+ */
+function drawInterceptor(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  ctx.save();
+  ctx.rotate(p.hull);
+  // Afterburner.
+  if (p.moving) {
+    ctx.fillStyle = 'rgba(255,170,80,0.75)';
+    ctx.beginPath();
+    ctx.moveTo(-12, -1.4);
+    ctx.lineTo(-18 - Math.sin(p.t * 40) * 1.5, 0);
+    ctx.lineTo(-12, 1.4);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Delta wing.
+  ctx.fillStyle = litGrad(ctx, p.hull, 12, team.main, team.dark);
+  ctx.beginPath();
+  ctx.moveTo(6, 0);
+  ctx.lineTo(-9, -11);
+  ctx.lineTo(-11.5, -11);
+  ctx.lineTo(-10, 0);
+  ctx.lineTo(-11.5, 11);
+  ctx.lineTo(-9, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  // Missiles under the wings, one per side per half load.
+  const loaded = Math.max(0, Math.min(1, p.cargo));
+  for (const side of [-1, 1]) {
+    for (const [k, off] of [
+      [0, 5.5],
+      [1, 8.5],
+    ] as const) {
+      if (loaded <= (k === 0 ? 0 : 0.5)) continue;
+      ctx.fillStyle = '#e8e6de';
+      ctx.fillRect(-7, side * off - 0.6, 6, 1.2);
+      ctx.fillStyle = '#ff7a4a';
+      ctx.fillRect(-1, side * off - 0.6, 1, 1.2);
+    }
+    if (firing && p.sinceShot < 0.1) {
+      ctx.fillStyle = 'rgba(255,220,140,0.85)';
+      circle(ctx, -8, side * 6, 1.8);
+      ctx.fill();
+    }
+  }
+  // Fuselage and canopy.
+  ctx.fillStyle = litGrad(ctx, p.hull, 10, team.light, team.main);
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.quadraticCurveTo(10, -2.4, 4, -2.4);
+  ctx.lineTo(-12, -1.8);
+  ctx.lineTo(-12, 1.8);
+  ctx.lineTo(4, 2.4);
+  ctx.quadraticCurveTo(10, 2.4, 14, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(25,45,60,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(5.5, 0, 3, 1.5, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(170,225,255,0.55)';
+  ctx.fillRect(5.6, -0.8, 1.6, 0.6);
+  // Fin, seen from above as a dark spine.
+  ctx.fillStyle = team.dark;
+  ctx.fillRect(-12, -0.5, 6, 1);
+  emblem(ctx, team, -6.5, 0, 1.3);
+  hullDamage(ctx, hp, p.t, 16, 8, 'both');
+  ctx.restore();
+}
+
+/**
  * An aircraft's shadow on the ground below it, at (x, y): the same outline, flattened and dark.
  * The caller draws the aircraft itself AIR_LIFT tiles higher.
  */
@@ -3860,6 +4022,24 @@ export function drawAirShadow(ctx: Ctx, kind: UnitKind, x: number, y: number, hu
     ctx.lineTo(-11, 3);
     ctx.lineTo(-11, 19);
     ctx.lineTo(-6, 19);
+    ctx.lineTo(4, 2.4);
+    ctx.closePath();
+    ctx.fill();
+  } else if (kind === 'reconplane') {
+    ctx.fillRect(-2.5, -17, 5, 34);
+    ctx.beginPath();
+    ctx.ellipse(1, 0, 9.5, 2.8, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillRect(-15.5, -6.5, 2.6, 13);
+  } else if (kind === 'interceptor') {
+    ctx.beginPath();
+    ctx.moveTo(14, 0);
+    ctx.lineTo(4, -2.4);
+    ctx.lineTo(-9, -11);
+    ctx.lineTo(-11.5, -11);
+    ctx.lineTo(-12, 0);
+    ctx.lineTo(-11.5, 11);
+    ctx.lineTo(-9, 11);
     ctx.lineTo(4, 2.4);
     ctx.closePath();
     ctx.fill();

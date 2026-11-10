@@ -302,8 +302,16 @@ export default function HowToPlay() {
         <Panel title="Aircraft">
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             Advanced tech only. A Helipad builds and rearms two aircraft. They fly over water, rock and structures, and only
-            anti-air (Skyhunters, Flak Tracks, Flak Cannons) and machine guns can reach them. Once a Research Lab stands, the build
-            window's Research tab offers five upgrades, one at a time, that last the rest of the battle.
+            anti-air (Skyhunters, Flak Tracks, Flak Cannons, Interceptors) and machine guns can reach them. Once a Research Lab
+            stands, the build window's Research tab offers six upgrades, one at a time, that last the rest of the battle.
+          </p>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
+            The air war has three jobs. Scout: send a Recon Plane over the fog and it circles there, seeing far and uncovering
+            Stealth Tanks and Spies for everything on your side, until its fuel brings it home (shift-click waypoints for a patrol).
+            Strike: Gunships against vehicles and haulers, Bombers against structures. Defend: an Interceptor left on its Helipad
+            scrambles at enemy aircraft that come near, chases them a short way and lands again; Countermeasures research cuts what
+            flak and missiles do to your aircraft by a quarter. Send Interceptors on attack-move with a strike and they take on
+            the fighters that come up to meet it.
           </p>
           <Grid kinds={AIR_MENU} />
         </Panel>

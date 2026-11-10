@@ -1,6 +1,7 @@
 import {
   AIRFRAMES_HP,
   AIRFRAMES_REARM,
+  COUNTERMEASURES_DAMAGE,
   CALIBRATION_DAMAGE,
   ENGINES_SPEED,
   PLATING_HP,
@@ -24,6 +25,7 @@ import type { GameState, Unit } from './types';
  *  - engines: vehicles' speed (ENGINES_SPEED), in the movement step (tick.ts);
  *  - refining: what each load of ore pays (REFINING_INCOME), at the refinery (tick.ts);
  *  - airframes: aircraft's full health (AIRFRAMES_HP) and their rearming time (AIRFRAMES_REARM, air.ts).
+ *  - countermeasures: what flak and anti-air missiles do to the side's aircraft (COUNTERMEASURES_DAMAGE, tick.ts hurt).
  *
  * The query functions never change the state; the `do*` functions and `researchStep` work in place
  * on a state the reducer has already cloned.
@@ -125,6 +127,8 @@ export const damageMulOf = (s: GameState, owner: Owner): number => (hasUpgrade(s
 export const vehicleSpeedOf = (s: GameState, owner: Owner): number => (hasUpgrade(s, owner, 'engines') ? ENGINES_SPEED : 1);
 /** Multiplier on what this side's ore pays. */
 export const incomeMulOf = (s: GameState, owner: Owner): number => (hasUpgrade(s, owner, 'refining') ? REFINING_INCOME : 1);
+/** Multiplier on what anti-air weapons (flak, anti-air missiles) do to this side's aircraft (Countermeasures). */
+export const antiAirTakenMulOf = (s: GameState, owner: Owner): number => (hasUpgrade(s, owner, 'countermeasures') ? COUNTERMEASURES_DAMAGE : 1);
 /** Multiplier on this side's aircraft's rearming time. */
 export const rearmMulOf = (s: GameState, owner: Owner): number => (hasUpgrade(s, owner, 'airframes') ? AIRFRAMES_REARM : 1);
 

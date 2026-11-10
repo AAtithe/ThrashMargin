@@ -30,6 +30,11 @@ import {
   type SupportPower,
   type UnitKind,
   type WeaponKind,
+  DETECTOR_RANGE,
+  FUEL_RESERVE,
+  FUEL_TICKS,
+  SCRAMBLE_LEASH,
+  SCRAMBLE_RANGE,
 } from '../sim/rules';
 import { buildTicksOf, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
@@ -175,11 +180,18 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
     rows.push({ label: 'Targets', value: hitsGround(w) && hitsAir(w) ? 'Ground and air' : hitsAir(w) ? 'Aircraft only' : 'Ground only' });
   }
   const ammo = AIR_AMMO[kind as UnitKind];
-  if (u && ammo)
+  if (u && ammo && kind === 'reconplane')
+    rows.push({
+      label: 'Fuel',
+      value: `About ${secs(ammo * FUEL_TICKS)} aloft; turns for home with ${FUEL_RESERVE} loads left; refuels at its Helipad, a load every ${secs(REARM_TICKS.reconplane ?? 0)}`,
+    });
+  else if (u && ammo)
     rows.push({
       label: 'Ammunition',
-      value: `${ammo} ${kind === 'bomber' ? 'bombs, dropped in one run' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
+      value: `${ammo} ${kind === 'bomber' ? 'bombs, dropped in one run' : kind === 'interceptor' ? 'air-to-air missiles' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
     });
+  if (u?.detector) rows.push({ label: 'Detects', value: `Stealth Tanks and Spies within ${DETECTOR_RANGE} tiles, for its whole side` });
+  if (kind === 'interceptor') rows.push({ label: 'Scrambles', value: `Parked, at enemy aircraft within ${SCRAMBLE_RANGE} tiles of its Helipad; breaks off ${SCRAMBLE_LEASH} tiles out` });
   if (u?.category === 'air') rows.push({ label: 'Flies', value: 'Over water, rock and structures; only anti-air and bullets reach it' });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
   if (kind === 'researchlab') rows.push({ label: 'Research', value: 'Upgrades listed on the Research tab of the build window once it stands' });
@@ -868,16 +880,26 @@ export function SelectionPanel({
       )}
       {one && mine && AIR_AMMO[one.kind] && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="air-ammo">
-          {one.kind === 'bomber' ? 'Bombs' : 'Rockets'} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
+          {one.kind === 'bomber' ? 'Bombs' : one.kind === 'reconplane' ? 'Fuel' : one.kind === 'interceptor' ? 'Missiles' : 'Rockets'} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
           {one.order.type === 'rearm'
             ? (one.ammo ?? 0) < (AIR_AMMO[one.kind] ?? 0)
               ? one.order.pad
-                ? 'Rearming at its Helipad.'
+                ? one.kind === 'reconplane'
+                  ? (one.ammo ?? 0) <= FUEL_RESERVE
+                    ? 'Low on fuel: home to refuel.'
+                    : 'Refuelling at its Helipad.'
+                  : 'Rearming at its Helipad.'
                 : 'No Helipad with room: waiting.'
-              : 'Parked on its Helipad.'
+              : one.kind === 'interceptor'
+                ? 'Parked on its Helipad, ready to scramble.'
+                : 'Parked on its Helipad.'
             : one.bombRun
               ? 'On its bomb run.'
-              : 'In the air.'}
+              : one.scramble
+                ? 'Scrambled after an intruder.'
+                : one.kind === 'reconplane' && one.order.type === 'idle'
+                  ? 'Circling.'
+                  : 'In the air.'}
         </span>
       )}
       {one && (one.kills > 0 || one.vet > 0 || one.queue.length > 0) && (
