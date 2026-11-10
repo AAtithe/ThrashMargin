@@ -315,6 +315,12 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
     case 'interceptor':
       drawInterceptor(ctx, team, pose);
       break;
+    case 'carrier':
+      drawCarrier(ctx, team, pose);
+      break;
+    case 'heavybomber':
+      drawHeavyBomber(ctx, team, pose);
+      break;
     // round5:C begin. Engineering vehicles (fireline-round5-design.md): its units' cases, appended here.
     case 'repairtruck':
       drawEngineeringCached(ctx, kind, owner, team, pose, 22, [24, 13]);
@@ -4001,6 +4007,153 @@ function drawInterceptor(ctx: Ctx, team: Team, p: UnitPose) {
 }
 
 /**
+ * A Troop Carrier, nose along +x: a long boxy twin-rotor transport with a rear ramp; the seats in
+ * its open bay fill with team-coloured troops as pose.cargo (share aboard, 0 to 1) rises.
+ */
+function drawCarrier(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  ctx.save();
+  ctx.rotate(p.hull);
+  // Hull: a long rounded box, lit from the world's top left.
+  ctx.fillStyle = litGrad(ctx, p.hull, 12, team.light, team.main);
+  rrect(ctx, -17, -5, 33, 10, 4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  // Rear ramp and side sponsons.
+  ctx.fillStyle = team.dark;
+  ctx.fillRect(-19, -3.6, 2.6, 7.2);
+  ctx.fillStyle = '#3b4246';
+  rrect(ctx, -6, -6.6, 12, 2.2, 1);
+  ctx.fill();
+  rrect(ctx, -6, 4.4, 12, 2.2, 1);
+  ctx.fill();
+  // The bay: six seats in two rows, a helmet in each one taken.
+  const seats = 6;
+  const filled = Math.round(Math.max(0, Math.min(1, p.cargo)) * seats);
+  ctx.fillStyle = 'rgba(20,24,26,0.75)';
+  rrect(ctx, -11, -2.8, 15, 5.6, 1.5);
+  ctx.fill();
+  for (let i = 0; i < seats; i++) {
+    const sx = -9 + (i % 3) * 4.6;
+    const sy = i < 3 ? -1.3 : 1.3;
+    ctx.fillStyle = i < filled ? team.light : 'rgba(90,96,98,0.6)';
+    circle(ctx, sx, sy, i < filled ? 1.2 : 0.7);
+    ctx.fill();
+  }
+  // Cockpit.
+  ctx.fillStyle = 'rgba(20,40,55,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(12, 0, 3, 3.6, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(170,225,255,0.55)';
+  ctx.fillRect(12.5, -1.8, 1.4, 1.2);
+  emblem(ctx, team, 6.5, 0, 1.4);
+  hullDamage(ctx, hp, p.t, 22, 9, 'both');
+  ctx.restore();
+  // Two rotors, fore and aft, turning opposite ways.
+  for (const [ox, dir] of [
+    [10, 1],
+    [-12, -1],
+  ] as const) {
+    const cx = Math.cos(p.hull) * ox;
+    const cy = Math.sin(p.hull) * ox;
+    const spin = p.t * 30 * dir;
+    ctx.fillStyle = 'rgba(210,214,206,0.12)';
+    circle(ctx, cx, cy, 13);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(25,27,28,0.7)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    for (const off of [0, (TAU / 3), (2 * TAU) / 3]) {
+      const a = spin + off;
+      ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a) * 13, cy + Math.sin(a) * 13);
+    }
+    ctx.stroke();
+    ctx.fillStyle = '#2a2e30';
+    circle(ctx, cx, cy, 1.6);
+    ctx.fill();
+  }
+}
+
+/**
+ * A Heavy Bomber, nose along +x: half as big again as the Bomber, broad straight-swept wings with
+ * four engines, a single tall tail and a long bomb bay showing the load left (pose.cargo).
+ */
+function drawHeavyBomber(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  ctx.save();
+  ctx.rotate(p.hull);
+  ctx.scale(1.45, 1.45);
+  for (const side of [-1, 1]) {
+    ctx.fillStyle = litGrad(ctx, p.hull, 14, team.main, team.dark);
+    ctx.beginPath();
+    ctx.moveTo(3, side * 2.6);
+    ctx.lineTo(-2, side * 20);
+    ctx.lineTo(-7, side * 20);
+    ctx.lineTo(-6, side * 2.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+    for (const ey of [6.5, 12.5]) {
+      ctx.fillStyle = '#2b3033';
+      rrect(ctx, -1 - (ey - 6.5) * 0.18, side * ey - 1.2, 6, 2.4, 1.1);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(200,205,200,0.18)';
+      ctx.beginPath();
+      ctx.ellipse(5.4 - (ey - 6.5) * 0.18, side * ey, 0.6, 2.8, 0, 0, TAU);
+      ctx.fill();
+      ctx.fillStyle = p.moving ? 'rgba(255,170,90,0.7)' : 'rgba(120,90,70,0.6)';
+      ctx.fillRect(-1.6 - (ey - 6.5) * 0.18, side * ey - 0.7, 0.7, 1.4);
+    }
+    // Tailplane.
+    ctx.fillStyle = team.main;
+    ctx.beginPath();
+    ctx.moveTo(-13, side * 1.6);
+    ctx.lineTo(-16.5, side * 7);
+    ctx.lineTo(-18.5, side * 7);
+    ctx.lineTo(-17, side * 1.6);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // Fuselage.
+  ctx.fillStyle = litGrad(ctx, p.hull, 12, team.light, team.main);
+  ctx.beginPath();
+  ctx.moveTo(16, 0);
+  ctx.quadraticCurveTo(14, -3.4, 8, -3.4);
+  ctx.lineTo(-17, -2.4);
+  ctx.lineTo(-19, 0);
+  ctx.lineTo(-17, 2.4);
+  ctx.lineTo(8, 3.4);
+  ctx.quadraticCurveTo(14, 3.4, 16, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  // Tall fin seen from above, a dark spine.
+  ctx.fillStyle = team.dark;
+  ctx.fillRect(-19, -0.6, 7, 1.2);
+  // Cockpit and the long bomb bay with the load left.
+  ctx.fillStyle = 'rgba(25,45,60,0.9)';
+  ctx.beginPath();
+  ctx.ellipse(12, 0, 2.6, 1.9, 0, 0, TAU);
+  ctx.fill();
+  ctx.fillStyle = '#1b1e20';
+  ctx.fillRect(-10, -1.6, 16, 3.2);
+  const bombs = Math.round(Math.max(0, Math.min(1, p.cargo)) * 10);
+  ctx.fillStyle = '#5b5f4a';
+  for (let i = 0; i < bombs; i++) ctx.fillRect(-9.5 + (i % 5) * 3.1, i < 5 ? -1.3 : 0.15, 2.3, 1.15);
+  emblem(ctx, team, -12, 0, 1.4);
+  hullDamage(ctx, hp, p.t, 28, 8, 'both');
+  ctx.restore();
+}
+
+/**
  * An aircraft's shadow on the ground below it, at (x, y): the same outline, flattened and dark.
  * The caller draws the aircraft itself AIR_LIFT tiles higher.
  */
@@ -4024,6 +4177,21 @@ export function drawAirShadow(ctx: Ctx, kind: UnitKind, x: number, y: number, hu
     ctx.lineTo(-6, 19);
     ctx.lineTo(4, 2.4);
     ctx.closePath();
+    ctx.fill();
+  } else if (kind === 'heavybomber') {
+    ctx.scale(1.45, 1.45);
+    ctx.fillRect(-7, -20, 6, 40);
+    ctx.beginPath();
+    ctx.ellipse(-1, 0, 17, 3.2, 0, 0, TAU);
+    ctx.fill();
+    ctx.fillRect(-18.5, -7, 3, 14);
+  } else if (kind === 'carrier') {
+    rrect(ctx, -19, -5, 35, 10, 4);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    circle(ctx, 10, 0, 13);
+    ctx.fill();
+    circle(ctx, -12, 0, 13);
     ctx.fill();
   } else if (kind === 'reconplane') {
     ctx.fillRect(-2.5, -17, 5, 34);

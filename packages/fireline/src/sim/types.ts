@@ -83,6 +83,15 @@ export interface Unit {
   bombRun?: true;
   /** Interceptors only: present while it is up on a scramble from its pad, so it comes home after. */
   scramble?: true;
+  /**
+   * Troop Carriers only: the infantry aboard, oldest first. Each is the unit as it was when it
+   * climbed in (id, health, rank kept), off the map until set down. Replaced, never changed in place.
+   */
+  carried?: Unit[];
+  /** Troop Carriers only: set its infantry down as soon as it stops (Unload given while flying). */
+  drop?: true;
+  /** Infantry only: the Troop Carrier it is walking to, to climb in when it is close. */
+  boarding?: number;
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): optional Unit fields.
   // round5:C end.
   // round5:D begin. Tier three: optional Unit fields (the Stealth Tank's last shot, for instance).
@@ -256,6 +265,11 @@ export interface AiMemory {
   /** Aircraft out on a strike (aiAir.ts), and the tick the next strike may go. */
   airIds?: number[];
   nextAirStrike?: number;
+  /**
+   * An airlift under way (aiAir.ts): the Troop Carrier, the infantry it is taking, where it sets
+   * them down and what they then attack, the step ('board', 'fly') and when that step began.
+   */
+  airlift?: { carrier: number; ids: number[]; x: number; y: number; target: number; phase: 'board' | 'fly'; since: number } | null;
   /**
    * A defending mission enemy's garrison: its armed units at its first decision. It trains only to
    * replace losses up to this, never beyond (scripted reinforcements do not raise it).
@@ -559,6 +573,9 @@ export type GameAction =
   | { type: 'cancelResearch' }
   // round5:C begin. Engineering vehicles: deploying a Forward Base truck, packing up a Field Yard.
   | { type: 'deploy'; id: number }
+  // Air war: infantry walk to a Troop Carrier and climb in; a Troop Carrier sets its infantry down.
+  | { type: 'board'; ids: number[]; carrier: number }
+  | { type: 'unload'; id: number }
   | { type: 'undeploy'; id: number }
   // round5:C end.
   ;

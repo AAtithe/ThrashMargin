@@ -919,3 +919,62 @@ commanders fly Countermeasures research and, where the opponent flies or fields 
 aircraft. The air war battle: "aircraft gunship, interceptor; 1 interceptor missiles; side 1 won at 38
 min". `npm run campaign:fire` 2,595, unchanged. The AI ladder (150 seeds) has not yet been run on this
 change and should be before any balance work on it.
+
+### 2026-11-10: The air war, part two: Troop Carriers and the Heavy Bomber; tuning
+
+The player then asked for troop carriers and bigger bombers, and for the ladder to be run and the
+balance tuned.
+
+| Unit | Cost | Needs | Role |
+|---|---|---|---|
+| Troop Carrier | 1000 | Helipad, Barracks | Unarmed, 380 health, 1.7 tiles/s; carries 6 infantry |
+| Heavy Bomber | 3000 | Helipad, Tech Centre, Research Lab | 640 health, 1.5 tiles/s; 10 bombs (160, splash 1.8) in one run; takes a whole Helipad |
+
+**Troop Carrier** (`src/sim/transport.ts`). Infantry ordered aboard (`board`, a right-click on your
+own carrier) walk to it with `Unit.boarding` set and climb in within `BOARD_RANGE` (2.3 tiles) while
+it is still (hovering, or parked on its pad, so they board at the Helipad). Aboard, a unit leaves
+`s.units` and is kept as it was (id, health, kills) in `Unit.carried`, an array only ever replaced.
+`unload` (the Unload button, F) sets them down at once on free tiles within `UNLOAD_RADIUS` (3) if
+the carrier is still, or where it next stops (`Unit.drop`); over water or rock with no ground near,
+it cannot. A carrier shot down takes its passengers with it, counted as losses. Boarding and setting
+down run in one pass after every unit has moved (`transportStep`), never inside the units loop.
+Heroes cannot ride. Old saves: passengers are kept only when they are infantry, up to the room.
+
+**Heavy Bomber.** Uses the Bomber's run code (`isBomberKind`, by weapon), so it lines up, drops all
+ten and goes home. `AIR_SLOTS` makes it take both places on a Helipad: `padLoad`, `airCount`,
+`airRoom`, `homePad`, `launchAircraft` and `canQueue` all count places, not aircraft, and it parks
+in the middle of its pad. One run flattens a Barracks.
+
+**The computer.** A Heavy Bomber on Hard, flown with the Bombers. Airlift raids on Normal (5) and
+Hard (6): a parked carrier takes idle infantry from home (not in a wave, a raid or a site party) to
+the opponent's refinery the fewest anti-air guns cover, sets them down three tiles short and sends
+them in; one at a time, on the strike timer, giving up after a minute boarding or three flying.
+Its memory (`AiMemory.airlift`) is replaced, never changed in place, and repaired from saves.
+
+**Tuning, measured one on one** (two Interceptors parked by a Barracks, one Bomber attacking it):
+at the first numbers all six bombs fell and the Barracks went; one Interceptor never stopped a
+Bomber at any setting tried, which is right for 1,200 credits against 2,000. Scramble range 11 to 14,
+leash 16 to 20, reload 1.4s to 1.0s: the pair now holds the raid to three bombs and the Barracks
+stands (at 16 tiles one bomb fell, but one pad would then cover a third of a standard map).
+
+**Tuning the commander.** A census of 48 computer battles (Normal mirror, Normal against Hard)
+showed aircraft in 45, Interceptors built in 7 and firing in 1, and never a Recon Plane or
+Countermeasures: the commander bought Interceptors behind its army-ready gate and parked them
+where enemy gunships never came, since those hunt haulers out at the ore. Interceptors and the
+Recon Plane are now bought as anti-air is (before the army is ready), and an enemy aircraft within
+8 tiles of its haulers or structures draws one sent by the commander. After: built in 15, firing
+in 5. Gunship strikes now avoid them (they count as cover), which is the deterrence working.
+
+**The ladder** (150 seeds, random maps, advanced tech), before any of the air war and after its
+first version, run on the same machine:
+
+| Match | Before | First version |
+|---|---|---|
+| Normal mirror | 45% / 53% | 45% / 53% |
+| Normal v Hard | 6% / 93% | 5% / 95% |
+| Normal v Easy | 100% / 0% | 100% / 0% |
+| Hard v Normal, both ways | 70.3% | 70.7% |
+
+Within a game or two on every row: the first version barely changed the computer's play, because
+it barely used the new aircraft (the census above). The final numbers, with the tuning, the
+carriers and the Heavy Bomber, are below.

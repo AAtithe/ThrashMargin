@@ -13,6 +13,7 @@ import {
   SELL_RETURN,
   survivorsFor,
   UNITS,
+  airSlotsOf,
   type BuildingKind,
   type Category,
   type Owner,
@@ -60,7 +61,7 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if ((p.queues[category]?.length ?? MAX_QUEUE) >= (category === 'building' ? 1 : MAX_QUEUE)) return false;
   if (!unlocked(s, owner, kind)) return false;
   // Aircraft: no more than the Helipads serve, counting those already queued.
-  if (category === 'air' && airRoom(s, owner) <= 0) return false;
+  if (category === 'air' && airRoom(s, owner) < airSlotsOf(kind as UnitKind)) return false;
   // Forward Base Trucks: no more than MAX_FIELD_YARDS, counting yards, trucks and trucks queued.
   if (kind === 'basetruck' && fieldYardsOf(s, owner) >= MAX_FIELD_YARDS) return false;
   return p.credits >= costFor(s, owner, kind);
@@ -275,8 +276,10 @@ function give(u: Unit, o: QueuedOrder, queue: boolean): void {
   u.path = [];
   u.pathGoal = -1;
   if (!queue) u.queue = [];
-  // An order of the player's (or the commander's) ends an Interceptor's scramble.
+  // An order of the player's (or the commander's) ends an Interceptor's scramble, and an
+  // infantryman's walk to a Troop Carrier.
   if (u.scramble) delete u.scramble;
+  if (u.boarding) delete u.boarding;
 }
 
 /**

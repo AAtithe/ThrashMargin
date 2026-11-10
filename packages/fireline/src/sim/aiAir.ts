@@ -1,8 +1,9 @@
 import { airRoom, ammoMax, isAir, parkAircraft } from './air';
 import { canQueue, doAttack, doMove, doQueue, doSell } from './commands';
+import { canRide, doBoard, doUnload, isStill } from './transport';
 import { buildingCentre, dist, distToBuilding } from './grid';
 import { canResearch, doResearch } from './research';
-import { BUILDINGS, DIFFICULTIES, MAX_QUEUE, UNITS, UPGRADES, type BuildingKind, type Difficulty, type Owner, type UnitKind, type UpgradeId } from './rules';
+import { BUILDINGS, DIFFICULTIES, MAX_QUEUE, UNITS, UPGRADES, hitsGround, type BuildingKind, type Difficulty, type Owner, type UnitKind, type UpgradeId } from './rules';
 import { costFor, countBuildings, powerOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
@@ -26,7 +27,8 @@ import type { Building, GameState, Unit } from './types';
  *    Helipad more to hold them. Parked, they scramble by themselves (air.ts); an enemy aircraft over
  *    its haulers or structures, out of scramble range, draws one sent by the commander. A Recon
  *    Plane (Normal and Hard) once the opponent fields a Stealth Tank, bought the same way, sent over
- *    the one nearest its base and kept on it so its guns can see it.
+ *    the one nearest its base and kept on it so its guns can see it. A Heavy Bomber on Hard, flown
+ *    with the Bombers. Airlift raids with a Troop Carrier (Normal and Hard): see airlift() below.
  */
 
 interface AirTactics {
@@ -47,6 +49,11 @@ interface AirTactics {
   interceptorsMax: number;
   /** A Recon Plane against Stealth Tanks. */
   recon: boolean;
+  /** Heavy Bombers, once a Tech Centre and a Research Lab stand. */
+  heavyBombers: number;
+  /** Troop Carriers for airlift raids, and how many infantry it sends in one. */
+  carriers: number;
+  airliftSize: number;
 }
 
 /**
@@ -71,6 +78,9 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
     interceptorsPer: 0,
     interceptorsMax: 0,
     recon: false,
+    heavyBombers: 0,
+    carriers: 0,
+    airliftSize: 0,
   },
   normal: {
     helipads: 1,
@@ -85,6 +95,9 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
     interceptorsPer: 0.5,
     interceptorsMax: 1,
     recon: true,
+    heavyBombers: 0,
+    carriers: 1,
+    airliftSize: 5,
   },
   hard: {
     helipads: 2,
@@ -99,6 +112,9 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
     interceptorsPer: 0.5,
     interceptorsMax: 2,
     recon: true,
+    heavyBombers: 1,
+    carriers: 1,
+    airliftSize: 6,
   },
 };
 
@@ -178,7 +194,9 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
 
   // 2. A Research Lab and Helipads, once the economy and the turrets stand.
   // Interceptors and a Recon Plane, when the opponent gives a reason, take a Helipad more.
-  const pads = t.helipads + (interceptors + recon > 0 ? 1 : 0);
+  // A Troop Carrier takes a Helipad place, and a Heavy Bomber a whole pad more.
+  const heavy = t.heavyBombers > 0 && unlocked(s, owner, 'heavybomber') ? t.heavyBombers : 0;
+  const pads = t.helipads + (interceptors + recon + t.carriers > 0 ? 1 : 0) + heavy;
   const based = count('factory') > 0 && count('uplink') > 0 && count('refinery') >= d.refineries && count('turret') >= d.turrets;
   if (based) {
     if (count('researchlab') < 1) queueStructure(s, owner, 'researchlab');
@@ -197,7 +215,11 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
             ? 'gunship'
             : queued('bomber') < t.bombers
               ? 'bomber'
-              : null;
+              : queued('carrier') < t.carriers
+                ? 'carrier'
+                : queued('heavybomber') < heavy
+                  ? 'heavybomber'
+                  : null;
     if (want && unlocked(s, owner, want)) {
       saving = true;
       if (p.queues.air.length === 0 && fund(s, owner, UNITS[want].cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);
@@ -329,7 +351,7 @@ function strikes(
     }
   }
   // Bombers: each full one at the thickest knot of structures the fewest guns cover.
-  const bombers = craft.filter(u => u.kind === 'bomber' && parked(u) && full(u) && !out.includes(u.id));
+  const bombers = craft.filter(u => (u.kind === 'bomber' || u.kind === 'heavybomber') && parked(u) && full(u) && !out.includes(u.id));
   if (due && bombers.length && enemy.length) {
     let best: Building | null = null;
     let bestScore = -Infinity;
@@ -351,6 +373,7 @@ function strikes(
     }
   }
   mem.airIds = out;
+  airlift(s, owner, t, home, enemy, craft, cover);
 
   // Interceptors: an enemy aircraft over its haulers or structures draws the nearest one fit to
   // fight (parked full, or aloft with half its missiles), one each. Enemy gunships hunt haulers out
@@ -402,4 +425,88 @@ function strikes(
       if (best && (!heading || dist(heading.x, heading.y, best.x, best.y) > 3)) doMove(s, owner, [u.id], best.x, best.y, false);
     }
   }
+}
+
+/** Ticks an airlift may spend boarding before it goes with whoever is aboard, or gives up. */
+const AIRLIFT_BOARD_TICKS = 600;
+/** Ticks it may spend flying before it gives up and comes home. */
+const AIRLIFT_FLY_TICKS = 1800;
+
+/**
+ * Airlift raids (Normal and Hard): a parked Troop Carrier takes `airliftSize` idle infantry from home
+ * to the opponent's refinery (any structure, without one) that the fewest anti-air guns cover, sets
+ * them down three tiles short of it, and they attack-move on it while the carrier flies home. One at
+ * a time, on the strike timer; boarding gives up after a minute (going with whoever is aboard), the
+ * flight after three.
+ */
+function airlift(s: GameState, owner: Owner, t: AirTactics, home: { x: number; y: number }, enemy: Building[], craft: Unit[], cover: { x: number; y: number; r: number; b?: Building }[]): void {
+  if (!t.carriers) return;
+  const mem = s.ai[owner];
+  const lift = mem.airlift ?? null;
+  if (lift) {
+    const c = craft.find(u => u.id === lift.carrier);
+    if (!c) {
+      mem.airlift = null;
+      return;
+    }
+    const aboard = c.carried?.length ?? 0;
+    if (lift.phase === 'board') {
+      const walking = s.units.filter(u => lift.ids.includes(u.id) && u.boarding === c.id).length;
+      if ((walking === 0 && aboard > 0) || (s.tick - lift.since > AIRLIFT_BOARD_TICKS && aboard > 0)) {
+        doMove(s, owner, [c.id], lift.x, lift.y, false);
+        doUnload(s, owner, c.id);
+        // Replaced, never changed in place: the memory is copied shallowly between states.
+        mem.airlift = { ...lift, ids: lift.ids.slice(), phase: 'fly', since: s.tick };
+      } else if (walking === 0 || s.tick - lift.since > AIRLIFT_BOARD_TICKS) {
+        mem.airlift = null;
+        if (aboard) doUnload(s, owner, c.id);
+      }
+      return;
+    }
+    // Flying: once they are out, they go in and the carrier goes home.
+    if (aboard === 0) {
+      const out = s.units.filter(u => lift.ids.includes(u.id) && u.owner === owner).map(u => u.id);
+      const tgt = s.buildings.find(b => b.id === lift.target && b.hp > 0);
+      if (out.length) {
+        if (tgt) doAttack(s, owner, out, tgt.id);
+        else doMove(s, owner, out, lift.x, lift.y, true);
+      }
+      parkAircraft(s, c);
+      mem.airlift = null;
+    } else if (s.tick - lift.since > AIRLIFT_FLY_TICKS) {
+      parkAircraft(s, c);
+      if (!c.drop) doUnload(s, owner, c.id);
+      mem.airlift = null;
+    }
+    return;
+  }
+  // A new one: a parked carrier, enough idle infantry at home, a target, and the strike timer.
+  if (s.tick < (mem.nextAirStrike ?? 0) || !enemy.length) return;
+  const c = craft.find(u => u.kind === 'carrier' && u.order.type === 'rearm' && !u.carried?.length && isStill(s, u));
+  if (!c) return;
+  const busy = new Set([...(mem.waveIds ?? []), ...(mem.raidIds ?? []), ...(mem.siteParties ?? []).flatMap(p => p.ids)]);
+  const idle = s.units
+    .filter(u => u.owner === owner && canRide(u) && UNITS[u.kind].weapon && hitsGround(UNITS[u.kind].weapon!) && u.order.type === 'idle' && !busy.has(u.id) && dist(u.x, u.y, home.x, home.y) < 14)
+    .sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y) || a.id - b.id)
+    .slice(0, t.airliftSize);
+  if (idle.length < Math.min(4, t.airliftSize)) return;
+  const refineries = enemy.filter(b => b.kind === 'refinery');
+  let best: Building | null = null;
+  let bestScore = Infinity;
+  for (const b of refineries.length ? refineries : enemy) {
+    const ctr = buildingCentre(b);
+    const score = danger(cover, ctr.x, ctr.y) * 10 + dist(home.x, home.y, ctr.x, ctr.y) * 0.05;
+    if (score < bestScore) {
+      bestScore = score;
+      best = b;
+    }
+  }
+  if (!best) return;
+  const ctr = buildingCentre(best);
+  const d = dist(home.x, home.y, ctr.x, ctr.y) || 1;
+  const x = ctr.x + ((home.x - ctr.x) / d) * 3;
+  const y = ctr.y + ((home.y - ctr.y) / d) * 3;
+  doBoard(s, owner, idle.map(u => u.id), c.id);
+  mem.airlift = { carrier: c.id, ids: idle.map(u => u.id), x, y, target: best.id, phase: 'board', since: s.tick };
+  mem.nextAirStrike = s.tick + t.strikeInterval;
 }

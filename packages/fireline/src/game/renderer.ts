@@ -911,12 +911,13 @@ export class Renderer {
       const w = UNITS[u.kind].weapon;
       const sinceShot = w && u.cooldown > 0 && u.order.type !== 'rearm' ? (w.cooldown - u.cooldown) / TICKS_PER_SECOND : 9;
       const max = AIR_AMMO[u.kind] ?? 1;
+      const cap = UNITS[u.kind].carries;
       const pose: UnitPoseX = {
         hull: Math.atan2(p.fy + (u.fy - p.fy) * alpha, p.fx + (u.fx - p.fx) * alpha),
         turret: Math.atan2(p.ty + (u.ty - p.ty) * alpha, p.tx + (u.tx - p.tx) * alpha),
         t: t + u.id * 0.37,
         moving,
-        cargo: (u.ammo ?? max) / max,
+        cargo: cap ? (u.carried?.length ?? 0) / cap : (u.ammo ?? max) / max,
         sinceShot,
         hp: u.hp / maxHpOf(u),
         firing: sinceShot < FIRING_WINDOW,
@@ -931,7 +932,7 @@ export class Renderer {
       // Parked on its pad it sits low; in flight it rides AIR_LIFT above its shadow.
       const h = !moving && u.order.type === 'rearm' ? lift * 0.3 : lift;
       drawUnit(ctx, u.kind, u.owner, x, y - h, pose);
-      if (u.kind === 'bomber' && moving && Math.random() < dt * 30) {
+      if ((u.kind === 'bomber' || u.kind === 'heavybomber') && moving && Math.random() < dt * 30) {
         // Contrails from the outer engines.
         for (const side of [-1, 1]) {
           const ox = Math.cos(pose.hull) * -6 - Math.sin(pose.hull) * side * 13;
@@ -941,7 +942,7 @@ export class Renderer {
       }
       if (u.kind === 'interceptor' && moving && Math.random() < dt * 20)
         this.fx.add({ kind: 'smoke', x: x - Math.cos(pose.hull) * 12, y: y - Math.sin(pose.hull) * 12, z: lift, vx: 0, vy: 0, life: 0.8, size: 1.1, grow: 1.4 });
-      if (u.kind === 'gunship' && Math.random() < dt * 4) this.fx.add({ kind: 'dust', x: x + (Math.random() - 0.5) * 18, y: y + (Math.random() - 0.5) * 12, z: 0, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 8, life: 0.7, size: 2.2, grow: 2.4 });
+      if ((u.kind === 'gunship' || u.kind === 'carrier') && Math.random() < dt * 4) this.fx.add({ kind: 'dust', x: x + (Math.random() - 0.5) * 18, y: y + (Math.random() - 0.5) * 12, z: 0, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 8, life: 0.7, size: 2.2, grow: 2.4 });
     }
     for (const { u, x, y } of aloft) {
       const frac = u.hp / maxHpOf(u);

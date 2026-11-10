@@ -16,6 +16,9 @@ import {
   DETECTOR_RANGE,
   FUEL_RESERVE,
   FUEL_TICKS,
+  HELIPAD_SLOTS,
+  UNLOAD_RADIUS,
+  airSlotsOf,
   SCRAMBLE_LEASH,
   SCRAMBLE_RANGE,
   STANDARD_TECH,
@@ -28,6 +31,7 @@ import {
   type BuildingKind,
 } from '../src/sim/rules';
 import { stealthSeen } from '../src/sim/sites';
+import { boardProblem, unloadProblem } from '../src/sim/transport';
 import { addBuilding, createInitialState, migrateState } from '../src/sim/state';
 import type { GameState } from '../src/sim/types';
 import { airArena, copy, padWith, put, quietCommander, tick, tickUntil, unitIn } from './drive-air';
@@ -258,6 +262,119 @@ function countermeasures(ok: Ok): void {
   ok(bullets(true) === bullets(false) && bullets(false) === Math.max(1, Math.round(UNITS.rifleman.weapon!.damage * DAMAGE_VS.bullet.aircraft)), 'a rifleman\'s bullet takes the same either way');
 }
 
+/** Troop Carriers: boarding, flying, setting down, refusal over water, and going down with them. */
+function carriers(ok: Ok): void {
+  ok(UNITS.carrier.carries === 6 && !UNITS.carrier.weapon && AIR_MENU.includes('carrier'), 'the Troop Carrier: unarmed, carries six, on the Air tab');
+  const { s, cx, cy } = airArena('aw-carrier');
+  const { pad, craft } = padWith(s, 0, cx - 7, cy - 1, ['carrier']);
+  const c = craft[0];
+  const men = Array.from({ length: 7 }, (_, i) => put(s, 0, i % 2 ? 'grenadier' : 'rifleman', cx - 3.5 + (i % 4), cy + 2.5 + Math.floor(i / 4)));
+  men[0].hp = 30;
+  men[0].kills = 3;
+  const tank = put(s, 0, 'tank', cx - 2.5, cy + 5.5);
+  ok(boardProblem(s, 0, [tank.id], c.id) !== null, 'a tank cannot board');
+  ok(processAction(s, { type: 'board', ids: [tank.id], carrier: c.id }) === s, 'and the action is refused');
+  let t = processAction(s, { type: 'board', ids: men.map(u => u.id).concat(tank.id), carrier: c.id });
+  ok(t !== s, 'infantry ordered aboard');
+  t = tickUntil(t, x => (unitIn(x, c.id)!.carried?.length ?? 0) >= 6, 600);
+  t = tick(t, 120);
+  const full = unitIn(t, c.id)!;
+  ok(full.carried?.length === 6, `six climb in (${full.carried?.length})`);
+  ok(full.carried!.every(r => !unitIn(t, r.id)), 'and leave the map while aboard');
+  const seventh = men.find(m => !full.carried!.some(r => r.id === m.id))!;
+  ok(!!unitIn(t, seventh.id) && !unitIn(t, seventh.id)!.boarding, 'the seventh, finding it full, stays behind');
+  const hurt = full.carried!.find(r => r.id === men[0].id);
+  ok(!!hurt && hurt.hp === 30 && hurt.kills === 3, 'a passenger keeps its health and its kills');
+  ok(processAction(t, { type: 'board', ids: [seventh.id], carrier: c.id }) === t, 'boarding a full carrier is refused');
+  ok(dist(full.x, full.y, pad.x + 0.5, pad.y + 1) < 1, 'it boarded them parked on its pad');
+
+  // Over open ground: Unload sets them down at once, each on a tile of its own close by.
+  let f = processAction(t, { type: 'move', ids: [c.id], x: cx + 4.5, y: cy - 4.5 });
+  f = tickUntil(f, x => unitIn(x, c.id)!.order.type === 'idle', 400);
+  const there = unitIn(f, c.id)!;
+  let u = processAction(f, { type: 'unload', id: c.id });
+  ok(u !== f, 'Unload over open ground is accepted');
+  const out = full.carried!.map(r => unitIn(u, r.id));
+  ok(out.every(Boolean) && !unitIn(u, c.id)!.carried, 'all six are set down at once');
+  const tiles = new Set(out.map(r => Math.floor(r!.y) * u.mapW + Math.floor(r!.x)));
+  ok(tiles.size === 6 && out.every(r => dist(r!.x, r!.y, there.x, there.y) <= UNLOAD_RADIUS + 1), 'each on its own tile, beside the carrier');
+  ok(unitIn(u, men[0].id)!.hp === 30, 'with the health it had');
+  ok(processAction(u, { type: 'unload', id: c.id }) === u, 'with nobody aboard, Unload is refused');
+  u = tick(u, 30);
+  ok(out.every(r => unitIn(u, r!.id)), 'and they stand there');
+
+  // Unload given in flight: they get out where it stops.
+  let d = processAction(t, { type: 'move', ids: [c.id], x: cx + 5.5, y: cy + 5.5 });
+  d = processAction(d, { type: 'unload', id: c.id });
+  ok(unitIn(d, c.id)!.drop === true && (unitIn(d, c.id)!.carried?.length ?? 0) === 6, 'Unload in flight: they stay aboard until it stops');
+  d = tickUntil(d, x => !unitIn(x, c.id)!.carried, 400);
+  const stop = unitIn(d, c.id)!;
+  ok(!stop.carried && !stop.drop && dist(stop.x, stop.y, cx + 5.5, cy + 5.5) < 0.5, 'and get out where it stops');
+
+  // Over water: no ground to stand on, so it cannot unload.
+  {
+    const w = copy(t);
+    const tl = w.tiles.split('');
+    for (let y = cy - 8; y <= cy + 8; y++) for (let x = cx + 1; x <= cx + 8; x++) tl[y * w.mapW + x] = 'w';
+    w.tiles = tl.join('');
+    let m = processAction(w, { type: 'move', ids: [c.id], x: cx + 5.5, y: cy + 0.5 });
+    m = tickUntil(m, x => unitIn(x, c.id)!.order.type === 'idle', 400);
+    ok(unloadProblem(m, 0, c.id) !== null && processAction(m, { type: 'unload', id: c.id }) === m, 'over water it cannot unload');
+  }
+
+  // Shot down with them aboard: all lost.
+  {
+    const k = copy(t);
+    addBuilding(k, 1, 'flakcannon', cx + 2, cy - 4, -100);
+    let m = processAction(k, { type: 'move', ids: [c.id], x: cx + 2.5, y: cy - 4.5 });
+    const lost = k.players[0].stats.lost;
+    m = tickUntil(m, x => !unitIn(x, c.id), 2000);
+    ok(!unitIn(m, c.id) && full.carried!.every(r => !unitIn(m, r.id)), 'a carrier shot down takes its passengers with it');
+    ok(m.players[0].stats.lost === lost + 7, `counted as seven losses (${m.players[0].stats.lost - lost})`);
+  }
+  // Replays exactly.
+  const r1 = tick(processAction(s, { type: 'board', ids: men.map(u => u.id), carrier: c.id }), 600);
+  const r2 = tick(processAction(s, { type: 'board', ids: men.map(u => u.id), carrier: c.id }), 600);
+  ok(JSON.stringify(r1) === JSON.stringify(r2), 'boarding replays byte-identically');
+}
+
+/** The Heavy Bomber: a whole Helipad to itself, and a run of ten heavy bombs. */
+function heavyBomber(ok: Ok): void {
+  ok(airSlotsOf('heavybomber') === HELIPAD_SLOTS && AIR_AMMO.heavybomber === 10, 'takes a whole Helipad, carries ten bombs');
+  ok(UNITS.heavybomber.hp > UNITS.bomber.hp * 2 && UNITS.heavybomber.weapon!.damage > UNITS.bomber.weapon!.damage, 'far tougher and harder-hitting than a Bomber');
+  const { s, cx, cy } = airArena('aw-heavy');
+  for (const k of ['power', 'power', 'power', 'factory', 'uplink', 'techcentre', 'researchlab'] as BuildingKind[]) addBuilding(s, 0, k, 1 + s.buildings.length * 4, 1, -100);
+  s.players[0].credits = 50000;
+  const { pad } = padWith(s, 0, cx - 7, cy + 4, ['gunship']);
+  ok(!canQueue(s, 0, 'air', 'heavybomber'), 'a Helipad with a Gunship on it has no room for one');
+  const empty = copy(s);
+  empty.units = empty.units.filter(u => u.kind !== 'gunship');
+  ok(canQueue(empty, 0, 'air', 'heavybomber'), 'an empty one has');
+  const q = processAction(empty, { type: 'queue', category: 'air', kind: 'heavybomber' });
+  ok(!canQueue(q, 0, 'air', 'gunship'), 'and once one is queued, nothing else fits on it');
+  // A run: ten bombs on a cluster of structures.
+  const t0 = copy(empty);
+  const hb = put(t0, 0, 'heavybomber', cx - 7, cy + 5);
+  hb.pad = pad.id;
+  const target = addBuilding(t0, 1, 'barracks', cx + 3, cy - 3, -100);
+  let t = processAction(t0, { type: 'attack', ids: [hb.id], target: target.id });
+  let bombs = 0;
+  const seen = new Set<number>();
+  for (let i = 0; i < 600; i++) {
+    t = tick(t);
+    for (const p of t.projectiles) if (p.weapon === 'bomb' && !seen.has(p.id)) {
+      seen.add(p.id);
+      bombs++;
+    }
+    if (unitIn(t, hb.id)!.order.type === 'rearm' && bombs) break;
+  }
+  ok(bombs === 10, `a run drops all ten bombs (${bombs})`);
+  ok(!t.buildings.find(b => b.id === target.id), 'and flattens a Barracks in one run');
+  t = tickUntil(t, x => unitIn(x, hb.id)!.ammo === AIR_AMMO.heavybomber, 4000);
+  const back = unitIn(t, hb.id)!;
+  ok(back.ammo === AIR_AMMO.heavybomber && back.x === pad.x + HELIPAD_SLOTS / 2, 'then lands in the middle of its pad and rearms');
+}
+
 function oldSaves(ok: Ok): void {
   const { s, cx, cy } = airArena('aw-save');
   const g = put(s, 0, 'gunship', cx + 0.5, cy + 0.5, { scramble: true });
@@ -270,6 +387,17 @@ function oldSaves(ok: Ok): void {
   junk.players[0].upgrades = ['countermeasures', 'nonsense', 'countermeasures'];
   const j = migrateState(junk);
   ok(!!j && JSON.stringify(j.players[0].upgrades) === '["countermeasures"]', 'Countermeasures survives a save; junk and repeats do not');
+  // Passengers: kept on a carrier if they are infantry; dropped from anything else; a junk airlift cleared.
+  const c = put(s, 0, 'carrier', cx + 6.5, cy + 0.5, { order: { type: 'idle' } });
+  const rider = put(copy(s), 0, 'rifleman', 0.5, 0.5);
+  c.carried = [rider, { kind: 'tank', hp: 100, id: 999 } as never, { nonsense: true } as never];
+  tank.carried = [rider];
+  const raw = JSON.parse(JSON.stringify(s));
+  raw.ai[1].airlift = { carrier: 'x' };
+  const k = migrateState(raw);
+  ok(!!k && unitIn(k, c.id)!.carried?.length === 1 && unitIn(k, c.id)!.carried![0].kind === 'rifleman', 'a carrier keeps its infantry and loses anything else');
+  ok(!!k && !unitIn(k, tank.id)!.carried, 'a tank carries nobody');
+  ok(!!k && k.ai[1].airlift === null, 'a malformed airlift is cleared');
 }
 
 /** The computer: Interceptors against an opponent's aircraft, a Recon Plane against Stealth Tanks. */
@@ -326,6 +454,21 @@ function computer(ok: Ok): void {
     t = tickUntil(t, x => !unitIn(x, g.id), 1200);
     ok(!unitIn(t, g.id) && !!unitIn(t, hauler.id), 'which shoots it down');
   }
+  // Airlift: a Hard commander with a Troop Carrier and infantry at home flies them at a refinery.
+  {
+    let s = quiet('aw-ai-airlift', 'air');
+    s.ai[1].nextAirStrike = 0;
+    let lifted = 0;
+    let setDown = false;
+    for (let k = 0; k < 200 && !setDown; k++) {
+      s = tick(s, 50);
+      for (const c of s.units) if (c.owner === 1 && c.kind === 'carrier') lifted = Math.max(lifted, c.carried?.length ?? 0);
+      const enemyHq = s.buildings.find(b => b.owner === 0 && b.kind === 'hq');
+      if (lifted && enemyHq && s.units.some(u => u.owner === 1 && UNITS[u.kind].category === 'infantry' && dist(u.x, u.y, enemyHq.x, enemyHq.y) < 14)) setDown = true;
+    }
+    ok(lifted >= 4, `on Hard, the computer loads a Troop Carrier (${lifted} aboard at most)`);
+    ok(setDown, 'and sets them down by the opponent\'s base');
+  }
   // Normal on Easy does none of it.
   {
     let s = quiet('aw-ai-easy', 'air');
@@ -376,6 +519,8 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Air war: detection', quietCommander(reconDetection)],
   ['Air war: Interceptors', quietCommander(interceptors)],
   ['Air war: Countermeasures', quietCommander(countermeasures)],
+  ['Air war: Troop Carriers', quietCommander(carriers)],
+  ['Air war: the Heavy Bomber', quietCommander(heavyBomber)],
   ['Air war: older saves', oldSaves],
   ['Air war: the computer', computer],
   ['Air war: a battle', battle],

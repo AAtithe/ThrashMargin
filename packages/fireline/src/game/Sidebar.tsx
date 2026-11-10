@@ -30,8 +30,11 @@ import {
   type SupportPower,
   type UnitKind,
   type WeaponKind,
+  BOARD_RANGE,
   DETECTOR_RANGE,
   FUEL_RESERVE,
+  UNLOAD_RADIUS,
+  airSlotsOf,
   FUEL_TICKS,
   SCRAMBLE_LEASH,
   SCRAMBLE_RANGE,
@@ -188,8 +191,10 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
   else if (u && ammo)
     rows.push({
       label: 'Ammunition',
-      value: `${ammo} ${kind === 'bomber' ? 'bombs, dropped in one run' : kind === 'interceptor' ? 'air-to-air missiles' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
+      value: `${ammo} ${kind === 'bomber' || kind === 'heavybomber' ? 'bombs, dropped in one run' : kind === 'interceptor' ? 'air-to-air missiles' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
     });
+  if (u?.carries) rows.push({ label: 'Carries', value: `${u.carries} infantry; they climb in within ${BOARD_RANGE} tiles while it is still, and get out within ${UNLOAD_RADIUS}` });
+  if (u && airSlotsOf(kind as UnitKind) > 1) rows.push({ label: 'Helipad', value: 'Takes a whole Helipad to itself' });
   if (u?.detector) rows.push({ label: 'Detects', value: `Stealth Tanks and Spies within ${DETECTOR_RANGE} tiles, for its whole side` });
   if (kind === 'interceptor') rows.push({ label: 'Scrambles', value: `Parked, at enemy aircraft within ${SCRAMBLE_RANGE} tiles of its Helipad; breaks off ${SCRAMBLE_LEASH} tiles out` });
   if (u?.category === 'air') rows.push({ label: 'Flies', value: 'Over water, rock and structures; only anti-air and bullets reach it' });
@@ -880,7 +885,7 @@ export function SelectionPanel({
       )}
       {one && mine && AIR_AMMO[one.kind] && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="air-ammo">
-          {one.kind === 'bomber' ? 'Bombs' : one.kind === 'reconplane' ? 'Fuel' : one.kind === 'interceptor' ? 'Missiles' : 'Rockets'} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
+          {one.kind === 'bomber' || one.kind === 'heavybomber' ? 'Bombs' : one.kind === 'reconplane' ? 'Fuel' : one.kind === 'interceptor' ? 'Missiles' : 'Rockets'} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
           {one.order.type === 'rearm'
             ? (one.ammo ?? 0) < (AIR_AMMO[one.kind] ?? 0)
               ? one.order.pad
@@ -900,6 +905,19 @@ export function SelectionPanel({
                 : one.kind === 'reconplane' && one.order.type === 'idle'
                   ? 'Circling.'
                   : 'In the air.'}
+        </span>
+      )}
+      {one && mine && UNITS[one.kind].carries && (
+        <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="carrier-load">
+          Carrying {one.carried?.length ?? 0} of {UNITS[one.kind].carries}.{' '}
+          {one.drop
+            ? 'Setting them down where it stops.'
+            : one.order.type === 'rearm'
+              ? 'Parked on its Helipad.'
+              : one.order.type === 'idle'
+                ? 'Hovering.'
+                : 'In the air.'}{' '}
+          {(one.carried?.length ?? 0) < (UNITS[one.kind].carries ?? 0) && (touch ? 'Infantry: tap it to board.' : 'Infantry: right-click it to board.')}
         </span>
       )}
       {one && (one.kills > 0 || one.vet > 0 || one.queue.length > 0) && (

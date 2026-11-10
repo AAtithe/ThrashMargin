@@ -14,9 +14,12 @@ import {
   SCRAMBLE_RANGE,
   UNITS,
   VET_DAMAGE,
+  airSlotsOf,
   hitsAir,
+  isBomberKind,
   hitsGround,
   type Owner,
+  type UnitKind,
   type Weapon,
 } from './rules';
 import { damageMulOf, migrateResearch, rearmMulOf } from './research';
@@ -68,10 +71,10 @@ export const ammoMax = (u: Unit): number => AIR_AMMO[u.kind] ?? 0;
 const isPad = (s: GameState, b: Building | undefined, owner: Owner): b is Building =>
   !!b && b.kind === 'helipad' && b.owner === owner && b.hp > 0;
 
-/** How many of this side's aircraft belong to this Helipad, leaving out `except`. */
+/** How many of this Helipad's places its aircraft take (a Heavy Bomber takes two), leaving out `except`. */
 export function padLoad(s: GameState, padId: number, except = 0): number {
   let n = 0;
-  for (const u of s.units) if (u.pad === padId && u.id !== except && u.hp > 0 && isAir(u)) n++;
+  for (const u of s.units) if (u.pad === padId && u.id !== except && u.hp > 0 && isAir(u)) n += airSlotsOf(u.kind);
   return n;
 }
 
@@ -87,7 +90,7 @@ export function homePad(s: GameState, u: Unit): number {
   let best: Building | null = null;
   let bestD = Infinity;
   for (const b of s.buildings) {
-    if (!isPad(s, b, u.owner) || padLoad(s, b.id, u.id) >= HELIPAD_SLOTS) continue;
+    if (!isPad(s, b, u.owner) || padLoad(s, b.id, u.id) + airSlotsOf(u.kind) > HELIPAD_SLOTS) continue;
     const c = buildingCentre(b);
     const d = dist(u.x, u.y, c.x, c.y);
     if (d < bestD) {
@@ -101,8 +104,10 @@ export function homePad(s: GameState, u: Unit): number {
 
 /** Where this aircraft sits on its pad: the left or right half, by its place among the pad's aircraft. */
 export function padSpot(s: GameState, pad: Building, u: Unit): { x: number; y: number } {
+  // A Heavy Bomber, taking the whole pad, sits in its middle.
+  if (airSlotsOf(u.kind) >= HELIPAD_SLOTS) return { x: pad.x + HELIPAD_SLOTS / 2, y: pad.y + 1 };
   let place = 0;
-  for (const v of s.units) if (v.pad === pad.id && v.id < u.id && v.hp > 0 && isAir(v)) place++;
+  for (const v of s.units) if (v.pad === pad.id && v.id < u.id && v.hp > 0 && isAir(v)) place += airSlotsOf(v.kind);
   return { x: pad.x + 0.5 + (place % HELIPAD_SLOTS), y: pad.y + 1 };
 }
 
@@ -164,7 +169,8 @@ export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
   if (u.cooldown > 0) u.cooldown--;
   const w = UNITS[u.kind].weapon;
   if (!w) {
-    reconStep(s, u, h, max);
+    if (UNITS[u.kind].carries) carrierStep(s, u, h, max);
+    else reconStep(s, u, h, max);
     return;
   }
   const fighter = u.kind === 'gunship' || u.kind === 'interceptor';
@@ -206,7 +212,7 @@ export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
         break;
       }
       u.engage = o.target;
-      if (u.kind === 'bomber') bomberAttack(s, u, w, t);
+      if (isBomberKind(u.kind)) bomberAttack(s, u, w, t);
       else gunshipFight(s, u, h, w, t, true);
       break;
     }
@@ -214,7 +220,7 @@ export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
       if (fighter && engaged(s, u, h, w, UNITS[u.kind].sight + 1)) break;
       // A Bomber on attack-move bombs the first enemy structure it comes near, then goes home to
       // rearm: sent along a line it would otherwise fly to the point and hover with a full bay.
-      if (u.kind === 'bomber' && u.ammo > 0) {
+      if (isBomberKind(u.kind) && u.ammo > 0) {
         const t = bomberMark(s, u, h, UNITS[u.kind].sight + 2);
         if (t) {
           bomberAttack(s, u, w, t);
@@ -424,6 +430,22 @@ function scramble(s: GameState, u: Unit, h: AirHooks, w: Weapon, now: boolean): 
 }
 
 /**
+ * One tick of a Troop Carrier: unarmed and unfuelled, it flies where it is sent and hovers there;
+ * sent home (a rearm order) it lands on its pad and stays. Boarding and setting down are in
+ * transport.ts, which runs after every unit has moved.
+ */
+function carrierStep(s: GameState, u: Unit, h: AirHooks, max: number): void {
+  u.engage = 0;
+  const o = u.order;
+  if (o.type === 'rearm') rearm(s, u, h, max);
+  else if (o.type === 'move' || o.type === 'attackMove') {
+    if (fly(s, u, o.x, o.y)) h.nextOrder(u);
+  }
+  u.tx = u.fx;
+  u.ty = u.fy;
+}
+
+/**
  * One tick of a Recon Plane: unarmed, it burns a load of fuel every FUEL_TICKS while off its pad and
  * turns for home at FUEL_RESERVE. Sent somewhere (move or attack-move alike) it flies there, and with
  * nothing more queued circles the spot until its fuel runs low. Landed, it refuels like a rearm.
@@ -466,7 +488,7 @@ function reconStep(s: GameState, u: Unit, h: AirHooks, max: number): void {
  */
 export function launchAircraft(s: GameState, u: Unit, pad: Building): void {
   u.ammo = ammoMax(u);
-  u.pad = padLoad(s, pad.id, u.id) < HELIPAD_SLOTS ? pad.id : 0;
+  u.pad = padLoad(s, pad.id, u.id) + airSlotsOf(u.kind) <= HELIPAD_SLOTS ? pad.id : 0;
   if (!u.pad) homePad(s, u);
   const home = s.buildings.find(b => b.id === u.pad) ?? pad;
   const spot = padSpot(s, home, u);
@@ -475,14 +497,15 @@ export function launchAircraft(s: GameState, u: Unit, pad: Building): void {
   u.order = { type: 'rearm', pad: u.pad };
 }
 
-/** How many aircraft this side has or has queued: the Helipads' slots cap it. */
+/** How many Helipad places this side's aircraft take, built or queued (a Heavy Bomber takes two): the Helipads cap it. */
 export function airCount(s: GameState, owner: Owner): number {
-  let n = s.players[owner].queues.air?.length ?? 0;
-  for (const u of s.units) if (u.owner === owner && u.hp > 0 && isAir(u)) n++;
+  let n = 0;
+  for (const q of s.players[owner].queues.air ?? []) n += airSlotsOf(q.kind as UnitKind);
+  for (const u of s.units) if (u.owner === owner && u.hp > 0 && isAir(u)) n += airSlotsOf(u.kind);
   return n;
 }
 
-/** Room for more aircraft: every Helipad serves HELIPAD_SLOTS. */
+/** Helipad places still free for more aircraft: every Helipad serves HELIPAD_SLOTS. */
 export function airRoom(s: GameState, owner: Owner): number {
   let pads = 0;
   for (const b of s.buildings) if (isPad(s, b, owner)) pads++;
@@ -511,15 +534,47 @@ export function migrateAir(s: GameState): void {
     if (fixed.research !== undefined) out.research = fixed.research;
     return out;
   });
+  // A commander's airlift in a save: kept only when it is well formed.
+  s.ai = s.ai.map(m => {
+    const l = m.airlift as unknown;
+    if (l === undefined) return m;
+    const a = l as Partial<NonNullable<typeof m.airlift>> | null;
+    const ok =
+      !!a &&
+      typeof a === 'object' &&
+      Number.isInteger(a.carrier) &&
+      Array.isArray(a.ids) &&
+      a.ids.every(Number.isInteger) &&
+      Number.isFinite(a.x) &&
+      Number.isFinite(a.y) &&
+      Number.isInteger(a.target) &&
+      (a.phase === 'board' || a.phase === 'fly') &&
+      Number.isFinite(a.since);
+    return ok ? m : { ...m, airlift: null };
+  });
   for (const u of s.units) {
     if (!UNITS[u.kind]) continue;
     if (isAir(u)) {
       const max = ammoMax(u);
       u.ammo = Number.isFinite(u.ammo) ? Math.max(0, Math.min(max, Math.round(u.ammo!))) : max;
       u.pad = Number.isInteger(u.pad) && u.pad! > 0 ? u.pad : 0;
-      if (u.bombRun !== undefined && (u.bombRun !== true || u.kind !== 'bomber' || !u.ammo)) delete u.bombRun;
+      if (u.bombRun !== undefined && (u.bombRun !== true || !isBomberKind(u.kind) || !u.ammo)) delete u.bombRun;
       if (u.scramble !== undefined && (u.scramble !== true || u.kind !== 'interceptor')) delete u.scramble;
+      // A Troop Carrier's passengers: kept if they are infantry that may ride, up to its room.
+      if (u.carried !== undefined) {
+        const cap = UNITS[u.kind].carries ?? 0;
+        const ok = Array.isArray(u.carried)
+          ? u.carried.filter(r => r && typeof r === 'object' && UNITS[r.kind]?.category === 'infantry' && !UNITS[r.kind].hero && Number.isFinite(r.hp) && r.hp > 0 && Number.isInteger(r.id)).slice(0, cap)
+          : [];
+        if (ok.length) u.carried = ok.map(r => ({ ...r, order: { type: 'idle' }, path: [], queue: [], engage: 0 }));
+        else delete u.carried;
+      }
+      if (u.drop !== undefined && (u.drop !== true || !u.carried)) delete u.drop;
+      delete u.boarding;
     } else {
+      delete u.carried;
+      delete u.drop;
+      if (u.boarding !== undefined && (!Number.isInteger(u.boarding) || UNITS[u.kind].category !== 'infantry')) delete u.boarding;
       delete u.ammo;
       delete u.pad;
       delete u.bombRun;
