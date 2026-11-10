@@ -8,6 +8,8 @@ import { paintMiniTerrain } from './terrain';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { SITES } from '../sim/rules';
 import { SITE_ART } from './art';
+import { stealthSeen } from '../sim/sites';
+import { isDetected } from '../sim/mission';
 
 const SCALE = 3;
 
@@ -139,6 +141,8 @@ export default function Minimap({
     for (const u of state.units) {
       const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
       if (u.owner !== 0 && !vis[k]) continue;
+      // A hidden enemy Spy or Stealth Tank stays off the radar too, as it does off the battlefield.
+      if (u.owner !== 0 && (!stealthSeen(state, u, 0) || (u.kind === 'spy' && !isDetected(state, u, 0)))) continue;
       ctx.fillStyle = TEAM[u.owner].light;
       ctx.fillRect(Math.floor(u.x * SCALE) - 1, Math.floor(u.y * SCALE) - 1, 2.5, 2.5);
       if (u.ammo !== undefined) ctx.fillRect(Math.floor(u.x * SCALE) - 3, Math.floor(u.y * SCALE), 6.5, 0.9); // An aircraft: a wing bar.

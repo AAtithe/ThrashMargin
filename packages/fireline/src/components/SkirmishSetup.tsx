@@ -1,3 +1,5 @@
+import { siteSpots, type SiteSpot } from '../sim/sites';
+import { SITE_ART } from '../game/art';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { generateSkirmishMap, randomMapType } from '../sim/maps';
 import type { GeneratedMap } from '../sim/map';
@@ -63,7 +65,9 @@ const STORE_KEY = 'fireline_setup';
 export function readStoredSetup(): SkirmishSetup {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    if (!raw) return DEFAULT_SETUP;
+    // Sites are on for a new lobby (the player asked for bases to fight over); DEFAULT_SETUP keeps
+    // them off, because it also fills in setups saved before sites existed.
+    if (!raw) return { ...DEFAULT_SETUP, sites: true };
     const r = JSON.parse(raw) as Partial<SkirmishSetup>;
     return {
       map: r.map === 'random' || MAP_TYPES.includes(r.map as MapType) ? (r.map as SkirmishSetup['map']) : DEFAULT_SETUP.map,
@@ -73,9 +77,10 @@ export function readStoredSetup(): SkirmishSetup {
       sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
       size: MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : 'standard',
+      sites: r.sites !== false,
     };
   } catch {
-    return DEFAULT_SETUP;
+    return { ...DEFAULT_SETUP, sites: true };
   }
 }
 
@@ -143,6 +148,12 @@ export default function SkirmishSetupPanel({
     for (const t of MAP_TYPES) out[t] = generateSkirmishMap(seed, t, value.ore, value.sides, value.size ?? 'standard');
     return out;
   }, [seed, value.ore, value.sides, value.size]);
+  // The battle places sites from its own seed (rngSeed), which is this same number.
+  const siteMarks = useMemo(() => {
+    const out = {} as Record<MapType, SiteSpot[]>;
+    for (const t of MAP_TYPES) out[t] = value.sites ? siteSpots(maps[t], { size: value.size ?? 'standard' }, seed) : [];
+    return out;
+  }, [maps, seed, value.sites, value.size]);
   const drawn = randomMapType(seed);
   const set = (patch: Partial<SkirmishSetup>) => onChange({ ...value, ...patch });
 
@@ -163,7 +174,7 @@ export default function SkirmishSetupPanel({
                 data-testid={`map-${t}`}
                 onClick={() => set({ map: t })}
               >
-                <MapThumb map={maps[type]} label={`${t === 'random' ? 'Random: ' : ''}${MAP_TYPE_NAMES[type]} map preview`} />
+                <MapThumb map={maps[type]} sites={siteMarks[type]} label={`${t === 'random' ? 'Random: ' : ''}${MAP_TYPE_NAMES[type]} map preview`} />
                 <span className="fl-map-name">{t === 'random' ? 'Random' : MAP_TYPE_NAMES[t]}</span>
                 <span className="fl-map-blurb">
                   {t === 'random' ? `Any of the six, chosen by the seed. This one draws ${MAP_TYPE_NAMES[drawn]}.` : value.sides > 2 ? MAP_TYPE_BLURBS_SIDES[t] : MAP_TYPE_BLURBS[t]}
@@ -334,7 +345,7 @@ function SideLine({ setup }: { setup: SkirmishSetup }) {
 const thumbScale = (w: number): number => (w <= 64 ? 2 : Math.min(1.5, 144 / w));
 
 /** A map drawn small: the terrain, the ore and both Command Yards. Canvas paint, so hex is fine here. */
-function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
+function MapThumb({ map, label, sites }: { map: GeneratedMap; label: string; sites: SiteSpot[] }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
@@ -355,7 +366,24 @@ function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
       ctx.lineWidth = 1.5;
       ctx.strokeRect(st.x * S - 2.5, st.y * S - 2.5, 3 * S + 5, 3 * S + 5);
     });
-  }, [map]);
+    // Neutral sites: a grey diamond with a light rim, each at the centre of its footprint.
+    for (const p of sites) {
+      const cx = (p.x + SITES[p.kind].w / 2) * S;
+      const cy = (p.y + SITES[p.kind].h / 2) * S;
+      const r = Math.max(2.5, S * 1.4);
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r, cy);
+      ctx.lineTo(cx, cy + r);
+      ctx.lineTo(cx - r, cy);
+      ctx.closePath();
+      ctx.fillStyle = SITE_ART.neutral;
+      ctx.fill();
+      ctx.strokeStyle = SITE_ART.neutralLight;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+  }, [map, sites]);
   const S = thumbScale(map.w);
   return <canvas ref={ref} width={map.w * S} height={map.h * S} className="fl-map-thumb" role="img" aria-label={label} />;
 }
