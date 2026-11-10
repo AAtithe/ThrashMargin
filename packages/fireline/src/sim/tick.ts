@@ -59,6 +59,7 @@ import {
 import { canHit, isAir, launchAircraft, updateAircraft, type AirHooks } from './air';
 import { damageMulOf, incomeMulOf, researchStep, upgradeNewUnit, vehicleSpeedOf } from './research';
 import { spawnSurvivors } from './commands';
+import { menderStep } from './engineering';
 import {
   completeCapture,
   evaluateMission,
@@ -645,6 +646,7 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
   if (spec.medic) medic(s, u);
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into engineering.ts
   // for a unit whose spec has `mender`, under this line.
+  if (spec.mender) menderStep(s, u);
   // round5:C end.
 
   const order = u.order;
