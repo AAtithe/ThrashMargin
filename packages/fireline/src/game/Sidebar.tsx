@@ -1,17 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import {
   AIR_AMMO,
-  AIR_MENU,
   HELIPAD_SLOTS,
   REARM_TICKS,
   UPGRADES,
   UPGRADE_ORDER,
   hitsAir,
   hitsGround,
-  BUILD_MENU,
   BUILDINGS,
   DAMAGE_VS,
-  INFANTRY_MENU,
   MAX_QUEUE,
   MEDIC_HEAL,
   MEDIC_HEAL_TICKS,
@@ -23,10 +20,10 @@ import {
   SELF_REPAIR_TICKS,
   SKIRMISH_POWERS,
   PRODUCER,
+  MENUS,
   STANDARD_TECH,
   UNITS,
   TICKS_PER_SECOND,
-  VEHICLE_MENU,
   type Armor,
   type BuildingKind,
   type Category,
@@ -34,12 +31,13 @@ import {
   type UnitKind,
   type WeaponKind,
 } from '../sim/rules';
-import { buildTicksOf, costFor, hasBuilding, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
+import { buildTicksOf, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
 import { hasUpgrade, researchProblem } from '../sim/research';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
+import { selectionActions, type Selection } from './selectionActions';
 
 export type Tab = Category;
 
@@ -54,12 +52,6 @@ const TABS: { key: Tab; label: string }[] = [
 export const tabsFor = (state?: GameState): Tab[] =>
   TABS.map(t => t.key).filter(k => k !== 'air' || !state || techAllowed(state, 0, 'helipad'));
 
-const MENUS: Record<Tab, (BuildingKind | UnitKind)[]> = {
-  building: BUILD_MENU,
-  infantry: INFANTRY_MENU,
-  vehicle: VEHICLE_MENU,
-  air: AIR_MENU,
-};
 
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
 const blurbOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].blurb : UNITS[k as UnitKind].blurb);
@@ -80,7 +72,7 @@ export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l'
  * keeps greying the original items it leaves out, so the campaign looks as it always has.
  */
 export const menuFor = (tab: Tab, state?: GameState): (BuildingKind | UnitKind)[] =>
-  state ? MENUS[tab].filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k)) : MENUS[tab];
+  state ? MENUS[tab].filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k)) : MENUS[tab].slice();
 
 /** The order Tab cycles through: every tab. A battle's own order is tabsFor(state). */
 export const TAB_ORDER: Tab[] = TABS.map(t => t.key);
@@ -123,6 +115,7 @@ const WEAPON_NAME: Record<WeaponKind, string> = {
   flak: 'Flak',
   aamissile: 'Anti-air missiles',
   bomb: 'Bombs',
+  rail: 'Railgun',
 };
 const secs = (ticks: number) => {
   const v = ticks / TICKS_PER_SECOND;
@@ -364,7 +357,7 @@ export function BuildPanel({
 
       <div role="tablist" style={{ display: 'flex', gap: 2 }}>
         {TABS.filter(t => tabsFor(state).includes(t.key)).map(t => {
-          const producer = hasBuilding(state, 0, PRODUCER[t.key]);
+          const producer = hasProducer(state, 0, t.key);
           const busy = p.queues[t.key].length;
           return (
             <button
@@ -394,7 +387,7 @@ export function BuildPanel({
         })}
       </div>
 
-      {!hasBuilding(state, 0, PRODUCER[tab]) && (
+      {!hasProducer(state, 0, tab) && (
         <p style={{ margin: 0, fontSize: '0.72rem', color: UI.textFaint }}>
           {tab === 'building'
             ? state.mission && !state.players[0].stats.built && !state.buildings.some(b => b.owner === 0)
@@ -679,6 +672,7 @@ export function SelectionPanel({
                 Sell ({refund})
               </button>
             </div>
+            <ActionButtons state={state} sel={{ units: [], building }} dispatch={dispatch} touch={touch} />
           </>
         )}
       </div>
@@ -747,6 +741,7 @@ export function SelectionPanel({
           </button>
         </div>
       )}
+      {mine && <ActionButtons state={state} sel={{ units, building: null }} dispatch={dispatch} touch={touch} />}
       {mine && units.some(u => UNITS[u.kind].weapon) && (
         <div style={{ display: 'flex', gap: 4 }} role="group" aria-label="Stance">
           {STANCE_BUTTONS.map(([stance, label, title]) => {
@@ -772,6 +767,33 @@ export function SelectionPanel({
           <kbd>Shift</kbd>+right-click queues waypoints.
         </span>
       )}
+    </div>
+  );
+}
+
+/**
+ * The selection's own commands (selectionActions.ts), one button each; nothing when none applies.
+ * The first one that can go is also the F key in a skirmish.
+ */
+function ActionButtons({ state, sel, dispatch, touch }: { state: GameState; sel: Selection; dispatch: (a: GameAction) => boolean; touch: boolean }) {
+  const list = selectionActions(state, sel);
+  if (!list.length) return null;
+  const first = list.findIndex(x => !x.problem);
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+      {list.map(({ spec, action, problem }, i) => (
+        <button
+          key={spec.id}
+          data-action={spec.id}
+          style={smallBtn(UI.rule)}
+          disabled={!!problem}
+          title={problem ?? spec.title}
+          onClick={() => dispatch(action)}
+        >
+          {spec.label}
+          {!touch && !state.mission && i === first ? ' (F)' : ''}
+        </button>
+      ))}
     </div>
   );
 }

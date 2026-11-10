@@ -158,6 +158,9 @@ export function step(s: GameState): void {
   for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
   if (s.mission) heroes(s, ctx);
   for (const b of s.buildings) if (b.hp > 0) updateBuilding(s, ctx, b);
+  // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
+  // derrick income, hospital healing), under this line. A no-op without s.sites.
+  // round5:D end.
   charges(s);
   landProjectiles(s, ctx);
   separate(s, ctx);
@@ -640,6 +643,9 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
     u.hp = Math.min(max, u.hp + spec.selfRepair);
   }
   if (spec.medic) medic(s, u);
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into engineering.ts
+  // for a unit whose spec has `mender`, under this line.
+  // round5:C end.
 
   const order = u.order;
   if (order.type === 'attack') {

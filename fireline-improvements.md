@@ -98,6 +98,14 @@ mission AI once the round-1 opponent work lands.
   - [x] A no-base mission opens on the player's units (the opening camera looked only for a Command Yard).
   - [x] Air in missions 11, 12 and 14 (integration).
 
+## I. Round 5 (contract: `fireline-round5-design.md`)
+
+- [x] Contract and groundwork: one menu table, extra producers, map size and sites in the setup, neutral sites in the state, selection commands (no change in play).
+- [ ] A. The build window: the build lists in a pop-out tech tree, opened by a Build button or the backquote key.
+- [ ] B. Larger maps and long games: large and huge maps, ore that spreads back, the computer scaled for distance, performance at 160 tiles.
+- [ ] C. Engineering vehicles: Repair Truck, Forward Base Truck and Field Yard; the computer expands on large maps.
+- [ ] D. Neutral sites and tier three: Oil Derricks, Field Hospitals, Comms Relays; Prototype Works, Fortress, Railgun Tank, Stealth Tank.
+
 ## Found along the way
 
 - [x] Haulers freezing on the way home (path clipped a blocked corner, or was cut by a new structure).

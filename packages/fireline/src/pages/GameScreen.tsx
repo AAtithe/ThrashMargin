@@ -42,6 +42,7 @@ import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
 import { costOf, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
+import { selectionActions } from '../game/selectionActions';
 
 const TICK_MS = 1000 / TICKS_PER_SECOND;
 const SAVE_EVERY_MS = 15000;
@@ -927,6 +928,15 @@ export function Battle({
         if (u) triggerAbility(u.kind as HeroKind);
         return;
       }
+      if (!cur.current.mission && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // F in a skirmish: the selection's first command that can go (selectionActions.ts), if any.
+        const st = cur.current;
+        const units = st.units.filter(x => x.owner === 0 && ov.selected.has(x.id));
+        const building = units.length ? null : (st.buildings.find(x => x.owner === 0 && ov.selected.has(x.id)) ?? null);
+        const go = selectionActions(st, { units, building }).find(x => !x.problem);
+        if (go) dispatch(go.action);
+        return;
+      }
       if (e.key === 'Escape') {
         if (help) setHelp(false);
         else if (targetingRef.current) setTargeting(null);
@@ -1674,6 +1684,7 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
     ['Tab', 'Next build list: Structures, Infantry, Vehicles (Shift + Tab goes back)'],
     ['G', 'Toggle repair on the selected structure'],
+    ['F', "Skirmish: the selection's own command when it has one, such as Deploy (the key shows on its button)"],
     ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
     ['H', 'Jump to your Command Yard'],
     ['Space', 'Jump to the last combat alert (pinged on the minimap)'],

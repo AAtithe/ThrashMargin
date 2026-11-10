@@ -29,7 +29,12 @@ export type Armor = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
  * 'flame' is the Flame Tank's short-range burst; 'missile' is the Strike Command's one huge strike
  * (a support power, never a unit's weapon). Grenadiers lob 'artillery' (it arcs and scatters).
  */
-export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb';
+/**
+ * 'rail' (round 5, workstream D: the Railgun Tank) is declared ahead of its first user so the
+ * exhaustive tables (DAMAGE_VS, FLIGHT_TICKS, the build tip's weapon names) are complete; nothing
+ * fires it until workstream D adds a unit that carries it.
+ */
+export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb' | 'rail';
 
 /**
  * How hard each weapon hits each armour class. Riflemen shred infantry and scratch a tank. The
@@ -46,6 +51,8 @@ export const DAMAGE_VS: Record<WeaponKind, Record<Armor, number>> = {
   flak: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1 },
   aamissile: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1 },
   bomb: { infantry: 0.9, light: 0.9, heavy: 0.8, building: 1.1, aircraft: 0 },
+  // Round 5, workstream D: a hypervelocity slug. Starting numbers; D tunes them and states them.
+  rail: { infantry: 0.35, light: 1, heavy: 1.25, building: 0.8, aircraft: 0 },
 };
 
 /** Ticks a projectile of each kind spends in the air before it lands. Bullets are instant. */
@@ -59,6 +66,7 @@ export const FLIGHT_TICKS: Record<WeaponKind, number> = {
   flak: 3,
   aamissile: 5,
   bomb: 6,
+  rail: 0,
 };
 
 export interface Weapon {
@@ -101,6 +109,10 @@ export type UnitKind =
   | 'bomber'
   | 'flaktrack'
   | 'skyhunter'
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its unit kinds.
+  // round5:C end.
+  // round5:D begin. Tier three (fireline-round5-design.md, workstream D): its unit kinds.
+  // round5:D end.
   | HeroKind;
 export type BuildingKind =
   | 'hq'
@@ -117,7 +129,12 @@ export type BuildingKind =
   | 'strikecommand'
   | 'helipad'
   | 'flakcannon'
-  | 'researchlab';
+  | 'researchlab'
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its structure kinds.
+  // round5:C end.
+  // round5:D begin. Tier three (fireline-round5-design.md, workstream D): its structure kinds.
+  // round5:D end.
+  ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air';
 
 export interface UnitSpec {
@@ -139,6 +156,15 @@ export interface UnitSpec {
   medic?: true;
   /** Hit points regained every SELF_REPAIR_TICKS while not fighting (the Bastion). */
   selfRepair?: number;
+  /** Round 5, workstream C: mends its own side's vehicles nearby (the Repair Truck). Absent on the rest. */
+  mender?: true;
+  /** Round 5, workstream C: deploys into this structure where it stands (the Forward Base truck). */
+  deploysTo?: BuildingKind;
+  /**
+   * Round 5, workstream D: unseen and untargetable by enemies except close up or just after it
+   * fires (the Stealth Tank). Absent on the rest; the Spy keeps its own rule in mission.ts.
+   */
+  stealth?: true;
 }
 
 export interface BuildingSpec {
@@ -159,6 +185,13 @@ export interface BuildingSpec {
    * for the build radius, or for the crew that walks out when one falls. Absent on the rest.
    */
   wall?: true;
+  /**
+   * Round 5, workstream C: structures may be placed within this many tiles of it, instead of
+   * BUILD_RADIUS (the Field Yard). Absent: BUILD_RADIUS.
+   */
+  buildRadius?: number;
+  /** Round 5, workstream C: packs up into this unit where it stands (the Field Yard). */
+  undeploysTo?: UnitKind;
 }
 
 export const UNITS: Record<UnitKind, UnitSpec> = {
@@ -414,6 +447,10 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     requires: ['barracks'],
     blurb: 'Shoulder-launched anti-air missiles. Brings down aircraft; helpless against anything on the ground.',
   },
+  // round5:C begin. Engineering vehicles: its units, appended here.
+  // round5:C end.
+  // round5:D begin. Tier three: its units, appended here.
+  // round5:D end.
 };
 
 export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
@@ -602,6 +639,10 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     requires: ['factory'],
     blurb: 'Researches upgrades that last the rest of the battle, one at a time.',
   },
+  // round5:C begin. Engineering vehicles: its structures, appended here.
+  // round5:C end.
+  // round5:D begin. Tier three: its structures, appended here (neutral sites are not structures).
+  // round5:D end.
 };
 
 /** Structures in the order the build menu offers them. */
@@ -620,9 +661,26 @@ export const BUILD_MENU: BuildingKind[] = [
   'flakcannon',
   'helipad',
   'researchlab',
+  // round5:D begin. Tier three: its structures, appended here (data only; the build window reads them).
+  // round5:D end.
 ];
 export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic', 'skyhunter'];
-export const VEHICLE_MENU: UnitKind[] = ['hauler', 'buggy', 'tank', 'artillery', 'missilecarrier', 'flametank', 'bastion', 'flaktrack'];
+export const VEHICLE_MENU: UnitKind[] = [
+  'hauler',
+  'buggy',
+  'tank',
+  'artillery',
+  'missilecarrier',
+  'flametank',
+  'bastion',
+  'flaktrack',
+  // round5:C begin. Engineering vehicles: its units, appended here.
+  // round5:C end.
+  // round5:D begin. Tier three: its units, appended here.
+  // round5:D end.
+];
+/** Aircraft in the order the Air tab offers them. */
+export const AIR_MENU: UnitKind[] = ['gunship', 'bomber'];
 
 /**
  * The original game: six structures (and the Command Yard) and six units. A skirmish set up with
@@ -643,12 +701,34 @@ export const STANDARD_TECH: readonly (BuildingKind | UnitKind)[] = [
   'artillery',
 ];
 
+/**
+ * Every build list by queue, in menu (and hotkey) order: the one table the build window, How to
+ * play and the harness read. A new item joins a list above (BUILD_MENU, INFANTRY_MENU,
+ * VEHICLE_MENU, AIR_MENU) and nowhere else; the build window lays out any item from its spec's
+ * `requires`, including ones it has never seen (fireline-round5-design.md).
+ */
+export const MENUS: Record<Category, readonly (BuildingKind | UnitKind)[]> = {
+  building: BUILD_MENU,
+  infantry: INFANTRY_MENU,
+  vehicle: VEHICLE_MENU,
+  air: AIR_MENU,
+};
+
 /** Which structure each queue needs before it will make progress. */
 export const PRODUCER: Record<Category, BuildingKind> = {
   building: 'hq',
   infantry: 'barracks',
   vehicle: 'factory',
   air: 'helipad',
+};
+
+/**
+ * Structures that also work a queue besides its PRODUCER. Empty before round 5; workstream C adds
+ * the Field Yard (Structures) between its markers. Read through producerFor and hasProducer.
+ */
+export const ALSO_PRODUCES: Partial<Record<BuildingKind, Category>> = {
+  // round5:C begin. The Field Yard works the Structures queue.
+  // round5:C end.
 };
 
 export const MAX_QUEUE = 5;
@@ -936,20 +1016,49 @@ export interface SkirmishSetup {
   sides: 2 | 3 | 4;
   /** 'ffa': every side for itself. 'teams': two teams (see teamsFor in sides.ts). Always 'ffa' with 2 sides. */
   mode: SideMode;
+  /**
+   * Round 5, workstream B: how big the map is for the number of sides (MAP_SIZE_TILES). Absent on
+   * setups saved before round 5, which normaliseSetup reads as 'standard': the size they always had.
+   */
+  size?: MapSize;
+  /**
+   * Round 5, workstream D: neutral sites (Oil Derricks, Field Hospitals, Comms Relays) on the map.
+   * Absent on setups saved before round 5, which normaliseSetup reads as false.
+   */
+  sites?: boolean;
 }
 
 /** How the sides of a battle of three or four are grouped. */
 export type SideMode = 'ffa' | 'teams';
 
 /** What the lobby offers a new skirmish by default. */
-export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa' };
+export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', size: 'standard', sites: false };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
  * one. The original game exactly: the original map generator, standard tech, no skirmish powers.
  */
-export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa' };
+export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', size: 'standard', sites: false };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
+
+// round5:B begin. Larger maps (fireline-round5-design.md, workstream B): the numbers below are the
+// contract's starting points; B measures, may lower them (never raise past MAP_TILES_MAX without a
+// stated measurement), and adds its constants inside this block.
+export type MapSize = 'standard' | 'large' | 'huge';
+/** The sizes the lobby offers, smallest first. */
+export const MAP_SIZES: MapSize[] = ['standard', 'large', 'huge'];
+export const MAP_SIZE_NAMES: Record<MapSize, string> = { standard: 'Standard', large: 'Large', huge: 'Huge' };
+/** A skirmish map's width and height in tiles, by size and number of sides. 'standard' is MAP_SIZE_FOR exactly. */
+export const MAP_SIZE_TILES: Record<MapSize, Record<2 | 3 | 4, number>> = {
+  standard: MAP_SIZE_FOR,
+  large: { 2: 96, 3: 112, 4: 128 },
+  huge: { 2: 128, 3: 144, 4: 160 },
+};
+/** No map is wider or taller than this (pathfinding, fog and the terrain prerender are sized for it). */
+export const MAP_TILES_MAX = 160;
+/** A setup's map width and height in tiles. Setups from before round 5 have no size: 'standard'. */
+export const mapTilesFor = (setup: Pick<SkirmishSetup, 'sides' | 'size'>): number => MAP_SIZE_TILES[setup.size ?? 'standard'][setup.sides];
+// round5:B end.
 /** What each map type looks like with three or four sides, where the two-sided blurb does not fit. */
 export const MAP_TYPE_BLURBS_SIDES: Record<MapType, string> = {
   classic: 'Mixed ground: woods, ridges and ponds, with tracks to every neighbour and the centre.',
@@ -1005,9 +1114,6 @@ export const HERO_XP_ABILITY = HERO_XP_STRUCTURE;
 //
 // Advanced tech only: on standard tech and in a mission none of this is offered. The simulation is
 // in air.ts (aircraft) and research.ts (upgrades); the computer's side of it in aiAir.ts.
-
-/** Aircraft in the order the Air tab offers them. */
-export const AIR_MENU: UnitKind[] = ['gunship', 'bomber'];
 
 /** How many aircraft one Helipad serves: it builds for them and rearms them. */
 export const HELIPAD_SLOTS = 2;
@@ -1086,3 +1192,18 @@ export const ENGINES_SPEED = 1.15;
 export const REFINING_INCOME = 1.15;
 export const AIRFRAMES_HP = 1.25;
 export const AIRFRAMES_REARM = 0.6;
+
+// ---- Round 5 (fireline-round5-design.md) --------------------------------------------------------
+//
+// Each workstream appends its constants inside its own block below and nowhere else in this
+// section. Its specs go at the end of UNITS and BUILDINGS, its kinds in the unions and its items in
+// the menus, each between its own round5 markers above.
+
+// round5:C begin. Engineering vehicles: the Repair Truck, the Forward Base truck and the Field Yard.
+// round5:C end.
+
+// round5:D begin. Neutral sites and tier three.
+/** A neutral site's kind (Site in types.ts): Oil Derrick, Field Hospital, Comms Relay. D adds SITES, their numbers. */
+export type SiteKind = 'derrick' | 'hospital' | 'relay';
+export const SITE_KINDS: SiteKind[] = ['derrick', 'hospital', 'relay'];
+// round5:D end.

@@ -231,6 +231,8 @@ export default function SkirmishSetupPanel({
           </div>
           <p className="fl-setup-note">{ORE_TEXT[value.ore].text}</p>
         </div>
+        {/* round5:B. Larger maps (fireline-round5-design.md): the Map size field goes on the line below. */}
+        {/* round5:D. Neutral sites (fireline-round5-design.md): the Neutral sites field goes on the line below. */}
       </div>
     </>
   );

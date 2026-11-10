@@ -154,6 +154,11 @@ export default function HowToPlay() {
           </p>
         </Panel>
 
+        {/* round5:A. The build window (fireline-round5-design.md): its panel goes on the line below. */}
+        {/* round5:B. Larger maps and long games: its panel goes on the line below. */}
+        {/* round5:C. Engineering vehicles: its panel goes on the line below. */}
+        {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
+
         <Panel title="Campaign">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>

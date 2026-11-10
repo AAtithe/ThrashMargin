@@ -141,6 +141,9 @@ export function processAction(s: GameState, a: GameAction): GameState {
       doCancelResearch(c, 0);
       return c;
     }
+    // round5:C begin. Engineering vehicles: the 'deploy' and 'undeploy' cases (until then both are
+    // refused by the default: the same state back).
+    // round5:C end.
     default:
       return s;
   }

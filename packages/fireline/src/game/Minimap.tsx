@@ -119,6 +119,8 @@ export default function Minimap({
       ctx.lineWidth = 1;
       ctx.strokeRect(b.x * SCALE + 0.5, b.y * SCALE + 0.5, spec.w * SCALE - 1, spec.h * SCALE - 1);
     }
+    // round5:D begin. Neutral sites: a square per seen site, its holder's colour or neutral grey.
+    // round5:D end.
     for (const u of state.units) {
       const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
       if (u.owner !== 0 && !vis[k]) continue;

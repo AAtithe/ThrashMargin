@@ -21,6 +21,8 @@ export function occupancy(s: GameState): Int32Array {
     const spec = BUILDINGS[b.kind];
     for (let y = b.y; y < b.y + spec.h; y++) for (let x = b.x; x < b.x + spec.w; x++) occ[y * MAP_W + x] = b.id;
   }
+  // round5:D begin. Neutral sites block their tiles with their own id (fireline-round5-design.md).
+  // round5:D end.
   return occ;
 }
 
