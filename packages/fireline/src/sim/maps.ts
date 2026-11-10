@@ -1,5 +1,5 @@
 import { isWalkable, type GeneratedMap } from './map';
-import { stream } from './rng';
+import { seedFromString, stream } from './rng';
 import type { GameState } from './types';
 import { MAP_SIZE_FOR, MAP_SIZE_TILES, MAP_SIZES, MAP_TYPES, MAP_W, ORE_LEVELS, ORE_SPREAD_AMOUNT, ORE_TILE_MAX, type MapSize, type MapType, type OreLevel } from './rules';
 
@@ -1222,13 +1222,16 @@ const bedCache = new Map<string, Int32Array>();
  * migration; remembered here by setup and seed (a cache, never part of the result). Null without
  * a skirmish setup.
  */
-export function oreBed(s: { rngSeed: number; setup?: { ore: OreLevel; sides: 2 | 3 | 4; size?: MapSize }; mapType?: MapType; mapW: number }): Int32Array | null {
-  if (!s.setup || !s.mapType) return null;
+export function oreBed(s: Pick<GameState, 'seedText' | 'setup' | 'mapType' | 'mapW'>): Int32Array | null {
+  if (!s.setup || !s.mapType || typeof s.seedText !== 'string') return null;
+  // The map was drawn from the seed the battle began with (createInitialState), not s.rngSeed,
+  // which is the battle's running random stream and moves on with every roll.
+  const seed = seedFromString(s.seedText);
   const size = s.setup.size ?? 'standard';
-  const key = `${s.rngSeed}|${s.mapType}|${s.setup.ore}|${s.setup.sides}|${size}`;
+  const key = `${seed}|${s.mapType}|${s.setup.ore}|${s.setup.sides}|${size}`;
   let bed = bedCache.get(key);
   if (!bed) {
-    const m = generateSkirmishMap(s.rngSeed, s.mapType, s.setup.ore, s.setup.sides, size);
+    const m = generateSkirmishMap(seed, s.mapType, s.setup.ore, s.setup.sides, size);
     const list: number[] = [];
     if (m.w === s.mapW) for (let k = 0; k < m.ore.length; k++) if (m.ore[k] > 0) list.push(k);
     bed = Int32Array.from(list);

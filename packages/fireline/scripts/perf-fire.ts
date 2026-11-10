@@ -95,7 +95,7 @@ function dump(file: string): void {
   throw new Error('no seed lasted long enough');
 }
 
-const isMain = process.argv[1] && /perf-fire\.ts$/.test(process.argv[1]);
+const isMain = process.argv[1] && /perf-fire\.(ts|js|cjs)$/.test(process.argv[1]);
 if (isMain && args.includes('--dump')) dump(arg('dump', 'late.json'));
 else if (isMain) {
   const only = args.includes('--size') || args.includes('--sides');
