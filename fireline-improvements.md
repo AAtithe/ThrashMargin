@@ -103,7 +103,12 @@ mission AI once the round-1 opponent work lands.
 - [x] Contract and groundwork: one menu table, extra producers, map size and sites in the setup, neutral sites in the state, selection commands (no change in play).
 - [ ] A. The build window: the build lists in a pop-out tech tree, opened by a Build button or the backquote key.
 - [ ] B. Larger maps and long games: large and huge maps, ore that spreads back, the computer scaled for distance, performance at 160 tiles.
-- [ ] C. Engineering vehicles: Repair Truck, Forward Base Truck and Field Yard; the computer expands on large maps.
+- [x] C. Engineering vehicles: Repair Truck, Forward Base Truck and Field Yard; the computer expands on large maps.
+  - [x] The Repair Truck mends its side's ground vehicles beside it, free, and seeks the damaged when idle; Stay put and Roam set it.
+  - [x] Deploy and Pack up from the selection panel (and F); the Field Yard builds within 6 tiles and works the Structures list.
+  - [x] The computer saves for engineering (`engineeringFund`), fields Repair Trucks, and on large setups expands to a far ore field.
+  - [ ] The expansion aims at ore fields only; aiming at D's neutral sites is the integrator's seam.
+  - [ ] Measured on a 64-tile map with a large setup; rerun the computer's expansion on B's real large and huge maps.
 - [ ] D. Neutral sites and tier three: Oil Derricks, Field Hospitals, Comms Relays; Prototype Works, Fortress, Railgun Tank, Stealth Tank.
 
 ## Found along the way
