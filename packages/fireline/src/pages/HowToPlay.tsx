@@ -6,6 +6,7 @@ import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
 import { statsOf } from '../game/Sidebar';
 import { TECH_TEXT } from '../components/SkirmishSetup';
+import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
 import {
   AIR_MENU,
   BUILD_MENU,
@@ -156,6 +157,25 @@ export default function HowToPlay() {
 
         {/* round5:A. The build window (fireline-round5-design.md): its panel goes on the line below. */}
         {/* round5:B. Larger maps and long games: its panel goes on the line below. */}
+        <Panel title="Larger maps and long games">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Choose the <strong>Map size</strong> in the lobby. Standard is the original size; Large and Huge spread the bases
+              further apart and lay out more ore, with a second field behind each base and more out on the flanks.
+            </li>
+            <li>
+              {MAP_SIZES.map(z => `${MAP_SIZE_NAMES[z]}: ${MAP_SIZE_TILES[z][2]}, ${MAP_SIZE_TILES[z][3]} or ${MAP_SIZE_TILES[z][4]} tiles across for two, three or four sides.`).join(' ')}
+            </li>
+            <li>
+              On Large and Huge maps a worked-out ore field grows back from its edges: while one tile of a field still holds
+              ore, the empty tiles beside it slowly fill again. Nothing grows under a structure.
+            </li>
+            <li>
+              The computer plays the long game on a larger map: it builds more refineries and turrets, waits longer before
+              its first attack and sends bigger waves less often. Expect battles of 30 minutes to an hour.
+            </li>
+          </ul>
+        </Panel>
         {/* round5:C. Engineering vehicles: its panel goes on the line below. */}
         {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
 
