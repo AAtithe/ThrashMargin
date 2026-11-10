@@ -576,3 +576,36 @@ battles and in winner in none. The development lines' Mk I nodes are the classic
 fits a module that matters. So the thresholds pass, but this ladder says little about lines play
 itself; a richer setup (`--credits 10000 --ore rich`) would exercise it, and is the place to look
 if section 2.4 or section 5 numbers are ever tuned.
+
+### 2026-11-10: War for the Planet (a strategic campaign)
+
+The contract and the five workstreams' build logs are in `fireline-planet-design.md`. A new panel in
+the lobby, inside the signed-in branch like everything else, starts a turn-based war for a whole
+seeded planet: Short (3 factions, 18 regions, 40 turns), Long (4, 36, 90) or Very long (5, 60, 160),
+each preset stating every option explicitly; the setup also picks the number of factions, the
+difficulty and four optional rules (allied victory, iron rule, simulated battles, rival
+diplomacy). The player and two to four
+computer factions (each with a temperament) hold regions with cities, build and grow them, earn ore,
+fuel, food and science, open trade routes, research the round 5 development lines with doctrines
+and loadouts, recruit a persistent army that keeps its kills and ranks, and make or break ceasefires,
+trade pacts and alliances with tribute and exchange terms. Regions cut off from supply lose yield and
+in the end surrender. An attack becomes a battle: fought in the ordinary real-time engine as a
+skirmish built from the region (two to four sides, allies' contingents included, heroes and powers
+in play, saved every 15 seconds), auto-resolved by a formula, or, with the option on, simulated to
+the end in a worker. The result flows back into the war: the region changes hands, survivors are
+promoted, heroes are wounded or lost, the city takes damage, the Commander earns xp for perks. A
+war ends by domination, elimination, an allied share, the player's fall, a rival's share, or the
+turn limit.
+
+The strategic layer (`src/planet/`) is pure like `src/sim/`: no clock, no dice outside the seed, an
+illegal order returns the same object. A war is one more save kind (`kind: 'planet'`) in Fireline's
+existing endpoint behind the same 401 and 403; campaign and skirmish saves, every story mission and
+every skirmish replay exactly as before (the harness checks 118 recorded hashes). `npm run
+drive:planet` (about 38,500 assertions, about a minute) is in `npm run check`. Its first run found
+two strategic defects, both fixed the same day: a faction could start short of its start regions on
+a few seeds, and a treaty ended by an unpaid term kept its foreign trade routes.
+
+Not built yet: a guided tour for the war, a `ladder:planet` for balance (computer factions currently
+sign open-ended trade pacts and rarely fight one another after the truce, so most wars end on the
+turn limit), and a check that a full battle fought by hand reaches its end card in the browser.
+

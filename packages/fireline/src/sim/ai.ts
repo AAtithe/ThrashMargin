@@ -198,7 +198,8 @@ interface Pt {
 
 /** How the computer behaves on this side: a mission's mode for every computer side, 'normal' otherwise. */
 export function missionMode(s: GameState, owner: Owner): AiMode {
-  return owner !== 0 && s.mission ? s.mission.ai : 'normal';
+  // A planet battle (fireline-planet-design.md, section 14.4) gives each seat its own behaviour.
+  return s.mission ? (owner !== 0 ? s.mission.ai : 'normal') : s.planet ? (s.planet.ai[owner] ?? 'normal') : 'normal';
 }
 
 /**

@@ -28,6 +28,7 @@ import {
   type BuildingKind,
   type Category,
   type Difficulty,
+  type HeroKind,
   type MapType,
   type Owner,
   type ResearchMode,
@@ -37,7 +38,7 @@ import {
   type UnitKind,
 } from './rules';
 import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf, teamsFor } from './sides';
-import type { AiMemory, Building, GameState, HeroState, MissionRuntime, PlayerState, Stance, Unit } from './types';
+import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, PlanetBattle, PlayerState, Stance, Unit } from './types';
 
 export { startOf };
 
@@ -53,6 +54,11 @@ export interface NewGameOptions {
    * field left out takes DEFAULT_SETUP's value.
    */
   setup?: Partial<SkirmishSetup>;
+  /**
+   * Planet battles: the team of each side. Used only with a setup of 3 or 4 sides, through
+   * normaliseTeams, in place of teamsFor(n, setup.mode). Ignored with 2 sides (always [0, 1]).
+   */
+  teams?: number[];
 }
 
 /** A setup with every field valid: unknown values fall back to DEFAULT_SETUP's, credits are clamped. */
@@ -109,6 +115,8 @@ export function syncSkirmishPowers(s: GameState): void {
       const has = s.buildings.some(b => b.owner === owner && b.kind === kind && b.hp > 0);
       const held = side[power] !== undefined;
       if (has === held) continue;
+      // A planet battle: side 0's perk powers stay without their structure.
+      if (!has && owner === 0 && s.planet?.perkPowers?.includes(power)) continue;
       side = { ...side };
       if (has) side[power] = POWERS[power].cooldown;
       else delete side[power];
@@ -161,7 +169,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
   const credits = setup ? setup.credits : START_CREDITS;
   const difficulty = opts.difficulty && opts.difficulty in DIFFICULTIES ? opts.difficulty : DEFAULT_DIFFICULTY;
   const d = DIFFICULTIES[difficulty];
-  const teams = setup && n > 2 ? teamsFor(n, setup.mode) : [0, 1];
+  const teams = setup && n > 2 ? (opts.teams !== undefined ? normaliseTeams(opts.teams, n) : teamsFor(n, setup.mode)) : [0, 1];
 
   const s: GameState = {
     version: 1,
@@ -322,6 +330,17 @@ export function cloneState(s: GameState): GameState {
     ...(s.powers ? { powers: s.powers.map(p => ({ ...p })) } : {}),
     ...(s.blackoutUntil ? { blackoutUntil: s.blackoutUntil.slice() } : {}),
     ...(s.recon ? { recon: s.recon.slice() } : {}),
+    ...(s.planet
+      ? {
+          planet: {
+            ...s.planet,
+            ai: s.planet.ai.slice(),
+            city: s.planet.city.map(c => [c[0], c[1]] as [number, string]),
+            ...(s.planet.fallen ? { fallen: { ...s.planet.fallen } } : {}),
+            ...(s.planet.perkPowers ? { perkPowers: s.planet.perkPowers.slice() } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -497,6 +516,7 @@ export function migrateState(raw: unknown): GameState | null {
       }
     }
     if (u.maxHp !== undefined && !(Number.isFinite(u.maxHp) && u.maxHp > 0)) delete out.maxHp;
+    if (u.core !== undefined && !(Number.isInteger(u.core) && u.core >= 0)) delete out.core;
     return out;
   });
   // Sides: saves from before 3 and 4 sides have two players, no teams and a 64 by 64 map.
@@ -545,6 +565,38 @@ export function migrateState(raw: unknown): GameState | null {
       result: m.result === 'won' || m.result === 'lost' ? m.result : null,
     };
   }
+  // A planet battle: kept only when well formed, else dropped (the battle then plays as a skirmish).
+  if (s.planet !== undefined) {
+    const p = migratePlanetBattle(s.planet, n);
+    if (p) out.planet = p;
+    else delete out.planet;
+  }
+  return out;
+}
+
+const AI_MODES: AiMode[] = ['normal', 'defend', 'raid', 'passive'];
+
+/** A planet battle's runtime from a save, or null when it is not well formed for n sides. */
+function migratePlanetBattle(raw: unknown, n: number): PlanetBattle | null {
+  const p = raw as Partial<PlanetBattle> | null;
+  if (!p || typeof p !== 'object') return null;
+  if (!Number.isInteger(p.battleId) || !Number.isInteger(p.timeLimit) || p.timeLimit! < 0) return null;
+  if (!Number.isInteger(p.defenderSeat) || p.defenderSeat! < 0 || p.defenderSeat! >= n) return null;
+  if (!Array.isArray(p.ai) || p.ai.length !== n || !p.ai.every(m => AI_MODES.includes(m))) return null;
+  if (!Array.isArray(p.city) || !p.city.every(c => Array.isArray(c) && c.length === 2 && Number.isInteger(c[0]) && typeof c[1] === 'string')) return null;
+  const out: PlanetBattle = {
+    battleId: p.battleId!,
+    timeLimit: p.timeLimit!,
+    defenderSeat: p.defenderSeat as Owner,
+    ai: p.ai.slice(),
+    city: p.city.map(c => [c[0], c[1]] as [number, string]),
+  };
+  if (p.fallen && typeof p.fallen === 'object') {
+    const fallen: NonNullable<PlanetBattle['fallen']> = {};
+    for (const [k, v] of Object.entries(p.fallen)) if (UNITS[k as UnitKind]?.hero && Number.isFinite(v)) fallen[k as HeroKind] = v as number;
+    out.fallen = fallen;
+  }
+  if (Array.isArray(p.perkPowers)) out.perkPowers = p.perkPowers.filter((x, i, all) => x in POWERS && all.indexOf(x) === i);
   return out;
 }
 

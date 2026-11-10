@@ -83,6 +83,8 @@ export interface Unit {
   bombRun?: true;
   /** Vehicles only, lines battles only: the modules it was built with. Absent: none. Never changes. */
   modules?: ModuleId[];
+  /** Planet battles: the field army slot this unit stands for. Absent everywhere else. */
+  core?: number;
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -316,6 +318,30 @@ export interface GameState {
   blackoutUntil?: number[];
   /** Tiles revealed to side 0 by a recon sweep until a tick: [centre x, centre y, radius, until]. */
   recon?: [number, number, number, number][];
+
+  // ---- War for the Planet (optional: absent on every skirmish and mission) -----------------
+  /** A battle generated from the planet war (fireline-planet-design.md, section 14). */
+  planet?: PlanetBattle;
+}
+
+/** What a planet battle adds to a GameState. Every field is read only when `s.planet` is set. */
+export interface PlanetBattle {
+  battleId: number;
+  /** At this tick, with no winner yet, the defending team wins. */
+  timeLimit: number;
+  /** The principal defender's seat: when it has no Command Yard left, the attacking team wins. */
+  defenderSeat: Owner;
+  /** Computer behaviour per seat (read by missionMode). */
+  ai: AiMode[];
+  /** Structures that stand for city buildings: [building id, city building id]. */
+  city: [number, string][];
+  /** Side 0's heroes that fell, with their xp. */
+  fallen?: Partial<Record<HeroKind, number>>;
+  /**
+   * Side 0's support powers from Commander perks. Kept even without the structure that grants them
+   * in a skirmish (syncSkirmishPowers leaves them be). Absent: none.
+   */
+  perkPowers?: SupportPower[];
 }
 
 // ---- Missions --------------------------------------------------------------------------------

@@ -31,6 +31,36 @@ export const UI = {
   side: ['var(--ui-side-0)', 'var(--ui-side-1)', 'var(--ui-side-2)', 'var(--ui-side-3)'] as const,
 };
 
+/**
+ * War for the Planet (fireline-planet-design.md, section 17): the planet map's and the war
+ * screens' colour tokens. Values in styles.css, one block per mode; canvas code reads them with
+ * getComputedStyle (game/planetArt.ts), so the map follows the theme too. `faction` is indexed by
+ * FactionId; --pl-f0 matches --ui-team.
+ */
+export const PL = {
+  sea: 'var(--pl-sea)',
+  seaDeep: 'var(--pl-sea-deep)',
+  landNeutral: 'var(--pl-land-neutral)',
+  border: 'var(--pl-border)',
+  borderStrong: 'var(--pl-border-strong)',
+  faction: ['var(--pl-f0)', 'var(--pl-f1)', 'var(--pl-f2)', 'var(--pl-f3)', 'var(--pl-f4)'] as const,
+  route: 'var(--pl-route)',
+  routeBlocked: 'var(--pl-route-blocked)',
+  select: 'var(--pl-select)',
+  cut: 'var(--pl-cut)',
+  city: 'var(--pl-city)',
+  capital: 'var(--pl-capital)',
+  label: 'var(--pl-label)',
+  name: 'var(--pl-name)',
+  halo: 'var(--pl-halo)',
+  war: 'var(--pl-war)',
+  ceasefire: 'var(--pl-ceasefire)',
+  trade: 'var(--pl-trade)',
+  alliance: 'var(--pl-alliance)',
+  trustTrack: 'var(--pl-trust-track)',
+  trustFill: 'var(--pl-trust-fill)',
+};
+
 export const FONT = {
   display: '"Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif',
   body: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',

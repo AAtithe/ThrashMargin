@@ -28,6 +28,8 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { FONT, UI } from '../theme';
+import { CITY_BUILDING_SPECS, LENGTH_PRESETS, PRESETS } from '../planet/rules';
+import { CITY_BUILDINGS } from '../planet/types';
 
 /** The rules, generated from the same tables the simulation reads, so they cannot drift apart. */
 export default function HowToPlay() {
@@ -194,6 +196,75 @@ export default function HowToPlay() {
               </div>
             ))}
           </div>
+        </Panel>
+
+        <Panel title="War for the Planet">
+          <p style={{ ...bodySmall, margin: 0 }}>
+            A whole planet held by you, the Meridian Corps, and two to four computer factions, each with its own temperament. Start a war from
+            the lobby: choose a length, the number of factions, a difficulty and the optional rules.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+            {LENGTH_PRESETS.map(k => {
+              const o = PRESETS[k];
+              return (
+                <div key={k} style={{ ...tile, flexDirection: 'column', gap: 2 }}>
+                  <strong style={{ fontSize: '0.88rem' }}>{k === 'short' ? 'Short' : k === 'long' ? 'Long' : 'Very long'}</strong>
+                  <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>
+                    {o.regions} regions on {o.continents} continents, {o.factions} factions. {o.openingTruce} turns of truce, then {o.turnLimit} turns in all;
+                    {' '}{o.victoryShare}% of the planet wins outright. Field army of up to {o.armyCap}.
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              <strong>The turn.</strong> Give any number of orders: build, recruit, research, trade, negotiate, move the field army up to two
+              regions, and attack one neighbouring region. Then press <strong>End turn</strong>: every other faction moves, everyone produces, and
+              any attack on you becomes a battle to settle before your next orders.
+            </li>
+            <li>
+              <strong>Cities.</strong> Every region has one city, level 1 to 5. A city holds one more building than its level, and buildings go up
+              to Mk 3 (no higher than the city level). One build or growth per city per turn. What a city has built decides what its defenders
+              start the battle with:
+              <ul style={{ margin: '4px 0 0', paddingLeft: '1.1rem' }}>
+                {CITY_BUILDINGS.map(b => (
+                  <li key={b}>
+                    <strong>{CITY_BUILDING_SPECS[b].name}</strong>: {CITY_BUILDING_SPECS[b].blurb}
+                  </li>
+                ))}
+              </ul>
+            </li>
+            <li>
+              <strong>Resources.</strong> Ore, fuel, alloys and food come from the land and the cities. Food feeds cities and infantry, fuel
+              runs vehicles and airfields, alloys pay for vehicles, buildings and the credits you bring to a battle. Research needs science,
+              from research institutes and the capital. A shortfall disbands units.
+            </li>
+            <li>
+              <strong>Trade.</strong> A route between two of your cities pays ore and food; a route to a city of a trading partner pays fuel and
+              alloys to you both. A route whose path is cut by war pays nothing that turn: it is blockaded. Treaties can add tribute and exchanges
+              of resources each turn, and exchanges flow only while a route between you is open.
+            </li>
+            <li>
+              <strong>Diplomacy.</strong> War, ceasefire, trade pact, alliance. Every faction trusts every other to a degree, shown as a bar.
+              A proposal shows whether they would accept before you send it. Breaking a treaty before its end is a breach: the victim's trust in
+              you falls by 30 and everyone else's by 10. Allies bordering a battle join it on your side, and their regions are open to your army.
+            </li>
+            <li>
+              <strong>Battles.</strong> Each attack is a Fireline battle on the region's own terrain, two to four sides on two teams, with the
+              defender's city as its base and both sides' research in place. Fight it yourself, or auto-resolve it from the strength of each side.
+              When time runs out, the defenders win. Your units keep their kills and rank from battle to battle; heroes join attacks and defences.
+            </li>
+            <li>
+              <strong>Encirclement.</strong> A region with no path to its owner's capital through friendly ground is cut off: it yields half, and
+              after a few turns it surrenders to the enemy next to it. Lose the capital and the largest remaining city takes its place.
+            </li>
+            <li>
+              <strong>Winning.</strong> Hold the share of the planet the length sets, drive every rival out, or (with allied victory on) hold it
+              together with your allies while you lead them. At the turn limit you win only if you hold more regions than any other faction. Lose every region, or
+              let a rival reach the share first, and the war is lost.
+            </li>
+          </ul>
         </Panel>
 
         <Panel title="Structures">

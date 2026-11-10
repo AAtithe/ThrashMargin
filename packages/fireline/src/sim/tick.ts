@@ -174,7 +174,7 @@ export function step(s: GameState): void {
   }
 
   for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
-  if (s.mission) heroes(s, ctx);
+  if (s.mission || s.planet) heroes(s, ctx);
   for (const b of s.buildings) if (b.hp > 0) updateBuilding(s, ctx, b);
   charges(s);
   landProjectiles(s, ctx);
@@ -1176,6 +1176,7 @@ function removeDead(s: GameState): void {
  * fall together).
  */
 function checkVictory(s: GameState): void {
+  if (s.planet && planetVictory(s, s.planet)) return;
   const has: boolean[] = s.players.map(() => false);
   for (const b of s.buildings) if (isStructure(b)) has[b.owner] = true;
   const sides = sidesOf(s);
@@ -1193,4 +1194,33 @@ function checkVictory(s: GameState): void {
       ? 'Defeat. Our last structure has fallen.'
       : 'Defeat. Our last ally has fallen.';
   log(s, text, won ? 'good' : 'bad');
+}
+
+/**
+ * War for the Planet (fireline-planet-design.md, section 14.3): the attacking team wins when the
+ * principal defender has no Command Yard standing; the defending team wins when the time limit is
+ * reached first. `winner` is the lowest seat of the winning team. Returns true when it decided the
+ * battle; otherwise the ordinary rule above runs.
+ */
+function planetVictory(s: GameState, p: NonNullable<GameState['planet']>): boolean {
+  const defTeam = teamOf(s, p.defenderSeat);
+  const yardStands = s.buildings.some(b => b.owner === p.defenderSeat && b.kind === 'hq' && b.hp > 0);
+  let attackersWon: boolean;
+  if (!yardStands) attackersWon = true;
+  else if (s.tick >= p.timeLimit) attackersWon = false;
+  else return false;
+  const sides = sidesOf(s);
+  const winners = sides.filter(o => (teamOf(s, o) === defTeam) !== attackersWon);
+  s.winner = winners[0] ?? (attackersWon ? sides.find(o => teamOf(s, o) !== defTeam)! : p.defenderSeat);
+  const humanDefends = teamOf(s, 0) === defTeam;
+  const won = isAlly(s, s.winner, 0);
+  const text = attackersWon
+    ? humanDefends
+      ? 'Defeat. Our Command Yard has fallen.'
+      : 'Victory. The Command Yard has fallen.'
+    : humanDefends
+      ? 'Victory. The defenders held.'
+      : 'Defeat. The defenders held.';
+  log(s, text, won ? 'good' : 'bad');
+  return true;
 }

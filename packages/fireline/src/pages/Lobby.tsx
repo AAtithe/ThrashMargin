@@ -4,7 +4,9 @@ import PortalNav from '../components/PortalNav';
 import SkirmishSetupPanel, { freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
-import { campaignSaves, isCampaignMeta } from './campaignSaves';
+import { campaignSaves, isCampaignMeta, isPlanetMeta } from './campaignSaves';
+import WarSetup from '../components/planet/WarSetup';
+import type { LengthPreset } from '../planet/types';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 import NoGameAccess from '../lib/NoGameAccess';
 import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
@@ -31,8 +33,10 @@ export default function Lobby() {
   const { saves: allSaves, savesLoaded, error, create, remove } = savesApi;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const camp = useMemo(() => campaignSaves(savesApi), [savesApi.cloud, savesApi.load, savesApi.save]);
-  const saves = allSaves.filter(s => !isCampaignMeta(s));
+  const saves = allSaves.filter(s => !isCampaignMeta(s) && !isPlanetMeta(s));
   const campaigns = allSaves.filter(isCampaignMeta);
+  const wars = allSaves.filter(isPlanetMeta);
+  const [warError, setWarError] = useState<string | null>(null);
   const [commander, setCommander] = useState(() => getStoredUser()?.username ?? '');
   const [campName, setCampName] = useState('');
   const [campBusy, setCampBusy] = useState(false);
@@ -204,6 +208,51 @@ export default function Lobby() {
           )}
         </Panel>
 
+        <Panel title="War for the Planet" aside={<Label>Strategy</Label>} style={{ marginBottom: '1.5rem' }}>
+          <WarSetup
+            defaultCommander={commander}
+            onBegin={async req => {
+              setWarError(null);
+              try {
+                const id = await camp.createPlanet(req);
+                if (id) {
+                  navigate(`/game/${id}`);
+                  return true;
+                }
+              } catch {
+                /* Reported below. */
+              }
+              setWarError('The war could not be started. Try again in a moment.');
+              return false;
+            }}
+          />
+          {warError && (
+            <div style={errorBanner} role="alert">
+              {warError}
+            </div>
+          )}
+          {!savesLoaded ? (
+            <LoadingRows rows={1} label="Loading your wars" />
+          ) : (
+            wars.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="war-saves">
+                {wars.map(s => (
+                  <SaveRow
+                    key={s.id}
+                    s={s}
+                    war
+                    confirming={confirmDelete === s.id}
+                    onOpen={() => navigate(`/game/${s.id}`)}
+                    onAsk={() => setConfirmDelete(s.id)}
+                    onKeep={() => setConfirmDelete(null)}
+                    onDelete={() => remove(s.id).then(() => setConfirmDelete(null))}
+                  />
+                ))}
+              </div>
+            )
+          )}
+        </Panel>
+
         <Panel title="A new battle" aside={<Label>Skirmish</Label>} style={{ marginBottom: '1.5rem' }}>
           <div style={field}>
             <Label>Name this battle</Label>
@@ -301,6 +350,7 @@ export default function Lobby() {
 function SaveRow({
   s,
   campaign = false,
+  war = false,
   confirming,
   onOpen,
   onAsk,
@@ -309,6 +359,8 @@ function SaveRow({
 }: {
   s: SaveMeta;
   campaign?: boolean;
+  /** A War for the Planet save: labelled "War" with its length and turn. */
+  war?: boolean;
   confirming: boolean;
   onOpen: () => void;
   onAsk: () => void;
@@ -316,15 +368,18 @@ function SaveRow({
   onDelete: () => void;
 }) {
   return (
-    <div style={row} data-kind={campaign ? 'campaign' : 'skirmish'}>
+    <div style={row} data-kind={campaign ? 'campaign' : war ? 'planet' : 'skirmish'}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
         <strong style={{ fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {campaign && <span className="fl-badge">Campaign</span>}
+          {war && <span className="fl-badge">War</span>}
           {s.name}
         </strong>
         <span style={{ fontSize: '0.74rem', color: UI.textFaint }}>
           {campaign ? (
             'Career in progress'
+          ) : war && s.status === 'active' ? (
+            `${s.preset ? PRESET_NAMES[s.preset] : 'War'} · turn ${s.turn}`
           ) : s.status === 'victory' ? (
             <span style={{ color: UI.good }}>Victory</span>
           ) : s.status === 'defeated' ? (
@@ -332,9 +387,10 @@ function SaveRow({
           ) : (
             'In progress'
           )}
-          {!campaign && ` · ${s.turn} min`}
-          {!campaign && mapTypeOf(s) && ` · ${MAP_TYPE_NAMES[mapTypeOf(s)!]}`}
-          {!campaign && sidesOfSave(s) && ` · ${sidesOfSave(s)}`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+          {war && s.status !== 'active' && ` · ${s.preset ? PRESET_NAMES[s.preset] : 'War'} · turn ${s.turn}`}
+          {!campaign && !war && ` · ${s.turn} min`}
+          {!campaign && !war && mapTypeOf(s) && ` · ${MAP_TYPE_NAMES[mapTypeOf(s)!]}`}
+          {!campaign && !war && sidesOfSave(s) && ` · ${sidesOfSave(s)}`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
         </span>
       </div>
       <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
@@ -352,7 +408,7 @@ function SaveRow({
             <Button tone={campaign || s.status === 'active' ? 'primary' : 'default'} onClick={onOpen}>
               {campaign ? 'Continue' : s.status === 'active' ? 'Resume' : 'View'}
             </Button>
-            <Button tone="quiet" onClick={onAsk} title={campaign ? 'Delete this campaign' : 'Delete this battle'}>
+            <Button tone="quiet" onClick={onAsk} title={campaign ? 'Delete this campaign' : war ? 'Delete this war' : 'Delete this battle'}>
               ✕
             </Button>
           </>
@@ -361,6 +417,8 @@ function SaveRow({
     </div>
   );
 }
+
+const PRESET_NAMES: Record<LengthPreset, string> = { short: 'Short', long: 'Long', veryLong: 'Very long' };
 
 /** The battle's map type, when the saves list carries it (older rows and servers do not). */
 const mapTypeOf = (s: SaveMeta): MapType | null => {
@@ -644,6 +702,7 @@ const minutes = (ticks: number) => {
 
 /** What changed lately, in a line each. */
 const WHATS_NEW: { title: string; text: string }[] = [
+  { title: 'War for the Planet', text: 'A whole planet of cities, trade and treaties against two to four rival factions, every attack a real battle.' },
   { title: 'Six battlefields', text: 'River, Highlands, Lakes, Plains, Canyon or Classic, or let the seed choose. See each map before you deploy.' },
   { title: 'Advanced tech', text: 'Grenadiers, Medics, Flame Tanks, Missile Carriers, the Bastion, walls, a Repair Bay, and powers: recon, barrage, missile.' },
   { title: 'The campaign', text: 'Eight missions, a Commander who ranks up and learns perks, four heroes who level up, and support powers.' },
