@@ -25,6 +25,8 @@ import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlo
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
+// round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
+import { sitesPlan } from './aiSites';
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -416,6 +418,7 @@ function commander(s: GameState, owner: Owner): void {
   // round5:C end.
   // round5:D begin. Neutral sites and tier three (fireline-round5-design.md): one call into
   // aiSites.ts goes on the line below this comment, and nothing else in this function changes.
+  sitesPlan(s, owner, home, enemyHome, units, foes);
   // round5:D end.
 
   // Producers send new units to a staging point on the side facing the enemy.

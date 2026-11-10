@@ -32,6 +32,8 @@ import {
   unlocked,
 } from './state';
 import type { Building, GameState, QueuedOrder, Stance, Unit } from './types';
+// round5:D. Tier three: the Stealth Tank is targetable only when seen (fireline-round5-design.md).
+import { stealthSeen } from './sites';
 
 /**
  * Orders, shared by the player and the computer. Each `can*` check reads the state without
@@ -312,7 +314,7 @@ function formation(n: number): [number, number][] {
 
 /** The enemy unit or structure with this id, or null. */
 function enemyTarget(s: GameState, owner: Owner, target: number): Target | null {
-  const u = s.units.find(v => v.id === target && isEnemy(s, owner, v.owner));
+  const u = s.units.find(v => v.id === target && isEnemy(s, owner, v.owner) && (!UNITS[v.kind].stealth || stealthSeen(s, v, owner)));
   if (u) return { unit: u };
   const b = s.buildings.find(v => v.id === target && isEnemy(s, owner, v.owner));
   return b ? { building: b } : null;

@@ -753,3 +753,67 @@ the same credits research would. Advanced battles run a little longer, as the re
 engineering sections add 182 assertions and about 7 seconds. In the whole-battle section a hard
 advanced battle on a large setup fields a Repair Truck that mends, and two Field Yards go down.
 `npm run campaign:fire`: 2,595 assertions, 0 failures, all fourteen missions unchanged.
+
+
+### 2026-11-10: Neutral sites and tier three (round 5, workstream D)
+
+**Neutral sites** (`src/sim/sites.ts`, numbers in `rules.ts`): Oil Derricks, Field Hospitals and
+Comms Relays, switched on by the lobby's Neutral sites field (either tech level). `SITES_PER_SIDE`
+sets how many of each every side gets by map size (standard: one Derrick). `siteSpots(map, setup,
+seed?)` picks spots in side 0's share (the bottom half, or side 0's wedge) and maps each through the
+map's own symmetry: point mirror for two sides, the exact quarter turn for four, the third of a
+turn rounded and nudged at most three tiles for three. Its own stream (the battle's seed xor a
+constant; with no seed, a hash of the map), so placing sites moves nothing else: map, ore, the
+battle's stream, the yards and the riflemen are as they were (ids aside, since sites take theirs
+first). A spot needs clear walkable ground round it, no ore within two tiles, 13 tiles from every
+yard and 8 from other sites if it can (the rules `sitesProblem` checks are 10 and 6), and must close
+off no walkable ground. Bands of distance from home keep the first Derrick near home, the second
+further out and Relays towards the middle. Over 180 battles (six map types, two to four sides, ten
+seeds) every placement passes `sitesProblem`; large and huge maps are B's, so placement there is
+the integrator's to measure.
+
+Capture: one team's infantry within 1.5 tiles, alone, take a site in 100 ticks; two teams pause it;
+nobody (or only the holder's own) and it winds down at the same rate; another team's partial capture
+winds down before theirs starts. A side with no structure left loses its sites to neutral (the
+contract was silent; a side that is out should not keep earning). Derrick 300 a minute exactly,
+Hospital 5 health a second to the holder's infantry within 3 tiles, Relay 10 tiles of sight
+through `visibility`, so allies share it. Sites block their tiles in `occupancy`, are never a
+target, never fire and never count for victory.
+
+**Tier three**: Prototype Works (needs Research Lab and Tech Centre), Fortress, Railgun Tank,
+Stealth Tank at the contract's numbers. `DAMAGE_VS.rail` stays as the groundwork set it: 2.08 times
+a Battle Tank's damage a second on heavy armour, 0.35 on infantry. Stealth (`stealthSeen`): unseen
+and untargetable by an enemy beyond 2.5 tiles of its units and structures, except for 30 ticks
+after it fires (its `lastShot`, recorded from the projectiles it launched that tick) or inside a
+recon sweep. The four Spy checks in `tick.ts` now ask `seenBy` (the Spy still by `isDetected`,
+unchanged), `enemyTarget` refuses a hidden one (so does `canAttack`), and `sitesStep` makes every
+enemy drop one that slips from sight. The renderer skips hidden enemy Stealth Tanks and draws your
+own faint, with a ripple. A Railgun shot has no projectile, so the site layer draws its streak.
+
+**The computer** (`src/sim/aiSites.ts`): parties of two (Easy) or three infantry, up to one, two or
+three at once, to the nearest site its team does not hold, a lost site near home first; a party
+shuffles between two tiles beside its site so no other part of the commander takes it for idle
+reserve, gives up after four minutes and leaves the site for six. In a sites battle both sides hold
+a site within a minute. Tier three from minute 25 (Easy 30) with a hauler, a refinery and a factory
+and its army at home up to strength: a Research Lab and Tech Centre if missing, the Works, a
+Fortress (Normal and Hard; the commander's own placement puts it by the yard, since `findSpot` is
+not D's), Railgun Tanks to one per two to four armed vehicles, and Stealth Tanks (Normal one, Hard
+two) hunting haulers outside the waves. On a standard map most battles are decided by minute 25, so
+tier three is rare there; in a held-back hard battle the Works went up at minute 27.5 and both tanks
+followed.
+
+Tests: `scripts/drive-sites.ts`, eleven sections, 1,904 assertions, about 25 seconds. Mission and
+standard-tech lines of `npm run drive:fire` unchanged; of the advanced lines only these moved:
+"12/12 finished, average 23.3 game minutes; side 0 won 6, side 1 won 6" (was 23.6) and
+"highlands: side 0 in 20 min, side 1 in 36 min" (was 39). The round-4 sides block is unchanged.
+344,405 assertions in all; `npm run campaign:fire` 2,595 (its Last Light check that the enemy fields
+every structure kind now skips the two skirmish-only ones).
+
+AI ladder, 150 seeds, random maps, advanced tech, after the change: the Normal mirror 77 to 71
+(51% to 47%, 2 unfinished), Normal against Hard 8% to 91%, against Easy 100% to 0%: the same as
+round 4's integration, since tier three only starts at minute 25 and the ladder plays without sites.
+
+Left for integration: sites in B's map previews (`siteSpots` with the battle's `rngSeed`), a
+selected site's line in A's panel (`siteAt`), the lobby's stored setup forgetting `sites`
+(`readStoredSetup` is B's), the minimap showing an enemy Stealth Tank in sight (one condition in
+B's units loop), and C's expansion aiming at sites.

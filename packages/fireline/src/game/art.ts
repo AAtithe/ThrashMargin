@@ -1,4 +1,7 @@
 import type { BuildingKind, Owner, UnitKind } from '../sim/rules';
+// round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
+import type { SiteKind } from '../sim/rules';
+import type { GameState } from '../sim/types';
 import { BUILDINGS } from '../sim/rules';
 import { ART, TEAM } from '../theme';
 
@@ -315,6 +318,10 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
       break;
     // round5:C end.
     // round5:D begin. Tier three (fireline-round5-design.md): its units' cases, appended here.
+    case 'railtank':
+    case 'stealthtank':
+      drawTierThreeCached(ctx, kind, owner, team, pose);
+      break;
     // round5:D end.
   }
   ctx.restore();
@@ -1632,6 +1639,12 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
       break;
     // round5:C end.
     // round5:D begin. Tier three (fireline-round5-design.md): its structures' cases, appended here.
+    case 'protoworks':
+      drawProtoWorks(ctx, w, h, team, pose);
+      break;
+    case 'fortress':
+      drawFortress(ctx, w, h, team, pose);
+      break;
     // round5:D end.
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
@@ -4291,4 +4304,567 @@ function drawFieldYard(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPo
 
 // round5:D begin. Neutral sites and tier three (fireline-round5-design.md): its drawing functions (drawSite
 // among them), appended here.
+
+/** Neutral sites' own colours: a held site flies its holder's colours, an unheld one this grey. */
+export const SITE_ART = {
+  neutral: '#9aa1a4',
+  neutralDark: '#5c6366',
+  neutralLight: '#d3d8da',
+  oil: '#1d1b19',
+  tank: '#b9b2a2',
+  tent: '#e9ece6',
+  tentShade: '#b7bdb4',
+  cross: '#3fae5a',
+  dish: '#d7dcdd',
+  rail: 'rgba(140,220,255,',
+};
+
+type T3Kind = 'railtank' | 'stealthtank';
+const T3_HULL: Record<T3Kind, [number, number]> = { railtank: [26, 15], stealthtank: [23, 13] };
+const T3_HALF: Record<T3Kind, number> = { railtank: 32, stealthtank: 26 };
+
+/** Tier three's two vehicles: stamped from the sprite cache as two layers, as the others are. */
+function drawTierThreeCached(ctx: Ctx, kind: T3Kind, owner: Owner, team: Team, p: UnitPose) {
+  const fn = kind === 'railtank' ? drawRailTank : drawStealthTank;
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  const hurt = hp < 0.25 ? 3 : hp < 0.5 ? 2 : hp < 0.7 ? 1 : 0;
+  const hpq = [1, 0.6, 0.4, 0.2][hurt];
+  const frame = p.moving ? Math.floor(frac(p.t * 2) * 6) : 0;
+  const tq = frame / 12;
+  const hf = Math.round(frac(p.hull / TAU) * VANGLES) % VANGLES;
+  sprite(ctx, `${kind}${owner}h${hf}/${p.moving ? frame : 'i'}/${hurt}`, T3_HALF[kind], g =>
+    fn(g, team, { hull: (hf / VANGLES) * TAU, turret: 0, t: tq, moving: p.moving, cargo: 0, sinceShot: 9, hp: hpq, firing: false }, 'hull'),
+  );
+  if (hp < 0.5) {
+    ctx.save();
+    ctx.rotate(p.hull);
+    hullDamage(ctx, hp, p.t, T3_HULL[kind][0], T3_HULL[kind][1], 'live');
+    ctx.restore();
+  }
+  const tf = Math.round(frac(p.turret / TAU) * VANGLES) % VANGLES;
+  const rq = Math.min(8, Math.floor(p.sinceShot / 0.05));
+  sprite(ctx, `${kind}${owner}t${tf}/${rq}/${firing ? 1 : 0}`, T3_HALF[kind], g =>
+    fn(g, team, { hull: 0, turret: (tf / VANGLES) * TAU, t: tq, moving: p.moving, cargo: 0, sinceShot: rq === 8 ? 9 : rq * 0.05, hp: hpq, firing }, 'turret'),
+  );
+  // The Railgun Tank's coils glow live as it charges; the Stealth Tank's skin ripples.
+  if (kind === 'railtank') railCharge(ctx, p.turret, p.sinceShot, p.t);
+  else stealthRipple(ctx, p.hull, p.t);
+}
+
+function railCharge(ctx: Ctx, ang: number, since: number, t: number) {
+  const charge = Math.min(1, since / 4.5);
+  ctx.save();
+  ctx.rotate(ang);
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = 0; i < 3; i++) {
+    const a = 0.25 + 0.55 * charge * (0.6 + 0.4 * Math.sin(t * 9 + i * 1.7));
+    alpha(ctx, a);
+    ctx.fillStyle = '#7fd8ff';
+    ctx.fillRect(9 + i * 4.2, -3.4, 1.6, 6.8);
+  }
+  if (since < 0.25) {
+    alpha(ctx, 1 - since / 0.25);
+    ctx.fillStyle = '#e6f8ff';
+    circle(ctx, 25, 0, 4.5);
+    ctx.fill();
+  }
+  ctx.restore();
+  alpha(ctx, 1);
+}
+
+function stealthRipple(ctx: Ctx, ang: number, t: number) {
+  ctx.save();
+  ctx.rotate(ang);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 13, 8.5, 0, 0, TAU);
+  ctx.clip();
+  ctx.globalCompositeOperation = 'lighter';
+  const bx = -16 + frac(t * 0.45) * 32;
+  const g = ctx.createLinearGradient(bx - 3, -4, bx + 3, 4);
+  g.addColorStop(0, 'rgba(150,210,255,0)');
+  g.addColorStop(0.5, 'rgba(180,230,255,0.32)');
+  g.addColorStop(1, 'rgba(150,210,255,0)');
+  alpha(ctx, 1);
+  ctx.fillStyle = g;
+  ctx.fillRect(-14, -9, 28, 18);
+  ctx.restore();
+}
+
+function drawRailTank(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 29, 22, 4);
+    ctx.save();
+    ctx.rotate(p.hull);
+    treads(ctx, 28, 8.4, 5.8, p.t, p.moving);
+    // A long, flat hull with a raised capacitor bank behind the turret ring.
+    ctx.fillStyle = litGrad(ctx, p.hull, 13, team.main, team.dark);
+    rrect(ctx, -13, -7.4, 26, 14.8, 2.5);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.16)';
+    ctx.beginPath();
+    ctx.moveTo(8, -6.6);
+    ctx.lineTo(12.6, -4.6);
+    ctx.lineTo(12.6, 4.6);
+    ctx.lineTo(8, 6.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#2b3236';
+    ctx.fillRect(-12, -5.2, 7, 10.4);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i % 2 ? '#3b6f86' : '#2e5668';
+      ctx.fillRect(-11.4 + i * 1.6, -4.6, 1.1, 9.2);
+    }
+    ctx.strokeStyle = 'rgba(0,0,0,0.28)';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-4.5, -7.2);
+    ctx.lineTo(-4.5, 7.2);
+    ctx.stroke();
+    ctx.fillStyle = p.moving ? '#fff3c4' : '#c9c2a2';
+    ctx.fillRect(12, -6, 1.2, 1.6);
+    ctx.fillRect(12, 4.4, 1.2, 1.6);
+    hullDamage(ctx, hp, p.t, 26, 15, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    const recoil = Math.max(0, 3 - p.sinceShot * 10);
+    // Twin rails with coils between them, longer than any gun on the field.
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.fillRect(5 - recoil, -1, 22, 5);
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = '#2a2f33';
+      ctx.fillRect(5 - recoil, side * 2.6 - 1, 21, 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.2)';
+      ctx.fillRect(5 - recoil, side * 2.6 - 1, 21, 0.6);
+    }
+    ctx.fillStyle = '#1b2023';
+    for (let i = 0; i < 4; i++) ctx.fillRect(8 - recoil + i * 4.2, -3.8, 1.8, 7.6);
+    // A wedge turret.
+    ctx.fillStyle = litGrad(ctx, p.turret, 8, team.light, team.main);
+    ctx.beginPath();
+    ctx.moveTo(-7, -5.6);
+    ctx.lineTo(4, -6);
+    ctx.lineTo(7.5, -2.4);
+    ctx.lineTo(7.5, 2.4);
+    ctx.lineTo(4, 6);
+    ctx.lineTo(-7, 5.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    ctx.fillStyle = team.dark;
+    ctx.fillRect(-8.6, -4, 2, 8);
+    ctx.fillStyle = '#1f2a33';
+    circle(ctx, -2.4, -2, 1.9);
+    ctx.fill();
+    ctx.fillStyle = '#9fd6ff';
+    ctx.fillRect(3, -4.6, 1.6, 1.4);
+    emblem(ctx, team, -2.2, 2.8, 1.6);
+    ctx.restore();
+  }
+}
+
+function drawStealthTank(ctx: Ctx, team: Team, p: UnitPose, layer: Layer = 'all') {
+  const hp = clamp01(p.hp, 1);
+  if (layer !== 'turret') {
+    bodyShadow(ctx, p.hull, 24, 19, 4);
+    ctx.save();
+    ctx.rotate(p.hull);
+    treads(ctx, 23, 7.2, 4.8, p.t, p.moving);
+    // A low faceted hull in dark panels, the side's colour only as a thin stripe.
+    ctx.fillStyle = litGrad(ctx, p.hull, 11, '#454c52', '#1f2427');
+    ctx.beginPath();
+    ctx.moveTo(-11.5, -6.6);
+    ctx.lineTo(7, -6.6);
+    ctx.lineTo(12, -2);
+    ctx.lineTo(12, 2);
+    ctx.lineTo(7, 6.6);
+    ctx.lineTo(-11.5, 6.6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(-11, 0);
+    ctx.lineTo(7, -6.2);
+    ctx.moveTo(-11, 0);
+    ctx.lineTo(7, 6.2);
+    ctx.stroke();
+    ctx.fillStyle = team.main;
+    ctx.fillRect(-10, -6.6, 15, 1.1);
+    ctx.fillRect(-10, 5.5, 15, 1.1);
+    hullDamage(ctx, hp, p.t, 23, 13, layer === 'all' ? 'both' : 'static');
+    ctx.restore();
+  }
+  if (layer !== 'hull') {
+    ctx.save();
+    ctx.rotate(p.turret);
+    const recoil = Math.max(0, 1.6 - p.sinceShot * 8);
+    // Two rocket pods either side of a flat sensor head.
+    for (const side of [-1, 1]) {
+      ctx.fillStyle = '#2a2f33';
+      rrect(ctx, -3 - recoil, side * 4.2 - 2, 10, 4, 1);
+      ctx.fill();
+      ctx.fillStyle = '#121517';
+      for (let i = 0; i < 2; i++) {
+        circle(ctx, 6.2 - recoil, side * 4.2 - 0.9 + i * 1.8, 0.7);
+        ctx.fill();
+      }
+    }
+    ctx.fillStyle = litGrad(ctx, p.turret, 6, '#59616a', '#2a3035');
+    ctx.beginPath();
+    ctx.moveTo(-5, -3.2);
+    ctx.lineTo(3.6, -2.6);
+    ctx.lineTo(5.4, 0);
+    ctx.lineTo(3.6, 2.6);
+    ctx.lineTo(-5, 3.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.fillStyle = '#7fd8ff';
+    ctx.fillRect(2.6, -0.7, 1.6, 1.4);
+    emblem(ctx, team, -2.2, 0, 1.3);
+    ctx.restore();
+  }
+}
+
+function drawProtoWorks(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  // The assembly hall: a long block with a team-coloured roof and a great door on its front.
+  block(ctx, 8, 16, w - 16, h - 40, shade(ctx, 8, 16, w - 16, h - 40, team.light, team.dark), '#3b4144', 6);
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  for (let x = 16; x < w - 10; x += 8) {
+    ctx.moveTo(x, 17);
+    ctx.lineTo(x, h - 25);
+  }
+  ctx.stroke();
+  emblem(ctx, team, 18, 26, 3);
+  ctx.fillStyle = '#2a2e30';
+  ctx.fillRect(w / 2 - 14, h - 22, 28, 12);
+  hazardStripe(ctx, w / 2 - 14, h - 12, 28, 2.5);
+  // A reactor ring on the roof that glows while powered.
+  const rx = w - 26;
+  const ry = 34;
+  ctx.fillStyle = '#1e2326';
+  circle(ctx, rx, ry, 10);
+  ctx.fill();
+  ctx.strokeStyle = on ? `rgba(127,216,255,${0.6 + 0.3 * Math.sin(p.t * 3)})` : '#3a4246';
+  ctx.lineWidth = 3;
+  circle(ctx, rx, ry, 7);
+  ctx.stroke();
+  if (on) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    alpha(ctx, 0.35 + 0.15 * Math.sin(p.t * 3));
+    ctx.fillStyle = '#7fd8ff';
+    circle(ctx, rx, ry, 11);
+    ctx.fill();
+    ctx.restore();
+    alpha(ctx, 1);
+  }
+  // A gantry crane along the top edge, its trolley running back and forth.
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(6, 8);
+  ctx.lineTo(w - 6, 8);
+  ctx.stroke();
+  const tx = 12 + (0.5 + 0.5 * Math.sin(p.t * 0.6)) * (w - 30);
+  ctx.fillStyle = ART.hazard;
+  ctx.fillRect(tx, 5, 8, 6);
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(tx + 4, 11);
+  ctx.lineTo(tx + 4, 16);
+  ctx.stroke();
+  lamp(ctx, 12, h - 14, on, '#7fd8ff', p.t, 3, true);
+  lamp(ctx, w - 12, h - 14, on, '#ffb43a', p.t, 2);
+}
+
+function drawFortress(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  const cx = w / 2;
+  const cy = h / 2;
+  // A heavy octagonal bunker with sloped walls.
+  const oct = (r: number, ox = 0, oy = 0) => {
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU + Math.PI / 8;
+      ctx.lineTo(cx + ox + Math.cos(a) * r, cy + oy + Math.sin(a) * r);
+    }
+    ctx.closePath();
+  };
+  ctx.fillStyle = 'rgba(0,0,0,0.32)';
+  oct(30, 3, 4);
+  ctx.fill();
+  ctx.fillStyle = shade(ctx, 0, 0, w, h, ART.concreteLight, ART.concreteDark);
+  oct(30);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.fillStyle = shade(ctx, 0, 0, w, h, '#7c817e', '#4b504d');
+  oct(22);
+  ctx.fill();
+  ctx.fillStyle = team.main;
+  for (let i = 0; i < 8; i += 2) {
+    const a = (i / 8) * TAU + Math.PI / 8;
+    ctx.fillRect(cx + Math.cos(a) * 26 - 2, cy + Math.sin(a) * 26 - 2, 4, 4);
+  }
+  // The gun: a broad turret with a long, thick barrel.
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(p.turret);
+  const recoil = Math.max(0, 4 - p.sinceShot * 14);
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  ctx.fillRect(6 - recoil, 0, 24, 7);
+  barrel(ctx, 6, 24, 6, recoil, p.sinceShot < 0.15);
+  ctx.fillStyle = litGrad(ctx, p.turret, 14, team.light, team.dark);
+  rrect(ctx, -13, -12, 23, 24, 5);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.fillRect(-13, -3, 23, 6);
+  ctx.fillStyle = '#1f2a33';
+  circle(ctx, -5, -6, 2.6);
+  ctx.fill();
+  ctx.fillStyle = '#9fd6ff';
+  ctx.fillRect(4, -9, 2, 1.8);
+  emblem(ctx, team, -4, 6, 2.4);
+  ctx.restore();
+  lamp(ctx, w - 9, h - 9, !p.lowPower, '#ff4a3a', p.t, 4, true);
+}
+
+/**
+ * A neutral site, 2 by 2 tiles, top-left at (x, y): its machinery, a flag in its holder's colours
+ * (grey while nobody holds it), and while a capture is under way a ring filling round it in the
+ * capturing side's colour.
+ */
+export function drawSite(ctx: Ctx, kind: SiteKind, owner: Owner | null, x: number, y: number, t: number, capture: { by: Owner; progress: number } | null): void {
+  const w = 2 * TILE;
+  const h = 2 * TILE;
+  const flag = owner === null ? { main: SITE_ART.neutral, dark: SITE_ART.neutralDark, light: SITE_ART.neutralLight } : TEAM[owner];
+  baseAlpha = ctx.globalAlpha;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = 'rgba(0,0,0,0.14)';
+  rrect(ctx, 4, 5, w + 2, h + 2, 6);
+  ctx.fill();
+  // A packed-earth pad ringed in the holder's colour.
+  ctx.fillStyle = shade(ctx, 0, 0, w, h, ART.dirtLight, ART.dirtDark);
+  rrect(ctx, 2, 2, w - 4, h - 4, 6);
+  ctx.fill();
+  ctx.strokeStyle = flag.main;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  if (kind === 'derrick') siteDerrick(ctx, w, h, t, owner !== null);
+  else if (kind === 'hospital') siteHospital(ctx, w, h, t, owner !== null);
+  else siteRelay(ctx, w, h, t, owner !== null);
+  // The flag on its pole, top left.
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(8, 30);
+  ctx.lineTo(8, 6);
+  ctx.stroke();
+  const wave = Math.sin(t * 4) * 1.2;
+  ctx.fillStyle = flag.main;
+  ctx.beginPath();
+  ctx.moveTo(8.6, 6);
+  ctx.lineTo(20, 8 + wave);
+  ctx.lineTo(8.6, 13);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = flag.dark;
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+  if (capture) {
+    const c = TEAM[capture.by];
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 5;
+    circle(ctx, w / 2, h / 2, w * 0.62);
+    ctx.stroke();
+    ctx.strokeStyle = c.light;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, w * 0.62, -Math.PI / 2, -Math.PI / 2 + TAU * clamp01(capture.progress, 0));
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalAlpha = baseAlpha;
+}
+
+function siteDerrick(ctx: Ctx, w: number, h: number, t: number, working: boolean) {
+  // A storage tank at the back right and a pump jack nodding in front.
+  ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  circle(ctx, w - 18, 20, 11);
+  ctx.fill();
+  ctx.fillStyle = shade(ctx, w - 30, 8, 22, 22, '#d8d2c4', SITE_ART.tank);
+  circle(ctx, w - 20, 18, 11);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  circle(ctx, w - 20, 18, 7);
+  ctx.stroke();
+  // An oil stain round the wellhead.
+  ctx.fillStyle = 'rgba(20,18,16,0.45)';
+  ctx.beginPath();
+  ctx.ellipse(w / 2 - 4, h - 16, 12, 6, 0, 0, TAU);
+  ctx.fill();
+  // The jack: a frame, a beam rocking on it, a horse head at the well end.
+  const nod = working ? Math.sin(t * 2.2) * 0.28 : 0.1;
+  ctx.fillStyle = '#3a3f42';
+  ctx.beginPath();
+  ctx.moveTo(w / 2 - 10, h - 12);
+  ctx.lineTo(w / 2 - 2, h - 34);
+  ctx.lineTo(w / 2 + 6, h - 12);
+  ctx.closePath();
+  ctx.fill();
+  ctx.save();
+  ctx.translate(w / 2 - 2, h - 34);
+  ctx.rotate(nod);
+  ctx.fillStyle = '#c99a2a';
+  ctx.fillRect(-18, -2.2, 30, 4.4);
+  ctx.fillStyle = '#2b2f31';
+  ctx.beginPath();
+  ctx.moveTo(-18, -5);
+  ctx.lineTo(-23, 0);
+  ctx.lineTo(-18, 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = '#2b2f31';
+  circle(ctx, 12, 0, 4);
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = SITE_ART.oil;
+  circle(ctx, w / 2 - 22, h - 16, 3);
+  ctx.fill();
+  // A pipe to the tank.
+  ctx.strokeStyle = '#5d6366';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(w / 2 - 22, h - 16);
+  ctx.lineTo(w / 2 - 22, h - 8);
+  ctx.lineTo(w - 20, h - 8);
+  ctx.lineTo(w - 20, 29);
+  ctx.stroke();
+}
+
+function siteHospital(ctx: Ctx, w: number, h: number, t: number, working: boolean) {
+  // A long field tent with a green cross on its roof, and supply crates beside it.
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  rrect(ctx, 15, 17, 42, 30, 4);
+  ctx.fill();
+  ctx.fillStyle = shade(ctx, 12, 14, 42, 30, SITE_ART.tent, SITE_ART.tentShade);
+  rrect(ctx, 12, 14, 42, 30, 4);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.moveTo(12, 29);
+  ctx.lineTo(54, 29);
+  ctx.stroke();
+  ctx.fillStyle = SITE_ART.cross;
+  ctx.fillRect(29, 20, 8, 18);
+  ctx.fillRect(24, 25, 18, 8);
+  ctx.fillStyle = '#8a6a3c';
+  ctx.fillRect(14, h - 16, 8, 7);
+  ctx.fillRect(24, h - 14, 6, 5);
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.strokeRect(14.5, h - 15.5, 7, 6);
+  lamp(ctx, w - 9, h - 10, working, '#7dff8a', t, 2);
+}
+
+function siteRelay(ctx: Ctx, w: number, h: number, t: number, working: boolean) {
+  // An equipment hut, a mast and a dish that sweeps the horizon while held.
+  block(ctx, 12, h - 26, 22, 14, '#8d9390', '#5a605d', 4);
+  ctx.fillStyle = '#2a2e2d';
+  ctx.fillRect(15, h - 22, 16, 5);
+  for (let i = 0; i < 4; i++) {
+    ctx.fillStyle = working && hash(i * 5 + Math.floor(t * 3 + i)) > 0.4 ? '#7dff8a' : '#3c423f';
+    ctx.fillRect(16.5 + i * 3.6, h - 21, 1.8, 1.6);
+  }
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  ctx.moveTo(w - 20, h - 12);
+  ctx.lineTo(w - 20, 18);
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(w - 20, 20);
+  ctx.rotate(working ? t * 0.9 : -0.6);
+  ctx.fillStyle = SITE_ART.dish;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 11, 4.5, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.fillStyle = '#5d6366';
+  ctx.fillRect(-1, -1, 7, 2);
+  ctx.restore();
+  lamp(ctx, w - 20, 10, working, '#ff4a3a', t, 3, true);
+}
+
+/**
+ * The renderer's one call before the structures: every site side 0 has seen (any tile of it
+ * explored), and the streak of each Railgun shot side 0 can see, which lands the instant it fires
+ * and so has no projectile of its own to draw.
+ */
+export function drawSiteLayer(ctx: Ctx, s: GameState, explored: string, vis: Uint8Array, rt: number, t: number): void {
+  for (const site of s.sites ?? []) {
+    let seen = false;
+    for (let y = site.y; y < site.y + 2 && !seen; y++) for (let x = site.x; x < site.x + 2; x++) if (explored.charCodeAt(y * s.mapW + x) === 49) seen = true;
+    if (!seen) continue;
+    drawSite(ctx, site.kind, site.owner, site.x * TILE, site.y * TILE, t + site.id * 0.71, site.capture);
+  }
+  for (const e of s.effects) {
+    if (e.kind !== 'muzzle' || e.weapon !== 'rail') continue;
+    const age = rt - e.at;
+    if (age < 0 || age > 4) continue;
+    const k1 = Math.floor(e.y) * s.mapW + Math.floor(e.x);
+    const k2 = Math.floor(e.y2 ?? e.y) * s.mapW + Math.floor(e.x2 ?? e.x);
+    if (!vis[k1] && !vis[k2]) continue;
+    const a = 1 - age / 4;
+    const x1 = e.x * TILE;
+    const y1 = e.y * TILE;
+    const x2 = (e.x2 ?? e.x) * TILE;
+    const y2 = (e.y2 ?? e.y) * TILE;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = `${SITE_ART.rail}${0.35 * a})`;
+    ctx.lineWidth = 7 * a + 1;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.strokeStyle = `rgba(235,250,255,${a})`;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    ctx.restore();
+  }
+}
 // round5:D end.

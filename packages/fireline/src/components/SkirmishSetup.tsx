@@ -39,6 +39,17 @@ import { paintMiniTerrain } from '../game/terrain';
 import { teamsFor } from '../sim/sides';
 import { TEAM, UI } from '../theme';
 import { Label } from './ui';
+// round5:D. Neutral sites (fireline-round5-design.md, workstream D).
+import { SITE_KINDS, SITES, SITES_PER_SIDE } from '../sim/rules';
+
+/** What the Neutral sites field says each side gets at this map size. */
+function sitesNote(setup: SkirmishSetup): string {
+  if (!setup.sites) return 'No sites: ore is the only income.';
+  const per = SITES_PER_SIDE[setup.size ?? 'standard'];
+  const parts = SITE_KINDS.filter(k => per[k] > 0).map(k => `${per[k] === 1 ? 'an' : per[k]} ${SITES[k].name}${per[k] === 1 ? '' : 's'}`.replace(/^an (?=[^AEIOU])/, 'a '));
+  const each = parts.length < 2 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+  return `${each.charAt(0).toUpperCase()}${each.slice(1)} in every side's share of the map, neutral at the start. Infantry beside one for ten seconds take it.`;
+}
 
 /**
  * The skirmish's setup: map type (with a preview of each, drawn from the real generator and the
@@ -240,6 +251,17 @@ export default function SkirmishSetupPanel({
         {/* round5:B. Larger maps (fireline-round5-design.md): the Map size field goes on the line below. */}
         <MapSizeField value={value} onPick={size => set({ size })} />
         {/* round5:D. Neutral sites (fireline-round5-design.md): the Neutral sites field goes on the line below. */}
+        <div className="fl-setup-field">
+          <Label>Neutral sites</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Neutral sites">
+            {[false, true].map(on => (
+              <button key={on ? 'on' : 'off'} type="button" role="radio" aria-checked={!!value.sites === on} data-testid={`sites-${on ? 'on' : 'off'}`} onClick={() => set({ sites: on })}>
+                {on ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{sitesNote(value)}</p>
+        </div>
       </div>
     </>
   );

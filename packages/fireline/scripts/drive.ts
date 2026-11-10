@@ -62,6 +62,7 @@ import { sections as mapsSections } from './drive-maps';
 // round5:C. Engineering vehicles: its import (scripts/drive-engineering.ts) goes on the line below.
 import { sections as engineeringSections } from './drive-engineering';
 // round5:D. Neutral sites and tier three: its import (scripts/drive-sites.ts) goes on the line below.
+import { sections as sitesSections } from './drive-sites';
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -2704,6 +2705,7 @@ if (!CAMPAIGN_ONLY) {
     ...engineeringSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round5:D. Neutral sites and tier three (fireline-round5-design.md): its sections, imported from
     // scripts/drive-sites.ts, go on the line below this comment.
+    ...sitesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

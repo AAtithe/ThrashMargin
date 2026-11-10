@@ -5,6 +5,9 @@ import { TEAM } from '../theme';
 import { TILE } from './art';
 import type { Camera } from './renderer';
 import { paintMiniTerrain } from './terrain';
+// round5:D. Neutral sites (fireline-round5-design.md, workstream D).
+import { SITES } from '../sim/rules';
+import { SITE_ART } from './art';
 
 const SCALE = 3;
 
@@ -121,6 +124,17 @@ export default function Minimap({
       ctx.strokeRect(b.x * SCALE + 0.5, b.y * SCALE + 0.5, spec.w * SCALE - 1, spec.h * SCALE - 1);
     }
     // round5:D begin. Neutral sites: a square per seen site, its holder's colour or neutral grey.
+    for (const st of state.sites ?? []) {
+      if (state.explored.charCodeAt(st.y * MAP_W + st.x) !== 49 && state.explored.charCodeAt((st.y + 1) * MAP_W + st.x + 1) !== 49) continue;
+      const spec = SITES[st.kind];
+      ctx.fillStyle = st.owner === null ? SITE_ART.neutral : TEAM[st.owner].main;
+      ctx.beginPath();
+      ctx.arc((st.x + spec.w / 2) * SCALE, (st.y + spec.h / 2) * SCALE, Math.max(2.5, spec.w * SCALE * 0.75), 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = SITE_ART.neutralLight;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
     // round5:D end.
     for (const u of state.units) {
       const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);

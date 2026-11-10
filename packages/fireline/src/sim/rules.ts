@@ -114,6 +114,8 @@ export type UnitKind =
   | 'basetruck'
   // round5:C end.
   // round5:D begin. Tier three (fireline-round5-design.md, workstream D): its unit kinds.
+  | 'railtank'
+  | 'stealthtank'
   // round5:D end.
   | HeroKind;
 export type BuildingKind =
@@ -136,6 +138,8 @@ export type BuildingKind =
   | 'fieldyard'
   // round5:C end.
   // round5:D begin. Tier three (fireline-round5-design.md, workstream D): its structure kinds.
+  | 'protoworks'
+  | 'fortress'
   // round5:D end.
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air';
@@ -479,6 +483,34 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
   },
   // round5:C end.
   // round5:D begin. Tier three: its units, appended here.
+  // ---- Tier three (round 5, workstream D): advanced tech only, from the Prototype Works ----------
+  railtank: {
+    name: 'Railgun Tank',
+    category: 'vehicle',
+    cost: 1800,
+    buildTicks: 200,
+    hp: 650,
+    armor: 'heavy',
+    speed: 0.085,
+    sight: 6,
+    weapon: { kind: 'rail', damage: 150, range: 6.5, cooldown: 45 },
+    requires: ['factory', 'protoworks'],
+    blurb: 'A magnetic slug that lands the instant it fires. Breaks heavy armour; poor against infantry.',
+  },
+  stealthtank: {
+    name: 'Stealth Tank',
+    category: 'vehicle',
+    cost: 1400,
+    buildTicks: 160,
+    hp: 380,
+    armor: 'light',
+    speed: 0.11,
+    sight: 6,
+    weapon: { kind: 'rocket', damage: 45, range: 5, cooldown: 30 },
+    requires: ['factory', 'protoworks'],
+    blurb: 'Unseen and untargetable unless the enemy is within two and a half tiles, or for three seconds after it fires.',
+    stealth: true,
+  },
   // round5:D end.
 };
 
@@ -685,6 +717,31 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
   },
   // round5:C end.
   // round5:D begin. Tier three: its structures, appended here (neutral sites are not structures).
+  protoworks: {
+    name: 'Prototype Works',
+    w: 3,
+    h: 3,
+    cost: 2500,
+    buildTicks: 240,
+    hp: 1200,
+    power: -100,
+    sight: 4,
+    requires: ['researchlab', 'techcentre'],
+    blurb: 'Tier three. Unlocks the Railgun Tank, the Stealth Tank and the Fortress. Draws heavy power.',
+  },
+  fortress: {
+    name: 'Fortress',
+    w: 2,
+    h: 2,
+    cost: 2400,
+    buildTicks: 220,
+    hp: 2200,
+    power: -70,
+    sight: 8,
+    weapon: { kind: 'shell', damage: 75, range: 7, cooldown: 24, splash: 0.8 },
+    requires: ['protoworks'],
+    blurb: 'A heavy gun emplacement: long range, splash and a great deal of armour. Slows when power is short.',
+  },
   // round5:D end.
 };
 
@@ -705,6 +762,8 @@ export const BUILD_MENU: BuildingKind[] = [
   'helipad',
   'researchlab',
   // round5:D begin. Tier three: its structures, appended here (data only; the build window reads them).
+  'protoworks',
+  'fortress',
   // round5:D end.
 ];
 export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic', 'skyhunter'];
@@ -722,6 +781,8 @@ export const VEHICLE_MENU: UnitKind[] = [
   'basetruck',
   // round5:C end.
   // round5:D begin. Tier three: its units, appended here.
+  'railtank',
+  'stealthtank',
   // round5:D end.
 ];
 /** Aircraft in the order the Air tab offers them. */
@@ -1291,4 +1352,46 @@ export const MAX_FIELD_YARDS = 3;
 /** A neutral site's kind (Site in types.ts): Oil Derrick, Field Hospital, Comms Relay. D adds SITES, their numbers. */
 export type SiteKind = 'derrick' | 'hospital' | 'relay';
 export const SITE_KINDS: SiteKind[] = ['derrick', 'hospital', 'relay'];
+
+/** A neutral site's look and footprint. Every site is 2 by 2 and blocks the ground under it. */
+export interface SiteSpec {
+  name: string;
+  w: number;
+  h: number;
+  blurb: string;
+}
+export const SITES: Record<SiteKind, SiteSpec> = {
+  derrick: { name: 'Oil Derrick', w: 2, h: 2, blurb: 'Pays its holder 25 credits every five seconds: 300 a minute.' },
+  hospital: { name: 'Field Hospital', w: 2, h: 2, blurb: "Heals its holder's infantry within three tiles." },
+  relay: { name: 'Comms Relay', w: 2, h: 2, blurb: 'Shows its holder and allies everything within ten tiles.' },
+};
+/** Ticks of one team's infantry beside a site, alone, to take it: 10 seconds. */
+export const SITE_CAPTURE_TICKS = 100;
+/** How close infantry must stand to capture: tiles from the footprint's edge. */
+export const SITE_CAPTURE_RANGE = 1.5;
+/** An Oil Derrick pays its holder this much every DERRICK_TICKS: 300 a minute (a Hauler's load is 600). */
+export const DERRICK_INCOME = 25;
+export const DERRICK_TICKS = 50;
+/** A Field Hospital heals each of its holder's infantry within this many tiles of its footprint. */
+export const HOSPITAL_RANGE = 3;
+export const HOSPITAL_HEAL = 5;
+export const HOSPITAL_TICKS = 10;
+/** Tiles a Comms Relay reveals round its centre, to its holder and the holder's allies. */
+export const RELAY_RADIUS = 10;
+/** Sites of each kind in every side's share of the map, by map size. */
+export const SITES_PER_SIDE: Record<MapSize, Record<SiteKind, number>> = {
+  standard: { derrick: 1, hospital: 0, relay: 0 },
+  large: { derrick: 2, hospital: 1, relay: 1 },
+  huge: { derrick: 3, hospital: 1, relay: 2 },
+};
+/** Placement: a site's centre is at least this far from every start's yard centre, and from every other site's. */
+export const SITE_YARD_GAP = 10;
+export const SITE_GAP = 6;
+
+/** An enemy unit or structure within this many tiles sees a Stealth Tank (and can then target it). */
+export const STEALTH_DETECT_RANGE = 2.5;
+/** A Stealth Tank is seen by everyone for this many ticks after it fires. */
+export const STEALTH_REVEAL_TICKS = 30;
+/** The computer turns to tier three no sooner than this: 25 minutes. */
+export const TIER3_AI_TICKS = 15000;
 // round5:D end.
