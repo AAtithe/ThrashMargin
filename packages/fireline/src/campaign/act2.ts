@@ -87,6 +87,7 @@ export const ACT_TWO: MissionSpec[] = [
       ai: 'raid',
     },
     tech: AFTER_9,
+    research: 'classic',
     powers: [],
     objectives: [{ kind: 'destroyAll' }],
     bonus: [
@@ -132,6 +133,7 @@ export const ACT_TWO: MissionSpec[] = [
       ai: 'defend',
     },
     tech: [],
+    research: 'classic',
     powers: [],
     objectives: [{ kind: 'escort', x: 22.5, y: 4.5, r: 3, count: 3 }],
     bonus: [
@@ -201,6 +203,7 @@ export const ACT_TWO: MissionSpec[] = [
       ai: 'raid',
     },
     tech: [...AFTER_11, 'skyhunter'],
+    research: 'classic',
     powers: [],
     objectives: [{ kind: 'holdZone', x: 31.5, y: 32.5, r: 3, ticks: 4 * MIN, reset: true }],
     bonus: [
@@ -261,6 +264,7 @@ export const ACT_TWO: MissionSpec[] = [
       ai: 'normal',
     },
     tech: [...AFTER_12, 'flakcannon'],
+    research: 'classic',
     powers: ['recon'],
     structurePowers: true,
     objectives: [
@@ -327,6 +331,7 @@ export const ACT_TWO: MissionSpec[] = [
       ai: 'defend',
     },
     tech: AFTER_13,
+    research: 'classic',
     powers: ['recon'],
     structurePowers: true,
     objectives: [
@@ -403,6 +408,7 @@ export const ACT_TWO: MissionSpec[] = [
       ai: 'normal',
     },
     tech: [...AFTER_13, ...AIR],
+    research: 'classic',
     powers: ['recon', 'barrage', 'reinforce'],
     structurePowers: true,
     objectives: [{ kind: 'destroyAll' }],

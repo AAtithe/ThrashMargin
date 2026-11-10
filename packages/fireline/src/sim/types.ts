@@ -1,4 +1,4 @@
-import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
+import type { BuildingKind, Category, Difficulty, HeroKind, LineId, MapType, ModuleId, Owner, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
@@ -81,6 +81,8 @@ export interface Unit {
   pad?: number;
   /** Bombers only: present while a bomb run is under way (it always finishes the run). */
   bombRun?: true;
+  /** Vehicles only, lines battles only: the modules it was built with. Absent: none. Never changes. */
+  modules?: ModuleId[];
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -127,6 +129,10 @@ export interface QueueItem {
   kind: BuildingKind | UnitKind;
   /** Ticks of work done. Halves its rate while power is short. */
   progress: number;
+  /** Vehicle queue, lines battles only: the loadout copied when it was queued. Absent: none. */
+  modules?: ModuleId[];
+  /** Credits paid for those modules on top of the unit's price; refunded with it. Absent: 0. */
+  extra?: number;
 }
 
 export interface PlayerState {
@@ -140,6 +146,10 @@ export interface PlayerState {
   upgrades?: UpgradeId[];
   /** The upgrade being researched, already paid for; ticks of work done. Absent or null: none. */
   research?: { id: UpgradeId; progress: number } | null;
+  /** Lines battles: the branch each line is committed to. Absent: none chosen. Permanent. */
+  doctrines?: Partial<Record<LineId, UpgradeId>>;
+  /** Lines battles: the loadout per vehicle kind. Absent or missing kind: no modules. */
+  loadouts?: Partial<Record<UnitKind, ModuleId[]>>;
 }
 
 export interface Projectile {
@@ -392,6 +402,8 @@ export interface MissionSpec {
   };
   /** What side 0 may build or train. */
   tech: (BuildingKind | UnitKind)[];
+  /** Research mode for this mission. Always 'classic': missions never use development lines. */
+  research: 'classic';
   powers: SupportPower[];
   objectives: ObjectiveSpec[];
   /** Optional objectives: each one done earns a star (the mission itself earns the first). */
@@ -485,4 +497,6 @@ export type GameAction =
   | { type: 'ability'; id: number; target?: number }
   | { type: 'power'; power: SupportPower; x: number; y: number }
   | { type: 'research'; upgrade: UpgradeId }
-  | { type: 'cancelResearch' };
+  | { type: 'cancelResearch' }
+  | { type: 'doctrine'; line: LineId; branch: UpgradeId }
+  | { type: 'loadout'; kind: UnitKind; modules: ModuleId[] };

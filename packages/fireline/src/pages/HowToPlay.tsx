@@ -211,6 +211,12 @@ export default function HowToPlay() {
             anti-air (Skyhunters, Flak Tracks, Flak Cannons) and machine guns can reach them. Once a Research Lab stands, the foot
             of the Structures list offers five upgrades, one at a time, that last the rest of the battle.
           </p>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
+            With development lines (the default for a new advanced skirmish), research is five lines: Logistics, Armour, Engines,
+            Weapons and Air. Each has three marks, researched in order. At the top of each line you adopt one of two doctrines and
+            the other closes for the rest of the battle. Research also unlocks modules: on the Vehicles tab, set a loadout for each
+            vehicle type, and every one built afterwards carries it, for a little more money.
+          </p>
           <Grid kinds={AIR_MENU} />
         </Panel>
         <Panel title="Controls">

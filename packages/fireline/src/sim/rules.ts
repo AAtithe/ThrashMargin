@@ -936,18 +936,20 @@ export interface SkirmishSetup {
   sides: 2 | 3 | 4;
   /** 'ffa': every side for itself. 'teams': two teams (see teamsFor in sides.ts). Always 'ffa' with 2 sides. */
   mode: SideMode;
+  /** 'classic': the five flat upgrades. 'lines': development lines, doctrines and loadouts. Advanced tech only. */
+  research: ResearchMode;
 }
 
 /** How the sides of a battle of three or four are grouped. */
 export type SideMode = 'ffa' | 'teams';
 
 /** What the lobby offers a new skirmish by default. */
-export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa' };
+export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', research: 'lines' };
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
  * one. The original game exactly: the original map generator, standard tech, no skirmish powers.
  */
-export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa' };
+export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', research: 'classic' };
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
 /** What each map type looks like with three or four sides, where the two-sided blurb does not fit. */
@@ -1027,7 +1029,17 @@ export const BOMB_GAP = 4;
 /** Aircraft keep at least this far from the map's edge. */
 export const AIR_EDGE = 0.5;
 
-export type UpgradeId = 'plating' | 'calibration' | 'engines' | 'refining' | 'airframes';
+export type UpgradeId =
+  // Classic, and Mk I of each line (unchanged):
+  | 'plating' | 'calibration' | 'engines' | 'refining' | 'airframes'
+  // Mk II:
+  | 'plating2' | 'engines2' | 'refining2' | 'autoloaders' | 'avionics'
+  // Mk III fork branches:
+  | 'reactive' | 'composite' // armour
+  | 'fieldrepair' | 'motorised' // engines
+  | 'assembly' | 'salvage' // logistics
+  | 'heat' | 'highexplosive' // weapons
+  | 'hardened' | 'munitions'; // air
 
 export interface UpgradeSpec {
   name: string;
@@ -1074,10 +1086,28 @@ export const UPGRADES: Record<UpgradeId, UpgradeSpec> = {
     ticks: 600,
     requires: ['researchlab', 'helipad'],
   },
+  // Development lines only (round 5): Mk II and the Mk III doctrine branches.
+  refining2: { name: 'Ore processing', blurb: 'Every load of ore pays 25% more, instead of 15%.', cost: 2400, ticks: 800, requires: ['researchlab', 'techcentre'] },
+  assembly: { name: 'Assembly lines', blurb: 'Infantry, vehicles and aircraft are built 15% faster.', cost: 2500, ticks: 900, requires: ['researchlab', 'techcentre'] },
+  salvage: { name: 'Salvage crews', blurb: 'Every enemy vehicle or aircraft you destroy pays a tenth of its cost.', cost: 2500, ticks: 900, requires: ['researchlab', 'techcentre'] },
+  plating2: { name: 'Heavy plating', blurb: 'Vehicles have over a third more health than standard, instead of a fifth.', cost: 2000, ticks: 750, requires: ['researchlab', 'techcentre'] },
+  reactive: { name: 'Reactive armour', blurb: 'Vehicles take a fifth less damage from rockets, bombs and missiles.', cost: 2500, ticks: 900, requires: ['researchlab', 'techcentre'] },
+  composite: { name: 'Composite armour', blurb: 'Vehicles take a fifth less damage from tank shells and artillery.', cost: 2500, ticks: 900, requires: ['researchlab', 'techcentre'] },
+  engines2: { name: 'Turbochargers', blurb: 'Vehicles move 25% faster, instead of 15%.', cost: 1800, ticks: 700, requires: ['researchlab', 'techcentre'] },
+  fieldrepair: { name: 'Field workshops', blurb: 'Every vehicle patches itself up out of combat, as elite units do.', cost: 2200, ticks: 800, requires: ['researchlab', 'techcentre'] },
+  motorised: { name: 'Motorised infantry', blurb: 'Infantry move 15% faster.', cost: 2200, ticks: 800, requires: ['researchlab', 'techcentre'] },
+  autoloaders: { name: 'Autoloaders', blurb: 'Vehicle weapons reload 10% faster.', cost: 2400, ticks: 800, requires: ['researchlab', 'techcentre'] },
+  heat: { name: 'HEAT rounds', blurb: 'Your shells and rockets hit 10% harder, on top of calibration.', cost: 2800, ticks: 1000, requires: ['researchlab', 'techcentre'] },
+  highexplosive: { name: 'High-explosive fill', blurb: 'Every weapon with a blast hits a quarter wider.', cost: 2800, ticks: 1000, requires: ['researchlab', 'techcentre'] },
+  avionics: { name: 'Avionics', blurb: 'Aircraft fly 15% faster.', cost: 2000, ticks: 750, requires: ['researchlab', 'helipad', 'techcentre'] },
+  hardened: { name: 'Armoured cockpits', blurb: 'Aircraft take a quarter less damage from flak, anti-air missiles and machine guns.', cost: 2500, ticks: 900, requires: ['researchlab', 'helipad', 'techcentre'] },
+  munitions: { name: 'Heavy munitions', blurb: 'Gunship rockets and bombs hit 15% harder.', cost: 2500, ticks: 900, requires: ['researchlab', 'helipad', 'techcentre'] },
 };
 
-/** Upgrades in the order the Research block lists them. */
+/** The five upgrades a 'classic' battle offers, in the order the Research block lists them (unchanged). */
 export const UPGRADE_ORDER: UpgradeId[] = ['refining', 'plating', 'engines', 'calibration', 'airframes'];
+/** True for an id a 'classic' battle offers. */
+export const isClassicUpgrade = (id: UpgradeId): boolean => UPGRADE_ORDER.includes(id);
 
 /** What each upgrade does to the number it changes. */
 export const PLATING_HP = 1.2;
@@ -1086,3 +1116,106 @@ export const ENGINES_SPEED = 1.15;
 export const REFINING_INCOME = 1.15;
 export const AIRFRAMES_HP = 1.25;
 export const AIRFRAMES_REARM = 0.6;
+
+// ---- Development lines and loadouts (round 5; fireline-round5-design.md) ----
+
+export type ResearchMode = 'classic' | 'lines';
+export const RESEARCH_MODES: ResearchMode[] = ['classic', 'lines'];
+
+export type LineId = 'logistics' | 'armour' | 'engines' | 'weapons' | 'air';
+/** Lines in the order the Research tree lists them (rows, top to bottom). */
+export const LINE_ORDER: LineId[] = ['logistics', 'armour', 'engines', 'weapons', 'air'];
+
+export interface LineSpec {
+  name: string;
+  /** Mk I, Mk II, then the two Mk III branches [left, right] as drawn. */
+  marks: [UpgradeId, UpgradeId];
+  fork: [UpgradeId, UpgradeId];
+}
+
+export const LINES: Record<LineId, LineSpec> = {
+  logistics: { name: 'Logistics', marks: ['refining', 'refining2'], fork: ['assembly', 'salvage'] },
+  armour: { name: 'Armour', marks: ['plating', 'plating2'], fork: ['reactive', 'composite'] },
+  engines: { name: 'Engines', marks: ['engines', 'engines2'], fork: ['fieldrepair', 'motorised'] },
+  weapons: { name: 'Weapons', marks: ['calibration', 'autoloaders'], fork: ['heat', 'highexplosive'] },
+  air: { name: 'Air', marks: ['airframes', 'avionics'], fork: ['hardened', 'munitions'] },
+};
+
+/** Which line an upgrade belongs to and its mark (1, 2 or 3). Derived from LINES once at load. */
+export const UPGRADE_LINE: Record<UpgradeId, { line: LineId; mark: 1 | 2 | 3 }> = (() => {
+  const out = {} as Record<UpgradeId, { line: LineId; mark: 1 | 2 | 3 }>;
+  for (const line of LINE_ORDER) {
+    const l = LINES[line];
+    out[l.marks[0]] = { line, mark: 1 };
+    out[l.marks[1]] = { line, mark: 2 };
+    out[l.fork[0]] = { line, mark: 3 };
+    out[l.fork[1]] = { line, mark: 3 };
+  }
+  return out;
+})();
+
+export const PLATING2_HP = 1.125; // a step on top of PLATING_HP (applied by raiseHealth, as plating is)
+export const ENGINES2_SPEED = 1.25; // the total, replacing ENGINES_SPEED
+export const REFINING2_INCOME = 1.25; // the total, replacing REFINING_INCOME
+export const REACTIVE_TAKEN = 0.8;
+export const REACTIVE_KINDS: WeaponKind[] = ['rocket', 'bomb', 'missile'];
+export const COMPOSITE_TAKEN = 0.8;
+export const COMPOSITE_KINDS: WeaponKind[] = ['shell', 'artillery'];
+export const MOTORISED_SPEED = 1.15;
+export const ASSEMBLY_RATE = 1.15;
+export const SALVAGE_SHARE = 0.1;
+export const AUTOLOADER_RELOAD = 0.9;
+export const HEAT_DAMAGE = 1.1;
+export const HEAT_KINDS: WeaponKind[] = ['shell', 'rocket'];
+export const HE_SPLASH = 1.25;
+export const AVIONICS_SPEED = 1.15;
+export const HARDENED_TAKEN = 0.75;
+export const HARDENED_KINDS: WeaponKind[] = ['flak', 'aamissile', 'bullet'];
+export const MUNITIONS_DAMAGE = 1.15;
+
+/** Vehicle modules. Vehicles only: infantry, aircraft and heroes never carry them. */
+export type ModuleId = 'longbarrel' | 'smoke' | 'fueltank' | 'tracks' | 'orecage';
+export const MODULE_ORDER: ModuleId[] = ['longbarrel', 'smoke', 'fueltank', 'tracks', 'orecage'];
+
+export interface ModuleSpec {
+  name: string;
+  blurb: string;
+  /** Added to the unit's price when it is queued with this module. */
+  cost: number;
+  /** The upgrade that unlocks it. */
+  unlock: UpgradeId;
+  /** Vehicle kinds it may be fitted to. */
+  fits: UnitKind[];
+}
+
+export const MODULES: Record<ModuleId, ModuleSpec> = {
+  longbarrel: { name: 'Long barrel', blurb: 'Reaches three quarters of a tile further.', cost: 150, unlock: 'calibration', fits: ['buggy', 'tank', 'missilecarrier', 'bastion', 'flaktrack'] },
+  smoke: { name: 'Smoke launchers', blurb: 'Takes a quarter less damage while on a move order.', cost: 100, unlock: 'plating', fits: [...VEHICLE_MENU] },
+  fueltank: { name: 'Extra fuel tank', blurb: 'Moves 10% faster.', cost: 75, unlock: 'engines', fits: [...VEHICLE_MENU] },
+  tracks: { name: 'Reinforced tracks', blurb: 'A tenth more health.', cost: 100, unlock: 'plating2', fits: [...VEHICLE_MENU] },
+  orecage: { name: 'Ore cage', blurb: 'Carries a quarter more ore each trip.', cost: 150, unlock: 'refining', fits: ['hauler'] },
+};
+
+export const LONG_BARREL_RANGE = 0.75;
+export const SMOKE_TAKEN = 0.75;
+export const FUEL_TANK_SPEED = 1.1;
+export const TRACKS_HP = 1.1;
+export const ORE_CAGE_CARGO = 1.25;
+
+/** Module slots per vehicle kind. A kind not listed takes no modules. */
+export const MODULE_SLOTS: Partial<Record<UnitKind, 1 | 2>> = {
+  hauler: 1, buggy: 1, tank: 2, artillery: 1, missilecarrier: 1, flametank: 2, bastion: 2, flaktrack: 1,
+};
+
+/**
+ * Each kind's weapon with a long barrel fitted: built once here, so the tick never allocates and a
+ * unit's weapon object is stable from tick to tick. Only kinds that `longbarrel` fits.
+ */
+export const LONG_BARREL_WEAPON: Partial<Record<UnitKind, Weapon>> = (() => {
+  const out: Partial<Record<UnitKind, Weapon>> = {};
+  for (const k of MODULES.longbarrel.fits) {
+    const w = UNITS[k].weapon;
+    if (w) out[k] = { ...w, range: w.range + LONG_BARREL_RANGE };
+  }
+  return out;
+})();

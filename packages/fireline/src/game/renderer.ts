@@ -1,4 +1,5 @@
 import { dockTile } from '../sim/grid';
+import { cargoMaxOf } from '../sim/loadout';
 import { isDetected } from '../sim/mission';
 import {
   BUILDINGS,
@@ -415,7 +416,7 @@ export class Renderer {
         turret: Math.atan2(p.ty + (u.ty - p.ty) * alpha, p.tx + (u.tx - p.tx) * alpha),
         t: t + u.id * 0.37,
         moving,
-        cargo: u.cargo / 600,
+        cargo: u.cargo / cargoMaxOf(u),
         sinceShot,
         hp: u.hp / maxHpOf(u),
         firing: sinceShot < FIRING_WINDOW,
@@ -461,7 +462,7 @@ export class Renderer {
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.fillRect(x - r, y - r - 3, r * 2, 2.5);
         ctx.fillStyle = ART.ore;
-        ctx.fillRect(x - r, y - r - 3, r * 2 * (u.cargo / 600), 2.5);
+        ctx.fillRect(x - r, y - r - 3, r * 2 * Math.min(1, u.cargo / cargoMaxOf(u)), 2.5);
       }
       const vet = (u as unknown as { vet?: number }).vet ?? 0;
       if (vet > 0) chevrons(ctx, x + r + 2, y - r - 2, Math.min(2, vet));

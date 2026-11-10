@@ -10,6 +10,9 @@
  *   tsx scripts/ai-ladder.ts --map mix                 every map type in turn (seed 1 classic, 2 river, ...)
  *   tsx scripts/ai-ladder.ts --map river,canyon --tech standard --credits 5000 --ore rich
  *   tsx scripts/ai-ladder.ts --map legacy              no setup at all: the original game (the default)
+ *   tsx scripts/ai-ladder.ts --map random --research classic   the five flat upgrades (default: lines)
+ *     (--research needs a --map other than legacy: a legacy battle has no setup, so it is always classic
+ *     and never plays development lines. Use --map random or --map mix to ladder lines.)
  *
  * A match is `side0,side1`, each side `commander:difficulty`, where the commander is `new` (the
  * AI in src/sim/ai.ts), `prev` (the frozen commander from before it learned the advanced tech, in
@@ -77,14 +80,17 @@ const MAP = arg('--map', 'legacy');
 const TECH = arg('--tech', 'advanced');
 const CREDITS = Number(arg('--credits', '3000'));
 const ORE = arg('--ore', 'normal');
+/** Research mode for a skirmish setup (fireline-round5-design.md): 'lines' (the default setup's) or 'classic'. */
+const RESEARCH = arg('--research', 'lines');
 const LEGACY = MAP === 'legacy';
 /** The map each seed plays on: 'random' (drawn from the seed), or a list cycled through by seed. */
 const MAP_LIST: (MapType | 'random')[] = LEGACY ? [] : MAP === 'mix' ? [...MAP_TYPES] : (MAP.split(',') as (MapType | 'random')[]);
 for (const m of MAP_LIST) if (m !== 'random' && !MAP_TYPES.includes(m)) throw new Error(`bad map "${m}"`);
 if (TECH !== 'standard' && TECH !== 'advanced') throw new Error(`bad tech "${TECH}"`);
+if (RESEARCH !== 'classic' && RESEARCH !== 'lines') throw new Error(`bad research "${RESEARCH}"`);
 function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
   if (LEGACY) return undefined;
-  return { map: MAP_LIST[(seed - 1) % MAP_LIST.length], tech: TECH as SkirmishSetup['tech'], credits: CREDITS, ore: ORE as SkirmishSetup['ore'] };
+  return { map: MAP_LIST[(seed - 1) % MAP_LIST.length], tech: TECH as SkirmishSetup['tech'], credits: CREDITS, ore: ORE as SkirmishSetup['ore'], research: RESEARCH as SkirmishSetup['research'] };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
 
@@ -164,7 +170,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -178,7 +184,7 @@ if (workerAt >= 0) {
           ...process.execArgv,
           script,
           ...['--worker', `${k}/${JOBS}`, '--spec', spec, '--seeds', String(SEEDS), '--cap', String(CAP)],
-          ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE],
+          ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE, '--research', RESEARCH],
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );

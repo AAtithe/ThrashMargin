@@ -30,6 +30,7 @@ import {
   type Difficulty,
   type MapType,
   type Owner,
+  type ResearchMode,
   type SideMode,
   type SkirmishSetup,
   type SupportPower,
@@ -67,8 +68,14 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // 'teams' is 'ffa'; two sides are always 'ffa'.
   const sides = r.sides === 2 || r.sides === 3 || r.sides === 4 ? r.sides : base.sides === 3 || base.sides === 4 ? base.sides : 2;
   const mode: SideMode = sides > 2 && r.mode === 'teams' ? 'teams' : 'ffa';
-  return { map, tech, credits, ore, sides, mode };
+  // Research mode (round 5): standard tech is always 'classic'.
+  const research: ResearchMode = tech === 'standard' ? 'classic' : r.research === 'classic' || r.research === 'lines' ? r.research : base.research;
+  return { map, tech, credits, ore, sides, mode, research };
 }
+
+/** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
+export const researchModeOf = (s: GameState): ResearchMode =>
+  !s.mission && s.setup && s.setup.tech === 'advanced' && s.setup.research === 'lines' ? 'lines' : 'classic';
 
 /** How this battle was set up. Saves from before setups, and missions, read as LEGACY_SETUP. */
 export const setupOf = (s: GameState): SkirmishSetup => s.setup ?? LEGACY_SETUP;
@@ -293,6 +300,8 @@ export function cloneState(s: GameState): GameState {
       stats: { ...p.stats },
       ...(p.upgrades ? { upgrades: p.upgrades.slice() } : {}),
       ...(p.research ? { research: { ...p.research } } : {}),
+      ...(p.doctrines ? { doctrines: { ...p.doctrines } } : {}),
+      ...(p.loadouts ? { loadouts: { ...p.loadouts } } : {}),
     })),
     projectiles: s.projectiles.slice(),
     effects: s.effects.slice(),
@@ -499,6 +508,12 @@ export function migrateState(raw: unknown): GameState | null {
   const ai = s.ai.slice(0, n);
   for (let i = ai.length; i < n; i++) ai.push(newAiMemory(DIFFICULTIES[DEFAULT_DIFFICULTY].firstAttack));
   const out: GameState = { ...(s as GameState), units, mapW, mapH, teams: normaliseTeams(s.teams, n), ai };
+  // A skirmish setup: repaired or dropped, never trusted blind. A save without a setup plays as it
+  // always did (LEGACY_SETUP). Normalised before migrateAir, which reads the research mode from it.
+  if (s.setup !== undefined) {
+    if (s.setup && typeof s.setup === 'object') out.setup = normaliseSetup(s.setup, LEGACY_SETUP);
+    else delete out.setup;
+  }
   migrateAir(out);
   if (s.powers !== undefined) {
     if (Array.isArray(s.powers)) {
@@ -509,12 +524,7 @@ export function migrateState(raw: unknown): GameState | null {
     if (Array.isArray(s.blackoutUntil)) out.blackoutUntil = sidesOf(out).map(o => (Number.isFinite(s.blackoutUntil![o]) ? s.blackoutUntil![o] : 0));
     else delete out.blackoutUntil;
   }
-  // A skirmish setup, its map type and its start sites: repaired or dropped, never trusted blind.
-  // A save without a setup plays as it always did (LEGACY_SETUP).
-  if (s.setup !== undefined) {
-    if (s.setup && typeof s.setup === 'object') out.setup = normaliseSetup(s.setup, LEGACY_SETUP);
-    else delete out.setup;
-  }
+  // Its map type and its start sites: repaired or dropped, never trusted blind.
   if (s.mapType !== undefined && !MAP_TYPES.includes(s.mapType)) delete out.mapType;
   if (s.starts !== undefined) {
     const okSite = (p: unknown) =>

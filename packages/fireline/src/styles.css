@@ -569,6 +569,13 @@ kbd {
   background: var(--ui-tint-accent);
   box-shadow: inset 0 0 0 1px var(--ui-accent);
 }
+.fl-level:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.fl-level:disabled:hover {
+  border-color: var(--ui-rule);
+}
 
 /* ---- Skirmish setup ------------------------------------------------------------------------ */
 
@@ -1862,4 +1869,239 @@ kbd {
 .fl-objective-clock[data-low="1"] {
   color: var(--ui-bad);
   font-weight: 700;
+}
+
+/* ---- Round 5: development lines and loadouts ---- */
+:root {
+  --ui-line-node-bg: #eef3f2;
+  --ui-line-node-rule: #a9c9cc;
+  --ui-line-connector: #9aa59e;
+  --ui-line-closed: #9aa3a0;
+  --ui-line-closed-bg: rgba(20, 28, 24, 0.05);
+  --ui-doctrine: #a86a0c;
+  --ui-doctrine-tint: rgba(168, 106, 12, 0.1);
+  --ui-loadout-bg: rgba(31, 124, 135, 0.05);
+  --ui-loadout-chip: #e3ece9;
+  --ui-loadout-chip-on: #1f7c87;
+  --ui-loadout-chip-on-text: #ffffff;
+}
+:root[data-theme="dark"] {
+  --ui-line-node-bg: #1d2928;
+  --ui-line-node-rule: #2c4a4f;
+  --ui-line-connector: #3b4d4a;
+  --ui-line-closed: #5c6a67;
+  --ui-line-closed-bg: rgba(255, 255, 255, 0.03);
+  --ui-doctrine: #e0a645;
+  --ui-doctrine-tint: rgba(224, 166, 69, 0.12);
+  --ui-loadout-bg: rgba(79, 179, 191, 0.05);
+  --ui-loadout-chip: #22302f;
+  --ui-loadout-chip-on: #4fb3bf;
+  --ui-loadout-chip-on-text: #0f1716;
+}
+/* The Research tree: one row per line, Mk I and Mk II, then the doctrine fork. */
+.fl-research[data-mode="lines"] {
+  container-type: inline-size;
+}
+.fl-line-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 5px;
+  border-top: 1px solid var(--ui-research-rule);
+  min-width: 0;
+}
+.fl-line-label {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-text-soft);
+}
+.fl-line-nodes {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 6px minmax(0, 1fr) 6px minmax(0, 1fr);
+  align-items: center;
+}
+.fl-line-link {
+  height: 1px;
+  background: var(--ui-line-connector);
+}
+.fl-line-fork {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding-left: 4px;
+  border-left: 1px solid var(--ui-line-connector);
+}
+@container (min-width: 420px) {
+  .fl-line-nodes {
+    grid-template-columns: minmax(0, 1fr) 8px minmax(0, 1fr) 8px minmax(0, 2fr);
+  }
+  .fl-line-fork {
+    flex-direction: row;
+  }
+  .fl-line-fork > .fl-line-node {
+    flex: 1 1 0;
+  }
+}
+.fl-line-node {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px 4px 4px;
+  border: 1px solid var(--ui-line-node-rule);
+  border-radius: 3px;
+  background: var(--ui-line-node-bg);
+  font-size: 0.64rem;
+  line-height: 1.2;
+  color: var(--ui-text);
+}
+.fl-line-node:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
+}
+.fl-line-mark {
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-line-name {
+  max-width: 100%;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  font-weight: 600;
+}
+.fl-line-node .fl-research-btn {
+  min-width: 0;
+  padding: 1px 6px;
+}
+.fl-line-node .fl-research-bar {
+  align-self: stretch;
+}
+.fl-line-node[data-state="done"] {
+  color: var(--ui-text-faint);
+}
+.fl-line-node[data-state="blocked"] .fl-line-name {
+  color: var(--ui-text-soft);
+}
+.fl-line-node[data-state="running"] {
+  border-color: var(--ui-research-fill);
+}
+.fl-line-node[data-state="choose"] {
+  border-style: dashed;
+  border-color: var(--ui-doctrine);
+}
+.fl-line-node[data-doctrine="1"] {
+  border-color: var(--ui-doctrine);
+  background: var(--ui-doctrine-tint);
+  box-shadow: inset 0 0 0 1px var(--ui-doctrine);
+}
+.fl-line-node[data-state="closed"] {
+  color: var(--ui-line-closed);
+  background: var(--ui-line-closed-bg);
+  border-color: var(--ui-line-closed-bg);
+}
+.fl-line-node[data-state="closed"] .fl-line-name {
+  text-decoration: line-through;
+}
+.fl-line-node[data-state="closed"] .fl-line-mark {
+  color: var(--ui-line-closed);
+}
+.fl-research-btn.fl-line-adopt {
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--ui-doctrine);
+  border-color: var(--ui-doctrine);
+}
+.fl-research-btn.fl-line-adopt:hover:not(:disabled) {
+  background: var(--ui-doctrine-tint);
+  border-color: var(--ui-doctrine);
+}
+.fl-line-caption {
+  min-height: 1.35em;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: var(--ui-text-soft);
+}
+/* Loadouts, below the build buttons on the Vehicles tab. */
+.fl-loadout {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 8px 8px;
+  border: 1px solid var(--ui-research-rule);
+  border-radius: 4px;
+  background: var(--ui-loadout-bg);
+}
+.fl-loadout-note {
+  margin: 0;
+  font-size: 0.62rem;
+  line-height: 1.35;
+  color: var(--ui-text-faint);
+}
+.fl-loadout-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: 4px;
+  border-top: 1px solid var(--ui-research-rule);
+  min-width: 0;
+}
+.fl-loadout-kind {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+.fl-loadout-slots {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  font-weight: 400;
+  color: var(--ui-text-faint);
+}
+.fl-loadout-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px;
+}
+.fl-loadout-chip {
+  padding: 2px 6px;
+  border: 1px solid var(--ui-research-rule);
+  border-radius: 10px;
+  background: var(--ui-loadout-chip);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 0.62rem;
+  cursor: pointer;
+}
+.fl-loadout-chip:hover:not(:disabled) {
+  border-color: var(--ui-loadout-chip-on);
+}
+.fl-loadout-chip[aria-pressed="true"] {
+  border-color: var(--ui-loadout-chip-on);
+  background: var(--ui-loadout-chip-on);
+  color: var(--ui-loadout-chip-on-text);
+  font-weight: 600;
+}
+.fl-loadout-chip:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+.fl-loadout-chip:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 1px;
+}
+.fl-loadout-cost {
+  margin-left: auto;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.64rem;
+  color: var(--ui-text-soft);
 }

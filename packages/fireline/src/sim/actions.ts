@@ -23,7 +23,8 @@ import {
   doStop,
 } from './commands';
 import { abilityProblem, doAbility, doPower, powerProblem } from './mission';
-import { canCancelResearch, canResearch, doCancelResearch, doResearch } from './research';
+import { canCancelResearch, canResearch, doCancelResearch, doDoctrine, doResearch, doctrineProblem } from './research';
+import { doLoadout, loadoutProblem } from './loadout';
 import { cloneState } from './state';
 import { step } from './tick';
 import type { GameAction, GameState } from './types';
@@ -139,6 +140,18 @@ export function processAction(s: GameState, a: GameAction): GameState {
       if (!canCancelResearch(s, 0)) return s;
       const c = cloneState(s);
       doCancelResearch(c, 0);
+      return c;
+    }
+    case 'doctrine': {
+      if (typeof a.line !== 'string' || typeof a.branch !== 'string' || doctrineProblem(s, 0, a.line, a.branch) !== null) return s;
+      const c = cloneState(s);
+      doDoctrine(c, 0, a.line, a.branch);
+      return c;
+    }
+    case 'loadout': {
+      if (typeof a.kind !== 'string' || !Array.isArray(a.modules) || loadoutProblem(s, 0, a.kind, a.modules) !== null) return s;
+      const c = cloneState(s);
+      doLoadout(c, 0, a.kind, a.modules);
       return c;
     }
     default:

@@ -1,6 +1,6 @@
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
 import { buildingCentre, dist, distToBuilding, doorTile, dockTile, frontDir, nearestPassable, occupancy, onMap, passable, laneRow, tileAt } from './grid';
-import { airPlan } from './aiAir';
+import { airPlan, vehiclePrice } from './aiAir';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
 import {
@@ -307,7 +307,7 @@ function commander(s: GameState, owner: Owner): void {
     else if (haulers.length === 0) {
       // No hauler at all: nothing else matters until one is on its way.
       saving = true;
-      raiseFunds(s, owner, UNITS.hauler.cost);
+      raiseFunds(s, owner, vehiclePrice(s, owner, 'hauler'));
     }
   }
 
@@ -320,7 +320,7 @@ function commander(s: GameState, owner: Owner): void {
     (!s.units.some(u => u.owner === owner && u.kind === 'hauler') &&
       !vq.some(q => q.kind === 'hauler') &&
       !p.queues.building.some(q => q.kind === 'refinery') &&
-      p.credits < UNITS.hauler.cost);
+      p.credits < vehiclePrice(s, owner, 'hauler'));
   if (dry && p.credits < 300 && !p.queues.building.length && standingProducer(s, owner)) {
     const extra = (['strikecommand', 'repairbay', 'techcentre', 'uplink', 'wall'] as BuildingKind[])
       .map(k => s.buildings.find(b => b.owner === owner && b.kind === k))
@@ -1053,7 +1053,7 @@ function advancedUnits(
     if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
     if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
     else if (unlocked(s, owner, kind)) {
-      waiting = UNITS[kind].cost;
+      waiting = vehiclePrice(s, owner, kind);
       waitingFor = kind;
     }
   }

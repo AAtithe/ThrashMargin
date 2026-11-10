@@ -533,3 +533,46 @@ tours (desktop, and touch on three phones), 27 loading checks and 573 server tes
 150 seeds, random maps, advanced tech: the mirror 51% to 47% (2 unfinished), Hard on side 1 wins
 91%, Easy 0%.
 
+### 2026-11-10: Development lines and loadouts (round 5)
+
+The contract and the full build log are in `fireline-round5-design.md`. On an advanced-tech skirmish
+the setup offers a second research mode, **Development lines** (the default for a new advanced
+skirmish; Classic is one click away, standard tech disables the choice): each line runs Mk I to
+Mk II, then a doctrine fork whose adopted branch has a Mk III and whose other branch closes. Mk II
+research unlocks vehicle modules, fitted per kind on the Vehicles tab's Loadouts panel and paid
+for on top of the unit's price (for example a tank with Long barrel and Reinforced tracks costs
+1050, not 800); units already built keep what they were built with. The computer researches its
+difficulty's lines list, adopts doctrines and fits modules at Normal and Hard (Easy fits none).
+Classic battles, every campaign mission (all pinned to `research: 'classic'`), standard tech and
+every existing save play exactly as before; a save without the new fields reads as classic.
+
+Ladder, 150 seeds, `--map random` (advanced tech, 3000 credits, normal ore), 1650 battles each.
+Before: the tree at HEAD (classic research, the only mode it has), exported with `git archive` and
+run on its own. After: this round, `--research lines`. The two tables are identical in every cell,
+so one table serves for both:
+
+| Side 0 | Side 1 | Side 0 wins | Side 1 wins | Unfinished | Median min |
+|---|---|---|---|---|---|
+| new hard | new normal | 67 (45%) | 81 (54%) | 2 | 24.6 |
+| new normal | new hard | 12 (8%) | 137 (91%) | 1 | 19.2 |
+| new normal | new easy | 150 (100%) | 0 (0%) | 0 | 15.6 |
+| new easy | new normal | 2 (1%) | 148 (99%) | 0 | 19.5 |
+| new normal | prev normal | 105 (70%) | 44 (29%) | 1 | 17.3 |
+| prev normal | new normal | 34 (23%) | 114 (76%) | 2 | 16.9 |
+| new hard | prev hard | 4 (3%) | 146 (97%) | 0 | 14.9 |
+| prev hard | new hard | 2 (1%) | 148 (99%) | 0 | 14.8 |
+| new hard | prev normal | 75 (50%) | 74 (49%) | 1 | 19.4 |
+| prev hard | prev normal | 42 (28%) | 106 (71%) | 2 | 17.1 |
+| new normal | new normal | 77 (51%) | 71 (47%) | 2 | 23.9 |
+
+Summary lines, the same before and after: Hard beats Normal 68.0% both ways round, Normal beats
+Easy 99.3%, Normal beats prev Normal 73.0%, Hard beats prev Hard 50.7%. Hard beats Normal beats
+Easy (monotonic), every pairing is 0 points from baseline, median length up 0%.
+
+Why identical: a per-battle comparison (the ladder's worker output, 150 seeds, both trees) found
+Hard against Normal unchanged in every battle, and the Normal mirror changed in length in 6 of 150
+battles and in winner in none. The development lines' Mk I nodes are the classic five, and at
+3000 credits a battle is decided (median 15 to 25 minutes) before either side reaches Mk II or
+fits a module that matters. So the thresholds pass, but this ladder says little about lines play
+itself; a richer setup (`--credits 10000 --ore rich`) would exercise it, and is the place to look
+if section 2.4 or section 5 numbers are ever tuned.

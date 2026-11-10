@@ -24,6 +24,7 @@ import {
   type MapType,
   type OreLevel,
   type Owner,
+  type ResearchMode,
   type SideMode,
   type SkirmishSetup,
   type SupportPower,
@@ -56,6 +57,7 @@ export function readStoredSetup(): SkirmishSetup {
       ore: r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : DEFAULT_SETUP.ore,
       sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
+      research: r.research === 'classic' || r.research === 'lines' ? r.research : DEFAULT_SETUP.research,
     };
   } catch {
     return DEFAULT_SETUP;
@@ -101,6 +103,14 @@ export const TECH_TEXT: Record<TechLevel, { name: string; text: string }> = {
   advanced: {
     name: 'Advanced',
     text: `Adds the ${list(ADVANCED_UNITS)}; the ${list(ADVANCED_STRUCTURES)}; and support powers that come with structures: ${list(ADVANCED_POWERS)}. The enemy has them too.`,
+  },
+};
+
+export const RESEARCH_TEXT: Record<ResearchMode, { name: string; text: string }> = {
+  classic: { name: 'Classic', text: 'Five upgrades from the Research Lab, one at a time.' },
+  lines: {
+    name: 'Development lines',
+    text: 'Five lines of three marks each, a doctrine to choose at the top of every line, and modules for your vehicles. The enemy researches them too.',
   },
 };
 
@@ -200,6 +210,29 @@ export default function SkirmishSetupPanel({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="fl-setup-field" data-testid="setup-research">
+        <Label>Research</Label>
+        {/* Standard tech keeps the stored choice, so switching back to advanced restores it. */}
+        <div className="fl-levels" role="radiogroup" aria-label="Research" aria-disabled={value.tech === 'standard' || undefined}>
+          {(['classic', 'lines'] as ResearchMode[]).map(r => (
+            <button
+              key={r}
+              type="button"
+              role="radio"
+              className="fl-level"
+              aria-checked={value.tech === 'advanced' && value.research === r}
+              disabled={value.tech === 'standard'}
+              data-testid={`setup-research-${r}`}
+              onClick={() => set({ research: r })}
+            >
+              <span className="fl-level-name">{RESEARCH_TEXT[r].name}</span>
+              <span className="fl-level-facts">{RESEARCH_TEXT[r].text}</span>
+            </button>
+          ))}
+        </div>
+        {value.tech === 'standard' && <p className="fl-setup-note">Advanced tech only.</p>}
       </div>
 
       <div className="fl-setup-row">
