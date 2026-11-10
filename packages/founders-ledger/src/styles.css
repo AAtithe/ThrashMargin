@@ -181,3 +181,4 @@ details.own[open] summary{margin-bottom:8px}
 .receipt{background:var(--good-bg);border-radius:6px;padding:14px 16px;display:grid;gap:6px}
 .receipt p{margin:0;font-size:17px;line-height:1.45}
 span.dot{display:inline-flex;align-items:center;justify-content:center;cursor:default}
+.checks li.loud{grid-template-columns:1fr auto}

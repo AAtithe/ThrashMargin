@@ -579,7 +579,7 @@ function vReset(){
 function vLoudWeek(){
   const lw=loudWeek();if(!lw.count)return '';
   return `<div class="card"><div class="eyebrow">What was loud this week</div><h3>${plural(lw.count,'reset')}, ${lw.movesDone} of ${plural(lw.moves,'move')} done</h3>
-   <ul class="checks">${lw.by.map(x=>`<li><span>${esc(x.name)}</span><span class="prog">${plural(x.n,'time')} on ${plural(x.days,'day')}</span></li>`).join('')}</ul>
+   <ul class="checks">${lw.by.map(x=>`<li class="loud"><span>${esc(x.name)}</span><span class="prog">${plural(x.n,'time')} on ${plural(x.days,'day')}</span></li>`).join('')}</ul>
    <p class="small muted">Sorted as yours to decide ${lw.sorts.decide}, to influence ${lw.sorts.influence}, not yours ${lw.sorts.not}.${lw.sorts.not>lw.count/2?' More than half of it was not yours to carry. Notice that.':''}</p>
    ${lw.signals.map(x=>{const fx=FIX[x.k];const has=S.todos.some(t=>t.source&&t.source.startsWith('fix-'+x.k+'-')&&!t.done);return `<div class="coach"><p>${esc(x.name)} was loud on ${x.days} days this week. That is not a mood. It is a signal with a system behind it.</p><p>${esc(fx.text)}</p>${has?'<p class="small muted">Already on your list.</p>':`<div><button class="btn small" data-act="addFix" data-k="${x.k}">Add it to actions</button></div>`}</div>`;}).join('')}
    ${lw.capDays?`<p class="small">You reached ${RESET_CAP} resets on ${plural(lw.capDays,'day')} this week. That is worth saying out loud to someone you trust, not just to this ledger.</p>`:''}</div>`;
