@@ -178,9 +178,7 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
   const MAP_H = mapH;
   const L = (mapType && LOOKS[mapType]) || CLASSIC;
   const fords = fordsOf(tiles, MAP_W, MAP_H);
-  const c = document.createElement('canvas');
-  c.width = MAP_W * TILE;
-  c.height = MAP_H * TILE;
+  const c = newCanvas(MAP_W * TILE, MAP_H * TILE);
   const ctx = c.getContext('2d')!;
   const at = (x: number, y: number) => (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H ? 'g' : tiles[y * MAP_W + x]);
   const TAU = Math.PI * 2;
@@ -299,8 +297,14 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
     const H = c.height;
     // Drawn into a transparent layer and composited over the grass, rather than read back from
     // the canvas: a read-back of the whole map costs more than everything else here put together.
-    const img = ctx.createImageData(W, H);
-    const px = img.data;
+    // Round 5: the layer is worked a band of BAND tile rows at a time (every pass for one band,
+    // then the next), so its pixels and the height cache are a band's worth rather than the whole
+    // map's (on a 160-tile map, 10 MB a band against 105 MB for the whole). Each pixel goes
+    // through the same passes in the same order, so the result is the same.
+    const BAND = 16;
+    let y0 = 0;
+    let img = ctx.createImageData(W, Math.min(H, BAND * TILE));
+    let px = img.data;
     const fieldOf = (ch: string) => {
       const f = new Float32Array(MAP_W * MAP_H);
       for (let k = 0; k < MAP_W * MAP_H; k++) f[k] = tiles[k] === ch ? 1 : 0;
@@ -399,32 +403,34 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
     const DIRT = L.dirt;
     const DIRT_DARK = L.dirtDark;
     const DIRT_LIGHT: [number, number, number] = [150, 128, 92];
-    for (let ty = 0; ty < MAP_H; ty++)
-      for (let tx = 0; tx < MAP_W; tx++) {
-        if (!near(dirtBin, tx, ty, 0, false)) continue;
-        for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
-          for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
-            const v = sample(dirt, x, y) + (noise(n6, x, y) - 0.5) * 0.16 + (noise(n14, x + 900, y) - 0.5) * 0.2 + (noise(n40, x + 900, y) - 0.5) * 0.3;
-            if (v < 0.36) continue;
-            const i = (y * W + x) * 4;
-            const m = noise(n14, x + 200, y + 100);
-            const dk = ss(0.35, 0.75, noise(n40, x + 400, y + 700)) * 0.6;
-            const sh = 0.9 + m * 0.2;
-            let r = (DIRT[0] + (DIRT_DARK[0] - DIRT[0]) * dk) * sh;
-            let g = (DIRT[1] + (DIRT_DARK[1] - DIRT[1]) * dk) * sh;
-            let b = (DIRT[2] + (DIRT_DARK[2] - DIRT[2]) * dk) * sh;
-            const lt = ss(0.6, 0.9, noise(n40, x + 1300, y + 200)) * 0.5;
-            r += (DIRT_LIGHT[0] - r) * lt;
-            g += (DIRT_LIGHT[1] - g) * lt;
-            b += (DIRT_LIGHT[2] - b) * lt;
-            const speck = hash(y * W + x);
-            if (speck < 0.03) (r *= 0.75), (g *= 0.75), (b *= 0.75);
-            else if (speck > 0.975) (r = r * 1.2 + 10), (g = g * 1.2 + 10), (b = b * 1.2 + 8);
-            // A darker rim where the dirt meets the grass, like a trodden edge.
-            const rim = 1 - ss(0.4, 0.5, v) * 0.12 - (1 - ss(0.44, 0.56, v)) * 0.08;
-            mix(i, r * rim, g * rim, b * rim, ss(0.36, 0.46, v));
-          }
-      }
+    const dirtPass = (t0: number, t1: number) => {
+      for (let ty = t0; ty < t1; ty++)
+        for (let tx = 0; tx < MAP_W; tx++) {
+          if (!near(dirtBin, tx, ty, 0, false)) continue;
+          for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
+            for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
+              const v = sample(dirt, x, y) + (noise(n6, x, y) - 0.5) * 0.16 + (noise(n14, x + 900, y) - 0.5) * 0.2 + (noise(n40, x + 900, y) - 0.5) * 0.3;
+              if (v < 0.36) continue;
+              const i = ((y - y0) * W + x) * 4;
+              const m = noise(n14, x + 200, y + 100);
+              const dk = ss(0.35, 0.75, noise(n40, x + 400, y + 700)) * 0.6;
+              const sh = 0.9 + m * 0.2;
+              let r = (DIRT[0] + (DIRT_DARK[0] - DIRT[0]) * dk) * sh;
+              let g = (DIRT[1] + (DIRT_DARK[1] - DIRT[1]) * dk) * sh;
+              let b = (DIRT[2] + (DIRT_DARK[2] - DIRT[2]) * dk) * sh;
+              const lt = ss(0.6, 0.9, noise(n40, x + 1300, y + 200)) * 0.5;
+              r += (DIRT_LIGHT[0] - r) * lt;
+              g += (DIRT_LIGHT[1] - g) * lt;
+              b += (DIRT_LIGHT[2] - b) * lt;
+              const speck = hash(y * W + x);
+              if (speck < 0.03) (r *= 0.75), (g *= 0.75), (b *= 0.75);
+              else if (speck > 0.975) (r = r * 1.2 + 10), (g = g * 1.2 + 10), (b = b * 1.2 + 8);
+              // A darker rim where the dirt meets the grass, like a trodden edge.
+              const rim = 1 - ss(0.4, 0.5, v) * 0.12 - (1 - ss(0.44, 0.56, v)) * 0.08;
+              mix(i, r * rim, g * rim, b * rim, ss(0.36, 0.46, v));
+            }
+        }
+    };
 
     const water = fieldOf('w');
     const deep = blur(water, 2);
@@ -433,32 +439,34 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
     const SHALLOW: [number, number, number] = [64, 122, 138];
     const OPEN: [number, number, number] = [43, 90, 115];
     const DEEP: [number, number, number] = [28, 64, 85];
-    for (let ty = 0; ty < MAP_H; ty++)
-      for (let tx = 0; tx < MAP_W; tx++) {
-        if (!near(water, tx, ty, 0)) continue;
-        for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
-          for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
-            const v = sample(water, x, y) + (noise(n6, x, y) - 0.5) * 0.12 + (noise(n40, x, y) - 0.5) * 0.22;
-            if (v < L.beach) continue;
-            const i = (y * W + x) * 4;
-            if (v < 0.5) {
-              mix(i, SAND[0], SAND[1], SAND[2], ss(L.beach, L.beach + 0.16, v) * (0.85 + noise(n6, x + 300, y) * 0.15));
-              mix(i, WET[0], WET[1], WET[2], ss(0.4, 0.47, v) * 0.9);
-              mix(i, 222, 236, 232, (1 - Math.abs(v - 0.485) / 0.02) * 0.7);
-            } else {
-              const t = ss(0.5, 0.64, v);
-              const sh = 0.94 + noise(n14, x, y) * 0.12;
-              let r = (SHALLOW[0] + (OPEN[0] - SHALLOW[0]) * t) * sh;
-              let g = (SHALLOW[1] + (OPEN[1] - SHALLOW[1]) * t) * sh;
-              let b = (SHALLOW[2] + (OPEN[2] - SHALLOW[2]) * t) * sh;
-              const dd = ss(0.6, 1, sample(deep, x, y)) * 0.85;
-              r += (DEEP[0] - r) * dd;
-              g += (DEEP[1] - g) * dd;
-              b += (DEEP[2] - b) * dd;
-              mix(i, r, g, b, ss(0.5, 0.52, v) * 0.6 + 0.4);
+    const waterPass = (t0: number, t1: number) => {
+      for (let ty = t0; ty < t1; ty++)
+        for (let tx = 0; tx < MAP_W; tx++) {
+          if (!near(water, tx, ty, 0)) continue;
+          for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
+            for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
+              const v = sample(water, x, y) + (noise(n6, x, y) - 0.5) * 0.12 + (noise(n40, x, y) - 0.5) * 0.22;
+              if (v < L.beach) continue;
+              const i = ((y - y0) * W + x) * 4;
+              if (v < 0.5) {
+                mix(i, SAND[0], SAND[1], SAND[2], ss(L.beach, L.beach + 0.16, v) * (0.85 + noise(n6, x + 300, y) * 0.15));
+                mix(i, WET[0], WET[1], WET[2], ss(0.4, 0.47, v) * 0.9);
+                mix(i, 222, 236, 232, (1 - Math.abs(v - 0.485) / 0.02) * 0.7);
+              } else {
+                const t = ss(0.5, 0.64, v);
+                const sh = 0.94 + noise(n14, x, y) * 0.12;
+                let r = (SHALLOW[0] + (OPEN[0] - SHALLOW[0]) * t) * sh;
+                let g = (SHALLOW[1] + (OPEN[1] - SHALLOW[1]) * t) * sh;
+                let b = (SHALLOW[2] + (OPEN[2] - SHALLOW[2]) * t) * sh;
+                const dd = ss(0.6, 1, sample(deep, x, y)) * 0.85;
+                r += (DEEP[0] - r) * dd;
+                g += (DEEP[1] - g) * dd;
+                b += (DEEP[2] - b) * dd;
+                mix(i, r, g, b, ss(0.5, 0.52, v) * 0.6 + 0.4);
+              }
             }
-          }
-      }
+        }
+    };
 
     // Fords: shallow water over a stony bed, fading into the banks at each end and into the deep
     // water on each side, with the current's streaks running the way the stream flows.
@@ -468,109 +476,135 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
     const fordF = fordBin.map((v, k) => v * 0.6 + fordBlur[k] * 0.4);
     const BED: Rgb = [128, 116, 92];
     const SHOAL: Rgb = [86, 140, 146];
-    for (let ty = 0; ty < MAP_H; ty++)
-      for (let tx = 0; tx < MAP_W; tx++) {
-        if (!near(fordBin, tx, ty, 0)) continue;
-        const along = fords[ty * MAP_W + tx] || fords[ty * MAP_W + Math.min(MAP_W - 1, tx + 1)] || 1;
-        for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
-          for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
-            const v = sample(fordF, x, y) + (noise(n6, x + 70, y) - 0.5) * 0.18 + (noise(n14, x, y + 40) - 0.5) * 0.24;
-            if (v < 0.24) continue;
-            // Fading out over the deep water's edge, so the shallows shelve into it.
-            const wv = sample(water, x, y) + (noise(n14, x + 50, y) - 0.5) * 0.2;
-            const a = ss(0.24, 0.5, v) * (1 - ss(0.45, 0.95, wv));
-            if (a <= 0) continue;
-            const i = (y * W + x) * 4;
-            const m = noise(n6, x * 1.3 + 11, y * 1.3);
-            const bed = 0.82 + m * 0.3;
-            mix(i, BED[0] * bed, BED[1] * bed, BED[2] * bed, a);
-            // The water over it, deeper toward the middle of the crossing.
-            const depth = 0.35 + 0.35 * ss(0.4, 0.9, v);
-            mix(i, SHOAL[0], SHOAL[1], SHOAL[2], a * depth);
-            // Streaks of the current.
-            const sx = along === 1 ? x * 0.25 : x * 2.4;
-            const sy = along === 1 ? y * 2.4 : y * 0.25;
-            const streak = noise(n14, sx + 333, sy + 777);
-            if (streak > 0.68) mix(i, 205, 230, 232, a * (streak - 0.68) * 2.2);
-          }
-      }
+    const fordPass = (t0: number, t1: number) => {
+      for (let ty = t0; ty < t1; ty++)
+        for (let tx = 0; tx < MAP_W; tx++) {
+          if (!near(fordBin, tx, ty, 0)) continue;
+          const along = fords[ty * MAP_W + tx] || fords[ty * MAP_W + Math.min(MAP_W - 1, tx + 1)] || 1;
+          for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
+            for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
+              const v = sample(fordF, x, y) + (noise(n6, x + 70, y) - 0.5) * 0.18 + (noise(n14, x, y + 40) - 0.5) * 0.24;
+              if (v < 0.24) continue;
+              // Fading out over the deep water's edge, so the shallows shelve into it.
+              const wv = sample(water, x, y) + (noise(n14, x + 50, y) - 0.5) * 0.2;
+              const a = ss(0.24, 0.5, v) * (1 - ss(0.45, 0.95, wv));
+              if (a <= 0) continue;
+              const i = ((y - y0) * W + x) * 4;
+              const m = noise(n6, x * 1.3 + 11, y * 1.3);
+              const bed = 0.82 + m * 0.3;
+              mix(i, BED[0] * bed, BED[1] * bed, BED[2] * bed, a);
+              // The water over it, deeper toward the middle of the crossing.
+              const depth = 0.35 + 0.35 * ss(0.4, 0.9, v);
+              mix(i, SHOAL[0], SHOAL[1], SHOAL[2], a * depth);
+              // Streaks of the current.
+              const sx = along === 1 ? x * 0.25 : x * 2.4;
+              const sy = along === 1 ? y * 2.4 : y * 0.25;
+              const streak = noise(n14, sx + 333, sy + 777);
+              if (streak > 0.68) mix(i, 205, 230, 232, a * (streak - 0.68) * 2.2);
+            }
+        }
+    };
 
     const rock = fieldOf('r');
     const rockAo = blur(rock, 1);
     const CLIFF_H = L.cliff;
     // Heights are read several times per pixel (slope, cliff depth, shadow), so each is worked
     // out once and kept.
-    const hcache = new Float32Array(W * H).fill(-1);
+    // The cache covers the band and HMARGIN rows either side of it (every lookup reaches at most
+    // CLIFF_H + 2 rows down and half that up); a lookup outside it is worked out uncached.
+    const HMARGIN = 64;
+    const hcache = new Float32Array(W * (BAND * TILE + 2 * HMARGIN));
+    let hy0 = 0;
+    let hy1 = 0;
     const height = (x: number, y: number) => {
-      const inside = x >= 0 && y >= 0 && x < W && y < H;
+      const inside = x >= 0 && y >= hy0 && x < W && y < hy1;
       if (inside) {
-        const v = hcache[y * W + x];
+        const v = hcache[(y - hy0) * W + x];
         if (v >= 0) return v;
       }
       const v = ss(0.36, 0.64, sample(rock, x, y) + (noise(n6, x, y) - 0.5) * 0.16 + (noise(n14, x, y) - 0.5) * 0.18);
-      if (inside) hcache[y * W + x] = v;
+      if (inside) hcache[(y - hy0) * W + x] = v;
       return v;
     };
     const TOP = L.rockTop;
     const FACE = L.rockFace;
-    for (let ty = 0; ty < MAP_H; ty++)
-      for (let tx = 0; tx < MAP_W; tx++) {
-        if (!near(rock, tx, ty, 1)) continue;
-        for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
-          for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
-            const i = (y * W + x) * 4;
-            const ht = height(x, y + CLIFF_H);
-            const hb = height(x, y);
-            if (ht > 0.45) {
-              // Top: slope shading toward a light in the top left, mottling, and fine cracks.
-              const gx = height(x + 2, y + CLIFF_H) - height(x - 2, y + CLIFF_H);
-              const gy = height(x, y + CLIFF_H + 2) - height(x, y + CLIFF_H - 2);
-              const lit = (gx + gy) * 1.6;
-              const m = noise(n14, x * 1.7, y * 1.7) * 0.6 + noise(n6, x, y) * 0.4;
-              const crack = Math.abs(noise(n14, x + 500, y + 500) - 0.5) < 0.012 ? 0.7 : 1;
-              const k = (0.8 + m * 0.4 + lit) * crack;
-              const a = ss(0.45, 0.55, ht);
-              if (a < 1 && hb > 0.5) mix(i, FACE[0], FACE[1], FACE[2], 1);
-              mix(i, TOP[0] * k, TOP[1] * k, TOP[2] * k, a);
-              if (L.moss > 0) {
-                // Moss and turf in the hollows of the tops.
-                const ms = ss(0.55, 0.8, noise(n40, x + 2100, y + 900)) * ss(0.4, 0.7, noise(n6, x * 1.5, y * 1.5 + 300));
-                if (ms > 0) mix(i, 82 * k, 104 * k, 52 * k, a * ms * L.moss * 1.6);
+    const rockPass = (t0: number, t1: number) => {
+      for (let ty = t0; ty < t1; ty++)
+        for (let tx = 0; tx < MAP_W; tx++) {
+          if (!near(rock, tx, ty, 1)) continue;
+          for (let y = ty * TILE; y < (ty + 1) * TILE; y++)
+            for (let x = tx * TILE; x < (tx + 1) * TILE; x++) {
+              const i = ((y - y0) * W + x) * 4;
+              const ht = height(x, y + CLIFF_H);
+              const hb = height(x, y);
+              if (ht > 0.45) {
+                // Top: slope shading toward a light in the top left, mottling, and fine cracks.
+                const gx = height(x + 2, y + CLIFF_H) - height(x - 2, y + CLIFF_H);
+                const gy = height(x, y + CLIFF_H + 2) - height(x, y + CLIFF_H - 2);
+                const lit = (gx + gy) * 1.6;
+                const m = noise(n14, x * 1.7, y * 1.7) * 0.6 + noise(n6, x, y) * 0.4;
+                const crack = Math.abs(noise(n14, x + 500, y + 500) - 0.5) < 0.012 ? 0.7 : 1;
+                const k = (0.8 + m * 0.4 + lit) * crack;
+                const a = ss(0.45, 0.55, ht);
+                if (a < 1 && hb > 0.5) mix(i, FACE[0], FACE[1], FACE[2], 1);
+                mix(i, TOP[0] * k, TOP[1] * k, TOP[2] * k, a);
+                if (L.moss > 0) {
+                  // Moss and turf in the hollows of the tops.
+                  const ms = ss(0.55, 0.8, noise(n40, x + 2100, y + 900)) * ss(0.4, 0.7, noise(n6, x * 1.5, y * 1.5 + 300));
+                  if (ms > 0) mix(i, 82 * k, 104 * k, 52 * k, a * ms * L.moss * 1.6);
+                }
+                if (L.strata > 0) {
+                  // Sandstone bedding, faint across the tops.
+                  const band = Math.sin((y + noise(n40, x, y + 500) * 30) * 0.42);
+                  if (band > 0.6) mix(i, TOP[0] * 1.12, TOP[1] * 1.08, TOP[2] * 1.02, a * (band - 0.6) * 0.5 * L.strata);
+                }
+              } else if (hb > 0.4) {
+                // Cliff face: vertical strata, darker toward its foot.
+                const streak = noise(n6, x * 2.2, y * 0.25);
+                const foot = ss(0.4, 1, hb) * 0.25 + 0.75;
+                let depth = 0;
+                for (let d = 1; d <= CLIFF_H; d += 2) if (height(x, y + CLIFF_H - d) > 0.45) depth = d;
+                let k = (0.7 + streak * 0.45) * foot * (1 - (CLIFF_H - depth) * (0.27 / CLIFF_H));
+                if (L.strata > 0) {
+                  // Banded sandstone: alternating light and dark layers, wavering a little.
+                  const band = Math.sin((y + noise(n40, x * 0.5, y + 200) * 18) * 0.9);
+                  k *= 1 + band * 0.13 * L.strata;
+                }
+                mix(i, FACE[0] * k, FACE[1] * k, FACE[2] * k, ss(0.4, 0.5, hb));
+              } else {
+                // Cast shadow, down and to the right of the plateau, longer under taller cliffs; and
+                // the gloom at the foot of the walls, on every side, where they stand tall.
+                const sl = CLIFF_H / 9;
+                const hs = height(Math.round(x - 5 * sl), Math.round(y - 4 * sl));
+                let dark = hs > 0.2 ? ss(0.2, 0.7, hs) * 0.5 : 0;
+                if (L.ao > 0) dark = Math.max(dark, ss(0.04, 0.5, sample(rockAo, x, y)) * L.ao);
+                if (dark > 0) mix(i, 0, 0, 0, dark);
               }
-              if (L.strata > 0) {
-                // Sandstone bedding, faint across the tops.
-                const band = Math.sin((y + noise(n40, x, y + 500) * 30) * 0.42);
-                if (band > 0.6) mix(i, TOP[0] * 1.12, TOP[1] * 1.08, TOP[2] * 1.02, a * (band - 0.6) * 0.5 * L.strata);
-              }
-            } else if (hb > 0.4) {
-              // Cliff face: vertical strata, darker toward its foot.
-              const streak = noise(n6, x * 2.2, y * 0.25);
-              const foot = ss(0.4, 1, hb) * 0.25 + 0.75;
-              let depth = 0;
-              for (let d = 1; d <= CLIFF_H; d += 2) if (height(x, y + CLIFF_H - d) > 0.45) depth = d;
-              let k = (0.7 + streak * 0.45) * foot * (1 - (CLIFF_H - depth) * (0.27 / CLIFF_H));
-              if (L.strata > 0) {
-                // Banded sandstone: alternating light and dark layers, wavering a little.
-                const band = Math.sin((y + noise(n40, x * 0.5, y + 200) * 18) * 0.9);
-                k *= 1 + band * 0.13 * L.strata;
-              }
-              mix(i, FACE[0] * k, FACE[1] * k, FACE[2] * k, ss(0.4, 0.5, hb));
-            } else {
-              // Cast shadow, down and to the right of the plateau, longer under taller cliffs; and
-              // the gloom at the foot of the walls, on every side, where they stand tall.
-              const sl = CLIFF_H / 9;
-              const hs = height(Math.round(x - 5 * sl), Math.round(y - 4 * sl));
-              let dark = hs > 0.2 ? ss(0.2, 0.7, hs) * 0.5 : 0;
-              if (L.ao > 0) dark = Math.max(dark, ss(0.04, 0.5, sample(rockAo, x, y)) * L.ao);
-              if (dark > 0) mix(i, 0, 0, 0, dark);
             }
-          }
-      }
-    const layer = document.createElement('canvas');
-    layer.width = W;
-    layer.height = H;
-    layer.getContext('2d')!.putImageData(img, 0, 0);
-    ctx.drawImage(layer, 0, 0);
+        }
+    };
+    let layer = newCanvas(W, img.height);
+    for (let t0 = 0; t0 < MAP_H; t0 += BAND) {
+      const t1 = Math.min(MAP_H, t0 + BAND);
+      y0 = t0 * TILE;
+      hy0 = y0 - HMARGIN;
+      hy1 = t1 * TILE + HMARGIN;
+      hcache.fill(-1);
+      const rows = (t1 - t0) * TILE;
+      if (img.height !== rows) {
+        img = ctx.createImageData(W, rows);
+        px = img.data;
+        layer = newCanvas(W, rows);
+      } else px.fill(0);
+      dirtPass(t0, t1);
+      waterPass(t0, t1);
+      fordPass(t0, t1);
+      rockPass(t0, t1);
+      const lctx = layer.getContext('2d')!;
+      lctx.clearRect(0, 0, W, rows);
+      lctx.putImageData(img, 0, 0);
+      ctx.drawImage(layer, 0, y0);
+    }
   }
 
   // Ripples on open water.
@@ -831,6 +865,53 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
       }
     }
   return c;
+}
+
+/**
+ * A canvas to paint on: a page's, or an OffscreenCanvas in the worker that paints the terrain off
+ * the main thread (terrainWorker.ts). Both take the same 2D drawing calls.
+ */
+function newCanvas(w: number, h: number): HTMLCanvasElement {
+  if (typeof document !== 'undefined') {
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    return c;
+  }
+  return new OffscreenCanvas(w, h) as unknown as HTMLCanvasElement;
+}
+
+/**
+ * Paints the terrain in a worker, so a large map opens without the page stalling while it paints
+ * (fireline-round5-design.md, workstream B: a 160-tile map takes seconds). Resolves to a page
+ * canvas holding the painted ground, the same pixels paintTerrain would give. Null where workers
+ * or OffscreenCanvas are missing; the promise rejects if the worker fails. Either way the caller
+ * paints on the main thread instead.
+ */
+export function paintTerrainOffThread(tiles: string, mapType: MapType | undefined, mapW: number, mapH: number): Promise<HTMLCanvasElement> | null {
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' || typeof createImageBitmap === 'undefined') return null;
+  let worker: Worker;
+  try {
+    worker = new Worker(new URL('./terrainWorker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    return null;
+  }
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (e: MessageEvent<ImageBitmap | { error: string }>) => {
+      worker.terminate();
+      const bmp = e.data;
+      if (!(bmp instanceof ImageBitmap)) return reject(new Error((bmp as { error: string }).error));
+      const c = newCanvas(bmp.width, bmp.height);
+      c.getContext('2d')!.drawImage(bmp, 0, 0);
+      bmp.close();
+      resolve(c);
+    };
+    worker.onerror = e => {
+      worker.terminate();
+      reject(new Error(e.message || 'terrain worker failed'));
+    };
+    worker.postMessage({ tiles, mapType, mapW, mapH });
+  });
 }
 
 /** One pixel per tile, for the minimap. */

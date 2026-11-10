@@ -1,4 +1,4 @@
-import { BUILDINGS, type Owner } from './rules';
+import { BUILDINGS, pathExpandLimitFor, type Owner } from './rules';
 import { frontDir as sideFront } from './sides';
 import type { Building, GameState, Unit } from './types';
 
@@ -163,6 +163,63 @@ const DIRS: [number, number, number][] = [
 ];
 
 /**
+ * Scratch space for findPath, kept between searches so a search allocates nothing per tile (round
+ * 5: on a 160-tile map each search used to allocate and fill three arrays of 25,600). A tile's
+ * entries are valid only while its `stamp` equals the current search's; any other tile reads as
+ * unvisited (no g score, no parent, not closed). The heap holds (f, order of insertion, tile) in
+ * three parallel arrays and is compared exactly as before, f first and then insertion order, so a
+ * search expands the same tiles in the same order and returns the same path. Pure: nothing here
+ * outlives a call in any way that changes a result.
+ */
+let scratchSize = 0;
+let stamp = new Int32Array(0);
+let gScore = new Float64Array(0);
+let came = new Int32Array(0);
+let closedAt = new Int32Array(0);
+let search = 0;
+let heapF = new Float64Array(1024);
+let heapSeq = new Float64Array(1024);
+let heapK = new Int32Array(1024);
+
+/**
+ * Per occupancy grid: 1 on each tile a unit may walk (passable, below), 0 elsewhere. Built once per
+ * grid the first time a search uses it, so a search reads one array rather than calling passable
+ * for every neighbour. A grid is never changed after occupancy() builds it.
+ */
+const openCache = new WeakMap<Int32Array, Uint8Array>();
+function openTiles(s: GameState, occ: Int32Array): Uint8Array {
+  let open = openCache.get(occ);
+  if (!open || open.length !== occ.length) {
+    open = new Uint8Array(occ.length);
+    const tiles = s.tiles;
+    for (let k = 0; k < open.length; k++) {
+      if (occ[k] !== 0) continue;
+      const c = tiles.charCodeAt(k);
+      if (c === 103 || c === 100) open[k] = 1;
+    }
+    openCache.set(occ, open);
+  }
+  return open;
+}
+
+function scratchFor(total: number): void {
+  if (total > scratchSize) {
+    scratchSize = total;
+    stamp = new Int32Array(total);
+    gScore = new Float64Array(total);
+    came = new Int32Array(total);
+    closedAt = new Int32Array(total);
+    search = 0;
+  }
+  search++;
+  if (search > 0x3fffffff) {
+    stamp.fill(0);
+    closedAt.fill(0);
+    search = 1;
+  }
+}
+
+/**
  * A* over the tile grid, eight directions, no corner cutting. Returns waypoints as tile indices,
  * smoothed so a unit walks straight lines wherever it can, excluding the start tile. If the goal
  * cannot be reached the path leads to the reachable tile closest to it.
@@ -171,9 +228,8 @@ export function findPath(s: GameState, occ: Int32Array, start: number, goal: num
   if (start === goal) return [];
   const MAP_W = s.mapW;
   const total = MAP_W * s.mapH;
-  const gScore = new Float64Array(total).fill(Infinity);
-  const came = new Int32Array(total).fill(-1);
-  const closed = new Uint8Array(total);
+  scratchFor(total);
+  const run = search;
   const gx = goal % MAP_W;
   const gy = (goal / MAP_W) | 0;
   const h = (k: number) => {
@@ -181,50 +237,85 @@ export function findPath(s: GameState, occ: Int32Array, start: number, goal: num
     const dy = Math.abs(((k / MAP_W) | 0) - gy);
     return Math.max(dx, dy) + (SQRT2 - 1) * Math.min(dx, dy);
   };
+  const g = (k: number) => (stamp[k] === run ? gScore[k] : Infinity);
+  const open = openTiles(s, occ);
+  const MAP_H = s.mapH;
+  const walk = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && open[y * MAP_W + x] === 1;
+  const parent = (k: number) => (stamp[k] === run ? came[k] : -1);
 
-  // Binary heap of [f, tiebreak, node].
-  const heap: number[][] = [];
+  // Binary heap of (f, tiebreak, node), in three parallel arrays.
+  let size = 0;
   let seq = 0;
+  const less = (i: number, j: number) => heapF[i] < heapF[j] || (heapF[i] === heapF[j] && heapSeq[i] < heapSeq[j]);
+  const swap = (i: number, j: number) => {
+    const f = heapF[i];
+    heapF[i] = heapF[j];
+    heapF[j] = f;
+    const q = heapSeq[i];
+    heapSeq[i] = heapSeq[j];
+    heapSeq[j] = q;
+    const k = heapK[i];
+    heapK[i] = heapK[j];
+    heapK[j] = k;
+  };
   const push = (f: number, k: number) => {
-    heap.push([f, seq++, k]);
-    let i = heap.length - 1;
+    if (size === heapF.length) {
+      const nf = new Float64Array(size * 2);
+      nf.set(heapF);
+      heapF = nf;
+      const ns = new Float64Array(size * 2);
+      ns.set(heapSeq);
+      heapSeq = ns;
+      const nk = new Int32Array(size * 2);
+      nk.set(heapK);
+      heapK = nk;
+    }
+    heapF[size] = f;
+    heapSeq[size] = seq++;
+    heapK[size] = k;
+    let i = size++;
     while (i > 0) {
       const p = (i - 1) >> 1;
-      if (less(heap[i], heap[p])) {
-        [heap[i], heap[p]] = [heap[p], heap[i]];
+      if (less(i, p)) {
+        swap(i, p);
         i = p;
       } else break;
     }
   };
   const pop = () => {
-    const top = heap[0];
-    const last = heap.pop()!;
-    if (heap.length) {
-      heap[0] = last;
+    const top = heapK[0];
+    size--;
+    if (size > 0) {
+      heapF[0] = heapF[size];
+      heapSeq[0] = heapSeq[size];
+      heapK[0] = heapK[size];
       let i = 0;
       for (;;) {
         const l = 2 * i + 1;
         const r = l + 1;
         let m = i;
-        if (l < heap.length && less(heap[l], heap[m])) m = l;
-        if (r < heap.length && less(heap[r], heap[m])) m = r;
+        if (l < size && less(l, m)) m = l;
+        if (r < size && less(r, m)) m = r;
         if (m === i) break;
-        [heap[i], heap[m]] = [heap[m], heap[i]];
+        swap(i, m);
         i = m;
       }
     }
-    return top[2];
+    return top;
   };
 
+  stamp[start] = run;
   gScore[start] = 0;
+  came[start] = -1;
   push(h(start), start);
   let best = start;
   let bestH = h(start);
   let expanded = 0;
-  while (heap.length && expanded < 6000) {
+  const limit = pathExpandLimitFor(s.setup?.size ?? 'standard', total);
+  while (size && expanded < limit) {
     const k = pop();
-    if (closed[k]) continue;
-    closed[k] = 1;
+    if (closedAt[k] === run) continue;
+    closedAt[k] = run;
     expanded++;
     if (k === goal) {
       best = k;
@@ -237,24 +328,26 @@ export function findPath(s: GameState, occ: Int32Array, start: number, goal: num
     }
     const x = k % MAP_W;
     const y = (k / MAP_W) | 0;
+    const gk = gScore[k];
     for (const [dx, dy, cost] of DIRS) {
       const nx = x + dx;
       const ny = y + dy;
-      if (!passable(s, occ, nx, ny)) continue;
-      if (dx !== 0 && dy !== 0 && (!passable(s, occ, x + dx, y) || !passable(s, occ, x, y + dy))) continue;
+      if (!walk(nx, ny)) continue;
+      if (dx !== 0 && dy !== 0 && (!walk(x + dx, y) || !walk(x, y + dy))) continue;
       const n = ny * MAP_W + nx;
-      if (closed[n]) continue;
-      const g = gScore[k] + cost;
-      if (g < gScore[n]) {
-        gScore[n] = g;
+      if (closedAt[n] === run) continue;
+      const gn = gk + cost;
+      if (gn < g(n)) {
+        stamp[n] = run;
+        gScore[n] = gn;
         came[n] = k;
-        push(g + h(n), n);
+        push(gn + h(n), n);
       }
     }
   }
 
   const raw: number[] = [];
-  for (let k = best; k !== start && k !== -1; k = came[k]) raw.push(k);
+  for (let k = best; k !== start && k !== -1; k = parent(k)) raw.push(k);
   raw.reverse();
   if (!raw.length) return [];
 
@@ -272,4 +365,3 @@ export function findPath(s: GameState, occ: Int32Array, start: number, goal: num
   return out;
 }
 
-const less = (a: number[], b: number[]) => a[0] < b[0] || (a[0] === b[0] && a[1] < b[1]);

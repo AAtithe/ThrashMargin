@@ -3,6 +3,7 @@ import { buildingCentre, dist, distToBuilding, doorTile, dockTile, frontDir, nea
 import { airPlan } from './aiAir';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
+import { reserveRadius, scaledFor, stageDistance } from './aiScale';
 import {
   BARRAGE_DAMAGE,
   BUILDINGS,
@@ -222,7 +223,7 @@ function commander(s: GameState, owner: Owner): void {
   const mode = missionMode(s, owner);
   // round5:B begin. Larger maps (fireline-round5-design.md): B may replace the line below with one
   // that scales the numbers for the map's size (a function in aiScale.ts); 'standard' maps unchanged.
-  const d = tuned(DIFFICULTIES[diff], mode);
+  const d = scaledFor(s, tuned(DIFFICULTIES[diff], mode));
   // round5:B end.
   const t = TACTICS[diff];
   const mem = s.ai[owner];
@@ -416,7 +417,7 @@ function commander(s: GameState, owner: Owner): void {
   // round5:D end.
 
   // Producers send new units to a staging point on the side facing the enemy.
-  const stage = openGround(s, owner, toward(home, enemyHome, 10));
+  const stage = openGround(s, owner, toward(home, enemyHome, stageDistance(s)));
   for (const b of standing) {
     if ((b.kind === 'barracks' || b.kind === 'factory') && !b.rally) doRally(s, b.id, stage.x, stage.y);
   }
@@ -572,7 +573,7 @@ function commander(s: GameState, owner: Owner): void {
     // Leave the raiders' buggies at home for the next raid.
     let keep = broke ? 0 : t.raidSize;
     return reserve.filter(u => {
-      if (!broke && (u.hp < UNITS[u.kind].hp * 0.45 || dist(u.x, u.y, home.x, home.y) > 30)) return false;
+      if (!broke && (u.hp < UNITS[u.kind].hp * 0.45 || dist(u.x, u.y, home.x, home.y) > reserveRadius(s))) return false;
       if (u.order.type !== 'idle' && u.order.type !== 'move' && u.order.type !== 'attackMove') return false;
       if (u.kind === 'buggy' && keep > 0) {
         keep--;

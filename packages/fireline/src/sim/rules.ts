@@ -1058,6 +1058,31 @@ export const MAP_SIZE_TILES: Record<MapSize, Record<2 | 3 | 4, number>> = {
 export const MAP_TILES_MAX = 160;
 /** A setup's map width and height in tiles. Setups from before round 5 have no size: 'standard'. */
 export const mapTilesFor = (setup: Pick<SkirmishSetup, 'sides' | 'size'>): number => MAP_SIZE_TILES[setup.size ?? 'standard'][setup.sides];
+/** What the lobby says about each size: roughly how long a battle against the computer runs (measured, round 5 build log). */
+export const MAP_SIZE_BLURBS: Record<MapSize, string> = {
+  standard: 'The original size. Battles run about 20 minutes.',
+  large: 'Half as wide again, with more ore and room to expand. Battles run about 30 to 40 minutes.',
+  huge: 'Twice as wide, with ore all over. Battles run 45 minutes or more.',
+};
+/**
+ * Ore that spreads back (large and huge maps only): every ORE_SPREAD_TICKS, a tile of an ore field
+ * that has been worked out, beside a tile that still holds ore and with nothing standing on it,
+ * regains ORE_SPREAD_AMOUNT. A field never vanishes while one tile of it is left. Standard maps:
+ * none, exactly as before.
+ */
+export const ORE_SPREAD_TICKS = 300;
+export const ORE_SPREAD_AMOUNT = 60;
+/**
+ * Path searches allowed per tick. Standard maps: 24, as always. On larger maps a walk is longer and
+ * each search costs more, so fewer are allowed per tick, but each may expand further
+ * (pathExpandLimitFor) so a long walk still finds its way rather than stopping short and searching
+ * again.
+ */
+export const pathBudgetFor = (size: MapSize): number => (size === 'standard' ? 24 : 16);
+/** How many tiles one path search may expand: 6000 on standard maps, as always; on larger maps 60% of the map. */
+export const pathExpandLimitFor = (size: MapSize, tiles: number): number => (size === 'standard' ? 6000 : Math.max(6000, Math.round(tiles * 0.6)));
+/** Ticks between fog updates (the explored map): 5 on standard maps, as always; 10 on larger maps. */
+export const exploreTicksFor = (size: MapSize): number => (size === 'standard' ? 5 : 10);
 // round5:B end.
 /** What each map type looks like with three or four sides, where the two-sided blurb does not fit. */
 export const MAP_TYPE_BLURBS_SIDES: Record<MapType, string> = {

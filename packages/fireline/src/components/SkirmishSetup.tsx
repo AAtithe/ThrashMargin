@@ -13,6 +13,10 @@ import {
   MAP_TYPES,
   POWERS,
   LONE_SIDE_CREDITS,
+  MAP_SIZE_BLURBS,
+  MAP_SIZE_NAMES,
+  MAP_SIZE_TILES,
+  MAP_SIZES,
   SETUP_CREDIT_CHOICES,
   SIDE_COUNTS,
   SIDE_NAMES,
@@ -21,6 +25,7 @@ import {
   UNITS,
   VEHICLE_MENU,
   type BuildingKind,
+  type MapSize,
   type MapType,
   type OreLevel,
   type Owner,
@@ -56,6 +61,7 @@ export function readStoredSetup(): SkirmishSetup {
       ore: r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : DEFAULT_SETUP.ore,
       sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
+      size: MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : 'standard',
     };
   } catch {
     return DEFAULT_SETUP;
@@ -123,9 +129,9 @@ export default function SkirmishSetupPanel({
   const seed = seedNumber(settled);
   const maps = useMemo(() => {
     const out = {} as Record<MapType, GeneratedMap>;
-    for (const t of MAP_TYPES) out[t] = generateSkirmishMap(seed, t, value.ore, value.sides);
+    for (const t of MAP_TYPES) out[t] = generateSkirmishMap(seed, t, value.ore, value.sides, value.size ?? 'standard');
     return out;
-  }, [seed, value.ore, value.sides]);
+  }, [seed, value.ore, value.sides, value.size]);
   const drawn = randomMapType(seed);
   const set = (patch: Partial<SkirmishSetup>) => onChange({ ...value, ...patch });
 
@@ -232,9 +238,31 @@ export default function SkirmishSetupPanel({
           <p className="fl-setup-note">{ORE_TEXT[value.ore].text}</p>
         </div>
         {/* round5:B. Larger maps (fireline-round5-design.md): the Map size field goes on the line below. */}
+        <MapSizeField value={value} onPick={size => set({ size })} />
         {/* round5:D. Neutral sites (fireline-round5-design.md): the Neutral sites field goes on the line below. */}
       </div>
     </>
+  );
+}
+
+/** Round 5: the map's size, each with its tiles for this many sides and how long a battle runs. */
+function MapSizeField({ value, onPick }: { value: SkirmishSetup; onPick: (size: MapSize) => void }) {
+  const size = value.size ?? 'standard';
+  const tiles = MAP_SIZE_TILES[size][value.sides];
+  return (
+    <div className="fl-setup-field">
+      <Label>Map size</Label>
+      <div className="fl-seg" role="radiogroup" aria-label="Map size">
+        {MAP_SIZES.map(z => (
+          <button key={z} type="button" role="radio" aria-checked={size === z} data-testid={`size-${z}`} onClick={() => onPick(z)}>
+            {MAP_SIZE_NAMES[z]}
+          </button>
+        ))}
+      </div>
+      <p className="fl-setup-note" data-testid="size-note">
+        {tiles} by {tiles} tiles for {value.sides} sides. {MAP_SIZE_BLURBS[size]}
+      </p>
+    </div>
   );
 }
 
@@ -277,13 +305,19 @@ function SideLine({ setup }: { setup: SkirmishSetup }) {
   );
 }
 
+/**
+ * Pixels per tile in a map preview: 2 for the 64-tile map, 1.5 for 80 and 96, and on the larger
+ * maps of round 5 whatever keeps the preview about 144 pixels across.
+ */
+const thumbScale = (w: number): number => (w <= 64 ? 2 : Math.min(1.5, 144 / w));
+
 /** A map drawn small: the terrain, the ore and both Command Yards. Canvas paint, so hex is fine here. */
 function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    const S = map.w > 64 ? 1.5 : 2;
+    const S = thumbScale(map.w);
     const ctx = c.getContext('2d')!;
     ctx.imageSmoothingEnabled = false;
     ctx.drawImage(paintMiniTerrain(map.tiles, map.w, map.h), 0, 0, map.w * S, map.h * S);
@@ -300,6 +334,6 @@ function MapThumb({ map, label }: { map: GeneratedMap; label: string }) {
       ctx.strokeRect(st.x * S - 2.5, st.y * S - 2.5, 3 * S + 5, 3 * S + 5);
     });
   }, [map]);
-  const S = map.w > 64 ? 1.5 : 2;
+  const S = thumbScale(map.w);
   return <canvas ref={ref} width={map.w * S} height={map.h * S} className="fl-map-thumb" role="img" aria-label={label} />;
 }

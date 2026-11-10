@@ -86,6 +86,7 @@ export default function Minimap({
   const MAP_W = state.mapW;
   const MAP_H = state.mapH;
   const dragging = useRef(false);
+  const fogRef = useRef<HTMLCanvasElement | null>(null);
 
   useEffect(() => {
     const c = ref.current;
@@ -128,13 +129,28 @@ export default function Minimap({
       ctx.fillRect(Math.floor(u.x * SCALE) - 1, Math.floor(u.y * SCALE) - 1, 2.5, 2.5);
       if (u.ammo !== undefined) ctx.fillRect(Math.floor(u.x * SCALE) - 3, Math.floor(u.y * SCALE), 6.5, 0.9); // An aircraft: a wing bar.
     }
-    // Fog.
+    // Fog: one pixel per tile in a small canvas, drawn over the radar at its scale in one call
+    // (round 5: a 160-tile map has 25,600 tiles, too many to fill one at a time on every tick).
+    let fog = fogRef.current;
+    if (!fog || fog.width !== MAP_W || fog.height !== MAP_H) {
+      fog = fogRef.current = document.createElement('canvas');
+      fog.width = MAP_W;
+      fog.height = MAP_H;
+    }
+    const fctx = fog.getContext('2d')!;
+    const img = fctx.createImageData(MAP_W, MAP_H);
+    const px = img.data;
     for (let k = 0; k < MAP_W * MAP_H; k++) {
       const seen = state.explored.charCodeAt(k) === 49;
       if (seen && vis[k]) continue;
-      ctx.fillStyle = seen ? 'rgba(5,7,8,0.45)' : '#050708';
-      ctx.fillRect((k % MAP_W) * SCALE, ((k / MAP_W) | 0) * SCALE, SCALE, SCALE);
+      const i = k * 4;
+      px[i] = 5;
+      px[i + 1] = 7;
+      px[i + 2] = 8;
+      px[i + 3] = seen ? 115 : 255;
     }
+    fctx.putImageData(img, 0, 0);
+    ctx.drawImage(fog, 0, 0, MAP_W * SCALE, MAP_H * SCALE);
     // The view.
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1;
