@@ -572,3 +572,55 @@ until workstream C, a selected unit or structure can offer its own commands thro
 place a workstream adds lines to a shared file. Every printed line of `npm run drive:fire` is the
 same before and after; the assertion count rose by one (the new `'rail'` weapon kind's flight time).
 
+
+### 2026-11-10: Round 5 B, larger maps and long games
+
+A Map size field in the skirmish lobby: Standard, Large and Huge. The tiles, by side count:
+standard 64, 80, 96 (as before); large 96, 112, 128; huge 128, 144, 160 (`MAP_SIZE_TILES`, at most
+`MAP_TILES_MAX`). The lobby line under each size gives the tiles and roughly how long a battle runs;
+the previews are drawn at the chosen size; the saves list says "Large map" or "Huge map". Everything
+in play is gated on the size, so a standard battle, a mission or an old save plays exactly as before.
+
+- **Maps.** The skirmish and sides generators stretch their layout by the map's scale and add
+  fields: a second home field behind each base, contested fields on the flanks and more expansions.
+  Over 20 seeds of every type (`tsx scripts/long-games.ts --maps`), 0 problems at any size; ore
+  fields a map, standard, large, huge: two sides 5.6, 13.4, 17.2; three 6.9, 20.4, 20.2; four 8.7,
+  21.6, 22.7. Largest spread between three sides' sites (tolerance 12%): large ground 11.5%, home
+  ore 9.5%, walk 7.5%; huge 11.7%, 5.1%, 6.9%. Two sides are point-symmetric and four a quarter turn,
+  so their spreads are 0.
+- **Ore that spreads back** (large and huge only): every 300 ticks a worked-out ore tile beside one
+  that still holds ore, with nothing standing on it, regains 60. A field never vanishes while one
+  tile of it is left; ground that never held ore never gets any.
+- **The computer** (`aiScale.ts`), per unit of scale over standard (1.5 on a large two-sided map, 2
+  on huge): the first attack 150% later, the interval twice as long, two more in the first wave, four
+  more in the largest, one more refinery and eight more turrets; it stages further forward and
+  recruits from further out. The first numbers (60% later, 40% longer, eight more in a wave, no extra
+  turrets) gave large battles no longer than standard ones: the waves were bigger but came as soon
+  and broke a base that had no more defences. A base that holds out longer is what makes the game
+  longer.
+- **Long games.** Normal against Normal, advanced tech, the same eight seeds at each size: standard
+  26.6 game minutes on average, large 44.9, huge 47.7, every one finished (single battles run 18 to
+  84 minutes). The harness's cap is 45000 ticks standard (unchanged), 72000 large, 108000 huge.
+- **AI ladder, large maps**, 60 seeds, random maps, advanced tech: the Normal mirror 43% to 57%
+  (within the noise at 60 seeds), Hard on side 1 wins 92% (91% at standard size), nothing
+  unfinished; average 36.1 and 24.3 game minutes. `ai-ladder.ts` takes `--size`.
+- **Performance.** Measured, fixed, measured again. Before: the ore bed was drawn again from the
+  running random stream every pass, which made the worst tick 114 ms, and the first frame of a
+  160-tile battle took 5.1 s to paint its terrain. Fixed: `findPath` reuses its scratch arrays and
+  keeps its heap in typed arrays (the same paths, compared on 3000 searches); the ore bed is cached
+  by the battle's starting seed; fewer, longer path searches a tick and fog every 10 ticks on larger
+  maps; the terrain is painted in a worker, the minimap's colours stretched over the battlefield
+  until it arrives, and its per-pixel pass works a band at a time (the same pixels); the minimap's
+  fog is one image. After, `perf-fire.ts`, four sides on huge (160 tiles), minutes 20 to 30, one
+  tick a call: median 1.53 ms, p95 4.79 ms, p99 9.43 ms, worst 38.4 ms with up to 231 units
+  (standard, four sides: median 0.22 ms, p99 1.17 ms). `perf-render.cjs`, minute 25 of a huge
+  battle at 1280 by 800, panning for ten seconds: frame work median 3.3 ms (3.4 dark), p99 9.0 ms
+  (8.7 dark), 60 frames a second, first frame 21 to 27 ms. Targets were a 4 ms median and 25 ms
+  p99 tick, a 16 ms median frame.
+- **Tests.** `scripts/drive-maps.ts`, six sections inside `drive:fire`: the size option and junk
+  setups, 360 maps at large and huge, ore spreading, the computer's numbers, a huge battle replayed
+  byte-identically and through a save, and whole battles (four large two-sided, one huge four-sided
+  as teams: all finish, every side harvests, two-sided ones average 31.7 minutes against 27.4 at
+  standard with the same seeds). Four battles rather than two, because two seeds once read shorter
+  than standard. The sections add about 90 seconds to `drive:fire`. `scripts/long-games.ts` is the
+  longer sweep. Every standard-size line of `drive:fire` is unchanged.
