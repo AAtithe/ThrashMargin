@@ -52,9 +52,46 @@ export interface TourView {
   s: GameState;
   selected: number[];
   placing: BuildingKind | null;
-  tab: Category;
+  /** The build window's tab (the one the Build button names while it is closed). */
+  tab: Category | 'research';
   /** A finger, not a mouse: the steps say tap, and name the command bar instead of keys. */
   touch?: boolean;
+  /** The build window is open (and showing): build buttons and list tabs exist only while it is. */
+  buildOpen?: boolean;
+  /** The window is a full-screen sheet (phones and touch): it covers everything outside it. */
+  sheet?: boolean;
+}
+
+/** The ids that live inside the build window. */
+const inWindow = (id: string) => id.startsWith('fl-tab-') || (id.startsWith('fl-build-') && id !== 'fl-build-open');
+
+/**
+ * A control in the build window: while the window is closed, ring the Build button that opens it;
+ * on the wrong list, ring that list's tab; otherwise the control itself.
+ */
+const windowed = (v: TourView, tab: Category, id: string) => (!v.buildOpen ? 'fl-build-open' : v.tab !== tab ? `fl-tab-${tab}` : id);
+
+/**
+ * Where the step's target really is for the player. The open build window stands between the
+ * player and the battlefield (desktop) or, as a full-screen sheet, everything outside it: ring its
+ * close button first, then the target.
+ */
+function reachable(v: TourView, id: string | null): string | null {
+  if (!id || !v.buildOpen || inWindow(id)) return id;
+  if (id === 'fl-battlefield' && !v.placing) return 'fl-build-close';
+  if (v.sheet) return 'fl-build-close';
+  return id;
+}
+
+/** What the card says while it rings the Build button or the window's close button. */
+function windowNote(v: TourView, target: string | null): string {
+  if (target === 'fl-build-open')
+    return v.touch
+      ? 'Tap Build to open the build window, where everything you can build is laid out by what it needs first. '
+      : 'Click Build, or press the ` key, to open the build window, where everything you can build is laid out by what it needs first. ';
+  if (target === 'fl-build-close')
+    return v.touch ? 'First close the build window with the × at its top. ' : 'First close the build window: its × at the top right, or the ` key. ';
+  return '';
 }
 
 /** Taken when a step becomes current. Predicates measure change from here. */
@@ -110,10 +147,9 @@ const busyBody = (other: BuildingKind, touch = false) =>
   `Your Command Yard is busy with a ${BUILDINGS[other].name}, and it builds one structure at a time. Place it when it says Ready, or ${touch ? 'tap the × on its button' : 'right-click its button'} to cancel it for a full refund. Then carry on.`;
 
 const queueTarget = (kind: BuildingKind) => (v: TourView) => {
-  if (v.tab !== 'building') return 'fl-tab-building';
   const other = busyWith(v, kind);
-  if (other) return v.placing === other ? 'fl-battlefield' : `fl-build-${other}`;
-  return `fl-build-${kind}`;
+  if (other) return v.placing === other ? 'fl-battlefield' : windowed(v, 'building', `fl-build-${other}`);
+  return windowed(v, 'building', `fl-build-${kind}`);
 };
 
 const queuedOrBuilt = (kind: BuildingKind) => (v: TourView, b: Baseline) =>
@@ -237,10 +273,10 @@ function buildSteps(): TourStep[] {
     {
       title: 'Train a soldier',
       body: v =>
-        v.tab !== 'infantry'
+        v.buildOpen && v.tab !== 'infantry'
           ? 'Open the Infantry list.'
           : `${v.touch ? 'Tap' : 'Click'} Rifleman to train one. Infantry and vehicles each queue up to five; riflemen are cheap and cut down enemy infantry, rocketeers are the answer to tanks and turrets.`,
-      target: v => (v.tab !== 'infantry' ? 'fl-tab-infantry' : 'fl-build-rifleman'),
+      target: v => windowed(v, 'infantry', 'fl-build-rifleman'),
       isComplete: (v, b) => v.s.players[0].queues.infantry.length > b.infantryQueued || v.s.players[0].stats.trained > b.trained,
     },
     {
@@ -292,6 +328,15 @@ function useTargetRect(targetId: string | null): DOMRect | null {
         scrolled = true;
         r = el.getBoundingClientRect();
       }
+      // Inside a scrolling box (the build window's tree, the sidebar) but scrolled out of its view.
+      const box = el.parentElement?.closest('.fl-bw-body, aside');
+      if (box) {
+        const b = box.getBoundingClientRect();
+        if (r.top < b.top || r.bottom > b.bottom || r.left < b.left || r.right > b.right) {
+          el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+          r = el.getBoundingClientRect();
+        }
+      }
       setRect(prev =>
         prev && prev.left === r.left && prev.top === r.top && prev.width === r.width && prev.height === r.height ? prev : r,
       );
@@ -334,7 +379,7 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
   const done = latched === stepIndex || (!manual && step.isComplete(view, baseline.current.b));
   const lastTarget = useRef<string | null>(null);
   // A finished step keeps ringing what it last rang while it pauses, rather than its idle target.
-  const targetId = hidden ? null : done ? lastTarget.current : step.target(view);
+  const targetId = hidden ? null : done ? lastTarget.current : reachable(view, step.target(view));
   if (!done) lastTarget.current = targetId;
   const rect = useTargetRect(targetId);
   // The card's real height, so a phone can fit it above or below its target rather than over it.
@@ -386,8 +431,28 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
   const CARD_W = sideways ? Math.min(300, window.innerWidth - rect!.right + 120) : 336;
   const CARD_H = cardH;
   const narrow = window.innerWidth < 700;
+  // A target inside the build window (desktop): the card goes clear of the whole window if it can,
+  // so it never hides the window's other buttons, which the step may send the player to next.
+  const win = targetId && rect ? document.getElementById('fl-build-window') : null;
+  const targetEl = targetId ? document.getElementById(targetId) : null;
+  const inWin = !!win && !!targetEl && win.contains(targetEl);
+  const sheetOpen = inWin && win!.getAttribute('data-sheet') === '1';
+  const winRect = inWin && !sheetOpen ? win!.getBoundingClientRect() : null;
   let pos: { left: number; top: number };
-  if (sideways) {
+  if (sheetOpen && rect && !narrow) {
+    // The full-screen sheet on a phone on its side: the half of the screen away from the target.
+    const left = rect.left + rect.width / 2 < window.innerWidth / 2 ? window.innerWidth - CARD_W - 16 : 16;
+    pos = { left, top: Math.min(window.innerHeight - CARD_H - 8, Math.max(8, rect.top - 20)) };
+  } else if (winRect && rect && !narrow) {
+    const top = Math.min(window.innerHeight - CARD_H - 16, Math.max(16, rect.top - 20));
+    const hits = (l: number, r: { left: number; right: number; top: number; bottom: number }) =>
+      l < r.right && r.left < l + CARD_W && top < r.bottom && r.top < top + CARD_H;
+    const options = [window.innerWidth - CARD_W - 16, winRect.right + 16, winRect.left - CARD_W - 16].filter(
+      l => l >= 16 && l + CARD_W <= window.innerWidth - 16,
+    );
+    const left = options.find(l => !hits(l, winRect)) ?? options.find(l => !hits(l, rect)) ?? window.innerWidth - CARD_W - 16;
+    pos = { left, top };
+  } else if (sideways) {
     pos = { left: window.innerWidth - CARD_W - 8, top: 8 };
   } else if (narrow && rect) {
     // A phone: full width, above the target if it fits there, else below it. On the battlefield
@@ -438,7 +503,7 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
           Guided first battle · {stepIndex + 1} of {steps.length}
         </p>
         <h3 style={title}>{done ? 'Done' : step.title}</h3>
-        <p style={bodyText}>{done ? 'Good. Next step in a moment.' : step.body(view)}</p>
+        <p style={bodyText}>{done ? 'Good. Next step in a moment.' : windowNote(view, targetId) + step.body(view)}</p>
         <div style={footer}>
           <button type="button" style={ghost} onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}

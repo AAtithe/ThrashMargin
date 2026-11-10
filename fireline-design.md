@@ -572,3 +572,73 @@ until workstream C, a selected unit or structure can offer its own commands thro
 place a workstream adds lines to a shared file. Every printed line of `npm run drive:fire` is the
 same before and after; the assertion count rose by one (the new `'rail'` weapon kind's flight time).
 
+### 2026-11-10: The build window (round 5, workstream A)
+
+The build lists have left the sidebar for a pop-out tech tree, as `fireline-round5-design.md`
+section 3 sets out. Interface only: no file under `src/sim/` changed.
+
+- **Sidebar.** Credits, power and the minimap as before, then a **Build** button naming the
+  window's tab ("Build: Structures", with the `` ` `` key) and the **production strip**: one icon
+  per queue with anything in it (the four build queues and the research under way), the head item
+  with its progress bar and the queue's count. A click cancels the last one queued (right-click
+  does the same); a ready structure pulses and a click picks it up to place. On touch a tap on an
+  icon opens its list and the × cancels. Then the selection panel.
+- **The window** (`src/game/BuildWindow.tsx`). Opened and closed by the Build button or the
+  backquote key, closed by Esc (after the controls sheet, before placement and the rest) or its ×.
+  `role="dialog"`, focus moves to the open tab on open and back to the Build button on close. Not
+  modal. On a desktop it is a panel inside the battlefield's own box (so never over the sidebar),
+  about 60% of it wide (at least 560px where the field allows) and at most 80% tall, dragged by its
+  title bar; its place is kept under `fl_build_window` as fractions of the room it can move in, so
+  it survives a resize. On phones and touch screens (`layout.touch` or `layout.stacked`) it is a
+  full-screen sheet. It hides, keeping its state, while paused, on the controls sheet and at the end.
+- **The tree** (`src/game/techTree.ts`, pure). Tiers from `requires` alone, the Command Yard
+  ignored, memoised, a cycle counting as 0. Columns left to right on a desktop, rows top to bottom
+  on a phone; within a tier, menu order. A structure needed from another tab is a ghost node at the
+  start ("needs War Factory"), so every line has both ends. Lines are an SVG layer behind the
+  buttons, measured from the laid-out buttons (again on any resize and whenever a Needs line comes
+  or goes), solid in the met token, dashed in the unmet one. Cells are opaque, so a line passes
+  behind a greyed (see-through) item rather than across it. A locked item names what it lacks.
+- **Research** is a tab of its own after the others once a Lab stands (`tabsFor`), the old block
+  unchanged; Tab and Shift+Tab cycle every tab the battle offers, window open or closed.
+- **Placement.** Picking up a ready structure (button, key or strip) closes the window; placing
+  it or cancelling placement reopens it on the same tab, if placement closed it. Opening the
+  window while placing puts the structure back to Ready.
+- **Hotkeys** are unchanged and act on the tab the Build button names, open or closed; the 15th
+  item of a list onwards has none. The stat card now sits beside the window (right if there is
+  room, else left), and on touch shows on a long press (which no longer cancels: only the × does).
+- **Guided tours.** A step that wants a build button rings the Build button while the window is
+  closed, then the list's tab, then the button, saying so in the card. A step on the battlefield
+  (other than placing) rings the window's close button first while it is open, and on a sheet so
+  does any step whose target is outside it. A card ringing a control in the window docks clear of
+  the whole window (on a phone on its side, the half of the screen away from the target), so it
+  never hides the window's other buttons. Both drivers pass; the touch driver now closes the sheet
+  before its pan check and taps the card's own Close.
+- **The window's own check**, `scripts/tours/fireline-build-window.cjs`, run by
+  `scripts/tours/fireline.cjs` after the tour (or alone): on a fresh advanced-tech skirmish every
+  `MENUS` kind (29) is on its tab, greyed exactly when the rules say, in the tier column the rules
+  give, with a drawn line to every structure it needs; button, key and Esc open and close it, focus
+  goes in and back; Tab cycles with it open and closed; Q queues with it closed and W with it open;
+  picking up the Generator closes it and placing reopens it on Structures; picking up the Refinery
+  and pressing Esc cancels placement and reopens it; dragging moves it, the place is stored, and it
+  never reaches the sidebar; and a kind no rule knows (`window.__flExtraMenuItem`, honoured only in
+  development builds), needing a Tech Centre and a Research Lab, is laid out in tier 4 with both
+  lines and both ghosts, greyed and naming its needs.
+
+Decisions where the contract was silent:
+
+- Column headings read "Tier N" with N one more than the computed tier, the same numbers on every
+  tab (infantry start at Tier 3, because a Barracks is tier 2). Round 5's own "tier three" (D) is a
+  name for a set of tech, not this number; the integrator may want to relabel.
+- A strip click cancels the *last* item queued in that queue, which is what `cancel` already does
+  for a kind, and leaves the one in progress alone when the queue is longer than one.
+- Esc closes the controls sheet before the window, because the sheet hides the window.
+- The window opens first in the centre of the battlefield, a quarter of the way down.
+- A few stale lines elsewhere in How to play (the first five minutes, Advanced tech, Aircraft) now
+  name the build window instead of the sidebar list; the build window has its own panel under A's
+  marker, and the Controls table has rows for `` ` ``, the strip, long press and the new Esc order.
+
+Numbers: `npm run drive:fire` prints the same lines as before (A touches no simulation code);
+`npm run tours fireline fireline-touch` pass (desktop with the window check; iPhone 13 upright and
+on its side, Pixel 7). Checked by eye in light and dark at 1440 by 900, 1100 by 800, an iPhone 13
+and 375 by 667, with no page errors.
+

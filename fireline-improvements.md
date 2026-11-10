@@ -101,7 +101,11 @@ mission AI once the round-1 opponent work lands.
 ## I. Round 5 (contract: `fireline-round5-design.md`)
 
 - [x] Contract and groundwork: one menu table, extra producers, map size and sites in the setup, neutral sites in the state, selection commands (no change in play).
-- [ ] A. The build window: the build lists in a pop-out tech tree, opened by a Build button or the backquote key.
+- [x] A. The build window: the build lists in a pop-out tech tree, opened by a Build button or the backquote key.
+  - Tiers worked out from `requires` alone, lines to every structure needed, ghosts for other lists' structures.
+  - Draggable panel on a desktop (place remembered), full-screen sheet on phones; a Research tab once a Lab stands.
+  - Production strip under the Build button; placing a structure steps the window aside and brings it back.
+  - Both guided tours walk it; `scripts/tours/fireline-build-window.cjs` checks it, including a kind it has never seen.
 - [ ] B. Larger maps and long games: large and huge maps, ore that spreads back, the computer scaled for distance, performance at 160 tiles.
 - [ ] C. Engineering vehicles: Repair Truck, Forward Base Truck and Field Yard; the computer expands on large maps.
 - [ ] D. Neutral sites and tier three: Oil Derricks, Field Hospitals, Comms Relays; Prototype Works, Fortress, Railgun Tank, Stealth Tank.
