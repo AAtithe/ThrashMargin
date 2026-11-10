@@ -1526,7 +1526,7 @@ function engineerTests(): void {
     const c = tickUntil(processAction(at, { type: 'ability', id: heroOf(at, 'engineer').id, target: fac.id }), q => q.buildings.find(b => b.id === fac.id)!.owner === 0, CAPTURE_TICKS + 5);
     const c1 = processAction(c, { type: 'tick' });
     ok(c1.mission!.objectives[0].done && c1.units.filter(u => u.owner === 1).length === 2, 'the counter-attack a capture triggers is on the field');
-    ok(c1.mission!.result === null && !c1.mission!.objectives[1].done, 'before "destroy everything" is judged, so capturing the last structure does not win outright');
+    ok(c1.mission!.result === null && !c1.mission!.objectives[1].done, 'and reopens "destroy everything", so capturing the last structure does not win outright');
   }
 }
 

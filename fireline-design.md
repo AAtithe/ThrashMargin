@@ -861,8 +861,10 @@ it was lost every way, inside two minutes, with nothing of the enemy's killed. T
   objective fails and the mission is lost with "The enemy War Factory was destroyed before it could
   be captured."
 - `evaluateMission` judged objectives before firing triggers, so capturing the factory last won on
-  the spot and the counter-attack it triggers spawned into a finished battle. Triggers now fire
-  first. The counter-attack is now two tanks from the far west on the capture, not three from the
+  the spot and the counter-attack it triggers spawned into a finished battle. An enemy group a
+  trigger sends now reopens "destroy everything" on that tick. (Firing triggers first instead was
+  tried and broke three harness checks: tick-judged objectives fired their triggers a tick late,
+  and a say-only trigger on the final objective never spoke.) The counter-attack is now two tanks from the far west on the capture, not three from the
   north at a fixed six minutes (which could land before the capture, on a squad still fighting).
 
 Campaign difficulty (`src/campaign/difficulty.ts`): Easy, Normal, Hard, on the campaign (default

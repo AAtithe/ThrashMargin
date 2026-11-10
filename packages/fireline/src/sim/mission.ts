@@ -1015,25 +1015,34 @@ const satisfied = (o: ObjectiveRuntime) => o.done || (o.spec.kind === 'keepAlive
 export function evaluateMission(s: GameState): void {
   const m = s.mission;
   if (!m || m.result) return;
-  // Triggers first: a group spawned by an objective just done (a capture, a destruction, both moved
-  // by events during the tick) is on the field before "destroy everything" is judged. Judged the
-  // other way round, Borrowed Steel's counter-attack spawned on the tick the mission was already won.
-  if (m.triggers)
-    m.triggers.forEach((t, i) => {
-      if (m.fired.includes(i)) return;
-      const due = 'at' in t ? s.tick >= t.at : !!m.objectives[t.afterObjective]?.done;
-      if (!due) return;
-      m.fired.push(i);
-      if (t.spawn) spawnGroup(s, t.spawn);
-      if (t.say) log(s, t.say, 'info');
-    });
-
   for (const o of m.objectives) evalObjective(s, o);
   for (const o of m.bonus) evalObjective(s, o);
   if (m.structurePowers) {
     syncStructurePowers(s);
     missionStrikes(s);
   }
+
+  let spawned = false;
+  if (m.triggers)
+    m.triggers.forEach((t, i) => {
+      if (m.fired.includes(i)) return;
+      const due = 'at' in t ? s.tick >= t.at : !!m.objectives[t.afterObjective]?.done;
+      if (!due) return;
+      m.fired.push(i);
+      if (t.spawn) {
+        spawnGroup(s, t.spawn);
+        if (t.spawn.owner !== 0) spawned = true;
+      }
+      if (t.say) log(s, t.say, 'info');
+    });
+  // A group a trigger has just sent reopens "destroy everything": in Borrowed Steel, capturing the
+  // factory last finished it on the same tick, and the counter-attack spawned into a won battle.
+  if (spawned)
+    for (const o of [...m.objectives, ...m.bonus])
+      if (o.spec.kind === 'destroyAll' && o.done) {
+        o.done = false;
+        evalObjective(s, o);
+      }
 
   const failed = m.objectives.find(o => o.failed);
   let lost: string | null = null;
