@@ -364,7 +364,7 @@ export interface TheatreGeography {
   chains: TheatreChain[];
 }
 
-const NY = 260;
+const NY = 300;
 const NX = Math.round(NY * THEATRE_ASPECT);
 const SEA = -1;
 const ABROAD = -2;
