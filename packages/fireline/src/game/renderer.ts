@@ -840,9 +840,9 @@ export class Renderer {
     // 10. Fog: unexplored is black, explored but unwatched is dimmed. Drawn from a one-pixel-per-
     // tile canvas scaled up with smoothing, which is what gives it soft edges. Cloud shadows and
     // the vignette ride in the same canvas (see fx/atmosphere.ts), so they cost no extra fill.
-    // The fog's own alpha is softened over a tile each way and cached per state (fogAlpha), and the
-    // canvas is scaled with the browser's best filter, so its edge is a rounded gradient rather
-    // than a staircase of tiles.
+    // The fog's own alpha is softened over a tile each way and cached per state (fogAlpha), so its
+    // edge is a rounded gradient rather than a staircase of tiles. ('high' smoothing on the scale
+    // looked no better and cost frames on a machine without a GPU.)
     const d = this.fogImg.data;
     const [fr, fg, fb] = ART.fog;
     const shade = this.atmosphere.shade(t, cam, tx0, ty0, tx1, ty1);
@@ -855,10 +855,7 @@ export class Renderer {
       d[k * 4 + 3] = 255 - ((255 - a) * (255 - shade[k])) / 255;
     }
     this.fogCtx.putImageData(this.fogImg, 0, 0);
-    const quality = ctx.imageSmoothingQuality;
-    ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(this.fog, 0, 0, MAP_W * TILE, MAP_H * TILE);
-    ctx.imageSmoothingQuality = quality;
     // Missile strikes: the marker on the target, above the fog, so either side can see it coming.
     for (const e of markers) {
       const age = rt - e.at;
