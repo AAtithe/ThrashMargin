@@ -10,6 +10,7 @@ import { listNames, note } from './journal';
 import { claimStarts, permutation, planetMapOf, placeCapitals, startDeal, terrainYieldTotal } from './map';
 import {
   AI_FACTION_NAMES,
+  BATTLE_RULES,
   NEUTRAL_BUILDINGS,
   NEUTRAL_GARRISON,
   PLAYER_NAME,
@@ -247,6 +248,7 @@ export function newPlanetState(p: {
     nextId: 1,
     journal: [],
     result: null,
+    battleRules: BATTLE_RULES,
   };
   note(s, `The war for ${m.name} begins. ${listNames(factions.map(f => f.name))} hold their capitals under an opening truce of ${options.openingTruce} turns.`);
   return s;
