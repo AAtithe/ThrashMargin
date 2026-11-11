@@ -157,7 +157,9 @@ async function checkBuildWindow(browser, base, problems, out) {
     await until(isOpen);
     await page.locator('#fl-build-power').click();
     if (!(await until(async () => (await page.locator('#fl-battlefield').getAttribute('data-placing')) === 'power'))) await fail('clicking the ready Generator did not start placement');
-    if (await isOpen()) await fail('the window stayed open while placing');
+    // The window closes in the render after placement starts (an effect on placing in GameScreen), so
+    // wait for it as every other open and close here does; reading it once raced that render on CI.
+    if (!(await until(async () => !(await isOpen()), 2000))) await fail('the window stayed open while placing');
     const field = await page.locator('#fl-battlefield').boundingBox();
     let placed = false;
     for (let r = 40; r < 360 && !placed; r += 24)
