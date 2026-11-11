@@ -1133,6 +1133,11 @@ function buildRules(): void {
   for (const h of HERO_KINDS) refused(s, { type: 'queue', category: UNITS[h].category, kind: h }, `queueing hero ${h}`);
   const sk = createInitialState('h', 'h', { seed: 'h', createdAt: 0 });
   for (const h of HERO_KINDS) refused(sk, { type: 'queue', category: UNITS[h].category, kind: h }, `queueing hero ${h} in a skirmish`);
+  // round6:B. With heroes on (advanced tech, a Command Academy standing) a skirmish accepts them.
+  const on = createInitialState('h', 'h', { seed: 'h', createdAt: 0, setup: { tech: 'advanced', heroes: true } });
+  on.players[0].credits = 100000;
+  (['barracks', 'factory', 'techcentre', 'academy'] as const).forEach((k, i) => addBuilding(on, 0, k, 2 + 4 * i, 2, -100));
+  for (const h of HERO_KINDS) ok(processAction(on, { type: 'queue', category: UNITS[h].category, kind: h }) !== on, `queueing hero ${h} in a skirmish with heroes on`);
   ok(processAction(s, { type: 'queue', category: 'infantry', kind: 'rifleman' }) !== s, 'an allowed unit can be queued');
   refused(s, { type: 'queue', category: 'infantry', kind: 'rocketeer' }, 'a unit the mission does not allow');
   refused(s, { type: 'queue', category: 'building', kind: 'barracks' }, 'a structure the mission does not allow');

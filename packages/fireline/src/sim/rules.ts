@@ -148,6 +148,7 @@ export type BuildingKind =
   // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its structure kinds, if any.
   // round6:A end.
   // round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): its structure kinds (the Command Academy).
+  | 'academy'
   // round6:B end.
   // round6:C begin. Generals (fireline-round6-design.md, workstream C): its structure kinds, if any.
   // round6:C end.
@@ -486,7 +487,8 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     speed: 0.085,
     sight: 6,
     requires: ['factory', 'repairbay'],
-    blurb: 'Unarmed. Mends your vehicles beside it, free, and drives to damaged ones nearby when idle.',
+    blurb:
+      'Unarmed. Mends your vehicles beside it, free, and drives to damaged ones nearby when idle. Free play\'s engineering units are this and the Forward Base Truck; the Engineer is a hero, recruited only with heroes on.',
     mender: true,
   },
   basetruck: {
@@ -499,7 +501,8 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     speed: 0.055,
     sight: 5,
     requires: ['factory', 'uplink'],
-    blurb: 'Unarmed. Deploys where it stands into a Field Yard: a second base that builds structures. Three at most.',
+    blurb:
+      'Unarmed. Deploys where it stands into a Field Yard: a second base that builds structures. Three at most. Free play\'s engineering units are this and the Repair Truck; the Engineer is a hero, recruited only with heroes on.',
     deploysTo: 'fieldyard',
   },
   // round5:C end.
@@ -773,6 +776,19 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
   // round6:A begin. Two armies: its structures, if any, appended here.
   // round6:A end.
   // round6:B begin. Heroes in free play: its structures (the Command Academy), appended here.
+  academy: {
+    name: 'Command Academy',
+    w: 2,
+    h: 2,
+    cost: 1500,
+    buildTicks: 160,
+    hp: 900,
+    power: -40,
+    sight: 5,
+    requires: ['techcentre'],
+    blurb:
+      'Heroes on only. Once it stands, the Spy, Commando and Engineer join the Infantry list and the Ace the Vehicles list: one of each at a time, and a fallen hero can be recruited again after 90 seconds at half price.',
+  },
   // round6:B end.
   // round6:C begin. Generals: its structures, if any, appended here.
   // round6:C end.
@@ -799,6 +815,7 @@ export const BUILD_MENU: BuildingKind[] = [
   'fortress',
   // round5:D end.
   // round6:B begin. Heroes in free play: its structures, appended here.
+  'academy',
   // round6:B end.
   // round6:C begin. Generals: its structures, if any, appended here.
   // round6:C end.
@@ -810,6 +827,9 @@ export const INFANTRY_MENU: UnitKind[] = [
   'medic',
   'skyhunter',
   // round6:B begin. Heroes in free play: the heroes, if B lists them here (techAllowed keeps them out unless setup.heroes).
+  'spy',
+  'commando',
+  'engineer',
   // round6:B end.
   // round6:C begin. Generals: the field General, if C lists it here.
   // round6:C end.
@@ -832,6 +852,7 @@ export const VEHICLE_MENU: UnitKind[] = [
   'stealthtank',
   // round5:D end.
   // round6:B begin. Heroes in free play: the Ace, if B lists it here.
+  'ace',
   // round6:B end.
 ];
 /** Aircraft in the order the Air tab offers them. */
@@ -1537,6 +1558,29 @@ export const FACTION_MENUS: Record<Faction, FactionMenu> = { meridian: {}, ashen
 
 // round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): recruit costs,
 // limits and the revive cooldown.
+//
+// A skirmish set up with heroes on (and advanced tech) may recruit the campaign's four heroes once a
+// Command Academy stands: the Spy, Commando and Engineer at the Barracks, the Ace at the War Factory,
+// through the ordinary queues. The heroes' entries in UNITS keep their campaign numbers (a mission
+// never prices or trains a hero), so the skirmish price and training time are these, read by costFor
+// and buildTicksFor. One of each per side, standing or queued; a fallen hero may be recruited again
+// after HERO_REVIVE_TICKS at HERO_REVIVE_SHARE of the price, and comes back wounded (half health)
+// with the experience it had, as a campaign hero does in the next mission.
+/** What each hero costs to recruit in a skirmish. */
+export const HERO_RECRUIT_COST: Record<HeroKind, number> = { engineer: 1000, spy: 1200, commando: 1800, ace: 2500 };
+/** Ticks of training each hero takes in a skirmish (at full power). */
+export const HERO_RECRUIT_TICKS: Record<HeroKind, number> = { engineer: 200, spy: 220, commando: 300, ace: 360 };
+/** Ticks after a hero falls before it may be recruited again: 90 seconds. */
+export const HERO_REVIVE_TICKS = 900;
+/** A fallen hero's price to recruit again, as a share of HERO_RECRUIT_COST. */
+export const HERO_REVIVE_SHARE = 0.5;
+/** The structure that opens hero recruitment. */
+export const HERO_ACADEMY = 'academy' satisfies BuildingKind;
+
+/** A hero's skirmish price: full, or HERO_REVIVE_SHARE of it for one that has fallen in this battle. */
+export function heroRecruitCost(kind: HeroKind, fallen: boolean): number {
+  return fallen ? Math.round(HERO_RECRUIT_COST[kind] * HERO_REVIVE_SHARE) : HERO_RECRUIT_COST[kind];
+}
 // round6:B end.
 
 /** The four doctrine Generals, two to an army. Their perks and powers are workstream C's GENERALS. */

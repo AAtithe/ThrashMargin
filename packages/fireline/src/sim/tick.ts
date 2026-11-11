@@ -1,4 +1,6 @@
 import { runAi } from './ai';
+// round6:B. Heroes in free play: the hero tick in a skirmish with heroes on.
+import { enlistHeroes, heroesInPlay } from './heroes';
 import { spreadOre } from './maps';
 import {
   dist,
@@ -171,6 +173,10 @@ export function step(s: GameState): void {
   // round6:B begin. Heroes in free play: the hero tick also runs in a skirmish with setup.heroes
   // (this condition may widen; nothing else here changes).
   if (s.mission) heroes(s, ctx);
+  else if (heroesInPlay(s)) {
+    enlistHeroes(s);
+    heroes(s, ctx);
+  }
   // round6:B end.
   for (const b of s.buildings) if (b.hp > 0) updateBuilding(s, ctx, b);
   // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,

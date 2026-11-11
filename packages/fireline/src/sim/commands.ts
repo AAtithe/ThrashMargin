@@ -35,6 +35,9 @@ import type { Building, GameState, QueuedOrder, Stance, Unit } from './types';
 import { buildingSpec, buildingSpecOf, unitSpecOf } from './specs';
 // round5:D. Tier three: the Stealth Tank is targetable only when seen (fireline-round5-design.md).
 import { stealthSeen } from './sites';
+// round6:B. Heroes in free play: recruit limits (fireline-round6-design.md).
+import { heroesInPlay, heroRecruitProblem } from './heroes';
+import type { HeroKind } from './rules';
 
 /**
  * Orders, shared by the player and the computer. Each `can*` check reads the state without
@@ -53,8 +56,12 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if (kind === 'hq' || kind === 'fieldyard') return false;
   // round6:B begin. Heroes in free play: the refusal below relaxed when setup.heroes is on, and the
   // one-of-each limit (standing, queued and on the revive cooldown).
-  // Heroes are campaign characters, never built.
-  if (kind in UNITS && UNITS[kind as UnitKind].hero) return false;
+  // Heroes are campaign characters, never built, except in a skirmish with heroes on (and advanced
+  // tech), where they are recruited once a Command Academy stands (techAllowed, below), one of each.
+  if (kind in UNITS && UNITS[kind as UnitKind].hero) {
+    if (!heroesInPlay(s)) return false;
+    if (heroRecruitProblem(s, owner, kind as HeroKind) !== null) return false;
+  }
   // round6:B end.
   // round6:C begin. Generals: one field General per side (standing or queued), and its replacement cooldown.
   // round6:C end.

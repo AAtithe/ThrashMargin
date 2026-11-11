@@ -7,6 +7,8 @@ import { Controls } from './GameScreen';
 import { statsOf } from '../game/Sidebar';
 import { TECH_TEXT } from '../components/SkirmishSetup';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
+// round6:B. Heroes in free play: its panel's numbers.
+import { HERO_ACADEMY, HERO_RECRUIT_COST, HERO_RECRUIT_TICKS, HERO_REVIVE_SHARE, HERO_REVIVE_TICKS } from '../sim/rules';
 import {
   AIR_MENU,
   BUILD_MENU,
@@ -249,6 +251,7 @@ export default function HowToPlay() {
         <SitesPanel />
         {/* round6:A. Two armies (fireline-round6-design.md): its panel goes on the line below. */}
         {/* round6:B. Heroes in free play: its panel goes on the line below. */}
+        <FreeHeroesPanel />
         {/* round6:C. Generals: its panel goes on the line below. */}
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
 
@@ -457,3 +460,48 @@ function SitesPanel() {
   );
 }
 // round5:D end.
+
+// round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B).
+function FreeHeroesPanel() {
+  const order = ['engineer', 'spy', 'commando', 'ace'] as const;
+  return (
+    <Panel title="Heroes in free play">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Heroes</strong> in the lobby (advanced tech only) and the campaign's four heroes can be recruited in a
+          skirmish. Build a <strong>{BUILDINGS[HERO_ACADEMY].name}</strong> after a Tech Centre: the Spy, Commando and Engineer
+          then join the Infantry list (trained at the Barracks) and the Ace the Vehicles list (at the War Factory).
+        </li>
+        <li>
+          One of each at a time, counting the one in the queue. A hero who falls can be recruited again after{' '}
+          {seconds(HERO_REVIVE_TICKS)} at {Math.round(HERO_REVIVE_SHARE * 100)}% of the price, and comes back wounded, at half
+          health, with the experience it had.
+        </li>
+        <li>
+          Heroes level up from kills as in the campaign. The hero bar at the bottom of the battlefield works the same way:{' '}
+          <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> <kbd>V</kbd> select them, and <kbd>F</kbd> uses the ability when one hero alone is
+          selected (otherwise <kbd>F</kbd> is the selection's own command, such as Deploy).
+        </li>
+        <li>
+          The computer recruits heroes too: its Engineer takes undefended structures and sites, its Commando goes with an escort
+          for an outlying structure, its Ace rides with the attack, and its Spy slips into your base before an attack.
+        </li>
+        <li>
+          Looking for an engineer without heroes? The <strong>{UNITS.repairtruck.name}</strong> and the{' '}
+          <strong>{UNITS.basetruck.name}</strong> are free play's engineering units.
+        </li>
+      </ul>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+        {order.map(k => (
+          <div key={k} style={{ ...tile, flexDirection: 'column', gap: 4 }}>
+            <strong style={{ fontSize: '0.88rem' }}>{UNITS[k].name}</strong>
+            <span style={{ fontSize: '0.72rem', color: UI.textFaint, fontFamily: FONT.mono }}>
+              {HERO_RECRUIT_COST[k].toLocaleString('en-GB')} credits · {seconds(HERO_RECRUIT_TICKS[k])} · {HERO_ABILITY[k].name}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+// round6:B end.

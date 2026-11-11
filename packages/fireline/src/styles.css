@@ -2295,6 +2295,23 @@ kbd {
 /* round6:A. Two armies. */
 
 /* round6:B. Heroes in free play. */
+.fl-hero-revive {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--ui-hud);
+  border: 1px solid var(--ui-rule);
+  border-radius: 5px;
+  box-shadow: 0 2px 12px var(--ui-shadow);
+  color: var(--ui-text-soft);
+  font-size: 0.7rem;
+  line-height: 1.3;
+  pointer-events: auto;
+}
+.fl-setup-field[data-disabled="1"] .fl-seg {
+  opacity: 0.45;
+}
 
 /* round6:C. Generals. */
 

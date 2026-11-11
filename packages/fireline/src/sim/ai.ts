@@ -28,6 +28,8 @@ import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
+// round6:B. Heroes in free play (fireline-round6-design.md, workstream B).
+import { heroKeptBack, heroPlan } from './aiHeroes';
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -427,6 +429,7 @@ function commander(s: GameState, owner: Owner): void {
   // round5:D end.
   // round6:B begin. Heroes in free play (fireline-round6-design.md): one call into aiHeroes.ts goes
   // on the line below this comment (recruiting and errands), and nothing else in this function changes.
+  heroPlan(s, owner, home, enemy, units, foes);
   // round6:B end.
   // round6:C begin. Generals (fireline-round6-design.md): one call into aiGenerals.ts goes on the
   // line below this comment (recruiting, keeping with the wave, retreating), and nothing else here.
@@ -707,6 +710,7 @@ function commander(s: GameState, owner: Owner): void {
  */
 function keptBack(s: GameState, u: Unit): boolean {
   // round6:B begin. Heroes in free play: true for a skirmish hero its own plan commands (aiHeroes.ts).
+  if (heroKeptBack(s, u)) return true;
   // round6:B end.
   // round6:C begin. Generals: true for the field General, which its own plan keeps behind the wave.
   // round6:C end.

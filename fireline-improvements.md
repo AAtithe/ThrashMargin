@@ -138,3 +138,6 @@ mission AI once the round-1 opponent work lands.
 - Touch controls (tap to select, tap-and-hold for orders).
 - Ambient music bed.
 - A scripted "human player" in the harness so balance can be measured without hand play.
+
+- [x] Round 6, B: heroes in free play behind a setup option (Command Academy, one of each, revive after 90s at half price).
+  - [ ] The stat card and How to play's unit grids read the catalogue's hero cost and time (0); they should read `costFor` and `buildTicksFor` (integration, with A's per-army stat tip).

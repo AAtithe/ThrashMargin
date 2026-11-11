@@ -26,6 +26,12 @@ import {
   STANDARD_TECH,
   UNITS,
   VEHICLE_MENU,
+  // round6:B. Heroes in free play.
+  HERO_ACADEMY,
+  HERO_RECRUIT_COST,
+  HERO_REVIVE_TICKS,
+  TICKS_PER_SECOND,
+  type HeroKind,
   type BuildingKind,
   type MapSize,
   type MapType,
@@ -46,6 +52,15 @@ import { Label } from './ui';
 import { SITE_KINDS, SITES, SITES_PER_SIDE } from '../sim/rules';
 
 /** What the Neutral sites field says each side gets at this map size. */
+// round6:B begin. Heroes in free play: the Heroes field's note.
+function heroesNote(setup: SkirmishSetup): string {
+  if (setup.tech !== 'advanced') return 'Advanced tech only.';
+  if (!setup.heroes) return 'The Spy, Commando, Engineer and Ace stay in the campaign.';
+  const price = (['engineer', 'spy', 'commando', 'ace'] as HeroKind[]).map(k => `${UNITS[k].name.replace(/^The /, '')} ${HERO_RECRUIT_COST[k].toLocaleString('en-GB')}`);
+  return `A ${BUILDINGS[HERO_ACADEMY].name} (after a Tech Centre) recruits the campaign's heroes, one of each: ${price.join(', ')} credits. A fallen hero can come back after ${HERO_REVIVE_TICKS / TICKS_PER_SECOND} seconds at half price. The computer recruits them too.`;
+}
+// round6:B end.
+
 function sitesNote(setup: SkirmishSetup): string {
   if (!setup.sites) return 'No sites: ore is the only income.';
   const per = SITES_PER_SIDE[setup.size ?? 'standard'];
@@ -119,8 +134,8 @@ const ORE_TEXT: Record<OreLevel, { name: string; text: string }> = {
 
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
 /** What advanced tech adds, from the menus, so the list cannot drift from the rules. */
-const ADVANCED_STRUCTURES = BUILD_MENU.filter(k => !STANDARD_TECH.includes(k)).map(nameOf);
-const ADVANCED_UNITS = [...INFANTRY_MENU, ...VEHICLE_MENU].filter(k => !STANDARD_TECH.includes(k)).map(nameOf);
+const ADVANCED_STRUCTURES = BUILD_MENU.filter(k => !STANDARD_TECH.includes(k) && k !== HERO_ACADEMY).map(nameOf);
+const ADVANCED_UNITS = [...INFANTRY_MENU, ...VEHICLE_MENU].filter(k => !STANDARD_TECH.includes(k) && !UNITS[k].hero).map(nameOf);
 const ADVANCED_POWERS = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).map(
   ([p, b]) => `${POWERS[p].name} (${BUILDINGS[b].name})`,
 );
@@ -286,6 +301,25 @@ export default function SkirmishSetupPanel({
         {/* round6:A begin. Two armies (fireline-round6-design.md): the Army row, one choice per seat, goes below. */}
         {/* round6:A end. */}
         {/* round6:B begin. Heroes in free play: the Heroes field (Off, On; greyed on standard tech) goes below. */}
+        <div className="fl-setup-field" data-disabled={value.tech === 'advanced' ? '0' : '1'}>
+          <Label>Heroes</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Heroes">
+            {[false, true].map(on => (
+              <button
+                key={on ? 'on' : 'off'}
+                type="button"
+                role="radio"
+                aria-checked={!!value.heroes === on}
+                disabled={value.tech !== 'advanced'}
+                data-testid={`heroes-${on ? 'on' : 'off'}`}
+                onClick={() => set({ heroes: on })}
+              >
+                {on ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{heroesNote(value)}</p>
+        </div>
         {/* round6:B end. */}
         {/* round6:C begin. Generals: the doctrine General per seat and the Generals field (Off, On) go below. */}
         {/* round6:C end. */}

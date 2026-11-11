@@ -188,6 +188,12 @@ export interface PlayerState {
    */
   faction?: Faction;
   // round6:B begin. Heroes in free play: optional PlayerState fields (fallen heroes and when each may be recruited again).
+  /**
+   * A skirmish with heroes on: each of this side's heroes that has fallen and not yet come back, with
+   * the tick it may be recruited again and the experience it had. Present: the next one costs
+   * HERO_REVIVE_SHARE of the price and arrives wounded. Removed once the hero stands again. Absent: none.
+   */
+  heroFallen?: Partial<Record<HeroKind, { at: number; xp: number }>>;
   // round6:B end.
   // round6:C begin. Generals: optional PlayerState fields (the doctrine General, the field General's replacement cooldown).
   // round6:C end.
@@ -318,6 +324,20 @@ export interface AiMemory {
   // round6:A begin. Two armies: optional AiMemory fields.
   // round6:A end.
   // round6:B begin. Heroes in free play: optional AiMemory fields (its heroes' errands).
+  /**
+   * The computer's heroes on errands of their own (aiHeroes.ts): which hero, the structure or site it
+   * is after (by id), and when it set out. Absent: none.
+   */
+  heroErrands?: { hero: number; target: number; site: boolean; since: number }[];
+  /** Units escorting the Commando on its errand. */
+  heroEscort?: number[];
+  /** Targets given up on, and the tick each may be tried again. */
+  heroRetry?: [number, number][];
+  /**
+   * Credits set aside toward the next hero or the Command Academy, held here so the rest of its
+   * spending cannot reach them; handed back when spent, or when the economy needs them.
+   */
+  heroFund?: number;
   // round6:B end.
   // round6:C begin. Generals: optional AiMemory fields (its General's place in the wave).
   // round6:C end.
