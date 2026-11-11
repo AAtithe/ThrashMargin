@@ -17,3 +17,13 @@ A CEO coaching game for Tom Stanley.
   rather than points), the phone-off day (plan, a brief to send the team, then a return log of what
   waited, what was handled and what stalled, each stall becoming a fix), and fear and reality in the
   Friday review. All three feed the Reset receipts and the momentum card on Today.
+- The coach (Claude) on the portal: `packages/founders-ledger/api/game/coach.ts`, reached as
+  `/api/play/founders-ledger?coach=<task>` behind sign-in and game access. Switched on by setting
+  `ANTHROPIC_API_KEY` in the Vercel project's environment variables; without it the game runs on its
+  built-in bank exactly as before. The prompts live on the server; the browser sends only the facts a
+  task needs. Tasks: `readback` (Claude's read in the Reset and a suggested move), `pressure` (a call
+  written from the player's own line), `call` (the weekly call from the closed week), `letterDraft`
+  and `letterCoach`. The model named in coach.ts, with structured output and refusal fallback; 30 an
+  hour and 120 a day per account. Words that suggest a crisis get a support card (Samaritans, GP,
+  999) with no coaching and no model call. Covered by `npm run drive:fl` (prompts, checks, backstop)
+  and `npm run test:api` (the whole path, against a local stand-in for the API).
