@@ -516,7 +516,7 @@ const RANGES: Range[] = [
 const NAMES: { text: string; at: Pt; size: number; angle: number; kind: 'sea' | 'land' | 'abroad' }[] = [
   { text: 'GULF OF VARNE', at: [0.6, 0.925], size: 12, angle: 0, kind: 'sea' },
   { text: 'THE NORTHERN SOUND', at: [0.78, 0.33], size: 9.5, angle: -0.04, kind: 'sea' },
-  { text: 'THE EASTERN SEA', at: [0.925, 0.515], size: 11, angle: Math.PI / 2, kind: 'sea' },
+  { text: 'THE EASTERN SEA', at: [0.925, 0.475], size: 10, angle: Math.PI / 2, kind: 'sea' },
   { text: 'THE GREY FELLS', at: [0.1, 0.665], size: 13, angle: -0.3, kind: 'land' },
   { text: 'THE OUTER MARCHES', at: [0.38, 0.13], size: 10.5, angle: 0, kind: 'abroad' },
   { text: 'HOLLINMARK', at: [0.16, 0.93], size: 10.5, angle: 0, kind: 'abroad' },
@@ -1541,10 +1541,21 @@ function paintMarks(o: Sheetish, view: TheatreView, whole: boolean, withFront: b
       return [cx, cy];
     }
     if (!force) return null;
-    const [cx, cy] = tries[0];
-    const cxx = Math.max(m + tw / 2 + 2, Math.min(w - m - tw / 2 - 2, cx));
-    taken.push([cxx - tw / 2, cy - th / 2, cxx + tw / 2, cy + th / 2]);
-    return [cxx, cy];
+    // Nowhere clear: the place that covers least, kept inside the neatline.
+    let best: Pt = tries[0];
+    let fewest = Infinity;
+    for (const [tx, ty] of tries) {
+      const cx = Math.max(m + tw / 2 + 2, Math.min(w - m - tw / 2 - 2, tx));
+      const cy = Math.max(m + th / 2 + 2, Math.min(h - m - th / 2 - 2, ty));
+      const b: Box = [cx - tw / 2, cy - th / 2, cx + tw / 2, cy + th / 2];
+      const n = taken.filter(t => overlaps(t, b)).length;
+      if (n < fewest) {
+        fewest = n;
+        best = [cx, cy];
+      }
+    }
+    taken.push([best[0] - tw / 2, best[1] - th / 2, best[0] + tw / 2, best[1] + th / 2]);
+    return best;
   };
 
   // Home ground: the Corps' standard.
