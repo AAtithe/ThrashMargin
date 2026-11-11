@@ -9,6 +9,7 @@ import { TECH_TEXT } from '../components/SkirmishSetup';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
 import {
   AIR_MENU,
+  NAVAL_MENU,
   BUILD_MENU,
   BUILDINGS,
   HERO_ABILITY,
@@ -317,6 +318,18 @@ export default function HowToPlay() {
             the fighters that come up to meet it.
           </p>
           <Grid kinds={AIR_MENU} />
+        </Panel>
+        <Panel title="Naval">
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
+            Advanced tech, on a map with open sea (the Coast map has one between the bases). Build a Naval Yard on the shore and
+            its ships sail open water only. Patrol Boats are fast and their machine guns reach aircraft too; Destroyers carry the
+            deck gun and the sonar that finds Submarines seven tiles off; Submarines are unseen until close, or until they fire, and
+            their torpedoes hit ships alone; the Battleship shells the shore from eleven tiles out. Anything that hits the ground
+            hits a ship, so turrets on the beach defend a coast. For a landing, right-click a Landing Craft beside the shore with
+            infantry or vehicles selected (a vehicle takes two of its six places), sail it to the enemy's beach and press Unload (F).
+            Ships beside your Naval Yard are mended for nothing.
+          </p>
+          <Grid kinds={NAVAL_MENU} />
         </Panel>
         <Panel title="Controls">
           <Controls campaign skirmish />

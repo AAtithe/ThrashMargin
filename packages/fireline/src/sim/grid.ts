@@ -29,12 +29,14 @@ export function occupancy(s: GameState): Int32Array {
   return occ;
 }
 
-export function passable(s: GameState, occ: Int32Array, x: number, y: number): boolean {
+export function passable(s: GameState, occ: Int32Array, x: number, y: number, sea = false): boolean {
   const MAP_W = s.mapW;
   if (x < 0 || y < 0 || x >= MAP_W || y >= s.mapH) return false;
   const k = y * MAP_W + x;
   if (occ[k] !== 0) return false;
   const c = s.tiles.charCodeAt(k);
+  // Ships (`sea`, the naval layer) sail open water and nothing else.
+  if (sea) return c === 119; // 'w'
   return c === 103 || c === 100; // 'g' or 'd'
 }
 
@@ -98,10 +100,10 @@ export function targetPoint(t: Target): { x: number; y: number } {
 }
 
 /** The nearest passable tile to (x, y), searching outward ring by ring. -1 if none within range. */
-export function nearestPassable(s: GameState, occ: Int32Array, x: number, y: number, maxR = 8): number {
+export function nearestPassable(s: GameState, occ: Int32Array, x: number, y: number, maxR = 8, sea = false): number {
   const cx = Math.floor(x);
   const cy = Math.floor(y);
-  if (passable(s, occ, cx, cy)) return tileAt(s, cx, cy);
+  if (passable(s, occ, cx, cy, sea)) return tileAt(s, cx, cy);
   for (let r = 1; r <= maxR; r++) {
     let best = -1;
     let bestD = Infinity;
@@ -110,7 +112,7 @@ export function nearestPassable(s: GameState, occ: Int32Array, x: number, y: num
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const nx = cx + dx;
         const ny = cy + dy;
-        if (!passable(s, occ, nx, ny)) continue;
+        if (!passable(s, occ, nx, ny, sea)) continue;
         const d = (nx + 0.5 - x) ** 2 + (ny + 0.5 - y) ** 2;
         if (d < bestD) {
           bestD = d;
@@ -123,7 +125,7 @@ export function nearestPassable(s: GameState, occ: Int32Array, x: number, y: num
 }
 
 /** True when a straight walk between two tile centres crosses only passable tiles. */
-export function lineClear(s: GameState, occ: Int32Array, a: number, b: number): boolean {
+export function lineClear(s: GameState, occ: Int32Array, a: number, b: number, sea = false): boolean {
   const MAP_W = s.mapW;
   let x0 = a % MAP_W;
   let y0 = (a / MAP_W) | 0;
@@ -135,12 +137,12 @@ export function lineClear(s: GameState, occ: Int32Array, a: number, b: number): 
   const sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
   for (;;) {
-    if (!passable(s, occ, x0, y0)) return false;
+    if (!passable(s, occ, x0, y0, sea)) return false;
     if (x0 === x1 && y0 === y1) return true;
     const e2 = 2 * err;
     // Moving diagonally: both orthogonal neighbours must be open, or we would clip a corner.
     if (e2 > -dy && e2 < dx) {
-      if (!passable(s, occ, x0 + sx, y0) || !passable(s, occ, x0, y0 + sy)) return false;
+      if (!passable(s, occ, x0 + sx, y0, sea) || !passable(s, occ, x0, y0 + sy, sea)) return false;
     }
     if (e2 > -dy) {
       err -= dy;
@@ -190,17 +192,20 @@ let heapK = new Int32Array(1024);
  * for every neighbour. A grid is never changed after occupancy() builds it.
  */
 const openCache = new WeakMap<Int32Array, Uint8Array>();
-function openTiles(s: GameState, occ: Int32Array): Uint8Array {
-  let open = openCache.get(occ);
+/** The same for ships: 1 on each tile of open water (the naval layer). */
+const seaCache = new WeakMap<Int32Array, Uint8Array>();
+function openTiles(s: GameState, occ: Int32Array, sea = false): Uint8Array {
+  const cache = sea ? seaCache : openCache;
+  let open = cache.get(occ);
   if (!open || open.length !== occ.length) {
     open = new Uint8Array(occ.length);
     const tiles = s.tiles;
     for (let k = 0; k < open.length; k++) {
       if (occ[k] !== 0) continue;
       const c = tiles.charCodeAt(k);
-      if (c === 103 || c === 100) open[k] = 1;
+      if (sea ? c === 119 : c === 103 || c === 100) open[k] = 1;
     }
-    openCache.set(occ, open);
+    cache.set(occ, open);
   }
   return open;
 }
@@ -223,11 +228,11 @@ function scratchFor(total: number): void {
 }
 
 /**
- * A* over the tile grid, eight directions, no corner cutting. Returns waypoints as tile indices,
+ * A* over the tile grid, eight directions, no corner cutting. `sea`: over open water instead (ships). Returns waypoints as tile indices,
  * smoothed so a unit walks straight lines wherever it can, excluding the start tile. If the goal
  * cannot be reached the path leads to the reachable tile closest to it.
  */
-export function findPath(s: GameState, occ: Int32Array, start: number, goal: number): number[] {
+export function findPath(s: GameState, occ: Int32Array, start: number, goal: number, sea = false): number[] {
   if (start === goal) return [];
   const MAP_W = s.mapW;
   const total = MAP_W * s.mapH;
@@ -241,7 +246,7 @@ export function findPath(s: GameState, occ: Int32Array, start: number, goal: num
     return Math.max(dx, dy) + (SQRT2 - 1) * Math.min(dx, dy);
   };
   const g = (k: number) => (stamp[k] === run ? gScore[k] : Infinity);
-  const open = openTiles(s, occ);
+  const open = openTiles(s, occ, sea);
   const MAP_H = s.mapH;
   const walk = (x: number, y: number) => x >= 0 && y >= 0 && x < MAP_W && y < MAP_H && open[y * MAP_W + x] === 1;
   const parent = (k: number) => (stamp[k] === run ? came[k] : -1);
@@ -360,7 +365,7 @@ export function findPath(s: GameState, occ: Int32Array, start: number, goal: num
   let i = 0;
   while (i < raw.length) {
     let j = raw.length - 1;
-    while (j > i && !lineClear(s, occ, from, raw[j])) j--;
+    while (j > i && !lineClear(s, occ, from, raw[j], sea)) j--;
     out.push(raw[j]);
     from = raw[j];
     i = j + 1;
