@@ -6,6 +6,7 @@ import { setAutopilotAi } from '../src/sim/ai';
  *   npm run drive                 20 seeds on Normal, plus Easy and Hard samples
  *   npm run drive -- --seeds 60   a wider sweep
  *   npm run drive -- --campaign   only the campaign sections (missions, heroes, powers, perks)
+ *   npm run drive -- --deep       the full development-lines and pace sweeps (npm run check runs a lighter sample)
  *
  * The campaign sections build their own test missions inline (the real mission list belongs to
  * the campaign layer) and cover every ability, stealth, every power, every objective and trigger

@@ -49,6 +49,11 @@ type Ok = (cond: unknown, what: string) => void;
 const DIFFS: Difficulty[] = ['easy', 'normal', 'hard'];
 const ALL_UPGRADES = Object.keys(UPGRADES) as UpgradeId[];
 const copy = (s: GameState): GameState => JSON.parse(JSON.stringify(s));
+
+/** `--deep` runs the full sweeps (npm run drive:fire -- --deep); without it, npm run check runs a
+ * lighter sample of each so the CI job stays inside its time limit. The 150-seed ladder measures depth. */
+const DEEP = process.argv.includes('--deep');
+
 /** Runs n ticks, in actions of at most 500. */
 function tick(s: GameState, n = 1): GameState {
   for (let left = n; left > 0; left -= 500) s = processAction(s, { type: 'tick', n: Math.min(500, left) });
@@ -350,7 +355,7 @@ function quickIsToday(ok: Ok): void {
   let matched = 0;
   for (const [kind, setup] of Object.entries(KINDS))
     for (const d of DIFFS)
-      for (const seed of ['size-a', 'size-b']) {
+      for (const seed of DEEP ? ['size-a', 'size-b'] : ['size-a']) {
         const key = `${kind}|${d}|${seed}`;
         const a = hashBattle(seed, d, setup);
         const h = hashOf(a);
@@ -362,7 +367,7 @@ function quickIsToday(ok: Ok): void {
           ok(b.setup?.pace === 'quick' && JSON.stringify(a) === JSON.stringify(b), `${key}: Quick given explicitly plays the same battle as no size`);
         }
       }
-  console.log(`  ${matched}/${Object.keys(PRE_ROUND6).length} battles match the build before round 6`);
+  console.log(`  ${matched}/${DEEP ? Object.keys(PRE_ROUND6).length : Object.keys(PRE_ROUND6).length / 2} battles match the build before round 6${DEEP ? '' : ' (seed size-a; --deep for both seeds)'}`);
 }
 
 /** Price and time scaled by mark in development lines; classic and standard tech untouched. */
@@ -480,7 +485,7 @@ function computer(ok: Ok): void {
   // Long lines: the paced list, doctrines with their branches, researchFor the next item's price.
   // Four seeds per difficulty, not section 9.1's six: a deviation logged in the round 6 build log,
   // to keep npm run check quick. The 150-seed ladder is where the depth shares are measured.
-  const SEEDS = 4;
+  const SEEDS = DEEP ? 4 : 2;
   const summary: string[] = [];
   for (const d of DIFFS) {
     const list = AI_PACED[d];
@@ -568,12 +573,13 @@ function computer(ok: Ok): void {
   // about half of these battles are over by then). Three, not four, to keep npm run check quick.
   // Not per seed: the attack timing differs, so by tick 12,000 the two battles have had different
   // fights and one seed's count says more about who is winning than about what research costs.
+  const NEED = DEEP ? 3 : 2;
   for (const d of ['normal', 'hard'] as Difficulty[]) {
     let sumStd = 0;
     let sumQuick = 0;
     let n = 0;
     const per: string[] = [];
-    for (let i = 1; i <= 14 && n < 3; i++) {
+    for (let i = 1; i <= 14 && n < NEED; i++) {
       const seed = `size-starve-${d}-${i}`;
       const std = play(battle(seed, d, { research: 'lines', pace: 'standard' }, 'normal'), 12000);
       const quick = play(battle(seed, d, { research: 'lines', pace: 'quick' }, 'normal'), 12000);
@@ -585,7 +591,7 @@ function computer(ok: Ok): void {
       sumQuick += b;
       per.push(`${a}/${b}`);
     }
-    ok(n >= 3, `${d}: at least three seeds last to tick 12,000 at both sizes (${n})`);
+    ok(n >= NEED, `${d}: at least ${NEED} seeds last to tick 12,000 at both sizes (${n})`);
     ok(sumStd >= 0.7 * sumQuick, `${d}: armed ground units at tick 12,000 over ${n} seeds, Standard ${sumStd} against Quick ${sumQuick} (at least 70%; per seed ${per.join(', ')})`);
   }
 
@@ -609,10 +615,11 @@ function computer(ok: Ok): void {
 
 /** Epic battles finish well inside the ladder's cap. */
 function tickCap(ok: Ok): void {
-  const pairs: [Difficulty, Difficulty][] = [['hard', 'normal'], ['normal', 'easy'], ['normal', 'normal']];
+  // Without --deep, one Epic battle (the cap itself is measured over 150 seeds by ladder:fire -- --pace epic).
+  const pairs: [Difficulty, Difficulty][] = DEEP ? [['hard', 'normal'], ['normal', 'easy'], ['normal', 'normal']] : [['normal', 'easy']];
   const lines: string[] = [];
   for (const [d0, d1] of pairs)
-    for (let i = 1; i <= 3; i++) {
+    for (let i = 1; i <= (DEEP ? 3 : 1); i++) {
       const seed = `size-epic-${d0}-${d1}-${i}`;
       const s0 = createInitialState(seed, seed, { seed, difficulty: d1, createdAt: 0, autopilot: true, setup: applyPace({ ...DEFAULT_SETUP }, 'epic') });
       s0.autopilotDifficulty = d0;

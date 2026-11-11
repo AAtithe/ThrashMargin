@@ -73,6 +73,10 @@ import type { Building, GameAction, GameState, MissionContext, Unit } from '../s
 type Ok = (cond: unknown, what: string) => void;
 
 const copy = (s: GameState): GameState => JSON.parse(JSON.stringify(s));
+
+/** `--deep` runs the full sweeps (npm run drive:fire -- --deep); npm run check runs a lighter sample. */
+const DEEP = process.argv.includes('--deep');
+
 /** Runs n ticks, in actions of at most 500. */
 function tick(s: GameState, n = 1): GameState {
   for (let left = n; left > 0; left -= 500) s = processAction(s, { type: 'tick', n: Math.min(500, left) });
@@ -939,7 +943,7 @@ function battleFor(seed: string, diff: Difficulty, research: ResearchMode): Game
 
 /** Autopiloted battles at each difficulty: the commander's research, doctrines and loadouts, and its army. */
 function computer(ok: Ok): void {
-  const SEEDS = 6;
+  const SEEDS = DEEP ? 6 : 3;
   const summary: string[] = [];
   for (const diff of DIFFS) {
     let unitsWithModules = 0;
