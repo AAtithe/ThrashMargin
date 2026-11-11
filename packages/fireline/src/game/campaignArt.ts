@@ -1521,40 +1521,49 @@ function paintMarks(o: Sheetish, view: TheatreView, whole: boolean, withFront: b
   const engagementAt = new Map(view.engagements.map(e => [e.regionId, e]));
   for (const r of regions) {
     const [x, y] = toScreen(cam, r.site[0], r.site[1]);
-    const rr = missionAt.has(r.id) ? (focus(r) ? R : R * 0.72) : R * 0.6;
+    const mi = missionAt.get(r.id);
+    const rr = mi ? (focus(r) ? R : R * 0.72) : R * 0.6;
     taken.push([x - rr, y - rr, x + rr, y + rr]);
+    // A won objective's pennant stands above its rim.
+    if (mi?.state === 'won') taken.push([x, y - rr * 1.6, x + rr * 1.3, y - rr * 0.4]);
   }
   // Keep names off the cartouche and stamp, roughly.
   taken.push([0, 0, w * 0.42, m + 44 * Math.max(0.62, Math.min(1.15, k))]);
+  // A name goes in the first of these places clear of every marker and every name set so far:
+  // below, above, beside, then the corners, then the same again a step further out. Where nowhere
+  // is clear, a story mission's name (which must show) takes the place it overlaps least.
   const place = (x: number, y: number, r: number, tw: number, th: number, force: boolean): Pt | null => {
-    const tries: Pt[] = [
-      [x, y + r + 3 + th / 2],
-      [x, y - r - 3 - th / 2],
-      [x + r + 4 + tw / 2, y],
-      [x - r - 4 - tw / 2, y],
-    ];
+    const pad = 2;
+    const tries: Pt[] = [];
+    for (const far of [0, r * 0.9 + th * 0.6]) {
+      const dy = r + 3 + th / 2 + far;
+      const dx = r + 4 + tw / 2 + far;
+      const ox = tw / 2 + r * 0.2 + far * 0.6;
+      tries.push([x, y + dy], [x, y - dy], [x + dx, y], [x - dx, y], [x + ox, y + dy * 0.92], [x - ox, y + dy * 0.92], [x + ox, y - dy * 0.92], [x - ox, y - dy * 0.92]);
+    }
+    const boxAt = (cx: number, cy: number): Box => [cx - tw / 2 - pad, cy - th / 2 - pad, cx + tw / 2 + pad, cy + th / 2 + pad];
+    const inside = (b: Box) => b[0] >= m + 2 && b[2] <= w - m - 2 && b[1] >= m + 2 && b[3] <= h - m - 2;
     for (const [cx, cy] of tries) {
-      const b: Box = [cx - tw / 2, cy - th / 2, cx + tw / 2, cy + th / 2];
-      if (b[0] < m + 2 || b[2] > w - m - 2 || b[1] < m + 2 || b[3] > h - m - 2) continue;
-      if (taken.some(t => overlaps(t, b))) continue;
+      const b = boxAt(cx, cy);
+      if (!inside(b) || taken.some(t => overlaps(t, b))) continue;
       taken.push(b);
       return [cx, cy];
     }
     if (!force) return null;
-    // Nowhere clear: the place that covers least, kept inside the neatline.
     let best: Pt = tries[0];
-    let fewest = Infinity;
+    let least = Infinity;
     for (const [tx, ty] of tries) {
-      const cx = Math.max(m + tw / 2 + 2, Math.min(w - m - tw / 2 - 2, tx));
-      const cy = Math.max(m + th / 2 + 2, Math.min(h - m - th / 2 - 2, ty));
-      const b: Box = [cx - tw / 2, cy - th / 2, cx + tw / 2, cy + th / 2];
-      const n = taken.filter(t => overlaps(t, b)).length;
-      if (n < fewest) {
-        fewest = n;
+      const cx = Math.max(m + tw / 2 + 4, Math.min(w - m - tw / 2 - 4, tx));
+      const cy = Math.max(m + th / 2 + 4, Math.min(h - m - th / 2 - 4, ty));
+      const b = boxAt(cx, cy);
+      let area = 0;
+      for (const t of taken) area += Math.max(0, Math.min(b[2], t[2]) - Math.max(b[0], t[0])) * Math.max(0, Math.min(b[3], t[3]) - Math.max(b[1], t[1]));
+      if (area < least - 0.5) {
+        least = area;
         best = [cx, cy];
       }
     }
-    taken.push([best[0] - tw / 2, best[1] - th / 2, best[0] + tw / 2, best[1] + th / 2]);
+    taken.push(boxAt(best[0], best[1]));
     return best;
   };
 
