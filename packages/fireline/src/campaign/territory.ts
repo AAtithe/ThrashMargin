@@ -226,7 +226,7 @@ export function engagementSpec(c: CampaignState, regionId: string): MissionSpec 
         ? `Raise a base, bring down its Command Yard${structures.includes('factory') ? ' and its War Factory' : ''}, and ${r.name} flies Meridian colours.`
         : `Raise a base, clear every Combine unit and structure from ${r.name}, and the ${r.kind === 'city' ? 'city' : 'province'} flies Meridian colours.`,
     ],
-    summary: `Clear the Combine ${what} from ${r.name}.`.slice(0, 80),
+    summary: `Clear the Combine ${what} from the ${r.kind === 'city' ? 'city' : 'province'}.`,
     seed: `eng-${r.id}`.slice(0, 64),
     difficulty: tier,
     player: { credits, structures: ['hq'], units: ours, heroes: [] },

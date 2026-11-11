@@ -171,11 +171,6 @@ const FRONTIER_CONTROL: Pt[] = [
 const ISLAND_CONTROL: { name: string; at: Pt; rx: number; ry: number; rot: number }[] = [
   { name: 'Skerra', at: [0.905, 0.722], rx: 0.016, ry: 0.052, rot: 0.25 },
   { name: 'Haddon Isle', at: [0.478, 0.982], rx: 0.03, ry: 0.022, rot: -0.2 },
-  { name: '', at: [0.928, 0.648], rx: 0.006, ry: 0.009, rot: 0.4 },
-  { name: '', at: [0.9, 0.44], rx: 0.007, ry: 0.006, rot: 0 },
-  { name: '', at: [0.632, 0.885], rx: 0.006, ry: 0.004, rot: 0.6 },
-  { name: '', at: [0.86, 0.33], rx: 0.006, ry: 0.004, rot: 0.2 },
-  { name: '', at: [0.825, 0.81], rx: 0.007, ry: 0.005, rot: 0.9 },
 ];
 
 // Rivers rise in the west and run east to the sea. Control points from source to mouth.

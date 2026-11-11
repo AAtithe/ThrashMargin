@@ -16,7 +16,7 @@ import {
   rankFor,
   setCampaignLevel,
 } from '../campaign/progression';
-import { regionById, regionOfMission, type TheatreRegion } from '../campaign/theatre';
+import { regionById, regionOfMission, type TheatreRegion, type TheatreView } from '../campaign/theatre';
 import {
   applyEngagementOutcome,
   battleSpec,
@@ -31,7 +31,7 @@ import {
 } from '../campaign/territory';
 import type { CampaignSave, CampaignState, PerkBranch, PerkSpec } from '../campaign/types';
 import { HeroPortrait, RankInsignia } from '../components/CampaignArt';
-import { drawMap, hasCampaignArt, mapFontsReady, nodeHitRadius, nodePosition, type CampaignMapNode } from '../components/campaignArtBridge';
+import { drawMap, hasCampaignArt, mapFontsReady, regionAt, type CampaignMapNode } from '../components/campaignArtBridge';
 import { campaignActOf } from '../game/campaignArt';
 import { clockOf, heroName, levelProgress } from '../components/CampaignHud';
 import ThemeToggle from '../components/ThemeToggle';
@@ -353,7 +353,7 @@ function CampaignMap({
                   })}
                 </div>
               )}
-              <TheatreCanvas nodes={shownNodes} act={act} onOpen={id => setPanel({ briefing: id })} selected={briefing?.id} />
+              <TheatreCanvas view={view} onOpenRegion={openRegion} campaignId={cs.id} />
               <h2 className="fl-camp-index">
                 Operations index <span>{ACT_NAMES[act].title} · {ACT_NAMES[act].place}</span>
               </h2>
@@ -463,7 +463,39 @@ function CampaignMap({
   );
 }
 
-function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNode[]; act: 0 | 1; onOpen: (id: string) => void; selected?: string }) {
+/** How long a region takes to change hands on the map, in seconds. */
+const CAPTURE_SECONDS = 1.5;
+
+/** The held regions this campaign's map last showed, so the next visit can play what changed. */
+function seenKey(campaignId: string): string {
+  return `fl_theatre_seen:${campaignId}`;
+}
+
+function readSeen(campaignId: string | undefined): string[] | null {
+  if (!campaignId) return null;
+  try {
+    const raw = localStorage.getItem(seenKey(campaignId));
+    const v = raw ? (JSON.parse(raw) as unknown) : null;
+    return Array.isArray(v) && v.every(x => typeof x === 'string') ? (v as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSeen(campaignId: string | undefined, held: string[]) {
+  if (!campaignId) return;
+  try {
+    localStorage.setItem(seenKey(campaignId), JSON.stringify(held));
+  } catch {
+    /* Private window or storage full: the map simply will not replay the change next time. */
+  }
+}
+
+/**
+ * The theatre map: the whole country, turned to the act in view. A click on a region opens it. Regions newly taken since this campaign's map was last shown
+ * fill in from the border they share with older held ground, unless motion is off.
+ */
+function TheatreCanvas({ view, onOpenRegion, campaignId }: { view: TheatreView; onOpenRegion: (regionId: string) => void; campaignId?: string }) {
   const wrap = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -474,8 +506,8 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
     if (!box) return;
     const measure = () => {
       const w = box.clientWidth;
-      // A phone gets a deeper sheet than the wide ratio would give, so the labels have room.
-      setSize({ w, h: Math.round(Math.max(w < 560 ? Math.min(300, w * 0.8) : 240, Math.min(460, w * 0.52))) });
+      // A phone gets a tall sheet, and the map turns to fill it (see campaignArt's camera).
+      setSize({ w, h: Math.round(w < 560 ? Math.min(620, w * 1.38) : Math.max(260, Math.min(460, w * 0.5))) });
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -496,6 +528,31 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
     };
   }, []);
 
+  // Regions taken since the map last showed this campaign. Compared once per change of what is
+  // held; the new state is remembered at once, so a reload mid-fill does not play it twice.
+  const heldSig = Object.keys(view.control)
+    .filter(id => view.control[id] === 'held')
+    .sort()
+    .join(',');
+  const [capture, setCapture] = useState<{ regions: string[]; start: number } | null>(null);
+  useEffect(() => {
+    const held = heldSig ? heldSig.split(',') : [];
+    const seen = readSeen(campaignId);
+    writeSeen(campaignId, held);
+    if (!seen || pace === 'off') {
+      setCapture(null);
+      return;
+    }
+    const before = new Set(seen);
+    const fresh = held.filter(id => !before.has(id));
+    setCapture(fresh.length ? { regions: fresh, start: performance.now() } : null);
+    // `pace` is read, not watched: changing it mid-fill should not replay the fill.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldSig, campaignId]);
+
+  // Every region answers a click: its briefing, its engagement's, or a note on who holds it.
+  const openable = useMemo(() => new Set(Object.keys(view.control)), [view]);
+
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas || !size.w) return;
@@ -504,62 +561,56 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
     canvas.height = Math.round(size.h * dpr);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const shown = nodes.map(n => ({ ...n, selected: n.id === selected, hover: n.id === hover }));
     const motion = pace !== 'off';
-    const paint = (t: number) => {
+    const speed = pace === 'quick' ? 2.5 : 1;
+    const paint = (now: number, t: number) => {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, size.w, size.h);
-      drawMap(ctx, size.w, size.h, shown, t, { scheme, motion });
+      const progress = capture ? ((now - capture.start) / 1000 / CAPTURE_SECONDS) * speed : 1;
+      drawMap(ctx, size.w, size.h, view, t, {
+        scheme,
+        motion,
+        hover: hover && openable.has(hover) ? hover : undefined,
+        capture: capture && progress < 1 ? { regions: capture.regions, progress } : undefined,
+      });
+      return progress;
     };
-    paint(0);
-    // Only the next objective's pulse moves; the sheet itself is cached. About 30 frames a second.
-    if (!motion || !nodes.some(n => n.state === 'open')) return;
+    const start = performance.now();
+    paint(start, 0);
+    // The pulses on what is open, and a region changing hands. About 30 frames a second.
+    const pulsing = motion && (view.missions.some(m => m.state === 'open') || view.engagements.some(e => e.state === 'open'));
+    if (!pulsing && !capture) return;
     let raf = 0;
     let last = 0;
-    const start = performance.now();
     const frame = (now: number) => {
       raf = requestAnimationFrame(frame);
       if (now - last < 32) return;
       last = now;
-      paint((now - start) / 1000);
+      const p = paint(now, (now - start) / 1000);
+      if (p >= 1 && capture) setCapture(null);
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [nodes, size, hover, selected, scheme, pace, fontTick]);
+  }, [view, size, hover, scheme, pace, fontTick, capture, openable]);
 
-  const hit = (e: React.PointerEvent<HTMLCanvasElement>): CampaignMapNode | null => {
+  const hit = (e: React.PointerEvent<HTMLCanvasElement> | React.MouseEvent<HTMLCanvasElement>): string | null => {
     const r = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
-    let best: CampaignMapNode | null = null;
-    let bestD = nodeHitRadius(size.w, size.h);
-    nodes.forEach(n => {
-      const p = nodePosition(n.order, size.w, size.h);
-      const d = Math.hypot(p.x - x, p.y - y);
-      if (d < bestD) {
-        bestD = d;
-        best = n;
-      }
-    });
-    return best;
+    return regionAt(e.clientX - r.left, e.clientY - r.top, size.w, size.h, view.act);
   };
 
-  const hovered = nodes.find(n => n.id === hover);
   return (
-    <div ref={wrap} className="fl-theatre" data-art={hasCampaignArt ? 'campaign' : 'stand-in'} data-act={act + 1}>
+    <div ref={wrap} className="fl-theatre" data-art={hasCampaignArt ? 'campaign' : 'stand-in'} data-act={view.act + 1} data-capturing={capture ? '1' : undefined}>
       <canvas
         ref={ref}
         data-testid="campaign-canvas"
-        style={{ width: size.w || '100%', height: size.h || 240, cursor: hovered && hovered.state !== 'locked' ? 'pointer' : 'default' }}
+        style={{ width: size.w || '100%', height: size.h || 240, cursor: hover && openable.has(hover) ? 'pointer' : 'default' }}
         aria-hidden="true"
-        onPointerMove={e => {
-          const n = hit(e);
-          setHover(n ? n.id : null);
-        }}
+        onPointerMove={e => setHover(hit(e))}
         onPointerLeave={() => setHover(null)}
         onClick={e => {
-          const n = hit(e as unknown as React.PointerEvent<HTMLCanvasElement>);
-          if (n && n.state !== 'locked') onOpen(n.id);
+          if (capture) setCapture(null);
+          const id = hit(e);
+          if (id && openable.has(id)) onOpenRegion(id);
         }}
       />
     </div>

@@ -1,5 +1,14 @@
 import type { HeroKind } from '../sim/rules';
 import { TEAM } from '../theme';
+import {
+  THEATRE_ASPECT,
+  pointInPolygon,
+  theatreGeography,
+  theatreRegions,
+  type RegionControl,
+  type TheatreRegion,
+  type TheatreView,
+} from '../campaign/theatre';
 
 /**
  * Campaign art, drawn with canvas paths like everything else in Fireline: the theatre map the
@@ -11,28 +20,17 @@ import { TEAM } from '../theme';
  */
 
 type Ctx = CanvasRenderingContext2D;
+type Pt = [number, number];
 const TAU = Math.PI * 2;
 const GOLD = '#f2c44e';
 const GOLD_DARK = '#8a6412';
 const SILVER = '#d9dde2';
-
-export interface CampaignMapNode {
-  id: string;
-  /** 1-based position in the campaign; decides where the node sits (campaignNodePosition). */
-  order: number;
-  title: string;
-  state: 'locked' | 'open' | 'won';
-  stars: number;
-  /** Stars this mission can give (1 plus its bonus objectives); 3 when left out. */
-  maxStars?: number;
-  selected: boolean;
-  hover: boolean;
-}
+const A = THEATRE_ASPECT;
 
 /**
- * The campaign is in two acts, each on its own theatre map: act one (missions 1 to 8) on the
- * southern coast, act two (9 to 14) on the northern coast and highlands. Each act lays its own
- * missions out along its own route, counted from its first mission.
+ * The campaign is in two acts: act one (missions 1 to 8) on the southern coast, act two (9 to 14)
+ * in the north. Both are fought over the same country (campaign/theatre.ts); the map shows all of
+ * it and turns to face the act in hand.
  */
 const ACTS = [
   { first: 1, length: 8 },
@@ -44,94 +42,18 @@ export function campaignActOf(order: number): 0 | 1 {
   return order >= ACTS[1].first ? 1 : 0;
 }
 
-/** A mission's place along its act's route, 0-based, and that route's length. Orders beyond the end sit at the far end. */
-function routeStep(order: number): { k: number; length: number } {
-  const act = ACTS[campaignActOf(order)];
-  return { k: Math.max(0, Math.min(act.length - 1, order - act.first)), length: act.length };
-}
-
 function hash(n: number): number {
   let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b);
   h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
   return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
 }
 
-/** Smooth 1-D value noise, for coastlines and the front line. */
+/** Smooth 1-D value noise, for the creases and the front's red pencil. */
 function noise1(x: number, seed: number): number {
   const i = Math.floor(x);
   const f = x - i;
   const u = f * f * (3 - 2 * f);
   return hash(i * 131 + seed) * (1 - u) + hash((i + 1) * 131 + seed) * u;
-}
-
-const portrait = (w: number, h: number) => w < h * 0.9;
-
-/**
- * Map space: (fx, fy) in 0..1, west (Meridian) at fx 0 and east (Combine) at fx 1, the coast to the
- * south. On a wide canvas that is the canvas as it stands; on a tall one (a phone) the map turns so
- * the advance runs from the bottom up and the coast lies down the left edge.
- */
-function toScreen(fx: number, fy: number, w: number, h: number): [number, number] {
-  if (!portrait(w, h)) return [fx * w, fy * h];
-  return [(1 - fy) * w, (1 - fx) * h];
-}
-
-/** Where a node of this order sits, in canvas pixels: the UI hit-tests clicks against this. */
-export function campaignNodePosition(order: number, w: number, h: number): { x: number; y: number } {
-  const { k } = routeStep(order);
-  const zig = k % 2 === 0 ? 0.13 : -0.13;
-  const fx = mapFx(order, portrait(w, h));
-  const fy = 0.47 + zig + (hash(k * 7 + 3) - 0.5) * 0.08;
-  const [x, y] = toScreen(fx, fy, w, h);
-  return { x, y };
-}
-
-/** Radius of a node badge, in canvas pixels. Hit-test within this (plus a little) of the position. */
-export function campaignNodeRadius(w: number, h: number): number {
-  return Math.max(15, Math.min(26, Math.min(w, h) * 0.045));
-}
-
-/** How far east a node sits in map space. A tall map keeps clear of the side names top and bottom. */
-function mapFx(order: number, tall: boolean): number {
-  const { k, length } = routeStep(order);
-  return tall ? 0.14 + (k / (length - 1)) * 0.72 : 0.09 + (k / (length - 1)) * 0.82;
-}
-
-/** The coastline in map space: a wavy edge along the south, with a bay in the middle. */
-const COAST: [number, number][] = [];
-for (let i = 0; i <= 80; i++) {
-  const fx = -0.05 + (i / 80) * 1.1;
-  const bay = Math.exp(-(((fx - 0.52) / 0.08) ** 2)) * 0.07;
-  const fy = 0.86 - bay + (noise1(fx * 9, 11) - 0.5) * 0.06 + (noise1(fx * 31, 12) - 0.5) * 0.02;
-  COAST.push([fx, fy]);
-}
-
-/**
- * Act two's coastline: the sea to the north this time, a ragged shore cut by two fjords running
- * south into the highlands, at fx 0.31 and 0.74.
- */
-const NORTH_COAST: [number, number][] = [];
-for (let i = 0; i <= 120; i++) {
-  const fx = -0.05 + (i / 120) * 1.1;
-  const fjord = Math.exp(-(((fx - 0.31) / 0.018) ** 2)) * 0.16 + Math.exp(-(((fx - 0.74) / 0.022) ** 2)) * 0.13;
-  const fy = 0.17 + fjord + (noise1(fx * 11, 61) - 0.5) * 0.07 + (noise1(fx * 37, 62) - 0.5) * 0.025;
-  NORTH_COAST.push([fx, fy]);
-}
-
-/** Traces the land as the current path: north of the coast in act one, south of it in act two. */
-function traceLand(g: Ctx, w: number, h: number, act: 0 | 1 = 0) {
-  g.beginPath();
-  const edge = act === 0 ? -0.05 : 1.05;
-  const coast = act === 0 ? COAST : NORTH_COAST;
-  let [sx, sy] = toScreen(-0.05, edge, w, h);
-  g.moveTo(sx, sy);
-  [sx, sy] = toScreen(1.05, edge, w, h);
-  g.lineTo(sx, sy);
-  for (let i = coast.length - 1; i >= 0; i--) {
-    const [x, y] = toScreen(coast[i][0], coast[i][1], w, h);
-    g.lineTo(x, y);
-  }
-  g.closePath();
 }
 
 function starPath(ctx: Ctx, x: number, y: number, r: number, inner = 0.45) {
@@ -147,11 +69,12 @@ function starPath(ctx: Ctx, x: number, y: number, r: number, inner = 0.45) {
 
 // ---- The theatre map: a staff officer's operational map ---------------------------------------
 //
-// Drawn in three layers. The sheet (paper, coast, contours, woods, rivers, names, grid) depends
-// only on size, act and colour mode. The situation (territory, the front, arrows of advance,
-// objectives, cartouche, legend, scale and stamp) depends on the missions' states as well. Both
-// are painted once and kept; only the open objective's pulse and the hover and selection rings
-// are drawn every frame.
+// Drawn in layers. The sheet (paper, sea, the country and the lands beyond its frontier, relief,
+// woods, rivers, names, grid) depends only on size, the act in view and colour mode. The territory
+// (who holds each region, the province borders) depends on control as well. The marks (the front,
+// arrows of advance, objectives and engagements, their names, cartouche, legend, scale and stamp)
+// depend on the whole view. All three are painted once and kept; only the pulses of what is open,
+// the hover and selection rings and a region changing hands are drawn every frame.
 
 /** Light or dark: a sheet on a daylit table, or the same sheet at night under a lamp. */
 export type MapScheme = 'light' | 'dark';
@@ -159,10 +82,19 @@ export type MapScheme = 'light' | 'dark';
 export interface CampaignMapOptions {
   /** Defaults to the page's current mode (<html data-theme>). */
   scheme?: MapScheme;
-  /** A small sheet (a preview): no legend, a one-line cartouche. Defaults to true below 640 px wide. */
+  /** A small sheet (a preview): no legend, a one-line cartouche, fewer names. Defaults to true below 640 px wide. */
   compact?: boolean;
-  /** False draws the open objective's pulse as a still ring (reduced motion). Defaults to true. */
+  /** False draws what is open as still rings (reduced motion). Defaults to true. */
   motion?: boolean;
+  /** The whole country on the sheet, rather than the act in view. */
+  whole?: boolean;
+  /** The region under the pointer. */
+  hover?: string;
+  /**
+   * Regions changing hands: drawn as the enemy's, then filled from the border they share with
+   * ground already held as `progress` runs 0 to 1, the front moving with the fill.
+   */
+  capture?: { regions: string[]; progress: number };
 }
 
 /** The two theatres' names, for the cartouche and for the screens. */
@@ -191,13 +123,21 @@ interface Palette {
   river: string;
   wood: string;
   woodHatch: string;
-  road: string;
+  sand: string;
+  abroad: string;
+  frontier: string;
+  border: string;
   blue: string;
   blueFill: string;
-  blueWash: string;
+  heldWash: string;
+  heldHatch: string;
   red: string;
   redFill: string;
   redHatch: string;
+  contestRed: string;
+  contestBlue: string;
+  veil: string;
+  town: string;
   pencil: string;
   star: string;
   box: string;
@@ -221,26 +161,34 @@ const PALETTES: Record<MapScheme, Palette> = {
     inkSoft: 'rgba(42,34,25,0.68)',
     inkFaint: 'rgba(42,34,25,0.34)',
     halo: 'rgba(240,232,208,0.92)',
-    grid: 'rgba(52,98,128,0.26)',
-    contour: 'rgba(156,98,46,0.42)',
-    contourIndex: 'rgba(146,88,36,0.72)',
+    grid: 'rgba(52,98,128,0.2)',
+    contour: 'rgba(156,98,46,0.4)',
+    contourIndex: 'rgba(146,88,36,0.7)',
     water: 'rgba(160,196,204,0.62)',
     waterLine: 'rgba(36,92,122,0.78)',
     river: '#3a7798',
     wood: 'rgba(160,184,120,0.3)',
-    woodHatch: 'rgba(60,92,44,0.72)',
-    road: 'rgba(168,74,40,0.55)',
+    woodHatch: 'rgba(60,92,44,0.62)',
+    sand: 'rgba(150,110,60,0.42)',
+    abroad: 'rgba(118,100,74,0.13)',
+    frontier: 'rgba(120,60,110,0.75)',
+    border: 'rgba(42,34,25,0.62)',
     blue: '#1d4c9a',
     blueFill: 'rgba(29,76,154,0.12)',
-    blueWash: 'rgba(40,92,176,0.065)',
+    heldWash: 'rgba(40,92,176,0.16)',
+    heldHatch: 'rgba(29,76,154,0.3)',
     red: '#b0261d',
     redFill: 'rgba(176,38,29,0.08)',
-    redHatch: 'rgba(176,38,29,0.11)',
+    redHatch: 'rgba(176,38,29,0.3)',
+    contestRed: 'rgba(176,38,29,0.17)',
+    contestBlue: 'rgba(29,76,154,0.15)',
+    veil: 'rgba(235,225,196,0.42)',
+    town: 'rgba(42,34,25,0.62)',
     pencil: 'rgba(78,76,70,0.72)',
     star: '#b07d0a',
     box: 'rgba(245,239,220,0.94)',
     stamp: 'rgba(168,34,30,0.7)',
-    highlight: 'rgba(242,196,40,0.5)',
+    highlight: 'rgba(242,196,40,0.55)',
     pulse: '176,38,29',
     creaseLight: 'rgba(255,252,240,0.55)',
     creaseDark: 'rgba(90,66,30,0.16)',
@@ -257,26 +205,34 @@ const PALETTES: Record<MapScheme, Palette> = {
     inkSoft: 'rgba(236,224,194,0.7)',
     inkFaint: 'rgba(236,224,194,0.34)',
     halo: 'rgba(52,44,32,0.9)',
-    grid: 'rgba(150,186,204,0.18)',
-    contour: 'rgba(214,162,104,0.34)',
-    contourIndex: 'rgba(224,170,110,0.6)',
+    grid: 'rgba(150,186,204,0.14)',
+    contour: 'rgba(214,162,104,0.32)',
+    contourIndex: 'rgba(224,170,110,0.58)',
     water: 'rgba(40,64,72,0.62)',
     waterLine: 'rgba(130,184,200,0.5)',
     river: '#74aac4',
     wood: 'rgba(96,120,72,0.3)',
-    woodHatch: 'rgba(160,190,128,0.38)',
-    road: 'rgba(222,130,92,0.5)',
+    woodHatch: 'rgba(160,190,128,0.34)',
+    sand: 'rgba(230,190,130,0.3)',
+    abroad: 'rgba(0,0,0,0.11)',
+    frontier: 'rgba(214,150,206,0.7)',
+    border: 'rgba(236,224,194,0.5)',
     blue: '#8cb2f2',
     blueFill: 'rgba(120,160,236,0.16)',
-    blueWash: 'rgba(110,150,230,0.07)',
+    heldWash: 'rgba(110,150,230,0.15)',
+    heldHatch: 'rgba(140,178,242,0.28)',
     red: '#f0806f',
     redFill: 'rgba(240,128,111,0.1)',
-    redHatch: 'rgba(240,128,111,0.15)',
+    redHatch: 'rgba(240,128,111,0.28)',
+    contestRed: 'rgba(240,128,111,0.17)',
+    contestBlue: 'rgba(120,160,236,0.15)',
+    veil: 'rgba(58,50,37,0.45)',
+    town: 'rgba(236,224,194,0.55)',
     pencil: 'rgba(206,200,186,0.62)',
     star: '#e6b84a',
     box: 'rgba(44,37,27,0.94)',
     stamp: 'rgba(236,104,92,0.72)',
-    highlight: 'rgba(242,196,60,0.38)',
+    highlight: 'rgba(242,196,60,0.42)',
     pulse: '240,128,111',
     creaseLight: 'rgba(255,230,180,0.08)',
     creaseDark: 'rgba(0,0,0,0.3)',
@@ -293,7 +249,7 @@ let fontsPromise: Promise<void> | null = null;
 /**
  * Resolves once the map's typeface is loaded (at once if it already is, or if the browser cannot
  * say). A canvas does not wait for a web font: lettering drawn before it arrives uses the fallback,
- * and the sheets are cached, so the caches are dropped here and the caller draws again.
+ * and the layers are cached, so the caches are dropped here and the caller draws again.
  */
 export function mapFontsReady(): Promise<void> {
   if (fontsPromise) return fontsPromise;
@@ -309,7 +265,8 @@ export function mapFontsReady(): Promise<void> {
     .then(() => {
       fontsLoaded = true;
       sheetCache.clear();
-      situationCache.clear();
+      territoryCache.clear();
+      marksCache.clear();
     });
   return fontsPromise;
 }
@@ -382,16 +339,7 @@ function letterAt(g: Ctx, text: string, x: number, y: number, angle: number, o: 
   g.restore();
 }
 
-/** The land as a list of screen points: everything on the land side of the act's coast. */
-function landPoints(w: number, h: number, act: 0 | 1): [number, number][] {
-  const edge = act === 0 ? -0.05 : 1.05;
-  const coast = act === 0 ? COAST : NORTH_COAST;
-  const pts: [number, number][] = [toScreen(-0.05, edge, w, h), toScreen(1.05, edge, w, h)];
-  for (let i = coast.length - 1; i >= 0; i--) pts.push(toScreen(coast[i][0], coast[i][1], w, h));
-  return pts;
-}
-
-function polyPath(g: Ctx, pts: [number, number][], close = true) {
+function polyPath(g: Ctx, pts: Pt[], close = true) {
   g.beginPath();
   pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
   if (close) g.closePath();
@@ -429,130 +377,214 @@ function wobblyRing(g: Ctx, cx: number, cy: number, rx: number, ry: number, rot:
   g.closePath();
 }
 
-// ---- The sheet --------------------------------------------------------------------------------
+// ---- Where the country sits on the canvas ------------------------------------------------------
 
-const sheetCache = new Map<string, HTMLCanvasElement>();
+const portrait = (w: number, h: number) => w < h * 0.9;
 
-interface Hill {
-  fx: number;
-  fy: number;
-  r: number;
-  levels: number;
-  step: number;
+/**
+ * Map space to canvas: one scale both ways (on the ground, an fx unit is THEATRE_ASPECT fy units),
+ * fitted so the act in view fills the sheet below the cartouche. On a tall canvas (a phone) the
+ * country turns a quarter to the left, east at the top, so a long act gets the long side.
+ */
+interface Cam {
+  s: number;
+  ox: number;
+  oy: number;
+  rot: boolean;
+  key: string;
 }
-interface Wood {
-  fx: number;
-  fy: number;
-  r: number;
+
+const actBoxes = new Map<string, [number, number, number, number]>();
+
+function focusBox(act: 0 | 1, whole: boolean): [number, number, number, number] {
+  const key = whole ? 'all' : String(act);
+  const hit = actBoxes.get(key);
+  if (hit) return hit;
+  let x0 = 1;
+  let y0 = 1;
+  let x1 = 0;
+  let y1 = 0;
+  for (const r of theatreRegions()) {
+    if (!whole && r.act !== act) continue;
+    for (const [x, y] of r.polygon) {
+      x0 = Math.min(x0, x);
+      y0 = Math.min(y0, y);
+      x1 = Math.max(x1, x);
+      y1 = Math.max(y1, y);
+    }
+  }
+  const box: [number, number, number, number] = [x0 - 0.01, y0 - 0.012, x1 + 0.01, y1 + 0.012];
+  actBoxes.set(key, box);
+  return box;
 }
-interface Place {
-  fx: number;
-  fy: number;
-  name: string;
-  /** Label side: 1 east, -1 west. */
-  side?: 1 | -1;
+
+function cameraFor(w: number, h: number, act: 0 | 1, whole: boolean, compact: boolean): Cam {
+  const rot = portrait(w, h);
+  const m = marginOf(w, h);
+  const k = Math.max(0.62, Math.min(1.15, Math.min(w, h) / 450));
+  const [x0, y0, x1, y1] = focusBox(act, whole);
+  // Room for the cartouche along the top; the furniture otherwise sits over sea or ground beyond.
+  const top = m + (compact ? 22 : 40) * k;
+  const bottom = h - m - (compact ? 6 : 12) * k;
+  let left = m + 6 * k;
+  const right = w - m - 6 * k;
+  const bw = rot ? y1 - y0 : (x1 - x0) * A;
+  const bh = rot ? (x1 - x0) * A : y1 - y0;
+  let s = Math.min((right - left) / bw, (bottom - top) / bh);
+  // Where the sheet is wider than the act, the legend gets a column of its own on the left.
+  if (!compact && !rot && right - left - legendWidth(k) - 10 >= bw * s) {
+    left += legendWidth(k) + 10;
+    s = Math.min((right - left) / bw, (bottom - top) / bh);
+  }
+  const cx = (left + right) / 2;
+  const cy = (top + bottom) / 2;
+  const ox = rot ? cx - ((y0 + y1) / 2) * s : cx - ((x0 + x1) / 2) * A * s;
+  const oy = rot ? cy - (1 - (x0 + x1) / 2) * A * s : cy - ((y0 + y1) / 2) * s;
+  return { s, ox, oy, rot, key: `${w}x${h}${whole ? 'a' : act}${compact ? 'c' : ''}` };
+}
+
+/** The legend's width on a sheet of this scale: one column. */
+function legendWidth(k: number): number {
+  return 172 * k;
+}
+
+function toScreen(cam: Cam, fx: number, fy: number): Pt {
+  return cam.rot ? [cam.ox + fy * cam.s, cam.oy + (1 - fx) * A * cam.s] : [cam.ox + fx * A * cam.s, cam.oy + fy * cam.s];
+}
+
+function fromScreen(cam: Cam, x: number, y: number): Pt {
+  return cam.rot ? [1 - (y - cam.oy) / (A * cam.s), (x - cam.ox) / cam.s] : [(x - cam.ox) / (A * cam.s), (y - cam.oy) / cam.s];
+}
+
+/** Radius of an objective's badge, in canvas pixels. */
+export function campaignMarkerRadius(w: number, h: number): number {
+  return Math.max(12, Math.min(21, Math.min(w, h) * 0.04));
 }
 
 /**
- * What each theatre holds, in map space. Hills keep to the margins of the advance (north in act
- * one, the southern highlands in act two), and the towns sit between the objectives' labels.
+ * The region under a canvas point (CSS pixels, a map `w` by `h` showing `act`), or null: a
+ * marker first, within its badge and a little more, then whichever outline holds the point. Uses
+ * exactly the mapping the drawing uses.
  */
-const THEATRE: {
-  hills: Hill[];
-  woods: Wood[];
-  towns: Place[];
-  rivers: { seed: number; fx0: number; from: number; to: number; north: boolean; name: string; at: number }[];
-  sea: { name: string; fx: number; fy: number };
-  region: { name: string; fx: number; fy: number };
-}[] = [
-  {
-    hills: [
-      { fx: 0.36, fy: 0.13, r: 0.11, levels: 6, step: 40 },
-      { fx: 0.6, fy: 0.16, r: 0.09, levels: 5, step: 40 },
-      { fx: 0.8, fy: 0.11, r: 0.1, levels: 6, step: 40 },
-      { fx: 0.12, fy: 0.3, r: 0.07, levels: 3, step: 40 },
-      { fx: 0.53, fy: 0.46, r: 0.06, levels: 3, step: 40 },
-      { fx: 0.95, fy: 0.42, r: 0.08, levels: 4, step: 40 },
-      { fx: 0.28, fy: 0.68, r: 0.05, levels: 2, step: 40 },
-    ],
-    woods: [
-      { fx: 0.17, fy: 0.5, r: 0.035 },
-      { fx: 0.45, fy: 0.26, r: 0.03 },
-      { fx: 0.66, fy: 0.55, r: 0.032 },
-      { fx: 0.87, fy: 0.27, r: 0.03 },
-      { fx: 0.38, fy: 0.72, r: 0.026 },
-      { fx: 0.72, fy: 0.08, r: 0.028 },
-      { fx: 0.93, fy: 0.62, r: 0.03 },
-    ],
-    towns: [
-      { fx: 0.45, fy: 0.76, name: 'Varne' },
-      { fx: 0.9, fy: 0.75, name: 'Orrin', side: -1 },
-      { fx: 0.69, fy: 0.81, name: 'Callowby' },
-      { fx: 0.56, fy: 0.2, name: 'Hesketh' },
-    ],
-    rivers: [
-      { seed: 21, fx0: 0.3, from: -0.02, to: 0.92, north: false, name: 'R. Wend', at: 0.36 },
-      { seed: 22, fx0: 0.7, from: -0.02, to: 0.92, north: false, name: 'R. Callow', at: 0.24 },
-    ],
-    sea: { name: 'GULF OF VARNE', fx: 0.56, fy: 0.925 },
-    region: { name: 'ASHBY DOWNS', fx: 0.47, fy: 0.075 },
-  },
-  {
-    hills: [
-      { fx: 0.12, fy: 0.86, r: 0.1, levels: 6, step: 100 },
-      { fx: 0.4, fy: 0.84, r: 0.11, levels: 8, step: 100 },
-      { fx: 0.6, fy: 0.8, r: 0.09, levels: 7, step: 100 },
-      { fx: 0.8, fy: 0.82, r: 0.11, levels: 8, step: 100 },
-      { fx: 0.97, fy: 0.62, r: 0.08, levels: 6, step: 100 },
-      { fx: 0.22, fy: 0.48, r: 0.06, levels: 3, step: 100 },
-      { fx: 0.6, fy: 0.5, r: 0.06, levels: 4, step: 100 },
-      { fx: 0.45, fy: 0.3, r: 0.045, levels: 2, step: 100 },
-    ],
-    woods: [
-      { fx: 0.09, fy: 0.4, r: 0.03 },
-      { fx: 0.33, fy: 0.68, r: 0.034 },
-      { fx: 0.5, fy: 0.62, r: 0.03 },
-      { fx: 0.68, fy: 0.7, r: 0.032 },
-      { fx: 0.86, fy: 0.42, r: 0.03 },
-      { fx: 0.4, fy: 0.42, r: 0.025 },
-    ],
-    towns: [
-      { fx: 0.05, fy: 0.25, name: 'Kellholm' },
-      { fx: 0.45, fy: 0.24, name: 'Brannock', side: -1 },
-      { fx: 0.66, fy: 0.23, name: 'Halsey' },
-      { fx: 0.55, fy: 0.73, name: 'Tarn End' },
-    ],
-    rivers: [{ seed: 71, fx0: 0.74, from: 1.02, to: 0.22, north: true, name: 'R. Brann', at: 0.8 }],
-    sea: { name: 'THE NORTHERN SOUND', fx: 0.56, fy: 0.088 },
-    region: { name: 'THE GREY FELLS', fx: 0.53, fy: 0.9 },
-  },
-];
-
-function riverPoints(r: (typeof THEATRE)[number]['rivers'][number], w: number, h: number): [number, number][] {
-  const pts: [number, number][] = [];
-  for (let i = 0; i <= 48; i++) {
-    const fy = r.from + (i / 48) * (r.to - r.from);
-    const fx = r.north
-      ? r.fx0 + (noise1(fy * 6, r.seed) - 0.5) * 0.16 * Math.min(1, (fy - 0.2) * 3) + Math.sin(fy * 15) * 0.01
-      : r.fx0 + (noise1(fy * 6, r.seed) - 0.5) * 0.14 + Math.sin(fy * 14 + r.seed) * 0.012;
-    pts.push(toScreen(fx, fy, w, h));
+export function campaignRegionAt(x: number, y: number, w: number, h: number, act: 0 | 1, opts: { compact?: boolean; whole?: boolean } = {}): string | null {
+  if (w <= 0 || h <= 0) return null;
+  const cam = cameraFor(w, h, act, !!opts.whole, opts.compact ?? w < 640);
+  const R = campaignMarkerRadius(w, h);
+  let best: string | null = null;
+  let bestD = R + 4;
+  for (const r of theatreRegions()) {
+    const [sx, sy] = toScreen(cam, r.site[0], r.site[1]);
+    const d = Math.hypot(sx - x, sy - y) - (r.act === act ? 2 : 0);
+    if (d < bestD) {
+      bestD = d;
+      best = r.id;
+    }
   }
-  return pts;
+  if (best) return best;
+  const [fx, fy] = fromScreen(cam, x, y);
+  return theatreRegions().find(r => pointInPolygon(fx, fy, r.polygon))?.id ?? null;
 }
 
-function paintSheet(w: number, h: number, res: number, act: 0 | 1, scheme: MapScheme, compact: boolean): HTMLCanvasElement {
-  const key = `${w}x${h}@${res}#${act}${scheme}${compact ? 'c' : ''}${fontsLoaded ? 'f' : ''}`;
+// ---- The country's furniture: relief, woods, names --------------------------------------------
+
+interface Range {
+  from: Pt;
+  to: Pt;
+  hills: number;
+  r: number;
+  levels: number;
+  step: number;
+  seed: number;
+}
+
+/** Mountain ranges as chains of hills: heavy in the west (the Grey Fells), lighter eastward. */
+const RANGES: Range[] = [
+  { from: [0.06, 0.6], to: [0.27, 0.53], hills: 6, r: 0.05, levels: 9, step: 200, seed: 1 },
+  { from: [0.08, 0.72], to: [0.26, 0.85], hills: 5, r: 0.045, levels: 8, step: 200, seed: 2 },
+  { from: [0.05, 0.44], to: [0.25, 0.42], hills: 5, r: 0.04, levels: 7, step: 200, seed: 3 },
+  { from: [0.07, 0.22], to: [0.24, 0.19], hills: 4, r: 0.034, levels: 6, step: 200, seed: 4 },
+  { from: [0.13, 0.66], to: [0.3, 0.64], hills: 3, r: 0.03, levels: 5, step: 150, seed: 5 },
+  { from: [0.72, 0.07], to: [0.86, 0.17], hills: 4, r: 0.032, levels: 6, step: 100, seed: 6 },
+  { from: [0.61, 0.12], to: [0.67, 0.2], hills: 2, r: 0.026, levels: 5, step: 100, seed: 7 },
+  { from: [0.57, 0.695], to: [0.64, 0.73], hills: 2, r: 0.022, levels: 4, step: 80, seed: 8 },
+  { from: [0.42, 0.665], to: [0.46, 0.66], hills: 1, r: 0.02, levels: 4, step: 80, seed: 9 },
+  { from: [0.33, 0.44], to: [0.4, 0.5], hills: 2, r: 0.025, levels: 4, step: 100, seed: 10 },
+  { from: [0.66, 0.72], to: [0.74, 0.75], hills: 2, r: 0.02, levels: 3, step: 80, seed: 11 },
+  { from: [0.4, 0.27], to: [0.52, 0.31], hills: 2, r: 0.02, levels: 3, step: 100, seed: 12 },
+];
+
+const NAMES: { text: string; at: Pt; size: number; angle: number; kind: 'sea' | 'land' | 'abroad' }[] = [
+  { text: 'GULF OF VARNE', at: [0.6, 0.925], size: 12, angle: 0, kind: 'sea' },
+  { text: 'THE NORTHERN SOUND', at: [0.78, 0.33], size: 9.5, angle: -0.04, kind: 'sea' },
+  { text: 'THE EASTERN SEA', at: [0.925, 0.515], size: 11, angle: Math.PI / 2, kind: 'sea' },
+  { text: 'THE GREY FELLS', at: [0.1, 0.665], size: 13, angle: -0.3, kind: 'land' },
+  { text: 'THE OUTER MARCHES', at: [0.38, 0.13], size: 10.5, angle: 0, kind: 'abroad' },
+  { text: 'HOLLINMARK', at: [0.16, 0.93], size: 10.5, angle: 0, kind: 'abroad' },
+];
+
+interface Sheetish {
+  w: number;
+  h: number;
+  res: number;
+  cam: Cam;
+  scheme: MapScheme;
+  compact: boolean;
+}
+
+const sheetCache = new Map<string, HTMLCanvasElement>();
+const territoryCache = new Map<string, HTMLCanvasElement>();
+const marksCache = new Map<string, HTMLCanvasElement>();
+
+function sheetKey(o: Sheetish): string {
+  return `${o.cam.key}@${o.res}#${o.scheme}${fontsLoaded ? 'f' : ''}`;
+}
+
+function regionPath(g: Ctx, cam: Cam, r: TheatreRegion) {
+  g.beginPath();
+  r.polygon.forEach(([fx, fy], i) => {
+    const [x, y] = toScreen(cam, fx, fy);
+    if (i) g.lineTo(x, y);
+    else g.moveTo(x, y);
+  });
+  g.closePath();
+}
+
+/** Close parallel lines across the whole canvas, for hatching inside a clip. */
+function hatch(g: Ctx, w: number, h: number, gap: number, dir: 1 | -1, colour: string, lw: number, phase = 0) {
+  g.strokeStyle = colour;
+  g.lineWidth = lw;
+  g.beginPath();
+  for (let d = -h + phase; d < w + h; d += gap) {
+    if (dir > 0) {
+      g.moveTo(d, 0);
+      g.lineTo(d + h, h);
+    } else {
+      g.moveTo(d, 0);
+      g.lineTo(d - h, h);
+    }
+  }
+  g.stroke();
+}
+
+function paintSheet(o: Sheetish): HTMLCanvasElement {
+  const key = sheetKey(o);
   const hit = sheetCache.get(key);
   if (hit) return hit;
   if (sheetCache.size > 6) sheetCache.clear();
+  const { w, h, res, cam, scheme, compact } = o;
   const [c, g] = newCanvas(w, h, res);
   const pal = PALETTES[scheme];
-  const P = (fx: number, fy: number) => toScreen(fx, fy, w, h);
+  const P = (fx: number, fy: number) => toScreen(cam, fx, fy);
   const unit = Math.min(w, h);
   const k = unit / 450;
+  // Ground scale: pixels per unit of fy, so the relief keeps its size as the map zooms.
+  const gs = cam.s;
   const m = marginOf(w, h);
-  const th = THEATRE[act];
-  const land = landPoints(w, h, act);
+  const geo = theatreGeography();
+  const regions = theatreRegions();
+  const land = geo.land.map(([x, y]) => P(x, y));
+  const islands = geo.islands.map(i => i.polygon.map(([x, y]) => P(x, y)));
+  const allLand = [land, ...islands];
 
   // Paper: the base tone, the light falling on it, and a mottle of age.
   g.fillStyle = pal.paper;
@@ -578,11 +610,11 @@ function paintSheet(w: number, h: number, res: number, act: 0 | 1, scheme: MapSc
   g.rect(m, m, w - m * 2, h - m * 2);
   g.clip();
 
-  // Water: a pale wash, then the water lining, ripples drawn parallel to the shore.
+  // Water: a pale wash, then the water lining, ripples drawn parallel to every shore.
   g.save();
   g.beginPath();
   g.rect(m, m, w - m * 2, h - m * 2);
-  land.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  for (const poly of allLand) poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
   g.closePath();
   g.fillStyle = pal.water;
   g.fill('evenodd');
@@ -590,15 +622,22 @@ function paintSheet(w: number, h: number, res: number, act: 0 | 1, scheme: MapSc
   {
     const [a, ga] = newCanvas(w, h, res);
     const [b, gb] = newCanvas(w, h, res);
-    const ds = [2.2, 4.8, 7.8, 11.4, 15.6, 20.6, 26.4].map(d => d * Math.max(0.7, k));
-    const lw = Math.max(0.7, 0.95 * k);
+    const ds = [2.2, 4.8, 7.8, 11.4, 15.6, 20.6, 26.4].map(d => d * Math.max(0.6, k * 0.9));
+    const lw = Math.max(0.6, 0.85 * k);
     ga.lineJoin = gb.lineJoin = 'round';
+    const landPath = (gg: Ctx) => {
+      gg.beginPath();
+      for (const poly of allLand) {
+        poly.forEach(([x, y], i) => (i ? gg.lineTo(x, y) : gg.moveTo(x, y)));
+        gg.closePath();
+      }
+    };
     ds.forEach((d, i) => {
       gb.setTransform(1, 0, 0, 1, 0, 0);
       gb.clearRect(0, 0, b.width, b.height);
       gb.setTransform(res, 0, 0, res, 0, 0);
       gb.globalCompositeOperation = 'source-over';
-      polyPath(gb, land);
+      landPath(gb);
       gb.strokeStyle = '#000';
       gb.lineWidth = d * 2 + lw;
       gb.stroke();
@@ -610,190 +649,249 @@ function paintSheet(w: number, h: number, res: number, act: 0 | 1, scheme: MapSc
     });
     ga.globalAlpha = 1;
     ga.globalCompositeOperation = 'destination-out';
-    polyPath(ga, land);
+    landPath(ga);
     ga.fill();
     ga.globalCompositeOperation = 'source-in';
     ga.fillStyle = pal.waterLine;
     ga.fillRect(0, 0, w, h);
     g.drawImage(a, 0, 0, w, h);
   }
-  // Islands off the northern coast: small outlined shapes with their own ripple.
-  if (act === 1) {
-    for (let i = 0; i < 6; i++) {
-      const ifx = 0.06 + hash(i * 19 + 4) * 0.88;
-      // Clear of the sea's name.
-      if (Math.abs(ifx - THEATRE[1].sea.fx) < 0.16) continue;
-      const [x, y] = P(ifx, 0.04 + hash(i * 23 + 5) * 0.07);
-      const r = unit * (0.008 + hash(i * 29 + 6) * 0.012);
-      g.strokeStyle = pal.waterLine;
-      g.lineWidth = 0.7;
-      wobblyRing(g, x, y, r * 2.2, r * 1.6, hash(i) * 3, i * 13 + 500, 0.25);
-      g.stroke();
-      g.fillStyle = pal.paper;
-      wobblyRing(g, x, y, r * 1.4, r, hash(i) * 3, i * 13 + 500, 0.25);
-      g.fill();
-      g.strokeStyle = pal.ink;
-      g.lineWidth = 0.9;
-      g.stroke();
-    }
-  }
 
   // Everything on land is clipped to the land.
   g.save();
-  polyPath(g, land);
+  g.beginPath();
+  for (const poly of allLand) {
+    poly.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+    g.closePath();
+  }
   g.clip();
 
-  // Contours, hand drawn: rings that crowd on the steeper side, every fifth one heavier, and the
-  // summit's spot height beside a dot.
-  th.hills.forEach((hl, i) => {
-    const [cx, cy] = P(hl.fx, hl.fy);
-    const r = unit * hl.r * 1.3;
-    const lean = hash(i * 5 + 70) * TAU;
-    const rot = hash(i * 5 + 71) * Math.PI;
-    for (let j = hl.levels; j >= 1; j--) {
-      const s = j / hl.levels;
-      const ox = Math.cos(lean) * r * 0.28 * (1 - s);
-      const oy = Math.sin(lean) * r * 0.2 * (1 - s);
-      wobblyRing(g, cx + ox, cy + oy, r * s, r * s * 0.68, rot, i * 31 + j * 7, 0.2);
-      const index = (hl.levels - j) % 4 === 0;
-      g.strokeStyle = index ? pal.contourIndex : pal.contour;
-      g.lineWidth = (index ? 1.15 : 0.7) * Math.max(0.8, k);
-      g.stroke();
-    }
-    const sx = cx + Math.cos(lean) * r * 0.28;
-    const sy = cy + Math.sin(lean) * r * 0.2;
-    g.fillStyle = pal.ink;
-    g.beginPath();
-    g.arc(sx, sy, Math.max(1.1, 1.4 * k), 0, TAU);
-    g.fill();
-    const height = hl.levels * hl.step + Math.round(hash(i * 3 + 80) * hl.step * 0.8);
-    letter(g, String(height), sx + 3 * Math.max(0.8, k), sy - 1, {
-      size: Math.max(7.5, 9 * k),
-      colour: pal.inkSoft,
-      halo: pal.halo,
-      style: 'italic',
-      align: 'left',
+  // The lands beyond the frontier: a duller paper, lightly stippled.
+  g.save();
+  g.beginPath();
+  land.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
+  g.closePath();
+  for (const r of regions) {
+    r.polygon.forEach(([fx, fy], i) => {
+      const [x, y] = P(fx, fy);
+      if (i) g.lineTo(x, y);
+      else g.moveTo(x, y);
     });
-  });
+    g.closePath();
+  }
+  g.fillStyle = pal.abroad;
+  g.fill('evenodd');
+  g.clip('evenodd');
+  g.fillStyle = pal.inkFaint;
+  for (let i = 0; i < (w * h) / 90; i++) {
+    const x = hash(i * 3 + 7000) * w;
+    const y = hash(i * 3 + 7001) * h;
+    g.fillRect(x, y, 0.8, 0.8);
+  }
+  g.restore();
 
-  // Woods: an outlined edge, a green tint and close diagonal hatching.
-  th.woods.forEach((wd, i) => {
-    const [x, y] = P(wd.fx, wd.fy);
-    const r = unit * wd.r * 1.25;
+  // The Sallow Waste is desert: sand stipple, thicker towards the basin's heart.
+  {
+    const [cx, cy] = P(0.16, 0.29);
+    const rx = 0.09 * A * gs;
+    const ry = 0.055 * gs;
+    g.fillStyle = pal.sand;
+    const n = Math.round(rx * ry * 0.5);
+    for (let i = 0; i < n; i++) {
+      const a = hash(i * 2 + 4100) * TAU;
+      const d = Math.sqrt(hash(i * 2 + 4101));
+      if (hash(i + 4300) < d * 0.8) continue;
+      g.beginPath();
+      g.arc(cx + Math.cos(a) * rx * d, cy + Math.sin(a) * ry * d, 0.65, 0, TAU);
+      g.fill();
+    }
+  }
+
+  // Contours, hand drawn: rings that crowd on the steeper side, every fourth one heavier, and the
+  // summit's spot height beside a dot. Heavy in the west, where the Grey Fells rise.
+  let hillNo = 0;
+  for (const rg of RANGES) {
+    const dx = (rg.to[0] - rg.from[0]) * A;
+    const dy = rg.to[1] - rg.from[1];
+    const along = cam.rot ? Math.atan2(-dx, dy) : Math.atan2(dy, dx);
+    for (let n = 0; n < rg.hills; n++) {
+      const q = rg.hills === 1 ? 0.5 : n / (rg.hills - 1);
+      const i = hillNo++;
+      const fx = rg.from[0] + (rg.to[0] - rg.from[0]) * q + (hash(i * 5 + 61) - 0.5) * 0.02;
+      const fy = rg.from[1] + (rg.to[1] - rg.from[1]) * q + (hash(i * 5 + 62) - 0.5) * 0.03;
+      const [cx, cy] = P(fx, fy);
+      const r = gs * rg.r * (0.75 + hash(i * 5 + 63) * 0.5);
+      const levels = Math.max(2, rg.levels - Math.floor(hash(i * 5 + 64) * 3));
+      const lean = hash(i * 5 + 70) * TAU;
+      const rot = along + (hash(i * 5 + 71) - 0.5) * 0.6;
+      for (let j = levels; j >= 1; j--) {
+        const s = j / levels;
+        const ox = Math.cos(lean) * r * 0.3 * (1 - s);
+        const oy = Math.sin(lean) * r * 0.22 * (1 - s);
+        wobblyRing(g, cx + ox, cy + oy, r * s * 1.45, r * s * 0.62, rot, i * 31 + j * 7, 0.22);
+        const index = (levels - j) % 4 === 0;
+        g.strokeStyle = index ? pal.contourIndex : pal.contour;
+        g.lineWidth = (index ? 1.05 : 0.6) * Math.max(0.75, k);
+        g.stroke();
+      }
+      if (compact || r < 10 || n !== Math.floor(rg.hills / 2)) continue;
+      const sx = cx + Math.cos(lean) * r * 0.3;
+      const sy = cy + Math.sin(lean) * r * 0.22;
+      g.fillStyle = pal.ink;
+      g.beginPath();
+      g.arc(sx, sy, Math.max(1, 1.3 * k), 0, TAU);
+      g.fill();
+      const height = levels * rg.step + Math.round(hash(i * 3 + 80) * rg.step * 0.8);
+      letter(g, height.toLocaleString('en-GB'), sx + 3 * Math.max(0.8, k), sy - 1, {
+        size: Math.max(7, 8.5 * k),
+        colour: pal.inkSoft,
+        halo: pal.halo,
+        style: 'italic',
+        align: 'left',
+      });
+    }
+  }
+
+  // Woods: an outlined edge, a green tint and close diagonal hatching. Kept off the objectives'
+  // sites and out of the high west.
+  for (let i = 0, placed = 0; i < 160 && placed < 34; i++) {
+    const fx = 0.28 + hash(i * 3 + 1200) * 0.62;
+    const fy = 0.12 + hash(i * 3 + 1201) * 0.78;
+    const r0 = regions.find(r => pointInPolygon(fx, fy, r.polygon));
+    if (!r0) continue;
+    if (regions.some(r => Math.hypot((r.site[0] - fx) * A, r.site[1] - fy) < 0.04)) continue;
+    placed++;
+    const [x, y] = P(fx, fy);
+    const r = gs * (0.011 + hash(i * 3 + 1202) * 0.012);
     const rot = hash(i * 9 + 40) * Math.PI;
-    wobblyRing(g, x, y, r * 1.35, r, rot, i * 17 + 300, 0.28);
+    wobblyRing(g, x, y, r * 1.4, r, rot, i * 17 + 300, 0.3);
     g.fillStyle = pal.wood;
     g.fill();
     g.save();
     g.clip();
     g.strokeStyle = pal.woodHatch;
-    g.lineWidth = 0.7;
+    g.lineWidth = 0.6;
     g.beginPath();
-    const gap = Math.max(2.6, 3.3 * k);
-    const dir = act === 1 ? -1 : 1;
+    const gap = Math.max(2.4, 3 * k);
     for (let d = -r * 3; d < r * 3; d += gap) {
-      g.moveTo(x + d - r * 2 * dir, y - r * 2);
-      g.lineTo(x + d + r * 2 * dir, y + r * 2);
+      g.moveTo(x + d - r * 2, y - r * 2);
+      g.lineTo(x + d + r * 2, y + r * 2);
     }
     g.stroke();
     g.restore();
-    wobblyRing(g, x, y, r * 1.35, r, rot, i * 17 + 300, 0.28);
+    wobblyRing(g, x, y, r * 1.4, r, rot, i * 17 + 300, 0.3);
     g.strokeStyle = pal.woodHatch;
-    g.lineWidth = 0.9;
+    g.lineWidth = 0.8;
     g.stroke();
-  });
+  }
 
-  // Rivers: a fine line in the hills that broadens towards the sea.
-  for (const rv of th.rivers) {
-    const pts = riverPoints(rv, w, h);
+  // Rivers: a fine line in the hills that broadens towards the sea, fanning into a delta.
+  for (const rv of geo.rivers) {
+    const pts = rv.points.map(([x, y]) => P(x, y));
     g.lineCap = 'round';
+    g.lineJoin = 'round';
     g.strokeStyle = pal.river;
+    const big = rv.name === 'R. Brenn' || rv.name === 'R. Callow';
+    const top = big ? 2.6 : 1.6;
     for (let i = 1; i < pts.length; i++) {
       g.beginPath();
       g.moveTo(pts[i - 1][0], pts[i - 1][1]);
       g.lineTo(pts[i][0], pts[i][1]);
-      g.lineWidth = (0.7 + (i / pts.length) * 2.1) * Math.max(0.75, k);
+      g.lineWidth = (0.6 + (i / pts.length) * top) * Math.max(0.7, k);
       g.stroke();
     }
-    if (compact) continue;
-    const at = Math.round(rv.at * (pts.length - 1));
-    const [x0, y0] = pts[Math.max(0, at - 2)];
-    const [x1, y1] = pts[Math.min(pts.length - 1, at + 2)];
-    let ang = Math.atan2(y1 - y0, x1 - x0);
-    if (ang > Math.PI / 2) ang -= Math.PI;
-    if (ang < -Math.PI / 2) ang += Math.PI;
-    const [lx, ly] = pts[at];
-    letterAt(g, rv.name, lx + Math.cos(ang + Math.PI / 2) * 8 * k, ly + Math.sin(ang + Math.PI / 2) * 8 * k, ang, {
-      size: Math.max(8, 10 * k),
-      colour: pal.river,
-      halo: pal.halo,
-      style: 'italic',
-      spacing: 0.5,
-    });
-  }
-
-  // A coast road through the towns, red over a fine casing.
-  {
-    const road: [number, number][] = th.towns
-      .filter(t => (act === 0 ? t.fy > 0.6 : t.fy < 0.4))
-      .sort((a, b) => a.fx - b.fx)
-      .map(t => P(t.fx, t.fy));
-    road.unshift(P(-0.05, act === 0 ? 0.78 : 0.27));
-    road.push(P(1.05, act === 0 ? 0.77 : 0.28));
-    g.beginPath();
-    road.forEach(([x, y], i) => {
-      if (!i) g.moveTo(x, y);
-      else {
-        const [px, py] = road[i - 1];
-        g.quadraticCurveTo(px + (x - px) * 0.5, py + (y - py) * 0.5 + (hash(i + 700) - 0.5) * 18 * k, x, y);
+    if (big || rv.name === 'R. Wend') {
+      const end = pts[pts.length - 1];
+      const prev = pts[Math.max(0, pts.length - 6)];
+      const ang = Math.atan2(end[1] - prev[1], end[0] - prev[0]);
+      const len = Math.hypot(end[0] - prev[0], end[1] - prev[1]) * 1.1;
+      g.lineWidth = 0.9 * Math.max(0.7, k);
+      for (const t of [-0.55, 0.5]) {
+        g.beginPath();
+        g.moveTo(prev[0] + (end[0] - prev[0]) * 0.35, prev[1] + (end[1] - prev[1]) * 0.35);
+        g.quadraticCurveTo(end[0] + Math.cos(ang + t) * len * 0.2, end[1] + Math.sin(ang + t) * len * 0.2, end[0] + Math.cos(ang + t * 1.3) * len * 0.75, end[1] + Math.sin(ang + t * 1.3) * len * 0.75);
+        g.stroke();
       }
-    });
-    g.strokeStyle = pal.inkFaint;
-    g.lineWidth = 2.6 * Math.max(0.8, k);
-    g.stroke();
-    g.strokeStyle = pal.road;
-    g.lineWidth = 1.4 * Math.max(0.8, k);
-    g.stroke();
+    }
   }
   g.restore(); // land clip
 
-  // Towns: a cluster of small blocks, named in roman type.
-  const townSize = Math.max(8, Math.min(11, 10.5 * k));
-  th.towns.forEach((t, i) => {
-    const [x, y] = P(t.fx, t.fy);
-    g.fillStyle = pal.ink;
-    const b = Math.max(1.8, 2.4 * k);
-    for (let j = 0; j < 5; j++) {
-      const bx = x + (hash(i * 40 + j) - 0.5) * b * 4;
-      const by = y + (hash(i * 40 + j + 9) - 0.5) * b * 3;
-      g.fillRect(bx - b / 2, by - b / 2, b, b * (0.8 + hash(i * 40 + j + 20) * 0.5));
+  // River names, set along the water.
+  if (!compact) {
+    for (const rv of geo.rivers) {
+      const pts = rv.points.map(([x, y]) => P(x, y));
+      const at = Math.round(rv.label * (pts.length - 1));
+      const [x0, y0] = pts[Math.max(0, at - 3)];
+      const [x1, y1] = pts[Math.min(pts.length - 1, at + 3)];
+      let ang = Math.atan2(y1 - y0, x1 - x0);
+      if (ang > Math.PI / 2) ang -= Math.PI;
+      if (ang < -Math.PI / 2) ang += Math.PI;
+      const [lx, ly] = pts[at];
+      letterAt(g, rv.name, lx + Math.cos(ang - Math.PI / 2) * 7 * k, ly + Math.sin(ang - Math.PI / 2) * 7 * k, ang, {
+        size: Math.max(7.5, 9.5 * k),
+        colour: pal.river,
+        halo: pal.halo,
+        style: 'italic',
+        spacing: 0.5,
+      });
     }
-    const side = t.side ?? 1;
-    letter(g, t.name, x + side * b * 3.4, y, { size: townSize, colour: pal.ink, halo: pal.halo, align: side > 0 ? 'left' : 'right' });
-  });
-
-  // The sea's name and the region's, widely spaced.
-  {
-    const [sx, sy] = P(th.sea.fx, th.sea.fy);
-    letter(g, th.sea.name, sx, sy, { size: Math.max(8.5, 12 * k), colour: pal.waterLine, style: 'italic', spacing: Math.max(2, 5 * k) });
-    const [rx, ry] = P(th.region.fx, th.region.fy);
-    if (!compact) letter(g, th.region.name, rx, ry, { size: Math.max(8, 10.5 * k), colour: pal.contourIndex, halo: pal.halo, spacing: Math.max(2, 6 * k) });
   }
 
-  // The coastline itself, inked last so it is crisp.
-  g.save();
-  const coast = act === 0 ? COAST : NORTH_COAST;
-  g.beginPath();
-  coast.forEach(([fx, fy], i) => {
-    const [x, y] = P(fx, fy);
-    if (i) g.lineTo(x, y);
-    else g.moveTo(x, y);
-  });
+  // The coastline, inked so it is crisp, and the islands' names.
   g.strokeStyle = pal.ink;
-  g.lineWidth = 1.2 * Math.max(0.8, k);
+  g.lineWidth = 1.1 * Math.max(0.8, k);
   g.lineJoin = 'round';
-  g.stroke();
-  g.restore();
+  for (const poly of allLand) {
+    polyPath(g, poly);
+    g.stroke();
+  }
+  if (!compact) {
+    geo.islands.forEach(il => {
+      if (!il.name) return;
+      const [x, y] = P(il.at[0], il.at[1]);
+      letter(g, il.name, x + (cam.rot ? 0 : 14 * k), y + (cam.rot ? 12 * k : 0), { size: Math.max(7.5, 9 * k), colour: pal.ink, halo: pal.halo, style: 'italic', align: cam.rot ? 'center' : 'left' });
+    });
+  }
+
+  // The frontier: a broad tinted band on the home side and a dash-dot-dot rule.
+  {
+    const lines = geo.chains.filter(ch => ch.left === 'abroad' || ch.right === 'abroad').map(ch => ch.points.map(([x, y]) => P(x, y)));
+    g.save();
+    g.lineJoin = 'round';
+    g.lineCap = 'round';
+    g.strokeStyle = pal.frontier;
+    g.globalAlpha = 0.22;
+    g.lineWidth = 5 * Math.max(0.8, k);
+    for (const l of lines) {
+      polyPath(g, l, false);
+      g.stroke();
+    }
+    g.globalAlpha = 1;
+    g.lineWidth = 1.4 * Math.max(0.8, k);
+    const u = Math.max(0.8, k);
+    g.setLineDash([9 * u, 2.5 * u, 1.5 * u, 2.5 * u, 1.5 * u, 2.5 * u]);
+    for (const l of lines) {
+      polyPath(g, l, false);
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  // Names of the seas, the high country and the lands beyond, widely spaced.
+  for (const nm of NAMES) {
+    if (compact && nm.kind !== 'sea') continue;
+    const [x, y] = P(nm.at[0], nm.at[1]);
+    const size = Math.max(7.5, nm.size * Math.min(1.15, k));
+    const angle = nm.angle + (cam.rot ? -Math.PI / 2 : 0);
+    const upright = Math.abs(angle) > Math.PI / 2 + 0.01 ? angle + Math.PI : angle;
+    const o: MapText =
+      nm.kind === 'sea'
+        ? { size, colour: pal.waterLine, style: 'italic', spacing: Math.max(2, 4.5 * k) }
+        : nm.kind === 'land'
+          ? { size, colour: pal.contourIndex, halo: pal.halo, spacing: Math.max(2, 6 * k) }
+          : { size, colour: pal.inkFaint, style: 'italic', spacing: Math.max(2, 5 * k) };
+    letterAt(g, nm.text, x, y, upright, o);
+  }
 
   // The kilometre grid.
   const grid = gridOf(w, h);
@@ -880,15 +978,15 @@ function paintSheet(w: number, h: number, res: number, act: 0 | 1, scheme: MapSc
   g.fillRect(0, 0, w, h);
   // A tea ring someone set down on it, long ago.
   {
-    const x = w * (act === 0 ? 0.88 : 0.12);
-    const y = h * (act === 0 ? 0.58 : 0.55);
+    const x = w * 0.88;
+    const y = h * 0.62;
     const r = unit * 0.07;
     g.strokeStyle = scheme === 'dark' ? 'rgba(0,0,0,0.16)' : 'rgba(140,100,50,0.1)';
     g.lineWidth = 2.2;
-    wobblyRing(g, x, y, r, r * 0.97, 0.4, 990 + act, 0.03);
+    wobblyRing(g, x, y, r, r * 0.97, 0.4, 990, 0.03);
     g.stroke();
     g.lineWidth = 0.8;
-    wobblyRing(g, x + 1.5, y + 1, r * 0.95, r * 0.92, 0.4, 995 + act, 0.04);
+    wobblyRing(g, x + 1.5, y + 1, r * 0.95, r * 0.92, 0.4, 995, 0.04);
     g.stroke();
   }
 
@@ -911,12 +1009,234 @@ function gridOf(w: number, h: number): { xs: number[]; ys: number[]; cell: numbe
   return { xs, ys, cell };
 }
 
-// ---- The situation ------------------------------------------------------------------------------
+// ---- Territory ------------------------------------------------------------------------------------
 
-const situationCache = new Map<string, HTMLCanvasElement>();
+function controlSig(control: Record<string, RegionControl>): string {
+  return theatreRegions()
+    .map(r => (control[r.id] ?? 'enemy')[0])
+    .join('');
+}
+
+/**
+ * Who holds what: Meridian ground in a blue wash with fine hatching, the Combine's in red hatching
+ * the other way, and ground with a battle open now banded in both, as contested. Then the province
+ * borders (dash and dot, as an administrative boundary is drawn) and the cities' built-up ground.
+ * The act not in view sits under a paper veil.
+ */
+function paintTerritory(o: Sheetish, control: Record<string, RegionControl>, act: 0 | 1, whole: boolean): HTMLCanvasElement {
+  const key = `${sheetKey(o)}|${controlSig(control)}${whole ? '' : act}`;
+  const hit = territoryCache.get(key);
+  if (hit) return hit;
+  if (territoryCache.size > 6) territoryCache.clear();
+  const { w, h, res, cam, scheme, compact } = o;
+  const [c, g] = newCanvas(w, h, res);
+  const pal = PALETTES[scheme];
+  const k = Math.min(w, h) / 450;
+  const m = marginOf(w, h);
+  g.drawImage(paintSheet(o), 0, 0, w, h);
+  const regions = theatreRegions();
+  const geo = theatreGeography();
+
+  g.save();
+  g.beginPath();
+  g.rect(m, m, w - m * 2, h - m * 2);
+  g.clip();
+  // The fills stop at the inked coast rather than a grid cell short of it or past it.
+  g.beginPath();
+  geo.land.forEach(([fx, fy], i) => {
+    const [x, y] = toScreen(cam, fx, fy);
+    if (i) g.lineTo(x, y);
+    else g.moveTo(x, y);
+  });
+  g.closePath();
+  g.clip();
+
+  const fine = Math.max(4, 5.2 * k);
+  for (const r of regions) {
+    const ctl = control[r.id] ?? 'enemy';
+    g.save();
+    regionPath(g, cam, r);
+    g.clip();
+    if (ctl === 'held') {
+      g.fillStyle = pal.heldWash;
+      g.fillRect(0, 0, w, h);
+      hatch(g, w, h, fine, 1, pal.heldHatch, 0.6);
+    } else if (ctl === 'enemy') {
+      hatch(g, w, h, fine * 1.3, -1, pal.redHatch, 0.75);
+    } else {
+      // Contested: broad bands, red and blue in turn.
+      const band = Math.max(5, 6.5 * k);
+      g.lineWidth = band;
+      for (const [colour, phase] of [
+        [pal.contestRed, 0],
+        [pal.contestBlue, band * 2],
+      ] as const) {
+        g.strokeStyle = colour;
+        g.beginPath();
+        for (let d = -h + phase; d < w + h; d += band * 4) {
+          g.moveTo(d, 0);
+          g.lineTo(d - h, h);
+        }
+        g.stroke();
+      }
+      hatch(g, w, h, fine * 1.45, -1, pal.redHatch, 0.6);
+    }
+    g.restore();
+  }
+
+  // Province borders, each drawn once.
+  g.save();
+  g.lineJoin = 'round';
+  const u = Math.max(0.8, k);
+  for (const ch of geo.chains) {
+    if (ch.left === 'sea' || ch.right === 'sea' || ch.left === 'abroad' || ch.right === 'abroad') continue;
+    const pts = ch.points.map(([x, y]) => toScreen(cam, x, y));
+    const a = control[ch.left] ?? 'enemy';
+    const b = control[ch.right] ?? 'enemy';
+    const bothHeld = a === 'held' && b === 'held';
+    g.strokeStyle = bothHeld ? pal.blue : pal.border;
+    g.globalAlpha = bothHeld ? 0.5 : 1;
+    g.lineWidth = 0.85 * u;
+    g.setLineDash([6 * u, 2.2 * u, 1.2 * u, 2.2 * u]);
+    polyPath(g, pts, false);
+    g.stroke();
+  }
+  g.restore();
+
+  // Cities: a ring of built-up ground with its blocks.
+  for (const r of regions) {
+    if (r.kind !== 'city') continue;
+    const [x, y] = toScreen(cam, r.site[0], r.site[1]);
+    const rr = campaignMarkerRadius(w, h) * (compact ? 0.85 : 1);
+    g.save();
+    g.beginPath();
+    g.arc(x, y, rr, 0, TAU);
+    g.fillStyle = pal.halo;
+    g.globalAlpha = 0.55;
+    g.fill();
+    g.globalAlpha = 1;
+    g.clip();
+    g.fillStyle = pal.town;
+    const b = Math.max(1.6, 2.1 * k);
+    for (let j = 0; j < 26; j++) {
+      const a = hash(j * 7 + r.id.length * 31) * TAU;
+      const d = Math.sqrt(hash(j * 7 + 3 + r.id.charCodeAt(0))) * rr * 0.95;
+      g.fillRect(x + Math.cos(a) * d - b / 2, y + Math.sin(a) * d - b / 2, b * (0.8 + hash(j + 5) * 0.8), b);
+    }
+    g.restore();
+    g.strokeStyle = pal.town;
+    g.lineWidth = 0.9;
+    g.beginPath();
+    g.arc(x, y, rr, 0, TAU);
+    g.stroke();
+  }
+
+  // The act not in view, under a veil.
+  if (!whole) {
+    g.fillStyle = pal.veil;
+    for (const r of regions) {
+      if (r.act === act) continue;
+      regionPath(g, cam, r);
+      g.fill();
+    }
+  }
+  g.restore();
+
+  territoryCache.set(key, c);
+  return c;
+}
+
+// ---- The front --------------------------------------------------------------------------------
+
+interface FrontPiece {
+  /** Screen points along the border. */
+  pts: Pt[];
+  /** +1: the enemy is on the left of the walk; -1: on the right. */
+  enemySide: 1 | -1;
+  /** The two regions either side. */
+  a: string;
+  b: string;
+}
+
+/** The borders between held ground and the enemy's, wherever they run. */
+function frontPieces(cam: Cam, control: Record<string, RegionControl>): FrontPiece[] {
+  const out: FrontPiece[] = [];
+  for (const ch of theatreGeography().chains) {
+    if (ch.left === 'sea' || ch.right === 'sea' || ch.left === 'abroad' || ch.right === 'abroad') continue;
+    const r = (control[ch.right] ?? 'enemy') === 'held';
+    const l = (control[ch.left] ?? 'enemy') === 'held';
+    if (r === l) continue;
+    out.push({ pts: ch.points.map(([x, y]) => toScreen(cam, x, y)), enemySide: r ? 1 : -1, a: ch.right, b: ch.left });
+  }
+  return out;
+}
+
+/** A heavy inked line with blue teeth facing the enemy, and the enemy's own line pencilled in red beyond it. */
+function drawFrontLine(g: Ctx, pts: Pt[], enemySide: 1 | -1, k: number, pal: Palette) {
+  if (pts.length < 2) return;
+  const u = Math.max(0.75, k);
+  const normal = (i: number): Pt => {
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[Math.min(pts.length - 1, i + 1)];
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const l = Math.hypot(dx, dy) || 1;
+    // Left of the walk, screen y down.
+    return [(dy / l) * enemySide, (-dx / l) * enemySide];
+  };
+  const off = 5.5 * u;
+  g.save();
+  g.lineJoin = 'round';
+  g.lineCap = 'round';
+  g.beginPath();
+  pts.forEach(([x, y], i) => {
+    const [nx, ny] = normal(i);
+    const wob = (noise1(i * 0.35, 41) - 0.5) * 2 * u;
+    if (i) g.lineTo(x + nx * (off + wob), y + ny * (off + wob));
+    else g.moveTo(x + nx * (off + wob), y + ny * (off + wob));
+  });
+  g.setLineDash([5 * u, 3.5 * u]);
+  g.strokeStyle = pal.red;
+  g.lineWidth = 1.1 * u;
+  g.stroke();
+  g.setLineDash([]);
+  polyPath(g, pts, false);
+  g.strokeStyle = pal.ink;
+  g.lineWidth = 2.6 * u;
+  g.stroke();
+  g.fillStyle = pal.blue;
+  const spacing = 13 * u;
+  const tooth = 3.6 * u;
+  let acc = spacing / 2;
+  for (let i = 1; i < pts.length; i++) {
+    const [x0, y0] = pts[i - 1];
+    const [x1, y1] = pts[i];
+    const seg = Math.hypot(x1 - x0, y1 - y0);
+    if (seg < 1e-6) continue;
+    const tx = (x1 - x0) / seg;
+    const ty = (y1 - y0) / seg;
+    const nx = ty * enemySide;
+    const ny = -tx * enemySide;
+    while (acc < seg) {
+      const x = x0 + tx * acc;
+      const y = y0 + ty * acc;
+      g.beginPath();
+      g.moveTo(x - tx * tooth, y - ty * tooth);
+      g.lineTo(x + tx * tooth, y + ty * tooth);
+      g.lineTo(x + nx * tooth * 1.5, y + ny * tooth * 1.5);
+      g.closePath();
+      g.fill();
+      acc += spacing;
+    }
+    acc -= seg;
+  }
+  g.restore();
+}
+
+// ---- Marks: arrows, objectives, engagements -----------------------------------------------------
 
 /** A point on a quadratic curve. */
-function quadPoint(a: number[], c: number[], b: number[], t: number): [number, number] {
+function quadPoint(a: number[], c: number[], b: number[], t: number): Pt {
   const u = 1 - t;
   return [u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]];
 }
@@ -925,7 +1245,7 @@ type ArrowStyle = 'won' | 'planned' | 'pencil' | 'enemy';
 
 /**
  * An arrow of advance: a curved shaft that swells from a fine tail, ending in a broad head. Trimmed
- * at each end so it stops short of the objectives' symbols.
+ * at each end so it stops short of the markers.
  */
 function advanceArrow(
   g: Ctx,
@@ -944,7 +1264,7 @@ function advanceArrow(
   if (len0 < 1) return;
   const c = [(a[0] + b[0]) / 2 + ((b[1] - a[1]) / len0) * len0 * bend, (a[1] + b[1]) / 2 - ((b[0] - a[0]) / len0) * len0 * bend];
   const N = 64;
-  const samples: [number, number][] = [];
+  const samples: Pt[] = [];
   const dist: number[] = [0];
   for (let i = 0; i <= N; i++) {
     samples.push(quadPoint(a, c, b, i / N));
@@ -955,7 +1275,7 @@ function advanceArrow(
   const s1 = total - trimEnd;
   const headLen = width * 1.9;
   if (s1 - s0 < headLen * 1.4) return;
-  const at = (s: number): { p: [number, number]; d: [number, number] } => {
+  const at = (s: number): { p: Pt; d: Pt } => {
     let i = 1;
     while (i < N && dist[i] < s) i++;
     const q = (s - dist[i - 1]) / Math.max(1e-6, dist[i] - dist[i - 1]);
@@ -966,8 +1286,8 @@ function advanceArrow(
     const l = Math.hypot(dx, dy) || 1;
     return { p: [p0[0] + dx * q, p0[1] + dy * q], d: [dx / l, dy / l] };
   };
-  const left: [number, number][] = [];
-  const right: [number, number][] = [];
+  const left: Pt[] = [];
+  const right: Pt[] = [];
   const shaftEnd = s1 - headLen;
   const steps = 24;
   for (let i = 0; i <= steps; i++) {
@@ -997,9 +1317,9 @@ function advanceArrow(
   } else if (style === 'planned' || style === 'enemy') {
     g.fillStyle = style === 'enemy' ? pal.redFill : pal.blueFill;
     g.fill();
-    g.setLineDash([5, 3]);
+    g.setLineDash([4, 2.5]);
     g.strokeStyle = style === 'enemy' ? pal.red : pal.blue;
-    g.lineWidth = 1.4;
+    g.lineWidth = 1.3;
     g.stroke();
   } else {
     g.setLineDash([2.5, 3]);
@@ -1022,235 +1342,348 @@ function stampStar(g: Ctx, x: number, y: number, r: number, filled: boolean, pal
   }
 }
 
-/** Whether a node's label goes above its symbol: the upper row of the zigzag, on a wide map. */
-function labelAbove(order: number, w: number, h: number): boolean {
-  return !portrait(w, h) && routeStep(order).k % 2 === 1;
+/** Two sabres crossed, the map sign for a battle: hilts below, blades curving up and out. */
+function sabres(g: Ctx, x: number, y: number, s: number, colour: string, lw: number) {
+  g.save();
+  g.strokeStyle = colour;
+  g.fillStyle = colour;
+  g.lineCap = 'round';
+  for (const side of [-1, 1]) {
+    g.lineWidth = lw;
+    g.beginPath();
+    // Blade: from the hilt at lower `side`, across the centre to the far upper corner.
+    g.moveTo(x + side * s * 0.62, y + s * 0.62);
+    g.quadraticCurveTo(x - side * s * 0.05, y + s * 0.05, x - side * s * 0.78, y - s * 0.86);
+    g.stroke();
+    // Cross-guard and grip.
+    const gx = x + side * s * 0.42;
+    const gy = y + s * 0.42;
+    g.lineWidth = lw * 1.1;
+    g.beginPath();
+    g.moveTo(gx - s * 0.2, gy - side * s * 0.2 * -1);
+    g.lineTo(gx + s * 0.2, gy + side * s * 0.2 * -1);
+    g.stroke();
+    g.beginPath();
+    g.arc(x + side * s * 0.7, y + s * 0.7, lw * 0.9, 0, TAU);
+    g.fill();
+  }
+  g.restore();
 }
 
-/** Where the front stands, in map-space east: just past the furthest mission won in this act. */
-function frontOf(sorted: CampaignMapNode[], act: 0 | 1, tall: boolean): number {
-  let furthest = 0;
-  for (const n of sorted) if (n.state === 'won') furthest = Math.max(furthest, n.order);
-  const lastOrder = sorted.length ? sorted[sorted.length - 1].order : ACTS[act].first + ACTS[act].length - 1;
-  if (furthest < ACTS[act].first) furthest = 0;
-  if (furthest >= lastOrder) return 1.08;
-  if (furthest === 0) return tall ? 0.065 : 0.045;
-  return (mapFx(furthest, tall) + mapFx(furthest + 1, tall)) / 2;
+/** A small swallow-tailed flag on a staff: ground taken in a side battle. */
+function flag(g: Ctx, x: number, y: number, s: number, colour: string) {
+  g.save();
+  g.strokeStyle = colour;
+  g.fillStyle = colour;
+  g.lineWidth = Math.max(1, s * 0.12);
+  g.beginPath();
+  g.moveTo(x - s * 0.35, y + s * 0.7);
+  g.lineTo(x - s * 0.35, y - s * 0.75);
+  g.stroke();
+  g.beginPath();
+  g.moveTo(x - s * 0.35, y - s * 0.75);
+  g.lineTo(x + s * 0.65, y - s * 0.6);
+  g.lineTo(x + s * 0.38, y - s * 0.38);
+  g.lineTo(x + s * 0.65, y - s * 0.16);
+  g.lineTo(x - s * 0.35, y - s * 0.12);
+  g.closePath();
+  g.fill();
+  g.beginPath();
+  g.ellipse(x - s * 0.35, y + s * 0.72, s * 0.32, s * 0.09, 0, 0, TAU);
+  g.fill();
+  g.restore();
 }
 
-function paintSituation(w: number, h: number, res: number, act: 0 | 1, scheme: MapScheme, compact: boolean, sorted: CampaignMapNode[]): HTMLCanvasElement {
-  const sig = sorted.map(n => `${n.order}${n.state[0]}${n.stars}/${n.maxStars ?? 3}:${n.title}`).join(',');
-  const key = `${w}x${h}@${res}#${act}${scheme}${compact ? 'c' : ''}${fontsLoaded ? 'f' : ''}|${sig}`;
-  const hit = situationCache.get(key);
+/** Headquarters: a square standard on a staff, as unit signs mark a command post. */
+function standard(g: Ctx, x: number, y: number, s: number, pal: Palette) {
+  g.save();
+  g.strokeStyle = pal.blue;
+  g.lineWidth = Math.max(1, s * 0.12);
+  g.beginPath();
+  g.moveTo(x - s * 0.6, y + s * 0.75);
+  g.lineTo(x - s * 0.6, y - s * 0.75);
+  g.stroke();
+  g.fillStyle = pal.halo;
+  g.fillRect(x - s * 0.6, y - s * 0.75, s * 1.3, s * 0.85);
+  g.strokeRect(x - s * 0.6, y - s * 0.75, s * 1.3, s * 0.85);
+  g.beginPath();
+  g.moveTo(x - s * 0.6, y - s * 0.75);
+  g.lineTo(x + s * 0.7, y + s * 0.1);
+  g.moveTo(x + s * 0.7, y - s * 0.75);
+  g.lineTo(x - s * 0.6, y + s * 0.1);
+  g.lineWidth = Math.max(0.8, s * 0.08);
+  g.stroke();
+  g.restore();
+}
+
+type Box = [number, number, number, number];
+const overlaps = (a: Box, b: Box) => a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+
+function viewSig(view: TheatreView): string {
+  return [
+    controlSig(view.control),
+    view.missions.map(m => `${m.id}${m.state[0]}${m.stars}/${m.maxStars}:${m.title}`).join(','),
+    view.engagements.map(e => `${e.regionId}${e.state[0]}${e.stars}`).join(','),
+  ].join('|');
+}
+
+/** Where a region with a battle open draws its arrow of advance from: the middle of its longest border with held ground, or the sea. */
+function arrowFor(cam: Cam, region: TheatreRegion, control: Record<string, RegionControl>): { from: Pt; anchor: Pt } | null {
+  let best: Pt[] | null = null;
+  let bestLen = 0;
+  let sea: Pt[] | null = null;
+  for (const ch of theatreGeography().chains) {
+    const other = ch.right === region.id ? ch.left : ch.left === region.id ? ch.right : null;
+    if (!other) continue;
+    const pts = ch.points.map(([x, y]) => toScreen(cam, x, y));
+    let len = 0;
+    for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (other === 'sea') {
+      if (!sea || len > 0) sea = sea && sea.length > pts.length ? sea : pts;
+      continue;
+    }
+    if ((control[other] ?? 'enemy') === 'held' && len > bestLen) {
+      bestLen = len;
+      best = pts;
+    }
+  }
+  const [sx, sy] = toScreen(cam, region.site[0], region.site[1]);
+  const mid = (pts: Pt[]) => pts[Math.floor(pts.length / 2)];
+  if (best) {
+    const a = mid(best);
+    const dx = sx - a[0];
+    const dy = sy - a[1];
+    const l = Math.hypot(dx, dy) || 1;
+    return { anchor: a, from: [a[0] - (dx / l) * Math.min(26, l * 0.6), a[1] - (dy / l) * Math.min(26, l * 0.6)] };
+  }
+  if (sea) {
+    // A landing: from the water onto the shore.
+    const a = mid(sea);
+    const dx = a[0] - sx;
+    const dy = a[1] - sy;
+    const l = Math.hypot(dx, dy) || 1;
+    return { anchor: a, from: [a[0] + (dx / l) * 34, a[1] + (dy / l) * 34] };
+  }
+  return null;
+}
+
+function paintMarks(o: Sheetish, view: TheatreView, whole: boolean, withFront: boolean): HTMLCanvasElement {
+  const key = `${sheetKey(o)}|${viewSig(view)}|${view.act}${whole ? 'w' : ''}${withFront ? 'F' : ''}`;
+  const hit = marksCache.get(key);
   if (hit) return hit;
-  if (situationCache.size > 4) situationCache.clear();
+  if (marksCache.size > 6) marksCache.clear();
+  const { w, h, res, cam, scheme, compact } = o;
   const [c, g] = newCanvas(w, h, res);
   const pal = PALETTES[scheme];
-  g.drawImage(paintSheet(w, h, res, act, scheme, compact), 0, 0, w, h);
-  const P = (fx: number, fy: number) => toScreen(fx, fy, w, h);
   const unit = Math.min(w, h);
   const k = unit / 450;
-  const tall = portrait(w, h);
   const m = marginOf(w, h);
-  const land = landPoints(w, h, act);
-  const frontFx = frontOf(sorted, act, tall);
-  const frontAt = (fy: number) => frontFx + (noise1(fy * 7, 41) - 0.5) * 0.05;
+  const R = campaignMarkerRadius(w, h);
+  const regions = theatreRegions();
+  const byId = new Map(regions.map(r => [r.id, r]));
+  const act = view.act;
+  const focus = (r: TheatreRegion) => whole || r.act === act;
 
   g.save();
   g.beginPath();
   g.rect(m, m, w - m * 2, h - m * 2);
   g.clip();
 
-  // The ground each side holds: a blue wash behind the front, red hatching ahead of it.
-  const sidePath = (west: boolean) => {
-    g.beginPath();
-    const edgeFx = west ? -0.1 : 1.1;
-    let [x, y] = P(edgeFx, -0.1);
-    g.moveTo(x, y);
-    for (let i = 0; i <= 60; i++) {
-      const fy = -0.1 + (i / 60) * 1.2;
-      [x, y] = P(frontAt(fy), fy);
-      g.lineTo(x, y);
+  if (withFront) for (const p of frontPieces(cam, view.control)) drawFrontLine(g, p.pts, p.enemySide, k, pal);
+
+  // Arrows of advance into every region with a battle open.
+  const aw = Math.max(6, Math.min(11, R * 0.55));
+  const open = new Set<string>();
+  for (const mi of view.missions) if (mi.state === 'open') open.add(mi.regionId);
+  for (const e of view.engagements) if (e.state === 'open') open.add(e.regionId);
+  for (const id of open) {
+    const r = byId.get(id);
+    if (!r || !focus(r)) continue;
+    const a = arrowFor(cam, r, view.control);
+    if (!a) continue;
+    const [sx, sy] = toScreen(cam, r.site[0], r.site[1]);
+    const isMission = view.missions.some(mi => mi.regionId === id);
+    const reach = Math.min(Math.hypot(sx - a.from[0], sy - a.from[1]), 70 * Math.max(0.8, k));
+    const dx = sx - a.from[0];
+    const dy = sy - a.from[1];
+    const l = Math.hypot(dx, dy) || 1;
+    const to = { x: a.from[0] + (dx / l) * reach, y: a.from[1] + (dy / l) * reach };
+    const trim = Math.max(0, R + 3 - (l - reach));
+    advanceArrow(g, { x: a.from[0], y: a.from[1] }, to, 0.12, 0, trim, isMission ? aw : aw * 0.8, 'planned', pal);
+  }
+
+  // Markers and names. The story's objectives first, then the side battles, each name tried below,
+  // above and to either side of its marker and left out where nothing fits.
+  const taken: Box[] = [];
+  const label = Math.max(8.5, Math.min(13, unit * 0.027));
+  const small = Math.max(7.5, label * 0.84);
+  const missionAt = new Map(view.missions.map(mi => [mi.regionId, mi]));
+  const engagementAt = new Map(view.engagements.map(e => [e.regionId, e]));
+  for (const r of regions) {
+    const [x, y] = toScreen(cam, r.site[0], r.site[1]);
+    const rr = missionAt.has(r.id) ? (focus(r) ? R : R * 0.72) : R * 0.6;
+    taken.push([x - rr, y - rr, x + rr, y + rr]);
+  }
+  // Keep names off the cartouche and stamp, roughly.
+  taken.push([0, 0, w * 0.42, m + 44 * Math.max(0.62, Math.min(1.15, k))]);
+  const place = (x: number, y: number, r: number, tw: number, th: number, force: boolean): Pt | null => {
+    const tries: Pt[] = [
+      [x, y + r + 3 + th / 2],
+      [x, y - r - 3 - th / 2],
+      [x + r + 4 + tw / 2, y],
+      [x - r - 4 - tw / 2, y],
+    ];
+    for (const [cx, cy] of tries) {
+      const b: Box = [cx - tw / 2, cy - th / 2, cx + tw / 2, cy + th / 2];
+      if (b[0] < m + 2 || b[2] > w - m - 2 || b[1] < m + 2 || b[3] > h - m - 2) continue;
+      if (taken.some(t => overlaps(t, b))) continue;
+      taken.push(b);
+      return [cx, cy];
     }
-    [x, y] = P(edgeFx, 1.1);
-    g.lineTo(x, y);
-    g.closePath();
+    if (!force) return null;
+    const [cx, cy] = tries[0];
+    const cxx = Math.max(m + tw / 2 + 2, Math.min(w - m - tw / 2 - 2, cx));
+    taken.push([cxx - tw / 2, cy - th / 2, cxx + tw / 2, cy + th / 2]);
+    return [cxx, cy];
   };
-  g.save();
-  polyPath(g, land);
-  g.clip();
-  g.fillStyle = pal.blueWash;
-  sidePath(true);
-  g.fill();
-  if (frontFx < 1.05) {
+
+  // Home ground: the Corps' standard.
+  for (const r of regions) {
+    if (!r.home || engagementAt.has(r.id) || missionAt.has(r.id) || !focus(r)) continue;
+    const [x, y] = toScreen(cam, r.site[0], r.site[1]);
+    standard(g, x, y, R * 0.62, pal);
+  }
+
+  const missions = [...view.missions].sort((a, b) => {
+    const rank = (s: string) => (s === 'open' ? 0 : s === 'won' ? 1 : 2);
+    return rank(a.state) - rank(b.state) || a.order - b.order;
+  });
+  const deferred: (() => void)[] = [];
+  for (const e of view.engagements) {
+    const r = byId.get(e.regionId);
+    if (!r) continue;
+    const [x, y] = toScreen(cam, r.site[0], r.site[1]);
+    const inFocus = focus(r);
+    const s = R * 0.62;
     g.save();
-    sidePath(false);
-    g.clip();
-    g.strokeStyle = pal.redHatch;
-    g.lineWidth = 0.8;
-    g.beginPath();
-    const gap = Math.max(6, 8 * k);
-    for (let d = -h; d < w + h; d += gap) {
-      g.moveTo(d, 0);
-      g.lineTo(d - h, h);
+    if (!inFocus) g.globalAlpha = 0.45;
+    if (e.state === 'open') {
+      g.beginPath();
+      g.arc(x, y, s * 1.25, 0, TAU);
+      g.fillStyle = pal.halo;
+      g.globalAlpha *= 0.85;
+      g.fill();
+      g.globalAlpha = inFocus ? 1 : 0.45;
+      g.strokeStyle = pal.red;
+      g.lineWidth = 1.2;
+      g.stroke();
+      sabres(g, x, y, s * 0.85, pal.red, Math.max(1.3, 1.6 * k));
+    } else if (e.state === 'won') {
+      flag(g, x, y, s * 0.95, pal.blue);
+    } else {
+      sabres(g, x, y, s * 0.7, pal.pencil, Math.max(0.8, 0.9 * k));
     }
-    g.stroke();
     g.restore();
-
-    // The front: a heavy inked line with blue teeth facing the enemy, and the enemy's own forward
-    // line pencilled in red just beyond it.
-    const pts: [number, number][] = [];
-    for (let i = 0; i <= 80; i++) {
-      const fy = -0.05 + (i / 80) * 1.1;
-      pts.push(P(frontAt(fy), fy));
-    }
-    const [ex, ey] = tall ? [0, -1] : [1, 0];
-    const off = 7 * Math.max(0.8, k);
-    g.beginPath();
-    pts.forEach(([x, y], i) => (i ? g.lineTo(x + ex * off, y + ey * off) : g.moveTo(x + ex * off, y + ey * off)));
-    g.setLineDash([6, 4]);
-    g.strokeStyle = pal.red;
-    g.lineWidth = 1.2;
-    g.stroke();
-    g.setLineDash([]);
-    g.beginPath();
-    pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y)));
-    g.strokeStyle = pal.ink;
-    g.lineWidth = 3.2 * Math.max(0.8, k);
-    g.lineJoin = 'round';
-    g.stroke();
-    g.fillStyle = pal.blue;
-    const spacing = Math.max(13, 17 * k);
-    const tooth = Math.max(3.5, 4.6 * k);
-    let acc = spacing / 2;
-    for (let i = 1; i < pts.length; i++) {
-      const [x0, y0] = pts[i - 1];
-      const [x1, y1] = pts[i];
-      const seg = Math.hypot(x1 - x0, y1 - y0);
-      while (acc < seg) {
-        const q = acc / seg;
-        const x = x0 + (x1 - x0) * q;
-        const y = y0 + (y1 - y0) * q;
-        const tx = (x1 - x0) / seg;
-        const ty = (y1 - y0) / seg;
-        g.beginPath();
-        g.moveTo(x - tx * tooth, y - ty * tooth);
-        g.lineTo(x + tx * tooth, y + ty * tooth);
-        g.lineTo(x + ex * tooth * 1.5, y + ey * tooth * 1.5);
-        g.closePath();
-        g.fill();
-        acc += spacing;
-      }
-      acc -= seg;
-    }
-  }
-  g.restore(); // land clip
-
-  // Arrows of advance between the objectives, and an enemy counter-thrust on the next one.
-  const R = campaignNodeRadius(w, h);
-  const aw = Math.max(7, Math.min(14, R * 0.62));
-  for (let i = 1; i < sorted.length; i++) {
-    const a = sorted[i - 1];
-    const b = sorted[i];
-    const pa = campaignNodePosition(a.order, w, h);
-    const pb = campaignNodePosition(b.order, w, h);
-    const style: ArrowStyle = b.state === 'won' ? 'won' : b.state === 'open' ? 'planned' : 'pencil';
-    advanceArrow(g, pa, pb, 0.16, R + 4, R + 5, style === 'pencil' ? aw * 0.7 : aw, style, pal);
-  }
-  const open = sorted.find(n => n.state === 'open');
-  if (open) {
-    const po = campaignNodePosition(open.order, w, h);
-    // From the enemy's side, on the flank away from the objective's label.
-    const out = labelAbove(open.order, w, h) ? 1 : -1;
-    const from = tall ? { x: po.x + w * 0.2, y: po.y - h * 0.11 } : { x: po.x + w * 0.12, y: po.y + out * h * 0.05 };
-    advanceArrow(g, from, po, -0.2 * out, 0, R + 6, aw * 0.75, 'enemy', pal);
+    if (!inFocus || compact) continue;
+    const style: MapText['style'] = e.state === 'locked' ? 'italic' : r.kind === 'city' ? 'roman' : 'caps';
+    const colour = e.state === 'locked' ? pal.pencil : e.state === 'open' ? pal.red : pal.ink;
+    const weight = e.state === 'open' ? 700 : 400;
+    const tw = measure(g, r.name, small, style, weight, style === 'caps' ? 0.6 : 0);
+    const prio = e.state === 'open' ? 0 : 1;
+    deferred.push(() => {
+      const at = place(x, y, s * 1.1, tw + 4, small * 1.15, prio === 0);
+      if (at) letter(g, r.name, at[0], at[1], { size: small, colour, halo: pal.halo, style, weight, spacing: style === 'caps' ? 0.6 : 0 });
+    });
   }
 
   // The objectives.
-  const label = Math.max(9, Math.min(13.5, unit * 0.029));
-  for (const n of sorted) {
-    const { x, y } = campaignNodePosition(n.order, w, h);
-    const r = R;
+  const missionLabels: (() => void)[] = [];
+  for (const n of missions) {
+    const r = byId.get(n.regionId);
+    if (!r) continue;
+    const [x, y] = toScreen(cam, r.site[0], r.site[1]);
+    const inFocus = focus(r);
+    const rr = inFocus ? R : R * 0.72;
     const ink = n.state === 'won' ? pal.blue : n.state === 'open' ? pal.red : pal.pencil;
-    // A paper ground so the arrows do not run through the lettering.
-    g.fillStyle = n.state === 'won' ? pal.blueFill : n.state === 'open' ? pal.redFill : 'rgba(0,0,0,0)';
+    g.save();
+    if (!inFocus) g.globalAlpha = 0.55;
     g.beginPath();
-    g.arc(x, y, r, 0, TAU);
-    g.save();
-    g.globalCompositeOperation = 'source-over';
+    g.arc(x, y, rr, 0, TAU);
     g.fillStyle = pal.halo;
-    g.globalAlpha = n.state === 'locked' ? 0.55 : 0.8;
+    g.globalAlpha *= n.state === 'locked' ? 0.7 : 0.9;
     g.fill();
-    g.restore();
+    g.globalAlpha = inFocus ? 1 : 0.55;
+    g.fillStyle = n.state === 'won' ? pal.blueFill : n.state === 'open' ? pal.redFill : 'rgba(0,0,0,0)';
     g.fill();
-    g.save();
     if (n.state === 'locked') g.setLineDash([3, 2.5]);
     g.strokeStyle = ink;
-    g.lineWidth = n.state === 'locked' ? 1.1 : 2.2;
+    g.lineWidth = n.state === 'locked' ? 1.1 : 2.1;
     g.stroke();
-    g.restore();
+    g.setLineDash([]);
     if (n.state === 'open') {
-      g.strokeStyle = ink;
       g.lineWidth = 0.8;
       g.beginPath();
-      g.arc(x, y, r - 3.2, 0, TAU);
+      g.arc(x, y, rr - 3, 0, TAU);
       g.stroke();
     }
-    letter(g, 'OBJ', x, y - r * 0.3, { size: Math.max(6.5, r * 0.36), colour: ink, weight: 700, spacing: 0.6 });
-    letter(g, String(n.order), x, y + r * 0.24, { size: Math.max(9, r * 0.66), colour: ink, weight: 700, style: n.state === 'locked' ? 'italic' : 'roman' });
+    if (rr >= 13) letter(g, 'OBJ', x, y - rr * 0.3, { size: Math.max(6, rr * 0.36), colour: ink, weight: 700, spacing: 0.6 });
+    letter(g, String(n.order), x, rr >= 13 ? y + rr * 0.24 : y + 0.5, { size: Math.max(8.5, rr * (rr >= 13 ? 0.66 : 0.8)), colour: ink, weight: 700, style: n.state === 'locked' ? 'italic' : 'roman' });
     if (n.state === 'won') {
       // Captured: a blue pennant planted on the objective's rim.
-      const fx = x + r * 0.62;
-      const fy = y - r * 0.62;
+      const fx = x + rr * 0.62;
+      const fy = y - rr * 0.62;
       g.strokeStyle = pal.blue;
-      g.lineWidth = 1.4;
+      g.lineWidth = 1.3;
       g.beginPath();
       g.moveTo(fx, fy + 2);
-      g.lineTo(fx, fy - r * 0.95);
+      g.lineTo(fx, fy - rr * 0.9);
       g.stroke();
       g.fillStyle = pal.blue;
       g.beginPath();
-      g.moveTo(fx, fy - r * 0.95);
-      g.lineTo(fx + r * 0.7, fy - r * 0.72);
-      g.lineTo(fx, fy - r * 0.48);
+      g.moveTo(fx, fy - rr * 0.9);
+      g.lineTo(fx + rr * 0.66, fy - rr * 0.68);
+      g.lineTo(fx, fy - rr * 0.46);
       g.closePath();
       g.fill();
     }
-    // The name, and the stars won, on the side away from the route.
-    const up = labelAbove(n.order, w, h);
-    const dir = up ? -1 : 1;
-    let cursor = y + dir * (r + 3);
-    if (n.state === 'won') {
-      const max = Math.max(n.stars, n.maxStars ?? 3);
-      const sr = Math.max(3.4, label * 0.36);
-      cursor += dir * (sr + 1);
-      for (let s = 0; s < max; s++) stampStar(g, x + (s - (max - 1) / 2) * sr * 2.4, cursor, sr, s < n.stars, pal);
-      cursor += dir * (sr + 2);
-    }
-    cursor += dir * (label * 0.62);
-    const style = n.state === 'locked' ? 'italic' : 'caps';
+    g.restore();
+    if (!inFocus) continue;
+    if (compact && n.state !== 'open') continue;
+    // The name, and the stars won beneath it.
+    const style: MapText['style'] = n.state === 'locked' ? 'italic' : 'caps';
     const weight = n.state === 'open' ? 700 : 600;
     const spacing = n.state === 'locked' ? 0.2 : 0.8;
-    // Kept inside the neatline: the first and last objectives sit close to the sheet's edges.
-    const half = measure(g, n.title, label, style, weight, spacing) / 2 + 3;
-    const lx = Math.max(m + half, Math.min(w - m - half, x));
-    letter(g, n.title, lx, cursor, { size: label, colour: n.state === 'locked' ? pal.pencil : pal.ink, halo: pal.halo, style, weight, spacing });
+    const tw = measure(g, n.title, label, style, weight, spacing);
+    const sr = Math.max(3.2, label * 0.34);
+    const stars = n.state === 'won' ? Math.max(n.stars, n.maxStars) : 0;
+    const th = label * 1.15 + (stars ? sr * 2 + 3 : 0);
+    missionLabels.push(() => {
+      const at = place(x, y, rr, Math.max(tw, stars * sr * 2.4) + 4, th, true);
+      if (!at) return;
+      const top = at[1] - th / 2;
+      letter(g, n.title, at[0], top + label * 0.58, { size: label, colour: n.state === 'locked' ? pal.pencil : pal.ink, halo: pal.halo, style, weight, spacing });
+      for (let s = 0; s < stars; s++) stampStar(g, at[0] + (s - (stars - 1) / 2) * sr * 2.4, top + label * 1.15 + sr + 2, sr, s < n.stars, pal);
+    });
   }
+  for (const f of missionLabels) f();
+  for (const f of deferred) f();
   g.restore(); // neatline clip
 
-  furniture(g, w, h, act, pal, compact, sorted);
+  furniture(g, w, h, view, pal, compact, cam);
   creases(g, w, h, pal);
-  situationCache.set(key, c);
+  marksCache.set(key, c);
   return c;
 }
 
 /** Cartouche, classification, legend, scale and north arrow. */
-function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compact: boolean, sorted: CampaignMapNode[]) {
+function furniture(g: Ctx, w: number, h: number, view: TheatreView, pal: Palette, compact: boolean, cam: Cam) {
   const m = marginOf(w, h);
   const unit = Math.min(w, h);
   const k = Math.max(0.62, Math.min(1.15, unit / 450));
-  const theatre = CAMPAIGN_THEATRES[act];
-  const won = sorted.filter(n => n.state === 'won').length;
+  const theatre = CAMPAIGN_THEATRES[view.act];
+  const inAct = view.missions.filter(n => campaignActOf(n.order) === view.act);
+  const won = inAct.filter(n => n.state === 'won').length;
+  const held = theatreRegions().filter(r => view.control[r.id] === 'held').length;
   const pad = 7 * k;
 
   const box = (x: number, y: number, bw: number, bh: number) => {
@@ -1265,11 +1698,11 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
 
   // Title cartouche, top left.
   {
-    const titleSize = (compact ? 12.5 : 16) * k;
+    const titleSize = (compact ? 12 : 15) * k;
     const smallSize = Math.max(7, (compact ? 7.5 : 8.5) * k);
     const title = theatre.place.toUpperCase();
     const head = compact ? `Theatre of operations, ${theatre.act}` : `Meridian Corps · Theatre of operations, ${theatre.act}`;
-    const foot = `${theatre.sheet} · ${won} of ${sorted.length} objectives taken`;
+    const foot = `${theatre.sheet} · ${won} of ${inAct.length} objectives · ${held} of ${theatreRegions().length} regions held`;
     const tw = Math.max(
       measure(g, title, titleSize, 'roman', 700, 2.5 * k),
       measure(g, head, smallSize, 'caps', 600, 1),
@@ -1308,8 +1741,7 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
     g.save();
     g.translate(w - m - bw / 2 - 10 * k, m + bh / 2 + 8 * k);
     g.rotate(-0.06);
-    // Clear the paper under the stamp first: on a narrow map it lands on a hill's contours and
-    // spot height, and ink over ink read as a smudge.
+    // Clear the paper under the stamp first, so ink over ink does not read as a smudge.
     const clear = 4 * k;
     const below = compact ? 0 : size * 0.85;
     g.fillStyle = pal.halo;
@@ -1323,7 +1755,6 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
     if (!compact) letter(g, 'COPY No. 4 OF 9', 0, bh / 2 + size * 0.55, { size: size * 0.48, colour: pal.stamp, weight: 700, spacing: 1 });
     // Worn ink: flecks of paper showing through.
     g.globalCompositeOperation = 'destination-out';
-    // Fewer on a small stamp: at 40 the letters of a phone-sized one read as hollow.
     for (let i = 0, flecks = compact ? 10 : 40; i < flecks; i++) {
       g.fillStyle = `rgba(0,0,0,${0.25 + hash(i + 77) * 0.5})`;
       g.fillRect((hash(i * 2 + 60) - 0.5) * bw, (hash(i * 2 + 61) - 0.5) * bh, 1.2, 1.2);
@@ -1331,23 +1762,25 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
     g.restore();
   }
 
-  // Scale bar and north arrow, bottom right.
+  // Scale bar and north arrow, bottom right. The bar is true to the sheet: the country is about
+  // 3,300 km east to west.
   const bottom = h - m - 8 * k;
-  let scaleLeft = w - m;
   {
-    const seg = Math.max(14, 22 * k);
-    const n = compact ? 3 : 4;
+    const kmPerFy = 3300 / A;
+    const pxPerKm = cam.s / kmPerFy;
+    const steps = [50, 100, 200, 250, 500];
+    const segKm = steps.find(s => s * pxPerKm >= 30 * k) ?? 500;
+    const seg = segKm * pxPerKm;
+    const n = compact ? 2 : 3;
     const bh = Math.max(3, 4 * k);
     const north = Math.max(16, 26 * k);
-    const x1 = w - m - 12 * k - north * 0.9;
+    const x1 = w - m - 12 * k - north * (cam.rot ? 1.7 : 0.9);
     const x0 = x1 - seg * n;
-    scaleLeft = x0 - seg * 0.6;
     const y = bottom - bh - 2;
-    // A paper ground for legibility over the sea's ripples.
+    const ts = Math.max(7, 8.5 * k);
     g.fillStyle = pal.box;
     g.globalAlpha = 0.85;
-    const ts = Math.max(7, 8.5 * k);
-    g.fillRect(x0 - seg * 0.4, y - ts * 2.6, seg * n + seg * 0.8, ts * 2.6 + bh + 6);
+    g.fillRect(x0 - seg * 0.4, y - ts * 2.6, seg * n + seg * 0.8 + 10 * k, ts * 2.6 + bh + 6);
     g.globalAlpha = 1;
     for (let i = 0; i < n; i++) {
       g.fillStyle = i % 2 ? pal.box : pal.ink;
@@ -1356,16 +1789,17 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
     g.strokeStyle = pal.ink;
     g.lineWidth = 0.8;
     g.strokeRect(x0, y, seg * n, bh);
-    for (let i = 0; i <= n; i++) letter(g, i === n ? `${i * 5} km` : String(i * 5), x0 + i * seg + (i === n ? 6 * k : 0), y - ts * 0.75, { size: ts, colour: pal.ink, align: i === n ? 'left' : 'center' });
-    if (!compact) letter(g, 'Scale 1 : 250 000', x0 + (seg * n) / 2, y - ts * 1.95, { size: ts * 0.95, colour: pal.inkSoft, style: 'italic' });
+    for (let i = 0; i <= n; i++) letter(g, String(i * segKm), x0 + i * seg, y - ts * 0.75, { size: ts, colour: pal.ink, align: 'center' });
+    // As printed at 96 pixels to the inch, rounded as a draughtsman would.
+    const denom = Math.round(3_779_528 / pxPerKm / 250_000) * 250_000;
+    if (!compact) letter(g, `Kilometres · 1 : ${denom.toLocaleString('en-GB')}`, x0 + (seg * n) / 2, y - ts * 1.95, { size: ts * 0.95, colour: pal.inkSoft, style: 'italic' });
 
     // North arrow: a long split point, one half inked and one left as paper, with N above.
-    const tall = portrait(w, h);
     const cx = w - m - 10 * k - north * 0.35;
     const cy = bottom - north * 0.75;
     g.save();
     g.translate(cx, cy);
-    if (tall) g.rotate(Math.PI / 2);
+    if (cam.rot) g.rotate(-Math.PI / 2);
     const L = north * 0.85;
     const W = north * 0.2;
     g.fillStyle = pal.box;
@@ -1392,47 +1826,76 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
     g.fillStyle = pal.ink;
     g.fill();
     g.stroke();
-    letter(g, 'N', 0, -L - Math.max(6, 8 * k), { size: Math.max(9, 12 * k), colour: pal.ink, weight: 700 });
+    g.translate(0, -L - Math.max(6, 8 * k));
+    if (cam.rot) g.rotate(Math.PI / 2);
+    letter(g, 'N', 0, 0, { size: Math.max(9, 12 * k), colour: pal.ink, weight: 700 });
     g.restore();
   }
 
-  // Legend, bottom left: what the marks mean.
+  // Legend: what the marks mean. Bottom left, over the lands beyond the frontier.
   if (!compact) {
-    const ts = Math.max(7.5, 9 * k);
-    const sw = 26 * k;
-    const rowH = ts * 1.7;
+    const ts = Math.max(7.5, 8.4 * k);
+    const sw = 22 * k;
+    const rowH = ts * 1.62;
+    const swatch = (x: number, y: number, fill: (gx: Ctx, bx: number, by: number, bw: number, bh: number) => void) => {
+      const bw = sw;
+      const bh = rowH * 0.62;
+      g.save();
+      g.beginPath();
+      g.rect(x, y - bh / 2, bw, bh);
+      g.clip();
+      g.fillStyle = pal.paper;
+      g.fillRect(x, y - bh / 2, bw, bh);
+      fill(g, x, y - bh / 2, bw, bh);
+      g.restore();
+      g.strokeStyle = pal.inkSoft;
+      g.lineWidth = 0.7;
+      g.strokeRect(x, y - bh / 2, bw, bh);
+    };
     const items: { text: string; draw: (x: number, y: number) => void }[] = [
       {
-        text: 'Advance, completed',
-        draw: (x, y) => advanceArrow(g, { x, y: y + 2 }, { x: x + sw, y: y - 1 }, 0.15, 0, 0, 7 * k, 'won', pal),
+        text: 'Held by the Corps',
+        draw: (x, y) =>
+          swatch(x, y, (gx, bx, by, bw, bh) => {
+            gx.fillStyle = pal.heldWash;
+            gx.fillRect(bx, by, bw, bh);
+            gx.translate(bx, by);
+            hatch(gx, bw, bh, 4, 1, pal.heldHatch, 0.6);
+          }),
       },
       {
-        text: 'Advance, planned',
-        draw: (x, y) => advanceArrow(g, { x, y: y + 2 }, { x: x + sw, y: y - 1 }, 0.15, 0, 0, 7 * k, 'planned', pal),
+        text: 'Held by the Combine',
+        draw: (x, y) =>
+          swatch(x, y, (gx, bx, by, bw, bh) => {
+            gx.translate(bx, by);
+            hatch(gx, bw, bh, 6, -1, pal.redHatch, 0.75);
+          }),
       },
       {
-        text: 'Enemy movement',
-        draw: (x, y) => advanceArrow(g, { x: x + sw, y: y + 2 }, { x, y: y - 1 }, -0.15, 0, 0, 7 * k, 'enemy', pal),
+        text: 'Contested',
+        draw: (x, y) =>
+          swatch(x, y, (gx, bx, by, bw, bh) => {
+            gx.translate(bx, by);
+            gx.lineWidth = 5;
+            gx.strokeStyle = pal.contestRed;
+            gx.beginPath();
+            for (let d = -bh; d < bw + bh; d += 20) {
+              gx.moveTo(d, 0);
+              gx.lineTo(d - bh, bh);
+            }
+            gx.stroke();
+            gx.strokeStyle = pal.contestBlue;
+            gx.beginPath();
+            for (let d = -bh + 10; d < bw + bh; d += 20) {
+              gx.moveTo(d, 0);
+              gx.lineTo(d - bh, bh);
+            }
+            gx.stroke();
+          }),
       },
       {
         text: 'Front line',
-        draw: (x, y) => {
-          g.strokeStyle = pal.ink;
-          g.lineWidth = 2.6 * k;
-          g.beginPath();
-          g.moveTo(x + sw * 0.4, y - rowH * 0.42);
-          g.lineTo(x + sw * 0.4, y + rowH * 0.42);
-          g.stroke();
-          g.fillStyle = pal.blue;
-          for (const dy of [-0.2, 0.2]) {
-            g.beginPath();
-            g.moveTo(x + sw * 0.4, y + dy * rowH - 3 * k);
-            g.lineTo(x + sw * 0.4, y + dy * rowH + 3 * k);
-            g.lineTo(x + sw * 0.4 + 5 * k, y + dy * rowH);
-            g.closePath();
-            g.fill();
-          }
-        },
+        draw: (x, y) => drawFrontLine(g, [[x, y + 2], [x + sw, y + 2]], 1, k * 0.85, pal),
       },
       {
         text: 'Objective, next',
@@ -1457,22 +1920,39 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
           g.restore();
         },
       },
+      { text: 'Engagement, open', draw: (x, y) => sabres(g, x + sw / 2, y, ts * 0.7, pal.red, 1.3) },
+      { text: 'Engagement, won', draw: (x, y) => flag(g, x + sw / 2, y, ts * 0.8, pal.blue) },
+      {
+        text: 'Advance',
+        draw: (x, y) => advanceArrow(g, { x, y: y + 2 }, { x: x + sw, y: y - 1 }, 0.15, 0, 0, 6 * k, 'planned', pal),
+      },
+      {
+        text: 'Province boundary',
+        draw: (x, y) => {
+          g.save();
+          g.strokeStyle = pal.border;
+          g.lineWidth = 0.9;
+          g.setLineDash([5, 2, 1.2, 2]);
+          g.beginPath();
+          g.moveTo(x, y);
+          g.lineTo(x + sw, y);
+          g.stroke();
+          g.restore();
+        },
+      },
     ];
-    const colW = Math.max(...items.map(it => measure(g, it.text, ts, 'roman'))) + sw + 12 * k;
     const head = ts * 1.9;
-    const bw = colW * 2 + pad * 2;
-    const bh = head + rowH * 3 + pad * 0.8;
+    const bw = legendWidth(k);
+    const bh = head + rowH * items.length + pad * 0.6;
     const x = m + 6 * k;
     const y = h - m - 6 * k - bh;
-    // Only where it fits clear of the scale bar.
-    if (x + bw < scaleLeft - 8) {
+    // Only where it fits, with room for the map above it.
+    if (y > m + (h - m * 2) * 0.22) {
       box(x, y, bw, bh);
       letter(g, 'REFERENCE', x + bw / 2, y + pad * 0.6 + ts * 0.7, { size: ts, colour: pal.ink, weight: 700, spacing: 3 });
       items.forEach((it, i) => {
-        const col = Math.floor(i / 3);
-        const row = i % 3;
-        const ix = x + pad + col * colW;
-        const iy = y + head + row * rowH + rowH * 0.5;
+        const ix = x + pad;
+        const iy = y + head + i * rowH + rowH * 0.5;
         it.draw(ix, iy);
         letter(g, it.text, ix + sw + 6 * k, iy, { size: ts, colour: pal.ink, align: 'left' });
       });
@@ -1530,75 +2010,198 @@ function creases(g: Ctx, w: number, h: number, pal: Palette) {
   line(0, h * 0.5, w, h * 0.5 - 1);
 }
 
+// ---- A region changing hands ------------------------------------------------------------------------
+
+const ease = (p: number) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+
+/** Where a captured region's fill spreads from: the middle of its border with ground held before, or its site. */
+function captureOrigin(cam: Cam, region: TheatreRegion, before: Record<string, RegionControl>): Pt {
+  let best: Pt[] | null = null;
+  let bestN = 0;
+  for (const ch of theatreGeography().chains) {
+    const other = ch.right === region.id ? ch.left : ch.left === region.id ? ch.right : null;
+    if (!other || (before[other] ?? 'enemy') !== 'held') continue;
+    if (ch.points.length > bestN) {
+      bestN = ch.points.length;
+      best = ch.points.map(([x, y]) => toScreen(cam, x, y));
+    }
+  }
+  return best ? best[Math.floor(best.length / 2)] : toScreen(cam, region.site[0], region.site[1]);
+}
+
 /**
- * The campaign's theatre map, drawn as a staff officer's operational map: aged paper folded in
- * four, a kilometre grid, contours, hatched woods and water-lined coasts, the front with its teeth
- * (it moves east with each mission won), arrows of advance between the objectives, a cartouche,
- * legend, scale, north arrow and a classification stamp.
+ * The campaign's theatre map, drawn as a staff officer's operational map of one country: aged paper
+ * folded in four, a kilometre grid, contours heavy on the western fells, hatched woods, water-lined
+ * coasts, rivers and the frontier; every province and city washed in the colours of whoever holds
+ * it, the front with its teeth wherever held ground meets the enemy's, arrows of advance into what
+ * is open, objectives and engagements, a cartouche, legend, scale, north arrow and stamp.
  *
- * Draws into (0, 0)-(w, h) in the context's current units. Everything but the next objective's
- * pulse and the hover and selection rings is painted once and kept, so calling this every frame
- * costs one image draw. `t` (seconds) drives the pulse; leave it out for a still.
+ * Draws into (0, 0)-(w, h) in the context's current units. The layers are painted once and kept,
+ * so calling this every frame costs a few image draws. `t` (seconds) drives the pulses; leave it
+ * out for a still. `opts.capture` plays regions changing hands (see CampaignMapOptions).
  *
- * A preview (the lobby's card, say) can call it at any size with the act's nodes; below 640 px wide
- * the sheet drops its legend and shortens its cartouche.
+ * The map turns to the act in `view.act`, or shows the whole country with `opts.whole` (a preview).
+ * Below 640 px wide the sheet drops its legend and most names.
  */
-export function drawCampaignMap(ctx: Ctx, w: number, h: number, nodes: CampaignMapNode[], t = 0, opts: CampaignMapOptions = {}): void {
+export function drawCampaignMap(ctx: Ctx, w: number, h: number, view: TheatreView, t = 0, opts: CampaignMapOptions = {}): void {
   if (w <= 0 || h <= 0) return;
   void mapFontsReady();
-  const m = ctx.getTransform();
-  const res = Math.max(1, Math.min(3, Math.hypot(m.a, m.b)));
+  const tf = ctx.getTransform();
+  const res = Math.max(1, Math.min(3, Math.hypot(tf.a, tf.b)));
   const scheme = opts.scheme ?? pageScheme();
   const compact = opts.compact ?? w < 640;
   const motion = opts.motion ?? true;
+  const whole = !!opts.whole;
   const pal = PALETTES[scheme];
-  const sorted = [...nodes].sort((a, b) => a.order - b.order);
-  const act = campaignActOf(sorted.length ? sorted[0].order : 1);
-  ctx.save();
-  ctx.drawImage(paintSituation(w, h, res, act, scheme, compact, sorted), 0, 0, w, h);
+  const cam = cameraFor(w, h, view.act, whole, compact);
+  const o: Sheetish = { w, h, res, cam, scheme, compact };
+  const k = Math.min(w, h) / 450;
+  const m = marginOf(w, h);
+  const regions = theatreRegions();
+  const byId = new Map(regions.map(r => [r.id, r]));
+  const R = campaignMarkerRadius(w, h);
 
-  const R = campaignNodeRadius(w, h);
-  for (const n of sorted) {
-    const { x, y } = campaignNodePosition(n.order, w, h);
-    if (n.state === 'open') {
-      if (motion) {
-        // Two soft rings spreading from the next objective, out of step.
-        for (const off of [0, 0.5]) {
-          const q = (t / 2.4 + off) % 1;
-          ctx.strokeStyle = `rgba(${pal.pulse},${0.55 * (1 - q) * (1 - q)})`;
-          ctx.lineWidth = 1.6;
-          ctx.beginPath();
-          ctx.arc(x, y, R + 2 + q * R * 0.95, 0, TAU);
-          ctx.stroke();
-        }
-      } else {
-        ctx.save();
-        ctx.setLineDash([2, 3]);
-        ctx.strokeStyle = `rgba(${pal.pulse},0.6)`;
-        ctx.lineWidth = 1.2;
-        ctx.beginPath();
-        ctx.arc(x, y, R + 6, 0, TAU);
-        ctx.stroke();
-        ctx.restore();
+  // A story mission open now is fought over like an engagement: its ground reads as contested.
+  const openMission = view.missions.filter(mi => mi.state === 'open' && view.control[mi.regionId] !== 'held');
+  if (openMission.length) {
+    const control = { ...view.control };
+    for (const mi of openMission) control[mi.regionId] = 'open';
+    view = { ...view, control };
+  }
+  const capturing = (opts.capture?.regions ?? []).filter(id => byId.has(id) && view.control[id] === 'held');
+  const p = opts.capture ? Math.max(0, Math.min(1, opts.capture.progress)) : 1;
+  ctx.save();
+  if (capturing.length && p < 1) {
+    const before: Record<string, RegionControl> = { ...view.control };
+    for (const id of capturing) before[id] = 'enemy';
+    ctx.drawImage(paintTerritory(o, before, view.act, whole), 0, 0, w, h);
+    const after = paintTerritory(o, view.control, view.act, whole);
+    const e = ease(p);
+    const spread = capturing.map(id => {
+      const r = byId.get(id)!;
+      const origin = captureOrigin(cam, r, before);
+      let far = 0;
+      for (const [fx, fy] of r.polygon) {
+        const [x, y] = toScreen(cam, fx, fy);
+        far = Math.max(far, Math.hypot(x - origin[0], y - origin[1]));
       }
+      return { r, origin, radius: e * (far + 2) };
+    });
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(m, m, w - m * 2, h - m * 2);
+    ctx.clip();
+    for (const s of spread) {
+      ctx.save();
+      regionPath(ctx, cam, s.r);
+      ctx.clip();
+      ctx.beginPath();
+      ctx.arc(s.origin[0], s.origin[1], Math.max(0.1, s.radius), 0, TAU);
+      ctx.save();
+      ctx.clip();
+      ctx.drawImage(after, 0, 0, w, h);
+      ctx.restore();
+      // The leading edge: a bright blue rim that fades as the fill completes.
+      ctx.strokeStyle = pal.blue;
+      ctx.globalAlpha = 0.7 * (1 - e);
+      ctx.lineWidth = 2.2;
+      ctx.stroke();
+      ctx.restore();
     }
-    if (n.selected) {
+    // The front, moving with the fill: borders of the captured regions with ground held before
+    // fade out behind the fill; their borders with the enemy draw in as the fill reaches them.
+    const inside = (pt: Pt) => spread.some(s => Math.hypot(pt[0] - s.origin[0], pt[1] - s.origin[1]) < s.radius);
+    const touches = (a: string, b: string) => capturing.includes(a) || capturing.includes(b);
+    const runs = (pts: Pt[], keep: (q: Pt) => boolean): Pt[][] => {
+      const out: Pt[][] = [];
+      let cur: Pt[] = [];
+      for (const q of pts) {
+        if (keep(q)) cur.push(q);
+        else if (cur.length) {
+          out.push(cur);
+          cur = [];
+        }
+      }
+      if (cur.length > 1) out.push(cur);
+      return out.filter(r => r.length > 1);
+    };
+    for (const f of frontPieces(cam, before)) {
+      if (!touches(f.a, f.b)) drawFrontLine(ctx, f.pts, f.enemySide, k, pal);
+      else for (const run of runs(f.pts, q => !inside(q))) drawFrontLine(ctx, run, f.enemySide, k, pal);
+    }
+    for (const f of frontPieces(cam, view.control)) {
+      if (!touches(f.a, f.b)) continue;
+      for (const run of runs(f.pts, inside)) drawFrontLine(ctx, run, f.enemySide, k, pal);
+    }
+    ctx.restore();
+    ctx.drawImage(paintMarks(o, view, whole, false), 0, 0, w, h);
+  } else {
+    ctx.drawImage(paintTerritory(o, view.control, view.act, whole), 0, 0, w, h);
+    ctx.drawImage(paintMarks(o, view, whole, true), 0, 0, w, h);
+  }
+
+  // What changes every frame: the pulse on what is open, the hover and the selection.
+  const focus = (r: TheatreRegion) => whole || r.act === view.act;
+  const pulse = (x: number, y: number, r: number, strength: number) => {
+    if (motion) {
+      for (const off of [0, 0.5]) {
+        const q = (t / 2.4 + off) % 1;
+        ctx.strokeStyle = `rgba(${pal.pulse},${strength * (1 - q) * (1 - q)})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, r + 2 + q * r * 0.95, 0, TAU);
+        ctx.stroke();
+      }
+    } else {
+      ctx.save();
+      ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = `rgba(${pal.pulse},${strength})`;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.arc(x, y, r + 5, 0, TAU);
+      ctx.stroke();
+      ctx.restore();
+    }
+  };
+  for (const n of view.missions) {
+    const r = byId.get(n.regionId);
+    if (!r || n.state !== 'open' || !focus(r)) continue;
+    const [x, y] = toScreen(cam, r.site[0], r.site[1]);
+    pulse(x, y, R, 0.55);
+  }
+  for (const e of view.engagements) {
+    const r = byId.get(e.regionId);
+    if (!r || e.state !== 'open' || !focus(r)) continue;
+    const [x, y] = toScreen(cam, r.site[0], r.site[1]);
+    pulse(x, y, R * 0.75, 0.38);
+  }
+  for (const [id, sel] of [
+    [opts.hover, false],
+    [view.selected, true],
+  ] as const) {
+    const r = id ? byId.get(id) : undefined;
+    if (!r) continue;
+    ctx.save();
+    regionPath(ctx, cam, r);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = sel ? pal.highlight : pal.ink;
+    ctx.lineWidth = sel ? 5 : 1.2;
+    if (!sel) ctx.setLineDash([4, 3]);
+    ctx.stroke();
+    ctx.restore();
+    if (sel) {
+      const [x, y] = toScreen(cam, r.site[0], r.site[1]);
       // A highlighter ring, as if marked up for the briefing.
       ctx.strokeStyle = pal.highlight;
       ctx.lineWidth = 6;
       ctx.beginPath();
       ctx.arc(x, y, R + 5, 0, TAU);
       ctx.stroke();
-    } else if (n.hover && n.state !== 'locked') {
-      ctx.strokeStyle = pal.ink;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(x, y, R + 4, 0, TAU);
-      ctx.stroke();
     }
   }
   ctx.restore();
 }
+
 
 
 // ---- Rank insignia -----------------------------------------------------------------------------

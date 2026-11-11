@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import SkirmishSetupPanel, { SetupStep, TECH_TEXT, freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
-import { drawMap, mapFontsReady, type CampaignMapNode } from '../components/campaignArtBridge';
+import { drawMap, mapFontsReady } from '../components/campaignArtBridge';
+import { previewView } from '../campaign/theatre';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
 import { campaignSaves, isCampaignMeta } from './campaignSaves';
 import { MISSIONS } from '../campaign/missions';
@@ -454,9 +455,9 @@ function Progress({ won }: { won: number }) {
 
 /**
  * The campaign's theatre map, drawn small and still on the war-room card by the campaign screen's
- * own art. The saves list carries only missions won, so the nodes are rebuilt from that: the first
- * `won` missions won, the next one open, the rest locked; that is how the campaign unlocks them.
- * It shows the act the player is in. The whole map is one button: continue, or start a new campaign.
+ * own art: the whole country. The saves list carries only missions won, so the territory is rebuilt
+ * from that (previewView): home ground and the regions of the missions won held, the next one's
+ * region open, the rest the enemy's; side battles are not known here. The whole map is one button: continue, or start a new campaign.
  */
 function CampaignTheatre({ won, label, caption, onOpen }: { won: number; label: string; caption: string; onOpen: () => void }) {
   const wrap = useRef<HTMLDivElement>(null);
@@ -473,19 +474,7 @@ function CampaignTheatre({ won, label, caption, onOpen }: { won: number; label: 
     };
   }, []);
   const actTwo = won >= ACT_ONE_MISSIONS && ACT_TWO_MISSIONS > 0;
-  const nodes = useMemo<CampaignMapNode[]>(() => {
-    const sorted = [...MISSIONS].sort((a, b) => a.order - b.order);
-    return sorted
-      .filter(m => ACT_TWO_IDS.has(m.id) === actTwo)
-      .map(m => ({
-        id: m.id,
-        order: m.order,
-        title: m.title,
-        state: m.order <= won ? 'won' : m.order === won + 1 ? 'open' : 'locked',
-        stars: m.order <= won ? 1 : 0,
-        maxStars: 1 + m.bonus.length,
-      }));
-  }, [won, actTwo]);
+  const view = useMemo(() => previewView(won), [won]);
 
   useEffect(() => {
     const box = wrap.current;
@@ -515,11 +504,11 @@ function CampaignTheatre({ won, label, caption, onOpen }: { won: number; label: 
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     try {
-      drawMap(ctx, size.w, size.h, nodes);
+      drawMap(ctx, size.w, size.h, view, 0, { whole: true, compact: true });
     } catch {
       /* The map is decoration here: a failed drawing leaves the sheet blank rather than the lobby. */
     }
-  }, [nodes, size, scheme, fontTick]);
+  }, [view, size, scheme, fontTick]);
 
   return (
     <div className="fl-lobby-theatre">
