@@ -2307,3 +2307,70 @@ every phone, no console errors and no sideways page scroll. `node scripts/tours/
 fireline fireline-planet` (full): all ok, the 320px SE included. `npm run tours -- --quick`: all eight
 ok. `npm run check:loading -- fireline` 27/27. `npm run check` from the root: "All checks passed"
 (Fireline drive 401,464 assertions, campaign-check 7,699, drive:planet 35,255).
+
+### 2026-11-12: The computer's heroes act on Hard
+
+`fireline-improvements.md` logged that on Hard the computer's heroes rarely acted before the end.
+Measured on main (d441237) over 40 Hard advanced battles with heroes on (random map, development
+lines, quick pace), Hard against Hard, both seats: the Tech Centre came in only 29 of 80 sides, at
+minute 15.9 on average (the commander holds it back, as an extra, until the army at home is up to
+the next wave's size and the opponent's, and on Hard that rarely happens), so the Academy came at
+17.0 and the first hero at about 18, in a battle lasting 20.3. And the heroes that did come mostly
+waited: the Engineer, Commando and Spy only acted on a target out on its own (nothing armed near it,
+no gun covering it), which a Hard base seldom offers, and a Commando below 70% health never set out
+again. Of 25 Engineers recruited, 8 acted.
+
+The fix is in the computer (`aiHeroes.ts`, and `isExtra` in `ai.ts` behind B's marker), and on Hard
+only; hero prices, build times and the Academy's requirements are unchanged.
+
+- On Hard with heroes on, the Tech Centre goes up in its turn in the plan instead of being held for
+  the army (`heroesNeedTechCentre`).
+- On Hard, while a wave is attacking, the Engineer, Commando and Spy go with it, three tiles behind
+  its middle, and use their abilities on what it has reached (within 10 tiles of its middle): the
+  Engineer captures a structure nothing armed is guarding within 5 tiles (and mends the wave's
+  vehicles on the way), the Commando charges the nearest structure that is not crowded by their
+  troops (at 45% health or more), the Spy slips into one without waiting for the guns to be out of
+  reach, since the wave keeps them busy. Between waves they behave as before.
+- Normal and Easy are untouched: their battles run long enough for heroes kept at home to act. Over
+  the same 40 battles at Normal with heroes on, every battle's outcome, length and hero record is
+  identical to main's (a hero acts in 20, 5.08 abilities a battle), and `drive-heroes`' eight
+  computer battles at Normal and at Easy end in the same state as on main, digest for digest.
+
+| Hard, 40 battles, both seats | before (main) | after |
+|---|---|---|
+| Tech Centre (sides with one; mean minute) | 29/80, 15.9 | 46/80, 13.3 |
+| Command Academy | 27/80, 17.0 | 45/80, 14.6 |
+| Engineer / Ace / Commando / Spy recruited (mean minute) | 17.7 / 19.0 / 19.9 / 20.8 | 15.7 / 17.0 / 17.9 / 18.8 |
+| Heroes recruited that acted (E / A / C / S) | 8/25, 17/21, 8/19, 6/17 | 22/45, 32/35, 12/31, 15/29 |
+| Battles in which a hero acted | 20 (50%) | 27 (68%) |
+| Sides in which a hero acted | 20/80 | 36/80 |
+| Abilities used per battle | 2.60 | 8.53 |
+| Battle length, mean (median) | 20.3 (20.7) | 23.0 (21.4) |
+| Unfinished at the 100-minute cap | 0 | 1 |
+
+Strength, `ai-ladder.ts --heroes` (new: the switch, with `--generals`; both default off, kept beside
+main's `--pace`, `--research` and `--factions`), random map, 150 seeds per match, both seats:
+
+| | before (main) | after |
+|---|---|---|
+| Hard beats Normal, both ways round | 198 of 300 (66.0%, 61-71%) | 214 of 300 (71.3%, 66-76%) |
+| ...Hard on side 0 / on side 1 | 73 / 125 of 150 | 85 / 129 of 150 |
+| Hard beats the frozen `prev` Hard, both ways round | 153 of 300 (51.0%, 45-57%) | 151 of 300 (50.3%, 45-56%) |
+| Battles unfinished at the cap, of 600 | 4 | 5 |
+
+Hard stays above Normal with heroes on, a little further than before; against the frozen Hard it
+is level, within the noise, and the seat decides almost every one of those battles either way. The
+default card (no setup, heroes off) is unchanged: all 1,350 battles over 150 seeds equal main's,
+battle for battle. Stalls at the cap did not rise over the ladder (4 and 5 of 600). Two stalls seen
+in the 40-battle runs are the end-game kind already known: Hard seed 12 ends with both sides broke
+and no haulers, Normal seed 27 (before the change was confined to Hard) with the ore gone and an
+army at home that never attacks.
+
+`drive-heroes.ts`'s computer section is back on Hard (it had moved to Normal only because heroes
+seldom acted there): the first four seeds keep every original assertion, and over eight seeds the
+heroes must use an ability in at least five. Harness: `npm run drive:fire` 401,465 assertions
+(main 401,464; the one more is that new check), 0 failed, and every summary line equals main's
+(heroes are off in every other section, and both changes do nothing unless heroes are in play on
+Hard). `npm run drive:planet` 35,255, 0 failed, identical to main's (a planet battle never has
+round 6's heroes). `npm run campaign:fire` 7,699, 0 failures. `npm run check`: all checks passed.
+`node scripts/tours/run.mjs --quick`: all eight ok.

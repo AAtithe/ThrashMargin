@@ -33,7 +33,7 @@ import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from '.
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
 // round6:B. Heroes in free play (fireline-round6-design.md, workstream B).
-import { heroKeptBack, heroPlan } from './aiHeroes';
+import { heroesNeedTechCentre, heroKeptBack, heroPlan } from './aiHeroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { generalLeads, generalPlan } from './aiGenerals';
 
@@ -990,6 +990,10 @@ function isExtra(s: GameState, owner: Owner, kind: BuildingKind, d: DifficultySp
   // Paced research (round 6): the Tech Centre is part of the plan, not an extra the army gate holds.
   if (kind === 'techcentre' && pacedTech(s)) return false;
   if (kind === 'refinery') return countBuildings(s, owner, 'refinery') >= d.refineries;
+  // round6:B begin. Heroes in free play: with heroes on, on Hard, the Tech Centre is the way to the
+  // Academy and goes up in its turn (aiHeroes.ts, heroesNeedTechCentre).
+  if (kind === 'techcentre' && heroesNeedTechCentre(s, aiDifficulty(s, owner))) return false;
+  // round6:B end.
   return kind === 'techcentre' || kind === 'strikecommand' || kind === 'repairbay' || kind === 'rocketturret';
 }
 
