@@ -87,6 +87,7 @@ export function OrderButton({
   children,
   tone,
   testId,
+  id,
   extraProblem,
 }: {
   s: PlanetState;
@@ -95,12 +96,14 @@ export function OrderButton({
   children: ReactNode;
   tone?: 'primary' | 'danger';
   testId?: string;
+  /** An element id, for the guided first turn to ring. */
+  id?: string;
   /** A reason from the interface itself (shown first). */
   extraProblem?: string | null;
 }) {
   const problem = extraProblem ?? why(s, a);
   return (
-    <button type="button" className={`fl-pl-btn${tone ? ` ${tone}` : ''}`} disabled={!!problem} title={problem ?? undefined} data-testid={testId} onClick={() => act(a)}>
+    <button type="button" className={`fl-pl-btn${tone ? ` ${tone}` : ''}`} disabled={!!problem} title={problem ?? undefined} id={id} data-testid={testId} onClick={() => act(a)}>
       {children}
     </button>
   );

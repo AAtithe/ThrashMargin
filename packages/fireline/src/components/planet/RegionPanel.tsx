@@ -18,18 +18,26 @@ import { HERO_KINDS, MAP_TYPE_NAMES, UNITS, heroLevelFor, type HeroKind } from '
 import { FactionName, Odds, OrderButton, stockText, unitName, type PlanetProps } from './common';
 
 export default function RegionPanel({ s, map, act, region, onSelect }: PlanetProps & { region: RegionId | null; onSelect: (r: RegionId | null) => void }) {
+  const capital = s.factions[0].capital;
   const picker = (
-    <label className="fl-pl-field">
-      Region
-      <select className="fl-pl-input" value={region ?? ''} data-testid="region-select" onChange={e => onSelect(e.target.value === '' ? null : Number(e.target.value))}>
-        <option value="">Choose a region</option>
-        {map.regions.map(g => (
-          <option key={g.id} value={g.id}>
-            {g.city} ({s.regions[g.id].owner === 0 ? 'yours' : s.regions[g.id].owner === NEUTRAL ? 'independent' : s.factions[s.regions[g.id].owner].name})
-          </option>
-        ))}
-      </select>
-    </label>
+    <div className="fl-pl-row" style={{ alignItems: 'flex-end' }}>
+      <label className="fl-pl-field">
+        Region
+        <select className="fl-pl-input" value={region ?? ''} id="pl-region-select" data-testid="region-select" onChange={e => onSelect(e.target.value === '' ? null : Number(e.target.value))}>
+          <option value="">Choose a region</option>
+          {map.regions.map(g => (
+            <option key={g.id} value={g.id}>
+              {g.city} ({s.regions[g.id].owner === 0 ? 'yours' : s.regions[g.id].owner === NEUTRAL ? 'independent' : s.factions[s.regions[g.id].owner].name})
+            </option>
+          ))}
+        </select>
+      </label>
+      {capital >= 0 && region !== capital && map.regions[capital] && (
+        <button type="button" className="fl-pl-btn" onClick={() => onSelect(capital)} id="pl-goto-capital" data-testid="goto-capital">
+          Your capital
+        </button>
+      )}
+    </div>
   );
   if (region === null || !map.regions[region]) {
     return (
@@ -121,7 +129,7 @@ function RegionBody({ s, map, act, region }: PlanetProps & { region: RegionId })
                 <span className="fl-small">{spec.blurb}</span>
               </span>
               {mine && (
-                <OrderButton s={s} act={act} a={{ type: 'build', region, building: b }} testId={`build-${b}`}>
+                <OrderButton s={s} act={act} a={{ type: 'build', region, building: b }} testId={`build-${b}`} id={`pl-build-${b}`}>
                   {mk ? `Mk ${mk + 1}` : 'Build'}
                   {cost ? ` · ${stockText(cost)}` : ''}
                 </OrderButton>
@@ -193,14 +201,14 @@ export function RecruitRow({ s, act, region, to }: PlanetProps & { region: Regio
   const k = kinds.includes(kind) ? kind : kinds[0];
   return (
     <div className="fl-pl-row">
-      <select className="fl-pl-input" value={k} aria-label={to === 'army' ? 'Unit to recruit into the field army' : 'Unit to recruit into the garrison'} onChange={e => setKind(e.target.value as ArmyKind)} data-testid={`recruit-kind-${to}`}>
+      <select className="fl-pl-input" value={k} aria-label={to === 'army' ? 'Unit to recruit into the field army' : 'Unit to recruit into the garrison'} onChange={e => setKind(e.target.value as ArmyKind)} id={`pl-recruit-kind${to === 'army' ? '-army' : ''}`} data-testid={`recruit-kind-${to}`}>
         {kinds.map(x => (
           <option key={x} value={x}>
             {unitName(x)} ({stockText(recruitCost(x))})
           </option>
         ))}
       </select>
-      <OrderButton s={s} act={act} a={{ type: 'recruit', region, kind: k, to }} testId={`recruit-${to}`}>
+      <OrderButton s={s} act={act} a={{ type: 'recruit', region, kind: k, to }} testId={`recruit-${to}`} id={`pl-recruit-${to}`}>
         Recruit
       </OrderButton>
       {!factory && <span className="fl-small">Vehicles need a factory here.</span>}
@@ -231,7 +239,7 @@ function MoveAndAttack({ s, map, act, region }: PlanetProps & { region: RegionId
     <>
       {army.region !== region && (st.owner === 0 || canMove) && (
         <div className="fl-pl-row">
-          <OrderButton s={s} act={act} a={{ type: 'moveArmy', to: region }} testId="move-army">
+          <OrderButton s={s} act={act} a={{ type: 'moveArmy', to: region }} testId="move-army" id="pl-move-army">
             Move the field army here{path ? ` (${path.length - 1} ${path.length === 2 ? 'hop' : 'hops'})` : ''}
           </OrderButton>
           <span className="fl-small">

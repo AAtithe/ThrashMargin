@@ -2165,3 +2165,46 @@ Long T1 (69.3 against 65), Short T6 on the holdout seeds (43.1 against 40), Long
 against 50), Very long T6 (52.8 against 50), and Very long T15 (14 and 16 against 8, about plus or
 minus 10 at 50 seeds). Very long's difficulty ordering does not hold (Normal 14, Hard 16 in sample);
 it is reported, not asserted.
+
+### Guided first turn (2026-11-11)
+
+A guided tour for the war, `components/planet/PlanetTour.tsx`, built to the pattern of the skirmish's
+guided first battle (fireline-design.md, section 5). Fifteen steps on the real war: a welcome card;
+the planet and your capital (read); choose a region and read its panel; build or raise a building
+in a city; recruit a Rifleman into a garrison; move the field army; how a battle is fought or
+auto-resolved (read; it rings the waiting battle when there is one); open Diplomacy; propose a
+treaty to a faction that would sign the dialog's opening draft, through the dialog's Send button;
+open Trade; open a route; End turn; open the Journal; read the turn report (read); a closing card.
+
+- **The reducer is untouched.** Every order the run asks for is the player's own click on the
+  ordinary control, through the screen's `act`. Nothing under `src/planet/` changed.
+- **No step completes on arrival.** Each predicate compares the war with a snapshot taken when its
+  step became current (city levels and marks, units, the army's region and hops, the player's
+  treaties and routes, the turn, the open screen). Completion is latched, and it is checked before
+  `manualIf`: a build that leaves the city nothing more to build this turn must not turn the
+  finished step into a read-only one (the first browser run caught exactly that).
+- **Read when it cannot be acted on.** A step whose action is impossible in this war just now (no
+  build or recruit affordable, nowhere to move, nobody who would sign, no route in reach, which is
+  the usual case on turn 1) becomes a read step (`data-tour-manual`) that says why, rather than
+  ringing a control the game refuses.
+- **The card names its target.** `data-tour-target` is the element ringed: a screen's tab while the
+  step's screen is closed, Your capital (a new button in the region panel) or the region list when
+  the step needs a different region, then the control itself; while the propose dialog is open,
+  its Send button, or the verdict when the draft as it stands would be refused. When it rings the
+  region list, `data-tour-pick` names the region to choose and the copy names its city.
+- **Where it resumes is the screen's business.** Progress is kept per save in this browser
+  (`fireline_planet_tour_<id>`: open, and the steps finished), wrapped in try/catch, never in the
+  save, so the 48 KB strategic budget is untouched. Planet.tsx walks the steps in order and opens at
+  the first one not finished; a reload or a fought battle (which unmounts the war screen) comes back
+  there. It stays mounted, hidden, under the battle debrief and the end card.
+- **Offered** by a "Guided first turn" option in the lobby's war panel, ticked until this browser has
+  finished or skipped one (`fireline_planet_tour_seen`), and by a Tour button in the war screen's
+  header, which reopens it on the welcome card.
+- **Driven in a browser**: `scripts/tours/fireline-planet.cjs`, run by `npm run tours -- fireline-planet`
+  (also in `--quick`). It begins a Short war on a fixed seed from the lobby, waits 1.5 s on every
+  acted step and fails if the step moved, acts on what the card names, checks the ringed control is
+  on screen, uncovered and enabled, reloads mid-run and expects the same step, checks the card rings
+  Send over the propose dialog, then reads the save for the real effects (turn 2, a city built up, a
+  garrison larger, the army moved, a treaty signed on turn 1, nothing of the tour in the save), that
+  a finished run is not offered again, that Tour reopens it on the welcome card, and that the war
+  panel's option is no longer ticked. Checked by eye in light and dark mode.

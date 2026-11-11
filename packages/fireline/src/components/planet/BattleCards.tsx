@@ -43,7 +43,7 @@ export function PendingCard({
   const attacker = setup.sides.find(x => x.role === 'attacker')!;
   const title = pb.kind === 'attack' ? `Your attack on ${geo.city}` : `${s.factions[attacker.faction]?.name ?? 'An enemy'} attacks ${geo.city}`;
   return (
-    <section className="fl-pl-card" data-tone="war" data-testid="pending-battle" data-kind={pb.kind} data-fighting={pb.fighting ? '1' : '0'} aria-live="polite">
+    <section className="fl-pl-card" data-tone="war" id="pl-pending" data-testid="pending-battle" data-kind={pb.kind} data-fighting={pb.fighting ? '1' : '0'} aria-live="polite">
       <p className="fl-eyebrow">{pb.kind === 'attack' ? 'Battle' : 'Defence'}{s.pending.length > 1 ? ` · ${s.pending.length} battles waiting` : ''}</p>
       <h3>{title}</h3>
       <span className="fl-small">

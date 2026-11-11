@@ -5,6 +5,7 @@
  *   npm run tours                      # every game, full matrix (several minutes)
  *   npm run tours -- --quick           # a reduced matrix per game (what CI runs)
  *   npm run tours -- tea-race niccolo  # just those games
+ *   npm run tours -- fireline-planet   # War for the Planet's guided first turn
  *
  * Why this exists: `npm run check` and the `drive` harnesses never render anything, and every
  * tutorial bug found in November 2026 was invisible to them: a step that completed itself the
@@ -36,6 +37,7 @@ const GAMES = {
   'niccolo-rising': { dir: 'packages/niccolo-rising',       port: 5305 },
   'fireline':       { dir: 'packages/fireline',             port: 5306 },
   'fireline-touch': { dir: 'packages/fireline',             port: 5307 },
+  'fireline-planet': { dir: 'packages/fireline',            port: 5308 },
 };
 
 const args = process.argv.slice(2);

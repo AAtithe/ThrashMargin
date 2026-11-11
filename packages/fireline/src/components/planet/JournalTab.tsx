@@ -7,7 +7,7 @@ export default function JournalTab({ s }: PlanetProps) {
     <section className="fl-pl-card" data-testid="planet-journal">
       <h3>Journal</h3>
       <span className="fl-small">The last {s.journal.length} entries of the war.</span>
-      <ul className="fl-pl-list fl-pl-journal">
+      <ul className="fl-pl-list fl-pl-journal" id="pl-journal">
         {list.map((e, i) => (
           <li key={`${e.turn}-${i}`} className="fl-pl-item" data-tone={e.tone}>
             <span>

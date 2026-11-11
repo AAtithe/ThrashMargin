@@ -17,8 +17,29 @@ const TEMPERAMENT_TEXT = {
   defensive: 'Defensive: guards its own, wary of giving access, never breaks a dated treaty.',
 } as const;
 
-export default function DiplomacyTab({ s, map, act }: PlanetProps) {
-  const [proposing, setProposing] = useState<FactionId | null>(null);
+/**
+ * The draft the propose dialog opens with: a ceasefire with a faction at war, a trade pact under a
+ * ceasefire, else an alliance. The guided first turn reads it to know who would sign.
+ */
+export function defaultDraft(s: PlanetProps['s'], to: FactionId): TreatyDraft {
+  const st = stanceOf(s, 0, to);
+  const kind: TreatyKind = st === 'war' ? 'ceasefire' : st === 'ceasefire' ? 'trade' : 'alliance';
+  const lim = TREATY_TURNS[kind];
+  const turns = kind === 'ceasefire' ? 6 : null;
+  return { kind, turns: !lim.open && turns === null ? lim.min : turns, terms: [] };
+}
+
+export default function DiplomacyTab({
+  s,
+  map,
+  act,
+  proposing: proposingProp,
+  onProposing,
+}: PlanetProps & { proposing?: FactionId | null; onProposing?: (f: FactionId | null) => void }) {
+  // The open dialog may be held by the screen (so the guided first turn can see it), else here.
+  const [proposingOwn, setProposingOwn] = useState<FactionId | null>(null);
+  const proposing = onProposing ? proposingProp ?? null : proposingOwn;
+  const setProposing = onProposing ?? setProposingOwn;
   const others = s.factions.filter(f => f.id !== 0);
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -71,7 +92,7 @@ export default function DiplomacyTab({ s, map, act }: PlanetProps) {
               {f.alive && (
                 <>
                   <div className="fl-pl-row">
-                    <button type="button" className="fl-pl-btn primary" onClick={() => setProposing(f.id)} data-testid={`propose-${f.id}`}>
+                    <button type="button" className="fl-pl-btn primary" onClick={() => setProposing(f.id)} id={`pl-propose-${f.id}`} data-testid={`propose-${f.id}`}>
                       Propose a treaty
                     </button>
                     {t && (
@@ -141,7 +162,7 @@ type TermKind = TreatyTerm['k'];
 const TERM_NAMES: Record<TermKind, string> = { tribute: 'Tribute each turn', exchange: 'Exchange each turn', access: 'Open regions (access)', split: 'Split of regions', payment: 'One-off payment' };
 
 function ProposeDialog({ s, map, act, to, onClose }: PlanetProps & { to: FactionId; onClose: () => void }) {
-  const [kind, setKind] = useState<TreatyKind>(stanceOf(s, 0, to) === 'war' ? 'ceasefire' : stanceOf(s, 0, to) === 'ceasefire' ? 'trade' : 'alliance');
+  const [kind, setKind] = useState<TreatyKind>(() => defaultDraft(s, to).kind);
   const [turns, setTurns] = useState<number | null>(kind === 'ceasefire' ? 6 : null);
   const [terms, setTerms] = useState<TreatyTerm[]>([]);
   const [adding, setAdding] = useState<TermKind>('payment');
@@ -330,7 +351,7 @@ function ProposeDialog({ s, map, act, to, onClose }: PlanetProps & { to: Faction
             </div>
           )}
 
-          <div className="fl-pl-verdict" data-accept={problem ? '0' : verdict?.accept ? '1' : '0'} data-testid="treaty-verdict" aria-live="polite">
+          <div className="fl-pl-verdict" data-accept={problem ? '0' : verdict?.accept ? '1' : '0'} id="pl-treaty-verdict" data-testid="treaty-verdict" aria-live="polite">
             {problem ? (
               problem
             ) : verdict ? (
@@ -351,6 +372,7 @@ function ProposeDialog({ s, map, act, to, onClose }: PlanetProps & { to: Faction
               onClick={() => {
                 if (act({ type: 'propose', to, draft })) onClose();
               }}
+              id="pl-send-proposal"
               data-testid="send-proposal"
             >
               Send to {who(to)}

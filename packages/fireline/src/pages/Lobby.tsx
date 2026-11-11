@@ -7,6 +7,7 @@ import { Button, Label, Panel, bodySmall } from '../components/ui';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
 import { campaignSaves, isCampaignMeta, isPlanetMeta } from './campaignSaves';
 import WarSetup from '../components/planet/WarSetup';
+import { startPlanetTour } from '../components/planet/PlanetTour';
 import type { LengthPreset } from '../planet/types';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 import NoGameAccess from '../lib/NoGameAccess';
@@ -230,11 +231,12 @@ export default function Lobby() {
         <Panel title="War for the Planet" aside={<Label>Strategy</Label>} style={{ marginBottom: '1.5rem' }}>
           <WarSetup
             defaultCommander={commander}
-            onBegin={async req => {
+            onBegin={async (req, guided) => {
               setWarError(null);
               try {
                 const id = await camp.createPlanet(req);
                 if (id) {
+                  if (guided) startPlanetTour(id);
                   navigate(`/game/${id}`);
                   return true;
                 }
