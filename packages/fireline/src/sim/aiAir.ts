@@ -323,7 +323,7 @@ function recover(s: GameState, owner: Owner, armed: number): void {
   // the opponent now, wave or no wave. Waiting cannot help a side with no income; two such sides
   // once faced each other for an hour, one with a Buggy and a Grenadier idle at home.
   lastStand(s, owner, armed);
-  if (armed > 0) allIn(s, owner, s.units.filter(u => u.owner === owner));
+  if (armed > 0 && s.tick >= s.ai[owner].nextAttack) allIn(s, owner, s.units.filter(u => u.owner === owner));
 }
 
 /**
@@ -333,8 +333,13 @@ function recover(s: GameState, owner: Owner, armed: number): void {
  * to a Barracks and three Generators. Units already ordered somewhere are left alone.
  */
 function mopUp(s: GameState, owner: Owner, mine: Unit[]): void {
-  // Every enemy unit and structure on the map, seen or not: the commander already knows the map.
+  // An attack like any other: not before the commander's first attack is due (a scripted hold-off,
+  // or a harness's quiet battle, sets that far off).
+  if (s.tick < s.ai[owner].nextAttack) return;
+  // Every enemy unit and structure on the map, seen or not: the commander already knows the map. A
+  // side defending with turrets alone is not defenceless: the waves deal with it as ever.
   if (s.units.some(f => f.hp > 0 && UNITS[f.kind].weapon && isEnemy(s, owner, f.owner))) return;
+  if (s.buildings.some(b => b.hp > 0 && BUILDINGS[b.kind].weapon && isEnemy(s, owner, b.owner))) return;
   allIn(s, owner, mine);
 }
 
