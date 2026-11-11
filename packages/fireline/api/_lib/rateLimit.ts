@@ -6,7 +6,7 @@ import { ensureSchema } from './schema';
 
 /**
  * Limits on how often something can be done, counted in rate_events. Used for account
- * registration (per network address) and feedback (per account). Sign-in has its own, stricter
+ * registration (per network address), feedback and the Founder's Ledger's coach (per account). Sign-in has its own, stricter
  * limit on failed attempts (login_failures, in the auth endpoint).
  *
  * Fails open: if the count cannot be read, the request proceeds. Refusing every registration
@@ -21,6 +21,9 @@ export interface Limit {
 export const LIMITS = {
   register: { bucket: 'register', max: 5, windowMinutes: 60 },
   feedback: { bucket: 'feedback', max: 10, windowMinutes: 60 },
+  // The Founder's Ledger's coach (Claude), per account: a burst ceiling and a daily one.
+  coach: { bucket: 'coach', max: 30, windowMinutes: 60 },
+  coachDay: { bucket: 'coach-day', max: 120, windowMinutes: 1440 },
 } satisfies Record<string, Limit>;
 
 export async function isOverLimit(db: Pool, limit: Limit, key: string): Promise<boolean> {
