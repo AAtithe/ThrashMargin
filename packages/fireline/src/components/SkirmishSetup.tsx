@@ -44,6 +44,8 @@ import { TEAM, UI } from '../theme';
 import { Label } from './ui';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { SITE_KINDS, SITES, SITES_PER_SIDE } from '../sim/rules';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralsSetup } from './Generals';
 
 /** What the Neutral sites field says each side gets at this map size. */
 function sitesNote(setup: SkirmishSetup): string {
@@ -288,6 +290,7 @@ export default function SkirmishSetupPanel({
         {/* round6:B begin. Heroes in free play: the Heroes field (Off, On; greyed on standard tech) goes below. */}
         {/* round6:B end. */}
         {/* round6:C begin. Generals: the doctrine General per seat and the Generals field (Off, On) go below. */}
+        <GeneralsSetup value={value} set={set} />
         {/* round6:C end. */}
       </div>
     </>

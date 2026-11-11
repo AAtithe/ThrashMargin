@@ -326,6 +326,9 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
     // round6:A begin. Two armies (fireline-round6-design.md): its units' cases, appended here.
     // round6:A end.
     // round6:C begin. Generals (fireline-round6-design.md): the field General's case, appended here.
+    case 'general':
+      drawGeneral(ctx, team, pose);
+      break;
     // round6:C end.
   }
   ctx.restore();
@@ -4886,4 +4889,135 @@ export function drawSiteLayer(ctx: Ctx, s: GameState, explored: string, vis: Uin
 // round6:B end.
 
 // round6:C begin. Generals (fireline-round6-design.md, workstream C): its drawing functions, appended here.
+import { GENERAL_AURA_RANGE } from '../sim/rules';
+
+/**
+ * The field General: an officer a little larger than a line trooper, in a long greatcoat of the
+ * side's dark colour, gold epaulettes, a peaked cap with a gold band and star, and a pistol drawn
+ * when firing. Painted from the battlefield palette (ART, TEAM, the heroes' GOLD), the same in both
+ * colour modes. One per side at most, so it is drawn live rather than stamped.
+ */
+function drawGeneral(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  const step = p.moving ? Math.sin(p.t * 14) : 0;
+  ctx.save();
+  ctx.scale(1.8, 1.8);
+  ctx.fillStyle = ART.shadow;
+  ctx.beginPath();
+  ctx.ellipse(1.4, 2.6, 5.4, 3.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.rotate(p.turret);
+  // Boots, striding or planted.
+  ctx.strokeStyle = ART.metalDark;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-0.6, -1.3);
+  ctx.lineTo(-0.6 + step * 2.4, -1.7);
+  ctx.moveTo(-0.6, 1.3);
+  ctx.lineTo(-0.6 - step * 2.4, 1.7);
+  ctx.stroke();
+  // Greatcoat: long, flaring behind.
+  ctx.fillStyle = team.dark;
+  ctx.beginPath();
+  ctx.moveTo(1.6, -3.4);
+  ctx.lineTo(-4.6, -3.9);
+  ctx.quadraticCurveTo(-5.6, 0, -4.6, 3.9);
+  ctx.lineTo(1.6, 3.4);
+  ctx.closePath();
+  ctx.fill();
+  // Shoulders in team colour, lit toward the light.
+  ctx.fillStyle = litGrad(ctx, p.turret, 3, team.light, team.main);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 2.5, 3.7, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = team.dark;
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  // Gold epaulettes and a sash.
+  ctx.fillStyle = GOLD;
+  rrect(ctx, -1, -4.1, 2, 1.2, 0.4);
+  ctx.fill();
+  rrect(ctx, -1, 2.9, 2, 1.2, 0.4);
+  ctx.fill();
+  ctx.strokeStyle = GOLD_DARK;
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(-1.6, -2.8);
+  ctx.lineTo(1.4, 2.6);
+  ctx.stroke();
+  // The pistol arm: out and level when firing, at the side otherwise. White gloves.
+  const skin = ART.concreteLight;
+  ctx.strokeStyle = team.main;
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  if (firing) {
+    ctx.moveTo(0.4, 2.4);
+    ctx.lineTo(4.4, 1.2);
+  } else {
+    ctx.moveTo(0.2, 2.6);
+    ctx.lineTo(1.8, 3.4);
+  }
+  ctx.stroke();
+  ctx.fillStyle = skin;
+  circle(ctx, firing ? 4.5 : 1.9, firing ? 1.2 : 3.4, 0.55);
+  ctx.fill();
+  if (firing) {
+    ctx.fillStyle = ART.metalDark;
+    ctx.fillRect(4.6, 0.8, 2.2, 0.8);
+    if (p.sinceShot < 0.08) {
+      ctx.fillStyle = ART.oreGlow;
+      ctx.beginPath();
+      ctx.moveTo(6.8, 0.6);
+      ctx.lineTo(8.6, 1.2);
+      ctx.lineTo(6.8, 1.8);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  // Peaked cap: dark crown, a gold band, the peak toward the facing, and a star on top.
+  ctx.fillStyle = ART.metalDark;
+  ctx.beginPath();
+  ctx.ellipse(1.9, 0, 1.1, 1.8, 0, -Math.PI / 2, Math.PI / 2);
+  ctx.fill();
+  ctx.fillStyle = team.dark;
+  circle(ctx, 0.3, 0, 2.1);
+  ctx.fill();
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.6;
+  circle(ctx, 0.3, 0, 1.8);
+  ctx.stroke();
+  ctx.fillStyle = GOLD;
+  starPath(ctx, 0.3, 0, 1.05);
+  ctx.fill();
+  ctx.restore();
+  if (hp < 0.25) sparks(ctx, 0, -2, p.t, 2, 3);
+}
+
+/**
+ * The command aura: a slowly turning dashed ring of the side's light colour round each General the
+ * renderer drew, at GENERAL_AURA_RANGE tiles, with a faint wash inside. Called once by the renderer
+ * after the units pass.
+ */
+export function drawGeneralAuras(ctx: Ctx, drawn: { u: { kind: UnitKind; owner: Owner }; x: number; y: number }[], t: number) {
+  const r = GENERAL_AURA_RANGE * TILE;
+  for (const { u, x, y } of drawn) {
+    if (u.kind !== 'general') continue;
+    const team = TEAM[u.owner];
+    ctx.save();
+    ctx.globalAlpha = 0.07;
+    ctx.fillStyle = team.light;
+    circle(ctx, x, y, r);
+    ctx.fill();
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = team.light;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -t * 12;
+    circle(ctx, x, y, r);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
 // round6:C end.

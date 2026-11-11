@@ -120,6 +120,7 @@ export type UnitKind =
   // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its unit kinds (signature units, aircraft variants).
   // round6:A end.
   // round6:C begin. Generals (fireline-round6-design.md, workstream C): its unit kinds (the field General).
+  | 'general'
   // round6:C end.
   | HeroKind;
 export type BuildingKind =
@@ -538,6 +539,19 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
   // round6:B begin. Heroes in free play: the heroes above keep their campaign specs; anything B adds goes here.
   // round6:B end.
   // round6:C begin. Generals (fireline-round6-design.md, workstream C): the field General, appended here.
+  general: {
+    name: 'General',
+    category: 'infantry',
+    cost: 1200,
+    buildTicks: 180,
+    hp: 320,
+    armor: 'infantry',
+    speed: 0.06,
+    sight: 7,
+    weapon: { kind: 'bullet', damage: 12, range: 4, cooldown: 12 },
+    requires: ['barracks', 'uplink'],
+    blurb: 'Your field commander, one at a time (Generals on). Your units within six tiles hit 10% harder and fire 10% faster. If the General falls, the doctrine weakens until a replacement arrives.',
+  },
   // round6:C end.
 };
 
@@ -812,6 +826,7 @@ export const INFANTRY_MENU: UnitKind[] = [
   // round6:B begin. Heroes in free play: the heroes, if B lists them here (techAllowed keeps them out unless setup.heroes).
   // round6:B end.
   // round6:C begin. Generals: the field General, if C lists it here.
+  'general',
   // round6:C end.
 ];
 export const VEHICLE_MENU: UnitKind[] = [
@@ -1547,6 +1562,95 @@ export const GENERAL_FACTION: Record<GeneralId, Faction> = { hale: 'meridian', v
 
 // round6:C begin. Generals (fireline-round6-design.md, workstream C): GENERALS (names, perks, power
 // tweaks), the aura's numbers and the replacement cooldown.
+
+/**
+ * A doctrine General: a bundle of perks for one side, chosen at setup (setup.generalPicks). The
+ * three multipliers become that side's Perks (generals.ts, read through perksFor); `costs` and
+ * `rearmMul` are read by generals.ts where a price is set and where aircraft rearm. A multiplier
+ * below 1 on a price or a time is a saving; above 1 on a rate is a gain.
+ */
+export interface GeneralSpec {
+  name: string;
+  /** The doctrine in a word or two. */
+  doctrine: string;
+  faction: Faction;
+  blurb: string;
+  /** The refinery's take (Perks.harvestMul). */
+  harvestMul: number;
+  /** Production speed in every queue (Perks.buildSpeedMul). */
+  buildSpeedMul: number;
+  /** The support-power tweak: every power's cooldown (Perks.powerCooldownMul). */
+  powerCooldownMul: number;
+  /** Price multipliers on some kinds alone. */
+  costs: Partial<Record<BuildingKind | UnitKind, number>>;
+  /** Price multiplier on every aircraft (any kind with an airRole, whatever its army). */
+  airCostMul: number;
+  /** Time each load takes to rearm at a Helipad. 1: unchanged. */
+  rearmMul: number;
+}
+
+export const GENERALS: Record<GeneralId, GeneralSpec> = {
+  hale: {
+    name: 'General Hale',
+    doctrine: 'Fortress',
+    faction: 'meridian',
+    blurb: 'Defences (Gun and Rocket Turrets, Flak Cannons, the Fortress and walls) 20% cheaper; support powers recharge 10% sooner.',
+    harvestMul: 1,
+    buildSpeedMul: 1,
+    powerCooldownMul: 0.9,
+    costs: { turret: 0.8, rocketturret: 0.8, flakcannon: 0.8, fortress: 0.8, wall: 0.8 },
+    airCostMul: 1,
+    rearmMul: 1,
+  },
+  voss: {
+    name: 'General Voss',
+    doctrine: 'Armour',
+    faction: 'meridian',
+    blurb: 'Tanks, Flame Tanks, Rail Tanks and Bastions 15% cheaper; support powers recharge 5% sooner; but harvesting is 10% slower.',
+    harvestMul: 0.9,
+    buildSpeedMul: 1,
+    powerCooldownMul: 0.95,
+    costs: { tank: 0.85, flametank: 0.85, railtank: 0.85, bastion: 0.85 },
+    airCostMul: 1,
+    rearmMul: 1,
+  },
+  kade: {
+    name: 'General Kade',
+    doctrine: 'Blitz',
+    faction: 'ashen',
+    blurb: 'Every queue works 10% faster; support powers recharge 15% sooner.',
+    harvestMul: 1,
+    buildSpeedMul: 1.1,
+    powerCooldownMul: 0.85,
+    costs: {},
+    airCostMul: 1,
+    rearmMul: 1,
+  },
+  ilse: {
+    name: 'General Ilse',
+    doctrine: 'Air',
+    faction: 'ashen',
+    blurb: 'Helipads 25% cheaper and aircraft 10% cheaper; aircraft rearm 20% faster; support powers recharge 5% sooner.',
+    harvestMul: 1,
+    buildSpeedMul: 1,
+    powerCooldownMul: 0.95,
+    costs: { helipad: 0.75 },
+    airCostMul: 0.9,
+    rearmMul: 0.8,
+  },
+};
+
+/** The field General's command aura: its reach in tiles, and how often it is worked out (ticks). */
+export const GENERAL_AURA_RANGE = 6;
+export const GENERAL_AURA_TICKS = 10;
+/** Inside an aura: damage times this, and the time between shots times GENERAL_AURA_RELOAD. Never stacks. */
+export const GENERAL_AURA_DAMAGE = 1.1;
+export const GENERAL_AURA_RELOAD = 0.9;
+/** After a General falls, a replacement may be queued this many ticks later (two minutes). */
+export const GENERAL_REPLACE_TICKS = 1200;
+/** The computer pulls its General back home below this share of its health, and sends it out again at GENERAL_RETURN_AT. */
+export const GENERAL_RETREAT_BELOW = 0.4;
+export const GENERAL_RETURN_AT = 0.75;
 // round6:C end.
 
 /** Round 6, workstream D: the shapes a group can move in. */

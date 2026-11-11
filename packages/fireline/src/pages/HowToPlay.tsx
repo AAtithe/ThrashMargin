@@ -6,6 +6,8 @@ import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
 import { statsOf } from '../game/Sidebar';
 import { TECH_TEXT } from '../components/SkirmishSetup';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralsPanel } from '../components/Generals';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
 import {
   AIR_MENU,
@@ -250,6 +252,7 @@ export default function HowToPlay() {
         {/* round6:A. Two armies (fireline-round6-design.md): its panel goes on the line below. */}
         {/* round6:B. Heroes in free play: its panel goes on the line below. */}
         {/* round6:C. Generals: its panel goes on the line below. */}
+        <GeneralsPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
 
         <Panel title="Campaign">

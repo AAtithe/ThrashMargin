@@ -33,6 +33,8 @@ import { paintMiniTerrain, paintTerrain, paintTerrainOffThread } from './terrain
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { drawSiteLayer } from './art';
 import { stealthSeen } from '../sim/sites';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { drawGeneralAuras } from './art';
 
 /**
  * The pose fields art.ts reads for damage, recoil flashes and working structures. Declared here as
@@ -505,6 +507,9 @@ export class Renderer {
       if (group !== undefined) groupBadge(ctx, x, y + r + 1, group);
       if (u.hero) drawHeroBadge(ctx, x - r + 4, y - r - 13, u.hero.level);
     }
+
+    // round6:C. Generals (fireline-round6-design.md): the command aura's ring round each General drawn.
+    drawGeneralAuras(ctx, drawn, t);
 
     // 5b. Aircraft, in one pass over every ground unit: the shadow on the ground, then the craft
     // lifted above it with its rotor turning or a contrail behind it.

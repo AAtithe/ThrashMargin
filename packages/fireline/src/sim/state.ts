@@ -51,6 +51,8 @@ import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kind
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { migrateSites, placeSites, relaysOf } from './sites';
 import { RELAY_RADIUS } from './rules';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
 
 export { startOf };
 // Round 6 groundwork: the per-side specs and perks live in specs.ts (no import cycle); re-exported here.
@@ -119,6 +121,7 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // round6:B begin. Heroes in free play: heroes allowed in a skirmish only with setup.heroes (and advanced tech).
   // round6:B end.
   // round6:C begin. Generals: the field General allowed only with setup.generals.
+  if (kind === 'general' && !fieldGenerals(s)) return false;
   // round6:C end.
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   return setupOf(s).tech === 'advanced' || STANDARD_TECH.includes(kind);
@@ -251,6 +254,7 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     if (setup.sites) placeSites(s);
     // round5:D end.
     // round6:C begin. Generals: the doctrine Generals' perks (perks for side 0, sidePerks for the rest).
+    if (setup.generals || setup.generalPicks?.some(g => g)) applyDoctrines(s, setup);
     // round6:C end.
     // Round 5: on a larger map the computer's first attack comes later (aiScale.ts).
     if (size !== 'standard') {
@@ -446,7 +450,8 @@ export function costFor(s: GameState, owner: Owner, kind: BuildingKind | UnitKin
   // round6:B end.
   const perks = perksFor(s, owner);
   // round6:C begin. Generals: a doctrine's price on some kinds alone (new optional Perks fields), folded into mul.
-  const mul = perks ? perks.costMul : 1;
+  const doctrine = s.players[owner]?.general ? doctrineCostMul(s, owner, kind) : 1;
+  const mul = (perks ? perks.costMul : 1) * doctrine;
   // round6:C end.
   return mul === 1 ? base : Math.round(base * mul);
 }
@@ -716,6 +721,7 @@ function migrateRound6(raw: Partial<GameState>, out: GameState): void {
   // round6:B begin. Heroes in free play: its PlayerState and Unit fields repaired or dropped.
   // round6:B end.
   // round6:C begin. Generals: its PlayerState and Unit fields repaired or dropped.
+  migrateGenerals(out);
   // round6:C end.
   // round6:D begin. Formations and squads: anything more on squads (dead members, a fallen leader).
   // round6:D end.

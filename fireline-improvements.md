@@ -138,3 +138,7 @@ mission AI once the round-1 opponent work lands.
 - Touch controls (tap to select, tap-and-hold for orders).
 - Ambient music bed.
 - A scripted "human player" in the harness so balance can be measured without hand play.
+
+- [x] Round 6, workstream C: Generals. A doctrine General per seat (two per army, a perks bundle on
+  that side alone) and, behind "Generals: On", a field General unit with a command aura.
+  - The link "a General leads a formation" waits for workstream D, at integration.

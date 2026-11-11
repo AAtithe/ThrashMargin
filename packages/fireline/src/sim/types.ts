@@ -95,6 +95,11 @@ export interface Unit {
   // round6:B begin. Heroes in free play: optional Unit fields.
   // round6:B end.
   // round6:C begin. Generals: optional Unit fields (the aura's last scan, for instance).
+  /**
+   * Inside its own side's General's command aura until this tick (generals.ts, refreshed every
+   * GENERAL_AURA_TICKS). Absent: outside every aura. A mark, never a count, so two auras never stack.
+   */
+  aura?: number;
   // round6:C end.
   // round6:D begin. Formations and squads: optional Unit fields (a slot offset, for instance).
   // round6:D end.
@@ -190,6 +195,15 @@ export interface PlayerState {
   // round6:B begin. Heroes in free play: optional PlayerState fields (fallen heroes and when each may be recruited again).
   // round6:B end.
   // round6:C begin. Generals: optional PlayerState fields (the doctrine General, the field General's replacement cooldown).
+  /** The doctrine General this side fights under (GENERALS in rules.ts). Absent: none. */
+  general?: import('./rules').GeneralId;
+  /** Generals on: the id of this side's field General while it stands. */
+  generalUnit?: number;
+  /**
+   * Generals on: the tick this side's field General fell. While set, its doctrine counts at half
+   * strength and a replacement may be queued from GENERAL_REPLACE_TICKS later; cleared when one arrives.
+   */
+  generalLostAt?: number;
   // round6:C end.
 }
 
@@ -320,6 +334,10 @@ export interface AiMemory {
   // round6:B begin. Heroes in free play: optional AiMemory fields (its heroes' errands).
   // round6:B end.
   // round6:C begin. Generals: optional AiMemory fields (its General's place in the wave).
+  /** True while the computer's General is pulled back home to recover (aiGenerals.ts). */
+  generalBack?: boolean;
+  /** Credits put by for its next General, out of reach of its other spending (aiGenerals.ts). */
+  generalFund?: number;
   // round6:C end.
   // round6:D begin. Formations and squads: optional AiMemory fields (its wave's squad).
   // round6:D end.
