@@ -7,10 +7,25 @@ import { buildingName } from '../../planet/cities';
 import { attackOdds } from '../../planet/resolve';
 import { PLANET_RANKS, planetRankFor } from '../../planet/turn';
 import { regionShare } from '../../planet/victory';
-import type { BattleReport, PendingBattle, PlanetMap, PlanetState } from '../../planet/types';
+import type { BattleReport, BattleSetup, PendingBattle, PlanetMap, PlanetState } from '../../planet/types';
 import { CITY_BUILDINGS } from '../../planet/types';
-import { MAP_TYPE_NAMES, TICKS_PER_SECOND, UNITS, heroLevelFor } from '../../sim/rules';
+import { BIG_CITY_LEVEL, battleMapSizeOf } from '../../planet/battle';
+import { MAP_SIZE_NAMES, MAP_TYPE_NAMES, TICKS_PER_SECOND, UNITS, heroLevelFor, mapTilesFor } from '../../sim/rules';
 import { FactionName, Odds, rankName, unitName } from './common';
+
+/** The battle's map size and width, as the attack preview and the pending battle card show it (section 9.7). */
+export function BattleMapSize({ setup }: { setup: Pick<BattleSetup, 'mapSize' | 'sides' | 'cityLevel'> }) {
+  const size = battleMapSizeOf(setup);
+  const n = setup.sides.length;
+  const tiles = mapTilesFor({ size, sides: n as 2 | 3 | 4 });
+  // Why it is larger, read back from battleMapSize's rule: more sides, else a big city, else a capital.
+  const why = n > 2 ? `${n} sides fight here` : setup.cityLevel >= BIG_CITY_LEVEL ? 'a big city is at stake' : 'a capital is at stake';
+  return (
+    <span className="fl-small" data-testid="battle-map-size" data-size={size}>
+      Map: {MAP_SIZE_NAMES[size]}, {tiles} tiles across{size === 'standard' ? '.' : `, because ${why}.`}
+    </span>
+  );
+}
 
 /** The player's seat in a battle, or -1 when the player has no side (never for a pending battle). */
 const playerSeat = (pb: PendingBattle) => pb.setup.sides.findIndex(x => x.faction === 0);
@@ -50,6 +65,7 @@ export function PendingCard({
         {geo.name}, a {MAP_TYPE_NAMES[setup.mapType]} battlefield with {setup.ore} ore; city level {setup.cityLevel}. {Math.round(setup.timeLimit / (60 * TICKS_PER_SECOND))} minutes: if
         time runs out, the defenders win.
       </span>
+      <BattleMapSize setup={setup} />
       <div className="fl-pl-sides">
         {setup.sides.map((side, i) => (
           <div key={i} className="fl-pl-side" data-team={side.team}>

@@ -15,11 +15,13 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { MISSIONS } from '../src/campaign/missions';
 import { missionContext, newCampaign } from '../src/campaign/progression';
-import { buildPlanetBattle, planetBattleReport, simulateBattle } from '../src/planet/battle';
+import { BIG_CITY_LEVEL, battleMapSize, battleMapSizeOf, buildPlanetBattle, planetBattleReport, simulateBattle } from '../src/planet/battle';
 import { attackTargets, battleSetupFor } from '../src/planet/battleSetup';
 import { planetMapOf } from '../src/planet/map';
 import { attackOdds, quickResolve, sideStrength } from '../src/planet/resolve';
+import { migratePlanetSave, newPlanetSave } from '../src/planet/save';
 import { newPlanetState } from '../src/planet/state';
+import { planAiActions } from '../src/planet/ai';
 import { applyPlanetAction, planetActionProblem } from '../src/planet/turn';
 import { ARMY_KINDS, type ArmyKind, type BattleReport, type BattleSetup, type BattleSide, type CityBuildingId, type PlanetState, type Treaty } from '../src/planet/types';
 import { processAction } from '../src/sim/actions';
@@ -28,6 +30,7 @@ import { createMissionState } from '../src/sim/mission';
 import { seedFromString, stream } from '../src/sim/rng';
 import {
   HERO_KINDS,
+  MAP_SIZE_TILES,
   MAP_TYPES,
   MODULES,
   MODULE_SLOTS,
@@ -35,6 +38,7 @@ import {
   UNITS,
   type BuildingKind,
   type HeroKind,
+  type MapSize,
   type MapType,
   type ModuleId,
   type UnitKind,
@@ -896,6 +900,259 @@ function warTests(ok: Ok): void {
   ok(kinds.size === 4, `every kind of report applied (${[...kinds].join(', ')})`);
 }
 
+
+// ---- Map size by stakes (section 9.7) --------------------------------------------------------------
+
+/**
+ * Hashes recorded from the build before larger maps (git archive of 9dd8a6b, the same code as below):
+ * the v1 fixture's pending battle built and after 600 autopilot ticks, the fixture played 5 bot turns,
+ * and a Short and a Long war on battle rules 1 played 25 turns with every attack open each turn set
+ * up (count:hash), the bigger battles among them built at tick 0, and the war at the end. A war saved
+ * before larger maps must give every one of them exactly.
+ */
+const OLD_WAR_HASHES: Record<string, string> = {
+  fxBattle0: 'd09e37150885fa44',
+  fxBattle600: '130f479cc4db9d68',
+  fxPlayed: 'a63489d906db716c',
+  shortSetups: '32:d3eb3bd7df203ca3',
+  shortBuilt: '9:3b0b032e87540d39',
+  shortWar: 'd1105ec19ce62d80',
+  longSetups: '174:f4347d0394fca31d',
+  longBuilt: '15:15699f5773c649f5',
+  longWar: '2797ec3712225341',
+};
+
+/** One bot turn: the player seat's plan, End turn, every battle auto-resolved. */
+function botTurn(w: PlanetState): PlanetState {
+  for (const a of planAiActions(w, 0, 'expansionist')) {
+    w = applyPlanetAction(w, a);
+    while (w.pending.length) w = applyPlanetAction(w, { type: 'autoResolve' });
+  }
+  w = applyPlanetAction(w, { type: 'endTurn' });
+  while (w.pending.length) w = applyPlanetAction(w, { type: 'autoResolve' });
+  return w;
+}
+
+/** A war played `turns` bot turns, with every attack open each turn set up; and the battles worth building. */
+function warWithSetups(w: PlanetState, turns: number, build: (st: BattleSetup) => boolean): { w: PlanetState; setups: BattleSetup[]; built: string[] } {
+  const setups: BattleSetup[] = [];
+  const built: string[] = [];
+  for (let turn = 0; turn < turns && !w.result; turn++) {
+    for (const f of w.factions) {
+      if (!f.alive) continue;
+      for (const r of attackTargets(w, f.id)) {
+        const st = battleSetupFor(w, f.id, r, 0, [], 9000 + setups.length);
+        if (!st) continue;
+        setups.push(st);
+        if (build(st)) built.push(hash(buildPlanetBattle(st, { id: 'o', name: 'o', createdAt: 0 })));
+      }
+    }
+    w = botTurn(w);
+  }
+  return { w, setups, built };
+}
+
+/** The stakes of a setup made from war w, read independently of battleSetupFor. */
+const stakesOf = (w: PlanetState, st: BattleSetup) => {
+  const def = st.sides[st.defenderSeat].faction;
+  return { sides: st.sides.length, cityLevel: w.regions[st.region].city.level, capital: def >= 0 && w.factions[def].capital === st.region };
+};
+
+function mapSizeTests(ok: Ok): void {
+  // The rule, case by case.
+  const cases: [string, number, number, boolean, MapSize][] = [
+    ['a frontier battle (two sides, a level 1 city)', 2, 1, false, 'standard'],
+    ['a minor battle (two sides, a level 2 city)', 2, 2, false, 'standard'],
+    ['two sides over a level 3 city that is not a capital', 2, 3, false, 'standard'],
+    ['a big city (level 4)', 2, BIG_CITY_LEVEL, false, 'large'],
+    ['a big city (level 5)', 2, 5, false, 'large'],
+    ['a capital, two sides', 2, 3, true, 'large'],
+    ['three sides over a small city', 3, 1, false, 'large'],
+    ['four sides over a small city', 4, 2, false, 'large'],
+    ['a capital with three sides', 3, 3, true, 'large'],
+    ['a capital with four sides at level 5 (the biggest stakes)', 4, 5, true, 'large'],
+  ];
+  for (const [what, sides, cityLevel, capital, want] of cases) ok(battleMapSize({ sides, cityLevel, capital }) === want, `map size: ${what} is ${want}`);
+  const rank: Record<MapSize, number> = { standard: 0, large: 1, huge: 2 };
+  let monotone = true;
+  let huge = 0;
+  for (let n = 2; n <= 4; n++)
+    for (let l = 1; l <= 5; l++)
+      for (const c of [false, true]) {
+        const z = rank[battleMapSize({ sides: n, cityLevel: l, capital: c })];
+        if (z === 2) huge++;
+        if (n < 4 && rank[battleMapSize({ sides: n + 1, cityLevel: l, capital: c })] < z) monotone = false;
+        if (l < 5 && rank[battleMapSize({ sides: n, cityLevel: l + 1, capital: c })] < z) monotone = false;
+        if (!c && rank[battleMapSize({ sides: n, cityLevel: l, capital: true })] < z) monotone = false;
+      }
+  ok(monotone, 'map size: higher stakes never give a smaller map');
+  ok(huge === 0, 'map size: no battle is huge (measured unsound, section 9.7)');
+  ok(battleMapSizeOf({}) === 'standard' && battleMapSizeOf({ mapSize: 'large' }) === 'large' && battleMapSizeOf({ mapSize: 'junk' as 'large' }) === 'standard', 'map size: a setup without one is standard');
+
+  // The built battle is the size its setup names, with tiles for its number of sides.
+  for (const i of [0, 1, 2]) {
+    const base = craftSetup(i);
+    const n = base.sides.length as 2 | 3 | 4;
+    for (const z of ['standard', 'large'] as MapSize[]) {
+      const st = deepFreeze(z === 'standard' ? base : { ...base, mapSize: z as 'large' });
+      const g = buildPlanetBattle(st, ids(i));
+      ok(g.mapW === MAP_SIZE_TILES[z][n] && g.mapH === MAP_SIZE_TILES[z][n] && g.setup?.size === z, `setup ${i}: a ${z} ${n}-sided battle is ${MAP_SIZE_TILES[z][n]} tiles`);
+      st.sides.forEach((side, o) => ok(g.units.filter(u => u.owner === o && !u.hero && u.kind !== 'hauler').length === side.units.length, `setup ${i} ${z}: side ${o} units placed`));
+    }
+  }
+
+  // New wars are on battle rules 2 and size every setup by its stakes; a war without battleRules
+  // (one saved before larger maps) makes exactly the same setups without a map size.
+  const fresh = newPlanetState({ seedText: 'maps-fresh', preset: 'short', difficulty: 'normal', commander: 'Tester', createdAt: 0 });
+  ok(fresh.battleRules === 2, 'a new war is on battle rules 2');
+  const seen = new Set<string>();
+  let compared = 0;
+  for (let k = 0; k < 12; k++) {
+    const w = openWar(`maps-war-${k}`, k % 3 === 1 ? [[0, 2]] : k % 3 === 2 ? [[0, 2], [1, 3]] : []);
+    const old: PlanetState = copy(w);
+    delete old.battleRules;
+    for (const f of w.factions)
+      for (const r of attackTargets(w, f.id)) {
+        const st = battleSetupFor(w, f.id, r, 1000, [], 7);
+        const st1 = battleSetupFor(old, f.id, r, 1000, [], 7);
+        if (!st || !st1) continue;
+        const k2 = stakesOf(w, st);
+        const want = battleMapSize(k2);
+        ok(battleMapSizeOf(st) === want && (want === 'standard') === !('mapSize' in st), `war ${k}: ${f.id} on ${r} (${k2.sides} sides, level ${k2.cityLevel}${k2.capital ? ', capital' : ''}) is ${want}`);
+        ok(!('mapSize' in st1), `war ${k}: on battle rules 1, ${f.id} on ${r} has no map size`);
+        const { mapSize: _drop, ...rest } = st;
+        ok(JSON.stringify(rest) === JSON.stringify(st1), `war ${k}: ${f.id} on ${r}: the same setup on either rules but for the map size`);
+        compared++;
+        seen.add(`${want}:${k2.capital ? 'capital' : k2.cityLevel >= BIG_CITY_LEVEL ? 'big' : k2.sides > 2 ? 'sides' : 'minor'}`);
+      }
+  }
+  // Two-sided stakes from a war: faction 1's army beside the player's capital, and beside one of
+  // the player's other cities at level 3 (not big) and at BIG_CITY_LEVEL (big).
+  let twoSided = 0;
+  for (let k = 0; k < 30 && twoSided < 3; k++) {
+    const w = openWar(`maps-two-${k}`, []);
+    const m = planetMapOf(w);
+    const cap = w.factions[0].capital;
+    const other = w.regions.findIndex((r, i) => r.owner === 0 && i !== cap && m.regions[i].links.some(l => w.regions[l.to].owner !== 0 && !w.factions.some(f => f.capital === l.to)));
+    for (const [target, level, want, tag] of [
+      [cap, 3, 'large', 'large:capital2'],
+      [other, 3, 'standard', 'standard:level3'],
+      [other, BIG_CITY_LEVEL, 'large', 'large:big2'],
+    ] as [number, 3 | 4, MapSize, string][]) {
+      if (target < 0) continue;
+      const x: PlanetState = copy(w);
+      const nb = m.regions[target].links.map(l => l.to).find(r => x.regions[r].owner !== 0 && !x.factions.some(f => f.capital === r));
+      if (nb === undefined) continue;
+      x.regions[nb].owner = 1;
+      x.factions[1].army!.region = nb;
+      x.regions[target].city.level = level;
+      const st = battleSetupFor(x, 1, target, 0, [], 3);
+      if (!st || st.sides.length !== 2) continue;
+      ok(battleMapSizeOf(st) === want, `war ${k}: ${tag.split(':')[1]} is ${want}`);
+      const old: PlanetState = copy(x);
+      delete old.battleRules;
+      ok(!('mapSize' in battleSetupFor(old, 1, target, 0, [], 3)!), `war ${k}: ${tag.split(':')[1]} on battle rules 1 is standard`);
+      seen.add(tag);
+      twoSided++;
+    }
+  }
+  // The four-sided defence of a capital, from a war.
+  for (let k = 0; k < 30; k++) {
+    const w = openWar(`w2-allies-${k}`, [[0, 2], [1, 3]]);
+    const m = planetMapOf(w);
+    const cap = w.factions[0].capital;
+    const nb = m.regions[cap].links.map(l => l.to).filter(r => w.regions[r].owner !== 0 && !w.factions.some(f => f.capital === r));
+    if (nb.length < 3) continue;
+    w.regions[nb[0]].owner = 1;
+    w.factions[1].army!.region = nb[0];
+    w.regions[nb[1]].owner = 3;
+    w.regions[nb[1]].garrison = [4, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0];
+    w.regions[nb[2]].owner = 2;
+    w.regions[nb[2]].garrison = [4, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0];
+    const four = battleSetupFor(w, 1, cap, 2000, [], 5);
+    if (!four || four.sides.length !== 4) continue;
+    ok(four.mapSize === 'large', 'a four-sided defence of a capital is large');
+    seen.add('large:capital4');
+    const g = buildPlanetBattle(four, ids(800));
+    ok(g.mapW === MAP_SIZE_TILES.large[4], `the four-sided capital battle is ${MAP_SIZE_TILES.large[4]} tiles`);
+    // Save size: the whole save (the strategic part at its 48 KB budget) with this battle in progress.
+    const STRATEGIC = 48 * 1024;
+    const at0 = JSON.stringify(g).length;
+    const at3000 = JSON.stringify(tick({ ...g, autopilot: true }, 3000)).length;
+    console.log(`  large four-sided battle: ${Math.round(at0 / 1024)} KB at tick 0, ${Math.round(at3000 / 1024)} KB at tick 3,000`);
+    ok(STRATEGIC + at0 < 256 * 1024 && STRATEGIC + at3000 < 256 * 1024, 'whole save with a large four-sided battle under 256 KB');
+    break;
+  }
+  ok(compared >= 40, `setups compared on both rules (${compared})`);
+  for (const want of ['standard:minor', 'standard:level3', 'large:capital2', 'large:big2', 'large:sides', 'large:capital4']) ok(seen.has(want), `map size case met in a war: ${want} (${[...seen].join(', ')})`);
+
+  // Old saves: the v1 fixture and wars on battle rules 1 give the hashes of the build before larger maps.
+  const fxPath = join(dirname(new URL(import.meta.url).pathname), 'fixtures', 'planet-save-v1.json');
+  const fx = migratePlanetSave(JSON.parse(readFileSync(fxPath, 'utf8')))!;
+  ok(fx.planet.battleRules === undefined && !('mapSize' in fx.planet.pending[0].setup), 'the v1 fixture stays on battle rules 1 with a standard map');
+  let g = buildPlanetBattle(fx.planet.pending[0].setup, { id: 'fx', name: 'Fixture', createdAt: 0 }, { autopilot: true });
+  ok(hash(g) === OLD_WAR_HASHES.fxBattle0, "the fixture's battle byte-identical at tick 0");
+  g = processAction(g, { type: 'tick', n: 600 });
+  ok(hash(g) === OLD_WAR_HASHES.fxBattle600, "the fixture's battle byte-identical after 600 ticks");
+  let t = applyPlanetAction(fx.planet, { type: 'autoResolve' });
+  for (let i = 0; i < 5 && !t.result; i++) t = botTurn(t);
+  ok(hash(t) === OLD_WAR_HASHES.fxPlayed, 'the fixture played 5 turns byte-identical');
+  ok(t.battleRules === undefined, 'the fixture is still on battle rules 1 after 5 turns');
+  for (const preset of ['short', 'long'] as const) {
+    const w = newPlanetState({ seedText: `oldhash-${preset}`, preset, difficulty: 'normal', commander: 'Tester', createdAt: 0 });
+    delete w.battleRules;
+    const run = warWithSetups(w, 25, st => st.sides.length > 2 || st.cityLevel >= 3);
+    ok(`${run.setups.length}:${hash(run.setups)}` === OLD_WAR_HASHES[`${preset}Setups`], `${preset} war on battle rules 1: every setup byte-identical`);
+    ok(`${run.built.length}:${hash(run.built)}` === OLD_WAR_HASHES[`${preset}Built`], `${preset} war on battle rules 1: the bigger battles byte-identical`);
+    ok(hash(run.w) === OLD_WAR_HASHES[`${preset}War`], `${preset} war on battle rules 1: the war byte-identical after 25 turns`);
+  }
+
+  // New saves: a war on battle rules 2 replays byte-identically, a large battle builds and runs the
+  // same twice, and a save holding a large pending battle migrates to itself.
+  for (const preset of ['short', 'long'] as const) {
+    const mk = () => warWithSetups(newPlanetState({ seedText: `newhash-${preset}`, preset, difficulty: 'normal', commander: 'Tester', createdAt: 0 }), 25, st => st.mapSize === 'large');
+    const a = mk();
+    const b = mk();
+    ok(JSON.stringify(a.w) === JSON.stringify(b.w) && JSON.stringify(a.setups) === JSON.stringify(b.setups) && a.built.join() === b.built.join(), `${preset} war on battle rules 2 replays byte-identically`);
+    ok(a.w.battleRules === 2 && a.built.length > 0, `${preset} war on battle rules 2 keeps its rules and sets up large battles (${a.built.length} of ${a.setups.length})`);
+  }
+  const big = { ...craftSetup(1), mapSize: 'large' as const };
+  const r1 = processAction(buildPlanetBattle(big, ids(1), { autopilot: true }), { type: 'tick', n: 600 });
+  const r2 = processAction(buildPlanetBattle(big, ids(1), { autopilot: true }), { type: 'tick', n: 600 });
+  ok(hash(r1) === hash(r2), 'a large battle runs byte-identically twice');
+  ok(JSON.stringify(migrateState(JSON.parse(JSON.stringify(r1)))) === JSON.stringify(r1), 'a large battle in progress migrates to itself');
+  for (let k = 0; k < 40; k++) {
+    const w = openWar(`maps-save-${k}`, []);
+    const tgt = attackTargets(w, 0).find(r => battleSetupFor(w, 0, r, 0, [], 1)?.mapSize === 'large');
+    if (tgt === undefined) continue;
+    const a = applyPlanetAction(w, { type: 'attack', target: tgt, credits: 0, heroes: [] });
+    ok(a !== w && a.pending[0].setup.mapSize === 'large', 'a large attack is pending');
+    const save = newPlanetSave('maps-save', 'Maps', { seedText: w.seedText, preset: w.options.preset, difficulty: w.difficulty, commander: 'Tester', createdAt: 0 });
+    const withBattle = JSON.parse(JSON.stringify({ ...save, planet: a }));
+    const back = migratePlanetSave(withBattle);
+    ok(back !== null && JSON.stringify(back) === JSON.stringify(withBattle), 'a save with a large pending battle migrates to itself byte for byte');
+    const v1 = JSON.parse(JSON.stringify(withBattle));
+    delete v1.planet.battleRules;
+    ok(migratePlanetSave(v1)?.planet.pending[0].setup.mapSize === 'large', 'a pending setup keeps its map size whatever the war rules');
+    break;
+  }
+
+  // Time per battle size: the instant auto-resolve, and Simulate (the engine plays it out) once on each size.
+  for (const z of ['standard', 'large'] as MapSize[]) {
+    const st = deepFreeze({ ...craftSetup(4), ...(z === 'large' ? { mapSize: 'large' as const } : {}) });
+    let q = 0;
+    const t0 = performance.now();
+    for (let k = 0; k < 200; k++) q += quickResolve(st).ticks;
+    const quickMs = (performance.now() - t0) / 200;
+    const t1 = performance.now();
+    const r = simulateBattle(st, 0);
+    const simS = (performance.now() - t1) / 1000;
+    console.log(`  ${z} ${st.sides.length}-sided: auto-resolve ${quickMs.toFixed(2)} ms, Simulate ${simS.toFixed(1)} s (${r.winner} at ${Math.round(r.ticks / 600)} min)`);
+    ok(q === 0 && JSON.stringify(quickResolve(st)) === JSON.stringify(quickResolve({ ...st, mapSize: undefined })), `${z}: auto-resolve does not read the map size`);
+    ok(r.ticks > 0 && r.ticks <= st.timeLimit && reportProblem(st, r) === null, `${z}: Simulate ends by the time limit with a valid report`);
+  }
+}
+
 export const sections: [string, (ok: Ok) => void][] = [
   ['Planet battles: building from a setup', buildTests],
   ['Planet battles: engine hooks (victory, heroes, city damage, saves)', hookTests],
@@ -906,6 +1163,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Planet battles: story missions and skirmishes byte-identical', storyTests],
   ['Planet battles: purity', purityTests],
   ['Planet battles: setups from a war, reports through the reducer', warTests],
+  ['Planet battles: map size by stakes; old saves unchanged', mapSizeTests],
 ];
 
 // Run on its own: every section, with its own count.

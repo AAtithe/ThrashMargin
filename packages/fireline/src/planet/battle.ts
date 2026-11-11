@@ -11,7 +11,7 @@ import { processAction } from '../sim/actions';
 import { fitModules } from '../sim/loadout';
 import { focusFor, placeHeroes, placeNear, placeUnits, startCentre, toward } from '../sim/mission';
 import { upgradeNewUnit } from '../sim/research';
-import { BUILDINGS, MODULES, MODULE_SLOTS, POWERS, UNITS, vetFor, type ModuleId, type Owner, type SupportPower, type UnitKind } from '../sim/rules';
+import { BUILDINGS, MODULES, MODULE_SLOTS, POWERS, UNITS, vetFor, type MapSize, type ModuleId, type Owner, type SupportPower, type UnitKind } from '../sim/rules';
 import { teamOf } from '../sim/sides';
 import { createInitialState, syncSkirmishPowers, updateExplored } from '../sim/state';
 import type { GameState } from '../sim/types';
@@ -25,6 +25,37 @@ const KILLS_MAX = 999;
 const MUSTER_DISTANCE = 4;
 
 const isArmyKind = (k: string): k is ArmyKind => (ARMY_KINDS as string[]).includes(k);
+
+// ---- Map size by stakes (section 9.7) ---------------------------------------------------------
+
+/** A city of this level or more is a big city: a capital starts at 3, and a city grows to 5. */
+export const BIG_CITY_LEVEL = 4;
+
+/** What a battle is fought for, as far as its map size goes. */
+export interface BattleStakes {
+  /** Sides in the battle, 2 to 4 (principals and allies). */
+  sides: number;
+  /** The level of the city fought over, 1 to 5. */
+  cityLevel: number;
+  /** The region is the defender's capital. */
+  capital: boolean;
+}
+
+/**
+ * The map size a battle's stakes call for. A frontier or minor battle (two sides over a city below
+ * BIG_CITY_LEVEL that is not a capital) stays standard. A big city, a capital, or a battle of three
+ * or four sides is large. Nothing is huge: a huge map with three or four sides (144 and 160 tiles)
+ * took up to 152 seconds to Simulate against about 3 on a standard map, and a whole save with one
+ * runs close to the 256 KB limit, so the biggest stakes (a capital with three or more sides) are
+ * large too, which with four sides is already a 128-tile map. Pure.
+ */
+export function battleMapSize(k: BattleStakes): MapSize {
+  if (k.capital || k.cityLevel >= BIG_CITY_LEVEL || k.sides >= 3) return 'large';
+  return 'standard';
+}
+
+/** The map size a setup is fought on: its `mapSize`, or standard when it has none (every setup made before version 2). */
+export const battleMapSizeOf = (setup: Pick<BattleSetup, 'mapSize'>): MapSize => (setup.mapSize === 'large' || setup.mapSize === 'huge' ? setup.mapSize : 'standard');
 
 /** The modules of a loadout that exist, fit this kind and fit its slots, in order. */
 function cleanLoadout(kind: UnitKind, mods: ModuleId[] | undefined): ModuleId[] {
@@ -50,7 +81,7 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
     difficulty: setup.difficulty,
     createdAt: ids.createdAt,
     autopilot: !human || !!opts?.autopilot,
-    setup: { map: setup.mapType, tech: 'advanced', credits: 3000, ore: setup.ore, sides: n as 2 | 3 | 4, mode: n > 2 ? 'teams' : 'ffa', research: 'lines', pace: 'quick', size: 'standard', sites: false },
+    setup: { map: setup.mapType, tech: 'advanced', credits: 3000, ore: setup.ore, sides: n as 2 | 3 | 4, mode: n > 2 ? 'teams' : 'ffa', research: 'lines', pace: 'quick', size: battleMapSizeOf(setup), sites: false },
     teams: setup.sides.map(x => x.team),
   });
   // Only the three riflemen per side stand at the start: every unit goes; the Command Yards stay.

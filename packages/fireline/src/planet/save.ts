@@ -477,6 +477,8 @@ function cleanSetup(raw: unknown, F: number, regions: number): BattleSetup | nul
     cityBuildings: cleanBuildings(r.cityBuildings),
     perks,
     powers: (r.powers as SupportPower[]).filter((p, i, a) => a.indexOf(p) === i),
+    // Section 9.7: absent (a standard map) on every setup made before larger maps, and kept so.
+    ...(r.mapSize === 'large' || r.mapSize === 'huge' ? { mapSize: r.mapSize } : {}),
   };
 }
 
@@ -609,6 +611,8 @@ export function migratePlanetState(raw: unknown): PlanetState | null {
     nextId,
     journal: cleanJournal(r.journal, F),
     result,
+    // Section 9.7: a war saved without it is on battle rules 1 (standard maps) for good.
+    ...(r.battleRules === 2 ? { battleRules: 2 as const } : {}),
   };
 }
 

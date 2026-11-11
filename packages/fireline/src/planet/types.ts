@@ -241,6 +241,12 @@ export interface PlanetState {
   nextId: number;
   journal: JournalEntry[]; // newest last, at most JOURNAL_MAX
   result: PlanetResult | null;
+  /**
+   * The version of the rules this war builds its battles to (section 9.7). Absent: 1, every battle
+   * on a standard map, as in every war started before larger maps; such a war keeps it for good.
+   * 2: the map size by stakes (`battleMapSize`). New wars start at 2.
+   */
+  battleRules?: 2;
 }
 
 // ---- The W1/W2 interface ---------------------------------------------------------------------
@@ -291,6 +297,11 @@ export interface BattleSetup {
   /** Commander perks and powers for the human side; null when no side is human. */
   perks: Perks | null;
   powers: SupportPower[];
+  /**
+   * The battle's map size (section 9.7). Absent: a standard map, which is every battle of a war
+   * started before larger maps, and every battle of a newer war whose stakes are small.
+   */
+  mapSize?: 'large' | 'huge';
 }
 
 export interface BattleReport {

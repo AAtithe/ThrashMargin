@@ -385,3 +385,9 @@ export const ACCEPT_AT: Record<'ceasefire' | 'trade' | 'alliance', number> = { c
 /** Most units a side brings to one battle, and most survivors a report may carry. */
 export const SIDE_UNITS_MAX = 40;
 export const REPORT_SURVIVORS_MAX = 60;
+
+/**
+ * The battle rules a new war builds its battles to (section 9.7): 2, the map size by stakes. A war
+ * saved without `battleRules` is version 1 and fights every battle on a standard map.
+ */
+export const BATTLE_RULES = 2 as const;

@@ -5,6 +5,7 @@
  */
 import { HERO_KINDS, TICKS_PER_SECOND, type BuildingKind, type HeroKind } from '../sim/rules';
 import { newCampaign, perkModifiers, POWER_PERKS } from '../campaign/progression';
+import { battleMapSize } from './battle';
 import { cityStructures } from './cities';
 import { armyCounts } from './economy';
 import { hopsFrom, planetMapOf } from './map';
@@ -306,6 +307,9 @@ export function battleSetupFor(s: PlanetState, attacker: FactionId, target: Regi
   if (atkAlly !== null) sides.push(allySide(atkAlly, 0));
   if (defAlly !== null) sides.push(allySide(defAlly, 1));
   const human = sides.some(x => x.human);
+  // Section 9.7: a war on battle rules 2 sizes the map by the stakes; an older war never sets it.
+  const mapSize =
+    s.battleRules === 2 ? battleMapSize({ sides: sides.length, cityLevel: reg.city.level, capital: defender !== NEUTRAL && s.factions[defender].capital === target }) : 'standard';
 
   return {
     battleId,
@@ -322,6 +326,7 @@ export function battleSetupFor(s: PlanetState, attacker: FactionId, target: Regi
     cityLevel: reg.city.level,
     cityBuildings: { ...reg.city.b },
     ...(human ? perksFor(s) : { perks: null, powers: [] }),
+    ...(mapSize !== 'standard' ? { mapSize } : {}),
   };
 }
 

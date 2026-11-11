@@ -407,6 +407,8 @@ export interface PlanetState {
   nextId: number;
   journal: JournalEntry[]; // newest last, at most JOURNAL_MAX
   result: PlanetResult | null;
+  /** Battle rules version (section 9.7). Absent: 1, every battle on a standard map. New wars: 2. */
+  battleRules?: 2;
 }
 
 // ---- The W1/W2 interface ---------------------------------------------------------------------
@@ -457,6 +459,8 @@ export interface BattleSetup {
   /** Commander perks and powers for the human side; null when no side is human. */
   perks: Perks | null;
   powers: SupportPower[];
+  /** The battle's map size (section 9.7). Absent: a standard map. */
+  mapSize?: 'large' | 'huge';
 }
 
 export interface BattleReport {
@@ -964,6 +968,64 @@ Effects:
 - Heroes: xp from the report; a fallen hero is `wounded` (iron rule: `lost`). Commander xp per
   section 6.4 when the player was a principal. Journal entry. `pending.shift()`.
 
+### 9.7 Map size by stakes (`battleMapSize`, `src/planet/battle.ts`)
+
+A battle is fought on a standard, large or huge skirmish map (`MapSize`, `MAP_SIZE_TILES`), and the
+size follows what is at stake. One pure function decides it from three facts about the battle:
+
+```ts
+export const BIG_CITY_LEVEL = 4;  // a capital starts at 3; a city grows to 5
+export function battleMapSize(k: { sides: number; cityLevel: number; capital: boolean }): MapSize;
+```
+
+| Stakes | Map |
+|---|---|
+| Frontier or minor: two sides over a city below level 4 that is not a capital | standard |
+| A big city (level 4 or 5) | large |
+| A capital (the defender's) | large |
+| Three or four sides (an ally joined either team) | large |
+| A capital with three or more sides, or any other combination | large |
+
+The map's width then follows the sides as for any skirmish: standard 64, 80 or 96 tiles for 2, 3 or
+4 sides; large 96, 112 or 128. Higher stakes never give a smaller map (the harness checks every
+combination).
+
+**Nothing is huge.** Huge was measured for the biggest stakes and rejected. Simulate on the
+crafted harness setups (`craftSetup`, the 20-minute limit, one core, wall time):
+
+| Map | Setups | Mean | Worst | A battle at tick 0 |
+|---|---|---|---|---|
+| standard | 24 | 3.5 s | 10.7 s | 56 KB |
+| large | 24 | 8.2 s | 23.1 s (four sides, 128 tiles) | 85 KB |
+| huge | 6 | 40.8 s | 152 s (four sides, 160 tiles) | 121 KB |
+
+A huge three- or four-sided battle takes minutes to Simulate and, with the strategic part at its 48 KB
+budget, a save holding one in progress runs close to the 256 KB limit, so the biggest stakes are
+large too (with four sides that is already 128 tiles). The type keeps `'huge'` so that a later round
+can turn it on with a measurement; `cleanSetup` accepts it.
+
+**Time.** The instant auto-resolve (`quickResolve`) reads strength, terrain and the city, never the
+map, so it takes the same fraction of a millisecond on every size and its result does not change
+with the map; the ladder is unaffected by construction. Simulate runs in the worker
+(`simulateClient`), so a large battle's longer run never blocks the page. The time limit is not
+scaled with the map: `battleMinutes` stays the battle length on every size. Measured on the same 24
+setups, the attackers won 13 on standard maps and 11 on large ones at the same limit, but 20 on large
+maps with the limit half as long again (and Simulate's worst case rose to 35 s), so a longer limit
+would have tilted large battles to the attacker rather than kept them as even as standard ones.
+
+**Old saves keep their maps.** The rule is versioned on the war: `PlanetState.battleRules` is
+absent on every war started before larger maps (version 1, every battle standard) and 2 on every new
+one (`BATTLE_RULES` in `rules.ts`, set by `newPlanetState`). `battleSetupFor` sets `mapSize` only on
+a version 2 war and only when the size is not standard, so a standard setup has exactly its old
+shape, and a version 1 war makes setups byte-identical to the build before. `migratePlanetState`
+keeps `battleRules` only when it is 2 and never adds it, and `cleanSetup` keeps a valid `mapSize` and
+never adds one, so the v1 fixture still migrates byte for byte and an old war stays on version 1 for
+good. `buildPlanetBattle` reads `battleMapSizeOf(setup)` (standard when absent) into
+`SkirmishSetup.size`. Story missions and skirmishes do not touch any of this.
+
+**Interface.** The attack preview and the pending battle card show the map size and its width
+(`BattleMapSize`, `data-testid="battle-map-size"`, `data-size`), with the reason when it is larger.
+
 ---
 
 ## 10. Actions (`src/planet/turn.ts`, W1)
@@ -1297,7 +1359,9 @@ All optional, all guarded by the new field, so every existing battle and mission
 
 1. `createInitialState(ids.id, ids.name, { seed: setup.seedText, difficulty, createdAt, autopilot:
    no side human || opts.autopilot, setup: { map: mapType, tech: 'advanced', credits: 3000, ore,
-   sides: n, mode: n > 2 ? 'teams' : 'ffa', research: 'lines' }, teams: sides.map(x => x.team) })`.
+   sides: n, mode: n > 2 ? 'teams' : 'ffa', research: 'lines', pace: 'quick', size:
+   battleMapSizeOf(setup), sites: false }, teams: sides.map(x => x.team) })`. The size is standard
+   unless the setup names one (section 9.7).
 2. Remove every unit (the three riflemen per side); keep each side's Command Yard.
 3. Per side: `players[i].credits = credits`; `upgrades`, `doctrines`, `loadouts` set; structures
    after `hq` placed with `placeNear`/`focusFor` toward the map centre, one `hauler` per refinery;
@@ -2208,3 +2272,28 @@ open Trade; open a route; End turn; open the Journal; read the turn report (read
   garrison larger, the army moved, a treaty signed on turn 1, nothing of the tour in the save), that
   a finished run is not offered again, that Tour reopens it on the welcome card, and that the war
   panel's option is no longer ticked. Checked by eye in light and dark mode.
+
+### Larger maps for battles (2026-11-11)
+
+User request: "build larger maps into the planet war battles too". Section 9.7 is the contract.
+
+- `battleMapSize` in `src/planet/battle.ts`: a capital, a big city (level `BIG_CITY_LEVEL = 4` or
+  more) or three or four sides fight on a large map; frontier and minor battles stay standard.
+  Huge was measured (Simulate up to 152 s on a four-sided 160-tile map, about 121 KB of battle at
+  tick 0) and is not used.
+- Versioned on the war: `PlanetState.battleRules` (absent is 1, standard maps; 2 for new wars) and
+  `BattleSetup.mapSize` (absent is standard, set only when larger). Neither is ever added by
+  migration, so old wars and the v1 fixture resolve and build battles exactly as before.
+- The attack preview and the pending battle card show the map size (`BattleMapSize`).
+- `drive-planet-battle.ts` gains "map size by stakes; old saves unchanged" (274 assertions): the
+  rule case by case and over every combination (monotone, never huge), built battles at their
+  tile counts, every open attack in a dozen wars compared on rules 1 and 2 (identical but for
+  `mapSize`), two-sided capital, level 3 and big-city cases and the four-sided capital defence from
+  wars, hashes recorded from the build before (9dd8a6b) for the v1 fixture's battle at tick 0 and
+  600, the fixture played 5 turns, and a Short and a Long war on rules 1 over 25 turns (every
+  setup, the bigger battles built, the final state), new wars on rules 2 replayed byte-identically,
+  a large battle run twice, a save with a large pending battle migrating to itself, a whole save
+  with a large four-sided battle under 256 KB (81 KB at tick 0, 107 KB at tick 3,000), and the
+  time of auto-resolve and Simulate on each size.
+- `ladder:planet` at the default seeds and on `--prefix holdout`: every row identical to the build
+  before, as expected, since auto-resolve never reads the map. Every target passes.
