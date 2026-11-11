@@ -889,3 +889,50 @@ campaign-check plays Borrowed Steel by script three ways in at every level (Easy
 all three; Hard at least one), checks the scaling for every mission, and builds and runs all 14
 missions at Easy and Hard. drive.ts covers the spared structure, the failed capture and the trigger
 order.
+
+### 2026-11-11: Two armies (round 6, workstream A)
+
+Every skirmish seat now picks an army, as `fireline-round6-design.md` section 3 sets out. Meridian
+Corps is today's army exactly; Ashen Combine is the variant. Missions, old saves and every default
+battle (all Meridian) play as before: every summary line of `npm run drive` is unchanged.
+
+- **Doctrines.** Meridian: heavier and slower, armour, range and static defence; signature unit
+  the **Sapper** (infantry, 400 credits, satchel charges at 1.75 tiles: wrecks structures and
+  armour, falls fast to rifles; needs a Tech Centre); air the Gunship and Bomber. Ashen: lighter,
+  faster, cheaper; signature unit the **Raider Bike** (450 credits, 140 hp, 2 tiles/s, rockets);
+  air the **Kestrel** (strafe role: 1,200 credits, 260 hp, 10 rockets, a load every 0.9s) and the
+  **Firebrand** (bomb role: 1,800 credits, a smaller blast than the Bomber, and each incendiary
+  burns three more times on the spot, a second apart, at 30% of its damage). All four are advanced
+  tech, each fielded by its army alone (`FACTION_MENUS`; Ashen removes the Gunship and Bomber).
+- **Ashen's overlay** (`FACTION_OVERLAY.ashen`): about 13% less health and 6% more speed across
+  the army; infantry, the buggy and the Flak Track 5% cheaper; the Tank, Artillery, Missile
+  Carrier, Bastion and Railgun half a tile shorter; Gun and Rocket Turrets and the Fortress cheaper
+  and frailer. How to play has the whole table, read from the specs.
+- **Balance.** The plan's first numbers (10% less health, 12% faster, 10% cheaper) gave Ashen 62%
+  over 150 seeds from each seat on random maps at Normal (`npm run ladder:fire -- --factions`, or
+  the two `--match new:normal:ashen,new:normal:meridian` orientations). Fewer Raider Bikes made it
+  worse (61%: the computer built more tanks instead), a cheaper-only nerf reached 55%, and slowing
+  the army to +6% brought it to **53.0%** (Ashen 159, Meridian 137, 4 unfinished of 300; 56% from
+  seat 0, 50% from seat 1; the Normal mirror gives seat 1 about three in four).
+- **Engine.** Numbers arrive through the per-side specs; nothing in `tick.ts` changed. `air.ts`'s
+  `dropBomb` lands a bomb as its weapon's own kind and, for a weapon kind in `BOMB_PATCH` (the
+  Firebrand's `flame`), adds the patch as later projectiles on the same spot, so the burn is drawn
+  and dealt as flame by the code that already lands every projectile. No new weapon or effect kind.
+- **Computer.** Ashen mixes Raider Bikes into its advanced vehicles and queues aircraft by role
+  from its own Air list (`aiAir.ts`), one more Kestrel on Hard. Meridian's choices are today's,
+  except that in a battle with two armies it also trains Sappers (an all-Meridian battle draws
+  exactly as before).
+- **Interface.** An Army row per seat in the lobby with each army's one-line doctrine; the build
+  window, sidebar, stat cards and How to play read the player's army (`rulesCatalogue(faction)`,
+  `menuOf`, `statsOf(kind, faction)`); the funds toast prices by `costFor`. Army tags are tokens
+  (`--army-meridian`, `--army-ashen`) in both modes; battlefield colours stay the seats'.
+- **Tests** (`scripts/drive-factions.ts`): the overlay merge, the bounds of "slightly different",
+  menus and catalogues per army, signature items refused through `canQueue` and the reducer, none
+  in standard tech or any mission, a Firebrand bombing and burning, a Bomber not, a Kestrel
+  strafing and rearming faster than a Gunship, Ashen's prices, health, speed and range measured,
+  and a whole Ashen-against-Meridian battle from each seat played to a finish, saved and loaded
+  mid-battle, and replayed byte-identically.
+- **For the integrator.** The groundwork's "Meridian: every build list is MENUS" now reads "MENUS
+  in order, then its signature items", since the Sapper is Meridian's addition. With B's Ace
+  appended to Vehicles, Ashen's list (with the Raider) runs to 15 items, one more than the build
+  keys.

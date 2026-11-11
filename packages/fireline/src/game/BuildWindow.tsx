@@ -15,7 +15,8 @@ import { hasBuilding, hasProducer, powerOf } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
 import type { GameAction, GameState } from '../sim/types';
 import { BUILD_KEYS, BuildButton, BuildTipFooter, ResearchBlock, StatTip, menuFor, tabLabel, tabsFor, useTip, type Tab } from './Sidebar';
-import { RULES_CATALOGUE, layoutTree, withExtras, type Catalogue, type ExtraItem } from './techTree';
+import { rulesCatalogue, layoutTree, withExtras, type Catalogue, type ExtraItem } from './techTree';
+import { factionOf } from '../sim/specs';
 
 const POS_KEY = 'fl_build_window';
 
@@ -234,7 +235,8 @@ function BuildTab({
 }) {
   const extras = readExtras();
   const extraKey = extras.map(x => `${x.tab}:${x.kind}:${x.requires.join('+')}`).join(',');
-  const cat: Catalogue = useMemo(() => withExtras(RULES_CATALOGUE, extras), [extraKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const faction = factionOf(state, 0);
+  const cat: Catalogue = useMemo(() => withExtras(rulesCatalogue(faction), extras), [extraKey, faction]); // eslint-disable-line react-hooks/exhaustive-deps
   const menu = menuFor(tab, state);
   const items = [...menu, ...extras.filter(x => x.tab === tab).map(x => x.kind)];
   const tree = useMemo(() => layoutTree(cat, items), [cat, items.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -363,6 +365,7 @@ function BuildTab({
       {tip && (
         <StatTip
           kind={tip.key}
+          faction={faction}
           anchor={tip.el}
           extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={BUILD_KEYS[menu.indexOf(tip.key)]} lowPower={lowPower} />}
         />
@@ -371,7 +374,7 @@ function BuildTab({
   );
 }
 
-const isReal = (k: string) => RULES_CATALOGUE.spec(k) !== null;
+const isReal = (k: string) => rulesCatalogue('meridian').spec(k) !== null;
 
 /**
  * A kind the rules do not know (the test hook's extra item): laid out like any other from its spec,

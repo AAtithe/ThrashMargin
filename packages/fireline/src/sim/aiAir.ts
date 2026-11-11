@@ -2,11 +2,11 @@ import { airRoleOf, airRoom, ammoMax, isAir, parkAircraft } from './air';
 import { canQueue, doAttack, doQueue, doSell } from './commands';
 import { buildingCentre, dist, distToBuilding } from './grid';
 import { canResearch, doResearch } from './research';
-import { BUILDINGS, DIFFICULTIES, MAX_QUEUE, UNITS, UPGRADES, type BuildingKind, type Difficulty, type Owner, type UnitKind, type UpgradeId } from './rules';
+import { BUILDINGS, DIFFICULTIES, MAX_QUEUE, UNITS, UPGRADES, type AirRole, type BuildingKind, type Difficulty, type Faction, type Owner, type UnitKind, type UpgradeId } from './rules';
 import { costFor, countBuildings, powerOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
-import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
+import { buildingSpec, buildingSpecOf, factionOf, menuOf, unitSpec, unitSpecOf } from './specs';
 
 /**
  * The computer commander's air power, anti-air and research (fireline-round4-design.md, workstream
@@ -81,6 +81,24 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
   },
 };
 
+/**
+ * Round 6 (fireline-round6-design.md, workstream A): each army's changes to its air plan. Meridian
+ * flies today's numbers; Ashen's Kestrels are cheaper and rearm sooner, so on Hard it keeps one
+ * more of them.
+ */
+const AIR_FACTION_TACTICS: Record<Faction, Partial<Record<Difficulty, Partial<AirTactics>>>> = {
+  meridian: {},
+  ashen: {
+    hard: { gunships: 3 },
+  },
+};
+
+/** This side's aircraft kind for a role: the first on its army's Air list (the Gunship and Bomber for Meridian). */
+function airKindFor(s: GameState, owner: Owner, role: AirRole): UnitKind | null {
+  const k = menuOf(factionOf(s, owner), 'air').find(k => UNITS[k as UnitKind]?.airRole === role);
+  return (k as UnitKind | undefined) ?? null;
+}
+
 /** The structures and anti-air units that count as anti-air cover, and how far each reaches. */
 function coverOf(s: GameState, enemy: Building[], foes: Unit[]): { x: number; y: number; r: number; b?: Building }[] {
   const out: { x: number; y: number; r: number; b?: Building }[] = [];
@@ -103,7 +121,8 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   if (s.mission || !techAllowed(s, owner, 'helipad')) return;
   const diff: Difficulty = owner === 0 && s.autopilotDifficulty ? s.autopilotDifficulty : s.difficulty;
   const d = DIFFICULTIES[diff];
-  const t = AIR_TACTICS[diff];
+  const over = AIR_FACTION_TACTICS[factionOf(s, owner)][diff];
+  const t = over ? { ...AIR_TACTICS[diff], ...over } : AIR_TACTICS[diff];
   const p = s.players[owner];
   const count = (k: BuildingKind) => countBuildings(s, owner, k);
   const mine = s.units.filter(u => u.owner === owner);
@@ -149,7 +168,10 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // 3. Aircraft, up to the plan and the Helipads' room.
   let saving = based && (count('researchlab') < 1 || count('helipad') < t.helipads);
   if (airRoom(s, owner) > 0) {
-    const want: UnitKind | null = queued('gunship') < t.gunships ? 'gunship' : queued('bomber') < t.bombers ? 'bomber' : null;
+    // By role, from the army's own Air list: the Gunship and Bomber, or Ashen's Kestrel and Firebrand.
+    const strafe = airKindFor(s, owner, 'strafe');
+    const bomb = airKindFor(s, owner, 'bomb');
+    const want: UnitKind | null = strafe && queued(strafe) < t.gunships ? strafe : bomb && queued(bomb) < t.bombers ? bomb : null;
     if (want && unlocked(s, owner, want)) {
       saving = true;
       if (p.queues.air.length === 0 && fund(s, owner, unitSpec(s, owner, want).cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);

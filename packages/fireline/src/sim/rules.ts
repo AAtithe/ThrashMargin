@@ -118,6 +118,10 @@ export type UnitKind =
   | 'stealthtank'
   // round5:D end.
   // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its unit kinds (signature units, aircraft variants).
+  | 'sapper'
+  | 'raider'
+  | 'kestrel'
+  | 'firebrand'
   // round6:A end.
   // round6:C begin. Generals (fireline-round6-design.md, workstream C): its unit kinds (the field General).
   // round6:C end.
@@ -534,6 +538,61 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
   },
   // round5:D end.
   // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its units (signature units, aircraft variants), appended here.
+  // ---- Two armies (round 6, workstream A): advanced tech only, each fielded by one army alone ----
+  sapper: {
+    name: 'Sapper',
+    category: 'infantry',
+    cost: 400,
+    buildTicks: 90,
+    hp: 90,
+    armor: 'infantry',
+    speed: 0.055,
+    sight: 5,
+    weapon: { kind: 'shell', damage: 80, range: 1.75, cooldown: 40, splash: 0.5 },
+    requires: ['barracks', 'techcentre'],
+    blurb: 'Meridian combat engineer with satchel charges. Must get close; wrecks structures and armour, falls fast to rifles.',
+  },
+  raider: {
+    name: 'Raider Bike',
+    category: 'vehicle',
+    cost: 450,
+    buildTicks: 60,
+    hp: 140,
+    armor: 'light',
+    speed: 0.2,
+    sight: 7,
+    weapon: { kind: 'rocket', damage: 28, range: 4, cooldown: 22 },
+    requires: ['factory'],
+    blurb: 'Ashen rocket bike, fast and fragile. Hits haulers and armour, then gets away.',
+  },
+  kestrel: {
+    name: 'Kestrel',
+    category: 'air',
+    cost: 1200,
+    buildTicks: 130,
+    hp: 260,
+    armor: 'aircraft',
+    speed: 0.16,
+    sight: 7,
+    weapon: { kind: 'rocket', damage: 32, range: 4.25, cooldown: 15, canHitAir: false },
+    requires: ['helipad'],
+    airRole: 'strafe',
+    blurb: "Ashen light gunship. Faster and frailer than a Gunship, with more rockets and a quicker rearm.",
+  },
+  firebrand: {
+    name: 'Firebrand',
+    category: 'air',
+    cost: 1800,
+    buildTicks: 180,
+    hp: 250,
+    armor: 'aircraft',
+    speed: 0.24,
+    sight: 6,
+    weapon: { kind: 'flame', damage: 75, range: 3.5, cooldown: 4, splash: 0.9, canHitAir: false },
+    requires: ['helipad', 'techcentre'],
+    airRole: 'bomb',
+    blurb: 'Ashen bomber. Drops incendiaries in a line: a smaller blast than a Bomber\'s, but the ground keeps burning.',
+  },
   // round6:A end.
   // round6:B begin. Heroes in free play: the heroes above keep their campaign specs; anything B adds goes here.
   // round6:B end.
@@ -1355,9 +1414,15 @@ export const isAirKind = (kind: UnitKind): boolean => UNITS[kind].category === '
  * Loads an aircraft carries. A Gunship fires one rocket per load; a Bomber drops one bomb per load,
  * all of them in one run. With none left it flies back to its Helipad to rearm.
  */
-export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber: 6 };
+export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber: 6,
+  kestrel: 10,
+  firebrand: 6,
+};
 /** Ticks on its Helipad to put back one load (Air frames shortens it). */
-export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25 };
+export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25,
+  kestrel: 9,
+  firebrand: 22,
+};
 /** Ticks between bombs in a run: with the Bomber's speed, a bomb about every 0.9 tiles. */
 export const BOMB_GAP = 4;
 /** Aircraft keep at least this far from the map's edge. */
@@ -1529,10 +1594,75 @@ export interface FactionMenu {
 
 // round6:A begin. Two armies (fireline-round6-design.md, workstream A): FACTION_OVERLAY and
 // FACTION_MENUS filled in, the doctrine lines, and its constants. Meridian's overlay stays empty.
+//
+// The doctrines, on paper first (fireline-round6-design.md, section 3):
+//  - Meridian Corps: heavier and slower. Armour and range; strong static defence, the Bastion and
+//    the Fortress as its identity. Its signature unit is the Sapper (satchel charges, close in). Air:
+//    the Gunship and the Bomber. It is today's army exactly: its overlay is empty, and its lists
+//    are MENUS with the Sapper appended to Infantry.
+//  - Ashen Combine: lighter, faster, cheaper. About 13% less health and 6% more speed across the
+//    army, infantry and light vehicles 5% cheaper, its heavy guns half a tile shorter, its turrets
+//    and Fortress cheaper and frailer. Its signature unit is the Raider Bike (fast, fragile,
+//    rockets). Air: the Kestrel (a lighter, faster gunship with more rockets and a quicker rearm)
+//    and the Firebrand (a bomber whose incendiaries burn on after they land, BOMB_PATCH below).
+//    Tuned on the ladder (npm run ladder:fire -- --factions): the plan's first numbers (10% less
+//    health, 12% faster, 10% cheaper) won 62% for Ashen over 150 seeds from each seat; these 53%.
+
+/** One line on each army, for the setup screen and How to play. */
+export const FACTION_DOCTRINES: Record<Faction, string> = {
+  meridian: 'Heavier and slower: armour, range and strong defences. Signature: the Sapper. Air: Gunship and Bomber.',
+  ashen: 'Lighter, faster and cheaper, with shorter heavy guns. Signature: the Raider Bike. Air: Kestrel and Firebrand.',
+};
+
+/** Ashen's numbers against the catalogue's (Meridian's), kind by kind. */
+const ASHEN_UNITS: Partial<Record<UnitKind, UnitOverlay>> = {
+  rifleman: { cost: 95, hp: 52, speed: 0.069 },
+  rocketeer: { cost: 285, hp: 44, speed: 0.058 },
+  grenadier: { cost: 235, hp: 57, speed: 0.064 },
+  medic: { cost: 285, hp: 61, speed: 0.069 },
+  skyhunter: { cost: 330, hp: 48, speed: 0.064 },
+  buggy: { cost: 475, hp: 157, speed: 0.18 },
+  flaktrack: { cost: 665, hp: 226, speed: 0.106 },
+  tank: { hp: 360, speed: 0.106, weapon: { ...UNITS.tank.weapon!, range: 4.25 } },
+  artillery: { cost: 900, hp: 131, speed: 0.074, weapon: { ...UNITS.artillery.weapon!, range: 8.5 } },
+  missilecarrier: { hp: 209, speed: 0.085, weapon: { ...UNITS.missilecarrier.weapon!, range: 7.5 } },
+  flametank: { hp: 410, speed: 0.096 },
+  bastion: { hp: 770, speed: 0.064, weapon: { ...UNITS.bastion.weapon!, range: 5 } },
+  railtank: { hp: 566, speed: 0.09, weapon: { ...UNITS.railtank.weapon!, range: 6 } },
+  stealthtank: { cost: 1260, hp: 331, speed: 0.117 },
+};
+const ASHEN_BUILDINGS: Partial<Record<BuildingKind, BuildingOverlay>> = {
+  turret: { cost: 540, hp: 405 },
+  rocketturret: { cost: 810, hp: 450 },
+  fortress: { cost: 2200, hp: 1980, weapon: { ...BUILDINGS.fortress.weapon!, range: 6.5 } },
+};
+
 /** Each army's changes to UNITS and BUILDINGS, merged by unitSpec and buildingSpec (specs.ts). */
-export const FACTION_OVERLAY: Record<Faction, FactionOverlay> = { meridian: {}, ashen: {} };
+export const FACTION_OVERLAY: Record<Faction, FactionOverlay> = {
+  meridian: {},
+  ashen: { units: ASHEN_UNITS, buildings: ASHEN_BUILDINGS },
+};
 /** Each army's changes to MENUS, read by menuOf and factionAllows (specs.ts). */
-export const FACTION_MENUS: Record<Faction, FactionMenu> = { meridian: {}, ashen: {} };
+export const FACTION_MENUS: Record<Faction, FactionMenu> = {
+  meridian: {
+    add: { infantry: ['sapper'] },
+  },
+  ashen: {
+    add: { vehicle: ['raider'], air: ['kestrel', 'firebrand'] },
+    remove: ['gunship', 'bomber'],
+  },
+};
+// Meridian's one addition is its signature Sapper, appended after Infantry's own list, so every kind
+// of today keeps its place and hotkey and Meridian's specs, prices and lists are otherwise MENUS.
+
+/**
+ * The Firebrand's incendiary patch: a bomb of a 'bomb' role aircraft whose weapon is listed here
+ * keeps burning where it lands, `pulses` more times, `gap` ticks apart, each at `share` of the
+ * bomb's damage over its splash. Keyed by weapon kind, so air.ts names no aircraft.
+ */
+export const BOMB_PATCH: Partial<Record<WeaponKind, { pulses: number; gap: number; share: number }>> = {
+  flame: { pulses: 3, gap: 10, share: 0.3 },
+};
 // round6:A end.
 
 // round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): recruit costs,

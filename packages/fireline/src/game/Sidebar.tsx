@@ -20,19 +20,21 @@ import {
   SELF_REPAIR_TICKS,
   SKIRMISH_POWERS,
   PRODUCER,
-  MENUS,
+  BOMB_PATCH,
   STANDARD_TECH,
   UNITS,
   TICKS_PER_SECOND,
   type Armor,
   type BuildingKind,
   type Category,
+  type Faction,
   type SupportPower,
   type UnitKind,
   type WeaponKind,
 } from '../sim/rules';
 import { buildTicksFor, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
+import { buildingSpecFor, buildingSpecOf, factionOf, menuOf, unitSpecFor } from '../sim/specs';
 import { hasUpgrade, researchProblem } from '../sim/research';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
@@ -65,9 +67,12 @@ export const tabsFor = (state?: GameState): Tab[] =>
   );
 
 
-const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
-const blurbOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].blurb : UNITS[k as UnitKind].blurb);
-const needsOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].requires : UNITS[k as UnitKind].requires);
+/** A kind's spec as an army fields it (round 6): Meridian's is the catalogue's own. */
+const specFor = (k: BuildingKind | UnitKind, f: Faction = 'meridian') =>
+  k in BUILDINGS ? buildingSpecFor(f, k as BuildingKind) : unitSpecFor(f, k as UnitKind);
+const nameOf = (k: BuildingKind | UnitKind, f?: Faction) => specFor(k, f).name;
+const blurbOf = (k: BuildingKind | UnitKind, f?: Faction) => specFor(k, f).blurb;
+const needsOf = (k: BuildingKind | UnitKind, f?: Faction) => specFor(k, f).requires;
 
 /**
  * The build hotkeys, in menu order: the first item on the open tab is Q, the second W, and so on.
@@ -81,14 +86,16 @@ export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l'
  * Items for a tab, in menu (and hotkey) order. Given the battle, only what can be built in it: a
  * skirmish on standard tech, or a mission, shows the original items alone (still greyed until
  * their requirements stand, as ever), and advanced tech adds the rest. A mission's own tech list
- * keeps greying the original items it leaves out, so the campaign looks as it always has.
+ * keeps greying the original items it leaves out, so the campaign looks as it always has. The
+ * lists are the player's army's (round 6, menuOf): Meridian's are MENUS with its Sapper after the
+ * infantry; Ashen's add the Raider Bike and fly the Kestrel and Firebrand.
  */
 export const menuFor = (tab: Tab, state?: GameState): (BuildingKind | UnitKind)[] =>
   tab === 'research'
     ? []
     : state
-      ? MENUS[tab].filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k))
-      : MENUS[tab].slice();
+      ? menuOf(factionOf(state, 0), tab).filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k))
+      : menuOf('meridian', tab).slice();
 
 /** How many units a shift-click or shift+hotkey queues. */
 export const BATCH = 5;
@@ -141,11 +148,11 @@ export interface StatRow {
   value: string;
 }
 
-/** Every number worth knowing about a unit or structure, straight from rules.ts. */
-export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
+/** Every number worth knowing about a unit or structure, straight from rules.ts, as this army fields it. */
+export function statsOf(kind: BuildingKind | UnitKind, faction: Faction = 'meridian'): StatRow[] {
   const isB = kind in BUILDINGS;
-  const b = isB ? BUILDINGS[kind as BuildingKind] : null;
-  const u = isB ? null : UNITS[kind as UnitKind];
+  const b = isB ? buildingSpecFor(faction, kind as BuildingKind) : null;
+  const u = isB ? null : unitSpecFor(faction, kind as UnitKind);
   const spec = (b ?? u)!;
   const rows: StatRow[] = [];
   if (kind !== 'hq') {
@@ -178,7 +185,13 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
   if (u && ammo)
     rows.push({
       label: 'Ammunition',
-      value: `${ammo} ${kind === 'bomber' ? 'bombs, dropped in one run' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
+      value: `${ammo} ${UNITS[kind as UnitKind].airRole === 'bomb' ? 'bombs, dropped in one run' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
+    });
+  const patch = u?.airRole === 'bomb' && w ? BOMB_PATCH[w.kind] : undefined;
+  if (patch && w)
+    rows.push({
+      label: 'Burns',
+      value: `Each bomb's ground burns ${patch.pulses} more times, every ${secs(patch.gap)}, at ${Math.round(patch.share * 100)}% of its damage`,
     });
   if (u?.category === 'air') rows.push({ label: 'Flies', value: 'Over water, rock and structures; only anti-air and bullets reach it' });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
@@ -200,7 +213,7 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
  * never takes the pointer, so it cannot cover anything a click is aimed at, and it sits under
  * the guided tour's card.
  */
-export function StatTip({ kind, anchor, extra }: { kind: BuildingKind | UnitKind; anchor: HTMLElement; extra?: ReactNode }) {
+export function StatTip({ kind, anchor, extra, faction }: { kind: BuildingKind | UnitKind; anchor: HTMLElement; extra?: ReactNode; faction?: Faction }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -223,10 +236,10 @@ export function StatTip({ kind, anchor, extra }: { kind: BuildingKind | UnitKind
   });
   return (
     <div ref={ref} className="fl-tip" role="tooltip" data-testid="stat-tip">
-      <strong className="fl-tip-title">{nameOf(kind)}</strong>
-      <span className="fl-tip-blurb">{blurbOf(kind)}</span>
+      <strong className="fl-tip-title">{nameOf(kind, faction)}</strong>
+      <span className="fl-tip-blurb">{blurbOf(kind, faction)}</span>
       <dl>
-        {statsOf(kind).map(r => (
+        {statsOf(kind, faction).map(r => (
           <div key={r.label}>
             <dt>{r.label}</dt>
             <dd>{r.value}</dd>
@@ -560,7 +573,7 @@ export function BuildButton({
   const disabled = !open || blockedByOther || (!isHead && !isReady && full);
   // A hotkey letter means nothing without a keyboard.
   const key = touch ? undefined : hotkey?.toUpperCase();
-  const missing = needsOf(kind).filter(r => r !== 'hq' && !hasBuilding(state, 0, r));
+  const missing = needsOf(kind, factionOf(state, 0)).filter(r => r !== 'hq' && !hasBuilding(state, 0, r));
   const cancel = () => {
     dispatch({ type: 'cancel', category: tab, kind });
     if (placing === kind) setPlacing(null);
@@ -733,7 +746,7 @@ export function BuildTipFooter({
   lowPower: boolean;
 }) {
   const p = state.players[0];
-  const missing = needsOf(kind).filter(r => !hasBuilding(state, 0, r));
+  const missing = needsOf(kind, factionOf(state, 0)).filter(r => !hasBuilding(state, 0, r));
   const short = costFor(state, 0, kind) - p.credits;
   const notes: string[] = [];
   if (state.allowed && !state.allowed.includes(kind)) notes.push('Not available in this mission.');
@@ -771,7 +784,7 @@ export function SelectionPanel({
   const units = state.units.filter(u => selected.has(u.id));
   const building = state.buildings.find(b => selected.has(b.id));
   const { tip, bind } = useTip<BuildingKind | UnitKind>();
-  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} />;
+  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} faction={factionOf(state, (units[0] ?? building)?.owner ?? 0)} />;
   if (!units.length && !building) {
     if (touch) {
       return (
@@ -789,7 +802,7 @@ export function SelectionPanel({
     );
   }
   if (building) {
-    const spec = BUILDINGS[building.kind];
+    const spec = buildingSpecOf(state, building);
     const mine = building.owner === 0;
     const refund = Math.floor((spec.cost * 0.5 * (building.hp / spec.hp)) / 10) * 10;
     return (
@@ -868,7 +881,7 @@ export function SelectionPanel({
       )}
       {one && mine && AIR_AMMO[one.kind] && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="air-ammo">
-          {one.kind === 'bomber' ? 'Bombs' : 'Rockets'} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
+          {UNITS[one.kind].airRole === 'bomb' ? 'Bombs' : 'Rockets'} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
           {one.order.type === 'rearm'
             ? (one.ammo ?? 0) < (AIR_AMMO[one.kind] ?? 0)
               ? one.order.pad

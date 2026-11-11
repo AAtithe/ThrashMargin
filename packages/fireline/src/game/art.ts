@@ -324,6 +324,18 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
       break;
     // round5:D end.
     // round6:A begin. Two armies (fireline-round6-design.md): its units' cases, appended here.
+    case 'sapper':
+      drawSapper(ctx, owner, team, pose);
+      break;
+    case 'raider':
+      drawRaiderBike(ctx, team, pose);
+      break;
+    case 'kestrel':
+      drawKestrel(ctx, team, pose);
+      break;
+    case 'firebrand':
+      drawFirebrand(ctx, team, pose);
+      break;
     // round6:A end.
     // round6:C begin. Generals (fireline-round6-design.md): the field General's case, appended here.
     // round6:C end.
@@ -3857,7 +3869,7 @@ export function drawAirShadow(ctx: Ctx, kind: UnitKind, x: number, y: number, hu
   ctx.translate(x + 5, y + 4);
   ctx.rotate(hull);
   ctx.fillStyle = 'rgba(0,0,0,0.26)';
-  if (kind === 'bomber') {
+  if (kind === 'bomber' || kind === 'firebrand') {
     ctx.beginPath();
     ctx.moveTo(15, 0);
     ctx.lineTo(4, -2.4);
@@ -4880,6 +4892,114 @@ export function drawSiteLayer(ctx: Ctx, s: GameState, explored: string, vis: Uin
 // round5:D end.
 
 // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its drawing functions, appended here.
+
+/**
+ * The Sapper (Meridian): a trooper stamped from the Grenadier's sprites (the same kit and stance),
+ * with a satchel charge on his back and a red-banded fuse bag drawn live over the stamp.
+ */
+function drawSapper(ctx: Ctx, owner: Owner, team: Team, p: UnitPose) {
+  drawTrooperCached(ctx, 'grenadier', owner, team, p);
+  ctx.save();
+  ctx.rotate(p.turret);
+  ctx.fillStyle = '#5a4a2e';
+  rrect(ctx, -6.2, -2.6, 3.2, 5.2, 0.8);
+  ctx.fill();
+  ctx.fillStyle = '#c0392b';
+  ctx.fillRect(-6.2, -0.5, 3.2, 1);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.5;
+  rrect(ctx, -6.2, -2.6, 3.2, 5.2, 0.8);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * The Raider Bike (Ashen), nose along +x: two wheels in line, a slim frame, the rider leaning in,
+ * and a rocket tube on the rider's shoulder. Small enough to draw live rather than from the cache.
+ */
+function drawRaiderBike(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  bodyShadow(ctx, p.hull, 16, 6, 2, 2.5, 3);
+  ctx.save();
+  ctx.rotate(p.hull);
+  const spin = p.moving ? frac(p.t * 8) * 2 : 0;
+  for (const wx of [-5.5, 5.5]) {
+    ctx.fillStyle = '#141515';
+    rrect(ctx, wx - 3, -1.5, 6, 3, 1.4);
+    ctx.fill();
+    ctx.fillStyle = '#3a3c3c';
+    ctx.fillRect(wx - 2 + spin, -1.2, 0.6, 2.4);
+  }
+  ctx.fillStyle = litGrad(ctx, p.hull, 7, team.light, team.dark);
+  ctx.beginPath();
+  ctx.moveTo(-6, -1.8);
+  ctx.lineTo(4, -2.2);
+  ctx.lineTo(7.5, 0);
+  ctx.lineTo(4, 2.2);
+  ctx.lineTo(-6, 1.8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  ctx.fillStyle = '#26292a';
+  ctx.fillRect(3, -3.4, 1, 6.8);
+  emblem(ctx, team, -3.5, 0, 1.1);
+  hullDamage(ctx, hp, p.t, 14, 5, 'both');
+  ctx.restore();
+  // The rider and the rocket tube, turned to the target.
+  ctx.save();
+  ctx.rotate(p.turret);
+  ctx.fillStyle = '#3c4334';
+  circle(ctx, -0.5, 0, 2.2);
+  ctx.fill();
+  ctx.fillStyle = '#2b2f30';
+  rrect(ctx, -3, 1.4, 9, 1.8, 0.8);
+  ctx.fill();
+  if (firing && p.sinceShot < 0.1) {
+    ctx.fillStyle = 'rgba(255,190,110,0.85)';
+    circle(ctx, -4, 2.3, 1.8);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * The Kestrel (Ashen's light gunship): the Gunship's frame drawn smaller, with a pale nose band
+ * so the two read apart at a glance.
+ */
+function drawKestrel(ctx: Ctx, team: Team, p: UnitPose) {
+  ctx.save();
+  ctx.scale(0.82, 0.82);
+  drawGunship(ctx, team, p);
+  ctx.rotate(p.hull);
+  ctx.fillStyle = team.light;
+  ctx.fillRect(3.5, -4.2, 1.4, 8.4);
+  ctx.restore();
+}
+
+/**
+ * The Firebrand (Ashen's bomber): the Bomber's frame drawn a little smaller, with orange warning
+ * stripes on the wings for the incendiaries it carries.
+ */
+function drawFirebrand(ctx: Ctx, team: Team, p: UnitPose) {
+  ctx.save();
+  ctx.scale(0.88, 0.88);
+  drawBomber(ctx, team, p);
+  ctx.rotate(p.hull);
+  ctx.fillStyle = '#e8742a';
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(-3.2, side * 15);
+    ctx.lineTo(-1.6, side * 12);
+    ctx.lineTo(-3.4, side * 12);
+    ctx.lineTo(-5, side * 15);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
 // round6:A end.
 
 // round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): its drawing functions, appended here.

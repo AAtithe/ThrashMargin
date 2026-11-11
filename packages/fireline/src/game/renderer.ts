@@ -931,7 +931,7 @@ export class Renderer {
       // Parked on its pad it sits low; in flight it rides AIR_LIFT above its shadow.
       const h = !moving && u.order.type === 'rearm' ? lift * 0.3 : lift;
       drawUnit(ctx, u.kind, u.owner, x, y - h, pose);
-      if (u.kind === 'bomber' && moving && Math.random() < dt * 30) {
+      if (UNITS[u.kind].airRole === 'bomb' && moving && Math.random() < dt * 30) {
         // Contrails from the outer engines.
         for (const side of [-1, 1]) {
           const ox = Math.cos(pose.hull) * -6 - Math.sin(pose.hull) * side * 13;
@@ -939,7 +939,7 @@ export class Renderer {
           this.fx.add({ kind: 'smoke', x: x + ox, y: y + oy, z: lift, vx: 0, vy: 0, life: 1.4, size: 1.4, grow: 1.6 });
         }
       }
-      if (u.kind === 'gunship' && Math.random() < dt * 4) this.fx.add({ kind: 'dust', x: x + (Math.random() - 0.5) * 18, y: y + (Math.random() - 0.5) * 12, z: 0, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 8, life: 0.7, size: 2.2, grow: 2.4 });
+      if (UNITS[u.kind].airRole === 'strafe' && Math.random() < dt * 4) this.fx.add({ kind: 'dust', x: x + (Math.random() - 0.5) * 18, y: y + (Math.random() - 0.5) * 12, z: 0, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 8, life: 0.7, size: 2.2, grow: 2.4 });
     }
     for (const { u, x, y } of aloft) {
       const frac = u.hp / maxHpOf(u);

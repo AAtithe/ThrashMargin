@@ -40,7 +40,7 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
-import { costOf, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
+import { costFor, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { selectionActions } from '../game/selectionActions';
@@ -325,7 +325,7 @@ export function Battle({
           } else if (a.category === 'building' && q.length) showToast('One structure at a time');
           else if (q.length >= MAX_QUEUE) showToast('Queue full');
           else if (a.category === 'air' && airRoom(s, 0) <= 0) showToast('Every Helipad is full: build another');
-          else if (s.players[0].credits < costOf(a.kind)) showToast('Insufficient funds');
+          else if (s.players[0].credits < costFor(s, 0, a.kind)) showToast('Insufficient funds');
         }
         if (a.type === 'research') {
           sound.play('denied');

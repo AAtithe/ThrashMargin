@@ -25,7 +25,7 @@ import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlo
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
-import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
+import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
 
@@ -1081,6 +1081,9 @@ function advancedUnits(
   const iq = p.queues.infantry;
   const vq = p.queues.vehicle;
   const read = t.counter && foeInfantry + foeArmour >= 4;
+  // Round 6, workstream A: this side's army, and whether any other side plays a different one.
+  const army = factionOf(s, owner);
+  const twoArmies = s.players.some((_, o) => factionOf(s, o as Owner) !== army);
   const infantryHeavy = read && foeInfantry > foeArmour * 1.5;
   const armourHeavy = read && foeArmour > foeInfantry * 1.5;
   const fortified = t.counter && foeTurrets >= 3;
@@ -1092,15 +1095,17 @@ function advancedUnits(
   const soldiers = units.filter(u => UNITS[u.kind].category === 'infantry' && unitSpecOf(s, u).weapon && !UNITS[u.kind].hero).length;
   if (vq.length < 1 && countBuildings(s, owner, 'factory') > 0) {
     const roll = next((p.stats.trained + 1) * 7919 + owner * 104729).value;
-    let kind =
-      weighted(s, owner, [
-        ['tank', armourHeavy ? 6 : 5],
-        ['buggy', (infantryHeavy ? 1.5 : armourHeavy ? 0.3 : 1) * (fortified ? 0.5 : 1)],
-        ['artillery', 0.8 + (infantryHeavy ? 0.7 : 0) + (fortified ? 1.2 : 0)],
-        ['missilecarrier', 0.5 + (armourHeavy ? 0.7 : 0) + (fortified ? 1.5 : 0)],
-        ['flametank', infantryHeavy ? 5 : armourHeavy ? 1 : 3],
-        ['bastion', 0.5 + (armourHeavy ? 0.5 : 0) + (fortified ? 1 : 0)],
-      ], roll) ?? 'tank';
+    const vehicles: [UnitKind, number][] = [
+      ['tank', armourHeavy ? 6 : 5],
+      ['buggy', (infantryHeavy ? 1.5 : armourHeavy ? 0.3 : 1) * (fortified ? 0.5 : 1)],
+      ['artillery', 0.8 + (infantryHeavy ? 0.7 : 0) + (fortified ? 1.2 : 0)],
+      ['missilecarrier', 0.5 + (armourHeavy ? 0.7 : 0) + (fortified ? 1.5 : 0)],
+      ['flametank', infantryHeavy ? 5 : armourHeavy ? 1 : 3],
+      ['bastion', 0.5 + (armourHeavy ? 0.5 : 0) + (fortified ? 1 : 0)],
+    ];
+    // Round 6, workstream A: Ashen's Raider Bikes against armour and haulers.
+    if (army === 'ashen') vehicles.push(['raider', infantryHeavy ? 0.6 : armourHeavy ? 2 : 1.4]);
+    let kind = weighted(s, owner, vehicles, roll) ?? 'tank';
     // Keep the raiding party up to strength in time for the next raid (not while one is out).
     if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
     if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
@@ -1117,12 +1122,17 @@ function advancedUnits(
     const medics = units.filter(u => UNITS[u.kind].medic).length + iq.filter(q => q.kind === 'medic').length;
     let kind: UnitKind | null = null;
     if (medics < Math.min(t.counter ? 3 : 1, Math.floor(soldiers / 6))) kind = 'medic';
-    else
-      kind = weighted(s, owner, [
+    else {
+      const infantry: [UnitKind, number][] = [
         ['rifleman', infantryHeavy ? 1 : armourHeavy ? 1 : 2],
         ['rocketeer', infantryHeavy ? 1 : armourHeavy ? 5 : 1.5],
         ['grenadier', (infantryHeavy ? 6 : armourHeavy ? 2 : 4) + (fortified ? 1 : 0)],
-      ]);
+      ];
+      // Round 6, workstream A: Meridian's Sappers against defences and armour, in a battle with two
+      // armies only, so a battle of Meridian alone (every default battle) draws exactly as before.
+      if (army === 'meridian' && twoArmies) infantry.push(['sapper', fortified ? 1.5 : armourHeavy ? 1 : 0.6]);
+      kind = weighted(s, owner, infantry);
+    }
     kind = kind ?? 'rifleman';
     if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
   }
