@@ -283,7 +283,36 @@ const PALETTES: Record<MapScheme, Palette> = {
   },
 };
 
-const SERIF = '"Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif';
+// Old Standard TT, bundled (main.tsx imports it; the CSP allows fonts from this origin only), so the
+// lettering is the same on every device rather than whichever serif the system happens to have.
+const SERIF = '"Old Standard TT", "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif';
+
+let fontsLoaded = false;
+let fontsPromise: Promise<void> | null = null;
+
+/**
+ * Resolves once the map's typeface is loaded (at once if it already is, or if the browser cannot
+ * say). A canvas does not wait for a web font: lettering drawn before it arrives uses the fallback,
+ * and the sheets are cached, so the caches are dropped here and the caller draws again.
+ */
+export function mapFontsReady(): Promise<void> {
+  if (fontsPromise) return fontsPromise;
+  const fonts = typeof document !== 'undefined' ? document.fonts : undefined;
+  if (!fonts) {
+    fontsLoaded = true;
+    fontsPromise = Promise.resolve();
+    return fontsPromise;
+  }
+  const faces = ['400 16px "Old Standard TT"', 'italic 400 16px "Old Standard TT"', '700 16px "Old Standard TT"'];
+  fontsPromise = Promise.all(faces.map(f => fonts.load(f)))
+    .catch(() => undefined)
+    .then(() => {
+      fontsLoaded = true;
+      sheetCache.clear();
+      situationCache.clear();
+    });
+  return fontsPromise;
+}
 
 function pageScheme(): MapScheme {
   return typeof document !== 'undefined' && document.documentElement.dataset.theme === 'dark' ? 'dark' : 'light';
@@ -512,7 +541,7 @@ function riverPoints(r: (typeof THEATRE)[number]['rivers'][number], w: number, h
 }
 
 function paintSheet(w: number, h: number, res: number, act: 0 | 1, scheme: MapScheme, compact: boolean): HTMLCanvasElement {
-  const key = `${w}x${h}@${res}#${act}${scheme}${compact ? 'c' : ''}`;
+  const key = `${w}x${h}@${res}#${act}${scheme}${compact ? 'c' : ''}${fontsLoaded ? 'f' : ''}`;
   const hit = sheetCache.get(key);
   if (hit) return hit;
   if (sheetCache.size > 6) sheetCache.clear();
@@ -1011,7 +1040,7 @@ function frontOf(sorted: CampaignMapNode[], act: 0 | 1, tall: boolean): number {
 
 function paintSituation(w: number, h: number, res: number, act: 0 | 1, scheme: MapScheme, compact: boolean, sorted: CampaignMapNode[]): HTMLCanvasElement {
   const sig = sorted.map(n => `${n.order}${n.state[0]}${n.stars}/${n.maxStars ?? 3}:${n.title}`).join(',');
-  const key = `${w}x${h}@${res}#${act}${scheme}${compact ? 'c' : ''}|${sig}`;
+  const key = `${w}x${h}@${res}#${act}${scheme}${compact ? 'c' : ''}${fontsLoaded ? 'f' : ''}|${sig}`;
   const hit = situationCache.get(key);
   if (hit) return hit;
   if (situationCache.size > 4) situationCache.clear();
@@ -1516,6 +1545,7 @@ function creases(g: Ctx, w: number, h: number, pal: Palette) {
  */
 export function drawCampaignMap(ctx: Ctx, w: number, h: number, nodes: CampaignMapNode[], t = 0, opts: CampaignMapOptions = {}): void {
   if (w <= 0 || h <= 0) return;
+  void mapFontsReady();
   const m = ctx.getTransform();
   const res = Math.max(1, Math.min(3, Math.hypot(m.a, m.b)));
   const scheme = opts.scheme ?? pageScheme();

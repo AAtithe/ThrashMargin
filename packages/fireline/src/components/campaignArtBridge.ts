@@ -4,8 +4,12 @@ import {
   drawCampaignMap,
   drawHeroPortrait,
   drawRankInsignia,
+  mapFontsReady,
   type CampaignMapOptions,
 } from '../game/campaignArt';
+
+/** Resolves once the map's typeface has loaded; draw the map again then. */
+export { mapFontsReady };
 import type { HeroKind } from '../sim/rules';
 
 /**

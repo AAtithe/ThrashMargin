@@ -18,7 +18,7 @@ import {
 } from '../campaign/progression';
 import type { CampaignSave, CampaignState, PerkBranch, PerkSpec } from '../campaign/types';
 import { HeroPortrait, RankInsignia } from '../components/CampaignArt';
-import { drawMap, hasCampaignArt, nodeHitRadius, nodePosition, type CampaignMapNode } from '../components/campaignArtBridge';
+import { drawMap, hasCampaignArt, mapFontsReady, nodeHitRadius, nodePosition, type CampaignMapNode } from '../components/campaignArtBridge';
 import { campaignActOf } from '../game/campaignArt';
 import { clockOf, heroName, levelProgress } from '../components/CampaignHud';
 import ThemeToggle from '../components/ThemeToggle';
@@ -414,6 +414,15 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
   const pace = usePace();
   const [scheme, setScheme] = useState<Scheme>(currentScheme);
   useEffect(() => onSchemeChange(setScheme), []);
+  // The lettering's web font may land after the first paint: draw again when it does.
+  const [fontTick, setFontTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void mapFontsReady().then(() => live && setFontTick(n => n + 1));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -444,7 +453,7 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
-  }, [nodes, size, hover, selected, scheme, pace]);
+  }, [nodes, size, hover, selected, scheme, pace, fontTick]);
 
   const hit = (e: React.PointerEvent<HTMLCanvasElement>): CampaignMapNode | null => {
     const r = e.currentTarget.getBoundingClientRect();

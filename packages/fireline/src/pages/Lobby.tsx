@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import SkirmishSetupPanel, { SetupStep, TECH_TEXT, freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
-import { drawMap, type CampaignMapNode } from '../components/campaignArtBridge';
+import { drawMap, mapFontsReady, type CampaignMapNode } from '../components/campaignArtBridge';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
 import { campaignSaves, isCampaignMeta } from './campaignSaves';
 import { MISSIONS } from '../campaign/missions';
@@ -463,6 +463,15 @@ function CampaignTheatre({ won, label, caption, onOpen }: { won: number; label: 
   const ref = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [scheme, setSchemeTick] = useState(0);
+  // The lettering's web font may land after the first paint: draw again when it does.
+  const [fontTick, setFontTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void mapFontsReady().then(() => live && setFontTick(n => n + 1));
+    return () => {
+      live = false;
+    };
+  }, []);
   const actTwo = won >= ACT_ONE_MISSIONS && ACT_TWO_MISSIONS > 0;
   const nodes = useMemo<CampaignMapNode[]>(() => {
     const sorted = [...MISSIONS].sort((a, b) => a.order - b.order);
@@ -510,7 +519,7 @@ function CampaignTheatre({ won, label, caption, onOpen }: { won: number; label: 
     } catch {
       /* The map is decoration here: a failed drawing leaves the sheet blank rather than the lobby. */
     }
-  }, [nodes, size, scheme]);
+  }, [nodes, size, scheme, fontTick]);
 
   return (
     <div className="fl-lobby-theatre">

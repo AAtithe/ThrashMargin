@@ -4733,7 +4733,7 @@ div:has(> .fl-alert-chip) > .fl-banners {
   --a-stamp-blue: #1d4c9a;
   --a-pencil: #6e6a62;
   --a-open-tint: rgba(176, 38, 29, 0.06);
-  --a-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+  --a-serif: "Old Standard TT", "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
 }
 :root[data-theme="dark"] {
   --a-sheet: #3a3225;

@@ -6,6 +6,10 @@ import HowToPlay from './pages/HowToPlay';
 import GameScreen from './pages/GameScreen';
 import { applyScheme, initialScheme } from './lib/colorScheme';
 import { initMotion } from './lib/motion';
+// The campaign map's typeface (game/campaignArt.ts): latin only, bundled and served from this origin.
+import '@fontsource/old-standard-tt/latin-400.css';
+import '@fontsource/old-standard-tt/latin-400-italic.css';
+import '@fontsource/old-standard-tt/latin-700.css';
 import './portal.css';
 import './styles.css';
 
