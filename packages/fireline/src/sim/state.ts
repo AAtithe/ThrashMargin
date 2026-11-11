@@ -31,6 +31,12 @@ import {
   heroLevelFor,
   UNITS,
   vetFor,
+  // round6:B. Heroes in free play: the recruit numbers.
+  HERO_ACADEMY,
+  HERO_KINDS,
+  HERO_RECRUIT_TICKS,
+  heroRecruitCost,
+  type HeroKind,
   type BuildingKind,
   type Category,
   type Difficulty,
@@ -117,12 +123,22 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   // Round 6: an army fields only its own list (FACTION_MENUS); every kind for 'meridian' today.
   if (!factionAllows(factionOf(s, owner), kind)) return false;
   // round6:B begin. Heroes in free play: heroes allowed in a skirmish only with setup.heroes (and advanced tech).
+  // The Command Academy likewise, and the heroes themselves only once this side's Academy stands (so
+  // they join the build lists with it). Never in a mission: its heroes are the campaign's own.
+  if (kind === HERO_ACADEMY || (kind in UNITS && UNITS[kind as UnitKind].hero)) {
+    if (!heroesOn(s)) return false;
+    if (kind !== HERO_ACADEMY && !hasBuilding(s, owner, HERO_ACADEMY)) return false;
+  }
   // round6:B end.
   // round6:C begin. Generals: the field General allowed only with setup.generals.
   // round6:C end.
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   return setupOf(s).tech === 'advanced' || STANDARD_TECH.includes(kind);
 }
+
+// round6:B begin. Heroes in free play: a skirmish set up with heroes on and advanced tech (heroes.ts's heroesInPlay).
+const heroesOn = (s: GameState): boolean => !s.mission && setupOf(s).heroes === true && setupOf(s).tech === 'advanced';
+// round6:B end.
 
 /** True for a structure that counts as one: for victory, for the build radius, for survivors. Walls do not. */
 export const isStructure = (b: Building): boolean => !BUILDINGS[b.kind].wall;
@@ -442,7 +458,10 @@ export function costOf(kind: BuildingKind | UnitKind): number {
 /** What this side pays for it in this battle: its army's price, less its Procurement perk's share. */
 export function costFor(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): number {
   // round6:B begin. Heroes in free play: a skirmish hero's recruit price (B's constant) in place of the spec's.
-  const base = kindSpec(s, owner, kind).cost;
+  const base =
+    heroesOn(s) && kind in UNITS && UNITS[kind as UnitKind].hero
+      ? heroRecruitCost(kind as HeroKind, !!s.players[owner].heroFallen?.[kind as HeroKind])
+      : kindSpec(s, owner, kind).cost;
   // round6:B end.
   const perks = perksFor(s, owner);
   // round6:C begin. Generals: a doctrine's price on some kinds alone (new optional Perks fields), folded into mul.
@@ -458,6 +477,9 @@ export function buildTicksOf(kind: BuildingKind | UnitKind): number {
 
 /** Ticks of work this side's queue needs to finish it: its army's build time. */
 export function buildTicksFor(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): number {
+  // round6:B begin. Heroes in free play: a skirmish hero's training time (B's constant); a mission never trains one.
+  if (heroesOn(s) && kind in UNITS && UNITS[kind as UnitKind].hero) return HERO_RECRUIT_TICKS[kind as HeroKind];
+  // round6:B end.
   return kindSpec(s, owner, kind).buildTicks;
 }
 
@@ -714,6 +736,24 @@ function migrateRound6(raw: Partial<GameState>, out: GameState): void {
     });
   }
   // round6:B begin. Heroes in free play: its PlayerState and Unit fields repaired or dropped.
+  // A player's fallen heroes: known heroes with a whole-tick time and experience kept; none left, removed.
+  if (out.players.some(p => p.heroFallen !== undefined)) {
+    out.players = out.players.map(p => {
+      if (p.heroFallen === undefined) return p;
+      const kept: Partial<Record<HeroKind, { at: number; xp: number }>> = {};
+      let any = false;
+      const raw = p.heroFallen as unknown;
+      if (raw && typeof raw === 'object')
+        for (const k of HERO_KINDS) {
+          const e = (raw as Record<string, { at?: unknown; xp?: unknown } | undefined>)[k];
+          if (!e || typeof e !== 'object' || !Number.isInteger(e.at)) continue;
+          kept[k] = { at: e.at as number, xp: Number.isFinite(e.xp) && (e.xp as number) > 0 ? (e.xp as number) : 0 };
+          any = true;
+        }
+      const { heroFallen: _old, ...rest } = p;
+      return any ? { ...rest, heroFallen: kept } : rest;
+    });
+  }
   // round6:B end.
   // round6:C begin. Generals: its PlayerState and Unit fields repaired or dropped.
   // round6:C end.

@@ -1665,6 +1665,9 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
     // round6:A begin. Two armies: its structures' cases, if any, appended here.
     // round6:A end.
     // round6:B begin. Heroes in free play: its structures' cases (the Command Academy), appended here.
+    case 'academy':
+      drawAcademy(ctx, w, h, team, pose);
+      break;
     // round6:B end.
     // round6:C begin. Generals: its structures' cases, if any, appended here.
     // round6:C end.
@@ -5003,6 +5006,79 @@ function drawFirebrand(ctx: Ctx, team: Team, p: UnitPose) {
 // round6:A end.
 
 // round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): its drawing functions, appended here.
+/**
+ * The Command Academy: a pale stone hall with a colonnade along its front, a team-coloured roof with
+ * the side's emblem, a flag on a mast, and a small parade square marked out beside it. Its windows
+ * light while a hero trains.
+ */
+function drawAcademy(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  const work = !!p.working && on;
+  // The parade square: a marked-out patch of ground along the bottom.
+  ctx.fillStyle = 'rgba(40,46,42,0.35)';
+  ctx.fillRect(6, h - 15, w - 12, 10);
+  ctx.strokeStyle = 'rgba(235,235,220,0.55)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(7.5, h - 13.5, w - 15, 7);
+  hazardStripe(ctx, 6, h - 5, w - 12, 2);
+  // The hall.
+  const hx = 7;
+  const hy = 10;
+  const hw = w - 22;
+  const hh = h - 30;
+  block(ctx, hx, hy, hw, hh, shade(ctx, hx, hy, hw, hh, '#d9d2bf', '#a39a83'), '#7b7360', 4);
+  // The roof, team-coloured, and the emblem on it.
+  ctx.fillStyle = shade(ctx, hx - 1, hy - 3, hw + 2, 9, team.light, team.dark);
+  ctx.beginPath();
+  ctx.moveTo(hx - 2, hy + 5);
+  ctx.lineTo(hx + hw / 2, hy - 4);
+  ctx.lineTo(hx + hw + 2, hy + 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  emblem(ctx, team, hx + hw / 2, hy + 1.5, 1.8);
+  // The colonnade along the front, with lit windows between the columns.
+  const cols = 5;
+  for (let i = 0; i < cols; i++) {
+    const cx = hx + 3 + (i * (hw - 6)) / (cols - 1);
+    ctx.fillStyle = '#efe9d8';
+    ctx.fillRect(cx - 1.2, hy + 7, 2.4, hh - 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(cx + 1.2, hy + 7, 0.8, hh - 4);
+    if (i < cols - 1) {
+      const lit = on && (work ? frac(p.t * 0.6 + i * 0.29) < 0.75 : i % 2 === 0);
+      ctx.fillStyle = lit ? 'rgba(255,220,140,0.85)' : 'rgba(60,64,62,0.7)';
+      ctx.fillRect(cx + 3, hy + 10, (hw - 6) / (cols - 1) - 5, 5);
+    }
+  }
+  // Steps in front.
+  ctx.fillStyle = '#bdb5a0';
+  ctx.fillRect(hx + 2, hy + hh + 3, hw - 4, 2);
+  // The flag mast at the side, its flag stirring.
+  const mx = w - 9;
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(mx, h - 16);
+  ctx.lineTo(mx, 5);
+  ctx.stroke();
+  const wave = Math.sin(p.t * 3) * 1.2;
+  ctx.fillStyle = team.main;
+  ctx.beginPath();
+  ctx.moveTo(mx, 5);
+  ctx.quadraticCurveTo(mx - 4, 7 + wave, mx - 8, 6.5);
+  ctx.lineTo(mx - 8, 11.5);
+  ctx.quadraticCurveTo(mx - 4, 12 + wave, mx, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+  lamp(ctx, mx, h - 18, on, work ? '#7dff8a' : '#ffb43a', p.t, work ? 8 : 2, work);
+}
 // round6:B end.
 
 // round6:C begin. Generals (fireline-round6-design.md, workstream C): its drawing functions, appended here.

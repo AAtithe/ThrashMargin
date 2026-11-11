@@ -44,6 +44,8 @@ import { costFor, isStructure, powerOf, readyStructure, unlocked } from '../sim/
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { selectionActions } from '../game/selectionActions';
+// round6:B. Heroes in free play (fireline-round6-design.md): the hero bar and keys in a skirmish with heroes on.
+import { heroesInPlay, reviveWait } from '../sim/heroes';
 
 const TICK_MS = 1000 / TICKS_PER_SECOND;
 const SAVE_EVERY_MS = 15000;
@@ -960,9 +962,11 @@ export function Battle({
       // with heroes on (F runs the ability only when the selection is exactly one hero). B may change
       // the two blocks from here to "round6:B end".
       const heroKey = (HERO_KEYS as readonly string[]).indexOf(k);
-      if (cur.current.mission && heroKey >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Z X C V: heroes 1 to 4 in bar order; twice to jump to the hero.
-        const kind = heroOrder()[heroKey];
+      const freeHeroes = !cur.current.mission && heroesInPlay(cur.current);
+      if ((cur.current.mission || freeHeroes) && heroKey >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Z X C V: heroes 1 to 4 in bar order; twice to jump to the hero. A skirmish's bar holds the
+        // heroes standing, in the campaign's order.
+        const kind = (freeHeroes ? skirmishHeroes(cur.current) : heroOrder())[heroKey];
         if (kind) selectHero(kind);
         return;
       }
@@ -971,6 +975,15 @@ export function Battle({
         const u = cur.current.units.find(x => x.owner === 0 && x.hero && ov.selected.has(x.id));
         if (u) triggerAbility(u.kind as HeroKind);
         return;
+      }
+      if (freeHeroes && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && ov.selected.size === 1) {
+        // F in a skirmish with heroes on: the hero's ability when the selection is exactly one hero;
+        // anything else falls through to the selection's command below, as without heroes.
+        const u = cur.current.units.find(x => x.owner === 0 && x.hero && ov.selected.has(x.id));
+        if (u) {
+          triggerAbility(u.kind as HeroKind);
+          return;
+        }
       }
       // round6:B end.
       if (!cur.current.mission && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1626,6 +1639,12 @@ export function Battle({
           )}
           {skirmishPowers && (
             <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
+              {heroesInPlay(s) && (
+                <>
+                  <HeroBar s={s} heroes={skirmishHeroes(s)} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
+                  <HeroRevive s={s} />
+                </>
+              )}
               <SkirmishPowerBar s={s} targeting={targeting} onPower={choosePower} />
             </div>
           )}
@@ -1769,6 +1788,14 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['Production strip', 'Under the Build button: click an item to cancel the last one queued; click a ready structure to place it'],
     ['G', 'Toggle repair on the selected structure'],
     // round6:B begin. Heroes in free play: the Z X C V row for a skirmish with heroes on.
+    ...(skirmish
+      ? ([
+          [
+            'Z X C V, F (heroes on)',
+            "Skirmish with heroes on: select hero 1 to 4 in the hero bar, twice to jump to it; F uses the hero's ability when that hero alone is selected",
+          ],
+        ] as [string, string][])
+      : []),
     // round6:B end.
     // round6:C begin. Generals: the 0 row.
     // round6:C end.
@@ -2095,3 +2122,29 @@ const errorStrip: CSSProperties = {
   fontSize: '0.8rem',
   borderBottom: `1px solid ${UI.rule}`,
 };
+
+// round6:B begin. Heroes in free play (fireline-round6-design.md): the skirmish hero bar's order and
+// the fallen heroes' recruit timers.
+/** A skirmish's hero bar: side 0's heroes standing, in the campaign's order. */
+function skirmishHeroes(s: GameState): HeroKind[] {
+  return HERO_KINDS.filter(k => s.units.some(u => u.owner === 0 && u.kind === k && u.hp > 0 && !!u.hero));
+}
+
+/** Side 0's fallen heroes and when each may be recruited again (at half price). */
+function HeroRevive({ s }: { s: GameState }) {
+  const fallen = HERO_KINDS.filter(k => s.players[0].heroFallen?.[k]);
+  if (!fallen.length) return null;
+  return (
+    <div className="fl-hero-revive" data-testid="hero-revive">
+      {fallen.map(k => {
+        const wait = reviveWait(s, 0, k);
+        return (
+          <span key={k} data-hero={k}>
+            {UNITS[k].name}: {wait > 0 ? `recruit again in ${Math.ceil(wait / TICKS_PER_SECOND)}s` : 'ready to recruit, half price'}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+// round6:B end.

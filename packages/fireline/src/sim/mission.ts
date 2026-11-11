@@ -38,7 +38,9 @@ import {
   type UnitKind,
 } from './rules';
 import { computerSides, isAlly, isEnemy, sidesOf, startOf } from './sides';
-import { addBuilding, addUnit, isStructure, log, newAiMemory, updateExplored } from './state';
+import { addBuilding, addUnit, isStructure, log, newAiMemory, setupOf, updateExplored } from './state';
+// round6:B. Heroes in free play: the revive cooldown for a skirmish hero that falls.
+import { HERO_REVIVE_TICKS, TICKS_PER_SECOND } from './rules';
 import { buildingSpecOf, perksFor, unitSpecOf } from './specs';
 import type {
   Building,
@@ -204,13 +206,13 @@ function placeUnits(s: GameState, owner: Owner, kinds: UnitKind[], x: number, y:
 }
 
 /** Full health of a hero at a level, with side 0's Armour perk. */
-function heroMaxHp(s: GameState, u: Unit, level: number): number {
+export function heroMaxHp(s: GameState, u: Unit, level: number): number {
   const perks = perksFor(s, u.owner);
   const perk = perks ? perks.unitHpMul : 1;
   return Math.max(1, Math.round(unitSpecOf(s, u).hp * perk * (1 + HERO_HP_PER_LEVEL * (level - 1))));
 }
 
-function setMaxHp(u: Unit, v: number): void {
+export function setMaxHp(u: Unit, v: number): void {
   // Absent maxHp means UNITS[kind].hp (maxHpOf), whatever the side's army.
   if (v === UNITS[u.kind].hp) delete u.maxHp;
   else u.maxHp = v;
@@ -528,6 +530,8 @@ export function doAbility(s: GameState, owner: Owner, heroId: number, target?: n
     return;
   }
   h.abilityCd = abilityCooldown(kind, h.level);
+  // round6:B. Heroes in free play: the player hears of an enemy hero at work on their base.
+  if (!s.mission && owner !== 0 && b.owner === 0) log(s, kind === 'commando' ? `Enemy charge set on our ${name}.` : `An enemy Spy got into our ${name}.`, 'bad');
   if (kind === 'commando') {
     b.chargeAt = s.tick + CHARGE_FUSE;
     b.chargedBy = u.id;
@@ -777,6 +781,14 @@ export function noteDestroyed(s: GameState, b: Building): void {
 
 /** A hero has fallen: out for the rest of the battle, remembered for the debrief. */
 export function noteFallen(s: GameState, u: Unit): void {
+  // round6:B. Heroes in free play: a skirmish hero may be recruited again after HERO_REVIVE_TICKS,
+  // keeping its experience (heroes.ts). Missions are untouched: their heroes stay out once fallen.
+  if (u.hero && !s.mission && setupOf(s).heroes === true && setupOf(s).tech === 'advanced') {
+    const p = s.players[u.owner];
+    p.heroFallen = { ...p.heroFallen, [u.kind]: { at: s.tick + HERO_REVIVE_TICKS, xp: u.hero.xp } };
+    if (u.owner === 0) log(s, `${unitSpecOf(s, u).name} has fallen. Recruit again in ${HERO_REVIVE_TICKS / TICKS_PER_SECOND} seconds, at half price.`, 'bad');
+    return;
+  }
   if (!u.hero || u.owner !== 0) return;
   if (s.mission) s.mission.fallen = { ...s.mission.fallen, [u.kind]: u.hero.xp };
   log(s, `${unitSpecOf(s, u).name} has fallen.`, 'bad');

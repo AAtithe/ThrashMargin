@@ -936,3 +936,37 @@ battle (all Meridian) play as before: every summary line of `npm run drive` is u
   in order, then its signature items", since the Sapper is Meridian's addition. With B's Ace
   appended to Vehicles, Ashen's list (with the Raider) runs to 15 items, one more than the build
   keys.
+
+### 2026-11-11: Heroes in free play (round 6, workstream B)
+
+A skirmish setup option, **Heroes: Off / On** (off by default; advanced tech only, greyed on
+standard tech), lets the campaign's Spy, Commando, Engineer and Ace be recruited in free play. The
+campaign is untouched: missions never offer the Academy or a hero, and a mission's fallen hero still
+stays out for the rest of the mission.
+
+- **Recruiting**: a new structure, the **Command Academy** (`academy`, 2x2, 1500, needs a Tech
+  Centre, heroes on only). Once one stands, `techAllowed` lets the Spy, Commando and Engineer onto the
+  Infantry list (trained at the Barracks) and the Ace onto the Vehicles list (War Factory), through
+  `'queue'` like any unit. Prices `HERO_RECRUIT_COST` (Engineer 1000, Spy 1200, Commando 1800, Ace
+  2500, read by `costFor`), training `HERO_RECRUIT_TICKS` (20, 22, 30, 36 seconds, read by
+  `buildTicksFor`); the heroes' entries in `UNITS` keep their campaign numbers.
+- **Limit**: one of each per side, standing plus queued (`heroRecruitProblem`, `src/sim/heroes.ts`).
+- **Revive**: a fallen hero is recorded in `PlayerState.heroFallen` and may be recruited again after
+  `HERO_REVIVE_TICKS` (90 seconds) at half price; it comes back wounded (half health) with the
+  experience it had, the campaign's "wounded" rule within one battle.
+- **Engine**: the hero tick runs in a skirmish with heroes on; `enlistHeroes` gives a trained hero
+  its hero state (level from its experience, ability ready) and health from `heroMaxHp`.
+- **Interface**: the hero bar (heroes standing) beside the skirmish power bar, with each fallen
+  hero's recruit timer; Z X C V; F uses the ability only when one hero alone is selected, otherwise
+  the selection's command as before. The Repair Truck's and Forward Base Truck's blurbs say they are
+  free play's engineering units. How to play has a panel.
+- **Computer** (`src/sim/aiHeroes.ts`): saves a share of its credits into `heroFund` for the Academy
+  and then each hero (Engineer, Ace, Commando, Spy). The Engineer captures an undefended structure or
+  site; the Commando takes one to three escorts from the reserve to an outlying structure and plants
+  a charge; the Ace joins the wave and opens Overdrive in a fight; the Spy infiltrates (Generators
+  first) as an attack is about to go, avoiding structures a gun covers. `keptBack` holds back every
+  hero but the Ace, and the escort.
+- **Tests**: `scripts/drive-heroes.ts` (recruiting, limits, prices, revive, levels and abilities,
+  replay and save, missions, a computer battle with heroes on); drive.ts's hero refusal now also
+  asserts acceptance with heroes on. Every summary line of `npm run drive` is unchanged (heroes off
+  by default).
