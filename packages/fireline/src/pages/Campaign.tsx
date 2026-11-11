@@ -16,12 +16,27 @@ import {
   rankFor,
   setCampaignLevel,
 } from '../campaign/progression';
+import { regionById, regionOfMission, type TheatreRegion, type TheatreView } from '../campaign/theatre';
+import {
+  applyEngagementOutcome,
+  battleSpec,
+  engagementProblem,
+  engagementSpec,
+  isEngagementId,
+  openEngagements,
+  regionControl,
+  regionOfEngagement,
+  territoryHeld,
+  theatreView,
+} from '../campaign/territory';
 import type { CampaignSave, CampaignState, PerkBranch, PerkSpec } from '../campaign/types';
 import { HeroPortrait, RankInsignia } from '../components/CampaignArt';
-import { drawMap, hasCampaignArt, nodeHitRadius, nodePosition, type CampaignMapNode } from '../components/campaignArtBridge';
+import { drawMap, hasCampaignArt, mapFontsReady, regionAt, type CampaignMapNode } from '../components/campaignArtBridge';
 import { campaignActOf } from '../game/campaignArt';
 import { clockOf, heroName, levelProgress } from '../components/CampaignHud';
 import ThemeToggle from '../components/ThemeToggle';
+import { currentScheme, onSchemeChange, type Scheme } from '../lib/colorScheme';
+import { usePace } from '../lib/motion';
 import { createMissionState, missionOutcome, objectiveLabel } from '../sim/mission';
 import {
   BUILDINGS,
@@ -53,7 +68,8 @@ import { Battle, chromeBtn } from './GameScreen';
  * Retry), so reopening a finished battle shows the same debrief again without paying it twice.
  */
 
-type Panel = null | 'commander' | 'heroes' | { briefing: string };
+/** A mission's briefing, or a region of the theatre (an engagement's briefing, or a short note). */
+type Panel = null | 'commander' | 'heroes' | { briefing: string } | { region: string };
 
 /** The campaign's two acts, each on its own theatre map (see campaignArt.ts). */
 const ACT_NAMES = [
@@ -121,7 +137,8 @@ export default function CampaignFlow({
   };
 
   const deploy = (spec: MissionSpec, c: CampaignState = csRef.current.campaign) => {
-    const campaign = { ...c, lastMission: spec.id };
+    // An engagement is not a mission: "Continue" keeps pointing at the story.
+    const campaign = isEngagementId(spec.id) ? c : { ...c, lastMission: spec.id };
     const battle = createMissionState(campaignMission(campaign, spec), missionContext(campaign, spec, csRef.current.id, Date.now()));
     startBattle({ ...csRef.current, campaign, battle });
   };
@@ -226,7 +243,10 @@ function CampaignMap({
     };
   });
   const inBattle = cs.battle?.mission ? missionById(cs.battle.mission.id) : undefined;
-  const briefing = panel && typeof panel === 'object' ? missionById(panel.briefing) : undefined;
+  const inEngagement = cs.battle?.mission ? regionOfEngagement(cs.battle.mission.id) : undefined;
+  const briefing = panel && typeof panel === 'object' && 'briefing' in panel ? missionById(panel.briefing) : undefined;
+  const region = panel && typeof panel === 'object' && 'region' in panel ? regionById(panel.region) : undefined;
+  const territory = territoryHeld(c);
   const won = nodes.filter(n => n.state === 'won').length;
   // Act two opens with its first mission; until then only act one is shown.
   const firstOfActTwo = missions.find(m => campaignActOf(m.order) === 1);
@@ -235,6 +255,15 @@ function CampaignMap({
   const act: 0 | 1 = actTwoOpen ? chosenAct : 0;
   const shown = missions.map((m, i) => ({ m, n: nodes[i] })).filter(x => campaignActOf(x.m.order) === act);
   const shownNodes = shown.map(x => x.n);
+  const view = theatreView(c, act, region?.id ?? (briefing ? regionOfMission(briefing.id)?.id : undefined));
+  const engagementsShown = openEngagements(c, act);
+  // A region clicked on the map: its mission's briefing, its engagement's, or a note.
+  const openRegion = (id: string) => {
+    const r = regionById(id);
+    if (!r) return;
+    if (r.missionId && (c.missions[r.missionId]?.won || missionUnlocked(c, r.missionId))) setPanel({ briefing: r.missionId });
+    else setPanel({ region: r.id });
+  };
 
   return (
     <div className="fl-camp" data-testid="campaign-map">
@@ -273,9 +302,12 @@ function CampaignMap({
             <span data-testid="campaign-level">{CAMPAIGN_LEVEL[campaignLevel(c)].label}</span>
             <span>{nodes.reduce((a, n) => a + n.stars, 0)} ★</span>
           </div>
+          <div className="fl-camp-territory" data-testid="territory">
+            Territory: {territory.held} of {territory.total} regions held
+          </div>
           {cs.battle && (
             <div className="fl-camp-inbattle" data-testid="battle-in-progress">
-              <strong>{inBattle ? `Mission ${inBattle.order}: ${inBattle.title}` : 'A battle'} is in progress</strong>
+              <strong>{inBattle ? `Mission ${inBattle.order}: ${inBattle.title}` : inEngagement ? `The engagement in ${inEngagement.name}` : 'A battle'} is in progress</strong>
               <span>{cs.battle.mission?.result ? 'It is over: the debrief is waiting.' : `${clockOf(cs.battle.tick)} played.`}</span>
               <div style={{ display: 'flex', gap: 6 }}>
                 <button className="fl-camp-btn primary" onClick={onResume}>
@@ -321,8 +353,11 @@ function CampaignMap({
                   })}
                 </div>
               )}
-              <TheatreCanvas nodes={shownNodes} act={act} onOpen={id => setPanel({ briefing: id })} selected={briefing?.id} />
-              <ol className="fl-missions" data-testid="mission-list">
+              <TheatreCanvas view={view} onOpenRegion={openRegion} campaignId={cs.id} />
+              <h2 className="fl-camp-index">
+                Operations index <span>{ACT_NAMES[act].title} · {ACT_NAMES[act].place}</span>
+              </h2>
+              <ol className="fl-missions fl-camp-cards" data-testid="mission-list">
                 {shown.map(({ m, n }) => {
                   return (
                     <li key={m.id} data-state={n.state}>
@@ -333,19 +368,67 @@ function CampaignMap({
                         onClick={() => setPanel({ briefing: m.id })}
                         title={n.state === 'locked' ? 'Win the mission before it first' : 'Open the briefing'}
                       >
-                        <span className="fl-mission-no">{m.order}</span>
+                        <span className="fl-mission-no">
+                          <small aria-hidden="true">OBJ</small>
+                          {m.order}
+                        </span>
                         <span className="fl-mission-text">
                           <strong>{m.title}</strong>
-                          <span>{n.state === 'locked' ? 'Locked' : m.summary}</span>
+                          <span>{n.state === 'locked' ? 'Locked: intelligence only' : m.summary}</span>
                         </span>
                         <span className="fl-mission-stars" aria-label={`${n.stars} of ${n.maxStars} stars`}>
-                          {n.state === 'won' ? '★'.repeat(n.stars) + '☆'.repeat(Math.max(0, n.maxStars - n.stars)) : n.state === 'open' ? 'Open' : ''}
+                          {n.state === 'won' ? (
+                            <>
+                              <span className="fl-camp-stamp" data-kind="taken" aria-hidden="true">
+                                Taken
+                              </span>
+                              {'★'.repeat(n.stars) + '☆'.repeat(Math.max(0, n.maxStars - n.stars))}
+                            </>
+                          ) : n.state === 'open' ? (
+                            <span className="fl-camp-stamp" data-kind="next">
+                              Open
+                            </span>
+                          ) : (
+                            ''
+                          )}
                         </span>
                       </button>
                     </li>
                   );
                 })}
               </ol>
+              <h2 className="fl-camp-index">
+                Engagements <span>{engagementsShown.length ? `${engagementsShown.length} open on this front` : 'None open on this front'}</span>
+              </h2>
+              {engagementsShown.length > 0 ? (
+                <ol className="fl-missions fl-camp-cards fl-eng-cards" data-testid="engagement-list">
+                  {engagementsShown.map(r => {
+                    const spec = engagementSpec(c, r.id);
+                    const rec = c.engagements[r.id];
+                    return (
+                      <li key={r.id} data-state="open">
+                        <button type="button" data-testid={`engagement-${r.id}`} onClick={() => setPanel({ region: r.id })} title="Open the engagement briefing">
+                          <span className="fl-mission-no">
+                            <small aria-hidden="true">ENG</small>
+                            {r.kind === 'city' ? '◆' : '◇'}
+                          </span>
+                          <span className="fl-mission-text">
+                            <strong>{r.name}</strong>
+                            <span>{spec?.summary ?? 'A side battle for this region.'}</span>
+                          </span>
+                          <span className="fl-mission-stars">
+                            <span className="fl-camp-stamp" data-kind="next">
+                              {rec && !rec.won ? 'Retry' : 'Open'}
+                            </span>
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <p className="fl-small fl-eng-none">Win the next mission, or take a region next to held ground, to open more.</p>
+              )}
             </>
           )}
         </section>
@@ -366,11 +449,56 @@ function CampaignMap({
           <Briefing spec={briefing} cs={cs} onDeploy={() => onDeploy(briefing)} onLevel={onLevel} />
         </Modal>
       )}
+      {region && (
+        <RegionPanel
+          region={region}
+          cs={cs}
+          onClose={() => setPanel(null)}
+          onDeploy={onDeploy}
+          onLevel={onLevel}
+          onOpenMission={id => setPanel({ briefing: id })}
+        />
+      )}
     </div>
   );
 }
 
-function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNode[]; act: 0 | 1; onOpen: (id: string) => void; selected?: string }) {
+/** How long a region takes to change hands on the map, in seconds. */
+const CAPTURE_SECONDS = 1.5;
+
+/** Changes of territory already compared this session, by campaign and held set: the fill that is playing, or null. */
+const capturesPlayed = new Map<string, { regions: string[]; start: number } | null>();
+
+/** The held regions this campaign's map last showed, so the next visit can play what changed. */
+function seenKey(campaignId: string): string {
+  return `fl_theatre_seen:${campaignId}`;
+}
+
+function readSeen(campaignId: string | undefined): string[] | null {
+  if (!campaignId) return null;
+  try {
+    const raw = localStorage.getItem(seenKey(campaignId));
+    const v = raw ? (JSON.parse(raw) as unknown) : null;
+    return Array.isArray(v) && v.every(x => typeof x === 'string') ? (v as string[]) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSeen(campaignId: string | undefined, held: string[]) {
+  if (!campaignId) return;
+  try {
+    localStorage.setItem(seenKey(campaignId), JSON.stringify(held));
+  } catch {
+    /* Private window or storage full: the map simply will not replay the change next time. */
+  }
+}
+
+/**
+ * The theatre map: the whole country, turned to the act in view. A click on a region opens it. Regions newly taken since this campaign's map was last shown
+ * fill in from the border they share with older held ground, unless motion is off.
+ */
+function TheatreCanvas({ view, onOpenRegion, campaignId }: { view: TheatreView; onOpenRegion: (regionId: string) => void; campaignId?: string }) {
   const wrap = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState<string | null>(null);
@@ -381,13 +509,58 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
     if (!box) return;
     const measure = () => {
       const w = box.clientWidth;
-      setSize({ w, h: Math.round(Math.max(240, Math.min(460, w * 0.52))) });
+      // A phone gets a tall sheet, and the map turns to fill it (see campaignArt's camera).
+      setSize({ w, h: Math.round(w < 560 ? Math.min(620, w * 1.38) : Math.max(260, Math.min(460, w * 0.5))) });
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(box);
     return () => ro.disconnect();
   }, []);
+
+  const pace = usePace();
+  const [scheme, setScheme] = useState<Scheme>(currentScheme);
+  useEffect(() => onSchemeChange(setScheme), []);
+  // The lettering's web font may land after the first paint: draw again when it does.
+  const [fontTick, setFontTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void mapFontsReady().then(() => live && setFontTick(n => n + 1));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  // Regions taken since the map last showed this campaign. Compared once per change of what is
+  // held; the new state is remembered at once, so a reload mid-fill does not play it twice.
+  const heldSig = Object.keys(view.control)
+    .filter(id => view.control[id] === 'held')
+    .sort()
+    .join(',');
+  const [capture, setCapture] = useState<{ regions: string[]; start: number } | null>(null);
+  useEffect(() => {
+    // Once per change, remembered outside the component: the map may be mounted again while the
+    // fill is playing (or React may run this twice), and by then the change reads as already seen.
+    const once = `${campaignId}|${heldSig}`;
+    const pending = capturesPlayed.get(once);
+    if (pending !== undefined) {
+      setCapture(pending && performance.now() - pending.start < CAPTURE_SECONDS * 1000 ? pending : null);
+      return;
+    }
+    const held = heldSig ? heldSig.split(',') : [];
+    const seen = readSeen(campaignId);
+    writeSeen(campaignId, held);
+    const before = new Set(seen ?? []);
+    const fresh = held.filter(id => !before.has(id));
+    const next = seen && pace !== 'off' && fresh.length ? { regions: fresh, start: performance.now() } : null;
+    capturesPlayed.set(once, next);
+    setCapture(next);
+    // `pace` is read, not watched: changing it mid-fill should not replay the fill.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [heldSig, campaignId]);
+
+  // Every region answers a click: its briefing, its engagement's, or a note on who holds it.
+  const openable = useMemo(() => new Set(Object.keys(view.control)), [view]);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -397,48 +570,56 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
     canvas.height = Math.round(size.h * dpr);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawMap(
-      ctx,
-      size.w,
-      size.h,
-      nodes.map(n => ({ ...n, selected: n.id === selected, hover: n.id === hover })),
-    );
-  }, [nodes, size, hover, selected]);
+    const motion = pace !== 'off';
+    const speed = pace === 'quick' ? 2.5 : 1;
+    const paint = (now: number, t: number) => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, size.w, size.h);
+      const progress = capture ? ((now - capture.start) / 1000 / CAPTURE_SECONDS) * speed : 1;
+      drawMap(ctx, size.w, size.h, view, t, {
+        scheme,
+        motion,
+        hover: hover && openable.has(hover) ? hover : undefined,
+        capture: capture && progress < 1 ? { regions: capture.regions, progress } : undefined,
+      });
+      return progress;
+    };
+    const start = performance.now();
+    paint(start, 0);
+    // The pulses on what is open, and a region changing hands. About 30 frames a second.
+    const pulsing = motion && (view.missions.some(m => m.state === 'open') || view.engagements.some(e => e.state === 'open'));
+    if (!pulsing && !capture) return;
+    let raf = 0;
+    let last = 0;
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (now - last < 32) return;
+      last = now;
+      const p = paint(now, (now - start) / 1000);
+      if (p >= 1 && capture) setCapture(null);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [view, size, hover, scheme, pace, fontTick, capture, openable]);
 
-  const hit = (e: React.PointerEvent<HTMLCanvasElement>): CampaignMapNode | null => {
+  const hit = (e: React.PointerEvent<HTMLCanvasElement> | React.MouseEvent<HTMLCanvasElement>): string | null => {
     const r = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - r.left;
-    const y = e.clientY - r.top;
-    let best: CampaignMapNode | null = null;
-    let bestD = nodeHitRadius(size.w, size.h);
-    nodes.forEach(n => {
-      const p = nodePosition(n.order, size.w, size.h);
-      const d = Math.hypot(p.x - x, p.y - y);
-      if (d < bestD) {
-        bestD = d;
-        best = n;
-      }
-    });
-    return best;
+    return regionAt(e.clientX - r.left, e.clientY - r.top, size.w, size.h, view.act);
   };
 
-  const hovered = nodes.find(n => n.id === hover);
   return (
-    <div ref={wrap} className="fl-theatre" data-art={hasCampaignArt ? 'campaign' : 'stand-in'} data-act={act + 1}>
+    <div ref={wrap} className="fl-theatre" data-art={hasCampaignArt ? 'campaign' : 'stand-in'} data-act={view.act + 1} data-capturing={capture ? '1' : undefined}>
       <canvas
         ref={ref}
         data-testid="campaign-canvas"
-        style={{ width: size.w || '100%', height: size.h || 240, cursor: hovered && hovered.state !== 'locked' ? 'pointer' : 'default' }}
+        style={{ width: size.w || '100%', height: size.h || 240, cursor: hover && openable.has(hover) ? 'pointer' : 'default' }}
         aria-hidden="true"
-        onPointerMove={e => {
-          const n = hit(e);
-          setHover(n ? n.id : null);
-        }}
+        onPointerMove={e => setHover(hit(e))}
         onPointerLeave={() => setHover(null)}
         onClick={e => {
-          const n = hit(e as unknown as React.PointerEvent<HTMLCanvasElement>);
-          if (n && n.state !== 'locked') onOpen(n.id);
+          if (capture) setCapture(null);
+          const id = hit(e);
+          if (id && openable.has(id)) onOpenRegion(id);
         }}
       />
     </div>
@@ -612,16 +793,32 @@ function countKinds(list: UnitKind[]): string {
   return [...m].map(([k, n]) => (n > 1 ? `${n} ${plural(UNITS[k].name)}` : `1 ${UNITS[k].name}`)).join(', ');
 }
 
+function countBuildings(list: BuildingKind[]): string {
+  const m = new Map<BuildingKind, number>();
+  for (const k of list) m.set(k, (m.get(k) ?? 0) + 1);
+  return [...m].map(([k, n]) => (n > 1 ? `${n} ${plural(BUILDINGS[k].name)}` : `1 ${BUILDINGS[k].name}`)).join(', ');
+}
+
+const POSTURE: Record<MissionSpec['enemy']['ai'], string> = {
+  passive: 'Holds its ground and makes no plans.',
+  defend: 'Dug in: repairs and fights for every structure, sends no one out.',
+  raid: 'Sends raiding parties at you on a timer.',
+  normal: 'Builds up and attacks in waves.',
+};
+
+/** A mission's briefing; with `region`, the briefing of that region's engagement. */
 function Briefing({
   spec: written,
   cs,
   onDeploy,
   onLevel,
+  region,
 }: {
   spec: MissionSpec;
   cs: CampaignSave;
   onDeploy: () => void;
   onLevel: (level: Difficulty) => void;
+  region?: TheatreRegion;
 }) {
   const c = cs.campaign;
   // Everything below reads the mission as it will be fought at the campaign's difficulty.
@@ -630,14 +827,15 @@ function Briefing({
   const heroes = heroesFor(c, spec);
   const ctx = missionContext(c, spec, cs.id, cs.createdAt);
   const powers = [...new Set<SupportPower>([...spec.powers, ...ctx.extraPowers])];
-  const rec = c.missions[spec.id];
+  const rec = region ? c.engagements[region.id] : c.missions[spec.id];
   const newTech = (spec.rewards.unlockTech ?? []).filter(k => !c.tech.includes(k));
   const newHeroes = (spec.rewards.unlockHeroes ?? []).filter(k => !c.heroes[k]?.unlocked);
   const base = spec.player.structures.includes('hq');
   const replacing = cs.battle && cs.battle.mission?.id !== spec.id && !cs.battle.mission?.result;
   return (
-    <div className="fl-briefing" data-testid="briefing">
+    <div className="fl-briefing" data-testid={region ? 'engagement-briefing' : 'briefing'} data-region={region?.id}>
       <div className="fl-briefing-meta">
+        {region && <span className="fl-tag fl-eng-tag">Engagement · {region.kind === 'city' ? 'City' : 'Province'}</span>}
         <span className="fl-tag" title="The enemy commander's tier at this campaign difficulty">Enemy {DIFFICULTIES[spec.difficulty].label.toLowerCase()}</span>
         {spec.timeLimit && <span className="fl-tag">Time limit {clockOf(spec.timeLimit)}</span>}
         <span className="fl-tag">{base ? 'Base mission' : 'No base'}</span>
@@ -652,6 +850,21 @@ function Briefing({
           {p}
         </p>
       ))}
+      {region && (
+        <>
+          <h3>What is known of the enemy</h3>
+          <dl className="fl-eng-intel" data-testid="engagement-intel">
+            <dt>Position</dt>
+            <dd>
+              {spec.enemy.base === 'full' ? 'A Command Yard and its base' : 'An outpost, no Command Yard'}: {countBuildings(spec.enemy.structures)}.
+            </dd>
+            <dt>Garrison</dt>
+            <dd>{spec.enemy.units.length ? countKinds(spec.enemy.units) : 'None seen'}.</dd>
+            <dt>Posture</dt>
+            <dd>{POSTURE[spec.enemy.ai]}</dd>
+          </dl>
+        </>
+      )}
       <h3>Objectives</h3>
       <ul className="fl-brief-list">
         {spec.objectives.map((o, i) => (
@@ -699,6 +912,7 @@ function Briefing({
       <h3>Rewards</h3>
       <p className="fl-small" style={{ margin: 0 }}>
         {spec.rewards.xp} xp to the Commander for a win, more for each star.
+        {region && ` ${region.name} flies Meridian colours, and the regions beyond it open. Engagements bring no new tech or heroes.`}
         {newHeroes.length > 0 && ` Unlocks ${newHeroes.map(k => `${heroName(k)}`).join(' and ')}.`}
         {newTech.length > 0 && ` New tech: ${newTech.map(kindName).join(', ')}.`}
       </p>
@@ -715,6 +929,7 @@ function Briefing({
         For the whole campaign, from the next deployment. Change it whenever you like.
         {cs.battle && !cs.battle.mission?.result && ' A battle already in progress keeps the difficulty it started with.'}
       </p>
+      {region && rec && !rec.won && <p className="fl-small" style={{ margin: 0 }}>Fought here before and lost. The Combine has not moved: the same battle waits.</p>}
       {replacing && <p className="fl-small" style={{ margin: 0, color: UI.warn }}>Deploying abandons the battle you have in progress.</p>}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
         <button type="button" className="fl-camp-btn primary big" data-testid="deploy" onClick={onDeploy}>
@@ -725,12 +940,73 @@ function Briefing({
   );
 }
 
+// ---- A region of the theatre ------------------------------------------------------------------
+
+/** A region opened from the map: an open engagement's briefing, or a short read-only note. */
+function RegionPanel({
+  region: r,
+  cs,
+  onClose,
+  onDeploy,
+  onLevel,
+  onOpenMission,
+}: {
+  region: TheatreRegion;
+  cs: CampaignSave;
+  onClose: () => void;
+  onDeploy: (spec: MissionSpec) => void;
+  onLevel: (level: Difficulty) => void;
+  onOpenMission: (id: string) => void;
+}) {
+  const c = cs.campaign;
+  const control = regionControl(c, r.id);
+  const spec = engagementSpec(c, r.id);
+  if (spec && control === 'open' && !engagementProblem(c, r.id)) {
+    return (
+      <Modal title={`Engagement: ${r.name}`} onClose={onClose}>
+        <Briefing spec={spec} cs={cs} region={r} onDeploy={() => onDeploy(spec)} onLevel={onLevel} />
+      </Modal>
+    );
+  }
+  const mission = r.missionId ? missionById(r.missionId) : undefined;
+  const before = mission ? MISSIONS.find(m => m.order === mission.order - 1) : undefined;
+  const rec = c.engagements[r.id];
+  const firstOfAct = [...MISSIONS].sort((a, b) => a.order - b.order).find(m => campaignActOf(m.order) === r.act);
+  let note: string;
+  if (r.home) note = `Home ground. The Meridian Corps has held ${r.name} since the campaign began.`;
+  else if (mission && c.missions[mission.id]?.won) note = `Taken in Mission ${mission.order}, ${mission.title}. ${r.name} flies Meridian colours.`;
+  else if (mission) note = `Mission ${mission.order}, ${mission.title}, is fought here.${before ? ` It opens when Mission ${before.order}, ${before.title}, is won.` : ''}`;
+  else if (rec?.won) note = `Taken. ${r.name} flies Meridian colours${rec.stars ? `, ${'★'.repeat(rec.stars)}` : ''}${rec.bestTicks !== null ? ` in ${clockOf(rec.bestTicks)}` : ''}.`;
+  else if (control === 'enemy' && firstOfAct && !missionUnlocked(c, firstOfAct.id)) note = `Combine ground on the ${ACT_NAMES[r.act].place.replace(/^The /, '').toLowerCase()}. This front opens with Mission ${firstOfAct.order}, ${firstOfAct.title}.`;
+  else note = `Combine ground. Take a region next to it first: nothing can reach ${r.name} until then.`;
+  return (
+    <Modal title={r.name} onClose={onClose}>
+      <div className="fl-region-note" data-testid="region-note" data-control={control} data-region={r.id}>
+        <span className="fl-tag" data-control={control}>
+          {r.kind === 'city' ? 'City' : 'Province'} · {control === 'held' ? 'Held' : 'Combine ground'}
+        </span>
+        <p className="fl-briefing-text">{note}</p>
+        {mission && c.missions[mission.id]?.won && (
+          <button type="button" className="fl-camp-btn" onClick={() => onOpenMission(mission.id)}>
+            Mission briefing
+          </button>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 // ---- Debrief --------------------------------------------------------------------------------
 
 function Debrief({ s, campaign, onDone }: { s: GameState; campaign: CampaignState; onDone: (c: CampaignState, retry: MissionSpec | null) => void }) {
-  const spec = s.mission ? missionById(s.mission.id) : undefined;
+  const region = regionOfEngagement(s.mission?.id);
+  const spec = useMemo(() => battleSpec(campaign, s.mission?.id), [campaign, s.mission?.id]);
   const outcome: MissionOutcome | null = useMemo(() => missionOutcome(s), [s]);
-  const after = useMemo(() => (spec && outcome ? applyOutcome(campaign, spec, outcome) : campaign), [campaign, spec, outcome]);
+  const after = useMemo(
+    () => (spec && outcome ? (region ? applyEngagementOutcome(campaign, region.id, outcome) : applyOutcome(campaign, spec, outcome)) : campaign),
+    [campaign, spec, region, outcome],
+  );
+  const taken = !!region && won0(outcome, s) && !campaign.engagements[region.id]?.won;
   const [fill, setFill] = useState(false);
   useEffect(() => {
     const t = window.setTimeout(() => setFill(true), 250);
@@ -752,10 +1028,17 @@ function Debrief({ s, campaign, onDone }: { s: GameState; campaign: CampaignStat
   return (
     <div className="fl-scrim fixed">
       <div className="fl-debrief" data-testid="debrief" data-result={won ? 'won' : 'lost'} role="dialog" aria-label="Debrief">
-        <p className="fl-eyebrow">{spec ? `Mission ${spec.order}: ${spec.title}` : 'Mission'}</p>
+        <p className="fl-eyebrow">{region ? `Engagement: ${region.name}` : spec ? `Mission ${spec.order}: ${spec.title}` : 'Mission'}</p>
         <h2 className="fl-debrief-title" data-won={won ? '1' : '0'}>
-          {won ? 'MISSION ACCOMPLISHED' : 'MISSION FAILED'}
+          {region ? (won ? 'REGION TAKEN' : 'ENGAGEMENT LOST') : won ? 'MISSION ACCOMPLISHED' : 'MISSION FAILED'}
         </h2>
+        {region && (
+          <p className="fl-debrief-region" data-testid="debrief-region" data-taken={won ? '1' : '0'}>
+            {won
+              ? `${region.name} ${taken ? 'now flies' : 'still flies'} Meridian colours.${taken ? ' The regions beyond it are open to us.' : ''}`
+              : `${region.name} stays in Combine hands. The same battle waits when you are ready.`}
+          </p>
+        )}
         {spec && (
           <div className="fl-debrief-stars" aria-label={`${stars} of ${maxStars(spec)} stars`}>
             {Array.from({ length: maxStars(spec) }, (_, i) => (
@@ -837,6 +1120,8 @@ function Debrief({ s, campaign, onDone }: { s: GameState; campaign: CampaignStat
     </div>
   );
 }
+
+const won0 = (outcome: MissionOutcome | null, s: GameState) => (outcome ? outcome.won : s.mission?.result === 'won');
 
 function DebriefObjective({ o, bonus = false }: { o: ObjectiveRuntime; bonus?: boolean }) {
   const state = o.failed ? 'failed' : o.done ? 'done' : 'open';

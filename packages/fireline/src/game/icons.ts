@@ -18,10 +18,12 @@ export function iconFor(kind: BuildingKind | UnitKind): string {
   if (hit) return hit;
   const W = 96;
   const H = 64;
+  // Drawn at twice the size it is shown, so the art stays sharp on high-density screens.
   const c = document.createElement('canvas');
-  c.width = W;
-  c.height = H;
+  c.width = W * 2;
+  c.height = H * 2;
   const ctx = c.getContext('2d')!;
+  ctx.scale(2, 2);
   const g = ctx.createLinearGradient(0, 0, 0, H);
   g.addColorStop(0, '#3e5a2c');
   g.addColorStop(1, '#2b3f1f');
@@ -74,6 +76,14 @@ export function iconFor(kind: BuildingKind | UnitKind): string {
     drawUnit(ctx, kind as UnitKind, 0, 0, air ? -4 : 0, { hull: -0.35, turret: -0.35, t: 0.13, moving: false, cargo: kind === 'hauler' ? 0.8 : air ? 1 : 0, sinceShot: 9 });
     ctx.restore();
   }
+  // Seat the picture in its button: a lit top edge and a shaded foot, like a tile set into the console.
+  ctx.fillStyle = 'rgba(255,255,255,0.16)';
+  ctx.fillRect(0, 0, W, 1);
+  const foot = ctx.createLinearGradient(0, H - 10, 0, H);
+  foot.addColorStop(0, 'rgba(0,0,0,0)');
+  foot.addColorStop(1, 'rgba(0,0,0,0.28)');
+  ctx.fillStyle = foot;
+  ctx.fillRect(0, H - 10, W, 10);
   const url = c.toDataURL();
   cache.set(kind, url);
   return url;

@@ -1289,36 +1289,55 @@ export function Battle({
   const verb = layout.touch ? 'tap' : 'click';
   const stopHint = layout.touch ? 'Tap the button below to stop.' : 'Right-click or Esc to stop.';
   const saveStatus = (
-    <span style={{ fontSize: '0.72rem', color: saveError ? UI.bad : UI.textFaint }} title={saveError ?? undefined}>
-      {saveError ? 'Not saving' : lastSaved ? `Saved ${cloud ? 'to your account' : 'in this browser'}` : 'Saves every 15s'}
+    <span
+      className="fl-d-save"
+      data-state={saveError ? 'error' : lastSaved ? 'saved' : 'idle'}
+      title={saveError ?? (lastSaved ? `Saved ${cloud ? 'to your account' : 'in this browser'}. Saves every 15 seconds.` : 'Saves every 15 seconds')}
+    >
+      <span className="fl-d-led" aria-hidden="true" />
+      {saveError ? 'Not saving' : lastSaved ? 'Saved' : 'Autosave'}
     </span>
   );
   const speedButtons = (
-    <div style={{ display: 'flex', gap: 2 }}>
+    <div className="fl-d-seg" role="group" aria-label="Game speed">
       {SPEEDS.map(sp => (
-        <button
-          key={sp.label}
-          style={{ ...chromeBtn, padding: '3px 8px', ...big, borderColor: speed === sp.value ? UI.accent : UI.rule, color: speed === sp.value ? UI.accent : UI.textSoft }}
-          onClick={() => setSpeed(sp.value)}
-        >
+        <button key={sp.label} type="button" className="fl-d-btn" style={big ?? undefined} aria-pressed={speed === sp.value} onClick={() => setSpeed(sp.value)}>
           {sp.label}
         </button>
       ))}
     </div>
   );
+  const pauseButton = (
+    <button
+      type="button"
+      className="fl-d-btn fl-d-pause"
+      data-paused={paused ? '1' : '0'}
+      style={big ?? undefined}
+      onClick={() => setPaused(p => !p)}
+      data-testid="pause"
+      title={paused ? 'Resume (P)' : 'Pause (P)'}
+    >
+      <span className="fl-d-glyph" data-glyph={paused ? 'play' : 'pause'} aria-hidden="true" />
+      {paused ? 'Resume' : 'Pause'}
+    </button>
+  );
   const soundControls = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+    <div className="fl-d-sound">
       <button
-        style={{ ...chromeBtn, ...big, minWidth: 82 }}
+        type="button"
+        className="fl-d-btn"
+        style={big ? { ...big, minWidth: 82 } : { minWidth: 82 }}
         data-testid="sound-button"
         aria-pressed={!soundPrefs.muted}
         title="Sound on or off (M)"
         onClick={() => changeSound({ muted: !soundPrefs.muted })}
       >
+        <span className="fl-d-glyph" data-glyph={soundPrefs.muted ? 'mute' : 'sound'} aria-hidden="true" />
         {soundPrefs.muted ? 'Sound off' : 'Sound on'}
       </button>
       <input
         type="range"
+        className="fl-d-range"
         min={0}
         max={1}
         step={0.05}
@@ -1326,15 +1345,18 @@ export function Battle({
         aria-label="Volume"
         disabled={soundPrefs.muted}
         onChange={e => changeSound({ volume: Number(e.target.value) })}
-        style={{ width: layout.compact ? 110 : 70, accentColor: 'var(--ui-accent)' }}
+        style={layout.compact ? { width: 110 } : undefined}
       />
     </div>
   );
   // The tour teaches a skirmish base; a campaign battle has no Tour button.
   const tourButton = mission ? null : (
     <button
-      style={{ ...chromeBtn, ...big }}
+      type="button"
+      className="fl-d-btn"
+      style={big ?? undefined}
       data-testid="tour-button"
+      title="Replay the guided first battle"
       onClick={() => {
         setMenu(false);
         setTourRun(n => n + 1);
@@ -1344,6 +1366,8 @@ export function Battle({
       Tour
     </button>
   );
+  // The portal's own toggles, fitted into the console: same height and face as its buttons.
+  const viewBtn: CSSProperties = { height: 26, padding: '0 7px', border: '1px solid transparent', background: 'transparent', color: UI.textSoft, fontSize: '0.72rem', borderRadius: 3 };
   const ownSelected = s.units.some(u => u.owner === 0 && overlay.current.selected.has(u.id));
   const modal = !!(placing || targeting);
   // Phones and touch screens get the build window as a full-screen sheet.
@@ -1363,46 +1387,58 @@ export function Battle({
 
   return (
     <div style={shell} className="fl-shell">
-      <header style={layout.compact ? { ...topBar, flexWrap: 'nowrap', gap: 6 } : topBar}>
-        <button style={{ ...chromeBtn, ...big }} onClick={leave} data-testid="leave">
-          ← {campaign ? campaign.leaveLabel : 'Lobby'}
+      <header className="fl-d-top" data-compact={layout.compact ? '1' : '0'}>
+        <button type="button" className="fl-d-btn fl-d-back" style={big ?? undefined} onClick={leave} data-testid="leave">
+          <span aria-hidden="true">←</span> {campaign ? campaign.leaveLabel : 'Lobby'}
         </button>
-        {!layout.stacked && <strong style={{ fontFamily: FONT.display, fontSize: '1rem', letterSpacing: '0.04em' }}>FIRELINE</strong>}
-        {!layout.compact && (
-          <span style={{ color: UI.textSoft, fontSize: '0.8rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 220 }}>
-            {s.name} · {DIFFICULTIES[s.difficulty].label}
-          </span>
+        {!layout.stacked && (
+          <div className="fl-d-ident">
+            <span className="fl-d-mark">FIRELINE</span>
+            {!layout.compact && (
+              <span className="fl-d-op" title={`${s.name} · ${DIFFICULTIES[s.difficulty].label}`}>
+                {s.name} · {DIFFICULTIES[s.difficulty].label}
+              </span>
+            )}
+          </div>
         )}
-        {!layout.stacked && <SideNames state={s} />}
-        <span style={{ fontFamily: FONT.mono, fontSize: '0.85rem', color: UI.text }} data-testid="clock">
-          {clock}
+        <span className="fl-d-clock" title="Battle time">
+          <span className="fl-d-clock-label" aria-hidden="true">
+            T+
+          </span>
+          <span data-testid="clock">{clock}</span>
         </span>
+        {!layout.stacked && <SideNames state={s} />}
         <span style={{ flex: 1 }} />
         {layout.compact ? (
           <>
-            {saveError && <span style={{ fontSize: '0.72rem', color: UI.bad }}>Not saving</span>}
-            <button style={{ ...chromeBtn, ...big, minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
-              {paused ? 'Resume' : 'Pause'}
-            </button>
-            <button style={{ ...chromeBtn, ...big }} aria-expanded={menu} aria-haspopup="dialog" data-testid="menu-button" onClick={() => setMenu(m => !m)}>
+            {saveError && <span className="fl-d-save" data-state="error">Not saving</span>}
+            {pauseButton}
+            <button type="button" className="fl-d-btn" style={big ?? undefined} aria-expanded={menu} aria-haspopup="dialog" data-testid="menu-button" onClick={() => setMenu(m => !m)}>
               Menu
             </button>
           </>
         ) : (
           <>
             {saveStatus}
-            {speedButtons}
-            <button style={{ ...chromeBtn, minWidth: 76 }} onClick={() => setPaused(p => !p)} data-testid="pause">
-              {paused ? 'Resume' : 'Pause'}
-            </button>
-            {soundControls}
-            {tourButton}
-            <button style={chromeBtn} onClick={() => setHelp(true)} aria-label="Controls">
-              ?
-            </button>
-            <MotionToggle style={{ padding: '4px 8px' }} />
-            <ThemeToggle style={{ padding: '4px 8px' }} />
-            <FullscreenToggle style={{ padding: '4px 8px' }} />
+            <div className="fl-d-group" role="group" aria-label="Battle clock">
+              <span className="fl-d-group-label" aria-hidden="true">Speed</span>
+              {speedButtons}
+              {pauseButton}
+            </div>
+            <div className="fl-d-group" role="group" aria-label="Sound">
+              {soundControls}
+            </div>
+            <div className="fl-d-group" role="group" aria-label="Help">
+              {tourButton}
+              <button type="button" className="fl-d-btn fl-d-help" onClick={() => setHelp(true)} aria-label="Controls" title="Controls">
+                ?
+              </button>
+            </div>
+            <div className="fl-d-group fl-d-view" role="group" aria-label="Display">
+              <MotionToggle style={viewBtn} />
+              <ThemeToggle style={viewBtn} />
+              <FullscreenToggle style={viewBtn} />
+            </div>
           </>
         )}
       </header>
@@ -1432,7 +1468,9 @@ export function Battle({
             <div style={{ ...menuRow, justifyContent: 'flex-end' }}>
               {tourButton}
               <button
-                style={{ ...chromeBtn, ...touchBtn }}
+                type="button"
+                className="fl-d-btn"
+                style={touchBtn}
                 onClick={() => {
                   setMenu(false);
                   setHelp(true);
@@ -1440,7 +1478,7 @@ export function Battle({
               >
                 Controls
               </button>
-              <button style={{ ...chromeBtn, ...touchBtn, borderColor: UI.accent }} onClick={() => setMenu(false)}>
+              <button type="button" className="fl-d-btn fl-d-primary" style={touchBtn} onClick={() => setMenu(false)}>
                 Close
               </button>
             </div>
@@ -1610,11 +1648,12 @@ export function Battle({
             </div>
           )}
           <div
-            style={{ ...feed, bottom: ((mission && !ended) || skirmishPowers ? 78 : 10) + barLift, maxWidth: layout.stacked ? '90%' : '60%' }}
+            className="fl-d-feed"
+            style={{ bottom: ((mission && !ended) || skirmishPowers ? 80 : 10) + barLift, maxWidth: layout.stacked ? '90%' : 'min(60%, 520px)' }}
             aria-live="polite"
           >
             {(layout.stacked ? recent.slice(0, 3) : recent).map(l => (
-              <div key={`${l.tick}-${l.text}`} style={{ color: l.tone === 'bad' ? '#ff9a8c' : l.tone === 'good' ? '#a8f0ae' : '#e4ebe8', opacity: Math.max(0.25, 1 - (s.tick - l.tick) / 300) }}>
+              <div key={`${l.tick}-${l.text}`} data-tone={l.tone ?? 'info'} style={{ opacity: Math.max(0.3, 1 - (s.tick - l.tick) / 300) }}>
                 {l.text}
               </div>
             ))}
@@ -1649,23 +1688,26 @@ export function Battle({
           )}
           {paused && !help && !ended && (
             <div style={scrim}>
-              <div style={card}>
-                <h2 style={{ margin: 0, fontFamily: FONT.display }}>Paused</h2>
-                <p style={{ margin: 0, color: UI.textSoft, fontSize: '0.85rem' }}>Your progress has been saved.</p>
-                <button style={{ ...chromeBtn, borderColor: UI.accent }} onClick={() => setPaused(false)}>
-                  Resume
+              <div className="fl-d-card fl-d-paused" role="dialog" aria-label="Paused">
+                <span className="fl-d-glyph fl-d-paused-glyph" data-glyph="pause" aria-hidden="true" />
+                <h2 className="fl-d-card-title">Paused</h2>
+                <p className="fl-d-card-sub">The battle is holding. Your progress has been saved.</p>
+                <button type="button" className="fl-d-btn fl-d-primary" onClick={() => setPaused(false)}>
+                  Resume <kbd>P</kbd>
                 </button>
               </div>
             </div>
           )}
           {help && (
             <div style={scrim} onClick={() => setHelp(false)}>
-              <div style={{ ...card, maxWidth: 520, textAlign: 'left' }} onClick={e => e.stopPropagation()}>
-                <h2 style={{ margin: 0, fontFamily: FONT.display }}>Controls</h2>
+              <div className="fl-d-card fl-d-help-card fl-scroll" role="dialog" aria-label="Controls" onClick={e => e.stopPropagation()}>
+                <header className="fl-d-card-head">
+                  <h2 className="fl-d-card-title">Controls</h2>
+                  <button type="button" className="fl-d-btn" onClick={() => setHelp(false)}>
+                    Close
+                  </button>
+                </header>
                 <Controls campaign={!!mission} touch={layout.touch} />
-                <button style={{ ...chromeBtn, alignSelf: 'flex-end' }} onClick={() => setHelp(false)}>
-                  Close
-                </button>
               </div>
             </div>
           )}
@@ -1684,17 +1726,19 @@ export function Battle({
         <aside
           style={
             layout.stacked
-              ? { ...sidebar, width: '100%', flex: '0 0 auto', maxHeight: '44%', borderLeft: 'none', borderTop: `1px solid ${UI.rule}` }
+              ? { ...sidebar, width: '100%', flex: '0 0 auto', maxHeight: '44%', borderLeft: 'none', borderTop: `1px solid ${UI.ruleStrong}` }
               : layout.short
                 ? { ...sidebar, width: 228, flex: '0 0 228px', padding: 8 }
                 : sidebar
           }
-          className="fl-scroll"
+          className="fl-scroll fl-d-side"
+          data-short={layout.short ? '1' : '0'}
         >
           {layout.stacked && overlay.current.selected.size > 0 && (
-            <div style={{ borderBottom: `1px solid ${UI.rule}`, paddingBottom: 8 }}>
+            <section className="fl-d-sel" aria-label="Selection">
+              <h3 className="fl-d-sect">Selection</h3>
               <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} touch={layout.touch} />
-            </div>
+            </section>
           )}
           <BuildPanel
             compact={layout.stacked || layout.short}
@@ -1713,9 +1757,10 @@ export function Battle({
             minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} alerts={alerts.current} />}
           />
           {!(layout.stacked && overlay.current.selected.size > 0) && (
-            <div style={{ borderTop: `1px solid ${UI.rule}`, paddingTop: 8 }}>
+            <section className="fl-d-sel" aria-label="Selection">
+              <h3 className="fl-d-sect">{overlay.current.selected.size > 0 ? 'Selection' : 'Orders'}</h3>
               <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} touch={layout.touch} />
-            </div>
+            </section>
           )}
         </aside>
       </div>
@@ -1812,12 +1857,12 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ],
   ];
   return (
-    <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+    <table className="fl-d-keys">
       <tbody>
-        {[...rows, ...(campaign ? campaignRows : []), ...(skirmish ? skirmishRows : [])].map(([k, v]) => (
-          <tr key={k}>
-            <td style={{ padding: '3px 12px 3px 0', whiteSpace: 'nowrap', fontWeight: 600, verticalAlign: 'top' }}>{k}</td>
-            <td style={{ padding: '3px 0', color: UI.textSoft }}>{v}</td>
+        {[...rows, ...(campaign ? campaignRows : []), ...(skirmish ? skirmishRows : [])].map(([k, v], i) => (
+          <tr key={`${i}-${k}`}>
+            <th scope="row">{k}</th>
+            <td>{v}</td>
           </tr>
         ))}
       </tbody>
@@ -1890,48 +1935,69 @@ function EndCard({ state, onLobby }: { state: GameState; onLobby: () => void }) 
     ['Losses', stat('lost')],
     ['Credits harvested', stat('harvested')],
   ];
+  const line = winningLine(state);
+  const minutes = Math.floor(secs / 60);
   return (
-    <div style={scrim}>
-      <div style={{ ...card, minWidth: 320 }} data-testid="end-card" data-status={statusOf(state)}>
-        <h2 style={{ margin: 0, fontFamily: FONT.display, fontSize: '1.8rem', letterSpacing: '0.08em', color: won ? UI.good : UI.bad }}>
-          {won ? 'VICTORY' : 'DEFEAT'}
-        </h2>
-        <p style={{ margin: 0, color: UI.textSoft, fontSize: '0.85rem' }}>
-          {won ? (two ? 'The Ashen Combine has been driven from the field' : 'Every enemy has been driven from the field') : 'Your last structure has fallen'} after {Math.floor(secs / 60)} minutes{' '}
-          {secs % 60} seconds.
-        </p>
-        {winningLine(state) && (
-          <p style={{ margin: 0, color: UI.text, fontSize: '0.85rem' }} data-testid="winning-team">
-            {winningLine(state)}
+    <div style={scrim} className="fl-d-end-scrim">
+      <div className="fl-d-end" role="dialog" aria-label={won ? 'Victory' : 'Defeat'} data-won={won ? '1' : '0'} data-testid="end-card" data-status={statusOf(state)}>
+        <div className="fl-d-end-band">
+          <p className="fl-d-end-eyebrow">
+            {state.name} · {DIFFICULTIES[state.difficulty].label}
           </p>
-        )}
-        <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem', width: '100%' }}>
-          <thead>
-            <tr style={{ color: UI.textFaint }}>
-              <th />
-              {cols.map(c => (
-                <th key={c.o} style={{ textAlign: 'right', padding: '2px 6px', color: c.colour }}>
-                  {c.label}
+          <h2 className="fl-d-end-title">{won ? 'VICTORY' : 'DEFEAT'}</h2>
+          <p className="fl-d-end-sub">
+            {won ? (two ? 'The Ashen Combine has been driven from the field' : 'Every enemy has been driven from the field') : 'Your last structure has fallen'} after {minutes}{' '}
+            {minutes === 1 ? 'minute' : 'minutes'} {secs % 60} seconds.
+          </p>
+          {line && (
+            <p className="fl-d-end-team" data-testid="winning-team">
+              {line}
+            </p>
+          )}
+        </div>
+        <div className="fl-d-end-body">
+          <h3 className="fl-d-sect">After-action report</h3>
+          <table className="fl-d-end-stats">
+            <thead>
+              <tr>
+                <th scope="col">
+                  <span className="fl-d-visually-hidden">Measure</span>
                 </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map(([l, vals]) => (
-              <tr key={l}>
-                <td style={{ textAlign: 'left', padding: '2px 6px 2px 0', color: UI.textSoft }}>{l}</td>
-                {vals.map((v, o) => (
-                  <td key={o} style={{ textAlign: 'right', padding: '2px 6px', fontFamily: FONT.mono }}>
-                    {Math.floor(v).toLocaleString('en-GB')}
-                  </td>
+                {cols.map(c => (
+                  <th key={c.o} scope="col" style={{ color: c.colour }}>
+                    {c.label}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-        <button style={{ ...chromeBtn, borderColor: UI.accent }} onClick={onLobby}>
-          Back to the lobby
-        </button>
+            </thead>
+            <tbody>
+              {rows.map(([l, vals]) => {
+                const top = Math.max(1, ...cols.map(c => vals[c.o] ?? 0));
+                return (
+                  <tr key={l}>
+                    <th scope="row">{l}</th>
+                    {cols.map(c => {
+                      const v = vals[c.o] ?? 0;
+                      return (
+                        <td key={c.o}>
+                          <span className="fl-d-end-val">{Math.floor(v).toLocaleString('en-GB')}</span>
+                          <span className="fl-d-end-bar" aria-hidden="true">
+                            <span style={{ width: `${Math.round((v / top) * 100)}%`, background: c.colour }} />
+                          </span>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="fl-d-end-foot">
+          <button type="button" className="fl-d-btn fl-d-primary" onClick={onLobby} autoFocus>
+            Back to the lobby
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1946,16 +2012,6 @@ const shell: CSSProperties = {
   overflow: 'hidden',
 };
 
-const topBar: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  padding: '6px 10px',
-  borderBottom: `1px solid ${UI.rule}`,
-  background: UI.panel,
-  flexWrap: 'wrap',
-};
-
 const body: CSSProperties = {
   flex: 1,
   display: 'flex',
@@ -1963,6 +2019,7 @@ const body: CSSProperties = {
   flexWrap: 'wrap',
 };
 
+/** Width and scroll only: the console face (background, edge, bevel) is .fl-d-side in styles.css. */
 const sidebar: CSSProperties = {
   width: 268,
   flex: '0 0 268px',
@@ -1971,9 +2028,7 @@ const sidebar: CSSProperties = {
   padding: 10,
   display: 'flex',
   flexDirection: 'column',
-  gap: 10,
-  background: UI.panel,
-  borderLeft: `1px solid ${UI.rule}`,
+  gap: 12,
 };
 
 /** Finger-sized: 40px tall, the smallest target that is reliable on a phone. */
@@ -2019,9 +2074,10 @@ const menuScrim: CSSProperties = {
 };
 
 const menuSheet: CSSProperties = {
-  background: UI.panel,
-  border: `1px solid ${UI.rule}`,
-  borderRadius: 6,
+  background: 'linear-gradient(180deg, var(--d-console-hi), var(--ui-panel) 90px)',
+  border: '1px solid var(--d-btn-rule)',
+  borderTop: `3px solid ${UI.accent}`,
+  borderRadius: 8,
   padding: 14,
   width: 'min(360px, 100%)',
   display: 'flex',
@@ -2045,19 +2101,6 @@ export const chromeBtn: CSSProperties = {
   cursor: 'pointer',
 };
 
-const feed: CSSProperties = {
-  position: 'absolute',
-  left: 10,
-  bottom: 10,
-  display: 'flex',
-  flexDirection: 'column-reverse',
-  gap: 2,
-  fontSize: '0.78rem',
-  textShadow: '0 1px 2px #000, 0 0 6px #000',
-  pointerEvents: 'none',
-  maxWidth: '60%',
-};
-
 const scrim: CSSProperties = {
   position: 'absolute',
   inset: 0,
@@ -2066,19 +2109,6 @@ const scrim: CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   padding: 16,
-};
-
-const card: CSSProperties = {
-  background: UI.panel,
-  border: `1px solid ${UI.rule}`,
-  borderRadius: 6,
-  padding: '18px 22px',
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  gap: 12,
-  boxShadow: `0 10px 40px ${UI.shadow}`,
-  textAlign: 'center',
 };
 
 const errorStrip: CSSProperties = {
