@@ -130,17 +130,22 @@ mission AI once the round-1 opponent work lands.
   - [ ] Battlefield art carries no army tint (seat colours only); a tint would need art tokens the canvas can read.
   - [ ] Hard: Ashen against Meridian not yet measured over 150 seeds (only Normal).
 - [x] B. Heroes in free play behind a setup option (Command Academy, one of each, revive after 90s at half price).
-  - [ ] The stat card and How to play's unit grids read the catalogue's hero cost and time (0); they should read `costFor` and `buildTicksFor` (integration, with A's per-army stat tip).
+  - [x] The stat card and How to play's unit grids read the catalogue's hero cost and time (0); they should read `costFor` and `buildTicksFor` (integration, with A's per-army stat tip).
+  - [ ] The computer recruits heroes from about minute 13, and Hard advanced battles now end at about 22 minutes (D's formations): on Hard they rarely act before the end.
 - [x] C. Generals. A doctrine General per seat (two per army, a perks bundle on
   that side alone) and, behind "Generals: On", a field General unit with a command aura.
-  - [ ] The link "a General leads a formation" waits for workstream D, at integration.
+  - [x] The link "a General leads a formation" waits for workstream D, at integration.
 - [x] D. Formations and squads: line, column, wedge and box; a squad that keeps pace; the computer's waves in formation.
   - [x] `slotsFor` integer tables turned to eight facings without trigonometry; slots by role, then id (Medics inside a box).
   - [x] Squads: the leader paths, the others steer to their slot beside it every 8 ticks, everyone at the slowest member's pace.
   - [x] Formation row beside Stance (desktop and touch), the period key; control groups kept per battle in the browser, chips on touch.
   - [x] The computer's waves attack in a wedge and regroup in a box, advanced tech only.
   - [ ] Slot marks for a selected squad on the battlefield (renderer.ts has no D marker yet; the integrator's call).
-  - [ ] A touch Controls row for the formation buttons (the touch key table has no D marker).
+  - [x] A touch Controls row for the formation buttons (the touch key table has no D marker).
+- [x] Integration: the General leads its squad (tighter, nobody straggles; the computer's General leads its wave), build keys stable with every option on, stat cards at the battle's prices, the setup text names recruits only when on, the General's button in the bar row.
+  - [ ] On a phone, a wrapped bar row (heroes, powers, the General) rides over the message feed's lowest lines.
+  - [ ] Ashen won 16 of 23 advanced battles with Heroes and Generals on (Normal, both seats): too few to read; wants a 150-seed ladder run with those options (the ladder has no switch for them yet).
+  - [ ] An Ashen side down to a Kestrel and a Repair Truck leaves the Kestrel parked, so the battle stalls to its cap against a side with structures alone (one battle in 24).
 
 ## Found along the way
 

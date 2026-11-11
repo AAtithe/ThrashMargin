@@ -1063,3 +1063,89 @@ Ladder, `--map mix`, 150 seeds, Normal: the mirror read 53% / 45% (3 unfinished)
 (1 unfinished) after, inside the noise, average length 25.1 and 25.2 minutes; new against `prev` 69%
 before, 67% after. Formations neither help nor hurt the computer measurably; they change how a wave
 looks on the way in, which is the point.
+
+### 2026-11-11: Round 6 integration
+
+The four workstreams merged in the contract's order (A, B, C, D), each with `git merge --no-ff` and a
+clean typecheck before the next. A and B merged without code conflicts; C met B only in the import
+lines of `GameScreen.tsx`, `ai.ts`, `commands.ts` and `SkirmishSetup.tsx` (both kept), and the build
+log and improvements list met in every merge (every entry kept, in merge order; headings brought to
+this log's "date: title" form).
+
+Seams closed at integration:
+
+- **The General leads a formation.** A squad with a field General among its members is led by the
+  General (`squadLeader`), wherever its slot falls by role (behind the armour). Such a squad re-aims
+  its members every 4 ticks rather than 8; a member out of its slot catches up past 1 tile rather
+  than 1.5, but one ahead of its slot waits for the squad instead of running on; and the General
+  holds to a quarter of the squad's pace while any member is more than 1.5 tiles behind or beside
+  its slot. Measured on open ground over eight directions, once formed: the worst distance from a
+  slot averages 0.99 tiles led by the General against 1.18 led from the front, tighter in 6 of 8
+  directions, never more than 2.2 tiles. The computer adds its General to its wave's wedge and
+  regroup box when it stands within 12 tiles of the wave and is not pulling back (`generalLeads`),
+  and `generalPlan` leaves a leading General to its squad; pulled back below 40% health, a plain move
+  takes it out and the squad goes on under its front slot. In six whole battles the computer's
+  General led its wave's squad in 48 samples of 250 ticks.
+- **Build keys.** `menuOf` now closes every list with the round's recruits (the General, then the
+  heroes) after the army's own items, so a key in use never moves when Heroes or Generals are on or
+  when an Academy goes up mid-battle (it used to: the Raider Bike went from N to D). Every unit list
+  fits the 14 keys with everything on (Ashen's Vehicles: 14, the Ace on D); past the fourteenth only
+  the Prototype Works, the Fortress and the Command Academy, which the key table now names as
+  clicked. The `0` row shows in a skirmish only; the touch table gained rows for the formation
+  buttons and the group chips.
+- **Prices on the cards.** Stat cards price what the battle charges (`listedCost`: `costFor` and
+  `buildTicksFor`, so a doctrine's discount and a hero's recruit price show); How to play's grids and
+  the armies panel show a hero's recruit price and time rather than the campaign's 0.
+- **Setup text.** Advanced tech's description names the Academy and its heroes only with Heroes on,
+  and the General only with Generals on (`techText`); How to play says what each option adds.
+- **Generals and armies.** Already right in C's code (GENERAL_FACTION, the setup's own two, the
+  computer's seeded pick); now asserted over every pairing of armies from both seats, with Ilse's
+  air discount reaching the Kestrel and Firebrand by `airRole`.
+- **The General's button** sat in its own corner and covered the power bar on a phone; it now sits
+  in the bar row beside the hero and power bars and wraps with them. Selected, its tint lay over the
+  battlefield rather than the HUD colour, and its title vanished in light mode.
+- **A livelock found by the all-options battles.** With its economy broken, the computer's
+  `raiseFunds` cancelled the queued General to pay for a hauler and `generalPlan` queued it again at
+  once, every decision, so the infantry queue never moved and the battle ran to its cap.
+  `generalPlan` now recruits nothing without a refinery and a hauler (B's rule for heroes).
+- **Harness repairs.** C's "other kinds at full price" read Meridian's catalogue price for an Ashen
+  side; it now reads the side's own army. B's computer section played one Hard battle, which D's
+  formations end at 17 minutes, before any hero acts (Hard advanced mirrors now average 22 minutes
+  against 31 before D, over 12 seeds); it now plays four Normal battles, 21 hero abilities among them.
+  The tour's build-window check now expects the recruits to be absent with both options off. The
+  script type errors are gone (`drive.ts`'s missing air queue, `drive-heroes`' building list,
+  `campaign-check`'s objective set; `HERO_ACADEMY` is a literal type): every round 6 harness
+  typechecks with `src`.
+- **Contract.** Section 1 now says Meridian's `FACTION_MENUS` adds the Sapper, as built.
+
+`npm run drive`: 0 failed, 374,046 assertions, about 7.7 minutes. Against the round's baseline, only
+the advanced lines D's entry names moved, by exactly D's figures; no line moved at A, B or C, or at
+integration:
+
+| Line | Before round 6 | After |
+|---|---|---|
+| Air battle on Hard | side 1 at 21 min; 12 bombs, 5 rockets; upgrades 0 and 0 | side 1 at 19 min; 12 bombs, 4 rockets; upgrades 0 and 2 |
+| Sides block | 12/12, 21.8 min | 12/12, 20.8 min (the six advanced battles) |
+| Larger maps | 5/5; 33.2 min larger, 25.6 standard | 5/5; 34.7 and 23.4 |
+| Engineering battle | side 1 in 21 min, 3 trucks, 3 Field Yards, 78 mends | side 1 in 25 min, 3 trucks, 5 Field Yards, 86 mends |
+| Map types | 12/12, 26.2 min; side 0 won 4, side 1 won 8 | 11/12, 25.1 min; side 0 won 4, side 1 won 7 |
+
+Unchanged: the three mission lines, the standard-tech line (26/28, 20.6 minutes), the tier-three
+battle and every map and site check. `campaign-check` 2,937 assertions; `npm run check` passes; both
+tours pass (desktop; touch on three phone layouts); 27 of 27 loading checks for Fireline.
+
+AI ladder, default card (150 seeds, the original game): identical to the card before the round
+(mirror 52% to 47%, Hard over Normal 67%, Normal over Easy 100%, new over old 89% at Normal and 56%
+at Hard). Twenty-four advanced battles with every option on (Ashen against Meridian from both seats,
+Heroes and Generals on, Normal, random maps): 23 finished, 10 to 50 minutes; both sides fielded a
+General in every one. The one left at the 100-minute cap is an attrition stalemate (neither side
+has a refinery or a hauler; side 1 is left with a Repair Truck and a Kestrel that stays parked at
+its Helipad, side 0 with structures alone; the same seed with Generals off ends at 31 minutes).
+Ashen won 16 of the 23, more than workstream A's 53% without the options: 23 battles is too few to
+read, but the armies with heroes and Generals on want their own 150-seed run.
+
+In the browser (desktop and iPhone 13, light and dark): an Ashen-against-Meridian lobby offers seat 0
+only Ashen's two Generals and names the Academy and the General in the tech text; in the battle the
+Academy and the General are listed and buildable, the General's button shows, a Wedge given to the
+General and four tanks keeps its shape on the move, the saved squad is led by the General, and no
+page or console errors.
