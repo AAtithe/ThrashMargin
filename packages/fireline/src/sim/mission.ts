@@ -23,6 +23,7 @@ import {
   SIDE_NAMES,
   SKIRMISH_POWERS,
   SPY_BLACKOUT_TICKS,
+  DETECTOR_RANGE,
   SPY_DETECT_RANGE,
   SPY_SABOTAGE_TICKS,
   SPY_STEAL_MAX,
@@ -404,7 +405,9 @@ export function isDetected(s: GameState, u: Unit, by: Owner): boolean {
   const r = SPY_DETECT_RANGE;
   for (const e of s.units) {
     if (e.hp <= 0 || !isAlly(s, e.owner, by)) continue;
-    if (Math.abs(e.x - u.x) <= r && Math.abs(e.y - u.y) <= r && dist(e.x, e.y, u.x, u.y) <= r) return true;
+    // A detector (the Recon Plane) spots Spies from further off; never nearer than anyone else.
+    const rr = UNITS[e.kind].detector ? Math.max(r, DETECTOR_RANGE) : r;
+    if (Math.abs(e.x - u.x) <= rr && Math.abs(e.y - u.y) <= rr && dist(e.x, e.y, u.x, u.y) <= rr) return true;
   }
   for (const b of s.buildings) if (b.hp > 0 && isAlly(s, b.owner, by) && distToBuilding(u.x, u.y, b) <= r) return true;
   if (isAlly(s, by, 0) && s.recon) for (const a of s.recon) if (s.tick < a[3] && dist(a[0], a[1], u.x, u.y) <= a[2]) return true;

@@ -23,6 +23,8 @@ import { setAutopilotAi } from '../src/sim/ai';
 import { processAction } from '../src/sim/actions';
 // round4:A. Air power and research: its import (scripts/drive-air.ts) goes on the line below.
 import { sections as airSections } from './drive-air';
+// The air war (2026-11-10): the Recon Plane, the Interceptor and Countermeasures.
+import { sections as airWarSections } from './drive-airwar';
 import { canQueue, placementProblem } from '../src/sim/commands';
 import { dist, distToBuilding, occupancy, passable } from '../src/sim/grid';
 import { generateMap, isWalkable, START_0, START_1 } from '../src/sim/map';
@@ -2743,6 +2745,7 @@ if (!CAMPAIGN_ONLY) {
     // round4:A. Air power and research (fireline-round4-design.md): its sections, imported from
     // scripts/drive-air.ts, go on the lines below this comment.
     ...airSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    ...airWarSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round4:B. Bigger battles (fireline-round4-design.md): its sections, imported from
     // scripts/drive-sides.ts, go on the lines below this comment.
     ...sidesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),

@@ -50,23 +50,23 @@ const AIRCRAFT: UnitKind[] = ['gunship', 'bomber'];
 const ANTI_AIR_UNITS: UnitKind[] = ['flaktrack', 'skyhunter'];
 const NEW_KINDS: (BuildingKind | UnitKind)[] = ['helipad', 'flakcannon', 'researchlab', 'gunship', 'bomber', 'flaktrack', 'skyhunter'];
 
-const copy = (s: GameState): GameState => JSON.parse(JSON.stringify(s));
+export const copy = (s: GameState): GameState => JSON.parse(JSON.stringify(s));
 /** Runs n ticks, in actions of at most 500 (the reducer takes no more than 600 at once). */
-function tick(s: GameState, n = 1): GameState {
+export function tick(s: GameState, n = 1): GameState {
   for (let left = n; left > 0; left -= 500) s = processAction(s, { type: 'tick', n: Math.min(500, left) });
   return s;
 }
-const unitIn = (s: GameState, id: number) => s.units.find(u => u.id === id);
+export const unitIn = (s: GameState, id: number) => s.units.find(u => u.id === id);
 const buildingIn = (s: GameState, id: number) => s.buildings.find(b => b.id === id);
 const categoryOfKind = (k: BuildingKind | UnitKind): Category => (k in BUILDINGS ? 'building' : UNITS[k as UnitKind].category);
 
-function tickUntil(s: GameState, done: (s: GameState) => boolean, max: number): GameState {
+export function tickUntil(s: GameState, done: (s: GameState) => boolean, max: number): GameState {
   for (let i = 0; i < max && !done(s); i++) s = processAction(s, { type: 'tick' });
   return s;
 }
 
 /** Side 1's commander switched off: these sections test the rules, not the commander. */
-function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
+export function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
   return ok => {
     setAutopilotAi(() => {}, 1);
     try {
@@ -81,7 +81,7 @@ function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
  * An advanced skirmish on open plains with everyone's units gone, nothing attacking, and a
  * (cx, cy) with 17 by 17 tiles of clear ground round it.
  */
-function airArena(seed = 'air-arena', setup: Partial<SkirmishSetup> = { map: 'plains', tech: 'advanced', credits: 20000 }) {
+export function airArena(seed = 'air-arena', setup: Partial<SkirmishSetup> = { map: 'plains', tech: 'advanced', credits: 20000 }) {
   const s = copy(createInitialState(seed, seed, { seed, createdAt: 0, setup }));
   s.units = [];
   for (const m of s.ai) m.nextAttack = 1e9;
@@ -101,7 +101,7 @@ function airArena(seed = 'air-arena', setup: Partial<SkirmishSetup> = { map: 'pl
   return { s, cx, cy };
 }
 
-function put(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number, extra: Partial<Unit> = {}): Unit {
+export function put(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number, extra: Partial<Unit> = {}): Unit {
   const u = addUnit(s, owner, kind, x, y);
   if (isAir(u)) u.ammo = AIR_AMMO[kind];
   Object.assign(u, extra);
@@ -109,7 +109,7 @@ function put(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number, e
 }
 
 /** A Helipad for a side, and aircraft launched from it, parked on its pad. */
-function padWith(s: GameState, owner: Owner, x: number, y: number, kinds: UnitKind[]): { pad: Building; craft: Unit[] } {
+export function padWith(s: GameState, owner: Owner, x: number, y: number, kinds: UnitKind[]): { pad: Building; craft: Unit[] } {
   const pad = addBuilding(s, owner, 'helipad', x, y, -100);
   const craft = kinds.map(k => {
     const u = addUnit(s, owner, k, x + 1, y + 1);

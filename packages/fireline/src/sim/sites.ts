@@ -15,6 +15,7 @@ import {
   SITE_YARD_GAP,
   SITES,
   SITES_PER_SIDE,
+  DETECTOR_RANGE,
   STEALTH_DETECT_RANGE,
   STEALTH_REVEAL_TICKS,
   UNITS,
@@ -509,11 +510,13 @@ function effectsStep(s: GameState): void {
 export function stealthSeen(s: GameState, u: Unit, by: Owner): boolean {
   if (!UNITS[u.kind].stealth || isAlly(s, u.owner, by)) return true;
   if (u.lastShot !== undefined && s.tick - u.lastShot <= STEALTH_REVEAL_TICKS) return true;
-  const r = STEALTH_DETECT_RANGE;
   for (const e of s.units) {
     if (e.hp <= 0 || !isAlly(s, e.owner, by)) continue;
+    // A detector (the Recon Plane) sees it from much further off.
+    const r = UNITS[e.kind].detector ? DETECTOR_RANGE : STEALTH_DETECT_RANGE;
     if (Math.abs(e.x - u.x) <= r && Math.abs(e.y - u.y) <= r && dist(e.x, e.y, u.x, u.y) <= r) return true;
   }
+  const r = STEALTH_DETECT_RANGE;
   for (const b of s.buildings) {
     if (b.hp <= 0 || !isStructure(b) || !isAlly(s, b.owner, by)) continue;
     const c = buildingCentre(b);

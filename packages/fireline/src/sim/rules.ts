@@ -109,6 +109,11 @@ export type UnitKind =
   | 'bomber'
   | 'flaktrack'
   | 'skyhunter'
+  // Air war (2026-11-10): the recon plane and the interceptor.
+  | 'reconplane'
+  | 'interceptor'
+  | 'carrier'
+  | 'heavybomber'
   // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its unit kinds.
   | 'repairtruck'
   | 'basetruck'
@@ -172,6 +177,13 @@ export interface UnitSpec {
    * fires (the Stealth Tank). Absent on the rest; the Spy keeps its own rule in mission.ts.
    */
   stealth?: true;
+  /**
+   * Air war: sees Stealth Tanks and Spies within DETECTOR_RANGE (the Recon Plane), where any other
+   * unit sees them only close up. Absent on the rest.
+   */
+  detector?: true;
+  /** Air war: infantry it can carry (the Troop Carrier). Absent on the rest. */
+  carries?: number;
 }
 
 export interface BuildingSpec {
@@ -453,6 +465,59 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     weapon: { kind: 'aamissile', damage: 60, range: 6, cooldown: 32, canHitAir: true, canHitGround: false },
     requires: ['barracks'],
     blurb: 'Shoulder-launched anti-air missiles. Brings down aircraft; helpless against anything on the ground.',
+  },
+  // ---- Air war (2026-11-10): advanced tech only --------------------------------------------
+  reconplane: {
+    name: 'Recon Plane',
+    category: 'air',
+    cost: 700,
+    buildTicks: 90,
+    hp: 170,
+    armor: 'aircraft',
+    speed: 0.24,
+    sight: 11,
+    requires: ['helipad'],
+    blurb: 'Unarmed scout. Sees far, uncovers Stealth Tanks and Spies, circles where it is sent until its fuel runs low.',
+    detector: true,
+  },
+  interceptor: {
+    name: 'Interceptor',
+    category: 'air',
+    cost: 1200,
+    buildTicks: 130,
+    hp: 240,
+    armor: 'aircraft',
+    speed: 0.27,
+    sight: 8,
+    weapon: { kind: 'aamissile', damage: 55, range: 5, cooldown: 10, canHitAir: true, canHitGround: false },
+    requires: ['helipad', 'researchlab'],
+    blurb: 'Air-to-air fighter. Scrambles from its Helipad at enemy aircraft nearby; cannot fire at the ground.',
+  },
+  carrier: {
+    name: 'Troop Carrier',
+    category: 'air',
+    cost: 1000,
+    buildTicks: 120,
+    hp: 380,
+    armor: 'aircraft',
+    speed: 0.17,
+    sight: 7,
+    requires: ['helipad', 'barracks'],
+    blurb: 'Unarmed transport for six infantry. Right-click it with infantry to board; Unload sets them down wherever it hovers.',
+    carries: 6,
+  },
+  heavybomber: {
+    name: 'Heavy Bomber',
+    category: 'air',
+    cost: 3000,
+    buildTicks: 280,
+    hp: 640,
+    armor: 'aircraft',
+    speed: 0.15,
+    sight: 6,
+    weapon: { kind: 'bomb', damage: 160, range: 3.5, cooldown: 4, splash: 1.8, canHitAir: false },
+    requires: ['helipad', 'techcentre', 'researchlab'],
+    blurb: 'Slow and armoured. Ten heavy bombs in one long run. Takes a whole Helipad to itself.',
   },
   // round5:C begin. Engineering vehicles: its units, appended here.
   repairtruck: {
@@ -786,7 +851,7 @@ export const VEHICLE_MENU: UnitKind[] = [
   // round5:D end.
 ];
 /** Aircraft in the order the Air tab offers them. */
-export const AIR_MENU: UnitKind[] = ['gunship', 'bomber'];
+export const AIR_MENU: UnitKind[] = ['reconplane', 'gunship', 'interceptor', 'carrier', 'bomber', 'heavybomber'];
 
 /**
  * The original game: six structures (and the Command Yard) and six units. A skirmish set up with
@@ -1257,15 +1322,48 @@ export const isAirKind = (kind: UnitKind): boolean => UNITS[kind].category === '
  * Loads an aircraft carries. A Gunship fires one rocket per load; a Bomber drops one bomb per load,
  * all of them in one run. With none left it flies back to its Helipad to rearm.
  */
-export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber: 6 };
+export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber: 6, interceptor: 6, reconplane: 12, heavybomber: 10 };
 /** Ticks on its Helipad to put back one load (Air frames shortens it). */
-export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25 };
+export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25, interceptor: 14, reconplane: 10, heavybomber: 30 };
 /** Ticks between bombs in a run: with the Bomber's speed, a bomb about every 0.9 tiles. */
 export const BOMB_GAP = 4;
 /** Aircraft keep at least this far from the map's edge. */
 export const AIR_EDGE = 0.5;
 
-export type UpgradeId = 'plating' | 'calibration' | 'engines' | 'refining' | 'airframes';
+// ---- Air war (2026-11-10) ------------------------------------------------------------------------
+//
+// The Recon Plane carries fuel, not ammunition: its AIR_AMMO loads are fuel, one burnt every
+// FUEL_TICKS while it is off its pad (12 loads, about a minute aloft), and it heads home with
+// FUEL_RESERVE left. Sent somewhere it circles there (an orbit of about two tiles) until then.
+// The Interceptor scrambles: parked full on its pad, not on hold, it goes for any enemy aircraft
+// within SCRAMBLE_RANGE of the pad, chases no further than SCRAMBLE_LEASH from it, and comes home.
+
+/** Ticks of flight a load of the Recon Plane's fuel lasts. */
+export const FUEL_TICKS = 50;
+/** Fuel loads at which a Recon Plane turns for home. */
+export const FUEL_RESERVE = 2;
+/** Tiles within which a detector (the Recon Plane) sees Stealth Tanks and Spies. */
+export const DETECTOR_RANGE = 7;
+/** A Recon Plane circling: its heading turns by this angle each tick (cos and sin as constants, so replays never depend on Math.cos). */
+export const ORBIT_COS = 0.9928086358538663; // cos(0.12)
+export const ORBIT_SIN = 0.11971220728891936; // sin(0.12)
+/** Tiles from its Helipad within which a parked Interceptor scrambles at an enemy aircraft. */
+export const SCRAMBLE_RANGE = 14;
+/** Tiles from its Helipad beyond which a scrambled Interceptor breaks off and goes home. */
+export const SCRAMBLE_LEASH = 20;
+/** Countermeasures (research): what anti-air weapons do to this side's aircraft. */
+export const COUNTERMEASURES_DAMAGE = 0.75;
+/** Helipad places an aircraft takes (HELIPAD_SLOTS each): one, but the Heavy Bomber takes a whole pad. */
+export const AIR_SLOTS: Partial<Record<UnitKind, number>> = { heavybomber: 2 };
+export const airSlotsOf = (kind: UnitKind): number => AIR_SLOTS[kind] ?? 1;
+/** True for a bomber of either size: its weapon drops bombs in a run. */
+export const isBomberKind = (kind: UnitKind): boolean => UNITS[kind].weapon?.kind === 'bomb';
+/** Tiles from a Troop Carrier within which infantry ordered aboard climb in. */
+export const BOARD_RANGE = 2.3;
+/** Tiles round a Troop Carrier within which it sets its infantry down; nowhere to stand within it, it cannot unload. */
+export const UNLOAD_RADIUS = 3;
+
+export type UpgradeId = 'plating' | 'calibration' | 'engines' | 'refining' | 'airframes' | 'countermeasures';
 
 export interface UpgradeSpec {
   name: string;
@@ -1312,10 +1410,17 @@ export const UPGRADES: Record<UpgradeId, UpgradeSpec> = {
     ticks: 600,
     requires: ['researchlab', 'helipad'],
   },
+  countermeasures: {
+    name: 'Countermeasures',
+    blurb: 'Flares and chaff: flak and anti-air missiles do a quarter less to your aircraft.',
+    cost: 1500,
+    ticks: 600,
+    requires: ['researchlab', 'helipad'],
+  },
 };
 
 /** Upgrades in the order the Research block lists them. */
-export const UPGRADE_ORDER: UpgradeId[] = ['refining', 'plating', 'engines', 'calibration', 'airframes'];
+export const UPGRADE_ORDER: UpgradeId[] = ['refining', 'plating', 'engines', 'calibration', 'airframes', 'countermeasures'];
 
 /** What each upgrade does to the number it changes. */
 export const PLATING_HP = 1.2;
