@@ -1481,6 +1481,55 @@ function engineerTests(): void {
     ok(unitIn(full, tank.id)!.hp === UNITS.tank.hp, 'and stops at full health');
     ok(unitIn(full, ace.id)!.hp === maxHpOf(unitIn(full, ace.id)!), 'heroes in vehicles are repaired too');
   }
+  // A structure a primary capture objective names is never picked by side 0's own units (Borrowed
+  // Steel: attack-moving through the yard shot the War Factory down and the mission could not be won);
+  // an explicit order still goes through; and if it is destroyed anyway the mission is lost, not left open.
+  {
+    const cap = (): GameState =>
+      quiet(
+        copy(
+          createMissionState(
+            mspec({
+              player: { credits: 0, structures: [], units: [], heroes: ['engineer'] },
+              enemy: { credits: 0, base: 'outpost', structures: ['factory', 'power'], units: [], ai: 'passive' },
+              objectives: [{ kind: 'capture', building: 'factory' }, { kind: 'destroyAll' }, { kind: 'keepAlive', hero: 'engineer' }],
+              bonus: [],
+              triggers: [{ afterObjective: 0, spawn: { owner: 1, kind: 'rifleman', count: 2, x: 4.5, y: 4.5, order: 'guard' } }],
+            }),
+            mctx({ heroes: ALL_HEROES }),
+          ),
+        ),
+      );
+    const base = cap();
+    const fac = enemyB(base, 'factory');
+    const gen = enemyB(base, 'power');
+    const w = copy(base);
+    const p = beside(w, fac);
+    const tank = put(w, 0, 'tank', p.x, p.y);
+    const after = processAction(w, { type: 'tick', n: 120 });
+    ok(after.buildings.find(b => b.id === fac.id)!.hp === BUILDINGS.factory.hp, 'a tank beside a War Factory the mission wants captured leaves it alone');
+    const ordered = processAction(processAction(after, { type: 'attack', ids: [tank.id], target: fac.id }), { type: 'tick', n: 60 });
+    ok(ordered.buildings.find(b => b.id === fac.id)!.hp < BUILDINGS.factory.hp, 'but fires on it when ordered to');
+    const gone = copy(after);
+    gone.buildings.find(b => b.id === fac.id)!.hp = 1;
+    const lost = tickUntil(processAction(gone, { type: 'attack', ids: [tank.id], target: fac.id }), q => !!q.mission!.result, 200);
+    ok(lost.mission!.result === 'lost' && lost.mission!.lostBecause === 'The enemy War Factory was destroyed before it could be captured.', `a War Factory destroyed before its capture loses the mission (${lost.mission!.result}: ${lost.mission!.lostBecause})`);
+    ok(lost.mission!.objectives[0].failed, 'and the capture objective reads failed');
+    // Other structures are fair game while the capture is open.
+    const g = copy(base);
+    const gp = beside(g, gen);
+    put(g, 0, 'tank', gp.x, gp.y);
+    const gg = processAction(g, { type: 'tick', n: 60 });
+    ok((gg.buildings.find(b => b.id === gen.id)?.hp ?? 0) < BUILDINGS.power.hp, 'other enemy structures are still picked');
+    // A capture that also finishes "destroy everything" still meets the group its trigger sends.
+    const last = copy(base);
+    last.buildings = last.buildings.filter(b => b.id !== gen.id);
+    const at = standBy(last, 'engineer', fac);
+    const c = tickUntil(processAction(at, { type: 'ability', id: heroOf(at, 'engineer').id, target: fac.id }), q => q.buildings.find(b => b.id === fac.id)!.owner === 0, CAPTURE_TICKS + 5);
+    const c1 = processAction(c, { type: 'tick' });
+    ok(c1.mission!.objectives[0].done && c1.units.filter(u => u.owner === 1).length === 2, 'the counter-attack a capture triggers is on the field');
+    ok(c1.mission!.result === null && !c1.mission!.objectives[1].done, 'and reopens "destroy everything", so capturing the last structure does not win outright');
+  }
 }
 
 function aceTests(): void {

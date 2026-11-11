@@ -265,12 +265,12 @@ export interface AiMemory {
   /** Aircraft out on a strike (aiAir.ts), and the tick the next strike may go. */
   airIds?: number[];
   nextAirStrike?: number;
+  /** The tick before which no new airlift sets out. */
+  nextAirlift?: number;
   /**
    * An airlift under way (aiAir.ts): the Troop Carrier, the infantry it is taking, where it sets
    * them down and what they then attack, the step ('board', 'fly') and when that step began.
    */
-  /** The tick before which no new airlift sets out. */
-  nextAirlift?: number;
   airlift?: { carrier: number; ids: number[]; x: number; y: number; target: number; phase: 'board' | 'fly'; since: number } | null;
   /**
    * A defending mission enemy's garrison: its armed units at its first decision. It trains only to
@@ -517,6 +517,8 @@ export interface MissionRuntime {
   convoyRoute?: { x: number; y: number }[];
   /** Copied from the spec. Per side, the powers its structures currently grant (never one the mission gave at the start). */
   structurePowers?: SupportPower[][];
+  /** The campaign difficulty this battle was built at; absent means Normal (and every older save). */
+  level?: Difficulty;
 }
 
 /** What the campaign layer is told when a mission ends. */
@@ -554,6 +556,8 @@ export interface MissionContext {
   /** Tech the campaign has unlocked so far, added to the mission's own list. */
   extraTech: (BuildingKind | UnitKind)[];
   extraPowers: SupportPower[];
+  /** The campaign difficulty the spec was scaled to (campaign/difficulty.ts), kept on the battle. */
+  level?: Difficulty;
 }
 
 export type GameAction =
