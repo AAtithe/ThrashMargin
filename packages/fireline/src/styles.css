@@ -3201,3 +3201,1789 @@ kbd {
 /* round5:C. Engineering vehicles. */
 
 /* round5:D. Neutral sites and tier three. */
+
+/* ==== D: battle chrome ==== */
+/*
+ * The battle screen's console: top bar, sidebar gauges and radar frame, build buttons, the support
+ * dock, alerts and the message feed, the tour card, the end card and the campaign debrief, and the
+ * How to play page. One look throughout: brushed panels with a light top bevel, recessed wells for
+ * readouts, small stencilled plate labels. Rules here come after the originals above and refine them.
+ */
+/* D tokens. */
+:root {
+  --d-console-hi: #f6f8f5;
+  --d-console: #e3e8e3;
+  --d-bevel: rgba(255, 255, 255, 0.85);
+  --d-groove: #c0c9c2;
+  --d-drop: rgba(20, 32, 26, 0.22);
+  --d-drop-soft: rgba(20, 32, 26, 0.1);
+  --d-well: #dbe1dc;
+  --d-well-rule: #b8c2ba;
+  --d-btn-hi: #fdfdfc;
+  --d-btn: #ebeeea;
+  --d-btn-rule: #b2bcb4;
+  --d-btn-on: rgba(168, 106, 12, 0.14);
+  --d-label: #67746e;
+  --d-lamp-off: #c7cec8;
+  --d-bracket: #8a968f;
+  --d-feed-bg: rgba(8, 12, 10, 0.66);
+  --d-feed-text: #e6ede9;
+  --d-feed-good: #a8f0ae;
+  --d-feed-bad: #ff9a8c;
+  --d-feed-rule: rgba(230, 237, 233, 0.35);
+  --d-glow-good: rgba(47, 125, 52, 0.22);
+  --d-glow-bad: rgba(184, 56, 44, 0.22);
+  --d-star-glow: rgba(201, 138, 16, 0.45);
+}
+:root[data-theme="dark"] {
+  --d-console-hi: #1b2327;
+  --d-console: #12181b;
+  --d-bevel: rgba(255, 255, 255, 0.05);
+  --d-groove: #2a353a;
+  --d-drop: rgba(0, 0, 0, 0.55);
+  --d-drop-soft: rgba(0, 0, 0, 0.32);
+  --d-well: #0b1012;
+  --d-well-rule: #263137;
+  --d-btn-hi: #242e33;
+  --d-btn: #1a2226;
+  --d-btn-rule: #34434b;
+  --d-btn-on: rgba(224, 164, 58, 0.16);
+  --d-label: #7f8e8a;
+  --d-lamp-off: #1e282c;
+  --d-bracket: #5f6e73;
+  --d-feed-bg: rgba(6, 9, 8, 0.7);
+  --d-feed-text: #e6ede9;
+  --d-feed-good: #a8f0ae;
+  --d-feed-bad: #ff9a8c;
+  --d-feed-rule: rgba(230, 237, 233, 0.3);
+  --d-glow-good: rgba(111, 191, 115, 0.28);
+  --d-glow-bad: rgba(224, 87, 74, 0.28);
+  --d-star-glow: rgba(242, 193, 78, 0.5);
+}
+
+/* ---- Console parts: buttons, groups, plate labels ----------------------------------------- */
+
+.fl-d-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--ui-text);
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 1px var(--d-drop-soft);
+  cursor: pointer;
+}
+.fl-d-btn:hover:not(:disabled) {
+  border-color: var(--ui-accent);
+}
+.fl-d-btn:active:not(:disabled) {
+  box-shadow: inset 0 1px 3px var(--d-drop);
+}
+.fl-d-btn[aria-pressed="true"] {
+  color: var(--ui-accent);
+  font-weight: 700;
+  background: var(--d-btn-on);
+  border-color: var(--ui-accent);
+  box-shadow: inset 0 1px 3px var(--d-drop-soft);
+}
+.fl-d-btn kbd {
+  font-weight: 400;
+}
+.fl-d-primary {
+  height: 34px;
+  padding: 0 18px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ui-ground);
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+}
+.fl-d-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.fl-d-primary kbd {
+  color: var(--ui-text);
+}
+
+/* A recessed tray that holds a set of related controls. */
+.fl-d-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 3px;
+  background: var(--d-well);
+  border: 1px solid var(--d-well-rule);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 2px var(--d-drop-soft), 0 1px 0 var(--d-bevel);
+}
+.fl-d-group .fl-d-btn {
+  height: 26px;
+}
+.fl-d-group-label {
+  padding: 0 4px 0 5px;
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--d-label);
+}
+@media (max-width: 1239px) {
+  .fl-d-group-label { display: none; }
+}
+/* Segmented: buttons joined into one strip, the chosen one lit. */
+.fl-d-seg {
+  display: flex;
+}
+.fl-d-seg > button {
+  border-radius: 0;
+  margin-left: -1px;
+}
+.fl-d-seg > button:first-child {
+  border-radius: 4px 0 0 4px;
+  margin-left: 0;
+}
+.fl-d-seg > button:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.fl-d-seg > button[aria-pressed="true"] {
+  position: relative;
+  z-index: 1;
+}
+.fl-d-sound {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+}
+/* Sound on is the normal state, so it stays quiet: only its speaker glyph lights. */
+.fl-d-sound .fl-d-btn[aria-pressed="true"] {
+  color: var(--ui-text);
+  font-weight: 500;
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border-color: var(--d-btn-rule);
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 1px var(--d-drop-soft);
+}
+.fl-d-sound .fl-d-btn[aria-pressed="true"] .fl-d-glyph {
+  color: var(--ui-accent);
+}
+.fl-d-sound .fl-d-btn[aria-pressed="false"] {
+  color: var(--ui-text-faint);
+}
+.fl-d-range {
+  width: 64px;
+  accent-color: var(--ui-accent);
+  height: 16px;
+}
+.fl-d-help {
+  width: 26px;
+  padding: 0;
+  font-weight: 700;
+}
+
+/* A stencilled section label with a groove running to the right edge. */
+.fl-d-sect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--d-label);
+}
+.fl-d-sect::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--d-groove);
+  box-shadow: 0 1px 0 var(--d-bevel);
+}
+
+/* Tiny glyphs drawn in CSS, so they take the button's colour. */
+.fl-d-glyph {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+}
+.fl-d-glyph[data-glyph="pause"] {
+  border-left: 3px solid currentColor;
+  border-right: 3px solid currentColor;
+}
+.fl-d-glyph[data-glyph="play"] {
+  width: 0;
+  height: 0;
+  border-left: 9px solid currentColor;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.fl-d-glyph[data-glyph="sound"],
+.fl-d-glyph[data-glyph="mute"] {
+  background: currentColor;
+  clip-path: polygon(0 32%, 32% 32%, 72% 0, 72% 100%, 32% 68%, 0 68%);
+}
+.fl-d-glyph[data-glyph="mute"] {
+  opacity: 0.45;
+}
+
+.fl-d-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ---- Top bar ------------------------------------------------------------------------------ */
+
+.fl-d-top {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 5px 10px;
+  background: linear-gradient(180deg, var(--d-console-hi), var(--d-console));
+  border-bottom: 1px solid var(--d-groove);
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 2px 6px var(--d-drop-soft);
+  flex-wrap: nowrap;
+}
+.fl-d-top[data-compact="1"] {
+  gap: 6px;
+}
+.fl-d-back {
+  font-weight: 600;
+}
+.fl-d-ident {
+  flex: 0 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 104px;
+  padding: 0 4px 0 10px;
+  border-left: 1px solid var(--d-groove);
+  box-shadow: inset 1px 0 0 var(--d-bevel);
+  line-height: 1.15;
+}
+.fl-d-mark {
+  display: flex;
+  white-space: nowrap;
+  align-items: center;
+  gap: 6px;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+}
+.fl-d-mark::before {
+  /* The brass diamond: the Meridian Corps mark, as on every unit the player owns. */
+  content: "";
+  width: 7px;
+  height: 7px;
+  background: var(--ui-accent);
+  transform: rotate(45deg);
+}
+.fl-d-op {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.68rem;
+  color: var(--ui-text-soft);
+}
+.fl-d-clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  height: 28px;
+  padding: 0 9px;
+  line-height: 28px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text);
+  background: var(--d-well);
+  border: 1px solid var(--d-well-rule);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 2px var(--d-drop-soft), 0 1px 0 var(--d-bevel);
+}
+.fl-d-clock-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--ui-accent);
+}
+.fl-d-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  color: var(--ui-text-faint);
+  white-space: nowrap;
+}
+.fl-d-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--d-lamp-off);
+  box-shadow: inset 0 0 0 1px var(--d-well-rule);
+}
+.fl-d-save[data-state="saved"] .fl-d-led {
+  background: var(--ui-good);
+  box-shadow: 0 0 5px var(--d-glow-good);
+}
+.fl-d-save[data-state="error"] {
+  color: var(--ui-bad);
+  font-weight: 600;
+}
+.fl-d-save[data-state="error"] .fl-d-led {
+  background: var(--ui-bad);
+}
+.fl-d-pause {
+  min-width: 82px;
+}
+.fl-d-pause[data-paused="1"] {
+  color: var(--ui-ground);
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+  font-weight: 700;
+}
+.fl-d-view {
+  gap: 1px;
+}
+@media (max-width: 1239px) {
+  .fl-d-op { max-width: 150px; }
+}
+@media (max-width: 1179px) {
+  .fl-d-op { display: none; }
+  .fl-d-top { gap: 6px; }
+  .fl-d-top .fl-d-group { padding: 2px; }
+  .fl-d-top .fl-d-range { width: 52px; }
+}
+
+/* ---- Sidebar ------------------------------------------------------------------------------ */
+
+.fl-d-side {
+  background: linear-gradient(180deg, var(--d-console-hi), var(--d-console) 220px);
+  border-left: 1px solid var(--d-groove);
+  box-shadow: inset 1px 0 0 var(--d-bevel);
+}
+.fl-d-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fl-d-sel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Readout gauges: credits and power. */
+.fl-d-gauge {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 9px 7px;
+  background: var(--d-well);
+  border: 1px solid var(--d-well-rule);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 3px var(--d-drop-soft), 0 1px 0 var(--d-bevel);
+}
+.fl-d-credits {
+  flex: 0 0 auto;
+  min-width: 100px;
+}
+.fl-d-power {
+  flex: 1;
+}
+.fl-d-gauge-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--d-label);
+}
+.fl-d-credits .fl-credits-value {
+  font-size: 1.4rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+.fl-d-gauge-state {
+  padding: 0 5px;
+  border-radius: 2px;
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+  line-height: 1.5;
+  color: var(--ui-good);
+  border: 1px solid var(--ui-good);
+}
+.fl-d-power[data-low="1"] {
+  border-color: var(--ui-bad);
+}
+.fl-d-power[data-low="1"] .fl-d-gauge-state {
+  color: var(--ui-ground);
+  background: var(--ui-bad);
+  border-color: var(--ui-bad);
+}
+.fl-d-meter {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 2px;
+  height: 9px;
+}
+.fl-d-meter > span {
+  border-radius: 1px;
+  background: var(--d-lamp-off);
+}
+.fl-d-meter > span[data-s="used"] {
+  background: var(--ui-accent);
+}
+.fl-d-meter > span[data-s="spare"] {
+  background: var(--ui-good);
+}
+.fl-d-meter > span[data-s="short"] {
+  background: var(--ui-bad);
+}
+.fl-d-gauge-sub {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-soft);
+}
+
+/* The radar: a recessed bezel with corner brackets. */
+.fl-d-radar {
+  position: relative;
+  padding: 4px;
+  background: var(--d-well);
+  border: 1px solid var(--d-well-rule);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 3px var(--d-drop-soft), 0 1px 0 var(--d-bevel);
+}
+.fl-d-radar::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 5px;
+  pointer-events: none;
+  --b: var(--d-bracket);
+  background:
+    linear-gradient(var(--b), var(--b)) left top / 12px 2px no-repeat,
+    linear-gradient(var(--b), var(--b)) left top / 2px 12px no-repeat,
+    linear-gradient(var(--b), var(--b)) right top / 12px 2px no-repeat,
+    linear-gradient(var(--b), var(--b)) right top / 2px 12px no-repeat,
+    linear-gradient(var(--b), var(--b)) left bottom / 12px 2px no-repeat,
+    linear-gradient(var(--b), var(--b)) left bottom / 2px 12px no-repeat,
+    linear-gradient(var(--b), var(--b)) right bottom / 12px 2px no-repeat,
+    linear-gradient(var(--b), var(--b)) right bottom / 2px 12px no-repeat;
+}
+
+/* The Build button: the console's main key. */
+.fl-d-side .fl-build-open {
+  min-height: 40px;
+  padding: 6px 8px 6px 12px;
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border: 1px solid var(--ui-accent);
+  border-left-width: 4px;
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 2px var(--d-drop-soft);
+}
+.fl-d-side .fl-build-open:hover,
+.fl-d-side .fl-build-open[data-open="1"] {
+  background: var(--d-btn-on);
+}
+.fl-d-side .fl-build-open[data-open="1"] {
+  box-shadow: inset 0 1px 3px var(--d-drop-soft);
+}
+.fl-d-build-word {
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 0.86rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-right: 4px;
+}
+.fl-d-side .fl-build-open-label strong {
+  font-size: 0.8rem;
+}
+
+/* The production strip: an empty one reads as a slot waiting to be filled. */
+.fl-d-side .fl-strip[data-empty="1"] {
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px dashed var(--d-well-rule);
+  border-radius: 5px;
+  background: var(--d-well);
+}
+.fl-d-side .fl-strip-item {
+  border-color: var(--d-btn-rule);
+  border-radius: 4px;
+  box-shadow: 0 1px 2px var(--d-drop-soft);
+}
+.fl-d-side .fl-strip-item.ready {
+  border-color: var(--ui-good);
+}
+
+/* Selection: chips, health gauge, small buttons and the orders legend. */
+.fl-d-chip {
+  padding: 2px 7px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ui-text);
+  background: var(--d-btn);
+  border: 1px solid var(--d-btn-rule);
+  border-left: 3px solid var(--ui-team);
+  border-radius: 3px;
+}
+.fl-d-chip[data-enemy="1"] {
+  color: var(--ui-enemy);
+  border-left-color: var(--ui-enemy);
+}
+.fl-d-hp {
+  position: relative;
+  height: 7px;
+  overflow: hidden;
+  background: var(--d-well);
+  border: 1px solid var(--d-well-rule);
+  border-radius: 2px;
+}
+.fl-d-hp > div {
+  height: 100%;
+  background: var(--ui-good);
+}
+.fl-d-hp[data-tone="warn"] > div {
+  background: var(--ui-warn);
+}
+.fl-d-hp[data-tone="bad"] > div {
+  background: var(--ui-bad);
+}
+.fl-d-hp::after {
+  /* Segment ticks every tenth. */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 1px), var(--d-well) calc(10% - 1px) 10%);
+}
+.fl-d-sbtn {
+  height: 26px;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--ui-text);
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 var(--d-bevel);
+  cursor: pointer;
+}
+.fl-d-sbtn:hover:not(:disabled) {
+  border-color: var(--ui-accent);
+}
+.fl-d-sbtn[aria-pressed="true"] {
+  color: var(--ui-good);
+  font-weight: 700;
+  background: var(--ui-tint-good);
+  border-color: var(--ui-good);
+  box-shadow: inset 0 1px 2px var(--d-drop-soft);
+}
+.fl-d-sbtn[data-tone="bad"] {
+  color: var(--ui-bad);
+}
+.fl-d-sbtn[data-tone="bad"]:hover:not(:disabled) {
+  border-color: var(--ui-bad);
+}
+.fl-d-stance > button {
+  flex: 1;
+}
+.fl-d-legend {
+  margin: 0;
+  display: grid;
+  gap: 0;
+  font-size: 0.7rem;
+}
+.fl-d-legend > div {
+  display: grid;
+  grid-template-columns: 112px 1fr;
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 0;
+  border-bottom: 1px dashed var(--d-groove);
+}
+.fl-d-legend > div:last-child {
+  border-bottom: none;
+}
+.fl-d-legend dt {
+  color: var(--ui-text);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fl-d-legend dd {
+  margin: 0;
+  color: var(--ui-text-soft);
+}
+
+/* ---- Build buttons ------------------------------------------------------------------------ */
+
+.fl-build {
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border-color: var(--d-btn-rule);
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 2px var(--d-drop-soft);
+  transition: border-color 0.12s, transform 0.08s;
+}
+.fl-build:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.fl-build-pic {
+  position: relative;
+  display: block;
+  width: 100%;
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: inset 0 0 0 1px var(--d-drop-soft);
+}
+/* Building: the picture dims where the work is still to do, and the percentage sits on it. */
+.fl-build-sweep {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--ui-scrim);
+  pointer-events: none;
+}
+.fl-build-pct {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 0 5px;
+  border-radius: 2px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-on-art);
+  background: var(--ui-art-scrim);
+}
+.fl-build-prog {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--d-well);
+}
+.fl-build-prog > span {
+  display: block;
+  height: 100%;
+  background: var(--ui-accent);
+}
+.fl-build[data-state="building"] {
+  border-color: var(--ui-accent);
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
+}
+.fl-build[data-state="locked"] {
+  opacity: 0.45;
+  background: var(--d-well);
+  box-shadow: none;
+}
+.fl-build[data-state="locked"] img {
+  filter: grayscale(0.85);
+}
+.fl-build[aria-pressed="true"] {
+  border-color: var(--ui-good);
+  box-shadow: inset 0 0 0 1px var(--ui-good);
+}
+.fl-build-cost[data-short="0"] {
+  color: var(--ui-text-soft);
+}
+.fl-build-cost[data-short="1"] {
+  color: var(--ui-bad);
+  font-weight: 700;
+}
+.fl-build-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ui-ground);
+  background: var(--ui-good);
+  box-shadow: 0 1px 2px var(--d-drop);
+}
+.fl-build-badge[data-kind="count"] {
+  left: auto;
+  right: 4px;
+  top: auto;
+  bottom: 9px;
+  letter-spacing: 0;
+  background: var(--ui-accent);
+}
+
+/* ---- Battlefield overlays: feed, alerts, hint, toast -------------------------------------- */
+
+.fl-d-feed {
+  position: absolute;
+  left: 10px;
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: flex-start;
+  gap: 3px;
+  font-size: 0.76rem;
+  line-height: 1.3;
+  pointer-events: none;
+}
+.fl-d-feed > div {
+  padding: 3px 10px 3px 8px;
+  color: var(--d-feed-text);
+  background: var(--d-feed-bg);
+  border-left: 3px solid var(--d-feed-rule);
+  border-radius: 0 3px 3px 0;
+}
+.fl-d-feed > div[data-tone="good"] {
+  color: var(--d-feed-good);
+  border-left-color: var(--d-feed-good);
+}
+.fl-d-feed > div[data-tone="bad"] {
+  color: var(--d-feed-bad);
+  border-left-color: var(--d-feed-bad);
+}
+
+/* Alerts carry a hazard stripe down their left edge, in the alert's colour. */
+.fl-alert-chip {
+  height: 32px;
+  padding: 0 10px 0 22px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-width: 1px;
+  border-radius: 4px;
+  background:
+    repeating-linear-gradient(-45deg, var(--ui-alert) 0 4px, transparent 4px 8px) left / 12px 100% no-repeat,
+    var(--ui-hud);
+}
+.fl-alert-chip[data-kind="hauler"] {
+  background:
+    repeating-linear-gradient(-45deg, var(--ui-alert-hauler) 0 4px, transparent 4px 8px) left / 12px 100% no-repeat,
+    var(--ui-hud);
+}
+/* With an alert chip up in the corner, the centred banners drop below it rather than run into it. */
+div:has(> .fl-alert-chip) > .fl-banners {
+  top: 50px;
+}
+.fl-alert-chip kbd {
+  letter-spacing: 0;
+  text-transform: none;
+}
+.fl-lowpower {
+  padding: 6px 12px 6px 22px;
+  text-align: left;
+  border-color: var(--ui-bad);
+  background:
+    repeating-linear-gradient(-45deg, var(--ui-bad) 0 4px, transparent 4px 8px) left / 12px 100% no-repeat,
+    var(--ui-hud);
+}
+.fl-hint {
+  padding: 6px 14px 6px 12px;
+  border-left: 3px solid var(--ui-accent);
+  box-shadow: 0 2px 12px var(--ui-shadow);
+}
+.fl-toast {
+  border-left-width: 4px;
+}
+.fl-missile-warn {
+  padding: 6px 12px 6px 22px;
+  background:
+    repeating-linear-gradient(-45deg, var(--ui-on-art) 0 4px, transparent 4px 8px) left / 12px 100% no-repeat,
+    var(--ui-missile-bg);
+}
+
+/* ---- Support dock and hero bar ------------------------------------------------------------ */
+
+/* The dock sits on the bottom edge of the battlefield, like a drawer pulled out of the console. */
+.fl-cbar {
+  bottom: 0;
+  gap: 6px;
+}
+.fl-cbar > .fl-herobar,
+.fl-cbar > .fl-powerbar {
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding-bottom: 6px;
+}
+/* On a touch screen the command bar holds the bottom edge, and the dock floats above it. */
+.fl-cbar[style] > .fl-herobar,
+.fl-cbar[style] > .fl-powerbar {
+  border-bottom: 1px solid var(--d-btn-rule);
+  border-radius: 8px;
+}
+.fl-herobar,
+.fl-powerbar {
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px 6px 5px 4px;
+  background: linear-gradient(180deg, var(--d-console-hi), var(--d-console));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 7px;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 6px 20px var(--ui-shadow);
+}
+.fl-d-dock-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 3px 0 2px;
+  margin-right: 2px;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--d-label);
+  border-left: 1px solid var(--d-groove);
+}
+.fl-ability,
+.fl-power {
+  background: var(--d-well);
+  border-color: var(--d-well-rule);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 2px var(--d-drop-soft);
+}
+.fl-ability[data-ready="1"],
+.fl-power[data-ready="1"] {
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border-color: var(--ui-accent);
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 2px var(--d-drop-soft);
+}
+.fl-ability[data-ready="1"] small,
+.fl-power[data-ready="1"] small {
+  color: var(--ui-good);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.fl-power[data-held="0"] {
+  background: transparent;
+  border-color: var(--d-well-rule);
+  box-shadow: none;
+}
+
+/* ---- Campaign objectives ------------------------------------------------------------------ */
+
+.fl-objectives {
+  padding: 0 10px 8px;
+  border-color: var(--d-btn-rule);
+  border-top: 3px solid var(--ui-accent);
+  border-radius: 5px;
+  box-shadow: 0 4px 16px var(--ui-shadow);
+}
+.fl-objectives header {
+  margin: 0 -10px;
+  padding: 6px 8px 5px 10px;
+  border-bottom: 1px solid var(--d-groove);
+}
+.fl-objectives-toggle {
+  font-size: 0.64rem;
+  letter-spacing: 0.18em;
+}
+.fl-objectives .fl-objective {
+  padding: 2px 0;
+}
+.fl-objectives-pill {
+  border-color: var(--d-btn-rule);
+  border-top: 3px solid var(--ui-accent);
+  box-shadow: 0 4px 16px var(--ui-shadow);
+}
+
+/* ---- Pause and Controls cards ------------------------------------------------------------- */
+
+.fl-d-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  max-height: 100%;
+  padding: 20px 26px;
+  text-align: center;
+  color: var(--ui-text);
+  background: linear-gradient(180deg, var(--d-console-hi), var(--ui-panel) 80px);
+  border: 1px solid var(--d-btn-rule);
+  border-top: 3px solid var(--ui-accent);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 16px 50px var(--ui-shadow);
+  animation: fl-d-rise 0.28s ease-out both;
+}
+.fl-d-card-title {
+  margin: 0;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 1.3rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.fl-d-card-sub {
+  margin: 0;
+  max-width: 280px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--ui-text-soft);
+}
+.fl-d-paused-glyph {
+  width: 22px;
+  height: 26px;
+  border-left-width: 7px;
+  border-right-width: 7px;
+  color: var(--ui-accent);
+}
+.fl-d-help-card {
+  width: min(560px, 100%);
+  align-items: stretch;
+  padding: 0 20px 16px;
+  overflow-y: auto;
+  text-align: left;
+}
+.fl-d-card-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 -20px;
+  padding: 12px 20px 10px;
+  background: var(--ui-panel);
+  border-bottom: 1px solid var(--d-groove);
+}
+.fl-d-keys {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+.fl-d-keys th,
+.fl-d-keys td {
+  padding: 5px 0;
+  vertical-align: top;
+  border-bottom: 1px dashed var(--d-groove);
+}
+.fl-d-keys tr:last-child th,
+.fl-d-keys tr:last-child td {
+  border-bottom: none;
+}
+.fl-d-keys th {
+  padding-right: 14px;
+  white-space: nowrap;
+  font-weight: 700;
+  text-align: left;
+  color: var(--ui-text);
+}
+.fl-d-keys td {
+  color: var(--ui-text-soft);
+  line-height: 1.4;
+}
+
+/* ---- Victory and defeat ------------------------------------------------------------------- */
+
+.fl-d-end-scrim {
+  z-index: 40;
+}
+.fl-d-end {
+  --d-tone: var(--ui-good);
+  --d-tint: var(--ui-tint-good);
+  --d-glow: var(--d-glow-good);
+  width: min(560px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  color: var(--ui-text);
+  background: var(--ui-panel);
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 9px;
+  box-shadow: 0 0 0 4px var(--d-glow), 0 20px 70px var(--ui-shadow);
+  animation: fl-d-rise 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+.fl-d-end[data-won="0"] {
+  --d-tone: var(--ui-bad);
+  --d-tint: var(--ui-tint-bad);
+  --d-glow: var(--d-glow-bad);
+}
+.fl-d-end-band {
+  position: relative;
+  padding: 26px 24px 18px;
+  text-align: center;
+  background: linear-gradient(180deg, var(--d-tint), transparent), var(--ui-panel);
+  border-bottom: 1px solid var(--d-groove);
+}
+.fl-d-end-band::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 8px;
+  background: repeating-linear-gradient(-45deg, var(--d-tone) 0 10px, transparent 10px 20px);
+  opacity: 0.85;
+}
+.fl-d-end-eyebrow {
+  margin: 0;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--d-label);
+}
+.fl-d-end-title {
+  margin: 6px 0 8px;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 2.6rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.24em;
+  /* Letter-spacing trails the last letter; this pulls the word back to true centre. */
+  margin-right: -0.24em;
+  color: var(--d-tone);
+  text-shadow: 0 0 22px var(--d-glow);
+  animation: fl-d-stamp 0.5s 0.15s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.fl-d-end-sub {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: var(--ui-text-soft);
+}
+.fl-d-end-team {
+  margin: 6px 0 0;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.fl-d-end-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 22px 4px;
+  overflow-y: auto;
+}
+.fl-d-end-stats {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.fl-d-end-stats thead th {
+  padding: 0 0 4px 12px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: right;
+}
+.fl-d-end-stats tbody th {
+  padding: 6px 8px 6px 0;
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--ui-text-soft);
+}
+.fl-d-end-stats tbody td {
+  padding: 6px 0 6px 12px;
+  min-width: 84px;
+  text-align: right;
+}
+.fl-d-end-stats tbody tr + tr > * {
+  border-top: 1px dashed var(--d-groove);
+}
+.fl-d-end-val {
+  display: block;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.fl-d-end-bar {
+  display: block;
+  height: 4px;
+  margin-top: 3px;
+  background: var(--d-well);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.fl-d-end-bar > span {
+  display: block;
+  height: 100%;
+  margin-left: auto;
+  border-radius: 2px;
+}
+.fl-d-end-foot {
+  display: flex;
+  justify-content: center;
+  padding: 12px 22px 18px;
+}
+
+@keyframes fl-d-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes fl-d-stamp {
+  from { opacity: 0; transform: scale(1.35); letter-spacing: 0.5em; }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---- Campaign debrief (Campaign.tsx's markup, dressed to match the end card) -------------- */
+
+.fl-debrief {
+  --d-tone: var(--ui-bad);
+  --d-tint: var(--ui-tint-bad);
+  --d-glow: var(--d-glow-bad);
+  gap: 12px;
+  padding: 0 24px 20px;
+  background: linear-gradient(180deg, var(--d-tint), transparent 150px), var(--ui-panel);
+  border-color: var(--d-btn-rule);
+  border-radius: 9px;
+  box-shadow: 0 0 0 4px var(--d-glow), 0 20px 70px var(--ui-shadow);
+  animation: fl-d-rise 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.15) both;
+}
+.fl-debrief[data-result="won"] {
+  --d-tone: var(--ui-good);
+  --d-tint: var(--ui-tint-good);
+  --d-glow: var(--d-glow-good);
+}
+.fl-debrief::before {
+  content: "";
+  flex: none;
+  align-self: stretch;
+  height: 8px;
+  margin: 0 -24px 8px;
+  background: repeating-linear-gradient(-45deg, var(--d-tone) 0 10px, transparent 10px 20px);
+  opacity: 0.85;
+}
+.fl-debrief .fl-eyebrow {
+  margin: 0;
+}
+.fl-debrief-title {
+  margin: -2px 0 0;
+  font-size: 1.9rem;
+  line-height: 1.05;
+  letter-spacing: 0.1em;
+  text-shadow: 0 0 22px var(--d-glow);
+  animation: fl-d-stamp 0.5s 0.15s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.fl-debrief-stars {
+  gap: 10px;
+  font-size: 2.3rem;
+}
+.fl-debrief-stars span[data-on="1"] {
+  text-shadow: 0 0 14px var(--d-star-glow);
+}
+.fl-debrief-objectives {
+  gap: 0;
+  padding: 4px 12px;
+  background: var(--d-well);
+  border-color: var(--d-well-rule);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 3px var(--d-drop-soft);
+}
+.fl-debrief-objectives .fl-objective {
+  padding: 5px 0;
+}
+.fl-debrief-objectives .fl-objective + .fl-objective {
+  border-top: 1px dashed var(--d-groove);
+}
+.fl-debrief-commander {
+  padding: 8px 12px;
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 var(--d-bevel);
+}
+.fl-debrief-unlocks {
+  padding: 8px 12px;
+  border-left-width: 4px;
+  border-radius: 5px;
+  text-align: left;
+}
+
+/* ---- Guided tour card --------------------------------------------------------------------- */
+
+.fl-d-tour {
+  position: fixed;
+  z-index: 2002;
+  max-width: calc(100vw - 2rem);
+  box-sizing: border-box;
+  padding: 0 16px 12px;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color: var(--ui-text);
+  background: var(--ui-panel);
+  border: 1px solid var(--ui-accent);
+  border-radius: 8px;
+  box-shadow: 0 0 0 3px var(--ui-tint-accent), 0 14px 44px var(--ui-shadow);
+}
+.fl-d-tour-head {
+  margin: 0 -16px 10px;
+  padding: 8px 16px 0;
+  background: var(--ui-tint-accent);
+  border-bottom: 1px solid var(--d-groove);
+}
+.fl-d-tour-label {
+  margin: 0 0 7px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ui-text-soft);
+}
+.fl-d-tour-prog {
+  display: block;
+  height: 3px;
+  margin: 0 -16px;
+  background: var(--d-well);
+}
+.fl-d-tour-prog > span {
+  display: block;
+  height: 100%;
+  background: var(--ui-accent);
+  transition: width 0.4s ease-out;
+}
+.fl-d-tour-title {
+  margin: 0 0 6px;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 1.08rem;
+  letter-spacing: 0.02em;
+  color: var(--ui-accent);
+}
+.fl-d-tour-title[data-done="1"] {
+  color: var(--ui-good);
+}
+.fl-d-tour-body {
+  margin: 0 0 12px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--ui-text-soft);
+}
+.fl-d-tour-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--d-groove);
+}
+.fl-d-tour-btn {
+  height: 28px;
+  padding: 0 11px;
+  font: inherit;
+  font-size: 0.76rem;
+  color: var(--ui-text);
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 var(--d-bevel);
+  cursor: pointer;
+}
+.fl-d-tour-btn:hover {
+  border-color: var(--ui-accent);
+}
+.fl-d-tour-btn[data-kind="primary"] {
+  font-weight: 700;
+  color: var(--ui-ground);
+  background: var(--ui-accent);
+  border-color: var(--ui-accent);
+}
+.fl-d-tour-btn[data-kind="ghost"] {
+  padding: 0 2px;
+  color: var(--ui-text-faint);
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+.fl-d-tour-btn[data-kind="ghost"]:hover {
+  color: var(--ui-text);
+  border-color: transparent;
+  text-decoration: underline;
+}
+
+/* ---- How to play: the field manual -------------------------------------------------------- */
+
+.fl-d-manual {
+  flex: 1;
+  width: 100%;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 2rem 1rem 3rem;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  grid-template-areas: "head head" "index body";
+  gap: 1.4rem 1.6rem;
+  align-items: start;
+}
+.fl-d-manual-head {
+  grid-area: head;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-bottom: 1.1rem;
+  border-bottom: 1px solid var(--d-groove);
+  box-shadow: 0 1px 0 var(--d-bevel);
+}
+.fl-d-manual-eyebrow {
+  margin: 14px 0 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+}
+.fl-d-manual-eyebrow::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  background: var(--ui-accent);
+  transform: rotate(45deg);
+}
+.fl-d-manual-title {
+  margin: 0;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: clamp(1.6rem, 4vw, 2.3rem);
+  letter-spacing: 0.12em;
+}
+.fl-d-manual-lede {
+  margin: 0;
+  max-width: 600px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--ui-text-soft);
+}
+.fl-d-manual-index {
+  grid-area: index;
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  background: linear-gradient(180deg, var(--d-console-hi), var(--d-console));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 6px;
+  box-shadow: inset 0 1px 0 var(--d-bevel);
+}
+.fl-d-manual-index ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  counter-reset: fl-d-sect;
+}
+.fl-d-manual-index li {
+  counter-increment: fl-d-sect;
+}
+.fl-d-manual-index a {
+  display: flex;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 0.78rem;
+  line-height: 1.3;
+  color: var(--ui-text-soft);
+  text-decoration: none;
+}
+.fl-d-manual-index a::before {
+  content: counter(fl-d-sect, decimal-leading-zero);
+  flex: none;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  line-height: 1.55;
+  color: var(--d-label);
+}
+.fl-d-manual-index a:hover,
+.fl-d-manual-index a:focus-visible {
+  color: var(--ui-text);
+  background: var(--d-btn-on);
+}
+.fl-d-manual-body {
+  grid-area: body;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  counter-reset: fl-d-body;
+}
+.fl-d-manual-sect {
+  scroll-margin-top: 1rem;
+  counter-increment: fl-d-body;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0 1rem 1rem;
+  background: var(--ui-panel);
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 6px;
+  box-shadow: 0 1px 0 var(--d-bevel), 0 2px 8px var(--d-drop-soft);
+}
+.fl-d-manual-sect > h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0 -1rem;
+  padding: 0.65rem 1rem 0.55rem;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 1.02rem;
+  letter-spacing: 0.06em;
+  background: linear-gradient(180deg, var(--d-console-hi), var(--d-console));
+  border-bottom: 1px solid var(--d-groove);
+  border-radius: 6px 6px 0 0;
+}
+.fl-d-manual-sect > h2::before {
+  content: counter(fl-d-body, decimal-leading-zero);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0;
+  color: var(--ui-accent);
+}
+.fl-d-manual-sect .fl-d-keys {
+  font-size: 0.8rem;
+}
+@media (max-width: 860px) {
+  .fl-d-manual {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "head" "index" "body";
+  }
+  .fl-d-manual-index {
+    position: static;
+    max-height: none;
+  }
+  .fl-d-manual-index ol {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  }
+}
+
+/* ---- Motion --------------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .fl-d-card,
+  .fl-d-end,
+  .fl-d-end-title,
+  .fl-debrief,
+  .fl-debrief-title {
+    animation: none;
+  }
+  .fl-d-tour-prog > span,
+  .fl-build {
+    transition: none;
+  }
+}
+:root[data-motion="off"] .fl-d-card,
+:root[data-motion="off"] .fl-d-end,
+:root[data-motion="off"] .fl-d-end-title,
+:root[data-motion="off"] .fl-debrief,
+:root[data-motion="off"] .fl-debrief-title {
+  animation: none;
+}
+:root[data-motion="off"] .fl-d-tour-prog > span,
+:root[data-motion="off"] .fl-build {
+  transition: none;
+}
+/* ==== end D ==== */
+
+/* ==== A: campaign theatre map and its screen ==== */
+/* The theatre map is a paper sheet on the table; the missions below it are the operations index,
+   one card per objective; the Commander's card is a service record. */
+:root {
+  --a-sheet: #ebe1c4;
+  --a-sheet-shadow: rgba(60, 44, 20, 0.22);
+  --a-card: #f6f0de;
+  --a-card-edge: #d8ccab;
+  --a-card-rule: rgba(52, 98, 140, 0.16);
+  --a-card-head: rgba(176, 38, 29, 0.45);
+  --a-card-ink: #2a2219;
+  --a-card-soft: #6a5c48;
+  --a-card-faint: #9a8d76;
+  --a-stamp-red: #b0261d;
+  --a-stamp-blue: #1d4c9a;
+  --a-pencil: #6e6a62;
+  --a-open-tint: rgba(176, 38, 29, 0.06);
+  --a-serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, "Times New Roman", serif;
+}
+:root[data-theme="dark"] {
+  --a-sheet: #3a3225;
+  --a-sheet-shadow: rgba(0, 0, 0, 0.55);
+  --a-card: #2e281e;
+  --a-card-edge: #4a4030;
+  --a-card-rule: rgba(150, 186, 204, 0.08);
+  --a-card-head: rgba(240, 128, 111, 0.4);
+  --a-card-ink: #ece0c2;
+  --a-card-soft: #bfb194;
+  --a-card-faint: #8a7d66;
+  --a-stamp-red: #f0806f;
+  --a-stamp-blue: #8cb2f2;
+  --a-pencil: #a8a294;
+  --a-open-tint: rgba(240, 128, 111, 0.08);
+}
+
+.fl-camp .fl-theatre {
+  border: 1px solid var(--a-card-edge);
+  border-radius: 2px;
+  background: var(--a-sheet);
+  box-shadow: 0 1px 2px var(--a-sheet-shadow), 0 10px 28px -6px var(--a-sheet-shadow);
+}
+
+.fl-camp-index {
+  margin: 6px 0 -2px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  font-size: 1.02rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ui-text);
+}
+.fl-camp-index span {
+  font-variant: normal;
+  font-style: italic;
+  font-weight: 400;
+  font-size: 0.82rem;
+  letter-spacing: 0;
+  color: var(--ui-text-soft);
+}
+
+/* Index cards: a red head rule, faint blue ruling, the objective's number in a pencilled ring. */
+.fl-camp .fl-camp-cards {
+  gap: 10px;
+}
+.fl-camp .fl-camp-cards button {
+  position: relative;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 12px 10px;
+  min-height: 74px;
+  color: var(--a-card-ink);
+  border: 1px solid var(--a-card-edge);
+  border-radius: 2px;
+  background-color: var(--a-card);
+  background-image:
+    linear-gradient(var(--a-card-head), var(--a-card-head)),
+    repeating-linear-gradient(to bottom, transparent 0, transparent 15px, var(--a-card-rule) 15px, var(--a-card-rule) 16px);
+  background-size: 100% 1px, 100% 100%;
+  background-position: 0 30px, 0 30px;
+  background-repeat: no-repeat, repeat;
+  box-shadow: 0 1px 1px var(--a-sheet-shadow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.fl-camp .fl-camp-cards button:hover:not(:disabled) {
+  border-color: var(--a-card-edge);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px -2px var(--a-sheet-shadow);
+}
+.fl-camp .fl-camp-cards button:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+:root[data-motion="off"] .fl-camp .fl-camp-cards button {
+  transition: none;
+}
+.fl-camp .fl-camp-cards button:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.fl-camp .fl-camp-cards li[data-state="open"] button {
+  background-color: var(--a-card);
+  border-color: var(--a-stamp-red);
+  box-shadow: 0 0 0 1px var(--a-stamp-red), 0 4px 12px -4px var(--a-sheet-shadow);
+}
+.fl-camp .fl-camp-cards li[data-state="locked"] button {
+  color: var(--a-pencil);
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 15px, var(--a-card-rule) 15px, var(--a-card-rule) 16px);
+  background-size: 100% 100%;
+  background-position: 0 30px;
+  box-shadow: none;
+}
+.fl-camp .fl-camp-cards .fl-mission-no {
+  width: 38px;
+  height: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-family: var(--a-serif);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--a-pencil);
+  background: transparent;
+  border: 1px dashed var(--a-pencil);
+}
+.fl-camp .fl-mission-no small {
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  margin-bottom: 1px;
+}
+.fl-camp .fl-camp-cards li[data-state="won"] .fl-mission-no {
+  color: var(--a-stamp-blue);
+  background: transparent;
+  border: 2px solid var(--a-stamp-blue);
+}
+.fl-camp .fl-camp-cards li[data-state="open"] .fl-mission-no {
+  color: var(--a-stamp-red);
+  background: var(--a-open-tint);
+  border: 2px solid var(--a-stamp-red);
+  box-shadow: inset 0 0 0 2px var(--a-card), inset 0 0 0 3px var(--a-stamp-red);
+}
+.fl-camp .fl-camp-cards .fl-mission-text {
+  gap: 4px;
+}
+.fl-camp .fl-camp-cards .fl-mission-text strong {
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  font-size: 0.98rem;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  min-height: 18px;
+}
+.fl-camp .fl-camp-cards li[data-state="locked"] .fl-mission-text strong {
+  font-variant: normal;
+  font-style: italic;
+  font-weight: 500;
+}
+.fl-camp .fl-camp-cards .fl-mission-text span {
+  color: var(--a-card-soft);
+  font-size: 0.74rem;
+  line-height: 16px;
+}
+.fl-camp .fl-camp-cards li[data-state="locked"] .fl-mission-text span {
+  color: var(--a-card-faint);
+  font-style: italic;
+}
+.fl-camp .fl-camp-cards .fl-mission-stars {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 0.82rem;
+  color: var(--ui-star);
+}
+/* Rubber stamps: NEXT in red on the open objective, TAKEN in blue on the won ones. */
+.fl-camp-stamp {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: var(--a-serif);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+  transform: rotate(-4deg);
+  opacity: 0.85;
+}
+.fl-camp-stamp[data-kind="next"] {
+  color: var(--a-stamp-red);
+}
+.fl-camp-stamp[data-kind="taken"] {
+  color: var(--a-stamp-blue);
+  transform: rotate(3deg);
+}
+.fl-camp .fl-camp-cards li[data-state="open"] .fl-mission-stars {
+  font-size: inherit;
+  letter-spacing: 0;
+  color: inherit;
+}
+
+/* The Commander's card as a service record. */
+.fl-camp-side .fl-commander {
+  position: relative;
+  margin-top: 14px;
+  background: var(--a-card);
+  border: 1px solid var(--a-card-edge);
+  border-left: 3px solid var(--ui-accent);
+  border-radius: 0 2px 2px 2px;
+  box-shadow: 0 1px 1px var(--a-sheet-shadow);
+}
+.fl-camp-side .fl-commander::before {
+  content: "Service record";
+  position: absolute;
+  left: -3px;
+  bottom: 100%;
+  padding: 2px 10px 1px;
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--a-card-soft);
+  background: var(--a-card);
+  border: 1px solid var(--a-card-edge);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+}
+.fl-camp-side .fl-commander-name {
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  color: var(--a-card-ink);
+}
+.fl-camp-side .fl-camp-progress {
+  padding: 6px 2px 0;
+  border-top: 1px solid var(--ui-rule);
+}
+/* The act tabs as file tabs on the map case. */
+.fl-camp .fl-act-tab {
+  background: var(--a-card);
+  border: 1px solid var(--a-card-edge);
+  border-radius: 3px 3px 0 0;
+  color: var(--a-card-soft);
+}
+.fl-camp .fl-act-tab strong {
+  font-family: var(--a-serif);
+  font-variant: small-caps;
+  text-transform: none;
+  font-size: 0.86rem;
+  letter-spacing: 0.08em;
+}
+.fl-camp .fl-act-tab span {
+  font-family: var(--a-serif);
+  font-style: italic;
+}
+.fl-camp .fl-act-tab[data-on="1"] {
+  background: var(--a-sheet);
+  border-color: var(--a-card-edge);
+  border-bottom-color: var(--a-sheet);
+  color: var(--a-card-ink);
+  box-shadow: inset 0 3px 0 var(--a-stamp-red);
+}
+.fl-camp .fl-act-tab[data-on="1"] strong {
+  color: var(--a-stamp-red);
+}
+/* ==== end A ==== */

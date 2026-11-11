@@ -22,6 +22,8 @@ import { drawMap, hasCampaignArt, nodeHitRadius, nodePosition, type CampaignMapN
 import { campaignActOf } from '../game/campaignArt';
 import { clockOf, heroName, levelProgress } from '../components/CampaignHud';
 import ThemeToggle from '../components/ThemeToggle';
+import { currentScheme, onSchemeChange, type Scheme } from '../lib/colorScheme';
+import { usePace } from '../lib/motion';
 import { createMissionState, missionOutcome, objectiveLabel } from '../sim/mission';
 import {
   BUILDINGS,
@@ -322,7 +324,10 @@ function CampaignMap({
                 </div>
               )}
               <TheatreCanvas nodes={shownNodes} act={act} onOpen={id => setPanel({ briefing: id })} selected={briefing?.id} />
-              <ol className="fl-missions" data-testid="mission-list">
+              <h2 className="fl-camp-index">
+                Operations index <span>{ACT_NAMES[act].title} · {ACT_NAMES[act].place}</span>
+              </h2>
+              <ol className="fl-missions fl-camp-cards" data-testid="mission-list">
                 {shown.map(({ m, n }) => {
                   return (
                     <li key={m.id} data-state={n.state}>
@@ -333,13 +338,29 @@ function CampaignMap({
                         onClick={() => setPanel({ briefing: m.id })}
                         title={n.state === 'locked' ? 'Win the mission before it first' : 'Open the briefing'}
                       >
-                        <span className="fl-mission-no">{m.order}</span>
+                        <span className="fl-mission-no">
+                          <small aria-hidden="true">OBJ</small>
+                          {m.order}
+                        </span>
                         <span className="fl-mission-text">
                           <strong>{m.title}</strong>
-                          <span>{n.state === 'locked' ? 'Locked' : m.summary}</span>
+                          <span>{n.state === 'locked' ? 'Locked: intelligence only' : m.summary}</span>
                         </span>
                         <span className="fl-mission-stars" aria-label={`${n.stars} of ${n.maxStars} stars`}>
-                          {n.state === 'won' ? '★'.repeat(n.stars) + '☆'.repeat(Math.max(0, n.maxStars - n.stars)) : n.state === 'open' ? 'Open' : ''}
+                          {n.state === 'won' ? (
+                            <>
+                              <span className="fl-camp-stamp" data-kind="taken" aria-hidden="true">
+                                Taken
+                              </span>
+                              {'★'.repeat(n.stars) + '☆'.repeat(Math.max(0, n.maxStars - n.stars))}
+                            </>
+                          ) : n.state === 'open' ? (
+                            <span className="fl-camp-stamp" data-kind="next">
+                              Open
+                            </span>
+                          ) : (
+                            ''
+                          )}
                         </span>
                       </button>
                     </li>
@@ -381,13 +402,18 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
     if (!box) return;
     const measure = () => {
       const w = box.clientWidth;
-      setSize({ w, h: Math.round(Math.max(240, Math.min(460, w * 0.52))) });
+      // A phone gets a deeper sheet than the wide ratio would give, so the labels have room.
+      setSize({ w, h: Math.round(Math.max(w < 560 ? Math.min(300, w * 0.8) : 240, Math.min(460, w * 0.52))) });
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(box);
     return () => ro.disconnect();
   }, []);
+
+  const pace = usePace();
+  const [scheme, setScheme] = useState<Scheme>(currentScheme);
+  useEffect(() => onSchemeChange(setScheme), []);
 
   useEffect(() => {
     const canvas = ref.current;
@@ -397,14 +423,28 @@ function TheatreCanvas({ nodes, act, onOpen, selected }: { nodes: CampaignMapNod
     canvas.height = Math.round(size.h * dpr);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    drawMap(
-      ctx,
-      size.w,
-      size.h,
-      nodes.map(n => ({ ...n, selected: n.id === selected, hover: n.id === hover })),
-    );
-  }, [nodes, size, hover, selected]);
+    const shown = nodes.map(n => ({ ...n, selected: n.id === selected, hover: n.id === hover }));
+    const motion = pace !== 'off';
+    const paint = (t: number) => {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, size.w, size.h);
+      drawMap(ctx, size.w, size.h, shown, t, { scheme, motion });
+    };
+    paint(0);
+    // Only the next objective's pulse moves; the sheet itself is cached. About 30 frames a second.
+    if (!motion || !nodes.some(n => n.state === 'open')) return;
+    let raf = 0;
+    let last = 0;
+    const start = performance.now();
+    const frame = (now: number) => {
+      raf = requestAnimationFrame(frame);
+      if (now - last < 32) return;
+      last = now;
+      paint((now - start) / 1000);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [nodes, size, hover, selected, scheme, pace]);
 
   const hit = (e: React.PointerEvent<HTMLCanvasElement>): CampaignMapNode | null => {
     const r = e.currentTarget.getBoundingClientRect();

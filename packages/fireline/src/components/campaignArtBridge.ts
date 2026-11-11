@@ -4,6 +4,7 @@ import {
   drawCampaignMap,
   drawHeroPortrait,
   drawRankInsignia,
+  type CampaignMapOptions,
 } from '../game/campaignArt';
 import type { HeroKind } from '../sim/rules';
 
@@ -47,13 +48,32 @@ export function nodeHitRadius(w: number, h: number): number {
   return campaignNodeRadius(w, h) + 4;
 }
 
-export function drawMap(ctx: Ctx, w: number, h: number, nodes: CampaignMapNode[], t = 0): void {
+export type { CampaignMapOptions };
+
+/**
+ * Paints the theatre map for these nodes (one act's missions: the act is read from the first
+ * node's order) into (0, 0)-(w, h). The sheet and the situation are cached per size, act, colour
+ * mode and mission states, so calling this every frame is cheap; `t` (seconds) moves only the next
+ * objective's pulse. `opts.scheme` defaults to the page's mode, `opts.compact` to a width under
+ * 640, `opts.motion` to true (pass false under reduced motion for a still ring).
+ */
+export function drawMap(ctx: Ctx, w: number, h: number, nodes: CampaignMapNode[], t = 0, opts: CampaignMapOptions = {}): void {
   drawCampaignMap(
     ctx,
     w,
     h,
-    nodes.map(n => ({ id: n.id, order: n.order, title: n.title, state: n.state, stars: n.stars, selected: !!n.selected, hover: !!n.hover })),
+    nodes.map(n => ({
+      id: n.id,
+      order: n.order,
+      title: n.title,
+      state: n.state,
+      stars: n.stars,
+      maxStars: n.maxStars,
+      selected: !!n.selected,
+      hover: !!n.hover,
+    })),
     t,
+    opts,
   );
 }
 
