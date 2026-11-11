@@ -13,8 +13,10 @@
  * script.
  *
  * Also checked: the ringed control is on screen, not under the card, not covered by anything else
- * and not disabled; the card stays up over the propose dialog and rings its Send button; a reload
- * mid-run reopens the run on the first step not yet finished (the screen owns where it resumes);
+ * and not disabled; Back onto a step just acted on opens it fresh rather than marked done (and it
+ * does not move on again by itself); the card stays up over the propose dialog and rings its Send
+ * button; a reload mid-run reopens the run on the first step not yet finished (the screen owns
+ * where it resumes);
  * after the run the save holds the real effects (a city built up, a garrison recruited, the field
  * army moved, a treaty signed on turn 1, the turn ended) and nothing of the tour itself; finishing
  * closes the run for this war, so a reload does not offer it again, and the Tour button reopens it
@@ -140,6 +142,7 @@ async function main() {
     if (cs.step !== 0) problems.push(`the run opened on step ${cs.step}, not the welcome card`);
     let last = -1;
     let reloaded = false;
+    let backChecked = false;
     let dialogSeen = false;
     let finished = false;
     for (let guard = 0; guard < 120 && cs; guard++) {
@@ -151,6 +154,34 @@ async function main() {
       if (cs.done) {
         cs = await waitChange(page, cs, 3000);
         continue;
+      }
+
+      // Back onto a step that was just acted on opens it fresh: not marked done on arrival, ringing
+      // its own control, and not moving forward again by itself. Checked once, from the step after
+      // the region list (step 2, which the run has just acted on).
+      if (!backChecked && fresh && cs.step === 3) {
+        backChecked = true;
+        const backBtn = page.locator('[data-tour-step] button', { hasText: 'Back' });
+        if (!(await backBtn.count())) problems.push('step 3 offers no Back button');
+        else {
+          await backBtn.click();
+          await sleep(100);
+          const b = await cardState(page);
+          if (!b || b.step !== 2 || b.done || b.target !== 'pl-region-select') {
+            problems.push(`Back from step 3 shows ${JSON.stringify(b)}, not step 2 open on the region list`);
+          } else {
+            await sleep(IDLE_MS);
+            const b2 = await cardState(page);
+            if (!b2 || b2.step !== 2 || b2.done) problems.push(`after Back, step 2 moved on by itself (${JSON.stringify(b2)})`);
+          }
+          const now = await cardState(page);
+          if (now && now.step === 2 && !now.done) await page.locator('[data-tour-step] button').last().click();
+          cs = await waitChange(page, now || cs, 3000);
+          if (!cs || cs.step !== 3) problems.push(`skipping step 2 again after Back landed on ${cs ? `step ${cs.step}` : 'nothing'}`);
+          if (!cs) break;
+          last = 2; // so step 3 still gets its idle check
+          continue;
+        }
       }
 
       // A reload mid-run reopens it on the first step not yet finished: this one.

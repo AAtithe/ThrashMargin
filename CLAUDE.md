@@ -157,7 +157,7 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   (Thrash Margin's attack step read as done on arrival because it watched the game log). Each
   driver also checks the save for the real effects of the run, and none of them may pass on timing
   luck. Thrash Margin's card also carries `data-tour-done` while it pauses after a finished step.
-- **A guided tour is only verified by driving it in a browser.** All six tour cards carry
+- **A guided tour is only verified by driving it in a browser.** All seven tour cards carry
   `data-tour-target`, naming the element actually being ringed — the resolved one, where a step
   offers several candidates — so a script can walk every step by clicking what the card names
   rather than guessing from the copy. Niccolò Rising's card also carries `data-tour-manual`, for

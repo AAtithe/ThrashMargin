@@ -446,7 +446,10 @@ interface Props {
 export default function PlanetTour({ view, startAt, onStepDone, onClose, hidden = false }: Props) {
   const steps = useMemo(buildSteps, []);
   const [stepIndex, setStepIndex] = useState(() => Math.max(0, Math.min(startAt, steps.length - 1)));
-  const [latched, setLatched] = useState(-1);
+  // The baseline object of the step whose completion was latched. Tying the latch to the baseline
+  // rather than to an index clears it whenever the step changes, so Back onto a step that was just
+  // finished opens it fresh instead of reading it as done on arrival.
+  const [latched, setLatched] = useState<object | null>(null);
   // A light poll, so the card follows controls that live inside a dialog (the propose verdict).
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -461,7 +464,7 @@ export default function PlanetTour({ view, startAt, onStepDone, onClose, hidden 
   const isLast = stepIndex === steps.length - 1;
   // Done as soon as the war says so, before asking whether the step is read-only just now: a build
   // can leave nothing more to build, and that must not turn a finished step into a manual one.
-  const done = latched === stepIndex || (!step.manual && step.isComplete(view, baseline.current.b));
+  const done = latched === baseline.current || (!step.manual && step.isComplete(view, baseline.current.b));
   const manual = !!step.manual || (!done && !!step.manualIf?.(view, baseline.current.b));
   const lastTarget = useRef<string | null>(null);
   const targetId = hidden ? null : done ? lastTarget.current : step.target(view);
@@ -477,8 +480,8 @@ export default function PlanetTour({ view, startAt, onStepDone, onClose, hidden 
 
   // Latch completion the first time the war says so; later state cannot take it back.
   useEffect(() => {
-    if (step.manual || latched === stepIndex) return;
-    if (step.isComplete(view, baseline.current.b)) setLatched(stepIndex);
+    if (step.manual || latched === baseline.current) return;
+    if (step.isComplete(view, baseline.current.b)) setLatched(baseline.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, stepIndex]);
 
