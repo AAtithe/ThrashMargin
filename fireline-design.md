@@ -1126,3 +1126,23 @@ whose state reads at a glance; an after-action table on the victory and defeat c
 battlefield gained ore fields, structure skirts and contact shadows, a curved fog edge, leaning
 grass, directional muzzle flashes and notched health bars. Frame time held: median 2.7 to 3.0 ms
 against 2.9 ms before at minute 25 of a huge battle, 60 fps either way.
+
+### 2026-11-11: territory and engagements
+
+The campaign map became a country (`fireline-campaign-design.md` section 11). Rules in
+`src/campaign/territory.ts`: a region is held (home ground, its mission won, or its engagement
+won), open (no mission, its act's front reachable, bordering held ground) or enemy ground. Every
+region without a story mission holds an engagement, a side battle rolled from the region's id and
+scaled by missions won: an outpost or (from mission 4) a whole base, garrison, posture, credits,
+one or two bonus objectives. Half a story mission's xp; never tech, heroes, or a mission won.
+`CampaignState.engagements` is additive and older saves load with none.
+
+Tuning on the way, measured with the scripted base player over every engagement at two points of
+its act (44 battles): a whole Combine base on the attack ("normal" posture) beat a player still
+raising a base in four of five cases, and a rich defending base was never broken by an army sent
+at its nearest structure in 45 minutes. So a base only defends, on a smaller purse, and is beaten
+by bringing down its Command Yard and War Factory rather than its last harvester; raiding outposts
+start with a smaller garrison. After: 43 of 44 won with the army sent at twelve minutes, 38 of 44
+at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
+three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
+assertions, about 25 seconds more than before.

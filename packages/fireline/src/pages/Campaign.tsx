@@ -466,6 +466,9 @@ function CampaignMap({
 /** How long a region takes to change hands on the map, in seconds. */
 const CAPTURE_SECONDS = 1.5;
 
+/** Changes of territory already compared this session, by campaign and held set: the fill that is playing, or null. */
+const capturesPlayed = new Map<string, { regions: string[]; start: number } | null>();
+
 /** The held regions this campaign's map last showed, so the next visit can play what changed. */
 function seenKey(campaignId: string): string {
   return `fl_theatre_seen:${campaignId}`;
@@ -536,16 +539,22 @@ function TheatreCanvas({ view, onOpenRegion, campaignId }: { view: TheatreView; 
     .join(',');
   const [capture, setCapture] = useState<{ regions: string[]; start: number } | null>(null);
   useEffect(() => {
+    // Once per change, remembered outside the component: the map may be mounted again while the
+    // fill is playing (or React may run this twice), and by then the change reads as already seen.
+    const once = `${campaignId}|${heldSig}`;
+    const pending = capturesPlayed.get(once);
+    if (pending !== undefined) {
+      setCapture(pending && performance.now() - pending.start < CAPTURE_SECONDS * 1000 ? pending : null);
+      return;
+    }
     const held = heldSig ? heldSig.split(',') : [];
     const seen = readSeen(campaignId);
     writeSeen(campaignId, held);
-    if (!seen || pace === 'off') {
-      setCapture(null);
-      return;
-    }
-    const before = new Set(seen);
+    const before = new Set(seen ?? []);
     const fresh = held.filter(id => !before.has(id));
-    setCapture(fresh.length ? { regions: fresh, start: performance.now() } : null);
+    const next = seen && pace !== 'off' && fresh.length ? { regions: fresh, start: performance.now() } : null;
+    capturesPlayed.set(once, next);
+    setCapture(next);
     // `pace` is read, not watched: changing it mid-fill should not replay the fill.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heldSig, campaignId]);
