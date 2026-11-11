@@ -6,6 +6,8 @@ import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
 import { statsOf } from '../game/Sidebar';
 import { TECH_TEXT } from '../components/SkirmishSetup';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralsPanel } from '../components/Generals';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
 // round6:B. Heroes in free play: its panel's numbers.
 import { HERO_ACADEMY, HERO_RECRUIT_COST, HERO_RECRUIT_TICKS, HERO_REVIVE_SHARE, HERO_REVIVE_TICKS } from '../sim/rules';
@@ -256,6 +258,7 @@ export default function HowToPlay() {
         {/* round6:B. Heroes in free play: its panel goes on the line below. */}
         <FreeHeroesPanel />
         {/* round6:C. Generals: its panel goes on the line below. */}
+        <GeneralsPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
 
         <Panel title="Campaign">

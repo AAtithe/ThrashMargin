@@ -96,6 +96,8 @@ import type { Building, GameState, Projectile, Unit } from './types';
 import { seenBy, sitesStep } from './sites';
 // Round 6 groundwork: per-side specs and perks (fireline-round6-design.md).
 import { buildingSpec, buildingSpecOf, perksFor, unitSpec, unitSpecOf } from './specs';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { auraWeapon, generalsStep, inAura } from './generals';
 
 
 /**
@@ -168,6 +170,7 @@ export function step(s: GameState): void {
   }
 
   // round6:C begin. Generals (fireline-round6-design.md): the command aura scan, one call under this line.
+  generalsStep(s);
   // round6:C end.
   for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
   // round6:B begin. Heroes in free play: the hero tick also runs in a skirmish with setup.heroes
@@ -737,6 +740,9 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
           const vet = u.vet;
           // round6:C begin. Generals: the aura's damage and reload multipliers, applied here beside
           // veterancy's, only when the unit is inside an aura (so every number is unchanged without one).
+          // Inside an aura the shot (fire, then the reload below) uses the aura's copy of the weapon:
+          // this block-scoped `w` stands for the unit's own weapon for the rest of this block.
+          const w = inAura(s, u) ? auraWeapon(spec.weapon!) : spec.weapon!;
           // round6:C end.
           fire(s, u.owner, u.x + u.tx * 0.35, u.y + u.ty * 0.35, w, t, u.id, (VET_DAMAGE[vet] ?? 1) * (u.hero ? heroDamageMul(u) : 1));
           u.cooldown = vet ? Math.round(w.cooldown * (VET_RELOAD[vet] ?? 1)) : w.cooldown;

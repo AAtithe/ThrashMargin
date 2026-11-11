@@ -30,6 +30,8 @@ import { buildingSpec, buildingSpecOf, factionOf, unitSpec, unitSpecOf } from '.
 import { sitesPlan } from './aiSites';
 // round6:B. Heroes in free play (fireline-round6-design.md, workstream B).
 import { heroKeptBack, heroPlan } from './aiHeroes';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { generalPlan } from './aiGenerals';
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -433,6 +435,7 @@ function commander(s: GameState, owner: Owner): void {
   // round6:B end.
   // round6:C begin. Generals (fireline-round6-design.md): one call into aiGenerals.ts goes on the
   // line below this comment (recruiting, keeping with the wave, retreating), and nothing else here.
+  generalPlan(s, owner, home, enemyHome, units);
   // round6:C end.
 
   // Producers send new units to a staging point on the side facing the enemy.
@@ -713,6 +716,7 @@ function keptBack(s: GameState, u: Unit): boolean {
   if (heroKeptBack(s, u)) return true;
   // round6:B end.
   // round6:C begin. Generals: true for the field General, which its own plan keeps behind the wave.
+  if (u.kind === 'general') return true;
   // round6:C end.
   return false;
 }

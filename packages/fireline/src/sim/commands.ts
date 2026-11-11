@@ -38,6 +38,8 @@ import { stealthSeen } from './sites';
 // round6:B. Heroes in free play: recruit limits (fireline-round6-design.md).
 import { heroesInPlay, heroRecruitProblem } from './heroes';
 import type { HeroKind } from './rules';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { generalQueueable } from './generals';
 
 /**
  * Orders, shared by the player and the computer. Each `can*` check reads the state without
@@ -64,6 +66,7 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   }
   // round6:B end.
   // round6:C begin. Generals: one field General per side (standing or queued), and its replacement cooldown.
+  if (kind === 'general' && !generalQueueable(s, owner)) return false;
   // round6:C end.
   if (categoryOf(kind) !== category) return false;
   // A mission limits what side 0 may build to what the campaign has unlocked; a skirmish on

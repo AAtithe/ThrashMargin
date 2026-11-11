@@ -40,6 +40,8 @@ import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
 import { selectionActions, type Selection } from './selectionActions';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralNote } from '../components/Generals';
 
 /** A tab of the build window: a build list, or Research once a Research Lab stands. */
 export type Tab = Category | 'research';
@@ -937,6 +939,7 @@ export function SelectionPanel({
       {/* round6:B begin. Heroes in free play: anything of B's in the selection panel. */}
       {/* round6:B end. */}
       {/* round6:C begin. Generals: anything of C's in the selection panel. */}
+      {mine && <GeneralNote units={units} />}
       {/* round6:C end. */}
       {mine && (
         <span style={{ fontSize: '0.68rem', color: UI.textFaint }}>

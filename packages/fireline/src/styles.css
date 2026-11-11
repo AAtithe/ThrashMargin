@@ -2460,5 +2460,106 @@ kbd {
 }
 
 /* round6:C. Generals. */
+/* The General's gold, one value per mode. */
+:root {
+  --ui-general: #9a6b08;
+}
+:root[data-theme="dark"] {
+  --ui-general: #f2c94c;
+}
+.fl-gen-seats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fl-gen-seat {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  align-items: center;
+  gap: 6px;
+}
+.fl-gen-seat-name {
+  font-size: 0.78rem;
+  color: var(--ui-text-soft);
+}
+[data-testid="generals-field"] .fl-seg button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.fl-genbar {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  pointer-events: none;
+}
+.fl-genbtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 11rem;
+  max-width: 15rem;
+  padding: 4px 8px 4px 6px;
+  font: inherit;
+  font-size: 0.74rem;
+  text-align: left;
+  color: var(--ui-text);
+  background: var(--ui-hud);
+  border: 1px solid var(--ui-rule);
+  border-radius: 5px;
+  box-shadow: 0 2px 12px var(--ui-shadow);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.fl-genbtn:disabled {
+  cursor: default;
+}
+.fl-genbtn[data-selected="1"] {
+  border-color: var(--ui-good);
+  background: var(--ui-tint-good);
+}
+.fl-genbtn[data-fallen="1"] {
+  border-color: var(--ui-bad);
+}
+.fl-genbtn-star {
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--ui-general);
+}
+.fl-genbtn[data-fallen="1"] .fl-genbtn-star {
+  color: var(--ui-text-faint);
+}
+.fl-genbtn-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fl-genbtn-info span {
+  color: var(--ui-text-soft);
+}
+.fl-genbtn-half {
+  color: var(--ui-bad) !important;
+}
+.fl-genbtn-hp {
+  display: block;
+  height: 4px;
+  background: var(--ui-ground);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.fl-genbtn-hp > span {
+  display: block;
+  height: 100%;
+  background: var(--ui-good);
+}
+.fl-genbtn-hp > span[data-low="1"] {
+  background: var(--ui-bad);
+}
+.fl-gen-note {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--ui-text-soft);
+}
 
 /* round6:D. Formations and squads. */

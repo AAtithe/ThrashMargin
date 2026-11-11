@@ -46,6 +46,8 @@ import { FONT, UI } from '../theme';
 import { selectionActions } from '../game/selectionActions';
 // round6:B. Heroes in free play (fireline-round6-design.md): the hero bar and keys in a skirmish with heroes on.
 import { heroesInPlay, reviveWait } from '../sim/heroes';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralButton, generalPress } from '../components/Generals';
 
 const TICK_MS = 1000 / TICKS_PER_SECOND;
 const SAVE_EVERY_MS = 15000;
@@ -996,6 +998,16 @@ export function Battle({
         return;
       }
       // round6:C begin. Generals: the 0 key selects your General (twice jumps to it).
+      if (!cur.current.mission && e.key === '0' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const press = generalPress(cur.current, ov.selected);
+        if (press && 'centre' in press) centreOn(press.centre.x, press.centre.y);
+        else if (press) {
+          ov.selected = press.select;
+          sound.play('select');
+        }
+        if (press) refresh();
+        return;
+      }
       // round6:C end.
       // round6:D begin. Formations and squads: the period key (e.code 'Period') sets the selection's
       // formation, cycling line, column, wedge, box and none.
@@ -1650,6 +1662,22 @@ export function Battle({
           )}
           {/* round6:B end. */}
           {/* round6:C begin. Generals: the General's button (select, its aura, its replacement timer) goes below. */}
+          {!mission && !ended && (
+            <GeneralButton
+              s={s}
+              selected={overlay.current.selected}
+              lift={barLift}
+              onPress={() => {
+                const press = generalPress(cur.current, overlay.current.selected);
+                if (press && 'centre' in press) centreOn(press.centre.x, press.centre.y);
+                else if (press) {
+                  overlay.current.selected = press.select;
+                  sound.play('select');
+                }
+                if (press) refresh();
+              }}
+            />
+          )}
           {/* round6:C end. */}
           {buildOpen && !paused && !help && !ended && (
             <BuildWindow
@@ -1798,6 +1826,7 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
       : []),
     // round6:B end.
     // round6:C begin. Generals: the 0 row.
+    ['0', 'Skirmish with Generals on: select your General; twice to jump to it'],
     // round6:C end.
     // round6:D begin. Formations and squads: the period row.
     // round6:D end.

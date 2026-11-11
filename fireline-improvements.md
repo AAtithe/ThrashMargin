@@ -150,3 +150,6 @@ mission AI once the round-1 opponent work lands.
 
 - [x] Round 6, B: heroes in free play behind a setup option (Command Academy, one of each, revive after 90s at half price).
   - [ ] The stat card and How to play's unit grids read the catalogue's hero cost and time (0); they should read `costFor` and `buildTicksFor` (integration, with A's per-army stat tip).
+- [x] Round 6, workstream C: Generals. A doctrine General per seat (two per army, a perks bundle on
+  that side alone) and, behind "Generals: On", a field General unit with a command aura.
+  - The link "a General leads a formation" waits for workstream D, at integration.

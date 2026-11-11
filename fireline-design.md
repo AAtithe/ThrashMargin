@@ -970,3 +970,32 @@ stays out for the rest of the mission.
   replay and save, missions, a computer battle with heroes on); drive.ts's hero refusal now also
   asserts acceptance with heroes on. Every summary line of `npm run drive` is unchanged (heroes off
   by default).
+
+### 2026-11-11: Generals (round 6, workstream C)
+
+Doctrines, in `GENERALS` (rules.ts), applied per side by `applyDoctrines` (generals.ts) when the battle
+is made: the three rate multipliers become that side's Perks (`s.perks` for side 0, `s.sidePerks` for
+the rest, read through perksFor); prices on some kinds alone are read in costFor's C marker from
+`PlayerState.general`, so `Perks` gained no fields. Refined from the plan where a perk needed code
+outside C's markers: Hale's "+10% structure health" would have left health above the spec's (bars,
+repair and sell refunds all read the spec), and Kade's "+10% vehicle speed" lives in movement code;
+both were replaced as below.
+
+- Hale (Meridian, Fortress): Gun and Rocket Turrets, Flak Cannons, the Fortress and walls 20% cheaper;
+  powers recharge 10% sooner.
+- Voss (Meridian, Armour): Tanks, Flame Tanks, Rail Tanks and Bastions 15% cheaper; harvest 10% slower;
+  powers 5% sooner.
+- Kade (Ashen, Blitz): every queue 10% faster; powers 15% sooner.
+- Ilse (Ashen, Air): Helipads 25% and aircraft (any kind with an airRole) 10% cheaper; rearm 20%
+  faster (generals.ts takes an extra tick off a rearming aircraft's cooldown every fourth tick);
+  powers 5% sooner.
+
+With Generals on, a computer seat left on "Any" gets one of its army's two from a generator seeded
+from rngSeed and a constant. Field General (`general`, infantry, Barracks plus Comms Uplink, 1200
+credits, 320 health, a pistol): one per side standing or queued. Aura: own units within 6 tiles,
+scanned every 10 ticks into `Unit.aura`; inside it a shot uses `auraWeapon` (damage x1.1, reload
+x0.9) at tick.ts's C marker; a mark never stacks. A fall halves the doctrine (perks replaced) until a
+replacement arrives, which may be queued 1200 ticks after. The computer saves for one after its first
+wave, keeps it 2.5 tiles behind its wave's centre (gathering point otherwise), and pulls it home
+below 40% health until 75%. Tests: `scripts/drive-generals.ts`. Default battles are unchanged: every
+summary line of `npm run drive` matches the baseline.
