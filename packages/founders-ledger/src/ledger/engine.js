@@ -7,8 +7,9 @@
  * everything inside `root`.
  *
  * The host passes the saved state in and gets every change back through `onChange`. The engine never
- * reads storage or the network itself. On the portal `ai` is false: the weekly call is dealt from the
- * built-in bank and the 2030 letter draft is the player's own answers set out as a letter.
+ * reads storage or the network itself. Claude is reached only through `opts.coach(task, payload)`,
+ * which the host wires to the server (api/game/coach.ts); the prompts and the key live there. With
+ * `ai` false, or when a task returns null, every feature falls back to the built-in bank.
  */
 const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Loud day? Reset in three minutes</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
 
@@ -565,6 +566,8 @@ function finishReset(r){
   let todo=r.todoId?S.todos.find(t=>t.id===r.todoId):null;
   if(!todo)todo=addTodo({text:r.move,type:'Start',h:'week',hours:0,source:'reset-'+ts,createdAt:ts});
   const entry={ts,loud:r.loud,sort:r.sort,receipt:r.receipt||'',move:todo.text,todo:todo.id,call:null};
+  if(r.line)entry.line=String(r.line).slice(0,280);
+  if(r.read)entry.read=String(r.read).slice(0,600);
   S.resets=(S.resets||[]).concat(entry);if(S.resets.length>600)S.resets=S.resets.slice(-600);
   return entry;
 }
@@ -698,6 +701,8 @@ function vToday(){
 }
 /* ---------- Reset ---------- */
 let RD=null; // the reset in progress; not saved until it ends in a move
+/* Shown when what the player wrote sounds like more than a hard day. The game steps back. */
+const SUPPORT=`<div class="support" role="note"><div class="eyebrow">Before anything else</div><p>What you have written sounds heavier than a hard day at work, and this ledger is not the right tool for it. Please talk to someone today: someone you trust, your GP, or Samaritans on 116 123, free and open day and night. If you are in danger now, call 999.</p><p class="small muted">The firm can wait an hour. You come first.</p></div>`;
 function vResetCard(){
   const n=resetsToday();
   return `<div class="card reset-card"><div class="spread"><div><div class="eyebrow">Reset &middot; three minutes</div><h3>Loud day? Name it, sort it, pick one move.</h3></div><button class="btn small" data-tab="reset">Reset</button></div><p class="small muted">${n?`${plural(n,'reset')} today. `:''}It ends in one move under fifteen minutes, then you go and do it.</p></div>`;
@@ -722,6 +727,7 @@ function vReset(){
   let body='';
   if(RD.step==='loud')body=`<div class="card">${head(1,'What is loud right now?')}
     <p class="muted">One tap. Naming it is the first thing that makes it smaller.</p>
+    ${AI?`<div class="field"><label class="lbl" for="rs-line">In a line, what is happening? <span class="muted small">Optional</span></label><span class="hint">Type it first, then tap. It goes to Claude with the facts from your ledger, and nobody at the firm sees it.</span><input type="text" id="rs-line" maxlength="280" placeholder="e.g. Two clients late paying and payroll is Friday" value="${esc(RD.line||'')}"></div>`:''}
     ${chipRow('rs-loud',LOUD.map(x=>x.name),{act:'reset-loud'})}
     ${lastT?`<div class="added">Still open from an earlier reset: ${esc(lastT.text)} <button class="btn small ghost" data-act="resetDone" data-id="${lastT.id}" style="margin-left:6px">Done it</button></div>`:''}
     ${n>=RESET_CAP-1?`<p class="small muted">This is reset ${n+1} today. Six is the most the ledger offers before it asks you to step away.</p>`:''}</div>`;
@@ -732,6 +738,7 @@ function vReset(){
   else if(RD.step==='receipt'){const so=SORT.find(x=>x.k===RD.sort);body=`<div class="card">${head(3,'The receipts')}
     <div class="coach"><p>${esc(so.coach)}</p></div>
     <div class="receipt"><div class="eyebrow">From your ledger</div><p>${esc(RD.receipt)}</p></div>
+    ${RD.concern?SUPPORT:RD.reading?'<p class="small muted ai-wait">Claude is reading your ledger...</p>':RD.read?`<div class="coach ai-read"><div class="eyebrow">Claude’s read</div><p>${esc(RD.read.read)}</p></div>`:''}
     <p class="small muted">Enough is not a feeling you wait for. It is a balance you can trace, and this is one line of it. You do not control how this turns out. You are in charge of the next move, and that part was always yours.</p>
     <div class="row"><button class="btn" data-act="resetNext">Pick the move</button><button class="btn small ghost" data-act="resetBack">Back</button></div></div>`;}
   else if(RD.step==='move'){
@@ -739,6 +746,7 @@ function vReset(){
     const open=S.todos.filter(t=>!t.done&&!isResetMove(t)).sort((a,b)=>(b.star?1:0)-(a.star?1:0)).slice(0,3);
     body=`<div class="card">${head(4,'One move, under fifteen minutes')}
     <p class="muted">Small enough to start now. It goes on your list and scores when you tick it.</p>
+    ${RD.read&&RD.read.move?`<div class="lbl small">Claude suggests</div><div class="chips-row"><button type="button" class="pick ai-pick" data-act="resetSuggest">${esc(RD.read.move)}</button></div><div class="lbl small">Or one of these</div>`:''}
     ${chipRow('rs-move',moves,{act:'reset-move',other:true})}
     <div class="row"><button class="btn small ghost" data-act="resetOwn">Use my own words</button></div>
     ${open.length?`<div class="lbl small">Or one already on your list</div><div class="chips-row">${open.map(t=>`<button type="button" class="pick" data-act="resetTodo" data-id="${t.id}">${esc(t.text)}</button>`).join('')}</div>`:''}
@@ -748,8 +756,9 @@ function vReset(){
     <div class="big3"><div class="eyebrow">Your move</div><p>${esc(e.move)}</p></div>
     <p class="muted">Close this and start. The ledger will be here. Tick it in Actions or on the next reset when it is done.</p>
     <div class="row"><button class="btn" data-act="resetDone" data-id="${e.todo}">Done it already</button><button class="btn small ghost" data-act="resetCall">One pressure call first</button></div></div>`;}
-  else if(RD.step==='call'){const c=PRESSURE.find(x=>x.id===RD.call);const a=RD.pick;
-    body=`<div class="card"><div class="eyebrow">Pressure call &middot; ${esc(c.title)}</div><div class="scene">${esc(c.scene)}</div>
+  else if(RD.step==='call'&&(RD.aiLoading||RD.concern&&!RD.aiCall&&!RD.call)){body=`<div class="card"><div class="eyebrow">Pressure call</div>${RD.concern?SUPPORT:'<p class="muted ai-wait">Claude is writing a call for your situation...</p>'}${RD.concern?`<div class="big3"><div class="eyebrow">Your move</div><p>${esc(RD.entry.move)}</p></div><div class="row"><button class="btn" data-tab="today">Close</button></div>`:''}</div>`;}
+  else if(RD.step==='call'){const c=RD.aiCall||PRESSURE.find(x=>x.id===RD.call);const a=RD.pick;
+    body=`<div class="card"><div class="eyebrow">Pressure call &middot; ${esc(c.title)}${RD.aiCall?' &middot; written for your situation':''}</div><div class="scene">${esc(c.scene)}</div>
     <div class="opts">${c.opts.map((o,i)=>`<button class="opt ${a===i?'picked':a!=null?'dim':''}" data-act="resetPick" data-i="${i}"><span class="k">${'ABC'[i]}</span><span>${esc(o.t)}</span></button>`).join('')}</div>
     ${a!=null?(()=>{const o=c.opts[a];const best=c.opts.find(x=>x.v==='best');return `<div class="row"><span class="verdict v-${o.v}">${{best:'World-class call',ok:'Workable',trap:'The trap'}[o.v]}</span></div><p>${esc(o.n)}</p>
      <div class="coach"><div class="eyebrow">The coaching</div>${c.coach.map(p=>`<p>${esc(p)}</p>`).join('')}${o.v!=='best'?`<p class="muted">The world-class call: ${esc(best.t)}</p>`:''}</div>
@@ -1084,8 +1093,15 @@ function render(){
   $('#view').innerHTML=v();
 }
 
+/* ---------- The coach: Claude, through the host (the portal's server) ---------- */
+/* The engine never sees a prompt or a key: it asks the host for a task with the facts that task needs,
+   and gets back a checked object or null. Every caller has a built-in fallback for null. */
+async function askCoach(task,payload){
+  if(!AI||typeof opts.coach!=='function')return null;
+  try{const r=await opts.coach(task,payload);return r&&typeof r==='object'?r:null;}catch(e){return null;}
+}
+
 /* ---------- Persistence: the host saves; this only reports every change ---------- */
-let sampleNs;
 function setStatus(t){const el=$('#status');if(el)el.textContent=t;}
 function save(){S.updatedAt=Date.now();if(opts.onChange)opts.onChange(JSON.parse(JSON.stringify(S)));}
 
@@ -1094,6 +1110,7 @@ const clean=s=>String(s||'').replace(/\s*[—–]\s*/g,', ').trim();
 function validCall(c){
   return c&&typeof c.title==='string'&&typeof c.scene==='string'&&Array.isArray(c.opts)&&c.opts.length===3&&c.opts.every(o=>o&&o.t&&o.n&&['best','ok','trap'].includes(o.v))&&c.opts.some(o=>o.v==='best')&&Array.isArray(c.coach)&&c.coach.length&&c.todo&&c.todo.text;
 }
+function validPressure(c){return c&&typeof c.title==='string'&&typeof c.scene==='string'&&Array.isArray(c.opts)&&c.opts.length===3&&c.opts.every(o=>o&&o.t&&o.n&&['best','ok','trap'].includes(o.v))&&c.opts.filter(o=>o.v==='best').length===1&&Array.isArray(c.coach)&&c.coach.length>0;}
 function context(){
   const r=S.reviews[S.reviews.length-1]||{};
   const low=METERS.slice().sort((a,b)=>Number(r[a.k]||5)-Number(r[b.k]||5))[0];
@@ -1103,25 +1120,19 @@ function context(){
     lowestLine:low.name,hoursWorked:r.hours,targetHours:S.future.targetHours,
     gamePlayedThisWeek:(GAMES.find(g=>g.id===r.game)||{}).name||'not given',
     chosenGame:(GAMES.find(g=>g.id===S.future.game)||{}).name||'not chosen yet',
-    goodThings:(r.good||[]).filter(Boolean),space:r.space||'',workedInSystem:r.inSystem||'',change:r.change||'',
+    goodThings:(r.good||[]).filter(Boolean),space:r.space||'',workedInSystem:r.inSystem||'',change:r.change||'',fear:r.fear||'',fearOutcome:(OUTCOMES.find(x=>x.k===r.fearOutcome)||{}).name||'',
     openActions:S.todos.filter(t=>!t.done).slice(0,8).map(t=>t.text),
     previousCallTitles:allCalls().map(c=>c.title)
   };
 }
 async function dealCall(btn){
-  if(btn){btn.disabled=true;btn.textContent='Writing your call...';}
+  if(btn){btn.disabled=true;btn.textContent=AI?'Claude is writing your call...':'Dealing your call...';}
   let call=null;
-  try{
-    if(AI&&!sampleNs&&window.claude&&window.claude.use)sampleNs=await window.claude.use('sample');
-    if(sampleNs){
-      const prompt=`You are a world-class CEO coach. Write ONE new coaching dilemma ("call") for this founder, based on their week. Context as JSON:\n${JSON.stringify(context())}\n\nRules: British English. Blunt, direct, specific to running an accountancy firm for hospitality clients. No emojis. Never use em dashes or en dashes. Target the lowest line, the game they actually played, or the place they worked in the system. Rotate across themes: delegation, pricing and margin, the CFO hat, people, focus, noticing positives, creating space, the game they are playing, designing their ideal life. Do not repeat a previous call title. Exactly three options: one "best", one "ok", one "trap" (order shuffled). Each option's "n" is one or two sentences on the consequence. "coach" is two short paragraphs explaining the thinking as a CEO would to a peer. "todo" is one concrete action they can do within the horizon.\nReturn only JSON: {"title":string,"scene":string,"opts":[{"t":string,"v":"best"|"ok"|"trap","n":string}],"coach":[string,string],"todo":{"text":string,"type":"Start"|"Stop"|"Keep","h":"week"|"month"|"quarter","hours":number}}`;
-      const res=await sampleNs.json(prompt,{modelTier:'default',cache:false});
-      if(validCall(res)){
-        call={title:clean(res.title),scene:clean(res.scene),opts:res.opts.slice(0,3).map(o=>({t:clean(o.t),v:o.v,n:clean(o.n)})),coach:res.coach.slice(0,3).map(clean),
-          todo:{text:clean(res.todo.text),type:['Start','Stop','Keep'].includes(res.todo.type)?res.todo.type:'Start',h:HORIZONS[res.todo.h]?res.todo.h:'week',hours:Math.max(0,Math.min(20,Number(res.todo.hours)||0))},gen:'claude'};
-      }
-    }
-  }catch(e){}
+  const res=await askCoach('call',{context:context(),previousTitles:allCalls().map(c=>c.title)});
+  if(validCall(res)){
+    call={title:clean(res.title),scene:clean(res.scene),opts:res.opts.slice(0,3).map(o=>({t:clean(o.t),v:o.v,n:clean(o.n)})),coach:res.coach.slice(0,3).map(clean),
+      todo:{text:clean(res.todo.text),type:['Start','Stop','Keep'].includes(res.todo.type)?res.todo.type:'Start',h:HORIZONS[res.todo.h]?res.todo.h:'week',hours:Math.max(0,Math.min(20,Number(res.todo.hours)||0))},gen:'claude'};
+  }
   if(!call){
     const used=new Set(S.calls.map(c=>c.bank));
     const pool=BANK.filter(b=>!used.has(b.id));const pick=(pool.length?pool:BANK)[Math.floor(Math.random()*(pool.length||BANK.length))];
@@ -1133,7 +1144,6 @@ async function dealCall(btn){
 
 /* ---------- 2030 letter ---------- */
 function renderLetter(){const el=byId('letter');if(!el){render();return;}el.outerHTML=vLetter();renderBoard();}
-async function getSample(){if(AI&&!sampleNs&&window.claude&&window.claude.use){try{sampleNs=await window.claude.use('sample');}catch(e){}}return sampleNs;}
 function letterContext(){
   const f=S.future,ans=S.letterQ.answers||{};
   return {
@@ -1146,14 +1156,9 @@ function letterContext(){
 async function draftLetter(btn){
   btn.disabled=true;btn.textContent='Drafting...';
   let text='',by='bank';
-  const s=await getSample();
-  if(s){
-    try{
-      const prompt=`Write a first draft of a "2030 letter" for Tom Stanley, founder, CEO and CFO of Williams, Stanley & Co, a London accountancy firm that works only with hospitality businesses. He is a chartered accountant and tax adviser, and a former restaurateur. The letter is from Tom in November 2030 to Tom in November 2026, describing his life and firm as if it has all already happened.\n\nUse ONLY what he has told you below. Do not invent facts, names or figures he has not given. Where he gave a figure, use it exactly. If a part of life is missing, leave it out rather than making it up.\n\nHis material, as JSON:\n${JSON.stringify(letterContext())}\n\nStyle: first person, past and present tense only (it has happened), never "will" or "hope". British English. Plain, direct, warm, the way a confident operator talks. Concrete detail over slogans. No emojis. Never use em dashes or en dashes. No headings or bullet points. Open with "Dear Tom," and a line placing him on a specific morning in November 2030. Then short paragraphs: the firm, his role and what he stopped doing, a normal week, money, the people who run things, health, family and friends, adventure, the game he stopped playing. End with what he is glad 2026 Tom started, and sign off "Tom, November 2030". 300 to 500 words. Return only the letter text.`;
-      const r=await s(prompt,{modelTier:'default',cache:false});
-      if(r&&r.text&&wc(r.text)>80){text=r.text.replace(/\s*[—–]\s*/g,', ').trim();by='claude';}
-    }catch(e){}
-  }
+  if(AI)btn.textContent='Claude is drafting...';
+  const r=await askCoach('letterDraft',letterContext());
+  if(r&&typeof r.text==='string'&&wc(r.text)>80){text=clean(r.text);by='claude';}
   if(!text){
     const ans=S.letterQ.answers||{};
     const paras=LETTER_Q.filter(x=>x.id!=='thank'&&(ans[x.id]||'').trim()).map(x=>ans[x.id].trim());
@@ -1167,15 +1172,11 @@ async function coachLetter(btn){
   btn.disabled=true;btn.textContent='Reading your letter...';
   const t=S.future.letter||'';
   const out={ts:Date.now(),checks:letterChecks(t),ai:null,aiTried:false};
-  const s=await getSample();
-  if(s){
-    out.aiTried=true;
-    try{
-      const prompt=`You are a world-class CEO coach reading your client's "2030 letter": a letter from himself in November 2030 describing the life and firm he has built. He is Tom Stanley, founder, CEO and CFO of Williams, Stanley & Co, a London accountancy firm for hospitality businesses. Coach him to make it sharper, more specific and more honest, so it works as a decision filter he reads every month.\n\nHis letter:\n"""${t.slice(0,8000)}"""\n\nHis stated numbers and chosen game: ${JSON.stringify({targetHours:S.future.targetHours,daysOff:S.future.daysOff,income:S.future.income||null,game:(GAMES.find(g=>g.id===S.future.game)||{}).name||null})}\n\nRules: British English, blunt and specific, no flattery, no emojis, never use em dashes or en dashes. Quote his own words exactly when you challenge a line.\nReturn only JSON: {"strengths":[one or two short sentences],"sharpen":[up to three {"quote":exact short phrase from the letter,"question":a coaching question or challenge that would make that line more concrete or more truthful}],"missing":[up to two short sentences on what a full life plan would include that this letter does not],"firstAction":one concrete action he could take this week that moves him toward this letter}`;
-      const r=await s.json(prompt,{modelTier:'default',cache:false});
-      if(r&&typeof r==='object'){const cl=x=>String(x||'').replace(/\s*[—–]\s*/g,', ').trim();
-        out.ai={strengths:(r.strengths||[]).slice(0,2).map(cl),sharpen:(r.sharpen||[]).slice(0,3).filter(x=>x&&x.question).map(x=>({quote:cl(x.quote),question:cl(x.question)})),missing:(r.missing||[]).slice(0,2).map(cl),firstAction:cl(r.firstAction)};}
-    }catch(e){}
+  if(AI){
+    out.aiTried=true;btn.textContent='Claude is reading your letter...';
+    const f=S.future;
+    const r=await askCoach('letterCoach',{letter:t.slice(0,8000),numbers:{targetHours:f.targetHours,daysOff:f.daysOff,income:f.income||null,game:(GAMES.find(g=>g.id===f.game)||{}).name||''}});
+    if(r)out.ai={strengths:(r.strengths||[]).slice(0,2).map(clean),sharpen:(r.sharpen||[]).slice(0,3).filter(x=>x&&x.question).map(x=>({quote:clean(x.quote),question:clean(x.question)})),missing:(r.missing||[]).slice(0,2).map(clean),firstAction:clean(r.firstAction)};
   }
   S.letterCoach=out;save();renderLetter();
 }
@@ -1184,7 +1185,7 @@ async function coachLetter(btn){
 function toTop(){if(S.view==='reset'||S.view==='off'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
 function endReset(o){
   if(!RD||!RD.loud||!RD.sort)return;
-  const entry=finishReset({loud:RD.loud,sort:RD.sort,receipt:RD.receipt,move:o.move,todoId:o.todoId});
+  const entry=finishReset({loud:RD.loud,sort:RD.sort,receipt:RD.receipt,move:o.move,todoId:o.todoId,line:RD.line,read:RD.read&&RD.read.read});
   RD={step:'done',entry};save();render();toTop();
 }
 function attach(){
@@ -1228,8 +1229,12 @@ on('click',async e=>{
         if(st>=LETTER_Q.length-1){addTodo({text:v,type:'Start',h:'week',hours:0,source:'letter-thank'});save();setStatus('Your first step is on the list. Now draft the letter.');}break;}
       case 'decline':{S.wildMonth.decision='declined';S.wildMonth.reason=v;S.wildLog.push({month:S.wildMonth.month,id:S.wildMonth.id,decision:'declined',reason:v});save();render();break;}
       case 'score':{const s=picked('score');S.future.gameWords=s.length?'The score that counts: '+s.join(' and ')+'.':'';save();const ta=byId('f-gameWords');if(ta)ta.value=S.future.gameWords;break;}
-      case 'reset-loud':{const L=LOUD.find(x=>x.name===v);if(!L)break;RD={step:'sort',loud:L.k};render();toTop();break;}
-      case 'reset-sort':{const so=SORT.find(x=>x.name===v);if(!so||!RD)break;RD.sort=so.k;RD.receipt=receiptFor((S.resets||[]).length);RD.step='receipt';render();toTop();break;}
+      case 'reset-loud':{const L=LOUD.find(x=>x.name===v);if(!L)break;const li=byId('rs-line');const line=li?li.value.trim().slice(0,280):((RD&&RD.line)||'');RD={step:'sort',loud:L.k,line};render();toTop();break;}
+      case 'reset-sort':{const so=SORT.find(x=>x.name===v);if(!so||!RD)break;RD.sort=so.k;RD.receipt=receiptFor((S.resets||[]).length);RD.step='receipt';RD.read=null;RD.concern=false;
+        if(AI){const mine=RD;mine.reading=true;
+          askCoach('readback',{loud:(LOUD.find(x=>x.k===mine.loud)||{}).name,sort:so.name,line:mine.line||'',evidence:receipts().slice(0,10),openActions:S.todos.filter(t=>!t.done&&!isResetMove(t)).slice(0,8).map(t=>t.text)})
+            .then(r=>{if(RD!==mine)return;mine.reading=false;if(r&&r.concern)mine.concern=true;else if(r&&r.read)mine.read=r;if(mine.step==='receipt'||mine.step==='move')render();});}
+        render();toTop();break;}
       case 'reset-move':endReset({move:v});break;
       case 'pillar':{const k=d.pickGroup.slice(3);S.future.pillars[k].ten=v;save();const i=byId('pt-'+k);if(i)i.value=v;break;}
     }
@@ -1299,11 +1304,23 @@ on('click',async e=>{
     case 'resetNext':if(RD)RD.step='move';render();toTop();break;
     case 'resetOwn':{const t=(byId('other-rs-move')||{}).value;const txt=(t||'').trim();if(!txt){const o=byId('other-rs-move');if(o){o.hidden=false;o.focus();}setStatus('Write the move in a few words, then tap Use my own words.');return;}endReset({move:txt});break;}
     case 'resetTodo':endReset({todoId:d.id});break;
+    case 'resetSuggest':if(RD&&RD.read&&RD.read.move)endReset({move:RD.read.move});break;
     case 'resetDone':{const t=S.todos.find(x=>x.id===d.id);if(!t)return;const before=points();if(!t.done){t.done=true;t.doneAt=Date.now();t.star=false;}
       if(RD&&RD.step!=='loud')RD=null;save();S.view='today';render();toTop();
       $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Done. That is the move made.</strong><span class="small">${points()>before?'+'+(points()-before)+' points. ':''}You were in charge of the next step, and you took it.</span></div>`);break;}
-    case 'resetCall':{if(!RD||!RD.entry)return;const c=pressureFor(RD.entry.loud);RD.step='call';RD.call=c.id;RD.pick=null;render();toTop();break;}
-    case 'resetPick':{if(!RD||RD.pick!=null)return;RD.pick=Number(d.i);const e=S.resets.find(r=>r.ts===RD.entry.ts);if(e){e.call={id:RD.call,pick:RD.pick};save();}render();break;}
+    case 'resetCall':{if(!RD||!RD.entry)return;const mine=RD;mine.step='call';mine.pick=null;mine.aiCall=null;mine.call=null;
+      const bank=()=>{mine.call=pressureFor(mine.entry.loud).id;};
+      if(AI&&mine.entry.line){
+        mine.aiLoading=true;render();toTop();
+        const r=await askCoach('pressure',{loud:(LOUD.find(x=>x.k===mine.entry.loud)||{}).name,sort:(SORT.find(x=>x.k===mine.entry.sort)||{}).name,line:mine.entry.line,previousTitles:(S.resets||[]).slice(-20).map(x=>x.call&&x.call.title).filter(Boolean)});
+        if(RD!==mine)return;mine.aiLoading=false;
+        if(r&&r.concern)mine.concern=true;
+        else if(validPressure(r))mine.aiCall={id:'ai',title:clean(r.title),scene:clean(r.scene),opts:r.opts.slice(0,3).map(o=>({t:clean(o.t),v:o.v,n:clean(o.n)})),coach:r.coach.slice(0,3).map(clean)};
+        else bank();
+      }else bank();
+      render();toTop();break;}
+    case 'resetPick':{if(!RD||RD.pick!=null)return;RD.pick=Number(d.i);const e=S.resets.find(r=>r.ts===RD.entry.ts);
+      if(e){const c=RD.aiCall||PRESSURE.find(x=>x.id===RD.call);e.call={id:RD.aiCall?'ai':RD.call,title:c?c.title:'',pick:RD.pick,v:c&&c.opts[RD.pick]?c.opts[RD.pick].v:null};if(RD.aiCall)e.call.scene=RD.aiCall.scene;save();}render();break;}
     case 'addFix':{const fx=FIX[d.k];if(!fx)return;addTodo(Object.assign({},fx,{source:'fix-'+d.k+'-'+weekNo(Date.now())}));save();render();setStatus('On your list. That is the system fix, not the symptom.');break;}
     case 'nextCall':{const i=FOUNDING.findIndex(c=>c.id===S.callId);const nx=FOUNDING.slice(i+1).find(c=>S.answers[c.id]==null)||FOUNDING.find(c=>S.answers[c.id]==null);S.callId=nx?nx.id:'results';save();render();toTop();break;}
     case 'replay':{const pr=practice();S.practiceRuns=(S.practiceRuns||[]).concat({ts:Date.now(),judgement:pr.judgement,best:pr.best.length,traps:pr.traps.length,index:pr.index});FOUNDING.forEach(c=>delete S.answers[c.id]);S.callId=FOUNDING[0].id;S.deck={drawn:[],redraws:2};save();render();toTop();break;}
@@ -1347,7 +1364,7 @@ return {
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
   RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE,
   sysToday, sysRhythm, sysMastered, sysProgress, playSys, offCurrent, offTotals, offRecent, planOff, logOff, offBrief, fearGap,
-  SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
+  SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, askCoach, dealCall, validPressure, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
   FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS, PICK, LETTER_PICKS,
   mount() {
     ROOT.innerHTML = MARKUP;

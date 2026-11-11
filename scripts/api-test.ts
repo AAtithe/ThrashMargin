@@ -17,6 +17,7 @@ import { readFileSync } from 'fs';
 import path from 'path';
 import { Pool } from 'pg';
 import jwt from 'jsonwebtoken';
+import http from 'http';
 
 const URL_ = process.env.API_TEST_DATABASE_URL ?? '';
 const host = (() => {
@@ -43,6 +44,33 @@ process.env.JWT_SECRET = 'api-test-secret';
 
 const ROOT = path.resolve(__dirname, '..');
 const admin = new Pool({ connectionString: URL_, ssl: { rejectUnauthorized: false } });
+
+/**
+ * A stand-in for Claude's API, so the coach's whole path runs (sign-in, game access, limits, the
+ * request it builds, the answer it checks) without a key or a network. The SDK is pointed at it with
+ * ANTHROPIC_BASE_URL. Each request is recorded; the answer is chosen from what the prompt asks for.
+ */
+const claudeRequests: { headers: http.IncomingHttpHeaders; body: any }[] = [];
+let claudeReply: ((body: any) => unknown) | null = null;
+const claudeStub = http.createServer((req, res) => {
+  let raw = '';
+  req.on('data', c => (raw += c));
+  req.on('end', () => {
+    const body = JSON.parse(raw || '{}');
+    claudeRequests.push({ headers: req.headers, body });
+    const prompt = String(body.messages?.[0]?.content ?? '');
+    const answer = claudeReply
+      ? claudeReply(body)
+      : prompt.includes('three-minute reset')
+        ? { concern: false, read: 'Cash is loud, and you closed 3 weeks running.', move: 'Chase the oldest debtor with one email' }
+        : { concern: false, title: 'Payroll Friday', scene: 'Two clients are late.', opts: [{ t: 'Chase them', v: 'best', n: 'Calm.' }, { t: 'Panic', v: 'trap', n: 'Loud.' }, { t: 'Wait', v: 'ok', n: 'Slow.' }], coach: ['Facts first.'] };
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({
+      id: 'msg_stub', type: 'message', role: 'assistant', model: body.model, stop_reason: 'end_turn', stop_sequence: null,
+      content: [{ type: 'text', text: JSON.stringify(answer) }], usage: { input_tokens: 10, output_tokens: 10 },
+    }));
+  });
+});
 
 type Handler = (req: any, res: any) => unknown;
 let handlers: Record<string, Handler>;
@@ -488,6 +516,49 @@ async function suite(mode: 'fresh' | 'legacy') {
   ok(withReview.status === 200, 'ledger: a ledger saved');
   ok((await play('GET', 'founders-ledger', A2)).body.saves[0].turn === 2, 'ledger: the list counts its Friday reviews');
 
+  // --- The ledger's coach (Claude) -------------------------------------------------------------------
+  const coach = (method: string, task: string, token: string | undefined, body?: unknown) =>
+    call(handlers.play, method, { kind: 'founders-ledger', coach: task }, body, token);
+  const coachRb = { loud: 'Cash', sort: 'Mine to decide', line: 'Payroll Friday and two clients are late', evidence: ['You have closed 3 weeks.'], openActions: [] };
+  delete process.env.ANTHROPIC_API_KEY;
+  ok((await coach('GET', 'status', undefined)).status === 401, 'coach: signed out is refused (401)');
+  ok((await coach('GET', 'status', CA)).status === 403, 'coach: an account without the game is refused (403)');
+  const coachOff = await coach('GET', 'status', A2);
+  ok(coachOff.status === 200 && coachOff.body.ai === false, 'coach: off without a key');
+  ok((await coach('POST', 'readback', A2, coachRb)).status === 503, 'coach: a task while off is 503, so the game uses its own bank');
+  process.env.ANTHROPIC_API_KEY = 'sk-test-stub';
+  process.env.ANTHROPIC_BASE_URL = `http://127.0.0.1:${(claudeStub.address() as { port: number }).port}`;
+  ok((await coach('GET', 'status', A2)).body.ai === true, 'coach: on with a key');
+  ok((await coach('POST', 'nonsense', A2, {})).status === 404, 'coach: an unknown task is 404');
+  ok((await coach('GET', 'readback', A2)).status === 405, 'coach: tasks are POST only');
+  ok((await coach('POST', 'readback', A2, { sort: 'x' })).status === 400, 'coach: not enough to coach from is 400');
+  claudeRequests.length = 0;
+  const coachRead = await coach('POST', 'readback', A2, coachRb);
+  ok(coachRead.status === 200 && coachRead.body.result.read.includes('3 weeks') && coachRead.body.result.move === 'Chase the oldest debtor with one email', `coach: a readback (got ${coachRead.status} ${JSON.stringify(coachRead.body)})`);
+  const coachSent = claudeRequests[0];
+  ok(!!coachSent && coachSent.body.model === 'claude-opus-5-5', 'coach: asks the model coach.ts names');
+  ok(!!coachSent && coachSent.body.output_config?.format?.type === 'json_schema' && coachSent.body.output_config?.effort === 'low', 'coach: structured output, low effort for a reset');
+  ok(!!coachSent && coachSent.body.fallbacks === 'default' && String(coachSent.headers['anthropic-beta']).includes('server-side-fallback-2026-07-01'), 'coach: refusal fallback on');
+  ok(!!coachSent && String(coachSent.body.system).includes('<player> tags') && String(coachSent.body.messages[0].content).includes('<player>Payroll Friday'), 'coach: the player text is fenced and the system prompt says so');
+  // The safety backstop answers without asking Claude.
+  claudeRequests.length = 0;
+  const coachCrisis = await coach('POST', 'readback', A2, { ...coachRb, line: "I don't want to be here anymore" });
+  ok(coachCrisis.status === 200 && coachCrisis.body.result.concern === true && claudeRequests.length === 0, 'coach: coachCrisis words get the support card with no model call');
+  // A bad answer is refused, never passed on.
+  claudeReply = () => ({ title: 'x', scene: 'y', opts: [], coach: [] , concern: false });
+  ok((await coach('POST', 'pressure', A2, coachRb)).status === 502, 'coach: an invalid answer is 502, so the game falls back');
+  claudeReply = null;
+  const coachPc = await coach('POST', 'pressure', A2, coachRb);
+  ok(coachPc.status === 200 && coachPc.body.result.opts.length === 3 && coachPc.body.result.title === 'Payroll Friday', 'coach: a pressure call');
+  // The burst limit, per account.
+  const coachUsed = (await admin.query(`SELECT COUNT(*)::int AS n FROM rate_events WHERE bucket = 'coach'`)).rows[0].n;
+  let coachLast = 200;
+  for (let i = coachUsed; i < 31; i++) coachLast = (await coach('POST', 'readback', A2, coachRb)).status;
+  ok(coachLast === 429, `coach: the 31st request in an hour is refused (got ${coachLast})`);
+  await admin.query(`DELETE FROM rate_events WHERE bucket IN ('coach', 'coach-day')`);
+  delete process.env.ANTHROPIC_API_KEY;
+  delete process.env.ANTHROPIC_BASE_URL;
+
   // --- Approval of new accounts ------------------------------------------------------------------
   ok((await adminApi('GET', 'settings', T)).body.requireApproval === false, 'approval: off until an admin turns it on');
   ok((await adminApi('PUT', 'settings', A2, { requireApproval: true })).status === 403, 'approval: a non-admin cannot turn it on');
@@ -710,12 +781,14 @@ async function suite(mode: 'fresh' | 'legacy') {
 }
 
 (async () => {
+  await new Promise<void>(r => claudeStub.listen(0, '127.0.0.1', () => r()));
   try {
     await suite('fresh');
     await suite('legacy');
   } finally {
     await admin.query('DROP SCHEMA IF EXISTS auth CASCADE').catch(() => {});
     await admin.end();
+    claudeStub.close();
   }
   console.log(`\n${passes} passed, ${failures} failed`);
   process.exit(failures ? 1 : 0);

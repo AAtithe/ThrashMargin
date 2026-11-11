@@ -14,6 +14,34 @@ interface Opened {
   id: string;
   state: unknown;
   version?: number;
+  /** Whether the server's coach (Claude) is switched on. */
+  ai: boolean;
+}
+
+/** Whether the coach is on. Never blocks opening the ledger: any failure means off. */
+async function coachStatus(): Promise<boolean> {
+  try {
+    const res = await fetch(`${ENDPOINT}?coach=status`, { headers: authHeaders() });
+    if (!res.ok) return false;
+    return (await readJson(res))?.ai === true;
+  } catch {
+    return false;
+  }
+}
+
+/** One coach task. The engine treats null as "use the built-in fallback". */
+async function askCoach(task: string, payload: unknown): Promise<unknown> {
+  try {
+    const res = await fetch(`${ENDPOINT}?coach=${encodeURIComponent(task)}`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify(payload ?? {}),
+    });
+    if (!res.ok) return null;
+    return (await readJson(res))?.result ?? null;
+  } catch {
+    return null;
+  }
 }
 
 class SignInExpired extends Error {}
@@ -29,6 +57,7 @@ async function openLedger(): Promise<Opened> {
     throw new Error(body?.message ?? serverFailure(action, res));
   };
 
+  const ai = coachStatus();
   const list = await fetch(ENDPOINT, { headers: authHeaders() });
   if (!list.ok) return fail(list, 'opening your ledger');
   const saves = ((await readJson(list))?.saves ?? []) as { id: string }[];
@@ -43,7 +72,7 @@ async function openLedger(): Promise<Opened> {
   const one = await fetch(`${ENDPOINT}?id=${encodeURIComponent(id)}`, { headers: authHeaders() });
   if (!one.ok) return fail(one, 'opening your ledger');
   const data = await readJson(one);
-  return { id, state: data?.state ?? null, version: data?.version };
+  return { id, state: data?.state ?? null, version: data?.version, ai: await ai };
 }
 
 export default function LedgerScreen() {
@@ -91,7 +120,8 @@ export default function LedgerScreen() {
     };
     const unmount = mountLedger(el, {
       initial: o.state,
-      ai: false,
+      ai: o.ai,
+      coach: askCoach,
       onChange: state => {
         latest = state;
         window.clearTimeout(timer);

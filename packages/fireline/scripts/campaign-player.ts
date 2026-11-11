@@ -11,7 +11,8 @@
  * Not a substitute for playing. A scripted player that loses proves little (it does not micro, and
  * its heroes go in on a timer); one that wins proves the mission can be won.
  */
-import { campaignMission, heroesFor, missionContext, applyOutcome, newCampaign } from '../src/campaign/progression';
+import { campaignLevel, campaignMission, heroesFor, missionContext, applyOutcome, newCampaign } from '../src/campaign/progression';
+import { engagementSpec } from '../src/campaign/territory';
 import { missionById, MISSIONS } from '../src/campaign/missions';
 import type { CampaignState } from '../src/campaign/types';
 import { processAction } from '../src/sim/actions';
@@ -84,7 +85,19 @@ export const planName = (p: BasePlan) => `${p.commander} commander, attacks at $
  * target (or the nearest enemy) from that minute.
  */
 export function playBase(id: string, level: Difficulty, plan: BasePlan, maxMinutes = 45): PlayResult {
-  let s = startAt(id, level);
+  return playBattle(startAt(id, level), id, level, plan, maxMinutes);
+}
+
+/** An engagement (campaign/territory.ts), deployed from this campaign at its difficulty, played as a base mission. */
+export function playEngagement(c: CampaignState, regionId: string, plan: BasePlan, maxMinutes = 45): PlayResult {
+  const spec = engagementSpec(c, regionId);
+  if (!spec) throw new Error(`No engagement in ${regionId}`);
+  const s = createMissionState(campaignMission(c, spec), missionContext(c, spec, `play-${spec.id}`, 1000));
+  return playBattle(s, spec.id, campaignLevel(c), plan, maxMinutes);
+}
+
+function playBattle(start: GameState, id: string, level: Difficulty, plan: BasePlan, maxMinutes: number): PlayResult {
+  let s = start;
   s.autopilot = true;
   s.autopilotDifficulty = plan.commander;
   const first = s.buildings.find(b => b.owner === 0);

@@ -234,3 +234,58 @@ The bar, measured by `npm run sweep:fire` (twelve plans for a base mission, six 
 three for Ace of Spades): Easy is won by every or nearly every plan, Normal by most, Hard by some.
 `campaign:fire` pins a winning plan for every mission at Normal, and at Easy and Hard as well for all
 but Demolition, Convoy North, The Long Hold and Bastion Line, whose own players run at Normal only. A scripted player that loses proves little; one that wins proves the mission can be won.
+
+## 11. Territory and engagements
+
+The map is a country, not a line of objectives. `src/campaign/theatre.ts` divides it into provinces
+and city regions, each on one act's front; fourteen of them hold a story mission, a few in the
+south-west are home ground, and every other region holds an **engagement**: a playable side battle
+the player may fight from the map. Story missions still unlock strictly in order; engagements are
+optional and fill in the country between them. Rules: `src/campaign/territory.ts` (pure).
+
+**Who holds a region.** Held: home ground, a region whose mission is won, or one whose engagement
+is won. Open (enemy ground with a battle to fight now): not held, no story mission, its act's
+front reachable (act one always; act two once its first mission, Iron Coast, is unlocked), and it
+borders a held region. Everything else is enemy ground. A fresh campaign holds only home ground
+and opens exactly the non-mission regions bordering it; each engagement won opens its neighbours.
+A mission region is never "open": it turns when its mission is won.
+
+**The engagement battle** (`engagementSpec(c, regionId)`, id `eng:<regionId>`, order 0). Rolled
+from a stream seeded on the region id, so a region offers the same battle at the same point of the
+campaign; scaled by the act and by story missions won (never below eight on act two's front):
+
+- the map, from the seed `eng-<regionId>`;
+- the enemy: an outpost (Generator, Barracks, turrets, sometimes a Refinery, War Factory, Comms
+  Uplink, sandbags or a Rocket Turret once the campaign has met them), or from the fourth mission
+  on sometimes a whole Combine base; a garrison of 3 plus 0.8 per mission won, armour a growing
+  share; posture passive, defend, or (outposts that can train) raid; a whole base only defends;
+- the player: a Command Yard, three to five riflemen, a Rocketeer, Grenadiers and Tanks once
+  unlocked, 3,500 credits and up;
+- tech: the act's basics (First Light's list in act one, the standard twelve in act two) plus
+  everything the campaign has unlocked; no heroes, no powers beyond the Commander's perks;
+- to win: clear an outpost to the last unit (`destroyAll`), or break a base (its Command Yard and
+  War Factory); one or two bonus objectives (two Refineries, two Gun Turrets, harvest, or the
+  turrets down inside a time); no time limit, no scripted waves, no hand-picked map points.
+
+Campaign difficulty applies through `campaignMission` exactly as for missions.
+
+**Rewards** (`applyEngagementOutcome`): xp of half the next story mission's reward, a quarter more
+per extra star, plus kills; a loss pays the usual quarter share. Rank-ups pay their skill points;
+there is no three-star point. The record (won, best stars, best time) is kept in
+`CampaignState.engagements` by region id. Engagements never unlock tech or heroes, never count as
+missions won, and do not change `CAMPAIGN_LENGTH` or victory. A won engagement may be fought again
+(Retry on the debrief); a lost rematch never loses the region.
+
+**Saves.** `engagements` is additive: older campaigns load with `{}`, and a record for a region the
+theatre no longer has is kept and ignored. Region ids are saved: never rename one.
+
+**The screen.** The map is drawn from `theatreView(c, act)`; clicking a region opens its mission's
+briefing, an engagement briefing (what is known of the enemy, objectives, forces, rewards,
+difficulty, Deploy), or a short note for held or unreachable ground. The side panel counts
+territory held; the operations index lists open engagements on the shown front under the missions.
+The debrief of an engagement says whether the region was taken.
+
+**Checks** (`campaign:fire`): the geometry (ids, outlines, symmetric borders, connected, every
+mission in exactly one region on its act's front, every engagement region reachable and takeable
+under the rules); the control rules; saves; every engagement built at three points of its act at
+every difficulty and run for two minutes; a seeded sample won by the scripted player at Normal.
