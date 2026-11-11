@@ -8,6 +8,7 @@ import type { NewPlanetRequest } from '../../hooks/useSaves';
 import { BusyLabel } from '../../lib/Loading';
 import { LENGTH_PRESETS, PRESETS } from '../../planet/rules';
 import type { LengthPreset, PlanetOptions } from '../../planet/types';
+import { hasSeenPlanetTour } from './PlanetTour';
 import { DEFAULT_DIFFICULTY, DIFFICULTIES, type Difficulty } from '../../sim/rules';
 
 const PRESET_TEXT: Record<LengthPreset, { name: string; hours: string }> = {
@@ -26,7 +27,14 @@ const RULES: { key: Rule; name: string; blurb: string }[] = [
 
 const maxFactions = (o: PlanetOptions) => Math.max(3, Math.min(5, Math.floor(o.regions / 4)));
 
-export default function WarSetup({ defaultCommander, onBegin }: { defaultCommander: string; onBegin: (r: NewPlanetRequest) => Promise<boolean> }) {
+export default function WarSetup({
+  defaultCommander,
+  onBegin,
+}: {
+  defaultCommander: string;
+  /** `guided`: open the guided first turn when the war loads (kept in this browser, not the save). */
+  onBegin: (r: NewPlanetRequest, guided: boolean) => Promise<boolean>;
+}) {
   const [name, setName] = useState('');
   const [commander, setCommander] = useState(defaultCommander);
   const [preset, setPreset] = useState<LengthPreset>('short');
@@ -35,6 +43,8 @@ export default function WarSetup({ defaultCommander, onBegin }: { defaultCommand
   const [seed, setSeed] = useState('');
   const [rules, setRules] = useState<Record<Rule, boolean>>(() => pick(PRESETS.short));
   const [busy, setBusy] = useState(false);
+  // Ticked for anyone who has not yet finished or skipped a guided first turn in this browser.
+  const [guided, setGuided] = useState(() => !hasSeenPlanetTour());
   const p = PRESETS[preset];
   const top = maxFactions(p);
 
@@ -55,7 +65,7 @@ export default function WarSetup({ defaultCommander, onBegin }: { defaultCommand
         preset,
         options: { factions: Math.min(factions, top), ...rules },
         difficulty: level,
-      });
+      }, guided);
     } finally {
       setBusy(false);
     }
@@ -144,6 +154,16 @@ export default function WarSetup({ defaultCommander, onBegin }: { defaultCommand
             </span>
           </label>
         ))}
+      </div>
+      <div className="fl-pl-checks" role="group" aria-label="Tutorial">
+        <label>
+          <input type="checkbox" checked={guided} onChange={e => setGuided(e.target.checked)} data-testid="war-guided" />
+          <span>
+            <strong>Guided first turn</strong>
+            <br />
+            <span className="fl-small">A tutorial on this war: the map, a build, a recruit, a move, a treaty, trade and the turn report, one step at a time. Tour on the war screen reopens it.</span>
+          </span>
+        </label>
       </div>
       <div>
         <button type="button" className="fl-camp-btn primary" disabled={busy} onClick={begin} data-testid="begin-war">

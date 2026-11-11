@@ -122,6 +122,10 @@ by doing what the card names. That driver waits 1.5s on every step before acting
 ringed control is on screen, uncovered and enabled, pauses and resumes mid-run, checks the save
 for the real effects, and checks a finished run is not offered again.
 
+War for the Planet has its own guided first turn on the same pattern (`components/planet/PlanetTour.tsx`,
+driven by `scripts/tours/fireline-planet.cjs`); see fireline-planet-design.md, build log, "Guided
+first turn".
+
 ## 6. Sound
 
 `game/sound.ts`, synthesised with the Web Audio API: no audio files, for the same reasons the art

@@ -70,7 +70,7 @@ export default function PlanetMapCanvas({
 
   return (
     <div ref={wrap} className="fl-pl-canvas">
-      <canvas ref={canvas} onClick={click} role="img" aria-label={`The planet ${map.name}: ${map.regions.length} regions. Choose a region from the map or the list.`} data-testid="planet-map" />
+      <canvas ref={canvas} onClick={click} role="img" aria-label={`The planet ${map.name}: ${map.regions.length} regions. Choose a region from the map or the list.`} id="pl-map" data-testid="planet-map" />
     </div>
   );
 }

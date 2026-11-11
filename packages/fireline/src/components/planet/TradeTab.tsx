@@ -60,7 +60,7 @@ export default function TradeTab({ s, map, act, selected }: PlanetProps & { sele
         </ul>
       </section>
 
-      <section className="fl-pl-card" data-testid="trade-open">
+      <section className="fl-pl-card" id="pl-trade-open" data-testid="trade-open">
         <h3>Open a route</h3>
         <span className="fl-small">
           Between two of your cities at least 2 hops apart (ore and food to you), or to a city of a faction you have a trade pact or alliance with (fuel and alloys
@@ -99,6 +99,7 @@ export default function TradeTab({ s, map, act, selected }: PlanetProps & { sele
             a={{ type: 'openRoute', from, to: target ?? -1 }}
             tone="primary"
             testId="open-route"
+            id="pl-open-route"
             extraProblem={target === null ? routeProblem(s, 0, from, from) ?? 'No city in reach of this one.' : null}
           >
             Open the route

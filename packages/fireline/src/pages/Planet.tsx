@@ -16,6 +16,7 @@ import { DebriefCard, EndCard, PendingCard, type Debrief } from '../components/p
 import CommanderTab from '../components/planet/CommanderTab';
 import DiplomacyTab from '../components/planet/DiplomacyTab';
 import JournalTab from '../components/planet/JournalTab';
+import PlanetTour, { PLANET_TOUR_STEPS, firstUnfinished, readPlanetTour, writePlanetTour, type PlanetTabKey } from '../components/planet/PlanetTour';
 import PlanetMapCanvas from '../components/planet/PlanetMapCanvas';
 import RegionPanel from '../components/planet/RegionPanel';
 import ResearchTab from '../components/planet/ResearchTab';
@@ -30,13 +31,13 @@ import type { PlanetSave } from '../planet/save';
 import { simulateInWorker } from '../planet/simulateClient';
 import { armyPath } from '../planet/supply';
 import { applyPlanetAction, planetActionProblem, type PlanetAction } from '../planet/turn';
-import { RESOURCES, type BattleReport, type RegionId } from '../planet/types';
+import { RESOURCES, type BattleReport, type FactionId, type RegionId } from '../planet/types';
 import { DIFFICULTIES } from '../sim/rules';
 import { wonBy } from '../sim/sides';
 import type { GameState } from '../sim/types';
 import { Battle } from './GameScreen';
 
-type Tab = 'map' | 'army' | 'research' | 'commander' | 'diplomacy' | 'trade' | 'journal';
+type Tab = PlanetTabKey;
 const TABS: { key: Tab; label: string }[] = [
   { key: 'map', label: 'Map' },
   { key: 'army', label: 'Army' },
@@ -74,6 +75,32 @@ export default function PlanetFlow({
   const [busy, setBusy] = useState<'simulate' | null>(null);
   const [toast, setToast] = useState<{ text: string; n: number } | null>(null);
   const toastTimer = useRef(0);
+  const [proposing, setProposing] = useState<FactionId | null>(null);
+  // The guided first turn: its progress is this browser's, per save, outside the war itself. Where
+  // it resumes is decided here, by walking its steps in order to the first one not finished.
+  const [tour, setTour] = useState<{ startAt: number; n: number } | null>(() => {
+    const p = readPlanetTour(initial.id);
+    return p?.open ? { startAt: firstUnfinished(p, PLANET_TOUR_STEPS), n: 0 } : null;
+  });
+  const tourStepDone = useCallback(
+    (i: number) => {
+      const p = readPlanetTour(initial.id) ?? { open: true, done: [] };
+      const next = { open: true, done: p.done.includes(i) ? p.done : [...p.done, i] };
+      writePlanetTour(initial.id, next);
+      // A fought battle unmounts the run; it comes back at the first step still to do.
+      setTour(t => (t ? { ...t, startAt: firstUnfinished(next, PLANET_TOUR_STEPS) } : t));
+    },
+    [initial.id],
+  );
+  const closeTour = useCallback(() => {
+    const p = readPlanetTour(initial.id);
+    writePlanetTour(initial.id, { open: false, done: p?.done ?? [] });
+    setTour(null);
+  }, [initial.id]);
+  const openTour = () => {
+    writePlanetTour(initial.id, { open: true, done: [] });
+    setTour(t => ({ startAt: 0, n: (t?.n ?? 0) + 1 }));
+  };
 
   const s = ps.planet;
   const map = planetMapOf(s);
@@ -249,12 +276,16 @@ export default function PlanetFlow({
             {saveError ? `Not saving: ${saveError}` : lastSaved ? `Saved ${cloud ? 'to your account' : 'in this browser'}` : ''}
           </span>
           <ThemeToggle />
+          <button type="button" className="fl-pl-btn" onClick={openTour} title="A guided first turn, from the start" data-testid="planet-tour-button">
+            Tour
+          </button>
           <button
             type="button"
             className="fl-pl-btn primary"
             disabled={!!endProblem}
             title={endProblem ?? 'Every other faction moves, then production, then the next turn.'}
             onClick={() => act({ type: 'endTurn' })}
+            id="pl-end-turn"
             data-testid="end-turn"
           >
             End turn
@@ -264,7 +295,10 @@ export default function PlanetFlow({
       </header>
       <nav className="fl-pl-tabs" role="tablist" aria-label="War screens">
         {TABS.map(t => (
-          <button key={t.key} type="button" role="tab" className="fl-pl-tab" aria-selected={tab === t.key} onClick={() => setTab(t.key)} data-testid={`tab-${t.key}`}>
+          <button key={t.key} type="button" role="tab" className="fl-pl-tab" aria-selected={tab === t.key} onClick={() => {
+              setTab(t.key);
+              setProposing(null);
+            }} id={`pl-tab-${t.key}`} data-testid={`tab-${t.key}`}>
             {t.label}
             {t.key === 'diplomacy' && s.offers.length > 0 && <span className="fl-dot-count">{s.offers.length}</span>}
           </button>
@@ -318,7 +352,7 @@ export default function PlanetFlow({
         )}
         {tab === 'research' && <ResearchTab {...props} />}
         {tab === 'commander' && <CommanderTab {...props} />}
-        {tab === 'diplomacy' && <DiplomacyTab {...props} />}
+        {tab === 'diplomacy' && <DiplomacyTab {...props} proposing={proposing} onProposing={setProposing} />}
         {tab === 'trade' && <TradeTab {...props} selected={selected} />}
         {tab === 'journal' && <JournalTab {...props} />}
       </main>
@@ -328,6 +362,16 @@ export default function PlanetFlow({
         </div>
       )}
       {debrief && <DebriefCard d={debrief} map={planetMapOf(debrief.after)} onClose={() => setDebrief(null)} />}
+      {tour && (
+        <PlanetTour
+          key={tour.n}
+          view={{ s, map, tab, selected, proposing: tab === 'diplomacy' ? proposing : null, moves, targets }}
+          startAt={tour.startAt}
+          onStepDone={tourStepDone}
+          onClose={closeTour}
+          hidden={!!debrief || !!s.result}
+        />
+      )}
     </div>
   );
 }

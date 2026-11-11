@@ -295,7 +295,8 @@ export default function HowToPlay() {
         <Panel title="War for the Planet">
           <p style={{ ...bodySmall, margin: 0 }}>
             A whole planet held by you, the Meridian Corps, and two to four computer factions, each with its own temperament. Start a war from
-            the lobby: choose a length, the number of factions, a difficulty and the optional rules.
+            the lobby: choose a length, the number of factions, a difficulty and the optional rules. Tick <strong>Guided first turn</strong> for
+            a tutorial that walks your first turn one step at a time; <strong>Tour</strong> at the top of the war screen reopens it.
           </p>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
             {LENGTH_PRESETS.map(k => {
