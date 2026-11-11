@@ -98,6 +98,15 @@ team's colours; the same functions draw the build menu icons. `game/terrain.ts` 
 once per battle. `game/renderer.ts` draws a frame: terrain window, scorch marks, ore, structures,
 units interpolated between ticks, projectiles, muzzle flashes and explosions, particles, fog
 (a 64 by 64 canvas scaled up with smoothing, which gives soft edges), placement ghost, drag box.
+Ore fields are drawn by `game/fx/ore.ts` (a ragged stain with lit crystal clusters that shrink as a
+tile is mined, glints held still with motion off); `game/fx/ground.ts` gives each structure a
+trampled skirt and a contact shadow and each unit a soft shadow. The fog grid is blurred before it
+is scaled up, so its edge is a curve rather than a tile staircase.
+
+The campaign's theatre maps (`game/campaignArt.ts`) are drawn as staff operational maps: paper,
+grid references, contours, a front line that advances with each mission won, arrows of advance and
+OBJ markers. Static layers are cached; only the open objective pulses. The lobby draws a preview of
+the same map through `components/campaignArtBridge.ts`.
 Particles and scorch marks are renderer-only and may use `Math.random`.
 
 Saves: every 15 seconds of play, on pause, on leaving, when the tab hides and when the battle
@@ -1105,3 +1114,139 @@ long as before (Normal mirror 23.4 to 24.1 minutes on average).
 Harness at the end: `npm run drive:fire` 371,018 assertions, 0 failed (the round-4 Hard battle now
 "side 1 won at 17 min; 6 bombs, 6 gunship rockets"; the air war battle "gunship, interceptor,
 bomber; 2 interceptor missiles; side 0 won at 31 min"); `npm run campaign:fire` 2,595, unchanged.
+
+### 2026-11-11: The naval war, and the Coast map
+
+The player asked for naval warfare next. No map had a sea to fight on: over six seeds of every type
+the largest body of water was about 270 tiles, scattered lakes that no two bases shared. So the
+naval war comes with a map type of its own. Advanced tech only, like air power; standard tech, the
+campaign and older saves are untouched, and on any map without open sea nothing changes.
+
+**The Coast map** (`maps.ts`, `coast` in `MAP_TYPES`, so `random` can draw it too). Two sides: a sea
+across the middle that stops short of both edges, with a wobbling shore, rock islets and a harbour
+bay in front of each base, so the shore lies at about the edge of the base's clearing. The land
+corridors round its two ends are the two routes between the bases, and the contested ore lies in
+them on the line as far from one base as the other. Three and four sides: an inland sea round a
+central island, crossed by the tracks to the centre as causeways, so every shore faces its
+neighbours. Drafts pass `mapProblem` 35 to 38 times in 40 on two sides (the generator retries) and
+40 in 40 on three and four, at every size.
+
+| Unit | Cost | Role |
+|---|---|---|
+| Patrol Boat | 600 | Fast (1.6 tiles/s); machine guns (16, range 5) that reach aircraft too |
+| Destroyer | 1400 | 720 health; deck gun (55, range 6.5); sonar: a detector, finds Submarines 7 tiles off |
+| Submarine | 1200 | Stealthy; torpedoes (130, range 5.5) that hit ships alone. Needs a Research Lab |
+| Battleship | 3200 | 1500 health, slow; guns (120, splash 1.3) from 3 to 11 tiles. Needs a Tech Centre |
+| Landing Craft | 900 | Unarmed; six places, an infantryman one, a vehicle two |
+
+| Structure | Size | Cost | Power | Needs |
+|---|---|---|---|---|
+| Naval Yard | 3x3 | 1500 | -40 | Factory; on the shore of open sea; mends ships beside it |
+
+How it plays (`naval.ts`, `transport.ts`, numbers in `rules.ts` under "The naval war"):
+
+- **Sea layer.** `passable`, `nearestPassable`, `lineClear` and `findPath` take an optional `sea`
+  flag: open water for ships, land for everything else, as before. Every existing call keeps the
+  default. Ships move, path and are pushed apart only on water; a ship and a soldier on the beach
+  beside it never push each other. A ship sent inland stops at the nearest water within 10 tiles.
+- **Who hits what.** Ships are ground-level: `hitsNaval` is whatever `hitsGround` says, so tanks,
+  turrets and bombs hit ships, flak never does, and the new `torpedo` (`canHitGround: false`,
+  `canHitNaval: true`) hits ships and nothing else. Armour class `ship`. A ship as close as the water
+  lets it get to a target still out of range, or a soldier as close as the shore lets it get to a
+  ship, gives the target up: at first a fleet sat for twenty minutes locked on a structure inland.
+  Limited to cases involving ships, so land battles play exactly as before.
+- **The Naval Yard** needs at least 3 water tiles round its footprint belonging to a body of at least
+  `NAVAL_MIN_SEA` (60) tiles: a pond is refused. Ships come out on the nearest open water. It mends
+  its side's ships within 2 tiles, 8 health a second, free.
+- **The Submarine** uses the Stealth Tank's rule (`stealth`), so a Destroyer or a Recon Plane (both
+  detectors) finds it 7 tiles off, anything else at 2.5, and everyone just after it fires.
+- **The Landing Craft** is the Troop Carrier's code (`transport.ts`), from the shore: infantry and
+  ground vehicles board (never a hauler or a deploying truck; a vehicle takes two places), it is still
+  whenever it has no order, and it sets them down on the nearest beach within 3 tiles.
+
+**The computer** (`aiNaval.ts`), once a decision after its air plan: on its first naval decision it
+looks for a sea within 20 tiles of home that also comes within 20 of an enemy base (`navalShore`,
+kept). Without one, nothing. With one: a Naval Yard once a Factory and refineries stand, building up
+to three Generators toward the shore first if it is out of reach (`navalCreep`, read by `findSpot`);
+ships to a plan by difficulty (Easy two Patrol Boats; Normal two, two Destroyers, a Submarine and a
+Landing Craft; Hard three Destroyers, two Submarines and a Battleship as well); defence of its shore
+by every fit warship; fleet strikes on the opponent's Naval Yard or the structure nearest the sea,
+the Battleship shelling it; Submarines hunting ships; hurt ships home to be mended; and landings of
+five (Normal) or six (Hard) places of idle troops at a refinery they can walk to from a beach. Ships
+never join a land wave (one filter in `ai.ts`).
+
+The first Hard battles showed what to fix: the commander found no sea at all until the map gained
+its harbours and the reach rules widened (the nearest water was 18 tiles from the Command Yard); a
+fleet that won the sea then sat locked on an inland target (the give-up rule above); and landings
+never sailed once the opponent's Naval Yard fell, because their target had to be within 8 tiles of
+water (now 14 for landings, since the troops walk the rest). In a Hard Coast battle after those
+fixes the fleets met mid-sea around minute 15, twenty ships were sunk, ships scored over a hundred
+kills, and side 0 then shelled side 1's coast.
+
+Interface: a Naval tab after Air (advanced tech, maps with open sea), selecting a Naval Yard opens it;
+stat cards for ships, the Naval Yard's shore rule and mending; the Landing Craft's status line counts
+places. Art: five ships with wakes while under way, turrets that track, a low dark Submarine, a
+Landing Craft whose seats fill; the Naval Yard with a slipway, a hull on the stocks and a gantry
+crane. How to play has a Naval panel; the lobby offers seven battlefields.
+
+Tests: `scripts/drive-naval.ts`, ten sections in `npm run drive:fire`: the rules and tech levels, the
+Coast map at every size and side count, the Naval Yard's shore and pond rules, sailing (on water
+the whole way, stopping at the shore when sent inland), who hits what (a Destroyer sinks a Patrol
+Boat, torpedoes sink a Destroyer and never touch a tank on the beach, a tank shells a ship, flak never
+does, a Patrol Boat fires at a gunship, a ship gives up an inland target), Submarines found by a
+Destroyer, mending, landings (two tanks and two riflemen fill six places, nowhere to land at sea, all
+ashore at the far beach), old saves, and the computer (a yard, a fleet that scores kills, a landing,
+exact replay, and no navy on Plains).
+
+**The ladder** (150 seeds, advanced tech, standard size). On the six older map types (the same
+seeds and maps as before the naval war, `--map classic,river,highlands,lakes,plains,canyon`), and on
+the Coast map alone:
+
+| Match | Six types, before (air war) | Six types, now | Coast |
+|---|---|---|---|
+| Normal mirror | 47% / 53% | 47% / 49% (5 unfinished) | 49% / 45% (9 unfinished) |
+| Hard beats Normal, both ways | 73.0% (68-78) | 75.3% (70-80) | 81.7% (77-86) |
+| Normal beats Easy, both ways | 99.0% | 99.7% | 99.3% |
+| Average minutes, Normal mirror | 24.1 | 25.6 | 32.3 |
+
+On the older maps the intervals overlap: a Lakes or Classic map with a big enough lake near both
+bases can now carry a small navy, which is the only way the naval war reaches them. On the Coast
+map the difficulty ladder holds and Hard pulls further ahead (its plan adds a Battleship, a third
+Destroyer and a second Submarine), and battles run longer: the armies go round the sea. Unfinished
+battles at the 100-minute cap are more common there (6% in the mirror, up to 17% in one cross
+match against the frozen commander); a long naval stand-off between two navies that each hold their
+own shore is the likely cause, and is the first thing to look at if Coast games feel stuck.
+Harness at the end: `npm run drive:fire` 391,798 assertions, 0 failed; `npm run campaign:fire`
+2,951 (the Naval Yard joins the skirmish-only structures its Last Light check skips).
+
+### 2026-11-11: the visual pass
+
+Four parallel strands, each owning its own files. The lobby became a briefing room: Campaign, then
+Skirmish, then Your battles, with a live preview of the theatre map and mission counts read from
+the mission lists (the copy still said eight missions after act two added six). The theatre maps
+were redrawn as operational maps, in a night map-table version for dark mode. The battle console
+was regrouped (clock, speed, sound and display clusters; a twelve-light power meter; build buttons
+whose state reads at a glance; an after-action table on the victory and defeat cards). The
+battlefield gained ore fields, structure skirts and contact shadows, a curved fog edge, leaning
+grass, directional muzzle flashes and notched health bars. Frame time held: median 2.7 to 3.0 ms
+against 2.9 ms before at minute 25 of a huge battle, 60 fps either way.
+
+### 2026-11-11: territory and engagements
+
+The campaign map became a country (`fireline-campaign-design.md` section 11). Rules in
+`src/campaign/territory.ts`: a region is held (home ground, its mission won, or its engagement
+won), open (no mission, its act's front reachable, bordering held ground) or enemy ground. Every
+region without a story mission holds an engagement, a side battle rolled from the region's id and
+scaled by missions won: an outpost or (from mission 4) a whole base, garrison, posture, credits,
+one or two bonus objectives. Half a story mission's xp; never tech, heroes, or a mission won.
+`CampaignState.engagements` is additive and older saves load with none.
+
+Tuning on the way, measured with the scripted base player over every engagement at two points of
+its act (44 battles): a whole Combine base on the attack ("normal" posture) beat a player still
+raising a base in four of five cases, and a rich defending base was never broken by an army sent
+at its nearest structure in 45 minutes. So a base only defends, on a smaller purse, and is beaten
+by bringing down its Command Yard and War Factory rather than its last harvester; raiding outposts
+start with a smaller garrison. After: 43 of 44 won with the army sent at twelve minutes, 38 of 44
+at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
+three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
+assertions, about 25 seconds more than before.

@@ -137,7 +137,8 @@ function rulesAndMenus(ok: Ok): void {
   ok(PRODUCER.air === 'helipad', 'the air queue is the Helipad\'s');
   for (const u of Object.values(UNITS)) {
     const w = u.weapon;
-    if (!w || u.category === 'air' || w.kind === 'flak' || w.kind === 'aamissile') continue;
+    // The torpedo (the naval war) hits ships alone, by design: drive-naval.ts checks it.
+    if (!w || u.category === 'air' || w.kind === 'flak' || w.kind === 'aamissile' || w.kind === 'torpedo') continue;
     ok(hitsAir(w) === (w.kind === 'bullet'), `${u.name}: ${w.kind === 'bullet' ? 'bullets reach the air' : 'cannot reach the air'}`);
     ok(hitsGround(w), `${u.name}: still hits the ground`);
   }

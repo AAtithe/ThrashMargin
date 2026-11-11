@@ -1,4 +1,5 @@
 import { migrateAir } from './air';
+import { migrateNaval } from './naval';
 import { scaledFor } from './aiScale';
 import { generateMap, idx } from './map';
 import { generateSkirmishMap, randomMapType } from './maps';
@@ -127,7 +128,7 @@ function newPlayer(owner: Owner, credits = START_CREDITS): PlayerState {
     owner,
     name: SIDE_NAMES[owner],
     credits,
-    queues: { building: [], infantry: [], vehicle: [], air: [] },
+    queues: { building: [], infantry: [], vehicle: [], air: [], naval: [] },
     stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
   };
 }
@@ -318,6 +319,7 @@ export function cloneState(s: GameState): GameState {
         vehicle: p.queues.vehicle.map(q => ({ ...q })),
         // A mission's players and saves not yet migrated may have no air queue: none is invented.
         ...(p.queues.air ? { air: p.queues.air.map(q => ({ ...q })) } : {}),
+        ...(p.queues.naval ? { naval: p.queues.naval.map(q => ({ ...q })) } : {}),
       } as PlayerState['queues'],
       stats: { ...p.stats },
       ...(p.upgrades ? { upgrades: p.upgrades.slice() } : {}),
@@ -542,6 +544,7 @@ export function migrateState(raw: unknown): GameState | null {
   for (let i = ai.length; i < n; i++) ai.push(newAiMemory(DIFFICULTIES[DEFAULT_DIFFICULTY].firstAttack));
   const out: GameState = { ...(s as GameState), units, mapW, mapH, teams: normaliseTeams(s.teams, n), ai };
   migrateAir(out);
+  migrateNaval(out);
   if (s.powers !== undefined) {
     if (Array.isArray(s.powers)) {
       out.powers = sidesOf(out).map(o => (s.powers![o] && typeof s.powers![o] === 'object' ? { ...s.powers![o] } : {}));

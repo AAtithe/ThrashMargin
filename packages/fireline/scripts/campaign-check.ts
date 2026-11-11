@@ -42,7 +42,23 @@ import type { CampaignState, PerkId, PerkSpec } from '../src/campaign/types';
 import { processAction } from '../src/sim/actions';
 import { generateMap, isWalkable } from '../src/sim/map';
 import { abilityProblem, createMissionState } from '../src/sim/mission';
-import { BASE_PLANS, planName, playAceOfSpades, playBase, playQuietMan } from './campaign-player';
+import { BASE_PLANS, campaignAt, planName, playAceOfSpades, playBase, playEngagement, playQuietMan } from './campaign-player';
+import { regionById, theatreRegions } from '../src/campaign/theatre';
+import {
+  ACT_BASICS,
+  actReachable,
+  applyEngagementOutcome,
+  battleSpec,
+  engagementProblem,
+  engagementSpec,
+  isEngagementId,
+  isEngagementRegion,
+  openEngagements,
+  regionControl,
+  regionOfEngagement,
+  territoryHeld,
+  theatreView,
+} from '../src/campaign/territory';
 import { distToBuilding } from '../src/sim/grid';
 import { seedFromString } from '../src/sim/rng';
 import {
@@ -711,8 +727,9 @@ section('act two: progression and old saves', () => {
   ok(last.difficulty === 'normal' && scaleMission(last, 'hard').difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander, hard at campaign Hard, with a full base');
   const kinds = new Set<string>(['hq', ...last.enemy.structures]);
   // Skirmish-only structures (round 5): a Field Yard is never built, only deployed from a truck, and
-  // the tier-three structures are in no mission.
-  const skirmishOnly = new Set<string>(['protoworks', 'fortress']);
+  // the tier-three structures are in no mission. Nor is the Naval Yard (the naval war): no mission
+  // map has a sea.
+  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'shipyard']);
   for (const b of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
     if (BUILDINGS[b].undeploysTo || skirmishOnly.has(b)) continue;
     if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
@@ -1128,6 +1145,235 @@ section('act two, played', () => {
     ok(s.powers![0].missile === undefined, 'last-light: no missile for us until we build a Strike Command');
   }
   return notes.join('; ');
+});
+
+
+// ---- Territory and engagements ---------------------------------------------------------------
+
+const REGIONS = theatreRegions();
+/** The placeholder theatre (two boxes) stands in until the real country lands; mission placement is then skipped. */
+const PLACEHOLDER = REGIONS.every(r => r.id.startsWith('placeholder-'));
+const ENGAGEMENT_REGIONS = REGIONS.filter(isEngagementRegion);
+const engOutcome = (regionId: string, o: Partial<MissionOutcome>): MissionOutcome => ({
+  missionId: `eng:${regionId}`,
+  won: true,
+  stars: 1,
+  ticks: 6000,
+  kills: 0,
+  losses: 0,
+  heroes: {},
+  ...o,
+});
+/** Every story mission won up to (not including) this order: the campaign as it stands then. */
+const campaignBeforeOrder = (order: number): CampaignState => (order > MISSIONS.length ? applyOutcome(campaignAt(MISSIONS[MISSIONS.length - 1].id, 'normal'), MISSIONS[MISSIONS.length - 1], outcome(MISSIONS[MISSIONS.length - 1], {})) : campaignAt(MISSIONS[order - 1].id, 'normal'));
+const actOfMission = (m: MissionSpec) => (m.order <= 8 ? 0 : 1);
+
+section('theatre geometry', () => {
+  const ids = new Set(REGIONS.map(r => r.id));
+  ok(ids.size === REGIONS.length, 'region ids unique');
+  ok(PLACEHOLDER || (REGIONS.length >= 20 && REGIONS.length <= 40), `a country of 20 to 40 regions (${REGIONS.length})`);
+  const inUnit = (p: [number, number]) => p.length === 2 && p.every(v => Number.isFinite(v) && v >= 0 && v <= 1);
+  for (const r of REGIONS) {
+    ok(/^[a-z0-9-]{1,40}$/.test(r.id), `${r.id}: id is short, lower case and dashed`);
+    ok(r.name.trim().length > 0 && r.name.length <= 32, `${r.id}: a name`);
+    ok(r.act === 0 || r.act === 1, `${r.id}: act 0 or 1`);
+    ok(r.kind === 'province' || r.kind === 'city', `${r.id}: province or city`);
+    ok(inUnit(r.site), `${r.id}: site in map space`);
+    ok(r.polygon.length >= 3 && r.polygon.every(inUnit), `${r.id}: an outline of 3 or more points in map space`);
+    ok(r.neighbours.length > 0, `${r.id}: borders something`);
+    ok(new Set(r.neighbours).size === r.neighbours.length && !r.neighbours.includes(r.id), `${r.id}: neighbours listed once, never itself`);
+    for (const n of r.neighbours) {
+      const nr = regionById(n);
+      ok(!!nr, `${r.id}: neighbour ${n} exists`);
+      ok(!!nr && nr.neighbours.includes(r.id), `${r.id} and ${n}: neighbours both ways`);
+    }
+    if (r.missionId) ok(!!missionById(r.missionId), `${r.id}: mission ${r.missionId} exists`);
+    if (r.home) ok(!r.missionId && r.act === 0, `${r.id}: home ground is act one and holds no mission`);
+  }
+  const homes = REGIONS.filter(r => r.home);
+  ok(homes.length >= 1, `home ground exists (${homes.map(r => r.id).join(', ')})`);
+  // Connected: every region reached from home through borders.
+  const seen = new Set<string>(homes.map(r => r.id));
+  for (const q = [...seen]; q.length; ) for (const n of regionById(q.shift()!)?.neighbours ?? []) if (!seen.has(n)) (seen.add(n), q.push(n));
+  ok(seen.size === REGIONS.length, `the theatre is connected (${seen.size} of ${REGIONS.length} reached from home)`);
+  if (PLACEHOLDER) return 'SKIPPED mission placement: the placeholder theatre is still in place';
+  for (const m of MISSIONS) {
+    const holders = REGIONS.filter(r => r.missionId === m.id);
+    ok(holders.length === 1, `${m.id}: fought in exactly one region (${holders.length})`);
+    if (holders[0]) ok(holders[0].act === actOfMission(m), `${m.id}: its region is on its act's front`);
+  }
+  // Every engagement region can be taken: with the whole story won, keep taking what is open.
+  let c = campaignBeforeOrder(MISSIONS.length + 1);
+  for (let guard = 0; guard < REGIONS.length; guard++) {
+    const open = openEngagements(c);
+    if (!open.length) break;
+    for (const r of open) c = applyEngagementOutcome(c, r.id, engOutcome(r.id, {}));
+  }
+  const untaken = ENGAGEMENT_REGIONS.filter(r => !c.engagements[r.id]?.won).map(r => r.id);
+  ok(untaken.length === 0, `every engagement region can be reached and taken (not: ${untaken.join(', ')})`);
+  ok(territoryHeld(c).held === REGIONS.length, 'the whole country held at the end');
+  return `${REGIONS.length} regions: ${REGIONS.filter(r => r.missionId).length} missions, ${ENGAGEMENT_REGIONS.length} engagements`;
+});
+
+section('territory rules', () => {
+  const fresh = deepFreeze(newCampaign('T'));
+  const homes = REGIONS.filter(r => r.home);
+  const home = homes[0];
+  ok(homes.every(h => regionControl(fresh, h.id) === 'held'), 'home ground is held');
+  ok(REGIONS.filter(r => regionControl(fresh, r.id) === 'held').length === homes.length, 'a fresh campaign holds only home ground');
+  const wantOpen = REGIONS.filter(r => isEngagementRegion(r) && r.act === 0 && homes.some(h => h.neighbours.includes(r.id))).map(r => r.id).sort();
+  const isOpen = REGIONS.filter(r => regionControl(fresh, r.id) === 'open').map(r => r.id).sort();
+  ok(JSON.stringify(isOpen) === JSON.stringify(wantOpen), `a fresh campaign opens exactly home's non-mission neighbours (${isOpen.join(', ')})`);
+  ok(!actReachable(fresh, 1) && actReachable(fresh, 0), 'act two is shut at the start');
+  ok(REGIONS.filter(r => r.act === 1).every(r => regionControl(fresh, r.id) === 'enemy'), 'no act two region is open at the start');
+  for (const r of REGIONS.filter(x => x.missionId)) ok(regionControl(fresh, r.id) !== 'open', `${r.id}: a mission region is never "open"`);
+
+  // The view says what the rules say.
+  const view = theatreView(fresh, 0, home.id);
+  ok(REGIONS.every(r => view.control[r.id] === regionControl(fresh, r.id)), 'the view carries every region\'s control');
+  ok(view.engagements.length === ENGAGEMENT_REGIONS.length, 'one engagement per region without a mission, home aside');
+  ok(view.engagements.every(e => e.state === (isOpen.includes(e.regionId) ? 'open' : 'locked')), 'engagement states match control');
+  ok(PLACEHOLDER || view.missions.length === MISSIONS.length, 'every mission on the view');
+  ok(view.missions.every(m => regionById(m.regionId)?.missionId === m.id), 'each mission on the view names its region');
+  ok(view.selected === home.id && theatreView(fresh, 0, 'nowhere').selected === undefined, 'selected kept, an unknown one dropped');
+
+  // Winning an engagement holds it and opens its act-one neighbours.
+  const first = openEngagements(fresh)[0];
+  ok(!!first, 'something is open at the start');
+  if (first) {
+    const lost = applyEngagementOutcome(fresh, first.id, engOutcome(first.id, { won: false, stars: 0, kills: 4 }));
+    ok(lost !== fresh && lost.engagements[first.id]?.won === false && regionControl(lost, first.id) === 'open', 'a lost engagement is recorded and stays open');
+    const spec = engagementSpec(fresh, first.id)!;
+    ok(lost.commander.xp === Math.floor(spec.rewards.xp * 0.25) + 8, `a loss pays the loss share plus kills (${lost.commander.xp})`);
+    const c1 = applyEngagementOutcome(fresh, first.id, engOutcome(first.id, { stars: 2, kills: 5 }));
+    ok(regionControl(c1, first.id) === 'held', 'a won engagement holds its region');
+    ok(c1.engagements[first.id].stars === 2 && c1.engagements[first.id].bestTicks === 6000, 'its stars and time are recorded');
+    ok(c1.commander.xp === Math.round(spec.rewards.xp * 1.25) + 10, `xp: the reward, a quarter more for the extra star, and kills (${c1.commander.xp})`);
+    const story = MISSIONS[0].rewards.xp;
+    ok(spec.rewards.xp >= story * 0.4 && spec.rewards.xp <= story * 0.6, `about half a story mission's xp (${spec.rewards.xp} against ${story})`);
+    for (const n of first.neighbours) {
+      const nr = regionById(n)!;
+      if (isEngagementRegion(nr) && nr.act === 0) ok(regionControl(c1, n) !== 'enemy', `${n}: opened by taking ${first.id}`);
+    }
+    ok(missionsWon(c1) === 0 && !campaignComplete(c1) && c1.tech.length === 0 && c1.lastMission === null, 'an engagement is never a mission won, and unlocks nothing');
+    ok(JSON.stringify(c1.heroes) === JSON.stringify(fresh.heroes) && JSON.stringify(c1.missions) === JSON.stringify(fresh.missions), 'heroes and missions untouched');
+    const again = applyEngagementOutcome(c1, first.id, engOutcome(first.id, { won: false, stars: 0 }));
+    ok(again.engagements[first.id].won && again.engagements[first.id].stars === 2, 'losing a rematch keeps the region and the best stars');
+    ok(engagementProblem(c1, first.id) === null, 'a won engagement may be fought again');
+    ok(territoryHeld(c1).held === homes.length + 1 && territoryHeld(fresh).held === homes.length, 'territory counts held regions');
+  }
+
+  // Act two's regions stay shut until its first mission opens, then open from held ground.
+  const beforeAct2 = campaignBeforeOrder(8);
+  const atAct2 = campaignBeforeOrder(9);
+  ok(!actReachable(beforeAct2, 1) && actReachable(atAct2, 1), 'act two opens with its first mission');
+  ok(REGIONS.filter(r => r.act === 1).every(r => regionControl(beforeAct2, r.id) !== 'open'), 'no act two region opens before act two');
+  if (!PLACEHOLDER) {
+    // With everything in act one taken, act two's regions on the border open once act two begins.
+    let all1 = campaignBeforeOrder(9);
+    for (let g = 0; g < REGIONS.length; g++) for (const r of openEngagements(all1, 0)) all1 = applyEngagementOutcome(all1, r.id, engOutcome(r.id, {}));
+    ok(openEngagements(all1, 1).length > 0 || REGIONS.some(r => r.act === 1 && regionControl(all1, r.id) === 'held'), 'act two has ground to fight for once it opens');
+  }
+
+  // Unknown, illegal and non-engagement ids are ignored, never thrown on.
+  ok(regionControl(fresh, 'nowhere') === 'enemy' && regionControl(fresh, '') === 'enemy', 'an unknown region reads as enemy ground');
+  ok(engagementSpec(fresh, 'nowhere') === undefined && engagementSpec(fresh, home.id) === undefined, 'no engagement for an unknown region or home');
+  ok(applyEngagementOutcome(fresh, 'nowhere', engOutcome('nowhere', {})) === fresh, 'an unknown region changes nothing');
+  ok(applyEngagementOutcome(fresh, home.id, engOutcome(home.id, {})) === fresh, 'home cannot be fought for');
+  const missionRegion = REGIONS.find(r => r.missionId);
+  if (missionRegion) ok(applyEngagementOutcome(fresh, missionRegion.id, engOutcome(missionRegion.id, {})) === fresh, 'a mission region has no engagement');
+  const shut = REGIONS.find(r => isEngagementRegion(r) && regionControl(fresh, r.id) === 'enemy');
+  if (shut) {
+    ok(applyEngagementOutcome(fresh, shut.id, engOutcome(shut.id, {})) === fresh, `${shut.id}: an engagement out of reach cannot be won`);
+    ok(!!engagementProblem(fresh, shut.id), `${shut.id}: and says why`);
+  }
+  ok(!isEngagementId('first-light') && isEngagementId('eng:x') && regionOfEngagement('eng:nowhere') === undefined, 'engagement ids told apart');
+  ok(battleSpec(fresh, 'first-light') === missionById('first-light') && battleSpec(fresh, 'eng:nowhere') === undefined && battleSpec(fresh, null) === undefined, 'battleSpec finds missions and engagements');
+
+  // Saves: an older campaign has no engagements; unknown regions are kept and ignored.
+  const old = newCampaignSave('id-eng', 'Old', 'Cmdr', 0) as unknown as { campaign: Record<string, unknown> };
+  delete old.campaign.engagements;
+  ok(JSON.stringify(migrateCampaignSave(clone(old))!.campaign.engagements) === '{}', 'a campaign from before engagements loads with none');
+  const withJunk = clone(old);
+  withJunk.campaign.engagements = { gone: { won: true, stars: 2 }, [first?.id ?? 'x']: { won: 'yes', stars: -3 }, bad: 7 };
+  const mj = migrateCampaignSave(withJunk)!.campaign;
+  ok(mj.engagements.gone?.won === true && mj.engagements.gone.stars === 2 && mj.engagements.gone.bestTicks === null, 'a record for an unknown region is kept');
+  ok(!('bad' in mj.engagements) && (!first || (mj.engagements[first.id].won === false && mj.engagements[first.id].stars === 0)), 'junk records repaired or dropped');
+  ok(territoryHeld(mj).held === homes.length && openEngagements(mj).length === wantOpen.length, 'and ignored by the rules');
+  const arr = clone(old);
+  arr.campaign.engagements = [1, 2];
+  ok(JSON.stringify(migrateCampaignSave(arr)!.campaign.engagements) === '{}', 'an array of engagements reads as none');
+  const cur = newCampaignSave('id-cur', 'C', 'C', 0);
+  if (first) cur.campaign = applyEngagementOutcome(cur.campaign, first.id, engOutcome(first.id, {}));
+  ok(JSON.stringify(migrateCampaignSave(clone(cur))) === JSON.stringify(cur), 'a save with engagements migrates unchanged');
+});
+
+section('engagement specs', () => {
+  // Each engagement at three points of its act, at every difficulty: valid, deterministic, built,
+  // and (at the first point of its act) run for two minutes with the computer playing both sides.
+  let built = 0;
+  let ran = 0;
+  for (const r of ENGAGEMENT_REGIONS) {
+    const orders = r.act === 0 ? [1, 5, 9] : [9, 12, 15];
+    orders.forEach((order, oi) => {
+      const base = campaignBeforeOrder(order);
+      for (const level of CAMPAIGN_LEVELS) {
+        const c: CampaignState = { ...base, difficulty: level };
+        const L = `${r.id} at mission ${order} ${level}`;
+        const spec = engagementSpec(c, r.id)!;
+        ok(!!spec, `${L}: has a spec`);
+        if (!spec) continue;
+        ok(JSON.stringify(engagementSpec(c, r.id)) === JSON.stringify(spec), `${L}: the same spec every time`);
+        ok(spec.id === `eng:${r.id}` && spec.order === 0 && !missionById(spec.id), `${L}: an engagement id, order 0`);
+        ok(spec.title === r.name && spec.summary.length > 0 && spec.summary.length <= 80, `${L}: title and summary`);
+        ok(spec.briefing.length >= 2 && spec.briefing.length <= 4 && spec.briefing.every(p => p.length > 20 && p.length < 400), `${L}: 2 to 4 briefing paragraphs`);
+        ok(spec.seed.length > 0 && spec.seed.length <= 64 && !MISSIONS.some(m => m.seed === spec.seed), `${L}: its own seed`);
+        ok(spec.player.heroes.length === 0 && spec.player.structures.includes('hq'), `${L}: a base, no heroes`);
+        ok([...spec.player.units, ...spec.enemy.units].every(isUnit), `${L}: real unit kinds`);
+        ok(spec.enemy.structures.every(b => isBuilding(b) && b !== 'hq') && spec.enemy.structures.length > 0, `${L}: real enemy structures`);
+        const allowed = new Set<string>([...ACT_BASICS[r.act], ...c.tech]);
+        ok(spec.tech.every(k => allowed.has(k)), `${L}: only tech the campaign has`);
+        ok([...spec.player.units, ...spec.enemy.units].every(k => allowed.has(k)), `${L}: only troops the campaign has met`);
+        ok(spec.enemy.base === 'full' || spec.enemy.ai !== 'raid' || spec.enemy.structures.some(b => b === 'barracks' || b === 'factory'), `${L}: a raiding outpost can train`);
+        ok(spec.triggers.length === 0 && !spec.convoy && spec.timeLimit === undefined, `${L}: no scripted waves, convoy or clock`);
+        const coords = [...spec.objectives, ...spec.bonus].some(o => 'x' in o);
+        ok(!coords, `${L}: no hand-picked points`);
+        ok(spec.objectives.every(o => o.kind === 'destroyAll' || (o.kind === 'destroy' && spec.enemy.structures.concat(spec.enemy.base === 'full' ? ['hq'] : []).includes(o.building))), `${L}: objectives the enemy can lose`);
+        for (const b of spec.bonus) if (b.kind === 'destroyWithin') ok(spec.enemy.structures.filter(x => x === b.building).length >= b.count, `${L}: bonus targets exist`);
+        ok(spec.rewards.xp > 0 && !spec.rewards.unlockTech && !spec.rewards.unlockHeroes, `${L}: xp and nothing else`);
+        const scaled = campaignMission(c, spec);
+        const s = createMissionState(scaled, missionContext(c, scaled, `eng-${r.id}`, 1000));
+        built++;
+        ok(s.mission?.id === spec.id && (s.mission.level ?? 'normal') === level, `${L}: built at its difficulty`);
+        ok(s.units.filter(u => u.owner === 1 && u.kind !== 'hauler').length === scaled.enemy.units.length, `${L}: the garrison is placed`);
+        ok(s.buildings.some(b => b.owner === 0 && b.kind === 'hq'), `${L}: our Command Yard is placed`);
+        if (oi === 0) {
+          let cur = { ...s, autopilot: true };
+          for (let i = 0; i < 12 && !cur.mission!.result; i++) cur = processAction(cur, { type: 'tick', n: 100 });
+          ok(cur.tick >= 1200 || !!cur.mission!.result, `${L}: runs two minutes (${cur.tick})`);
+          ok(cur.units.every(u => Number.isFinite(u.x) && Number.isFinite(u.y)), `${L}: units sane`);
+          ran++;
+        }
+      }
+    });
+  }
+  return `${built} engagement battles built, ${ran} run for two minutes`;
+});
+
+section('engagements, played', () => {
+  // A seeded sample of engagements at Normal, each at the first point of its act, played by the
+  // scripted base player (the commander held at home, the army sent at twelve minutes): every one
+  // must be won. The whole set would cost a minute; the sample changes only with the theatre.
+  const plan = BASE_PLANS.find(p => p.commander === 'normal' && p.attackAt === 12)!;
+  const sample = [...ENGAGEMENT_REGIONS].sort((a, b) => seedFromString(`sample:${a.id}`) - seedFromString(`sample:${b.id}`)).slice(0, 6);
+  const notes: string[] = [];
+  for (const r of sample) {
+    const c = campaignBeforeOrder(r.act === 0 ? 3 : 10);
+    const res = playEngagement(c, r.id, plan, 40);
+    ok(res.result === 'won', `${r.id}: won by ${planName(plan)} (${res.result} at ${clockText(res.ticks)}${res.lostBecause ? `: ${res.lostBecause}` : ''})`);
+    notes.push(`${r.id} ${clockText(res.ticks)}`);
+  }
+  return `${sample.length} of ${ENGAGEMENT_REGIONS.length} won at Normal: ${notes.join(', ')}`;
 });
 
 // ---- Summary ---------------------------------------------------------------------------------

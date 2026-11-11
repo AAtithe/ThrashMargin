@@ -263,7 +263,9 @@ function invariants(ok: Ok, s: GameState, label: string): void {
     const k = Math.floor(u.y) * s.mapW + Math.floor(u.x);
     // Aircraft fly over water, rock and structures.
     const air = UNITS[u.kind].category === 'air';
-    ok(air || isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
+    // Ships on open water (the naval war); everything else but aircraft on walkable ground.
+    const naval = UNITS[u.kind].category === 'naval';
+    ok(air || (naval ? s.tiles[k] === 'w' : isWalkable(s.tiles[k])), `${label}: unit ${u.id} on ${naval ? 'open water' : 'walkable ground'}`);
     ok(air || occ[k] === 0, `${label}: unit ${u.id} (${u.kind}) not inside a structure`);
     ok(u.queue.length <= ORDER_QUEUE_MAX, `${label}: order queue capped`);
     ok(u.owner >= 0 && u.owner < s.players.length, `${label}: unit owner is a side`);

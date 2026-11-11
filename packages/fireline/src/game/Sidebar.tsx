@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AIR_AMMO,
   HELIPAD_SLOTS,
@@ -32,6 +32,10 @@ import {
   type WeaponKind,
   BOARD_RANGE,
   DETECTOR_RANGE,
+  NAVAL_MIN_SEA,
+  SHIPYARD_MEND_HP,
+  SHIPYARD_MEND_RANGE,
+  SHIPYARD_MEND_TICKS,
   FUEL_RESERVE,
   UNLOAD_RADIUS,
   airSlotsOf,
@@ -55,6 +59,7 @@ export const TABS: { key: Tab; label: string }[] = [
   { key: 'infantry', label: 'Infantry' },
   { key: 'vehicle', label: 'Vehicles' },
   { key: 'air', label: 'Air' },
+  { key: 'naval', label: 'Naval' },
   { key: 'research', label: 'Research' },
 ];
 
@@ -65,12 +70,33 @@ export const researchOpen = (state: GameState): boolean => hasBuilding(state, 0,
 
 /**
  * The tabs this battle offers: the Air tab only with advanced tech (never in a mission or on
- * standard tech), and Research after the others once a Research Lab stands.
+ * standard tech), the Naval tab likewise and only on a map with open sea, and Research after the
+ * others once a Research Lab stands.
  */
 export const tabsFor = (state?: GameState): Tab[] =>
   TABS.map(t => t.key).filter(k =>
-    k === 'research' ? !!state && researchOpen(state) : k !== 'air' || !state || techAllowed(state, 0, 'helipad'),
+    k === 'research'
+      ? !!state && researchOpen(state)
+      : k === 'air'
+        ? !state || techAllowed(state, 0, 'helipad')
+        : k === 'naval'
+          ? !state || (techAllowed(state, 0, 'shipyard') && hasSea(state))
+          : true,
   );
+
+/** Whether this battle's map has open sea a Naval Yard could use (cached per map). */
+const seaCache = new Map<string, boolean>();
+export function hasSea(state: GameState): boolean {
+  const key = `${state.mapW}:${state.seedText}:${state.mapType ?? ''}`;
+  let v = seaCache.get(key);
+  if (v === undefined) {
+    let water = 0;
+    for (let k = 0; k < state.tiles.length; k++) if (state.tiles.charCodeAt(k) === 119) water++;
+    v = water >= NAVAL_MIN_SEA * 2;
+    seaCache.set(key, v);
+  }
+  return v;
+}
 
 
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
@@ -126,7 +152,7 @@ export function pressBuild(
   for (let i = 0; i < n; i++) if (!dispatch({ type: 'queue', category: tab, kind })) break;
 }
 
-const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure', aircraft: 'Aircraft' };
+const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure', aircraft: 'Aircraft', ship: 'Ship' };
 const WEAPON_NAME: Record<WeaponKind, string> = {
   bullet: 'Machine gun',
   shell: 'Cannon',
@@ -138,6 +164,7 @@ const WEAPON_NAME: Record<WeaponKind, string> = {
   aamissile: 'Anti-air missiles',
   bomb: 'Bombs',
   rail: 'Railgun',
+  torpedo: 'Torpedo',
 };
 const secs = (ticks: number) => {
   const v = ticks / TICKS_PER_SECOND;
@@ -193,11 +220,21 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
       label: 'Ammunition',
       value: `${ammo} ${kind === 'bomber' || kind === 'heavybomber' ? 'bombs, dropped in one run' : kind === 'interceptor' ? 'air-to-air missiles' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
     });
-  if (u?.carries) rows.push({ label: 'Carries', value: `${u.carries} infantry; they climb in within ${BOARD_RANGE} tiles while it is still, and get out within ${UNLOAD_RADIUS}` });
+  if (u?.carries)
+    rows.push({
+      label: 'Carries',
+      value:
+        u.category === 'naval'
+          ? `${u.carries} places: an infantryman takes one, a vehicle two; they board from the shore within ${BOARD_RANGE} tiles while it is still, and land within ${UNLOAD_RADIUS}`
+          : `${u.carries} infantry; they climb in within ${BOARD_RANGE} tiles while it is still, and get out within ${UNLOAD_RADIUS}`,
+    });
   if (u && airSlotsOf(kind as UnitKind) > 1) rows.push({ label: 'Helipad', value: 'Takes a whole Helipad to itself' });
   if (u?.detector) rows.push({ label: 'Detects', value: `Stealth Tanks and Spies within ${DETECTOR_RANGE} tiles, for its whole side` });
   if (kind === 'interceptor') rows.push({ label: 'Scrambles', value: `Parked, at enemy aircraft within ${SCRAMBLE_RANGE} tiles of its Helipad; breaks off ${SCRAMBLE_LEASH} tiles out` });
   if (u?.category === 'air') rows.push({ label: 'Flies', value: 'Over water, rock and structures; only anti-air and bullets reach it' });
+  if (u?.category === 'naval') rows.push({ label: 'Sails', value: 'Open water only; anything that hits the ground hits a ship, and torpedoes hit nothing else' });
+  if (kind === 'shipyard')
+    rows.push({ label: 'Shore', value: `Must stand beside open sea (${NAVAL_MIN_SEA}+ tiles of water); mends ships within ${SHIPYARD_MEND_RANGE} tiles, ${SHIPYARD_MEND_HP} hp every ${secs(SHIPYARD_MEND_TICKS)}` });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
   if (kind === 'researchlab') rows.push({ label: 'Research', value: 'Upgrades listed on the Research tab of the build window once it stands' });
   if (u?.medic) rows.push({ label: 'Heals', value: `${MEDIC_HEAL} hp to the most hurt infantry within ${MEDIC_RANGE} tiles every ${secs(MEDIC_HEAL_TICKS)}` });
@@ -358,44 +395,64 @@ export function BuildPanel({
   const pw = powerOf(state, 0);
   const max = Math.max(pw.made, pw.used, 100);
 
+  // The power meter: twelve lamps across the scale. Amber is drawn, green is spare, red is the
+  // shortfall when more is drawn than made.
+  const LAMPS = 12;
+  const lamp = (i: number): 'used' | 'spare' | 'short' | 'off' => {
+    const at = ((i + 0.5) / LAMPS) * max;
+    if (at < Math.min(pw.used, pw.made)) return 'used';
+    if (at < pw.made) return 'spare';
+    if (at < pw.used) return 'short';
+    return 'off';
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
       <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flex: 1, minWidth: 0, flexDirection: compact ? 'column' : 'row' }}>
-        <div style={creditsBox} id="fl-credits" data-testid="credits" title="Credits. Haulers bring ore to a refinery to earn more.">
-          <span style={tiny}>Credits</span>
+        <div className="fl-d-gauge fl-d-credits" id="fl-credits" data-testid="credits" title="Credits. Haulers bring ore to a refinery to earn more.">
+          <span className="fl-d-gauge-label">Credits</span>
           <Credits value={p.credits} />
         </div>
-        <div id="fl-power" style={{ ...creditsBox, flex: 1 }} title={`Power: ${pw.made} made, ${pw.used} used${pw.low ? '. Short: production halves.' : ''}`}>
-          <span style={tiny}>
-            Power {pw.made}/{pw.used}
-            {pw.low && <strong style={{ color: UI.bad, marginLeft: 6 }}>LOW</strong>}
+        <div
+          id="fl-power"
+          className="fl-d-gauge fl-d-power"
+          data-low={pw.low ? '1' : '0'}
+          title={`Power: ${pw.made} made, ${pw.used} used${pw.low ? '. Short: production halves.' : ''}`}
+        >
+          <span className="fl-d-gauge-label">
+            Power
+            <span className="fl-d-gauge-state">{pw.low ? 'Low' : 'OK'}</span>
           </span>
-          <div style={{ position: 'relative', height: 8, background: UI.ground, borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', inset: 0, width: `${(pw.made / max) * 100}%`, background: UI.good, opacity: 0.75 }} />
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: `calc(${Math.min(100, (pw.used / max) * 100)}% - 1px)`,
-                width: 2,
-                background: pw.low ? UI.bad : UI.text,
-              }}
-            />
-          </div>
+          <span className="fl-d-meter" aria-hidden="true">
+            {Array.from({ length: LAMPS }, (_, i) => (
+              <span key={i} data-s={lamp(i)} />
+            ))}
+          </span>
+          <span className="fl-d-gauge-sub">
+            <span>{pw.used} used</span>
+            <span>{pw.made} made</span>
+          </span>
         </div>
       </div>
 
       {compact && (
-        <div id="fl-minimap" style={{ width: 104, flex: '0 0 104px' }}>
+        <div id="fl-minimap" className="fl-d-radar" style={{ width: 104, flex: '0 0 104px' }}>
           {minimap}
         </div>
       )}
       </div>
 
-      {!compact && <div id="fl-minimap">{minimap}</div>}
+      {!compact && (
+        <section className="fl-d-block" aria-label="Radar">
+          <h3 className="fl-d-sect">Radar</h3>
+          <div id="fl-minimap" className="fl-d-radar">
+            {minimap}
+          </div>
+        </section>
+      )}
 
+      {!compact && <h3 className="fl-d-sect">Production</h3>}
       <button
         type="button"
         id="fl-build-open"
@@ -409,7 +466,7 @@ export function BuildPanel({
         data-open={buildOpen ? '1' : '0'}
       >
         <span className="fl-build-open-label">
-          Build: <strong>{tabLabel(tab)}</strong>
+          <span className="fl-d-build-word">Build</span> <strong>{tabLabel(tab)}</strong>
         </span>
         {!touch && <kbd>`</kbd>}
       </button>
@@ -441,7 +498,7 @@ function ProductionStrip({
 }) {
   const p = state.players[0];
   const ready = readyStructure(state, 0);
-  const cats = (['building', 'infantry', 'vehicle', 'air'] as Category[]).filter(c => p.queues[c].length > 0);
+  const cats = (['building', 'infantry', 'vehicle', 'air', 'naval'] as Category[]).filter(c => (p.queues[c] ?? []).length > 0);
   const research = p.research ?? null;
   if (!cats.length && !research) {
     return (
@@ -629,22 +686,36 @@ export function BuildButton({
             // A finger's long press raises contextmenu too; on touch only the × cancels.
             if (inQueue && !press.current.touch) cancel();
           }}
-          style={{ flex: 1, minWidth: 0, borderColor: placing === kind ? UI.good : undefined, opacity: open ? 1 : 0.42 }}
+          style={{ flex: 1, minWidth: 0 }}
         >
-          <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
+          <span className="fl-build-pic">
+            <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
+            {isHead && !isReady && (
+              <>
+                <span className="fl-build-sweep" aria-hidden="true" style={{ width: `${Math.round((1 - progress) * 100)}%` }} />
+                <span className="fl-build-pct" aria-hidden="true">
+                  {Math.floor(progress * 100)}%
+                </span>
+              </>
+            )}
+          </span>
           <span className="fl-build-name">
             {key && <kbd className="fl-key">{key}</kbd>} {nameOf(kind)}
           </span>
-          <span className="fl-build-cost" style={{ color: affordable ? UI.textSoft : UI.bad }}>
+          <span className="fl-build-cost" data-short={affordable ? '0' : '1'}>
             {cost}
           </span>
           {isHead && !isReady && (
-            <div style={progressWrap}>
-              <div style={{ ...progressFill, width: `${Math.round(progress * 100)}%` }} />
-            </div>
+            <span className="fl-build-prog" aria-hidden="true">
+              <span style={{ width: `${Math.round(progress * 100)}%` }} />
+            </span>
           )}
-          {isReady && <span style={{ ...badge, background: UI.good }}>{placing === kind ? 'Placing' : 'Ready'}</span>}
-          {inQueue > 1 && <span style={{ ...badge, background: UI.accent, left: 'auto', right: 3, top: 'auto', bottom: 8 }}>{inQueue}</span>}
+          {isReady && <span className="fl-build-badge" data-kind="ready">{placing === kind ? 'Placing' : 'Ready'}</span>}
+          {inQueue > 1 && (
+            <span className="fl-build-badge" data-kind="count">
+              ×{inQueue}
+            </span>
+          )}
         </button>
         {inQueue > 0 && (
           <button
@@ -798,11 +869,52 @@ export function SelectionPanel({
       );
     }
     return (
-      <p style={{ margin: 0, fontSize: '0.74rem', color: UI.textFaint, lineHeight: 1.45 }}>
-        Drag a box or click to select. Right-click to move or attack. <kbd>A</kbd> attack-move, <kbd>S</kbd> stop,{' '}
-        <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> to group. The letter on each build button builds it, <kbd>Tab</kbd>{' '}
-        switches lists, <kbd>Space</kbd> jumps to the last alert.
-      </p>
+      <dl className="fl-d-legend" aria-label="Orders">
+        <div>
+          <dt>Click, drag a box</dt>
+          <dd>Select</dd>
+        </div>
+        <div>
+          <dt>Right-click</dt>
+          <dd>Move or attack</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>A</kbd>
+          </dt>
+          <dd>Attack-move</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>S</kbd>
+          </dt>
+          <dd>Stop</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd>
+          </dt>
+          <dd>Make a group</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd>…
+          </dt>
+          <dd>Build the item with that letter</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>Tab</kbd>
+          </dt>
+          <dd>Next build list</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>Space</kbd>
+          </dt>
+          <dd>Jump to the last alert</dd>
+        </div>
+      </dl>
     );
   }
   if (building) {
@@ -830,7 +942,8 @@ export function SelectionPanel({
             </p>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
-                style={smallBtn(building.repairing ? UI.good : UI.rule)}
+                className="fl-d-sbtn"
+                aria-pressed={building.repairing}
                 disabled={building.hp >= spec.hp && !building.repairing}
                 onClick={() => dispatch({ type: 'repair', id: building.id })}
                 title="Repair (G), paid for as the work is done"
@@ -838,7 +951,8 @@ export function SelectionPanel({
                 {building.repairing ? 'Repairing…' : 'Repair'}
               </button>
               <button
-                style={smallBtn(UI.bad)}
+                className="fl-d-sbtn"
+                data-tone="bad"
                 onClick={() => {
                   if (window.confirm(`Sell the ${spec.name} for ${refund} credits?`)) dispatch({ type: 'sell', id: building.id });
                 }}
@@ -865,9 +979,9 @@ export function SelectionPanel({
           <span
             key={kind}
             tabIndex={0}
-            className="fl-has-tip"
             {...bind(kind)}
-            style={{ fontSize: '0.74rem', padding: '2px 6px', border: `1px solid ${UI.rule}`, borderRadius: 3, color: mine ? UI.text : UI.enemy }}
+            className="fl-has-tip fl-d-chip"
+            data-enemy={mine ? '0' : '1'}
           >
             {n > 1 ? `${n}× ` : ''}
             {mine ? '' : 'Enemy '}
@@ -909,7 +1023,7 @@ export function SelectionPanel({
       )}
       {one && mine && UNITS[one.kind].carries && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="carrier-load">
-          Carrying {one.carried?.length ?? 0} of {UNITS[one.kind].carries}.{' '}
+          {UNITS[one.kind].category === 'naval' ? `${(one.carried ?? []).reduce((n, r) => n + (UNITS[r.kind].category === 'vehicle' ? 2 : 1), 0)} of ${UNITS[one.kind].carries} places taken.` : `Carrying ${one.carried?.length ?? 0} of ${UNITS[one.kind].carries}.`}{' '}
           {one.drop
             ? 'Setting them down where it stops.'
             : one.order.type === 'rearm'
@@ -917,7 +1031,8 @@ export function SelectionPanel({
               : one.order.type === 'idle'
                 ? 'Hovering.'
                 : 'In the air.'}{' '}
-          {(one.carried?.length ?? 0) < (UNITS[one.kind].carries ?? 0) && (touch ? 'Infantry: tap it to board.' : 'Infantry: right-click it to board.')}
+          {(one.carried?.length ?? 0) < (UNITS[one.kind].carries ?? 0) &&
+            `${UNITS[one.kind].category === 'naval' ? 'Infantry and vehicles' : 'Infantry'}: ${touch ? 'tap' : 'right-click'} it to board.`}
         </span>
       )}
       {one && (one.kills > 0 || one.vet > 0 || one.queue.length > 0) && (
@@ -933,14 +1048,14 @@ export function SelectionPanel({
       )}
       {mine && (
         <div style={{ display: 'flex', gap: 6 }}>
-          <button style={smallBtn(UI.rule)} onClick={() => dispatch({ type: 'stop', ids: units.map(u => u.id) })}>
+          <button className="fl-d-sbtn" onClick={() => dispatch({ type: 'stop', ids: units.map(u => u.id) })}>
             {touch ? 'Stop' : 'Stop (S)'}
           </button>
         </div>
       )}
       {mine && <ActionButtons state={state} sel={{ units, building: null }} dispatch={dispatch} touch={touch} />}
       {mine && units.some(u => UNITS[u.kind].weapon) && (
-        <div style={{ display: 'flex', gap: 4 }} role="group" aria-label="Stance">
+        <div className="fl-d-seg fl-d-stance" role="group" aria-label="Stance">
           {STANCE_BUTTONS.map(([stance, label, title]) => {
             const armed = units.filter(u => UNITS[u.kind].weapon);
             const on = armed.every(u => u.stance === stance);
@@ -949,7 +1064,7 @@ export function SelectionPanel({
                 key={stance}
                 data-stance={stance}
                 aria-pressed={on}
-                style={{ ...smallBtn(on ? UI.good : UI.rule), padding: '4px 7px', fontWeight: on ? 600 : 400 }}
+                className="fl-d-sbtn"
                 title={title}
                 onClick={() => dispatch({ type: 'stance', ids: armed.map(u => u.id), stance })}
               >
@@ -982,7 +1097,7 @@ function ActionButtons({ state, sel, dispatch, touch }: { state: GameState; sel:
         <button
           key={spec.id}
           data-action={spec.id}
-          style={smallBtn(UI.rule)}
+          className="fl-d-sbtn"
           disabled={!!problem}
           title={problem ?? spec.title}
           onClick={() => dispatch(action)}
@@ -1003,66 +1118,13 @@ const STANCE_BUTTONS: ['aggressive' | 'guard' | 'hold', string, string][] = [
   ['hold', 'Hold fire', 'Never fire or chase unless ordered to attack'],
 ];
 
+/** Health, as a segmented gauge: green, amber under 60%, red under 30%. */
 function Bar({ frac }: { frac: number }) {
+  const f = Math.max(0, Math.min(1, frac));
   return (
-    <div style={{ height: 5, background: UI.ground, borderRadius: 2, overflow: 'hidden' }}>
-      <div style={{ height: '100%', width: `${Math.max(0, Math.min(1, frac)) * 100}%`, background: frac > 0.6 ? UI.good : frac > 0.3 ? UI.warn : UI.bad }} />
+    <div className="fl-d-hp" data-tone={f > 0.6 ? 'good' : f > 0.3 ? 'warn' : 'bad'} aria-hidden="true">
+      <div style={{ width: `${f * 100}%` }} />
     </div>
   );
 }
 
-const smallBtn = (border: string): CSSProperties => ({
-  fontFamily: 'inherit',
-  fontSize: '0.74rem',
-  padding: '4px 9px',
-  border: `1px solid ${border}`,
-  background: UI.panelRaised,
-  color: UI.text,
-  borderRadius: 3,
-  cursor: 'pointer',
-});
-
-const creditsBox: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'center',
-  padding: '5px 9px',
-  background: UI.panelRaised,
-  border: `1px solid ${UI.rule}`,
-  borderRadius: 4,
-  minWidth: 92,
-};
-
-const tiny: CSSProperties = {
-  fontSize: '0.6rem',
-  letterSpacing: '0.12em',
-  textTransform: 'uppercase',
-  color: UI.textFaint,
-};
-
-const progressWrap: CSSProperties = {
-  position: 'absolute',
-  left: 0,
-  right: 0,
-  bottom: 0,
-  height: 4,
-  background: UI.scrim,
-};
-
-const progressFill: CSSProperties = {
-  height: '100%',
-  background: UI.accent,
-};
-
-const badge: CSSProperties = {
-  position: 'absolute',
-  top: 3,
-  left: 3,
-  fontSize: '0.6rem',
-  fontWeight: 700,
-  color: UI.ground,
-  borderRadius: 2,
-  padding: '1px 4px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-};

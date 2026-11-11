@@ -1,23 +1,36 @@
 import {
-  campaignNodePosition,
-  campaignNodeRadius,
+  campaignMarkerRadius,
+  campaignRegionAt,
   drawCampaignMap,
   drawHeroPortrait,
   drawRankInsignia,
+  mapFontsReady,
+  type CampaignMapOptions,
 } from '../game/campaignArt';
+import type { TheatreView } from '../campaign/theatre';
+
+/** Resolves once the map's typeface has loaded; draw the map again then. */
+export { mapFontsReady };
 import type { HeroKind } from '../sim/rules';
 
 /**
  * The campaign screens' view of the canvas art in `game/campaignArt.ts`.
  *
  * This began as a guarded bridge with stand-in drawings, written while the art was being built
- * in parallel. It now calls the real module directly. The one thing it still does is adapt the
- * screens' node list to the art's, and keep hit-testing on exactly the positions the map is drawn
- * at: an earlier version passed (index, count, w, h) to a function that takes (order, w, h), which
- * returned plausible numbers, so clicks landed somewhere other than the drawn nodes.
+ * in parallel. It now calls the real module directly. What it still does is keep hit-testing on
+ * exactly the mapping the map is drawn with: an earlier version passed (index, count, w, h) to a
+ * function that took (order, w, h), which returned plausible numbers, so clicks landed somewhere
+ * other than the drawn nodes. Pass `regionAt` the same act and options the map was drawn with.
  */
 
-/** One mission on the theatre map, as the campaign screen describes it. */
+type Ctx = CanvasRenderingContext2D;
+
+/** Kept for the screens' data attribute; the art is always present now. */
+export const hasCampaignArt = true;
+
+export type { CampaignMapOptions, TheatreView };
+
+/** One mission as the campaign screen lists it (the operations index). The map itself takes a TheatreView. */
 export interface CampaignMapNode {
   id: string;
   /** 1-based position in the campaign. */
@@ -26,35 +39,28 @@ export interface CampaignMapNode {
   state: 'locked' | 'open' | 'won';
   stars: number;
   maxStars: number;
-  /** The node the briefing is open for. */
-  selected?: boolean;
-  /** The node under the pointer. */
-  hover?: boolean;
 }
 
-type Ctx = CanvasRenderingContext2D;
-
-/** Kept for the screens' data attribute; the art is always present now. */
-export const hasCampaignArt = true;
-
-/** Where the node with this 1-based order sits on a map `w` by `h` CSS pixels. */
-export function nodePosition(order: number, w: number, h: number): { x: number; y: number } {
-  return campaignNodePosition(order, w, h);
+/**
+ * Paints the theatre map for this view into (0, 0)-(w, h): the whole country, turned to face
+ * `view.act` (or all of it with `opts.whole`). The layers are cached per size, act, colour mode
+ * and view, so calling this every frame is cheap; `t` (seconds) moves only the pulses on what is
+ * open. `opts.scheme` defaults to the page's mode, `opts.compact` to a width under 640,
+ * `opts.motion` to true (pass false under reduced motion for still rings), and `opts.capture`
+ * plays regions changing hands.
+ */
+export function drawMap(ctx: Ctx, w: number, h: number, view: TheatreView, t = 0, opts: CampaignMapOptions = {}): void {
+  drawCampaignMap(ctx, w, h, view, t, opts);
 }
 
-/** How close a click must be to a node's centre to pick it. */
-export function nodeHitRadius(w: number, h: number): number {
-  return campaignNodeRadius(w, h) + 4;
+/** The region under canvas point (x, y) of a map `w` by `h` drawn for `act` with these options, or null. */
+export function regionAt(x: number, y: number, w: number, h: number, act: 0 | 1, opts: { compact?: boolean; whole?: boolean } = {}): string | null {
+  return campaignRegionAt(x, y, w, h, act, opts);
 }
 
-export function drawMap(ctx: Ctx, w: number, h: number, nodes: CampaignMapNode[], t = 0): void {
-  drawCampaignMap(
-    ctx,
-    w,
-    h,
-    nodes.map(n => ({ id: n.id, order: n.order, title: n.title, state: n.state, stars: n.stars, selected: !!n.selected, hover: !!n.hover })),
-    t,
-  );
+/** Radius of an objective's badge on a map `w` by `h`. */
+export function markerRadius(w: number, h: number): number {
+  return campaignMarkerRadius(w, h);
 }
 
 export function drawInsignia(ctx: Ctx, rankIndex: number, x: number, y: number, size: number): void {
