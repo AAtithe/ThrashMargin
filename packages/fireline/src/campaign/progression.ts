@@ -108,6 +108,7 @@ export function newCampaign(commanderName: string): CampaignState {
     commander: { name: cleanCommander(commanderName), xp: 0, points: 0, perks: {} },
     heroes,
     missions: {},
+    engagements: {},
     tech: [],
     lastMission: null,
     difficulty: 'normal',
