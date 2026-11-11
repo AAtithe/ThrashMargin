@@ -1,4 +1,4 @@
-import { nearestPassable } from './grid';
+import { distToTarget, nearestPassable, targetPoint, type Target } from './grid';
 import { canRide, slotsOf } from './transport';
 import { BUILDINGS, NAVAL_MIN_SEA, SHIPYARD_MEND_HP, SHIPYARD_MEND_RANGE, SHIPYARD_MEND_TICKS, UNITS } from './rules';
 import { maxHpOf } from './state';
@@ -132,4 +132,17 @@ export function migrateNaval(s: GameState): void {
     else delete u.carried;
     if (u.drop !== undefined && (u.drop !== true || !u.carried)) delete u.drop;
   }
+}
+
+/**
+ * Whether a ship could ever shoot this land target, or a soldier this ship: is there a tile of its
+ * own kind (open water for a ship, land for anything else) within `range` of the target? A target
+ * that fails can never be hit from where the unit can go, so it should not be chased: a fleet once
+ * turned to and fro for an hour between a Command Yard ten tiles inland and its own attack-move.
+ */
+export function canReach(s: GameState, occ: Int32Array, u: Unit, t: Target, range: number): boolean {
+  const tp = targetPoint(t);
+  const k = nearestPassable(s, occ, tp.x, tp.y, Math.ceil(range) + 1, isShip(u));
+  if (k < 0) return false;
+  return distToTarget((k % s.mapW) + 0.5, ((k / s.mapW) | 0) + 0.5, t) <= range;
 }

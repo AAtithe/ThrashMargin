@@ -1,4 +1,5 @@
 import { airRoom, ammoMax, isAir, parkAircraft } from './air';
+import { isShip } from './naval';
 import { canQueue, doAttack, doMove, doQueue, doSell } from './commands';
 import { canRide, doBoard, doUnload, isStill } from './transport';
 import { buildingCentre, dist, distToBuilding } from './grid';
@@ -187,6 +188,8 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   let ore = 0;
   for (const o of s.ore) ore += o;
   if (ore <= 0) lastStand(s, owner, armed);
+  // Broke with no income and no way to buy one back: sell what it can live without (recover).
+  else if (crisis) recover(s, owner, armed);
   if (crisis || !armyReady || ore < AIR_ORE_FLOOR) {
     strikes(s, owner, t, home, enemy, foes, mine.filter(isAir));
     return;
@@ -255,6 +258,43 @@ function lastStand(s: GameState, owner: Owner, armed: number): void {
   }
   const kind: UnitKind = p.credits >= UNITS.grenadier.cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
   if (p.queues.infantry.length < MAX_QUEUE && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
+}
+
+/**
+ * No income, and not the credits to restore it: no refinery and less than one costs, or a refinery
+ * and no hauler and less than one costs. Without this both commanders of a long Coast battle once
+ * sat for an hour on a few hundred credits each, saving for the one thing that would pay again,
+ * with the map's ore still there. Units queued but not started are taken back first (fund); then,
+ * one a decision, the structures it can live without are sold, the Research Lab first and Generators
+ * never; with nothing left to sell, the last stand: whatever remains goes on infantry.
+ */
+function recover(s: GameState, owner: Owner, armed: number): void {
+  const p = s.players[owner];
+  if (p.queues.building.length) return;
+  const has = (k: BuildingKind) => s.buildings.some(b => b.owner === owner && b.kind === k && b.hp > 0);
+  const hauling = s.units.some(u => u.owner === owner && u.kind === 'hauler') || p.queues.vehicle.some(q => q.kind === 'hauler');
+  const need = !has('refinery') ? costFor(s, owner, 'refinery') : !hauling ? costFor(s, owner, 'hauler') : 0;
+  if (!need || p.credits >= need || fund(s, owner, need)) return;
+  const flying = s.units.some(u => u.owner === owner && isAir(u));
+  const sailing = s.units.some(u => u.owner === owner && isShip(u));
+  const spare: [BuildingKind, boolean][] = [
+    ['researchlab', true],
+    ['helipad', !flying],
+    ['shipyard', !sailing],
+    ['flakcannon', true],
+    ['techcentre', true],
+    ['strikecommand', true],
+    ['repairbay', true],
+  ];
+  for (const [kind, ok] of spare) {
+    if (!ok) continue;
+    const b = s.buildings.find(x => x.owner === owner && x.kind === kind && x.hp > 0);
+    if (b) {
+      doSell(s, owner, b.id);
+      return;
+    }
+  }
+  lastStand(s, owner, armed);
 }
 
 /**
