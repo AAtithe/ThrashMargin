@@ -1,5 +1,5 @@
 import { buildingCentre, dist, distToTarget, targetPoint, type Target } from './grid';
-import { AIR_AMMO, AIR_EDGE, BOMB_GAP, FLIGHT_TICKS, HELIPAD_SLOTS, REARM_TICKS, UNITS, VET_DAMAGE, hitsAir, hitsGround, type AirRole, type Owner, type Weapon } from './rules';
+import { AIR_AMMO, AIR_EDGE, BOMB_GAP, BOMB_PATCH, FLIGHT_TICKS, HELIPAD_SLOTS, REARM_TICKS, UNITS, VET_DAMAGE, hitsAir, hitsGround, type AirRole, type Owner, type Weapon } from './rules';
 import { damageMulOf, migrateResearch, rearmMulOf } from './research';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
@@ -298,17 +298,24 @@ function bomberAttack(s: GameState, u: Unit, w: Weapon, t: Target): void {
   else fly(s, u, tp.x, tp.y);
 }
 
-/** One bomb, falling ahead of the Bomber along its heading. */
+/**
+ * One bomb, falling ahead of the aircraft along its heading. It lands as its weapon's kind: the
+ * Bomber's 'bomb', or (round 6) a Firebrand's incendiary, whose weapon kind is in BOMB_PATCH and so
+ * keeps burning where it lands: more blasts on the same spot, `gap` ticks apart, drawn and dealt as
+ * that weapon's own (tick.ts lands them as it does every projectile).
+ */
 function dropBomb(s: GameState, u: Unit, w: Weapon): void {
   const flight = FLIGHT_TICKS.bomb;
   const ahead = unitSpecOf(s, u).speed * flight;
   const toX = Math.max(0, Math.min(s.mapW, u.x + u.fx * ahead));
   const toY = Math.max(0, Math.min(s.mapH, u.y + u.fy * ahead));
   const mul = vetMul(u) * damageMulOf(s, u.owner);
+  const damage = mul === 1 ? w.damage : w.damage * mul;
+  const splash = w.splash ?? 1;
   s.projectiles.push({
     id: s.nextId++,
     owner: u.owner,
-    weapon: 'bomb',
+    weapon: w.kind,
     fromX: u.x,
     fromY: u.y,
     toX,
@@ -316,10 +323,29 @@ function dropBomb(s: GameState, u: Unit, w: Weapon): void {
     firedAt: s.tick,
     hitAt: s.tick + flight,
     target: 0,
-    damage: mul === 1 ? w.damage : w.damage * mul,
-    splash: w.splash ?? 1,
+    damage,
+    splash,
     shooter: u.id,
   });
+  const patch = BOMB_PATCH[w.kind];
+  if (patch) {
+    for (let i = 1; i <= patch.pulses; i++)
+      s.projectiles.push({
+        id: s.nextId++,
+        owner: u.owner,
+        weapon: w.kind,
+        fromX: toX,
+        fromY: toY,
+        toX,
+        toY,
+        firedAt: s.tick + flight,
+        hitAt: s.tick + flight + i * patch.gap,
+        target: 0,
+        damage: damage * patch.share,
+        splash,
+        shooter: u.id,
+      });
+  }
   u.ammo = (u.ammo ?? 0) - 1;
   u.cooldown = BOMB_GAP;
 }

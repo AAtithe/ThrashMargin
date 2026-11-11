@@ -29,6 +29,8 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { FONT, UI } from '../theme';
+// round6:A. Two armies (fireline-round6-design.md, workstream A): its panel.
+import ArmiesPanel from './ArmiesPanel';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import {
   DERRICK_INCOME,
@@ -248,6 +250,7 @@ export default function HowToPlay() {
         {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
         <SitesPanel />
         {/* round6:A. Two armies (fireline-round6-design.md): its panel goes on the line below. */}
+        <ArmiesPanel />
         {/* round6:B. Heroes in free play: its panel goes on the line below. */}
         {/* round6:C. Generals: its panel goes on the line below. */}
         {/* round6:D. Formations and squads: its panel goes on the line below. */}

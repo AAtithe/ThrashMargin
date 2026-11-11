@@ -121,6 +121,15 @@ mission AI once the round-1 opponent work lands.
   - [ ] An attack order given straight to a unit on a hidden Stealth Tank fires once before it is dropped (the player cannot give one; the computer never does).
   - [ ] Sites in the map previews, a selected site's panel line, and placement measured on large and huge maps (integration).
 
+## J. Round 6 (contract: `fireline-round6-design.md`)
+
+- [x] A. Two armies: Meridian Corps (today's army) and Ashen Combine, an Army row per seat in the lobby.
+  - [x] Ashen's overlay: lighter, faster, cheaper, shorter heavy guns; tuned to 53% over 150 seeds from each seat.
+  - [x] Signature units: Meridian's Sapper, Ashen's Raider Bike; Ashen flies the Kestrel and the Firebrand (an incendiary patch).
+  - [x] The computer plays either army; the build window, stat cards and How to play read the player's army.
+  - [ ] Battlefield art carries no army tint (seat colours only); a tint would need art tokens the canvas can read.
+  - [ ] Hard: Ashen against Meridian not yet measured over 150 seeds (only Normal).
+
 ## Found along the way
 
 - [x] Haulers freezing on the way home (path clipped a blocked corner, or was cut by a new structure).
