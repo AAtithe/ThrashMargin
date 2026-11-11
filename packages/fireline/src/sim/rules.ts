@@ -922,11 +922,12 @@ export const BUILD_MENU: BuildingKind[] = [
   'flakcannon',
   'helipad',
   'researchlab',
-  'shipyard',
   // round5:D begin. Tier three: its structures, appended here (data only; the build window reads them).
   'protoworks',
   'fortress',
   // round5:D end.
+  // The naval war (2026-11-11): after tier three, which keeps its places in the list.
+  'shipyard',
 ];
 export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic', 'skyhunter'];
 export const VEHICLE_MENU: UnitKind[] = [

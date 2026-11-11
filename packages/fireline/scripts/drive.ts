@@ -136,7 +136,9 @@ function invariants(s: GameState, label: string): void {
     ok(u.x >= 0 && u.y >= 0 && u.x < MAP_W && u.y < MAP_H, `${label}: unit ${u.id} on the map`);
     const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
     // Aircraft fly over water, rock and structures (round 4, workstream A).
-    ok(UNITS[u.kind].category === 'air' || isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
+    // Aircraft anywhere; ships on open water (the naval war); everything else on walkable ground.
+    const cat = UNITS[u.kind].category;
+    ok(cat === 'air' || (cat === 'naval' ? s.tiles[k] === 'w' : isWalkable(s.tiles[k])), `${label}: unit ${u.id} on ${cat === 'naval' ? 'open water' : 'walkable ground'}`);
     ok(u.cargo >= 0 && u.cargo <= 600, `${label}: cargo in range`);
     ok(Number.isFinite(u.fx) && Number.isFinite(u.tx), `${label}: facings finite`);
     ok(u.vet === vetFor(u.kills), `${label}: unit ${u.id} rank matches its ${u.kills} kills (${u.vet})`);
