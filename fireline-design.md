@@ -1250,3 +1250,48 @@ start with a smaller garrison. After: 43 of 44 won with the army sent at twelve 
 at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
 three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
 assertions, about 25 seconds more than before.
+
+### 2026-11-11: The Coast stalemates
+
+The naval war left more Coast battles at the 100-minute cap than on any other map (78 across the
+ladder card). The player asked for them to be fixed. Each stalled battle was traced by hand; each was
+a side that could neither win nor lose, waiting:
+
+- **A fleet turning to and fro.** Locked on a Command Yard ten tiles inland, a fleet turned toward
+  it, gave up, turned back to its attack-move, and saw it again, every tick for an hour; the give-up
+  rule waited for an arrival that never came. A ship now never chases a land target no water lies
+  within range of (`canReach` in naval.ts), nor a soldier a ship no shore lies within range of.
+- **Broke with ore on the map.** No hauler and less than one costs; or no refinery. On advanced
+  tech a commander with no income and no way to buy it back takes back queued units, then sells what
+  it can live without, one a decision (`recover` in aiAir.ts: Research Lab first, Generators never),
+  and with nothing left trains what it can and goes all in.
+- **A last stand that never started.** Ships counted as an army, so a side whose only units were
+  at sea never made its last stand; land units only now.
+- **A winner that could not finish.** An opponent reduced to a Barracks and three Generators, out
+  of the fleet's reach, with no armed unit left: every idle unit that can take ground now goes in,
+  wave or no wave (`mopUp`). Like any attack it waits for the commander's first attack to be due,
+  and it leaves an opponent defending with turrets alone to the waves (the full check caught both:
+  harness battles that hold attacks off were overrun at first).
+- **A Grenadier cancelled every decision.** `raiseFunds` took back the last troops a broke side was
+  training to save for a refinery it could never reach; it now leaves the queue alone when even every
+  queued unit and spare structure would not reach the price. And the navy bought ships with the same
+  credits; it now buys no yard and no ships while there is no income.
+- **Nothing to pay for a rifleman.** Two broke sides sat on five Generators each. With no troops and
+  not the price of one, the last resort sells a Naval Yard, Helipads, the Uplink, turrets and any
+  Generator but the last.
+
+The ladder (150 seeds, Coast; the same card before and after):
+
+| | Before | After |
+|---|---|---|
+| Unfinished, all eleven matches | 78 | 30 |
+| Unfinished, Normal mirror | 9 | 0 |
+| Unfinished, the new commander against itself (750 battles) | 17 | 5 |
+| Hard beats Normal, both ways | 78.3% | 81.0% |
+| Normal mirror, average minutes | 34.8 | 30.9 |
+
+Most of what remains involves the frozen `prev` commanders, which by design get none of this. On
+the six older map types nothing moved beyond the noise (Hard beats Normal 75.0%, was 75.3%; 11
+unfinished in all, was 16). The round-4 air battle's one seed now ends a minute before its Bombers
+fly, so its bombing check counts a second, longer battle as well. Harness: `npm run drive:fire`
+396,367 assertions, 0 failed; `npm run campaign:fire` 7,642, 0 failures.
