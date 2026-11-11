@@ -121,7 +121,7 @@ function lab(seed: string, research: ResearchMode, size: GamePace | undefined, t
 /** The lab with everything an upgrade needs already done: its line's earlier marks, and its doctrine for a Mk III. */
 function readyFor(s: GameState, id: UpgradeId): GameState {
   const t = copy(s);
-  const { line, mark } = UPGRADE_LINE[id];
+  const { line, mark } = UPGRADE_LINE[id]!;
   const p = t.players[0];
   p.upgrades = LINES[line].marks.slice(0, Math.min(mark - 1, 2));
   if (mark === 3) p.doctrines = { [line]: id };
@@ -258,6 +258,11 @@ function rulesAndPresets(ok: Ok): void {
  * of them first differs from the pre-merge build in the 1,000-tick snapshot right after that. The
  * classic ones equal origin/main's own battles exactly; no setup, standard tech and Easy (which
  * fields no Repair Truck in these battles) are unchanged. See fireline-design.md, the merge's entry.
+ * At the merge with main's air war (2026-11-11) eleven were regenerated: the Normal and Hard lines
+ * and classic battles, both Normal three-sided ones and Hard three-sided size-a. Each first differs
+ * where main's 265800d (Troop Carriers and the Heavy Bomber) has the commander buy a Helipad more,
+ * a Power Plant for it, or infantry for an airlift, at the same tick and with the same change as the
+ * classic battle of that seed on main; the classic ones equal origin/main's own battles exactly.
  */
 const PRE_ROUND6: Record<string, string> = {
   'nosetup|easy|size-a': '3425e6edb280df2e',
@@ -268,16 +273,16 @@ const PRE_ROUND6: Record<string, string> = {
   'nosetup|hard|size-b': '6120a39f5cd1b61e',
   'lines|easy|size-a': '0e91c303dadc56ed',
   'lines|easy|size-b': '3cb51545efc7366e',
-  'lines|normal|size-a': '423c38464f674a76',
-  'lines|normal|size-b': '3362db2ff7075bc9',
-  'lines|hard|size-a': '98fded49018c3f28',
-  'lines|hard|size-b': '4316e82ab77e5ed5',
+  'lines|normal|size-a': '7debfe6b4d2e7b47',
+  'lines|normal|size-b': '04edfc5c78c630aa',
+  'lines|hard|size-a': '522e697df769a9f5',
+  'lines|hard|size-b': '5f17150338ad511f',
   'classic|easy|size-a': '8a3c91f43715c066',
   'classic|easy|size-b': 'f04dbb216ac6e271',
-  'classic|normal|size-a': '69bf80151a0163e7',
-  'classic|normal|size-b': '330093a29f257be9',
-  'classic|hard|size-a': '2b9e0982d3668c66',
-  'classic|hard|size-b': 'c2a91da6f94d1338',
+  'classic|normal|size-a': '46e443e7341704bd',
+  'classic|normal|size-b': '0395c9c02e6ad4c5',
+  'classic|hard|size-a': 'd994059b71908bf4',
+  'classic|hard|size-b': '7e5972e3fe8dd3b5',
   'standard|easy|size-a': '256a982f346e5325',
   'standard|easy|size-b': '5b09efed4e05974d',
   'standard|normal|size-a': '945c815278f9f157',
@@ -286,9 +291,9 @@ const PRE_ROUND6: Record<string, string> = {
   'standard|hard|size-b': '75cbe17795d793cb',
   'three|easy|size-a': '3f031b9ca10714c1',
   'three|easy|size-b': '266380752d290d23',
-  'three|normal|size-a': '7cfc8da182a0401c',
-  'three|normal|size-b': '074cc74587cfb3fe',
-  'three|hard|size-a': 'a6c0538d5c9b5acf',
+  'three|normal|size-a': '0fe3533d05d53f24',
+  'three|normal|size-b': '7326456da078a991',
+  'three|hard|size-a': 'cf2502fa1fb6123d',
   'three|hard|size-b': '33e13265ad7cc08a',
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
@@ -387,8 +392,8 @@ function researchScaling(ok: Ok): void {
   // The formula, for every upgrade at every size.
   for (const k of GAME_PACE_ORDER) {
     const t = lab(`size-formula-${k}`, 'lines', k);
-    for (const id of ALL_UPGRADES) {
-      const mi = UPGRADE_LINE[id].mark - 1;
+    for (const id of ALL_UPGRADES.filter(x => UPGRADE_LINE[x])) {
+      const mi = UPGRADE_LINE[id]!.mark - 1;
       const cm = GAME_PACES[k].researchCost[mi];
       const tm = GAME_PACES[k].researchTicks[mi];
       const c = cm === 1 ? UPGRADES[id].cost : Math.max(RESEARCH_COST_STEP, Math.round((UPGRADES[id].cost * cm) / RESEARCH_COST_STEP) * RESEARCH_COST_STEP);
@@ -512,19 +517,19 @@ function computer(ok: Ok): void {
           const was = prev.players[o].research;
           if (!why && r && (!was || was.id !== r.id)) {
             const done = ups; // includes one that finished in this same step
-            const closed = (id: UpgradeId) => UPGRADE_LINE[id].mark === 3 && !!p.doctrines?.[UPGRADE_LINE[id].line] && p.doctrines[UPGRADE_LINE[id].line] !== id;
+            const closed = (id: UpgradeId) => UPGRADE_LINE[id]?.mark === 3 && !!p.doctrines?.[UPGRADE_LINE[id].line] && p.doctrines[UPGRADE_LINE[id].line] !== id;
             const jumped = list.slice(0, list.indexOf(r.id)).find(id => !done.includes(id) && !closed(id) && stands(prev, o, id) && stands(st, o, id));
             if (jumped) why = `started ${r.id} with ${jumped} open and its structures standing`;
           }
           for (const id of ups) {
-            const { line, mark } = UPGRADE_LINE[id];
+            const { line, mark } = UPGRADE_LINE[id]!;
             if (mark === 3 && p.doctrines?.[line] !== id) why ||= `${id} held without its doctrine`;
           }
           for (const [line, branch] of Object.entries(p.doctrines ?? {})) if (!list.includes(branch as UpgradeId)) why ||= `doctrine ${line}/${branch} not on its list`;
           const rf = st.ai[o].researchFor;
           if (rf !== undefined) {
             saving++;
-            const open = list.filter(id => !ups.includes(id) && !(UPGRADE_LINE[id].mark === 3 && p.doctrines?.[UPGRADE_LINE[id].line] && p.doctrines[UPGRADE_LINE[id].line] !== id));
+            const open = list.filter(id => !ups.includes(id) && !(UPGRADE_LINE[id]?.mark === 3 && p.doctrines?.[UPGRADE_LINE[id].line] && p.doctrines[UPGRADE_LINE[id].line] !== id));
             const next = open.find(id => UPGRADES[id].requires.every(k => st.buildings.some(b => b.owner === o && b.kind === k)));
             if (p.research) why ||= `researchFor ${rf} while researching ${p.research.id}`;
             else if (!open.some(id => researchCostOf(st, id) === rf)) why ||= `researchFor ${rf} is the price of nothing left on its list`;
@@ -538,8 +543,8 @@ function computer(ok: Ok): void {
       if (s.winner !== null) finished++;
       for (const p of s.players) {
         const ups = p.upgrades ?? [];
-        if (ups.some(id => UPGRADE_LINE[id].mark === 2)) mk2++;
-        if (ups.some(id => UPGRADE_LINE[id].mark === 3)) mk3++;
+        if (ups.some(id => UPGRADE_LINE[id]?.mark === 2)) mk2++;
+        if (ups.some(id => UPGRADE_LINE[id]?.mark === 3)) mk3++;
       }
     }
     if (saving) ok(exact >= 0.9 * saving, `${d}: researchFor is the price of the next item on the list (${exact} of ${saving} samples exactly; the rest one decision stale)`);
@@ -597,11 +602,13 @@ function computer(ok: Ok): void {
 
   // A Standard lines battle replays exactly, and through a save.
   {
-    // To tick 18,000 or the end, whichever comes first.
-    const a = play(battle('size-replay', 'normal', { research: 'lines', pace: 'standard' }), 18000);
-    const b = play(battle('size-replay', 'normal', { research: 'lines', pace: 'standard' }), 18000);
+    // To tick 18,000 or the end, whichever comes first. Seed size-replay-2 since the merge with main's
+    // air war (2026-11-11): on size-replay main's air war commander now ends the battle at tick 7,246,
+    // before either side reaches a Mk II; size-replay-2 reaches one at tick 6,200 and ends at 11,440.
+    const a = play(battle('size-replay-2', 'normal', { research: 'lines', pace: 'standard' }), 18000);
+    const b = play(battle('size-replay-2', 'normal', { research: 'lines', pace: 'standard' }), 18000);
     ok(JSON.stringify(a) === JSON.stringify(b), `a Standard lines battle replays byte-identically (to tick ${a.tick})`);
-    let c = play(battle('size-replay', 'normal', { research: 'lines', pace: 'standard' }), 6000);
+    let c = play(battle('size-replay-2', 'normal', { research: 'lines', pace: 'standard' }), 6000);
     const saved = JSON.stringify(c);
     const m = migrateState(JSON.parse(saved));
     ok(!!m && JSON.stringify(m) === saved, 'a Standard battle saved at tick 6,000 loads unchanged');
@@ -609,7 +616,7 @@ function computer(ok: Ok): void {
       c = play(m, 18000);
       ok(JSON.stringify(c) === JSON.stringify(a), 'and plays on to the same end as the battle never saved');
     }
-    ok(a.players.some(p => (p.upgrades ?? []).some(id => UPGRADE_LINE[id].mark === 2)), `the replayed Standard battle reaches a Mk II (${a.players.map(p => (p.upgrades ?? []).join('/')).join(' and ')})`);
+    ok(a.players.some(p => (p.upgrades ?? []).some(id => UPGRADE_LINE[id]?.mark === 2)), `the replayed Standard battle reaches a Mk II (${a.players.map(p => (p.upgrades ?? []).join('/')).join(' and ')})`);
   }
 }
 

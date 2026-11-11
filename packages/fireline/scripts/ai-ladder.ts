@@ -193,8 +193,8 @@ function play(m: Match, seed: number): Result & { match: number } {
     if (!LINES_BATTLES) continue;
     for (const o of [0, 1] as Owner[]) {
       const ups = s.players[o].upgrades ?? [];
-      if (mk2[o] === null && ups.some(id => UPGRADE_LINE[id].mark === 2)) mk2[o] = s.tick;
-      if (mk3[o] === null && ups.some(id => UPGRADE_LINE[id].mark === 3)) mk3[o] = s.tick;
+      if (mk2[o] === null && ups.some(id => UPGRADE_LINE[id]?.mark === 2)) mk2[o] = s.tick;
+      if (mk3[o] === null && ups.some(id => UPGRADE_LINE[id]?.mark === 3)) mk3[o] = s.tick;
     }
   }
   setAutopilotAi(null, 0);

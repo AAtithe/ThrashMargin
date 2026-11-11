@@ -63,6 +63,7 @@ import {
 } from './rules';
 import { canHit, isAir, launchAircraft, updateAircraft, type AirHooks } from './air';
 import {
+  antiAirTakenMulOf,
   buildRateOf,
   damageMulOf,
   damageTakenMul,
@@ -107,6 +108,7 @@ import { computerSides, enemiesOf, isAlly, isEnemy, sidesOf, teamOf } from './si
 import type { Building, GameState, Projectile, Unit } from './types';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { seenBy, sitesStep } from './sites';
+import { lostAboard, transportStep } from './transport';
 
 
 /**
@@ -182,6 +184,8 @@ export function step(s: GameState): void {
   }
 
   for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
+  // The air war: infantry climbing into Troop Carriers, and carriers setting them down.
+  transportStep(s);
   if (s.mission || s.planet) heroes(s, ctx);
   for (const b of s.buildings) if (b.hp > 0) updateBuilding(s, ctx, b);
   // round5:D begin. Neutral sites (fireline-round5-design.md): one call into sites.ts (capture,
@@ -657,6 +661,8 @@ function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: numb
     const taken = damageTakenMul(s, t.unit, p.weapon);
     if (taken !== 1) raw *= taken;
   }
+  // Countermeasures (research): anti-air does less to the side's aircraft.
+  if (armor === 'aircraft' && (p.weapon === 'flak' || p.weapon === 'aamissile')) raw *= antiAirTakenMulOf(s, t.unit!.owner);
   const amount = Math.max(1, Math.round(raw * DAMAGE_VS[p.weapon][armor]));
   const victim = t.unit ?? t.building!;
   if (victim.hp <= 0) return;
@@ -1176,6 +1182,7 @@ function removeDead(s: GameState): void {
     for (const u of s.units) {
       if (u.hp > 0) continue;
       if (u.hero) noteFallen(s, u);
+      if (u.carried) lostAboard(s, u);
       const size = UNITS[u.kind].category === 'infantry' ? 0 : 1;
       s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
     }

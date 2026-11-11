@@ -360,10 +360,22 @@ function structurePowers(ok: Ok): void {
   ok(s0.powers![1].barrage === POWERS.barrage.cooldown && s0.powers![1].missile === POWERS.missile.cooldown, 'the enemy holds the barrage and the missile its structures grant, charging');
   ok(JSON.stringify(s0.mission!.structurePowers) === JSON.stringify([[], ['barrage', 'missile']]), 'the mission notes which powers came from structures');
   ok(s0.powers![0].recon === 0 && !('barrage' in s0.powers![0]), "side 0 keeps the mission's recon and has no barrage without a Tech Centre");
-  // The barrage fires when charged, at our troops.
+  // The barrage fires when charged, at our troops if the enemy can see them, else at a structure.
+  // Aimed with the whole map in view, it found the player's rally point deep in their own base
+  // every three minutes and killed half of everything there (27 units at once in Firestorm).
   {
     const s = copy(s0);
     s.powers![1] = { ...s.powers![1], barrage: 1 };
+    const unseen = processAction(s, { type: 'tick', n: 2 });
+    const us = unseen.projectiles.filter(p => p.owner === 1 && p.weapon === 'artillery');
+    const uAim = { x: us.reduce((t, p) => t + p.toX, 0) / Math.max(1, us.length), y: us.reduce((t, p) => t + p.toY, 0) / Math.max(1, us.length) };
+    const knot = unseen.units.filter(u => u.owner === 0 && u.kind === 'tank');
+    ok(us.length === 8 && !knot.some(u => Math.hypot(u.x - uAim.x, u.y - uAim.y) < 1), `troops the enemy cannot see are not its target (${us.length} shells)`);
+    ok(unseen.buildings.some(b => b.owner === 0 && Math.hypot(buildingCentre(b).x - uAim.x, buildingCentre(b).y - uAim.y) < POWERS.barrage.radius + 2), 'it shells one of our structures instead');
+    // An enemy rifleman beside the tanks: now they are seen, and they are the target.
+    const t0 = s.units.find(u => u.owner === 0 && u.kind === 'tank')!;
+    const p = open(s, t0.x + 3, t0.y);
+    addUnit(s, 1, 'rifleman', p.x, p.y);
     const a = processAction(s, { type: 'tick', n: 2 });
     const shells = a.projectiles.filter(p => p.owner === 1 && p.weapon === 'artillery');
     ok(shells.length === 8, `the enemy's barrage fires once charged (${shells.length} shells)`);

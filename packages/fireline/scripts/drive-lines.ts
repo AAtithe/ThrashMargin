@@ -12,9 +12,10 @@ import { launchAircraft } from '../src/sim/air';
 import { occupancy } from '../src/sim/grid';
 import { loadoutCost, loadoutOf, loadoutProblem, queueCostFor } from '../src/sim/loadout';
 import { createMissionState } from '../src/sim/mission';
-import { doctrineProblem, hasUpgrade, researchProblem } from '../src/sim/research';
+import { damageTakenMul, doctrineProblem, hasUpgrade, migrateResearch, researchProblem, upgradeNewUnit } from '../src/sim/research';
 import {
   AIR_AMMO,
+  AIRFRAMES_HP,
   ASSEMBLY_RATE,
   AVIONICS_SPEED,
   BUILDINGS,
@@ -90,6 +91,8 @@ const unitIn = (s: GameState, id: number) => s.units.find(u => u.id === id);
 const buildingIn = (s: GameState, id: number) => s.buildings.find(b => b.id === id);
 const near = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) <= eps;
 const ALL_UPGRADES = Object.keys(UPGRADES) as UpgradeId[];
+/** Every upgrade in a development line: all but Countermeasures (classic only). */
+const LINE_UPGRADES = ALL_UPGRADES.filter(id => UPGRADE_LINE[id]);
 
 /** Side 1's commander switched off: these sections test the rules, not the commander. */
 function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
@@ -202,10 +205,14 @@ function rulesAndPresets(ok: Ok): void {
   const seen = new Map<UpgradeId, number>();
   for (const line of LINE_ORDER) for (const id of [...LINES[line].marks, ...LINES[line].fork]) seen.set(id, (seen.get(id) ?? 0) + 1);
   ok(LINE_ORDER.length === 5 && new Set(LINE_ORDER).size === 5 && LINE_ORDER.every(l => l in LINES), 'five lines, each listed once');
-  ok(ALL_UPGRADES.length === 20, `twenty upgrades (${ALL_UPGRADES.length})`);
-  for (const id of ALL_UPGRADES) {
+  ok(ALL_UPGRADES.length === 21, `twenty-one upgrades (${ALL_UPGRADES.length})`);
+  // Countermeasures (the air war, merged 2026-11-11) is classic only and belongs to no line:
+  // Armoured cockpits, the air line's Mk III, is its lines counterpart.
+  ok(!seen.has('countermeasures') && !UPGRADE_LINE.countermeasures && isClassicUpgrade('countermeasures'), 'countermeasures: classic only, in no line');
+  ok(LINE_UPGRADES.length === 20, `twenty line upgrades (${LINE_UPGRADES.length})`);
+  for (const id of LINE_UPGRADES) {
     ok(seen.get(id) === 1, `${id}: in exactly one line, exactly once`);
-    const { line, mark } = UPGRADE_LINE[id];
+    const { line, mark } = UPGRADE_LINE[id]!;
     const l = LINES[line];
     const where = mark === 3 ? l.fork.indexOf(id) : l.marks[mark - 1] === id ? 0 : -1;
     ok(where >= 0, `${id}: UPGRADE_LINE (${line}, Mk ${mark}) agrees with LINES`);
@@ -216,15 +223,16 @@ function rulesAndPresets(ok: Ok): void {
     ok(isClassicUpgrade(id) === (mark === 1), `${id}: ${mark === 1 ? 'a classic upgrade (Mk I)' : 'lines only'}`);
     ok(!spec.blurb.includes('—'), `${id}: no em dash in its blurb`);
   }
-  for (const line of LINE_ORDER) ok(LINES[line].marks[0] === UPGRADE_ORDER.find(id => UPGRADE_LINE[id].line === line), `${line}: Mk I is a classic upgrade`);
-  ok(JSON.stringify(UPGRADE_ORDER) === JSON.stringify(['refining', 'plating', 'engines', 'calibration', 'airframes']), 'the classic list and order are unchanged');
-  // The five classic specs, byte for byte as round 4 left them.
+  for (const line of LINE_ORDER) ok(LINES[line].marks[0] === UPGRADE_ORDER.find(id => UPGRADE_LINE[id]?.line === line), `${line}: Mk I is a classic upgrade`);
+  ok(JSON.stringify(UPGRADE_ORDER) === JSON.stringify(['refining', 'plating', 'engines', 'calibration', 'airframes', 'countermeasures']), 'the classic list and order: round 4\'s five, then Countermeasures');
+  // The classic specs, byte for byte as round 4 (and the air war, for Countermeasures) left them.
   const ROUND4: Record<string, [number, number, BuildingKind[]]> = {
     refining: [2000, 700, ['researchlab']],
     plating: [1500, 600, ['researchlab']],
     engines: [1200, 500, ['researchlab']],
     calibration: [2000, 750, ['researchlab', 'techcentre']],
     airframes: [1500, 600, ['researchlab', 'helipad']],
+    countermeasures: [1500, 600, ['researchlab', 'helipad']],
   };
   for (const id of UPGRADE_ORDER) {
     const [cost, ticks, req] = ROUND4[id];
@@ -265,6 +273,82 @@ function rulesAndPresets(ok: Ok): void {
   ok(!MODULES.longbarrel.fits.includes('artillery') && !MODULES.orecage.fits.includes('tank') && JSON.stringify(MODULES.orecage.fits) === '["hauler"]', 'no long barrel on artillery; the ore cage only on a hauler');
 }
 
+/**
+ * Main's air war aircraft (merged 2026-11-11) under the Air line (fireline-round5b-design.md, build
+ * log): Air frames, Avionics and Armoured cockpits reach every aircraft; Heavy munitions every armed
+ * one; no aircraft takes a module; Countermeasures stays classic.
+ */
+function airWarAircraft(ok: Ok): void {
+  const NEW: UnitKind[] = ['reconplane', 'interceptor', 'carrier', 'heavybomber'];
+  for (const k of NEW) {
+    ok(UNITS[k].category === 'air' && !MODULE_SLOTS[k] && MODULE_ORDER.every(m => !MODULES[m].fits.includes(k)), `${k}: an aircraft, no module slots, no module fits it`);
+    // Air frames: a new one comes out with a quarter more health.
+    {
+      const { s } = lab(`aw-frames-${k}`);
+      s.players[0].upgrades = ['airframes'];
+      const u = addUnit(s, 0, k, 2.5, 2.5);
+      upgradeNewUnit(s, u);
+      const want = Math.max(1, Math.round(UNITS[k].hp * AIRFRAMES_HP));
+      ok(u.maxHp === want && u.hp === want, `airframes: a new ${k} has ${want} health (${u.maxHp})`);
+    }
+    // Armoured cockpits: a quarter less from flak, anti-air missiles and bullets.
+    {
+      const { s } = lab(`aw-cockpits-${k}`);
+      const u = addUnit(s, 0, k, 2.5, 2.5);
+      for (const w of ['flak', 'aamissile', 'bullet'] as const) ok(damageTakenMul(s, u, w) === 1, `${k}: full damage from ${w} without cockpits`);
+      s.players[0].upgrades = ['airframes', 'avionics', 'hardened'];
+      for (const w of ['flak', 'aamissile', 'bullet'] as const) ok(damageTakenMul(s, u, w) === HARDENED_TAKEN, `hardened: a ${k} takes x${HARDENED_TAKEN} from ${w}`);
+    }
+    // Avionics: flies 15% further in the same time.
+    {
+      const run = (ups: UpgradeId[]): number => {
+        const { s, cx, cy } = lab(`aw-speed-${k}`);
+        s.players[0].upgrades = ups;
+        const u = put(s, 0, k, cx - 8.5, cy + 0.5);
+        let t = processAction(s, { type: 'move', ids: [u.id], x: cx + 8.5, y: cy + 0.5 });
+        t = tick(t, 30);
+        return unitIn(t, u.id)!.x - (cx - 8.5);
+      };
+      const base = run([]);
+      ok(base > 0 && Math.abs(run(['airframes', 'avionics']) / base - AVIONICS_SPEED) < 0.02, `avionics: a ${k} covers ${(run(['airframes', 'avionics']) / base).toFixed(3)} times the ground`);
+    }
+  }
+  // Heavy munitions: the Interceptor's missile and the Heavy Bomber's bombs, as the Gunship's rockets and the Bomber's.
+  {
+    const missile = (ups: UpgradeId[]) => {
+      const { s, cx, cy } = lab('aw-interceptor');
+      s.players[0].upgrades = ups;
+      const foe = put(s, 1, 'gunship', cx + 0.5, cy + 0.5, { stance: 'hold', ammo: 0 });
+      const i = put(s, 0, 'interceptor', cx + 3.5, cy + 0.5);
+      let t = processAction(s, { type: 'attack', ids: [i.id], target: foe.id });
+      t = tickUntil(t, x => x.projectiles.some(p => p.shooter === i.id), 200);
+      return t.projectiles.find(p => p.shooter === i.id);
+    };
+    const m0 = missile([]);
+    const mMu = missile(['munitions']);
+    ok(!!m0 && !!mMu && near(mMu.damage / m0.damage, MUNITIONS_DAMAGE), `munitions: an Interceptor missile x${MUNITIONS_DAMAGE} (${m0?.damage} -> ${mMu?.damage})`);
+    const bomb = (ups: UpgradeId[]) => {
+      const { s, cx, cy } = lab('aw-heavybomber');
+      s.players[0].upgrades = ups;
+      const pad = addBuilding(s, 0, 'helipad', cx - 7, cy + 4, -100);
+      const b = addUnit(s, 0, 'heavybomber', cx - 6, cy + 5);
+      launchAircraft(s, b, pad);
+      const target = addBuilding(s, 1, 'power', cx + 2, cy - 1, -100);
+      let t = processAction(s, { type: 'attack', ids: [b.id], target: target.id });
+      t = tickUntil(t, x => x.projectiles.some(p => p.weapon === 'bomb'), 900);
+      return t.projectiles.find(p => p.weapon === 'bomb');
+    };
+    const hw = UNITS.heavybomber.weapon!;
+    const b0 = bomb([]);
+    const bMu = bomb(['munitions']);
+    const bHe = bomb(['highexplosive']);
+    ok(!!b0 && near(b0.damage, hw.damage) && near(b0.splash, hw.splash!), `a heavy bomb: ${hw.damage} damage, ${hw.splash} splash (${b0?.damage}, ${b0?.splash})`);
+    ok(!!bMu && near(bMu.damage, hw.damage * MUNITIONS_DAMAGE), `munitions: a heavy bomb carries ${hw.damage * MUNITIONS_DAMAGE} (${bMu?.damage})`);
+    ok(!!bHe && near(bHe.splash, hw.splash! * HE_SPLASH), `highexplosive: a heavy bomb's splash ${hw.splash! * HE_SPLASH} (${bHe?.splash})`);
+  }
+  ok(UPGRADES.munitions.blurb.includes('Interceptor'), "munitions: the blurb names the Interceptor's missiles");
+}
+
 /** Classic battles, missions and standard tech refuse everything new. */
 function classicStaysClassic(ok: Ok): void {
   const states: [string, GameState][] = [];
@@ -301,7 +385,7 @@ function classicStaysClassic(ok: Ok): void {
     ok(queueCostFor(s, 0, 'tank') === costFor(s, 0, 'tank'), `${label}: a tank costs its classic price`);
   }
   // The Mk I ids behave in a classic battle exactly as in a lines one: same cost, time and refusals.
-  for (const id of UPGRADE_ORDER) {
+  for (const id of UPGRADE_ORDER.filter(x => UPGRADE_LINE[x])) {
     const c = lab(`classic-mk1-${id}`, 'classic').s;
     const l = lab(`classic-mk1-${id}`, 'lines').s;
     const sc = processAction(c, { type: 'research', upgrade: id });
@@ -311,6 +395,14 @@ function classicStaysClassic(ok: Ok): void {
     const tl = tick(sl, UPGRADES[id].ticks);
     ok(hasUpgrade(tc, 0, id) && hasUpgrade(tl, 0, id), `${id}: done in ${UPGRADES[id].ticks} ticks in both modes`);
     ok(!JSON.stringify(tc).includes('"doctrines"') && !JSON.stringify(tc).includes('"loadouts"'), `${id}: a classic side writes no doctrines or loadouts`);
+  }
+  // Countermeasures (the air war) is classic only: a lines battle refuses it, and a lines save drops it.
+  {
+    const l = lab('lines-countermeasures', 'lines').s;
+    ok(processAction(l, { type: 'research', upgrade: 'countermeasures' }) === l, 'lines: countermeasures refused');
+    ok(researchProblem(l, 0, 'countermeasures') === 'Not in this battle', "lines: countermeasures is 'Not in this battle'");
+    ok(JSON.stringify(migrateResearch({ upgrades: ['airframes', 'countermeasures'] }, 'lines').upgrades) === '["airframes"]', 'lines: a save holding countermeasures loads without it');
+    ok(JSON.stringify(migrateResearch({ upgrades: ['airframes', 'countermeasures'] }, 'classic').upgrades) === '["airframes","countermeasures"]', 'classic: a save holding countermeasures keeps it');
   }
   // A queued vehicle in a classic battle is exactly { kind, progress }.
   {
@@ -876,8 +968,8 @@ const AI_LINES: Record<Difficulty, UpgradeId[]> = {
 };
 const AI_CLASSIC: Record<Difficulty, UpgradeId[]> = {
   easy: ['refining'],
-  normal: ['refining', 'plating', 'calibration', 'airframes', 'engines'],
-  hard: ['refining', 'calibration', 'plating', 'engines', 'airframes'],
+  normal: ['refining', 'plating', 'calibration', 'airframes', 'engines', 'countermeasures'],
+  hard: ['refining', 'calibration', 'plating', 'engines', 'airframes', 'countermeasures'],
 };
 const AI_LOADOUTS: Record<Difficulty, Partial<Record<UnitKind, ModuleId[]>>> = {
   easy: {},
@@ -913,7 +1005,7 @@ function commanderProblem(s: GameState, owner: Owner, diff: Difficulty, mode: Re
   if (p.research && !list.includes(p.research.id)) return `researching ${p.research.id}`;
   // Marks in order, and a branch only with its doctrine.
   for (const id of ups) {
-    const { line, mark } = UPGRADE_LINE[id];
+    const { line, mark } = UPGRADE_LINE[id]!;
     if (mark === 3 && p.doctrines?.[line] !== id) return `${id} held without its doctrine`;
     if (mark >= 2 && !ups.includes(LINES[line].marks[0])) return `${id} held without Mk I`;
   }
@@ -1041,6 +1133,9 @@ function computer(ok: Ok): void {
     for (const m of s.ai) {
       m.nextAttack = 1e9;
       m.nextRaid = 1e9;
+      // Main's airlift raids (the air war, merged 2026-11-11) keep their own timer; held off too, or
+      // the first one takes side 0's lone structure and ends the quiet battle at tick 5,867 to 7,231.
+      m.nextAirlift = 1e9;
     }
     let problem = '';
     for (let i = 0; i < 400 && s.winner === null; i++) {
@@ -1053,8 +1148,8 @@ function computer(ok: Ok): void {
     const ups = p.upgrades ?? [];
     ok(!problem, `${diff}, a long quiet battle: the commander keeps to its lists${problem ? ` (${problem})` : ''}`);
     ok(JSON.stringify(ups) === JSON.stringify(AI_LINES[diff]), `${diff}: researches its whole lines list in order by tick ${s.tick} (${ups.join(', ')})`);
-    for (const id of AI_LINES[diff].filter(x => UPGRADE_LINE[x].mark === 3)) ok(p.doctrines?.[UPGRADE_LINE[id].line] === id, `${diff}: adopts ${id} before researching it`);
-    ok(Object.keys(p.doctrines ?? {}).length === AI_LINES[diff].filter(x => UPGRADE_LINE[x].mark === 3).length, `${diff}: adopts no doctrine it does not research`);
+    for (const id of AI_LINES[diff].filter(x => UPGRADE_LINE[x]!.mark === 3)) ok(p.doctrines?.[UPGRADE_LINE[id]!.line] === id, `${diff}: adopts ${id} before researching it`);
+    ok(Object.keys(p.doctrines ?? {}).length === AI_LINES[diff].filter(x => UPGRADE_LINE[x]!.mark === 3).length, `${diff}: adopts no doctrine it does not research`);
     for (const [kind, table] of Object.entries(AI_LOADOUTS[diff]) as [UnitKind, ModuleId[]][]) {
       const want = table.filter(m => ups.includes(MODULES[m].unlock));
       ok(JSON.stringify(p.loadouts?.[kind] ?? []) === JSON.stringify(want), `${diff}: ${kind} loadout is ${want.join(', ') || 'none'} (${(p.loadouts?.[kind] ?? []).join(', ')})`);
@@ -1074,7 +1169,7 @@ function replayAndOldSaves(ok: Ok): void {
     st.players.every(
       p =>
         Object.keys(p.doctrines ?? {}).length > 0 &&
-        (p.upgrades ?? []).some(id => UPGRADE_LINE[id].mark === 3) &&
+        (p.upgrades ?? []).some(id => UPGRADE_LINE[id]?.mark === 3) &&
         Object.values(p.loadouts ?? {}).some(m => m && m.length),
     );
   const play = (): { s: GameState; saved: string } => {
@@ -1103,7 +1198,7 @@ function replayAndOldSaves(ok: Ok): void {
   for (const o of [0, 1] as Owner[]) {
     const p = truce.players[o];
     ok(p.loadouts && Object.values(p.loadouts).some(m => m && m.length), `the replayed battle: side ${o} has a loadout set (${JSON.stringify(p.loadouts ?? {})})`);
-    ok(Object.keys(p.doctrines ?? {}).length > 0 && (p.upgrades ?? []).some(id => UPGRADE_LINE[id].mark === 3), `the replayed battle: side ${o} adopts a doctrine and researches it (${(p.upgrades ?? []).join('/')})`);
+    ok(Object.keys(p.doctrines ?? {}).length > 0 && (p.upgrades ?? []).some(id => UPGRADE_LINE[id]?.mark === 3), `the replayed battle: side ${o} adopts a doctrine and researches it (${(p.upgrades ?? []).join('/')})`);
   }
   ok(a.winner !== null, `the replayed battle finishes (tick ${a.tick})`);
   ok(JSON.stringify(a) === JSON.stringify(b), 'a lines battle with research, doctrines and loadouts replays byte-identically');
@@ -1170,6 +1265,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Lines: marks and doctrines', quietCommander(marksAndDoctrines)],
   ['Lines: effects', quietCommander(effects)],
   ['Lines: loadouts', quietCommander(loadouts)],
+  ['Lines: the air war\'s aircraft', quietCommander(airWarAircraft)],
   ['Lines: the computer', computer],
   ['Lines: a hand-played battle replays exactly', quietCommander(handReplay)],
   ['Lines: replay and old saves', replayAndOldSaves],

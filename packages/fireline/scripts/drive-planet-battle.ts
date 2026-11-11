@@ -40,7 +40,7 @@ import {
   type UnitKind,
   type UpgradeId,
 } from '../src/sim/rules';
-import { cloneState, createInitialState, migrateState } from '../src/sim/state';
+import { addUnit, cloneState, createInitialState, migrateState } from '../src/sim/state';
 import type { GameState } from '../src/sim/types';
 
 type Ok = (cond: unknown, what: string) => void;
@@ -409,6 +409,24 @@ function hookTests(ok: Ok): void {
     ok(planetBattleReport(setup, s) === null, `setup ${i}: no report while running`);
     break;
   }
+  // Infantry aboard a Troop Carrier (the air war, merged 2026-11-11) are reported as survivors, core slot kept.
+  {
+    const setup = craftSetup(0);
+    const c = cloneState(buildPlanetBattle(setup, ids(0)));
+    const rider = c.units.find(u => u.owner === 0 && !u.hero && UNITS[u.kind].category === 'infantry' && u.core !== undefined);
+    ok(!!rider, 'a core infantry unit to put aboard');
+    if (rider) {
+      const before = planetBattleReport(setup, c, { retreat: true })!.sides[0].survivors;
+      const carrier = addUnit(c, 0, 'carrier', rider.x, rider.y);
+      c.units = c.units.filter(u => u !== rider);
+      carrier.carried = [rider];
+      const after = planetBattleReport(setup, c, { retreat: true })!.sides[0].survivors;
+      ok(after.length === before.length && after.some(x => x.core === rider.core && x.kind === rider.kind), `infantry aboard a carrier still reported (${before.length} and ${after.length} survivors)`);
+      carrier.hp = 0;
+      const lost = planetBattleReport(setup, c, { retreat: true })!.sides[0].survivors;
+      ok(lost.length === before.length - 1 && !lost.some(x => x.core === rider.core), 'infantry aboard a downed carrier are lost');
+    }
+  }
   // Heroes act in planet battles (abilities cool down only through the hero tick).
   {
     const i = [...Array(SETUPS).keys()].find(k => craftSetup(k).sides[0].heroes.length)!;
@@ -606,17 +624,20 @@ function sizeTests(ok: Ok): void {
  * at tick 0 wherever he is brought, and a defending enemy's `garrison` written at its first
  * decision in Ace of Spades, Convoy North, Bastion Line and Borrowed Steel) and Borrowed Steel
  * (cb7044c). The merged tree gives exactly origin/main's hash for every mission; the skirmish
- * hashes are unchanged (fireline-design.md, build log of the merge).
+ * hashes are unchanged (fireline-design.md, build log of the merge). At the second merge with main
+ * (the air war, 2026-11-11) 12 more were regenerated from origin/main's own code (f6798a8): Quiet
+ * Man, Blackout and Last Light, all four each, which main's 2668bda rebuilt so a player can win them.
+ * The skirmish hashes are again unchanged.
  */
 const STORY_HASHES: Record<string, string> = {
   'first-light:default:0': '811641bc63b24a6a',
   'first-light:default:600': '812bea5ba6994cd9',
   'first-light:heroes:0': '811641bc63b24a6a',
   'first-light:heroes:600': '812bea5ba6994cd9',
-  'quiet-man:default:0': '40dcd4cad0eabf4a',
-  'quiet-man:default:600': 'b98f819ead65ea7b',
-  'quiet-man:heroes:0': '40dcd4cad0eabf4a',
-  'quiet-man:heroes:600': 'b98f819ead65ea7b',
+  'quiet-man:default:0': 'ab7c11531e172774',
+  'quiet-man:default:600': '42ba109088bb3759',
+  'quiet-man:heroes:0': 'ab7c11531e172774',
+  'quiet-man:heroes:600': '42ba109088bb3759',
   'hold-the-ford:default:0': '031181a70b4b863b',
   'hold-the-ford:default:600': 'a9ed3f9e51b44186',
   'hold-the-ford:heroes:0': '031181a70b4b863b',
@@ -633,10 +654,10 @@ const STORY_HASHES: Record<string, string> = {
   'ace-of-spades:default:600': '82adff56777123ed',
   'ace-of-spades:heroes:0': '72fb3a5f7b1909fa',
   'ace-of-spades:heroes:600': '1a663addd7df8707',
-  'blackout:default:0': '6b2339c402655984',
-  'blackout:default:600': '668a7d5dd2de50c0',
-  'blackout:heroes:0': '30408d634d10e8b5',
-  'blackout:heroes:600': '9e22c9a0d7093dc6',
+  'blackout:default:0': 'ff8abbf832ff9556',
+  'blackout:default:600': 'b306b9316f097efe',
+  'blackout:heroes:0': '488fc2cc00d88410',
+  'blackout:heroes:600': '9ed14923963b4d61',
   'fireline:default:0': 'a04ea7c2fa164106',
   'fireline:default:600': '7c8a9ff590ef1bb7',
   'fireline:heroes:0': 'bc0eb59bb276b49f',
@@ -661,10 +682,10 @@ const STORY_HASHES: Record<string, string> = {
   'bastion-line:default:600': '341446e0d3fbefa3',
   'bastion-line:heroes:0': '754b11f3a56ee6bc',
   'bastion-line:heroes:600': 'e4a98f826ac1301a',
-  'last-light:default:0': '6844b11db528fe62',
-  'last-light:default:600': 'adc2d84a50b46c68',
-  'last-light:heroes:0': 'c8f19bca3b4b56e3',
-  'last-light:heroes:600': 'c99531bb6add4939',
+  'last-light:default:0': 'c4c39686d239e62b',
+  'last-light:default:600': 'b298f846cfeba640',
+  'last-light:heroes:0': 'eb3a697cc014c96a',
+  'last-light:heroes:600': 'a2ed4f1aebb32890',
 };
 
 const SKIRMISH_HASHES: Record<string, string> = {

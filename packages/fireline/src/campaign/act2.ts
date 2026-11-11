@@ -363,7 +363,10 @@ export const ACT_TWO: MissionSpec[] = [
     ],
     summary: 'The final assault on a full Combine fortress.',
     seed: 'last-light',
-    difficulty: 'hard',
+    // Normal is the commander's own Normal now that the campaign has a Hard setting (Hard gives it
+    // back). As first written (Hard tier, 10000 credits, the larger garrison and air wing below) a
+    // scripted player won 1 of 12 attempts at Normal; as now, 12 of 12.
+    difficulty: 'normal',
     player: {
       credits: 8000,
       structures: ['hq', 'power', 'power', 'power', 'refinery', 'refinery', 'barracks', 'factory', 'uplink', 'techcentre', 'repairbay'],
@@ -371,7 +374,7 @@ export const ACT_TWO: MissionSpec[] = [
       heroes: ['spy', 'commando', 'engineer', 'ace'],
     },
     enemy: {
-      credits: 10000,
+      credits: 5000,
       base: 'full',
       structures: [
         'power',
@@ -404,7 +407,7 @@ export const ACT_TWO: MissionSpec[] = [
         'wall',
         'wall',
       ],
-      units: [...n('bastion', 2), ...n('flametank', 2), ...n('tank', 3), ...n('missilecarrier', 2), ...n('grenadier', 3)],
+      units: [...n('bastion', 1), ...n('flametank', 1), ...n('tank', 2), ...n('missilecarrier', 1), ...n('grenadier', 2)],
       ai: 'normal',
     },
     tech: [...AFTER_13, ...AIR],
@@ -422,11 +425,11 @@ export const ACT_TWO: MissionSpec[] = [
         spawn: { owner: 0, kind: 'grenadier', count: 4, x: 8.5, y: 47.5, order: 'guard' },
         say: 'Four Grenadiers from the coast garrison have reached you. That is the last of the reserve.',
       },
-      { at: 6 * MIN, spawn: enemyWave('flametank', 3, 60.5, 27.5, 12.5, 50.5), say: 'Flame Tanks along the eastern cliffs!' },
-      { at: 12 * MIN, spawn: enemyWave('bastion', 3, 50.5, 14.5, 12.5, 50.5), say: 'Their Bastions are moving. This is the last of their armour.' },
-      { at: 4 * MIN, spawn: enemyWave('gunship', 3, 60.5, 8.5, 12.5, 50.5), say: 'Gunships off the Combine pads. Get anti-air on the base.' },
-      { at: 9 * MIN, spawn: enemyWave('bomber', 2, 60.5, 8.5, 12.5, 50.5), say: 'Bombers on the north approach.' },
-      { at: 14 * MIN, spawn: enemyWave('gunship', 4, 60.5, 8.5, 12.5, 50.5), say: 'Their last air wing is up.' },
+      { at: 6 * MIN, spawn: enemyWave('flametank', 2, 60.5, 27.5, 12.5, 50.5), say: 'Flame Tanks along the eastern cliffs!' },
+      { at: 12 * MIN, spawn: enemyWave('bastion', 2, 50.5, 14.5, 12.5, 50.5), say: 'Their Bastions are moving. This is the last of their armour.' },
+      { at: 4 * MIN, spawn: enemyWave('gunship', 2, 60.5, 8.5, 12.5, 50.5), say: 'Gunships off the Combine pads. Get anti-air on the base.' },
+      { at: 9 * MIN, spawn: enemyWave('bomber', 1, 60.5, 8.5, 12.5, 50.5), say: 'A bomber on the north approach.' },
+      { at: 14 * MIN, spawn: enemyWave('gunship', 3, 60.5, 8.5, 12.5, 50.5), say: 'Their last air wing is up.' },
     ],
     rewards: { xp: 1200, unlockTech: AIR },
   },

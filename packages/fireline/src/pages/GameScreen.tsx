@@ -1,3 +1,4 @@
+import { boardProblem, canRide } from '../sim/transport';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { isCampaignSave } from '../campaign/save';
@@ -554,6 +555,17 @@ export function Battle({
         if (haulers.length) dispatch({ type: 'move', ids: haulers, x: wx, y: wy, queue });
         ov.pings.push({ x: wx, y: wy, at: now, kind: 'attack' });
         return;
+      }
+      // Infantry on one of our own Troop Carriers: they walk to it and climb in; anything else moves there.
+      if (targetUnit && targetUnit.owner === 0 && UNITS[targetUnit.kind].carries) {
+        const riders = mine.filter(u => canRide(u)).map(u => u.id);
+        if (riders.length) {
+          const rest = mine.filter(u => !canRide(u) && u.id !== targetUnit.id).map(u => u.id);
+          if (dispatch({ type: 'board', ids: riders, carrier: targetUnit.id })) ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
+          else showToast(boardProblem(s, 0, riders, targetUnit.id) ?? 'Cannot board');
+          if (rest.length) dispatch({ type: 'move', ids: rest, x: wx, y: wy, queue });
+          return;
+        }
       }
       const haulerIds = mine.filter(u => u.kind === 'hauler').map(u => u.id);
       const others = mine.filter(u => u.kind !== 'hauler').map(u => u.id);

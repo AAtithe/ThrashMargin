@@ -17,7 +17,7 @@ export const scienceCost = (id: UpgradeId): number => Math.ceil(UPGRADES[id].cos
 
 /** Why this upgrade's prerequisites do not hold (ignoring whether it is current), or null. */
 export function prerequisiteProblem(r: FactionResearch, id: UpgradeId, assumeDoctrine = false): string | null {
-  const { line, mark } = UPGRADE_LINE[id];
+  const { line, mark } = UPGRADE_LINE[id]!;
   const l = LINES[line];
   if (mark >= 2 && !r.done.includes(l.marks[0])) return `Needs ${UPGRADES[l.marks[0]].name} first.`;
   if (mark === 3) {

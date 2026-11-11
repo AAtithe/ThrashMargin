@@ -7,6 +7,7 @@ import {
   CALIBRATION_DAMAGE,
   COMPOSITE_KINDS,
   COMPOSITE_TAKEN,
+  COUNTERMEASURES_DAMAGE,
   ENGINES2_SPEED,
   ENGINES_SPEED,
   HARDENED_KINDS,
@@ -52,6 +53,7 @@ import type { GameState, PlayerState, Unit } from './types';
  *  - engines: vehicles' speed (ENGINES_SPEED), in the movement step (tick.ts);
  *  - refining: what each load of ore pays (REFINING_INCOME), at the refinery (tick.ts);
  *  - airframes: aircraft's full health (AIRFRAMES_HP) and their rearming time (AIRFRAMES_REARM, air.ts).
+ *  - countermeasures: what flak and anti-air missiles do to the side's aircraft (COUNTERMEASURES_DAMAGE, tick.ts hurt).
  *
  * The query functions never change the state; the `do*` functions and `researchStep` work in place
  * on a state the reducer has already cloned.
@@ -72,8 +74,9 @@ export function hasUpgrade(s: GameState, owner: Owner, id: UpgradeId): boolean {
  */
 export function researchCostOf(s: GameState, id: UpgradeId): number {
   const base = UPGRADES[id].cost;
-  if (researchModeOf(s) !== 'lines') return base;
-  const m = GAME_PACES[paceOf(s)].researchCost[UPGRADE_LINE[id].mark - 1];
+  const pos = UPGRADE_LINE[id];
+  if (researchModeOf(s) !== 'lines' || !pos) return base; // Countermeasures belongs to no line.
+  const m = GAME_PACES[paceOf(s)].researchCost[pos.mark - 1];
   if (m === 1) return base;
   return Math.max(RESEARCH_COST_STEP, Math.round((base * m) / RESEARCH_COST_STEP) * RESEARCH_COST_STEP);
 }
@@ -81,8 +84,9 @@ export function researchCostOf(s: GameState, id: UpgradeId): number {
 /** How many ticks of progress this upgrade takes in this battle (round 6). Classic and 'quick': UPGRADES[id].ticks exactly. */
 export function researchTicksOf(s: GameState, id: UpgradeId): number {
   const base = UPGRADES[id].ticks;
-  if (researchModeOf(s) !== 'lines') return base;
-  const m = GAME_PACES[paceOf(s)].researchTicks[UPGRADE_LINE[id].mark - 1];
+  const pos = UPGRADE_LINE[id];
+  if (researchModeOf(s) !== 'lines' || !pos) return base; // Countermeasures belongs to no line.
+  const m = GAME_PACES[paceOf(s)].researchTicks[pos.mark - 1];
   if (m === 1) return base;
   return Math.max(1, Math.round(base * m));
 }
@@ -97,7 +101,10 @@ export function researchProblem(s: GameState, owner: Owner, id: UpgradeId): stri
   const p = s.players[owner];
   if (lines) {
     // Development lines: marks in order; a Mk III branch only once its line's doctrine names it.
-    const { line, mark } = UPGRADE_LINE[id];
+    // Countermeasures belongs to no line: a classic upgrade only (Armoured cockpits is its counterpart).
+    const pos = UPGRADE_LINE[id];
+    if (!pos) return 'Not in this battle';
+    const { line, mark } = pos;
     const l = LINES[line];
     if (mark === 2 && !hasUpgrade(s, owner, l.marks[0])) return 'Needs Mk I';
     if (mark === 3) {
@@ -191,6 +198,8 @@ export const vehicleSpeedOf = (s: GameState, owner: Owner): number =>
 /** Multiplier on what this side's ore pays (Mk II replaces Mk I). */
 export const incomeMulOf = (s: GameState, owner: Owner): number =>
   hasUpgrade(s, owner, 'refining2') ? REFINING2_INCOME : hasUpgrade(s, owner, 'refining') ? REFINING_INCOME : 1;
+/** Multiplier on what anti-air weapons (flak, anti-air missiles) do to this side's aircraft (Countermeasures). */
+export const antiAirTakenMulOf = (s: GameState, owner: Owner): number => (hasUpgrade(s, owner, 'countermeasures') ? COUNTERMEASURES_DAMAGE : 1);
 /** Multiplier on this side's aircraft's rearming time. */
 export const rearmMulOf = (s: GameState, owner: Owner): number => (hasUpgrade(s, owner, 'airframes') ? AIRFRAMES_REARM : 1);
 
@@ -280,7 +289,9 @@ export function migrateResearch(
   // Allowed in this mode: classic ids only in 'classic'; in 'lines', a branch only when it is its line's doctrine.
   const allowed = (id: UpgradeId): boolean => {
     if (mode === 'classic') return isClassicUpgrade(id);
-    const { line, mark } = UPGRADE_LINE[id];
+    const pos = UPGRADE_LINE[id];
+    if (!pos) return false; // Countermeasures: classic only.
+    const { line, mark } = pos;
     return mark !== 3 || doctrines[line] === id;
   };
   if (p.upgrades !== undefined) {

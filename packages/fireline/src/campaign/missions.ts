@@ -130,10 +130,13 @@ export const MISSIONS: MissionSpec[] = [
         spawn: { owner: 1, kind: 'rifleman', count: 3, x: 50.5, y: 14.5, order: 'guard' },
         say: 'A Combine patrol has taken up position on the eastern road. Go round, or go quietly.',
       },
+      // A squad the escort can beat. Two buggies went to the extraction point and parked on it: they
+      // beat the four riflemen, and the Spy could not come within two tiles of them unseen, so every
+      // run played by script ended with him alive and waiting until the time ran out.
       {
         afterObjective: 0,
-        spawn: enemyWave('buggy', 2, 55.5, 20.5, 3.5, 5.5),
-        say: 'We are reading their traffic. They know something is wrong: buggies are out. Get him to the extraction point.',
+        spawn: enemyWave('rifleman', 3, 55.5, 20.5, 3.5, 5.5),
+        say: 'We are reading their traffic. They know something is wrong: a squad is heading for the extraction point. Get him there, and have the riflemen meet them.',
       },
     ],
     rewards: { xp: 200, unlockHeroes: ['spy'] },
@@ -361,11 +364,13 @@ export const MISSIONS: MissionSpec[] = [
       units: [...n('tank', 2), ...n('rifleman', 3)],
       heroes: ['spy', 'commando'],
     },
+    // Credits 5000 to 2500, a rifleman fewer, and a column of three tanks rather than four: as first
+    // written, a scripted player using the Spy and the Commando won 3 of 12 attempts at Normal.
     enemy: {
-      credits: 5000,
+      credits: 2500,
       base: 'full',
       structures: ['power', 'power', 'refinery', 'barracks', 'factory', 'uplink', 'turret', 'turret', 'turret'],
-      units: [...n('tank', 2), ...n('rifleman', 4)],
+      units: [...n('tank', 2), ...n('rifleman', 3)],
       ai: 'normal',
     },
     tech: ALL_TECH,
@@ -379,7 +384,7 @@ export const MISSIONS: MissionSpec[] = [
     triggers: [
       {
         at: 8 * MIN,
-        spawn: enemyWave('tank', 4, 50.5, 14.5, 12.5, 50.5),
+        spawn: enemyWave('tank', 3, 50.5, 14.5, 12.5, 50.5),
         say: 'A Combine armoured column is moving on our base.',
       },
       { afterObjective: 0, say: 'Their War Factory is rubble. No more tanks from Cinder Flats. Finish it.' },

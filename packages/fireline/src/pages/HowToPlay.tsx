@@ -377,15 +377,28 @@ export default function HowToPlay() {
         <Panel title="Aircraft">
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             Advanced tech only. A Helipad builds and rearms two aircraft. They fly over water, rock and structures, and only
-            anti-air (Skyhunters, Flak Tracks, Flak Cannons) and machine guns can reach them. Once a Research Lab stands, the build
-            window's Research tab offers five upgrades, one at a time, that last the rest of the battle.
+            anti-air (Skyhunters, Flak Tracks, Flak Cannons, Interceptors) and machine guns can reach them. Once a Research Lab
+            stands, the build window's Research tab offers upgrades, one at a time, that last the rest of the battle: six with
+            classic research, the development lines below otherwise.
+          </p>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
+            The air war has four jobs. Scout: send a Recon Plane over the fog and it circles there, seeing far and uncovering
+            Stealth Tanks and Spies for everything on your side, until its fuel brings it home (shift-click waypoints for a patrol).
+            Strike: Gunships against vehicles and haulers, Bombers against structures, and the Heavy Bomber, which takes a whole
+            Helipad, for ten bombs in one run. Carry: right-click a Troop Carrier with infantry selected and up to six walk to it and
+            climb in; fly it anywhere and press Unload (F) to set them down, at once if it is hovering, or where it stops. A carrier
+            shot down takes everyone aboard with it. Defend: an Interceptor left on its Helipad
+            scrambles at enemy aircraft that come near, chases them a short way and lands again; Countermeasures research cuts what
+            flak and missiles do to your aircraft by a quarter. Send Interceptors on attack-move with a strike and they take on
+            the fighters that come up to meet it.
           </p>
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             With development lines (the default for a new advanced skirmish), research is five lines: Logistics, Armour, Engines,
             Weapons and Air, all on the build window's Research tab. Each has three marks, researched in order. At the top of each
             line you adopt one of two doctrines and the other closes for the rest of the battle. Research also unlocks modules: on
             the build window's Vehicles tab, under the tree, set a loadout for each vehicle type, and every one built afterwards
-            carries it, for a little more money.
+            carries it, for a little more money. Countermeasures is classic research only: in the lines, the Air line's Armoured
+            cockpits doctrine does its job and more.
           </p>
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             A new battle starts with its game size. Quick is the original pace. Standard, Long and Epic give both sides more time

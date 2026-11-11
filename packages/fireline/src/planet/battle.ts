@@ -123,9 +123,13 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
   return s;
 }
 
-/** Survivors of one seat: infantry and vehicles of ARMY_KINDS alive now, core units first, at most 60. */
+/**
+ * Survivors of one seat: infantry and vehicles of ARMY_KINDS alive now, core units first, at most 60.
+ * Infantry aboard a living Troop Carrier (the air war) are off the map but alive, so they count.
+ */
 function survivorsOf(s: GameState, seat: number): BattleUnit[] {
-  const mine = s.units.filter(u => u.owner === seat && u.hp > 0 && isArmyKind(u.kind) && !u.hero);
+  const living = s.units.flatMap(u => (u.hp > 0 && u.carried ? [u, ...u.carried] : [u]));
+  const mine = living.filter(u => u.owner === seat && u.hp > 0 && isArmyKind(u.kind) && !u.hero);
   const core = mine.filter(u => u.core !== undefined).sort((a, b) => a.core! - b.core! || a.id - b.id);
   const rest = mine.filter(u => u.core === undefined);
   const out: BattleUnit[] = [];

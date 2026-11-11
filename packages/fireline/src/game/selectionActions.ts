@@ -1,4 +1,5 @@
 import { deployProblem, undeployProblem } from '../sim/engineering';
+import { unloadProblem } from '../sim/transport';
 import { BUILDINGS, UNITS } from '../sim/rules';
 import type { Building, GameAction, GameState, Unit } from '../sim/types';
 
@@ -81,6 +82,20 @@ export const SELECTION_ACTIONS: SelectionAction[] = [
     },
   },
   // round5:C end.
+  // The air war: a Troop Carrier sets its infantry down (now if it is still, else where it stops).
+  {
+    id: 'unload',
+    label: 'Unload',
+    title: 'Set the infantry aboard down: here if the Troop Carrier is hovering or parked, otherwise where it next stops.',
+    action: (_state, sel) => {
+      const c = sel.units.find(u => UNITS[u.kind].carries && (u.carried?.length ?? 0) > 0);
+      return c ? { type: 'unload', id: c.id } : null;
+    },
+    problem: (state, sel) => {
+      const c = sel.units.find(u => UNITS[u.kind].carries && (u.carried?.length ?? 0) > 0);
+      return c ? unloadProblem(state, 0, c.id) : null;
+    },
+  },
 ];
 
 /** The commands that apply to this selection, in list order, each with its action and any problem. */

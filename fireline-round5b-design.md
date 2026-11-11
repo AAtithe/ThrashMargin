@@ -169,7 +169,7 @@ heat:          'Your shells and rockets hit 10% harder, on top of calibration.'
 highexplosive: 'Every weapon with a blast hits a quarter wider.'
 avionics:      'Aircraft fly 15% faster.'
 hardened:      'Aircraft take a quarter less damage from flak, anti-air missiles and machine guns.'
-munitions:     'Gunship rockets and bombs hit 15% harder.'
+munitions:     'Gunship rockets, Interceptor missiles and every bomb hit 15% harder.'
 ```
 
 ### 2.5 Effect constants
@@ -754,7 +754,8 @@ Also run: `npm run check`, `npm run drive:fire`, `npm run campaign:fire`, `npm r
 ## 10. What stays unchanged
 
 - The five classic upgrades: ids, names, blurbs, costs, times, requirements, effects, and the
-  order `UPGRADE_ORDER` lists them.
+  order `UPGRADE_ORDER` lists them. (Main's air war later added a sixth classic upgrade,
+  Countermeasures, after them; it belongs to no line. See the build log, 2026-11-11.)
 - Classic battles, every campaign mission, every standard-tech skirmish and every existing save:
   same rules, same computer behaviour, same state shape (no new fields written).
 - One research at a time per side; paid in full on start, refunded in full on cancel; half speed
@@ -920,3 +921,51 @@ if section 2.4 or section 5 numbers are ever tuned.
 Gate after these fixes: `npm run check` "All checks passed" (fireline "345131 assertions, 0 failed,
 328.8s"; campaign "2609 assertions, 0 failures"; the whole check 7m40s), so `CLAUDE.md` now says
 about 5.5 minutes for `drive:fire`. `npm run tours -- --quick fireline`: "ok fireline".
+
+### 2026-11-11: main's air war meets the lines (merge)
+
+Main's air war (PRs #32 to #34) added four aircraft (Recon Plane, Interceptor, Troop Carrier, Heavy
+Bomber) and a sixth classic upgrade, Countermeasures. Its rules and units apply in every research
+mode; this entry records how the development lines and loadouts cover them.
+
+**The Air line covers every aircraft through the code paths every aircraft shares**, so no aircraft
+needed a special case:
+
+| Aircraft | Air frames (Mk I) | Avionics (Mk II) | Armoured cockpits (Mk III) | Heavy munitions (Mk III) | Modules |
+|---|---|---|---|---|---|
+| Gunship, Bomber | as before | as before | as before | as before | none |
+| Recon Plane | a quarter more health; refuels 40% sooner (refuelling is its rearm) | flies and circles 15% faster; fuel still burns per tick, so it ranges further | yes | nothing to boost (unarmed) | none |
+| Interceptor | health and rearm, as the Gunship | yes | yes | its missiles, fired through the Gunship's shot (`gunshipFight`) | none |
+| Troop Carrier | a quarter more health; nothing to rearm | yes, and the infantry aboard ride at its speed | yes | nothing to boost (unarmed) | none |
+| Heavy Bomber | health and rearm, as the Bomber | yes, and the bomb lead (`dropBomb`'s `ahead`) | yes | its bombs, as the Bomber's; High-explosive fill widens them too | none |
+
+Air frames and Armoured cockpits read the unit's category (`'air'`), Avionics reads `fly`, and Heavy
+munitions reads the two places an aircraft fires (`gunshipFight`, `dropBomb`). Heavy munitions' blurb
+now says what it always did once the Interceptor exists: "Gunship rockets, Interceptor missiles and
+every bomb hit 15% harder." Salvage crews pay a tenth of any enemy aircraft destroyed, the new ones
+included; infantry lost aboard a downed carrier are infantry and pay nothing.
+
+**Modules stay on the eight round 5b vehicles** (`MODULE_VEHICLES` unchanged). Aircraft have never
+taken modules (section 10), and none of the five modules means anything to a plane: a fuel tank,
+tracks and a long barrel are ground-vehicle parts, smoke works while moving on the ground, and the
+ore cage is the hauler's.
+
+**Countermeasures is classic only.** Its lines counterpart already exists: Armoured cockpits, the
+Air line's defensive doctrine, takes the same quarter off flak and anti-air missiles and off machine
+guns as well. Offering both in a lines battle would stack to 0.56 and make the Air fork's defensive
+branch a half-choice. So in a lines battle Countermeasures is refused as "Not in this battle", a lines
+save holding it loads without it (`migrateResearch`), it costs and times as `UPGRADES` says (it has
+no mark, so the pace never scales it), and the computer's lines and paced lists are unchanged; its
+classic lists gain Countermeasures last, exactly as main has them. `UPGRADE_LINE` is now a partial
+record (Countermeasures has no entry), and every reader handles the gap. The Research tab in a lines
+battle shows the five lines as before; How to play says Countermeasures is classic only.
+
+**War for the Planet.** Planet battles are advanced lines battles, so carriers can be built in them.
+A battle's report now counts infantry aboard a living Troop Carrier as survivors (their core slot
+kept); aboard a downed one they are lost, as on the battlefield. `drive-planet-battle.ts` checks both.
+
+**What changed in lines battles, and why.** Classic battles, missions and standard tech hash exactly
+as origin/main's code. Lines battles change only where main's commander plays the air war
+(fireline-design.md, the merge's build log, has the bisection): Normal buys a Helipad more for its
+Troop Carrier (main's 265800d) and Hard sends a lone Gunship on a strike (main's a3d3040), at the
+same ticks and with the same state changes as the classic battles of the same seeds on main.

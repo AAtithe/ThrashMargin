@@ -13,3 +13,7 @@ A CEO coaching game for Tom Stanley.
   exists only in the portal version. It is played as often as a hard day needs, softly capped at six
   a day; its moves score 5 each and only three a day score, so the ledger never rewards reaching for it.
   The rules are in `packages/founders-ledger/scripts/drive.ts`.
+- Also portal-only: daily system calls (24, operations and sales alternating, one a day; mastery
+  rather than points), the phone-off day (plan, a brief to send the team, then a return log of what
+  waited, what was handled and what stalled, each stall becoming a fix), and fear and reality in the
+  Friday review. All three feed the Reset receipts and the momentum card on Today.

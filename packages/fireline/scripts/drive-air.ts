@@ -50,23 +50,23 @@ const AIRCRAFT: UnitKind[] = ['gunship', 'bomber'];
 const ANTI_AIR_UNITS: UnitKind[] = ['flaktrack', 'skyhunter'];
 const NEW_KINDS: (BuildingKind | UnitKind)[] = ['helipad', 'flakcannon', 'researchlab', 'gunship', 'bomber', 'flaktrack', 'skyhunter'];
 
-const copy = (s: GameState): GameState => JSON.parse(JSON.stringify(s));
+export const copy = (s: GameState): GameState => JSON.parse(JSON.stringify(s));
 /** Runs n ticks, in actions of at most 500 (the reducer takes no more than 600 at once). */
-function tick(s: GameState, n = 1): GameState {
+export function tick(s: GameState, n = 1): GameState {
   for (let left = n; left > 0; left -= 500) s = processAction(s, { type: 'tick', n: Math.min(500, left) });
   return s;
 }
-const unitIn = (s: GameState, id: number) => s.units.find(u => u.id === id);
+export const unitIn = (s: GameState, id: number) => s.units.find(u => u.id === id);
 const buildingIn = (s: GameState, id: number) => s.buildings.find(b => b.id === id);
 const categoryOfKind = (k: BuildingKind | UnitKind): Category => (k in BUILDINGS ? 'building' : UNITS[k as UnitKind].category);
 
-function tickUntil(s: GameState, done: (s: GameState) => boolean, max: number): GameState {
+export function tickUntil(s: GameState, done: (s: GameState) => boolean, max: number): GameState {
   for (let i = 0; i < max && !done(s); i++) s = processAction(s, { type: 'tick' });
   return s;
 }
 
 /** Side 1's commander switched off: these sections test the rules, not the commander. */
-function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
+export function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
   return ok => {
     setAutopilotAi(() => {}, 1);
     try {
@@ -82,7 +82,7 @@ function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
  * (cx, cy) with 17 by 17 tiles of clear ground round it. Classic research by default: these
  * sections test the round 4 rules exactly (drive-lines.ts tests development lines).
  */
-function airArena(seed = 'air-arena', setup: Partial<SkirmishSetup> = { map: 'plains', tech: 'advanced', credits: 20000, research: 'classic' }) {
+export function airArena(seed = 'air-arena', setup: Partial<SkirmishSetup> = { map: 'plains', tech: 'advanced', credits: 20000, research: 'classic' }) {
   const s = copy(createInitialState(seed, seed, { seed, createdAt: 0, setup }));
   s.units = [];
   for (const m of s.ai) m.nextAttack = 1e9;
@@ -102,7 +102,7 @@ function airArena(seed = 'air-arena', setup: Partial<SkirmishSetup> = { map: 'pl
   return { s, cx, cy };
 }
 
-function put(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number, extra: Partial<Unit> = {}): Unit {
+export function put(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number, extra: Partial<Unit> = {}): Unit {
   const u = addUnit(s, owner, kind, x, y);
   if (isAir(u)) u.ammo = AIR_AMMO[kind];
   Object.assign(u, extra);
@@ -110,7 +110,7 @@ function put(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number, e
 }
 
 /** A Helipad for a side, and aircraft launched from it, parked on its pad. */
-function padWith(s: GameState, owner: Owner, x: number, y: number, kinds: UnitKind[]): { pad: Building; craft: Unit[] } {
+export function padWith(s: GameState, owner: Owner, x: number, y: number, kinds: UnitKind[]): { pad: Building; craft: Unit[] } {
   const pad = addBuilding(s, owner, 'helipad', x, y, -100);
   const craft = kinds.map(k => {
     const u = addUnit(s, owner, k, x + 1, y + 1);
@@ -145,8 +145,8 @@ function rulesAndMenus(ok: Ok): void {
   ok(DAMAGE_VS.bullet.aircraft > 0.2 && DAMAGE_VS.bullet.aircraft < 0.5, 'bullets hurt aircraft at a reduced effect');
   for (const w of ['flak', 'aamissile', 'bomb'] as const) ok(FLIGHT_TICKS[w] > 0, `${w}: has a flight time`);
   for (const id of UPGRADE_ORDER) ok(UPGRADES[id].requires.includes('researchlab') && UPGRADES[id].cost > 0 && UPGRADES[id].ticks > 0, `${id}: needs a Lab, costs and takes time`);
-  // Round 5 widened UPGRADES with development lines; UPGRADE_ORDER stays the five classic ones.
-  ok(new Set(UPGRADE_ORDER).size === UPGRADE_ORDER.length && UPGRADE_ORDER.length === 5 && UPGRADE_ORDER.every(id => id in UPGRADES), 'every classic upgrade listed once');
+  // Round 5 widened UPGRADES with development lines; UPGRADE_ORDER stays the classic ones (six since the air war's Countermeasures).
+  ok(new Set(UPGRADE_ORDER).size === UPGRADE_ORDER.length && UPGRADE_ORDER.length === 6 && UPGRADE_ORDER.every(id => id in UPGRADES), 'every classic upgrade listed once');
 }
 
 /** Standard tech, the original game and missions offer none of it; advanced tech offers all of it. */

@@ -997,6 +997,221 @@ map sizes battles last about as long at every size: the sizes differ in how deep
 Larger maps would make the bigger sizes longer, and are out of scope for this round. `drive:fire`
 gains 582 assertions (about 345,700 in all, about 8 to 9 minutes).
 
+### 2026-11-10: every campaign mission played to a win; three missions and the enemy barrage fixed
+
+Checked whether every mission can be won, at every campaign difficulty, by a scripted player
+(`scripts/campaign-player.ts`): the skirmish commander runs side 0's base, held at home and sent at
+the mission's target at a chosen minute, and a script plays the heroes and support powers. Twelve
+plans per base mission (two commander strengths, six attack times), six for The Quiet Man, three
+for Ace of Spades; `npm run sweep:fire` runs them all. Before this, six of the fourteen missions had
+a played proof; the rest were only built and run for 2,000 ticks.
+
+Found and fixed:
+
+- **The Quiet Man could not be won at Normal or Hard.** Two buggies sent after the Spy drove to the
+  extraction point and parked on it; they beat his four riflemen, and he could not come within two
+  tiles of them unseen. Every run ended with him alive, waiting, until the time ran out. A squad of
+  three riflemen goes after him now, the same fix Demolition had.
+- **The enemy barrage aimed at what it could not see.** Firestorm, Bastion Line and Last Light give
+  the enemy a Tech Centre's barrage, and it found the player's rally point deep in their own base
+  every three minutes: one barrage killed 27 of side 0's units at once in Firestorm, with no enemy
+  near. A mission enemy now shells only troops within sight of its own units or structures, else
+  one of the player's structures. With the barrage switched off entirely, Firestorm went from 0 to 5
+  wins of 6 plans; with the sight rule instead, 5 of 12.
+- **Blackout, Firestorm and Last Light were not won at Normal by most plans** (3, 0 and 0 of 12 at
+  first). Blackout: enemy credits 5,000 to 2,500, a rifleman fewer, the armoured column three tanks
+  not four. Last Light: the commander at Normal rather than Hard (campaign Hard gives Hard back),
+  credits 10,000 to 5,000, and about two-thirds of its garrison and of every wave. Firestorm needed
+  only the barrage fix; its remaining losses are all its 15-minute deadline, every one of them a plan
+  that attacks too late or builds too slowly to get there. Every plan that reaches it in time wins.
+- **Campaign Hard eased** from x1.3 troops and x1.5 credits to x1.15 and x1.25 (still a tier up):
+  at the steeper setting no plan held Hold the Ford for its eight minutes.
+
+Not missions, but the scripted player, and worth knowing for the next one: left to attack on its own,
+the skirmish commander threw its whole army into the enemy's turrets at four and a half minutes in
+every base mission (52 units lost for 6 in thirty seconds in Fireline); heroes walked in alone and
+died in the first minute and a half; and in First Light, where it may not build tanks, it trained
+nothing and sat on 33,500 credits. Fireline read as unwinnable at Normal until the heroes were used
+properly, then won 9 of 12 with no change to the mission. A scripted player that loses proves little.
+
+Wins out of plans tried (`npm run sweep:fire`):
+
+| Mission | Easy | Normal | Hard |
+|---|---|---|---|
+| 1 First Light | 12/12 | 12/12 | 12/12 |
+| 2 The Quiet Man | 6/6 | 6/6 | 6/6 |
+| 3 Hold the Ford | 12/12 | 12/12 | 7/12 |
+| 6 Ace of Spades | 3/3 | 2/3 | 2/3 |
+| 7 Blackout | 12/12 | 9/12 | 0/12 |
+| 8 Fireline | 12/12 | 9/12 | 0/12 |
+| 9 Iron Coast | 12/12 | 11/12 | 0/12 |
+| 12 Firestorm | 10/12 | 5/12 | 0/12 |
+| 14 Last Light | 12/12 | 12/12 | 5/12 |
+
+Missions 4, 5, 10, 11 and 13 have their own players in campaign-check (Borrowed Steel at every
+level). campaign-check now plays every mission to a win at Easy and Normal, The Quiet Man and Ace of
+Spades at all three. Hard on Blackout, Fireline, Iron Coast and Firestorm is not won by any scripted
+plan; that proves less than it seems (the player does not micro and its heroes go in on a timer), but
+it is the open question if Hard is reported as too hard.
+
+### 2026-11-10: The air war: recon, interceptors, countermeasures
+
+The player asked for air warfare to be more involved, recon planes among it. Air power had one job,
+striking the ground, and one answer, anti-air on the ground. It now has three jobs (scout, strike,
+defend) and the air can be contested from the air. Advanced tech only, like the rest of air power:
+standard tech, missions and saves from before are untouched, and two-sided standard battles replay
+exactly as they did.
+
+| Unit | Cost | Needs | Role |
+|---|---|---|---|
+| Recon Plane | 700 | Helipad | Unarmed, fast (2.4 tiles/s), sight 11; a detector |
+| Interceptor | 1200 | Helipad, Research Lab | Air-to-air missiles (55, range 5, every 1s), 6 loads; fastest aircraft (2.7 tiles/s) |
+
+| Upgrade | Cost | Time | Effect |
+|---|---|---|---|
+| Countermeasures | 1500 | 60s | flak and anti-air missiles do 25% less to the side's aircraft (needs a Helipad) |
+
+How it plays (`src/sim/air.ts`, numbers in `rules.ts` under "Air war"):
+
+- **Recon Plane.** Its loads are fuel (12), one burnt every `FUEL_TICKS` (5 seconds) while it is off
+  its pad, none while parked. At `FUEL_RESERVE` (2) it turns for home, refuels a load a second and
+  stays parked. Sent to a point, by move or attack-move alike, it flies there and circles (its heading
+  turns 0.12 radians a tick; cos and sin are constants so a replay never rests on `Math.cos`), so a
+  sortie lasts about 45 seconds over the target. Shift-click waypoints make a patrol. It can never be
+  given an attack order.
+- **Detection.** A unit whose spec has `detector` (the Recon Plane) sees Stealth Tanks and Spies within
+  `DETECTOR_RANGE` (7 tiles), where anything else needs 2.5 (Stealth Tanks) or the Spy rule's range.
+  One condition in each of `stealthSeen` (sites.ts) and `isDetected` (mission.ts); allies share it as
+  they share everything else. A Gun Turret that cannot see a Stealth Tank four tiles off opens fire
+  the moment a Recon Plane comes over.
+- **Interceptor.** Fights like a Gunship but at aircraft only (its weapon is `aamissile`, which never
+  reaches the ground). Left on its pad, full and not on hold, it **scrambles**: any enemy aircraft
+  within `SCRAMBLE_RANGE` (14 tiles) of the pad takes it up (`Unit.scramble`, an optional field), it
+  fights, takes the next intruder near the pad if there is one, and lands again. It never chases
+  beyond `SCRAMBLE_LEASH` (20 tiles) from the pad; a Bomber running for home at full speed gets away.
+  Any order ends a scramble. Ordered on attack-move with a strike, it takes on the fighters that come
+  up to meet it.
+- **Countermeasures.** Read in `hurt` (tick.ts): flak or anti-air missile damage on an aircraft is
+  multiplied by `COUNTERMEASURES_DAMAGE` (0.75) for the victim's side. Bullets are unchanged.
+- An Interceptor's missile is drawn level at aircraft height, not climbing from the ground.
+
+The computer (`aiAir.ts`):
+- Interceptors on Normal (one) and Hard (two), half one per enemy aircraft, first in line for its
+  Helipads' room, with one Helipad more than its plan to hold them. They stay parked and scramble by
+  themselves. Easy flies neither new aircraft.
+- A Recon Plane on Normal and Hard once the opponent fields a Stealth Tank, flown over the one
+  nearest its base and kept on it as it moves, so its guns can see it. Without one it stays parked.
+- Interceptors count as anti-air cover when it picks a strike target.
+- Countermeasures last in its research order on Normal and Hard.
+- In a real Hard battle the commander only meets enemy aircraft if the other side flies; the
+  autopilot on side 0 in the existing battle seeds never builds air, so the new battle section gives
+  side 0 a Helipad and two Gunships at the start.
+
+Interface: the Air tab now offers Recon Plane, Gunship, Interceptor, Bomber; stat cards show fuel,
+detection and the scramble ranges; a selected aircraft's line reads Fuel or Missiles and says when it
+is circling, refuelling, low on fuel, scrambled or ready to scramble. Art: a twin-boom recon plane
+with a turning radar dome and a fuel strip, and a delta-wing interceptor with missiles under its
+wings and an afterburner trail; both have shadows. How to play's Aircraft panel explains the three
+jobs. Countermeasures takes the Research block's sixth row.
+
+Tests: `scripts/drive-airwar.ts`, eight sections in `npm run drive:fire` (helpers exported from
+`drive-air.ts`): rules and tech levels, the Recon Plane's fuel, orbit, return, refuel and patrol,
+detection of a Stealth Tank and a Spy (an ally's plane included), Interceptors against a Gunship and
+never the tank under it, a scramble, its range, hold, leash and the order that ends it, two
+Interceptors fighting, Countermeasures measured on a Flak Cannon and a Skyhunter hit (30 to 23, 60 to
+45) and not on a bullet, old saves, the computer (an Interceptor by minute 8 on Hard against
+Gunships, a Recon Plane by minute 7 against a Stealth Tank, which its side then sees; nothing on
+Easy), and a Hard battle that replays byte-identically.
+
+Numbers. `npm run drive:fire`: 373,669 assertions, 0 failed, 362s (was 367,688). The advanced-tech
+battle line now reads "12/12 finished, average 28.0 game minutes; side 0 won 4, side 1 won 8": the
+commanders fly Countermeasures research and, where the opponent flies or fields Stealth Tanks, the new
+aircraft. The air war battle: "aircraft gunship, interceptor; 1 interceptor missiles; side 1 won at 38
+min". `npm run campaign:fire` 2,595, unchanged. The AI ladder (150 seeds) has not yet been run on this
+change and should be before any balance work on it.
+
+### 2026-11-10: The air war, part two: Troop Carriers and the Heavy Bomber; tuning
+
+The player then asked for troop carriers and bigger bombers, and for the ladder to be run and the
+balance tuned.
+
+| Unit | Cost | Needs | Role |
+|---|---|---|---|
+| Troop Carrier | 1000 | Helipad, Barracks | Unarmed, 380 health, 1.7 tiles/s; carries 6 infantry |
+| Heavy Bomber | 3000 | Helipad, Tech Centre, Research Lab | 640 health, 1.5 tiles/s; 10 bombs (160, splash 1.8) in one run; takes a whole Helipad |
+
+**Troop Carrier** (`src/sim/transport.ts`). Infantry ordered aboard (`board`, a right-click on your
+own carrier) walk to it with `Unit.boarding` set and climb in within `BOARD_RANGE` (2.3 tiles) while
+it is still (hovering, or parked on its pad, so they board at the Helipad). Aboard, a unit leaves
+`s.units` and is kept as it was (id, health, kills) in `Unit.carried`, an array only ever replaced.
+`unload` (the Unload button, F) sets them down at once on free tiles within `UNLOAD_RADIUS` (3) if
+the carrier is still, or where it next stops (`Unit.drop`); over water or rock with no ground near,
+it cannot. A carrier shot down takes its passengers with it, counted as losses. Boarding and setting
+down run in one pass after every unit has moved (`transportStep`), never inside the units loop.
+Heroes cannot ride. Old saves: passengers are kept only when they are infantry, up to the room.
+
+**Heavy Bomber.** Uses the Bomber's run code (`isBomberKind`, by weapon), so it lines up, drops all
+ten and goes home. `AIR_SLOTS` makes it take both places on a Helipad: `padLoad`, `airCount`,
+`airRoom`, `homePad`, `launchAircraft` and `canQueue` all count places, not aircraft, and it parks
+in the middle of its pad. One run flattens a Barracks.
+
+**The computer.** A Heavy Bomber on Hard, flown with the Bombers. Airlift raids on Normal (5) and
+Hard (6): a parked carrier takes idle infantry from home (not in a wave, a raid or a site party) to
+the opponent's refinery the fewest anti-air guns cover, sets them down three tiles short and sends
+them in; one at a time, on the strike timer, giving up after a minute boarding or three flying.
+Its memory (`AiMemory.airlift`) is replaced, never changed in place, and repaired from saves.
+
+**Tuning, measured one on one** (two Interceptors parked by a Barracks, one Bomber attacking it):
+at the first numbers all six bombs fell and the Barracks went; one Interceptor never stopped a
+Bomber at any setting tried, which is right for 1,200 credits against 2,000. Scramble range 11 to 14,
+leash 16 to 20, reload 1.4s to 1.0s: the pair now holds the raid to three bombs and the Barracks
+stands (at 16 tiles one bomb fell, but one pad would then cover a third of a standard map).
+
+**Tuning the commander.** A census of 48 computer battles (Normal mirror, Normal against Hard)
+showed aircraft in 45, Interceptors built in 7 and firing in 1, and never a Recon Plane or
+Countermeasures: the commander bought Interceptors behind its army-ready gate and parked them
+where enemy gunships never came, since those hunt haulers out at the ore. Interceptors and the
+Recon Plane are now bought as anti-air is (before the army is ready), and an enemy aircraft within
+8 tiles of its haulers or structures draws one sent by the commander. After: built in 15, firing
+in 5. Gunship strikes now avoid them (they count as cover), which is the deterrence working.
+
+**The ladder** (150 seeds, random maps, advanced tech), before any of the air war and after its
+first version, run on the same machine:
+
+| Match | Before | First version |
+|---|---|---|
+| Normal mirror | 45% / 53% | 45% / 53% |
+| Normal v Hard | 6% / 93% | 5% / 95% |
+| Normal v Easy | 100% / 0% | 100% / 0% |
+| Hard v Normal, both ways | 70.3% | 70.7% |
+
+Within a game or two on every row: the first version barely changed the computer's play, because
+it barely used the new aircraft (the census above).
+
+**Two fixes the full harness forced.** The airlift shared the strike timer and held the Bombers back
+for good (the round-4 Hard battle dropped no bombs); it now has its own, every two strike intervals.
+And a Hard commander down to one Gunship never struck, waiting for a group of two; it now goes with
+what it has. The round-5 tier-three check's window is 15 minutes past the start of tier three (was
+10): with carriers and Interceptors to buy, the Hard commander's first Railgun Tank came at minute
+37 or 38.
+
+**Final ladder**, the same card, with everything above:
+
+| Match | Before the air war | Final |
+|---|---|---|
+| Normal mirror | 45% / 53% | 47% / 53% |
+| Normal v Hard | 6% / 93% | 5% / 94% |
+| Normal v Easy | 100% / 0% | 100% / 0% |
+| Hard beats Normal, both ways | 70.3% (65-76) | 73.0% (68-78) |
+| Normal beats Easy, both ways | 99.0% | 99.0% |
+
+The intervals overlap on every row: the difficulty ladder is where it was, with Hard a shade
+stronger for using its air arm properly. No number was changed to hold it there. Battles last as
+long as before (Normal mirror 23.4 to 24.1 minutes on average).
+
+Harness at the end: `npm run drive:fire` 371,018 assertions, 0 failed (the round-4 Hard battle now
+"side 1 won at 17 min; 6 bombs, 6 gunship rockets"; the air war battle "gunship, interceptor,
+bomber; 2 interceptor missiles; side 0 won at 31 min"); `npm run campaign:fire` 2,595, unchanged.
 
 ### 2026-11-11: Merge with main (main's round 5 and this branch's rounds 5b and 6, War for the Planet)
 
@@ -1075,3 +1290,87 @@ of 78. Every lines skirmish hashes as this branch did before the merge once `pac
   research done (ai-normal-3: a mined-out stand-off, identical on origin/main's classic), and when
   Hard researches nothing at Quick (main's Repair Trucks come first; its one researching battle,
   ai-hard-5, researches in neither mode on main) the loadouts are checked at the Standard pace.
+
+### 2026-11-11: Merge with main's air war (development lines, pace and War for the Planet kept)
+
+Main's PRs #32 to #34 (the air war: the Recon Plane, Interceptors, Countermeasures, Troop Carriers,
+the Heavy Bomber, the airlift's own timer and a lone Gunship's strikes; every campaign mission played
+to a win; Founder's Ledger work) met this branch's development lines, loadouts, game size (pace) and
+War for the Planet. Twelve files conflicted. Both sides' features are kept, and main's air war rules
+and units apply in every mode:
+
+- **Countermeasures is a classic upgrade only.** `UPGRADE_ORDER` lists six, as on main; the
+  development lines stay five lines of four, and Armoured cockpits (the Air line's defensive
+  doctrine, the same quarter off flak and anti-air missiles, and off bullets too) is its counterpart.
+  A lines battle refuses Countermeasures as "Not in this battle" and a lines save drops it.
+  `UPGRADE_LINE` is now a partial record. The computer's classic lists end with Countermeasures, as
+  main's do; its lines and paced lists are unchanged.
+- **The Air line covers main's aircraft through the paths every aircraft shares:** Air frames and
+  Armoured cockpits by category, Avionics in `fly`, Heavy munitions where an aircraft fires
+  (`gunshipFight` for the Gunship and the Interceptor, `dropBomb` for both bombers). Heavy munitions'
+  blurb now names the Interceptor's missiles. No aircraft takes a module; `MODULE_VEHICLES` stays the
+  eight round 5b vehicles. The decision and its table are in `fireline-round5b-design.md` (build log,
+  2026-11-11), and `drive-lines.ts` gained a section for it ("Lines: the air war's aircraft").
+- **`hurt`** applies this branch's `damageTakenMul` (armour forks, cockpits, smoke) and then main's
+  Countermeasures; each is 1 where the other mode's upgrade lives, so classic is main's arithmetic.
+- **`step`** runs main's `transportStep`, then heroes in a mission or a planet battle.
+- **War for the Planet.** Planet battles are advanced lines battles, so carriers can fly in them; a
+  battle's report now counts infantry aboard a living Troop Carrier as survivors, core slot kept.
+  Planet battle setups already state every `SkirmishSetup` field (main added none).
+- **Harness.** `drive.ts` runs main's `drive-airwar.ts` sections beside `drive-lines.ts` and
+  `drive-size.ts`; `drive-air.ts` exports `airArena` (main's air war sections use it) with this
+  branch's explicit `research: 'classic'`. `package.json` has main's `sweep:fire` beside
+  `drive:planet` and `ladder:planet`.
+
+**Byte identity.** Every story mission (at 0, 600 and 3,000 ticks, default and every hero), every
+classic and standard-tech skirmish (2, 3 and 4 sides, every map, 3,000 ticks) and twelve classic
+computer battles to 18,000 ticks (advanced, 10,000 credits, rich ore, every difficulty) hash in the
+merged tree exactly as in origin/main's own code with `research` and `pace` left out of the setup:
+251 of 251. Lines skirmishes of the same kind are unchanged against this branch before the merge
+(the 3,000-tick ones, and Easy's computer battles). Lines computer battles at Normal and Hard change,
+and only where main's air war commander acts. Bisected over main's air war commits (e7c5cef,
+461af83, 265800d, a3d3040, d7536fc) by stepping each pair of trees tick by tick to the first
+difference, on the classic battle of the same seed:
+
+| Battle | First difference in lines (merged against this branch) | Same tick and change on main's classic | Commit |
+|---|---|---|---|
+| air-normal-1 | tick 2,946: a Helipad queued instead of a Gunship | yes | 265800d (a Helipad more for the Troop Carrier) |
+| air-hard-1 | tick 2,994: a parked Gunship sent at a target, `airIds` and `nextAirStrike` set | yes | a3d3040 (a lone Gunship strikes) |
+| size-a and size-b, Normal (lines) | ticks 7,008 and 7,038: a Helipad instead of a Gunship | yes | 265800d |
+| size-a and size-b, Hard (lines) | ticks 4,026 and 4,236: a Power Plant queued | yes | 265800d |
+| size-a Hard, three sides | tick 10,555: a Grenadier queued | yes (three sides, classic) | 265800d |
+
+Regenerated, with the reasons in the files:
+
+- `drive-planet-battle.ts` STORY_HASHES, 12 of 56, all now origin/main's values: Quiet Man, Blackout
+  and Last Light, all four each, rebuilt by main's 2668bda so a player can win them. Skirmish hashes
+  unchanged (62 of 62).
+- `drive-size.ts` PRE_ROUND6, 11 of 30: Normal and Hard lines and classic, both Normal three-sided
+  battles and Hard three-sided size-a (the table above; the classic ones equal origin/main's own
+  battles). No setup, standard tech and Easy unchanged.
+- `drive-size.ts`'s replayed Standard battle moved from seed size-replay to size-replay-2: on
+  size-replay main's commander now ends the battle at tick 7,246, before either side reaches a Mk II.
+- `drive-lines.ts`'s long quiet battle now also holds off `nextAirlift`: main's airlift raids keep
+  their own timer, and the first took side 0's lone structure at tick 5,867 to 7,231.
+
+Normal mirror at the Standard pace, lines, `--map random`, 150 seeds (`npm run ladder:fire -- --map
+random --pace standard --match new:normal,new:normal`): side 0 wins 61 (41%), side 1 89 (59%), none
+unfinished, median 24.1 minutes, Mk II reached by 81% of sides at 12.8 minutes and Mk III by 65% at
+15.4. The same ladder on this branch before the merge: 68 (45%) and 82 (55%), median 23.9 minutes,
+Mk II 82% at 12.9, Mk III 66% at 15.5. Length and research depth are unchanged; the 4-point seat
+swing is inside the noise at 150 seeds.
+
+The branch gained two commits while this merge was under way (lighter development-lines and pace
+sweeps in `npm run check`, with `npm run drive:fire -- --deep` for the full ones; the build-window
+tour waiting for the window to close), so the merge was redone on top of them; they touch only the
+harness, CI and the tour driver, and merged cleanly with the changes above.
+
+Gates at the merge: `npm run check` "All checks passed" (drive:fire "372968 assertions, 0 failed,
+820.5s", about 14 minutes on one core; campaign-check "2979 assertions, 0 failures", about a
+minute; drive:planet "34944 assertions passed, 0 failed, 68.4s"; the whole check 18m09s). The full
+sweeps, run before the lighter sample landed (what `-- --deep` runs now): "373039 assertions, 0
+failed, 1152.3s". `npm run
+sweep:fire` 279 battles in 302s, the same table as main's (missions are byte-identical to main).
+`npm run tours -- --quick fireline` "ok fireline" (build window: 39 menu items). `npm run
+ladder:planet` "Every target passes; 106.5 s in all", and with `-- --prefix holdout` "Every target
+passes; 109.4 s in all".

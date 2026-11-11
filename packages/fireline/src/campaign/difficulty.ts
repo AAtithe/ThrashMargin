@@ -56,8 +56,8 @@ export const CAMPAIGN_LEVEL: Record<Difficulty, CampaignLevelSpec> = {
   hard: {
     label: 'Hard',
     blurb: 'Larger garrisons and counter-attacks, a richer and quicker enemy commander.',
-    enemyUnits: 1.3,
-    enemyCredits: 1.5,
+    enemyUnits: 1.15,
+    enemyCredits: 1.25,
     playerCredits: 1,
     playerHp: 1,
     timeLimit: 1,

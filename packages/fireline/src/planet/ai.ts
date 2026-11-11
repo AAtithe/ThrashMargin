@@ -142,7 +142,7 @@ function research(s: PlanetState, f: FactionId, T: TemperamentSpec, out: PlanetA
   if (!r.current) {
     for (const id of T.research) {
       if (r.done.includes(id)) continue;
-      const { line, mark } = UPGRADE_LINE[id];
+      const { line, mark } = UPGRADE_LINE[id]!;
       const assume = mark === 3 && r.doctrines[line] === undefined && T.doctrines[line] === id;
       if (prerequisiteProblem(r, id, assume)) continue;
       if (assume) out.push({ type: 'doctrine', line, branch: id });
