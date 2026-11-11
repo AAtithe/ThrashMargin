@@ -44,6 +44,9 @@ import { Label } from './ui';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { SITE_KINDS, SITES, SITES_PER_SIDE } from '../sim/rules';
 
+/** For the Random card's line: the map types counted in words. */
+const COUNT_WORDS: Record<number, string> = { 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
+
 /** What the Neutral sites field says each side gets at this map size. */
 function sitesNote(setup: SkirmishSetup): string {
   if (!setup.sites) return 'No sites: ore is the only income.';
@@ -187,7 +190,7 @@ export default function SkirmishSetupPanel({
                 </span>
                 <span className="fl-map-name">{t === 'random' ? 'Random' : MAP_TYPE_NAMES[t]}</span>
                 <span className="fl-map-blurb">
-                  {t === 'random' ? `Any of the six, chosen by the seed. This one draws ${MAP_TYPE_NAMES[drawn]}.` : value.sides > 2 ? MAP_TYPE_BLURBS_SIDES[t] : MAP_TYPE_BLURBS[t]}
+                  {t === 'random' ? `Any of the ${COUNT_WORDS[MAP_TYPES.length] ?? MAP_TYPES.length}, chosen by the seed. This one draws ${MAP_TYPE_NAMES[drawn]}.` : value.sides > 2 ? MAP_TYPE_BLURBS_SIDES[t] : MAP_TYPE_BLURBS[t]}
                 </span>
               </button>
             );

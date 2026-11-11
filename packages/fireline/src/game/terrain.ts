@@ -115,6 +115,8 @@ export const LOOKS: Record<MapType, Look> = {
     reeds: 0.25,
   },
   lakes: { ...CLASSIC, beach: 0.08, reeds: 0.8, lilies: 0.3, lush: 0.3 },
+  // Sandy shores and fewer reeds: open sea, not still water.
+  coast: { ...CLASSIC, beach: 0.42, reeds: 0.12, lilies: 0, lush: 0.24, dry: 0.24 },
   plains: {
     ...CLASSIC,
     tint: [168, 162, 74],

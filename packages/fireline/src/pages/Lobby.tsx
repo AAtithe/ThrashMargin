@@ -914,7 +914,7 @@ const minutes = (ticks: number) => {
 
 /** What changed lately, in a line each. */
 const WHATS_NEW: { title: string; text: string }[] = [
-  { title: 'Six battlefields', text: 'River, Highlands, Lakes, Plains, Canyon or Classic, or let the seed choose. See each map before you deploy.' },
+  { title: 'Seven battlefields', text: 'River, Highlands, Lakes, Plains, Canyon, Coast or Classic, or let the seed choose. See each map before you deploy.' },
   { title: 'Advanced tech', text: 'Grenadiers, Medics, Flame Tanks, Missile Carriers, the Bastion, walls, a Repair Bay, and powers: recon, barrage, missile.' },
   { title: 'The campaign', text: `${capital(inWords(CAMPAIGN_MISSIONS))} missions in two acts, a Commander who ranks up and learns perks, ${inWords(HERO_NAMES.length)} heroes who level up, and support powers.` },
   { title: 'A battlefield that remembers', text: 'Tread marks, burnt-out wrecks and rubble where structures fell. Bigger explosions, living water, drifting cloud.' },

@@ -255,6 +255,119 @@ const PRESSURE=[
   opts:[{t:'More coffee and keep going.',v:'trap',n:'Borrowed energy, paid back with interest on Thursday.'},{t:'Move one big decision to tomorrow, do the small things today, and go to bed early.',v:'best',n:'You protected the asset the firm depends on most.'},{t:'Take the afternoon off.',v:'ok',n:'Good if the diary allows it. Moving the big decision matters more.'}],
   coach:['Tired judgement is the most expensive thing in the firm. Schedule the big calls for when you are rested.']}
 ];
+/* ---------- Daily system calls: one a day, alternating operations and sales ----------
+   Fresh content every day is the reason to come back tomorrow. Answering scores nothing, as everywhere
+   in the ledger; the reward is mastery (every call made world-class) and the action it offers. A call not
+   yet made world-class comes back round later, so the deck is finished by judgement, not by attendance. */
+const SYSTEM=[
+ {id:'s-ops1',theme:'ops',title:'Copied on everything',scene:'You were copied on 120 emails this week. Nine needed you.',
+  opts:[{t:'Read them all. Better informed than surprised.',v:'trap',n:'You spent a day reading other people’s work.'},{t:'Tell the team: copy me only when I must decide or must know by Friday. Everything else, the client owner.',v:'best',n:'One rule, written once, removes most of the noise for good.'},{t:'Set up a filter and read the folder on Fridays.',v:'ok',n:'Tidier inbox, same cause.'}],
+  coach:['Being copied is how people hand you their risk. Give the risk back with a rule, not a filter.'],
+  todo:{text:'Send the copy rule: copy me only when I must decide or must know by Friday.',type:'Stop',h:'week',hours:3}},
+ {id:'s-ops2',theme:'ops',title:'The approval queue',scene:'Six things are waiting for your sign-off: a refund, a supplier, two proposals, a rota and a software trial.',
+  opts:[{t:'Clear them all tonight.',v:'trap',n:'The queue refills by Wednesday. You are the queue.'},{t:'Set limits: under a figure, the manager approves. Above it, you see a one-line recommendation.',v:'best',n:'Most of the queue now never reaches you.'},{t:'Approve the urgent ones and leave the rest.',v:'ok',n:'Triage, not a fix.'}],
+  coach:['Every approval you hold is a decision someone else could make with a limit and a standard. Write the limits.'],
+  todo:{text:'Write approval limits: what managers sign off without me, and the figure above which I see it.',type:'Start',h:'week',hours:3}},
+ {id:'s-ops3',theme:'ops',title:'The process in your head',scene:'Month-end for your biggest client only runs smoothly when you check it. Nobody else knows your checks.',
+  opts:[{t:'Keep checking it. It works.',v:'trap',n:'It works while you are there. That is the problem.'},{t:'Record yourself doing the check once. Turn it into a written checklist with an owner.',v:'best',n:'Your judgement is now the firm’s, not just yours.'},{t:'Ask the manager to shadow you next month.',v:'ok',n:'Good start. Shadowing fades; a checklist stays.'}],
+  coach:['If a process lives only in your head, the firm rents it from you every month. Write it down and it becomes an asset.'],
+  todo:{text:'Record my month-end check for our biggest client and turn it into a checklist with an owner.',type:'Start',h:'month',hours:2}},
+ {id:'s-ops4',theme:'ops',title:'The Monday numbers',scene:'You have no single page that tells you, on Monday, whether the firm is on track.',
+  opts:[{t:'You know roughly. You can feel it.',v:'trap',n:'Feel is how anxiety fills the gap where numbers should be.'},{t:'Five numbers on one page every Monday: fees billed, cash, work in progress, late jobs, new clients.',v:'best',n:'You sell this to clients. Now you have it too.'},{t:'Ask finance for a full monthly pack.',v:'ok',n:'More detail, a month too late.'}],
+  coach:['Uncertainty feeds anxiety more than bad news does. Five numbers you trust replace a week of wondering.'],
+  todo:{text:'Agree my five Monday numbers and who sends them by 9am every Monday.',type:'Start',h:'week',hours:1}},
+ {id:'s-ops5',theme:'ops',title:'The late jobs',scene:'Four client packs went out late this month. Each had a different excuse.',
+  opts:[{t:'Chase each one personally.',v:'trap',n:'Four fires, four times your time, cause untouched.'},{t:'Put every late job on one list with its cause. Fix the most common cause first.',v:'best',n:'Different excuses usually share one cause.'},{t:'Remind everyone deadlines matter.',v:'ok',n:'They know. The system is letting them down.'}],
+  coach:['Late work is a system output. Look for the common cause: missing records, unclear owner, too much work per person.'],
+  todo:{text:'Start a late-jobs list with causes, reviewed monthly. Fix the most common cause first.',type:'Start',h:'month',hours:2}},
+ {id:'s-ops6',theme:'ops',title:'Capacity',scene:'The team says they are stretched. You are not sure if that is true or a feeling.',
+  opts:[{t:'Hire someone now to be safe.',v:'ok',n:'Maybe right. Without the numbers you will not know.'},{t:'Measure hours by client and person for four weeks. Decide from the numbers.',v:'best',n:'Then the hire, or the repricing, is obvious.'},{t:'Tell them to push through busy season.',v:'trap',n:'Good people leave quietly in busy seasons.'}],
+  coach:['Capacity is a number, not a mood. Measure it before you either hire or ignore it.'],
+  todo:{text:'Track hours by client and person for four weeks, then decide on hiring or repricing.',type:'Start',h:'month',hours:1}},
+ {id:'s-ops7',theme:'ops',title:'The new starter',scene:'A new starter begins Monday. Last time, onboarding was you answering questions for a month.',
+  opts:[{t:'Do the same again. It worked.',v:'trap',n:'It cost you a month and taught them to come to you.'},{t:'A written first two weeks, a named buddy, and a check-in with you at day ten only.',v:'best',n:'They learn the system, not your diary.'},{t:'Let the team work it out.',v:'ok',n:'They will. Slowly, and differently each time.'}],
+  coach:['Onboarding is the cheapest place to install your standards. Write it once and every hire after gets it.'],
+  todo:{text:'Write the first two weeks for new starters, with a named buddy and one check-in with me.',type:'Start',h:'month',hours:3}},
+ {id:'s-ops8',theme:'ops',title:'The second in command',scene:'If you were off for a month, nobody is clearly in charge.',
+  opts:[{t:'It will be fine. You will not be off for a month.',v:'trap',n:'Illness and family do not ask first.'},{t:'Name a second in command for operations. Give them the decisions in writing and back them publicly.',v:'best',n:'The firm now has a spine that is not you.'},{t:'Share it across the managers.',v:'ok',n:'Shared ownership often means nobody owns it.'}],
+  coach:['A firm with one person who can decide has one point of failure. Naming a second is the most valuable thing you will do this year.'],
+  todo:{text:'Name a second in command for operations and write down the decisions that are now theirs.',type:'Start',h:'quarter',hours:5}},
+ {id:'s-ops9',theme:'ops',title:'The software that nobody uses',scene:'You paid for a practice system a year ago. Half the team still uses spreadsheets.',
+  opts:[{t:'Build your own tracker so you can see it all.',v:'trap',n:'Now there are three systems and you run one of them.'},{t:'Name an owner, set a date after which spreadsheets stop, and train to it.',v:'best',n:'A system only works when there is one.'},{t:'Ask nicely again.',v:'ok',n:'The habit is stronger than the request.'}],
+  coach:['Tools do not change behaviour. Owners, dates and standards do.'],
+  todo:{text:'Name an owner for the practice system and set the date spreadsheets stop.',type:'Start',h:'month',hours:2}},
+ {id:'s-ops10',theme:'ops',title:'The weekly meeting that drifts',scene:'Your leadership meeting runs ninety minutes and mostly updates you.',
+  opts:[{t:'Keep it. You need the updates.',v:'trap',n:'You are the audience, so they prepare for you, not for decisions.'},{t:'Forty-five minutes. Numbers first, then only decisions and blockers. Updates go in writing beforehand.',v:'best',n:'Half the time and twice the decisions.'},{t:'Cancel it.',v:'ok',n:'You lose the one forum for the leadership team.'}],
+  coach:['A meeting where people report to you trains them to need you. A meeting where they decide trains them to lead.'],
+  todo:{text:'Rewrite the leadership meeting: 45 minutes, numbers, decisions, blockers. Updates in writing first.',type:'Start',h:'week',hours:1}},
+ {id:'s-ops11',theme:'ops',title:'The client who only calls you',scene:'A long-standing client rings your mobile with every question.',
+  opts:[{t:'Answer. They have earned it.',v:'trap',n:'Every answer confirms you are their accountant, not the firm.'},{t:'Call them, introduce their owner, explain why it is better for them. Redirect kindly every time after.',v:'best',n:'They get faster answers and you get your evenings.'},{t:'Stop answering their calls.',v:'trap',n:'Avoidance without explanation damages the relationship.'}],
+  coach:['Redirecting a client is a service decision, not a rejection. Explain the benefit to them, then hold the line.'],
+  todo:{text:'Move the clients who ring my mobile to their named owner, with a call from me to explain.',type:'Stop',h:'month',hours:2}},
+ {id:'s-ops12',theme:'ops',title:'The error that keeps coming back',scene:'The same VAT coding error has appeared in three client files this quarter.',
+  opts:[{t:'Correct each one when you review.',v:'trap',n:'You have become the error check. That is not a system.'},{t:'Add it to the review checklist and make it a training point this week.',v:'best',n:'The fix now runs without you.'},{t:'Email the team about it.',v:'ok',n:'Read once and forgotten by Friday.'}],
+  coach:['If your review is the only thing catching an error, the process is relying on your attention. Move the check into the process.'],
+  todo:{text:'Add the recurring VAT coding error to the review checklist and train on it this week.',type:'Start',h:'week',hours:1}},
+ {id:'s-sales1',theme:'sales',title:'Who is it for?',scene:'Last month you took a café, a 30-site group and a bakery. They need different things.',
+  opts:[{t:'Good. Diversity spreads risk.',v:'trap',n:'It also spreads your team thin and your message thinner.'},{t:'Write the ideal client in five lines: type, size, what they value, and who you turn away.',v:'best',n:'Now the team can sell without you in the room.'},{t:'Focus only on large groups from now on.',v:'ok',n:'Clear, but decide it from your margin data, not a mood.'}],
+  coach:['Sales systems start with a clear answer to who is it for. Without it, every enquiry needs the founder to decide.'],
+  todo:{text:'Write the ideal client profile in five lines, including who we turn away.',type:'Start',h:'week',hours:1}},
+ {id:'s-sales2',theme:'sales',title:'Every proposal is bespoke',scene:'Each proposal takes you two hours to write from scratch.',
+  opts:[{t:'Keep writing them. Clients can tell.',v:'trap',n:'They can tell it is late, mostly.'},{t:'Build three packages and one proposal template. The team fills it in; you review only the big ones.',v:'best',n:'Proposals out in a day, not a week.'},{t:'Write shorter ones.',v:'ok',n:'Faster, still all you.'}],
+  coach:['A proposal is a product page. Build it once, well, and let the team send it.'],
+  todo:{text:'Build three packages and one proposal template the team can send without me.',type:'Start',h:'month',hours:4}},
+ {id:'s-sales3',theme:'sales',title:'The pipeline in your head',scene:'Someone asks what is in the pipeline. You list it from memory.',
+  opts:[{t:'It is fine. You know them all.',v:'trap',n:'Until you are off for a week and three go cold.'},{t:'One board: every lead, its stage, next step and owner. Reviewed for thirty minutes every Monday.',v:'best',n:'Now you can see sales without carrying them.'},{t:'Put them in a spreadsheet when you have time.',v:'ok',n:'You will not have time. Book it.'}],
+  coach:['A pipeline you hold in your head becomes a worry you carry at 3am. A pipeline on a board becomes a meeting.'],
+  todo:{text:'Set up one pipeline board with stage, next step and owner. Thirty-minute review every Monday.',type:'Start',h:'week',hours:2}},
+ {id:'s-sales4',theme:'sales',title:'The referral you never asked for',scene:'Your happiest clients would recommend you. You have never asked them to.',
+  opts:[{t:'Wait. Good work speaks for itself.',v:'trap',n:'It whispers. Asking makes it speak.'},{t:'Ask at the three-month review, every time, with one line. Track and thank every referral.',v:'best',n:'Referrals become a system, not luck.'},{t:'Offer a referral fee.',v:'ok',n:'Can work. Asking well works first.'}],
+  coach:['Operators trust other operators. A referral from one is worth ten adverts. Build the ask into the client journey.'],
+  todo:{text:'Add a referral ask to every three-month client review, and thank every referral personally.',type:'Start',h:'month',hours:1}},
+ {id:'s-sales5',theme:'sales',title:'The discount request',scene:'A prospect says a competitor is 20 percent cheaper.',
+  opts:[{t:'Match it. A client is a client.',v:'trap',n:'You have just bought a low-margin client who will leave for the next discount.'},{t:'Show what they get that the cheaper firm does not: the 3-day close, weekly numbers, hospitality people. Hold the price.',v:'best',n:'The right clients pay for value.'},{t:'Offer 10 percent off as a compromise.',v:'ok',n:'Half the damage, same lesson taught.'}],
+  coach:['Price is a signal of confidence. Clients who buy only on price are clients you will lose on price.'],
+  todo:{text:'Write a one-page value comparison the team uses when prospects quote a cheaper firm.',type:'Start',h:'month',hours:1}},
+ {id:'s-sales6',theme:'sales',title:'Only you can close',scene:'Every prospect meeting needs you there, or it does not convert.',
+  opts:[{t:'Keep doing them all. Sales is the founder’s job.',v:'trap',n:'Sales is the founder’s job until it is the firm’s ceiling.'},{t:'Take a manager to every meeting for a month. Then they lead and you join only the largest.',v:'best',n:'Your judgement transfers by watching.'},{t:'Hire a salesperson.',v:'ok',n:'Possibly right later. First make selling teachable.'}],
+  coach:['If only you can close, the method lives in your head. Make it visible so someone else can learn it.'],
+  todo:{text:'Take a manager to every prospect meeting this month, then hand over all but the largest.',type:'Start',h:'month',hours:3}},
+ {id:'s-sales7',theme:'sales',title:'The slow follow-up',scene:'A promising lead from a trade event has not heard from you in two weeks.',
+  opts:[{t:'Send a long email now explaining you have been busy.',v:'ok',n:'Better late than never, but busy is not a selling point.'},{t:'Rule: every lead gets a reply in one working day and a next step in the diary, owned by a named person.',v:'best',n:'Speed wins more work than brilliance.'},{t:'Leave it. If they were keen they would chase.',v:'trap',n:'Keen leads go to whoever replies first.'}],
+  coach:['In service businesses the fastest credible reply wins most work. Make speed a rule, not a heroic effort.'],
+  todo:{text:'Set the lead rule: reply within one working day, next step booked, named owner.',type:'Start',h:'week',hours:1}},
+ {id:'s-sales8',theme:'sales',title:'Where clients come from',scene:'You do not know which of your last twenty clients came from referrals, events or the website.',
+  opts:[{t:'It does not matter. They came.',v:'trap',n:'You cannot repeat what you cannot see.'},{t:'Ask and record the source for every new client from now on. Review it quarterly.',v:'best',n:'In six months you will know where to spend.'},{t:'Spend more on all of them.',v:'ok',n:'Expensive guessing.'}],
+  coach:['You would never let a client spend on marketing without knowing what works. Hold the firm to the same standard.'],
+  todo:{text:'Record the source of every new client and review the sources quarterly.',type:'Start',h:'week',hours:0}},
+ {id:'s-sales9',theme:'sales',title:'The quiet pipeline',scene:'Two weeks with no new enquiries. Your stomach drops.',
+  opts:[{t:'Start ringing everyone you know.',v:'ok',n:'Energy is good. Panic selling sounds like panic.'},{t:'Check the board: is it two weeks or a trend? Then pick one channel and act on it.',v:'best',n:'A system reading, not a feeling.'},{t:'Assume the firm is in trouble.',v:'trap',n:'Two weeks is noise. Your history says so.'}],
+  coach:['A quiet fortnight is a variance. Read the trend before you let it read you.'],
+  todo:{text:'Look at twelve months of enquiries by month so I know what a normal quiet spell looks like.',type:'Start',h:'week',hours:1}},
+ {id:'s-sales10',theme:'sales',title:'The content you keep meaning to write',scene:'You have strong views on hospitality numbers. Nobody outside your clients ever reads them.',
+  opts:[{t:'Write a long article when you find a free weekend.',v:'trap',n:'There is no free weekend. It never ships.'},{t:'One short post a fortnight from questions clients actually ask. The team drafts, you add the view.',v:'best',n:'Steady, real, and not reliant on your weekends.'},{t:'Hire an agency to write it.',v:'ok',n:'Polished, but it will not sound like you.'}],
+  coach:['Operators buy from people who clearly understand their world. Your existing answers to clients are the content.'],
+  todo:{text:'Start a fortnightly post from real client questions. Team drafts, I add the view.',type:'Start',h:'month',hours:1}},
+ {id:'s-sales11',theme:'sales',title:'Losing a pitch',scene:'You lost a pitch you expected to win.',
+  opts:[{t:'Decide the market has changed.',v:'trap',n:'One loss is a data point.'},{t:'Ask the prospect for ten honest minutes on why. Add what you learn to the template.',v:'best',n:'Every loss improves the system.'},{t:'Lower prices for the next one.',v:'ok',n:'Maybe price was not the reason. Find out first.'}],
+  coach:['Win and loss reasons are the cheapest sales research there is. Collect them every time.'],
+  todo:{text:'Ask for feedback on every lost pitch and add one learning to the template each time.',type:'Start',h:'month',hours:0}},
+ {id:'s-sales12',theme:'sales',title:'Upselling existing clients',scene:'Half your clients only use bookkeeping. They have never been offered weekly dashboards.',
+  opts:[{t:'Do not push. They are happy.',v:'trap',n:'Happy and underserved. A competitor will offer it.'},{t:'At each review, show one number they could see weekly and what it would have saved them.',v:'best',n:'Value shown, not sold.'},{t:'Email everyone about the new service.',v:'ok',n:'Fine for awareness. Conversations convert.'}],
+  coach:['Existing clients already trust you. Growing them is cheaper and calmer than chasing new ones.'],
+  todo:{text:'At every client review this quarter, show one weekly number and what it would have saved.',type:'Start',h:'quarter',hours:1}}
+];
+/* ---------- Phone-off day ---------- */
+const OFF={
+  decider:['My managing director','My finance lead','Each client’s owner','The leadership team'],
+  route:['call my second in command, who can reach me','ring my mobile twice in a row and I will answer','message my partner, who will pass it on'],
+  threshold:['a client about to leave','a regulatory deadline that cannot move','staff safety','cash that cannot wait'],
+  items:['A client question','A team question','An approval','A sales enquiry','An invoice or payment','A complaint','A deadline','Something I would normally check']
+};
+const OFF_PTS=25;
+/* ---------- Fear and reality, in the Friday review ---------- */
+const FEARS=['Losing a big client','Cash running short','A key person leaving','A mistake reaching a client','Sales drying up','Letting the team down','Not being good enough','Nothing this week'];
+const OUTCOMES=[{k:'never',name:'It never happened'},{k:'better',name:'Better than I feared'},{k:'same',name:'About as I feared'},{k:'worse',name:'Worse than I feared'}];
 const HOURS_BY_SOURCE={};FOUNDING.concat(BANK).forEach(c=>HOURS_BY_SOURCE[c.id]=c.todo.hours);WILD.forEach(w=>HOURS_BY_SOURCE[w.id]=w.hours);
 const HORIZONS={week:'This week',month:'This month',quarter:'This quarter'};
 const PILLARS=[['health','Health'],['family','Family and friends'],['wealth','Wealth'],['firm','The firm'],['growth','Growth and learning'],['adventure','Adventure and rest']];
@@ -320,7 +433,7 @@ const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
-const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
+const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
 
 function migrate(o){
   if(!o)return blank();
@@ -344,6 +457,7 @@ const gbp=n=>'£'+Math.round(n).toLocaleString('en-GB');
 const fmtDate=ts=>new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
 const weekNo=ts=>Math.floor((ts/DAY+3)/7);
 const monthKey=ts=>{const d=new Date(ts);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');};
+const fmtDay=ts=>new Date(ts).toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'});
 const dayKey=ts=>{const d=new Date(ts);return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();};
 const RESET_PTS=5;
 const isResetMove=t=>!!(t.source&&t.source.startsWith('reset-'));
@@ -363,6 +477,7 @@ function points(){
   S.reviews.forEach((r,i)=>{p+=15+Math.min(5*(streakAt(i)-1),25);});
   const perWeek={};S.notes.forEach(n=>{const w=weekNo(n.ts);perWeek[w]=(perWeek[w]||0)+1;});
   Object.values(perWeek).forEach(c=>p+=3*Math.min(c,3));
+  const offWeeks=new Set();(S.offDays||[]).forEach(o=>{if(o.status==='back'&&!offWeeks.has(weekNo(o.day))){offWeeks.add(weekNo(o.day));p+=OFF_PTS;}});
   if(wc(S.future.letter)>=150)p+=30;
   p+=10*new Set((S.letterReads||[]).map(monthKey)).size;
   return p;
@@ -417,6 +532,12 @@ function receipts(){
   if(without)out.push(`${without===1?'Once':without+' times'} so far, someone solved it or made the call without you. That is the firm you are building, already working.`);
   const moved=done.filter(isResetMove).length;
   if(moved)out.push(`${moved===1?'Once':moved+' times'} you have turned a heavy moment into a move and done it. That is control: not of the outcome, of the next step.`);
+  const ot=offTotals();
+  if(ot.days)out.push(`On ${plural(ot.days,'phone-off day')}, ${ot.waited} thing${ot.waited===1?'':'s'} waited fine and ${ot.handled} ${ot.handled===1?'was':'were'} handled without you. The firm held.`);
+  const fg=fearGap();
+  if(fg.logged)out.push(`Of ${plural(fg.logged,'fear')} you named on a Friday, ${fg.better} turned out better than feared or never happened.`);
+  const sm=sysMastered().size;
+  if(sm)out.push(`You have made ${plural(sm,'world-class system call')}. That is judgement about building the firm, not just running it.`);
   if(wc(S.future.letter)>=150)out.push('You have written down the life you are building. Most founders never get that far.');
   const runs=S.practiceRuns||[];const best=Math.max(practice().judgement,...runs.map(r=>r.judgement));
   if(best>=70)out.push(`Your best practice judgement score is ${best} out of 100. You know what good looks like under pressure.`);
@@ -454,6 +575,63 @@ function pressureFor(loud){
   return pool[(S.resets||[]).length%pool.length];
 }
 
+/* ---------- Daily system calls: derived ---------- */
+const dayNum=ts=>{const d=new Date(ts);return Math.floor(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate())/DAY);};
+function sysMastered(){const m=new Set();(S.sysLog||[]).forEach(l=>{const c=SYSTEM.find(x=>x.id===l.id);if(c&&c.opts[l.pick]&&c.opts[l.pick].v==='best')m.add(l.id);});return m;}
+/* Today's call: the one already played today, or the next in rotation. Themes alternate by day; a call
+   not yet made world-class comes round again after the unplayed ones. */
+function sysToday(now=Date.now()){
+  const k=dayKey(now);const done=(S.sysLog||[]).find(l=>dayKey(l.ts)===k);
+  if(done)return {call:SYSTEM.find(x=>x.id===done.id),played:done};
+  const m=sysMastered();const seen=new Set((S.sysLog||[]).map(l=>l.id));
+  const want=dayNum(now)%2?'sales':'ops';
+  const pick=theme=>{const pool=SYSTEM.filter(c=>c.theme===theme&&!m.has(c.id));return pool.find(c=>!seen.has(c.id))||pool[0]||null;};
+  const call=pick(want)||pick(want==='ops'?'sales':'ops');
+  return {call,played:null};
+}
+function sysRhythm(now=Date.now()){const days=new Set((S.sysLog||[]).filter(l=>now-l.ts<7*DAY&&l.ts<=now).map(l=>dayKey(l.ts)));return days.size;}
+function playSys(id,pick,ts=Date.now()){
+  const k=dayKey(ts);if((S.sysLog||[]).some(l=>dayKey(l.ts)===k))return false;
+  S.sysLog=(S.sysLog||[]).concat({id,pick,ts});return true;
+}
+function sysProgress(){const m=sysMastered();return ['ops','sales'].map(t=>({theme:t,name:t==='ops'?'Operations':'Sales',done:SYSTEM.filter(c=>c.theme===t&&m.has(c.id)).length,total:SYSTEM.filter(c=>c.theme===t).length}));}
+/* ---------- Phone-off day: derived ---------- */
+function offCurrent(){return (S.offDays||[]).find(o=>o.status==='planned')||null;}
+function offTotals(){
+  const back=(S.offDays||[]).filter(o=>o.status==='back');
+  const sum=k=>back.reduce((a,o)=>a+((o.log&&o.log[k])||[]).length,0);
+  return {days:back.length,waited:sum('waited'),handled:sum('handled'),broke:sum('broke')};
+}
+function offRecent(now=Date.now(),weeks=8){return new Set((S.offDays||[]).filter(o=>o.status==='back'&&now-o.day<weeks*7*DAY&&o.day<=now+DAY).map(o=>weekNo(o.day))).size;}
+function planOff(o){
+  const id='o'+uid();const day=o.day;
+  const plan={id,day,decider:o.decider||'',route:o.route||'',threshold:o.threshold||[],status:'planned',log:null,plannedAt:o.ts||Date.now()};
+  S.offDays=(S.offDays||[]).filter(x=>x.status!=='planned').concat(plan);
+  addTodo({text:`Send the phone-off brief for ${fmtDay(day)} to the team`,type:'Start',h:'week',hours:0,source:'off-brief-'+id});
+  return plan;
+}
+function logOff(log,day=Date.now()){
+  let o=offCurrent();
+  if(!o){o={id:'o'+uid(),day,decider:'',route:'',threshold:[],status:'planned',log:null,plannedAt:day};S.offDays=(S.offDays||[]).concat(o);}
+  o.status='back';o.loggedAt=Date.now();
+  o.log={waited:[].concat(log.waited||[]),handled:[].concat(log.handled||[]),broke:[].concat(log.broke||[])};
+  o.log.handled.forEach(t=>S.notes.push({ts:o.loggedAt,kind:'good',text:'Handled without me: '+t}));
+  o.log.broke.forEach((t,i)=>addTodo({text:`Design out: ${t} (stalled on my phone-off day)`,type:'Start',h:'month',hours:1,source:`off-fix-${o.id}-${i}`}));
+  const brief=S.todos.find(t=>t.source==='off-brief-'+o.id);if(brief&&!brief.done){brief.done=true;brief.doneAt=o.loggedAt;}
+  return o;
+}
+function offBrief(o){
+  const th=(o.threshold||[]).length?(o.threshold.length>1?o.threshold.slice(0,-1).join(', ')+' or '+o.threshold[o.threshold.length-1]:o.threshold[0]):'something that truly cannot wait';
+  const next=fmtDay(o.day+DAY);
+  return `I am off my phone on ${fmtDay(o.day)}. ${o.decider||'The leadership team'} decides anything that would normally come to me. If it is ${th}, ${o.route||'call my second in command, who can reach me'}. Everything else waits until ${next}, and that is fine. Thank you for running it.`;
+}
+/* ---------- Fear and reality: derived ---------- */
+function fearGap(){
+  const rs=S.reviews.filter(r=>r.fear&&r.fear!=='Nothing this week'&&r.fearOutcome);
+  const better=rs.filter(r=>r.fearOutcome==='never'||r.fearOutcome==='better').length;
+  return {logged:rs.length,better,worse:rs.filter(r=>r.fearOutcome==='worse').length};
+}
+
 /* ---------- Scoreboard ---------- */
 function renderBoard(){
   const lv=levels(),st=streak(),bb=boughtBack();const due=reviewDue();
@@ -466,7 +644,9 @@ function renderBoard(){
 function renderTabs(){
   const open=S.todos.filter(t=>!t.done).length;
   const unplayed=S.calls.filter(c=>S.answers[c.id]==null).length+(S.pendingCall?1:0)+FOUNDING.filter(c=>S.answers[c.id]==null).length;
-  const tabs=[['today','Today',''],['reset','Reset',''],['review','Friday review',reviewDue()?'due':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
+  const sysWaiting=sysToday().call&&!sysToday().played;
+  const oc=offCurrent();const offDue=oc&&dayKey(oc.day)!==dayKey(Date.now())&&oc.day<Date.now();
+  const tabs=[['today','Today',sysWaiting?'1':''],['reset','Reset',''],['off','Phone off',offDue?'due':''],['review','Friday review',reviewDue()?'due':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
   $('#tabs').innerHTML=tabs.map(([k,l,n])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:''}</button>`).join('');
 }
 
@@ -486,6 +666,8 @@ function vToday(){
   const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
   return `<section>
   ${vResetCard()}
+  ${vSysCard()}
+  ${vMomentum()}
   ${reviewDue()?`<div class="card call-to"><div class="spread"><div><div class="eyebrow">Friday review ${S.reviews.length?'due':'not started'}</div><h2>Close your own week. Ten minutes.</h2></div><button class="btn" data-tab="review">Start the review</button></div><p class="muted">The review is the game. It keeps the streak alive, earns ${15+Math.min(5*streak(),25)} points, and unlocks next week’s call.</p></div>`:''}
   ${S.pendingCall||call?`<div class="card"><div class="spread"><div><div class="eyebrow">This week’s call</div><h3>${call?esc(call.title):'Your review unlocked a new call'}</h3></div>${call?`<button class="btn small" data-opencall="${call.id}">Play it</button>`:`<button class="btn small" data-act="dealCall">Deal this week’s call</button>`}</div>${call?`<p class="muted">${esc(call.scene)}</p>`:`<p class="muted">${AI?'Written from what you logged this week.':'Dealt from the coaching bank after your review.'} It adds one action to your list.</p>`}</div>`:''}
   <div class="big3"><div class="eyebrow">This week’s big three</div>${stars.length?`<ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol>`:'<p class="muted">Star up to three actions in Actions. Three is the most a CEO moves properly in one week.</p>'}</div>
@@ -576,6 +758,82 @@ function vReset(){
   const dots=RD.step==='done'||RD.step==='call'?'':`<div class="dots">${steps.map((s,i)=>`<span class="dot ${steps.indexOf(RD.step)>i?'done':''} ${RD.step===s?'cur':''}">${i+1}</span>`).join('')}</div>`;
   return `<section>${dots}${body}</section>`;
 }
+/* ---------- Daily system call ---------- */
+function vSysCall(t,inPlay){
+  const {call,played}=t;
+  if(!call)return `<div class="card"><div class="eyebrow">System builder</div><h3>Every system call made world-class.</h3><p class="muted">The deck is finished. The system is now yours to run, not to carry.</p></div>`;
+  const a=played?played.pick:null;const tomorrow=dayNum(Date.now()+DAY)%2?'sales':'operations';
+  const themeName=call.theme==='ops'?'Operations':'Sales';
+  let out=`<div class="card sys-card"><div class="spread"><div class="eyebrow">Today’s system call &middot; ${themeName}</div><span class="small muted">${sysRhythm()} of the last 7 days</span></div>
+   <h3>${esc(call.title)}</h3><div class="scene">${esc(call.scene)}</div>
+   <div class="opts">${call.opts.map((o,i)=>`<button class="opt ${a===i?'picked':a!=null?'dim':''}" data-act="sysPick" data-id="${call.id}" data-i="${i}"><span class="k">${'ABC'[i]}</span><span>${esc(o.t)}</span></button>`).join('')}</div>`;
+  if(a!=null){
+    const o=call.opts[a];const best=call.opts.find(x=>x.v==='best');const added=S.todos.some(x=>x.source==='sys-'+call.id);
+    out+=`<div class="row"><span class="verdict v-${o.v}">${{best:'World-class call',ok:'Workable',trap:'The trap'}[o.v]}</span></div><p>${esc(o.n)}</p>
+     <div class="coach"><div class="eyebrow">The coaching</div>${call.coach.map(p=>`<p>${esc(p)}</p>`).join('')}${o.v!=='best'?`<p class="muted">The world-class call: ${esc(best.t)} This one comes back round, so you can make it world-class next time.</p>`:''}</div>
+     <div class="added">The system move: ${esc(call.todo.text)} ${added?'<span class="small muted">On your list.</span>':`<button class="btn small" data-act="sysAdd" data-id="${call.id}" style="margin-left:6px">Add to actions</button>`}</div>
+     <p class="small muted">One call a day. Tomorrow: ${tomorrow}.</p>`;
+  }
+  return out+'</div>';
+}
+function vSysCard(){return vSysCall(sysToday());}
+function vSysPanel(){
+  const pr=sysProgress();const m=sysMastered();
+  return `<div class="card"><div class="eyebrow">System builder</div><h3>Build the firm that runs without you</h3>
+   <p class="small muted">One operations or sales call a day on Today. A call becomes yours when you make the world-class call. Those you miss come back round.</p>
+   ${pr.map(x=>`<div class="meter"><span class="name">${x.name}</span><div class="bar"><i style="width:${Math.round(100*x.done/x.total)}%"></i></div><span class="val">${x.done}/${x.total}</span></div>`).join('')}
+   <div class="sys-list">${SYSTEM.map(c=>`<span class="sys-chip ${m.has(c.id)?'won':(S.sysLog||[]).some(l=>l.id===c.id)?'tried':''}" title="${esc(c.title)}">${esc(c.title)}</span>`).join('')}</div></div>`;
+}
+/* ---------- Momentum: this week at a glance ---------- */
+function vMomentum(){
+  const lw=loudWeek();const ot=offTotals();const fg=fearGap();const pr=sysProgress();
+  const mastered=pr.reduce((a,x)=>a+x.done,0),total=pr.reduce((a,x)=>a+x.total,0);
+  const oc=offCurrent();const recent=offRecent();
+  const cell=(lab,fig,sub)=>`<div class="mo"><span class="lab">${lab}</span><span class="fig">${fig}</span><span class="sub">${sub}</span></div>`;
+  return `<div class="card"><div class="eyebrow">Your momentum</div><div class="mo-grid">
+   ${cell('System calls',`${sysRhythm()}/7`,`days this week &middot; ${mastered} of ${total} mastered`)}
+   ${cell('Phone-off days',`${recent}/8`,oc?`next: ${esc(fmtDay(oc.day))}`:'weeks with one. <button class="linkish" data-tab="off">Plan the next</button>')}
+   ${cell('Fear vs reality',fg.logged?`${fg.better}/${fg.logged}`:'&ndash;',fg.logged?'fears that turned out better or never happened':'named in the Friday review')}
+   ${cell('Reset moves',`${lw.movesDone}/${lw.moves}`,lw.moves?'done this week':'none needed this week')}
+  </div>${ot.days?`<p class="small muted">Across your phone-off days: ${ot.waited} waited fine, ${ot.handled} handled without you, ${ot.broke} stalled and became ${ot.broke===1?'a fix':'fixes'}.</p>`:''}</div>`;
+}
+/* ---------- Phone-off day ---------- */
+let OFFLOG=false;
+function vOff(){
+  const o=offCurrent();const ot=offTotals();const now=Date.now();
+  const days=[...Array(7)].map((_,i)=>new Date(new Date(now+(i+1)*DAY).setHours(12,0,0,0)).getTime());
+  let body='';
+  if(o&&(OFFLOG||dayKey(o.day)!==dayKey(now)&&o.day<now))body=vOffLog(o);
+  else if(o&&!OFFLOG){
+    const today=dayKey(o.day)===dayKey(now);
+    body=`<div class="card call-to"><div class="eyebrow">Phone-off day${today?' &middot; today':''}</div><h2>${today?'Today is the day. Phone in a drawer.':esc(fmtDay(o.day))}</h2>
+     <p class="muted">${today?'No checking. One check is the same as not taking the day. Log it when you are back.':'Send the brief below the day before. Then trust it.'}</p>
+     <div class="brief" id="offBrief">${esc(offBrief(o))}</div>
+     <div class="row"><button class="btn small" data-act="copyBrief">Copy the brief</button>${today?'<button class="btn small ghost" data-act="offLogOpen">I am back: log it</button>':''}<button class="btn small ghost" data-act="offCancel">Cancel</button></div></div>`;
+  }else if(OFFLOG)body=vOffLog(null);
+  else body=`<div class="card"><div class="eyebrow">Phone-off day</div><h2>A day the firm runs without you.</h2>
+    <p class="muted">Not rest that costs the firm. A stress test that shows exactly what to build next. Plan it, brief it, take it, then log what happened.</p>
+    <div class="field"><span class="lbl">Which day?</span><div class="chips-row" data-group="off-day" data-multi="0">${days.map(d=>`<button type="button" class="pick" data-pick-group="off-day" data-val="${d}">${esc(new Date(d).toLocaleDateString('en-GB',{weekday:'short',day:'numeric',month:'short'}))}</button>`).join('')}</div></div>
+    <div class="field"><span class="lbl">Who decides while you are off?</span>${chipRow('off-decider',OFF.decider,{other:true})}</div>
+    <div class="field"><span class="lbl">The one emergency route</span><span class="hint">If it truly cannot wait, they will...</span>${chipRow('off-route',OFF.route,{other:true})}</div>
+    <div class="field"><span class="lbl">What counts as an emergency?</span><span class="hint">Tap all that apply. Everything else waits.</span>${chipRow('off-threshold',OFF.threshold,{multi:true})}</div>
+    <div class="row"><button class="btn" data-act="offPlan">Plan it</button><button class="btn small ghost" data-act="offLogOpen">Already had one? Log it</button></div></div>`;
+  const past=(S.offDays||[]).filter(x=>x.status==='back').slice().reverse();
+  const hist=past.length?`<div class="card"><div class="spread"><h3>Your phone-off days</h3><span class="small muted">${offRecent()} of the last 8 weeks</span></div>
+   <p class="small">${ot.waited} waited fine &middot; ${ot.handled} handled without you &middot; ${ot.broke} stalled and became ${ot.broke===1?'a fix':'fixes'}</p>
+   <div class="tbl-wrap"><table><thead><tr><th>Day</th><th class="num">Waited</th><th class="num">Handled</th><th class="num">Stalled</th></tr></thead><tbody>
+   ${past.map(x=>`<tr><td>${esc(fmtDate(x.day))}</td><td class="num delta-up">${x.log.waited.length}</td><td class="num delta-up">${x.log.handled.length}</td><td class="num ${x.log.broke.length?'delta-down':''}">${x.log.broke.length}</td></tr>`).join('')}
+   </tbody></table></div><p class="small muted">The waited column is your evidence. It is almost always longer than your anxiety predicted.</p></div>`:'';
+  return `<section>${body}${hist}</section>`;
+}
+function vOffLog(o){
+  return `<div class="card"><div class="eyebrow">Back from your phone-off day</div><h2>What came up, and what happened to it?</h2>
+   <p class="muted">Twenty minutes, first thing back. Tap what came up in each column. This is your bottleneck map.</p>
+   <div class="field"><span class="lbl">Waited fine</span><span class="hint">It could wait, and it did. This is your evidence.</span>${chipRow('ol-waited',OFF.items,{multi:true,other:true})}</div>
+   <div class="field"><span class="lbl">Someone handled it</span><span class="hint">Thank them. It goes in your notice log.</span>${chipRow('ol-handled',OFF.items,{multi:true,other:true})}</div>
+   <div class="field"><span class="lbl">Stalled or broke</span><span class="hint">Each one becomes a system fix on your list.</span>${chipRow('ol-broke',OFF.items,{multi:true,other:true})}</div>
+   <div class="row"><button class="btn" data-act="offLog">Log the day</button><button class="btn small ghost" data-act="offLogClose">Not now</button></div></div>`;
+}
 function vLoudWeek(){
   const lw=loudWeek();if(!lw.count)return '';
   return `<div class="card"><div class="eyebrow">What was loud this week</div><h3>${plural(lw.count,'reset')}, ${lw.movesDone} of ${plural(lw.moves,'move')} done</h3>
@@ -656,7 +914,7 @@ function vReview(){
   const sameWeek=S.reviews.length&&Date.now()-S.reviews[S.reviews.length-1].ts<4*DAY;
   return `<section>
   <div class="card"><div><div class="eyebrow">Friday review &middot; ten minutes</div><h2>Close your own week in three days or less.</h2></div>
-   <p class="muted">${sameWeek?'You logged a review on '+fmtDate(S.reviews[S.reviews.length-1].ts)+'. Logging again replaces it.':'All taps, no typing. Same five steps every week.'}</p></div>
+   <p class="muted">${sameWeek?'You logged a review on '+fmtDate(S.reviews[S.reviews.length-1].ts)+'. Logging again replaces it.':'All taps, no typing. Same six steps every week.'}</p></div>
   ${vLoudWeek()}
 
   <div class="card"><div class="eyebrow">1. What you did</div><h3>Tick what got done</h3>
@@ -677,7 +935,12 @@ function vReview(){
    <div id="gameNote"></div>
    <div class="field"><span class="lbl">Where did you work in the system instead of on it?</span><span class="hint">It goes on your list as a job to design out.</span>${chipRow('rv-system',PICK.inSystem,{other:true})}</div></div>
 
-  <div class="card"><div class="eyebrow">5. Next week</div>
+  <div class="card"><div class="eyebrow">5. Fear and reality</div><h3>What did you fear this week, and what actually happened?</h3>
+   <p class="small muted">Anxiety predicts. This keeps the score on its predictions. ${(()=>{const fg=fearGap();return fg.logged?`So far ${fg.better} of ${fg.logged} turned out better than feared or never happened.`:'';})()}</p>
+   ${chipRow('rv-fear',FEARS,{other:true})}
+   <div class="field"><span class="lbl">What actually happened?</span>${chipRow('rv-outcome',OUTCOMES.map(x=>x.name))}</div></div>
+
+  <div class="card"><div class="eyebrow">6. Next week</div>
    <div class="field"><span class="lbl">The one thing you will do differently</span><span class="hint">It goes on your list, to check next Friday.</span>${chipRow('rv-change',PICK.change,{other:true})}</div>
    <div class="row"><button class="btn" data-act="review">Log the week</button></div></div>
 
@@ -705,7 +968,7 @@ function vActions(){
   </section>`;
 }
 function item(t){
-  const src=t.source?(t.source.startsWith('w')?'Wildcard':t.source.startsWith('audit')?'Opening':t.source.startsWith('review')?'Review':t.source.startsWith('reset-')?'Reset':t.source.startsWith('fix-')?'Pattern':'Call'):'';
+  const src=t.source?(t.source.startsWith('w')?'Wildcard':t.source.startsWith('audit')?'Opening':t.source.startsWith('review')?'Review':t.source.startsWith('reset-')?'Reset':t.source.startsWith('fix-')?'Pattern':t.source.startsWith('sys-')?'System':t.source.startsWith('off-')?'Phone off':'Call'):'';
   return `<div class="item ${t.done?'done':''}"><input type="checkbox" ${t.done?'checked':''} data-done="${t.id}" aria-label="Done"><div class="txt"><span>${esc(t.text)}</span><div class="meta"><span class="pill ${t.type}">${t.type}</span>${src?`<span class="pill">${src}</span>`:''}<span class="hrs"><input type="number" min="0" max="40" step="0.5" value="${t.hours||0}" data-hrs="${t.id}" aria-label="Hours back per week"> hrs/wk back</span>${t.done&&t.doneAt?`<span class="small muted">done ${fmtDate(t.doneAt)}</span>`:''}</div></div><div class="acts">${t.done?'':`<button class="icon-btn ${t.star?'on':''}" data-star="${t.id}">${t.star?'Starred':'Star'}</button>`}<button class="icon-btn" data-del="${t.id}">Del</button></div></div>`;
 }
 
@@ -779,6 +1042,7 @@ function vCalls(){
   return `<section>
    <div class="card"><div><div class="eyebrow">Play</div><h2>Practise the judgement. Score it in real life.</h2></div><p class="muted">Play the founding ten as a practice round and beat your best judgement score. Draw wildcards. A new weekly call is dealt after every Friday review${S.pendingCall?', and one is waiting for you now':''}. Every call puts an action on your list; ledger points come when you do it.</p>${S.pendingCall?'<div><button class="btn small" data-act="dealCall">Deal this week’s call</button></div>':''}</div>
    ${!cur||isFounding?vPracticePanel(pr):''}
+   ${vSysPanel()}
    ${dots}${body}${vDeck()}</section>`;
 }
 /* ---------- Future ---------- */
@@ -816,7 +1080,7 @@ function vFuture(){
 function render(){
   renderBoard();renderTabs();
   const rt=byId('resetTop');if(rt)rt.hidden=S.view==='reset';
-  const v={today:vToday,reset:vReset,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
+  const v={today:vToday,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
   $('#view').innerHTML=v();
 }
 
@@ -917,7 +1181,7 @@ async function coachLetter(btn){
 }
 
 /* The Reset sits below the scoreboard, so on a phone "top" means its own steps, not the page. */
-function toTop(){if(S.view==='reset'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
+function toTop(){if(S.view==='reset'||S.view==='off'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
 function endReset(o){
   if(!RD||!RD.loud||!RD.sort)return;
   const entry=finishReset({loud:RD.loud,sort:RD.sort,receipt:RD.receipt,move:o.move,todoId:o.todoId});
@@ -971,7 +1235,7 @@ on('click',async e=>{
     }
     return;
   }
-  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;S.view=d.tab;save();render();toTop();return;}
+  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;if(d.tab!=='off')OFFLOG=false;setStatus('');S.view=d.tab;save();render();toTop();return;}
   if(d.goto){S.view='future';save();render();const el=byId(d.goto);if(el)el.scrollIntoView({block:'start'});return;}
   if(d.lqstep!=null){S.letterQ.step=Number(d.lqstep);save();renderLetter();return;}
   if(d.keep){const w=WILD.find(x=>x.id===d.keep);const ex=S.todos.find(t=>t.source===w.id);
@@ -998,6 +1262,7 @@ on('click',async e=>{
       const none=v=>v&&v!=='None this week'?v:'';
       const good=picked('rv-good').slice(0,3);
       const r={ts:Date.now(),hours:parseInt(picked('rv-hours')[0]||'0',10),good,space:none(picked('rv-space')[0]),game:reviewGame,inSystem:none(picked('rv-system')[0]),win:good[0]||'',change:picked('rv-change')[0]||''};
+      {const fear=picked('rv-fear')[0]||'';const oc=OUTCOMES.find(x=>x.name===picked('rv-outcome')[0]);if(fear){r.fear=fear;if(oc&&fear!=='Nothing this week')r.fearOutcome=oc.k;}}
       METERS.forEach(m=>r[m.k]=Number($('#rv-'+m.k).value));
       const before=points();
       if(S.reviews.length&&r.ts-S.reviews[S.reviews.length-1].ts<4*DAY)S.reviews[S.reviews.length-1]=r;else{S.reviews.push(r);S.pendingCall=true;}
@@ -1010,6 +1275,25 @@ on('click',async e=>{
       $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Week closed. +${gained} points, streak ${streak()} week${streak()===1?'':'s'}.</strong><span class="small">${S.pendingCall?'Your next call is ready to deal below.':'Review updated.'}</span></div>`);
       break;}
     case 'dealCall':dealCall(b);break;
+    case 'sysPick':{const c=SYSTEM.find(x=>x.id===d.id);if(!c)return;if(playSys(c.id,Number(d.i))){save();render();const o=c.opts[Number(d.i)];setStatus(o.v==='best'?'World-class. That one is yours.':'Noted. It comes back round.');}break;}
+    case 'sysAdd':{const c=SYSTEM.find(x=>x.id===d.id);if(!c)return;addTodo({text:c.todo.text,type:c.todo.type,h:c.todo.h,hours:c.todo.hours||0,source:'sys-'+c.id});save();render();setStatus('On your list. It scores when it is done.');break;}
+    case 'offPlan':{
+      const day=Number(picked('off-day')[0]);if(!day){setStatus('Pick the day first.');return;}
+      planOff({day,decider:picked('off-decider')[0]||'',route:picked('off-route')[0]||'',threshold:picked('off-threshold')});
+      save();render();toTop();setStatus('Planned. The brief is on your list for the day before.');break;}
+    case 'offLogOpen':OFFLOG=true;render();toTop();break;
+    case 'offLogClose':OFFLOG=false;render();toTop();break;
+    case 'offCancel':S.offDays=(S.offDays||[]).filter(x=>x.status!=='planned');save();render();break;
+    case 'offLog':{
+      const log={waited:picked('ol-waited'),handled:picked('ol-handled'),broke:picked('ol-broke')};
+      if(!log.waited.length&&!log.handled.length&&!log.broke.length){setStatus('Tap at least one thing that came up. If nothing did, tap Waited fine.');return;}
+      const before=points();logOff(log);OFFLOG=false;save();S.view='off';render();toTop();
+      const g=points()-before;
+      $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Phone-off day logged.${g?` +${g} points.`:''}</strong><span class="small">${log.waited.length} waited fine, ${log.handled.length} handled without you${log.broke.length?`, ${log.broke.length} now on your list as ${log.broke.length===1?'a fix':'fixes'}`:''}. That is your bottleneck map.</span></div>`);
+      break;}
+    case 'copyBrief':{const o=offCurrent();if(!o)return;const txt=offBrief(o);
+      try{await navigator.clipboard.writeText(txt);setStatus('Brief copied. Send it the day before.');}catch(err){const el=byId('offBrief');if(el){const r=document.createRange();r.selectNodeContents(el);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(r);}setStatus('Brief selected. Copy it from the box.');}
+      break;}
     case 'resetStart':RD={step:'loud'};render();break;
     case 'resetBack':{const order=['loud','sort','receipt','move'];const i=order.indexOf(RD&&RD.step);if(i>0)RD.step=order[i-1];render();break;}
     case 'resetNext':if(RD)RD.step='move';render();toTop();break;
@@ -1061,7 +1345,9 @@ return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
-  RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
+  RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE,
+  sysToday, sysRhythm, sysMastered, sysProgress, playSys, offCurrent, offTotals, offRecent, planOff, logOff, offBrief, fearGap,
+  SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
   FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS, PICK, LETTER_PICKS,
   mount() {
     ROOT.innerHTML = MARKUP;
