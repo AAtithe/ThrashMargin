@@ -104,7 +104,20 @@ export function generalPress(s: GameState, selected: Set<number>): { select: Set
 }
 
 /** The General's button beside the hero and power bars: its health, or why there is none. Skirmish with Generals on only. */
-export function GeneralButton({ s, selected, onPress, lift = 0 }: { s: GameState; selected: Set<number>; onPress: () => void; lift?: number }) {
+export function GeneralButton({
+  s,
+  selected,
+  onPress,
+  lift = 0,
+  inline = false,
+}: {
+  s: GameState;
+  selected: Set<number>;
+  onPress: () => void;
+  lift?: number;
+  /** In the bar row beside the hero and power bars (round 6 integration), rather than in its own corner. */
+  inline?: boolean;
+}) {
   if (!fieldGenerals(s) || s.winner !== null) return null;
   const g = generalOf(s, 0);
   const p = s.players[0];
@@ -119,7 +132,7 @@ export function GeneralButton({ s, selected, onPress, lift = 0 }: { s: GameState
   else status = 'Train one at the Barracks';
   const hp = g ? Math.max(0, Math.min(1, g.hp / maxHpOf(g))) : 0;
   return (
-    <div className="fl-genbar" style={lift ? { bottom: 10 + lift } : undefined}>
+    <div className={inline ? 'fl-genbar fl-genbar-inline' : 'fl-genbar'} style={lift && !inline ? { bottom: 10 + lift } : undefined}>
       <button
         type="button"
         className="fl-genbtn"

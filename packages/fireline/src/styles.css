@@ -2515,7 +2515,13 @@ kbd {
 }
 .fl-genbtn[data-selected="1"] {
   border-color: var(--ui-good);
-  background: var(--ui-tint-good);
+  /* The tint over the HUD colour: the tint alone is nearly clear, and the battlefield shows through. */
+  background: linear-gradient(var(--ui-tint-good), var(--ui-tint-good)), var(--ui-hud);
+}
+/* Round 6 integration: in the bar row beside the hero and power bars. */
+.fl-genbar-inline {
+  position: static;
+  display: flex;
 }
 .fl-genbtn[data-fallen="1"] {
   border-color: var(--ui-bad);

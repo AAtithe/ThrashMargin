@@ -1679,26 +1679,27 @@ export function Battle({
                 </>
               )}
               <SkirmishPowerBar s={s} targeting={targeting} onPower={choosePower} />
+              {/* round6:integration. C's General button, in the same row as B's hero bar. */}
+              <GeneralButton
+                s={s}
+                selected={overlay.current.selected}
+                inline
+                onPress={() => {
+                  const press = generalPress(cur.current, overlay.current.selected);
+                  if (press && 'centre' in press) centreOn(press.centre.x, press.centre.y);
+                  else if (press) {
+                    overlay.current.selected = press.select;
+                    sound.play('select');
+                  }
+                  if (press) refresh();
+                }}
+              />
             </div>
           )}
           {/* round6:B end. */}
-          {/* round6:C begin. Generals: the General's button (select, its aura, its replacement timer) goes below. */}
-          {!mission && !ended && (
-            <GeneralButton
-              s={s}
-              selected={overlay.current.selected}
-              lift={barLift}
-              onPress={() => {
-                const press = generalPress(cur.current, overlay.current.selected);
-                if (press && 'centre' in press) centreOn(press.centre.x, press.centre.y);
-                else if (press) {
-                  overlay.current.selected = press.select;
-                  sound.play('select');
-                }
-                if (press) refresh();
-              }}
-            />
-          )}
+          {/* round6:C begin. Generals: the General's button (select, its aura, its replacement timer) goes below.
+              Integration: it sits in the bar row above, beside the hero and power bars (fieldGenerals
+              implies advanced tech, so that row is always there), so the three wrap together on a phone. */}
           {/* round6:C end. */}
           {buildOpen && !paused && !help && !ended && (
             <BuildWindow
