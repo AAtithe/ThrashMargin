@@ -1250,3 +1250,14 @@ start with a smaller garrison. After: 43 of 44 won with the army sent at twelve 
 at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
 three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
 assertions, about 25 seconds more than before.
+
+### 2026-11-11: engagement bases attack too
+
+A whole Combine base in an engagement no longer only defends. From the fifth mission on, about half
+of them attack (the roll has its own stream, so every other engagement is unchanged). At full
+strength an attacking base beat the scripted player four times in five, so an attacking base runs
+an Easy commander, on a purse of 500 plus 80 per mission won, with two fewer in its garrison.
+Measured over every attacking base at two points of its act (16 battles): with the army sent at
+ten or twelve minutes the scripted player won 30 of 32, against 43 of 44 for the bases that only
+defend; left idle, the player's base met the first wave at about eleven minutes and was overrun.
+The briefing says which kind of base it is.

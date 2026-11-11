@@ -256,7 +256,9 @@ campaign; scaled by the act and by story missions won (never below eight on act 
 - the enemy: an outpost (Generator, Barracks, turrets, sometimes a Refinery, War Factory, Comms
   Uplink, sandbags or a Rocket Turret once the campaign has met them), or from the fourth mission
   on sometimes a whole Combine base; a garrison of 3 plus 0.8 per mission won, armour a growing
-  share; posture passive, defend, or (outposts that can train) raid; a whole base only defends;
+  share; posture passive, defend, or (outposts that can train) raid; a whole base defends, or
+  from the fifth mission on, about half the time, attacks: an Easy commander on a thin purse with a
+  smaller garrison, whose first wave reaches the player's base at about eleven minutes;
 - the player: a Command Yard, three to five riflemen, a Rocketeer, Grenadiers and Tanks once
   unlocked, 3,500 credits and up;
 - tech: the act's basics (First Light's list in act one, the standard twelve in act two) plus

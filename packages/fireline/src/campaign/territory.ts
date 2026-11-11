@@ -170,18 +170,26 @@ export function engagementSpec(c: CampaignState, regionId: string): MissionSpec 
 
   // How it fights: an outpost holds or sits still, or raids once it can train; a base defends or attacks.
   const trains = structures.includes('barracks') || structures.includes('factory');
-  // (A whole base on the attack beat a player still raising one far too often, so a base only
-  // defends, and an outpost raids on a small purse.)
+  // A whole base on the attack, at full strength, beat a player still raising one four times in
+  // five. So an attacking base comes later (from the fifth mission), from about half the bases, and
+  // is held back to make it a fight rather than a rout: an Easy commander (its first wave later and
+  // smaller), a thinner purse and a smaller garrison. Its own stream, so adding it changed no other
+  // roll: every other engagement is exactly what it was. An outpost raids on a small purse.
+  const attacks = full && p >= 4 && stream(seedFromString(`engagement-posture:${r.id}`)).float() < 0.5;
   const ai: MissionSpec['enemy']['ai'] = full
-    ? 'defend'
+    ? attacks ? 'normal' : 'defend'
     : trains && p >= 3 && roll(0.25) ? 'raid' : roll(0.5) ? 'defend' : 'passive';
-  const enemyCredits = full ? round(800 + 120 * p + rng.int(0, 2) * 250, 100) : ai === 'raid' ? round(400 + 100 * p, 100) : ai === 'defend' ? 500 : 0;
+  // Rolled for every full base, attacking or not, so the rolls after it fall as they always did.
+  const purse = full ? rng.int(0, 2) : 0;
+  const enemyCredits = full
+    ? attacks ? round(500 + 80 * p, 100) : round(800 + 120 * p + purse * 250, 100)
+    : ai === 'raid' ? round(400 + 100 * p, 100) : ai === 'defend' ? 500 : 0;
 
   // The garrison: more of it, and more of it armour, as the campaign goes on.
   const infantry = ENEMY_INFANTRY.filter(has);
   const vehicles = ENEMY_VEHICLES.filter(has);
   // A raiding outpost sends its garrison at us early, so it starts with fewer at home.
-  const garrison = Math.min(18, 3 + Math.round(0.8 * p) + rng.int(0, 2) - (full ? 2 : 0) - (ai === 'raid' ? Math.round(p / 3) : 0));
+  const garrison = Math.min(18, 3 + Math.round(0.8 * p) + rng.int(0, 2) - (full ? 2 : 0) - (attacks ? 2 : 0) - (ai === 'raid' ? Math.round(p / 3) : 0));
   const armourShare = Math.min(0.6, 0.15 + 0.05 * p);
   const units: UnitKind[] = [];
   for (let i = 0; i < garrison; i++) units.push(vehicles.length && roll(armourShare) ? pick(vehicles) : pick(infantry.length ? infantry : ['rifleman']));
@@ -210,11 +218,13 @@ export function engagementSpec(c: CampaignState, regionId: string): MissionSpec 
     `The Combine holds ${r.name} with ${full ? 'a whole base: a Command Yard that builds and rebuilds' : `an outpost of ${structures.length} structures`}, and ${garrison} troops in ${place}.`,
     ai === 'raid'
       ? 'Patrols report raiding parties sent out from it on a timer. Expect company before you are ready.'
-      : ai === 'defend'
-        ? 'It is dug in and will fight for every structure, but it is not sending anyone out.'
-        : 'It is quiet: the garrison stands its ground and makes no plans.',
+      : ai === 'normal'
+        ? 'Its commander is building for war, and its waves will come for your base once it has the strength. Get yours up fast.'
+        : ai === 'defend'
+          ? 'It is dug in and will fight for every structure, but it is not sending anyone out.'
+          : 'It is quiet: the garrison stands its ground and makes no plans.',
   ];
-  const tier: Difficulty = p < 2 ? 'easy' : 'normal';
+  const tier: Difficulty = p < 2 || attacks ? 'easy' : 'normal';
 
   return {
     id: engagementId(r.id),
