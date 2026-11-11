@@ -55,6 +55,8 @@ async function checkBuildWindow(browser, base, problems, out) {
     // The lobby opens on the game size cards (round 6); the tech level is under Customise.
     await page.getByTestId('setup-customise').click();
     await page.getByTestId('tech-advanced').click();
+    // The Coast map (the naval war): its open sea is what offers the Naval tab, checked below too.
+    await page.getByTestId('map-coast').click();
     await page.getByRole('button', { name: /Begin the battle/ }).click();
     await page.waitForURL(/\/game\//);
     await page.locator('#fl-build-open').waitFor();

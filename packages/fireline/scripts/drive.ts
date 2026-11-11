@@ -30,6 +30,8 @@ import { sections as linesSections } from './drive-lines';
 import { sections as sizeSections } from './drive-size';
 // The air war (2026-11-10): the Recon Plane, the Interceptor and Countermeasures.
 import { sections as airWarSections } from './drive-airwar';
+// The naval war (2026-11-11): the Coast map, ships, the Naval Yard, landings and the computer's navy.
+import { sections as navalSections } from './drive-naval';
 import { canQueue, placementProblem } from '../src/sim/commands';
 import { dist, distToBuilding, occupancy, passable } from '../src/sim/grid';
 import { generateMap, isWalkable, START_0, START_1 } from '../src/sim/map';
@@ -139,7 +141,9 @@ function invariants(s: GameState, label: string): void {
     ok(u.x >= 0 && u.y >= 0 && u.x < MAP_W && u.y < MAP_H, `${label}: unit ${u.id} on the map`);
     const k = Math.floor(u.y) * MAP_W + Math.floor(u.x);
     // Aircraft fly over water, rock and structures (round 4, workstream A).
-    ok(UNITS[u.kind].category === 'air' || isWalkable(s.tiles[k]), `${label}: unit ${u.id} on walkable ground`);
+    // Aircraft anywhere; ships on open water (the naval war); everything else on walkable ground.
+    const cat = UNITS[u.kind].category;
+    ok(cat === 'air' || (cat === 'naval' ? s.tiles[k] === 'w' : isWalkable(s.tiles[k])), `${label}: unit ${u.id} on ${cat === 'naval' ? 'open water' : 'walkable ground'}`);
     ok(u.cargo >= 0 && u.cargo <= 600, `${label}: cargo in range`);
     ok(Number.isFinite(u.fx) && Number.isFinite(u.tx), `${label}: facings finite`);
     ok(u.vet === vetFor(u.kills), `${label}: unit ${u.id} rank matches its ${u.kills} kills (${u.vet})`);
@@ -2759,6 +2763,7 @@ if (!CAMPAIGN_ONLY) {
     ...sizeSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // The air war (2026-11-10): its sections, imported from scripts/drive-airwar.ts.
     ...airWarSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    ...navalSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round4:B. Bigger battles (fireline-round4-design.md): its sections, imported from
     // scripts/drive-sides.ts, go on the lines below this comment.
     ...sidesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),

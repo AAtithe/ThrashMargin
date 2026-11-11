@@ -1,3 +1,5 @@
+import { creepFocus, navalPlan, navalSpot } from './aiNaval';
+import { isShip } from './naval';
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
 import { buildingCentre, dist, distToBuilding, doorTile, dockTile, frontDir, nearestPassable, occupancy, onMap, passable, laneRow, tileAt } from './grid';
 import { airPlan, vehiclePrice } from './aiAir';
@@ -391,12 +393,17 @@ function commander(s: GameState, owner: Owner): void {
   const foeTurrets = enemy.filter(b => b.kind === 'turret' || b.kind === 'rocketturret').length;
   const raidBuggies = units.filter(u => u.kind === 'buggy').length;
   // Paced research (round 6): short of the next research, with an army at home and no enemy near
-  // it, the unit purchases below wait so the credits build up.
-  if (!saving && adv && pacedResearch(s) && mem.researchFor && p.credits < mem.researchFor) {
-    const armedHome = units.filter(u => UNITS[u.kind].weapon && u.kind !== 'hauler').length;
+  // it, the unit purchases below wait so the credits build up. Since the merge with main's naval
+  // war the army is the land army (ships do not count) and ship purchases wait too (navalPlan):
+  // on a Coast map at the Standard pace the commander otherwise kept buying ships while its land
+  // army wasted away (drive-size.ts, the starvation guard).
+  let pacedHold = false;
+  if (adv && pacedResearch(s) && mem.researchFor && p.credits < mem.researchFor) {
+    const armedHome = units.filter(u => UNITS[u.kind].weapon && u.kind !== 'hauler' && !isShip(u)).length;
     const threat = foes.some(u => UNITS[u.kind].weapon && dist(u.x, u.y, home.x, home.y) < PACED_HOLD_RADIUS);
-    if (armedHome >= PACED_HOLD_ARMY && !threat) saving = true;
+    pacedHold = armedHome >= PACED_HOLD_ARMY && !threat;
   }
+  if (pacedHold) saving = true;
   if (!saving && adv) {
     const nextRaid = mem.raidIds.length > 0 ? Infinity : Math.max(mem.nextRaid, t.firstRaid);
     advancedUnits(s, owner, t, units, foeInfantry, foeArmour, foeTurrets, raidBuggies, nextRaid);
@@ -429,6 +436,8 @@ function commander(s: GameState, owner: Owner): void {
   // round4:A. Air units, anti-air and research (fireline-round4-design.md, workstream A): one call
   // into aiAir.ts goes on the line below this comment, and nothing else in this function changes.
   airPlan(s, owner, home, enemy, foes);
+  // The naval war: the navy, on a map with a sea both bases border (aiNaval.ts).
+  navalPlan(s, owner, home, enemy, foes, pacedHold);
 
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into aiEngineering.ts
   // goes on the line below this comment, and nothing else in this function changes.
@@ -449,7 +458,8 @@ function commander(s: GameState, owner: Owner): void {
   const alive = new Map(units.map(u => [u.id, u]));
   let waveIds = mem.waveIds.filter(id => alive.has(id));
   let raidIds = mem.raidIds.filter(id => alive.has(id));
-  const army = units.filter(u => UNITS[u.kind].weapon);
+  // Ships have their own plan (aiNaval.ts) and never join a wave.
+  const army = units.filter(u => UNITS[u.kind].weapon && !isShip(u));
   const inWave = new Set(waveIds);
   const inRaid = new Set(raidIds);
   const retreatTo = openGround(s, owner, toward(home, enemyHome, 4));
@@ -994,7 +1004,9 @@ function nextStructure(
  */
 function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enemyHome: Pt): Pt | null {
   const spec = BUILDINGS[kind];
-  let focus = home;
+  // The naval war: a Naval Yard on the shore, and Generators toward it while it is out of reach.
+  if (kind === 'shipyard') return navalSpot(s, owner, home);
+  let focus = (kind === 'power' && creepFocus(s, owner)) || home;
   if (kind === 'turret' || kind === 'rocketturret') focus = toward(home, enemyHome, 7);
   // The Repair Bay on the near side, where the army comes home; the costliest structures behind.
   if (kind === 'repairbay') focus = toward(home, enemyHome, 4);
@@ -1168,7 +1180,7 @@ function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
   }
 }
 
-type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
+type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft' | 'ship';
 
 /**
  * The opponent's things a blast at (x, y) would hurt, in credits' worth destroyed: each one's cost

@@ -18,6 +18,7 @@ import {
   hitsAir,
   isBomberKind,
   hitsGround,
+  hitsNaval,
   type Owner,
   type UnitKind,
   type Weapon,
@@ -161,7 +162,10 @@ export function parkAircraft(s: GameState, u: Unit): void {
 
 /** True when this weapon can fire at this target, by whether it is in the air. */
 export function canHit(w: Weapon, t: Target): boolean {
-  return t.unit && isAir(t.unit) ? hitsAir(w) : hitsGround(w);
+  if (t.unit && isAir(t.unit)) return hitsAir(w);
+  // The naval war: ships by hitsNaval (the torpedo reaches them; flak never does).
+  if (t.unit && UNITS[t.unit.kind].category === 'naval') return hitsNaval(w);
+  return hitsGround(w);
 }
 
 /** One tick of one aircraft, on a state the reducer has already cloned. */
@@ -531,6 +535,8 @@ export function migrateAir(s: GameState): void {
         infantry: Array.isArray(queues.infantry) ? queues.infantry : [],
         vehicle: Array.isArray(queues.vehicle) ? queues.vehicle : [],
         air: Array.isArray(queues.air) ? queues.air : [],
+        // The naval war: saves from before it get an empty Naval queue too.
+        naval: Array.isArray(queues.naval) ? queues.naval : [],
       },
     };
     if (fixed.upgrades !== undefined) out.upgrades = fixed.upgrades;
@@ -579,9 +585,14 @@ export function migrateAir(s: GameState): void {
       if (u.drop !== undefined && (u.drop !== true || !u.carried)) delete u.drop;
       delete u.boarding;
     } else {
-      delete u.carried;
-      delete u.drop;
-      if (u.boarding !== undefined && (!Number.isInteger(u.boarding) || UNITS[u.kind].category !== 'infantry')) delete u.boarding;
+      // A ship that carries (the Landing Craft) keeps its passengers: migrateNaval checks them.
+      if (!UNITS[u.kind].carries) {
+        delete u.carried;
+        delete u.drop;
+      }
+      // Infantry board Troop Carriers and Landing Craft, vehicles Landing Craft.
+      const cat = UNITS[u.kind].category;
+      if (u.boarding !== undefined && (!Number.isInteger(u.boarding) || (cat !== 'infantry' && cat !== 'vehicle'))) delete u.boarding;
       delete u.ammo;
       delete u.pad;
       delete u.bombRun;

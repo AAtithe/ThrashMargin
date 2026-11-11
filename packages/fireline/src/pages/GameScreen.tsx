@@ -558,9 +558,9 @@ export function Battle({
       }
       // Infantry on one of our own Troop Carriers: they walk to it and climb in; anything else moves there.
       if (targetUnit && targetUnit.owner === 0 && UNITS[targetUnit.kind].carries) {
-        const riders = mine.filter(u => canRide(u)).map(u => u.id);
+        const riders = mine.filter(u => canRide(u, targetUnit)).map(u => u.id);
         if (riders.length) {
-          const rest = mine.filter(u => !canRide(u) && u.id !== targetUnit.id).map(u => u.id);
+          const rest = mine.filter(u => !canRide(u, targetUnit) && u.id !== targetUnit.id).map(u => u.id);
           if (dispatch({ type: 'board', ids: riders, carrier: targetUnit.id })) ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
           else showToast(boardProblem(s, 0, riders, targetUnit.id) ?? 'Cannot board');
           if (rest.length) dispatch({ type: 'move', ids: rest, x: wx, y: wy, queue });
@@ -638,6 +638,7 @@ export function Battle({
       if (b.kind === 'barracks') setTab('infantry');
       if (b.kind === 'factory') setTab('vehicle');
       if (b.kind === 'helipad') setTab('air');
+      if (b.kind === 'shipyard') setTab('naval');
       if (b.kind === 'hq') setTab('building');
     }
     sound.play('select');

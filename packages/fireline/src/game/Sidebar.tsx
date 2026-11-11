@@ -42,6 +42,10 @@ import {
   type WeaponKind,
   BOARD_RANGE,
   DETECTOR_RANGE,
+  NAVAL_MIN_SEA,
+  SHIPYARD_MEND_HP,
+  SHIPYARD_MEND_RANGE,
+  SHIPYARD_MEND_TICKS,
   FUEL_RESERVE,
   UNLOAD_RADIUS,
   airSlotsOf,
@@ -66,6 +70,7 @@ export const TABS: { key: Tab; label: string }[] = [
   { key: 'infantry', label: 'Infantry' },
   { key: 'vehicle', label: 'Vehicles' },
   { key: 'air', label: 'Air' },
+  { key: 'naval', label: 'Naval' },
   { key: 'research', label: 'Research' },
 ];
 
@@ -76,12 +81,33 @@ export const researchOpen = (state: GameState): boolean => hasBuilding(state, 0,
 
 /**
  * The tabs this battle offers: the Air tab only with advanced tech (never in a mission or on
- * standard tech), and Research after the others once a Research Lab stands.
+ * standard tech), the Naval tab likewise and only on a map with open sea, and Research after the
+ * others once a Research Lab stands.
  */
 export const tabsFor = (state?: GameState): Tab[] =>
   TABS.map(t => t.key).filter(k =>
-    k === 'research' ? !!state && researchOpen(state) : k !== 'air' || !state || techAllowed(state, 0, 'helipad'),
+    k === 'research'
+      ? !!state && researchOpen(state)
+      : k === 'air'
+        ? !state || techAllowed(state, 0, 'helipad')
+        : k === 'naval'
+          ? !state || (techAllowed(state, 0, 'shipyard') && hasSea(state))
+          : true,
   );
+
+/** Whether this battle's map has open sea a Naval Yard could use (cached per map). */
+const seaCache = new Map<string, boolean>();
+export function hasSea(state: GameState): boolean {
+  const key = `${state.mapW}:${state.seedText}:${state.mapType ?? ''}`;
+  let v = seaCache.get(key);
+  if (v === undefined) {
+    let water = 0;
+    for (let k = 0; k < state.tiles.length; k++) if (state.tiles.charCodeAt(k) === 119) water++;
+    v = water >= NAVAL_MIN_SEA * 2;
+    seaCache.set(key, v);
+  }
+  return v;
+}
 
 
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
@@ -137,7 +163,7 @@ export function pressBuild(
   for (let i = 0; i < n; i++) if (!dispatch({ type: 'queue', category: tab, kind })) break;
 }
 
-const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure', aircraft: 'Aircraft' };
+const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure', aircraft: 'Aircraft', ship: 'Ship' };
 const WEAPON_NAME: Record<WeaponKind, string> = {
   bullet: 'Machine gun',
   shell: 'Cannon',
@@ -149,6 +175,7 @@ const WEAPON_NAME: Record<WeaponKind, string> = {
   aamissile: 'Anti-air missiles',
   bomb: 'Bombs',
   rail: 'Railgun',
+  torpedo: 'Torpedo',
 };
 const secs = (ticks: number) => {
   const v = ticks / TICKS_PER_SECOND;
@@ -204,11 +231,21 @@ export function statsOf(kind: BuildingKind | UnitKind, research: ResearchMode = 
       label: 'Ammunition',
       value: `${ammo} ${kind === 'bomber' || kind === 'heavybomber' ? 'bombs, dropped in one run' : kind === 'interceptor' ? 'air-to-air missiles' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
     });
-  if (u?.carries) rows.push({ label: 'Carries', value: `${u.carries} infantry; they climb in within ${BOARD_RANGE} tiles while it is still, and get out within ${UNLOAD_RADIUS}` });
+  if (u?.carries)
+    rows.push({
+      label: 'Carries',
+      value:
+        u.category === 'naval'
+          ? `${u.carries} places: an infantryman takes one, a vehicle two; they board from the shore within ${BOARD_RANGE} tiles while it is still, and land within ${UNLOAD_RADIUS}`
+          : `${u.carries} infantry; they climb in within ${BOARD_RANGE} tiles while it is still, and get out within ${UNLOAD_RADIUS}`,
+    });
   if (u && airSlotsOf(kind as UnitKind) > 1) rows.push({ label: 'Helipad', value: 'Takes a whole Helipad to itself' });
   if (u?.detector) rows.push({ label: 'Detects', value: `Stealth Tanks and Spies within ${DETECTOR_RANGE} tiles, for its whole side` });
   if (kind === 'interceptor') rows.push({ label: 'Scrambles', value: `Parked, at enemy aircraft within ${SCRAMBLE_RANGE} tiles of its Helipad; breaks off ${SCRAMBLE_LEASH} tiles out` });
   if (u?.category === 'air') rows.push({ label: 'Flies', value: 'Over water, rock and structures; only anti-air and bullets reach it' });
+  if (u?.category === 'naval') rows.push({ label: 'Sails', value: 'Open water only; anything that hits the ground hits a ship, and torpedoes hit nothing else' });
+  if (kind === 'shipyard')
+    rows.push({ label: 'Shore', value: `Must stand beside open sea (${NAVAL_MIN_SEA}+ tiles of water); mends ships within ${SHIPYARD_MEND_RANGE} tiles, ${SHIPYARD_MEND_HP} hp every ${secs(SHIPYARD_MEND_TICKS)}` });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
   if (kind === 'researchlab')
     rows.push({
@@ -467,7 +504,7 @@ function ProductionStrip({
 }) {
   const p = state.players[0];
   const ready = readyStructure(state, 0);
-  const cats = (['building', 'infantry', 'vehicle', 'air'] as Category[]).filter(c => p.queues[c].length > 0);
+  const cats = (['building', 'infantry', 'vehicle', 'air', 'naval'] as Category[]).filter(c => (p.queues[c] ?? []).length > 0);
   const research = p.research ?? null;
   if (!cats.length && !research) {
     return (
@@ -1167,7 +1204,7 @@ export function SelectionPanel({
       )}
       {one && mine && UNITS[one.kind].carries && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="carrier-load">
-          Carrying {one.carried?.length ?? 0} of {UNITS[one.kind].carries}.{' '}
+          {UNITS[one.kind].category === 'naval' ? `${(one.carried ?? []).reduce((n, r) => n + (UNITS[r.kind].category === 'vehicle' ? 2 : 1), 0)} of ${UNITS[one.kind].carries} places taken.` : `Carrying ${one.carried?.length ?? 0} of ${UNITS[one.kind].carries}.`}{' '}
           {one.drop
             ? 'Setting them down where it stops.'
             : one.order.type === 'rearm'
@@ -1175,7 +1212,8 @@ export function SelectionPanel({
               : one.order.type === 'idle'
                 ? 'Hovering.'
                 : 'In the air.'}{' '}
-          {(one.carried?.length ?? 0) < (UNITS[one.kind].carries ?? 0) && (touch ? 'Infantry: tap it to board.' : 'Infantry: right-click it to board.')}
+          {(one.carried?.length ?? 0) < (UNITS[one.kind].carries ?? 0) &&
+            `${UNITS[one.kind].category === 'naval' ? 'Infantry and vehicles' : 'Infantry'}: ${touch ? 'tap' : 'right-click'} it to board.`}
         </span>
       )}
       {one && (one.kills > 0 || one.vet > 0 || one.queue.length > 0) && (

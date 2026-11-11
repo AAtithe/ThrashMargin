@@ -17,7 +17,6 @@ import {
   BUILDINGS,
   HERO_KINDS,
   LINES,
-  MAP_TYPES,
   MODULES,
   MODULE_SLOTS,
   ORE_LEVELS,
@@ -28,7 +27,6 @@ import {
   type Difficulty,
   type HeroKind,
   type LineId,
-  type MapType,
   type ModuleId,
   type OreLevel,
   type SupportPower,
@@ -39,7 +37,7 @@ import { seedFromString } from '../sim/rng';
 import type { AiMode, GameState, Perks } from '../sim/types';
 import { planetMapOf } from './map';
 import { isUpgrade, isLine } from './research';
-import { JOURNAL_MAX, OFFERS_MAX, PAYMENT_MAX, TEMPERAMENT_LIST, TERM_AMOUNT_MAX, TREATY_TERMS_MAX, TREATY_TURNS, isLengthPreset, normaliseOptions } from './rules';
+import { JOURNAL_MAX, OFFERS_MAX, PAYMENT_MAX, TEMPERAMENT_LIST, TERM_AMOUNT_MAX, TREATY_TERMS_MAX, TREATY_TURNS, isLengthPreset, isPlanetTerrain, normaliseOptions } from './rules';
 import { isArmyKind, isInt, newPlanetState, sortTreaties } from './state';
 import {
   ARMY_KINDS,
@@ -115,7 +113,6 @@ const intIn = (v: unknown, lo: number, hi: number, fallback: number) =>
 const isResource = (v: unknown): v is Resource => typeof v === 'string' && (RESOURCES as string[]).includes(v);
 const isCityBuilding = (v: unknown): v is CityBuildingId => typeof v === 'string' && (CITY_BUILDINGS as string[]).includes(v);
 const isHero = (v: unknown): v is HeroKind => typeof v === 'string' && (HERO_KINDS as string[]).includes(v);
-const isMapType = (v: unknown): v is MapType => typeof v === 'string' && (MAP_TYPES as string[]).includes(v);
 const isOre = (v: unknown): v is OreLevel => own(ORE_LEVELS, v);
 const isBuilding = (v: unknown): v is BuildingKind => own(BUILDINGS, v);
 const isPower = (v: unknown): v is SupportPower => own(POWERS, v);
@@ -439,7 +436,7 @@ function cleanSetup(raw: unknown, F: number, regions: number): BattleSetup | nul
   const r = raw;
   if (!isInt(r.battleId, 0, 1e9) || !isInt(r.turn, 0, 1e6) || !isInt(r.region, 0, regions - 1)) return null;
   if (typeof r.regionName !== 'string' || typeof r.seedText !== 'string' || r.seedText.length > 200) return null;
-  if (!isMapType(r.mapType) || !isOre(r.ore) || !isDifficulty(r.difficulty)) return null;
+  if (!isPlanetTerrain(r.mapType) || !isOre(r.ore) || !isDifficulty(r.difficulty)) return null;
   if (!Array.isArray(r.sides) || r.sides.length < 2 || r.sides.length > 4) return null;
   const sides: BattleSide[] = [];
   for (const x of r.sides) {

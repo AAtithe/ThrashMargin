@@ -117,7 +117,15 @@ export const QUICK_DIFFICULTY: Record<Difficulty, number> = { easy: 0.85, normal
 
 export const VALUE: Record<Resource, number> = { ore: 1, food: 1, fuel: 1.5, alloys: 2.5 };
 export const STARTING_STOCK: Stock = { ore: 20, fuel: 12, alloys: 12, food: 20 };
-export const TERRAIN_YIELD: Record<MapType, { ore: number; fuel: number; food: number }> = {
+/**
+ * A region's terrain, and so its battle's map type: the six land map types. The naval war's Coast
+ * map is not a planet terrain, so no planet battle is fought on one (see the 2026-11-11 merge entry
+ * in fireline-design.md). Listed in MAP_TYPES' order, so the planet's draws are unchanged.
+ */
+export type PlanetTerrain = Exclude<MapType, 'coast'>;
+export const PLANET_TERRAINS: readonly PlanetTerrain[] = ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon'];
+export const isPlanetTerrain = (v: unknown): v is PlanetTerrain => typeof v === 'string' && (PLANET_TERRAINS as readonly string[]).includes(v);
+export const TERRAIN_YIELD: Record<PlanetTerrain, { ore: number; fuel: number; food: number }> = {
   classic: { ore: 2, fuel: 1, food: 2 },
   river: { ore: 1, fuel: 1, food: 3 },
   highlands: { ore: 3, fuel: 0, food: 1 },
@@ -126,10 +134,10 @@ export const TERRAIN_YIELD: Record<MapType, { ore: number; fuel: number; food: n
   canyon: { ore: 2, fuel: 3, food: 0 },
 };
 export const ORE_K: Record<OreLevel, number> = { poor: 1, normal: 2, rich: 3 };
-export const DEFENCE_TERRAIN: Record<MapType, number> = { highlands: 1.2, canyon: 1.15, river: 1.1, lakes: 1.05, classic: 1, plains: 0.95 };
+export const DEFENCE_TERRAIN: Record<PlanetTerrain, number> = { highlands: 1.2, canyon: 1.15, river: 1.1, lakes: 1.05, classic: 1, plains: 0.95 };
 
 /** Weighted ore level draw by terrain: [poor, normal, rich] (section 5, step 7). */
-export const ORE_WEIGHTS: Record<MapType, [number, number, number]> = {
+export const ORE_WEIGHTS: Record<PlanetTerrain, [number, number, number]> = {
   plains: [10, 40, 50],
   highlands: [20, 50, 30],
   canyon: [30, 50, 20],

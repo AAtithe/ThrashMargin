@@ -3,9 +3,10 @@
  * Written verbatim from fireline-planet-design.md, sections 3.1 and 4 (W1). Additions are additive
  * and optional. Pure data: no React, no DOM, no clock.
  */
-import type { Difficulty, HeroKind, LineId, MapType, ModuleId, OreLevel, UnitKind, UpgradeId, BuildingKind, SupportPower } from '../sim/rules';
+import type { Difficulty, HeroKind, LineId, ModuleId, OreLevel, UnitKind, UpgradeId, BuildingKind, SupportPower } from '../sim/rules';
 import type { AiMode, Perks } from '../sim/types';
 import type { PerkId } from '../campaign/types';
+import type { PlanetTerrain } from './rules';
 
 // ---- Options (section 3.1) -------------------------------------------------------------------
 
@@ -88,14 +89,14 @@ export interface RegionGeo {
   x: number;               // 0..PLANET_W
   y: number;               // 0..PLANET_H
   continent: number;
-  terrain: MapType;
+  terrain: PlanetTerrain;
   ore: OreLevel;
   coastal: boolean;
   /** Neighbours by link, sorted by id. */
   links: { to: RegionId; sea: boolean }[];
 }
 
-export interface ContinentGeo { id: number; x: number; y: number; rx: number; ry: number; terrain: MapType }
+export interface ContinentGeo { id: number; x: number; y: number; rx: number; ry: number; terrain: PlanetTerrain }
 
 export interface PlanetMap {
   w: number;
@@ -282,7 +283,7 @@ export interface BattleSetup {
   regionName: string;
   /** `${seedText}:t${turn}:r${region}:b${battleId}` */
   seedText: string;
-  mapType: MapType;
+  mapType: PlanetTerrain;
   ore: OreLevel;
   difficulty: Difficulty;
   /** 2..4 sides. Index is the battle seat (Owner). If a side is human it is index 0. */

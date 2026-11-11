@@ -133,7 +133,7 @@ mark is **not** listed in `requires` (that is buildings only); it is derived fro
 |---|---|---|---|---|---|---|
 | `refining` | Logistics I | Refinery efficiency | 2000 | 700 | researchlab | Ore pays x1.15 (unchanged) |
 | `refining2` | Logistics II | Ore processing | 2400 | 800 | researchlab, techcentre | Ore pays x1.25 in total (replaces x1.15) |
-| `assembly` | Logistics III | Assembly lines | 2500 | 900 | researchlab, techcentre | Infantry, vehicle and air queues progress x1.15 (not the building queue) |
+| `assembly` | Logistics III | Assembly lines | 2500 | 900 | researchlab, techcentre | Infantry, vehicle, air and naval queues progress x1.15 (not the building queue) |
 | `salvage` | Logistics III | Salvage crews | 2500 | 900 | researchlab, techcentre | Each enemy vehicle or aircraft this side destroys pays `floor(0.1 * UNITS[kind].cost)` credits |
 | `plating` | Armour I | Armour plating | 1500 | 600 | researchlab | Vehicles' full health x1.2 (unchanged) |
 | `plating2` | Armour II | Heavy plating | 2000 | 750 | researchlab, techcentre | Vehicles' full health a further x1.125 (x1.35 in total) |
@@ -156,7 +156,7 @@ Blurbs, exact text (no em dashes):
 
 ```
 refining2:     'Every load of ore pays 25% more, instead of 15%.'
-assembly:      'Infantry, vehicles and aircraft are built 15% faster.'
+assembly:      'Infantry, vehicles, aircraft and ships are built 15% faster.'
 salvage:       'Every enemy vehicle or aircraft you destroy pays a tenth of its cost.'
 plating2:      'Vehicles have over a third more health than standard, instead of a fifth.'
 reactive:      'Vehicles take a fifth less damage from rockets, bombs and missiles.'
@@ -969,3 +969,19 @@ as origin/main's code. Lines battles change only where main's commander plays th
 (fireline-design.md, the merge's build log, has the bisection): Normal buys a Helipad more for its
 Troop Carrier (main's 265800d) and Hard sends a lone Gunship on a strike (main's a3d3040), at the
 same ticks and with the same state changes as the classic battles of the same seeds on main.
+
+### 2026-11-11: main's naval war meets the lines (merge)
+
+**Ships have no line and take no module.** The five lines stay five lines of four; no Naval line was
+added, and `MODULE_VEHICLES` is unchanged (a fuel tank, tracks, a long barrel, smoke on the move and
+the ore cage are all ground-vehicle parts). Ships are neither vehicles nor aircraft, so everything
+that reads those categories passes them by: Basic and Heavy plating, the armour forks, Engine tuning
+and Turbochargers, Field workshops, Autoloaders, the Air line and Salvage crews (whose blurb already
+says vehicles and aircraft). What reaches every weapon or every unit queue reaches ships as it
+reaches the rest, exactly as in classic research: Calibration on every gun, HEAT rounds on the
+Destroyer's shells, High-explosive fill on the Battleship's blast, and Assembly lines on the Naval
+queue. That is the code as merged, with no change; only Assembly lines' blurb gained "ships". Nothing
+stacks: no ship upgrade has a lines counterpart and none was added. `drive-lines.ts` checks it
+("Lines: the naval war's ships"): every naval kind with every line researched keeps its health,
+takes full damage from every weapon and reloads as before, a Destroyer sails no faster with the
+Engines line, the Naval queue runs at the Assembly rate, and HEAT reaches exactly the shell.

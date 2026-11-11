@@ -3,9 +3,9 @@
  * Regenerated from the seed whenever it is needed and never saved. Pure: every draw comes from
  * `stream(seedFromString(seedText + ':planet'))` (or the retry seed text), never the global random source.
  */
-import { MAP_TYPES, type MapType, type OreLevel } from '../sim/rules';
+import { type OreLevel } from '../sim/rules';
 import { seedFromString, stream } from '../sim/rng';
-import { ORE_K, ORE_WEIGHTS, TERRAIN_YIELD } from './rules';
+import { ORE_K, ORE_WEIGHTS, PLANET_TERRAINS, TERRAIN_YIELD, type PlanetTerrain } from './rules';
 import { NEUTRAL, type ContinentGeo, PlanetLink, PlanetMap, PlanetOptions, PlanetState, RegionGeo, RegionId } from './types';
 
 export const PLANET_W = 1200;
@@ -15,7 +15,7 @@ export const PLANET_RETRIES = 20;
 
 export const CITY_START = ['Ar', 'Bel', 'Cor', 'Dun', 'Esk', 'Fal', 'Gar', 'Hol', 'Ist', 'Jor', 'Kel', 'Lun', 'Mar', 'Nor', 'Ost', 'Pell', 'Quar', 'Ros', 'Sel', 'Tor', 'Ulm', 'Var', 'Wen', 'Yar'];
 export const CITY_END = ['ford', 'haven', 'mere', 'gate', 'wick', 'holm', 'stead', 'ton', 'by', 'mouth', 'crest', 'fall', 'reach', 'port', 'field', 'moor'];
-export const TERRAIN_NOUN: Record<MapType, string> = { classic: 'Marches', river: 'Valley', highlands: 'Highlands', lakes: 'Lakes', plains: 'Plains', canyon: 'Canyons' };
+export const TERRAIN_NOUN: Record<PlanetTerrain, string> = { classic: 'Marches', river: 'Valley', highlands: 'Highlands', lakes: 'Lakes', plains: 'Plains', canyon: 'Canyons' };
 export const PLANET_NAMES = ['Meridian', 'Kessa', 'Orrin', 'Tavor', 'Halcyon', 'Brume'];
 
 type Rng = ReturnType<typeof stream>;
@@ -66,9 +66,9 @@ function geometry(text: string, options: PlanetOptions): PlanetMap {
   counts[heaviest] += N - counts.reduce((t, n) => t + n, 0);
   const continents: ContinentGeo[] = centres.map((c, i) => {
     const rx = 75 * Math.sqrt(counts[i]);
-    return { id: i, x: Math.round(c.x), y: Math.round(c.y), rx: Math.round(rx), ry: Math.round(0.65 * rx), terrain: 'classic' as MapType };
+    return { id: i, x: Math.round(c.x), y: Math.round(c.y), rx: Math.round(rx), ry: Math.round(0.65 * rx), terrain: 'classic' as PlanetTerrain };
   });
-  for (const c of continents) c.terrain = MAP_TYPES[rnd.int(0, 5)];
+  for (const c of continents) c.terrain = PLANET_TERRAINS[rnd.int(0, 5)];
 
   // 2. Sites. A site also has to lie nearer (in ellipse terms) its own continent's centre than any
   // other's, so overlapping ellipses do not interleave their regions (see the W1 build log).
@@ -210,7 +210,7 @@ function geometry(text: string, options: PlanetOptions): PlanetMap {
   for (let i = 0; i < sites.length; i++) {
     const s = sites[i];
     const c = continents[s.continent];
-    const terrain: MapType = rnd.float() < 0.5 ? c.terrain : MAP_TYPES[rnd.int(0, 5)];
+    const terrain: PlanetTerrain = rnd.float() < 0.5 ? c.terrain : PLANET_TERRAINS[rnd.int(0, 5)];
     const w = ORE_WEIGHTS[terrain];
     const roll = rnd.float() * (w[0] + w[1] + w[2]);
     const ore: OreLevel = roll < w[0] ? 'poor' : roll < w[0] + w[1] ? 'normal' : 'rich';

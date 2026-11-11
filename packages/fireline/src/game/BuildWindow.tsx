@@ -60,7 +60,7 @@ function readExtras(): ExtraItem[] {
       typeof (x as ExtraItem).name === 'string' &&
       typeof (x as ExtraItem).cost === 'number' &&
       Array.isArray((x as ExtraItem).requires) &&
-      ['building', 'infantry', 'vehicle', 'air'].includes((x as ExtraItem).tab),
+      ['building', 'infantry', 'vehicle', 'air', 'naval'].includes((x as ExtraItem).tab),
   );
 }
 

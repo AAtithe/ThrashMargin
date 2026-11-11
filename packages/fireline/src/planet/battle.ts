@@ -157,6 +157,7 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
 /**
  * Survivors of one seat: infantry and vehicles of ARMY_KINDS alive now, core units first, at most 60.
  * Infantry aboard a living Troop Carrier (the air war) are off the map but alive, so they count.
+ * (A Landing Craft would count the same way, but a planet battle has no navy: techAllowed.)
  */
 function survivorsOf(s: GameState, seat: number): BattleUnit[] {
   const living = s.units.flatMap(u => (u.hp > 0 && u.carried ? [u, ...u.carried] : [u]));

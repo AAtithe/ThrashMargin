@@ -70,10 +70,19 @@ function play(s: GameState, until: number, each?: (s: GameState) => void): GameS
 /**
  * The hash a pre-round-6 state is compared by: sha256 of its JSON, first 16 hex characters, with
  * the setup's string `pace` key left out (the one key a quick state gains in round 6), and the
- * setup's `size` (map size) and boolean `sites` keys that the merge with main added.
+ * setup's `size` (map size) and boolean `sites` keys that the merge with main added, and the empty
+ * Naval queue and `navalShore: null` that the merge with main's naval war added.
  */
 const strip = (k: string, v: unknown) =>
-  (k === 'pace' || k === 'size') && typeof v === 'string' ? undefined : k === 'sites' && typeof v === 'boolean' ? undefined : v;
+  (k === 'pace' || k === 'size') && typeof v === 'string'
+    ? undefined
+    : k === 'sites' && typeof v === 'boolean'
+      ? undefined
+      : // The naval war (main's 1608d33 and 62f30b6): every player's empty Naval queue, and the
+        // computer's note that there is no sea to sail, are left out too.
+        (k === 'naval' && Array.isArray(v) && v.length === 0) || (k === 'navalShore' && v === null)
+        ? undefined
+        : v;
 const hashOf = (s: GameState) => createHash('sha256').update(JSON.stringify(s, strip)).digest('hex').slice(0, 16);
 
 const PERKS0 = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1, powerCooldownMul: 1, extraStartCredits: 0 };
@@ -263,6 +272,11 @@ function rulesAndPresets(ok: Ok): void {
  * where main's 265800d (Troop Carriers and the Heavy Bomber) has the commander buy a Helipad more,
  * a Power Plant for it, or infantry for an airlift, at the same tick and with the same change as the
  * classic battle of that seed on main; the classic ones equal origin/main's own battles exactly.
+ * At the merge with main's naval war (2026-11-11) the 24 battles on a random map were regenerated:
+ * main's 1608d33 adds the Coast map to MAP_TYPES, so `map: 'random'` draws from seven types and both
+ * seeds now draw a different map (size-a canyon to coast, size-b highlands to lakes). The classic
+ * and standard ones equal origin/main's own battles exactly; the six without a setup (the original
+ * map) are unchanged once the empty Naval queue is left out (strip, above).
  */
 const PRE_ROUND6: Record<string, string> = {
   'nosetup|easy|size-a': '3425e6edb280df2e',
@@ -271,30 +285,30 @@ const PRE_ROUND6: Record<string, string> = {
   'nosetup|normal|size-b': 'ee788c01da261681',
   'nosetup|hard|size-a': '061e68bb7dd33891',
   'nosetup|hard|size-b': '6120a39f5cd1b61e',
-  'lines|easy|size-a': '0e91c303dadc56ed',
-  'lines|easy|size-b': '3cb51545efc7366e',
-  'lines|normal|size-a': '7debfe6b4d2e7b47',
-  'lines|normal|size-b': '04edfc5c78c630aa',
-  'lines|hard|size-a': '522e697df769a9f5',
-  'lines|hard|size-b': '5f17150338ad511f',
-  'classic|easy|size-a': '8a3c91f43715c066',
-  'classic|easy|size-b': 'f04dbb216ac6e271',
-  'classic|normal|size-a': '46e443e7341704bd',
-  'classic|normal|size-b': '0395c9c02e6ad4c5',
-  'classic|hard|size-a': 'd994059b71908bf4',
-  'classic|hard|size-b': '7e5972e3fe8dd3b5',
-  'standard|easy|size-a': '256a982f346e5325',
-  'standard|easy|size-b': '5b09efed4e05974d',
-  'standard|normal|size-a': '945c815278f9f157',
-  'standard|normal|size-b': '6adbae3f6bdebac5',
-  'standard|hard|size-a': 'a440960b79649ce6',
-  'standard|hard|size-b': '75cbe17795d793cb',
-  'three|easy|size-a': '3f031b9ca10714c1',
-  'three|easy|size-b': '266380752d290d23',
-  'three|normal|size-a': '0fe3533d05d53f24',
-  'three|normal|size-b': '7326456da078a991',
-  'three|hard|size-a': 'cf2502fa1fb6123d',
-  'three|hard|size-b': '33e13265ad7cc08a',
+  'lines|easy|size-a': '244963878c49a908',
+  'lines|easy|size-b': 'ff26a28e3f213ad5',
+  'lines|normal|size-a': 'c38089f680404942',
+  'lines|normal|size-b': '35a2c1fbf4875f71',
+  'lines|hard|size-a': 'dd97b6be7e0d3027',
+  'lines|hard|size-b': '86a80c774eec6362',
+  'classic|easy|size-a': '26f8c14831f862d5',
+  'classic|easy|size-b': 'de817d7fe3271d02',
+  'classic|normal|size-a': '381405afbb1340f6',
+  'classic|normal|size-b': 'c07fadb78be4d8cf',
+  'classic|hard|size-a': 'c1bca2f4ba6c06b5',
+  'classic|hard|size-b': 'e398ef1f4d1ca603',
+  'standard|easy|size-a': '20bd8da2b8758bc5',
+  'standard|easy|size-b': '341594413f75a712',
+  'standard|normal|size-a': '38d88b6d845f533c',
+  'standard|normal|size-b': 'b91a872ee84ceff5',
+  'standard|hard|size-a': '1f4d39caa46bbeef',
+  'standard|hard|size-b': '586549cee40c3055',
+  'three|easy|size-a': 'b45a627fb3ccd1ab',
+  'three|easy|size-b': 'cb5234c5fd6f6900',
+  'three|normal|size-a': 'bd0159cc3b2f94cb',
+  'three|normal|size-b': '7aadfc28154934bd',
+  'three|hard|size-a': '86bd9c81caca3dc6',
+  'three|hard|size-b': '358829fa3cc390c6',
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
   nosetup: undefined,
@@ -572,7 +586,8 @@ function computer(ok: Ok): void {
   }
 
   // The starvation guard: armed ground units at tick 12,000, Standard against Quick, same seed and credits.
-  const armed = (u: Unit) => !!UNITS[u.kind].weapon && UNITS[u.kind].category !== 'air' && !UNITS[u.kind].hero;
+  // Ground units: not aircraft, and not ships (the naval war), which sail where a Coast map has a sea.
+  const armed = (u: Unit) => !!UNITS[u.kind].weapon && UNITS[u.kind].category !== 'air' && UNITS[u.kind].category !== 'naval' && !UNITS[u.kind].hero;
   // Side 1 at Normal and at Hard, side 0 at Normal (a Hard mirror is mostly over by tick 12,000).
   // Summed over the first three seeds on which both battles last to tick 12,000 (fourteen tried at most;
   // about half of these battles are over by then). Three, not four, to keep npm run check quick.
@@ -586,7 +601,11 @@ function computer(ok: Ok): void {
     const per: string[] = [];
     for (let i = 1; i <= 14 && n < NEED; i++) {
       const seed = `size-starve-${d}-${i}`;
-      const std = play(battle(seed, d, { research: 'lines', pace: 'standard' }, 'normal'), 12000);
+      const std0 = battle(seed, d, { research: 'lines', pace: 'standard' }, 'normal');
+      // Not on the Coast map (the naval war, which `random` can draw since the merge with main's
+      // naval war): there the two fleets' fight, not what research costs, decides the land armies.
+      if (std0.mapType === 'coast') continue;
+      const std = play(std0, 12000);
       const quick = play(battle(seed, d, { research: 'lines', pace: 'quick' }, 'normal'), 12000);
       if (std.tick !== 12000 || quick.tick !== 12000) continue;
       n++;

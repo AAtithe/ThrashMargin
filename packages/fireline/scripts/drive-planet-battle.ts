@@ -18,6 +18,7 @@ import { missionContext, newCampaign } from '../src/campaign/progression';
 import { BIG_CITY_LEVEL, battleMapSize, battleMapSizeOf, buildPlanetBattle, planetBattleReport, simulateBattle } from '../src/planet/battle';
 import { attackTargets, battleSetupFor } from '../src/planet/battleSetup';
 import { planetMapOf } from '../src/planet/map';
+import { PLANET_TERRAINS } from '../src/planet/rules';
 import { attackOdds, quickResolve, sideStrength } from '../src/planet/resolve';
 import { migratePlanetSave, newPlanetSave } from '../src/planet/save';
 import { newPlanetState } from '../src/planet/state';
@@ -31,7 +32,6 @@ import { seedFromString, stream } from '../src/sim/rng';
 import {
   HERO_KINDS,
   MAP_SIZE_TILES,
-  MAP_TYPES,
   MODULES,
   MODULE_SLOTS,
   TICKS_PER_SECOND,
@@ -44,7 +44,8 @@ import {
   type UnitKind,
   type UpgradeId,
 } from '../src/sim/rules';
-import { addUnit, cloneState, createInitialState, migrateState } from '../src/sim/state';
+import { canQueue } from '../src/sim/commands';
+import { addUnit, cloneState, createInitialState, migrateState, techAllowed } from '../src/sim/state';
 import type { GameState } from '../src/sim/types';
 
 type Ok = (cond: unknown, what: string) => void;
@@ -64,6 +65,22 @@ const preSize = (s: GameState): unknown => {
   if (size !== 'standard') throw new Error(`skirmish recorded map size ${size}, expected standard`);
   if (sites !== false) throw new Error(`skirmish recorded sites ${sites}, expected false`);
   return { ...s, setup: rest };
+};
+/**
+ * A battle state as hashed before the naval war: main's 1608d33 gives every player an empty Naval
+ * queue, and a planet battle never has a navy (techAllowed), so the queue is checked empty, the
+ * computer's memory is checked free of a sea, and the queue is left out of the hash.
+ */
+const preNaval = (s: GameState): unknown => {
+  if (s.ai.some(m => m.navalShore !== undefined || m.landing !== undefined)) throw new Error('a planet battle looked for a sea');
+  return {
+    ...s,
+    players: s.players.map(p => {
+      if (p.queues.naval === undefined || p.queues.naval.length) throw new Error(`side ${p.owner}'s Naval queue is not empty`);
+      const { naval: _drop, ...queues } = p.queues;
+      return { ...p, queues };
+    }),
+  };
 };
 const tick = (s: GameState, n: number): GameState => {
   for (let i = 0; i < n; i += 600) s = processAction(s, { type: 'tick', n: Math.min(600, n - i) });
@@ -129,7 +146,7 @@ export function craftSetup(i: number): BattleSetup {
   const r = stream(seedFromString(`planet-battle-craft:${i}`));
   const n = (2 + (i % 3)) as 2 | 3 | 4;
   const who = Math.floor(i / 3) % 3; // 0 human attacker, 1 human defender, 2 none
-  const mapType = MAP_TYPES[i % MAP_TYPES.length];
+  const mapType = PLANET_TERRAINS[i % PLANET_TERRAINS.length];
   const independent = who !== 1 && i % 5 === 4;
   const cityLevel = 1 + r.int(0, 4);
   const lv = () => (1 + r.int(0, Math.min(2, cityLevel - 1))) as 1 | 2 | 3;
@@ -344,7 +361,23 @@ function buildTests(ok: Ok): void {
     c.units[0].core = 77;
     ok(s.planet!.city.length !== c.planet!.city.length && s.planet!.ai[0] !== 'passive' && s.units[0].core !== 77, `${t}: cloneState copies the planet runtime`);
   }
-  ok(seen.maps.size === MAP_TYPES.length, 'every map type covered');
+  ok(seen.maps.size === PLANET_TERRAINS.length, 'every planet terrain covered');
+  // The naval war (2026-11-11 merge): a planet battle has no navy. The Naval Yard and every ship
+  // are refused for every side, and the computer never looks for a sea, so its memory stays as
+  // before the naval war. A large Lakes battle, the likeliest to hold a sea, played a while.
+  {
+    const k = [...Array(SETUPS).keys()].find(j => craftSetup(j).mapType === 'lakes' && craftSetup(j).sides.length === 2)!;
+    const setup: BattleSetup = { ...craftSetup(k), mapSize: 'large' };
+    let s = buildPlanetBattle(setup, ids(k), { autopilot: true });
+    s.players.forEach(p => {
+      p.credits = 50000;
+      ok(!techAllowed(s, p.owner, 'shipyard') && !canQueue(s, p.owner, 'building', 'shipyard'), `planet battle: side ${p.owner} may not build a Naval Yard`);
+      for (const kind of Object.keys(UNITS) as UnitKind[]) if (UNITS[kind].category === 'naval') ok(!techAllowed(s, p.owner, kind), `planet battle: side ${p.owner} may not build a ${UNITS[kind].name}`);
+    });
+    s = tick({ ...s, autopilot: true }, 6000);
+    ok(!s.buildings.some(b => b.kind === 'shipyard') && !s.units.some(u => UNITS[u.kind].category === 'naval'), 'planet battle after 6,000 ticks: no Naval Yard, no ship');
+    ok(s.ai.every(m => m.navalShore === undefined), 'planet battle: the computer never looks for a sea');
+  }
   ok(seen.sides.size === 3, '2, 3 and 4 sides covered');
   ok(seen.who.size === 3, 'human attacker, human defender and no human side covered');
 }
@@ -632,130 +665,153 @@ function sizeTests(ok: Ok): void {
  * (the air war, 2026-11-11) 12 more were regenerated from origin/main's own code (f6798a8): Quiet
  * Man, Blackout and Last Light, all four each, which main's 2668bda rebuilt so a player can win them.
  * The skirmish hashes are again unchanged.
+ *
+ * At the merge with main's naval war (2026-11-11) every hash here was regenerated, story and
+ * skirmish, and the Coast skirmishes were added. Main's 1608d33 gives every player an empty Naval
+ * queue (`queues.naval`), so every state's JSON changed there, and main's computer (62f30b6) writes
+ * `navalShore: null` into its memory at its first decision in an advanced battle without a sea.
+ * Bisected: the 56 story hashes match the old ones at 1608d33's parent and origin/main's at 1608d33
+ * and at 345207f; the merged tree gives exactly origin/main's. Every old skirmish hash (62 of 62)
+ * equals the merged state with only the empty Naval queue and `navalShore: null` left out, so no
+ * battle played differently. The skirmish loop keeps the six map types of before (PRE_NAVAL_MAPS),
+ * so the seeds stay the same.
  */
 const STORY_HASHES: Record<string, string> = {
-  'first-light:default:0': '811641bc63b24a6a',
-  'first-light:default:600': '812bea5ba6994cd9',
-  'first-light:heroes:0': '811641bc63b24a6a',
-  'first-light:heroes:600': '812bea5ba6994cd9',
-  'quiet-man:default:0': 'ab7c11531e172774',
-  'quiet-man:default:600': '42ba109088bb3759',
-  'quiet-man:heroes:0': 'ab7c11531e172774',
-  'quiet-man:heroes:600': '42ba109088bb3759',
-  'hold-the-ford:default:0': '031181a70b4b863b',
-  'hold-the-ford:default:600': 'a9ed3f9e51b44186',
-  'hold-the-ford:heroes:0': '031181a70b4b863b',
-  'hold-the-ford:heroes:600': 'a9ed3f9e51b44186',
-  'demolition:default:0': 'e41665273b3d27fc',
-  'demolition:default:600': '5fd55f4cf9b83a12',
-  'demolition:heroes:0': 'be8caa56d99469ab',
-  'demolition:heroes:600': 'c9e80d75400dd433',
-  'borrowed-steel:default:0': '20947df3c8ebf600',
-  'borrowed-steel:default:600': '61f555a4f2e13952',
-  'borrowed-steel:heroes:0': 'ae813d3601895ad1',
-  'borrowed-steel:heroes:600': '999b2ec9c36886e8',
-  'ace-of-spades:default:0': 'e04947e732c29147',
-  'ace-of-spades:default:600': '82adff56777123ed',
-  'ace-of-spades:heroes:0': '72fb3a5f7b1909fa',
-  'ace-of-spades:heroes:600': '1a663addd7df8707',
-  'blackout:default:0': 'ff8abbf832ff9556',
-  'blackout:default:600': 'b306b9316f097efe',
-  'blackout:heroes:0': '488fc2cc00d88410',
-  'blackout:heroes:600': '9ed14923963b4d61',
-  'fireline:default:0': 'a04ea7c2fa164106',
-  'fireline:default:600': '7c8a9ff590ef1bb7',
-  'fireline:heroes:0': 'bc0eb59bb276b49f',
-  'fireline:heroes:600': '67242d31f60fe5b2',
-  'iron-coast:default:0': 'd9384af9038661e7',
-  'iron-coast:default:600': '5d49032094e8d299',
-  'iron-coast:heroes:0': 'd9384af9038661e7',
-  'iron-coast:heroes:600': '5d49032094e8d299',
-  'convoy-north:default:0': 'b1559d2a62d27df0',
-  'convoy-north:default:600': 'a09668530d69f963',
-  'convoy-north:heroes:0': 'b2e676465dfae66c',
-  'convoy-north:heroes:600': 'f1d6b1fd1a7d3314',
-  'the-long-hold:default:0': '970a2f907d138a47',
-  'the-long-hold:default:600': 'e793302eb80e3773',
-  'the-long-hold:heroes:0': '970a2f907d138a47',
-  'the-long-hold:heroes:600': 'e793302eb80e3773',
-  'firestorm:default:0': '9288c0f66ac19950',
-  'firestorm:default:600': 'a1a8412e66a3f670',
-  'firestorm:heroes:0': 'd32b9abaebaf09dd',
-  'firestorm:heroes:600': 'de23351541a8713e',
-  'bastion-line:default:0': 'd287e1928e60a48d',
-  'bastion-line:default:600': '341446e0d3fbefa3',
-  'bastion-line:heroes:0': '754b11f3a56ee6bc',
-  'bastion-line:heroes:600': 'e4a98f826ac1301a',
-  'last-light:default:0': 'c4c39686d239e62b',
-  'last-light:default:600': 'b298f846cfeba640',
-  'last-light:heroes:0': 'eb3a697cc014c96a',
-  'last-light:heroes:600': 'a2ed4f1aebb32890',
+  'first-light:default:0': '4d32cc24a875ca20',
+  'first-light:default:600': '0b40f116c96bc75b',
+  'first-light:heroes:0': '4d32cc24a875ca20',
+  'first-light:heroes:600': '0b40f116c96bc75b',
+  'quiet-man:default:0': '9237e24d5c74c195',
+  'quiet-man:default:600': '533bdfeb3e11284a',
+  'quiet-man:heroes:0': '9237e24d5c74c195',
+  'quiet-man:heroes:600': '533bdfeb3e11284a',
+  'hold-the-ford:default:0': '26a4e11ff53a03e0',
+  'hold-the-ford:default:600': 'e8d2d58642ff370c',
+  'hold-the-ford:heroes:0': '26a4e11ff53a03e0',
+  'hold-the-ford:heroes:600': 'e8d2d58642ff370c',
+  'demolition:default:0': '2fee103b7707df89',
+  'demolition:default:600': '4b22665d6a39adf5',
+  'demolition:heroes:0': '86b5194886c76d68',
+  'demolition:heroes:600': '61e9b6c3aebc4645',
+  'borrowed-steel:default:0': '94ef218267577b5e',
+  'borrowed-steel:default:600': '5f48eae5fd6c2561',
+  'borrowed-steel:heroes:0': '195bf3bc3df8846f',
+  'borrowed-steel:heroes:600': '262b0be488877654',
+  'ace-of-spades:default:0': '4067135d0056003a',
+  'ace-of-spades:default:600': '4d520070ff02dd13',
+  'ace-of-spades:heroes:0': '0600da83e5fce600',
+  'ace-of-spades:heroes:600': '7285ed044aacf17d',
+  'blackout:default:0': 'a5d6f7332e12611d',
+  'blackout:default:600': 'c642059495ac6a54',
+  'blackout:heroes:0': 'f49e86566206fda3',
+  'blackout:heroes:600': '0bd8fc4686c87ce0',
+  'fireline:default:0': 'cd0e02578cae62e2',
+  'fireline:default:600': '1f63850f989c36c3',
+  'fireline:heroes:0': '04604f12b9f67acd',
+  'fireline:heroes:600': '912b703355e7bfd1',
+  'iron-coast:default:0': 'f66347983a9dc50b',
+  'iron-coast:default:600': 'e0fb38e87d4023dc',
+  'iron-coast:heroes:0': 'f66347983a9dc50b',
+  'iron-coast:heroes:600': 'e0fb38e87d4023dc',
+  'convoy-north:default:0': 'c47404a3ffa6654e',
+  'convoy-north:default:600': '1302f969acb5ec17',
+  'convoy-north:heroes:0': '4c321309663c6f79',
+  'convoy-north:heroes:600': 'e8802d776ffc0d74',
+  'the-long-hold:default:0': '7a7b7bf697e1a4c1',
+  'the-long-hold:default:600': '0f629f8ac812684b',
+  'the-long-hold:heroes:0': '7a7b7bf697e1a4c1',
+  'the-long-hold:heroes:600': '0f629f8ac812684b',
+  'firestorm:default:0': '7a71921ed5cff59f',
+  'firestorm:default:600': 'e8d922453a6cd3ce',
+  'firestorm:heroes:0': '309dd21a42c3e690',
+  'firestorm:heroes:600': '9c7824cb24369e17',
+  'bastion-line:default:0': '6fc5d2821128734f',
+  'bastion-line:default:600': '7bbcc5455662cef3',
+  'bastion-line:heroes:0': '810baba742293293',
+  'bastion-line:heroes:600': 'd1637d55e5e54a7d',
+  'last-light:default:0': '06ce448aec1fdf35',
+  'last-light:default:600': '1dfb4e88a48e88b1',
+  'last-light:heroes:0': 'c964d53636dc6483',
+  'last-light:heroes:600': '9a88202fe4b5a701',
 };
 
 const SKIRMISH_HASHES: Record<string, string> = {
-  'sk:2:ffa:classic:0': '97337cf4047551e0',
-  'sk:2:ffa:classic:1500': '5b3a1bbcbf8eb038',
-  'sk:2:ffa:river:0': '9bec0d5611bbd47e',
-  'sk:2:ffa:river:1500': '89f8f055d566065a',
-  'sk:2:ffa:highlands:0': 'a3eb01caff3fbfc6',
-  'sk:2:ffa:highlands:1500': '86eecf3056b665f2',
-  'sk:2:ffa:lakes:0': '06aff79aa4fe5666',
-  'sk:2:ffa:lakes:1500': '007537c5c25a8bed',
-  'sk:2:ffa:plains:0': 'fb98001ef546cfd9',
-  'sk:2:ffa:plains:1500': '30ac4e8a9a713f33',
-  'sk:2:ffa:canyon:0': '9452aeac25b18321',
-  'sk:2:ffa:canyon:1500': '4f93349979304eeb',
-  'sk:3:ffa:classic:0': 'd75d5d530f068f4e',
-  'sk:3:ffa:classic:1500': '35c53a7098e0b7d1',
-  'sk:3:ffa:river:0': '16efc223c49b5e4d',
-  'sk:3:ffa:river:1500': '52ef3193d767c32f',
-  'sk:3:ffa:highlands:0': '747bc8149c51fcfb',
-  'sk:3:ffa:highlands:1500': '080213b7e093c5a1',
-  'sk:3:ffa:lakes:0': '8c160f9be7c82e8e',
-  'sk:3:ffa:lakes:1500': 'f1b11135d35c1ab8',
-  'sk:3:ffa:plains:0': '43a1a4df6bae0622',
-  'sk:3:ffa:plains:1500': 'e989e34b2b013693',
-  'sk:3:ffa:canyon:0': 'e2caa0272a727823',
-  'sk:3:ffa:canyon:1500': 'de814beef1491921',
-  'sk:3:teams:classic:0': '75cbc3a3b079a09f',
-  'sk:3:teams:classic:1500': 'ccf6c6edfa073b66',
-  'sk:3:teams:river:0': '7f7cc053922a1e2f',
-  'sk:3:teams:river:1500': '9eaad321baff4f3b',
-  'sk:3:teams:highlands:0': 'e89da7a26a7c4c3a',
-  'sk:3:teams:highlands:1500': '9ad4a9ecdac2eac4',
-  'sk:3:teams:lakes:0': 'cc41dac10e94d847',
-  'sk:3:teams:lakes:1500': '0af9799174e99023',
-  'sk:3:teams:plains:0': '464414d15cf93acc',
-  'sk:3:teams:plains:1500': '5a9f94a9997fb6a2',
-  'sk:3:teams:canyon:0': '76d50a19f9c748bf',
-  'sk:3:teams:canyon:1500': '1c56330aa5c7b0e9',
-  'sk:4:ffa:classic:0': 'c43500976b850c84',
-  'sk:4:ffa:classic:1500': 'd65ddafc893d0fad',
-  'sk:4:ffa:river:0': '65f6cd0d4d167772',
-  'sk:4:ffa:river:1500': '917b2bd840d2b310',
-  'sk:4:ffa:highlands:0': 'c06efea1ed1bca31',
-  'sk:4:ffa:highlands:1500': 'd3b2316667cfb65f',
-  'sk:4:ffa:lakes:0': 'b2244eecfa329590',
-  'sk:4:ffa:lakes:1500': '6f59cd4a67bad44f',
-  'sk:4:ffa:plains:0': '1ffddb27ca7654d1',
-  'sk:4:ffa:plains:1500': '7681ad6fda27a5f4',
-  'sk:4:ffa:canyon:0': '86c6cdd1253243f7',
-  'sk:4:ffa:canyon:1500': '234a2eb61e22972f',
-  'sk:4:teams:classic:0': '6f33760676a3666d',
-  'sk:4:teams:classic:1500': 'a6e0fe2c0fdd433e',
-  'sk:4:teams:river:0': '0f0c3fd18a0b942f',
-  'sk:4:teams:river:1500': 'beb72d066e375818',
-  'sk:4:teams:highlands:0': 'd5ef3bb17cac6143',
-  'sk:4:teams:highlands:1500': '5cbd1e0813231774',
-  'sk:4:teams:lakes:0': 'ff4393040e5201b6',
-  'sk:4:teams:lakes:1500': '6388956b53f040d5',
-  'sk:4:teams:plains:0': 'f764abf874a36500',
-  'sk:4:teams:plains:1500': '061b66be16d2aa64',
-  'sk:4:teams:canyon:0': '52d040ed0ff673f1',
-  'sk:4:teams:canyon:1500': '230d7a0cbef55f34',
-  'legacy:0': '53a4065f35605e52',
-  'legacy:1500': 'a81831e5a5b59b38',
+  'sk:2:ffa:classic:0': 'ed71f18ab424e830',
+  'sk:2:ffa:classic:1500': '0ea53dafd717c901',
+  'sk:2:ffa:river:0': '1b87ade792e3ac24',
+  'sk:2:ffa:river:1500': 'b93e03ad2d14893c',
+  'sk:2:ffa:highlands:0': '975fff7b2428b61f',
+  'sk:2:ffa:highlands:1500': '7483fb87a0655e0f',
+  'sk:2:ffa:lakes:0': 'fb03d36090640f80',
+  'sk:2:ffa:lakes:1500': 'f21a0aa6bea70948',
+  'sk:2:ffa:plains:0': '52ff5338846a23af',
+  'sk:2:ffa:plains:1500': '5379ab01e328dd0e',
+  'sk:2:ffa:canyon:0': '273adda4d6a40730',
+  'sk:2:ffa:canyon:1500': '68dba51d317f4b43',
+  'sk:3:ffa:classic:0': '32fde2eb6e623cfe',
+  'sk:3:ffa:classic:1500': '3db1ef6e17c25677',
+  'sk:3:ffa:river:0': '8964b6b5ce1cc427',
+  'sk:3:ffa:river:1500': 'bae08fb7be4a256e',
+  'sk:3:ffa:highlands:0': '8b590872e72d190e',
+  'sk:3:ffa:highlands:1500': 'a0aaeffab77a66d7',
+  'sk:3:ffa:lakes:0': 'b03cae33683cd426',
+  'sk:3:ffa:lakes:1500': 'd79521efd0cab81f',
+  'sk:3:ffa:plains:0': 'ba34cf25a5a6d232',
+  'sk:3:ffa:plains:1500': 'b399a340c3b1ce4a',
+  'sk:3:ffa:canyon:0': '1be77156b0e0da5a',
+  'sk:3:ffa:canyon:1500': '75769c6bed8e7a50',
+  'sk:3:teams:classic:0': 'ff510f9c613e1e96',
+  'sk:3:teams:classic:1500': '96ef515559fbacd9',
+  'sk:3:teams:river:0': 'bc1204237e7f397c',
+  'sk:3:teams:river:1500': '6b5e59ac0d222c0c',
+  'sk:3:teams:highlands:0': '6b68fadd5730fb52',
+  'sk:3:teams:highlands:1500': 'c795e4ff37950041',
+  'sk:3:teams:lakes:0': 'c002aa41f43f8948',
+  'sk:3:teams:lakes:1500': 'f69168de5412c089',
+  'sk:3:teams:plains:0': '6d06dc8e89238810',
+  'sk:3:teams:plains:1500': 'f6e59a15dd10e77b',
+  'sk:3:teams:canyon:0': 'eeb005fcd0aef53d',
+  'sk:3:teams:canyon:1500': '8ae2a3a4efd50afa',
+  'sk:4:ffa:classic:0': '4f6c6a5262056860',
+  'sk:4:ffa:classic:1500': '34f97c7c3fc97de8',
+  'sk:4:ffa:river:0': 'a93e6c7d3eb7d287',
+  'sk:4:ffa:river:1500': '39d463ebab3919da',
+  'sk:4:ffa:highlands:0': '7c1148100e52160b',
+  'sk:4:ffa:highlands:1500': '2a8c3756b2975455',
+  'sk:4:ffa:lakes:0': '2c9563a450a85dd4',
+  'sk:4:ffa:lakes:1500': 'ad9e446a6dc7038a',
+  'sk:4:ffa:plains:0': '9bfd06445745a133',
+  'sk:4:ffa:plains:1500': '710a3ce7cb2a55ef',
+  'sk:4:ffa:canyon:0': 'f354741c727a7861',
+  'sk:4:ffa:canyon:1500': '625273b4be38b4c0',
+  'sk:4:teams:classic:0': '4463a125f6ce003f',
+  'sk:4:teams:classic:1500': 'b0b7312fbd1fe7ac',
+  'sk:4:teams:river:0': 'ee23564ba65a3f2a',
+  'sk:4:teams:river:1500': 'b78aa9bec7c49eec',
+  'sk:4:teams:highlands:0': '23798a7752ca8d60',
+  'sk:4:teams:highlands:1500': '6808d94fb075182a',
+  'sk:4:teams:lakes:0': '68e4d938c5563025',
+  'sk:4:teams:lakes:1500': 'b6601ea18101945e',
+  'sk:4:teams:plains:0': '3c8a9fc15443a758',
+  'sk:4:teams:plains:1500': '16d7771706e7f8dc',
+  'sk:4:teams:canyon:0': 'bd331120e930714b',
+  'sk:4:teams:canyon:1500': '641ad69a980261bb',
+  'sk:2:ffa:coast:0': '2d71d2c8a5f794f3',
+  'sk:2:ffa:coast:1500': '55c47b430f1dbccd',
+  'sk:3:ffa:coast:0': 'c6ab9c457f4faed1',
+  'sk:3:ffa:coast:1500': '8989780c514d6e7e',
+  'sk:3:teams:coast:0': 'dae6c93f05dcad4b',
+  'sk:3:teams:coast:1500': '3b576bb494b3a280',
+  'sk:4:ffa:coast:0': 'efe45c054ff9d1c8',
+  'sk:4:ffa:coast:1500': '1fd48f41b9ce244d',
+  'sk:4:teams:coast:0': '30ec835a4e4630b9',
+  'sk:4:teams:coast:1500': '5e3e9cf11a73be0f',
+  'legacy:0': '15e419dad417c40a',
+  'legacy:1500': '0d0d7441bef53bca',
 };
+
+/** The six map types before the naval war, in their order then: the seeds above follow it. */
+const PRE_NAVAL_MAPS: MapType[] = ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon'];
 
 function storyTests(ok: Ok): void {
   const c0 = newCampaign('T');
@@ -772,7 +828,7 @@ function storyTests(ok: Ok): void {
   let k = 0;
   for (const sides of [2, 3, 4] as const)
     for (const mode of ['ffa', 'teams'] as const)
-      for (const map of MAP_TYPES) {
+      for (const map of PRE_NAVAL_MAPS) {
         if (sides === 2 && mode === 'teams') continue;
         k++;
         let s = createInitialState('sk', 'Sk', { seed: `hash${k}`, createdAt: 0, autopilot: true, setup: { map, tech: k % 2 ? 'advanced' : 'standard', credits: 5000, ore: 'normal', sides, mode, research: k % 3 ? 'lines' : 'classic' } });
@@ -780,6 +836,17 @@ function storyTests(ok: Ok): void {
         s = tick(s, 1500);
         ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:1500`], `skirmish ${sides} ${mode} ${map} byte-identical after 1,500 ticks`);
       }
+  // The Coast map (the naval war): advanced tech, where navies sail, recorded at the merge.
+  let c = 0;
+  for (const sides of [2, 3, 4] as const)
+    for (const mode of ['ffa', 'teams'] as const) {
+      if (sides === 2 && mode === 'teams') continue;
+      c++;
+      let s = createInitialState('sk', 'Sk', { seed: `coast${c}`, createdAt: 0, autopilot: true, setup: { map: 'coast', tech: 'advanced', credits: 5000, ore: 'normal', sides, mode, research: c % 2 ? 'lines' : 'classic' } });
+      ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:0`], `skirmish ${sides} ${mode} coast byte-identical at tick 0`);
+      s = tick(s, 1500);
+      ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:1500`], `skirmish ${sides} ${mode} coast byte-identical after 1,500 ticks`);
+    }
   let s = createInitialState('legacy', 'L', { seed: 'legacy', createdAt: 0, autopilot: true });
   ok(hash(s) === SKIRMISH_HASHES['legacy:0'], 'the original game byte-identical at tick 0');
   s = tick(s, 1500);
@@ -908,7 +975,8 @@ function warTests(ok: Ok): void {
  * the v1 fixture's pending battle built and after 600 autopilot ticks, the fixture played 5 bot turns,
  * and a Short and a Long war on battle rules 1 played 25 turns with every attack open each turn set
  * up (count:hash), the bigger battles among them built at tick 0, and the war at the end. A war saved
- * before larger maps must give every one of them exactly.
+ * before larger maps must give every one of them exactly. Since the merge with main's naval war the
+ * battles are hashed without their empty Naval queue (preNaval), which they then gain; nothing else.
  */
 const OLD_WAR_HASHES: Record<string, string> = {
   fxBattle0: 'd09e37150885fa44',
@@ -944,7 +1012,7 @@ function warWithSetups(w: PlanetState, turns: number, build: (st: BattleSetup) =
         const st = battleSetupFor(w, f.id, r, 0, [], 9000 + setups.length);
         if (!st) continue;
         setups.push(st);
-        if (build(st)) built.push(hash(buildPlanetBattle(st, { id: 'o', name: 'o', createdAt: 0 })));
+        if (build(st)) built.push(hash(preNaval(buildPlanetBattle(st, { id: 'o', name: 'o', createdAt: 0 }))));
       }
     }
     w = botTurn(w);
@@ -1091,9 +1159,9 @@ function mapSizeTests(ok: Ok): void {
   const fx = migratePlanetSave(JSON.parse(readFileSync(fxPath, 'utf8')))!;
   ok(fx.planet.battleRules === undefined && !('mapSize' in fx.planet.pending[0].setup), 'the v1 fixture stays on battle rules 1 with a standard map');
   let g = buildPlanetBattle(fx.planet.pending[0].setup, { id: 'fx', name: 'Fixture', createdAt: 0 }, { autopilot: true });
-  ok(hash(g) === OLD_WAR_HASHES.fxBattle0, "the fixture's battle byte-identical at tick 0");
+  ok(hash(preNaval(g)) === OLD_WAR_HASHES.fxBattle0, "the fixture's battle byte-identical at tick 0");
   g = processAction(g, { type: 'tick', n: 600 });
-  ok(hash(g) === OLD_WAR_HASHES.fxBattle600, "the fixture's battle byte-identical after 600 ticks");
+  ok(hash(preNaval(g)) === OLD_WAR_HASHES.fxBattle600, "the fixture's battle byte-identical after 600 ticks");
   let t = applyPlanetAction(fx.planet, { type: 'autoResolve' });
   for (let i = 0; i < 5 && !t.result; i++) t = botTurn(t);
   ok(hash(t) === OLD_WAR_HASHES.fxPlayed, 'the fixture played 5 turns byte-identical');

@@ -321,6 +321,13 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
     case 'heavybomber':
       drawHeavyBomber(ctx, team, pose);
       break;
+    case 'gunboat':
+    case 'destroyer':
+    case 'submarine':
+    case 'battleship':
+    case 'landingcraft':
+      drawShip(ctx, kind, team, pose);
+      break;
     // round5:C begin. Engineering vehicles (fireline-round5-design.md): its units' cases, appended here.
     case 'repairtruck':
       drawEngineeringCached(ctx, kind, owner, team, pose, 22, [24, 13]);
@@ -1638,6 +1645,9 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
       break;
     case 'helipad':
       drawHelipad(ctx, w, h, team, pose);
+      break;
+    case 'shipyard':
+      drawShipyard(ctx, w, h, team, pose);
       break;
     case 'flakcannon':
       drawFlakCannon(ctx, w, h, team, pose);
@@ -5216,3 +5226,228 @@ export function drawSiteLayer(ctx: Ctx, s: GameState, explored: string, vis: Uin
   }
 }
 // round5:D end.
+
+// ---- The naval war (2026-11-11) ----------------------------------------------------------------
+
+type ShipKind = 'gunboat' | 'destroyer' | 'submarine' | 'battleship' | 'landingcraft';
+
+/** Hull length and beam of each ship, in pixels, nose along +x. */
+const SHIP_SIZE: Record<ShipKind, [number, number]> = {
+  gunboat: [22, 7],
+  destroyer: [34, 9],
+  submarine: [30, 7],
+  battleship: [50, 14],
+  landingcraft: [30, 13],
+};
+
+/** A pointed hull outline, nose along +x: L long, B wide, with a square stern. */
+function hullPath(ctx: Ctx, L: number, B: number, blunt = false) {
+  ctx.beginPath();
+  ctx.moveTo(L / 2, 0);
+  if (blunt) {
+    ctx.lineTo(L / 2 - 2, -B / 2);
+  } else {
+    ctx.quadraticCurveTo(L / 2 - L * 0.12, -B / 2, L / 2 - L * 0.32, -B / 2);
+  }
+  ctx.lineTo(-L / 2, -B / 2 + 0.5);
+  ctx.lineTo(-L / 2, B / 2 - 0.5);
+  if (blunt) ctx.lineTo(L / 2 - 2, B / 2);
+  else {
+    ctx.lineTo(L / 2 - L * 0.32, B / 2);
+    ctx.quadraticCurveTo(L / 2 - L * 0.12, B / 2, L / 2, 0);
+  }
+  ctx.closePath();
+}
+
+/** A gun turret on deck at (x, 0), turned to `turret` (relative to the hull), barrels `n` of length `len`. */
+function deckGun(ctx: Ctx, x: number, r: number, turret: number, len: number, n: number, team: Team, kick: number) {
+  ctx.save();
+  ctx.translate(x, 0);
+  ctx.rotate(turret);
+  ctx.fillStyle = '#2a2e30';
+  for (let i = 0; i < n; i++) {
+    const off = n === 1 ? 0 : (i - (n - 1) / 2) * 1.6;
+    ctx.fillRect(r * 0.4 - kick, off - 0.55, len, 1.1);
+  }
+  ctx.fillStyle = team.main;
+  circle(ctx, 0, 0, r);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Every ship: a wake while it moves, its hull in the team's colours, and the kind's own deck: the
+ * Patrol Boat a gun tub, the Destroyer a forward turret and a sonar dome, the Submarine its conning
+ * tower and little else, the Battleship three triple turrets, the Landing Craft an open well that
+ * fills with the troops aboard (pose.cargo).
+ */
+function drawShip(ctx: Ctx, kind: ShipKind, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  const [L, B] = SHIP_SIZE[kind];
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  const kick = firing ? Math.max(0, 1.4 - p.sinceShot * 10) : 0;
+  ctx.save();
+  ctx.rotate(p.hull);
+  // Wake: a foam V spreading behind, and a bow wave, only while under way.
+  if (p.moving) {
+    const flick = Math.sin(p.t * 9) * 0.6;
+    ctx.strokeStyle = 'rgba(235,245,250,0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-L / 2, -B / 2 + 1);
+    ctx.lineTo(-L / 2 - L * 0.45, -B * 1.1 - flick);
+    ctx.moveTo(-L / 2, B / 2 - 1);
+    ctx.lineTo(-L / 2 - L * 0.45, B * 1.1 + flick);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(235,245,250,0.4)';
+    ctx.beginPath();
+    ctx.ellipse(-L / 2 - 2, 0, 3.5, B / 2, 0, 0, TAU);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(L / 2 - 1, 0, 2, B / 2 + 1, 0, 0, TAU);
+    ctx.fill();
+  }
+  // Shadow on the water, then the hull.
+  ctx.fillStyle = 'rgba(0,20,30,0.28)';
+  hullPath(ctx, L + 2, B + 2, kind === 'landingcraft');
+  ctx.fill();
+  const sub = kind === 'submarine';
+  ctx.fillStyle = sub ? litGrad(ctx, p.hull, L / 2, '#4a5257', '#23292c') : litGrad(ctx, p.hull, L / 2, '#a9b0ae', '#6b7372');
+  if (sub) {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, L / 2, B / 2, 0, 0, TAU);
+  } else hullPath(ctx, L, B, kind === 'landingcraft');
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 0.9;
+  ctx.stroke();
+  // A team-coloured stripe along the gunwale (the sub: a band across its deck).
+  ctx.fillStyle = team.main;
+  if (sub) ctx.fillRect(-L * 0.3, -B / 2 + 1, 3, B - 2);
+  else {
+    ctx.fillRect(-L / 2 + 1, -B / 2 + 0.5, L * 0.6, 1.1);
+    ctx.fillRect(-L / 2 + 1, B / 2 - 1.6, L * 0.6, 1.1);
+  }
+  const turret = Math.atan2(Math.sin(p.turret - p.hull), Math.cos(p.turret - p.hull));
+  if (kind === 'gunboat') {
+    ctx.fillStyle = team.light;
+    rrect(ctx, -4, -2.4, 7, 4.8, 1.2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(25,45,60,0.85)';
+    ctx.fillRect(0.5, -1.6, 1.6, 3.2);
+    deckGun(ctx, 6.5, 1.8, turret, 5, 2, team, kick);
+  } else if (kind === 'destroyer') {
+    ctx.fillStyle = team.light;
+    rrect(ctx, -7, -3, 11, 6, 1.5);
+    ctx.fill();
+    ctx.fillStyle = '#2b3033';
+    circle(ctx, -9.5, 0, 1.6);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(25,45,60,0.85)';
+    ctx.fillRect(1.5, -2.2, 2, 4.4);
+    // Sonar dome at the bow, pulsing.
+    ctx.fillStyle = `rgba(160,220,255,${0.35 + 0.25 * Math.sin(p.t * 3)})`;
+    circle(ctx, L / 2 - 5, 0, 1.5);
+    ctx.fill();
+    deckGun(ctx, 9, 2.6, turret, 7, 1, team, kick);
+    deckGun(ctx, -12.5, 2, turret, 5, 1, team, kick * 0.5);
+  } else if (kind === 'submarine') {
+    ctx.fillStyle = '#1b2023';
+    rrect(ctx, -2, -1.8, 7, 3.6, 1.6);
+    ctx.fill();
+    ctx.fillStyle = team.main;
+    ctx.fillRect(-1, -0.6, 5, 1.2);
+    ctx.strokeStyle = '#1b2023';
+    ctx.lineWidth = 0.9;
+    ctx.beginPath();
+    ctx.moveTo(3, 0);
+    ctx.lineTo(3, -4);
+    ctx.stroke();
+    // Fins at the stern.
+    ctx.fillStyle = '#23292c';
+    ctx.fillRect(-L / 2 - 1, -B / 2 - 1.4, 3, B + 2.8);
+  } else if (kind === 'battleship') {
+    ctx.fillStyle = team.light;
+    rrect(ctx, -8, -4.4, 14, 8.8, 2);
+    ctx.fill();
+    ctx.fillStyle = '#2b3033';
+    rrect(ctx, -4, -2.2, 4, 4.4, 1);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(25,45,60,0.85)';
+    ctx.fillRect(3, -3, 2.2, 6);
+    deckGun(ctx, 17, 3.6, turret, 10, 3, team, kick);
+    deckGun(ctx, 10.5, 3.4, turret, 9, 3, team, kick);
+    deckGun(ctx, -16, 3.4, turret, 9, 3, team, kick);
+    emblem(ctx, team, -2, 0, 1.6);
+  } else {
+    // The Landing Craft: an open well with seats that fill, a wheelhouse aft, a ramp at the bow.
+    ctx.fillStyle = '#3a4042';
+    rrect(ctx, -9, -B / 2 + 2, 20, B - 4, 1.5);
+    ctx.fill();
+    const seats = 6;
+    const filled = Math.round(Math.max(0, Math.min(1, p.cargo)) * seats);
+    for (let i = 0; i < seats; i++) {
+      ctx.fillStyle = i < filled ? team.light : 'rgba(90,96,98,0.6)';
+      rrect(ctx, -7.5 + (i % 3) * 6, i < 3 ? -3.6 : 0.8, 4.4, 2.8, 0.8);
+      ctx.fill();
+    }
+    ctx.fillStyle = team.dark;
+    ctx.fillRect(L / 2 - 3, -B / 2 + 1.5, 2.2, B - 3);
+    ctx.fillStyle = team.main;
+    rrect(ctx, -L / 2 + 1, -3, 4.5, 6, 1);
+    ctx.fill();
+  }
+  hullDamage(ctx, hp, p.t, L * 0.5, B * 0.5, 'both');
+  ctx.restore();
+}
+
+/**
+ * The Naval Yard: a concrete apron with a slipway running to its seaward side, a hull on the stocks,
+ * a gantry crane in the team's colours and a lamp that shows power.
+ */
+function drawShipyard(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  // The slipway: a dark trough with rails, and a hull being built on it.
+  ctx.fillStyle = '#2d3335';
+  rrect(ctx, w * 0.18, h * 0.2, w * 0.64, h * 0.6, 3);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(200,200,190,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(w * 0.25, h * 0.32);
+  ctx.lineTo(w * 0.75, h * 0.32);
+  ctx.moveTo(w * 0.25, h * 0.68);
+  ctx.lineTo(w * 0.75, h * 0.68);
+  ctx.stroke();
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.fillStyle = litGrad(ctx, 0, 14, '#a9b0ae', '#6b7372');
+  hullPath(ctx, w * 0.5, h * 0.22);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.fillStyle = team.main;
+  ctx.fillRect(-w * 0.2, -1, w * 0.3, 2);
+  ctx.restore();
+  // Gantry crane across the slipway, its trolley sliding while powered.
+  ctx.fillStyle = team.dark;
+  ctx.fillRect(w * 0.14, h * 0.12, 4, h * 0.76);
+  ctx.fillRect(w * 0.86 - 4, h * 0.12, 4, h * 0.76);
+  ctx.fillStyle = team.main;
+  ctx.fillRect(w * 0.14, h * 0.12, w * 0.72, 3.5);
+  const slide = on ? (Math.sin(p.t * 0.6) * 0.5 + 0.5) * (w * 0.6) : w * 0.3;
+  ctx.fillStyle = '#e0c040';
+  ctx.fillRect(w * 0.17 + slide, h * 0.1, 5, 6);
+  // Bollards along the apron and the power lamp.
+  ctx.fillStyle = '#2b2f30';
+  for (let i = 0; i < 4; i++) {
+    circle(ctx, w * 0.2 + i * w * 0.2, h - 5, 1.6);
+    ctx.fill();
+  }
+  lamp(ctx, w - 7, 7, on, '#7dff8a', p.t, 2);
+}

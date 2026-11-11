@@ -12,7 +12,7 @@ import { launchAircraft } from '../src/sim/air';
 import { occupancy } from '../src/sim/grid';
 import { loadoutCost, loadoutOf, loadoutProblem, queueCostFor } from '../src/sim/loadout';
 import { createMissionState } from '../src/sim/mission';
-import { damageTakenMul, doctrineProblem, hasUpgrade, migrateResearch, researchProblem, upgradeNewUnit } from '../src/sim/research';
+import { buildRateOf, damageTakenMul, doctrineProblem, hasUpgrade, kindDamageMulOf, migrateResearch, reloadMulOf, researchProblem, splashMulOf, upgradeNewUnit } from '../src/sim/research';
 import {
   AIR_AMMO,
   AIRFRAMES_HP,
@@ -20,6 +20,7 @@ import {
   AVIONICS_SPEED,
   BUILDINGS,
   CALIBRATION_DAMAGE,
+  HEAT_KINDS,
   COMPOSITE_TAKEN,
   DAMAGE_VS,
   DEFAULT_SETUP,
@@ -40,6 +41,7 @@ import {
   MODULE_VEHICLES,
   MOTORISED_SPEED,
   MUNITIONS_DAMAGE,
+  NAVAL_MENU,
   ORE_CAGE_CARGO,
   PLATING2_HP,
   PLATING_HP,
@@ -347,6 +349,51 @@ function airWarAircraft(ok: Ok): void {
     ok(!!bHe && near(bHe.splash, hw.splash! * HE_SPLASH), `highexplosive: a heavy bomb's splash ${hw.splash! * HE_SPLASH} (${bHe?.splash})`);
   }
   ok(UPGRADES.munitions.blurb.includes('Interceptor'), "munitions: the blurb names the Interceptor's missiles");
+}
+
+/**
+ * The naval war's ships in development lines (the merge with main's naval war, 2026-11-11): no line
+ * of their own and no module. They are not vehicles or aircraft, so the Armour, Engines and Air lines,
+ * Autoloaders, Field workshops and Salvage crews pass them by; what reaches every weapon or every
+ * unit queue reaches them as it reaches the rest: Calibration, HEAT rounds for the Destroyer's
+ * shells, High-explosive fill for the Battleship's blast, and Assembly lines for the Naval queue.
+ */
+function ships(ok: Ok): void {
+  const EVERY_LINE: UpgradeId[] = LINE_ORDER.flatMap(l => [...LINES[l].marks, ...LINES[l].fork]);
+  for (const k of NAVAL_MENU) {
+    ok(UNITS[k].category === 'naval' && !MODULE_SLOTS[k] && MODULE_ORDER.every(m => !MODULES[m].fits.includes(k)), `${k}: a ship, no module slots, no module fits it`);
+    const { s } = lab(`ships-${k}`);
+    s.players[0].upgrades = EVERY_LINE.slice();
+    const u = addUnit(s, 0, k, 2.5, 2.5);
+    upgradeNewUnit(s, u);
+    ok(u.maxHp === undefined || u.maxHp === UNITS[k].hp, `every line researched: a new ${k} keeps ${UNITS[k].hp} health (${u.maxHp ?? u.hp})`);
+    ok((Object.keys(DAMAGE_VS) as (keyof typeof DAMAGE_VS)[]).every(w => damageTakenMul(s, u, w) === 1), `every line researched: a ${k} takes full damage from every weapon`);
+    ok(reloadMulOf(s, u) === 1, `autoloaders: a ${k} reloads as before`);
+    const w = UNITS[k].weapon;
+    if (w) ok(kindDamageMulOf(s, 0, w.kind) === (HEAT_KINDS.includes(w.kind) ? HEAT_DAMAGE : 1), `HEAT rounds: a ${k}'s ${w.kind} x${kindDamageMulOf(s, 0, w.kind)}`);
+  }
+  {
+    const { s } = lab('ships-queue');
+    ok(buildRateOf(s, 0, 'naval') === 1, 'no Assembly lines: the Naval queue at its own rate');
+    s.players[0].upgrades = ['refining', 'refining2', 'assembly'];
+    ok(buildRateOf(s, 0, 'naval') === ASSEMBLY_RATE && UPGRADES.assembly.blurb.includes('ships'), `Assembly lines: the Naval queue x${ASSEMBLY_RATE}, and the blurb says so`);
+    s.players[0].upgrades = ['calibration', 'autoloaders', 'highexplosive'];
+    ok(splashMulOf(s, 0) === HE_SPLASH && !!UNITS.battleship.weapon?.splash, "High-explosive fill: the Battleship's blast is one it widens");
+  }
+  // Engines: a ship sails no faster with the Engines line done (its speed is its own).
+  const sail = (ups: UpgradeId[]): number => {
+    const { s, cx, cy } = lab('ships-sail');
+    const tiles = s.tiles.split('');
+    for (let y = cy - 8; y <= cy + 8; y++) for (let x = cx - 8; x <= cx + 8; x++) tiles[y * s.mapW + x] = 'w';
+    s.tiles = tiles.join('');
+    s.players[0].upgrades = ups;
+    const u = put(s, 0, 'destroyer', cx - 7.5, cy + 0.5);
+    let t = processAction(s, { type: 'move', ids: [u.id], x: cx + 7.5, y: cy + 0.5 });
+    t = tick(t, 40);
+    return unitIn(t, u.id)!.x - (cx - 7.5);
+  };
+  const base = sail([]);
+  ok(base > 1 && near(sail(['engines', 'engines2', 'motorised']), base), `engines: a Destroyer sails ${base.toFixed(2)} tiles either way`);
 }
 
 /** Classic battles, missions and standard tech refuse everything new. */
@@ -1266,6 +1313,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Lines: effects', quietCommander(effects)],
   ['Lines: loadouts', quietCommander(loadouts)],
   ['Lines: the air war\'s aircraft', quietCommander(airWarAircraft)],
+  ['Lines: the naval war\'s ships', quietCommander(ships)],
   ['Lines: the computer', computer],
   ['Lines: a hand-played battle replays exactly', quietCommander(handReplay)],
   ['Lines: replay and old saves', replayAndOldSaves],
