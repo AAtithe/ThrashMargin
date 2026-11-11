@@ -628,6 +628,7 @@ export function Battle({
       if (b.kind === 'barracks') setTab('infantry');
       if (b.kind === 'factory') setTab('vehicle');
       if (b.kind === 'helipad') setTab('air');
+      if (b.kind === 'shipyard') setTab('naval');
       if (b.kind === 'hq') setTab('building');
     }
     sound.play('select');

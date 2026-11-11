@@ -222,16 +222,19 @@ export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: numb
   if (t.landing) landing(s, owner, t, home, enemy, ships, yard);
 }
 
-/** The opponent's Naval Yard, or else its structure nearest open water: where a fleet can reach. */
-function coastalTarget(s: GameState, enemy: Building[]): Building | null {
+/**
+ * The opponent's Naval Yard, or else its structure nearest open water, within `reach` tiles of it:
+ * where a fleet can shoot (8) or a landing can walk (14).
+ */
+function coastalTarget(s: GameState, enemy: Building[], reach = 8): Building | null {
   const yard = enemy.find(b => b.kind === 'shipyard');
   if (yard) return yard;
   let best: Building | null = null;
-  let bestD = 9;
+  let bestD = reach + 1;
   for (const b of enemy) {
     const spec = BUILDINGS[b.kind];
-    for (let y = b.y - 8; y <= b.y + spec.h + 8; y++)
-      for (let x = b.x - 8; x <= b.x + spec.w + 8; x++) {
+    for (let y = b.y - reach; y <= b.y + spec.h + reach; y++)
+      for (let x = b.x - reach; x <= b.x + spec.w + reach; x++) {
         if (x < 0 || y < 0 || x >= s.mapW || y >= s.mapH || s.tiles.charCodeAt(y * s.mapW + x) !== 119) continue;
         const c = buildingCentre(b);
         const d = dist(x + 0.5, y + 0.5, c.x, c.y);
@@ -304,7 +307,8 @@ function landing(s: GameState, owner: Owner, t: NavalTactics, home: { x: number;
   }
   if (used < Math.min(4, t.landing)) return;
   const refineries = enemy.filter(b => b.kind === 'refinery');
-  const target = coastalTarget(s, refineries.length ? refineries : enemy) ?? coastalTarget(s, enemy);
+  // A refinery the troops can walk to from a beach; else any structure they can.
+  const target = (refineries.length ? coastalTarget(s, refineries, 14) : null) ?? coastalTarget(s, enemy, 14);
   if (!target) return;
   const tc = buildingCentre(target);
   doBoard(s, owner, troops.map(u => u.id), c.id);
