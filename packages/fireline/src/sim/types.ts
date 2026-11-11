@@ -319,6 +319,20 @@ export interface AiMemory {
   /** The tick before which no new airlift sets out. */
   nextAirlift?: number;
   /**
+   * The naval war (aiNaval.ts): a water tile of the sea its navy uses, worked out at its first
+   * naval decision (null: no sea near home that reaches the opponent; absent: not yet looked).
+   */
+  navalShore?: [number, number] | null;
+  /** Building Generators toward the shore, to bring a Naval Yard within reach, and how many so far. */
+  navalCreep?: boolean;
+  navalCreepSteps?: number;
+  /** The tick the next fleet strike may sail. */
+  nextNavalStrike?: number;
+  /** A landing under way: the Landing Craft, its troops, where they land and what they attack. */
+  landing?: { craft: number; ids: number[]; x: number; y: number; target: number; phase: 'board' | 'sail'; since: number } | null;
+  /** The tick before which no new landing sets out. */
+  nextLanding?: number;
+  /**
    * An airlift under way (aiAir.ts): the Troop Carrier, the infantry it is taking, where it sets
    * them down and what they then attack, the step ('board', 'fly') and when that step began.
    */

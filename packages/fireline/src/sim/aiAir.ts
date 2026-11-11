@@ -313,7 +313,7 @@ function lastStand(s: GameState, owner: Owner, armed: number): void {
  * that is not enough it still takes them back, so the credits build up over the next decisions
  * instead of going straight into more units. True once `need` is in hand.
  */
-function fund(s: GameState, owner: Owner, need: number): boolean {
+export function fund(s: GameState, owner: Owner, need: number): boolean {
   const p = s.players[owner];
   const spare = (k: string) => k !== 'hauler' && k !== 'skyhunter' && k !== 'flaktrack';
   for (const cat of ['vehicle', 'infantry'] as const) {
@@ -332,7 +332,7 @@ function fund(s: GameState, owner: Owner, need: number): boolean {
  * Queues a structure when nothing else is building; a Generator first when it would take power too
  * low (as the commander's own plan does).
  */
-function queueStructure(s: GameState, owner: Owner, kind: BuildingKind): void {
+export function queueStructure(s: GameState, owner: Owner, kind: BuildingKind): void {
   const p = s.players[owner];
   if (p.queues.building.length) return;
   const pw = powerOf(s, owner);

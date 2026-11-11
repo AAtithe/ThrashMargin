@@ -512,3 +512,40 @@ scrambles, airlifts and their commander. The merge keeps this contract's rules:
   order, so a boarder leaves its squad (`doMove`). A General's air discount and rearm doctrine (Ilse)
   reach every aircraft with a role, the air war's included.
 
+
+---
+
+## 9. Merged with main's naval war (2026-11-11)
+
+Main gained the naval war (`fireline-design.md`, "The naval war, and the Coast map"): the Coast map,
+five ships, the Naval Yard, Landing Craft and the computer's navy (`aiNaval.ts`). The merge keeps
+this contract's rules:
+
+- **Both armies sail the navy unchanged.** The ships are on `NAVAL_MENU` (a fifth queue, `naval`),
+  which neither army's `remove` touches, and no overlay names a ship or the Naval Yard:
+  `unitSpecFor(f, k) === UNITS[k]` and `buildingSpecFor(f, 'shipyard') === BUILDINGS.shipyard` for both
+  armies (asserted). Meridian keeps the catalogue's exact numbers and order. Where a side is known,
+  main's naval code reads numbers through the per-side lookups: the commander's ship prices
+  (`unitSpec`), its warships' and landing troops' weapons (`unitSpecOf`), and the Landing Craft's and
+  Troop Carrier's names in the log. Footprints, `category`, `stealth`, `detector` and `carries` are
+  identity fields an overlay cannot hold, so `naval.ts`, `transport.ts` and `air.ts` may read the
+  catalogue for them (main's `canHit` and `isShip` branch on `category`, never a kind name). The
+  build window's per-army catalogue (`techTree.ts`) now takes its lists from every key of `MENUS`,
+  so its Naval tab is the army's own; it had been four tabs long.
+- **Build keys.** The Naval Yard goes after the Fortress and before round 6's Command Academy, so
+  turning Heroes on moves nothing already listed; all three are past the fourteenth Structure and
+  keyless (the key table names the Naval Yard). The Naval list is the five ships for both armies,
+  every one keyed, no recruits on it. `drive-factions.ts`'s key checks now cover the Naval tab too.
+- **Formations are for land units.** `formsUp` (formations.ts): infantry and vehicles. A ship, like
+  an aircraft, takes a rear slot in a formation move but never joins the squad, so it never sets a
+  squad's pace or leads it; two ships, or one ship and one land unit, cannot form up (the same state
+  back); `migrateRound6` drops ships and aircraft from a saved squad. The computer's ships never join
+  a wave (main's filter, kept beside round 6's `keptBack`), so never a wedge or a box.
+- **Who boards.** The field General boards no carrier, by sea or air (`canRide`), for the reason
+  section 8 gave; heroes could not already. Main's landings pick riders through `canRide`, so the
+  computer's General and heroes stay ashore; boarding is an order, so a squad member that boards
+  leaves its squad.
+- **The computer.** Main's naval plan runs for both armies unchanged, once a decision after the air
+  plan, alongside round 6's per-army mixes, kept-back heroes, General and formations. Asserted on
+  the Coast map at Hard with heroes and Generals on, from both seats: each army's commander builds a
+  Naval Yard, no ship is ever in a wave or a squad, and no General or hero is ever aboard.

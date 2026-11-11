@@ -24,7 +24,7 @@ export type Owner = 0 | 1 | 2 | 3;
 /** The most sides a battle can have. */
 export const MAX_SIDES = 4;
 
-export type Armor = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
+export type Armor = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft' | 'ship';
 /**
  * 'flame' is the Flame Tank's short-range burst; 'missile' is the Strike Command's one huge strike
  * (a support power, never a unit's weapon). Grenadiers lob 'artillery' (it arcs and scatters).
@@ -34,7 +34,7 @@ export type Armor = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
  * exhaustive tables (DAMAGE_VS, FLIGHT_TICKS, the build tip's weapon names) are complete; nothing
  * fires it until workstream D adds a unit that carries it.
  */
-export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb' | 'rail';
+export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' | 'missile' | 'flak' | 'aamissile' | 'bomb' | 'rail' | 'torpedo';
 
 /**
  * How hard each weapon hits each armour class. Riflemen shred infantry and scratch a tank. The
@@ -42,17 +42,19 @@ export type WeaponKind = 'bullet' | 'shell' | 'rocket' | 'artillery' | 'flame' |
  * effect, flak and anti-air missiles in full. The rest never hit an aircraft, whatever it says.
  */
 export const DAMAGE_VS: Record<WeaponKind, Record<Armor, number>> = {
-  bullet: { infantry: 1, light: 0.6, heavy: 0.22, building: 0.15, aircraft: 0.35 },
-  shell: { infantry: 0.45, light: 0.9, heavy: 1, building: 0.75, aircraft: 0 },
-  rocket: { infantry: 0.3, light: 1, heavy: 1.15, building: 0.9, aircraft: 0 },
-  artillery: { infantry: 1, light: 0.8, heavy: 0.55, building: 1, aircraft: 0 },
-  flame: { infantry: 1.25, light: 0.7, heavy: 0.3, building: 1.1, aircraft: 0 },
-  missile: { infantry: 1, light: 1, heavy: 0.9, building: 1, aircraft: 0 },
-  flak: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1 },
-  aamissile: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1 },
-  bomb: { infantry: 0.9, light: 0.9, heavy: 0.8, building: 1.1, aircraft: 0 },
+  bullet: { infantry: 1, light: 0.6, heavy: 0.22, building: 0.15, aircraft: 0.35, ship: 0.3 },
+  shell: { infantry: 0.45, light: 0.9, heavy: 1, building: 0.75, aircraft: 0, ship: 0.9 },
+  rocket: { infantry: 0.3, light: 1, heavy: 1.15, building: 0.9, aircraft: 0, ship: 1 },
+  artillery: { infantry: 1, light: 0.8, heavy: 0.55, building: 1, aircraft: 0, ship: 0.7 },
+  flame: { infantry: 1.25, light: 0.7, heavy: 0.3, building: 1.1, aircraft: 0, ship: 0.4 },
+  missile: { infantry: 1, light: 1, heavy: 0.9, building: 1, aircraft: 0, ship: 1 },
+  flak: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1, ship: 0 },
+  aamissile: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 1, ship: 0 },
+  bomb: { infantry: 0.9, light: 0.9, heavy: 0.8, building: 1.1, aircraft: 0, ship: 1 },
   // Round 5, workstream D: a hypervelocity slug. Starting numbers; D tunes them and states them.
-  rail: { infantry: 0.35, light: 1, heavy: 1.25, building: 0.8, aircraft: 0 },
+  rail: { infantry: 0.35, light: 1, heavy: 1.25, building: 0.8, aircraft: 0, ship: 1.1 },
+  // The naval war: the Submarine's torpedo reaches ships and nothing else (hitsNaval, hitsGround).
+  torpedo: { infantry: 0, light: 0, heavy: 0, building: 0, aircraft: 0, ship: 1 },
 };
 
 /** Ticks a projectile of each kind spends in the air before it lands. Bullets are instant. */
@@ -67,6 +69,7 @@ export const FLIGHT_TICKS: Record<WeaponKind, number> = {
   aamissile: 5,
   bomb: 6,
   rail: 0,
+  torpedo: 10,
 };
 
 export interface Weapon {
@@ -83,12 +86,16 @@ export interface Weapon {
   canHitAir?: boolean;
   /** Can fire at ground units and structures. Read it through hitsGround(): absent means yes. */
   canHitGround?: boolean;
+  /** Can fire at ships. Read it through hitsNaval(): absent means whatever hitsGround says. */
+  canHitNaval?: boolean;
 }
 
 /** True when this weapon can fire at an aircraft. Every ground weapon but bullets cannot. */
 export const hitsAir = (w: Weapon): boolean => w.canHitAir ?? w.kind === 'bullet';
 /** True when this weapon can fire at something on the ground (units and structures). */
 export const hitsGround = (w: Weapon): boolean => w.canHitGround ?? true;
+/** True when this weapon can fire at a ship: anything that hits the ground does, and the torpedo. */
+export const hitsNaval = (w: Weapon): boolean => w.canHitNaval ?? hitsGround(w);
 
 /** Named special characters. Campaign-only: never in a build menu, never in a skirmish. */
 export type HeroKind = 'spy' | 'commando' | 'engineer' | 'ace';
@@ -114,6 +121,12 @@ export type UnitKind =
   | 'interceptor'
   | 'carrier'
   | 'heavybomber'
+  // The naval war (2026-11-11): its ships.
+  | 'gunboat'
+  | 'destroyer'
+  | 'submarine'
+  | 'battleship'
+  | 'landingcraft'
   // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its unit kinds.
   | 'repairtruck'
   | 'basetruck'
@@ -148,6 +161,8 @@ export type BuildingKind =
   | 'helipad'
   | 'flakcannon'
   | 'researchlab'
+  // The naval war (2026-11-11): the Naval Yard.
+  | 'shipyard'
   // round5:C begin. Engineering vehicles (fireline-round5-design.md, workstream C): its structure kinds.
   | 'fieldyard'
   // round5:C end.
@@ -163,14 +178,14 @@ export type BuildingKind =
   // round6:C begin. Generals (fireline-round6-design.md, workstream C): its structure kinds, if any.
   // round6:C end.
   ;
-export type Category = 'building' | 'infantry' | 'vehicle' | 'air';
+export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
 
 /** Round 6 groundwork: how an aircraft fights (UnitSpec.airRole). */
 export type AirRole = 'strafe' | 'bomb' | 'scout' | 'intercept' | 'transport';
 
 export interface UnitSpec {
   name: string;
-  category: 'infantry' | 'vehicle' | 'air';
+  category: 'infantry' | 'vehicle' | 'air' | 'naval';
   cost: number;
   buildTicks: number;
   hp: number;
@@ -553,6 +568,74 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     airRole: 'bomb',
     blurb: 'Slow and armoured. Ten heavy bombs in one long run. Takes a whole Helipad to itself.',
   },
+  // ---- The naval war (2026-11-11): advanced tech only; ships sail open water ------------------
+  gunboat: {
+    name: 'Patrol Boat',
+    category: 'naval',
+    cost: 600,
+    buildTicks: 80,
+    hp: 300,
+    armor: 'ship',
+    speed: 0.16,
+    sight: 8,
+    weapon: { kind: 'bullet', damage: 16, range: 5, cooldown: 7 },
+    requires: ['shipyard'],
+    blurb: 'Fast and cheap. Machine guns that reach aircraft too. Good against boats and infantry on the shore.',
+  },
+  destroyer: {
+    name: 'Destroyer',
+    category: 'naval',
+    cost: 1400,
+    buildTicks: 150,
+    hp: 720,
+    armor: 'ship',
+    speed: 0.11,
+    sight: 9,
+    weapon: { kind: 'shell', damage: 55, range: 6.5, cooldown: 24 },
+    requires: ['shipyard'],
+    blurb: 'The line of battle. A deck gun for ships and the shore, and sonar that finds Submarines seven tiles off.',
+    detector: true,
+  },
+  submarine: {
+    name: 'Submarine',
+    category: 'naval',
+    cost: 1200,
+    buildTicks: 140,
+    hp: 360,
+    armor: 'ship',
+    speed: 0.09,
+    sight: 6,
+    weapon: { kind: 'torpedo', damage: 130, range: 5.5, cooldown: 45, canHitGround: false, canHitNaval: true },
+    requires: ['shipyard', 'researchlab'],
+    blurb: 'Unseen except close up, by a Destroyer or Recon Plane, or just after it fires. Torpedoes hit ships only.',
+    stealth: true,
+  },
+  battleship: {
+    name: 'Battleship',
+    category: 'naval',
+    cost: 3200,
+    buildTicks: 300,
+    hp: 1500,
+    armor: 'ship',
+    speed: 0.065,
+    sight: 8,
+    weapon: { kind: 'artillery', damage: 120, range: 11, minRange: 3, cooldown: 70, splash: 1.3 },
+    requires: ['shipyard', 'techcentre'],
+    blurb: 'Slow and enormous. Big guns that shell the shore from eleven tiles out; nothing close.',
+  },
+  landingcraft: {
+    name: 'Landing Craft',
+    category: 'naval',
+    cost: 900,
+    buildTicks: 110,
+    hp: 480,
+    armor: 'ship',
+    speed: 0.12,
+    sight: 6,
+    requires: ['shipyard'],
+    blurb: 'Carries six infantry or three vehicles. Right-click it from the shore to board; Unload sets them on the nearest beach.',
+    carries: 6,
+  },
   // round5:C begin. Engineering vehicles: its units, appended here.
   repairtruck: {
     name: 'Repair Truck',
@@ -891,6 +974,19 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     undeploysTo: 'basetruck',
   },
   // round5:C end.
+  // ---- The naval war (2026-11-11): advanced tech only ----------------------------------------
+  shipyard: {
+    name: 'Naval Yard',
+    w: 3,
+    h: 3,
+    cost: 1500,
+    buildTicks: 150,
+    hp: 1000,
+    power: -40,
+    sight: 6,
+    requires: ['factory'],
+    blurb: 'Builds ships, and must be built on the shore of open sea. Mends ships beside it.',
+  },
   // round5:D begin. Tier three: its structures, appended here (neutral sites are not structures).
   protoworks: {
     name: 'Prototype Works',
@@ -959,6 +1055,9 @@ export const BUILD_MENU: BuildingKind[] = [
   'protoworks',
   'fortress',
   // round5:D end.
+  // The naval war (2026-11-11): after tier three, which keeps its places in the list. Ahead of round 6's
+  // Academy (merge), so turning Heroes on moves no item already listed.
+  'shipyard',
   // round6:B begin. Heroes in free play: its structures, appended here.
   'academy',
   // round6:B end.
@@ -1003,6 +1102,8 @@ export const VEHICLE_MENU: UnitKind[] = [
 ];
 /** Aircraft in the order the Air tab offers them. */
 export const AIR_MENU: UnitKind[] = ['reconplane', 'gunship', 'interceptor', 'carrier', 'bomber', 'heavybomber'];
+/** Ships in the order the Naval tab offers them. */
+export const NAVAL_MENU: UnitKind[] = ['gunboat', 'destroyer', 'landingcraft', 'submarine', 'battleship'];
 
 /**
  * The original game: six structures (and the Command Yard) and six units. A skirmish set up with
@@ -1034,6 +1135,7 @@ export const MENUS: Record<Category, readonly (BuildingKind | UnitKind)[]> = {
   infantry: INFANTRY_MENU,
   vehicle: VEHICLE_MENU,
   air: AIR_MENU,
+  naval: NAVAL_MENU,
 };
 
 /** Which structure each queue needs before it will make progress. */
@@ -1042,6 +1144,7 @@ export const PRODUCER: Record<Category, BuildingKind> = {
   infantry: 'barracks',
   vehicle: 'factory',
   air: 'helipad',
+  naval: 'shipyard',
 };
 
 /**
@@ -1308,8 +1411,8 @@ export const SKIRMISH_POWERS: Partial<Record<SupportPower, BuildingKind>> = {
 
 // ---- Skirmish setup ---------------------------------------------------------------------------
 
-export type MapType = 'classic' | 'river' | 'highlands' | 'lakes' | 'plains' | 'canyon';
-export const MAP_TYPES: MapType[] = ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon'];
+export type MapType = 'classic' | 'river' | 'highlands' | 'lakes' | 'plains' | 'canyon' | 'coast';
+export const MAP_TYPES: MapType[] = ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon', 'coast'];
 export const MAP_TYPE_NAMES: Record<MapType, string> = {
   classic: 'Classic',
   river: 'River',
@@ -1317,6 +1420,7 @@ export const MAP_TYPE_NAMES: Record<MapType, string> = {
   lakes: 'Lakes',
   plains: 'Plains',
   canyon: 'Canyon',
+  coast: 'Coast',
 };
 export const MAP_TYPE_BLURBS: Record<MapType, string> = {
   classic: 'Mixed ground: woods, ridges and ponds, with tracks between the bases.',
@@ -1325,6 +1429,7 @@ export const MAP_TYPE_BLURBS: Record<MapType, string> = {
   lakes: 'Lakes all over, with land corridors between them.',
   plains: 'Open country and plenty of ore. Few places to hide.',
   canyon: 'Cliffs split the middle into two or three long corridors.',
+  coast: 'A sea between the bases: armies go round it by land, navies fight across it.',
 };
 
 export type TechLevel = 'standard' | 'advanced';
@@ -1464,6 +1569,7 @@ export const MAP_TYPE_BLURBS_SIDES: Record<MapType, string> = {
   lakes: 'Lakes all over, with land corridors and causeways between them.',
   plains: 'Open country and plenty of ore. Few places to hide.',
   canyon: 'A ring of cliffs round the centre, cut by wide corridors from every base.',
+  coast: 'An inland sea round a central island, crossed by causeways; every shore faces its neighbours.',
 };
 /** The number of sides the lobby offers. */
 export const SIDE_COUNTS: (2 | 3 | 4)[] = [2, 3, 4];
@@ -1557,6 +1663,20 @@ export const ORBIT_SIN = 0.11971220728891936; // sin(0.12)
 export const SCRAMBLE_RANGE = 14;
 /** Tiles from its Helipad beyond which a scrambled Interceptor breaks off and goes home. */
 export const SCRAMBLE_LEASH = 20;
+// ---- The naval war (2026-11-11) -----------------------------------------------------------------
+//
+// Ships, the Naval Yard and the Coast map. The simulation is in naval.ts (ships, the yard) and
+// transport.ts (the Landing Craft); the computer's side in aiNaval.ts.
+
+/** Tiles of open water a Naval Yard's shore must belong to: a pond will not do. */
+export const NAVAL_MIN_SEA = 60;
+/** A Naval Yard mends its side's ships within this many tiles of it, this much every this many ticks. */
+export const SHIPYARD_MEND_RANGE = 2;
+export const SHIPYARD_MEND_HP = 8;
+export const SHIPYARD_MEND_TICKS = 10;
+/** Places aboard a Landing Craft a unit takes: an infantryman one, a vehicle two. */
+export const RIDE_SLOTS: Record<'infantry' | 'vehicle', number> = { infantry: 1, vehicle: 2 };
+
 /** Countermeasures (research): what anti-air weapons do to this side's aircraft. */
 export const COUNTERMEASURES_DAMAGE = 0.75;
 /** Helipad places an aircraft takes (HELIPAD_SLOTS each): one, but the Heavy Bomber takes a whole pad. */

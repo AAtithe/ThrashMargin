@@ -65,7 +65,7 @@ function run(s: GameState, n: number): GameState {
 const played = (s: GameState): string =>
   JSON.stringify({ tick: s.tick, rng: s.rngSeed, winner: s.winner, units: s.units, buildings: s.buildings, ore: s.ore, credits: s.players.map(p => [p.credits, p.stats]) });
 
-const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle', 'air'];
+const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle', 'air', 'naval'];
 const ROUND6_SETUP_KEYS = ['factions', 'heroes', 'generals', 'generalPicks'] as const;
 
 /** A save as a build before round 6 wrote it: no army on any player, none of the setup's new fields. */
@@ -166,7 +166,7 @@ function specs(ok: Ok): void {
   ok(UNITS.gunship.airRole === 'strafe' && UNITS.bomber.airRole === 'bomb', 'the Gunship strafes, the Bomber bombs');
   ok(unitKinds.every(k => (UNITS[k].category === 'air') === (UNITS[k].airRole !== undefined)), 'every aircraft has an air role, and nothing else does');
   // A side's army reaches its specs.
-  const s = createInitialState('f', 'f', { seed: 'factions', createdAt: 0, setup: { tech: 'advanced', sides: 3, factions: ['meridian', 'ashen', 'meridian'] } });
+  const s = createAsWritten('f', 'f', { seed: 'factions', createdAt: 0, setup: { tech: 'advanced', sides: 3, factions: ['meridian', 'ashen', 'meridian'] } });
   ok(s.players.map(p => p.faction).join() === 'meridian,ashen,meridian', 'a skirmish records each side\'s army from its setup');
   ok(factionOf(s, 1) === 'ashen' && factionOf(s, 0) === 'meridian', 'factionOf reads the player');
   const legacy = createInitialState('l', 'l', { seed: 'legacy', createdAt: 0 });
@@ -188,14 +188,14 @@ function saves(ok: Ok): void {
   ];
   for (const setup of setups) {
     const label = `${setup.sides ?? 2} sides, ${setup.map}, ${setup.tech}`;
-    const s = createInitialState(`r6-${label}`, label, { seed: `r6-${label}`, createdAt: 0, autopilot: true, setup });
+    const s = createAsWritten(`r6-${label}`, label, { seed: `r6-${label}`, createdAt: 0, autopilot: true, setup });
     ok(JSON.stringify(migrateState(copy(s))) === JSON.stringify(s), `${label}: a fresh state passes migrateState unchanged`);
     const later = run(s, 1200);
     ok(JSON.stringify(migrateState(copy(later))) === JSON.stringify(later), `${label}: two minutes in, unchanged by migrateState`);
   }
   // A save from before round 6 loads, reads Meridian, and plays exactly as the same battle saved now.
   for (const [i, setup] of ([{ map: 'canyon', tech: 'advanced' }, { map: 'highlands', tech: 'advanced', sides: 4, mode: 'teams' }, undefined] as (Partial<SkirmishSetup> | undefined)[]).entries()) {
-    const now = run(createInitialState(`old-${i}`, 'old', { seed: `old-save-${i}`, createdAt: 0, autopilot: true, setup }), 600);
+    const now = run(createAsWritten(`old-${i}`, 'old', { seed: `old-save-${i}`, createdAt: 0, autopilot: true, setup }), 600);
     const old = migrateState(preRound6(now));
     ok(!!old, `old save ${i}: loads`);
     if (!old) continue;
@@ -205,7 +205,7 @@ function saves(ok: Ok): void {
     ok(played(run(old, 3000)) === played(run(now, 3000)), `old save ${i}: plays byte-identically to the same battle saved now`);
   }
   // Junk on a player is dropped, never trusted.
-  const s = createInitialState('j', 'j', { seed: 'junk', createdAt: 0, setup: { tech: 'advanced', factions: ['ashen', 'meridian'] } });
+  const s = createAsWritten('j', 'j', { seed: 'junk', createdAt: 0, setup: { tech: 'advanced', factions: ['ashen', 'meridian'] } });
   const junk = copy(s);
   (junk.players[0] as { faction?: unknown }).faction = 'moon';
   const m = migrateState(junk)!;
@@ -237,6 +237,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Integration: stat cards and the setup text', cardsAndSetupText],
   // round6:integration end.
   ['Merge: the air war for both armies', airWarBothArmies],
+  ['Merge: the naval war for both armies', navalWarBothArmies],
 ];
 
 // ---- Workstream A: two armies ----------------------------------------------------------------
@@ -621,14 +622,14 @@ import { techText } from '../src/components/SkirmishSetup';
 /** Keys the battle screen gives other jobs (its key table): no build key may be one of them. */
 const RESERVED_KEYS = ['o', 'p', 'a', 's', 'g', 'h', 'm', 'f', 'z', 'x', 'c', 'v', '0', '.', ' ', '`', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
 /** The Structures past the fourteenth on advanced tech, clicked or tapped in the build window (the key table says so). */
-const KEYLESS: (BuildingKind | UnitKind)[] = ['protoworks', 'fortress', 'academy'];
+const KEYLESS: (BuildingKind | UnitKind)[] = ['protoworks', 'fortress', 'shipyard', 'academy'];
 
 function buildKeys(ok: Ok): void {
   ok(new Set(BUILD_KEYS).size === BUILD_KEYS.length, `the ${BUILD_KEYS.length} build keys are all different`);
   ok(BUILD_KEYS.every(k => !RESERVED_KEYS.includes(k)), 'and none is a key with another job');
   for (const f of FACTIONS) {
-    const plain = createInitialState(`keys-${f}`, 'k', { seed: `keys-${f}`, createdAt: 0, setup: { tech: 'advanced', factions: [f, f] } });
-    const full = copy(createInitialState(`keys-${f}`, 'k', { seed: `keys-${f}`, createdAt: 0, setup: { tech: 'advanced', factions: [f, f], heroes: true, generals: true } }));
+    const plain = createAsWritten(`keys-${f}`, 'k', { seed: `keys-${f}`, createdAt: 0, setup: { tech: 'advanced', factions: [f, f] } });
+    const full = copy(createAsWritten(`keys-${f}`, 'k', { seed: `keys-${f}`, createdAt: 0, setup: { tech: 'advanced', factions: [f, f], heroes: true, generals: true } }));
     const st = full.starts![0];
     const dx = st.x < full.mapW / 2 ? 1 : -1;
     (['barracks', 'factory', 'techcentre', 'uplink', 'helipad', 'academy'] as BuildingKind[]).forEach((k, i) =>
@@ -654,7 +655,7 @@ function buildKeys(ok: Ok): void {
 function cardsAndSetupText(ok: Ok): void {
   const row = (rows: { label: string; value: string }[], label: string) => rows.find(r => r.label === label)?.value ?? '';
   for (const f of FACTIONS) {
-    const s = createInitialState(`cards-${f}`, 'c', {
+    const s = createAsWritten(`cards-${f}`, 'c', {
       seed: `cards-${f}`,
       createdAt: 0,
       setup: { tech: 'advanced', factions: [f, f], heroes: true, generals: true, generalPicks: [f === 'ashen' ? 'kade' : 'voss', null] },
@@ -667,7 +668,7 @@ function cardsAndSetupText(ok: Ok): void {
     }
     // A doctrine's price reaches the card: Voss's tanks, Kade's queues are not prices.
     if (f === 'meridian') ok(row(statsOf('tank', f, s, 0), 'Cost') === `${costFor(s, 0, 'tank').toLocaleString('en-GB')} credits` && costFor(s, 0, 'tank') < costOf('tank'), "Voss's cheaper Tank shows on the card");
-    ok(listedCost('rifleman', f).cost === costFor(createInitialState('c', 'c', { seed: 'c', createdAt: 0, setup: { tech: 'advanced', factions: [f, f] } }), 0, 'rifleman'), `${f}: without a battle, the army's own price`);
+    ok(listedCost('rifleman', f).cost === costFor(createAsWritten('c', 'c', { seed: 'c', createdAt: 0, setup: { tech: 'advanced', factions: [f, f] } }), 0, 'rifleman'), `${f}: without a battle, the army's own price`);
   }
   const general = UNITS.general.name;
   const academy = BUILDINGS.academy.name;
@@ -765,4 +766,130 @@ function airWarBothArmies(ok: Ok): void {
     ok(flown.has('interceptor'), `the Ashen computer on Hard answers Gunships with an Interceptor (flew ${[...flown].join(', ') || 'nothing'} by minute ${(s.tick / 600).toFixed(1)})`);
     ok(!flown.has('gunship') && !flown.has('bomber'), 'and never a Gunship or a Bomber');
   }
+}
+
+// ---- Merge: main's naval war (2026-11-11) with round 6 ----------------------------------------------
+import { coastArena, landNear, seaNear } from './drive-naval';
+import { boardProblem, canRide } from '../src/sim/transport';
+import { canFormation } from '../src/sim/commands';
+import { NAVAL_MENU } from '../src/sim/rules';
+import { isShip } from '../src/sim/naval';
+
+/** The naval war's ships, in the Naval tab's order. */
+const NAVY: UnitKind[] = ['gunboat', 'destroyer', 'landingcraft', 'submarine', 'battleship'];
+
+/**
+ * fireline-round6-design.md section 9: both armies sail the navy unchanged, the Naval Yard keeps its
+ * own place in the Structures list (no key, ahead of the Academy), the field General and the heroes
+ * never board a Landing Craft, formations are for land units, and the computer's ships stay out of
+ * its waves and squads while its General and heroes stay ashore.
+ */
+function navalWarBothArmies(ok: Ok): void {
+  // The catalogue's exact numbers and lists, for both armies.
+  ok(NAVAL_MENU.join() === NAVY.join() && menuOf('meridian', 'naval') === MENUS.naval, "Meridian's Naval list is the catalogue's, in order");
+  for (const f of FACTIONS) {
+    ok(menuOf(f, 'naval').join() === NAVY.join(), `${f}: the Naval list is the five ships, in order, and nothing else`);
+    ok(NAVY.every(k => factionAllows(f, k) && unitSpecFor(f, k) === UNITS[k]), `${f}: every ship at the catalogue's exact numbers`);
+    ok(factionAllows(f, 'shipyard') && buildingSpecFor(f, 'shipyard') === BUILDINGS.shipyard, `${f}: the Naval Yard at the catalogue's exact numbers`);
+    const list = menuOf(f, 'building');
+    ok(list.indexOf('fortress') + 1 === list.indexOf('shipyard') && list.indexOf('shipyard') + 1 === list.indexOf('academy') && list[list.length - 1] === 'academy',
+      `${f}: the Structures list ends Fortress, Naval Yard, Academy (${list.slice(-3).join(', ')})`);
+  }
+  ok(NAVY.every(k => !STANDARD_TECH.includes(k)) && !STANDARD_TECH.includes('shipyard'), 'the navy is advanced tech only');
+
+  quietly(() => {
+    for (const f of FACTIONS) {
+      // An army on the Coast map builds a Naval Yard and queues ships at the catalogue's prices.
+      const { s, shore } = coastArena(`fa-nv-${f}`, { factions: [f, f === 'ashen' ? 'meridian' : 'ashen'], heroes: true, generals: true });
+      ok(factionOf(s, 0) === f, `${f}: side 0 is ${f}`);
+      const st = s.starts![0];
+      addBuilding(s, 0, 'factory', Math.round(st.x) + 3, Math.round(st.y) + 3, -100);
+      ok(canQueue(s, 0, 'building', 'shipyard'), `${f}: may queue a Naval Yard`);
+      const yard = addBuilding(s, 0, 'shipyard', shore.x, shore.y, -100);
+      ok(canQueue(s, 0, 'naval', 'gunboat') && costFor(s, 0, 'gunboat') === UNITS.gunboat.cost, `${f}: and a Patrol Boat at ${UNITS.gunboat.cost}`);
+      // The field General and the heroes stay ashore; a rifleman and a tank may board.
+      const sea = seaNear(s, yard.x + 1.5, yard.y + 1.5);
+      const craft = put(s, 0, 'landingcraft', sea.x, sea.y);
+      const beach = landNear(s, sea.x, sea.y);
+      const general = put(s, 0, 'general', beach.x, beach.y);
+      const heroes = HERO_KINDS.map((k, i) => put(s, 0, k, beach.x + 1 + i, beach.y + 1));
+      const man = put(s, 0, 'rifleman', beach.x - 1, beach.y);
+      const tank = put(s, 0, 'tank', beach.x - 1, beach.y + 1);
+      ok(!canRide(general, craft) && !canRide(general), `${f}: the field General never boards a Landing Craft (nor any carrier)`);
+      ok(heroes.every(h => !canRide(h, craft)), `${f}: nor does a hero`);
+      ok(boardProblem(s, 0, [general.id, ...heroes.map(h => h.id)], craft.id) !== null && processAction(s, { type: 'board', ids: [general.id], carrier: craft.id }) === s,
+        `${f}: an order to board the General is refused, the same state back`);
+      ok(canRide(man, craft) && canRide(tank, craft) && boardProblem(s, 0, [man.id, tank.id], craft.id) === null, `${f}: a rifleman and a tank may`);
+      // Formations are for land units: ships take no part in a squad.
+      const boats = [put(s, 0, 'gunboat', sea.x + 1, sea.y), put(s, 0, 'destroyer', sea.x - 1, sea.y)];
+      ok(!canFormation(s, 0, boats.map(u => u.id), 'line') && processAction(s, { type: 'formation', ids: boats.map(u => u.id), shape: 'line' }) === s,
+        `${f}: two ships cannot form up (the same state back)`);
+      ok(!canFormation(s, 0, [boats[0].id, tank.id], 'wedge'), `${f}: nor can one ship and one tank`);
+      const mixed = processAction(s, { type: 'move', ids: [man.id, tank.id, ...boats.map(u => u.id)], x: beach.x - 4, y: beach.y + 4, formation: 'box' });
+      const squad = mixed.squads?.[mixed.squads.length - 1];
+      ok(!!squad && squad.members.length === 2 && squad.members.includes(man.id) && squad.members.includes(tank.id), `${f}: a box of two land units and two ships is a squad of the two land units`);
+      ok(boats.every(b => unitIn(mixed, b.id)!.squad === undefined && unitIn(mixed, b.id)!.order.type === 'move'), `${f}: the ships sail, in no squad`);
+    }
+  });
+
+  // The computer, Ashen against Meridian on the Coast map at Hard with heroes and Generals on, from
+  // each seat: its ships never join a wave or a squad, and its General and heroes never go aboard.
+  // Whether a given commander gets its Naval Yard up depends on how its battle goes, so the check is
+  // that each army's commander does in one of the two battles.
+  const yards: Record<Faction, boolean> = { meridian: false, ashen: false };
+  let ships = 0;
+  let shipInWave = 0;
+  let shipInSquad = 0;
+  let recruitAboard = 0;
+  let squads = 0;
+  for (const factions of [['ashen', 'meridian'], ['meridian', 'ashen']] as Faction[][]) {
+    const seed = 'fa-nv-ai';
+    let s = createInitialState(seed, seed, {
+      seed,
+      createdAt: 0,
+      difficulty: 'hard',
+      autopilot: true,
+      setup: { map: 'coast', tech: 'advanced', factions, heroes: true, generals: true },
+    });
+    s.autopilotDifficulty = 'hard';
+    while (s.winner === null && s.tick < 18000) {
+      s = ticks(s, 50);
+      for (const b of s.buildings) if (b.kind === 'shipyard' && b.hp > 0) yards[factionOf(s, b.owner)] = true;
+      const waves = new Set(s.ai.flatMap(m => m.waveIds ?? []));
+      for (const u of s.units) {
+        if (isShip(u)) {
+          ships++;
+          if (waves.has(u.id)) shipInWave++;
+          if (u.squad !== undefined) shipInSquad++;
+        }
+        for (const r of u.carried ?? []) if (r.kind === 'general' || UNITS[r.kind].hero) recruitAboard++;
+      }
+      squads += s.squads?.length ?? 0;
+    }
+  }
+  ok(yards.meridian && yards.ashen, `both armies' commanders build a Naval Yard on the Coast map (${FACTIONS.filter(f => yards[f]).join(', ')})`);
+  ok(ships > 0 && shipInWave === 0 && shipInSquad === 0, `their ships never join a wave or a squad (${ships} ship-samples)`);
+  ok(squads > 0, 'while their land waves do form up');
+  ok(recruitAboard === 0, 'and no General or hero is ever aboard a ship or a carrier');
+}
+
+// ---- Merge: the naval war's seventh map type and round 6's harness seeds ---------------------------
+import { stream, seedFromString } from '../src/sim/rng';
+import type { NewGameOptions } from '../src/sim/state';
+
+/** The six map types a 'random' map was drawn from when round 6's checks were written. */
+const SIX_TYPES = ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon'] as const;
+
+/**
+ * createInitialState for round 6's checks: a setup with a 'random' (or no) map gets the map type the
+ * same seed drew before the naval war added the Coast map to MAP_TYPES (randomMapType's draw over six
+ * types), so each check keeps the battlefield it was written and measured on. Nothing else changes.
+ */
+export function createAsWritten(id: string, name: string, opts: NewGameOptions): GameState {
+  if (!opts.setup || (opts.setup.map !== undefined && opts.setup.map !== 'random')) return createInitialState(id, name, opts);
+  const seedText = opts.seed && opts.seed.trim() ? opts.seed.trim().slice(0, 64) : `${id}`;
+  const r = stream((seedFromString(seedText) ^ 0x5bd1e995) >>> 0);
+  r.float();
+  const map = SIX_TYPES[Math.floor(r.float() * SIX_TYPES.length)];
+  return createInitialState(id, name, { ...opts, setup: { ...opts.setup, map } });
 }

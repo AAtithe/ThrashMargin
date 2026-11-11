@@ -4,6 +4,7 @@
  * heroes off (every setup before round 6, and the default), no hero can be queued in a skirmish.
  * Workstream B adds its own sections after it and keeps it.
  */
+import { createAsWritten } from './drive-factions';
 import { canQueue } from '../src/sim/commands';
 import { HERO_KINDS, UNITS } from '../src/sim/rules';
 import { addBuilding, createInitialState } from '../src/sim/state';
@@ -32,7 +33,7 @@ type Ok = (cond: unknown, what: string) => void;
 
 function heroesOff(ok: Ok): void {
   for (const setup of [{ tech: 'advanced' as const }, { tech: 'advanced' as const, heroes: false }, { tech: 'standard' as const, heroes: true }]) {
-    const s = createInitialState('h', 'h', { seed: 'heroes-off', createdAt: 0, setup });
+    const s = createAsWritten('h', 'h', { seed: 'heroes-off', createdAt: 0, setup });
     ok(s.setup!.heroes === (setup.heroes ?? false), `setup ${JSON.stringify(setup)}: heroes recorded as ${setup.heroes ?? false}`);
     s.players[0].credits = 100000;
     for (const k of ['barracks', 'factory', 'techcentre'] as const) addBuilding(s, 0, k, 2 + 4 * ['barracks', 'factory', 'techcentre'].indexOf(k), 2);
@@ -59,7 +60,7 @@ const q = (k: HeroKind): GameAction => ({ type: 'queue', category: cat(k), kind:
 
 /** A skirmish with heroes on, side 0 holding a Barracks, War Factory and Tech Centre and plenty of credits. */
 function heroBattle(seed: string, academy = true): GameState {
-  const s = createInitialState('hf', 'hf', { seed, createdAt: 0, setup: { tech: 'advanced', heroes: true } });
+  const s = createAsWritten('hf', 'hf', { seed, createdAt: 0, setup: { tech: 'advanced', heroes: true } });
   const st = startOf(s, 0);
   const dx = st.x < s.mapW / 2 ? 1 : -1;
   const kinds: BuildingKind[] = ['barracks', 'factory', 'techcentre', ...(academy ? [HERO_ACADEMY] : [])];
@@ -84,9 +85,9 @@ function recruiting(ok: Ok): void {
   const pre = heroBattle('hf-pre', false);
   ok(techAllowed(pre, 0, HERO_ACADEMY), 'heroes on: the Academy may be built');
   for (const k of HERO_KINDS) ok(!techAllowed(pre, 0, k) && processAction(pre, q(k)) === pre, `${k}: refused until an Academy stands`);
-  const off = createInitialState('hf', 'hf', { seed: 'hf-off', createdAt: 0, setup: { tech: 'advanced' } });
+  const off = createAsWritten('hf', 'hf', { seed: 'hf-off', createdAt: 0, setup: { tech: 'advanced' } });
   ok(!techAllowed(off, 0, HERO_ACADEMY), 'heroes off: no Academy');
-  const std = createInitialState('hf', 'hf', { seed: 'hf-std', createdAt: 0, setup: { tech: 'standard', heroes: true } });
+  const std = createAsWritten('hf', 'hf', { seed: 'hf-std', createdAt: 0, setup: { tech: 'standard', heroes: true } });
   ok(!techAllowed(std, 0, HERO_ACADEMY) && HERO_KINDS.every(k => !techAllowed(std, 0, k)), 'standard tech with heroes on: no Academy, no heroes');
 
   let s = heroBattle('hf-acc');
@@ -171,7 +172,7 @@ function abilities(ok: Ok): void {
 
 function savesAndMissions(ok: Ok): void {
   // Byte-identical replay, and through a save, with the computer playing heroes.
-  const start = createInitialState('hr', 'hr', { seed: 'hf-replay', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
+  const start = createAsWritten('hr', 'hr', { seed: 'hf-replay', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
   // 30,000 since the merge with main's air war: at 20,000 the commanders' Interceptors and
   // Countermeasures spent the spare credits, and side 0 fell at minute 9 before either fielded a hero.
   start.players.forEach(p => (p.credits = 30000));
@@ -210,7 +211,7 @@ function computer(ok: Ok): void {
   let used = 0;
   let twice = '';
   for (const seed of ['a', 'b', 'c', 'd']) {
-    let s = createInitialState('hc', 'hc', { seed, difficulty: 'normal', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
+    let s = createAsWritten('hc', 'hc', { seed, difficulty: 'normal', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
     while (s.winner === null && s.tick < 36000) {
       const before = s;
       s = processAction(s, { type: 'tick', n: 10 });

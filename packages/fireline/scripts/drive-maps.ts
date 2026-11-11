@@ -62,7 +62,10 @@ function invariants(ok: Ok, s: GameState, label: string): void {
     ids.add(u.id);
     ok(u.hp > 0 && u.hp <= maxHpOf(u), `${label}: unit ${u.id} hp in range`);
     ok(u.x >= 0 && u.y >= 0 && u.x < W && u.y < s.mapH, `${label}: unit ${u.id} on the map`);
-    ok(UNITS[u.kind].category === 'air' || isWalkable(s.tiles[Math.floor(u.y) * W + Math.floor(u.x)]), `${label}: unit ${u.id} on walkable ground`);
+    // Ships on open water (the naval war); everything else but aircraft on walkable ground.
+    const cat = UNITS[u.kind].category;
+    const tile = s.tiles[Math.floor(u.y) * W + Math.floor(u.x)];
+    ok(cat === 'air' || (cat === 'naval' ? tile === 'w' : isWalkable(tile)), `${label}: unit ${u.id} on ${cat === 'naval' ? 'open water' : 'walkable ground'}`);
   }
   for (const b of s.buildings) {
     ok(!ids.has(b.id), `${label}: building id ${b.id} unique`);

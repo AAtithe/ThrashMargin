@@ -711,8 +711,9 @@ section('act two: progression and old saves', () => {
   ok(last.difficulty === 'normal' && scaleMission(last, 'hard').difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander, hard at campaign Hard, with a full base');
   const kinds = new Set<string>(['hq', ...last.enemy.structures]);
   // Skirmish-only structures (round 5): a Field Yard is never built, only deployed from a truck, and
-  // the tier-three structures are in no mission; nor is the Command Academy (round 6, heroes in free play).
-  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy']);
+  // the tier-three structures are in no mission; nor is the Command Academy (round 6, heroes in free play),
+  // nor the Naval Yard (the naval war): no mission map has a sea.
+  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy', 'shipyard']);
   for (const b of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
     if (BUILDINGS[b].undeploysTo || skirmishOnly.has(b)) continue;
     if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);

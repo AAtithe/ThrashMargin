@@ -57,6 +57,7 @@ import {
   SELF_REPAIR_TICKS,
   hitsAir,
   hitsGround,
+  hitsNaval,
   type Category,
   type BuildingKind,
   type Owner,
@@ -99,6 +100,7 @@ import { buildingSpec, buildingSpecOf, perksFor, unitSpec, unitSpecOf } from './
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { auraWeapon, generalsStep, inAura } from './generals';
 import { lostAboard, transportStep } from './transport';
+import { isShip, launchTile, navalStep } from './naval';
 
 
 /**
@@ -125,7 +127,7 @@ interface Ctx {
   air: AirHooks;
 }
 
-const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle', 'air'];
+const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle', 'air', 'naval'];
 
 export function step(s: GameState): void {
   if (s.winner !== null) return;
@@ -176,6 +178,8 @@ export function step(s: GameState): void {
   for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
   // The air war: infantry climbing into Troop Carriers, and carriers setting them down.
   transportStep(s);
+  // The naval war: Naval Yards mending the ships beside them.
+  navalStep(s);
   // round6:B begin. Heroes in free play: the hero tick also runs in a skirmish with setup.heroes
   // (this condition may widen; nothing else here changes).
   if (s.mission) heroes(s, ctx);
@@ -346,10 +350,11 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): vo
     if (owner === 0) log(s, `${unitSpecOf(s, a).name} ready.`);
     return;
   }
+  // Ships come out on the open water nearest the Naval Yard; everything else at the door.
   const door = doorTile(s, producer);
   const ex = door.x + 0.5;
   const ey = door.y + 0.5;
-  const k = nearestPassable(s, ctx.occ, ex, ey, 5);
+  const k = cat === 'naval' ? launchTile(s, ctx.occ, producer) : nearestPassable(s, ctx.occ, ex, ey, 5);
   if (k < 0) return; // Exit blocked: stays finished at the head of the queue and tries next tick.
   const head = s.players[owner].queues[cat].shift()!;
   const kind = head.kind as UnitKind;
@@ -387,6 +392,8 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
   // (one lookup; no pathing change). Nothing else in stepAlong changes.
   if (u.squad !== undefined) sp = squadPace(s, ctx.units, ctx.occ, u, sp, tuned);
   // round6:D end.
+  // Ships keep to open water (the naval layer); everything else to land.
+  const sea = isShip(u);
   const dx = tx - u.x;
   const dy = ty - u.y;
   const d = Math.sqrt(dx * dx + dy * dy);
@@ -407,7 +414,7 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
   const look = Math.min(d, Math.max(sp, 0.45));
   const lx = d > 0.0001 ? u.x + (dx / d) * look : nx;
   const ly = d > 0.0001 ? u.y + (dy / d) * look : ny;
-  if (!passable(s, ctx.occ, Math.floor(nx), Math.floor(ny)) || !passable(s, ctx.occ, Math.floor(lx), Math.floor(ly))) {
+  if (!passable(s, ctx.occ, Math.floor(nx), Math.floor(ny), sea) || !passable(s, ctx.occ, Math.floor(lx), Math.floor(ly), sea)) {
     // Paths are smoothed between tile centres, so a unit standing off-centre can clip the corner
     // of a blocked tile on a straight run. Slide along whichever axis is open; failing that, step
     // back toward the centre of the tile it stands on, from where the smoothed line is clear.
@@ -417,8 +424,8 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
     const cx = Math.floor(u.x) + 0.5;
     const cy = Math.floor(u.y) + 0.5;
     const minSlide = sp * 0.25;
-    if (Math.abs(nx - u.x) >= minSlide && passable(s, ctx.occ, Math.floor(nx), Math.floor(u.y))) u.x = nx;
-    else if (Math.abs(ny - u.y) >= minSlide && passable(s, ctx.occ, Math.floor(u.x), Math.floor(ny))) u.y = ny;
+    if (Math.abs(nx - u.x) >= minSlide && passable(s, ctx.occ, Math.floor(nx), Math.floor(u.y), sea)) u.x = nx;
+    else if (Math.abs(ny - u.y) >= minSlide && passable(s, ctx.occ, Math.floor(u.x), Math.floor(ny), sea)) u.y = ny;
     else {
       const cd = dist(u.x, u.y, cx, cy);
       if (cd > 0.01) {
@@ -451,7 +458,9 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
  * the ground allows. Paths are computed lazily and re-computed when the goal moves.
  */
 function travel(s: GameState, ctx: Ctx, u: Unit, gx: number, gy: number): boolean {
-  const goal = nearestPassable(s, ctx.occ, gx, gy, 6);
+  const sea = isShip(u);
+  // A ship sent inland goes to the nearest water within reach of the point.
+  const goal = nearestPassable(s, ctx.occ, gx, gy, sea ? 10 : 6, sea);
   if (goal < 0) return true;
   const MAP_W = s.mapW;
   const here = tileOf(s, u);
@@ -468,7 +477,7 @@ function travel(s: GameState, ctx: Ctx, u: Unit, gx: number, gy: number): boolea
   if (goalMoved && (u.pathGoal === -1 || s.tick - u.pathTick >= 6 || u.path.length === 0)) {
     if (ctx.pathBudget <= 0) return false;
     ctx.pathBudget--;
-    u.path = findPath(s, ctx.occ, here, goal);
+    u.path = findPath(s, ctx.occ, here, goal, sea);
     u.pathGoal = goal;
     u.pathTick = s.tick;
     if (!u.path.length) return true;
@@ -531,11 +540,13 @@ function acquire(s: GameState, owner: Owner, x: number, y: number, range: number
   const team = teamOf(s, owner);
   const air = hitsAir(w);
   const ground = hitsGround(w);
+  const naval = hitsNaval(w);
   let best = 0;
   let bestScore = Infinity;
   for (const e of s.units) {
     if (e.hp <= 0 || teamOf(s, e.owner) === team) continue;
-    if (UNITS[e.kind].category === 'air' ? !air : !ground) continue;
+    const cat = UNITS[e.kind].category;
+    if (cat === 'air' ? !air : cat === 'naval' ? !naval : !ground) continue;
     const d = dist(x, y, e.x, e.y);
     if (d > range) continue;
     // A Spy nobody has spotted is never picked as a target.
@@ -625,9 +636,11 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
     const b = u ? undefined : s.buildings.find(v => v.id === p.target && v.hp > 0);
     // Only bullets and anti-air reach an aircraft; anti-air reaches nothing else.
     const airShot = p.weapon === 'flak' || p.weapon === 'aamissile';
-    if (u && (UNITS[u.kind].category === 'air' ? !airShot && p.weapon !== 'bullet' : airShot)) {
-      // Missed: it cannot touch that.
-    } else if (b && airShot) {
+    const torpedo = p.weapon === 'torpedo';
+    const cat = u ? UNITS[u.kind].category : null;
+    if (u && (cat === 'air' ? !airShot && p.weapon !== 'bullet' : cat === 'naval' ? airShot : airShot || torpedo)) {
+      // Missed: it cannot touch that (a torpedo touches ships alone).
+    } else if (b && (airShot || torpedo)) {
       // Nor a structure.
     } else if (u) hurt(s, { unit: u }, p.damage, p, shooter);
     else if (b) hurt(s, { building: b }, p.damage, p, shooter);
@@ -765,16 +778,28 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
         ((u.order.type === 'attackMove' || (u.order.type === 'idle' && stance === 'aggressive')) && d <= spec.sight + 3 && !(t.unit && isAir(t.unit)))
       ) {
         firing = true;
+        let near = false;
         if (d < (w.minRange ?? 0)) {
           // Too close for artillery: back away from the target.
           travel(s, ctx, u, u.x + (u.x - tp.x), u.y + (u.y - tp.y));
-        } else travel(s, ctx, u, tp.x, tp.y);
+        } else near = travel(s, ctx, u, tp.x, tp.y);
         aim(u, tp.x, tp.y);
+        // The naval war: a ship as close as the water allows to a target still out of range (or
+        // a soldier as close as the shore allows to a ship) gives it up rather than wait forever.
+        if (near && d > w.range && (isShip(u) || (t.unit && isShip(t.unit)))) {
+          firing = false;
+          u.engage = 0;
+          if (u.order.type === 'attack') nextOrder(u);
+        }
       } else if (u.order.type === 'idle' && d <= spec.sight + 1 && u.engage) {
         // Shot at from out of range while idle: close in, but give up beyond sight.
         firing = true;
-        travel(s, ctx, u, tp.x, tp.y);
+        const near = travel(s, ctx, u, tp.x, tp.y);
         aim(u, tp.x, tp.y);
+        if (near && d > w.range && (isShip(u) || (t.unit && isShip(t.unit)))) {
+          firing = false;
+          u.engage = 0;
+        }
       } else {
         u.engage = 0;
       }
@@ -1094,7 +1119,7 @@ function separate(s: GameState, ctx: Ctx): void {
     if (list) list.push(u);
     else buckets.set(k, [u]);
   }
-  const radius = (u: Unit) => (UNITS[u.kind].category === 'infantry' ? 0.2 : 0.38);
+  const radius = (u: Unit) => (UNITS[u.kind].category === 'infantry' ? 0.2 : isShip(u) ? 0.45 : 0.38);
   // Whoever is standing still gives way to whoever is going somewhere, and everybody gives way
   // to a hauler: otherwise an idle crowd on a dock pad freezes the economy.
   const weight = (u: Unit) => (u.kind === 'hauler' ? 0.1 : u.path.length ? 0.25 : 1);
@@ -1116,6 +1141,8 @@ function separate(s: GameState, ctx: Ctx): void {
         if (!list) continue;
         for (const v of list) {
           if (v.id <= u.id || v.hp <= 0) continue;
+          // A ship and a soldier on the beach beside it never push each other.
+          if (isShip(u) !== isShip(v)) continue;
           const min = radius(u) + radius(v);
           let ex = v.x - u.x;
           let ey = v.y - u.y;
@@ -1148,7 +1175,7 @@ function separate(s: GameState, ctx: Ctx): void {
 function nudge(s: GameState, ctx: Ctx, u: Unit, dx: number, dy: number): void {
   const nx = u.x + dx;
   const ny = u.y + dy;
-  if (passable(s, ctx.occ, Math.floor(nx), Math.floor(ny))) {
+  if (passable(s, ctx.occ, Math.floor(nx), Math.floor(ny), isShip(u))) {
     u.x = nx;
     u.y = ny;
   }

@@ -453,7 +453,8 @@ export class Renderer {
         turret: Math.atan2(p.ty + (u.ty - p.ty) * alpha, p.tx + (u.tx - p.tx) * alpha),
         t: t + u.id * 0.37,
         moving,
-        cargo: u.cargo / 600,
+        // Haulers: ore carried. Landing Craft: places taken aboard.
+        cargo: UNITS[u.kind].carries ? (u.carried ?? []).reduce((n, r) => n + (UNITS[r.kind].category === 'vehicle' ? 2 : 1), 0) / (UNITS[u.kind].carries ?? 1) : u.cargo / 600,
         sinceShot,
         hp: u.hp / maxHpOf(u),
         firing: sinceShot < FIRING_WINDOW,
@@ -1080,7 +1081,7 @@ export class Renderer {
     const set = new Set<number>();
     for (const owner of [0, 1] as const) {
       const q = s.players[owner].queues;
-      for (const cat of ['building', 'infantry', 'vehicle', 'air'] as const) {
+      for (const cat of ['building', 'infantry', 'vehicle', 'air', 'naval'] as const) {
         const head = q[cat]?.[0];
         if (!head || head.progress >= buildTicksFor(s, owner, head.kind)) continue;
         const b = producerFor(s, owner, cat);

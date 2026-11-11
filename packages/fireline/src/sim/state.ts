@@ -1,4 +1,5 @@
 import { migrateAir } from './air';
+import { migrateNaval } from './naval';
 import { scaledFor } from './aiScale';
 import { generateMap, idx } from './map';
 import { generateSkirmishMap, randomMapType } from './maps';
@@ -175,7 +176,7 @@ function newPlayer(owner: Owner, credits = START_CREDITS, faction?: Faction): Pl
     owner,
     name: SIDE_NAMES[owner],
     credits,
-    queues: { building: [], infantry: [], vehicle: [], air: [] },
+    queues: { building: [], infantry: [], vehicle: [], air: [], naval: [] },
     stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
     // Round 6: a skirmish records each side's army; a battle without a setup has none ('meridian').
     ...(faction ? { faction } : {}),
@@ -383,6 +384,7 @@ export function cloneState(s: GameState): GameState {
         vehicle: p.queues.vehicle.map(q => ({ ...q })),
         // A mission's players and saves not yet migrated may have no air queue: none is invented.
         ...(p.queues.air ? { air: p.queues.air.map(q => ({ ...q })) } : {}),
+        ...(p.queues.naval ? { naval: p.queues.naval.map(q => ({ ...q })) } : {}),
       } as PlayerState['queues'],
       stats: { ...p.stats },
       ...(p.upgrades ? { upgrades: p.upgrades.slice() } : {}),
@@ -631,6 +633,7 @@ export function migrateState(raw: unknown): GameState | null {
   for (let i = ai.length; i < n; i++) ai.push(newAiMemory(DIFFICULTIES[DEFAULT_DIFFICULTY].firstAttack));
   const out: GameState = { ...(s as GameState), units, mapW, mapH, teams: normaliseTeams(s.teams, n), ai };
   migrateAir(out);
+  migrateNaval(out);
   if (s.powers !== undefined) {
     if (Array.isArray(s.powers)) {
       out.powers = sidesOf(out).map(o => (s.powers![o] && typeof s.powers![o] === 'object' ? { ...s.powers![o] } : {}));
@@ -773,7 +776,13 @@ function migrateRound6(raw: Partial<GameState>, out: GameState): void {
     const squads: Squad[] = [];
     for (const q of out.squads) {
       const owner = byId.get(q.leader)?.owner ?? byId.get(q.members.find(id => byId.has(id)) ?? -1)?.owner;
-      const members = q.members.filter((id, i, a) => byId.get(id)?.owner === owner && a.indexOf(id) === i);
+      // Land units alone (formsUp in formations.ts): never an aircraft, nor a ship (the naval war merge).
+      const land = (id: number) => {
+        const v = byId.get(id);
+        const c = v ? UNITS[v.kind]?.category : undefined;
+        return c === 'infantry' || c === 'vehicle';
+      };
+      const members = q.members.filter((id, i, a) => byId.get(id)?.owner === owner && a.indexOf(id) === i && land(id));
       if (members.length < 2) continue;
       const c: Squad = { ...q, members, leader: members.includes(q.leader) ? q.leader : members[0] };
       if (c.facing !== undefined && !(Number.isInteger(c.facing) && c.facing >= 0 && c.facing < 8)) delete c.facing;

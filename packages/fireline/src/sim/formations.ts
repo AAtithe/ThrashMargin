@@ -149,7 +149,8 @@ export const slotScale = (facing: number): number => (facing % 2 ? SLOT_SPACING_
  */
 export function roleOf(s: GameState, u: Unit): number {
   const cat = UNITS[u.kind].category;
-  if (cat === 'air') return 3;
+  // Aircraft and (the naval war merge) ships take a slot at the rear but never join the squad.
+  if (cat === 'air' || cat === 'naval') return 3;
   const spec = unitSpecOf(s, u);
   if (spec.medic || spec.mender) return 2;
   const w = spec.weapon;
@@ -210,6 +211,16 @@ export function leaveSquads(s: GameState, units: Unit[]): void {
   }
 }
 
+/**
+ * Whether this unit can be one of a squad: land units alone. Aircraft fly over a formation and
+ * (merged with the naval war) ships sail apart from it, on water no soldier can share, so neither
+ * keeps a squad's pace or slots; the computer's ships never join a wave either (ai.ts).
+ */
+export const formsUp = (u: Unit): boolean => {
+  const cat = UNITS[u.kind].category;
+  return cat === 'infantry' || cat === 'vehicle';
+};
+
 /** Drops squads with fewer than two living members still in them (fallen, or ordered elsewhere). */
 export function pruneSquads(s: GameState): void {
   if (!s.squads) return;
@@ -217,7 +228,7 @@ export function pruneSquads(s: GameState): void {
   for (const q of s.squads.slice()) {
     const live = q.members.filter(id => {
       const v = byId.get(id);
-      return !!v && v.hp > 0 && v.squad === q.id;
+      return !!v && v.hp > 0 && v.squad === q.id && formsUp(v);
     });
     if (live.length >= 2) {
       if (live.length !== q.members.length) q.members = live;

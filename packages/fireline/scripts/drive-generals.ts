@@ -3,6 +3,7 @@
  * for every side, read through perksFor. Its sections run inside scripts/drive.ts and count in its
  * totals. Workstream C adds its own sections after the groundwork's and keeps it.
  */
+import { createAsWritten } from './drive-factions';
 import { GENERAL_FACTION, GENERAL_IDS, UNITS } from '../src/sim/rules';
 import { perksFor } from '../src/sim/specs';
 import { addUnit, costFor, costOf, createInitialState, migrateState } from '../src/sim/state';
@@ -42,7 +43,7 @@ const NONE: Perks = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1,
 function perks(ok: Ok): void {
   ok(GENERAL_IDS.length === 4, 'four doctrine Generals');
   ok(GENERAL_IDS.filter(g => GENERAL_FACTION[g] === 'meridian').length === 2 && GENERAL_IDS.filter(g => GENERAL_FACTION[g] === 'ashen').length === 2, 'two to each army');
-  const s = createInitialState('p', 'p', { seed: 'perks', createdAt: 0, setup: { tech: 'advanced', sides: 4 } });
+  const s = createAsWritten('p', 'p', { seed: 'perks', createdAt: 0, setup: { tech: 'advanced', sides: 4 } });
   ok([0, 1, 2, 3].every(o => perksFor(s, o as 0) === undefined), 'a skirmish: no side has perks');
   // Side 0's perks are s.perks, exactly as the campaign has always set them.
   const withPerks = copy(s);
@@ -139,7 +140,7 @@ function doctrines(ok: Ok): void {
       const mine = GENERAL_FACTION[g];
       const factions: Faction[] = seat === 0 ? [mine, 'meridian'] : ['meridian', mine];
       const picks: (GeneralId | null)[] = seat === 0 ? [g, null] : [null, g];
-      const s = createInitialState(`d-${g}`, 'd', { seed: `d-${g}`, createdAt: 0, setup: { tech: 'advanced', factions, generalPicks: picks } });
+      const s = createAsWritten(`d-${g}`, 'd', { seed: `d-${g}`, createdAt: 0, setup: { tech: 'advanced', factions, generalPicks: picks } });
       const other = (1 - seat) as Owner;
       const label = `${GENERALS[g].name} at seat ${seat}`;
       ok(s.players[seat].general === g && s.players[other].general === undefined, `${label}: the doctrine is on its side`);
@@ -151,7 +152,7 @@ function doctrines(ok: Ok): void {
       const air = GENERALS[g].airCostMul;
       ok(costFor(s, seat, 'gunship') === (air === 1 ? costOf('gunship') : Math.round(costOf('gunship') * air)), `${label}: aircraft at ${air} of the price`);
       // Integration: "full price" is the side's own army's price (Ashen's infantry is 5% cheaper).
-      const bare = createInitialState(`d-${g}`, 'd', { seed: `d-${g}`, createdAt: 0, setup: { tech: 'advanced', factions } });
+      const bare = createAsWritten(`d-${g}`, 'd', { seed: `d-${g}`, createdAt: 0, setup: { tech: 'advanced', factions } });
       ok(costFor(s, seat, 'rifleman') === costFor(bare, seat, 'rifleman') && costFor(s, seat, 'power') === costFor(bare, seat, 'power'), `${label}: other kinds at full price`);
     }
   }
@@ -162,15 +163,15 @@ function doctrines(ok: Ok): void {
   // A pick from the other army reads as none, at setup and if forced onto a battle.
   const wrong = normaliseSetup({ tech: 'advanced', factions: ['meridian', 'meridian'], generalPicks: ['kade', 'ilse'] });
   ok(wrong.generalPicks!.every(p => p === null), 'a pick from another army reads as none in the setup');
-  const forced = copy(createInitialState('wrong', 'w', { seed: 'wrong', createdAt: 0, setup: { tech: 'advanced' } }));
+  const forced = copy(createAsWritten('wrong', 'w', { seed: 'wrong', createdAt: 0, setup: { tech: 'advanced' } }));
   applyDoctrines(forced, { ...forced.setup!, generalPicks: ['kade', 'ilse'] });
   ok(forced.players.every(p => p.general === undefined) && forced.perks === undefined && forced.sidePerks === undefined, 'and is refused if forced onto a battle');
   // Defaults: nothing written at all.
-  const plain = createInitialState('plain', 'p', { seed: 'plain', createdAt: 0, setup: { tech: 'advanced', sides: 4 } });
+  const plain = createAsWritten('plain', 'p', { seed: 'plain', createdAt: 0, setup: { tech: 'advanced', sides: 4 } });
   ok(plain.perks === undefined && plain.sidePerks === undefined && plain.players.every(p => !('general' in p)), 'no picks and Generals off: no doctrine, no perks, no new fields');
   // Kade measured: every queue works 10% faster.
   const race = (picks: (GeneralId | null)[]) => {
-    let s = copy(createInitialState('kade', 'k', { seed: 'kade', createdAt: 0, setup: { tech: 'advanced', factions: ['ashen', 'ashen'], generalPicks: picks, credits: 10000 } }));
+    let s = copy(createAsWritten('kade', 'k', { seed: 'kade', createdAt: 0, setup: { tech: 'advanced', factions: ['ashen', 'ashen'], generalPicks: picks, credits: 10000 } }));
     for (const m of s.ai) m.nextAttack = 1e9;
     s.players[0].queues.building.push({ kind: 'power', progress: 0 });
     s = run(s, 40);
@@ -208,9 +209,9 @@ function doctrines(ok: Ok): void {
   const seen = new Set<string>();
   for (let i = 0; i < 12; i++) {
     const setup: Partial<SkirmishSetup> = { tech: 'advanced', sides: 3, factions: ['meridian', 'ashen', 'meridian'], generals: true };
-    const a = createInitialState(`cp-${i}`, 'c', { seed: `cp-${i}`, createdAt: 0, setup });
-    const b = createInitialState(`cp-${i}`, 'c', { seed: `cp-${i}`, createdAt: 0, setup });
-    const off = createInitialState(`cp-${i}`, 'c', { seed: `cp-${i}`, createdAt: 0, setup: { ...setup, generals: false } });
+    const a = createAsWritten(`cp-${i}`, 'c', { seed: `cp-${i}`, createdAt: 0, setup });
+    const b = createAsWritten(`cp-${i}`, 'c', { seed: `cp-${i}`, createdAt: 0, setup });
+    const off = createAsWritten(`cp-${i}`, 'c', { seed: `cp-${i}`, createdAt: 0, setup: { ...setup, generals: false } });
     ok(a.players[0].general === undefined && a.perks === undefined, `seed ${i}: your seat keeps the doctrine you chose (none)`);
     ok([1, 2].every(o => !!a.players[o].general && GENERAL_FACTION[a.players[o].general!] === (a.players[o].faction ?? 'meridian')), `seed ${i}: each computer seat fights under one of its army's Generals`);
     ok(JSON.stringify(a) === JSON.stringify(b), `seed ${i}: the same choice every time`);
@@ -222,9 +223,9 @@ function doctrines(ok: Ok): void {
 
 function fieldRules(ok: Ok): void {
   ok(INFANTRY_MENU.includes('general') && !STANDARD_TECH.includes('general'), 'the General is trained at the Barracks, advanced tech only');
-  const off = createInitialState('f', 'f', { seed: 'f', createdAt: 0, setup: { tech: 'advanced' } });
-  const std = createInitialState('f', 'f', { seed: 'f', createdAt: 0, setup: { tech: 'standard', generals: true } });
-  const on = createInitialState('f', 'f', { seed: 'f', createdAt: 0, setup: { tech: 'advanced', generals: true } });
+  const off = createAsWritten('f', 'f', { seed: 'f', createdAt: 0, setup: { tech: 'advanced' } });
+  const std = createAsWritten('f', 'f', { seed: 'f', createdAt: 0, setup: { tech: 'standard', generals: true } });
+  const on = createAsWritten('f', 'f', { seed: 'f', createdAt: 0, setup: { tech: 'advanced', generals: true } });
   ok(!techAllowed(off, 0, 'general') && !techAllowed(off, 1, 'general'), 'Generals off: nobody may train one');
   ok(!techAllowed(std, 0, 'general'), 'standard tech: nobody may train one');
   ok(techAllowed(on, 0, 'general') && techAllowed(on, 1, 'general'), 'Generals on, advanced tech: every side may');
@@ -388,7 +389,7 @@ function retreat(ok: Ok): void {
 }
 
 function saves(ok: Ok): void {
-  const s = createInitialState('sv', 'sv', { seed: 'sv', createdAt: 0, setup: { tech: 'advanced', generals: true, factions: ['meridian', 'ashen'], generalPicks: ['voss', null] } });
+  const s = createAsWritten('sv', 'sv', { seed: 'sv', createdAt: 0, setup: { tech: 'advanced', generals: true, factions: ['meridian', 'ashen'], generalPicks: ['voss', null] } });
   const back = migrateState(copy(s))!;
   ok(back.players[0].general === 'voss' && !!back.players[1].general && JSON.stringify(back.sidePerks) === JSON.stringify(s.sidePerks), 'a save keeps every doctrine and its perks');
   const junk = copy(s);
@@ -400,7 +401,7 @@ function saves(ok: Ok): void {
   ok(m.players[0].general === undefined, 'a General of another army is dropped from a save');
   ok(m.players[1].generalLostAt === undefined && m.players[1].generalUnit === undefined && !!m.players[1].general, 'malformed ticks and ids are dropped, the rest kept');
   ok(m.ai[1].generalBack === undefined, 'malformed memory is dropped');
-  const plain = createInitialState('sv0', 'sv', { seed: 'sv0', createdAt: 0, setup: { tech: 'advanced' } });
+  const plain = createAsWritten('sv0', 'sv', { seed: 'sv0', createdAt: 0, setup: { tech: 'advanced' } });
   ok(JSON.stringify(migrateState(copy(plain))) === JSON.stringify(plain) || migrateState(copy(plain))!.players.every(p => !('general' in p)), 'a battle without Generals loads without any');
   // Missions: nothing of Generals appears, and the General is out of reach.
   const c = newCampaign('T');
@@ -411,7 +412,7 @@ function saves(ok: Ok): void {
   // A battle with Generals on replays byte-identically, and a save mid-battle plays on the same.
   const setup: Partial<SkirmishSetup> = { map: 'classic', tech: 'advanced', generals: true, factions: ['meridian', 'ashen'], generalPicks: ['hale', 'ilse'], credits: 10000 };
   const play = (n: number, saveAt = -1) => {
-    let x = createInitialState('rp', 'rp', { seed: 'rp', createdAt: 0, autopilot: true, setup });
+    let x = createAsWritten('rp', 'rp', { seed: 'rp', createdAt: 0, autopilot: true, setup });
     for (let done = 0; done < n; done += 500) {
       if (done === saveAt) x = migrateState(copy(x))!;
       x = run(x, 500);
@@ -619,16 +620,16 @@ function generalsAndArmies(ok: Ok): void {
     }
     // The computer's seeded pick, with Generals on and its seat left on Any: its own army's, both seats.
     for (let i = 0; i < 8; i++) {
-      const s = createInitialState(`ga-${tag}-${i}`, 'g', { seed: `ga-${tag}-${i}`, createdAt: 0, setup: { tech: 'advanced', factions, generals: true } });
+      const s = createAsWritten(`ga-${tag}-${i}`, 'g', { seed: `ga-${tag}-${i}`, createdAt: 0, setup: { tech: 'advanced', factions, generals: true } });
       const g = s.players[1].general;
       ok(!!g && GENERAL_FACTION[g] === factions[1], `${tag}, seed ${i}: the computer's General (${g}) is from its own army`);
-      const forced = createInitialState(`gb-${tag}-${i}`, 'g', { seed: `gb-${tag}-${i}`, createdAt: 0, setup: { tech: 'advanced', factions, generals: true, generalPicks: [factions[0] === 'ashen' ? 'kade' : 'hale', null] } });
+      const forced = createAsWritten(`gb-${tag}-${i}`, 'g', { seed: `gb-${tag}-${i}`, createdAt: 0, setup: { tech: 'advanced', factions, generals: true, generalPicks: [factions[0] === 'ashen' ? 'kade' : 'hale', null] } });
       ok(GENERAL_FACTION[forced.players[0].general!] === factions[0] && GENERAL_FACTION[forced.players[1].general!] === factions[1], `${tag}, seed ${i}: each seat's doctrine matches its army`);
       checked++;
     }
   }
   // Ilse's air discount reaches Ashen's own aircraft, found by airRole (section 7).
-  const s = createInitialState('ilse-air', 'i', { seed: 'ilse-air', createdAt: 0, setup: { tech: 'advanced', factions: ['ashen', 'ashen'], generalPicks: ['ilse', null] } });
+  const s = createAsWritten('ilse-air', 'i', { seed: 'ilse-air', createdAt: 0, setup: { tech: 'advanced', factions: ['ashen', 'ashen'], generalPicks: ['ilse', null] } });
   for (const k of ['kestrel', 'firebrand'] as UnitKind[]) {
     ok(costFor(s, 0, k) < costFor(s, 1, k), `Ilse: the ${UNITS[k].name} is cheaper on her side (${costFor(s, 0, k)} against ${costFor(s, 1, k)})`);
   }

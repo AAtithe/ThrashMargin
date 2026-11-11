@@ -4,6 +4,7 @@
  * D builds anything: squads in saves, and the reducer refusing what nothing handles yet. Workstream D
  * replaces the refusal assertions marked below once it handles them, and adds its own sections.
  */
+import { createAsWritten } from './drive-factions';
 import { processAction } from '../src/sim/actions';
 import { FORMATION_SHAPES, SLOT_SPACING_DIAGONAL, type FormationShape, type UnitKind } from '../src/sim/rules';
 import { addUnit, createInitialState, migrateState } from '../src/sim/state';
@@ -17,7 +18,7 @@ const copy = (s: GameState): GameState => JSON.parse(JSON.stringify(s));
 
 function groundwork(ok: Ok): void {
   ok(FORMATION_SHAPES.join() === 'line,column,wedge,box', 'four formation shapes');
-  const s = createInitialState('f', 'f', { seed: 'formations', createdAt: 0, setup: { tech: 'advanced' } });
+  const s = createAsWritten('f', 'f', { seed: 'formations', createdAt: 0, setup: { tech: 'advanced' } });
   ok(s.squads === undefined && s.units.every(u => u.squad === undefined), 'a fresh battle has no squads');
   const ids = s.units.filter(u => u.owner === 0).map(u => u.id);
   const c = s.units.find(u => u.owner === 0)!;
@@ -133,7 +134,7 @@ function slotTables(ok: Ok): void {
 
 /** A fresh advanced battle with a mixed group of ours on open ground near the Command Yard. */
 function squadBattle(kinds: UnitKind[] = ['buggy', 'buggy', 'tank', 'tank', 'artillery', 'rifleman', 'rifleman', 'rifleman', 'medic', 'repairtruck']): { s: GameState; ids: number[] } {
-  const s = createInitialState('formations', 'formations', { seed: 'formations', createdAt: 0, setup: { tech: 'advanced' } });
+  const s = createAsWritten('formations', 'formations', { seed: 'formations', createdAt: 0, setup: { tech: 'advanced' } });
   // Near the middle of the map, each on the nearest open tile not already taken.
   const occ = occupancy(s);
   const W = s.mapW;
@@ -331,7 +332,7 @@ function refusals(ok: Ok): void {
 function computerFormations(ok: Ok): void {
   // Two computer sides for 30 game minutes; whether squads ever appear, whose, and in what shape.
   const watch = (tech: 'advanced' | 'standard') => {
-    let s = createInitialState(`f-${tech}`, 'f', { seed: 'formations-ai', difficulty: 'normal', createdAt: 0, autopilot: true, setup: { tech } });
+    let s = createAsWritten(`f-${tech}`, 'f', { seed: 'formations-ai', difficulty: 'normal', createdAt: 0, autopilot: true, setup: { tech } });
     const shapes = new Set<FormationShape>();
     let wrong = 0;
     for (let i = 0; i < 180 && s.winner === null; i++) {

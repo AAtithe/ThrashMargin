@@ -7,7 +7,7 @@
  * from rules.ts through a `Catalogue`, so a kind added to the rules (or, in a test, to a copy of
  * the menus) is laid out without this file changing.
  */
-import { BUILDINGS, FACTIONS, UNITS, type BuildingKind, type Category, type Faction, type UnitKind } from '../sim/rules';
+import { BUILDINGS, FACTIONS, MENUS, UNITS, type BuildingKind, type Category, type Faction, type UnitKind } from '../sim/rules';
 import { buildingSpecFor, menuOf, unitSpecFor } from '../sim/specs';
 
 /** What the window needs to know about one item. */
@@ -25,7 +25,8 @@ export interface Catalogue {
   isStructure: (kind: string) => boolean;
 }
 
-const CATEGORIES: Category[] = ['building', 'infantry', 'vehicle', 'air'];
+/** Every queue's list, the naval war's included (merge): read from MENUS so a new tab is never left out. */
+const CATEGORIES = Object.keys(MENUS) as Category[];
 
 /** The real rules, as one army fields them: its own build lists (menuOf) and its own numbers. */
 function makeCatalogue(faction: Faction): Catalogue {

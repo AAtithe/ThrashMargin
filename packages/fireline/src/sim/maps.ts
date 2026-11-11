@@ -293,6 +293,37 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
       // A track between the bases (and its mirror), across the water where it must: a causeway.
       carve(b0.x, b0.y, b1.x, b1.y);
     }
+  } else if (type === 'coast') {
+    // A sea across the middle, stopping short of both edges: the land corridors round its two ends
+    // are the only ways between the bases, and the contested ore lies in them, each as far from
+    // one base as from the other. Painted on the bottom half (the brush mirrors it), with a
+    // wobbling shore and a few rock islets.
+    const shore = wobble(7);
+    const ends = wobble(6);
+    const halfW = sc(9);
+    const corridor = si(9);
+    for (let y = Math.floor(CY); y < CY + halfW + 3; y++)
+      for (let x = 0; x < W; x++) {
+        const depth = halfW + shore(x) * 1.6;
+        const end = corridor + ends(y) * 1.5;
+        // The sea's ends are rounded off toward its shore.
+        const off = y + 0.5 - CY;
+        const taper = off > depth - 3 ? (off - (depth - 3)) * 1.2 : 0;
+        if (off < depth && x + 0.5 >= end + taper && x + 0.5 <= W - end - taper) paint(x, y, 'w');
+        else if (off < depth + 1 && x + 0.5 >= end + taper - 1 && x + 0.5 <= W - end - taper + 1 && t[idx(x, y)] !== 'w') paint(x, y, 'd');
+      }
+    // A harbour: a bay off the sea toward each base (the brush gives side 1 its own), so the shore
+    // lies at about the edge of the base's clearing.
+    const hx = Math.max(corridor + 6, Math.min(W - corridor - 6, b0.x));
+    disc(hx, CY + halfW + sc(2.5), sc(3.2), 'w', 0.6);
+    const islets = Math.round(rng.int(1, 3) * ks * ks);
+    for (let i = 0; i < islets; i++) disc(corridor + 6 + rng.float() * (W - 2 * corridor - 12), CY + 1.5 + rng.float() * (halfW - 4), 0.8 + rng.float() * 0.9, 'r', 0.5);
+    // Where the line as far from one base as the other crosses each corridor.
+    const reach = (CX - corridor / 2) / Math.max(0.35, Math.abs(perp.x));
+    contested.push(
+      { x: CX + perp.x * reach, y: CY + perp.y * reach },
+      { x: CX - perp.x * reach, y: CY - perp.y * reach },
+    );
   } else if (type === 'plains') {
     extraFields = 1;
     const off = rng.float() < 0.5 ? 0 : rng.int(si(8), si(12));
@@ -465,6 +496,8 @@ const TERRAIN: Record<MapType, { water: number; ridge: number; trees: number }> 
   lakes: { water: -0.5, ridge: 0.03, trees: 0.66 },
   plains: { water: -0.85, ridge: 0.02, trees: 0.74 },
   canyon: { water: -0.8, ridge: 0.04, trees: 0.64 },
+  // The sea is drawn by the type itself; the noise adds few ponds.
+  coast: { water: -0.9, ridge: 0.03, trees: 0.68 },
 };
 
 const dist = (a: Pt, b: Pt) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
@@ -886,6 +919,19 @@ export function draftSidesMap(seed: number, type: MapType, oreLevel: OreLevel, n
       disc(p.x, p.y, r, 'w', 1.2);
       placed++;
     }
+  } else if (type === 'coast') {
+    // An inland sea round a central island: every side's shore faces its neighbours across the
+    // water. The tracks to the centre, carved below, cross it as causeways.
+    const inner = sc(5.5);
+    const outer = d - CLEARING - (n === 4 ? 6 : 4);
+    const shore = wobble(6);
+    for (let y = 0; y < S; y++)
+      for (let x = 0; x < S; x++) {
+        const r = radius(x, y);
+        const e = fromEdge(x, y);
+        const wob = shore(Math.max(0, e.along + S / 2)) * 1.2;
+        if (r >= inner + wob * 0.4 && r <= outer + wob) paint(x, y, 'w');
+      }
   } else if (type === 'canyon') {
     // A ring of cliffs between the bases and the centre, cut only by the tracks, made wide.
     const inner = sc(7 + rng.float() * 2);

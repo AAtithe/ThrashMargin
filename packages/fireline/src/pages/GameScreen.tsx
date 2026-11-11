@@ -556,9 +556,9 @@ export function Battle({
       }
       // Infantry on one of our own Troop Carriers: they walk to it and climb in; anything else moves there.
       if (targetUnit && targetUnit.owner === 0 && UNITS[targetUnit.kind].carries) {
-        const riders = mine.filter(u => canRide(u)).map(u => u.id);
+        const riders = mine.filter(u => canRide(u, targetUnit)).map(u => u.id);
         if (riders.length) {
-          const rest = mine.filter(u => !canRide(u) && u.id !== targetUnit.id).map(u => u.id);
+          const rest = mine.filter(u => !canRide(u, targetUnit) && u.id !== targetUnit.id).map(u => u.id);
           if (dispatch({ type: 'board', ids: riders, carrier: targetUnit.id })) ov.pings.push({ x: wx, y: wy, at: now, kind: 'move' });
           else showToast(boardProblem(s, 0, riders, targetUnit.id) ?? 'Cannot board');
           if (rest.length) dispatch({ type: 'move', ids: rest, x: wx, y: wy, queue });
@@ -636,6 +636,7 @@ export function Battle({
       if (b.kind === 'barracks') setTab('infantry');
       if (b.kind === 'factory') setTab('vehicle');
       if (b.kind === 'helipad') setTab('air');
+      if (b.kind === 'shipyard') setTab('naval');
       if (b.kind === 'hq') setTab('building');
     }
     sound.play('select');
@@ -1846,7 +1847,7 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['Q W E R T Y', 'Build or train the first to sixth item in the list the Build button names, window open or closed (the letter is on each button)'],
     [
       'U I J K L B N D',
-      'With advanced tech: the seventh to fourteenth item in that list. Items past the fourteenth (the Prototype Works, the Fortress and, with heroes on, the Command Academy) have no key: click them in the build window',
+      'With advanced tech: the seventh to fourteenth item in that list. Items past the fourteenth (the Prototype Works, the Fortress, the Naval Yard and, with heroes on, the Command Academy) have no key: click them in the build window',
     ],
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
     ['Tab', 'Next build list: Structures, Infantry, Vehicles, then Air and Research when you have them (Shift + Tab goes back)'],

@@ -1,3 +1,5 @@
+import { creepFocus, navalPlan, navalSpot } from './aiNaval';
+import { isShip } from './naval';
 import { canQueue, doAttack, doCancel, doHarvest, doMove, doPlace, doQueue, doRally, doRepair, doSell, placementProblem } from './commands';
 import { buildingCentre, dist, distToBuilding, doorTile, dockTile, frontDir, nearestPassable, occupancy, onMap, passable, laneRow, tileAt } from './grid';
 import { airPlan } from './aiAir';
@@ -423,6 +425,8 @@ function commander(s: GameState, owner: Owner): void {
   // round4:A. Air units, anti-air and research (fireline-round4-design.md, workstream A): one call
   // into aiAir.ts goes on the line below this comment, and nothing else in this function changes.
   airPlan(s, owner, home, enemy, foes);
+  // The naval war: the navy, on a map with a sea both bases border (aiNaval.ts).
+  navalPlan(s, owner, home, enemy, foes);
 
   // round5:C begin. Engineering vehicles (fireline-round5-design.md): one call into aiEngineering.ts
   // goes on the line below this comment, and nothing else in this function changes.
@@ -451,7 +455,8 @@ function commander(s: GameState, owner: Owner): void {
   const alive = new Map(units.map(u => [u.id, u]));
   let waveIds = mem.waveIds.filter(id => alive.has(id));
   let raidIds = mem.raidIds.filter(id => alive.has(id));
-  const army = units.filter(u => unitSpecOf(s, u).weapon && !keptBack(s, u));
+  // Ships have their own plan (aiNaval.ts) and never join a wave, so never a wave's formation either.
+  const army = units.filter(u => unitSpecOf(s, u).weapon && !keptBack(s, u) && !isShip(u));
   const inWave = new Set(waveIds);
   const inRaid = new Set(raidIds);
   const retreatTo = openGround(s, owner, toward(home, enemyHome, 4));
@@ -1003,7 +1008,9 @@ function nextStructure(
  */
 function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enemyHome: Pt): Pt | null {
   const spec = buildingSpec(s, owner, kind);
-  let focus = home;
+  // The naval war: a Naval Yard on the shore, and Generators toward it while it is out of reach.
+  if (kind === 'shipyard') return navalSpot(s, owner, home);
+  let focus = (kind === 'power' && creepFocus(s, owner)) || home;
   if (kind === 'turret' || kind === 'rocketturret') focus = toward(home, enemyHome, 7);
   // The Repair Bay on the near side, where the army comes home; the costliest structures behind.
   if (kind === 'repairbay') focus = toward(home, enemyHome, 4);
@@ -1187,7 +1194,7 @@ function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
   }
 }
 
-type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
+type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft' | 'ship';
 
 /**
  * The opponent's things a blast at (x, y) would hurt, in credits' worth destroyed: each one's cost

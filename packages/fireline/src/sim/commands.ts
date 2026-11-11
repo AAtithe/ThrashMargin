@@ -2,6 +2,7 @@ import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt
 import { isWalkable } from './map';
 import { isEnemy } from './sides';
 import { airRoom, canHit, isAir } from './air';
+import { shoreProblem } from './naval';
 import { upgradeNewUnit } from './research';
 import type { Target } from './grid';
 import {
@@ -162,6 +163,11 @@ export function placementProblem(
   if (kind === 'refinery') {
     const d = { x: x + 1, y: frontRow(s, owner, y, spec.h) };
     if (!onMap(s, d.x, d.y) || !isWalkable(s.tiles[tileAt(s, d.x, d.y)]) || occ[tileAt(s, d.x, d.y)]) return 'The dock pad below needs clear ground';
+  }
+  // The naval war: a Naval Yard stands on the shore of open sea.
+  if (kind === 'shipyard') {
+    const sea = shoreProblem(s, x, y);
+    if (sea) return sea;
   }
   if (opts.anywhere) return null;
   // Near something we already own (walls do not count: they cannot creep a base across the map).
@@ -350,7 +356,7 @@ function formation(n: number): [number, number][] {
 
 // round6:D begin. Formations and squads: slotsFor(shape, n, facing), the role order, and the
 // 'formation' action's check and work (or in a formations.ts of D's own, imported here).
-import { facingOf, isFormationShape, leaveSquads, pruneSquads, slotOrder, slotScale, slotsFor, slowest, squadLeader, wholeSquad } from './formations';
+import { facingOf, formsUp, isFormationShape, leaveSquads, pruneSquads, slotOrder, slotScale, slotsFor, slowest, squadLeader, wholeSquad } from './formations';
 import type { FormationShape } from './rules';
 import type { Squad } from './types';
 
@@ -358,7 +364,8 @@ import type { Squad } from './types';
  * A move in a formation: slots from slotsFor, facing from the group's middle to the point (or
  * `facing` when given), handed out by role then id. Not queued, the ground units form a squad (ids
  * from s.nextId) that keeps to its slowest member's pace, leaving any squads they were in; queued,
- * each unit queues its slot and squads are left as they are. Aircraft take a slot but join no squad.
+ * each unit queues its slot and squads are left as they are. Aircraft and ships take a slot but join no squad
+ * (formsUp: formations are for land units).
  */
 export function doFormationMove(
   s: GameState,
@@ -387,7 +394,7 @@ export function doFormationMove(
   const ordered = slotOrder(s, units, shape);
   const scale = slotScale(face);
   const slots = slotsFor(shape, ordered.length, face);
-  const ground = ordered.filter(u => !isAir(u));
+  const ground = ordered.filter(formsUp);
   if (!queue) leaveSquads(s, ground);
   const squad = !queue && ground.length >= 2;
   const q: Squad | null = squad
@@ -406,7 +413,7 @@ export function doFormationMove(
     // A tile once taken counts as blocked for the slots after it, so no two units share one.
     if (k >= 0) occ[k] = -1;
     give(u, attackMove && unitSpecOf(s, u).weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty }, queue);
-    if (q && !isAir(u)) {
+    if (q && formsUp(u)) {
       u.squad = q.id;
       u.slotX = ox;
       u.slotY = oy;
@@ -423,12 +430,12 @@ export function canFormationMove(s: GameState, owner: Owner, ids: number[], x: n
   return isFormationShape(shape) && canMove(s, owner, ids, x, y, queue);
 }
 
-/** Legal when the shape is known (or 'none') and there is something to do: two ground units to form up, or a squad to leave. */
+/** Legal when the shape is known (or 'none') and there is something to do: two land units to form up, or a squad to leave. */
 export function canFormation(s: GameState, owner: Owner, ids: number[], shape: unknown): boolean {
   const units = ownUnits(s, owner, ids);
   if (shape === 'none') return units.some(u => u.squad !== undefined);
   if (!isFormationShape(shape)) return false;
-  return units.filter(u => !isAir(u)).length >= 2;
+  return units.filter(formsUp).length >= 2;
 }
 
 /**
@@ -441,7 +448,7 @@ export function doFormation(s: GameState, owner: Owner, ids: number[], shape: Fo
     leaveSquads(s, units);
     return;
   }
-  const ground = units.filter(u => !isAir(u));
+  const ground = units.filter(formsUp);
   let cx = 0;
   let cy = 0;
   let fx = 0;
