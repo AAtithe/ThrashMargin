@@ -27,6 +27,9 @@ import { Particles } from './fx/particles';
 import { Scars } from './fx/scars';
 import { sprites } from './fx/sprites';
 import { Water } from './fx/water';
+import { drawOreField } from './fx/ore';
+import { contactShadow, footprint, SKIRT } from './fx/ground';
+import { currentPace } from '../lib/motion';
 import { sound, type SoundKind } from './sound';
 import { drawMissileMarker, drawMissileInFlight, flameJet, MISSILE_ARC } from './fx/strike';
 import { paintMiniTerrain, paintTerrain, paintTerrainOffThread } from './terrain';
@@ -208,6 +211,13 @@ export class Renderer {
   private visFor: GameState | null = null;
   private vis: Uint8Array = new Uint8Array(0);
   private lastNow = 0;
+  private fogFor: GameState | null = null;
+  private fogA = new Uint8Array(0);
+  private fogRaw = new Uint8Array(0);
+  private fogRow = new Uint16Array(0);
+  /** Whether motion is on (lib/motion.ts), read once a second: off holds the ore's glints still. */
+  private sparkle = true;
+  private paceAt = -Infinity;
 
   /**
    * `mapType` picks the look of the ground (river banks, highland cliffs, canyon walls); when it is
@@ -253,6 +263,47 @@ export class Renderer {
     this.water = water;
   }
 
+
+  /**
+   * The fog's alpha per tile (255 unexplored, 120 explored but unwatched, 0 in sight), blurred
+   * with a 1-2-1 kernel each way so the edge spreads over two tiles and its corners round off.
+   * A tile in sight stays mostly clear, so nothing the player can see is hidden by the
+   * blur. Cached per state object, like the visibility it comes from.
+   */
+  private fogAlpha(s: GameState, vis: Uint8Array): Uint8Array {
+    if (this.fogFor === s) return this.fogA;
+    this.fogFor = s;
+    const W = this.mapW;
+    const H = this.mapH;
+    const n = W * H;
+    if (this.fogA.length !== n) {
+      this.fogA = new Uint8Array(n);
+      this.fogRaw = new Uint8Array(n);
+      this.fogRow = new Uint16Array(n);
+    }
+    const raw = this.fogRaw;
+    const row = this.fogRow;
+    const out = this.fogA;
+    const ex = s.explored;
+    for (let k = 0; k < n; k++) raw[k] = ex.charCodeAt(k) !== 49 ? 255 : vis[k] ? 0 : 120;
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      for (let x = 0; x < W; x++) {
+        const c = raw[o + x];
+        row[o + x] = (x > 0 ? raw[o + x - 1] : c) + 2 * c + (x < W - 1 ? raw[o + x + 1] : c);
+      }
+    }
+    for (let y = 0; y < H; y++) {
+      const o = y * W;
+      const up = y > 0 ? o - W : o;
+      const dn = y < H - 1 ? o + W : o;
+      for (let x = 0; x < W; x++) {
+        const v = (row[up + x] + 2 * row[o + x] + row[dn + x]) >> 4;
+        out[o + x] = raw[o + x] === 0 ? Math.min(v, 72) : v;
+      }
+    }
+    return out;
+  }
 
   /** What side 0 (with its allies) can see right now. Cached per state object. */
   visible(s: GameState): Uint8Array {
@@ -319,14 +370,12 @@ export class Renderer {
     this.groundLight(ctx, cur, rt, vis, inView);
     this.fx.drawGround(ctx, inView);
 
-    // 3. Ore.
-    for (let y = ty0; y <= ty1; y++)
-      for (let x = tx0; x <= tx1; x++) {
-        const k = y * MAP_W + x;
-        const o = cur.ore[k];
-        if (o <= 0 || explored.charCodeAt(k) !== 49) continue;
-        drawOre(ctx, x, y, o, t, k);
-      }
+    // 3. Ore: stained ground, crystal clusters and glints (fx/ore.ts).
+    if (now - this.paceAt > 1000) {
+      this.paceAt = now;
+      this.sparkle = currentPace() !== 'off';
+    }
+    drawOreField(ctx, cur.ore, explored, MAP_W, tx0, ty0, tx1, ty1, t, this.sparkle);
 
     // 4. Structures, back to front.
     const low = sidesOf(cur).map(o => powerOf(cur, o).low);
@@ -348,6 +397,17 @@ export class Renderer {
     // (drawSite in art.ts) goes under this line, before the structures.
     drawSiteLayer(ctx, cur, explored, vis, rt, t);
     // round5:D end.
+    // The ground each structure stands on: a trampled skirt and its occlusion shadow (fx/ground.ts),
+    // all of them before any structure, so a neighbour's skirt never laps over a wall.
+    for (const b of buildings) {
+      const spec = BUILDINGS[b.kind];
+      const px = b.x * TILE;
+      const py = b.y * TILE;
+      if (!inView(px + (spec.w * TILE) / 2, py + (spec.h * TILE) / 2, 140)) continue;
+      ctx.globalAlpha = Math.min(1, Math.max(0.15, (rt - b.placedAt) / 15));
+      ctx.drawImage(footprint(spec.w * TILE, spec.h * TILE, !spec.wall), px - SKIRT, py - SKIRT);
+    }
+    ctx.globalAlpha = 1;
     for (const b of buildings) {
       const spec = BUILDINGS[b.kind];
       const px = b.x * TILE;
@@ -431,14 +491,26 @@ export class Renderer {
     drawn.sort((a, b) => a.y - b.y);
     aloft.sort((a, b) => a.y - b.y);
     this.orderLines(ctx, cur, drawn.concat(aloft), ov, t);
+    // Contact shadows, under every ground unit before any is drawn.
+    const contact = contactShadow();
+    for (const { u, x, y } of drawn) {
+      const r = UNITS[u.kind].category === 'infantry' ? 7 : u.kind === 'bastion' ? 22 : 15;
+      ctx.drawImage(contact, x - r * 1.15 + 1.5, y - r * 0.72 + 2.5, r * 2.3, r * 1.44);
+    }
     for (const { u, x, y } of drawn) {
       const spec = UNITS[u.kind];
       const r = spec.category === 'infantry' ? 8 : u.kind === 'bastion' ? 20 : 14;
       if (ov.selected.has(u.id) || ov.hover === u.id) {
-        ctx.strokeStyle = u.owner === 0 ? ART.select : ART.selectEnemy;
-        ctx.lineWidth = 1.4;
+        // A faint pool of the selection colour on the ground, ringed.
+        const col = u.owner === 0 ? ART.select : ART.selectEnemy;
         ctx.beginPath();
         ctx.ellipse(x, y + 2, r + 1, (r + 1) * 0.7, 0, 0, Math.PI * 2);
+        ctx.fillStyle = col;
+        ctx.globalAlpha = 0.13;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.4;
         ctx.stroke();
       }
     }
@@ -685,10 +757,28 @@ export class Renderer {
             ctx.fillRect(tx - 1.5 + Math.random() * 3, ty - 1.5 + Math.random() * 3, 2, 2);
           }
         }
-        ctx.fillStyle = `rgba(255,210,110,${a})`;
+        // The flash: a flame tongue out of the muzzle toward the target, over in a moment, then a
+        // fading glow where the gun is.
+        const ang = Math.atan2(ty - y, tx - x);
+        const big = e.weapon === 'artillery' ? 1.5 : e.weapon === 'bullet' ? 0.5 : 1;
+        const reach = e.weapon === 'bullet' ? 5 : 11;
+        ctx.globalCompositeOperation = 'lighter';
+        if (age < 1.1) {
+          const k = 1 - age / 1.1;
+          ctx.save();
+          ctx.translate(x + Math.cos(ang) * reach, y + Math.sin(ang) * reach);
+          ctx.rotate(ang);
+          ctx.scale(big * (0.8 + 0.4 * k), big * (0.6 + 0.5 * k));
+          ctx.globalAlpha = k;
+          ctx.drawImage(sprites().flash, -8, -16);
+          ctx.restore();
+        }
+        ctx.fillStyle = `rgba(255,190,100,${a * 0.6})`;
         ctx.beginPath();
-        ctx.arc(x, y, e.weapon === 'bullet' ? 3 : e.weapon === 'artillery' ? 8 : 5.5, 0, Math.PI * 2);
+        ctx.arc(x + Math.cos(ang) * reach, y + Math.sin(ang) * reach, 2 + big * 2.5, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
       } else if (e.kind === 'bomb') {
         // A bomb's blast: brighter and wider than a shell's, over in a moment.
         if (age > 2.5) continue;
@@ -757,14 +847,18 @@ export class Renderer {
     // 10. Fog: unexplored is black, explored but unwatched is dimmed. Drawn from a one-pixel-per-
     // tile canvas scaled up with smoothing, which is what gives it soft edges. Cloud shadows and
     // the vignette ride in the same canvas (see fx/atmosphere.ts), so they cost no extra fill.
+    // The fog's own alpha is softened over a tile each way and cached per state (fogAlpha), so its
+    // edge is a rounded gradient rather than a staircase of tiles. ('high' smoothing on the scale
+    // looked no better and cost frames on a machine without a GPU.)
     const d = this.fogImg.data;
     const [fr, fg, fb] = ART.fog;
     const shade = this.atmosphere.shade(t, cam, tx0, ty0, tx1, ty1);
+    const fa = this.fogAlpha(cur, vis);
     for (let k = 0; k < MAP_W * MAP_H; k++) {
       d[k * 4] = fr;
       d[k * 4 + 1] = fg;
       d[k * 4 + 2] = fb;
-      const a = explored.charCodeAt(k) !== 49 ? 255 : vis[k] ? 0 : 120;
+      const a = fa[k];
       d[k * 4 + 3] = 255 - ((255 - a) * (255 - shade[k])) / 255;
     }
     this.fogCtx.putImageData(this.fogImg, 0, 0);
@@ -1229,50 +1323,6 @@ export class Renderer {
   }
 }
 
-function oreHash(n: number): number {
-  let h = Math.imul(n ^ 0x9e3779b9, 0x85ebca6b);
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-function drawOre(ctx: CanvasRenderingContext2D, x: number, y: number, amount: number, t: number, k: number) {
-  const px = x * TILE;
-  const py = y * TILE;
-  ctx.fillStyle = ART.oreGround;
-  ctx.beginPath();
-  ctx.arc(px + TILE / 2, py + TILE / 2, 15, 0, Math.PI * 2);
-  ctx.fill();
-  const n = Math.max(1, Math.ceil(amount / 85));
-  for (let i = 0; i < n; i++) {
-    const cx = px + 5 + oreHash(k * 13 + i) * 22;
-    const cy = py + 5 + oreHash(k * 29 + i * 7) * 22;
-    const s = 2.8 + oreHash(k * 31 + i) * 2.6;
-    ctx.fillStyle = ART.oreDark;
-    ctx.beginPath();
-    ctx.moveTo(cx + 1, cy - s + 1);
-    ctx.lineTo(cx + s * 0.7 + 1, cy + 1);
-    ctx.lineTo(cx + 1, cy + s * 0.9 + 1);
-    ctx.lineTo(cx - s * 0.7 + 1, cy + 1);
-    ctx.closePath();
-    ctx.fill();
-    ctx.fillStyle = ART.ore;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - s);
-    ctx.lineTo(cx + s * 0.7, cy);
-    ctx.lineTo(cx, cy + s * 0.9);
-    ctx.lineTo(cx - s * 0.7, cy);
-    ctx.closePath();
-    ctx.fill();
-    const glint = Math.sin(t * 2.2 + oreHash(k + i * 101) * 20);
-    if (glint > 0.85) {
-      ctx.fillStyle = ART.oreGlow;
-      ctx.globalAlpha = (glint - 0.85) / 0.15;
-      ctx.fillRect(cx - 0.8, cy - s * 0.6, 1.6, 1.6);
-      ctx.globalAlpha = 1;
-    }
-  }
-}
-
 function brackets(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, colour: string) {
   const l = Math.min(10, w / 3);
   ctx.strokeStyle = colour;
@@ -1293,12 +1343,24 @@ function brackets(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
   ctx.stroke();
 }
 
+/**
+ * A health bar: a dark case, the fill in good, middling or bad, a pale top edge on the fill so it
+ * reads as lit like everything else, and a notch every quarter so a glance tells how much is gone.
+ */
 function hpBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, frac: number, thin = false) {
   const h = thin ? 2 : 3.5;
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  const f = Math.max(0, Math.min(1, frac));
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
   ctx.fillRect(x - 1, y - 1, w + 2, h + 2);
-  ctx.fillStyle = frac > 0.6 ? ART.hpGood : frac > 0.3 ? ART.hpMid : ART.hpBad;
-  ctx.fillRect(x, y, w * Math.max(0, frac), h);
+  ctx.fillStyle = 'rgba(255,255,255,0.08)';
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = f > 0.6 ? ART.hpGood : f > 0.3 ? ART.hpMid : ART.hpBad;
+  ctx.fillRect(x, y, w * f, h);
+  if (thin || w < 12) return;
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillRect(x, y, w * f, 1);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  for (let i = 1; i < 4; i++) ctx.fillRect(Math.round(x + (w * i) / 4) - 0.5, y, 1, h);
 }
 
 function flag(ctx: CanvasRenderingContext2D, x: number, y: number) {

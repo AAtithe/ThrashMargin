@@ -8,11 +8,10 @@
  * fills them in from storage the first time a key goes down, records each Ctrl + digit, and the
  * chips press the same keys the keyboard does, so touch and keys share one set of groups.
  */
-import { useEffect, type CSSProperties } from 'react';
+import { useEffect } from 'react';
 import { wholeSquad } from '../sim/formations';
 import { FORMATION_BLURBS, FORMATION_NAMES, FORMATION_SHAPES, UNITS, type FormationShape } from '../sim/rules';
 import type { GameAction, GameState, Unit } from '../sim/types';
-import { UI } from '../theme';
 
 // ---- Control groups in client storage ------------------------------------------------------
 
@@ -116,17 +115,6 @@ export function cycleFormation(state: GameState, units: Unit[], back: boolean): 
 
 // ---- The panel's rows ----------------------------------------------------------------------
 
-const btn = (on: boolean): CSSProperties => ({
-  fontFamily: 'inherit',
-  fontSize: '0.74rem',
-  padding: '4px 7px',
-  border: `1px solid ${on ? UI.good : UI.rule}`,
-  background: UI.panelRaised,
-  color: UI.text,
-  borderRadius: 3,
-  cursor: 'pointer',
-  fontWeight: on ? 600 : 400,
-});
 
 /**
  * Beside Stance: Line, Column, Wedge, Box and None for the selected units, the current one pressed.
@@ -150,13 +138,13 @@ export function FormationControls({
   return (
     <>
       {g.length >= 2 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }} role="group" aria-label="Formation" data-formation={now}>
+        <div className="fl-d-seg fl-d-formation" role="group" aria-label="Formation" data-formation={now}>
           {FORMATION_SHAPES.map(shape => (
             <button
               key={shape}
               data-formation-shape={shape}
               aria-pressed={now === shape}
-              style={btn(now === shape)}
+              className="fl-d-sbtn"
               title={`${FORMATION_NAMES[shape]}: ${FORMATION_BLURBS[shape]}${touch ? '' : ' (. cycles)'}`}
               onClick={() => dispatch({ type: 'formation', ids: g.map(u => u.id), shape })}
             >
@@ -166,7 +154,7 @@ export function FormationControls({
           <button
             data-formation-shape="none"
             aria-pressed={now === 'none'}
-            style={btn(now === 'none')}
+            className="fl-d-sbtn"
             title="No formation: each unit makes its own way"
             disabled={!inSquad}
             onClick={() => dispatch({ type: 'formation', ids: g.map(u => u.id), shape: 'none' })}
@@ -193,16 +181,15 @@ function GroupChips({ state, selected }: { state: GameState; selected: Unit[] })
   const mine = selected.filter(u => u.owner === 0).map(u => u.id);
   const already = shown.some(([, ids]) => ids.length === mine.length && mine.every(id => ids.includes(id)));
   const free = DIGITS.find(d => !shown.some(([x]) => x === d));
-  const chip: CSSProperties = { ...btn(false), minWidth: 34, padding: '6px 9px' };
   return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }} role="group" aria-label="Control groups" data-testid="group-chips">
+    <div className="fl-d-groupchips" role="group" aria-label="Control groups" data-testid="group-chips">
       {shown.map(([d, ids]) => (
-        <button key={d} data-group={d} style={chip} title={`Group ${d}: ${ids.length} ${ids.length === 1 ? 'unit' : 'units'}. Tap again to jump to it.`} onClick={() => press(d)}>
-          {d} <span style={{ color: UI.textSoft, fontSize: '0.68rem' }}>×{ids.length}</span>
+        <button key={d} data-group={d} className="fl-d-sbtn fl-d-groupchip" title={`Group ${d}: ${ids.length} ${ids.length === 1 ? 'unit' : 'units'}. Tap again to jump to it.`} onClick={() => press(d)}>
+          {d} <span className="fl-d-groupchip-n">×{ids.length}</span>
         </button>
       ))}
       {mine.length > 0 && !already && free && (
-        <button data-group-new={free} style={chip} title={`Make these ${mine.length} units group ${free}`} onClick={() => press(free, true)}>
+        <button data-group-new={free} className="fl-d-sbtn fl-d-groupchip" title={`Make these ${mine.length} units group ${free}`} onClick={() => press(free, true)}>
           + Group
         </button>
       )}

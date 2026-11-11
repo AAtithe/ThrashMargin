@@ -250,6 +250,9 @@ export function HeroBar({
   if (!heroes.length) return null;
   return (
     <div className="fl-herobar" data-testid="hero-bar" role="group" aria-label="Heroes">
+      <span className="fl-d-dock-label" aria-hidden="true">
+        Heroes
+      </span>
       {heroes.map((kind, i) => {
         const u = heroUnit(s, 0, kind);
         const key = HERO_KEYS[i]?.toUpperCase();
@@ -303,6 +306,7 @@ export function HeroBar({
             <button
               type="button"
               className="fl-ability"
+              data-ready={block ? '0' : '1'}
               data-testid={`ability-${kind}`}
               aria-pressed={aiming}
               disabled={!!block}
@@ -329,6 +333,9 @@ export function PowerBar({ s, targeting, onPower }: { s: GameState; targeting: T
   const mul = perksFor(s, 0)?.powerCooldownMul ?? 1;
   return (
     <div className="fl-powerbar" data-testid="power-bar" role="group" aria-label="Support powers">
+      <span className="fl-d-dock-label" aria-hidden="true">
+        Support
+      </span>
       {list.map(p => {
         const cd = mine[p] ?? 0;
         const full = Math.max(1, POWERS[p].cooldown * mul);
@@ -339,6 +346,7 @@ export function PowerBar({ s, targeting, onPower }: { s: GameState; targeting: T
             type="button"
             className="fl-power"
             data-testid={`power-${p}`}
+            data-ready={cd > 0 ? '0' : '1'}
             aria-pressed={targeting?.kind === 'power' && targeting.power === p}
             disabled={cd > 0}
             onClick={() => onPower(p)}
@@ -365,6 +373,9 @@ export function SkirmishPowerBar({ s, targeting, onPower }: { s: GameState; targ
   const list = Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][];
   return (
     <div className="fl-powerbar" data-testid="skirmish-power-bar" role="group" aria-label="Support powers">
+      <span className="fl-d-dock-label" aria-hidden="true">
+        Support
+      </span>
       {list.map(([p, from]) => {
         const held = mine[p] !== undefined;
         const cd = mine[p] ?? 0;
@@ -380,6 +391,7 @@ export function SkirmishPowerBar({ s, targeting, onPower }: { s: GameState; targ
             className="fl-power"
             data-testid={`power-${p}`}
             data-held={held ? '1' : '0'}
+            data-ready={held && cd <= 0 ? '1' : '0'}
             aria-pressed={targeting?.kind === 'power' && targeting.power === p}
             disabled={!held || cd > 0}
             onClick={() => onPower(p)}

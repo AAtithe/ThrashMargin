@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
-import { Button, Panel, bodySmall } from '../components/ui';
+import { Button, ManualSection as Section, bodySmall, manualSlug as slug } from '../components/ui';
 import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
 import { listedCost, statsOf } from '../game/Sidebar';
@@ -58,15 +58,30 @@ export default function HowToPlay() {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, color: UI.text, fontFamily: FONT.body }}>
       <PortalNav />
-      <main style={{ flex: 1, width: '100%', maxWidth: 860, margin: '0 auto', padding: '2rem 1rem 3rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-        <div>
+      <main className="fl-d-manual">
+        <header className="fl-d-manual-head">
           <Link to="/" style={{ textDecoration: 'none' }}>
             <Button tone="quiet">← Back to the lobby</Button>
           </Link>
-        </div>
-        <h1 style={{ margin: 0, fontFamily: FONT.display, letterSpacing: '0.1em' }}>HOW TO PLAY FIRELINE</h1>
+          <p className="fl-d-manual-eyebrow">Field manual</p>
+          <h1 className="fl-d-manual-title">HOW TO PLAY FIRELINE</h1>
+          <p className="fl-d-manual-lede">
+            Everything on this page is read from the same tables the battle runs on, so the numbers are always the live ones.
+          </p>
+        </header>
+        <nav className="fl-d-manual-index" aria-label="On this page">
+          <span className="fl-d-sect">On this page</span>
+          <ol>
+            {SECTIONS.map(t => (
+              <li key={t}>
+                <a href={`#${slug(t)}`}>{t}</a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+        <div className="fl-d-manual-body">
 
-        <Panel title="The first five minutes">
+        <Section title="The first five minutes">
           <ol style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               Click <strong>Build</strong> (or press <kbd>`</kbd>), then <strong>Generator</strong>. When it says Ready, click it again and
@@ -78,9 +93,9 @@ export default function HowToPlay() {
             <li>Put a <strong>Gun Turret</strong> or two on the side facing the enemy. The first attack comes after a few minutes.</li>
             <li>Build a <strong>Comms Uplink</strong> to bring the radar online and unlock artillery. Then go and find their base.</li>
           </ol>
-        </Panel>
+        </Section>
 
-        <Panel title="The rules that matter">
+        <Section title="The rules that matter">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>Everything is paid for when you queue it, and refunded in full if you cancel (right-click its button).</li>
             <li>One structure is built at a time. Infantry and vehicles each have their own queue of up to five.</li>
@@ -93,9 +108,9 @@ export default function HowToPlay() {
             <li>Units guard where they stand and return fire. Attack-move (A) makes them fight their way to a point; a plain move does not stop to fight.</li>
             <li>You win when the enemy has no structures left, and lose when you have none.</li>
           </ul>
-        </Panel>
+        </Section>
 
-        <Panel title="Playing faster">
+        <Section title="Playing faster">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>T</kbd> <kbd>Y</kbd> press the build buttons of the open list in order;
@@ -109,9 +124,9 @@ export default function HowToPlay() {
             </li>
             <li>A red banner on the battlefield means power is short. Build a Generator before anything else.</li>
           </ul>
-        </Panel>
+        </Section>
 
-        <Panel title="Setting up a skirmish">
+        <Section title="Setting up a skirmish">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               <strong>Battlefield.</strong> Pick a map type, or Random to let the seed choose. Each card in the lobby shows the
@@ -135,9 +150,9 @@ export default function HowToPlay() {
               </div>
             ))}
           </div>
-        </Panel>
+        </Section>
 
-        <Panel title="Advanced tech">
+        <Section title="Advanced tech">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               The build window gains an Air tab and a longer tree. Items marked <span style={advBadge}>Advanced</span> below appear only
@@ -176,10 +191,10 @@ export default function HowToPlay() {
             When the enemy launches a missile at you, a red banner counts down to impact and a red ring marks the target. Click
             the banner to jump there, and move everything you can out of the ring.
           </p>
-        </Panel>
+        </Section>
 
         {/* round5:A. The build window (fireline-round5-design.md): its panel goes on the line below. */}
-        <Panel title="The build window">
+        <Section title="The build window">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               Everything you can build is in the <strong>build window</strong>. Open it with the <strong>Build</strong> button in
@@ -202,9 +217,9 @@ export default function HowToPlay() {
             </li>
             <li>Once a Research Lab stands, the window gains a <strong>Research</strong> tab for upgrades.</li>
           </ul>
-        </Panel>
+        </Section>
         {/* round5:B. Larger maps and long games: its panel goes on the line below. */}
-        <Panel title="Larger maps and long games">
+        <Section title="Larger maps and long games">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               Choose the <strong>Map size</strong> in the lobby. Standard is the original size; Large and Huge spread the bases
@@ -222,9 +237,9 @@ export default function HowToPlay() {
               its first attack and sends bigger waves less often. Expect battles of 30 minutes to an hour.
             </li>
           </ul>
-        </Panel>
+        </Section>
         {/* round5:C. Engineering vehicles: its panel goes on the line below. */}
-        <Panel title="Engineering vehicles">
+        <Section title="Engineering vehicles">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               Two unarmed vehicles from the War Factory, with advanced tech only. Neither appears in a campaign mission.
@@ -251,7 +266,7 @@ export default function HowToPlay() {
               Gun Turret beside it.
             </li>
           </ul>
-        </Panel>
+        </Section>
         {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
         <SitesPanel />
         {/* round6:A. Two armies (fireline-round6-design.md): its panel goes on the line below. */}
@@ -261,7 +276,7 @@ export default function HowToPlay() {
         {/* round6:C. Generals: its panel goes on the line below. */}
         <GeneralsPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
-        <Panel title="Formations and groups">
+        <Section title="Formations and groups">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               Select two or more units and press <strong>Line</strong>, <strong>Column</strong>, <strong>Wedge</strong> or{' '}
@@ -287,9 +302,9 @@ export default function HowToPlay() {
               make the selection the next group.
             </li>
           </ul>
-        </Panel>
+        </Section>
 
-        <Panel title="Campaign">
+        <Section title="Campaign">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
             <li>
               Start a campaign in the lobby and name your Commander. The campaign map shows eight missions in order; each one
@@ -329,18 +344,18 @@ export default function HowToPlay() {
               </div>
             ))}
           </div>
-        </Panel>
+        </Section>
 
-        <Panel title="Structures">
+        <Section title="Structures">
           <Grid kinds={BUILD_MENU} />
-        </Panel>
-        <Panel title="Infantry">
+        </Section>
+        <Section title="Infantry">
           <Grid kinds={INFANTRY_MENU} />
-        </Panel>
-        <Panel title="Vehicles">
+        </Section>
+        <Section title="Vehicles">
           <Grid kinds={VEHICLE_MENU} />
-        </Panel>
-        <Panel title="Aircraft">
+        </Section>
+        <Section title="Aircraft">
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             Advanced tech only. A Helipad builds and rearms two aircraft. They fly over water, rock and structures, and only
             anti-air (Skyhunters, Flak Tracks, Flak Cannons, Interceptors) and machine guns can reach them. Once a Research Lab
@@ -359,8 +374,8 @@ export default function HowToPlay() {
             alike; the Ashen Combine strikes with the Kestrel and Firebrand in place of the Gunship and Bomber.
           </p>
           <Grid kinds={AIR_MENU} />
-        </Panel>
-        <Panel title="Naval">
+        </Section>
+        <Section title="Naval">
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             Advanced tech, on a map with open sea (the Coast map has one between the bases). Build a Naval Yard on the shore and
             its ships sail open water only. Patrol Boats are fast and their machine guns reach aircraft too; Destroyers carry the
@@ -371,15 +386,41 @@ export default function HowToPlay() {
             Ships beside your Naval Yard are mended for nothing.
           </p>
           <Grid kinds={NAVAL_MENU} />
-        </Panel>
-        <Panel title="Controls">
+        </Section>
+        <Section title="Controls">
           <Controls campaign skirmish />
-        </Panel>
+        </Section>
+        </div>
       </main>
       <PortalNav variant="footer" />
     </div>
   );
 }
+
+/** The page's sections, in order, for the index. Each title is also its anchor (see slug). */
+const SECTIONS = [
+  'The first five minutes',
+  'The rules that matter',
+  'Playing faster',
+  'Setting up a skirmish',
+  'Advanced tech',
+  'The build window',
+  'Larger maps and long games',
+  'Engineering vehicles',
+  'Neutral sites and tier three',
+  'Two armies',
+  'Heroes in free play',
+  'Generals',
+  'Formations and groups',
+  'Campaign',
+  'Structures',
+  'Infantry',
+  'Vehicles',
+  'Aircraft',
+  'Naval',
+  'Controls',
+];
+
 
 function Grid({ kinds }: { kinds: (BuildingKind | UnitKind)[] }) {
   return (
@@ -431,10 +472,12 @@ function Grid({ kinds }: { kinds: (BuildingKind | UnitKind)[] }) {
 const tile: CSSProperties = {
   display: 'flex',
   gap: 10,
-  padding: 8,
-  border: `1px solid ${UI.rule}`,
-  borderRadius: 4,
-  background: UI.panelRaised,
+  padding: 9,
+  border: '1px solid var(--d-btn-rule)',
+  borderLeft: `3px solid ${UI.accent}`,
+  borderRadius: 5,
+  background: 'linear-gradient(180deg, var(--d-btn-hi), var(--d-btn))',
+  boxShadow: 'inset 0 1px 0 var(--d-bevel)',
 };
 
 const advBadge: CSSProperties = {
@@ -466,7 +509,7 @@ const SITE_EFFECT: Record<(typeof SITE_KINDS)[number], string> = {
 
 function SitesPanel() {
   return (
-    <Panel title="Neutral sites and tier three">
+    <Section title="Neutral sites and tier three">
       <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <li>
           Turn on <strong>Neutral sites</strong> in the lobby and every side's share of the map holds the same set of sites, at
@@ -515,7 +558,7 @@ function SitesPanel() {
           them, the nearest first.
         </li>
       </ul>
-    </Panel>
+    </Section>
   );
 }
 // round5:D end.
@@ -524,7 +567,7 @@ function SitesPanel() {
 function FreeHeroesPanel() {
   const order = ['engineer', 'spy', 'commando', 'ace'] as const;
   return (
-    <Panel title="Heroes in free play">
+    <Section title="Heroes in free play">
       <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <li>
           Turn on <strong>Heroes</strong> in the lobby (advanced tech only) and the campaign's four heroes can be recruited in a
@@ -560,7 +603,7 @@ function FreeHeroesPanel() {
           </div>
         ))}
       </div>
-    </Panel>
+    </Section>
   );
 }
 // round6:B end.

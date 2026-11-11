@@ -19,7 +19,7 @@ import {
 } from '../sim/rules';
 import { maxHpOf } from '../sim/state';
 import type { GameState, Unit } from '../sim/types';
-import { Label, Panel, bodySmall } from './ui';
+import { Label, ManualSection, bodySmall } from './ui';
 
 const pct = (mul: number) => `${Math.round(Math.abs(1 - mul) * 100)}%`;
 const seconds = (ticks: number) => Math.ceil(ticks / 10);
@@ -133,12 +133,18 @@ export function GeneralButton({
   const hp = g ? Math.max(0, Math.min(1, g.hp / maxHpOf(g))) : 0;
   return (
     <div className={inline ? 'fl-genbar fl-genbar-inline' : 'fl-genbar'} style={lift && !inline ? { bottom: 10 + lift } : undefined}>
+      {inline && (
+        <span className="fl-d-dock-label" aria-hidden="true">
+          General
+        </span>
+      )}
       <button
         type="button"
         className="fl-genbtn"
         data-testid="general-button"
         data-selected={g && selected.has(g.id) ? '1' : '0'}
         data-fallen={!g && p.generalLostAt !== undefined ? '1' : '0'}
+        data-ready={g ? '1' : '0'}
         disabled={!g}
         title={g ? 'Select your General (0); press again to jump to it' : status}
         onClick={onPress}
@@ -176,7 +182,7 @@ export function GeneralNote({ units }: { units: Unit[] }) {
 /** How to play: Generals. */
 export function GeneralsPanel() {
   return (
-    <Panel title="Generals">
+    <ManualSection title="Generals">
       <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <li>
           In a skirmish each side may fight under a doctrine General, chosen in the setup: one of its army&apos;s two. Each changes a few
@@ -201,6 +207,6 @@ export function GeneralsPanel() {
           back when it is badly hurt.
         </li>
       </ul>
-    </Panel>
+    </ManualSection>
   );
 }

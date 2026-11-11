@@ -3,6 +3,20 @@ import { FONT, UI } from '../theme';
 
 /** Small shared primitives, so every panel in the game agrees on its edges and its type scale. */
 
+/** A manual section's anchor, from its title (How to play's index links to it). */
+export const manualSlug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+/** One section of the How to play manual: a plate heading with a groove, and an anchor the index links to. */
+export function ManualSection({ title, children }: { title: string; children: ReactNode }) {
+  const id = manualSlug(title);
+  return (
+    <section className="fl-d-manual-sect" id={id} aria-labelledby={`${id}-h`}>
+      <h2 id={`${id}-h`}>{title}</h2>
+      {children}
+    </section>
+  );
+}
+
 export function Panel({
   title,
   aside,

@@ -2,7 +2,7 @@
  * How to play: the two armies (fireline-round6-design.md, workstream A). Every number is read from
  * the rules through the per-army specs, so the tables cannot drift from what a battle plays.
  */
-import { Panel, bodySmall } from '../components/ui';
+import { ManualSection, bodySmall } from '../components/ui';
 import { iconFor } from '../game/icons';
 import { listedCost, statsOf } from '../game/Sidebar';
 import {
@@ -45,7 +45,7 @@ function facts(f: Faction, k: Kind): string {
 
 export default function ArmiesPanel() {
   return (
-    <Panel title="Two armies">
+    <ManualSection title="Two armies">
       <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <li>
           In a skirmish every seat picks an <strong>Army</strong> in the lobby. The campaign is always fought as {FACTION_NAMES.meridian}.
@@ -111,6 +111,6 @@ export default function ArmiesPanel() {
           </tbody>
         </table>
       </div>
-    </Panel>
+    </ManualSection>
   );
 }

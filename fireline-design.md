@@ -98,6 +98,15 @@ team's colours; the same functions draw the build menu icons. `game/terrain.ts` 
 once per battle. `game/renderer.ts` draws a frame: terrain window, scorch marks, ore, structures,
 units interpolated between ticks, projectiles, muzzle flashes and explosions, particles, fog
 (a 64 by 64 canvas scaled up with smoothing, which gives soft edges), placement ghost, drag box.
+Ore fields are drawn by `game/fx/ore.ts` (a ragged stain with lit crystal clusters that shrink as a
+tile is mined, glints held still with motion off); `game/fx/ground.ts` gives each structure a
+trampled skirt and a contact shadow and each unit a soft shadow. The fog grid is blurred before it
+is scaled up, so its edge is a curve rather than a tile staircase.
+
+The campaign's theatre maps (`game/campaignArt.ts`) are drawn as staff operational maps: paper,
+grid references, contours, a front line that advances with each mission won, arrows of advance and
+OBJ markers. Static layers are cached; only the open objective pulses. The lobby draws a preview of
+the same map through `components/campaignArtBridge.ts`.
 Particles and scorch marks are renderer-only and may use `Math.random`.
 
 Saves: every 15 seconds of play, on pause, on leaving, when the tab hides and when the battle
@@ -1538,3 +1547,62 @@ battle, the advanced sides battles, larger maps, the engineering battle and the 
 the computer's two formation moves switched off in a scratch copy, every summary line equals main's
 exactly, so all of it is round 6's formations, as at the air-war merge. `npm run campaign:fire`
 2,951, 0 failures.
+
+### 2026-11-11: the visual pass
+
+Four parallel strands, each owning its own files. The lobby became a briefing room: Campaign, then
+Skirmish, then Your battles, with a live preview of the theatre map and mission counts read from
+the mission lists (the copy still said eight missions after act two added six). The theatre maps
+were redrawn as operational maps, in a night map-table version for dark mode. The battle console
+was regrouped (clock, speed, sound and display clusters; a twelve-light power meter; build buttons
+whose state reads at a glance; an after-action table on the victory and defeat cards). The
+battlefield gained ore fields, structure skirts and contact shadows, a curved fog edge, leaning
+grass, directional muzzle flashes and notched health bars. Frame time held: median 2.7 to 3.0 ms
+against 2.9 ms before at minute 25 of a huge battle, 60 fps either way.
+
+### 2026-11-11: territory and engagements
+
+The campaign map became a country (`fireline-campaign-design.md` section 11). Rules in
+`src/campaign/territory.ts`: a region is held (home ground, its mission won, or its engagement
+won), open (no mission, its act's front reachable, bordering held ground) or enemy ground. Every
+region without a story mission holds an engagement, a side battle rolled from the region's id and
+scaled by missions won: an outpost or (from mission 4) a whole base, garrison, posture, credits,
+one or two bonus objectives. Half a story mission's xp; never tech, heroes, or a mission won.
+`CampaignState.engagements` is additive and older saves load with none.
+
+Tuning on the way, measured with the scripted base player over every engagement at two points of
+its act (44 battles): a whole Combine base on the attack ("normal" posture) beat a player still
+raising a base in four of five cases, and a rich defending base was never broken by an army sent
+at its nearest structure in 45 minutes. So a base only defends, on a smaller purse, and is beaten
+by bringing down its Command Yard and War Factory rather than its last harvester; raiding outposts
+start with a smaller garrison. After: 43 of 44 won with the army sent at twelve minutes, 38 of 44
+at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
+three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
+assertions, about 25 seconds more than before.
+
+### 2026-11-11: Round 6 merged with the visual pass
+
+Round 6 merged main's visual pass and territory campaign (the two entries above). Main's look is the
+look; every round 6 control now sits inside it.
+
+- **Skirmish orders.** The Army row, the Heroes field and the two Generals fields go in step 3,
+  Forces, under Tech level (Heroes and Generals are greyed on standard tech, so they follow it).
+  Tech level keeps round 6's `techText`, which names the Command Academy and the field General only
+  when their options are on. The Deploy step's summary gains Armies ("Ashen against Meridian"),
+  Your General, and Heroes and Generals with advanced tech. The army seats fill the row; on a phone
+  each doctrine seat's name goes above its choices, so the three fit across.
+- **Battle console.** The General's button is a drawer in the dock, labelled General like Heroes
+  and Support, its face lit in the General's gold when it stands (the hero revival note is a drawer
+  too). The formation row is a segmented strip of the console's small buttons under Stance, the
+  pressed shape lit as a stance is; the touch group chips are the same buttons, finger-sized. The
+  desktop orders legend gains the period key. The build window was not restyled by main, so its
+  per-army lists and Naval tab are unchanged.
+- **How to play.** Main's manual sections replace the old panels; the manual's section is now
+  `ManualSection` in `components/ui.tsx`, so the round 6 panels (Two armies, Heroes in free play,
+  Generals, Formations and groups) use it too and appear in the page index, with Naval, which
+  main's index had left out.
+- Main added `@fontsource/old-standard-tt`: run `npm install` after pulling.
+
+Harness: `npm run drive:fire` 396,760 assertions, 0 failed, every summary line equal to the run on
+the round 6 head (the visual pass is client-side); `npm run campaign:fire` 7,642, main's number,
+with the territory and engagement checks.

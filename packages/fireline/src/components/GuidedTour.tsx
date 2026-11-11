@@ -26,7 +26,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { BUILDINGS, type BuildingKind, type Category } from '../sim/rules';
 import { countBuildings } from '../sim/state';
 import type { GameState } from '../sim/types';
-import { FONT, UI } from '../theme';
+import { UI } from '../theme';
 
 const TOUR_SEEN_KEY = 'fireline_tour_seen';
 
@@ -417,9 +417,9 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
         top: rect.top - (big ? -2 : PAD),
         width: rect.width + (big ? -4 : PAD * 2),
         height: rect.height + (big ? -4 : PAD * 2),
-        borderRadius: 4,
+        borderRadius: 5,
         border: `2px solid ${UI.accent}`,
-        boxShadow: `0 0 0 9999px ${SCRIM}`,
+        boxShadow: `0 0 0 3px ${UI.tintAccent}, 0 0 18px 2px ${UI.tintAccent}, 0 0 0 9999px ${SCRIM}`,
         pointerEvents: 'none',
       }
     : null;
@@ -493,31 +493,40 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
         ref={cardRef}
         role="dialog"
         aria-label="Guided first battle"
-        style={{ ...CARD, left: pos.left, top: pos.top, width: CARD_W }}
+        className="fl-d-tour"
+        style={{ left: pos.left, top: pos.top, width: CARD_W }}
         data-tour-step={String(stepIndex)}
         data-tour-target={targetId ?? ''}
         data-tour-manual={manual ? '1' : '0'}
         {...(done ? { 'data-tour-done': '1' } : {})}
       >
-        <p style={label}>
-          Guided first battle · {stepIndex + 1} of {steps.length}
-        </p>
-        <h3 style={title}>{done ? 'Done' : step.title}</h3>
-        <p style={bodyText}>{done ? 'Good. Next step in a moment.' : windowNote(view, targetId) + step.body(view)}</p>
-        <div style={footer}>
-          <button type="button" style={ghost} onClick={finish}>
+        <div className="fl-d-tour-head">
+          <p className="fl-d-tour-label">
+            Guided first battle · {stepIndex + 1} of {steps.length}
+          </p>
+          <span className="fl-d-tour-prog" aria-hidden="true">
+            <span style={{ width: `${((stepIndex + (done ? 1 : 0)) / steps.length) * 100}%` }} />
+          </span>
+        </div>
+        <h3 className="fl-d-tour-title" data-done={done ? '1' : '0'}>
+          {done ? 'Done' : step.title}
+        </h3>
+        <p className="fl-d-tour-body">{done ? 'Good. Next step in a moment.' : windowNote(view, targetId) + step.body(view)}</p>
+        <div className="fl-d-tour-foot">
+          <button type="button" className="fl-d-tour-btn" data-kind="ghost" onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}
           </button>
           <div style={{ display: 'flex', gap: 6 }}>
             {!isFirst && !done && (
-              <button type="button" style={plain} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
+              <button type="button" className="fl-d-tour-btn" onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
                 Back
               </button>
             )}
             {!done && (
               <button
                 type="button"
-                style={manual ? primary : plain}
+                className="fl-d-tour-btn"
+                data-kind={manual ? 'primary' : undefined}
                 onClick={() => (isLast ? finish() : setStepIndex(i => Math.min(i + 1, steps.length - 1)))}
               >
                 {isLast ? 'Finish' : isFirst ? 'Start' : manual ? 'Next' : 'Skip this step'}
@@ -531,47 +540,3 @@ export default function GuidedTour({ view, onFinish, hidden = false }: Props) {
 }
 
 const SCRIM = 'rgba(4, 7, 8, 0.6)';
-
-const CARD: CSSProperties = {
-  position: 'fixed',
-  zIndex: 2002,
-  maxWidth: 'calc(100vw - 2rem)',
-  boxSizing: 'border-box',
-  background: UI.panel,
-  border: `1px solid ${UI.accent}`,
-  borderRadius: 6,
-  boxShadow: `0 12px 44px ${UI.shadow}`,
-  padding: '14px 16px 12px',
-  fontFamily: FONT.body,
-  color: UI.text,
-};
-
-const label: CSSProperties = {
-  margin: '0 0 6px',
-  fontFamily: FONT.mono,
-  fontSize: '0.62rem',
-  letterSpacing: '0.14em',
-  textTransform: 'uppercase',
-  color: UI.textFaint,
-};
-
-const title: CSSProperties = { margin: '0 0 6px', fontFamily: FONT.display, fontSize: '1.05rem', color: UI.accent };
-
-const bodyText: CSSProperties = { margin: '0 0 12px', fontSize: '0.84rem', lineHeight: 1.5, color: UI.textSoft };
-
-const footer: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 };
-
-const plain: CSSProperties = {
-  fontFamily: 'inherit',
-  fontSize: '0.76rem',
-  padding: '5px 10px',
-  border: `1px solid ${UI.ruleStrong}`,
-  borderRadius: 3,
-  background: UI.panelRaised,
-  color: UI.text,
-  cursor: 'pointer',
-};
-
-const primary: CSSProperties = { ...plain, border: `1px solid ${UI.accent}`, background: UI.accent, color: UI.ground, fontWeight: 600 };
-
-const ghost: CSSProperties = { ...plain, border: '1px solid transparent', background: 'transparent', color: UI.textFaint, padding: '5px 2px' };
