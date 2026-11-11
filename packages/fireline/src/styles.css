@@ -4987,3 +4987,54 @@ div:has(> .fl-alert-chip) > .fl-banners {
   color: var(--a-stamp-red);
 }
 /* ==== end A ==== */
+
+/* ==== R: territory and engagements (campaign briefing, region note, debrief) ==== */
+.fl-camp-territory {
+  font-size: 0.76rem;
+  color: var(--ui-text-soft);
+  padding: 0 2px;
+}
+.fl-eng-none {
+  margin: 0 0 8px;
+}
+.fl-eng-cards .fl-mission-no {
+  font-size: 1rem;
+}
+.fl-eng-intel {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 0.8rem;
+}
+.fl-eng-intel dt {
+  color: var(--ui-text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.68rem;
+  padding-top: 2px;
+}
+.fl-eng-intel dd {
+  margin: 0;
+  color: var(--ui-text);
+}
+.fl-region-note {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+.fl-region-note .fl-tag[data-control="held"] {
+  color: var(--ui-good);
+  border-color: var(--ui-good);
+}
+.fl-debrief-region {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+.fl-debrief-region[data-taken="1"] {
+  color: var(--ui-good);
+}
+/* ==== end R ==== */
