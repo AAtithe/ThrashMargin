@@ -1555,4 +1555,28 @@ export const FORMATION_SHAPES: FormationShape[] = ['line', 'column', 'wedge', 'b
 
 // round6:D begin. Formations and squads (fireline-round6-design.md, workstream D): names, slot
 // spacing, the leader's refresh interval and its constants.
+export const FORMATION_NAMES: Record<FormationShape, string> = { line: 'Line', column: 'Column', wedge: 'Wedge', box: 'Box' };
+export const FORMATION_BLURBS: Record<FormationShape, string> = {
+  line: 'Side by side, facing the way you send them: every gun can fire forward.',
+  column: 'Two files, one behind the other: narrow, for roads, bridges and gaps.',
+  wedge: 'An arrowhead with the armour at its tip: for driving into the enemy.',
+  box: 'A tight block, guns all round and the Medics and Repair Trucks inside: for holding or regrouping.',
+};
+/** Tiles between neighbouring slots facing straight up, down or across. */
+export const SLOT_SPACING = 1;
+/**
+ * Facing a diagonal, slot tables are turned with unnormalised diagonal steps (one tile across and
+ * one down), which are 1.41 tiles long; this scale brings them back to about one tile (1.06).
+ */
+export const SLOT_SPACING_DIAGONAL = 0.75;
+/** Ticks between the leader re-aiming its squad's members at their slots beside it. */
+export const SQUAD_REFRESH_TICKS = 8;
+/** On the march, members aim this many tiles ahead of their slot beside the leader, so they keep walking. */
+export const SQUAD_LEAD = 2;
+/** Once the leader is this close to its goal, members head for their own final slots. */
+export const SQUAD_FINAL = 4;
+/** A member further than this from its slot beside the leader may go at its own speed to catch up. */
+export const SQUAD_SLACK = 1.5;
+/** The largest group the line keeps in one rank; more go in further ranks behind. */
+export const LINE_RANK_MAX = 10;
 // round6:D end.

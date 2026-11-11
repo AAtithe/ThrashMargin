@@ -222,6 +222,9 @@ function tuned(d: DifficultySpec, mode: AiMode): DifficultySpec {
   };
 }
 
+// round6:D. Formations and squads: the waves' formation moves (fireline-round6-design.md).
+import { doFormationMove } from './commands';
+
 function commander(s: GameState, owner: Owner): void {
   const diff = aiDifficulty(s, owner);
   const mode = missionMode(s, owner);
@@ -626,7 +629,9 @@ function commander(s: GameState, owner: Owner): void {
       mem.waveSize = members.length;
       const target = pickTarget(enemy, foes, stage, t.focus, home);
       // round6:D begin. Formations: the wave sets off to attack (a wedge, in D's plan).
-      doMove(s, owner, waveIds, target.x, target.y, true);
+      // Advanced tech only: a wedge, armour at the tip, keeping to its slowest member's pace.
+      if (adv) doFormationMove(s, owner, waveIds, target.x, target.y, true, 'wedge');
+      else doMove(s, owner, waveIds, target.x, target.y, true);
       // round6:D end.
       // A recon sweep over where the wave is going, as it sets off.
       if (adv && powerProblem(s, owner, 'recon', target.x, target.y) === null) doPower(s, owner, 'recon', target.x, target.y);
@@ -660,7 +665,9 @@ function commander(s: GameState, owner: Owner): void {
         // Strung out on the march: pull together a little short of the centre, toward the target.
         const meet = openGround(s, owner, toward(centre, target, 2));
         // round6:D begin. Formations: the wave regroups (a box, in D's plan).
-        doMove(s, owner, core.map(u => u.id), meet.x, meet.y, true);
+        // Advanced tech only: a box, the Medics and Repair Trucks inside.
+        if (adv) doFormationMove(s, owner, core.map(u => u.id), meet.x, meet.y, true, 'box');
+        else doMove(s, owner, core.map(u => u.id), meet.x, meet.y, true);
         // round6:D end.
         mem.waveTick = s.tick;
       } else {

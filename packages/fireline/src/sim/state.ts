@@ -718,5 +718,44 @@ function migrateRound6(raw: Partial<GameState>, out: GameState): void {
   // round6:C begin. Generals: its PlayerState and Unit fields repaired or dropped.
   // round6:C end.
   // round6:D begin. Formations and squads: anything more on squads (dead members, a fallen leader).
+  // Members must be standing units of the leader's side, each once; a fallen leader gives way to the
+  // first member left; a squad of fewer than two is dissolved. Its optional fields are kept only when
+  // well formed, and a unit's slot only while it is in a squad.
+  if (out.squads) {
+    const byId = new Map(out.units.map(u => [u.id, u]));
+    const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+    const squads: Squad[] = [];
+    for (const q of out.squads) {
+      const owner = byId.get(q.leader)?.owner ?? byId.get(q.members.find(id => byId.has(id)) ?? -1)?.owner;
+      const members = q.members.filter((id, i, a) => byId.get(id)?.owner === owner && a.indexOf(id) === i);
+      if (members.length < 2) continue;
+      const c: Squad = { ...q, members, leader: members.includes(q.leader) ? q.leader : members[0] };
+      if (c.facing !== undefined && !(Number.isInteger(c.facing) && c.facing >= 0 && c.facing < 8)) delete c.facing;
+      if (c.x !== undefined && !fin(c.x)) delete c.x;
+      if (c.y !== undefined && !fin(c.y)) delete c.y;
+      if (c.attack !== undefined && typeof c.attack !== 'boolean') delete c.attack;
+      if (c.pace !== undefined && !(fin(c.pace) && c.pace > 0)) delete c.pace;
+      const same = JSON.stringify(c) === JSON.stringify(q);
+      squads.push(same ? q : c);
+    }
+    if (squads.length) out.squads = squads;
+    else delete out.squads;
+  }
+  const liveSquads = new Set((out.squads ?? []).map(q => q.id));
+  const badSlot = (u: Unit) =>
+    (u.squad !== undefined && !liveSquads.has(u.squad)) ||
+    ((u.slotX !== undefined || u.slotY !== undefined) && (u.squad === undefined || !Number.isFinite(u.slotX) || !Number.isFinite(u.slotY)));
+  if (out.units.some(badSlot)) {
+    out.units = out.units.map(u => {
+      if (!badSlot(u)) return u;
+      const c = { ...u };
+      if (c.squad !== undefined && !liveSquads.has(c.squad)) delete c.squad;
+      if (c.squad === undefined || !Number.isFinite(c.slotX) || !Number.isFinite(c.slotY)) {
+        delete c.slotX;
+        delete c.slotY;
+      }
+      return c;
+    });
+  }
   // round6:D end.
 }

@@ -121,6 +121,16 @@ mission AI once the round-1 opponent work lands.
   - [ ] An attack order given straight to a unit on a hidden Stealth Tank fires once before it is dropped (the player cannot give one; the computer never does).
   - [ ] Sites in the map previews, a selected site's panel line, and placement measured on large and huge maps (integration).
 
+## J. Round 6 (contract: `fireline-round6-design.md`)
+
+- [x] D. Formations and squads: line, column, wedge and box; a squad that keeps pace; the computer's waves in formation.
+  - [x] `slotsFor` integer tables turned to eight facings without trigonometry; slots by role, then id (Medics inside a box).
+  - [x] Squads: the leader paths, the others steer to their slot beside it every 8 ticks, everyone at the slowest member's pace.
+  - [x] Formation row beside Stance (desktop and touch), the period key; control groups kept per battle in the browser, chips on touch.
+  - [x] The computer's waves attack in a wedge and regroup in a box, advanced tech only.
+  - [ ] Slot marks for a selected squad on the battlefield (renderer.ts has no D marker yet; the integrator's call).
+  - [ ] A touch Controls row for the formation buttons (the touch key table has no D marker).
+
 ## Found along the way
 
 - [x] Haulers freezing on the way home (path clipped a blocked corner, or was cut by a new structure).
