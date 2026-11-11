@@ -5,6 +5,7 @@ import { UNITS, type Owner } from './rules';
 import { alliesOf, enemiesOf } from './sides';
 import { isStructure } from './state';
 import type { Building, GameState, Unit } from './types';
+import { buildingSpecOf, unitSpecOf } from './specs';
 
 /**
  * The computer commander in a battle of three or four sides (fireline-round4-design.md, workstream
@@ -44,7 +45,7 @@ export function baseOf(s: GameState, owner: Owner): { x: number; y: number } | n
 /** What a side fields: the cost of its armed units, plus a quarter of the cost of its structures' worth in health. */
 function strengthOf(s: GameState, owner: Owner): number {
   let v = 0;
-  for (const u of s.units) if (u.owner === owner && UNITS[u.kind].weapon) v += UNITS[u.kind].cost;
+  for (const u of s.units) if (u.owner === owner && unitSpecOf(s, u).weapon) v += unitSpecOf(s, u).cost;
   return v + structuresOf(s, owner).length * 150;
 }
 
@@ -153,7 +154,7 @@ export function alliedPlan(s: GameState, owner: Owner, home: { x: number; y: num
   const allies = alliesOf(s, owner).filter(a => s.buildings.some(b => b.owner === a && isStructure(b)));
   if (!allies.length) return;
   const inUse = new Set(busy);
-  const reserve = s.units.filter(u => u.owner === owner && UNITS[u.kind].weapon && !inUse.has(u.id));
+  const reserve = s.units.filter(u => u.owner === owner && unitSpecOf(s, u).weapon && !inUse.has(u.id));
   const idle = (u: Unit) => u.order.type === 'idle' && !u.engage;
   // Strays from an earlier rescue come back once there is nothing left to fight.
   const strays = reserve.filter(u => idle(u) && dist(u.x, u.y, home.x, home.y) > HOME_RANGE).map(u => u.id);

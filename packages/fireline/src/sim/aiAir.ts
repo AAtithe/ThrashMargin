@@ -1,4 +1,4 @@
-import { airRoom, ammoMax, isAir, parkAircraft } from './air';
+import { airRoleOf, airRoom, ammoMax, isAir, parkAircraft } from './air';
 import { canQueue, doAttack, doQueue, doSell } from './commands';
 import { buildingCentre, dist, distToBuilding } from './grid';
 import { canResearch, doResearch } from './research';
@@ -6,6 +6,7 @@ import { BUILDINGS, DIFFICULTIES, MAX_QUEUE, UNITS, UPGRADES, type BuildingKind,
 import { costFor, countBuildings, powerOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
+import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
 
 /**
  * The computer commander's air power, anti-air and research (fireline-round4-design.md, workstream
@@ -81,12 +82,12 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
 };
 
 /** The structures and anti-air units that count as anti-air cover, and how far each reaches. */
-function coverOf(enemy: Building[], foes: Unit[]): { x: number; y: number; r: number; b?: Building }[] {
+function coverOf(s: GameState, enemy: Building[], foes: Unit[]): { x: number; y: number; r: number; b?: Building }[] {
   const out: { x: number; y: number; r: number; b?: Building }[] = [];
-  for (const b of enemy) if (b.kind === 'flakcannon') out.push({ x: b.x + 0.5, y: b.y + 0.5, r: (BUILDINGS.flakcannon.weapon?.range ?? 7) + 1, b });
+  for (const b of enemy) if (b.kind === 'flakcannon') out.push({ x: b.x + 0.5, y: b.y + 0.5, r: (buildingSpecOf(s, b).weapon?.range ?? 7) + 1, b });
   for (const u of foes) {
     if (u.kind !== 'flaktrack' && u.kind !== 'skyhunter') continue;
-    out.push({ x: u.x, y: u.y, r: (UNITS[u.kind].weapon?.range ?? 6) + 1 });
+    out.push({ x: u.x, y: u.y, r: (unitSpecOf(s, u).weapon?.range ?? 6) + 1 });
   }
   return out;
 }
@@ -114,16 +115,16 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // back units queued but not yet started, and (but for anti-air) only once the army at home is up
   // to the next wave's size and to the opponent's army, as the commander's own extras are.
   const mem = s.ai[owner];
-  const armed = mine.filter(u => UNITS[u.kind].weapon && !isAir(u)).length;
-  const foeArmy = foes.filter(u => UNITS[u.kind].weapon && !isAir(u)).length;
+  const armed = mine.filter(u => unitSpecOf(s, u).weapon && !isAir(u)).length;
+  const foeArmy = foes.filter(u => unitSpecOf(s, u).weapon && !isAir(u)).length;
   const armyReady = armed >= Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9);
 
   // 1. Anti-air, in proportion to what the opponent flies.
   const foeAir = foes.filter(isAir).length;
   if (foeAir > 0 && !crisis) {
-    if (queued('skyhunter') < Math.min(8, Math.ceil(foeAir * t.skyhuntersPer)) && p.queues.infantry.length < MAX_QUEUE && fund(s, owner, UNITS.skyhunter.cost))
+    if (queued('skyhunter') < Math.min(8, Math.ceil(foeAir * t.skyhuntersPer)) && p.queues.infantry.length < MAX_QUEUE && fund(s, owner, unitSpec(s, owner, 'skyhunter').cost))
       if (canQueue(s, owner, 'infantry', 'skyhunter')) doQueue(s, owner, 'infantry', 'skyhunter');
-    if (queued('flaktrack') < Math.min(4, Math.ceil(foeAir * t.flaktracksPer)) && p.queues.vehicle.length < MAX_QUEUE && fund(s, owner, UNITS.flaktrack.cost))
+    if (queued('flaktrack') < Math.min(4, Math.ceil(foeAir * t.flaktracksPer)) && p.queues.vehicle.length < MAX_QUEUE && fund(s, owner, unitSpec(s, owner, 'flaktrack').cost))
       if (canQueue(s, owner, 'vehicle', 'flaktrack')) doQueue(s, owner, 'vehicle', 'flaktrack');
     const cannons = count('flakcannon') + (p.queues.building.some(q => q.kind === 'flakcannon') ? 1 : 0);
     if (cannons < Math.min(t.flakCannons, Math.ceil(foeAir / 2))) queueStructure(s, owner, 'flakcannon');
@@ -151,7 +152,7 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
     const want: UnitKind | null = queued('gunship') < t.gunships ? 'gunship' : queued('bomber') < t.bombers ? 'bomber' : null;
     if (want && unlocked(s, owner, want)) {
       saving = true;
-      if (p.queues.air.length === 0 && fund(s, owner, UNITS[want].cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);
+      if (p.queues.air.length === 0 && fund(s, owner, unitSpec(s, owner, want).cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);
     }
   }
 
@@ -182,7 +183,7 @@ function lastStand(s: GameState, owner: Owner, armed: number): void {
       return;
     }
   }
-  const kind: UnitKind = p.credits >= UNITS.grenadier.cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
+  const kind: UnitKind = p.credits >= unitSpec(s, owner, 'grenadier').cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
   if (p.queues.infantry.length < MAX_QUEUE && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
 }
 
@@ -215,8 +216,8 @@ function queueStructure(s: GameState, owner: Owner, kind: BuildingKind): void {
   const p = s.players[owner];
   if (p.queues.building.length) return;
   const pw = powerOf(s, owner);
-  const want: BuildingKind = pw.made - pw.used + BUILDINGS[kind].power < 10 ? 'power' : kind;
-  if (!unlocked(s, owner, want) || !fund(s, owner, BUILDINGS[want].cost)) return;
+  const want: BuildingKind = pw.made - pw.used + buildingSpec(s, owner, kind).power < 10 ? 'power' : kind;
+  if (!unlocked(s, owner, want) || !fund(s, owner, buildingSpec(s, owner, want).cost)) return;
   if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);
 }
 
@@ -232,7 +233,7 @@ function strikes(
   const mem = s.ai[owner];
   const alive = new Map(craft.map(u => [u.id, u]));
   let out = (mem.airIds ?? []).filter(id => alive.has(id));
-  const cover = coverOf(enemy, foes);
+  const cover = coverOf(s, enemy, foes);
   const parked = (u: Unit) => u.order.type === 'rearm';
   const full = (u: Unit) => (u.ammo ?? 0) >= ammoMax(u);
 
@@ -259,7 +260,7 @@ function strikes(
   // A Gunship out on a strike whose target has gone (now idle): on to the next, or home.
   for (const id of out) {
     const u = alive.get(id)!;
-    if (u.kind !== 'gunship' || u.order.type !== 'idle') continue;
+    if (airRoleOf(u) !== 'strafe' || u.order.type !== 'idle') continue;
     const next = (u.ammo ?? 0) > 0 ? pickFor(u) : null;
     if (next) doAttack(s, owner, [u.id], next.id);
   }
@@ -269,7 +270,7 @@ function strikes(
 
   const due = s.tick >= (mem.nextAirStrike ?? 0);
   // Gunships: a group of full ones parked at home, at the safest hauler or artillery piece.
-  const ready = craft.filter(u => u.kind === 'gunship' && parked(u) && full(u) && !out.includes(u.id));
+  const ready = craft.filter(u => airRoleOf(u) === 'strafe' && parked(u) && full(u) && !out.includes(u.id));
   if (due && enemy.length && ready.length >= t.gunshipGroup) {
     const target = pickFor(home);
     if (target) {
@@ -280,14 +281,14 @@ function strikes(
     }
   }
   // Bombers: each full one at the thickest knot of structures the fewest guns cover.
-  const bombers = craft.filter(u => u.kind === 'bomber' && parked(u) && full(u) && !out.includes(u.id));
+  const bombers = craft.filter(u => airRoleOf(u) === 'bomb' && parked(u) && full(u) && !out.includes(u.id));
   if (due && bombers.length && enemy.length) {
     let best: Building | null = null;
     let bestScore = -Infinity;
     for (const b of enemy) {
       const c = buildingCentre(b);
       let near = 0;
-      for (const o of enemy) if (distToBuilding(c.x, c.y, o) <= 2.5) near += BUILDINGS[o.kind].weapon ? 1.5 : 1;
+      for (const o of enemy) if (distToBuilding(c.x, c.y, o) <= 2.5) near += buildingSpecOf(s, o).weapon ? 1.5 : 1;
       const score = near - danger(cover, c.x, c.y) - dist(home.x, home.y, c.x, c.y) * 0.02;
       if (score > bestScore) {
         bestScore = score;

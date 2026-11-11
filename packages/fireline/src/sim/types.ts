@@ -1,4 +1,4 @@
-import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
+import type { BuildingKind, Category, Difficulty, Faction, FormationShape, HeroKind, MapType, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
@@ -87,6 +87,17 @@ export interface Unit {
   /** Stealth Tanks only: the tick it last fired, which shows it to everyone for STEALTH_REVEAL_TICKS. */
   lastShot?: number;
   // round5:D end.
+  /**
+   * Round 6, workstream D: the squad (GameState.squads) this unit moves in, by the squad's id.
+   * Absent: none. Read by nothing until workstream D.
+   */
+  squad?: number;
+  // round6:B begin. Heroes in free play: optional Unit fields.
+  // round6:B end.
+  // round6:C begin. Generals: optional Unit fields (the aura's last scan, for instance).
+  // round6:C end.
+  // round6:D begin. Formations and squads: optional Unit fields (a slot offset, for instance).
+  // round6:D end.
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -129,6 +140,10 @@ export interface Building {
   sabotagedUntil?: number;
   // round5:C begin. Engineering vehicles: optional Building fields.
   // round5:C end.
+  // round6:B begin. Heroes in free play: optional Building fields.
+  // round6:B end.
+  // round6:C begin. Generals: optional Building fields.
+  // round6:C end.
 }
 
 /**
@@ -167,6 +182,15 @@ export interface PlayerState {
   upgrades?: UpgradeId[];
   /** The upgrade being researched, already paid for; ticks of work done. Absent or null: none. */
   research?: { id: UpgradeId; progress: number } | null;
+  /**
+   * Round 6, workstream A: this side's army. Absent reads as 'meridian' (every save before round 6,
+   * every mission); read it through factionOf in specs.ts. Never changes during a battle.
+   */
+  faction?: Faction;
+  // round6:B begin. Heroes in free play: optional PlayerState fields (fallen heroes and when each may be recruited again).
+  // round6:B end.
+  // round6:C begin. Generals: optional PlayerState fields (the doctrine General, the field General's replacement cooldown).
+  // round6:C end.
 }
 
 export interface Projectile {
@@ -209,6 +233,10 @@ export interface Effect {
     // round5:C end.
     // round5:D begin. Neutral sites and tier three: its effect kinds (a capture, a rail shot).
     // round5:D end.
+    // round6:A begin. Two armies: its effect kinds (an incendiary patch, for instance).
+    // round6:A end.
+    // round6:C begin. Generals: its effect kinds (the aura, for instance).
+    // round6:C end.
     ;
   x: number;
   y: number;
@@ -287,6 +315,14 @@ export interface AiMemory {
   stealthTarget?: number;
   nextStealthRaid?: number;
   // round5:D end.
+  // round6:A begin. Two armies: optional AiMemory fields.
+  // round6:A end.
+  // round6:B begin. Heroes in free play: optional AiMemory fields (its heroes' errands).
+  // round6:B end.
+  // round6:C begin. Generals: optional AiMemory fields (its General's place in the wave).
+  // round6:C end.
+  // round6:D begin. Formations and squads: optional AiMemory fields (its wave's squad).
+  // round6:D end.
 }
 
 export interface GameState {
@@ -357,7 +393,10 @@ export interface GameState {
   // ---- Campaign (all optional: a skirmish has none of these) ------------------------------------
   /** The mission being played, with its objectives; null or absent in a skirmish. */
   mission?: MissionRuntime | null;
-  /** Commander perks applied to side 0 for this battle. */
+  /**
+   * Commander perks applied to side 0 for this battle (the campaign's, and from round 6 a skirmish
+   * doctrine General's). Sides 1 to 3 keep theirs in `sidePerks`. Read both through perksFor in specs.ts.
+   */
   perks?: Perks;
   /**
    * Support powers per side: ticks until each is ready again (absent means not available). A
@@ -375,6 +414,30 @@ export interface GameState {
   // ---- Round 5 (all optional: absent on older saves, missions and setups without them) ----------
   /** Neutral sites on the map (workstream D). Absent: none. Never present in a mission. */
   sites?: Site[];
+
+  // ---- Round 6 (all optional: absent on older saves, missions and setups without them) ----------
+  /**
+   * Perks for sides 1 to 3, by Owner (workstream C's doctrine Generals). Side 0's stay in `perks`,
+   * so this never holds side 0 (migrateState drops it). Absent: none. Read through perksFor.
+   */
+  sidePerks?: Partial<Record<Owner, Perks>>;
+  /** Squads moving in formation (workstream D). Absent: none. Read by nothing until workstream D. */
+  squads?: Squad[];
+}
+
+/**
+ * Round 6, workstream D: units moving together in a formation. The leader paths; the members keep
+ * to the leader plus their slot. Ids are from s.nextId. migrateState keeps a well-formed one only.
+ */
+export interface Squad {
+  id: number;
+  /** The unit that paths for the squad (one of `members`). */
+  leader: number;
+  shape: FormationShape;
+  /** Unit ids, the leader included. */
+  members: number[];
+  // round6:D begin. Formations and squads: optional Squad fields (facing, slot table, for instance).
+  // round6:D end.
 }
 
 // ---- Missions --------------------------------------------------------------------------------
@@ -544,7 +607,11 @@ export interface MissionContext {
 
 export type GameAction =
   | { type: 'tick'; n?: number }
-  | { type: 'move'; ids: number[]; x: number; y: number; attackMove?: boolean; queue?: boolean }
+  /**
+   * `formation` (round 6, workstream D): move as a squad in this shape. Absent: today's spread round
+   * the point. Until workstream D handles it, a move that carries one is refused (the same state back).
+   */
+  | { type: 'move'; ids: number[]; x: number; y: number; attackMove?: boolean; queue?: boolean; formation?: FormationShape }
   | { type: 'attack'; ids: number[]; target: number; queue?: boolean }
   | { type: 'stance'; ids: number[]; stance: 'aggressive' | 'guard' | 'hold' }
   | { type: 'stop'; ids: number[] }
@@ -563,4 +630,8 @@ export type GameAction =
   | { type: 'deploy'; id: number }
   | { type: 'undeploy'; id: number }
   // round5:C end.
+  // round6:D begin. Formations and squads: forming these units up where they stand, as a squad in
+  // this shape (refused by the reducer's default until D handles it).
+  | { type: 'formation'; ids: number[]; shape: FormationShape }
+  // round6:D end.
   ;

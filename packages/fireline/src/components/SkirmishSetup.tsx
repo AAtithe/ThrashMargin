@@ -39,6 +39,7 @@ import {
 } from '../sim/rules';
 import { paintMiniTerrain } from '../game/terrain';
 import { teamsFor } from '../sim/sides';
+import { normaliseSetup } from '../sim/state';
 import { TEAM, UI } from '../theme';
 import { Label } from './ui';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
@@ -69,15 +70,23 @@ export function readStoredSetup(): SkirmishSetup {
     // them off, because it also fills in setups saved before sites existed.
     if (!raw) return { ...DEFAULT_SETUP, sites: true };
     const r = JSON.parse(raw) as Partial<SkirmishSetup>;
+    const sides = r.sides === 3 || r.sides === 4 ? r.sides : 2;
+    // Round 6: each seat's army and doctrine General, heroes and Generals, repaired exactly as the
+    // server will (normaliseSetup), so the setup screens of workstreams A, B and C need not touch this.
+    const r6 = normaliseSetup({ sides, factions: r.factions, heroes: r.heroes, generals: r.generals, generalPicks: r.generalPicks });
     return {
       map: r.map === 'random' || MAP_TYPES.includes(r.map as MapType) ? (r.map as SkirmishSetup['map']) : DEFAULT_SETUP.map,
       tech: r.tech === 'standard' || r.tech === 'advanced' ? r.tech : DEFAULT_SETUP.tech,
       credits: SETUP_CREDIT_CHOICES.includes(r.credits as number) ? (r.credits as number) : DEFAULT_SETUP.credits,
       ore: r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : DEFAULT_SETUP.ore,
-      sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
+      sides,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
       size: MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : 'standard',
       sites: r.sites !== false,
+      factions: r6.factions,
+      heroes: r6.heroes,
+      generals: r6.generals,
+      generalPicks: r6.generalPicks,
     };
   } catch {
     return { ...DEFAULT_SETUP, sites: true };
@@ -274,6 +283,12 @@ export default function SkirmishSetupPanel({
           </div>
           <p className="fl-setup-note">{sitesNote(value)}</p>
         </div>
+        {/* round6:A begin. Two armies (fireline-round6-design.md): the Army row, one choice per seat, goes below. */}
+        {/* round6:A end. */}
+        {/* round6:B begin. Heroes in free play: the Heroes field (Off, On; greyed on standard tech) goes below. */}
+        {/* round6:B end. */}
+        {/* round6:C begin. Generals: the doctrine General per seat and the Generals field (Off, On) go below. */}
+        {/* round6:C end. */}
       </div>
     </>
   );

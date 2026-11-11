@@ -32,6 +32,7 @@ import {
   unlocked,
 } from './state';
 import type { Building, GameState, QueuedOrder, Stance, Unit } from './types';
+import { buildingSpec, buildingSpecOf, unitSpecOf } from './specs';
 // round5:D. Tier three: the Stealth Tank is targetable only when seen (fireline-round5-design.md).
 import { stealthSeen } from './sites';
 
@@ -50,8 +51,13 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if (!(kind in BUILDINGS) && !(kind in UNITS)) return false;
   // A Command Yard is never built, and a Field Yard only ever comes from deploying a Forward Base Truck.
   if (kind === 'hq' || kind === 'fieldyard') return false;
+  // round6:B begin. Heroes in free play: the refusal below relaxed when setup.heroes is on, and the
+  // one-of-each limit (standing, queued and on the revive cooldown).
   // Heroes are campaign characters, never built.
   if (kind in UNITS && UNITS[kind as UnitKind].hero) return false;
+  // round6:B end.
+  // round6:C begin. Generals: one field General per side (standing or queued), and its replacement cooldown.
+  // round6:C end.
   if (categoryOf(kind) !== category) return false;
   // A mission limits what side 0 may build to what the campaign has unlocked; a skirmish on
   // standard tech, and a mission's enemy, to the original game's kinds.
@@ -151,7 +157,7 @@ export function placementProblem(
   // A Field Yard reaches further than the rest (its own buildRadius).
   const near = s.buildings.some(b => {
     if (b.owner !== owner || !isStructure(b)) return false;
-    const bs = BUILDINGS[b.kind];
+    const bs = buildingSpecOf(s, b);
     const gapX = Math.max(0, b.x - (x + spec.w - 1), x - (b.x + bs.w - 1));
     const gapY = Math.max(0, b.y - (y + spec.h - 1), y - (b.y + bs.h - 1));
     return Math.max(gapX, gapY) <= (bs.buildRadius ?? BUILD_RADIUS);
@@ -176,7 +182,7 @@ export function doPlace(s: GameState, owner: Owner, kind: BuildingKind, x: numbe
     upgradeNewUnit(s, h);
   }
   syncSkirmishPowers(s);
-  if (owner === 0) log(s, `${BUILDINGS[kind].name} placed.`, 'good');
+  if (owner === 0) log(s, `${buildingSpec(s, owner, kind).name} placed.`, 'good');
 }
 
 export function canSell(s: GameState, owner: Owner, id: number): boolean {
@@ -185,7 +191,7 @@ export function canSell(s: GameState, owner: Owner, id: number): boolean {
 
 export function doSell(s: GameState, owner: Owner, id: number): void {
   const b = s.buildings.find(x => x.id === id)!;
-  const spec = BUILDINGS[b.kind];
+  const spec = buildingSpecOf(s, b);
   const refund = Math.floor((spec.cost * SELL_RETURN * (b.hp / spec.hp)) / 10) * 10;
   s.players[owner].credits += refund;
   s.buildings = s.buildings.filter(x => x.id !== id);
@@ -285,6 +291,9 @@ export function doMove(s: GameState, owner: Owner, ids: number[], x: number, y: 
   const units = ownUnits(s, owner, ids);
   const occ = occupancy(s);
   const MAP_W = s.mapW;
+  // round6:D begin. Formations and squads: a move with a formation takes its slots from slotsFor
+  // (and forms a squad) instead of the spiral below; without one, exactly the spiral as today.
+  // round6:D end.
   const slots = formation(units.length);
   units.forEach((u, i) => {
     const [ox, oy] = slots[i] ?? [0, 0];
@@ -296,7 +305,7 @@ export function doMove(s: GameState, owner: Owner, ids: number[], x: number, y: 
       tx = (k % MAP_W) + 0.5;
       ty = ((k / MAP_W) | 0) + 0.5;
     }
-    give(u, attackMove && UNITS[u.kind].weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty }, queue);
+    give(u, attackMove && unitSpecOf(s, u).weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty }, queue);
   });
 }
 
@@ -312,6 +321,10 @@ function formation(n: number): [number, number][] {
   return SLOTS.slice(0, Math.max(1, Math.min(n, SLOTS.length)));
 }
 
+// round6:D begin. Formations and squads: slotsFor(shape, n, facing), the role order, and the
+// 'formation' action's check and work (or in a formations.ts of D's own, imported here).
+// round6:D end.
+
 /** The enemy unit or structure with this id, or null. */
 function enemyTarget(s: GameState, owner: Owner, target: number): Target | null {
   const u = s.units.find(v => v.id === target && isEnemy(s, owner, v.owner) && (!UNITS[v.kind].stealth || stealthSeen(s, v, owner)));
@@ -325,7 +338,7 @@ export function canAttack(s: GameState, owner: Owner, ids: number[], target: num
   const t = enemyTarget(s, owner, target);
   if (!t) return false;
   return ownUnits(s, owner, ids).some(u => {
-    const w = UNITS[u.kind].weapon;
+    const w = unitSpecOf(s, u).weapon;
     return !!w && canHit(w, t) && (!queue || acceptsQueued(u));
   });
 }
@@ -334,7 +347,7 @@ export function canAttack(s: GameState, owner: Owner, ids: number[], target: num
 export function doAttack(s: GameState, owner: Owner, ids: number[], target: number, queue = false): void {
   const t = enemyTarget(s, owner, target);
   for (const u of ownUnits(s, owner, ids)) {
-    const w = UNITS[u.kind].weapon;
+    const w = unitSpecOf(s, u).weapon;
     if (!w || (t && !canHit(w, t))) continue;
     give(u, { type: 'attack', target }, queue);
   }
@@ -343,17 +356,17 @@ export function doAttack(s: GameState, owner: Owner, ids: number[], target: numb
 const STANCES: readonly Stance[] = ['aggressive', 'guard', 'hold'];
 
 /** Units a stance means something to: the armed, and the Repair Truck (on hold it stays where it is put). */
-const takesStance = (u: Unit) => !!UNITS[u.kind].weapon || !!UNITS[u.kind].mender;
+const takesStance = (s: GameState, u: Unit) => !!unitSpecOf(s, u).weapon || !!UNITS[u.kind].mender;
 
 /** Legal when at least one of the armed units named would change stance. */
 export function canStance(s: GameState, owner: Owner, ids: number[], stance: Stance): boolean {
   if (!STANCES.includes(stance)) return false;
-  return ownUnits(s, owner, ids).some(u => takesStance(u) && u.stance !== stance);
+  return ownUnits(s, owner, ids).some(u => takesStance(s, u) && u.stance !== stance);
 }
 
 export function doStance(s: GameState, owner: Owner, ids: number[], stance: Stance): void {
   for (const u of ownUnits(s, owner, ids)) {
-    if (!takesStance(u)) continue;
+    if (!takesStance(s, u)) continue;
     u.stance = stance;
     // Holding fire: an idle unit drops whatever it was shooting at.
     if (stance === 'hold' && u.order.type === 'idle') {

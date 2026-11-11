@@ -1,8 +1,9 @@
 import { buildingCentre, dist, distToTarget, targetPoint, type Target } from './grid';
-import { AIR_AMMO, AIR_EDGE, BOMB_GAP, FLIGHT_TICKS, HELIPAD_SLOTS, REARM_TICKS, UNITS, VET_DAMAGE, hitsAir, hitsGround, type Owner, type Weapon } from './rules';
+import { AIR_AMMO, AIR_EDGE, BOMB_GAP, FLIGHT_TICKS, HELIPAD_SLOTS, REARM_TICKS, UNITS, VET_DAMAGE, hitsAir, hitsGround, type AirRole, type Owner, type Weapon } from './rules';
 import { damageMulOf, migrateResearch, rearmMulOf } from './research';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
+import { unitSpecOf } from './specs';
 
 /**
  * Aircraft (fireline-round4-design.md, workstream A): Gunships and Bombers. They fly in straight
@@ -34,6 +35,12 @@ export interface AirHooks {
 
 /** True for an aircraft. */
 export const isAir = (u: Unit): boolean => UNITS[u.kind].category === 'air';
+
+/**
+ * How this aircraft fights (UnitSpec.airRole, round 6): 'strafe' for the Gunship, 'bomb' for the
+ * Bomber, undefined for anything else. A role is part of a kind's identity, the same for every army.
+ */
+export const airRoleOf = (u: Unit): AirRole | undefined => UNITS[u.kind].airRole;
 
 /** Full ammunition for this aircraft (0 for anything else). */
 export const ammoMax = (u: Unit): number => AIR_AMMO[u.kind] ?? 0;
@@ -84,7 +91,7 @@ export function padSpot(s: GameState, pad: Building, u: Unit): { x: number; y: n
 function fly(s: GameState, u: Unit, x: number, y: number): boolean {
   const tx = Math.max(AIR_EDGE, Math.min(s.mapW - AIR_EDGE, x));
   const ty = Math.max(AIR_EDGE, Math.min(s.mapH - AIR_EDGE, y));
-  const sp = UNITS[u.kind].speed;
+  const sp = unitSpecOf(s, u).speed;
   const dx = tx - u.x;
   const dy = ty - u.y;
   const d = Math.sqrt(dx * dx + dy * dy);
@@ -132,7 +139,9 @@ export function canHit(w: Weapon, t: Target): boolean {
 
 /** One tick of one aircraft, on a state the reducer has already cloned. */
 export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
-  const w = UNITS[u.kind].weapon!;
+  const spec = unitSpecOf(s, u);
+  const w = spec.weapon!;
+  const role = airRoleOf(u);
   const max = ammoMax(u);
   if (u.ammo === undefined) u.ammo = max;
   if (u.cooldown > 0) u.cooldown--;
@@ -169,16 +178,16 @@ export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
         break;
       }
       u.engage = o.target;
-      if (u.kind === 'bomber') bomberAttack(s, u, w, t);
+      if (role === 'bomb') bomberAttack(s, u, w, t);
       else gunshipFight(s, u, h, w, t, true);
       break;
     }
     case 'attackMove': {
-      if (u.kind === 'gunship' && engaged(s, u, h, w, UNITS[u.kind].sight + 1)) break;
+      if (role === 'strafe' && engaged(s, u, h, w, spec.sight + 1)) break;
       // A Bomber on attack-move bombs the first enemy structure it comes near, then goes home to
       // rearm: sent along a line it would otherwise fly to the point and hover with a full bay.
-      if (u.kind === 'bomber' && u.ammo > 0) {
-        const t = bomberMark(s, u, h, UNITS[u.kind].sight + 2);
+      if (role === 'bomb' && u.ammo > 0) {
+        const t = bomberMark(s, u, h, spec.sight + 2);
         if (t) {
           bomberAttack(s, u, w, t);
           break;
@@ -189,8 +198,8 @@ export function updateAircraft(s: GameState, u: Unit, h: AirHooks): void {
     }
     default: {
       // Idle: hovering. A Gunship with rockets guards the air it holds, or hunts when aggressive.
-      if (u.kind === 'gunship' && u.ammo > 0 && u.stance !== 'hold') {
-        engaged(s, u, h, w, u.stance === 'aggressive' ? UNITS[u.kind].sight + 1 : w.range + 0.5);
+      if (role === 'strafe' && u.ammo > 0 && u.stance !== 'hold') {
+        engaged(s, u, h, w, u.stance === 'aggressive' ? spec.sight + 1 : w.range + 0.5);
       } else u.engage = 0;
       break;
     }
@@ -292,7 +301,7 @@ function bomberAttack(s: GameState, u: Unit, w: Weapon, t: Target): void {
 /** One bomb, falling ahead of the Bomber along its heading. */
 function dropBomb(s: GameState, u: Unit, w: Weapon): void {
   const flight = FLIGHT_TICKS.bomb;
-  const ahead = UNITS[u.kind].speed * flight;
+  const ahead = unitSpecOf(s, u).speed * flight;
   const toX = Math.max(0, Math.min(s.mapW, u.x + u.fx * ahead));
   const toY = Math.max(0, Math.min(s.mapH, u.y + u.fy * ahead));
   const mul = vetMul(u) * damageMulOf(s, u.owner);
@@ -344,7 +353,10 @@ function rearm(s: GameState, u: Unit, h: AirHooks, max: number): void {
   }
   // Full: on with the queue, or stay parked; a parked Gunship guards the ground in reach of its pad.
   if (u.queue.length) h.nextOrder(u);
-  else if (u.kind === 'gunship' && u.stance !== 'hold') engaged(s, u, h, UNITS.gunship.weapon!, UNITS.gunship.weapon!.range + 0.5);
+  else if (airRoleOf(u) === 'strafe' && u.stance !== 'hold') {
+    const w = unitSpecOf(s, u).weapon!;
+    engaged(s, u, h, w, w.range + 0.5);
+  }
   else u.engage = 0;
 }
 
@@ -405,7 +417,7 @@ export function migrateAir(s: GameState): void {
       const max = ammoMax(u);
       u.ammo = Number.isFinite(u.ammo) ? Math.max(0, Math.min(max, Math.round(u.ammo!))) : max;
       u.pad = Number.isInteger(u.pad) && u.pad! > 0 ? u.pad : 0;
-      if (u.bombRun !== undefined && (u.bombRun !== true || u.kind !== 'bomber' || !u.ammo)) delete u.bombRun;
+      if (u.bombRun !== undefined && (u.bombRun !== true || airRoleOf(u) !== 'bomb' || !u.ammo)) delete u.bombRun;
     } else {
       delete u.ammo;
       delete u.pad;

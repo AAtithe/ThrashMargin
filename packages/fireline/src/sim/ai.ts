@@ -25,6 +25,7 @@ import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlo
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
+import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { sitesPlan } from './aiSites';
 
@@ -284,8 +285,8 @@ function commander(s: GameState, owner: Owner): void {
     // is bought out of the surplus.
     let held = false;
     if (want && adv && isExtra(s, owner, want, d)) {
-      const armed = units.filter(u => UNITS[u.kind].weapon).length;
-      const foeArmy = s.units.filter(u => isEnemy(s, owner, u.owner) && UNITS[u.kind].weapon).length;
+      const armed = units.filter(u => unitSpecOf(s, u).weapon).length;
+      const foeArmy = s.units.filter(u => isEnemy(s, owner, u.owner) && unitSpecOf(s, u).weapon).length;
       if (armed < Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9)) {
         want = null;
         held = true;
@@ -302,7 +303,7 @@ function commander(s: GameState, owner: Owner): void {
       if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);
       else if (unlocked(s, owner, want)) {
         saving = true;
-        if (crisis && (want === 'refinery' || want === 'power')) raiseFunds(s, owner, BUILDINGS[want].cost);
+        if (crisis && (want === 'refinery' || want === 'power')) raiseFunds(s, owner, buildingSpec(s, owner, want).cost);
       }
     }
   }
@@ -314,7 +315,7 @@ function commander(s: GameState, owner: Owner): void {
     else if (haulers.length === 0) {
       // No hauler at all: nothing else matters until one is on its way.
       saving = true;
-      raiseFunds(s, owner, UNITS.hauler.cost);
+      raiseFunds(s, owner, unitSpec(s, owner, 'hauler').cost);
     }
   }
 
@@ -327,7 +328,7 @@ function commander(s: GameState, owner: Owner): void {
     (!s.units.some(u => u.owner === owner && u.kind === 'hauler') &&
       !vq.some(q => q.kind === 'hauler') &&
       !p.queues.building.some(q => q.kind === 'refinery') &&
-      p.credits < UNITS.hauler.cost);
+      p.credits < unitSpec(s, owner, 'hauler').cost);
   if (dry && p.credits < 300 && !p.queues.building.length && standingProducer(s, owner)) {
     const extra = (['strikecommand', 'repairbay', 'techcentre', 'uplink', 'wall'] as BuildingKind[])
       .map(k => s.buildings.find(b => b.owner === owner && b.kind === k))
@@ -357,7 +358,7 @@ function commander(s: GameState, owner: Owner): void {
     repairing = 0;
   } else {
     const hurt = standing
-      .filter(b => !b.repairing && b.hp < BUILDINGS[b.kind].hp * t.repairBelow && repairOrder.includes(b.kind))
+      .filter(b => !b.repairing && b.hp < buildingSpecOf(s, b).hp * t.repairBelow && repairOrder.includes(b.kind))
       .sort((a, b) => repairOrder.indexOf(a.kind) - repairOrder.indexOf(b.kind) || a.id - b.id);
     for (const b of hurt) {
       if (repairing >= 2 || p.credits < t.repairReserve) break;
@@ -370,15 +371,18 @@ function commander(s: GameState, owner: Owner): void {
   // a refinery and no cap, the outpost in Demolition trained a rifleman every five seconds and had
   // over fifty by the time the Commando arrived.
   if (mode === 'defend') {
-    const armed = units.filter(u => UNITS[u.kind].weapon && !u.hero).length;
+    const armed = units.filter(u => unitSpecOf(s, u).weapon && !u.hero).length;
     if (mem.garrison === undefined) mem.garrison = armed;
     if (armed >= mem.garrison) saving = true;
   }
-  const foeArmed = foes.filter(u => UNITS[u.kind].weapon);
-  const foeInfantry = foeArmed.filter(u => UNITS[u.kind].armor === 'infantry').length;
+  const foeArmed = foes.filter(u => unitSpecOf(s, u).weapon);
+  const foeInfantry = foeArmed.filter(u => unitSpecOf(s, u).armor === 'infantry').length;
   const foeArmour = foeArmed.length - foeInfantry;
   const foeTurrets = enemy.filter(b => b.kind === 'turret' || b.kind === 'rocketturret').length;
   const raidBuggies = units.filter(u => u.kind === 'buggy').length;
+  // round6:A begin. Two armies (fireline-round6-design.md): A may change the unit choices from here
+  // to "round6:A end" (and the lists in advancedUnits and nextStructure) by the side's army;
+  // Meridian's choices stay exactly as they are.
   if (!saving && adv) {
     const nextRaid = mem.raidIds.length > 0 ? Infinity : Math.max(mem.nextRaid, t.firstRaid);
     advancedUnits(s, owner, t, units, foeInfantry, foeArmour, foeTurrets, raidBuggies, nextRaid);
@@ -407,6 +411,7 @@ function commander(s: GameState, owner: Owner): void {
       if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
     }
   }
+  // round6:A end.
 
   // round4:A. Air units, anti-air and research (fireline-round4-design.md, workstream A): one call
   // into aiAir.ts goes on the line below this comment, and nothing else in this function changes.
@@ -420,6 +425,12 @@ function commander(s: GameState, owner: Owner): void {
   // aiSites.ts goes on the line below this comment, and nothing else in this function changes.
   sitesPlan(s, owner, home, enemyHome, units, foes);
   // round5:D end.
+  // round6:B begin. Heroes in free play (fireline-round6-design.md): one call into aiHeroes.ts goes
+  // on the line below this comment (recruiting and errands), and nothing else in this function changes.
+  // round6:B end.
+  // round6:C begin. Generals (fireline-round6-design.md): one call into aiGenerals.ts goes on the
+  // line below this comment (recruiting, keeping with the wave, retreating), and nothing else here.
+  // round6:C end.
 
   // Producers send new units to a staging point on the side facing the enemy.
   const stage = openGround(s, owner, toward(home, enemyHome, stageDistance(s)));
@@ -431,7 +442,7 @@ function commander(s: GameState, owner: Owner): void {
   const alive = new Map(units.map(u => [u.id, u]));
   let waveIds = mem.waveIds.filter(id => alive.has(id));
   let raidIds = mem.raidIds.filter(id => alive.has(id));
-  const army = units.filter(u => UNITS[u.kind].weapon);
+  const army = units.filter(u => unitSpecOf(s, u).weapon && !keptBack(s, u));
   const inWave = new Set(waveIds);
   const inRaid = new Set(raidIds);
   const retreatTo = openGround(s, owner, toward(home, enemyHome, 4));
@@ -443,7 +454,7 @@ function commander(s: GameState, owner: Owner): void {
   const retreating = (u: Unit) =>
     u.order.type === 'move' && (dist(u.order.x, u.order.y, retreatTo.x, retreatTo.y) < 3 || (!!bayC && atBay(u.order.x, u.order.y)));
   const toBay = (u: Unit) => !!bayTiles.length && UNITS[u.kind].category === 'vehicle';
-  const maxHp = (u: Unit) => u.maxHp ?? UNITS[u.kind].hp;
+  const maxHp = (u: Unit) => u.maxHp ?? unitSpecOf(s, u).hp;
 
   // Badly hurt units outside a wave come home rather than die for nothing.
   if (t.retreatBelow > 0) {
@@ -459,7 +470,7 @@ function commander(s: GameState, owner: Owner): void {
         if (inWave.has(u.id)) inWave.delete(u.id);
         continue;
       }
-      if (inWave.has(u.id) || u.hp >= UNITS[u.kind].hp * t.retreatBelow) continue;
+      if (inWave.has(u.id) || u.hp >= unitSpecOf(s, u).hp * t.retreatBelow) continue;
       if (dist(u.x, u.y, home.x, home.y) < 9 || retreating(u)) continue;
       back.push(u.id);
       if (inRaid.has(u.id)) inRaid.delete(u.id);
@@ -509,7 +520,7 @@ function commander(s: GameState, owner: Owner): void {
         .slice(0, 4)
         .map(u => u.id);
       if (helpers.length) doMove(s, owner, helpers, near.x, near.y, true);
-      if (h.hp < UNITS.hauler.hp * 0.5 && h.order.type === 'harvest' && h.order.phase !== 'return' && h.order.phase !== 'unload') {
+      if (h.hp < unitSpec(s, owner, 'hauler').hp * 0.5 && h.order.type === 'harvest' && h.order.phase !== 'return' && h.order.phase !== 'unload') {
         const ref = nearestOwn(standing, 'refinery', h.x, h.y);
         if (ref) doHarvest(s, owner, [h.id], undefined, ref.id);
       }
@@ -539,7 +550,7 @@ function commander(s: GameState, owner: Owner): void {
     };
     if (raidIds.length === 0) {
       if (s.tick >= Math.max(mem.nextRaid, t.firstRaid)) {
-        const buggies = reserve.filter(u => u.kind === 'buggy' && free(u) && u.hp >= UNITS.buggy.hp * 0.6);
+        const buggies = reserve.filter(u => u.kind === 'buggy' && free(u) && u.hp >= unitSpec(s, owner, 'buggy').hp * 0.6);
         const target = buggies.length >= t.raidSize ? safest(stage) : null;
         if (target) {
           raidIds = buggies.slice(0, t.raidSize).map(u => u.id);
@@ -551,7 +562,7 @@ function commander(s: GameState, owner: Owner): void {
     } else {
       const raiders = raidIds.map(id => alive.get(id)!);
       const hp = raiders.reduce((a, u) => a + u.hp, 0);
-      const full = raiders.length * UNITS.buggy.hp;
+      const full = raiders.length * unitSpec(s, owner, 'buggy').hp;
       const lead = raiders[0];
       const danger = raiders.some(u => turretNear(u.x, u.y, 7)) || hp < full * 0.45 || s.tick - mem.nextRaid > 1500;
       let target = foeHaulers.find(h => h.id === mem.raidTarget) ?? null;
@@ -578,7 +589,7 @@ function commander(s: GameState, owner: Owner): void {
     // Leave the raiders' buggies at home for the next raid.
     let keep = broke ? 0 : t.raidSize;
     return reserve.filter(u => {
-      if (!broke && (u.hp < UNITS[u.kind].hp * 0.45 || dist(u.x, u.y, home.x, home.y) > reserveRadius(s))) return false;
+      if (!broke && (u.hp < unitSpecOf(s, u).hp * 0.45 || dist(u.x, u.y, home.x, home.y) > reserveRadius(s))) return false;
       if (u.order.type !== 'idle' && u.order.type !== 'move' && u.order.type !== 'attackMove') return false;
       if (u.kind === 'buggy' && keep > 0) {
         keep--;
@@ -597,7 +608,9 @@ function commander(s: GameState, owner: Owner): void {
         waveIds = fit.map(u => u.id);
         mem.wavePhase = 1;
         mem.waveTick = s.tick;
+        // round6:D begin. Formations: the wave gathers (a shape may be passed to doMove here).
         doMove(s, owner, waveIds, stage.x, stage.y, true);
+        // round6:D end.
         mem.wave++;
         mem.nextAttack = s.tick + d.attackInterval;
       }
@@ -612,7 +625,9 @@ function commander(s: GameState, owner: Owner): void {
       mem.waveTick = s.tick;
       mem.waveSize = members.length;
       const target = pickTarget(enemy, foes, stage, t.focus, home);
+      // round6:D begin. Formations: the wave sets off to attack (a wedge, in D's plan).
       doMove(s, owner, waveIds, target.x, target.y, true);
+      // round6:D end.
       // A recon sweep over where the wave is going, as it sets off.
       if (adv && powerProblem(s, owner, 'recon', target.x, target.y) === null) doPower(s, owner, 'recon', target.x, target.y);
     } else if (!threat) {
@@ -644,7 +659,9 @@ function commander(s: GameState, owner: Owner): void {
       if (t.regroup && !fighting && core.length >= 4 && spread > 7 && s.tick - mem.waveTick > 150) {
         // Strung out on the march: pull together a little short of the centre, toward the target.
         const meet = openGround(s, owner, toward(centre, target, 2));
+        // round6:D begin. Formations: the wave regroups (a box, in D's plan).
         doMove(s, owner, core.map(u => u.id), meet.x, meet.y, true);
+        // round6:D end.
         mem.waveTick = s.tick;
       } else {
         const idle = members.filter(u => u.order.type === 'idle' && !u.engage).map(u => u.id);
@@ -684,6 +701,18 @@ function commander(s: GameState, owner: Owner): void {
   mem.raidIds = raidIds;
 }
 
+/**
+ * Units the wave, raid and retreat code leaves alone because a plan of their own commands them
+ * (round 6). None before round 6, so `army` is every armed unit, as it always was.
+ */
+function keptBack(s: GameState, u: Unit): boolean {
+  // round6:B begin. Heroes in free play: true for a skirmish hero its own plan commands (aiHeroes.ts).
+  // round6:B end.
+  // round6:C begin. Generals: true for the field General, which its own plan keeps behind the wave.
+  // round6:C end.
+  return false;
+}
+
 /** Memory from a save made before these fields existed. */
 function normalise(mem: AiMemory): void {
   if (!Array.isArray(mem.waveIds)) mem.waveIds = [];
@@ -720,7 +749,7 @@ function raiseFunds(s: GameState, owner: Owner, need: number): void {
     ? ['strikecommand', 'repairbay', 'uplink', 'rocketturret', 'turret', 'techcentre', 'barracks']
     : ['uplink', 'turret', 'barracks'];
   const spare = s.buildings.filter(v => v.owner === owner && order.includes(v.kind));
-  const refund = (b: Building) => Math.floor((BUILDINGS[b.kind].cost * SELL_RETURN * (b.hp / BUILDINGS[b.kind].hp)) / 10) * 10;
+  const refund = (b: Building) => Math.floor((buildingSpecOf(s, b).cost * SELL_RETURN * (b.hp / buildingSpecOf(s, b).hp)) / 10) * 10;
   if (p.credits + spare.reduce((a, b) => a + refund(b), 0) < need) return;
   for (const kind of order) {
     const b = spare.find(v => v.kind === kind);
@@ -780,18 +809,18 @@ function pickTarget(enemy: Building[], foes: Unit[], from: Pt, focus: boolean, h
 function focusFire(s: GameState, owner: Owner, members: Unit[], foes: Unit[], enemy: Building[]): void {
   const priority: { id: number; x: number; y: number; armor: 'heavy' | 'light' | 'building'; b?: Building }[] = [];
   for (const u of foes)
-    if (u.kind === 'hauler' || u.kind === 'artillery' || u.kind === 'missilecarrier') priority.push({ id: u.id, x: u.x, y: u.y, armor: UNITS[u.kind].armor as 'heavy' | 'light' });
+    if (u.kind === 'hauler' || u.kind === 'artillery' || u.kind === 'missilecarrier') priority.push({ id: u.id, x: u.x, y: u.y, armor: unitSpecOf(s, u).armor as 'heavy' | 'light' });
   for (const b of enemy) if (b.kind === 'turret' || b.kind === 'rocketturret') priority.push({ id: b.id, x: b.x + 0.5, y: b.y + 0.5, armor: 'building', b });
   if (!priority.length) return;
   const ids = new Set(priority.map(q => q.id));
-  const armed = new Set(foes.filter(f => UNITS[f.kind].weapon && f.kind !== 'artillery' && f.kind !== 'missilecarrier').map(f => f.id));
+  const armed = new Set(foes.filter(f => unitSpecOf(s, f).weapon && f.kind !== 'artillery' && f.kind !== 'missilecarrier').map(f => f.id));
   const orders = new Map<number, number[]>();
   for (const u of members) {
     if (u.order.type === 'attack' && ids.has(u.order.target)) continue;
     if (u.order.type !== 'attackMove' && u.order.type !== 'idle') continue;
     // Never turn away from something that is shooting back: that fight comes first.
     if (u.engage && armed.has(u.engage)) continue;
-    const w = UNITS[u.kind].weapon;
+    const w = unitSpecOf(s, u).weapon;
     if (!w) continue;
     let best = 0;
     // Only targets about to come into range, so nobody chases across the map.
@@ -908,7 +937,7 @@ function nextStructure(
   const count = (k: BuildingKind) => countBuildings(s, owner, k);
   const powerFor = (k: BuildingKind): BuildingKind => {
     if (!unlocked(s, owner, k)) return 'power';
-    return headroom + BUILDINGS[k].power < 10 ? 'power' : k;
+    return headroom + buildingSpec(s, owner, k).power < 10 ? 'power' : k;
   };
   if (count('refinery') === 0) return powerFor('refinery');
   if (needRefineryForHauler && count('refinery') < 4) return powerFor('refinery');
@@ -955,7 +984,7 @@ function nextStructure(
  * round so the base never walls itself in. Turrets go out toward the enemy; refineries toward ore.
  */
 function findSpot(s: GameState, owner: Owner, kind: BuildingKind, home: Pt, enemyHome: Pt): Pt | null {
-  const spec = BUILDINGS[kind];
+  const spec = buildingSpec(s, owner, kind);
   let focus = home;
   if (kind === 'turret' || kind === 'rocketturret') focus = toward(home, enemyHome, 7);
   // The Repair Bay on the near side, where the army comes home; the costliest structures behind.
@@ -1060,7 +1089,7 @@ function advancedUnits(
   // while it is saved for, the infantry queue holds one at a time once there are a few soldiers.
   let waiting = 0;
   let waitingFor: UnitKind | null = null;
-  const soldiers = units.filter(u => UNITS[u.kind].category === 'infantry' && UNITS[u.kind].weapon && !UNITS[u.kind].hero).length;
+  const soldiers = units.filter(u => UNITS[u.kind].category === 'infantry' && unitSpecOf(s, u).weapon && !UNITS[u.kind].hero).length;
   if (vq.length < 1 && countBuildings(s, owner, 'factory') > 0) {
     const roll = next((p.stats.trained + 1) * 7919 + owner * 104729).value;
     let kind =
@@ -1076,7 +1105,7 @@ function advancedUnits(
     if (t.raidSize && raidBuggies < t.raidSize && s.tick >= nextRaid - 900 && unlocked(s, owner, 'buggy')) kind = 'buggy';
     if (canQueue(s, owner, 'vehicle', kind)) doQueue(s, owner, 'vehicle', kind);
     else if (unlocked(s, owner, kind)) {
-      waiting = UNITS[kind].cost;
+      waiting = unitSpec(s, owner, kind).cost;
       waitingFor = kind;
     }
   }
@@ -1102,7 +1131,7 @@ function advancedUnits(
 /** The free tiles beside a Repair Bay's footprint, where a vehicle is mended. */
 function bayStands(s: GameState, bay: Building): number[] {
   const occ = occupancy(s);
-  const spec = BUILDINGS[bay.kind];
+  const spec = buildingSpecOf(s, bay);
   const out: number[] = [];
   for (let y = bay.y - 1; y <= bay.y + spec.h; y++)
     for (let x = bay.x - 1; x <= bay.x + spec.w; x++) {
@@ -1138,6 +1167,7 @@ type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
  * full and defences a little more; units count for less (`unitShare`), since they can move.
  */
 function blastWorth(
+  s: GameState,
   enemy: Building[],
   foes: Unit[],
   x: number,
@@ -1150,13 +1180,13 @@ function blastWorth(
   for (const b of enemy) {
     const d = distToBuilding(x, y, b);
     if (d > radius) continue;
-    const spec = BUILDINGS[b.kind];
+    const spec = buildingSpecOf(s, b);
     worth += spec.cost * Math.min(1, damageAt(d, 'building') / Math.max(1, b.hp)) * (spec.weapon ? 1.25 : 1);
   }
   for (const u of foes) {
     const d = dist(x, y, u.x, u.y);
     if (d > radius) continue;
-    const spec = UNITS[u.kind];
+    const spec = unitSpecOf(s, u);
     worth += spec.cost * Math.min(1, damageAt(d, spec.armor) / Math.max(1, u.hp)) * unitShare;
   }
   return worth;
@@ -1164,6 +1194,7 @@ function blastWorth(
 
 /** The point among the opponent's structures and units where a blast is worth most. */
 function bestBlast(
+  s: GameState,
   enemy: Building[],
   foes: Unit[],
   radius: number,
@@ -1174,7 +1205,7 @@ function bestBlast(
   let best: { x: number; y: number; worth: number } | null = null;
   const candidates: Pt[] = [...enemy.map(b => buildingCentre(b)), ...foes.map(u => ({ x: u.x, y: u.y }))];
   for (const c of candidates) {
-    const worth = blastWorth(enemy, foes, c.x, c.y, radius, damageAt, unitShare) * bonus(c.x, c.y);
+    const worth = blastWorth(s, enemy, foes, c.x, c.y, radius, damageAt, unitShare) * bonus(c.x, c.y);
     if (!best || worth > best.worth) best = { x: c.x, y: c.y, worth };
   }
   return best;
@@ -1200,6 +1231,7 @@ function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Bui
       // Eight shells over the area: a point inside it takes about two of them.
       const r = POWERS.barrage.radius;
       const at = bestBlast(
+        s,
         enemy,
         foes,
         r,
@@ -1214,7 +1246,7 @@ function useStrikes(s: GameState, owner: Owner, t: Tactics, home: Pt, enemy: Bui
     if (!t.aimPowers) fire('missile', crude());
     else {
       const r = POWERS.missile.radius;
-      const at = bestBlast(enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1);
+      const at = bestBlast(s, enemy, foes, r, (d, armor) => MISSILE_DAMAGE * (1 - (0.5 * d) / r) * DAMAGE_VS.missile[armor], 0.4, () => 1);
       if (at && at.worth >= 1500) fire('missile', at);
     }
   }

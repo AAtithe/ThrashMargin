@@ -17,7 +17,7 @@ import {
   type MapType,
 } from '../sim/rules';
 import { sidesOf } from '../sim/sides';
-import { buildTicksOf, powerOf, producerFor, teamVisibility } from '../sim/state';
+import { buildTicksFor, powerOf, producerFor, teamVisibility } from '../sim/state';
 import type { Building, Effect, GameState, Projectile, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
 import { AIR_LIFT, drawAirShadow, drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
@@ -1071,7 +1071,7 @@ export class Renderer {
       const q = s.players[owner].queues;
       for (const cat of ['building', 'infantry', 'vehicle', 'air'] as const) {
         const head = q[cat]?.[0];
-        if (!head || head.progress >= buildTicksOf(head.kind)) continue;
+        if (!head || head.progress >= buildTicksFor(s, owner, head.kind)) continue;
         const b = producerFor(s, owner, cat);
         if (b) set.add(b.id);
       }

@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from 'react';
 import { abilityCooldown, abilityProblem, heroUnit } from '../sim/mission';
-import { maxHpOf } from '../sim/state';
+import { maxHpOf, perksFor } from '../sim/state';
 import {
   BUILDINGS,
   HERO_ABILITY,
@@ -326,7 +326,7 @@ export function PowerBar({ s, targeting, onPower }: { s: GameState; targeting: T
   if (!mine) return null;
   const list = POWER_ORDER.filter(p => mine[p] !== undefined);
   if (!list.length) return null;
-  const mul = s.perks?.powerCooldownMul ?? 1;
+  const mul = perksFor(s, 0)?.powerCooldownMul ?? 1;
   return (
     <div className="fl-powerbar" data-testid="power-bar" role="group" aria-label="Support powers">
       {list.map(p => {

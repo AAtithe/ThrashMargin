@@ -117,6 +117,10 @@ export type UnitKind =
   | 'railtank'
   | 'stealthtank'
   // round5:D end.
+  // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its unit kinds (signature units, aircraft variants).
+  // round6:A end.
+  // round6:C begin. Generals (fireline-round6-design.md, workstream C): its unit kinds (the field General).
+  // round6:C end.
   | HeroKind;
 export type BuildingKind =
   | 'hq'
@@ -141,8 +145,17 @@ export type BuildingKind =
   | 'protoworks'
   | 'fortress'
   // round5:D end.
+  // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its structure kinds, if any.
+  // round6:A end.
+  // round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): its structure kinds (the Command Academy).
+  // round6:B end.
+  // round6:C begin. Generals (fireline-round6-design.md, workstream C): its structure kinds, if any.
+  // round6:C end.
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air';
+
+/** Round 6 groundwork: how an aircraft fights (UnitSpec.airRole). */
+export type AirRole = 'strafe' | 'bomb';
 
 export interface UnitSpec {
   name: string;
@@ -172,6 +185,12 @@ export interface UnitSpec {
    * fires (the Stealth Tank). Absent on the rest; the Spy keeps its own rule in mission.ts.
    */
   stealth?: true;
+  /**
+   * Round 6 groundwork: how an aircraft fights. 'strafe' (the Gunship) hovers and rockets what it
+   * finds; 'bomb' (the Bomber) flies over its mark dropping a line of bombs. air.ts branches on this,
+   * never on a kind's name, so a faction's variant aircraft needs no new branch. Absent off aircraft.
+   */
+  airRole?: AirRole;
 }
 
 export interface BuildingSpec {
@@ -413,6 +432,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     sight: 7,
     weapon: { kind: 'rocket', damage: 38, range: 4.5, cooldown: 18, canHitAir: false },
     requires: ['helipad'],
+    airRole: 'strafe',
     blurb: 'Attack helicopter. Flies over anything and rockets ground targets, then returns to its Helipad to rearm.',
   },
   bomber: {
@@ -426,6 +446,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     sight: 6,
     weapon: { kind: 'bomb', damage: 110, range: 3.5, cooldown: 4, splash: 1.3, canHitAir: false },
     requires: ['helipad', 'techcentre'],
+    airRole: 'bomb',
     blurb: 'Fast. Flies over its target dropping a line of bombs, then returns to its Helipad to rearm.',
   },
   flaktrack: {
@@ -512,6 +533,12 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     stealth: true,
   },
   // round5:D end.
+  // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its units (signature units, aircraft variants), appended here.
+  // round6:A end.
+  // round6:B begin. Heroes in free play: the heroes above keep their campaign specs; anything B adds goes here.
+  // round6:B end.
+  // round6:C begin. Generals (fireline-round6-design.md, workstream C): the field General, appended here.
+  // round6:C end.
 };
 
 export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
@@ -743,6 +770,12 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     blurb: 'A heavy gun emplacement: long range, splash and a great deal of armour. Slows when power is short.',
   },
   // round5:D end.
+  // round6:A begin. Two armies: its structures, if any, appended here.
+  // round6:A end.
+  // round6:B begin. Heroes in free play: its structures (the Command Academy), appended here.
+  // round6:B end.
+  // round6:C begin. Generals: its structures, if any, appended here.
+  // round6:C end.
 };
 
 /** Structures in the order the build menu offers them. */
@@ -765,8 +798,22 @@ export const BUILD_MENU: BuildingKind[] = [
   'protoworks',
   'fortress',
   // round5:D end.
+  // round6:B begin. Heroes in free play: its structures, appended here.
+  // round6:B end.
+  // round6:C begin. Generals: its structures, if any, appended here.
+  // round6:C end.
 ];
-export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic', 'skyhunter'];
+export const INFANTRY_MENU: UnitKind[] = [
+  'rifleman',
+  'rocketeer',
+  'grenadier',
+  'medic',
+  'skyhunter',
+  // round6:B begin. Heroes in free play: the heroes, if B lists them here (techAllowed keeps them out unless setup.heroes).
+  // round6:B end.
+  // round6:C begin. Generals: the field General, if C lists it here.
+  // round6:C end.
+];
 export const VEHICLE_MENU: UnitKind[] = [
   'hauler',
   'buggy',
@@ -784,6 +831,8 @@ export const VEHICLE_MENU: UnitKind[] = [
   'railtank',
   'stealthtank',
   // round5:D end.
+  // round6:B begin. Heroes in free play: the Ace, if B lists it here.
+  // round6:B end.
 ];
 /** Aircraft in the order the Air tab offers them. */
 export const AIR_MENU: UnitKind[] = ['gunship', 'bomber'];
@@ -836,6 +885,8 @@ export const ALSO_PRODUCES: Partial<Record<BuildingKind, Category>> = {
   // round5:C begin. The Field Yard works the Structures queue.
   fieldyard: 'building',
   // round5:C end.
+  // round6:B begin. Heroes in free play: the Command Academy's queue, if it works one.
+  // round6:B end.
 };
 
 export const MAX_QUEUE = 5;
@@ -1133,18 +1184,65 @@ export interface SkirmishSetup {
    * Absent on setups saved before round 5, which normaliseSetup reads as false.
    */
   sites?: boolean;
+  /**
+   * Round 6, workstream A: each seat's army, one per side (index = Owner). Absent on setups saved
+   * before round 6, which normaliseSetup reads as every seat 'meridian': the army every side always had.
+   */
+  factions?: Faction[];
+  /**
+   * Round 6, workstream B: the campaign's heroes may be recruited in this skirmish (advanced tech
+   * only). Absent on older setups, which normaliseSetup reads as false.
+   */
+  heroes?: boolean;
+  /**
+   * Round 6, workstream C: each side fields a General unit with a command aura. Absent on older
+   * setups, which normaliseSetup reads as false.
+   */
+  generals?: boolean;
+  /**
+   * Round 6, workstream C: each seat's doctrine General (a perks bundle), one per side, or null for
+   * none. A pick that does not belong to its seat's army (GENERAL_FACTION) reads as null. Absent on
+   * older setups, which normaliseSetup reads as every seat null.
+   */
+  generalPicks?: (GeneralId | null)[];
 }
 
 /** How the sides of a battle of three or four are grouped. */
 export type SideMode = 'ffa' | 'teams';
 
 /** What the lobby offers a new skirmish by default. */
-export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', size: 'standard', sites: false };
+export const DEFAULT_SETUP: SkirmishSetup = {
+  map: 'random',
+  tech: 'advanced',
+  credits: 3000,
+  ore: 'normal',
+  sides: 2,
+  mode: 'ffa',
+  size: 'standard',
+  sites: false,
+  factions: ['meridian', 'meridian'],
+  heroes: false,
+  generals: false,
+  generalPicks: [null, null],
+};
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
  * one. The original game exactly: the original map generator, standard tech, no skirmish powers.
  */
-export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', size: 'standard', sites: false };
+export const LEGACY_SETUP: SkirmishSetup = {
+  map: 'classic',
+  tech: 'standard',
+  credits: 3000,
+  ore: 'normal',
+  sides: 2,
+  mode: 'ffa',
+  size: 'standard',
+  sites: false,
+  factions: ['meridian', 'meridian'],
+  heroes: false,
+  generals: false,
+  generalPicks: [null, null],
+};
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
 
@@ -1395,3 +1493,66 @@ export const STEALTH_REVEAL_TICKS = 30;
 /** The computer turns to tier three no sooner than this: 25 minutes. */
 export const TIER3_AI_TICKS = 15000;
 // round5:D end.
+
+// ---- Round 6 (fireline-round6-design.md) --------------------------------------------------------
+// The groundwork: armies, per-side specs, generals' ids and formation shapes, declared here and read
+// through specs.ts. Each workstream adds its numbers between its own round6 markers below.
+
+/**
+ * The two armies. Every side plays 'meridian' unless its setup says otherwise: Meridian Corps is
+ * today's army exactly, so every mission, old save and older setup plays as it always did.
+ */
+export type Faction = 'meridian' | 'ashen';
+export const FACTIONS: Faction[] = ['meridian', 'ashen'];
+export const FACTION_NAMES: Record<Faction, string> = { meridian: 'Meridian Corps', ashen: 'Ashen Combine' };
+
+/**
+ * The spec fields an army may change. A kind's identity (its queue, whether it is a hero, a medic,
+ * a mender, a truck that deploys, stealthy, how it fights in the air; a structure's footprint, and
+ * whether it is a wall or packs up) is the same for every army, so code that asks only those
+ * questions may keep reading UNITS and BUILDINGS directly. A different role is a different kind.
+ */
+export type UnitOverlay = Partial<Omit<UnitSpec, 'category' | 'hero' | 'medic' | 'mender' | 'deploysTo' | 'stealth' | 'airRole'>>;
+export type BuildingOverlay = Partial<Omit<BuildingSpec, 'w' | 'h' | 'wall' | 'undeploysTo'>>;
+export interface FactionOverlay {
+  units?: Partial<Record<UnitKind, UnitOverlay>>;
+  buildings?: Partial<Record<BuildingKind, BuildingOverlay>>;
+}
+/**
+ * An army's build lists against MENUS: kinds added to a list (its signature items, appended in
+ * order) and kinds it never builds. A kind any army adds belongs to the armies that add it alone.
+ */
+export interface FactionMenu {
+  add?: Partial<Record<Category, readonly (BuildingKind | UnitKind)[]>>;
+  remove?: readonly (BuildingKind | UnitKind)[];
+}
+
+// round6:A begin. Two armies (fireline-round6-design.md, workstream A): FACTION_OVERLAY and
+// FACTION_MENUS filled in, the doctrine lines, and its constants. Meridian's overlay stays empty.
+/** Each army's changes to UNITS and BUILDINGS, merged by unitSpec and buildingSpec (specs.ts). */
+export const FACTION_OVERLAY: Record<Faction, FactionOverlay> = { meridian: {}, ashen: {} };
+/** Each army's changes to MENUS, read by menuOf and factionAllows (specs.ts). */
+export const FACTION_MENUS: Record<Faction, FactionMenu> = { meridian: {}, ashen: {} };
+// round6:A end.
+
+// round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): recruit costs,
+// limits and the revive cooldown.
+// round6:B end.
+
+/** The four doctrine Generals, two to an army. Their perks and powers are workstream C's GENERALS. */
+export type GeneralId = 'hale' | 'voss' | 'kade' | 'ilse';
+export const GENERAL_IDS: GeneralId[] = ['hale', 'voss', 'kade', 'ilse'];
+/** Which army each General serves: a seat may pick only its own army's. */
+export const GENERAL_FACTION: Record<GeneralId, Faction> = { hale: 'meridian', voss: 'meridian', kade: 'ashen', ilse: 'ashen' };
+
+// round6:C begin. Generals (fireline-round6-design.md, workstream C): GENERALS (names, perks, power
+// tweaks), the aura's numbers and the replacement cooldown.
+// round6:C end.
+
+/** Round 6, workstream D: the shapes a group can move in. */
+export type FormationShape = 'line' | 'column' | 'wedge' | 'box';
+export const FORMATION_SHAPES: FormationShape[] = ['line', 'column', 'wedge', 'box'];
+
+// round6:D begin. Formations and squads (fireline-round6-design.md, workstream D): names, slot
+// spacing, the leader's refresh interval and its constants.
+// round6:D end.

@@ -51,6 +51,10 @@ export function processAction(s: GameState, a: GameAction): GameState {
       return c;
     }
     case 'move': {
+      // round6:D begin. Formations and squads: a move carrying a formation is refused until D
+      // validates the shape (FORMATION_SHAPES) and passes it to doMove. Without one: exactly as before.
+      if (a.formation !== undefined) return s;
+      // round6:D end.
       if (!canMove(s, 0, ids(a.ids), a.x, a.y, !!a.queue)) return s;
       const c = cloneState(s);
       doMove(c, 0, ids(a.ids), a.x, a.y, !!a.attackMove, !!a.queue);
@@ -157,6 +161,13 @@ export function processAction(s: GameState, a: GameAction): GameState {
       return c;
     }
     // round5:C end.
+    // round6:B begin. Heroes in free play: any case of its own (recruiting goes through 'queue').
+    // round6:B end.
+    // round6:C begin. Generals: any case of its own (recruiting goes through 'queue').
+    // round6:C end.
+    // round6:D begin. Formations and squads: the 'formation' case (until then refused by the
+    // default below: the same state back).
+    // round6:D end.
     default:
       return s;
   }

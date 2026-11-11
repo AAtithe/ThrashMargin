@@ -5,12 +5,12 @@ import {
   ENGINES_SPEED,
   PLATING_HP,
   REFINING_INCOME,
-  UNITS,
   UPGRADES,
   type Owner,
   type UpgradeId,
 } from './rules';
 import { hasBuilding, log, maxHpOf, techAllowed } from './state';
+import { unitSpecOf } from './specs';
 import type { GameState, Unit } from './types';
 
 /**
@@ -87,13 +87,13 @@ export function researchStep(s: GameState, owner: Owner, lowPower: boolean): voi
   p.upgrades = [...(p.upgrades ?? []), r.id];
   p.research = null;
   // Health upgrades reach every unit the side already has, keeping the damage each has taken.
-  for (const u of s.units) if (u.owner === owner && u.hp > 0) raiseHealth(u, hpMulFor(r.id, u));
+  for (const u of s.units) if (u.owner === owner && u.hp > 0) raiseHealth(u, hpMulFor(s, r.id, u));
   if (owner === 0) log(s, `${UPGRADES[r.id].name} researched.`, 'good');
 }
 
-/** What one upgrade does to this unit's full health (1 for none). */
-function hpMulFor(id: UpgradeId, u: Unit): number {
-  const cat = UNITS[u.kind].category;
+/** What one upgrade does to this unit's full health (1 for none), by its side's spec. */
+function hpMulFor(s: GameState, id: UpgradeId, u: Unit): number {
+  const cat = unitSpecOf(s, u).category;
   if (id === 'plating' && cat === 'vehicle') return PLATING_HP;
   if (id === 'airframes' && cat === 'air') return AIRFRAMES_HP;
   return 1;
@@ -112,7 +112,7 @@ export function upgradeNewUnit(s: GameState, u: Unit): void {
   const ups = s.players[u.owner]?.upgrades;
   if (!ups || !ups.length) return;
   for (const id of ups) {
-    const mul = hpMulFor(id, u);
+    const mul = hpMulFor(s, id, u);
     if (mul === 1) continue;
     u.maxHp = Math.max(1, Math.round(maxHpOf(u) * mul));
     u.hp = u.maxHp;

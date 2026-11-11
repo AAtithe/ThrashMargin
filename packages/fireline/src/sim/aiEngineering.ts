@@ -5,6 +5,7 @@ import { BUILDINGS, UNITS, type BuildingKind, type Category, type Owner, type Un
 import { costFor, countBuildings, isStructure, setupOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { AiMemory, Building, GameState, Unit } from './types';
+import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
 
 /**
  * The computer commander's engineering vehicles (fireline-round5-design.md, workstream C). Called
@@ -138,7 +139,7 @@ function expansion(s: GameState, owner: Owner, home: Pt, units: Unit[], foes: Un
   if (!ex) {
     if (s.tick < (mem.expandAfter ?? 0)) return;
     if (countBuildings(s, owner, 'refinery') < 2) return;
-    const threat = s.tick - mem.hurtTick < 40 || foes.some(f => UNITS[f.kind].weapon && dist(f.x, f.y, home.x, home.y) < 15);
+    const threat = s.tick - mem.hurtTick < 40 || foes.some(f => unitSpecOf(s, f).weapon && dist(f.x, f.y, home.x, home.y) < 15);
     if (threat || !unlocked(s, owner, 'basetruck') || !techAllowed(s, owner, 'basetruck')) return;
     const spot = expansionField(s, owner, foes);
     if (!spot) {
@@ -227,7 +228,7 @@ export function expansionSpot(s: GameState, owner: Owner, kind: BuildingKind, en
   if (!e || !e.yard) return null;
   const yard = s.buildings.find(b => b.id === e.yard && b.owner === owner);
   if (!yard || expansionWants(s, owner, yard) !== kind) return null;
-  const spec = BUILDINGS[kind];
+  const spec = buildingSpec(s, owner, kind);
   const c = buildingCentre(yard);
   // The Refinery towards the nearest ore, the turret towards the enemy.
   let focus = toward(c, enemyHome, 3);
@@ -236,7 +237,7 @@ export function expansionSpot(s: GameState, owner: Owner, kind: BuildingKind, en
     if (ore) focus = toward(c, ore, 2.5);
   }
   const occ = occupancy(s);
-  const r = (BUILDINGS[yard.kind].buildRadius ?? 4) + 1;
+  const r = (buildingSpecOf(s, yard).buildRadius ?? 4) + 1;
   const cands: [number, number, number][] = [];
   for (let y = yard.y - r - spec.h; y <= yard.y + r + 2; y++)
     for (let x = yard.x - r - spec.w; x <= yard.x + r + 2; x++) {
@@ -310,7 +311,7 @@ function expansionField(s: GameState, owner: Owner, foes: Unit[]): Pt | null {
  * could be deployed, with a free ring round it so a Refinery fits beside it. `ignore`: the truck.
  */
 function yardSpotNear(s: GameState, owner: Owner, x: number, y: number, from: number, to: number, ignore?: number): Pt | null {
-  const spec = BUILDINGS.fieldyard;
+  const spec = buildingSpec(s, owner, 'fieldyard');
   const occ = occupancy(s);
   const cx = Math.floor(x);
   const cy = Math.floor(y);

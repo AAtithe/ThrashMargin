@@ -63,6 +63,14 @@ import { sections as mapsSections } from './drive-maps';
 import { sections as engineeringSections } from './drive-engineering';
 // round5:D. Neutral sites and tier three: its import (scripts/drive-sites.ts) goes on the line below.
 import { sections as sitesSections } from './drive-sites';
+// round6:A. Two armies (and the round 6 groundwork's setups, specs and saves): its import (scripts/drive-factions.ts) goes on the line below.
+import { sections as factionsSections } from './drive-factions';
+// round6:B. Heroes in free play: its import (scripts/drive-heroes.ts) goes on the line below.
+import { sections as heroesSections } from './drive-heroes';
+// round6:C. Generals (and the groundwork's per-side perks): its import (scripts/drive-generals.ts) goes on the line below.
+import { sections as generalsSections } from './drive-generals';
+// round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
+import { sections as formationsSections } from './drive-formations';
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -2755,6 +2763,15 @@ if (!CAMPAIGN_ONLY) {
     // round5:D. Neutral sites and tier three (fireline-round5-design.md): its sections, imported from
     // scripts/drive-sites.ts, go on the line below this comment.
     ...sitesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6:A. Two armies (fireline-round6-design.md): its sections, imported from
+    // scripts/drive-factions.ts, go on the line below this comment.
+    ...factionsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6:B. Heroes in free play: its sections, from scripts/drive-heroes.ts, on the line below.
+    ...heroesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6:C. Generals: its sections, from scripts/drive-generals.ts, on the line below.
+    ...generalsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6:D. Formations and squads: its sections, from scripts/drive-formations.ts, on the line below.
+    ...formationsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

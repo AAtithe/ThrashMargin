@@ -323,6 +323,10 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
       drawTierThreeCached(ctx, kind, owner, team, pose);
       break;
     // round5:D end.
+    // round6:A begin. Two armies (fireline-round6-design.md): its units' cases, appended here.
+    // round6:A end.
+    // round6:C begin. Generals (fireline-round6-design.md): the field General's case, appended here.
+    // round6:C end.
   }
   ctx.restore();
   ctx.globalAlpha = baseAlpha;
@@ -1646,6 +1650,12 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
       drawFortress(ctx, w, h, team, pose);
       break;
     // round5:D end.
+    // round6:A begin. Two armies: its structures' cases, if any, appended here.
+    // round6:A end.
+    // round6:B begin. Heroes in free play: its structures' cases (the Command Academy), appended here.
+    // round6:B end.
+    // round6:C begin. Generals: its structures' cases, if any, appended here.
+    // round6:C end.
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
   if (pose.rise < 1) {
@@ -4868,3 +4878,12 @@ export function drawSiteLayer(ctx: Ctx, s: GameState, explored: string, vis: Uin
   }
 }
 // round5:D end.
+
+// round6:A begin. Two armies (fireline-round6-design.md, workstream A): its drawing functions, appended here.
+// round6:A end.
+
+// round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): its drawing functions, appended here.
+// round6:B end.
+
+// round6:C begin. Generals (fireline-round6-design.md, workstream C): its drawing functions, appended here.
+// round6:C end.

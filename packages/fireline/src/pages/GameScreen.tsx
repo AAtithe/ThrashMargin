@@ -956,6 +956,9 @@ export function Battle({
         setTab(order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length]);
         return;
       }
+      // round6:B begin. Heroes in free play (fireline-round6-design.md): Z X C V and F in a skirmish
+      // with heroes on (F runs the ability only when the selection is exactly one hero). B may change
+      // the two blocks from here to "round6:B end".
       const heroKey = (HERO_KEYS as readonly string[]).indexOf(k);
       if (cur.current.mission && heroKey >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Z X C V: heroes 1 to 4 in bar order; twice to jump to the hero.
@@ -969,6 +972,7 @@ export function Battle({
         if (u) triggerAbility(u.kind as HeroKind);
         return;
       }
+      // round6:B end.
       if (!cur.current.mission && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // F in a skirmish: the selection's first command that can go (selectionActions.ts), if any.
         const st = cur.current;
@@ -978,6 +982,11 @@ export function Battle({
         if (go) dispatch(go.action);
         return;
       }
+      // round6:C begin. Generals: the 0 key selects your General (twice jumps to it).
+      // round6:C end.
+      // round6:D begin. Formations and squads: the period key (e.code 'Period') sets the selection's
+      // formation, cycling line, column, wedge, box and none.
+      // round6:D end.
       if (e.key === 'Escape') {
         // The controls sheet hides the build window, so it goes first; then the window, then the rest.
         if (help) setHelp(false);
@@ -1607,6 +1616,8 @@ export function Battle({
             ))}
           </div>
           {mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
+          {/* round6:B begin. Heroes in free play: the hero bar also shows in a skirmish with heroes on; B may
+              change the two bars from here to "round6:B end". */}
           {mission && !ended && (
             <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
               <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
@@ -1618,6 +1629,9 @@ export function Battle({
               <SkirmishPowerBar s={s} targeting={targeting} onPower={choosePower} />
             </div>
           )}
+          {/* round6:B end. */}
+          {/* round6:C begin. Generals: the General's button (select, its aura, its replacement timer) goes below. */}
+          {/* round6:C end. */}
           {buildOpen && !paused && !help && !ended && (
             <BuildWindow
               state={s}
@@ -1754,6 +1768,12 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['Tab', 'Next build list: Structures, Infantry, Vehicles, then Air and Research when you have them (Shift + Tab goes back)'],
     ['Production strip', 'Under the Build button: click an item to cancel the last one queued; click a ready structure to place it'],
     ['G', 'Toggle repair on the selected structure'],
+    // round6:B begin. Heroes in free play: the Z X C V row for a skirmish with heroes on.
+    // round6:B end.
+    // round6:C begin. Generals: the 0 row.
+    // round6:C end.
+    // round6:D begin. Formations and squads: the period row.
+    // round6:D end.
     ['F', "Skirmish: the selection's own command when it has one, such as Deploy (the key shows on its button)"],
     ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
     ['H', 'Jump to your Command Yard'],

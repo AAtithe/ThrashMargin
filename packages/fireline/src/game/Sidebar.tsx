@@ -31,7 +31,7 @@ import {
   type UnitKind,
   type WeaponKind,
 } from '../sim/rules';
-import { buildTicksOf, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
+import { buildTicksFor, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
 import { hasUpgrade, researchProblem } from '../sim/research';
 import type { GameAction, GameState } from '../sim/types';
@@ -440,7 +440,7 @@ function ProductionStrip({
         const head = q[0];
         const last = q[q.length - 1];
         const isReady = c === 'building' && ready === head.kind;
-        const progress = Math.min(1, head.progress / buildTicksOf(head.kind));
+        const progress = Math.min(1, head.progress / buildTicksFor(state, 0, head.kind));
         const name = nameOf(head.kind);
         const cancelLast = () => {
           dispatch({ type: 'cancel', category: c, kind: last.kind });
@@ -549,7 +549,7 @@ export function BuildButton({
   const inQueue = q.filter(i => i.kind === kind).length;
   const head = q[0];
   const isHead = !!head && head.kind === kind;
-  const progress = isHead ? head.progress / buildTicksOf(kind) : 0;
+  const progress = isHead ? head.progress / buildTicksFor(state, 0, kind) : 0;
   const open = unlocked(state, 0, kind);
   const cost = costFor(state, 0, kind);
   const isReady = tab === 'building' && readyStructure(state, 0) === kind;
@@ -919,6 +919,12 @@ export function SelectionPanel({
           })}
         </div>
       )}
+      {/* round6:D begin. Formations and squads (fireline-round6-design.md): the formation button row, beside Stance. */}
+      {/* round6:D end. */}
+      {/* round6:B begin. Heroes in free play: anything of B's in the selection panel. */}
+      {/* round6:B end. */}
+      {/* round6:C begin. Generals: anything of C's in the selection panel. */}
+      {/* round6:C end. */}
       {mine && (
         <span style={{ fontSize: '0.68rem', color: UI.textFaint }}>
           <kbd>Shift</kbd>+right-click queues waypoints.

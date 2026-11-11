@@ -247,6 +247,10 @@ export default function HowToPlay() {
         </Panel>
         {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
         <SitesPanel />
+        {/* round6:A. Two armies (fireline-round6-design.md): its panel goes on the line below. */}
+        {/* round6:B. Heroes in free play: its panel goes on the line below. */}
+        {/* round6:C. Generals: its panel goes on the line below. */}
+        {/* round6:D. Formations and squads: its panel goes on the line below. */}
 
         <Panel title="Campaign">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
