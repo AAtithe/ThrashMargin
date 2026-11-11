@@ -17,31 +17,31 @@ import { hasUpgrade, researchCostOf, researchTicksOf } from '../src/sim/research
 import {
   DEFAULT_SETUP,
   DIFFICULTIES,
-  GAME_SIZES,
-  GAME_SIZE_ORDER,
+  GAME_PACES,
+  GAME_PACE_ORDER,
   LEGACY_SETUP,
   LINES,
-  LOBBY_DEFAULT_SIZE,
+  LOBBY_DEFAULT_PACE,
   RESEARCH_COST_STEP,
   SETUP_CREDIT_CHOICES,
   UNITS,
   UPGRADES,
   UPGRADE_LINE,
-  applySize,
-  difficultyForSize,
+  applyPace,
+  difficultyForPace,
   isClassicUpgrade,
   isPresetSetup,
-  mapSizeFor,
+  MAP_SIZES,
   researchPaceText,
   type BuildingKind,
   type Difficulty,
-  type GameSize,
+  type GamePace,
   type Owner,
   type ResearchMode,
   type SkirmishSetup,
   type UpgradeId,
 } from '../src/sim/rules';
-import { addBuilding, createInitialState, migrateState, normaliseSetup, pacedResearch, powerOf, researchModeOf, sizeOf } from '../src/sim/state';
+import { addBuilding, createInitialState, migrateState, normaliseSetup, pacedResearch, powerOf, researchModeOf, paceOf } from '../src/sim/state';
 import type { GameState, MissionContext, Unit } from '../src/sim/types';
 
 type Ok = (cond: unknown, what: string) => void;
@@ -64,9 +64,11 @@ function play(s: GameState, until: number, each?: (s: GameState) => void): GameS
 }
 /**
  * The hash a pre-round-6 state is compared by: sha256 of its JSON, first 16 hex characters, with
- * the setup's string `size` key left out (the one key a quick state gains in round 6).
+ * the setup's string `pace` key left out (the one key a quick state gains in round 6), and the
+ * setup's `size` (map size) and boolean `sites` keys that the merge with main added.
  */
-const strip = (k: string, v: unknown) => (k === 'size' && typeof v === 'string' ? undefined : v);
+const strip = (k: string, v: unknown) =>
+  (k === 'pace' || k === 'size') && typeof v === 'string' ? undefined : k === 'sites' && typeof v === 'boolean' ? undefined : v;
 const hashOf = (s: GameState) => createHash('sha256').update(JSON.stringify(s, strip)).digest('hex').slice(0, 16);
 
 const PERKS0 = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1, powerCooldownMul: 1, extraStartCredits: 0 };
@@ -88,8 +90,8 @@ function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
  * An advanced skirmish on open plains, everyone's units gone and nothing attacking, side 0 given a
  * Research Lab, a Tech Centre, a Refinery, a War Factory and power.
  */
-function lab(seed: string, research: ResearchMode, size: GameSize | undefined, tech: SkirmishSetup['tech'] = 'advanced'): GameState {
-  const setup: Partial<SkirmishSetup> = { map: 'plains', tech, credits: 20000, research, ...(size ? { size } : {}) };
+function lab(seed: string, research: ResearchMode, size: GamePace | undefined, tech: SkirmishSetup['tech'] = 'advanced'): GameState {
+  const setup: Partial<SkirmishSetup> = { map: 'plains', tech, credits: 20000, research, ...(size ? { pace: size } : {}) };
   const s = copy(createInitialState(seed, seed, { seed, createdAt: 0, setup }));
   s.units = [];
   for (const m of s.ai) m.nextAttack = 1e9;
@@ -150,32 +152,40 @@ function isSubsequence(got: readonly UpgradeId[], list: readonly UpgradeId[]): b
 /** The field, the presets, the size table and the pure helpers. */
 function rulesAndPresets(ok: Ok): void {
   const diffsBefore = JSON.stringify(DIFFICULTIES);
-  ok(DEFAULT_SETUP.size === 'quick' && LEGACY_SETUP.size === 'quick', 'both presets are Quick');
+  ok(DEFAULT_SETUP.pace === 'quick' && LEGACY_SETUP.pace === 'quick', 'both presets are Quick');
+  ok(DEFAULT_SETUP.size === 'standard' && LEGACY_SETUP.size === 'standard', 'both presets state the standard map size');
   const keys = Object.keys(normaliseSetup({}));
-  ok(keys[keys.length - 1] === 'size', 'size is the last field of a normalised setup');
+  ok(keys[keys.length - 1] === 'pace', 'pace is the last field of a normalised setup');
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     const pk = Object.keys(preset);
-    ok(JSON.stringify(pk) === JSON.stringify(keys), `${name} states every setup field, in order, size last`);
+    ok(JSON.stringify(pk) === JSON.stringify(keys), `${name} states every setup field, in order, pace last`);
     for (const k of keys) ok((preset as unknown as Record<string, unknown>)[k] !== undefined, `${name}.${k} is stated`);
   }
   ok(JSON.stringify(normaliseSetup({})) === JSON.stringify(DEFAULT_SETUP), 'an empty setup normalises to the default, Quick included');
-  ok(normaliseSetup({ size: 'junk' as never }).size === DEFAULT_SETUP.size, 'a junk size takes the base\'s');
-  ok(normaliseSetup({ size: 'junk' as never }, { ...LEGACY_SETUP, size: 'epic' }).size === 'epic', 'a junk size takes the base\'s, whatever the base says');
-  ok(normaliseSetup({ size: 7 as never }).size === 'quick' && normaliseSetup({ size: null as never }).size === 'quick', 'a size that is not a string reads Quick');
-  ok(normaliseSetup({ map: 'river' }, LEGACY_SETUP).size === 'quick', 'a saved setup without a size reads Quick');
-  ok(normaliseSetup({ tech: 'standard', size: 'long' }).size === 'long', 'standard tech keeps its size (attack timing applies to any tech)');
-  for (const k of GAME_SIZE_ORDER) ok(normaliseSetup({ size: k }).size === k, `${k} survives normalising`);
-  ok(LOBBY_DEFAULT_SIZE === 'standard', 'the lobby offers Standard to a player who has never chosen');
+  ok(normaliseSetup({ pace: 'junk' as never }).pace === DEFAULT_SETUP.pace, 'a junk pace takes the base\'s');
+  ok(normaliseSetup({ pace: 'junk' as never }, { ...LEGACY_SETUP, pace: 'epic' }).pace === 'epic', 'a junk pace takes the base\'s, whatever the base says');
+  ok(normaliseSetup({ pace: 7 as never }).pace === 'quick' && normaliseSetup({ pace: null as never }).pace === 'quick', 'a pace that is not a string reads Quick');
+  ok(normaliseSetup({ map: 'river' }, LEGACY_SETUP).pace === 'quick', 'a saved setup without a pace reads Quick');
+  // A setup saved by this branch before the merge with main kept the pace as `size`.
+  for (const k of ['quick', 'long', 'epic'] as const) {
+    const n = normaliseSetup({ map: 'river', size: k as never }, LEGACY_SETUP);
+    ok(n.pace === k && n.size === 'standard', `a pre-merge setup with size '${k}' reads as pace ${k} on a standard map`);
+  }
+  ok(normaliseSetup({ map: 'river', size: 'large' }, LEGACY_SETUP).pace === 'quick', 'a map size is never read as a pace');
+  ok(normaliseSetup({ size: 'epic' as never, pace: 'standard' }).pace === 'standard', 'an explicit pace wins over a pre-merge size');
+  ok(normaliseSetup({ tech: 'standard', pace: 'long' }).pace === 'long', 'standard tech keeps its pace (attack timing applies to any tech)');
+  for (const k of GAME_PACE_ORDER) ok(normaliseSetup({ pace: k }).pace === k, `${k} survives normalising`);
+  ok(LOBBY_DEFAULT_PACE === 'standard', 'the lobby offers Standard to a player who has never chosen');
 
   // The table.
-  const tableKeys = Object.keys(GAME_SIZES).sort();
-  ok(GAME_SIZE_ORDER.length === tableKeys.length && new Set(GAME_SIZE_ORDER).size === GAME_SIZE_ORDER.length && JSON.stringify([...GAME_SIZE_ORDER].sort()) === JSON.stringify(tableKeys), 'GAME_SIZE_ORDER lists every size once');
-  ok(GAME_SIZE_ORDER[0] === 'quick', 'Quick is the first card');
-  const q = GAME_SIZES.quick;
+  const tableKeys = Object.keys(GAME_PACES).sort();
+  ok(GAME_PACE_ORDER.length === tableKeys.length && new Set(GAME_PACE_ORDER).size === GAME_PACE_ORDER.length && JSON.stringify([...GAME_PACE_ORDER].sort()) === JSON.stringify(tableKeys), 'GAME_PACE_ORDER lists every size once');
+  ok(GAME_PACE_ORDER[0] === 'quick', 'Quick is the first card');
+  const q = GAME_PACES.quick;
   ok(q.attackMul === 1 && [...q.researchCost, ...q.researchTicks].every(m => m === 1) && q.paced === false, 'Quick changes nothing: attack 1, research 1, not paced');
   ok(q.preset.credits === LEGACY_SETUP.credits && q.preset.ore === LEGACY_SETUP.ore, 'Quick\'s preset is today\'s credits and ore');
-  for (const k of GAME_SIZE_ORDER) {
-    const g = GAME_SIZES[k];
+  for (const k of GAME_PACE_ORDER) {
+    const g = GAME_PACES[k];
     if (k !== 'quick') ok(g.paced, `${k} is paced`);
     ok(SETUP_CREDIT_CHOICES.includes(g.preset.credits), `${k}: preset credits ${g.preset.credits} is a lobby choice`);
     ok(g.preset.ore === 'normal' || g.preset.ore === 'rich' || g.preset.ore === 'poor', `${k}: preset ore is a level (${g.preset.ore})`);
@@ -187,27 +197,29 @@ function rulesAndPresets(ok: Ok): void {
   }
   ok(researchPaceText('quick') === 'Full price and time', 'Quick\'s research line reads "Full price and time"');
   ok(researchPaceText('standard') === '50% price, 60% time', `Standard's research line reads "50% price, 60% time" (${researchPaceText('standard')})`);
-  ok(mapSizeFor(2) === 64 && mapSizeFor(3) === 80 && mapSizeFor(4) === 96, 'map sizes by sides: 64, 80, 96');
+  ok(GAME_PACES.quick.preset.size === 'standard' && GAME_PACES.standard.preset.size === 'standard', 'Quick and Standard play on the standard map');
+  ok(GAME_PACES.long.preset.size === 'large' && GAME_PACES.epic.preset.size === 'huge', 'Long plays on a large map, Epic on a huge one');
+  for (const k of GAME_PACE_ORDER) ok(MAP_SIZES.includes(GAME_PACES[k].preset.size), `${k}: preset map size is a map size`);
 
-  // applySize and isPresetSetup.
-  const bases: SkirmishSetup[] = [DEFAULT_SETUP, LEGACY_SETUP, { ...DEFAULT_SETUP, map: 'river', sides: 3, mode: 'teams', credits: 2000, ore: 'poor', size: 'epic' }];
+  // applyPace and isPresetSetup.
+  const bases: SkirmishSetup[] = [DEFAULT_SETUP, LEGACY_SETUP, { ...DEFAULT_SETUP, map: 'river', sides: 3, mode: 'teams', credits: 2000, ore: 'poor', pace: 'epic', size: 'large' }];
   for (const base of bases)
-    for (const k of GAME_SIZE_ORDER) {
-      const a = applySize(base, k);
-      const others = (x: SkirmishSetup) => JSON.stringify({ ...x, size: 0, credits: 0, ore: 0 });
-      ok(a.size === k && a.credits === GAME_SIZES[k].preset.credits && a.ore === GAME_SIZES[k].preset.ore && others(a) === others(base), `applySize(${base.map}/${base.size}, ${k}) writes size, credits and ore only`);
-      ok(isPresetSetup(a), `isPresetSetup(applySize(${base.map}/${base.size}, ${k}))`);
-      ok(JSON.stringify(Object.keys(a)) === JSON.stringify(keys), `applySize(${base.map}/${base.size}, ${k}) keeps the key order`);
+    for (const k of GAME_PACE_ORDER) {
+      const a = applyPace(base, k);
+      const others = (x: SkirmishSetup) => JSON.stringify({ ...x, pace: 0, size: 0, credits: 0, ore: 0 });
+      ok(a.pace === k && a.credits === GAME_PACES[k].preset.credits && a.ore === GAME_PACES[k].preset.ore && a.size === GAME_PACES[k].preset.size && others(a) === others(base), `applyPace(${base.map}/${base.pace}, ${k}) writes pace, credits, ore and map size only`);
+      ok(isPresetSetup(a), `isPresetSetup(applyPace(${base.map}/${base.pace}, ${k}))`);
+      ok(JSON.stringify(Object.keys(a)) === JSON.stringify(keys), `applyPace(${base.map}/${base.pace}, ${k}) keeps the key order`);
       const other = SETUP_CREDIT_CHOICES.find(c => c !== a.credits)!;
-      ok(!isPresetSetup({ ...a, credits: other }) && !isPresetSetup({ ...a, ore: a.ore === 'rich' ? 'normal' : 'rich' }), `${k}: other credits or ore is not the preset`);
+      ok(!isPresetSetup({ ...a, credits: other }) && !isPresetSetup({ ...a, ore: a.ore === 'rich' ? 'normal' : 'rich' }) && !isPresetSetup({ ...a, size: a.size === 'huge' ? 'standard' : 'huge' }), `${k}: other credits, ore or map size is not the preset`);
     }
 
-  // difficultyForSize.
+  // difficultyForPace.
   for (const d of DIFFS) {
-    ok(difficultyForSize(d, 'quick') === DIFFICULTIES[d], `${d}: Quick returns the DIFFICULTIES entry itself`);
-    for (const k of GAME_SIZE_ORDER.filter(x => x !== 'quick')) {
-      const m = GAME_SIZES[k].attackMul;
-      const got = difficultyForSize(d, k) as unknown as Record<string, unknown>;
+    ok(difficultyForPace(d, 'quick') === DIFFICULTIES[d], `${d}: Quick returns the DIFFICULTIES entry itself`);
+    for (const k of GAME_PACE_ORDER.filter(x => x !== 'quick')) {
+      const m = GAME_PACES[k].attackMul;
+      const got = difficultyForPace(d, k) as unknown as Record<string, unknown>;
       const orig = DIFFICULTIES[d] as unknown as Record<string, unknown>;
       ok(got !== orig || m === 1, `${d}, ${k}: a copy, not the shared entry`);
       ok(got.firstAttack === Math.round(DIFFICULTIES[d].firstAttack * m) && got.attackInterval === Math.round(DIFFICULTIES[d].attackInterval * m), `${d}, ${k}: first attack ${got.firstAttack} and interval ${got.attackInterval} are x${m}`);
@@ -218,7 +230,15 @@ function rulesAndPresets(ok: Ok): void {
   ok(JSON.stringify(DIFFICULTIES) === diffsBefore, 'the shared DIFFICULTIES table is never written');
 }
 
-/** Pre-round-6 final-state hashes (HEAD before round 6, tick 18,000 or the end, size key stripped). */
+/**
+ * Pre-round-6 final-state hashes (HEAD before round 6, tick 18,000 or the end, pace key stripped).
+ * At the merge with main (2026-11-11) the twelve Normal and Hard advanced battles (lines, classic,
+ * three) were regenerated: main's computer fields Repair Trucks on advanced tech (round 5, workstream
+ * C), its first engineering decision coming at ticks 4,200 to 8,100 in these battles, and every one
+ * of them first differs from the pre-merge build in the 1,000-tick snapshot right after that. The
+ * classic ones equal origin/main's own battles exactly; no setup, standard tech and Easy (which
+ * fields no Repair Truck in these battles) are unchanged. See fireline-design.md, the merge's entry.
+ */
 const PRE_ROUND6: Record<string, string> = {
   'nosetup|easy|size-a': '3425e6edb280df2e',
   'nosetup|easy|size-b': 'd79837ed09c9f522',
@@ -228,16 +248,16 @@ const PRE_ROUND6: Record<string, string> = {
   'nosetup|hard|size-b': '6120a39f5cd1b61e',
   'lines|easy|size-a': '0e91c303dadc56ed',
   'lines|easy|size-b': '3cb51545efc7366e',
-  'lines|normal|size-a': '32d685861ab107cc',
-  'lines|normal|size-b': 'a0ae97576227ac1a',
-  'lines|hard|size-a': '7e6140bd76412b96',
-  'lines|hard|size-b': 'b4762762863d4b00',
+  'lines|normal|size-a': '423c38464f674a76',
+  'lines|normal|size-b': '3362db2ff7075bc9',
+  'lines|hard|size-a': '98fded49018c3f28',
+  'lines|hard|size-b': '4316e82ab77e5ed5',
   'classic|easy|size-a': '8a3c91f43715c066',
   'classic|easy|size-b': 'f04dbb216ac6e271',
-  'classic|normal|size-a': '978d85fd863a1b48',
-  'classic|normal|size-b': '76fea4a055fda1d8',
-  'classic|hard|size-a': 'c006af9032d8c46a',
-  'classic|hard|size-b': '4fe6ec3485e42a9a',
+  'classic|normal|size-a': '69bf80151a0163e7',
+  'classic|normal|size-b': '330093a29f257be9',
+  'classic|hard|size-a': '2b9e0982d3668c66',
+  'classic|hard|size-b': 'c2a91da6f94d1338',
   'standard|easy|size-a': '256a982f346e5325',
   'standard|easy|size-b': '5b09efed4e05974d',
   'standard|normal|size-a': '945c815278f9f157',
@@ -246,10 +266,10 @@ const PRE_ROUND6: Record<string, string> = {
   'standard|hard|size-b': '75cbe17795d793cb',
   'three|easy|size-a': '3f031b9ca10714c1',
   'three|easy|size-b': '266380752d290d23',
-  'three|normal|size-a': 'c670c8868aede7d9',
-  'three|normal|size-b': 'ae98cf3636b54fc7',
-  'three|hard|size-a': 'b7010008fb74fa45',
-  'three|hard|size-b': '3abcf0acb48e0fdc',
+  'three|normal|size-a': '7cfc8da182a0401c',
+  'three|normal|size-b': '074cc74587cfb3fe',
+  'three|hard|size-a': 'a6c0538d5c9b5acf',
+  'three|hard|size-b': '33e13265ad7cc08a',
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
   nosetup: undefined,
@@ -270,7 +290,7 @@ function quickIsToday(ok: Ok): void {
     ok(researchCostOf(quickLines, id) === UPGRADES[id].cost && researchTicksOf(quickLines, id) === UPGRADES[id].ticks, `quick lines: ${id} at ${UPGRADES[id].cost} credits, ${UPGRADES[id].ticks} ticks`);
     ok(researchCostOf(noSize, id) === UPGRADES[id].cost && researchTicksOf(noSize, id) === UPGRADES[id].ticks, `lines with no size given: ${id} at full price and time`);
   }
-  for (const k of GAME_SIZE_ORDER) {
+  for (const k of GAME_PACE_ORDER) {
     const classic = lab(`size-classic-${k}`, 'classic', k);
     const std = lab(`size-std-${k}`, 'classic', k, 'standard');
     for (const id of ALL_UPGRADES.filter(isClassicUpgrade)) {
@@ -278,34 +298,34 @@ function quickIsToday(ok: Ok): void {
       ok(researchCostOf(std, id) === UPGRADES[id].cost && researchTicksOf(std, id) === UPGRADES[id].ticks, `${k} standard tech: ${id} at full price and time`);
     }
     ok(!pacedResearch(classic) && !pacedResearch(std), `${k} classic and standard tech: no paced research`);
-    ok(sizeOf(classic) === k && sizeOf(std) === k, `${k} classic and standard tech: the size is kept (${sizeOf(classic)}, ${sizeOf(std)})`);
+    ok(paceOf(classic) === k && paceOf(std) === k, `${k} classic and standard tech: the size is kept (${paceOf(classic)}, ${paceOf(std)})`);
   }
 
   // A mission, a battle without a setup, a save without the field.
   const all = [...MISSIONS, ...ACT_TWO.filter(m => !MISSIONS.includes(m))];
   for (const m of all) {
     const s = createMissionState(m, mctx(m.id));
-    ok(sizeOf(s) === 'quick' && !pacedResearch(s), `${m.id}: plays at Quick, no paced research`);
+    ok(paceOf(s) === 'quick' && !pacedResearch(s), `${m.id}: plays at Quick, no paced research`);
   }
   const none = createInitialState('size-none', 'size-none', { seed: 'size-none', createdAt: 0 });
-  ok(!none.setup && sizeOf(none) === 'quick' && !pacedResearch(none), 'no setup (the original game): Quick');
-  for (const k of GAME_SIZE_ORDER) {
-    const s = tick(createInitialState('size-old', 'size-old', { seed: 'size-old', difficulty: 'normal', createdAt: 0, autopilot: true, setup: { map: 'river', tech: 'advanced', research: 'lines', size: k } }), 1200);
+  ok(!none.setup && paceOf(none) === 'quick' && !pacedResearch(none), 'no setup (the original game): Quick');
+  for (const k of GAME_PACE_ORDER) {
+    const s = tick(createInitialState('size-old', 'size-old', { seed: 'size-old', difficulty: 'normal', createdAt: 0, autopilot: true, setup: { map: 'river', tech: 'advanced', research: 'lines', pace: k } }), 1200);
     const old = JSON.parse(JSON.stringify(s));
-    delete old.setup.size;
+    delete old.setup.pace;
     for (const m of old.ai) delete m.researchFor;
     const text = JSON.stringify(old);
     const m = migrateState(old);
     ok(!!m && JSON.stringify(old) === text, `a ${k} save stripped of its size loads, its input untouched`);
     if (!m) continue;
-    ok(m.setup?.size === 'quick' && sizeOf(m) === 'quick' && !pacedResearch(m), `a ${k} save stripped of its size reads Quick`);
+    ok(m.setup?.pace === 'quick' && paceOf(m) === 'quick' && !pacedResearch(m), `a ${k} save stripped of its size reads Quick`);
     ok(researchCostOf(m, 'refining') === UPGRADES.refining.cost, `a ${k} save stripped of its size: full research price`);
   }
   // A save from round 5 (no size) loads and plays on exactly as the battle never saved.
   {
     const s = tick(createInitialState('size-r5', 'size-r5', { seed: 'size-r5', difficulty: 'hard', createdAt: 0, autopilot: true, setup: { map: 'canyon', tech: 'advanced', research: 'lines' } }), 6000);
     const old = JSON.parse(JSON.stringify(s));
-    delete old.setup.size;
+    delete old.setup.pace;
     const m = migrateState(old);
     ok(!!m && JSON.stringify(m) === JSON.stringify(s), 'a round 5 lines save loads as the same battle at Quick');
     if (m) ok(JSON.stringify(tick(m, 3000)) === JSON.stringify(tick(s, 3000)), 'and plays the next 3000 ticks exactly as the battle never saved');
@@ -323,8 +343,8 @@ function quickIsToday(ok: Ok): void {
         ok(h === PRE_ROUND6[key], `${key}: final state matches the build before round 6 (${h}, tick ${a.tick})`);
         // Quick given explicitly: one battle per kind, Normal on seed size-a (the others are the same code path).
         if (setup && seed === 'size-a' && d === 'normal') {
-          const b = hashBattle(seed, d, { ...setup, size: 'quick' });
-          ok(b.setup?.size === 'quick' && JSON.stringify(a) === JSON.stringify(b), `${key}: Quick given explicitly plays the same battle as no size`);
+          const b = hashBattle(seed, d, { ...setup, pace: 'quick' });
+          ok(b.setup?.pace === 'quick' && JSON.stringify(a) === JSON.stringify(b), `${key}: Quick given explicitly plays the same battle as no size`);
         }
       }
   console.log(`  ${matched}/${Object.keys(PRE_ROUND6).length} battles match the build before round 6`);
@@ -333,7 +353,7 @@ function quickIsToday(ok: Ok): void {
 /** Price and time scaled by mark in development lines; classic and standard tech untouched. */
 function researchScaling(ok: Ok): void {
   const s = lab('size-scale', 'lines', 'standard');
-  ok(researchModeOf(s) === 'lines' && sizeOf(s) === 'standard' && pacedResearch(s), 'a Standard lines battle is paced');
+  ok(researchModeOf(s) === 'lines' && paceOf(s) === 'standard' && pacedResearch(s), 'a Standard lines battle is paced');
   const want: [UpgradeId, number, number | null][] = [
     ['refining', 1000, 420],
     ['refining2', 1200, null],
@@ -345,12 +365,12 @@ function researchScaling(ok: Ok): void {
     if (ticks !== null) ok(researchTicksOf(s, id) === ticks, `Standard: ${id} takes ${ticks} ticks (${researchTicksOf(s, id)})`);
   }
   // The formula, for every upgrade at every size.
-  for (const k of GAME_SIZE_ORDER) {
+  for (const k of GAME_PACE_ORDER) {
     const t = lab(`size-formula-${k}`, 'lines', k);
     for (const id of ALL_UPGRADES) {
       const mi = UPGRADE_LINE[id].mark - 1;
-      const cm = GAME_SIZES[k].researchCost[mi];
-      const tm = GAME_SIZES[k].researchTicks[mi];
+      const cm = GAME_PACES[k].researchCost[mi];
+      const tm = GAME_PACES[k].researchTicks[mi];
       const c = cm === 1 ? UPGRADES[id].cost : Math.max(RESEARCH_COST_STEP, Math.round((UPGRADES[id].cost * cm) / RESEARCH_COST_STEP) * RESEARCH_COST_STEP);
       const n = tm === 1 ? UPGRADES[id].ticks : Math.max(1, Math.round(UPGRADES[id].ticks * tm));
       ok(researchCostOf(t, id) === c && researchTicksOf(t, id) === n, `${k}: ${id} at ${c} credits, ${n} ticks`);
@@ -426,11 +446,11 @@ function researchScaling(ok: Ok): void {
 /** The commander: paced lists in Long lines battles, the classic list in Long classic, attack timing scaled. */
 function computer(ok: Ok): void {
   // First attack, every size and difficulty, any tech.
-  for (const k of GAME_SIZE_ORDER)
+  for (const k of GAME_PACE_ORDER)
     for (const d of DIFFS)
       for (const tech of ['advanced', 'standard'] as const) {
-        const s = createInitialState('size-first', 'size-first', { seed: 'size-first', difficulty: d, createdAt: 0, setup: { map: 'plains', tech, size: k } });
-        const want = Math.round(DIFFICULTIES[d].firstAttack * GAME_SIZES[k].attackMul);
+        const s = createInitialState('size-first', 'size-first', { seed: 'size-first', difficulty: d, createdAt: 0, setup: { map: 'plains', tech, pace: k } });
+        const want = Math.round(DIFFICULTIES[d].firstAttack * GAME_PACES[k].attackMul);
         ok(s.ai[1].nextAttack === want, `${k}, ${d}, ${tech} tech: side 1's first attack at tick ${want} (${s.ai[1].nextAttack})`);
       }
 
@@ -438,7 +458,7 @@ function computer(ok: Ok): void {
   const battle = (seed: string, d: Difficulty, setup: Partial<SkirmishSetup>, d0: Difficulty = d): GameState => {
     const s = createInitialState(seed, seed, { seed, difficulty: d, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', ...setup } });
     s.autopilotDifficulty = d0;
-    s.ai[0].nextAttack = difficultyForSize(d0, s.setup!.size).firstAttack;
+    s.ai[0].nextAttack = difficultyForPace(d0, s.setup!.pace).firstAttack;
     return s;
   };
 
@@ -457,7 +477,7 @@ function computer(ok: Ok): void {
     for (let i = 1; i <= SEEDS; i++) {
       const seed = `size-long-${d}-${i}`;
       let problem = '';
-      let prev = battle(seed, d, { research: 'lines', size: 'long', credits: 5000, ore: 'rich' });
+      let prev = battle(seed, d, { research: 'lines', pace: 'long', credits: 5000, ore: 'rich' });
       const stands = (st: GameState, o: Owner, id: UpgradeId) => UPGRADES[id].requires.every(k => st.buildings.some(b => b.owner === o && b.kind === k));
       const s = play(prev, 24000, st => {
         for (const o of [0, 1] as Owner[]) {
@@ -513,7 +533,7 @@ function computer(ok: Ok): void {
   for (const d of DIFFS) {
     const seed = `size-long-classic-${d}`;
     let problem = '';
-    const s0 = battle(seed, d, { research: 'classic', size: 'long', credits: 5000, ore: 'rich' });
+    const s0 = battle(seed, d, { research: 'classic', pace: 'long', credits: 5000, ore: 'rich' });
     ok(s0.ai[1].nextAttack === Math.round(DIFFICULTIES[d].firstAttack * 2), `Long classic, ${d}: side 1's first attack doubled (${s0.ai[1].nextAttack})`);
     const s = play(s0, 24000, st => {
       for (const o of [0, 1] as Owner[]) {
@@ -540,8 +560,8 @@ function computer(ok: Ok): void {
     const per: string[] = [];
     for (let i = 1; i <= 14 && n < 3; i++) {
       const seed = `size-starve-${d}-${i}`;
-      const std = play(battle(seed, d, { research: 'lines', size: 'standard' }, 'normal'), 12000);
-      const quick = play(battle(seed, d, { research: 'lines', size: 'quick' }, 'normal'), 12000);
+      const std = play(battle(seed, d, { research: 'lines', pace: 'standard' }, 'normal'), 12000);
+      const quick = play(battle(seed, d, { research: 'lines', pace: 'quick' }, 'normal'), 12000);
       if (std.tick !== 12000 || quick.tick !== 12000) continue;
       n++;
       const a = std.units.filter(armed).length;
@@ -557,10 +577,10 @@ function computer(ok: Ok): void {
   // A Standard lines battle replays exactly, and through a save.
   {
     // To tick 18,000 or the end, whichever comes first.
-    const a = play(battle('size-replay', 'normal', { research: 'lines', size: 'standard' }), 18000);
-    const b = play(battle('size-replay', 'normal', { research: 'lines', size: 'standard' }), 18000);
+    const a = play(battle('size-replay', 'normal', { research: 'lines', pace: 'standard' }), 18000);
+    const b = play(battle('size-replay', 'normal', { research: 'lines', pace: 'standard' }), 18000);
     ok(JSON.stringify(a) === JSON.stringify(b), `a Standard lines battle replays byte-identically (to tick ${a.tick})`);
-    let c = play(battle('size-replay', 'normal', { research: 'lines', size: 'standard' }), 6000);
+    let c = play(battle('size-replay', 'normal', { research: 'lines', pace: 'standard' }), 6000);
     const saved = JSON.stringify(c);
     const m = migrateState(JSON.parse(saved));
     ok(!!m && JSON.stringify(m) === saved, 'a Standard battle saved at tick 6,000 loads unchanged');
@@ -579,9 +599,9 @@ function tickCap(ok: Ok): void {
   for (const [d0, d1] of pairs)
     for (let i = 1; i <= 3; i++) {
       const seed = `size-epic-${d0}-${d1}-${i}`;
-      const s0 = createInitialState(seed, seed, { seed, difficulty: d1, createdAt: 0, autopilot: true, setup: applySize({ ...DEFAULT_SETUP }, 'epic') });
+      const s0 = createInitialState(seed, seed, { seed, difficulty: d1, createdAt: 0, autopilot: true, setup: applyPace({ ...DEFAULT_SETUP }, 'epic') });
       s0.autopilotDifficulty = d0;
-      s0.ai[0].nextAttack = difficultyForSize(d0, 'epic').firstAttack;
+      s0.ai[0].nextAttack = difficultyForPace(d0, 'epic').firstAttack;
       const s = play(s0, 150000);
       ok(s.winner !== null, `${seed}: an Epic battle finishes before 150,000 ticks (${s.winner === null ? 'unfinished' : `side ${s.winner} at ${(s.tick / 600).toFixed(1)} min`})`);
       lines.push(`${d0} v ${d1} ${i}: ${s.winner === null ? 'unfinished' : `${(s.tick / 600).toFixed(1)} min`}`);

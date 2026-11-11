@@ -17,7 +17,7 @@ import { costFor, maxHpOf, researchModeOf, techAllowed } from './state';
 import type { GameState, QueueItem, Unit } from './types';
 
 /**
- * Vehicle loadouts (fireline-round5-design.md, section 4.3). In a development-lines battle each
+ * Vehicle loadouts (fireline-round5b-design.md, section 4.3). In a development-lines battle each
  * side sets, per vehicle kind, the modules every new one is built with. The loadout is copied onto
  * the queue item when it is queued (with the price paid for it) and onto the unit when it leaves
  * the factory; a unit never changes its modules after that, and changing a loadout touches only

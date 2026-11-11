@@ -30,7 +30,10 @@ import { sprites } from './fx/sprites';
 import { Water } from './fx/water';
 import { sound, type SoundKind } from './sound';
 import { drawMissileMarker, drawMissileInFlight, flameJet, MISSILE_ARC } from './fx/strike';
-import { paintTerrain } from './terrain';
+import { paintMiniTerrain, paintTerrain, paintTerrainOffThread } from './terrain';
+// round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
+import { drawSiteLayer } from './art';
+import { stealthSeen } from '../sim/sites';
 
 /**
  * The pose fields art.ts reads for damage, recoil flashes and working structures. Declared here as
@@ -172,14 +175,20 @@ export interface Overlay {
 }
 
 export class Renderer {
-  /** Painted on the first frame, when the state says which kind of map this is. */
-  private terrain!: HTMLCanvasElement;
+  /**
+   * Painted on the first frame, when the state says which kind of map this is: in a worker where
+   * the browser has one (paintTerrainOffThread), so the page never stalls on a large map. Until it
+   * arrives the ground is `placeholder`, the minimap's one pixel per tile stretched over the map,
+   * and there are no marks or water animation (scars and water are null).
+   */
+  private terrain: HTMLCanvasElement | null = null;
+  private placeholder: HTMLCanvasElement | null = null;
   private fog: HTMLCanvasElement;
   private fogCtx: CanvasRenderingContext2D;
   private fogImg: ImageData;
   private fx = new Particles();
-  private scars!: Scars;
-  private water!: Water;
+  private scars: Scars | null = null;
+  private water: Water | null = null;
   private tiles: string;
   private mapType: MapType | undefined;
   private painted = false;
@@ -221,11 +230,28 @@ export class Renderer {
 
   private paint(mapType: MapType | undefined) {
     this.painted = true;
-    this.terrain = paintTerrain(this.tiles, mapType, this.mapW, this.mapH);
-    this.scars = new Scars(this.terrain, this.tiles);
-    this.water = new Water(this.tiles, this.terrain);
-    this.scars.onRepaint = (x, y, w, h) => this.water.invalidate(x, y, w, h);
+    const job = paintTerrainOffThread(this.tiles, mapType, this.mapW, this.mapH);
+    if (!job) {
+      this.install(paintTerrain(this.tiles, mapType, this.mapW, this.mapH));
+      return;
+    }
+    this.placeholder = paintMiniTerrain(this.tiles, this.mapW, this.mapH);
+    job.then(
+      c => this.install(c),
+      () => this.install(paintTerrain(this.tiles, mapType, this.mapW, this.mapH)),
+    );
   }
+
+  private install(terrain: HTMLCanvasElement) {
+    this.terrain = terrain;
+    this.placeholder = null;
+    const scars = new Scars(terrain, this.tiles);
+    const water = new Water(this.tiles, terrain);
+    scars.onRepaint = (x, y, w, h) => water.invalidate(x, y, w, h);
+    this.scars = scars;
+    this.water = water;
+  }
+
 
   /** What side 0 (with its allies) can see right now. Cached per state object. */
   visible(s: GameState): Uint8Array {
@@ -275,13 +301,18 @@ export class Renderer {
     const sh = (ty1 - ty0 + 1) * TILE;
     // The terrain canvas carries the battle's marks (tread marks, scorches, fallen soldiers,
     // rubble; see fx/scars.ts) and the water's animation (fx/water.ts), so one copy draws them all.
-    this.scars.update(cur, vis, now);
-    this.scars.step(dt, now, this.fx);
-    this.water.update(t, tx0, ty0, tx1, ty1);
-    ctx.drawImage(this.terrain, sx, sy, sw, sh, sx, sy, sw, sh);
+    if (this.terrain && this.scars && this.water) {
+      this.scars.update(cur, vis, now);
+      this.scars.step(dt, now, this.fx);
+      this.water.update(t, tx0, ty0, tx1, ty1);
+      ctx.drawImage(this.terrain, sx, sy, sw, sh, sx, sy, sw, sh);
+    } else if (this.placeholder) {
+      // Still painting: the minimap's colours, one tile to a pixel, stretched and smoothed.
+      ctx.drawImage(this.placeholder, tx0, ty0, tx1 - tx0 + 1, ty1 - ty0 + 1, sx, sy, sw, sh);
+    }
 
     // 2. Burnt-out wrecks.
-    this.scars.draw(ctx, now, inView);
+    this.scars?.draw(ctx, now, inView);
 
     // 2b. Light on the ground: muzzle flashes, blasts, and their shockwaves.
     this.groundLight(ctx, cur, rt, vis, inView);
@@ -312,6 +343,10 @@ export class Renderer {
       const d = dockTile(cur, b);
       drawDock(ctx, d.x * TILE, d.y * TILE);
     }
+    // round5:D begin. Neutral sites (fireline-round5-design.md): one call drawing every seen site
+    // (drawSite in art.ts) goes under this line, before the structures.
+    drawSiteLayer(ctx, cur, explored, vis, rt, t);
+    // round5:D end.
     for (const b of buildings) {
       const spec = BUILDINGS[b.kind];
       const px = b.x * TILE;
@@ -386,6 +421,7 @@ export class Renderer {
       if (u.owner !== 0) {
         if (!vis[Math.floor(u.y) * MAP_W + Math.floor(u.x)]) continue;
         if (u.kind === 'spy' && !spySeen(cur, u)) continue;
+        if (UNITS[u.kind].stealth && !stealthSeen(cur, u, 0)) continue;
       }
       // Aircraft are drawn in their own pass, after every ground unit (below).
       if (UNITS[u.kind].category === 'air') aloft.push({ u, x, y });
@@ -433,12 +469,12 @@ export class Renderer {
         }
       }
       // Your own Spy is cloaked: drawn at about half strength.
-      const cloaked = u.kind === 'spy' && u.owner === 0;
+      const cloaked = (u.kind === 'spy' || !!spec.stealth) && u.owner === 0;
       if (cloaked) ctx.globalAlpha = 0.55;
       drawUnit(ctx, u.kind, u.owner, x, y, upose);
       if (cloaked) ctx.globalAlpha = 1;
       if (spec.category === 'vehicle' && moving) {
-        this.scars.track(u, x, y, this.fx, dt);
+        this.scars?.track(u, x, y, this.fx, dt);
         if (Math.random() < dt * 5) this.fx.exhaust(x - u.fx * 10, y - u.fy * 10);
       }
     }
@@ -933,19 +969,19 @@ export class Renderer {
       const r = POWERS.missile.radius * TILE;
       this.fx.explode(x, y, 2, true);
       this.fx.megaBlast(x, y, r);
-      this.scars.crater(x, y, r * 0.55, this.lastNow / 1000);
+      this.scars?.crater(x, y, r * 0.55, this.lastNow / 1000);
       return;
     }
     if (weapon === 'flame') {
       // Burning ground where the jet lands: it smoulders for a few seconds and leaves a scorch.
       this.fx.burn(x + (Math.random() - 0.5) * 8, y + (Math.random() - 0.5) * 6, 7 + Math.random() * 4, 2.5 + Math.random() * 1.5);
-      if (Math.random() < 0.5) this.scars.stampScorch(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 8, 6);
+      if (Math.random() < 0.5) this.scars?.stampScorch(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 8, 6);
       return;
     }
     this.fx.explode(x, y, size, weapon === 'artillery');
     // A structure's footprint gets rubble and a vehicle a scorch under its wreck, from Scars.
     if (size >= 1) return;
-    this.scars.stampScorch(x, y, weapon === 'artillery' ? 14 : size >= 0.5 ? 9 : 5);
+    this.scars?.stampScorch(x, y, weapon === 'artillery' ? 14 : size >= 0.5 ? 9 : 5);
   }
 
   /** Where a missile leaves from: the owner's Strike Command nearest its launch point, else that point. */

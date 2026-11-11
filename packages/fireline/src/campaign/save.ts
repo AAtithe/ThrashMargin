@@ -1,5 +1,6 @@
 import { HERO_KINDS, type HeroKind } from '../sim/rules';
 import { migrateState } from '../sim/state';
+import { isCampaignLevel } from './difficulty';
 import { MISSIONS } from './missions';
 import { campaignComplete, cleanCommander, missionsWon, newCampaign, PERKS } from './progression';
 import type { CampaignSave, CampaignState, HeroRecord, MissionRecord, PerkId } from './types';
@@ -54,6 +55,8 @@ function migrateCampaignState(raw: unknown, fallbackName: string): CampaignState
     missions,
     tech: Array.isArray(c.tech) ? c.tech.filter((t): t is CampaignState['tech'][number] => typeof t === 'string') : [],
     lastMission: typeof c.lastMission === 'string' ? c.lastMission : null,
+    // Campaigns from before difficulty settings play at Normal, which is how they were written.
+    difficulty: isCampaignLevel(c.difficulty) ? c.difficulty : 'normal',
   };
 }
 

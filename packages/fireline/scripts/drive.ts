@@ -23,7 +23,7 @@ import { setAutopilotAi } from '../src/sim/ai';
 import { processAction } from '../src/sim/actions';
 // round4:A. Air power and research: its import (scripts/drive-air.ts) goes on the line below.
 import { sections as airSections } from './drive-air';
-// round5. Development lines and loadouts (fireline-round5-design.md): its sections.
+// round5. Development lines and loadouts (fireline-round5b-design.md): its sections.
 import { sections as linesSections } from './drive-lines';
 // round6. Game size and paced research (fireline-round6-design.md): its sections.
 import { sections as sizeSections } from './drive-size';
@@ -61,6 +61,12 @@ import { newAiMemory, teamVisibility } from '../src/sim/state';
 import * as sides from '../src/sim/sides';
 // round4:C. Campaign act two: its import (scripts/drive-act2.ts) goes on the line below.
 import { sections as act2Sections } from './drive-act2';
+// round5:B. Larger maps and long games: its import (scripts/drive-maps.ts) goes on the line below.
+import { sections as mapsSections } from './drive-maps';
+// round5:C. Engineering vehicles: its import (scripts/drive-engineering.ts) goes on the line below.
+import { sections as engineeringSections } from './drive-engineering';
+// round5:D. Neutral sites and tier three: its import (scripts/drive-sites.ts) goes on the line below.
+import { sections as sitesSections } from './drive-sites';
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -115,7 +121,11 @@ const seedArg = args.indexOf('--seeds');
 const SEEDS = seedArg >= 0 ? Number(args[seedArg + 1]) : 20;
 /** `--campaign` runs only the campaign sections (missions, heroes, powers, perks). */
 const CAMPAIGN_ONLY = args.includes('--campaign');
-const TICK_CAP = 45000;
+/**
+ * A battle's tick cap: 45000 (75 minutes) for every standard-size battle, as always; longer on the
+ * larger maps of round 5, where battles run longer (72000 large, 108000 huge).
+ */
+const capFor = (setup?: Partial<SkirmishSetup>): number => (setup?.size === 'huge' ? 108000 : setup?.size === 'large' ? 72000 : 45000);
 
 function invariants(s: GameState, label: string): void {
   const ids = new Set<number>();
@@ -173,7 +183,7 @@ function battle(seed: string, difficulty: Difficulty, setup?: Partial<SkirmishSe
   // against the corner of a lake: its smoothed path clipped a blocked tile from where it stood.
   const still = new Map<number, { x: number; y: number; since: number }>();
   let frozen = '';
-  while (s.winner === null && s.tick < TICK_CAP) {
+  while (s.winner === null && s.tick < capFor(setup)) {
     if (!frozen) {
       for (const u of s.units) {
         const homeward = u.kind === 'hauler' && u.order.type === 'harvest' && u.order.phase === 'return';
@@ -1406,7 +1416,7 @@ function commandoTests(): void {
     x = processAction(x, { type: 'tick', n: CHARGE_FUSE });
     const h = heroOf(x, 'commando');
     ok(h.hero!.level === 2 && h.hero!.xp === 130, `the Commando reaches level 2 (${h.hero!.level})`);
-    ok(maxHpOf(h) === Math.round(160 * (1 + HERO_HP_PER_LEVEL)) && h.hp === maxHpOf(h), `and his health rises with it (${h.hp}/${maxHpOf(h)})`);
+    ok(maxHpOf(h) === Math.round(UNITS.commando.hp * (1 + HERO_HP_PER_LEVEL)) && h.hp === maxHpOf(h), `and his health rises with it (${h.hp}/${maxHpOf(h)})`);
     ok(x.effects.some(e => e.kind === 'levelup'), 'a level-up effect is shown');
     ok(x.log.some(l => l.text === 'The Commando reached level 2.'), 'and logged');
     invariants(x, 'level up');
@@ -1473,6 +1483,55 @@ function engineerTests(): void {
     const full = processAction(rr, { type: 'tick', n: 300 });
     ok(unitIn(full, tank.id)!.hp === UNITS.tank.hp, 'and stops at full health');
     ok(unitIn(full, ace.id)!.hp === maxHpOf(unitIn(full, ace.id)!), 'heroes in vehicles are repaired too');
+  }
+  // A structure a primary capture objective names is never picked by side 0's own units (Borrowed
+  // Steel: attack-moving through the yard shot the War Factory down and the mission could not be won);
+  // an explicit order still goes through; and if it is destroyed anyway the mission is lost, not left open.
+  {
+    const cap = (): GameState =>
+      quiet(
+        copy(
+          createMissionState(
+            mspec({
+              player: { credits: 0, structures: [], units: [], heroes: ['engineer'] },
+              enemy: { credits: 0, base: 'outpost', structures: ['factory', 'power'], units: [], ai: 'passive' },
+              objectives: [{ kind: 'capture', building: 'factory' }, { kind: 'destroyAll' }, { kind: 'keepAlive', hero: 'engineer' }],
+              bonus: [],
+              triggers: [{ afterObjective: 0, spawn: { owner: 1, kind: 'rifleman', count: 2, x: 4.5, y: 4.5, order: 'guard' } }],
+            }),
+            mctx({ heroes: ALL_HEROES }),
+          ),
+        ),
+      );
+    const base = cap();
+    const fac = enemyB(base, 'factory');
+    const gen = enemyB(base, 'power');
+    const w = copy(base);
+    const p = beside(w, fac);
+    const tank = put(w, 0, 'tank', p.x, p.y);
+    const after = processAction(w, { type: 'tick', n: 120 });
+    ok(after.buildings.find(b => b.id === fac.id)!.hp === BUILDINGS.factory.hp, 'a tank beside a War Factory the mission wants captured leaves it alone');
+    const ordered = processAction(processAction(after, { type: 'attack', ids: [tank.id], target: fac.id }), { type: 'tick', n: 60 });
+    ok(ordered.buildings.find(b => b.id === fac.id)!.hp < BUILDINGS.factory.hp, 'but fires on it when ordered to');
+    const gone = copy(after);
+    gone.buildings.find(b => b.id === fac.id)!.hp = 1;
+    const lost = tickUntil(processAction(gone, { type: 'attack', ids: [tank.id], target: fac.id }), q => !!q.mission!.result, 200);
+    ok(lost.mission!.result === 'lost' && lost.mission!.lostBecause === 'The enemy War Factory was destroyed before it could be captured.', `a War Factory destroyed before its capture loses the mission (${lost.mission!.result}: ${lost.mission!.lostBecause})`);
+    ok(lost.mission!.objectives[0].failed, 'and the capture objective reads failed');
+    // Other structures are fair game while the capture is open.
+    const g = copy(base);
+    const gp = beside(g, gen);
+    put(g, 0, 'tank', gp.x, gp.y);
+    const gg = processAction(g, { type: 'tick', n: 60 });
+    ok((gg.buildings.find(b => b.id === gen.id)?.hp ?? 0) < BUILDINGS.power.hp, 'other enemy structures are still picked');
+    // A capture that also finishes "destroy everything" still meets the group its trigger sends.
+    const last = copy(base);
+    last.buildings = last.buildings.filter(b => b.id !== gen.id);
+    const at = standBy(last, 'engineer', fac);
+    const c = tickUntil(processAction(at, { type: 'ability', id: heroOf(at, 'engineer').id, target: fac.id }), q => q.buildings.find(b => b.id === fac.id)!.owner === 0, CAPTURE_TICKS + 5);
+    const c1 = processAction(c, { type: 'tick' });
+    ok(c1.mission!.objectives[0].done && c1.units.filter(u => u.owner === 1).length === 2, 'the counter-attack a capture triggers is on the field');
+    ok(c1.mission!.result === null && !c1.mission!.objectives[1].done, 'and reopens "destroy everything", so capturing the last structure does not win outright');
   }
 }
 
@@ -2689,7 +2748,7 @@ if (!CAMPAIGN_ONLY) {
     // round4:A. Air power and research (fireline-round4-design.md): its sections, imported from
     // scripts/drive-air.ts, go on the lines below this comment.
     ...airSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
-    // round5. Development lines and loadouts (fireline-round5-design.md): its sections, imported
+    // round5. Development lines and loadouts (fireline-round5b-design.md): its sections, imported
     // from scripts/drive-lines.ts.
     ...linesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round6. Game size and paced research (fireline-round6-design.md): its sections, imported
@@ -2698,6 +2757,15 @@ if (!CAMPAIGN_ONLY) {
     // round4:B. Bigger battles (fireline-round4-design.md): its sections, imported from
     // scripts/drive-sides.ts, go on the lines below this comment.
     ...sidesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round5:B. Larger maps and long games (fireline-round5-design.md): its sections, imported from
+    // scripts/drive-maps.ts, go on the line below this comment.
+    ...mapsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round5:C. Engineering vehicles (fireline-round5-design.md): its sections, imported from
+    // scripts/drive-engineering.ts, go on the line below this comment.
+    ...engineeringSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round5:D. Neutral sites and tier three (fireline-round5-design.md): its sections, imported from
+    // scripts/drive-sites.ts, go on the line below this comment.
+    ...sitesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

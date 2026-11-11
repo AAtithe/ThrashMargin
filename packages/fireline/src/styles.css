@@ -1957,7 +1957,7 @@ kbd {
   font-weight: 700;
 }
 
-/* ---- Round 5: development lines and loadouts ---- */
+/* ---- Round 5b (fireline-round5b-design.md): development lines and loadouts ---- */
 :root {
   --ui-line-node-bg: #eef3f2;
   --ui-line-node-rule: #a9c9cc;
@@ -2764,3 +2764,431 @@ kbd {
     padding-right: 12px;
   }
 }
+
+/*
+ * Round 5 (fireline-round5-design.md). As in round 4: each workstream's tokens and rules go under
+ * its own heading below, as a light :root block and a :root[data-theme="dark"] block of its own.
+ */
+
+/* round5:A. The build window. */
+:root {
+  --ui-tree-panel: #f7f8f6;
+  --ui-tree-rule: #b7c0b9;
+  --ui-tree-line-met: #2f7d34;
+  --ui-tree-line-unmet: #a3ada7;
+  --ui-tree-ghost: #9aa59e;
+  --ui-tree-ghost-text: #4c5a55;
+  --ui-tree-ghost-met: rgba(47, 125, 52, 0.1);
+  --ui-tree-heading: #7b8883;
+  --ui-tree-tab-on: rgba(168, 106, 12, 0.14);
+}
+:root[data-theme="dark"] {
+  --ui-tree-panel: #161c1f;
+  --ui-tree-rule: #34424a;
+  --ui-tree-line-met: #6fbf73;
+  --ui-tree-line-unmet: #4b5a60;
+  --ui-tree-ghost: #4f5f66;
+  --ui-tree-ghost-text: #a8b6b2;
+  --ui-tree-ghost-met: rgba(111, 191, 115, 0.12);
+  --ui-tree-heading: #74827e;
+  --ui-tree-tab-on: rgba(224, 164, 58, 0.16);
+}
+
+/* The Build button in the sidebar, naming the window's tab. */
+.fl-build-open {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-accent);
+  border-radius: 4px;
+  background: var(--ui-tint-accent);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.fl-build-open[data-open="1"] {
+  background: var(--ui-tree-tab-on);
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
+}
+.fl-build-open:hover {
+  background: var(--ui-tree-tab-on);
+}
+.fl-build-open-label strong {
+  color: var(--ui-accent);
+}
+
+/* The production strip: one icon per queue with anything in it. */
+.fl-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 34px;
+  align-items: center;
+}
+.fl-strip-empty {
+  font-size: 0.7rem;
+  color: var(--ui-text-faint);
+}
+.fl-strip-cell {
+  position: relative;
+}
+.fl-strip-item {
+  position: relative;
+  display: block;
+  width: 52px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--ui-rule);
+  border-radius: 3px;
+  background: var(--ui-panel-raised);
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.fl-strip-item img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.fl-strip-item:hover {
+  border-color: var(--ui-bad);
+}
+.fl-strip-item.ready {
+  border-color: var(--ui-good);
+  animation: fl-pulse 1s ease-in-out infinite alternate;
+}
+.fl-strip-item.ready:hover {
+  border-color: var(--ui-good);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-strip-item.ready { animation: none; }
+}
+:root[data-motion="off"] .fl-strip-item.ready { animation: none; }
+.fl-strip-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 4px;
+  background: var(--ui-scrim);
+}
+.fl-strip-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--ui-accent);
+}
+.fl-strip-bar.research > span {
+  background: var(--ui-research-fill);
+}
+.fl-strip-count,
+.fl-strip-ready {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0 3px;
+  border-radius: 2px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--ui-ground);
+  background: var(--ui-accent);
+}
+.fl-strip-ready {
+  left: 2px;
+  right: auto;
+  background: var(--ui-good);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.fl-strip-x {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 50%;
+  background: var(--ui-panel);
+  color: var(--ui-bad);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* The window: a panel over the battlefield, or a full-screen sheet on phones and touch. */
+.fl-bw {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--ui-tree-panel);
+  color: var(--ui-text);
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 6px;
+  box-shadow: 0 14px 44px var(--ui-shadow);
+  font-family: inherit;
+}
+.fl-bw:focus {
+  outline: none;
+}
+.fl-bw[data-sheet="1"] {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  border: none;
+  border-radius: 0;
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.fl-bw-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px 6px 12px;
+  border-bottom: 1px solid var(--ui-tree-rule);
+  cursor: move;
+  touch-action: none;
+}
+.fl-bw[data-sheet="1"] .fl-bw-head {
+  cursor: default;
+  padding: 8px 8px 8px 14px;
+}
+.fl-bw-title {
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.fl-bw-hint {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.7rem;
+  color: var(--ui-text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.fl-bw-close {
+  flex: 0 0 auto;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  background: var(--ui-panel-raised);
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.fl-bw[data-sheet="1"] .fl-bw-close {
+  width: 44px;
+  height: 44px;
+  font-size: 1.4rem;
+}
+.fl-bw-tabs {
+  display: flex;
+  gap: 3px;
+  padding: 6px 10px 0;
+  border-bottom: 1px solid var(--ui-tree-rule);
+}
+.fl-bw-tab {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding: 5px 12px;
+  margin-bottom: -1px;
+  border: 1px solid var(--ui-tree-rule);
+  border-radius: 4px 4px 0 0;
+  background: transparent;
+  color: var(--ui-text);
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.fl-bw-head,
+.fl-bw-tabs {
+  flex-shrink: 0;
+}
+.fl-bw[data-sheet="1"] .fl-bw-tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.fl-bw[data-sheet="1"] .fl-bw-tab {
+  flex: 1 0 auto;
+  padding: 10px 8px;
+  font-size: 0.74rem;
+}
+.fl-bw-tab[data-producer="0"] {
+  color: var(--ui-text-faint);
+}
+.fl-bw-tab[aria-selected="true"] {
+  font-weight: 700;
+  border-color: var(--ui-accent);
+  border-bottom-color: var(--ui-tree-panel);
+  background: var(--ui-tree-tab-on);
+}
+.fl-bw-tab-busy {
+  color: var(--ui-accent);
+}
+.fl-bw-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 12px 12px;
+  overscroll-behavior: contain;
+}
+.fl-bw-note {
+  margin: 0 0 8px;
+  font-size: 0.74rem;
+  color: var(--ui-text-faint);
+}
+
+/* The tree: tiers left to right on a desktop, top to bottom on a phone. */
+.fl-tree {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 26px;
+  width: max-content;
+  min-width: 100%;
+}
+.fl-tree[data-orient="down"] {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 18px;
+  width: auto;
+}
+.fl-tree-lines {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.fl-tree-line {
+  fill: none;
+  stroke: var(--ui-tree-line-unmet);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+.fl-tree-line[data-met="1"] {
+  stroke: var(--ui-tree-line-met);
+  stroke-dasharray: none;
+}
+.fl-tree-col {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 92px;
+}
+.fl-tree-col[data-tier="ghost"] {
+  width: 84px;
+}
+.fl-tree[data-orient="down"] .fl-tree-col {
+  width: auto;
+}
+.fl-tree-head {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-tree-heading);
+  align-self: flex-start;
+  padding-right: 4px;
+  background: var(--ui-tree-panel);
+}
+.fl-tree-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fl-tree[data-orient="down"] .fl-tree-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 8px;
+}
+.fl-tree[data-orient="down"] .fl-tree-col[data-tier="ghost"] .fl-tree-items {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+/* Opaque, so the lines pass behind an item (a locked one is see-through) and its Needs line. */
+.fl-tree-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--ui-tree-panel);
+  border-radius: 4px;
+}
+.fl-tree-cell .fl-build {
+  width: 100%;
+}
+.fl-tree-cell .fl-build img {
+  height: 46px;
+  object-fit: cover;
+}
+@media (pointer: coarse) {
+  .fl-build-open { min-height: 44px; font-size: 0.9rem; }
+}
+.fl-build-open kbd {
+  font-size: 0.85rem;
+  padding: 0 6px;
+}
+.fl-tree-needs {
+  font-size: 0.6rem;
+  line-height: 1.25;
+  color: var(--ui-text-faint);
+}
+.fl-tree-ghost {
+  padding: 5px 7px;
+  border: 1px dashed var(--ui-tree-ghost);
+  border-radius: 4px;
+  background: var(--ui-tree-panel);
+  color: var(--ui-tree-ghost-text);
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+.fl-tree-ghost[data-met="1"] {
+  border-style: solid;
+  border-color: var(--ui-tree-line-met);
+  background: var(--ui-tree-ghost-met);
+}
+.fl-tree-ghost-label {
+  display: block;
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ui-tree-heading);
+}
+.fl-tree-preview {
+  display: block;
+  width: 100%;
+  height: 40px;
+  border-radius: 2px;
+  background: var(--ui-tree-ghost-met);
+  border: 1px dashed var(--ui-tree-ghost);
+}
+.fl-bw .fl-research {
+  margin: 0;
+}
+
+/* round5:B. Larger maps and long games. */
+
+/* round5:C. Engineering vehicles. */
+
+/* round5:D. Neutral sites and tier three. */

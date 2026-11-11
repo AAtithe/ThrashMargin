@@ -282,6 +282,7 @@ export function createMissionState(spec: MissionSpec, ctx: MissionContext): Game
       result: null,
       triggers: spec.triggers.map(t => ({ ...t, ...('spawn' in t && t.spawn ? { spawn: { ...t.spawn } } : {}) })),
       ...(spec.structurePowers ? { structurePowers: [[], []] } : {}),
+      ...(ctx.level && ctx.level !== 'normal' ? { level: ctx.level } : {}),
     },
     perks,
     powers: [powers0, {}],
@@ -893,7 +894,13 @@ function evalObjective(s: GameState, o: ObjectiveRuntime): void {
       if (n >= sp.count) o.done = true;
       return;
     }
-    // destroy, infiltrate and capture move when the event happens (noteDestroyed, noteEvent).
+    case 'infiltrate':
+    case 'capture':
+      // These move when the event happens (noteEvent). With no enemy structure of the kind left,
+      // one never can: fail it rather than leave the mission open with nothing to do.
+      if (!s.buildings.some(b => b.kind === sp.building && b.hp > 0 && isEnemy(s, 0, b.owner))) o.failed = true;
+      return;
+    // destroy moves when the event happens (noteDestroyed).
     default:
       return;
   }
@@ -1034,15 +1041,27 @@ export function evaluateMission(s: GameState): void {
     missionStrikes(s);
   }
 
+  let spawned = false;
   if (m.triggers)
     m.triggers.forEach((t, i) => {
       if (m.fired.includes(i)) return;
       const due = 'at' in t ? s.tick >= t.at : !!m.objectives[t.afterObjective]?.done;
       if (!due) return;
       m.fired.push(i);
-      if (t.spawn) spawnGroup(s, t.spawn);
+      if (t.spawn) {
+        spawnGroup(s, t.spawn);
+        if (t.spawn.owner !== 0) spawned = true;
+      }
       if (t.say) log(s, t.say, 'info');
     });
+  // A group a trigger has just sent reopens "destroy everything": in Borrowed Steel, capturing the
+  // factory last finished it on the same tick, and the counter-attack spawned into a won battle.
+  if (spawned)
+    for (const o of [...m.objectives, ...m.bonus])
+      if (o.spec.kind === 'destroyAll' && o.done) {
+        o.done = false;
+        evalObjective(s, o);
+      }
 
   const failed = m.objectives.find(o => o.failed);
   let lost: string | null = null;
@@ -1054,6 +1073,8 @@ export function evaluateMission(s: GameState): void {
           ? 'Too much of the convoy was lost.'
           : failed.spec.kind === 'destroyWithin'
             ? `${failed.label}: time ran out.`
+            : failed.spec.kind === 'capture' || failed.spec.kind === 'infiltrate'
+              ? `The enemy ${BUILDINGS[failed.spec.building].name} was destroyed before it could be ${failed.spec.kind === 'capture' ? 'captured' : 'infiltrated'}.`
             : `${failed.label}: failed.`;
   const won = !lost && m.objectives.some(o => o.spec.kind !== 'keepAlive') && m.objectives.every(satisfied);
   if (!won && !lost) {

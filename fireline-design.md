@@ -533,9 +533,320 @@ tours (desktop, and touch on three phones), 27 loading checks and 573 server tes
 150 seeds, random maps, advanced tech: the mirror 51% to 47% (2 unfinished), Hard on side 1 wins
 91%, Easy 0%.
 
-### 2026-11-10: Development lines and loadouts (round 5)
+### 2026-11-09: Demolition (mission 4) made winnable; the Commando strengthened
 
-The contract and the full build log are in `fireline-round5-design.md`. On an advanced-tech skirmish
+Reported unbeatable. Played by script it was lost every way in, and for three separate reasons:
+
+- The outpost ran a refinery on 'defend' and trained a rifleman every five seconds: 13 at one
+  minute, over 50 by the time the Commando arrived. It is now 'passive' (a fixed garrison of four
+  riflemen and a rocketeer that fights what comes close and trains nothing), and 'defend' itself now
+  only replaces losses up to the garrison it started with (`AiMemory.garrison`), in every mission.
+- Its Gun Turrets (range 5.5) outranged the Commando (4.5): he died in four shells without firing.
+  Two turrets now, not three, and the briefing says where they cannot reach.
+- The buggies sent after the extraction spawned where the last Generator stood, on top of the
+  Commando, and buggies are two and a half times his speed: no race was possible. A squad of five
+  riflemen now marches from the north-west corner instead, the Commando's own strength.
+
+The Commando himself: health 160 to 240, range 4.5 to 5, reload 9 ticks to 7. Six riflemen deal
+about 54 a second together and he killed one every two seconds, so at 160 he lost any open fight.
+His squad is four riflemen and two rocketeers (was three and two). campaign-check now plays the
+mission by script straight at the outpost and round its flank, and both must win.
+
+### 2026-11-09: Round 5 contract and groundwork
+
+The player asked for the tech tree in a pop-out window, repair trucks, larger maps and forward
+bases, for much longer games with more tech. That is four parallel workstreams, set out in
+`fireline-round5-design.md`: A the build window (interface only), B larger maps and long games, C
+engineering vehicles (the Repair Truck, and the Forward Base Truck that deploys into a Field Yard),
+D neutral sites (Oil Derrick, Field Hospital, Comms Relay) and tier three (Prototype Works,
+Fortress, Railgun Tank, Stealth Tank).
+
+The groundwork committed with the contract changes nothing in play: the build lists are one table
+in `rules.ts` (`MENUS`), a queue may be worked by more than its producer (`ALSO_PRODUCES`, read by
+`producerFor` and the new `hasProducer`), the setup carries an optional map `size` and `sites`
+switch (repaired by `normaliseSetup`; old setups read as standard size, no sites), `GameState`
+carries an optional list of neutral `Site`s (not structures, so `sides.ts`, targeting and victory
+are untouched), the reducer knows the `deploy` and `undeploy` actions by name and refuses both
+until workstream C, a selected unit or structure can offer its own commands through
+`src/game/selectionActions.ts` (a button each, and F in a skirmish), and marker comments mark every
+place a workstream adds lines to a shared file. Every printed line of `npm run drive:fire` is the
+same before and after; the assertion count rose by one (the new `'rail'` weapon kind's flight time).
+
+### 2026-11-10: The build window (round 5, workstream A)
+
+The build lists have left the sidebar for a pop-out tech tree, as `fireline-round5-design.md`
+section 3 sets out. Interface only: no file under `src/sim/` changed.
+
+- **Sidebar.** Credits, power and the minimap as before, then a **Build** button naming the
+  window's tab ("Build: Structures", with the `` ` `` key) and the **production strip**: one icon
+  per queue with anything in it (the four build queues and the research under way), the head item
+  with its progress bar and the queue's count. A click cancels the last one queued (right-click
+  does the same); a ready structure pulses and a click picks it up to place. On touch a tap on an
+  icon opens its list and the × cancels. Then the selection panel.
+- **The window** (`src/game/BuildWindow.tsx`). Opened and closed by the Build button or the
+  backquote key, closed by Esc (after the controls sheet, before placement and the rest) or its ×.
+  `role="dialog"`, focus moves to the open tab on open and back to the Build button on close. Not
+  modal. On a desktop it is a panel inside the battlefield's own box (so never over the sidebar),
+  about 60% of it wide (at least 560px where the field allows) and at most 80% tall, dragged by its
+  title bar; its place is kept under `fl_build_window` as fractions of the room it can move in, so
+  it survives a resize. On phones and touch screens (`layout.touch` or `layout.stacked`) it is a
+  full-screen sheet. It hides, keeping its state, while paused, on the controls sheet and at the end.
+- **The tree** (`src/game/techTree.ts`, pure). Tiers from `requires` alone, the Command Yard
+  ignored, memoised, a cycle counting as 0. Columns left to right on a desktop, rows top to bottom
+  on a phone; within a tier, menu order. A structure needed from another tab is a ghost node at the
+  start ("needs War Factory"), so every line has both ends. Lines are an SVG layer behind the
+  buttons, measured from the laid-out buttons (again on any resize and whenever a Needs line comes
+  or goes), solid in the met token, dashed in the unmet one. Cells are opaque, so a line passes
+  behind a greyed (see-through) item rather than across it. A locked item names what it lacks.
+- **Research** is a tab of its own after the others once a Lab stands (`tabsFor`), the old block
+  unchanged; Tab and Shift+Tab cycle every tab the battle offers, window open or closed.
+- **Placement.** Picking up a ready structure (button, key or strip) closes the window; placing
+  it or cancelling placement reopens it on the same tab, if placement closed it. Opening the
+  window while placing puts the structure back to Ready.
+- **Hotkeys** are unchanged and act on the tab the Build button names, open or closed; the 15th
+  item of a list onwards has none. The stat card now sits beside the window (right if there is
+  room, else left), and on touch shows on a long press (which no longer cancels: only the × does).
+- **Guided tours.** A step that wants a build button rings the Build button while the window is
+  closed, then the list's tab, then the button, saying so in the card. A step on the battlefield
+  (other than placing) rings the window's close button first while it is open, and on a sheet so
+  does any step whose target is outside it. A card ringing a control in the window docks clear of
+  the whole window (on a phone on its side, the half of the screen away from the target), so it
+  never hides the window's other buttons. Both drivers pass; the touch driver now closes the sheet
+  before its pan check and taps the card's own Close.
+- **The window's own check**, `scripts/tours/fireline-build-window.cjs`, run by
+  `scripts/tours/fireline.cjs` after the tour (or alone): on a fresh advanced-tech skirmish every
+  `MENUS` kind (29) is on its tab, greyed exactly when the rules say, in the tier column the rules
+  give, with a drawn line to every structure it needs; button, key and Esc open and close it, focus
+  goes in and back; Tab cycles with it open and closed; Q queues with it closed and W with it open;
+  picking up the Generator closes it and placing reopens it on Structures; picking up the Refinery
+  and pressing Esc cancels placement and reopens it; dragging moves it, the place is stored, and it
+  never reaches the sidebar; and a kind no rule knows (`window.__flExtraMenuItem`, honoured only in
+  development builds), needing a Tech Centre and a Research Lab, is laid out in tier 4 with both
+  lines and both ghosts, greyed and naming its needs.
+
+Decisions where the contract was silent:
+
+- Column headings read "Tier N" with N one more than the computed tier, the same numbers on every
+  tab (infantry start at Tier 3, because a Barracks is tier 2). Round 5's own "tier three" (D) is a
+  name for a set of tech, not this number; the integrator may want to relabel.
+- A strip click cancels the *last* item queued in that queue, which is what `cancel` already does
+  for a kind, and leaves the one in progress alone when the queue is longer than one.
+- Esc closes the controls sheet before the window, because the sheet hides the window.
+- The window opens first in the centre of the battlefield, a quarter of the way down.
+- A few stale lines elsewhere in How to play (the first five minutes, Advanced tech, Aircraft) now
+  name the build window instead of the sidebar list; the build window has its own panel under A's
+  marker, and the Controls table has rows for `` ` ``, the strip, long press and the new Esc order.
+
+Numbers: `npm run drive:fire` prints the same lines as before (A touches no simulation code);
+`npm run tours fireline fireline-touch` pass (desktop with the window check; iPhone 13 upright and
+on its side, Pixel 7). Checked by eye in light and dark at 1440 by 900, 1100 by 800, an iPhone 13
+and 375 by 667, with no page errors.
+
+
+### 2026-11-10: Round 5 B, larger maps and long games
+
+A Map size field in the skirmish lobby: Standard, Large and Huge. The tiles, by side count:
+standard 64, 80, 96 (as before); large 96, 112, 128; huge 128, 144, 160 (`MAP_SIZE_TILES`, at most
+`MAP_TILES_MAX`). The lobby line under each size gives the tiles and roughly how long a battle runs;
+the previews are drawn at the chosen size; the saves list says "Large map" or "Huge map". Everything
+in play is gated on the size, so a standard battle, a mission or an old save plays exactly as before.
+
+- **Maps.** The skirmish and sides generators stretch their layout by the map's scale and add
+  fields: a second home field behind each base, contested fields on the flanks and more expansions.
+  Over 20 seeds of every type (`tsx scripts/long-games.ts --maps`), 0 problems at any size; ore
+  fields a map, standard, large, huge: two sides 5.6, 13.4, 17.2; three 6.9, 20.4, 20.2; four 8.7,
+  21.6, 22.7. Largest spread between three sides' sites (tolerance 12%): large ground 11.5%, home
+  ore 9.5%, walk 7.5%; huge 11.7%, 5.1%, 6.9%. Two sides are point-symmetric and four a quarter turn,
+  so their spreads are 0.
+- **Ore that spreads back** (large and huge only): every 300 ticks a worked-out ore tile beside one
+  that still holds ore, with nothing standing on it, regains 60. A field never vanishes while one
+  tile of it is left; ground that never held ore never gets any.
+- **The computer** (`aiScale.ts`), per unit of scale over standard (1.5 on a large two-sided map, 2
+  on huge): the first attack 150% later, the interval twice as long, two more in the first wave, four
+  more in the largest, one more refinery and eight more turrets; it stages further forward and
+  recruits from further out. The first numbers (60% later, 40% longer, eight more in a wave, no extra
+  turrets) gave large battles no longer than standard ones: the waves were bigger but came as soon
+  and broke a base that had no more defences. A base that holds out longer is what makes the game
+  longer.
+- **Long games.** Normal against Normal, advanced tech, the same eight seeds at each size: standard
+  26.6 game minutes on average, large 44.9, huge 47.7, every one finished (single battles run 18 to
+  84 minutes). The harness's cap is 45000 ticks standard (unchanged), 72000 large, 108000 huge.
+- **AI ladder, large maps**, 60 seeds, random maps, advanced tech: the Normal mirror 43% to 57%
+  (within the noise at 60 seeds), Hard on side 1 wins 92% (91% at standard size), nothing
+  unfinished; average 36.1 and 24.3 game minutes. `ai-ladder.ts` takes `--size`.
+- **Performance.** Measured, fixed, measured again. Before: the ore bed was drawn again from the
+  running random stream every pass, which made the worst tick 114 ms, and the first frame of a
+  160-tile battle took 5.1 s to paint its terrain. Fixed: `findPath` reuses its scratch arrays and
+  keeps its heap in typed arrays (the same paths, compared on 3000 searches); the ore bed is cached
+  by the battle's starting seed; fewer, longer path searches a tick and fog every 10 ticks on larger
+  maps; the terrain is painted in a worker, the minimap's colours stretched over the battlefield
+  until it arrives, and its per-pixel pass works a band at a time (the same pixels); the minimap's
+  fog is one image. After, `perf-fire.ts`, four sides on huge (160 tiles), minutes 20 to 30, one
+  tick a call: median 1.53 ms, p95 4.79 ms, p99 9.43 ms, worst 38.4 ms with up to 231 units
+  (standard, four sides: median 0.22 ms, p99 1.17 ms). `perf-render.cjs`, minute 25 of a huge
+  battle at 1280 by 800, panning for ten seconds: frame work median 3.3 ms (3.4 dark), p99 9.0 ms
+  (8.7 dark), 60 frames a second, first frame 21 to 27 ms. Targets were a 4 ms median and 25 ms
+  p99 tick, a 16 ms median frame.
+- **Tests.** `scripts/drive-maps.ts`, six sections inside `drive:fire`: the size option and junk
+  setups, 360 maps at large and huge, ore spreading, the computer's numbers, a huge battle replayed
+  byte-identically and through a save, and whole battles (four large two-sided, one huge four-sided
+  as teams: all finish, every side harvests, two-sided ones average 31.7 minutes against 27.4 at
+  standard with the same seeds). Four battles rather than two, because two seeds once read shorter
+  than standard. The sections add about 90 seconds to `drive:fire`. `scripts/long-games.ts` is the
+  longer sweep. Every standard-size line of `drive:fire` is unchanged.
+
+
+### 2026-11-10: Round 5, workstream C: engineering vehicles
+
+The Repair Truck, and the Forward Base Truck that deploys into a Field Yard, as set out in
+`fireline-round5-design.md` section 5. Advanced tech, skirmish only: none of the three kinds is in
+`STANDARD_TECH`, so no mission and no standard-tech battle sees them.
+
+- **Numbers as the contract started them.** Repair Truck 900 credits, 110 ticks, 300 health,
+  light, mends 8 health every 5 ticks (16 a second, free) within 2 tiles, seeks within 8. Forward
+  Base Truck 2500, 250 ticks, 900 health, heavy. Field Yard 2x2, 1000 health, build radius 6. Three
+  yards and trucks a side at most, counting trucks queued.
+- **Simulation** (`src/sim/engineering.ts`): `menderStep` from `updateUnit`; `deployProblem` and
+  `doDeploy` (the yard's top-left is the truck's rounded tile less one, placement as any structure
+  but with no "near your base" rule and the truck not in its own way; a truck moving or
+  attack-moving may deploy, one on any other errand is "Busy"); `undeployProblem` and `doUndeploy`
+  (refused for the side's last structure, and for the only producer while a structure is ready to
+  place). Health carries over by share both ways. `placementProblem` takes options for the two
+  exceptions and reads each structure's `buildRadius`. Packing up leaves the same ring and chime as
+  a sale, which also tells the renderer to leave clean ground rather than rubble.
+- **The Repair Truck takes a stance**, though unarmed: on Hold it stays where it is put. The stance
+  buttons (the sidebar's, not this workstream's) show only for armed units, so the selection panel
+  gains **Stay put** and **Roam** for Repair Trucks, beside **Deploy** and **Pack up**.
+- **The computer** (`src/sim/aiEngineering.ts`). It spends every credit on units, so neither the
+  trucks nor the expansion could ever be afforded: in the first measurements the computer never once
+  held 2500. Engineering now saves: at each decision half its credits go into
+  `AiMemory.engineeringFund`, out of reach of the rest of the commander, until the purchase can be
+  paid for, and the fund goes back when it gives up. Repair Trucks: one once it fields 6 ground
+  vehicles (haulers count, the trucks do not; counting only armed vehicles, a real battle rarely
+  reached 6 at once), one per 8 after that, at most 3. Expansion on large and huge setups: with two
+  refineries and no threat at home, the nearest ore field 24 tiles from its structures with no enemy
+  within 12; truck, yard, then a Refinery and a Gun Turret round it (the commander asks
+  `expansionSpot` before its own spot). Until workstream B lands, a large setup still generates a
+  64-tile map, which is what the harness plays.
+- **Campaign check**: the test that Last Light's enemy has every structure kind now skips the
+  Field Yard (a structure only ever deployed). Missions are unchanged.
+
+Measured (`npm run drive:fire`, 354,122 assertions, 0 failed; was 343,756): the four mission and
+standard-tech lines are unchanged. Advanced lines now read:
+
+```
+  12/12 finished, average 26.1 game minutes; side 0 won 4, side 1 won 8
+    classic: side 1 in 30 min, side 1 in 18 min
+    river: side 1 in 25 min, side 0 in 25 min
+    highlands: side 1 in 36 min, side 1 in 31 min
+    lakes: side 1 in 21 min, side 0 in 31 min
+    plains: side 1 in 18 min, side 0 in 17 min
+    canyon: side 0 in 29 min, side 1 in 32 min
+```
+
+and in the round-4 sides block "12/12 finished, average 21.8 game minutes" (was 20.3), with the
+four advanced battles moved: river three sides teams side 1 in 27 min (was side 0 in 12), river four
+free for all side 3 in 17 (18), lakes three teams side 0 in 13 (17), canyon three teams side 1 in 32
+(side 0 in 25). The hard air battle now reads "side 1 won at 21 min; 12 bombs, 5 gunship rockets, 4
+aircraft at most; upgrades 0 and 0" (was 22 min, 10 rockets, upgrades 0 and 1): the fund draws on
+the same credits research would. Advanced battles run a little longer, as the request wanted. The
+engineering sections add 182 assertions and about 7 seconds. In the whole-battle section a hard
+advanced battle on a large setup fields a Repair Truck that mends, and two Field Yards go down.
+`npm run campaign:fire`: 2,595 assertions, 0 failures, all fourteen missions unchanged.
+
+
+### 2026-11-10: Neutral sites and tier three (round 5, workstream D)
+
+**Neutral sites** (`src/sim/sites.ts`, numbers in `rules.ts`): Oil Derricks, Field Hospitals and
+Comms Relays, switched on by the lobby's Neutral sites field (either tech level). `SITES_PER_SIDE`
+sets how many of each every side gets by map size (standard: one Derrick). `siteSpots(map, setup,
+seed?)` picks spots in side 0's share (the bottom half, or side 0's wedge) and maps each through the
+map's own symmetry: point mirror for two sides, the exact quarter turn for four, the third of a
+turn rounded and nudged at most three tiles for three. Its own stream (the battle's seed xor a
+constant; with no seed, a hash of the map), so placing sites moves nothing else: map, ore, the
+battle's stream, the yards and the riflemen are as they were (ids aside, since sites take theirs
+first). A spot needs clear walkable ground round it, no ore within two tiles, 13 tiles from every
+yard and 8 from other sites if it can (the rules `sitesProblem` checks are 10 and 6), and must close
+off no walkable ground. Bands of distance from home keep the first Derrick near home, the second
+further out and Relays towards the middle. Over 180 battles (six map types, two to four sides, ten
+seeds) every placement passes `sitesProblem`; large and huge maps are B's, so placement there is
+the integrator's to measure.
+
+Capture: one team's infantry within 1.5 tiles, alone, take a site in 100 ticks; two teams pause it;
+nobody (or only the holder's own) and it winds down at the same rate; another team's partial capture
+winds down before theirs starts. A side with no structure left loses its sites to neutral (the
+contract was silent; a side that is out should not keep earning). Derrick 300 a minute exactly,
+Hospital 5 health a second to the holder's infantry within 3 tiles, Relay 10 tiles of sight
+through `visibility`, so allies share it. Sites block their tiles in `occupancy`, are never a
+target, never fire and never count for victory.
+
+**Tier three**: Prototype Works (needs Research Lab and Tech Centre), Fortress, Railgun Tank,
+Stealth Tank at the contract's numbers. `DAMAGE_VS.rail` stays as the groundwork set it: 2.08 times
+a Battle Tank's damage a second on heavy armour, 0.35 on infantry. Stealth (`stealthSeen`): unseen
+and untargetable by an enemy beyond 2.5 tiles of its units and structures, except for 30 ticks
+after it fires (its `lastShot`, recorded from the projectiles it launched that tick) or inside a
+recon sweep. The four Spy checks in `tick.ts` now ask `seenBy` (the Spy still by `isDetected`,
+unchanged), `enemyTarget` refuses a hidden one (so does `canAttack`), and `sitesStep` makes every
+enemy drop one that slips from sight. The renderer skips hidden enemy Stealth Tanks and draws your
+own faint, with a ripple. A Railgun shot has no projectile, so the site layer draws its streak.
+
+**The computer** (`src/sim/aiSites.ts`): parties of two (Easy) or three infantry, up to one, two or
+three at once, to the nearest site its team does not hold, a lost site near home first; a party
+shuffles between two tiles beside its site so no other part of the commander takes it for idle
+reserve, gives up after four minutes and leaves the site for six. In a sites battle both sides hold
+a site within a minute. Tier three from minute 25 (Easy 30) with a hauler, a refinery and a factory
+and its army at home up to strength: a Research Lab and Tech Centre if missing, the Works, a
+Fortress (Normal and Hard; the commander's own placement puts it by the yard, since `findSpot` is
+not D's), Railgun Tanks to one per two to four armed vehicles, and Stealth Tanks (Normal one, Hard
+two) hunting haulers outside the waves. On a standard map most battles are decided by minute 25, so
+tier three is rare there; in a held-back hard battle the Works went up at minute 27.5 and both tanks
+followed.
+
+Tests: `scripts/drive-sites.ts`, eleven sections, 1,904 assertions, about 25 seconds. Mission and
+standard-tech lines of `npm run drive:fire` unchanged; of the advanced lines only these moved:
+"12/12 finished, average 23.3 game minutes; side 0 won 6, side 1 won 6" (was 23.6) and
+"highlands: side 0 in 20 min, side 1 in 36 min" (was 39). The round-4 sides block is unchanged.
+344,405 assertions in all; `npm run campaign:fire` 2,595 (its Last Light check that the enemy fields
+every structure kind now skips the two skirmish-only ones).
+
+AI ladder, 150 seeds, random maps, advanced tech, after the change: the Normal mirror 77 to 71
+(51% to 47%, 2 unfinished), Normal against Hard 8% to 91%, against Easy 100% to 0%: the same as
+round 4's integration, since tier three only starts at minute 25 and the ladder plays without sites.
+
+Left for integration: sites in B's map previews (`siteSpots` with the battle's `rngSeed`), a
+selected site's line in A's panel (`siteAt`), the lobby's stored setup forgetting `sites`
+(`readStoredSetup` is B's), the minimap showing an enemy Stealth Tank in sight (one condition in
+B's units loop), and C's expansion aiming at sites.
+
+### 2026-11-10: Round 5 integration
+
+The contract went first; the four workstreams (the build window, larger maps, engineering vehicles,
+sites and tier three) were built in parallel. A container restart stopped the run partway; the
+finished work was on disk in each worktree and three builders resumed in place. The branches merged
+with conflicts only in the docs, the Last Light check (both C and D taught it to skip skirmish-only
+structures) and one renderer import.
+
+Seams closed at integration:
+- The radar no longer draws an enemy Spy or Stealth Tank that the battlefield hides.
+- The lobby previews mark the neutral sites, placed exactly where the battle puts them (checked for
+  every size and side count), and say what the grey diamonds are.
+- The lobby remembers the sites switch, and a new lobby starts with sites on; DEFAULT_SETUP keeps
+  them off because it also fills in setups saved before sites existed.
+
+Checked on real large and huge maps (three seeds each, Normal mirror, sites on): the computer took
+every site, sent out a Forward Base Truck between minutes 8 and 17 and deployed it, and fielded
+Repair Trucks by minute 13. With sites on, these battles ran 20 to 38 minutes; without them, larger
+maps ran 45 to 48 minutes on average (workstream B's figures). The Derricks' income speeds both
+sides up.
+
+Numbers at integration: drive 367,688 assertions (about 5.7 minutes), campaign-check 2,595, both
+tours (desktop, and touch on three phones), 27 loading checks. AI ladder, 150 seeds, random maps,
+advanced tech: the mirror 45% to 53%, Hard on side 1 wins 93%, Easy 0%.
+
+
+### 2026-11-10: Development lines and loadouts (round 5b)
+
+The contract and the full build log are in `fireline-round5b-design.md`. On an advanced-tech skirmish
 the setup offers a second research mode, **Development lines** (the default for a new advanced
 skirmish; Classic is one click away, standard tech disables the choice): each line runs Mk I to
 Mk II, then a doctrine fork whose adopted branch has a Mk III and whose other branch closes. Mk II
@@ -576,6 +887,52 @@ battles and in winner in none. The development lines' Mk I nodes are the classic
 fits a module that matters. So the thresholds pass, but this ladder says little about lines play
 itself; a richer setup (`--credits 10000 --ore rich`) would exercise it, and is the place to look
 if section 2.4 or section 5 numbers are ever tuned.
+
+### 2026-11-10: Borrowed Steel (mission 5) made winnable; campaign difficulty settings
+
+Reported unbeatable. Played by script straight at the outpost, round its north and round its east,
+it was lost every way, inside two minutes, with nothing of the enemy's killed. Three causes:
+
+- Six infantry and an unarmed Engineer against three Gun Turrets, two tanks and five riflemen on
+  'defend'. Turret shells kill riflemen in four hits and riflemen barely scratch a turret (bullets do
+  15% to structures). The squad is now three tanks, four riflemen and two rocketeers, which the
+  Engineer repairs as they fight; the outpost is passive (four riflemen, a rocketeer, two turrets,
+  trains nothing). Credits 3,000 to 2,400, still three tanks' worth.
+- Units auto-target structures, so attack-moving into the yard shot the War Factory down, and with
+  it gone the capture could never happen: no time limit, so the mission sat open forever. Now side
+  0's units never pick for themselves a structure that an unfinished primary capture or infiltrate
+  objective names (an explicit attack order still fires), and if one is destroyed anyway the
+  objective fails and the mission is lost with "The enemy War Factory was destroyed before it could
+  be captured."
+- `evaluateMission` judged objectives before firing triggers, so capturing the factory last won on
+  the spot and the counter-attack it triggers spawned into a finished battle. An enemy group a
+  trigger sends now reopens "destroy everything" on that tick. (Firing triggers first instead was
+  tried and broke three harness checks: tick-judged objectives fired their triggers a tick late,
+  and a say-only trigger on the final objective never spoke.) The counter-attack is now two tanks from the far west on the capture, not three from the
+  north at a fixed six minutes (which could land before the capture, on a squad still fighting).
+
+Campaign difficulty (`src/campaign/difficulty.ts`): Easy, Normal, Hard, on the campaign (default
+Normal, and every older save loads as Normal), chosen on any briefing and changeable between
+missions; a battle in progress keeps the level it started with (`MissionRuntime.level`). Normal is
+every mission as written. `scaleMission` adjusts the spec before the battle is built, so the
+briefing, the battle and the checks read the same numbers:
+
+| | Easy | Hard |
+|---|---|---|
+| Enemy starting troops, triggered enemy groups | x0.6 (each kind kept, at least one) | x1.3 |
+| Enemy credits | x0.5 | x1.5 |
+| Enemy commander tier | one step down | one step up |
+| Player credits | x1.5 | as written |
+| Player unit health (with the Armour perk) | x1.25 | as written |
+| Mission time limit | x1.5 | as written |
+
+Never changed: structures (bonuses such as "destroy 2 Gun Turrets" must stay possible), objectives
+and their timings (the briefings name durations in prose), our own reinforcements, and rewards.
+
+campaign-check plays Borrowed Steel by script three ways in at every level (Easy and Normal must win
+all three; Hard at least one), checks the scaling for every mission, and builds and runs all 14
+missions at Easy and Hard. drive.ts covers the spared structure, the failed capture and the trigger
+order.
 
 ### 2026-11-10: War for the Planet (a strategic campaign)
 
@@ -639,3 +996,82 @@ Quick matches round 5's table in every cell. Every card says 15 to 35 minutes, b
 map sizes battles last about as long at every size: the sizes differ in how deep research gets.
 Larger maps would make the bigger sizes longer, and are out of scope for this round. `drive:fire`
 gains 582 assertions (about 345,700 in all, about 8 to 9 minutes).
+
+
+### 2026-11-11: Merge with main (main's round 5 and this branch's rounds 5b and 6, War for the Planet)
+
+Main, built in parallel and live, had its own round 5 (the pop-out build window, map sizes, engineering
+vehicles, neutral sites and tier three) and the Demolition, Borrowed Steel and trigger fixes. Sixteen
+files conflicted. Main's names won wherever they collided:
+
+- **`SkirmishSetup.size` is main's map size** (`MapSize`). This branch's game size became the
+  **pace**: `SkirmishSetup.pace` (`GamePace`), `GAME_PACES`, `GAME_PACE_ORDER`, `LOBBY_DEFAULT_PACE`,
+  `GamePaceSpec`, `applyPace`, `difficultyForPace`, `paceOf`, `GamePacePicker.tsx`, ladder `--pace`.
+  The cards still say "game size". A setup without a pace reads as Quick; a setup saved by this
+  branch before the merge with `size: 'quick' | 'long' | 'epic'` reads that as the pace, on a
+  standard map (`'standard'` is ambiguous and reads as the map size). Planet battles state
+  `pace: 'quick', size: 'standard', sites: false`. `normaliseSetup` returns map, tech, credits, ore,
+  sides, mode, size, sites, research, pace, and both presets state every field in that order.
+- **Design docs.** Main's `fireline-round5-design.md` keeps its name; this branch's became
+  `fireline-round5b-design.md` (development lines and loadouts), with every reference updated.
+- **Research in the build window.** The development-lines tree is the build window's Research tab
+  (classic research is there exactly as main has it), and the loadouts panel sits under the tree on
+  its Vehicles tab. Build buttons and the production strip price a vehicle with its loadout and time
+  research by `researchTicksOf`. Every data-testid kept; the build-window tour now opens Customise
+  before choosing advanced tech, since the lobby opens on the game size cards.
+- **Tier three and lines.** Main's new vehicles (Repair Truck, Forward Base Truck, Railgun Tank,
+  Stealth Tank) play in development lines as main defines them, without modules: the module
+  `fits` lists and `MODULE_SLOTS` name the round 5b vehicles only (`MODULE_VEHICLES`).
+- **The commander.** `scaledFor(s, tuned(difficultyFor(s, diff), mode))`: the pace's attack timing,
+  then main's map-size scaling. Main's "no new structure with the ore gone" rule for paced research
+  now also counts a Field Yard as a yard.
+
+**Game size cards now pick the map size.** Quick and Standard keep the standard map; Long plays on
+a Large map and Epic on a Huge one, which is what round 6 said a genuinely longer Long and Epic
+needed (round 6, section 10.2). `applyPace` writes the map size, `isPresetSetup` checks it, the card
+shows it, and the enemy cards show first-attack times scaled for the map (`scaledForSetup`).
+Measured with the ladder, `--map random`, lines, each pace's preset (Normal mirror 150 seeds;
+Hard and Easy rows 60 seeds each way):
+
+| Card | Map | Normal mirror median (p10 to p90), minutes | Finished | Hard beats Normal (side 0 / side 1) | Card says |
+|---|---|---|---|---|---|
+| Quick | Standard | 22.1 (15.1 to 32.1) | 147 of 150 | (unchanged rules) | 15 to 35 |
+| Standard | Standard | 23.9 (15.0 to 33.2) | 150 of 150 | (unchanged rules) | 15 to 35 |
+| Long | Large, 96 tiles | 32.0 (24.7 to 41.5), longest 96.4 | 150 of 150 | 68% / 95% (60 seeds) | 20 to 45 (was 15 to 35) |
+| Epic | Huge, 128 tiles | 52.6 (49.8 to 80.1), longest 115.0 | 150 of 150 | 90% / 100% (30 seeds) | 45 to 85 (was 15 to 35) |
+
+Normal beat Easy in all 60 Long battles. Every Normal side reached Mk II and Mk III at Long and Epic
+(medians 11.3 and 12.8 minutes at Long, 10.8 and 12.3 at Epic). Quick's three unfinished battles are
+mined-out stand-offs of main's commander (round 6 recorded 11 at Quick before main's changes). So
+the larger maps make the bigger cards genuinely longer, as round 6 said they would, and the card
+minutes are the measured p10 and p90 rounded outwards to five minutes. A 150-seed Epic ladder on
+huge maps takes about an hour on four cores. Hard's lead grows with the map (Epic on 64 tiles had
+it beating Normal 58.7% both ways round; on a huge map 90% and 100% over 30 seeds): the order holds,
+but a balance pass at 150 seeds on large and huge maps is owed (not done here).
+
+Gates at the merge: `npm run check` passed (drive:fire 368,204 assertions, about 20 minutes on one
+core; campaign-check 2,965; drive:planet 38,471), `npm run tours -- --quick fireline` ok (build
+window: 35 menu items), `npm run test:api` 607 passed, `npm run check:loading` 183 of 184 under ladder load (the one
+failure, Niccolo's handover blink sample, untouched here, passed 28 of 28 when rerun idle).
+
+**Byte identity.** Every story mission and every classic and standard-tech skirmish in the merged
+tree hashes exactly as origin/main's own code (setup projected without `research` and `pace`): 78
+of 78. Every lines skirmish hashes as this branch did before the merge once `pace`, `size` and
+`sites` are left out: 62 of 62 in `drive-planet-battle.ts`, so those hashes are unchanged. Regenerated:
+
+- `drive-planet-battle.ts` STORY_HASHES, 22 of 56, all now origin/main's values: Demolition (all
+  four: the mission itself, ce964a2), Borrowed Steel (all four: cb7044c, and at 600 ticks ce964a2's
+  garrison), the Commando's health at tick 0 wherever he is brought (heroes runs of Blackout,
+  Fireline, Firestorm and Last Light, ce964a2), and a defending enemy's `garrison` written at its
+  first decision (ce964a2) at 600 ticks in Ace of Spades, Convoy North and Bastion Line. Probed at
+  every main commit between: main's round 5 changed none of them, the trigger fix none.
+- `drive-size.ts` PRE_ROUND6, 12 of 30: the Normal and Hard advanced battles (lines, classic,
+  three sides). Main's computer fields Repair Trucks on advanced tech; its first engineering decision
+  comes at ticks 4,200 to 8,100 in these battles, and every one first differs from the pre-merge
+  build in the 1,000-tick snapshot after it. The classic ones equal origin/main's own battles; no
+  setup, standard tech and Easy are unchanged.
+- `drive-lines.ts` hashes nothing fixed; two of its computer checks were made precise rather than
+  loosened: a lines battle may reach the cap only if the same seed played classic does too, with no
+  research done (ai-normal-3: a mined-out stand-off, identical on origin/main's classic), and when
+  Hard researches nothing at Quick (main's Repair Trucks come first; its one researching battle,
+  ai-hard-5, researches in neither mode on main) the loadouts are checked at the Standard pace.

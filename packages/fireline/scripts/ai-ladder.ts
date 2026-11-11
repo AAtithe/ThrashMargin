@@ -13,11 +13,12 @@
  *   tsx scripts/ai-ladder.ts --map random --research classic   the five flat upgrades (default: lines)
  *     (--research needs a --map other than legacy: a legacy battle has no setup, so it is always classic
  *     and never plays development lines. Use --map random or --map mix to ladder lines.)
- *   tsx scripts/ai-ladder.ts --map random --size long  a game size (fireline-round6-design.md): quick (the
- *     default, the game before round 6), standard, long or epic. The setup gets the size and, unless
- *     --credits or --ore is given, the size's preset credits and ore; side 0's first attack is the
- *     size's; the default --cap is the size's (quick and standard 60000, long 90000, epic 150000).
- *     Refused with --map legacy (no setup, so no size).
+ *   tsx scripts/ai-ladder.ts --map random --pace long  a game pace (fireline-round6-design.md; "game size" on the cards): quick (the
+ *     default, the game before round 6), standard, long or epic. The setup gets the pace and, unless
+ *     --credits or --ore is given, the pace's preset credits and ore; side 0's first attack is the
+ *     pace's; the default --cap is the pace's (quick and standard 60000, long 90000, epic 150000).
+ *     Refused with --map legacy (no setup, so no pace). --pace and --size combine; the cap is the
+ *     larger of the two defaults.
  *
  * In a development-lines battle the report adds two Depth tables after the main one: the share of
  * sides that finished at least one Mk II and at least one Mk III, and the median minute the first
@@ -27,6 +28,8 @@
  * side (the Normal mirror and Hard against Normal both ways round), since Normal against Easy ends
  * early by design. A third gives each match's share per side.
  *   tsx scripts/ai-ladder.ts ... --out results.jsonl   also writes every battle as one JSON line
+ *   tsx scripts/ai-ladder.ts --map random --size large a larger map (round 5): large or huge; the cap
+ *                                                      defaults to 72000 ticks on large, 108000 on huge
  *
  * A match is `side0,side1`, each side `commander:difficulty`, where the commander is `new` (the
  * AI in src/sim/ai.ts), `prev` (the frozen commander from before it learned the advanced tech, in
@@ -60,7 +63,8 @@ import { cpus } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
-import { DIFFICULTIES, GAME_SIZES, GAME_SIZE_ORDER, MAP_TYPES, UPGRADE_LINE, difficultyForSize, type Difficulty, type GameSize, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
+import { scaledFor } from '../src/sim/aiScale';
+import { DIFFICULTIES, GAME_PACES, GAME_PACE_ORDER, MAP_SIZES, MAP_TYPES, UPGRADE_LINE, difficultyForPace, type Difficulty, type GamePace, type MapSize, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
 import { baselineAi } from './ai-baseline';
 import { prevAi } from './ai-prev';
@@ -92,19 +96,22 @@ const arg = (name: string, fallback: string) => {
   return i >= 0 ? args[i + 1] : fallback;
 };
 const SEEDS = Number(arg('--seeds', '150'));
+const SIZE = arg('--size', 'standard') as MapSize;
+if (!MAP_SIZES.includes(SIZE)) throw new Error(`bad size "${SIZE}"`);
 const MAP = arg('--map', 'legacy');
 const LEGACY = MAP === 'legacy';
-/** Game size (fireline-round6-design.md): 'quick' (the default) is the game before round 6. */
-const SIZE = arg('--size', 'quick') as GameSize;
-if (!GAME_SIZE_ORDER.includes(SIZE)) throw new Error(`bad size "${SIZE}"`);
-if (LEGACY && args.includes('--size')) throw new Error('--size needs a --map other than legacy: a legacy battle has no setup, so no size');
-const SIZE_CAP: Record<GameSize, number> = { quick: 60000, standard: 60000, long: 90000, epic: 150000 };
-const CAP = Number(arg('--cap', String(SIZE_CAP[SIZE])));
+/** Game pace (fireline-round6-design.md): 'quick' (the default) is the game before round 6. */
+const PACE = arg('--pace', 'quick') as GamePace;
+if (!GAME_PACE_ORDER.includes(PACE)) throw new Error(`bad pace "${PACE}"`);
+if (LEGACY && args.includes('--pace')) throw new Error('--pace needs a --map other than legacy: a legacy battle has no setup, so no pace');
+const PACE_CAP: Record<GamePace, number> = { quick: 60000, standard: 60000, long: 90000, epic: 150000 };
+const SIZE_CAP: Record<MapSize, number> = { standard: 60000, large: 72000, huge: 108000 };
+const CAP = Number(arg('--cap', String(Math.max(PACE_CAP[PACE], SIZE_CAP[SIZE]))));
 const JOBS = Math.max(1, Number(arg('--jobs', String(cpus().length))));
 const TECH = arg('--tech', 'advanced');
-const CREDITS = Number(arg('--credits', String(GAME_SIZES[SIZE].preset.credits)));
-const ORE = arg('--ore', GAME_SIZES[SIZE].preset.ore);
-/** Research mode for a skirmish setup (fireline-round5-design.md): 'lines' (the default setup's) or 'classic'. */
+const CREDITS = Number(arg('--credits', String(GAME_PACES[PACE].preset.credits)));
+const ORE = arg('--ore', GAME_PACES[PACE].preset.ore);
+/** Research mode for a skirmish setup (fireline-round5b-design.md): 'lines' (the default setup's) or 'classic'. */
 const RESEARCH = arg('--research', 'lines');
 /** Depth is recorded in development-lines battles only. */
 const LINES_BATTLES = !LEGACY && TECH === 'advanced' && RESEARCH === 'lines';
@@ -115,7 +122,15 @@ if (TECH !== 'standard' && TECH !== 'advanced') throw new Error(`bad tech "${TEC
 if (RESEARCH !== 'classic' && RESEARCH !== 'lines') throw new Error(`bad research "${RESEARCH}"`);
 function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
   if (LEGACY) return undefined;
-  return { map: MAP_LIST[(seed - 1) % MAP_LIST.length], tech: TECH as SkirmishSetup['tech'], credits: CREDITS, ore: ORE as SkirmishSetup['ore'], research: RESEARCH as SkirmishSetup['research'], size: SIZE };
+  return {
+    map: MAP_LIST[(seed - 1) % MAP_LIST.length],
+    tech: TECH as SkirmishSetup['tech'],
+    credits: CREDITS,
+    ore: ORE as SkirmishSetup['ore'],
+    research: RESEARCH as SkirmishSetup['research'],
+    pace: PACE,
+    ...(SIZE !== 'standard' ? { size: SIZE } : {}),
+  };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
 
@@ -169,7 +184,8 @@ function play(m: Match, seed: number): Result & { match: number } {
   const setup = setupFor(seed);
   let s = createInitialState(name, name, { seed: name, difficulty: m.sides[1].difficulty, createdAt: 0, autopilot: true, ...(setup ? { setup } : {}) });
   s.autopilotDifficulty = m.sides[0].difficulty;
-  s.ai[0].nextAttack = difficultyForSize(m.sides[0].difficulty, SIZE).firstAttack;
+  // Side 0's first attack at its own difficulty and the pace, scaled for the map's size as side 1's already is.
+  s.ai[0].nextAttack = scaledFor(s, difficultyForPace(m.sides[0].difficulty, PACE)).firstAttack;
   const mk2: (number | null)[] = [null, null];
   const mk3: (number | null)[] = [null, null];
   while (s.winner === null && s.tick < CAP) {
@@ -205,7 +221,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, size ${SIZE}`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -219,8 +235,8 @@ if (workerAt >= 0) {
           ...process.execArgv,
           script,
           ...['--worker', `${k}/${JOBS}`, '--spec', spec, '--seeds', String(SEEDS), '--cap', String(CAP)],
-          ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE, '--research', RESEARCH],
-          ...(LEGACY ? [] : ['--size', SIZE]),
+          ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE, '--research', RESEARCH, '--size', SIZE],
+          ...(LEGACY ? [] : ['--pace', PACE]),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );

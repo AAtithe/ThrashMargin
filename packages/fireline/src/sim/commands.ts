@@ -8,6 +8,7 @@ import type { Target } from './grid';
 import {
   BUILD_RADIUS,
   BUILDINGS,
+  MAX_FIELD_YARDS,
   MAX_QUEUE,
   ORDER_QUEUE_MAX,
   SELL_RETURN,
@@ -32,6 +33,8 @@ import {
   unlocked,
 } from './state';
 import type { Building, GameState, QueuedOrder, Stance, Unit } from './types';
+// round5:D. Tier three: the Stealth Tank is targetable only when seen (fireline-round5-design.md).
+import { stealthSeen } from './sites';
 
 /**
  * Orders, shared by the player and the computer. Each `can*` check reads the state without
@@ -46,7 +49,8 @@ export function ownUnits(s: GameState, owner: Owner, ids: number[]): Unit[] {
 
 export function canQueue(s: GameState, owner: Owner, category: Category, kind: BuildingKind | UnitKind): boolean {
   if (!(kind in BUILDINGS) && !(kind in UNITS)) return false;
-  if (kind === 'hq') return false;
+  // A Command Yard is never built, and a Field Yard only ever comes from deploying a Forward Base Truck.
+  if (kind === 'hq' || kind === 'fieldyard') return false;
   // Heroes are campaign characters, never built.
   if (kind in UNITS && UNITS[kind as UnitKind].hero) return false;
   if (categoryOf(kind) !== category) return false;
@@ -58,6 +62,8 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if (!unlocked(s, owner, kind)) return false;
   // Aircraft: no more than the Helipads serve, counting those already queued.
   if (category === 'air' && airRoom(s, owner) <= 0) return false;
+  // Forward Base Trucks: no more than MAX_FIELD_YARDS, counting yards, trucks and trucks queued.
+  if (kind === 'basetruck' && fieldYardsOf(s, owner) >= MAX_FIELD_YARDS) return false;
   // Vehicles: the price includes the current loadout's modules (development lines only).
   if (category === 'vehicle') return p.credits >= queueCostFor(s, owner, kind as UnitKind);
   return p.credits >= costFor(s, owner, kind);
@@ -93,8 +99,36 @@ export function doCancel(s: GameState, owner: Owner, category: Category, kind: B
   }
 }
 
+/**
+ * A side's Field Yards for the MAX_FIELD_YARDS cap: yards standing, Forward Base Trucks on the map,
+ * and trucks in its vehicle queue.
+ */
+export function fieldYardsOf(s: GameState, owner: Owner): number {
+  let n = 0;
+  for (const b of s.buildings) if (b.owner === owner && b.kind === 'fieldyard') n++;
+  for (const u of s.units) if (u.owner === owner && u.kind === 'basetruck') n++;
+  for (const q of s.players[owner].queues.vehicle) if (q.kind === 'basetruck') n++;
+  return n;
+}
+
+/** Exceptions to the placement rules: a Forward Base Truck deploying (engineering.ts). */
+export interface PlacementOptions {
+  /** This unit (the truck itself) is not "in the way". */
+  ignoreUnit?: number;
+  /** No "near your base" rule. */
+  anywhere?: boolean;
+}
+
 /** Why a structure cannot go at (x, y), or null if it can. Shared with the placement preview. */
-export function placementProblem(s: GameState, owner: Owner, kind: BuildingKind, x: number, y: number, occ = occupancy(s)): string | null {
+export function placementProblem(
+  s: GameState,
+  owner: Owner,
+  kind: BuildingKind,
+  x: number,
+  y: number,
+  occ = occupancy(s),
+  opts: PlacementOptions = {},
+): string | null {
   const spec = BUILDINGS[kind];
   if (!spec || kind === 'hq') return 'Cannot build that';
   if (!Number.isInteger(x) || !Number.isInteger(y)) return 'Off the map';
@@ -110,7 +144,7 @@ export function placementProblem(s: GameState, owner: Owner, kind: BuildingKind,
     }
   for (const u of s.units) {
     // Aircraft overhead are no obstacle.
-    if (isAir(u)) continue;
+    if (isAir(u) || u.id === opts.ignoreUnit) continue;
     if (u.x >= x - 0.2 && u.x < x + spec.w + 0.2 && u.y >= y - 0.2 && u.y < y + spec.h + 0.2) return 'Units in the way';
   }
   // Never cover a refinery's dock, and a new refinery needs its own dock clear.
@@ -123,13 +157,15 @@ export function placementProblem(s: GameState, owner: Owner, kind: BuildingKind,
     const d = { x: x + 1, y: frontRow(s, owner, y, spec.h) };
     if (!onMap(s, d.x, d.y) || !isWalkable(s.tiles[tileAt(s, d.x, d.y)]) || occ[tileAt(s, d.x, d.y)]) return 'The dock pad below needs clear ground';
   }
+  if (opts.anywhere) return null;
   // Near something we already own (walls do not count: they cannot creep a base across the map).
+  // A Field Yard reaches further than the rest (its own buildRadius).
   const near = s.buildings.some(b => {
     if (b.owner !== owner || !isStructure(b)) return false;
     const bs = BUILDINGS[b.kind];
     const gapX = Math.max(0, b.x - (x + spec.w - 1), x - (b.x + bs.w - 1));
     const gapY = Math.max(0, b.y - (y + spec.h - 1), y - (b.y + bs.h - 1));
-    return Math.max(gapX, gapY) <= BUILD_RADIUS;
+    return Math.max(gapX, gapY) <= (bs.buildRadius ?? BUILD_RADIUS);
   });
   if (!near) return 'Too far from your base';
   return null;
@@ -289,7 +325,7 @@ function formation(n: number): [number, number][] {
 
 /** The enemy unit or structure with this id, or null. */
 function enemyTarget(s: GameState, owner: Owner, target: number): Target | null {
-  const u = s.units.find(v => v.id === target && isEnemy(s, owner, v.owner));
+  const u = s.units.find(v => v.id === target && isEnemy(s, owner, v.owner) && (!UNITS[v.kind].stealth || stealthSeen(s, v, owner)));
   if (u) return { unit: u };
   const b = s.buildings.find(v => v.id === target && isEnemy(s, owner, v.owner));
   return b ? { building: b } : null;
@@ -317,15 +353,18 @@ export function doAttack(s: GameState, owner: Owner, ids: number[], target: numb
 
 const STANCES: readonly Stance[] = ['aggressive', 'guard', 'hold'];
 
+/** Units a stance means something to: the armed, and the Repair Truck (on hold it stays where it is put). */
+const takesStance = (u: Unit) => !!UNITS[u.kind].weapon || !!UNITS[u.kind].mender;
+
 /** Legal when at least one of the armed units named would change stance. */
 export function canStance(s: GameState, owner: Owner, ids: number[], stance: Stance): boolean {
   if (!STANCES.includes(stance)) return false;
-  return ownUnits(s, owner, ids).some(u => UNITS[u.kind].weapon && u.stance !== stance);
+  return ownUnits(s, owner, ids).some(u => takesStance(u) && u.stance !== stance);
 }
 
 export function doStance(s: GameState, owner: Owner, ids: number[], stance: Stance): void {
   for (const u of ownUnits(s, owner, ids)) {
-    if (!UNITS[u.kind].weapon) continue;
+    if (!takesStance(u)) continue;
     u.stance = stance;
     // Holding fire: an idle unit drops whatever it was shooting at.
     if (stance === 'hold' && u.order.type === 'idle') {

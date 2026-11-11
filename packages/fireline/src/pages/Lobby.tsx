@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
-import GameSizePicker, { attackText } from '../components/GameSizePicker';
+import GamePacePicker, { attackText } from '../components/GamePacePicker';
 import SkirmishSetupPanel, { ORE_TEXT, RESEARCH_TEXT, TECH_TEXT, freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
@@ -16,11 +16,12 @@ import {
   BUILDINGS,
   DEFAULT_DIFFICULTY,
   DIFFICULTIES,
-  GAME_SIZES,
+  GAME_PACES,
+  MAP_SIZE_NAMES,
   MAP_TYPE_NAMES,
   TICKS_PER_SECOND,
-  applySize,
-  difficultyForSize,
+  applyPace,
+  difficultyForPace,
   type MapType,
   type SkirmishSetup,
   type BuildingKind,
@@ -29,6 +30,7 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { ART, FONT, UI } from '../theme';
+import { scaledForSetup } from '../sim/aiScale';
 
 export default function Lobby() {
   const navigate = useNavigate();
@@ -273,7 +275,7 @@ export default function Lobby() {
         <div ref={newBattleRef} style={{ scrollMarginTop: '1rem' }}>
           <Panel
             title="A new battle"
-            aside={<Label>{setupStep === 'size' ? 'Skirmish' : `Skirmish, ${GAME_SIZES[setup.size].name}`}</Label>}
+            aside={<Label>{setupStep === 'size' ? 'Skirmish' : `Skirmish, ${GAME_PACES[setup.pace].name}`}</Label>}
             style={{ marginBottom: '1.5rem' }}
           >
             {setupStep === 'custom' && (
@@ -290,14 +292,14 @@ export default function Lobby() {
             {setupStep === 'size' && (
               <div style={field}>
                 <Label>Game size</Label>
-                <GameSizePicker value={setup} onPick={size => setSetup(applySize(setup, size))} />
+                <GamePacePicker value={setup} onPick={pace => setSetup(applyPace(setup, pace))} />
               </div>
             )}
             <div style={field}>
               <Label>Enemy commander</Label>
               <div className="fl-levels" role="group" aria-label="Enemy commander">
                 {(Object.keys(DIFFICULTIES) as Difficulty[]).map(d => {
-                  const spec = difficultyForSize(d, setup.size);
+                  const spec = scaledForSetup(setup, difficultyForPace(d, setup.pace));
                   return (
                     <button key={d} type="button" className="fl-level" aria-pressed={level === d} data-testid={`level-${d}`} onClick={() => setLevel(d)}>
                       <span className="fl-level-name">{spec.label}</span>
@@ -314,8 +316,8 @@ export default function Lobby() {
               </div>
               <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }}>
                 {DIFFICULTIES[level].blurb}
-                {GAME_SIZES[setup.size].attackMul !== 1 &&
-                  ` At ${GAME_SIZES[setup.size].name} size every attack comes ${attackText(GAME_SIZES[setup.size].attackMul).toLowerCase()}: the first at about ${minutes(difficultyForSize(level, setup.size).firstAttack)} minutes.`}{' '}
+                {GAME_PACES[setup.pace].attackMul !== 1 &&
+                  ` At ${GAME_PACES[setup.pace].name} size every attack comes ${attackText(GAME_PACES[setup.pace].attackMul).toLowerCase()}${(setup.size ?? 'standard') !== 'standard' ? ', and later still on a larger map' : ''}: the first at about ${minutes(scaledForSetup(setup, difficultyForPace(level, setup.pace)).firstAttack)} minutes.`}{' '}
                 At every level the computer sees the whole map, pays for everything it builds and
                 fights with the same units you do.
               </p>
@@ -443,6 +445,7 @@ function SaveRow({
           {war && s.status !== 'active' && ` · ${s.preset ? PRESET_NAMES[s.preset] : 'War'} · turn ${s.turn}`}
           {!campaign && !war && ` · ${s.turn} min`}
           {!campaign && !war && mapTypeOf(s) && ` · ${MAP_TYPE_NAMES[mapTypeOf(s)!]}`}
+          {!campaign && !war && sizeOfSave(s) && ` · ${sizeOfSave(s)}`}
           {!campaign && !war && sidesOfSave(s) && ` · ${sidesOfSave(s)}`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
         </span>
       </div>
@@ -477,6 +480,12 @@ const PRESET_NAMES: Record<LengthPreset, string> = { short: 'Short', long: 'Long
 const mapTypeOf = (s: SaveMeta): MapType | null => {
   const t = (s as SaveMeta & { mapType?: unknown }).mapType;
   return typeof t === 'string' && t in MAP_TYPE_NAMES ? (t as MapType) : null;
+};
+
+/** "Large map" or "Huge map" for a battle on a larger map (round 5); null for standard size and older rows. */
+const sizeOfSave = (s: SaveMeta): string | null => {
+  const z = (s as SaveMeta & { size?: unknown }).size;
+  return z === 'large' ? 'Large map' : z === 'huge' ? 'Huge map' : null;
 };
 
 /** "3 sides, free for all", "2 against 2" or "2 against 1" for a battle of more than two sides; null for two. */
@@ -757,6 +766,8 @@ function setupSummary(v: SkirmishSetup): string {
     `${v.sides} sides${v.sides > 2 && v.mode === 'teams' ? ' in teams' : ''}`,
     `${v.credits.toLocaleString('en-GB')} credits`,
     `${ORE_TEXT[v.ore].name.toLowerCase()} ore`,
+    `${MAP_SIZE_NAMES[v.size ?? 'standard'].toLowerCase()} map size`,
+    ...(v.sites ? ['neutral sites'] : []),
   ];
   return `${parts.join(', ')}.`;
 }

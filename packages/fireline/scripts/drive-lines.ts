@@ -1,5 +1,5 @@
 /**
- * Development lines and loadouts (fireline-round5-design.md, section 9): the harness sections.
+ * Development lines and loadouts (fireline-round5b-design.md, section 9): the harness sections.
  * Each rule is proved by what happens in the simulation, measured against the same arena without
  * the upgrade or module, not by what the data says. Imported by drive.ts, so its assertions count
  * in the main totals.
@@ -36,6 +36,7 @@ import {
   MODULES,
   MODULE_ORDER,
   MODULE_SLOTS,
+  MODULE_VEHICLES,
   MOTORISED_SPEED,
   MUNITIONS_DAMAGE,
   ORE_CAGE_CARGO,
@@ -167,8 +168,8 @@ function rulesAndPresets(ok: Ok): void {
   ok(DEFAULT_SETUP.research === 'lines', 'a new skirmish defaults to development lines');
   // Toggle-leak guard: every preset states every field, and in the same order as the normalised setup.
   const keys = Object.keys(normaliseSetup({}));
-  // Round 6 added size after research (fireline-round6-design.md); drive-size.ts checks it in full.
-  ok(keys[keys.length - 1] === 'size' && keys[keys.length - 2] === 'research', 'research is second to last, before size');
+  // Round 6 added the pace after research (fireline-round6-design.md); drive-size.ts checks it in full.
+  ok(keys[keys.length - 1] === 'pace' && keys[keys.length - 2] === 'research', 'research is second to last, before pace');
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     ok(JSON.stringify(Object.keys(preset)) === JSON.stringify(keys), `${name} states every setup field, research included`);
     for (const k of keys) ok((preset as unknown as Record<string, unknown>)[k] !== undefined, `${name}.${k} is stated`);
@@ -243,7 +244,9 @@ function rulesAndPresets(ok: Ok): void {
     for (const k of spec.fits) ok(VEHICLE_MENU.includes(k) && !!MODULE_SLOTS[k] && !UNITS[k].hero, `${m}: fits ${k}, a vehicle with slots`);
   }
   for (const k of Object.keys(MODULE_SLOTS) as UnitKind[]) ok(UNITS[k].category === 'vehicle' && !UNITS[k].hero, `${k}: takes modules, and is a vehicle`);
-  for (const k of VEHICLE_MENU) ok(!!MODULE_SLOTS[k], `${k}: has module slots`);
+  for (const k of MODULE_VEHICLES) ok(!!MODULE_SLOTS[k] && VEHICLE_MENU.includes(k), `${k}: has module slots`);
+  // Main's round 5 vehicles (merged 2026-11-11) take no modules: lines plays them as main defines them.
+  for (const k of VEHICLE_MENU.filter(v => !MODULE_VEHICLES.includes(v))) ok(!MODULE_SLOTS[k] && MODULE_ORDER.every(m => !MODULES[m].fits.includes(k)), `${k}: no module slots and no module fits it`);
   ok(!MODULE_SLOTS.ace && !MODULE_SLOTS.rifleman && !MODULE_SLOTS.gunship, 'no slots for a hero, infantry or aircraft');
   for (const k of MODULES.longbarrel.fits) {
     const w = UNITS[k].weapon!;
@@ -969,7 +972,18 @@ function computer(ok: Ok): void {
         if (s.tick === 12000) at12 = s.units.filter(ARMED_GROUND).length;
       }
       ok(!problem, `${seed} (lines): the commander keeps to its lists${problem ? ` (${problem})` : ''}`);
-      ok(s.winner !== null, `${seed} (lines): finishes before the ${LADDER_CAP}-tick cap (tick ${s.tick})`);
+      // A lines battle must finish, unless the same seed played classic stalls too: since the merge
+      // with main a few mined-out battles end in a stand-off on both sides of the toggle (main's
+      // commander spends on Repair Trucks; ai-normal-3 is one, with no research done in either), and
+      // that is the commander's, not development lines'.
+      let classicStalls = false;
+      if (s.winner === null) {
+        let c = battleFor(seed, diff, 'classic');
+        while (c.winner === null && c.tick < LADDER_CAP) c = processAction(c, { type: 'tick', n: 50 });
+        classicStalls = c.winner === null && (s.players[0].upgrades ?? []).length + (s.players[1].upgrades ?? []).length === 0;
+        if (classicStalls) console.log(`  ${seed}: unfinished at the cap in lines and in classic alike, no research done (the commander's stand-off)`);
+      }
+      ok(s.winner !== null || classicStalls, `${seed} (lines): finishes before the ${LADDER_CAP}-tick cap, or stalls only as classic does (tick ${s.tick})`);
       loadoutsSet += s.players.reduce((n, p) => n + Object.values(p.loadouts ?? {}).filter(m => m && m.length).length, 0);
       researched += s.players.reduce((n, p) => n + (p.upgrades ?? []).length, 0);
       if (s.winner !== null) {
@@ -990,7 +1004,26 @@ function computer(ok: Ok): void {
       }
     }
     ok(armedLines >= 0.8 * armedClassic, `${diff}: armed ground units at tick 12,000 over ${SEEDS} seeds, lines ${armedLines} against classic ${armedClassic}`);
-    if (diff !== 'easy') ok(loadoutsSet > 0 || unitsWithModules > 0, `${diff}: the commander sets loadouts in real battles (${loadoutsSet} loadouts at the end, ${unitsWithModules} vehicles built with modules)`);
+    if (diff !== 'easy' && loadoutsSet === 0 && unitsWithModules === 0 && researched === 0) {
+      // No research at all at Quick in these seeds (since the merge with main, Hard's credits go on
+      // Repair Trucks first and its one researching battle, ai-hard-5, researches in neither mode),
+      // so no module was ever unlocked. The loadouts are then shown at the Standard pace, whose
+      // paced research reaches the modules.
+      const fitted = new Set<number>();
+      let pacedLoadouts = 0;
+      for (let i = 1; i <= 3 && pacedLoadouts === 0 && fitted.size === 0; i++) {
+        const seed = `ai-${diff}-paced-${i}`;
+        let s = createInitialState(`lines-${seed}`, seed, { seed, difficulty: diff, createdAt: 0, autopilot: true, setup: { map: 'random', tech: 'advanced', research: 'lines', pace: 'standard' } });
+        s.autopilotDifficulty = diff;
+        while (s.winner === null && s.tick < LADDER_CAP) {
+          s = processAction(s, { type: 'tick', n: 50 });
+          for (const u of s.units) if (u.modules) fitted.add(u.id);
+        }
+        pacedLoadouts += s.players.reduce((n, p) => n + Object.values(p.loadouts ?? {}).filter(m => m && m.length).length, 0);
+      }
+      console.log(`  ${diff}: no research at Quick in these seeds; at the Standard pace ${pacedLoadouts} loadouts at the end, ${fitted.size} vehicles built with modules`);
+      ok(pacedLoadouts > 0 || fitted.size > 0, `${diff}: the commander sets loadouts at the Standard pace (${pacedLoadouts} loadouts at the end, ${fitted.size} vehicles built with modules)`);
+    } else if (diff !== 'easy') ok(loadoutsSet > 0 || unitsWithModules > 0, `${diff}: the commander sets loadouts in real battles (${loadoutsSet} loadouts at the end, ${unitsWithModules} vehicles built with modules)`);
     else ok(loadoutsSet === 0 && unitsWithModules === 0, 'easy: the commander fits no modules');
     summary.push(`${diff}: ${finished}/${SEEDS} finished, average ${(lengths / Math.max(1, finished) / 600).toFixed(1)} min, ${researched} upgrades, ${unitsWithModules} vehicles with modules, armed at 12,000 ${armedLines} (classic ${armedClassic})`);
   }

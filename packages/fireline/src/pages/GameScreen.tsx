@@ -13,6 +13,7 @@ import { useLayout } from '../game/layout';
 import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
 import { BUILD_KEYS, BuildPanel, SelectionPanel, menuFor, pressBuild, tabsFor, type Tab } from '../game/Sidebar';
+import BuildWindow from '../game/BuildWindow';
 import { airRoom } from '../sim/air';
 import { researchProblem } from '../sim/research';
 import { sound } from '../game/sound';
@@ -44,6 +45,7 @@ import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
 import { costOf, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
+import { selectionActions } from '../game/selectionActions';
 
 const TICK_MS = 1000 / TICKS_PER_SECOND;
 const SAVE_EVERY_MS = 15000;
@@ -227,6 +229,11 @@ export function Battle({
   const [placing, setPlacingState] = useState<BuildingKind | null>(null);
   const [attackMode, setAttackMode] = useState(false);
   const [tab, setTab] = useState<Tab>('building');
+  // The build window (BuildWindow.tsx): open or not, and whether placing a structure closed it, so
+  // it comes back on the same tab once the structure is placed or placement is cancelled.
+  const [buildOpen, setBuildOpenState] = useState(false);
+  const buildOpenRef = useRef(false);
+  const reopenAfterPlacing = useRef(false);
   const [help, setHelp] = useState(false);
   // Campaign: a hero ability or support power waiting for its click on the map.
   const [targeting, setTargetingState] = useState<Targeting>(null);
@@ -269,6 +276,35 @@ export function Battle({
     placingRef.current = k;
     if (!k) overlay.current.placement = null;
   }, []);
+
+  /** Open or close the build window. Closing hands focus back to the Build button unless told not to. */
+  const setBuildOpen = useCallback((open: boolean, refocus = true) => {
+    if (buildOpenRef.current === open) return;
+    buildOpenRef.current = open;
+    setBuildOpenState(open);
+    if (!open && refocus) window.setTimeout(() => document.getElementById('fl-build-open')?.focus({ preventScroll: true }), 0);
+  }, []);
+
+  /** The Build button and the backquote key. Opening while placing puts the structure back to Ready. */
+  const toggleBuild = useCallback(() => {
+    reopenAfterPlacing.current = false;
+    if (!buildOpenRef.current && placingRef.current) setPlacing(null);
+    setBuildOpen(!buildOpenRef.current);
+  }, [setBuildOpen, setPlacing]);
+
+  // Placing a structure closes the window, so the placement cursor is never under it; it comes back
+  // on the same tab when the structure is placed or placement is cancelled.
+  useEffect(() => {
+    if (placing) {
+      if (buildOpenRef.current) {
+        reopenAfterPlacing.current = true;
+        setBuildOpen(false, false);
+      }
+    } else if (reopenAfterPlacing.current) {
+      reopenAfterPlacing.current = false;
+      setBuildOpen(true);
+    }
+  }, [placing, setBuildOpen]);
 
   const setTargeting = useCallback((t: Targeting) => {
     setTargetingState(t);
@@ -910,6 +946,12 @@ export function Battle({
       keys.current.add(e.key);
       const ov = overlay.current;
       const k = e.key.toLowerCase();
+      if (e.code === 'Backquote' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // ` opens and closes the build window.
+        e.preventDefault();
+        toggleBuild();
+        return;
+      }
       const buildIndex = (BUILD_KEYS as readonly string[]).indexOf(k);
       if (buildIndex >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Q W E R T Y (then U I J K L B N D): the open list's items in order; Shift queues five units.
@@ -937,9 +979,22 @@ export function Battle({
         if (u) triggerAbility(u.kind as HeroKind);
         return;
       }
+      if (!cur.current.mission && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // F in a skirmish: the selection's first command that can go (selectionActions.ts), if any.
+        const st = cur.current;
+        const units = st.units.filter(x => x.owner === 0 && ov.selected.has(x.id));
+        const building = units.length ? null : (st.buildings.find(x => x.owner === 0 && ov.selected.has(x.id)) ?? null);
+        const go = selectionActions(st, { units, building }).find(x => !x.problem);
+        if (go) dispatch(go.action);
+        return;
+      }
       if (e.key === 'Escape') {
+        // The controls sheet hides the build window, so it goes first; then the window, then the rest.
         if (help) setHelp(false);
-        else if (targetingRef.current) setTargeting(null);
+        else if (buildOpenRef.current) {
+          reopenAfterPlacing.current = false;
+          setBuildOpen(false);
+        } else if (targetingRef.current) setTargeting(null);
         else if (placingRef.current) setPlacing(null);
         else if (attackRef.current) setAttackMode(false);
         else {
@@ -1003,7 +1058,7 @@ export function Battle({
       window.removeEventListener('blur', blur);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, refresh, setPlacing, centreOn, help, changeSound, choosePlacing, jumpToAlert, selectHero, triggerAbility, setTargeting]);
+  }, [dispatch, refresh, setPlacing, centreOn, help, changeSound, choosePlacing, jumpToAlert, selectHero, triggerAbility, setTargeting, toggleBuild, setBuildOpen]);
 
   // Browsers only allow audio after the player has touched the page.
   useEffect(() => {
@@ -1288,6 +1343,8 @@ export function Battle({
   );
   const ownSelected = s.units.some(u => u.owner === 0 && overlay.current.selected.has(u.id));
   const modal = !!(placing || targeting);
+  // Phones and touch screens get the build window as a full-screen sheet.
+  const sheet = layout.touch || layout.stacked;
   // On a touch screen the command bar takes the foot of the map; the campaign's hero and power
   // bar and the battle feed sit above it.
   const barLift = layout.touch && !ended ? 56 : 0;
@@ -1579,6 +1636,22 @@ export function Battle({
               <SkirmishPowerBar s={s} targeting={targeting} onPower={choosePower} />
             </div>
           )}
+          {buildOpen && !paused && !help && !ended && (
+            <BuildWindow
+              state={s}
+              tab={tab}
+              setTab={setTab}
+              dispatch={dispatch}
+              placing={placing}
+              setPlacing={choosePlacing}
+              touch={layout.touch}
+              sheet={sheet}
+              onClose={() => {
+                reopenAfterPlacing.current = false;
+                setBuildOpen(false);
+              }}
+            />
+          )}
           {paused && !help && !ended && (
             <div style={scrim}>
               <div style={card}>
@@ -1613,7 +1686,7 @@ export function Battle({
         {tourOpen && (
           <GuidedTour
             key={tourRun}
-            view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch }}
+            view={{ s, selected: [...overlay.current.selected], placing, tab, touch: layout.touch, buildOpen: buildOpen && !paused && !help && !ended, sheet }}
             onFinish={() => setTourOpen(false)}
             hidden={paused || help || menu || ended}
           />
@@ -1638,11 +1711,16 @@ export function Battle({
             compact={layout.stacked || layout.short}
             touch={layout.touch}
             state={s}
-            tab={tab}
-            setTab={setTab}
+            tab={tabsFor(s).includes(tab) ? tab : 'building'}
             dispatch={dispatch}
             placing={placing}
             setPlacing={choosePlacing}
+            buildOpen={buildOpen}
+            onToggleBuild={toggleBuild}
+            onOpenTab={t => {
+              setTab(t);
+              setBuildOpen(true);
+            }}
             minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} alerts={alerts.current} />}
           />
           {!(layout.stacked && overlay.current.selected.size > 0) && (
@@ -1693,18 +1771,21 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['Stance buttons', 'Aggressive chases anything in sight; Guard (default) holds and returns fire; Hold fire never shoots unordered'],
     ['S', 'Stop'],
     ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
-    ['Q W E R T Y', 'Build or train the first to sixth item in the open list (the letter is on each button)'],
-    ['U I J K L B N D', 'With advanced tech: the seventh to fourteenth item in the open list'],
+    ['` (backquote) or Build', 'Open or close the build window: every structure, unit and upgrade, laid out by what each needs'],
+    ['Q W E R T Y', 'Build or train the first to sixth item in the list the Build button names, window open or closed (the letter is on each button)'],
+    ['U I J K L B N D', 'With advanced tech: the seventh to fourteenth item in that list; any further items are clicked'],
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
-    ['Tab', 'Next build list: Structures, Infantry, Vehicles (Shift + Tab goes back)'],
+    ['Tab', 'Next build list: Structures, Infantry, Vehicles, then Air and Research when you have them (Shift + Tab goes back)'],
+    ['Production strip', 'Under the Build button: click an item to cancel the last one queued; click a ready structure to place it'],
     ['G', 'Toggle repair on the selected structure'],
+    ['F', "Skirmish: the selection's own command when it has one, such as Deploy (the key shows on its button)"],
     ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
     ['H', 'Jump to your Command Yard'],
     ['Space', 'Jump to the last combat alert (pinged on the minimap)'],
     ['P', 'Pause'],
     ['M', 'Sound on or off'],
     ['O', 'Hide or show the mission objectives (campaign)'],
-    ['Esc', 'Cancel placement, attack-move or aiming; clear selection'],
+    ['Esc', 'Close the build window; otherwise cancel placement, attack-move or aiming; clear selection'],
     ['Fullscreen button', 'Fill the whole screen with the battle; Esc leaves fullscreen'],
   ];
   const touchRows: [string, string][] = [
@@ -1718,7 +1799,10 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['Stance buttons', 'Aggressive chases anything in sight; Guard (default) holds and returns fire; Hold fire never shoots unordered'],
     ['Drag / pinch', 'Look around / zoom'],
     ['Minimap', 'Tap to jump there, once a Comms Uplink is powered'],
+    ['Build', 'Open the build window; × at its top closes it'],
+    ['Long press a build button', 'Its numbers: cost, health, weapon, what it needs'],
     ['× on a build button', 'Cancel it for a full refund'],
+    ['Production strip', 'Under Build: tap an item to open its list, its × to cancel the last one queued, a ready structure to place it'],
     ['Base', 'Jump to your Command Yard'],
   ];
   const rows = touch ? touchRows : mouseRows;

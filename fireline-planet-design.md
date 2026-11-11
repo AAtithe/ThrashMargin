@@ -3,7 +3,7 @@
 Status (2026-11-10): W1 to W5 are built and in `npm run check` (see the build log, section 20).
 Five workstreams (W1 to W5) implemented strictly from this file. Where the code and this file
 disagree on a name or a number, this file wins; where this file is silent, follow the existing
-pattern of round 5 (`fireline-round5-design.md`) and the campaign (`src/campaign/`), and say so in
+pattern of round 5 (`fireline-round5b-design.md`) and the campaign (`src/campaign/`), and say so in
 your workstream's build log at the end of this file.
 
 Base: the proposal `fireline-long-campaign-design.md` ("Theatre of War"). This contract keeps its
@@ -12,7 +12,7 @@ encirclement, auto-resolve, a new save kind, length presets) and extends it to a
 by three to five factions, with cities, four resources, trade and diplomacy. Where the two differ,
 this file wins. The proposal's name "theatre" is not used in code: everything here is "planet".
 
-Read first: `CLAUDE.md` (invariants), `fireline-round5-design.md` (development lines, doctrines and
+Read first: `CLAUDE.md` (invariants), `fireline-round5b-design.md` (development lines, doctrines and
 loadouts, which this mode uses as its research), `src/sim/sides.ts` (teams), `src/sim/state.ts`
 (`createInitialState`), `src/campaign/save.ts` (the save pattern).
 

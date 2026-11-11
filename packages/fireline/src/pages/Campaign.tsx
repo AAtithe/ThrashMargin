@@ -1,7 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MISSIONS, missionById } from '../campaign/missions';
-import { PERKS, RANKS, applyOutcome, buyPerk, heroesFor, missionContext, missionUnlocked, perkProblem, rankFor } from '../campaign/progression';
+import { CAMPAIGN_LEVEL, CAMPAIGN_LEVELS } from '../campaign/difficulty';
+import {
+  PERKS,
+  RANKS,
+  applyOutcome,
+  buyPerk,
+  campaignLevel,
+  campaignMission,
+  heroesFor,
+  missionContext,
+  missionUnlocked,
+  perkProblem,
+  rankFor,
+  setCampaignLevel,
+} from '../campaign/progression';
 import type { CampaignSave, CampaignState, PerkBranch, PerkSpec } from '../campaign/types';
 import { HeroPortrait, RankInsignia } from '../components/CampaignArt';
 import { drawMap, hasCampaignArt, nodeHitRadius, nodePosition, type CampaignMapNode } from '../components/campaignArtBridge';
@@ -20,6 +34,7 @@ import {
   UNITS,
   heroLevelFor,
   type BuildingKind,
+  type Difficulty,
   type HeroKind,
   type SupportPower,
   type UnitKind,
@@ -107,7 +122,7 @@ export default function CampaignFlow({
 
   const deploy = (spec: MissionSpec, c: CampaignState = csRef.current.campaign) => {
     const campaign = { ...c, lastMission: spec.id };
-    const battle = createMissionState(spec, missionContext(campaign, spec, csRef.current.id, Date.now()));
+    const battle = createMissionState(campaignMission(campaign, spec), missionContext(campaign, spec, csRef.current.id, Date.now()));
     startBattle({ ...csRef.current, campaign, battle });
   };
 
@@ -165,6 +180,10 @@ export default function CampaignFlow({
         const next = buyPerk(csRef.current.campaign, perk);
         if (next !== csRef.current.campaign) commit({ ...csRef.current, campaign: next });
       }}
+      onLevel={level => {
+        const next = setCampaignLevel(csRef.current.campaign, level);
+        if (next !== csRef.current.campaign) commit({ ...csRef.current, campaign: next });
+      }}
     />
   );
 }
@@ -180,6 +199,7 @@ function CampaignMap({
   onAbandon,
   onDeploy,
   onBuy,
+  onLevel,
 }: {
   cs: CampaignSave;
   panel: Panel;
@@ -189,6 +209,7 @@ function CampaignMap({
   onAbandon: () => void;
   onDeploy: (spec: MissionSpec) => void;
   onBuy: (perk: PerkSpec['id']) => void;
+  onLevel: (level: Difficulty) => void;
 }) {
   const navigate = useNavigate();
   const c = cs.campaign;
@@ -249,6 +270,7 @@ function CampaignMap({
             <span>
               {won} of {missions.length} missions won
             </span>
+            <span data-testid="campaign-level">{CAMPAIGN_LEVEL[campaignLevel(c)].label}</span>
             <span>{nodes.reduce((a, n) => a + n.stars, 0)} ★</span>
           </div>
           {cs.battle && (
@@ -341,7 +363,7 @@ function CampaignMap({
       )}
       {briefing && (
         <Modal title={`Mission ${briefing.order}: ${briefing.title}`} onClose={() => setPanel(null)}>
-          <Briefing spec={briefing} cs={cs} onDeploy={() => onDeploy(briefing)} />
+          <Briefing spec={briefing} cs={cs} onDeploy={() => onDeploy(briefing)} onLevel={onLevel} />
         </Modal>
       )}
     </div>
@@ -590,8 +612,21 @@ function countKinds(list: UnitKind[]): string {
   return [...m].map(([k, n]) => (n > 1 ? `${n} ${plural(UNITS[k].name)}` : `1 ${UNITS[k].name}`)).join(', ');
 }
 
-function Briefing({ spec, cs, onDeploy }: { spec: MissionSpec; cs: CampaignSave; onDeploy: () => void }) {
+function Briefing({
+  spec: written,
+  cs,
+  onDeploy,
+  onLevel,
+}: {
+  spec: MissionSpec;
+  cs: CampaignSave;
+  onDeploy: () => void;
+  onLevel: (level: Difficulty) => void;
+}) {
   const c = cs.campaign;
+  // Everything below reads the mission as it will be fought at the campaign's difficulty.
+  const level = campaignLevel(c);
+  const spec = campaignMission(c, written);
   const heroes = heroesFor(c, spec);
   const ctx = missionContext(c, spec, cs.id, cs.createdAt);
   const powers = [...new Set<SupportPower>([...spec.powers, ...ctx.extraPowers])];
@@ -603,7 +638,7 @@ function Briefing({ spec, cs, onDeploy }: { spec: MissionSpec; cs: CampaignSave;
   return (
     <div className="fl-briefing" data-testid="briefing">
       <div className="fl-briefing-meta">
-        <span className="fl-tag">{DIFFICULTIES[spec.difficulty].label}</span>
+        <span className="fl-tag" title="The enemy commander's tier at this campaign difficulty">Enemy {DIFFICULTIES[spec.difficulty].label.toLowerCase()}</span>
         {spec.timeLimit && <span className="fl-tag">Time limit {clockOf(spec.timeLimit)}</span>}
         <span className="fl-tag">{base ? 'Base mission' : 'No base'}</span>
         {rec?.won && (
@@ -635,7 +670,9 @@ function Briefing({ spec, cs, onDeploy }: { spec: MissionSpec; cs: CampaignSave;
       )}
       <h3>Your forces</h3>
       <p className="fl-small" style={{ margin: 0 }}>
-        {base ? `A base and ${spec.player.credits.toLocaleString('en-GB')} credits` : 'No base'}
+        {base
+          ? `A base and ${spec.player.credits.toLocaleString('en-GB')} credits`
+          : `No base${spec.player.credits > 0 ? `, ${spec.player.credits.toLocaleString('en-GB')} credits` : ''}`}
         {spec.player.units.length ? `; ${countKinds(spec.player.units)}` : ''}.
         {powers.length > 0 && ` Support: ${powers.map(p => POWERS[p].name).join(', ')}.`}
       </p>
@@ -664,6 +701,19 @@ function Briefing({ spec, cs, onDeploy }: { spec: MissionSpec; cs: CampaignSave;
         {spec.rewards.xp} xp to the Commander for a win, more for each star.
         {newHeroes.length > 0 && ` Unlocks ${newHeroes.map(k => `${heroName(k)}`).join(' and ')}.`}
         {newTech.length > 0 && ` New tech: ${newTech.map(kindName).join(', ')}.`}
+      </p>
+      <h3>Difficulty</h3>
+      <div className="fl-levels" role="radiogroup" aria-label="Campaign difficulty" data-testid="campaign-levels">
+        {CAMPAIGN_LEVELS.map(l => (
+          <button key={l} type="button" role="radio" className="fl-level" aria-checked={level === l} data-testid={`level-${l}`} onClick={() => onLevel(l)}>
+            <span className="fl-level-name">{CAMPAIGN_LEVEL[l].label}</span>
+            <span className="fl-level-facts">{CAMPAIGN_LEVEL[l].blurb}</span>
+          </button>
+        ))}
+      </div>
+      <p className="fl-small" style={{ margin: 0 }}>
+        For the whole campaign, from the next deployment. Change it whenever you like.
+        {cs.battle && !cs.battle.mission?.result && ' A battle already in progress keeps the difficulty it started with.'}
       </p>
       {replacing && <p className="fl-small" style={{ margin: 0, color: UI.warn }}>Deploying abandons the battle you have in progress.</p>}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>

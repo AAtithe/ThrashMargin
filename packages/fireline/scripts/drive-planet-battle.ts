@@ -48,13 +48,17 @@ type Ok = (cond: unknown, what: string) => void;
 const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 const hash = (x: unknown): string => createHash('sha256').update(JSON.stringify(x)).digest('hex').slice(0, 16);
 /**
- * A skirmish state as hashed before round 6 added `setup.size`. Round 6 records Quick, which means
- * the earlier numbers exactly, so the field is checked and then left out of the hash.
+ * A skirmish state as hashed before round 6 added the game size (now `setup.pace`) and before the
+ * merge with main added `setup.size` (the map size) and `setup.sites`. A setup that leaves them out
+ * records Quick, a standard map and no sites, which mean the earlier battle exactly, so the three
+ * fields are checked and then left out of the hash.
  */
 const preSize = (s: GameState): unknown => {
   if (!s.setup) return s;
-  const { size, ...rest } = s.setup as typeof s.setup & { size?: string };
-  if (size !== 'quick') throw new Error(`skirmish recorded size ${size}, expected quick`);
+  const { pace, size, sites, ...rest } = s.setup;
+  if (pace !== 'quick') throw new Error(`skirmish recorded pace ${pace}, expected quick`);
+  if (size !== 'standard') throw new Error(`skirmish recorded map size ${size}, expected standard`);
+  if (sites !== false) throw new Error(`skirmish recorded sites ${sites}, expected false`);
   return { ...s, setup: rest };
 };
 const tick = (s: GameState, n: number): GameState => {
@@ -596,7 +600,13 @@ function sizeTests(ok: Ok): void {
  * Hashes of every story mission's state at tick 0 and after 600 ticks, with the default context and
  * with every hero brought (one wounded), and of skirmishes of 2, 3 and 4 sides at tick 0 and after
  * 1,500 autopilot ticks: recorded from the build before the planet hooks (git archive of HEAD
- * 7814d9c), so any change to an existing battle fails here.
+ * 7814d9c), so any change to an existing battle fails here. At the merge with main (2026-11-11)
+ * 22 story hashes were regenerated from origin/main's own code (b302d1e), because main changed
+ * those missions: Demolition and the Commando (ce964a2: the mission itself, the Commando's health
+ * at tick 0 wherever he is brought, and a defending enemy's `garrison` written at its first
+ * decision in Ace of Spades, Convoy North, Bastion Line and Borrowed Steel) and Borrowed Steel
+ * (cb7044c). The merged tree gives exactly origin/main's hash for every mission; the skirmish
+ * hashes are unchanged (fireline-design.md, build log of the merge).
  */
 const STORY_HASHES: Record<string, string> = {
   'first-light:default:0': '811641bc63b24a6a',
@@ -611,50 +621,50 @@ const STORY_HASHES: Record<string, string> = {
   'hold-the-ford:default:600': 'a9ed3f9e51b44186',
   'hold-the-ford:heroes:0': '031181a70b4b863b',
   'hold-the-ford:heroes:600': 'a9ed3f9e51b44186',
-  'demolition:default:0': 'da3ee6518418d0cb',
-  'demolition:default:600': '29088dcae9c0c5d3',
-  'demolition:heroes:0': 'cab259b9d11972f1',
-  'demolition:heroes:600': '69f81217dfc0835a',
-  'borrowed-steel:default:0': '8c8a21da54ee1f55',
-  'borrowed-steel:default:600': '549d6a50f8dc2631',
-  'borrowed-steel:heroes:0': 'a4a484861b865721',
-  'borrowed-steel:heroes:600': '3a6d1258d3c7a932',
+  'demolition:default:0': 'e41665273b3d27fc',
+  'demolition:default:600': '5fd55f4cf9b83a12',
+  'demolition:heroes:0': 'be8caa56d99469ab',
+  'demolition:heroes:600': 'c9e80d75400dd433',
+  'borrowed-steel:default:0': '20947df3c8ebf600',
+  'borrowed-steel:default:600': '61f555a4f2e13952',
+  'borrowed-steel:heroes:0': 'ae813d3601895ad1',
+  'borrowed-steel:heroes:600': '999b2ec9c36886e8',
   'ace-of-spades:default:0': 'e04947e732c29147',
-  'ace-of-spades:default:600': '8a24c029479adb31',
+  'ace-of-spades:default:600': '82adff56777123ed',
   'ace-of-spades:heroes:0': '72fb3a5f7b1909fa',
-  'ace-of-spades:heroes:600': '4c27b88a6a8fc15e',
+  'ace-of-spades:heroes:600': '1a663addd7df8707',
   'blackout:default:0': '6b2339c402655984',
   'blackout:default:600': '668a7d5dd2de50c0',
-  'blackout:heroes:0': 'f9f9e72d4fd45c15',
-  'blackout:heroes:600': 'bc16b5eb35afc328',
+  'blackout:heroes:0': '30408d634d10e8b5',
+  'blackout:heroes:600': '9e22c9a0d7093dc6',
   'fireline:default:0': 'a04ea7c2fa164106',
   'fireline:default:600': '7c8a9ff590ef1bb7',
-  'fireline:heroes:0': '5f2d3173a122b935',
-  'fireline:heroes:600': 'd8a640f353afae57',
+  'fireline:heroes:0': 'bc0eb59bb276b49f',
+  'fireline:heroes:600': '67242d31f60fe5b2',
   'iron-coast:default:0': 'd9384af9038661e7',
   'iron-coast:default:600': '5d49032094e8d299',
   'iron-coast:heroes:0': 'd9384af9038661e7',
   'iron-coast:heroes:600': '5d49032094e8d299',
   'convoy-north:default:0': 'b1559d2a62d27df0',
-  'convoy-north:default:600': '9065dae78bbe5442',
+  'convoy-north:default:600': 'a09668530d69f963',
   'convoy-north:heroes:0': 'b2e676465dfae66c',
-  'convoy-north:heroes:600': 'f7084dc9a64b8932',
+  'convoy-north:heroes:600': 'f1d6b1fd1a7d3314',
   'the-long-hold:default:0': '970a2f907d138a47',
   'the-long-hold:default:600': 'e793302eb80e3773',
   'the-long-hold:heroes:0': '970a2f907d138a47',
   'the-long-hold:heroes:600': 'e793302eb80e3773',
   'firestorm:default:0': '9288c0f66ac19950',
   'firestorm:default:600': 'a1a8412e66a3f670',
-  'firestorm:heroes:0': '794e6b06e01b5825',
-  'firestorm:heroes:600': '1e0373040d76a5fb',
+  'firestorm:heroes:0': 'd32b9abaebaf09dd',
+  'firestorm:heroes:600': 'de23351541a8713e',
   'bastion-line:default:0': 'd287e1928e60a48d',
-  'bastion-line:default:600': '3f443712ef1a1ba3',
+  'bastion-line:default:600': '341446e0d3fbefa3',
   'bastion-line:heroes:0': '754b11f3a56ee6bc',
-  'bastion-line:heroes:600': 'f1877564b4f97e6b',
+  'bastion-line:heroes:600': 'e4a98f826ac1301a',
   'last-light:default:0': '6844b11db528fe62',
   'last-light:default:600': 'adc2d84a50b46c68',
-  'last-light:heroes:0': 'ec10ce7d5305714f',
-  'last-light:heroes:600': '5774364f4b6d4915',
+  'last-light:heroes:0': 'c8f19bca3b4b56e3',
+  'last-light:heroes:600': 'c99531bb6add4939',
 };
 
 const SKIRMISH_HASHES: Record<string, string> = {

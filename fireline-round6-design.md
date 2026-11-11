@@ -3,10 +3,20 @@
 Status (2026-11-10): built (simulation, interface and harness); every section 9.3 target met at
 150 seeds. See the build log in section 12. Agents implemented strictly from this file.
 Where the code and this file disagree on a name or a number, this file wins; where this file is
-silent, follow the existing pattern of round 5 (`fireline-round5-design.md`) and say so in the
+silent, follow the existing pattern of round 5 (`fireline-round5b-design.md`) and say so in the
 build log at the end of this file.
 
-Read first: `CLAUDE.md` (invariants), `fireline-round5-design.md` (sections 2, 4.1, 5, 6.3, 9 and
+**Renamed at the merge with main (2026-11-11).** Main's own round 5 (`fireline-round5-design.md`)
+had already taken `SkirmishSetup.size` for the map size (`MapSize`), and main's names won. Every
+name below for the game size is now the pace: `SkirmishSetup.pace` (`GamePace`), `GAME_PACES`,
+`GAME_PACE_ORDER`, `LOBBY_DEFAULT_PACE`, `GamePaceSpec`, `applyPace`, `difficultyForPace`, `paceOf`,
+`GamePacePicker`, ladder flag `--pace`. The cards still say "game size", and an absent pace still reads as
+Quick. `mapSizeFor` is gone (main's `mapTilesFor` and `MAP_SIZE_TILES` replace it), and a card's
+preset now also sets the map size: Long a Large map and Epic a Huge one (section 10.2 asked for
+exactly this; measured in `fireline-design.md`, build log of the merge). This file keeps its
+original names as the record of what was contracted.
+
+Read first: `CLAUDE.md` (invariants), `fireline-round5b-design.md` (sections 2, 4.1, 5, 6.3, 9 and
 the build log), `packages/fireline/src/sim/research.ts`, `src/sim/aiAir.ts`, `src/sim/ai.ts`
 (`commander`, `nextStructure`, `isExtra`), `src/sim/state.ts` (`normaliseSetup`,
 `createInitialState`), `src/components/SkirmishSetup.tsx`, `src/pages/Lobby.tsx`,

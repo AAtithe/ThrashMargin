@@ -1,4 +1,4 @@
-import type { BuildingKind, Category, Difficulty, HeroKind, LineId, MapType, ModuleId, Owner, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
+import type { BuildingKind, Category, Difficulty, HeroKind, LineId, MapType, ModuleId, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
@@ -85,6 +85,12 @@ export interface Unit {
   modules?: ModuleId[];
   /** Planet battles: the field army slot this unit stands for. Absent everywhere else. */
   core?: number;
+  // round5:C begin. Engineering vehicles (fireline-round5-design.md): optional Unit fields.
+  // round5:C end.
+  // round5:D begin. Tier three: optional Unit fields (the Stealth Tank's last shot, for instance).
+  /** Stealth Tanks only: the tick it last fired, which shows it to everyone for STEALTH_REVEAL_TICKS. */
+  lastShot?: number;
+  // round5:D end.
 }
 
 /** A hero's progress and ability state. Level and xp carry between campaign missions. */
@@ -125,6 +131,27 @@ export interface Building {
   chargedBy?: number;
   /** Production stopped (spy on a factory or barracks) until this tick. */
   sabotagedUntil?: number;
+  // round5:C begin. Engineering vehicles: optional Building fields.
+  // round5:C end.
+}
+
+/**
+ * A neutral site (round 5, workstream D): an Oil Derrick, Field Hospital or Comms Relay placed by
+ * the map, held by whoever captured it last. Not a Building: never a target, never shoots, never
+ * counts for victory, so sides.ts and every enemy test are untouched. It blocks the tiles under it
+ * (occupancy) like a structure. Its kinds and numbers are in rules.ts (SiteKind, SITES).
+ */
+export interface Site {
+  /** From s.nextId, like units and structures. */
+  id: number;
+  kind: SiteKind;
+  /** Top-left tile. */
+  x: number;
+  y: number;
+  /** The side holding it, or null while neutral. */
+  owner: Owner | null;
+  /** The side capturing it now and its progress from 0 to 1 (held at 1); null while nobody is. */
+  capture: { by: Owner; progress: number } | null;
 }
 
 export interface QueueItem {
@@ -189,7 +216,12 @@ export interface Effect {
     | 'heal'
     | 'repair'
     /** A bomb's impact in a Bomber's line; size is the splash radius. */
-    | 'bomb';
+    | 'bomb'
+    // round5:C begin. Engineering vehicles: its effect kinds (a Repair Truck at work, a deploy).
+    // round5:C end.
+    // round5:D begin. Neutral sites and tier three: its effect kinds (a capture, a rail shot).
+    // round5:D end.
+    ;
   x: number;
   y: number;
   at: number;
@@ -236,6 +268,39 @@ export interface AiMemory {
   nextAirStrike?: number;
   /** Paced research (round 6): credits the commander is saving for its next research, or absent. */
   researchFor?: number;
+  /**
+   * A defending mission enemy's garrison: its armed units at its first decision. It trains only to
+   * replace losses up to this, never beyond (scripted reinforcements do not raise it).
+   */
+  garrison?: number;
+  // round5:B begin. Larger maps: optional AiMemory fields (wave sizing for distance).
+  // round5:B end.
+  // round5:C begin. Engineering vehicles: optional AiMemory fields (its trucks, its expansion).
+  /**
+   * A Forward Base expansion under way (aiEngineering.ts), or null or absent for none. `truck` is the
+   * Forward Base Truck's id (0 while it is queued), (x, y) the Field Yard's top-left tile, `since` the
+   * tick the current step began; `yard` is the Field Yard's id once deployed.
+   */
+  expansion?: { truck: number; x: number; y: number; since: number; yard?: number } | null;
+  /** The tick before which no new expansion is tried (after a failure, two minutes). */
+  expandAfter?: number;
+  /**
+   * Credits the computer has set aside for its engineering (a Repair Truck, or its expansion: the
+   * truck, then the yard's structures), held here so its other spending cannot reach them; handed
+   * back when they are spent or it gives up.
+   */
+  engineeringFund?: number;
+  // round5:C end.
+  // round5:D begin. Neutral sites and tier three: optional AiMemory fields (its capture parties).
+  /** Infantry parties sent to take neutral sites (aiSites.ts): the site, the party, and when it set out. */
+  siteParties?: { site: number; ids: number[]; since: number }[];
+  /** Sites given up on, and the tick each may be tried again. */
+  siteRetry?: [number, number][];
+  /** Stealth Tanks out hunting haulers, their quarry (0 for none), and when the next hunt may go. */
+  stealthIds?: number[];
+  stealthTarget?: number;
+  nextStealthRaid?: number;
+  // round5:D end.
 }
 
 export interface GameState {
@@ -321,6 +386,9 @@ export interface GameState {
   /** Tiles revealed to side 0 by a recon sweep until a tick: [centre x, centre y, radius, until]. */
   recon?: [number, number, number, number][];
 
+  // ---- Round 5 (all optional: absent on older saves, missions and setups without them) ----------
+  /** Neutral sites on the map (workstream D). Absent: none. Never present in a mission. */
+  sites?: Site[];
   // ---- War for the Planet (optional: absent on every skirmish and mission) -----------------
   /** A battle generated from the planet war (fireline-planet-design.md, section 14). */
   planet?: PlanetBattle;
@@ -470,6 +538,8 @@ export interface MissionRuntime {
   convoyRoute?: { x: number; y: number }[];
   /** Copied from the spec. Per side, the powers its structures currently grant (never one the mission gave at the start). */
   structurePowers?: SupportPower[][];
+  /** The campaign difficulty this battle was built at; absent means Normal (and every older save). */
+  level?: Difficulty;
 }
 
 /** What the campaign layer is told when a mission ends. */
@@ -507,6 +577,8 @@ export interface MissionContext {
   /** Tech the campaign has unlocked so far, added to the mission's own list. */
   extraTech: (BuildingKind | UnitKind)[];
   extraPowers: SupportPower[];
+  /** The campaign difficulty the spec was scaled to (campaign/difficulty.ts), kept on the battle. */
+  level?: Difficulty;
 }
 
 export type GameAction =
@@ -527,4 +599,9 @@ export type GameAction =
   | { type: 'research'; upgrade: UpgradeId }
   | { type: 'cancelResearch' }
   | { type: 'doctrine'; line: LineId; branch: UpgradeId }
-  | { type: 'loadout'; kind: UnitKind; modules: ModuleId[] };
+  | { type: 'loadout'; kind: UnitKind; modules: ModuleId[] }
+  // round5:C begin. Engineering vehicles: deploying a Forward Base truck, packing up a Field Yard.
+  | { type: 'deploy'; id: number }
+  | { type: 'undeploy'; id: number }
+  // round5:C end.
+  ;

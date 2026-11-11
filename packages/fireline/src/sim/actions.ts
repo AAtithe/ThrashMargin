@@ -22,6 +22,7 @@ import {
   doStance,
   doStop,
 } from './commands';
+import { deployProblem, doDeploy, doUndeploy, undeployProblem } from './engineering';
 import { abilityProblem, doAbility, doPower, powerProblem } from './mission';
 import { canCancelResearch, canResearch, doCancelResearch, doDoctrine, doResearch, doctrineProblem } from './research';
 import { doLoadout, loadoutProblem } from './loadout';
@@ -154,6 +155,21 @@ export function processAction(s: GameState, a: GameAction): GameState {
       doLoadout(c, 0, a.kind, a.modules);
       return c;
     }
+    // round5:C begin. Engineering vehicles: the 'deploy' and 'undeploy' cases (until then both are
+    // refused by the default: the same state back).
+    case 'deploy': {
+      if (!Number.isInteger(a.id) || deployProblem(s, 0, a.id) !== null) return s;
+      const c = cloneState(s);
+      doDeploy(c, 0, a.id);
+      return c;
+    }
+    case 'undeploy': {
+      if (!Number.isInteger(a.id) || undeployProblem(s, 0, a.id) !== null) return s;
+      const c = cloneState(s);
+      doUndeploy(c, 0, a.id);
+      return c;
+    }
+    // round5:C end.
     default:
       return s;
   }

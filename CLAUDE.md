@@ -117,10 +117,11 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   not others, and a five-seed run once reported two bugs fixed while they were still there.
 - **Fireline has its own harness: `npm run drive:fire`** (whole computer-against-computer battles over
   28 seeds, every order, the campaign's heroes, powers, objectives and mission AI modes, aircraft and
-  research, development lines and loadouts, game sizes and paced research, and three- and four-sided battles; about 345,700 assertions, about 8 to 9 minutes; `-- --seeds 60` for a wider sweep, `-- --campaign` for the
+  research, development lines and loadouts, game sizes (paces) and paced research, three- and four-sided battles,
+  large and huge maps, engineering vehicles, neutral sites and tier three; about 368,000 assertions, about 20 minutes on one core; `-- --seeds 60` for a wider sweep, `-- --campaign` for the
   campaign sections alone). `npm run campaign:fire` checks progression and builds and runs all eight
   missions; both are in `npm run check`. `npm run ladder:fire` pits AI commanders over 150 seeds
-  (about 10 minutes, so not in check); use it for any balance or AI change. Fireline is real time: it saves every 15 seconds of play rather than per action, and
+  (about 10 minutes, so not in check; `-- --pace long --size large` for a game size on a larger map, far longer); use it for any balance or AI change. Fireline is real time: it saves every 15 seconds of play rather than per action, and
   its guided tour runs on the live battle (see `fireline-design.md` §5).
 - **Fireline's War for the Planet has its own harness: `npm run drive:planet`** (`packages/fireline/scripts/drive-planet.ts`,
   in `npm run check`; about 40,000 assertions in about 70 seconds, most of it W2's battle sections from

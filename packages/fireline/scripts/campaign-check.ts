@@ -18,14 +18,17 @@ import {
   newCampaign,
   NO_PERKS,
   outcomeXp,
+  campaignMission,
   perkModifiers,
   perkProblem,
+  setCampaignLevel,
   PERKS,
   POINTS_PER_RANK,
   rankFor,
   rankProgress,
   RANKS,
 } from '../src/campaign/progression';
+import { CAMPAIGN_LEVEL, CAMPAIGN_LEVELS, scaleMission } from '../src/campaign/difficulty';
 import { missionById, MISSIONS } from '../src/campaign/missions';
 import {
   campaignSaveStatus,
@@ -38,11 +41,13 @@ import {
 import type { CampaignState, PerkId, PerkSpec } from '../src/campaign/types';
 import { processAction } from '../src/sim/actions';
 import { generateMap, isWalkable } from '../src/sim/map';
-import { createMissionState } from '../src/sim/mission';
+import { abilityProblem, createMissionState } from '../src/sim/mission';
+import { distToBuilding } from '../src/sim/grid';
 import { seedFromString } from '../src/sim/rng';
 import {
   BUILDINGS,
   DIFFICULTIES,
+  HERO_ABILITY,
   HERO_KINDS,
   MAP_H,
   MAP_W,
@@ -52,8 +57,10 @@ import {
   type HeroKind,
   type UnitKind,
 } from '../src/sim/rules';
-import { createInitialState, pacedResearch, sizeOf } from '../src/sim/state';
+import { createInitialState, pacedResearch, paceOf } from '../src/sim/state';
 import type { GameState, MissionOutcome, MissionSpec, ObjectiveSpec } from '../src/sim/types';
+
+const MIN = 600;
 
 let assertions = 0;
 let failures = 0;
@@ -448,7 +455,7 @@ section('mission specs', () => {
     if (m.enemy.base === 'outpost') ok(m.enemy.ai !== 'normal' && m.enemy.ai !== 'raid' || m.enemy.structures.some(b => b === 'factory' || b === 'barracks'), `${L}: an attacking outpost can train`);
     const hasBase = m.player.structures.includes('hq');
     ok(hasBase || !m.tech.some(isBuilding), `${L}: building tech only with a Command Yard`);
-    // Round 5 (fireline-round5-design.md, section 7): missions never use development lines.
+    // Round 5 (fireline-round5b-design.md, section 7): missions never use development lines.
     ok(m.research === 'classic', `${L}: classic research, never development lines`);
 
     // Tech and powers, and the unlock arc.
@@ -602,7 +609,7 @@ section('missions in the simulation', () => {
     }
     ok(!!s.mission && s.mission.id === m.id, `${m.id}: state carries the mission`);
     // Game size (fireline-round6-design.md): a mission always plays at Quick, today's numbers.
-    ok(sizeOf(s) === 'quick' && !pacedResearch(s), `${m.id}: plays at the Quick size, no paced research`);
+    ok(paceOf(s) === 'quick' && !pacedResearch(s), `${m.id}: plays at the Quick size, no paced research`);
     ok(s.mission?.objectives.length === m.objectives.length && s.mission?.bonus.length === m.bonus.length, `${m.id}: objectives built`);
     ok(s.seedText === m.seed || s.rngSeed === seedFromString(m.seed), `${m.id}: map from the mission seed`);
     ok(s.tiles === generateMap(seedFromString(m.seed)).tiles, `${m.id}: tiles match the generated map`);
@@ -705,7 +712,13 @@ section('act two: progression and old saves', () => {
   for (const t of adv) ok(last.tech.includes(t as never), `Last Light offers ${t}`);
   ok(last.difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander on hard, with a full base');
   const kinds = new Set<string>(['hq', ...last.enemy.structures]);
-  for (const b of Object.keys(BUILDINGS)) if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
+  // Skirmish-only structures (round 5): a Field Yard is never built, only deployed from a truck, and
+  // the tier-three structures are in no mission.
+  const skirmishOnly = new Set<string>(['protoworks', 'fortress']);
+  for (const b of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
+    if (BUILDINGS[b].undeploysTo || skirmishOnly.has(b)) continue;
+    if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
+  }
   // The new objective kinds are used across the act.
   const used = new Set(act2.flatMap(m => [...m.objectives, ...m.bonus].map(o => (o.kind === 'holdZone' && o.reset ? 'holdZone reset' : o.kind))));
   for (const k of ['escort', 'destroyWithin', 'holdZone reset']) ok(used.has(k), `act two uses ${k}`);
@@ -792,6 +805,190 @@ const startOf = (id: string): GameState => {
   return createMissionState(m, missionContext(campaignBefore(id), m, `played-${id}`, 1000));
 };
 const centreOf = (b: { x: number; y: number; kind: BuildingKind }) => ({ x: b.x + BUILDINGS[b.kind].w / 2, y: b.y + BUILDINGS[b.kind].h / 2 });
+
+section('Demolition, played', () => {
+  // Mission 4 could not be won: its outpost ran a refinery on 'defend' and trained a rifleman every
+  // five seconds, its turrets outranged the Commando, and the buggies sent after the extraction
+  // spawned on top of him. Played by script both ways in: straight at the base, and round its flank.
+  const plans: Record<string, { x: number; y: number }[]> = {
+    straight: [{ x: 45, y: 20 }, { x: 54, y: 10 }],
+    flank: [{ x: 40, y: 40 }, { x: 61, y: 20 }, { x: 61, y: 6 }],
+  };
+  for (const [plan, way] of Object.entries(plans)) {
+    let s = startOf('demolition');
+    const mine = () => s.units.filter(u => u.owner === 0);
+    let wi = 0;
+    while (!s.mission!.result && s.tick < 20 * 600) {
+      const c = mine().find(u => u.kind === 'commando');
+      if (!c) break;
+      const gens = s.buildings.filter(b => b.owner === 1 && b.kind === 'power');
+      if (!gens.length) {
+        if (s.tick % 50 === 0) s = processAction(s, { type: 'move', ids: mine().map(u => u.id), x: 58.5, y: 56.5 });
+      } else if (wi < way.length) {
+        const p = way[wi];
+        if (s.tick % 50 === 0) s = processAction(s, { type: 'move', ids: mine().map(u => u.id), x: p.x, y: p.y, attackMove: true });
+        if (Math.hypot(c.x - p.x, c.y - p.y) < 2.5) wi++;
+      } else {
+        const g = gens.map(b => ({ b, d: Math.hypot(b.x + 1 - c.x, b.y + 1 - c.y) })).sort((a, b) => a.d - b.d)[0].b;
+        if (c.hero!.abilityCd === 0) s = processAction(s, { type: 'ability', id: c.id, target: g.id });
+        if (s.tick % 50 === 0) s = processAction(s, { type: 'move', ids: mine().filter(u => u.kind !== 'commando').map(u => u.id), x: g.x + 1, y: g.y + 1, attackMove: true });
+      }
+      s = processAction(s, { type: 'tick', n: 10 });
+    }
+    ok(s.mission!.result === 'won', `demolition: won ${plan === 'straight' ? 'straight at the outpost' : 'round its flank'} (${s.mission!.result} at ${s.tick})`);
+    ok(s.players[1].stats.trained === 0, `demolition: the outpost trains nothing (${s.players[1].stats.trained})`);
+  }
+});
+
+section('Borrowed Steel, played', () => {
+  // Mission 5 could not be won: three Gun Turrets, two tanks and five riflemen on 'defend' against six
+  // infantry and an unarmed Engineer, and units attack-moving through the yard shot the War Factory
+  // down before he reached it. Played by script three ways in, at every campaign difficulty: the squad
+  // clears what guards the factory while the Engineer waits out of range, he captures it, the factory
+  // builds tanks and everything turns on what is left and on the counter-attack.
+  const plans: Record<string, { way: { x: number; y: number }[]; hold: { x: number; y: number } }> = {
+    straight: { way: [{ x: 50, y: 17 }], hold: { x: 40, y: 26 } },
+    north: { way: [{ x: 40, y: 4 }, { x: 52, y: 3 }], hold: { x: 36, y: 4 } },
+    east: { way: [{ x: 61, y: 30 }, { x: 61, y: 12 }], hold: { x: 61, y: 26 } },
+  };
+  const near = <T extends { x: number; y: number }>(list: T[], p: { x: number; y: number }) =>
+    list.map(t => ({ t, d: Math.hypot(t.x - p.x, t.y - p.y) })).sort((a, b) => a.d - b.d)[0]?.t;
+  const wins: Record<string, number> = {};
+  const notes: string[] = [];
+  for (const level of CAMPAIGN_LEVELS) {
+    wins[level] = 0;
+    for (const [plan, { way, hold }] of Object.entries(plans)) {
+      const m = missionById('borrowed-steel')!;
+      const c = { ...campaignBefore(m.id), difficulty: level };
+      let s = createMissionState(campaignMission(c, m), missionContext(c, m, `bs-${level}-${plan}`, 1000));
+      const mine = () => s.units.filter(u => u.owner === 0);
+      let wi = 0;
+      while (!s.mission!.result && s.tick < 30 * MIN) {
+        const e = mine().find(u => u.kind === 'engineer');
+        const fac = s.buildings.find(b => b.kind === 'factory');
+        if (!e || !fac) break;
+        const army = mine().filter(u => u.kind !== 'engineer');
+        const every = (n: number) => s.tick % n === 0;
+        if (fac.owner === 1) {
+          const fc = centreOf(fac);
+          const threats = [
+            ...s.units.filter(u => u.owner === 1 && u.kind !== 'hauler' && Math.hypot(u.x - fc.x, u.y - fc.y) < 9),
+            ...s.buildings.filter(b => b.owner === 1 && b.kind === 'turret'),
+          ];
+          if (wi < way.length) {
+            const p = way[wi];
+            if (every(50)) s = processAction(s, { type: 'move', ids: army.map(u => u.id), x: p.x, y: p.y, attackMove: true });
+            if (every(50) && wi > 0) s = processAction(s, { type: 'move', ids: [e.id], x: way[wi - 1].x, y: way[wi - 1].y });
+            if (Math.hypot((army[0] ?? e).x - p.x, (army[0] ?? e).y - p.y) < 3) wi++;
+          } else if (threats.length && army.length) {
+            // Armour and rockets on the turrets and anything heavy, rifles on their infantry.
+            const lead = army[0];
+            const heavyFoe = near(threats.filter(t => !('kind' in t && t.kind === 'rifleman')), lead) ?? near(threats, lead)!;
+            const rifleFoe = near(s.units.filter(u => u.owner === 1 && u.kind === 'rifleman'), lead) ?? heavyFoe;
+            const heavy = army.filter(u => u.kind !== 'rifleman');
+            const rifles = army.filter(u => u.kind === 'rifleman');
+            if (every(50) && heavy.length) s = processAction(s, { type: 'attack', ids: heavy.map(u => u.id), target: heavyFoe.id });
+            if (every(50) && rifles.length) s = processAction(s, { type: 'attack', ids: rifles.map(u => u.id), target: rifleFoe.id });
+            if (every(20)) s = processAction(s, { type: 'move', ids: [e.id], x: hold.x, y: hold.y });
+          } else {
+            if (every(50)) s = processAction(s, { type: 'move', ids: army.map(u => u.id), x: fc.x, y: fc.y, attackMove: true });
+            if (distToBuilding(e.x, e.y, fac) <= HERO_ABILITY.engineer.range) {
+              if (e.hero!.active?.kind !== 'capture' && !abilityProblem(s, 0, e.id, fac.id)) s = processAction(s, { type: 'ability', id: e.id, target: fac.id });
+            } else if (every(30)) s = processAction(s, { type: 'move', ids: [e.id], x: fc.x, y: fac.y + 3.5 });
+          }
+        } else {
+          // The factory is ours: tanks while the credits last, everything at the nearest enemy.
+          if (s.players[0].credits >= UNITS.tank.cost && every(20)) s = processAction(s, { type: 'queue', category: 'vehicle', kind: 'tank' });
+          const lead = army[0] ?? e;
+          const foe = near(s.units.filter(u => u.owner === 1), lead) ?? near(s.buildings.filter(b => b.owner === 1).map(b => ({ ...centreOf(b), id: b.id })), lead);
+          if (foe && every(50)) s = processAction(s, { type: 'move', ids: army.map(u => u.id), x: foe.x, y: foe.y, attackMove: true });
+          if (every(50)) s = processAction(s, { type: 'move', ids: [e.id], x: centreOf(fac).x, y: fac.y - 1 });
+        }
+        s = processAction(s, { type: 'tick', n: 10 });
+      }
+      if (s.mission!.result === 'won') wins[level]++;
+      ok(s.players[1].stats.trained === 0, `borrowed-steel ${level}, ${plan}: the outpost trains nothing (${s.players[1].stats.trained})`);
+      if (level !== 'hard') ok(s.mission!.result === 'won', `borrowed-steel ${level}: won ${plan} (${s.mission!.result ?? 'unfinished'} at ${s.tick}${s.mission!.lostBecause ? `: ${s.mission!.lostBecause}` : ''})`);
+      notes.push(`${level} ${plan} ${s.mission!.result ?? 'unfinished'} ${clockText(s.tick)}`);
+    }
+  }
+  // Hard is meant to be hard: the scripted player need not win every way in, but must win some.
+  ok(wins.hard >= 1, `borrowed-steel hard: won at least one way in (${wins.hard} of 3)`);
+  return notes.join('; ');
+});
+
+section('campaign difficulty', () => {
+  const notes: string[] = [];
+  // A new campaign plays at Normal; an old save without the field reads as Normal.
+  ok(newCampaign('X').difficulty === 'normal', 'a new campaign starts at Normal');
+  const old = newCampaignSave('id-old', 'Old', 'Cmdr', 0) as unknown as { campaign: Record<string, unknown> };
+  delete old.campaign.difficulty;
+  ok(migrateCampaignSave(old)!.campaign.difficulty === 'normal', 'a campaign saved before difficulty settings loads at Normal');
+  const hardSave = newCampaignSave('id-hard', 'Hard', 'Cmdr', 0);
+  hardSave.campaign.difficulty = 'hard';
+  ok(migrateCampaignSave(JSON.parse(JSON.stringify(hardSave)))!.campaign.difficulty === 'hard', 'the setting survives a save');
+  const junk = JSON.parse(JSON.stringify(hardSave));
+  junk.campaign.difficulty = 'brutal';
+  ok(migrateCampaignSave(junk)!.campaign.difficulty === 'normal', 'an unknown setting loads as Normal');
+  const c0 = newCampaign('X');
+  ok(setCampaignLevel(c0, 'normal') === c0, 'setting the same difficulty changes nothing');
+  ok(setCampaignLevel(c0, 'easy').difficulty === 'easy' && c0.difficulty === 'normal', 'changing it returns a new campaign');
+  ok(setCampaignLevel(c0, 'brutal' as never) === c0, 'an unknown difficulty is refused');
+
+  const tierOf: Record<string, number> = { easy: 0, normal: 1, hard: 2 };
+  const count = (kinds: string[]) => kinds.length;
+  for (const m of MISSIONS) {
+    ok(scaleMission(m, 'normal') === m, `${m.id}: Normal is the mission as written`);
+    const easy = scaleMission(m, 'easy');
+    const hard = scaleMission(m, 'hard');
+    ok(tierOf[easy.difficulty] === Math.max(0, tierOf[m.difficulty] - 1) && tierOf[hard.difficulty] === Math.min(2, tierOf[m.difficulty] + 1), `${m.id}: the commander is a step easier on Easy and harder on Hard`);
+    ok(count(easy.enemy.units) <= count(m.enemy.units) && count(hard.enemy.units) >= count(m.enemy.units), `${m.id}: fewer enemy troops on Easy, more on Hard (${count(easy.enemy.units)} / ${count(m.enemy.units)} / ${count(hard.enemy.units)})`);
+    ok(new Set(easy.enemy.units).size === new Set(m.enemy.units).size, `${m.id}: Easy keeps every kind of enemy troop`);
+    ok(JSON.stringify(easy.enemy.structures) === JSON.stringify(m.enemy.structures) && JSON.stringify(hard.enemy.structures) === JSON.stringify(m.enemy.structures), `${m.id}: structures are never changed`);
+    ok(JSON.stringify(easy.objectives) === JSON.stringify(m.objectives) && JSON.stringify(hard.bonus) === JSON.stringify(m.bonus), `${m.id}: objectives are never changed`);
+    ok(easy.player.credits >= m.player.credits && hard.player.credits === m.player.credits, `${m.id}: more credits on Easy`);
+    ok(JSON.stringify(easy.player.units) === JSON.stringify(m.player.units) && JSON.stringify(hard.player.units) === JSON.stringify(m.player.units), `${m.id}: the player's own troops are the same at every difficulty`);
+    m.triggers.forEach((t, i) => {
+      if (!t.spawn) return;
+      const e = easy.triggers[i].spawn!.count;
+      const h = hard.triggers[i].spawn!.count;
+      if (t.spawn.owner === 0) ok(e === t.spawn.count && h === t.spawn.count, `${m.id}: our own reinforcements (trigger ${i}) are never scaled`);
+      else ok(e >= 1 && e <= t.spawn.count && h >= t.spawn.count, `${m.id}: trigger ${i} sends ${e} / ${t.spawn.count} / ${h}`);
+    });
+    if (m.timeLimit) ok(easy.timeLimit! > m.timeLimit && hard.timeLimit === m.timeLimit, `${m.id}: a longer time limit on Easy`);
+    // The scaled spec still passes every map check: same seed, same points.
+    ok(easy.seed === m.seed && hard.seed === m.seed, `${m.id}: same map at every difficulty`);
+  }
+  ok(MISSIONS.every(m => missionById(m.id) === m), 'scaling never touches the mission list');
+
+  // Every mission builds and runs at Easy and Hard, and the battle remembers its difficulty.
+  for (const level of ['easy', 'hard'] as const) {
+    let c: CampaignState = { ...newCampaign('Check'), difficulty: level };
+    for (const m of MISSIONS) {
+      const ctx = missionContext(c, m, `lvl-${level}-${m.id}`, 1000);
+      const s = createMissionState(campaignMission(c, m), ctx);
+      ok(s.mission!.level === level, `${m.id} ${level}: the battle records its difficulty`);
+      ok(s.difficulty === campaignMission(c, m).difficulty, `${m.id} ${level}: the commander plays at the scaled tier`);
+      const want = campaignMission(c, m).enemy.units.length;
+      const have = s.units.filter(u => u.owner === 1 && u.kind !== 'hauler').length;
+      ok(have === want, `${m.id} ${level}: the enemy starts with ${want} troops (has ${have})`);
+      if (level === 'easy') ok(ctx.perks.unitHpMul === perkModifiers(c).unitHpMul * CAMPAIGN_LEVEL.easy.playerHp, `${m.id} easy: our troops are tougher`);
+      else ok(ctx.perks.unitHpMul === perkModifiers(c).unitHpMul, `${m.id} hard: our troops as the perks leave them`);
+      let cur = m.convoy ? processAction(s, { type: 'stop', ids: s.mission!.convoy ?? [] }) : s;
+      for (let i = 0; i < 200 && !cur.mission!.result; i++) cur = processAction(cur, { type: 'tick', n: 10 });
+      ok(cur.tick >= 2000 || !!cur.mission!.result, `${m.id} ${level}: runs 2000 ticks (${cur.tick})`);
+      const heroes: MissionOutcome['heroes'] = {};
+      for (const h of heroesFor(c, m)) heroes[h] = { xp: c.heroes[h].xp, alive: true };
+      c = applyOutcome(c, m, outcome(m, { heroes }));
+    }
+    ok(c.difficulty === level, `${level}: the setting is kept through a whole campaign`);
+    notes.push(`${level}: all ${MISSIONS.length} missions build and run`);
+  }
+  // A Normal battle carries no level, exactly as battles saved before the setting.
+  const n0 = createMissionState(MISSIONS[0], missionContext(newCampaign('X'), MISSIONS[0], 'n0', 0));
+  ok(n0.mission!.level === undefined, 'a Normal battle carries no level field');
+  return notes.join('; ');
+});
 
 section('act two, played', () => {
   const notes: string[] = [];

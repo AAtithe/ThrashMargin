@@ -50,7 +50,7 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
     difficulty: setup.difficulty,
     createdAt: ids.createdAt,
     autopilot: !human || !!opts?.autopilot,
-    setup: { map: setup.mapType, tech: 'advanced', credits: 3000, ore: setup.ore, sides: n as 2 | 3 | 4, mode: n > 2 ? 'teams' : 'ffa', research: 'lines', size: 'quick' },
+    setup: { map: setup.mapType, tech: 'advanced', credits: 3000, ore: setup.ore, sides: n as 2 | 3 | 4, mode: n > 2 ? 'teams' : 'ffa', research: 'lines', pace: 'quick', size: 'standard', sites: false },
     teams: setup.sides.map(x => x.team),
   });
   // Only the three riflemen per side stand at the start: every unit goes; the Command Yards stay.

@@ -25,7 +25,7 @@ import {
   REFINING2_INCOME,
   REFINING_INCOME,
   RESEARCH_COST_STEP,
-  GAME_SIZES,
+  GAME_PACES,
   SMOKE_TAKEN,
   UNITS,
   UPGRADES,
@@ -38,7 +38,7 @@ import {
   type UpgradeId,
   type WeaponKind,
 } from './rules';
-import { hasBuilding, log, maxHpOf, researchModeOf, sizeOf, techAllowed } from './state';
+import { hasBuilding, log, maxHpOf, researchModeOf, paceOf, techAllowed } from './state';
 import type { GameState, PlayerState, Unit } from './types';
 
 /**
@@ -73,7 +73,7 @@ export function hasUpgrade(s: GameState, owner: Owner, id: UpgradeId): boolean {
 export function researchCostOf(s: GameState, id: UpgradeId): number {
   const base = UPGRADES[id].cost;
   if (researchModeOf(s) !== 'lines') return base;
-  const m = GAME_SIZES[sizeOf(s)].researchCost[UPGRADE_LINE[id].mark - 1];
+  const m = GAME_PACES[paceOf(s)].researchCost[UPGRADE_LINE[id].mark - 1];
   if (m === 1) return base;
   return Math.max(RESEARCH_COST_STEP, Math.round((base * m) / RESEARCH_COST_STEP) * RESEARCH_COST_STEP);
 }
@@ -82,7 +82,7 @@ export function researchCostOf(s: GameState, id: UpgradeId): number {
 export function researchTicksOf(s: GameState, id: UpgradeId): number {
   const base = UPGRADES[id].ticks;
   if (researchModeOf(s) !== 'lines') return base;
-  const m = GAME_SIZES[sizeOf(s)].researchTicks[UPGRADE_LINE[id].mark - 1];
+  const m = GAME_PACES[paceOf(s)].researchTicks[UPGRADE_LINE[id].mark - 1];
   if (m === 1) return base;
   return Math.max(1, Math.round(base * m));
 }
@@ -194,7 +194,7 @@ export const incomeMulOf = (s: GameState, owner: Owner): number =>
 /** Multiplier on this side's aircraft's rearming time. */
 export const rearmMulOf = (s: GameState, owner: Owner): number => (hasUpgrade(s, owner, 'airframes') ? AIRFRAMES_REARM : 1);
 
-// ---- Development lines (round 5; fireline-round5-design.md) ----
+// ---- Development lines (round 5; fireline-round5b-design.md) ----
 // Every query below is 'classic'-safe: a classic side can never hold a non-classic id.
 
 /** Multiplier on this side's infantry's speed (Motorised infantry). */

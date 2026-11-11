@@ -6,7 +6,7 @@ playing very long campaigns" and "what other features can we add into the game".
 Companion documents: `fireline-design.md` (rules, engine, build log), `fireline-campaign-design.md`
 (the fourteen-mission story campaign, Commander and heroes), `fireline-round4-design.md` (sides,
 air, research, act two). A fifth round on development lines (a research tree with Mk I to Mk III
-upgrades, doctrine forks and vehicle loadouts, `fireline-round5-design.md`) is being designed in
+upgrades, doctrine forks and vehicle loadouts, `fireline-round5b-design.md`) is being designed in
 parallel; this proposal is written to sit on top of it and says where it depends on it.
 
 ---
