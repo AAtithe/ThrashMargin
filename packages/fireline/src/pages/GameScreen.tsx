@@ -1467,7 +1467,9 @@ export function Battle({
             <div style={{ ...menuRow, justifyContent: 'flex-end' }}>
               {tourButton}
               <button
-                style={{ ...chromeBtn, ...touchBtn }}
+                type="button"
+                className="fl-d-btn"
+                style={touchBtn}
                 onClick={() => {
                   setMenu(false);
                   setHelp(true);
@@ -1475,7 +1477,7 @@ export function Battle({
               >
                 Controls
               </button>
-              <button style={{ ...chromeBtn, ...touchBtn, borderColor: UI.accent }} onClick={() => setMenu(false)}>
+              <button type="button" className="fl-d-btn fl-d-primary" style={touchBtn} onClick={() => setMenu(false)}>
                 Close
               </button>
             </div>
@@ -2071,9 +2073,10 @@ const menuScrim: CSSProperties = {
 };
 
 const menuSheet: CSSProperties = {
-  background: UI.panel,
-  border: `1px solid ${UI.rule}`,
-  borderRadius: 6,
+  background: 'linear-gradient(180deg, var(--d-console-hi), var(--ui-panel) 90px)',
+  border: '1px solid var(--d-btn-rule)',
+  borderTop: `3px solid ${UI.accent}`,
+  borderRadius: 8,
   padding: 14,
   width: 'min(360px, 100%)',
   display: 'flex',
