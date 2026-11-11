@@ -2415,11 +2415,18 @@ kbd {
   color: var(--ui-text-faint);
 }
 
-.fl-cbar {
+/* The foot of the map: the battle feed, then the bar row under it, in flow, so the feed always sits
+   on the row's real height. A wrapped row on a phone lifts the feed rather than covering it. */
+.fl-dock {
   position: absolute;
   left: 10px;
   right: 10px;
-  bottom: 10px;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+.fl-cbar {
   display: flex;
   align-items: flex-end;
   gap: 8px;
@@ -2437,6 +2444,19 @@ kbd {
   border-radius: 5px;
   box-shadow: 0 2px 12px var(--ui-shadow);
   pointer-events: auto;
+}
+/* On a phone the hero bar is wider than the map once two heroes stand: it keeps to the row's width
+   and scrolls sideways under a finger, rather than running off both edges where no slot can be
+   reached. */
+@media (max-width: 760px), (pointer: coarse) {
+  .fl-herobar {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .fl-herobar > .fl-hero-slot {
+    flex-shrink: 0;
+  }
 }
 .fl-hero-slot {
   display: flex;
@@ -5179,9 +5199,9 @@ kbd {
 
 /* ---- Battlefield overlays: feed, alerts, hint, toast -------------------------------------- */
 
+/* In the dock (.fl-dock), above the bar row; its maximum width is set where it is rendered. */
 .fl-d-feed {
-  position: absolute;
-  left: 10px;
+  align-self: flex-start;
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-start;
@@ -5258,10 +5278,20 @@ div:has(> .fl-alert-chip) > .fl-banners {
 
 /* ---- Support dock and hero bar ------------------------------------------------------------ */
 
-/* The dock sits on the bottom edge of the battlefield, like a drawer pulled out of the console. */
+/* The dock sits on the bottom edge of the battlefield, like a drawer pulled out of the console. On a
+   touch screen it is lifted over the command bar (an inline bottom, with data-lifted). With no bar
+   row the feed keeps its 10px off the bottom edge. */
+.fl-dock:not([data-lifted]) > .fl-d-feed:last-child {
+  margin-bottom: 10px;
+}
 .fl-cbar {
-  bottom: 0;
   gap: 6px;
+  /* One line's height at least: where the feed sat over the row before it was in flow (80px off the
+     edge, 70px over a lifted row), so a row that fits on one line leaves the feed where it was. */
+  min-height: 80px;
+}
+.fl-dock[data-lifted] > .fl-cbar {
+  min-height: 70px;
 }
 .fl-cbar > .fl-herobar,
 .fl-cbar > .fl-powerbar {
@@ -5270,8 +5300,8 @@ div:has(> .fl-alert-chip) > .fl-banners {
   padding-bottom: 6px;
 }
 /* On a touch screen the command bar holds the bottom edge, and the dock floats above it. */
-.fl-cbar[style] > .fl-herobar,
-.fl-cbar[style] > .fl-powerbar {
+.fl-dock[data-lifted] .fl-cbar > .fl-herobar,
+.fl-dock[data-lifted] .fl-cbar > .fl-powerbar {
   border-bottom: 1px solid var(--d-btn-rule);
   border-radius: 8px;
 }
@@ -5960,8 +5990,8 @@ div:has(> .fl-alert-chip) > .fl-banners {
   box-shadow: inset 0 1px 0 var(--d-bevel), 0 6px 20px var(--ui-shadow);
   pointer-events: auto;
 }
-.fl-cbar[style] > .fl-genbar-inline,
-.fl-cbar[style] > .fl-hero-revive {
+.fl-dock[data-lifted] .fl-cbar > .fl-genbar-inline,
+.fl-dock[data-lifted] .fl-cbar > .fl-hero-revive {
   border-bottom: 1px solid var(--d-btn-rule);
   border-radius: 8px;
 }

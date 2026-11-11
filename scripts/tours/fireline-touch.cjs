@@ -10,6 +10,12 @@
  * Quick mode (CI) plays an upright iPhone; the full run adds the iPhone on its side, where the
  * card has to move out of the battlefield's way, and an Android phone. TOUR_DEVICE plays one
  * Playwright device by name.
+ *
+ * On each of those phones (and, in the full run, the narrow iPhone SE) it then opens advanced-tech
+ * skirmishes with heroes and Generals on, built in the page from the game's own modules, and
+ * checks that the bar row (heroes, powers, the General) never covers the battle feed: on a phone
+ * the row wraps, and it once rode over the feed's lowest lines. TOUR_SKIP_TOUR=1 runs that check
+ * alone.
  */
 const { chromium, devices } = require('playwright');
 const path = require('path');
@@ -149,11 +155,114 @@ async function play(browser, name) {
   }
 }
 
+/**
+ * A skirmish save built in the page from the game's own modules (Vite serves them): advanced tech,
+ * Generals on, and for every case but 'bare' heroes on with the Academy, the power structures, the
+ * heroes and a General standing. 'revive' has the Ace fallen, which adds the recruit-again note.
+ * Five feed lines are written so the feed is at its tallest.
+ */
+const buildSkirmish = (page, kind) =>
+  page.evaluate(async kind => {
+    const st = await import('/src/sim/state.ts');
+    const hs = await import('/src/sim/heroes.ts');
+    const sides = await import('/src/sim/sides.ts');
+    const id = `bar-row-${kind}`;
+    const s = st.createInitialState(id, 'Bar row check', { seed: 'bar-row', createdAt: 0, setup: { tech: 'advanced', heroes: kind !== 'bare', generals: true } });
+    const o = sides.startOf(s, 0);
+    if (kind !== 'bare') {
+      const dx = o.x < s.mapW / 2 ? 1 : -1;
+      ['barracks', 'factory', 'uplink', 'techcentre', 'strikecommand', 'academy', 'power', 'power', 'power'].forEach((k, i) =>
+        st.addBuilding(s, 0, k, Math.round(o.x + dx * (4 + 4 * (i % 3))), Math.round(o.y + 4 + 4 * Math.floor(i / 3)), -100));
+      const heroes = kind === 'revive' ? ['spy', 'commando', 'engineer'] : ['spy', 'commando', 'engineer', 'ace'];
+      heroes.forEach((k, i) => st.addUnit(s, 0, k, o.x + 0.5 + i, o.y - 2.5));
+      hs.enlistHeroes(s);
+      if (kind === 'revive') s.players[0].heroFallen = { ace: { at: s.tick + 900, xp: 40 } };
+      st.addUnit(s, 0, 'general', o.x - 1.5, o.y - 2.5);
+      s.powers = { ...(s.powers || {}), 0: { recon: 0, barrage: 300, missile: 0 } };
+    }
+    for (let i = 1; i <= 5; i++) s.log.push({ tick: s.tick, text: `Bar row check ${i}: a line of the battle feed.` });
+    localStorage.setItem('fireline_save_' + id, JSON.stringify(s));
+    localStorage.setItem('fireline_saves', JSON.stringify([{ id, name: 'Bar row check', turn: 0, status: 'active', savedAt: Date.now() }]));
+    return id;
+  }, kind);
+
+/** The feed's box, the bar row's (its own box joined with every bar in it) and the command bar's. */
+const barRowBoxes = page =>
+  page.evaluate(() => {
+    const box = el => {
+      const b = el.getBoundingClientRect();
+      return { left: b.left, right: b.right, top: b.top, bottom: b.bottom };
+    };
+    const join = bs => bs.reduce((a, b) => ({ left: Math.min(a.left, b.left), right: Math.max(a.right, b.right), top: Math.min(a.top, b.top), bottom: Math.max(a.bottom, b.bottom) }));
+    // Found by its text, so the check reads the same on a layout without test ids.
+    const feed = [...document.querySelectorAll('[aria-live="polite"]')].find(e => e.textContent.includes('Bar row check'));
+    const row = document.querySelector('.fl-cbar');
+    const bars = row ? [...row.querySelectorAll('.fl-herobar, .fl-powerbar, .fl-genbtn, .fl-hero-revive')] : [];
+    const cmd = document.querySelector('[data-testid="command-bar"]');
+    return {
+      feed: feed ? box(feed) : null,
+      lines: feed ? feed.children.length : 0,
+      row: row ? join([row, ...bars].map(box)) : null,
+      bars: bars.length,
+      command: cmd ? box(cmd) : null,
+      field: box(document.getElementById('fl-battlefield')),
+      pageWidth: document.documentElement.scrollWidth,
+      width: innerWidth,
+    };
+  });
+
+const meets = (a, b) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
+const fmt = b => `${Math.round(b.top)}..${Math.round(b.bottom)}`;
+
+/** The bar row against the battle feed (and the command bar), on one phone. */
+async function barRow(browser, name) {
+  const tag = name.replace(/ /g, '-');
+  const ctx = await browser.newContext({ ...devices[name] });
+  const page = await ctx.newPage();
+  const before = problems.length;
+  const fail = async (kind, msg) => {
+    problems.push(`${name}, bar row (${kind}): ${msg}`);
+    await page.screenshot({ path: path.join(OUT, `${tag}-bar-row-${kind}.png`) }).catch(() => {});
+  };
+  try {
+    await page.goto(BASE + '/');
+    await page.evaluate(u => {
+      localStorage.setItem('tm_user', u);
+      localStorage.setItem('fireline_tour_seen', '1');
+    }, USER);
+    for (const kind of ['heroes', 'revive', 'bare']) {
+      const id = await buildSkirmish(page, kind);
+      await page.goto(`${BASE}/game/${id}`);
+      await page.locator('.fl-cbar').waitFor({ timeout: 15000 });
+      await sleep(600);
+      const m = await barRowBoxes(page);
+      if (!m.feed || m.lines === 0) {
+        await fail(kind, 'no battle feed on screen');
+        continue;
+      }
+      if (m.bars < (kind === 'bare' ? 2 : 3)) await fail(kind, `the bar row holds ${m.bars} bars`);
+      if (meets(m.feed, m.row)) await fail(kind, `the bar row (${fmt(m.row)}) covers the battle feed (${fmt(m.feed)}) by ${Math.round(m.feed.bottom - m.row.top)}px`);
+      if (m.command && meets(m.row, m.command)) await fail(kind, `the bar row (${fmt(m.row)}) covers the command bar (${fmt(m.command)})`);
+      if (m.command && meets(m.feed, m.command)) await fail(kind, `the battle feed (${fmt(m.feed)}) covers the command bar (${fmt(m.command)})`);
+      if (m.feed.bottom <= m.field.top) await fail(kind, 'the newest feed line is above the battlefield');
+      if (m.row.left < m.field.left - 0.5 || m.row.right > m.field.right + 0.5) await fail(kind, `the bar row (${Math.round(m.row.left)}..${Math.round(m.row.right)}) runs off the battlefield`);
+      if (m.pageWidth > m.width) await fail(kind, `the page scrolls sideways (${m.pageWidth}px in ${m.width}px)`);
+    }
+    if (problems.length === before) console.log(`  ${name}: the bar row clears the battle feed`);
+  } catch (e) {
+    await fail('run', e.message.split('\n')[0]);
+  } finally {
+    await ctx.close();
+  }
+}
+
 (async () => {
   require('fs').mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch();
   try {
-    for (const d of DEVICES) await play(browser, d);
+    if (!process.env.TOUR_SKIP_TOUR) for (const d of DEVICES) await play(browser, d);
+    const rowDevices = process.env.TOUR_DEVICE || process.env.TOUR_QUICK ? DEVICES : [...DEVICES, 'iPhone SE'];
+    for (const d of rowDevices) await barRow(browser, d);
   } finally {
     await browser.close();
   }

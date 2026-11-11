@@ -1714,10 +1714,22 @@ export function Battle({
               )}
             </div>
           )}
+          {mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
+          {/* The battle feed and the bar row share one dock along the foot of the map, in flow: the
+              feed always sits on the row's real height, so a row that wraps on a phone lifts the feed
+              instead of covering its lowest lines. The row keeps a one-line minimum height, which is
+              where the feed sat before, so a row that fits on one line changes nothing. */}
+          <div
+            className="fl-dock"
+            style={barLift ? { bottom: 10 + barLift } : undefined}
+            data-lifted={barLift ? '1' : undefined}
+            data-testid="battle-dock"
+          >
           <div
             className="fl-d-feed"
-            style={{ bottom: ((mission && !ended) || skirmishPowers || planetBar ? 80 : 10) + barLift, maxWidth: layout.stacked ? '90%' : 'min(60%, 520px)' }}
+            style={{ maxWidth: layout.stacked ? 'calc((100% + 20px) * 0.9)' : 'min(calc((100% + 20px) * 0.6), 520px)' }}
             aria-live="polite"
+            data-testid="battle-feed"
           >
             {(layout.stacked ? recent.slice(0, 3) : recent).map(l => (
               <div key={`${l.tick}-${l.text}`} data-tone={l.tone ?? 'info'} style={{ opacity: Math.max(0.3, 1 - (s.tick - l.tick) / 300) }}>
@@ -1725,23 +1737,22 @@ export function Battle({
               </div>
             ))}
           </div>
-          {mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
           {/* round6:B begin. Heroes in free play: the hero bar also shows in a skirmish with heroes on; B may
               change the two bars from here to "round6:B end". */}
           {mission && !ended && (
-            <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
+            <div className="fl-cbar" data-testid="bar-row">
               <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
               <PowerBar s={s} targeting={targeting} onPower={choosePower} />
             </div>
           )}
           {planetBar && (
-            <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
+            <div className="fl-cbar" data-testid="bar-row">
               <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
               <PowerBar s={s} targeting={targeting} onPower={choosePower} />
             </div>
           )}
           {skirmishPowers && (
-            <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
+            <div className="fl-cbar" data-testid="bar-row">
               {heroesInPlay(s) && (
                 <>
                   <HeroBar s={s} heroes={skirmishHeroes(s)} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
@@ -1767,6 +1778,7 @@ export function Battle({
             </div>
           )}
           {/* round6:B end. */}
+          </div>
           {/* round6:C begin. Generals: the General's button (select, its aura, its replacement timer) goes below.
               Integration: it sits in the bar row above, beside the hero and power bars (fieldGenerals
               implies advanced tech, so that row is always there), so the three wrap together on a phone. */}
