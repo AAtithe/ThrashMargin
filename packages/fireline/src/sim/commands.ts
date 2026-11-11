@@ -2,6 +2,7 @@ import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt
 import { isWalkable } from './map';
 import { isEnemy } from './sides';
 import { airRoom, canHit, isAir } from './air';
+import { shoreProblem } from './naval';
 import { upgradeNewUnit } from './research';
 import type { Target } from './grid';
 import {
@@ -146,6 +147,11 @@ export function placementProblem(
   if (kind === 'refinery') {
     const d = { x: x + 1, y: frontRow(s, owner, y, spec.h) };
     if (!onMap(s, d.x, d.y) || !isWalkable(s.tiles[tileAt(s, d.x, d.y)]) || occ[tileAt(s, d.x, d.y)]) return 'The dock pad below needs clear ground';
+  }
+  // The naval war: a Naval Yard stands on the shore of open sea.
+  if (kind === 'shipyard') {
+    const sea = shoreProblem(s, x, y);
+    if (sea) return sea;
   }
   if (opts.anywhere) return null;
   // Near something we already own (walls do not count: they cannot creep a base across the map).
