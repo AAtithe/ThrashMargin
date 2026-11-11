@@ -303,6 +303,18 @@ export function doMove(s: GameState, owner: Owner, ids: number[], x: number, y: 
   const MAP_W = s.mapW;
   // round6:D begin. Formations and squads: a move with a formation takes its slots from slotsFor
   // (and forms a squad) instead of the spiral below; without one, exactly the spiral as today.
+  // A shape is given through doFormationMove (below). Here, a plain move of exactly one squad's
+  // members keeps its shape; any other plain move takes the units it names out of their squads.
+  // Without squads (every battle until someone forms one) nothing here runs.
+  if (s.squads) {
+    pruneSquads(s);
+    const q = queue ? undefined : wholeSquad(s, units);
+    if (q) {
+      doFormationMove(s, owner, ids, x, y, attackMove, q.shape);
+      return;
+    }
+    leaveSquads(s, units);
+  }
   // round6:D end.
   const slots = formation(units.length);
   units.forEach((u, i) => {
@@ -333,6 +345,111 @@ function formation(n: number): [number, number][] {
 
 // round6:D begin. Formations and squads: slotsFor(shape, n, facing), the role order, and the
 // 'formation' action's check and work (or in a formations.ts of D's own, imported here).
+import { facingOf, isFormationShape, leaveSquads, pruneSquads, slotOrder, slotScale, slotsFor, slowest, wholeSquad } from './formations';
+import type { FormationShape } from './rules';
+import type { Squad } from './types';
+
+/**
+ * A move in a formation: slots from slotsFor, facing from the group's middle to the point (or
+ * `facing` when given), handed out by role then id. Not queued, the ground units form a squad (ids
+ * from s.nextId) that keeps to its slowest member's pace, leaving any squads they were in; queued,
+ * each unit queues its slot and squads are left as they are. Aircraft take a slot but join no squad.
+ */
+export function doFormationMove(
+  s: GameState,
+  owner: Owner,
+  ids: number[],
+  x: number,
+  y: number,
+  attackMove: boolean,
+  shape: FormationShape,
+  queue = false,
+  facing?: number,
+): void {
+  const units = ownUnits(s, owner, ids);
+  if (!units.length) return;
+  const occ = occupancy(s);
+  const MAP_W = s.mapW;
+  let cx = 0;
+  let cy = 0;
+  for (const u of units) {
+    cx += u.x;
+    cy += u.y;
+  }
+  cx /= units.length;
+  cy /= units.length;
+  const face = facing ?? facingOf(x - cx, y - cy, 0);
+  const ordered = slotOrder(s, units, shape);
+  const scale = slotScale(face);
+  const slots = slotsFor(shape, ordered.length, face);
+  const ground = ordered.filter(u => !isAir(u));
+  if (!queue) leaveSquads(s, ground);
+  const squad = !queue && ground.length >= 2;
+  const q: Squad | null = squad
+    ? { id: s.nextId++, leader: ground[0].id, shape, members: ground.map(u => u.id), facing: face, x, y, attack: attackMove, pace: slowest(s, ground) }
+    : null;
+  ordered.forEach((u, i) => {
+    const ox = slots[i][0] * scale;
+    const oy = slots[i][1] * scale;
+    let tx = x + ox;
+    let ty = y + oy;
+    const k = isAir(u) ? -1 : nearestPassable(s, occ, tx, ty, 4);
+    if (k >= 0 && (Math.floor(tx) !== k % MAP_W || Math.floor(ty) !== ((k / MAP_W) | 0))) {
+      tx = (k % MAP_W) + 0.5;
+      ty = ((k / MAP_W) | 0) + 0.5;
+    }
+    // A tile once taken counts as blocked for the slots after it, so no two units share one.
+    if (k >= 0) occ[k] = -1;
+    give(u, attackMove && unitSpecOf(s, u).weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty }, queue);
+    if (q && !isAir(u)) {
+      u.squad = q.id;
+      u.slotX = ox;
+      u.slotY = oy;
+    }
+  });
+  if (q) {
+    pruneSquads(s);
+    s.squads = [...(s.squads ?? []), q];
+  }
+}
+
+/** Legal when the shape is one of FORMATION_SHAPES and the move itself would be. */
+export function canFormationMove(s: GameState, owner: Owner, ids: number[], x: number, y: number, queue: boolean, shape: unknown): boolean {
+  return isFormationShape(shape) && canMove(s, owner, ids, x, y, queue);
+}
+
+/** Legal when the shape is known (or 'none') and there is something to do: two ground units to form up, or a squad to leave. */
+export function canFormation(s: GameState, owner: Owner, ids: number[], shape: unknown): boolean {
+  const units = ownUnits(s, owner, ids);
+  if (shape === 'none') return units.some(u => u.squad !== undefined);
+  if (!isFormationShape(shape)) return false;
+  return units.filter(u => !isAir(u)).length >= 2;
+}
+
+/**
+ * Forms these units up where they stand, as a squad: around their middle, facing the way they face
+ * on the whole. 'none' takes them out of their squads instead, leaving their orders alone.
+ */
+export function doFormation(s: GameState, owner: Owner, ids: number[], shape: FormationShape | 'none'): void {
+  const units = ownUnits(s, owner, ids);
+  if (shape === 'none') {
+    leaveSquads(s, units);
+    return;
+  }
+  const ground = units.filter(u => !isAir(u));
+  let cx = 0;
+  let cy = 0;
+  let fx = 0;
+  let fy = 0;
+  for (const u of ground) {
+    cx += u.x;
+    cy += u.y;
+    fx += u.fx;
+    fy += u.fy;
+  }
+  const n = ground.length;
+  doFormationMove(s, owner, ground.map(u => u.id), cx / n, cy / n, false, shape, false, facingOf(fx, fy, 0));
+}
 // round6:D end.
 
 /** The enemy unit or structure with this id, or null. */

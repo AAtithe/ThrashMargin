@@ -260,6 +260,33 @@ export default function HowToPlay() {
         {/* round6:C. Generals: its panel goes on the line below. */}
         <GeneralsPanel />
         {/* round6:D. Formations and squads: its panel goes on the line below. */}
+        <Panel title="Formations and groups">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Select two or more units and press <strong>Line</strong>, <strong>Column</strong>, <strong>Wedge</strong> or{' '}
+              <strong>Box</strong> beside the stance buttons (or press <kbd>.</kbd> to cycle through them). They form up where they
+              stand and become a squad. From then on, any move you give exactly those units keeps the shape, turned to face the way
+              you send them. <strong>None</strong> breaks the squad up.
+            </li>
+            <li>
+              Tanks and other armour take the front, infantry the ranks behind, Medics and Repair Trucks the middle (the inside of a
+              box), and artillery and unarmed vehicles the rear. A line puts every gun forward; a column fits roads and bridges; a
+              wedge drives in with its armour at the tip; a box holds, with the support inside.
+            </li>
+            <li>
+              A squad keeps pace: nobody outruns its slowest member, so it arrives together. One unit leads and the rest keep to
+              their places beside it. Order some of a squad elsewhere and they leave it; a squad down to one unit is over.
+            </li>
+            <li>
+              With advanced tech the computer does the same: its waves attack in a wedge and pull together into a box.
+            </li>
+            <li>
+              Control groups (<kbd>Ctrl</kbd> + 1 to 9) are remembered for each battle in this browser. On a touch screen they are
+              chips under the formation buttons: tap one to select the group, again to jump to it, and <strong>+ Group</strong> to
+              make the selection the next group.
+            </li>
+          </ul>
+        </Panel>
 
         <Panel title="Campaign">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>

@@ -129,6 +129,18 @@ mission AI once the round-1 opponent work lands.
   - [x] The computer plays either army; the build window, stat cards and How to play read the player's army.
   - [ ] Battlefield art carries no army tint (seat colours only); a tint would need art tokens the canvas can read.
   - [ ] Hard: Ashen against Meridian not yet measured over 150 seeds (only Normal).
+- [x] B. Heroes in free play behind a setup option (Command Academy, one of each, revive after 90s at half price).
+  - [ ] The stat card and How to play's unit grids read the catalogue's hero cost and time (0); they should read `costFor` and `buildTicksFor` (integration, with A's per-army stat tip).
+- [x] C. Generals. A doctrine General per seat (two per army, a perks bundle on
+  that side alone) and, behind "Generals: On", a field General unit with a command aura.
+  - [ ] The link "a General leads a formation" waits for workstream D, at integration.
+- [x] D. Formations and squads: line, column, wedge and box; a squad that keeps pace; the computer's waves in formation.
+  - [x] `slotsFor` integer tables turned to eight facings without trigonometry; slots by role, then id (Medics inside a box).
+  - [x] Squads: the leader paths, the others steer to their slot beside it every 8 ticks, everyone at the slowest member's pace.
+  - [x] Formation row beside Stance (desktop and touch), the period key; control groups kept per battle in the browser, chips on touch.
+  - [x] The computer's waves attack in a wedge and regroup in a box, advanced tech only.
+  - [ ] Slot marks for a selected squad on the battlefield (renderer.ts has no D marker yet; the integrator's call).
+  - [ ] A touch Controls row for the formation buttons (the touch key table has no D marker).
 
 ## Found along the way
 
@@ -147,9 +159,3 @@ mission AI once the round-1 opponent work lands.
 - Touch controls (tap to select, tap-and-hold for orders).
 - Ambient music bed.
 - A scripted "human player" in the harness so balance can be measured without hand play.
-
-- [x] Round 6, B: heroes in free play behind a setup option (Command Academy, one of each, revive after 90s at half price).
-  - [ ] The stat card and How to play's unit grids read the catalogue's hero cost and time (0); they should read `costFor` and `buildTicksFor` (integration, with A's per-army stat tip).
-- [x] Round 6, workstream C: Generals. A doctrine General per seat (two per army, a perks bundle on
-  that side alone) and, behind "Generals: On", a field General unit with a command aura.
-  - The link "a General leads a formation" waits for workstream D, at integration.

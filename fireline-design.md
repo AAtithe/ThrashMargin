@@ -999,3 +999,67 @@ replacement arrives, which may be queued 1200 ticks after. The computer saves fo
 wave, keeps it 2.5 tiles behind its wave's centre (gathering point otherwise), and pulls it home
 below 40% health until 75%. Tests: `scripts/drive-generals.ts`. Default battles are unchanged: every
 summary line of `npm run drive` matches the baseline.
+
+### 2026-11-11: Formations and squads (round 6, workstream D)
+
+Contract: `fireline-round6-design.md` section 6. Four shapes (line, column, wedge, box), a squad that
+keeps pace, and the computer's waves in formation on advanced tech.
+
+- **Slots** (`src/sim/formations.ts`): `slotsFor(shape, n, facing)` returns integer offset tables,
+  front first and centred on the group. Line: one rank up to ten, then more ranks. Column: one file
+  up to four, then two. Wedge: row k holds k + 1 slots two tiles apart, so the arms run back at 45
+  degrees. Box: the edge of a near-square first, the inside last (a short box drops back-row corners,
+  never the inside). Turned to eight facings with unnormalised steps (diagonals scaled by 0.75), and
+  `facingOf` snaps a direction with integer comparisons against 0.414 (tan 22.5 degrees).
+- **Role order**, by category and spec, never by name: armed vehicles, then infantry, then Medics and
+  Repair Trucks, then artillery and support (a minimum range, no ground weapon, no weapon, aircraft).
+  In a box the Medics and Repair Trucks go last, so they take the inside. Ties by id.
+- **Squads.** A move with a `formation` (or the `formation` action, which forms up where the units
+  stand) makes the ground units a squad (`s.squads`, ids from `s.nextId`; aircraft take a slot but
+  join none). The leader (slot 0) paths to its slot. Every 8 ticks, from the leader's own step, the
+  rest are aimed at their slot beside the leader plus 2 tiles ahead, or at their final slot once the
+  leader is within 4 tiles of its goal; members that fell or took other orders leave then. Keep pace:
+  one line in `stepAlong` caps every member at the slowest member's speed, except one more than 1.5
+  tiles from its slot, which may catch up. A plain move of exactly a squad's members keeps its shape;
+  any other plain move takes the named units out; a squad down to one is dissolved; `'none'` breaks one
+  up and leaves the orders alone. `migrateRound6` drops fallen members, re-picks a fallen leader,
+  dissolves a squad under two and drops malformed squad fields and stray slots.
+- **No formation, no change**: a move without a `formation`, with no squads in the state, is the
+  spiral exactly, so every replay and every standard-tech and mission line is unchanged.
+- **Interface.** Line, Column, Wedge, Box and None beside Stance in the selection panel (the same panel
+  on touch), the current one pressed. The period key cycles line, column, wedge, box, none (Shift goes
+  back). Control groups are kept per battle in this browser (`fireline_groups:<save id>`), not in the
+  save: the battle screen fills its groups in from storage on the first key and records each
+  Ctrl + digit. On touch, chips under the formation row select a group (again: jump to it) and
+  "+ Group" makes the selection the next free one; a chip presses the same key the keyboard does.
+- **Computer.** On advanced tech only (`adv`), a wave sets off to attack in a wedge and regroups in a
+  box. Gathering, reinforcements and retreats are as before.
+
+Harness (`scripts/drive-formations.ts`, about 380 assertions, about 5 seconds): every table for
+four shapes, 1 to 40 units and eight facings is deterministic, whole, unrepeated, led from the front,
+turned with its facing and centred; facing within 20 degrees and at the 22.5 degree boundaries;
+every shaped move toward eight directions lands on distinct passable tiles with the role order;
+keeping pace (wedge, column and box arrive within 50 ticks of each other and of the slowest member,
+the line within 120; the plain move spreads about 156, the buggies arriving 190 ticks sooner);
+replay and save-and-load mid-march byte-identical; joining, leaving, dissolving, fallen leaders;
+eleven refusals; the computer forms a wedge on advanced tech and never on standard.
+
+`npm run drive`: 0 failed. Only the advanced lines moved, as the contract allows:
+
+| Line | Before | After |
+|---|---|---|
+| Air battle on Hard | side 1 at 21 min; 12 bombs, 5 rockets; upgrades 0 and 0 | side 1 at 19 min; 12 bombs, 4 rockets; upgrades 0 and 2 |
+| Sides block | 12/12, 21.8 min | 12/12, 20.8 min (the six advanced battles moved, the six standard ones did not) |
+| Larger maps | 5/5; 33.2 min larger, 25.6 standard | 5/5; 34.7 and 23.4 |
+| Engineering battle | side 1 in 21 min, 3 trucks, 3 Field Yards, 78 mends | side 1 in 25 min, 3 trucks, 5 Field Yards, 86 mends |
+| Map types | 12/12, 26.2 min; side 0 won 4, side 1 won 8 | 11/12, 25.1 min; side 0 won 4, side 1 won 7 |
+
+The unfinished map-type battle (highlands, seed 2) was followed to its cap: no squad left after
+minute 50, both sides broke with three units each; an attrition stalemate, of the kind the default
+battles already show (26/28). Unchanged: the mission lines, the standard-tech line, the tier-three
+battle, every map and site check.
+
+Ladder, `--map mix`, 150 seeds, Normal: the mirror read 53% / 45% (3 unfinished) before and 47% / 53%
+(1 unfinished) after, inside the noise, average length 25.1 and 25.2 minutes; new against `prev` 69%
+before, 67% after. Formations neither help nor hurt the computer measurably; they change how a wave
+looks on the way in, which is the point.

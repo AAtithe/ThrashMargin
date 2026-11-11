@@ -371,6 +371,9 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): vo
 // ---------------------------------------------------------------------------------------------
 // Movement
 
+// round6:D. Formations and squads: keep pace (fireline-round6-design.md).
+import { squadPace } from './formations';
+
 function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popOnArrive: boolean): boolean {
   const speed = unitSpecOf(s, u).speed;
   let sp = overdrive(u) ? speed * OVERDRIVE_SPEED : speed;
@@ -379,6 +382,7 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
   if (tuned !== 1 && UNITS[u.kind].category === 'vehicle') sp *= tuned;
   // round6:D begin. Formations and squads: a squad member's speed capped at its squad's slowest
   // (one lookup; no pathing change). Nothing else in stepAlong changes.
+  if (u.squad !== undefined) sp = squadPace(s, ctx.units, ctx.occ, u, sp, tuned);
   // round6:D end.
   const dx = tx - u.x;
   const dy = ty - u.y;

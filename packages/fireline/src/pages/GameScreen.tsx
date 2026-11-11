@@ -148,6 +148,10 @@ export interface CampaignBattle {
   renderEnd: (s: GameState) => ReactNode;
 }
 
+// round6:D. Formations and squads: the period key and control groups kept per battle (fireline-round6-design.md).
+import { cycleFormation, GROUPS_SYNC_CODE, rememberGroup, restoreGroups } from '../game/Formations';
+import { FORMATION_NAMES } from '../sim/rules';
+
 export function Battle({
   initial,
   save,
@@ -1011,6 +1015,23 @@ export function Battle({
       // round6:C end.
       // round6:D begin. Formations and squads: the period key (e.code 'Period') sets the selection's
       // formation, cycling line, column, wedge, box and none.
+      // Control groups are kept per battle in this browser (game/Formations.tsx): filled in from
+      // storage on the first key, and each Ctrl + digit recorded before the branch below makes it.
+      if (restoreGroups(groups.current, cur.current.id)) {
+        syncGroupBadges();
+        refresh();
+      }
+      if (e.code === GROUPS_SYNC_CODE) return;
+      if (/^[1-9]$/.test(e.key) && (e.ctrlKey || e.metaKey)) {
+        rememberGroup(cur.current.id, e.key, ownSelectedUnits().map(u => u.id));
+        refresh();
+      }
+      if (e.code === 'Period' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const go = cycleFormation(cur.current, ownSelectedUnits(), e.shiftKey);
+        if (!go) showToast('Select two or more of your ground units to form up');
+        else if (dispatch(go)) showToast(go.type === 'formation' && go.shape !== 'none' ? `Formation: ${FORMATION_NAMES[go.shape]}` : 'No formation');
+        return;
+      }
       // round6:D end.
       if (e.key === 'Escape') {
         // The controls sheet hides the build window, so it goes first; then the window, then the rest.
@@ -1829,6 +1850,7 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['0', 'Skirmish with Generals on: select your General; twice to jump to it'],
     // round6:C end.
     // round6:D begin. Formations and squads: the period row.
+    ['. (period)', 'Formation for the selected units: line, column, wedge, box, then none (Shift + . goes back). Moving exactly those units keeps it'],
     // round6:D end.
     ['F', "Skirmish: the selection's own command when it has one, such as Deploy (the key shows on its button)"],
     ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],

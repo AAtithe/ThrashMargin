@@ -772,6 +772,9 @@ export function BuildTipFooter({
   );
 }
 
+// round6:D. Formations and squads: the formation row and the touch group chips (fireline-round6-design.md).
+import { FormationControls } from './Formations';
+
 export function SelectionPanel({
   state,
   selected,
@@ -935,6 +938,7 @@ export function SelectionPanel({
         </div>
       )}
       {/* round6:D begin. Formations and squads (fireline-round6-design.md): the formation button row, beside Stance. */}
+      {mine && <FormationControls state={state} units={units} dispatch={dispatch} touch={touch} />}
       {/* round6:D end. */}
       {/* round6:B begin. Heroes in free play: anything of B's in the selection panel. */}
       {/* round6:B end. */}

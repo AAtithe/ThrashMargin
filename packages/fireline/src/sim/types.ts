@@ -102,6 +102,9 @@ export interface Unit {
   aura?: number;
   // round6:C end.
   // round6:D begin. Formations and squads: optional Unit fields (a slot offset, for instance).
+  /** In a squad: this unit's slot, in tiles from the squad's anchor (Squad.x, Squad.y). */
+  slotX?: number;
+  slotY?: number;
   // round6:D end.
 }
 
@@ -475,6 +478,15 @@ export interface Squad {
   /** Unit ids, the leader included. */
   members: number[];
   // round6:D begin. Formations and squads: optional Squad fields (facing, slot table, for instance).
+  /** Which way the squad faces: 0 north, then clockwise in eighths to 7 north-west. */
+  facing?: number;
+  /** Where the squad was sent: its anchor, from which each member's slot is measured. */
+  x?: number;
+  y?: number;
+  /** True when it was sent with an attack-move: its armed members fight on the way. */
+  attack?: boolean;
+  /** Tiles per tick: the slowest member's speed, which every member keeps to. */
+  pace?: number;
   // round6:D end.
 }
 
@@ -670,6 +682,7 @@ export type GameAction =
   // round5:C end.
   // round6:D begin. Formations and squads: forming these units up where they stand, as a squad in
   // this shape (refused by the reducer's default until D handles it).
-  | { type: 'formation'; ids: number[]; shape: FormationShape }
+  // 'none' takes the units out of their squads, leaving their orders as they are.
+  | { type: 'formation'; ids: number[]; shape: FormationShape | 'none' }
   // round6:D end.
   ;
