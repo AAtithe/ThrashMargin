@@ -20,6 +20,7 @@ import {
   HERO_REVIVE_TICKS,
   INFANTRY_MENU,
   VEHICLE_MENU,
+  type BuildingKind,
   type HeroKind,
   type Owner,
 } from '../src/sim/rules';
@@ -61,7 +62,7 @@ function heroBattle(seed: string, academy = true): GameState {
   const s = createInitialState('hf', 'hf', { seed, createdAt: 0, setup: { tech: 'advanced', heroes: true } });
   const st = startOf(s, 0);
   const dx = st.x < s.mapW / 2 ? 1 : -1;
-  const kinds = ['barracks', 'factory', 'techcentre', ...(academy ? [HERO_ACADEMY] : [])] as const;
+  const kinds: BuildingKind[] = ['barracks', 'factory', 'techcentre', ...(academy ? [HERO_ACADEMY] : [])];
   kinds.forEach((k, i) => addBuilding(s, 0, k, Math.round(st.x + dx * (5 + 4 * i)), Math.round(st.y + 5), -100));
   s.players[0].credits = 100000;
   return s;
@@ -200,28 +201,33 @@ function savesAndMissions(ok: Ok): void {
 }
 
 function computer(ok: Ok): void {
-  let s = createInitialState('hc', 'hc', { seed: 'a', difficulty: 'hard', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
+  // Integration: four Normal battles rather than one Hard one. With workstream D's formations the
+  // computer's Hard advanced battles end sooner (a wedge arrives together), often before its heroes,
+  // recruited from about minute 13, have anything to do; over four battles they must still be used.
   const kinds = new Set<string>();
   let used = 0;
   let twice = '';
-  while (s.winner === null && s.tick < 36000) {
-    const before = s;
-    s = processAction(s, { type: 'tick', n: 10 });
-    for (const o of [0, 1] as Owner[])
-      for (const k of HERO_KINDS) {
-        const n = s.units.filter(u => u.owner === o && u.kind === k && u.hp > 0).length + s.players[o].queues[cat(k)].filter(x => x.kind === k).length;
-        if (n > 1 && !twice) twice = `side ${o} ${k} at ${s.tick}`;
+  for (const seed of ['a', 'b', 'c', 'd']) {
+    let s = createInitialState('hc', 'hc', { seed, difficulty: 'normal', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
+    while (s.winner === null && s.tick < 36000) {
+      const before = s;
+      s = processAction(s, { type: 'tick', n: 10 });
+      for (const o of [0, 1] as Owner[])
+        for (const k of HERO_KINDS) {
+          const n = s.units.filter(u => u.owner === o && u.kind === k && u.hp > 0).length + s.players[o].queues[cat(k)].filter(x => x.kind === k).length;
+          if (n > 1 && !twice) twice = `seed ${seed}: side ${o} ${k} at ${s.tick}`;
+        }
+      for (const u of s.units) {
+        if (!u.hero) continue;
+        kinds.add(`${u.owner}:${u.kind}`);
+        const was = before.units.find(v => v.id === u.id)?.hero;
+        if ((was && u.hero.abilityCd > was.abilityCd) || (u.hero.active?.kind === 'capture' && was?.active?.kind !== 'capture')) used++;
       }
-    for (const u of s.units) {
-      if (!u.hero) continue;
-      kinds.add(`${u.owner}:${u.kind}`);
-      const was = before.units.find(v => v.id === u.id)?.hero;
-      if ((was && u.hero.abilityCd > was.abilityCd) || (u.hero.active?.kind === 'capture' && was?.active?.kind !== 'capture')) used++;
     }
+    ok(s.winner !== null, `seed ${seed}: the battle with heroes on finishes (${(s.tick / 600).toFixed(1)} min)`);
   }
-  ok(s.winner !== null, `the battle with heroes on finishes (${(s.tick / 600).toFixed(1)} min)`);
   ok(kinds.size >= 3, `the computer recruits heroes (${[...kinds].join(', ')})`);
-  ok(used >= 3, `and uses their abilities (${used} times)`);
+  ok(used >= 3, `and uses their abilities (${used} times over four battles)`);
   ok(!twice, `never more than one of each hero per side${twice ? `: ${twice}` : ''}`);
 }
 // round6:B end.

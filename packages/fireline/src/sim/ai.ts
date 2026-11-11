@@ -31,7 +31,7 @@ import { sitesPlan } from './aiSites';
 // round6:B. Heroes in free play (fireline-round6-design.md, workstream B).
 import { heroKeptBack, heroPlan } from './aiHeroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
-import { generalPlan } from './aiGenerals';
+import { generalLeads, generalPlan } from './aiGenerals';
 
 /**
  * The computer commander. It plays by the same rules and the same orders as the player: it pays
@@ -636,7 +636,8 @@ function commander(s: GameState, owner: Owner): void {
       const target = pickTarget(enemy, foes, stage, t.focus, home);
       // round6:D begin. Formations: the wave sets off to attack (a wedge, in D's plan).
       // Advanced tech only: a wedge, armour at the tip, keeping to its slowest member's pace.
-      if (adv) doFormationMove(s, owner, waveIds, target.x, target.y, true, 'wedge');
+      // Integration: a field General near the wave leads it (generalLeads; none with Generals off).
+      if (adv) doFormationMove(s, owner, [...waveIds, ...generalLeads(s, owner, waveIds)], target.x, target.y, true, 'wedge');
       else doMove(s, owner, waveIds, target.x, target.y, true);
       // round6:D end.
       // A recon sweep over where the wave is going, as it sets off.
@@ -672,8 +673,10 @@ function commander(s: GameState, owner: Owner): void {
         const meet = openGround(s, owner, toward(centre, target, 2));
         // round6:D begin. Formations: the wave regroups (a box, in D's plan).
         // Advanced tech only: a box, the Medics and Repair Trucks inside.
-        if (adv) doFormationMove(s, owner, core.map(u => u.id), meet.x, meet.y, true, 'box');
-        else doMove(s, owner, core.map(u => u.id), meet.x, meet.y, true);
+        if (adv) {
+          const ids = core.map(u => u.id);
+          doFormationMove(s, owner, [...ids, ...generalLeads(s, owner, ids)], meet.x, meet.y, true, 'box');
+        } else doMove(s, owner, core.map(u => u.id), meet.x, meet.y, true);
         // round6:D end.
         mem.waveTick = s.tick;
       } else {

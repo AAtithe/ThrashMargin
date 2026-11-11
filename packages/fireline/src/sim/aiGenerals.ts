@@ -14,7 +14,8 @@
  */
 import { stageDistance } from './aiScale';
 import { canQueue, doMove, doQueue } from './commands';
-import { fieldGenerals, generalQueueable } from './generals';
+import { squadById } from './formations';
+import { fieldGenerals, generalOf, generalQueueable } from './generals';
 import { dist, nearestPassable, occupancy } from './grid';
 import { GENERAL_RETREAT_BELOW, GENERAL_RETURN_AT, UNITS, type Owner } from './rules';
 import { costFor, maxHpOf, unlocked } from './state';
@@ -94,6 +95,9 @@ export function generalPlan(s: GameState, owner: Owner, home: Pt, enemyHome: Pt,
   const post = generalPost(s, owner, g, home, enemyHome);
   if (post.back) mem.generalBack = true;
   else if (mem.generalBack !== undefined) delete mem.generalBack;
+  // Integration (section 7): leading its wave's squad, the General goes where the squad goes. Pulling
+  // back still takes it out (a plain move of one member leaves the squad).
+  if (!post.back && squadById(s, g.squad)) return;
   const far = post.back ? 2 : 3;
   if (dist(g.x, g.y, post.at.x, post.at.y) <= far) return;
   // Already on its way there: leave the path alone.
@@ -102,4 +106,29 @@ export function generalPlan(s: GameState, owner: Owner, home: Pt, enemyHome: Pt,
   const k = nearestPassable(s, occ, post.at.x, post.at.y, 6);
   if (k < 0) return;
   doMove(s, owner, [g.id], (k % s.mapW) + 0.5, Math.floor(k / s.mapW) + 0.5, false);
+}
+
+/** How near the wave's middle the General must be to lead it (tiles). */
+export const GENERAL_AI_LEAD_WITHIN = 12;
+
+/**
+ * Integration (fireline-round6-design.md section 7): the General's id when it should lead this wave's
+ * formation move (Generals on, standing, not pulling back, and near the wave), otherwise none. The
+ * commander adds it to the ids of its formation moves, so the squad is formed with the General at
+ * its head (squadLeader) and keeps tighter.
+ */
+export function generalLeads(s: GameState, owner: Owner, waveIds: number[]): number[] {
+  if (!fieldGenerals(s) || s.ai[owner].generalBack) return [];
+  const g = generalOf(s, owner);
+  if (!g) return [];
+  const ids = new Set(waveIds);
+  const wave = s.units.filter(u => ids.has(u.id) && u.hp > 0 && UNITS[u.kind].category !== 'air');
+  if (wave.length < 2) return [];
+  let x = 0;
+  let y = 0;
+  for (const u of wave) {
+    x += u.x;
+    y += u.y;
+  }
+  return dist(g.x, g.y, x / wave.length, y / wave.length) <= GENERAL_AI_LEAD_WITHIN ? [g.id] : [];
 }

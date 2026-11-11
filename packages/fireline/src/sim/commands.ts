@@ -345,7 +345,7 @@ function formation(n: number): [number, number][] {
 
 // round6:D begin. Formations and squads: slotsFor(shape, n, facing), the role order, and the
 // 'formation' action's check and work (or in a formations.ts of D's own, imported here).
-import { facingOf, isFormationShape, leaveSquads, pruneSquads, slotOrder, slotScale, slotsFor, slowest, wholeSquad } from './formations';
+import { facingOf, isFormationShape, leaveSquads, pruneSquads, slotOrder, slotScale, slotsFor, slowest, squadLeader, wholeSquad } from './formations';
 import type { FormationShape } from './rules';
 import type { Squad } from './types';
 
@@ -386,7 +386,7 @@ export function doFormationMove(
   if (!queue) leaveSquads(s, ground);
   const squad = !queue && ground.length >= 2;
   const q: Squad | null = squad
-    ? { id: s.nextId++, leader: ground[0].id, shape, members: ground.map(u => u.id), facing: face, x, y, attack: attackMove, pace: slowest(s, ground) }
+    ? { id: s.nextId++, leader: squadLeader(ground).id, shape, members: ground.map(u => u.id), facing: face, x, y, attack: attackMove, pace: slowest(s, ground) }
     : null;
   ordered.forEach((u, i) => {
     const ox = slots[i][0] * scale;

@@ -80,6 +80,10 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Generals: saves, missions and replays', saves],
   ['Generals: whole battles with Generals on', battles],
   // round6:C end.
+  // round6:integration begin. The seams section 7 leaves to the integrator.
+  ['Integration: a General leads a formation', quiet(generalLeadsSquad)],
+  ['Integration: Generals and the two armies', generalsAndArmies],
+  // round6:integration end.
 ];
 
 // round6:C begin. Generals (fireline-round6-design.md, workstream C): its sections.
@@ -145,7 +149,9 @@ function doctrines(ok: Ok): void {
       }
       const air = GENERALS[g].airCostMul;
       ok(costFor(s, seat, 'gunship') === (air === 1 ? costOf('gunship') : Math.round(costOf('gunship') * air)), `${label}: aircraft at ${air} of the price`);
-      ok(costFor(s, seat, 'rifleman') === costOf('rifleman') && costFor(s, seat, 'power') === costOf('power'), `${label}: other kinds at full price`);
+      // Integration: "full price" is the side's own army's price (Ashen's infantry is 5% cheaper).
+      const bare = createInitialState(`d-${g}`, 'd', { seed: `d-${g}`, createdAt: 0, setup: { tech: 'advanced', factions } });
+      ok(costFor(s, seat, 'rifleman') === costFor(bare, seat, 'rifleman') && costFor(s, seat, 'power') === costFor(bare, seat, 'power'), `${label}: other kinds at full price`);
     }
   }
   ok(
@@ -427,6 +433,7 @@ function battles(ok: Ok): void {
   let wins0 = 0;
   let minutes = 0;
   let falls = 0;
+  let led = 0;
   const seeds = 6;
   for (let i = 0; i < seeds; i++) {
     const seed = `gen-battle-${i}`;
@@ -439,6 +446,9 @@ function battles(ok: Ok): void {
         if (g) {
           had[o] = true;
           if (s.ai[o].waveIds.includes(g.id)) inWave++;
+          // Integration: the General leads its wave's squad (generalLeads).
+          const q = s.squads?.find(x => x.id === g.squad);
+          if (q && q.leader === g.id) led++;
         }
       }
     }
@@ -452,7 +462,175 @@ function battles(ok: Ok): void {
   }
   ok(recruited >= seeds * 2 - 1, `the computer recruits its General (${recruited} of ${seeds * 2} sides)`);
   ok(inWave === 0, 'and never hands it to the wave');
+  ok(led >= seeds, `but its General leads the wave's squad in formation (${led} samples of 250 ticks)`);
   ok(finished >= seeds - 1, `battles with Generals on finish (${finished} of ${seeds})`);
   console.log(`generals battles: ${finished}/${seeds} finished, average ${(minutes / Math.max(1, finished)).toFixed(1)} game minutes; side 0 won ${wins0}; ${recruited} Generals fielded`);
 }
 // round6:C end.
+
+// round6:integration begin. The General leads a formation (C and D), and Generals keep to their
+// seat's army (A and C), from fireline-round6-design.md section 7.
+import { generalLeads } from '../src/sim/aiGenerals';
+import { isGeneralUnit, squadById } from '../src/sim/formations';
+import { FACTIONS, GENERAL_SQUAD_HOLD } from '../src/sim/rules';
+
+/**
+ * A General, two buggies, two tanks and three riflemen in the middle of an advanced battle with
+ * Generals on, the whole map turned to open grass so the march measures the formation, not the ground.
+ */
+function ledGroup(withGeneral: boolean): { s: GameState; ids: number[] } {
+  const { s, cx, cy } = arena({}, 'general-leads');
+  s.tiles = 'g'.repeat(s.tiles.length);
+  s.ore = s.ore.map(() => 0);
+  const kinds: UnitKind[] = ['buggy', 'buggy', 'tank', 'tank', 'rifleman', 'rifleman', 'rifleman', withGeneral ? 'general' : 'rifleman'];
+  const ids = kinds.map((k, i) => addUnit(s, 0, k, cx - 1.5 + (i % 4) + 0.5, cy - 1 + Math.floor(i / 4) + 0.5).id);
+  return { s, ids };
+}
+
+/**
+ * Marches a squad until every member has arrived or `limit` ticks pass. Returns the worst distance
+ * any member stood from its slot beside the leader once formed (after FORMED ticks) and while the
+ * leader was more than SQUAD_FINAL from its goal, the mean of that worst distance tick by tick, and
+ * the arrival spread.
+ */
+function march(s0: GameState, ids: number[], limit = 2400): { worst: number; mean: number; spread: number; arrived: number } {
+  let s = s0;
+  const goal = new Map(s.units.filter(u => ids.includes(u.id)).map(u => [u.id, u.order.type === 'move' || u.order.type === 'attackMove' ? [u.order.x, u.order.y] : [u.x, u.y]]));
+  const at = new Map<number, number>();
+  let worst = 0;
+  let sum = 0;
+  let n = 0;
+  for (let i = 0; i < limit && at.size < ids.length; i++) {
+    s = processAction(s, { type: 'tick' });
+    const us = s.units.filter(u => ids.includes(u.id));
+    for (const u of us) {
+      const g = goal.get(u.id)!;
+      if (!at.has(u.id) && Math.hypot(u.x - g[0], u.y - g[1]) < 0.6) at.set(u.id, s.tick);
+    }
+    const q = s.squads?.[0];
+    const lead = q && us.find(u => u.id === q.leader);
+    if (!q || !lead || i < FORMED) continue;
+    const [gx, gy] = goal.get(lead.id)!;
+    if (Math.hypot(lead.x - gx, lead.y - gy) <= 4) continue;
+    const bx = lead.x - (lead.slotX ?? 0);
+    const by = lead.y - (lead.slotY ?? 0);
+    let w = 0;
+    for (const m of us) if (m !== lead && m.slotX !== undefined) w = Math.max(w, Math.hypot(bx + m.slotX - m.x, by + m.slotY! - m.y));
+    worst = Math.max(worst, w);
+    sum += w;
+    n++;
+  }
+  const v = [...at.values()];
+  return { worst, mean: n ? sum / n : 0, spread: v.length ? Math.max(...v) - Math.min(...v) : Infinity, arrived: at.size };
+}
+
+/** Ticks a squad is given to form up before its shape is measured. */
+const FORMED = 100;
+
+function generalLeadsSquad(ok: Ok): void {
+  const { s, ids } = ledGroup(true);
+  const general = s.units.find(u => u.kind === 'general')!;
+  const tx = s.units.find(u => u.id === ids[0])!.x - 20;
+  const ty = s.units.find(u => u.id === ids[0])!.y;
+  for (const shape of ['line', 'column', 'wedge', 'box'] as const) {
+    const t = processAction(s, { type: 'move', ids, x: tx, y: ty, formation: shape });
+    const q = t.squads?.[0];
+    ok(q && q.leader === general.id && q.members.length === ids.length, `${shape}: a squad with the General in it is led by the General`);
+    const g = t.units.find(u => u.id === general.id)!;
+    const ahead = t.units.filter(u => u.kind === 'tank').every(u => (u.slotX ?? 0) < (g.slotX ?? 0));
+    if (shape !== 'line' && shape !== 'box') ok(ahead, `${shape}: the General leads from behind the armour (its slot by role, not the front)`);
+  }
+  const plain = ledGroup(false);
+  const p = processAction(plain.s, { type: 'move', ids: plain.ids, x: tx, y: ty, formation: 'wedge' });
+  ok(p.squads?.[0].leader === p.squads?.[0].members[0] && !isGeneralUnit(p.units.find(u => u.id === p.squads![0].leader)!), 'without a General, the front slot leads as before');
+  // Tighter: the same squad marched eight ways with the General leading, and with the lead handed to
+  // its front slot (as a squad without a General is led).
+  let ledMean = 0;
+  let unledMean = 0;
+  let ledWorst = 0;
+  let tighter = 0;
+  let spread = 0;
+  for (let d = 0; d < 8; d++) {
+    const ax = [0, 1, 1, 1, 0, -1, -1, -1][d];
+    const ay = [-1, -1, 0, 1, 1, 1, 0, -1][d];
+    const start = s.units.find(u => u.id === ids[0])!;
+    const lm = processAction(s, { type: 'move', ids, x: start.x + ax * 12, y: start.y + ay * 12, formation: 'wedge' });
+    const um = copy(lm);
+    um.squads![0].leader = um.squads![0].members[0];
+    const a = march(lm, ids);
+    const b = march(um, ids);
+    ok(a.arrived === ids.length && b.arrived === ids.length, `toward ${d}: both marches arrive (${a.arrived} and ${b.arrived} of ${ids.length})`);
+    ledMean += a.mean / 8;
+    unledMean += b.mean / 8;
+    ledWorst = Math.max(ledWorst, a.worst);
+    spread = Math.max(spread, a.spread);
+    if (a.mean <= b.mean) tighter++;
+  }
+  ok(ledMean < unledMean * 0.9, `led by its General, a squad keeps tighter once formed (mean worst distance from a slot ${ledMean.toFixed(2)} against ${unledMean.toFixed(2)} tiles)`);
+  ok(tighter >= 5, `in most directions (${tighter} of 8)`);
+  ok(ledWorst <= GENERAL_SQUAD_HOLD + 1, `and nobody straggles (worst ${ledWorst.toFixed(2)} tiles from a slot)`);
+  ok(spread <= 50, `the General's squad arrives within 50 ticks of itself (${spread} at most)`);
+  const led = processAction(s, { type: 'move', ids, x: tx, y: ty, formation: 'wedge' });
+  // Pace: the General is the slowest, and the squad keeps to it.
+  ok(led.squads![0].pace === UNITS.general.speed, `the squad's pace is its slowest member's, the General's (${led.squads![0].pace})`);
+  // Pulled out: the squad goes on under its front slot, and the General is its own again.
+  const out = processAction(run(copy(led), 40), { type: 'move', ids: [general.id], x: tx + 10, y: ty });
+  const q2 = out.squads?.[0];
+  ok(q2 && q2.leader !== general.id && !q2.members.includes(general.id) && out.units.find(u => u.id === general.id)!.squad === undefined, 'a General ordered elsewhere leaves, and the squad goes on under another');
+  // Replay and save mid-march.
+  const mid = run(copy(led), 120);
+  const whole = run(copy(mid), 200);
+  const loaded = run(migrateState(JSON.parse(JSON.stringify(mid)))!, 200);
+  ok(JSON.stringify(whole) === JSON.stringify(loaded), "a General's squad saved and loaded mid-march plays on byte-identically");
+  // The computer: generalLeads offers the General only with Generals on, near the wave, not pulling back.
+  const wave = ids.filter(id => id !== general.id);
+  const mine = copy(s);
+  for (const u of mine.units) if (ids.includes(u.id)) u.owner = 1;
+  ok(JSON.stringify(generalLeads(mine, 1, wave)) === JSON.stringify([general.id]), 'the computer offers its General to lead a wave beside it');
+  mine.ai[1].generalBack = true;
+  ok(generalLeads(mine, 1, wave).length === 0, 'but not while it is pulling back');
+  delete mine.ai[1].generalBack;
+  mine.setup = { ...mine.setup!, generals: false };
+  ok(generalLeads(mine, 1, wave).length === 0, 'and never with Generals off');
+  ok(s.squads === undefined && s.units.every(u => u.squad === undefined), 'the state the moves started from is untouched');
+  ok(squadById(led, led.units.find(u => u.id === general.id)!.squad)?.leader === general.id, "the General's own squad names it as leader");
+}
+
+function generalsAndArmies(ok: Ok): void {
+  ok(
+    FACTIONS.every(f => GENERAL_IDS.filter(g => GENERAL_FACTION[g] === f).length === 2) && GENERAL_IDS.every(g => FACTIONS.includes(GENERAL_FACTION[g])),
+    "GENERAL_FACTION names A's armies: two Generals to each, none to anything else",
+  );
+  const pairs: [Faction, Faction][] = [];
+  for (const a of FACTIONS) for (const b of FACTIONS) pairs.push([a, b]);
+  let checked = 0;
+  for (const factions of pairs) {
+    const tag = factions.join(' against ');
+    // A seat's own choice: only its army's two.
+    for (const seat of [0, 1]) {
+      for (const g of GENERAL_IDS) {
+        const picks: (GeneralId | null)[] = [null, null];
+        picks[seat] = g;
+        const n = normaliseSetup({ tech: 'advanced', factions, generalPicks: picks });
+        const mineOk = GENERAL_FACTION[g] === factions[seat];
+        ok(n.generalPicks![seat] === (mineOk ? g : null), `${tag}: seat ${seat} choosing ${g} ${mineOk ? 'keeps it' : 'reads as none'}`);
+      }
+    }
+    // The computer's seeded pick, with Generals on and its seat left on Any: its own army's, both seats.
+    for (let i = 0; i < 8; i++) {
+      const s = createInitialState(`ga-${tag}-${i}`, 'g', { seed: `ga-${tag}-${i}`, createdAt: 0, setup: { tech: 'advanced', factions, generals: true } });
+      const g = s.players[1].general;
+      ok(!!g && GENERAL_FACTION[g] === factions[1], `${tag}, seed ${i}: the computer's General (${g}) is from its own army`);
+      const forced = createInitialState(`gb-${tag}-${i}`, 'g', { seed: `gb-${tag}-${i}`, createdAt: 0, setup: { tech: 'advanced', factions, generals: true, generalPicks: [factions[0] === 'ashen' ? 'kade' : 'hale', null] } });
+      ok(GENERAL_FACTION[forced.players[0].general!] === factions[0] && GENERAL_FACTION[forced.players[1].general!] === factions[1], `${tag}, seed ${i}: each seat's doctrine matches its army`);
+      checked++;
+    }
+  }
+  // Ilse's air discount reaches Ashen's own aircraft, found by airRole (section 7).
+  const s = createInitialState('ilse-air', 'i', { seed: 'ilse-air', createdAt: 0, setup: { tech: 'advanced', factions: ['ashen', 'ashen'], generalPicks: ['ilse', null] } });
+  for (const k of ['kestrel', 'firebrand'] as UnitKind[]) {
+    ok(costFor(s, 0, k) < costFor(s, 1, k), `Ilse: the ${UNITS[k].name} is cheaper on her side (${costFor(s, 0, k)} against ${costFor(s, 1, k)})`);
+  }
+  ok(checked === pairs.length * 8, 'every pairing of armies checked from both seats');
+}
+// round6:integration end.

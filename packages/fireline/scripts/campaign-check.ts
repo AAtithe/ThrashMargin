@@ -716,7 +716,7 @@ section('act two: progression and old saves', () => {
     if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
   }
   // The new objective kinds are used across the act.
-  const used = new Set(act2.flatMap(m => [...m.objectives, ...m.bonus].map(o => (o.kind === 'holdZone' && o.reset ? 'holdZone reset' : o.kind))));
+  const used = new Set<string>(act2.flatMap(m => [...m.objectives, ...m.bonus].map(o => (o.kind === 'holdZone' && o.reset ? 'holdZone reset' : o.kind))));
   for (const k of ['escort', 'destroyWithin', 'holdZone reset']) ok(used.has(k), `act two uses ${k}`);
   for (const m of act2) ok(m.bonus.length === 2 && m.rewards.xp > 0, `${m.id}: two bonus objectives and a reward`);
   return `act two: ${c.commander.xp} xp after a clean run`;

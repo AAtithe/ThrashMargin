@@ -703,7 +703,7 @@ function threeSided(teams: number[] | undefined, label: string): GameState {
     owner: 2,
     name: SIDE_NAMES[2],
     credits: 3000,
-    queues: { building: [], infantry: [], vehicle: [] },
+    queues: { building: [], infantry: [], vehicle: [], air: [] },
     stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
   });
   c.ai.push(newAiMemory(DIFFICULTIES.normal.firstAttack));

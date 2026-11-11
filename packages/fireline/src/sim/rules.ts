@@ -1720,7 +1720,7 @@ export const HERO_REVIVE_TICKS = 900;
 /** A fallen hero's price to recruit again, as a share of HERO_RECRUIT_COST. */
 export const HERO_REVIVE_SHARE = 0.5;
 /** The structure that opens hero recruitment. */
-export const HERO_ACADEMY = 'academy' satisfies BuildingKind;
+export const HERO_ACADEMY = 'academy' as const satisfies BuildingKind;
 
 /** A hero's skirmish price: full, or HERO_REVIVE_SHARE of it for one that has fallen in this battle. */
 export function heroRecruitCost(kind: HeroKind, fallen: boolean): number {
@@ -1858,3 +1858,12 @@ export const SQUAD_SLACK = 1.5;
 /** The largest group the line keeps in one rank; more go in further ranks behind. */
 export const LINE_RANK_MAX = 10;
 // round6:D end.
+
+// round6:integration. The General leads a formation (fireline-round6-design.md section 7): a squad
+// with a field General among its members is led by the General, and keeps tighter.
+/** Ticks between a General's re-aiming of its squad (half SQUAD_REFRESH_TICKS). */
+export const GENERAL_SQUAD_REFRESH_TICKS = 4;
+/** In a General's squad, a member further than this from its slot may catch up at its own speed. */
+export const GENERAL_SQUAD_SLACK = 1;
+/** A General holds to half the squad's pace while any member is further than this from its slot (and not ahead of it). */
+export const GENERAL_SQUAD_HOLD = 1.5;

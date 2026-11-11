@@ -15,6 +15,9 @@
 import { nearestPassable } from './grid';
 import {
   FORMATION_SHAPES,
+  GENERAL_SQUAD_HOLD,
+  GENERAL_SQUAD_REFRESH_TICKS,
+  GENERAL_SQUAD_SLACK,
   hitsGround,
   LINE_RANK_MAX,
   SLOT_SPACING,
@@ -321,7 +324,12 @@ export function squadPace(s: GameState, units: Map<number, Unit>, occ: Int32Arra
     if (!leader) return sp;
     q.leader = leader.id;
   }
-  if (u === leader && (s.tick + q.id) % SQUAD_REFRESH_TICKS === 0) {
+  // Integration (section 7): a squad led by a field General keeps tighter. It re-aims twice as
+  // often; a member out of its slot catches up sooner, but one ahead of its slot waits for the
+  // squad instead of running on; and the General holds to half pace while any member has fallen
+  // well behind, so nobody straggles.
+  const led = isGeneralUnit(leader);
+  if (u === leader && (s.tick + q.id) % (led ? GENERAL_SQUAD_REFRESH_TICKS : SQUAD_REFRESH_TICKS) === 0) {
     refreshSquad(s, units, occ, q, tuned);
     if (u.squad === undefined) return sp;
   }
@@ -331,10 +339,46 @@ export function squadPace(s: GameState, units: Map<number, Unit>, occ: Int32Arra
     const ey = leader.y - (leader.slotY ?? 0) + u.slotY;
     const dx = ex - u.x;
     const dy = ey - u.y;
-    if (dx * dx + dy * dy > SQUAD_SLACK * SQUAD_SLACK) return sp;
+    if (!led) {
+      if (dx * dx + dy * dy > SQUAD_SLACK * SQUAD_SLACK) return sp;
+    } else if (dx * dx + dy * dy > GENERAL_SQUAD_SLACK * GENERAL_SQUAD_SLACK) {
+      const [hx, hy] = heading(leader);
+      return dx * hx + dy * hy >= 0 ? sp : Math.min(sp, pace / 2);
+    }
   }
+  if (led && u === leader && straggler(units, q, leader)) return Math.min(sp, pace / 4);
   return Math.min(sp, pace);
 }
+
+/** A field General (C's unit): the one unit that leads a squad by rank rather than from the front slot. */
+export const isGeneralUnit = (u: Unit): boolean => u.kind === 'general';
+
+/** The unit's direction of march (toward its order's point), unnormalised; nothing when it has none. */
+function heading(u: Unit): [number, number] {
+  const o = u.order;
+  return o.type === 'move' || o.type === 'attackMove' ? [o.x - u.x, o.y - u.y] : [0, 0];
+}
+
+/**
+ * Whether any member of a General's squad is more than GENERAL_SQUAD_HOLD from its slot beside it
+ * and not ahead of it (behind, or out to one side): the General waits for it.
+ */
+function straggler(units: Map<number, Unit>, q: Squad, leader: Unit): boolean {
+  const [hx, hy] = heading(leader);
+  const bx = leader.x - (leader.slotX ?? 0);
+  const by = leader.y - (leader.slotY ?? 0);
+  for (const id of q.members) {
+    const m = units.get(id);
+    if (!m || m === leader || m.hp <= 0 || m.squad !== q.id || m.engage || m.slotX === undefined || m.slotY === undefined) continue;
+    const dx = bx + m.slotX - m.x;
+    const dy = by + m.slotY - m.y;
+    if (dx * dx + dy * dy > GENERAL_SQUAD_HOLD * GENERAL_SQUAD_HOLD && dx * hx + dy * hy >= 0) return true;
+  }
+  return false;
+}
+
+/** The member a new squad is led by: its field General when it has one, otherwise the front slot's. */
+export const squadLeader = (ground: Unit[]): Unit => ground.find(isGeneralUnit) ?? ground[0];
 
 /** The shape the selection moves in: its squad's, when the units are exactly one squad's members. */
 export function wholeSquad(s: GameState, units: Unit[]): Squad | undefined {
