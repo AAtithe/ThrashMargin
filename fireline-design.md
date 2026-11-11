@@ -98,6 +98,15 @@ team's colours; the same functions draw the build menu icons. `game/terrain.ts` 
 once per battle. `game/renderer.ts` draws a frame: terrain window, scorch marks, ore, structures,
 units interpolated between ticks, projectiles, muzzle flashes and explosions, particles, fog
 (a 64 by 64 canvas scaled up with smoothing, which gives soft edges), placement ghost, drag box.
+Ore fields are drawn by `game/fx/ore.ts` (a ragged stain with lit crystal clusters that shrink as a
+tile is mined, glints held still with motion off); `game/fx/ground.ts` gives each structure a
+trampled skirt and a contact shadow and each unit a soft shadow. The fog grid is blurred before it
+is scaled up, so its edge is a curve rather than a tile staircase.
+
+The campaign's theatre maps (`game/campaignArt.ts`) are drawn as staff operational maps: paper,
+grid references, contours, a front line that advances with each mission won, arrows of advance and
+OBJ markers. Static layers are cached; only the open objective pulses. The lobby draws a preview of
+the same map through `components/campaignArtBridge.ts`.
 Particles and scorch marks are renderer-only and may use `Math.random`.
 
 Saves: every 15 seconds of play, on pause, on leaving, when the tab hides and when the battle
@@ -1571,3 +1580,77 @@ Gates at the merge: `npm run check` "All checks passed" (drive:fire "393357 asse
 failed, 97.8s"; the whole check 21m28s). `npm run tours -- --quick fireline fireline-planet` "ok
 fireline" (build window: 45 menu items) and "ok fireline-planet". `npm run ladder:planet` "Every
 target passes; 107.8 s in all", and with `-- --prefix holdout` "Every target passes; 110.3 s in all".
+
+### 2026-11-11: the visual pass
+
+Four parallel strands, each owning its own files. The lobby became a briefing room: Campaign, then
+Skirmish, then Your battles, with a live preview of the theatre map and mission counts read from
+the mission lists (the copy still said eight missions after act two added six). The theatre maps
+were redrawn as operational maps, in a night map-table version for dark mode. The battle console
+was regrouped (clock, speed, sound and display clusters; a twelve-light power meter; build buttons
+whose state reads at a glance; an after-action table on the victory and defeat cards). The
+battlefield gained ore fields, structure skirts and contact shadows, a curved fog edge, leaning
+grass, directional muzzle flashes and notched health bars. Frame time held: median 2.7 to 3.0 ms
+against 2.9 ms before at minute 25 of a huge battle, 60 fps either way.
+
+### 2026-11-11: territory and engagements
+
+The campaign map became a country (`fireline-campaign-design.md` section 11). Rules in
+`src/campaign/territory.ts`: a region is held (home ground, its mission won, or its engagement
+won), open (no mission, its act's front reachable, bordering held ground) or enemy ground. Every
+region without a story mission holds an engagement, a side battle rolled from the region's id and
+scaled by missions won: an outpost or (from mission 4) a whole base, garrison, posture, credits,
+one or two bonus objectives. Half a story mission's xp; never tech, heroes, or a mission won.
+`CampaignState.engagements` is additive and older saves load with none.
+
+Tuning on the way, measured with the scripted base player over every engagement at two points of
+its act (44 battles): a whole Combine base on the attack ("normal" posture) beat a player still
+raising a base in four of five cases, and a rich defending base was never broken by an army sent
+at its nearest structure in 45 minutes. So a base only defends, on a smaller purse, and is beaten
+by bringing down its Command Yard and War Factory rather than its last harvester; raiding outposts
+start with a smaller garrison. After: 43 of 44 won with the army sent at twelve minutes, 38 of 44
+at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
+three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
+assertions, about 25 seconds more than before.
+
+### 2026-11-11: Merge with main's visual pass and territory campaign (pace, lines and War for the Planet kept)
+
+Main's PRs #36 (the visual pass: the briefing-room lobby, the war-map theatre, the battle console,
+the field-manual How to play; territory and engagements) and #40 (a Founder's Ledger coach) met this
+branch's game size (pace), development lines and War for the Planet. Six files conflicted (this log,
+`SkirmishSetup.tsx`, `GameScreen.tsx`, `HowToPlay.tsx`, `Lobby.tsx`, `styles.css`), each merged with
+both sides kept. The decisions:
+
+- **The lobby reads 01 Campaign, 02 War for the Planet, 03 Skirmish, 04 Your battles.** The war's
+  setup panel became a numbered section like main's, with its saves under "Your wars" in main's save
+  rows (a war's row names its length and turn); the hero banner and the section path gained a War
+  for the Planet entry. `WarSetup` is unchanged but for a class, `fl-war-setup`, under which the
+  lobby gives it main's monospaced field labels, larger inputs, ticked length cards and boxed rules.
+  "Guided first turn" and every `war-*` hook are where they were.
+- **The game size start screen lives inside main's numbered skirmish orders.** The section still
+  opens on the size cards every visit: 1 Game size (the cards, now two by two with main's corner
+  tick), 2 Enemy commander (scaled for the pace and map size, as before), 3 Deploy (main's orders
+  table, which now also lists the game size and the research mode and carries `setup-summary`, the
+  name, Begin and Customise). Customise shows main's five steps, with "Game size" as a back button:
+  1 Enemy commander, 2 Battlefield (with the seed), 3 Forces (sides, mode, tech level, and the
+  research choice under it, still greyed at standard tech), 4 Terms of engagement (the game size
+  row first, then credits, ore, map size and sites), 5 Deploy. One Begin button at a time, so the
+  tour drivers' `Begin the battle` lookups still find exactly one.
+- **The war screen in the campaign screen's lettering.** Main restyled the campaign map, the war
+  screen's neighbour; the war screen's title and card headings now use the campaign's small-caps
+  serif (`--a-serif`), its tabs main's monospaced labels with an accent rule on the open tab. Only
+  CSS changed; every `data-tour-target` id, the Tour button and its tests are untouched.
+- **The battle console.** The message feed takes main's `fl-d-feed` class and offsets (80 pixels
+  over a bar) and still rises over a planet battle's hero and power bar.
+- **How to play** became main's field manual: War for the Planet is a `Section` after Campaign, and
+  the index lists it, and Naval, which the index had left out.
+- **What's new** keeps War for the Planet first, beside main's counted campaign line.
+- **Engagements state their research mode.** This branch's `MissionSpec.research` is required, so
+  `engagementSpec` sets `research: 'classic'`, as every story mission does. Main's territory
+  campaign changed no file under `src/sim/` or `src/planet/`, and no mission.
+
+**Byte identity.** Every story mission (default and every hero, 0, 600 and 3,000 ticks: 28) and every
+engagement (fresh campaign and every mission won, 0 and 1,500 ticks: 44) hash in the merged tree
+exactly as in origin/main's own code (268d78a), with `research` and `pace` left out of the setup:
+72 of 72. No hash in any harness was regenerated; OLD_WAR_HASHES, STORY_HASHES and SKIRMISH_HASHES
+are unchanged and pass.

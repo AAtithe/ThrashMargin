@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   AIR_AMMO,
   HELIPAD_SLOTS,
@@ -421,44 +421,64 @@ export function BuildPanel({
   const pw = powerOf(state, 0);
   const max = Math.max(pw.made, pw.used, 100);
 
+  // The power meter: twelve lamps across the scale. Amber is drawn, green is spare, red is the
+  // shortfall when more is drawn than made.
+  const LAMPS = 12;
+  const lamp = (i: number): 'used' | 'spare' | 'short' | 'off' => {
+    const at = ((i + 0.5) / LAMPS) * max;
+    if (at < Math.min(pw.used, pw.made)) return 'used';
+    if (at < pw.made) return 'spare';
+    if (at < pw.used) return 'short';
+    return 'off';
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
       <div style={{ display: 'flex', gap: 8, alignItems: 'stretch' }}>
       <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, flex: 1, minWidth: 0, flexDirection: compact ? 'column' : 'row' }}>
-        <div style={creditsBox} id="fl-credits" data-testid="credits" title="Credits. Haulers bring ore to a refinery to earn more.">
-          <span style={tiny}>Credits</span>
+        <div className="fl-d-gauge fl-d-credits" id="fl-credits" data-testid="credits" title="Credits. Haulers bring ore to a refinery to earn more.">
+          <span className="fl-d-gauge-label">Credits</span>
           <Credits value={p.credits} />
         </div>
-        <div id="fl-power" style={{ ...creditsBox, flex: 1 }} title={`Power: ${pw.made} made, ${pw.used} used${pw.low ? '. Short: production halves.' : ''}`}>
-          <span style={tiny}>
-            Power {pw.made}/{pw.used}
-            {pw.low && <strong style={{ color: UI.bad, marginLeft: 6 }}>LOW</strong>}
+        <div
+          id="fl-power"
+          className="fl-d-gauge fl-d-power"
+          data-low={pw.low ? '1' : '0'}
+          title={`Power: ${pw.made} made, ${pw.used} used${pw.low ? '. Short: production halves.' : ''}`}
+        >
+          <span className="fl-d-gauge-label">
+            Power
+            <span className="fl-d-gauge-state">{pw.low ? 'Low' : 'OK'}</span>
           </span>
-          <div style={{ position: 'relative', height: 8, background: UI.ground, borderRadius: 2, marginTop: 4, overflow: 'hidden' }}>
-            <div style={{ position: 'absolute', inset: 0, width: `${(pw.made / max) * 100}%`, background: UI.good, opacity: 0.75 }} />
-            <div
-              style={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: `calc(${Math.min(100, (pw.used / max) * 100)}% - 1px)`,
-                width: 2,
-                background: pw.low ? UI.bad : UI.text,
-              }}
-            />
-          </div>
+          <span className="fl-d-meter" aria-hidden="true">
+            {Array.from({ length: LAMPS }, (_, i) => (
+              <span key={i} data-s={lamp(i)} />
+            ))}
+          </span>
+          <span className="fl-d-gauge-sub">
+            <span>{pw.used} used</span>
+            <span>{pw.made} made</span>
+          </span>
         </div>
       </div>
 
       {compact && (
-        <div id="fl-minimap" style={{ width: 104, flex: '0 0 104px' }}>
+        <div id="fl-minimap" className="fl-d-radar" style={{ width: 104, flex: '0 0 104px' }}>
           {minimap}
         </div>
       )}
       </div>
 
-      {!compact && <div id="fl-minimap">{minimap}</div>}
+      {!compact && (
+        <section className="fl-d-block" aria-label="Radar">
+          <h3 className="fl-d-sect">Radar</h3>
+          <div id="fl-minimap" className="fl-d-radar">
+            {minimap}
+          </div>
+        </section>
+      )}
 
+      {!compact && <h3 className="fl-d-sect">Production</h3>}
       <button
         type="button"
         id="fl-build-open"
@@ -472,7 +492,7 @@ export function BuildPanel({
         data-open={buildOpen ? '1' : '0'}
       >
         <span className="fl-build-open-label">
-          Build: <strong>{tabLabel(tab)}</strong>
+          <span className="fl-d-build-word">Build</span> <strong>{tabLabel(tab)}</strong>
         </span>
         {!touch && <kbd>`</kbd>}
       </button>
@@ -693,22 +713,36 @@ export function BuildButton({
             // A finger's long press raises contextmenu too; on touch only the × cancels.
             if (inQueue && !press.current.touch) cancel();
           }}
-          style={{ flex: 1, minWidth: 0, borderColor: placing === kind ? UI.good : undefined, opacity: open ? 1 : 0.42 }}
+          style={{ flex: 1, minWidth: 0 }}
         >
-          <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
+          <span className="fl-build-pic">
+            <img src={iconFor(kind)} alt="" width={96} height={64} draggable={false} />
+            {isHead && !isReady && (
+              <>
+                <span className="fl-build-sweep" aria-hidden="true" style={{ width: `${Math.round((1 - progress) * 100)}%` }} />
+                <span className="fl-build-pct" aria-hidden="true">
+                  {Math.floor(progress * 100)}%
+                </span>
+              </>
+            )}
+          </span>
           <span className="fl-build-name">
             {key && <kbd className="fl-key">{key}</kbd>} {nameOf(kind)}
           </span>
-          <span className="fl-build-cost" style={{ color: affordable ? UI.textSoft : UI.bad }}>
+          <span className="fl-build-cost" data-short={affordable ? '0' : '1'}>
             {cost}
           </span>
           {isHead && !isReady && (
-            <div style={progressWrap}>
-              <div style={{ ...progressFill, width: `${Math.round(progress * 100)}%` }} />
-            </div>
+            <span className="fl-build-prog" aria-hidden="true">
+              <span style={{ width: `${Math.round(progress * 100)}%` }} />
+            </span>
           )}
-          {isReady && <span style={{ ...badge, background: UI.good }}>{placing === kind ? 'Placing' : 'Ready'}</span>}
-          {inQueue > 1 && <span style={{ ...badge, background: UI.accent, left: 'auto', right: 3, top: 'auto', bottom: 8 }}>{inQueue}</span>}
+          {isReady && <span className="fl-build-badge" data-kind="ready">{placing === kind ? 'Placing' : 'Ready'}</span>}
+          {inQueue > 1 && (
+            <span className="fl-build-badge" data-kind="count">
+              ×{inQueue}
+            </span>
+          )}
         </button>
         {inQueue > 0 && (
           <button
@@ -1088,11 +1122,52 @@ export function SelectionPanel({
       );
     }
     return (
-      <p style={{ margin: 0, fontSize: '0.74rem', color: UI.textFaint, lineHeight: 1.45 }}>
-        Drag a box or click to select. Right-click to move or attack. <kbd>A</kbd> attack-move, <kbd>S</kbd> stop,{' '}
-        <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> to group. The letter on each build button builds it, <kbd>Tab</kbd>{' '}
-        switches lists, <kbd>Space</kbd> jumps to the last alert.
-      </p>
+      <dl className="fl-d-legend" aria-label="Orders">
+        <div>
+          <dt>Click, drag a box</dt>
+          <dd>Select</dd>
+        </div>
+        <div>
+          <dt>Right-click</dt>
+          <dd>Move or attack</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>A</kbd>
+          </dt>
+          <dd>Attack-move</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>S</kbd>
+          </dt>
+          <dd>Stop</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd>
+          </dt>
+          <dd>Make a group</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd>…
+          </dt>
+          <dd>Build the item with that letter</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>Tab</kbd>
+          </dt>
+          <dd>Next build list</dd>
+        </div>
+        <div>
+          <dt>
+            <kbd>Space</kbd>
+          </dt>
+          <dd>Jump to the last alert</dd>
+        </div>
+      </dl>
     );
   }
   if (building) {
@@ -1120,7 +1195,8 @@ export function SelectionPanel({
             </p>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
-                style={smallBtn(building.repairing ? UI.good : UI.rule)}
+                className="fl-d-sbtn"
+                aria-pressed={building.repairing}
                 disabled={building.hp >= spec.hp && !building.repairing}
                 onClick={() => dispatch({ type: 'repair', id: building.id })}
                 title="Repair (G), paid for as the work is done"
@@ -1128,7 +1204,8 @@ export function SelectionPanel({
                 {building.repairing ? 'Repairing…' : 'Repair'}
               </button>
               <button
-                style={smallBtn(UI.bad)}
+                className="fl-d-sbtn"
+                data-tone="bad"
                 onClick={() => {
                   if (window.confirm(`Sell the ${spec.name} for ${refund} credits?`)) dispatch({ type: 'sell', id: building.id });
                 }}
@@ -1155,9 +1232,9 @@ export function SelectionPanel({
           <span
             key={kind}
             tabIndex={0}
-            className="fl-has-tip"
             {...bind(kind)}
-            style={{ fontSize: '0.74rem', padding: '2px 6px', border: `1px solid ${UI.rule}`, borderRadius: 3, color: mine ? UI.text : UI.enemy }}
+            className="fl-has-tip fl-d-chip"
+            data-enemy={mine ? '0' : '1'}
           >
             {n > 1 ? `${n}× ` : ''}
             {mine ? '' : 'Enemy '}
@@ -1229,14 +1306,14 @@ export function SelectionPanel({
       )}
       {mine && (
         <div style={{ display: 'flex', gap: 6 }}>
-          <button style={smallBtn(UI.rule)} onClick={() => dispatch({ type: 'stop', ids: units.map(u => u.id) })}>
+          <button className="fl-d-sbtn" onClick={() => dispatch({ type: 'stop', ids: units.map(u => u.id) })}>
             {touch ? 'Stop' : 'Stop (S)'}
           </button>
         </div>
       )}
       {mine && <ActionButtons state={state} sel={{ units, building: null }} dispatch={dispatch} touch={touch} />}
       {mine && units.some(u => UNITS[u.kind].weapon) && (
-        <div style={{ display: 'flex', gap: 4 }} role="group" aria-label="Stance">
+        <div className="fl-d-seg fl-d-stance" role="group" aria-label="Stance">
           {STANCE_BUTTONS.map(([stance, label, title]) => {
             const armed = units.filter(u => UNITS[u.kind].weapon);
             const on = armed.every(u => u.stance === stance);
@@ -1245,7 +1322,7 @@ export function SelectionPanel({
                 key={stance}
                 data-stance={stance}
                 aria-pressed={on}
-                style={{ ...smallBtn(on ? UI.good : UI.rule), padding: '4px 7px', fontWeight: on ? 600 : 400 }}
+                className="fl-d-sbtn"
                 title={title}
                 onClick={() => dispatch({ type: 'stance', ids: armed.map(u => u.id), stance })}
               >
@@ -1278,7 +1355,7 @@ function ActionButtons({ state, sel, dispatch, touch }: { state: GameState; sel:
         <button
           key={spec.id}
           data-action={spec.id}
-          style={smallBtn(UI.rule)}
+          className="fl-d-sbtn"
           disabled={!!problem}
           title={problem ?? spec.title}
           onClick={() => dispatch(action)}
@@ -1299,66 +1376,13 @@ const STANCE_BUTTONS: ['aggressive' | 'guard' | 'hold', string, string][] = [
   ['hold', 'Hold fire', 'Never fire or chase unless ordered to attack'],
 ];
 
+/** Health, as a segmented gauge: green, amber under 60%, red under 30%. */
 function Bar({ frac }: { frac: number }) {
+  const f = Math.max(0, Math.min(1, frac));
   return (
-    <div style={{ height: 5, background: UI.ground, borderRadius: 2, overflow: 'hidden' }}>
-      <div style={{ height: '100%', width: `${Math.max(0, Math.min(1, frac)) * 100}%`, background: frac > 0.6 ? UI.good : frac > 0.3 ? UI.warn : UI.bad }} />
+    <div className="fl-d-hp" data-tone={f > 0.6 ? 'good' : f > 0.3 ? 'warn' : 'bad'} aria-hidden="true">
+      <div style={{ width: `${f * 100}%` }} />
     </div>
   );
 }
 
-const smallBtn = (border: string): CSSProperties => ({
-  fontFamily: 'inherit',
-  fontSize: '0.74rem',
-  padding: '4px 9px',
-  border: `1px solid ${border}`,
-  background: UI.panelRaised,
-  color: UI.text,
-  borderRadius: 3,
-  cursor: 'pointer',
-});
-
-const creditsBox: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  justifyContent: 'center',
-  padding: '5px 9px',
-  background: UI.panelRaised,
-  border: `1px solid ${UI.rule}`,
-  borderRadius: 4,
-  minWidth: 92,
-};
-
-const tiny: CSSProperties = {
-  fontSize: '0.6rem',
-  letterSpacing: '0.12em',
-  textTransform: 'uppercase',
-  color: UI.textFaint,
-};
-
-const progressWrap: CSSProperties = {
-  position: 'absolute',
-  left: 0,
-  right: 0,
-  bottom: 0,
-  height: 4,
-  background: UI.scrim,
-};
-
-const progressFill: CSSProperties = {
-  height: '100%',
-  background: UI.accent,
-};
-
-const badge: CSSProperties = {
-  position: 'absolute',
-  top: 3,
-  left: 3,
-  fontSize: '0.6rem',
-  fontWeight: 700,
-  color: UI.ground,
-  borderRadius: 2,
-  padding: '1px 4px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-};

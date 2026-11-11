@@ -59,6 +59,12 @@ export interface CampaignState {
   };
   heroes: Record<HeroKind, HeroRecord>;
   missions: Record<string, MissionRecord>;
+  /**
+   * Engagements fought, keyed by region id (campaign/theatre.ts, campaign/territory.ts). A won one
+   * holds its region. Never counts as a mission won. A record for a region the theatre no longer
+   * has is kept and ignored.
+   */
+  engagements: Record<string, MissionRecord>;
   /** Tech unlocked by missions so far. */
   tech: (BuildingKind | UnitKind)[];
   /** The mission last opened from the campaign map, for "Continue". */

@@ -1,17 +1,23 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
 import GamePacePicker, { attackText } from '../components/GamePacePicker';
-import SkirmishSetupPanel, { ORE_TEXT, RESEARCH_TEXT, TECH_TEXT, freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
+import SkirmishSetupPanel, { RESEARCH_TEXT, SetupStep, TECH_TEXT, freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
+import { drawMap, mapFontsReady } from '../components/campaignArtBridge';
+import { previewView } from '../campaign/theatre';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
 import { campaignSaves, isCampaignMeta, isPlanetMeta } from './campaignSaves';
 import WarSetup from '../components/planet/WarSetup';
 import { startPlanetTour } from '../components/planet/PlanetTour';
 import type { LengthPreset } from '../planet/types';
+import { MISSIONS } from '../campaign/missions';
+import { ACT_TWO } from '../campaign/act2';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 import NoGameAccess from '../lib/NoGameAccess';
 import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
+import { onSchemeChange } from '../lib/colorScheme';
+import { currentPace } from '../lib/motion';
 import { drawBuilding, drawUnit, TILE } from '../game/art';
 import {
   BUILDINGS,
@@ -33,6 +39,23 @@ import {
 import { ART, FONT, UI } from '../theme';
 import { scaledForSetup } from '../sim/aiScale';
 
+/** The campaign's shape, counted from the mission lists so the lobby's copy cannot go stale again. */
+const CAMPAIGN_MISSIONS = MISSIONS.length;
+const ACT_TWO_IDS = new Set(ACT_TWO.map(m => m.id));
+const ACT_ONE_MISSIONS = MISSIONS.filter(m => !ACT_TWO_IDS.has(m.id)).length;
+const ACT_TWO_MISSIONS = CAMPAIGN_MISSIONS - ACT_ONE_MISSIONS;
+const HERO_NAMES = MISSIONS.flatMap(m => m.rewards.unlockHeroes ?? []);
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+const inWords = (n: number) => NUMBER_WORDS[n] ?? String(n);
+const capital = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Scroll to one of the lobby's sections, smoothly unless motion is off. */
+const goTo = (id: string) => {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.scrollIntoView({ behavior: currentPace() === 'off' ? 'auto' : 'smooth', block: 'start' });
+};
+
 export default function Lobby() {
   const navigate = useNavigate();
   const user = getStoredUser();
@@ -42,6 +65,8 @@ export default function Lobby() {
   const camp = useMemo(() => campaignSaves(savesApi), [savesApi.cloud, savesApi.load, savesApi.save]);
   const saves = allSaves.filter(s => !isCampaignMeta(s) && !isPlanetMeta(s));
   const campaigns = allSaves.filter(isCampaignMeta);
+  // The campaign the theatre preview shows and the war-room card offers to continue: the latest saved.
+  const latest = campaigns.reduce<SaveMeta | null>((a, s) => (!a || s.savedAt > a.savedAt ? s : a), null);
   const wars = allSaves.filter(isPlanetMeta);
   const [warError, setWarError] = useState<string | null>(null);
   const [commander, setCommander] = useState(() => getStoredUser()?.username ?? '');
@@ -61,7 +86,7 @@ export default function Lobby() {
   const seedText = seed.trim() || autoSeed;
   // The new-battle panel opens on the game size cards every visit; Customise shows the full setup.
   const [setupStep, setSetupStep] = useState<'size' | 'custom'>('size');
-  const newBattleRef = useRef<HTMLDivElement>(null);
+  const newBattleRef = useRef<HTMLElement>(null);
   const stepChanged = useRef(false);
   useEffect(() => {
     // Switching step replaces most of the panel: bring its top back into view, not on first render.
@@ -136,33 +161,56 @@ export default function Lobby() {
     return <NoGameAccess title="Fireline" header={<PortalNav variant="header" />} footer={<PortalNav variant="footer" />} />;
   }
 
+  const latestWon = latest ? Math.min(CAMPAIGN_MISSIONS, Math.max(0, latest.turn)) : 0;
+  const mapLabel = setup.map === 'random' ? 'Random map' : `${MAP_TYPE_NAMES[setup.map]}`;
+
   return (
     <div style={page}>
       <PortalNav />
-      <main style={content}>
-        <HeroScene />
-        <header style={{ marginBottom: '1.2rem', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-          <p style={{ ...bodySmall, maxWidth: '62ch', margin: 0 }}>
-            Command the Meridian Corps against the Ashen Combine. Build a base from a single Command Yard, send
-            haulers out for ore, keep the generators ahead of demand, and train an army of riflemen, rocketeers,
-            buggies, tanks and artillery. Destroy every enemy structure to win; lose all of yours and it is over.
-          </p>
-          <Link to="/how-to-play" style={{ textDecoration: 'none', alignSelf: 'flex-start' }}>
-            <Button tone="quiet">How to play →</Button>
-          </Link>
-        </header>
+      <main style={content} className="fl-lobby">
+        <HeroScene>
+          <div className="fl-hero-actions">
+            <button type="button" className="fl-hero-cta" data-tone="primary" onClick={() => goTo('fl-campaign')}>
+              <span className="fl-hero-cta-num">01</span>
+              {latest ? 'Continue the campaign' : 'Campaign'}
+            </button>
+            <button type="button" className="fl-hero-cta" onClick={() => goTo('fl-war')}>
+              <span className="fl-hero-cta-num">02</span>
+              War for the Planet
+            </button>
+            <button type="button" className="fl-hero-cta" onClick={() => goTo('fl-skirmish')}>
+              <span className="fl-hero-cta-num">03</span>
+              Skirmish
+            </button>
+            <Link to="/how-to-play" className="fl-hero-cta" data-tone="quiet">
+              How to play →
+            </Link>
+          </div>
+        </HeroScene>
 
-        <section aria-label="What is new" style={{ marginBottom: '0.2rem' }}>
-          <p style={eyebrow}>What is new</p>
-          <ul className="fl-new" style={{ marginTop: '0.45rem' }}>
-            {WHATS_NEW.map(n => (
-              <li key={n.title}>
-                <strong>{n.title}</strong>
-                {n.text}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <div className="fl-lobby-intro">
+          <p style={{ ...bodySmall, margin: 0 }}>
+            Command the Meridian Corps against the Ashen Combine. Build a base from a single Command Yard, send haulers out for
+            ore, keep the generators ahead of demand, and train an army of riflemen, rocketeers, buggies, tanks and artillery.
+            Destroy every enemy structure to win; lose all of yours and it is over.
+          </p>
+          <nav className="fl-lobby-path" aria-label="Lobby sections">
+            <button type="button" onClick={() => goTo('fl-campaign')}>
+              <span>01</span>Campaign
+            </button>
+            <button type="button" onClick={() => goTo('fl-war')}>
+              <span>02</span>War for the Planet{wars.length > 0 ? ` (${wars.length})` : ''}
+            </button>
+            <button type="button" onClick={() => goTo('fl-skirmish')}>
+              <span>03</span>Skirmish
+            </button>
+            <button type="button" onClick={() => goTo('fl-battles')}>
+              <span>04</span>Your battles{saves.length > 0 ? ` (${saves.length})` : ''}
+            </button>
+          </nav>
+        </div>
+
+        <WhatsNew />
 
         {error && (
           <div style={errorBanner} role="alert">
@@ -170,47 +218,93 @@ export default function Lobby() {
           </div>
         )}
 
-        <Panel title="Campaign" aside={<Label>8 missions</Label>} style={{ marginBottom: '1.5rem' }}>
-          <div className="fl-campaign-pitch">
-            <p style={{ ...bodySmall, margin: 0 }}>
-              Eight missions against the Ashen Combine, one after another. Your Commander earns rank and skill points to spend on
-              economy, industry and support powers. Four heroes join along the way and carry their experience from mission to
-              mission: <strong>the Spy</strong>, <strong>the Commando</strong>, <strong>the Engineer</strong> and{' '}
-              <strong>the Ace</strong>.
-            </p>
-          </div>
-          <div className="fl-campaign-form">
-            <div style={field}>
-              <Label>Commander's name</Label>
-              <input
-                style={input}
-                value={commander}
-                placeholder="Commander"
-                maxLength={32}
-                data-testid="commander-name"
-                onChange={e => setCommander(e.target.value)}
-              />
+        <section id="fl-campaign" className="fl-lobby-section fl-campaign-card" aria-labelledby="fl-campaign-title">
+          <SectionHead num="01" kicker="Primary operation" title="Campaign" id="fl-campaign-title">
+            <Label>
+              {CAMPAIGN_MISSIONS} missions · 2 acts
+            </Label>
+          </SectionHead>
+          <div className="fl-campaign-grid">
+            <CampaignTheatre
+              won={latestWon}
+              label={latest ? `Theatre map: open ${latest.name}, ${latestWon} of ${CAMPAIGN_MISSIONS} missions won` : 'Theatre map: begin a campaign'}
+              onOpen={() => (latest ? navigate(`/game/${latest.id}`) : beginCampaign())}
+              caption={latest ? latest.name : 'A fresh campaign'}
+            />
+            <div className="fl-campaign-brief">
+              <p style={{ ...bodySmall, margin: 0 }}>
+                {capital(inWords(CAMPAIGN_MISSIONS))} missions against the Ashen Combine, in two acts: {inWords(ACT_ONE_MISSIONS)} along
+                the southern coast, then {inWords(ACT_TWO_MISSIONS)} more on the northern coast and in the highlands. Your Commander earns
+                rank and skill points to spend on economy, industry and support powers.
+              </p>
+              <dl className="fl-campaign-facts">
+                <div>
+                  <dt>Missions</dt>
+                  <dd>{CAMPAIGN_MISSIONS}</dd>
+                </div>
+                <div>
+                  <dt>Acts</dt>
+                  <dd>2</dd>
+                </div>
+                <div>
+                  <dt>Heroes</dt>
+                  <dd>{HERO_NAMES.length}</dd>
+                </div>
+              </dl>
+              <p className="fl-campaign-heroes">
+                Joining along the way, and keeping their experience from mission to mission: <strong>the Spy</strong>,{' '}
+                <strong>the Commando</strong>, <strong>the Engineer</strong> and <strong>the Ace</strong>.
+              </p>
+              {latest && (
+                <div className="fl-campaign-latest">
+                  <div style={{ minWidth: 0 }}>
+                    <span className="fl-campaign-latest-kicker">Latest campaign</span>
+                    <strong>{latest.name}</strong>
+                    <Progress won={latestWon} />
+                  </div>
+                  <Button tone="primary" onClick={() => navigate(`/game/${latest.id}`)}>
+                    Continue →
+                  </Button>
+                </div>
+              )}
+              <div className="fl-campaign-new">
+                <span className="fl-campaign-latest-kicker">{latest ? 'Or begin another' : 'Begin a campaign'}</span>
+                <div className="fl-campaign-form">
+                  <div style={field}>
+                    <Label>Commander's name</Label>
+                    <input
+                      style={input}
+                      value={commander}
+                      placeholder="Commander"
+                      maxLength={32}
+                      data-testid="commander-name"
+                      onChange={e => setCommander(e.target.value)}
+                    />
+                  </div>
+                  <div style={field}>
+                    <Label>Name this campaign</Label>
+                    <input style={input} value={campName} placeholder="The Fireline campaign" maxLength={60} onChange={e => setCampName(e.target.value)} />
+                  </div>
+                </div>
+                {campError && (
+                  <div style={errorBanner} role="alert">
+                    {campError}
+                  </div>
+                )}
+                <div>
+                  <Button tone={latest ? 'default' : 'primary'} disabled={campBusy} onClick={beginCampaign}>
+                    {campBusy ? <BusyLabel>Starting…</BusyLabel> : 'Start a new campaign →'}
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div style={field}>
-              <Label>Name this campaign</Label>
-              <input style={input} value={campName} placeholder="The Fireline campaign" maxLength={60} onChange={e => setCampName(e.target.value)} />
-            </div>
-          </div>
-          {campError && (
-            <div style={errorBanner} role="alert">
-              {campError}
-            </div>
-          )}
-          <div>
-            <Button tone="primary" disabled={campBusy} onClick={beginCampaign}>
-              {campBusy ? <BusyLabel>Starting…</BusyLabel> : 'Start a new campaign →'}
-            </Button>
           </div>
           {!savesLoaded ? (
             <LoadingRows rows={1} label="Loading your campaigns" />
           ) : (
             campaigns.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="campaign-saves">
+              <div className="fl-saves" data-testid="campaign-saves">
+                <span className="fl-saves-label">Your campaigns</span>
                 {campaigns.map(s => (
                   <SaveRow
                     key={s.id}
@@ -226,9 +320,12 @@ export default function Lobby() {
               </div>
             )
           )}
-        </Panel>
+        </section>
 
-        <Panel title="War for the Planet" aside={<Label>Strategy</Label>} style={{ marginBottom: '1.5rem' }}>
+        <section id="fl-war" className="fl-lobby-section" aria-labelledby="fl-war-title">
+          <SectionHead num="02" kicker="Strategic campaign" title="War for the Planet" id="fl-war-title">
+            <Label>Turn-based · every attack a battle</Label>
+          </SectionHead>
           <WarSetup
             defaultCommander={commander}
             onBegin={async (req, guided) => {
@@ -248,7 +345,7 @@ export default function Lobby() {
             }}
           />
           {warError && (
-            <div style={errorBanner} role="alert">
+            <div style={{ ...errorBanner, marginTop: '1rem' }} role="alert">
               {warError}
             </div>
           )}
@@ -256,7 +353,8 @@ export default function Lobby() {
             <LoadingRows rows={1} label="Loading your wars" />
           ) : (
             wars.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }} data-testid="war-saves">
+              <div className="fl-saves" data-testid="war-saves">
+                <span className="fl-saves-label">Your wars</span>
                 {wars.map(s => (
                   <SaveRow
                     key={s.id}
@@ -272,33 +370,26 @@ export default function Lobby() {
               </div>
             )
           )}
-        </Panel>
+        </section>
 
-        <div ref={newBattleRef} style={{ scrollMarginTop: '1rem' }}>
-          <Panel
-            title="A new battle"
-            aside={<Label>{setupStep === 'size' ? 'Skirmish' : `Skirmish, ${GAME_PACES[setup.pace].name}`}</Label>}
-            style={{ marginBottom: '1.5rem' }}
-          >
-            {setupStep === 'custom' && (
-              <div>
-                <Button tone="quiet" testId="setup-back" onClick={() => setSetupStep('size')}>
-                  ← Game size
-                </Button>
-              </div>
-            )}
-            <div style={field}>
-              <Label>Name this battle</Label>
-              <input style={input} value={name} placeholder="Operation Fireline" maxLength={60} onChange={e => setName(e.target.value)} />
+        <section id="fl-skirmish" ref={newBattleRef} className="fl-lobby-section" aria-labelledby="fl-skirmish-title">
+          <SectionHead num="03" kicker="Skirmish" title="A new battle" id="fl-skirmish-title">
+            <Label>{setupStep === 'size' ? 'You against the computer' : `Customise · ${GAME_PACES[setup.pace].name}`}</Label>
+          </SectionHead>
+          {setupStep === 'custom' && (
+            <div className="fl-steps-back">
+              <Button tone="quiet" testId="setup-back" onClick={() => setSetupStep('size')}>
+                ← Game size
+              </Button>
             </div>
+          )}
+          <ol className="fl-steps">
             {setupStep === 'size' && (
-              <div style={field}>
-                <Label>Game size</Label>
+              <SetupStep n={1} title="Game size" hint="How long a battle, on how much ground. Customise changes any of it.">
                 <GamePacePicker value={setup} onPick={pace => setSetup(applyPace(setup, pace))} />
-              </div>
+              </SetupStep>
             )}
-            <div style={field}>
-              <Label>Enemy commander</Label>
+            <SetupStep n={setupStep === 'size' ? 2 : 1} title="Enemy commander" hint="How hard, and how soon, the other side comes for you.">
               <div className="fl-levels" role="group" aria-label="Enemy commander">
                 {(Object.keys(DIFFICULTIES) as Difficulty[]).map(d => {
                   const spec = scaledForSetup(setup, difficultyForPace(d, setup.pace));
@@ -316,73 +407,97 @@ export default function Lobby() {
                   );
                 })}
               </div>
-              <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }}>
+              <p className="fl-setup-note">
                 {DIFFICULTIES[level].blurb}
                 {GAME_PACES[setup.pace].attackMul !== 1 &&
                   ` At ${GAME_PACES[setup.pace].name} size every attack comes ${attackText(GAME_PACES[setup.pace].attackMul).toLowerCase()}${(setup.size ?? 'standard') !== 'standard' ? ', and later still on a larger map' : ''}: the first at about ${minutes(scaledForSetup(setup, difficultyForPace(level, setup.pace)).firstAttack)} minutes.`}{' '}
-                At every level the computer sees the whole map, pays for everything it builds and
-                fights with the same units you do.
+                At every level the computer sees the whole map, pays for everything it builds and fights with the same units you do.
               </p>
-            </div>
+            </SetupStep>
             {setupStep === 'custom' && (
-              <>
-                <div style={field}>
-                  <Label>Map seed</Label>
-                  <div className="fl-seed">
-                    <input
-                      style={{ ...input, width: 200 }}
-                      value={seed}
-                      placeholder={autoSeed}
-                      aria-label="Map seed"
-                      data-testid="seed"
-                      maxLength={64}
-                      onChange={e => setSeed(e.target.value)}
-                    />
-                    <Button
-                      tone="quiet"
-                      onClick={() => {
-                        setSeed('');
-                        setAutoSeed(freshSeed());
-                      }}
-                    >
-                      New map
-                    </Button>
+              <SkirmishSetupPanel
+                value={setup}
+                onChange={setSetup}
+                seedText={seedText}
+                seedSlot={
+                  <div className="fl-setup-field">
+                    <Label>Map seed</Label>
+                    <div className="fl-seed">
+                      <input
+                        style={{ ...input, width: 200, fontFamily: FONT.mono }}
+                        value={seed}
+                        placeholder={autoSeed}
+                        aria-label="Map seed"
+                        data-testid="seed"
+                        maxLength={64}
+                        onChange={e => setSeed(e.target.value)}
+                      />
+                      <Button
+                        tone="quiet"
+                        onClick={() => {
+                          setSeed('');
+                          setAutoSeed(freshSeed());
+                        }}
+                      >
+                        New map
+                      </Button>
+                    </div>
+                    <p className="fl-setup-note">
+                      Leave it as it is for a fresh map, or type any word: the same seed and settings always draw the same battlefield.
+                    </p>
                   </div>
-                  <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }}>
-                    Leave it as it is for a fresh map, or type any word: the same seed and settings always draw the same battlefield.
-                  </p>
+                }
+              />
+            )}
+            <SetupStep
+              n={setupStep === 'size' ? 3 : 5}
+              title="Deploy"
+              hint={setupStep === 'size' ? 'Check the orders and go, or customise the map, sides and terms first.' : 'Check the orders, name the operation and go.'}
+            >
+              <ul className="fl-orders" aria-label="Battle orders" data-testid="setup-summary">
+                <Order k="Game size">{GAME_PACES[setup.pace].name}</Order>
+                <Order k="Enemy">{DIFFICULTIES[level].label}</Order>
+                <Order k="Map">{mapLabel}</Order>
+                <Order k="Sides">{setup.sides === 2 ? '1 against 1' : setup.mode === 'teams' ? (setup.sides === 4 ? '2 against 2' : '2 against 1') : `${setup.sides}, free for all`}</Order>
+                <Order k="Tech">{TECH_TEXT[setup.tech].name}</Order>
+                {setup.tech === 'advanced' && <Order k="Research">{RESEARCH_TEXT[setup.research].name}</Order>}
+                <Order k="Credits">{setup.credits.toLocaleString('en-GB')}</Order>
+                <Order k="Ore">{capital(setup.ore)}</Order>
+                <Order k="Map size">{MAP_SIZE_NAMES[setup.size ?? 'standard']}</Order>
+                <Order k="Sites">{setup.sites ? 'On' : 'Off'}</Order>
+                <Order k="Seed">{seedText}</Order>
+              </ul>
+              <div className="fl-deploy">
+                <div style={{ ...field, flex: '1 1 220px', marginBottom: 0 }}>
+                  <Label>Name this battle</Label>
+                  <input style={input} value={name} placeholder="Operation Fireline" maxLength={60} onChange={e => setName(e.target.value)} />
                 </div>
-                <SkirmishSetupPanel value={setup} onChange={setSetup} seedText={seedText} />
-              </>
-            )}
-            <div className="fl-begin-row">
-              <Button tone="primary" disabled={busy} onClick={begin}>
-                {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
-              </Button>
-              {setupStep === 'size' && (
-                <Button tone="quiet" testId="setup-customise" onClick={() => setSetupStep('custom')}>
-                  Customise →
-                </Button>
-              )}
-            </div>
-            {setupStep === 'size' && (
-              <p style={{ ...bodySmall, fontSize: '0.76rem', margin: 0, color: UI.textFaint }} data-testid="setup-summary">
-                {setupSummary(setup)}
-              </p>
-            )}
-            <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0, color: UI.textFaint }}>
-              Best with a mouse and keyboard on a laptop or desktop screen.
-            </p>
-          </Panel>
-        </div>
+                <div className="fl-begin-row">
+                  <Button tone="primary" disabled={busy} onClick={begin} style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}>
+                    {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
+                  </Button>
+                  {setupStep === 'size' && (
+                    <Button tone="quiet" testId="setup-customise" onClick={() => setSetupStep('custom')}>
+                      Customise →
+                    </Button>
+                  )}
+                </div>
+              </div>
+              <p className="fl-setup-note">Best with a mouse and keyboard on a laptop or desktop screen.</p>
+            </SetupStep>
+          </ol>
+        </section>
 
-        <Panel title="Your battles" aside={saves.length > 0 ? <Label>{saves.length}</Label> : undefined}>
+        <section id="fl-battles" className="fl-lobby-section" aria-labelledby="fl-battles-title">
+          <SectionHead num="04" kicker="Field reports" title="Your battles" id="fl-battles-title">
+            {saves.length > 0 ? <Label>{saves.length} saved</Label> : undefined}
+          </SectionHead>
           {!savesLoaded ? (
             <LoadingRows rows={2} label="Loading your battles" />
           ) : saves.length === 0 ? (
-            <p style={{ ...bodySmall, margin: 0, color: UI.textFaint }}>No battles yet. They are saved to your account as you play.</p>
+            <p className="fl-saves-empty">No battles yet. They are saved to your account as you play.</p>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div className="fl-saves">
               {saves.map(s => (
                 <SaveRow
                   key={s.id}
@@ -396,10 +511,159 @@ export default function Lobby() {
               ))}
             </div>
           )}
-        </Panel>
+        </section>
       </main>
       <PortalNav variant="footer" />
     </div>
+  );
+}
+
+/** A numbered section heading: the lobby reads 01 Campaign, 02 War for the Planet, 03 Skirmish, 04 Your battles. */
+function SectionHead({ num, kicker, title, id, children }: { num: string; kicker: string; title: string; id: string; children?: ReactNode }) {
+  return (
+    <header className="fl-lobby-head">
+      <span className="fl-lobby-num" aria-hidden="true">
+        {num}
+      </span>
+      <div style={{ minWidth: 0, flex: 1 }}>
+        <p className="fl-lobby-kicker">{kicker}</p>
+        <h2 className="fl-lobby-title" id={id}>
+          {title}
+        </h2>
+      </div>
+      {children && <div className="fl-lobby-aside">{children}</div>}
+    </header>
+  );
+}
+
+/** One line of the deploy step's summary of orders. */
+function Order({ k, children }: { k: string; children: ReactNode }) {
+  return (
+    <li>
+      <span>{k}</span>
+      {children}
+    </li>
+  );
+}
+
+/** Missions won, as a ruled bar of one segment per mission with a break between the acts. */
+function Progress({ won }: { won: number }) {
+  return (
+    <span className="fl-progress" aria-label={`${won} of ${CAMPAIGN_MISSIONS} missions won`}>
+      <span className="fl-progress-bar" aria-hidden="true">
+        {Array.from({ length: CAMPAIGN_MISSIONS }, (_, i) => (
+          <span key={i} data-on={i < won ? '1' : '0'} data-act-break={i === ACT_ONE_MISSIONS ? '1' : undefined} />
+        ))}
+      </span>
+      <span className="fl-progress-text">
+        {won} of {CAMPAIGN_MISSIONS} won
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The campaign's theatre map, drawn small and still on the war-room card by the campaign screen's
+ * own art: the whole country. The saves list carries only missions won, so the territory is rebuilt
+ * from that (previewView): home ground and the regions of the missions won held, the next one's
+ * region open, the rest the enemy's; side battles are not known here. The whole map is one button: continue, or start a new campaign.
+ */
+function CampaignTheatre({ won, label, caption, onOpen }: { won: number; label: string; caption: string; onOpen: () => void }) {
+  const wrap = useRef<HTMLDivElement>(null);
+  const ref = useRef<HTMLCanvasElement>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [scheme, setSchemeTick] = useState(0);
+  // The lettering's web font may land after the first paint: draw again when it does.
+  const [fontTick, setFontTick] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void mapFontsReady().then(() => live && setFontTick(n => n + 1));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const actTwo = won >= ACT_ONE_MISSIONS && ACT_TWO_MISSIONS > 0;
+  const view = useMemo(() => previewView(won), [won]);
+
+  useEffect(() => {
+    const box = wrap.current;
+    if (!box) return;
+    const measure = () => {
+      const w = box.clientWidth;
+      setSize({ w, h: Math.round(Math.max(200, Math.min(380, w * 0.62))) });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    // The map's paper and ink may follow the light or dark choice: draw it again when that changes.
+    const off = onSchemeChange(() => setSchemeTick(n => n + 1));
+    return () => {
+      ro.disconnect();
+      off();
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || !size.w) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(size.w * dpr);
+    canvas.height = Math.round(size.h * dpr);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    try {
+      drawMap(ctx, size.w, size.h, view, 0, { whole: true, compact: true });
+    } catch {
+      /* The map is decoration here: a failed drawing leaves the sheet blank rather than the lobby. */
+    }
+  }, [view, size, scheme, fontTick]);
+
+  return (
+    <div className="fl-lobby-theatre">
+      <button type="button" className="fl-lobby-theatre-sheet" onClick={onOpen} aria-label={label} data-testid="lobby-theatre">
+        <span className="fl-lobby-theatre-corner" data-c="tl" aria-hidden="true" />
+        <span className="fl-lobby-theatre-corner" data-c="tr" aria-hidden="true" />
+        <span className="fl-lobby-theatre-corner" data-c="bl" aria-hidden="true" />
+        <span className="fl-lobby-theatre-corner" data-c="br" aria-hidden="true" />
+        <div ref={wrap} className="fl-lobby-theatre-map">
+          <canvas ref={ref} aria-hidden="true" style={{ height: size.h || 240 }} />
+        </div>
+      </button>
+      <div className="fl-lobby-theatre-caption" aria-hidden="true">
+        <span>
+          Theatre map · Act {actTwo ? 'two: the northern coast' : 'one: the southern coast'}
+        </span>
+        <span>{caption}</span>
+      </div>
+    </div>
+  );
+}
+
+/** What changed lately: a strip of headings, opened for a line on each. */
+function WhatsNew() {
+  return (
+    <details className="fl-new">
+      <summary>
+        <span className="fl-new-kicker">What is new</span>
+        <span className="fl-new-strip">
+          {WHATS_NEW.map(n => (
+            <span key={n.title} className="fl-new-chip">
+              {n.title}
+            </span>
+          ))}
+        </span>
+        <span className="fl-new-more" aria-hidden="true" />
+      </summary>
+      <ul>
+        {WHATS_NEW.map(n => (
+          <li key={n.title}>
+            <strong>{n.title}</strong>
+            {n.text}
+          </li>
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -424,36 +688,31 @@ function SaveRow({
   onKeep: () => void;
   onDelete: () => void;
 }) {
+  const status = campaign ? 'campaign' : s.status;
+  const statusText = campaign ? 'Campaign' : s.status === 'victory' ? 'Victory' : s.status === 'defeated' ? 'Defeat' : 'In progress';
+  const facts = campaign
+    ? []
+    : war
+      ? [s.preset ? `${PRESET_NAMES[s.preset]} war` : 'War', `turn ${s.turn}`]
+      : [`${s.turn} min`, mapTypeOf(s) ? MAP_TYPE_NAMES[mapTypeOf(s)!] : null, sizeOfSave(s), sidesOfSave(s)].filter((x): x is string => !!x);
   return (
-    <div style={row} data-kind={campaign ? 'campaign' : war ? 'planet' : 'skirmish'}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-        <strong style={{ fontSize: '0.9rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+    <div className="fl-save" data-kind={campaign ? 'campaign' : war ? 'planet' : 'skirmish'} data-status={status} data-confirming={confirming ? '1' : undefined}>
+      <span className="fl-save-status">{statusText}</span>
+      <div className="fl-save-main">
+        <strong className="fl-save-name">
           {campaign && <span className="fl-badge">Campaign</span>}
           {war && <span className="fl-badge">War</span>}
           {s.name}
         </strong>
-        <span style={{ fontSize: '0.74rem', color: UI.textFaint }}>
-          {campaign ? (
-            'Career in progress'
-          ) : war && s.status === 'active' ? (
-            `${s.preset ? PRESET_NAMES[s.preset] : 'War'} · turn ${s.turn}`
-          ) : s.status === 'victory' ? (
-            <span style={{ color: UI.good }}>Victory</span>
-          ) : s.status === 'defeated' ? (
-            <span style={{ color: UI.bad }}>Defeat</span>
-          ) : (
-            'In progress'
-          )}
-          {war && s.status !== 'active' && ` · ${s.preset ? PRESET_NAMES[s.preset] : 'War'} · turn ${s.turn}`}
-          {!campaign && !war && ` · ${s.turn} min`}
-          {!campaign && !war && mapTypeOf(s) && ` · ${MAP_TYPE_NAMES[mapTypeOf(s)!]}`}
-          {!campaign && !war && sizeOfSave(s) && ` · ${sizeOfSave(s)}`}
-          {!campaign && !war && sidesOfSave(s) && ` · ${sidesOfSave(s)}`} · saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+        <span className="fl-save-meta">
+          {campaign ? <Progress won={Math.min(CAMPAIGN_MISSIONS, Math.max(0, s.turn))} /> : facts.map(f => <span key={f}>{f}</span>)}
+          <span className="fl-save-when">saved {new Date(s.savedAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</span>
         </span>
       </div>
-      <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+      <div className="fl-save-actions">
         {confirming ? (
           <>
+            <span className="fl-save-ask">{campaign ? 'Delete this campaign?' : war ? 'Delete this war?' : 'Delete this battle?'}</span>
             <Button tone="danger" onClick={onDelete}>
               Delete
             </Button>
@@ -498,10 +757,10 @@ const sidesOfSave = (s: SaveMeta): string | null => {
 };
 
 const page: CSSProperties = { minHeight: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, color: UI.text, fontFamily: FONT.body };
-const content: CSSProperties = { flex: 1, width: '100%', maxWidth: 820, margin: '0 auto', padding: '2rem 1rem 3rem' };
+const content: CSSProperties = { flex: 1, width: '100%', maxWidth: 1080, margin: '0 auto', padding: '1.5rem 1rem 3rem', boxSizing: 'border-box' };
 const eyebrow: CSSProperties = { margin: 0, fontSize: '0.7rem', letterSpacing: '0.18em', textTransform: 'uppercase', color: UI.accent };
 const eyebrowOnArt: CSSProperties = { ...eyebrow, color: 'var(--ui-on-art-soft)' };
-const title: CSSProperties = { margin: 0, fontFamily: FONT.display, fontSize: 'clamp(2rem, 6vw, 3rem)', letterSpacing: '0.12em', lineHeight: 1 };
+const title: CSSProperties = { margin: 0, fontFamily: FONT.display, fontSize: 'clamp(2.6rem, 9vw, 4.6rem)', letterSpacing: '0.12em', lineHeight: 0.95 };
 const field: CSSProperties = { display: 'flex', flexDirection: 'column', gap: '0.35rem', marginBottom: '0.4rem' };
 const input: CSSProperties = {
   fontFamily: 'inherit',
@@ -512,16 +771,7 @@ const input: CSSProperties = {
   color: UI.text,
   borderRadius: 3,
   maxWidth: '100%',
-};
-const row: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 10,
-  padding: '0.55rem 0.7rem',
-  border: `1px solid ${UI.rule}`,
-  background: UI.panelRaised,
-  borderRadius: 3,
+  boxSizing: 'border-box',
 };
 const errorBanner: CSSProperties = {
   padding: '0.6rem 0.8rem',
@@ -536,6 +786,7 @@ const errorBanner: CSSProperties = {
 // A small battle drawn with the game's own art functions: the Meridian Corps pushing into an
 // Ashen Combine outpost. Canvas paint, so it may use the battlefield's hex palette.
 
+/** The scene is laid out on a 210-pixel-tall stage and scaled to fit the banner's real height. */
 const HERO_H = 210;
 const UNIT_SCALE = 1.45;
 
@@ -621,21 +872,19 @@ function paintHeroGround(w: number, h: number): HTMLCanvasElement {
   return c;
 }
 
-function HeroScene() {
+function HeroScene({ children }: { children?: ReactNode }) {
   const wrap = useRef<HTMLDivElement>(null);
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current;
     const box = wrap.current;
     if (!canvas || !box) return;
-    let still = false;
-    try {
-      still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    } catch {
-      still = false;
-    }
+    // Still when the system asks for reduced motion or the portal's motion setting is off.
+    const still = currentPace() === 'off';
     let ground: HTMLCanvasElement | null = null;
     let w = 0;
+    let boxW = 0;
+    let boxH = 0;
     let raf = 0;
     const smoke: { x: number; y: number; vx: number; vy: number; life: number }[] = [];
     let lastNow = 0;
@@ -645,19 +894,24 @@ function HeroScene() {
       lastNow = now;
       const dpr = Math.min(2, window.devicePixelRatio || 1);
       const cw = box.clientWidth;
-      if (cw <= 0) {
+      const ch = box.clientHeight;
+      if (cw <= 0 || ch <= 0) {
         // Not laid out yet: a zero-width canvas cannot be drawn. Try again next frame.
         if (!still) raf = requestAnimationFrame(draw);
         return;
       }
-      if (cw !== w || !ground) {
-        w = cw;
-        canvas.width = Math.round(w * dpr);
-        canvas.height = Math.round(HERO_H * dpr);
-        ground = paintHeroGround(w, HERO_H);
+      // k scales the 210-pixel stage up to the banner; w is the stage's width at that scale.
+      const k = ch / HERO_H;
+      if (cw !== boxW || ch !== boxH || !ground) {
+        boxW = cw;
+        boxH = ch;
+        w = cw / k;
+        canvas.width = Math.round(cw * dpr);
+        canvas.height = Math.round(ch * dpr);
+        ground = paintHeroGround(Math.ceil(w), HERO_H);
       }
       const ctx = canvas.getContext('2d')!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.setTransform(dpr * k, 0, 0, dpr * k, 0, 0);
       ctx.drawImage(ground, 0, 0);
       const pos = (u: { x: number; y: number }) => ({ x: u.x * w, y: u.y });
       const targetOf = (i: number) => {
@@ -739,7 +993,10 @@ function HeroScene() {
     };
     raf = requestAnimationFrame(draw);
     const ro = new ResizeObserver(() => {
-      if (still) raf = requestAnimationFrame(draw);
+      if (still) {
+        cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(draw);
+      }
     });
     ro.observe(box);
     return () => {
@@ -748,30 +1005,23 @@ function HeroScene() {
     };
   }, []);
   return (
-    <div ref={wrap} className="fl-hero">
-      <canvas ref={ref} aria-hidden="true" data-testid="lobby-hero" style={{ height: HERO_H }} />
+    <div className="fl-hero">
+      <div ref={wrap} className="fl-hero-stage">
+        <canvas ref={ref} aria-hidden="true" data-testid="lobby-hero" />
+      </div>
+      <div className="fl-hero-grid" aria-hidden="true" />
+      <div className="fl-hero-readout" aria-hidden="true">
+        <span>Sector 7 · Southern coast</span>
+        <span className="fl-hero-live">Contact</span>
+      </div>
       <div className="fl-hero-text">
-        <p style={eyebrowOnArt}>Real-time strategy</p>
+        <p style={eyebrowOnArt}>Real-time strategy · Briefing room</p>
         <h1 style={title}>FIRELINE</h1>
-        <p style={{ fontSize: '0.84rem', lineHeight: 1.45 }}>One Command Yard, a field of ore, and an enemy who is already building. Hold the line.</p>
+        <p className="fl-hero-line">One Command Yard, a field of ore, and an enemy who is already building. Hold the line.</p>
+        {children}
       </div>
     </div>
   );
-}
-
-/** The size step's one-line summary of what Customise holds, e.g. "Random map, Advanced tech, ...". */
-function setupSummary(v: SkirmishSetup): string {
-  const parts = [
-    v.map === 'random' ? 'Random map' : `${MAP_TYPE_NAMES[v.map]} map`,
-    `${TECH_TEXT[v.tech].name} tech`,
-    ...(v.tech === 'advanced' ? [v.research === 'lines' ? RESEARCH_TEXT.lines.name : 'Classic research'] : []),
-    `${v.sides} sides${v.sides > 2 && v.mode === 'teams' ? ' in teams' : ''}`,
-    `${v.credits.toLocaleString('en-GB')} credits`,
-    `${ORE_TEXT[v.ore].name.toLowerCase()} ore`,
-    `${MAP_SIZE_NAMES[v.size ?? 'standard'].toLowerCase()} map size`,
-    ...(v.sites ? ['neutral sites'] : []),
-  ];
-  return `${parts.join(', ')}.`;
 }
 
 const minutes = (ticks: number) => {
@@ -784,7 +1034,7 @@ const WHATS_NEW: { title: string; text: string }[] = [
   { title: 'War for the Planet', text: 'A whole planet of cities, trade and treaties against two to four rival factions, every attack a real battle.' },
   { title: 'Seven battlefields', text: 'River, Highlands, Lakes, Plains, Canyon, Coast or Classic, or let the seed choose. See each map before you deploy.' },
   { title: 'Advanced tech', text: 'Grenadiers, Medics, Flame Tanks, Missile Carriers, the Bastion, walls, a Repair Bay, and powers: recon, barrage, missile.' },
-  { title: 'The campaign', text: 'Eight missions, a Commander who ranks up and learns perks, four heroes who level up, and support powers.' },
+  { title: 'The campaign', text: `${capital(inWords(CAMPAIGN_MISSIONS))} missions in two acts, a Commander who ranks up and learns perks, ${inWords(HERO_NAMES.length)} heroes who level up, and support powers.` },
   { title: 'A battlefield that remembers', text: 'Tread marks, burnt-out wrecks and rubble where structures fell. Bigger explosions, living water, drifting cloud.' },
   { title: 'Richer art', text: 'Detailed tanks and structures with working machinery, and damage you can see: scorch, holes, sparks and fire.' },
   { title: 'Veterans and stances', text: 'Units promote at 3 and 7 kills. Set each group to aggressive, guard or hold fire.' },

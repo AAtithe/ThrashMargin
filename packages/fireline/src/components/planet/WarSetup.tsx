@@ -72,7 +72,7 @@ export default function WarSetup({
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="war-setup">
+    <div className="fl-war-setup" style={{ display: 'flex', flexDirection: 'column', gap: 10 }} data-testid="war-setup">
       <p className="fl-small" style={{ margin: 0, maxWidth: '62ch' }}>
         A whole planet, held by you and two to four rival factions. Build up cities, trade, make and break treaties, and send your field army against one
         neighbouring region a turn. Every attack is a real Fireline battle on that region's ground: fight it yourself or auto-resolve it. Your army, heroes and

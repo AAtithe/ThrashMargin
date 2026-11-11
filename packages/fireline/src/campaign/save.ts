@@ -43,6 +43,19 @@ function migrateCampaignState(raw: unknown, fallbackName: string): CampaignState
     };
   }
 
+  // Engagements came in with the territory map: older campaigns have none. Records for regions the
+  // theatre does not know are kept as they are and ignored by the rules.
+  const engagements: Record<string, MissionRecord> = {};
+  const rawEngagements = (c.engagements && typeof c.engagements === 'object' && !Array.isArray(c.engagements) ? c.engagements : {}) as Record<string, Partial<MissionRecord>>;
+  for (const [id, m] of Object.entries(rawEngagements)) {
+    if (!m || typeof m !== 'object' || !id) continue;
+    engagements[id] = {
+      won: m.won === true,
+      stars: Math.max(0, Math.floor(num(m.stars, 0))),
+      bestTicks: typeof m.bestTicks === 'number' && Number.isFinite(m.bestTicks) ? m.bestTicks : null,
+    };
+  }
+
   return {
     version: 1,
     commander: {
@@ -53,6 +66,7 @@ function migrateCampaignState(raw: unknown, fallbackName: string): CampaignState
     },
     heroes,
     missions,
+    engagements,
     tech: Array.isArray(c.tech) ? c.tech.filter((t): t is CampaignState['tech'][number] => typeof t === 'string') : [],
     lastMission: typeof c.lastMission === 'string' ? c.lastMission : null,
     // Campaigns from before difficulty settings play at Normal, which is how they were written.

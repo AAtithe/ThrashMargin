@@ -217,25 +217,20 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
     ctx.fillRect(px - rad, py - rad, rad * 2, rad * 2);
   }
   ctx.globalAlpha = 1;
-  // Blades, batched into one path per shade and strength: tens of thousands of fills become eight.
-  const blades: Path2D[] = Array.from({ length: 8 }, () => new Path2D());
-  for (let y = 0; y < MAP_H; y++)
-    for (let x = 0; x < MAP_W; x++) {
-      const r = rnd(y * MAP_W + x + 99991);
-      for (let i = 0; i < 14; i++) {
-        const dark = r() < 0.5 ? 0 : 4;
-        const strength = Math.min(3, Math.floor(r() * 4));
-        const px = x * TILE + r() * TILE;
-        const py = y * TILE + r() * TILE;
-        blades[dark + strength].rect(px, py, 1.5, 2.5 + r() * 2);
-      }
+  // Blades: thin, leaning a little either way, wide at the root and pointed at the tip. Two
+  // blocks of BLADE_BLOCK pixels are painted (each batched into one path per shade and strength)
+  // and laid over the map, block by block, each picked and mirrored by a hash of where it lies.
+  // Filling a map's worth of slanted blades one by one took seconds on a large map.
+  const blocks = [bladeBlock(1), bladeBlock(2)];
+  for (let by = 0; by * BLADE_BLOCK < c.height; by++)
+    for (let bx = 0; bx * BLADE_BLOCK < c.width; bx++) {
+      const h = hash(by * 7919 + bx * 31 + 5);
+      ctx.save();
+      ctx.translate(bx * BLADE_BLOCK + (h < 0.5 ? 0 : BLADE_BLOCK), by * BLADE_BLOCK);
+      if (h >= 0.5) ctx.scale(-1, 1);
+      ctx.drawImage(blocks[hash(by * 31 + bx * 7919 + 9) < 0.5 ? 0 : 1], 0, 0);
+      ctx.restore();
     }
-  blades.forEach((path, k) => {
-    ctx.fillStyle = k < 4 ? ART.grassDark : ART.grassLight;
-    ctx.globalAlpha = 0.39 + (k % 4) * 0.075;
-    ctx.fill(path);
-  });
-  ctx.globalAlpha = 1;
   // Tufts: a fan of blades, dark at the root and lit at the tips on the side toward the light.
   for (let y = 0; y < MAP_H; y++)
     for (let x = 0; x < MAP_W; x++) {
@@ -286,6 +281,12 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
     ctx.fillRect(0, 0, c.width, c.height);
     ctx.globalAlpha = 1;
   }
+
+  // 1b. Relief: a gentle rolling height field, lit from the top left, so open country reads as
+  // ground that rises and falls rather than a flat sheet. Worked out at one sample per RELIEF
+  // pixels and stretched with smoothing (it has no detail finer than that), and laid over the
+  // grass only: dirt, water and rock below carry their own shading.
+  relief(ctx, MAP_W * TILE, MAP_H * TILE);
 
   // 2, 3 and 4. Dirt, water and rock, shaded per pixel in one pass over the painted ground. Each is a field
   // sampled smoothly between tile centres and roughened with noise, so its outline follows the
@@ -867,6 +868,111 @@ export function paintTerrain(tiles: string, mapType?: MapType, mapW = DEFAULT_MA
       }
     }
   return c;
+}
+
+/** The side of a block of grass blades, in world pixels (see paintTerrain, step 1). */
+const BLADE_BLOCK = 512;
+
+/** A block of grass blades on a transparent canvas: fourteen to a tile's area, as before. */
+function bladeBlock(seed: number): HTMLCanvasElement {
+  const c = newCanvas(BLADE_BLOCK, BLADE_BLOCK);
+  const ctx = c.getContext('2d')!;
+  const blades: Path2D[] = Array.from({ length: 8 }, () => new Path2D());
+  const r = rnd(seed * 99991);
+  const n = (BLADE_BLOCK / TILE) * (BLADE_BLOCK / TILE) * 14;
+  for (let i = 0; i < n; i++) {
+    const dark = r() < 0.5 ? 0 : 4;
+    const strength = Math.min(3, Math.floor(r() * 4));
+    const px = r() * BLADE_BLOCK;
+    const py = r() * (BLADE_BLOCK - 5);
+    const len = 2.5 + r() * 2.5;
+    const lean = (r() - 0.45) * 1.8;
+    const path = blades[dark + strength];
+    path.moveTo(px - 0.8, py + len);
+    path.lineTo(px + lean, py);
+    path.lineTo(px + 0.8, py + len);
+    path.closePath();
+  }
+  blades.forEach((path, k) => {
+    ctx.fillStyle = k < 4 ? ART.grassDark : ART.grassLight;
+    ctx.globalAlpha = 0.39 + (k % 4) * 0.075;
+    ctx.fill(path);
+  });
+  return c;
+}
+
+/** World pixels per relief sample. */
+const RELIEF = 8;
+
+/**
+ * Hill shading for the grass (see paintTerrain, step 1b). Three octaves of value noise make the
+ * height; the light is the same top-left light as everything else; lit slopes get a little pale
+ * gold, slopes turned away a little blue-green shade, and hollows are a touch darker and lusher.
+ */
+function relief(ctx: CanvasRenderingContext2D, W: number, H: number) {
+  const w = Math.ceil(W / RELIEF) + 1;
+  const h = Math.ceil(H / RELIEF) + 1;
+  const octave = (cell: number, seed: number) => {
+    const n = Math.ceil(Math.max(w, h) / cell) + 2;
+    const g = new Float32Array(n * n);
+    for (let k = 0; k < g.length; k++) g[k] = hash(seed * 104729 + k);
+    return (x: number, y: number) => {
+      const gx = x / cell;
+      const gy = y / cell;
+      const ix = gx | 0;
+      const iy = gy | 0;
+      let fx = gx - ix;
+      let fy = gy - iy;
+      fx = fx * fx * (3 - 2 * fx);
+      fy = fy * fy * (3 - 2 * fy);
+      const k = iy * n + ix;
+      const a = g[k] + (g[k + 1] - g[k]) * fx;
+      const b = g[k + n] + (g[k + n + 1] - g[k + n]) * fx;
+      return a + (b - a) * fy;
+    };
+  };
+  // Cells in samples: hills about 300, 130 and 55 world pixels across.
+  const o1 = octave(300 / RELIEF, 71);
+  const o2 = octave(130 / RELIEF, 73);
+  const o3 = octave(55 / RELIEF, 79);
+  const height = new Float32Array(w * h);
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) height[y * w + x] = o1(x, y) * 0.6 + o2(x, y) * 0.3 + o3(x, y) * 0.1;
+  const c = newCanvas(w, h);
+  const g = c.getContext('2d')!;
+  const img = g.createImageData(w, h);
+  const d = img.data;
+  // Height in world pixels per unit of noise: enough for soft slopes, never cliffs.
+  const LIFT = 70;
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const k = y * w + x;
+      const hl = height[y * w + Math.max(0, x - 1)];
+      const hr = height[y * w + Math.min(w - 1, x + 1)];
+      const hu = height[Math.max(0, y - 1) * w + x];
+      const hd = height[Math.min(h - 1, y + 1) * w + x];
+      // Slope toward the light (up and left) is lit.
+      const lit = (((hr - hl) * -1 + (hd - hu) * -1) * LIFT) / (2 * RELIEF);
+      const low = 0.5 - height[k];
+      const i = k * 4;
+      if (lit > 0) {
+        d[i] = 206;
+        d[i + 1] = 214;
+        d[i + 2] = 128;
+        d[i + 3] = Math.min(46, lit * 90);
+      } else {
+        d[i] = 8;
+        d[i + 1] = 26;
+        d[i + 2] = 22;
+        d[i + 3] = Math.min(90, -lit * 150 + Math.max(0, low) * 60);
+      }
+    }
+  g.putImageData(img, 0, 0);
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(c, 0, 0, w * RELIEF, h * RELIEF);
+  ctx.restore();
 }
 
 /**
