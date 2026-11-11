@@ -210,11 +210,9 @@ export function engagementSpec(c: CampaignState, regionId: string): MissionSpec 
     `The Combine holds ${r.name} with ${full ? 'a whole base: a Command Yard that builds and rebuilds' : `an outpost of ${structures.length} structures`}, and ${garrison} troops in ${place}.`,
     ai === 'raid'
       ? 'Patrols report raiding parties sent out from it on a timer. Expect company before you are ready.'
-      : ai === 'normal'
-        ? 'Its commander is in an attacking mood. Expect waves once it has built up.'
-        : ai === 'defend'
-          ? 'It is dug in and will fight for every structure, but it is not sending anyone out.'
-          : 'It is quiet: the garrison stands its ground and makes no plans.',
+      : ai === 'defend'
+        ? 'It is dug in and will fight for every structure, but it is not sending anyone out.'
+        : 'It is quiet: the garrison stands its ground and makes no plans.',
   ];
   const tier: Difficulty = p < 2 ? 'easy' : 'normal';
 
