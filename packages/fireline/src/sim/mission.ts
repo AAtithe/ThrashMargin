@@ -983,8 +983,17 @@ function missionStrikes(s: GameState): void {
       const r = POWERS.barrage.radius;
       let at: { x: number; y: number } | null = null;
       let bestN = 2;
+      // Only at troops it can see: a barrage aimed with the whole map in view found the player's
+      // rally point deep in their own base every three minutes and killed half of everything there
+      // (27 units with one barrage in Firestorm), with nothing a player could do about it. Out of
+      // sight, the army is safe; in sight, near their units or structures, it is fair game.
+      const watchers = [
+        ...s.units.filter(v => v.hp > 0 && v.owner === o).map(v => ({ x: v.x, y: v.y, r: UNITS[v.kind].sight })),
+        ...s.buildings.filter(b => b.hp > 0 && b.owner === o).map(b => ({ ...buildingCentre(b), r: BUILDINGS[b.kind].sight + Math.max(BUILDINGS[b.kind].w, BUILDINGS[b.kind].h) / 2 })),
+      ];
+      const seen = (u: { x: number; y: number }) => watchers.some(w => Math.abs(w.x - u.x) <= w.r && Math.abs(w.y - u.y) <= w.r && dist(w.x, w.y, u.x, u.y) <= w.r);
       for (const u of s.units) {
-        if (u.owner !== 0 || u.hp <= 0) continue;
+        if (u.owner !== 0 || u.hp <= 0 || !seen(u)) continue;
         let n = 0;
         for (const v of s.units) if (v.owner === 0 && v.hp > 0 && Math.abs(v.x - u.x) <= r && Math.abs(v.y - u.y) <= r && dist(v.x, v.y, u.x, u.y) <= r) n++;
         if (n > bestN) {
