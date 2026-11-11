@@ -64,7 +64,7 @@ import {
   type Weapon,
 } from './rules';
 import { canHit, isAir, launchAircraft, updateAircraft, type AirHooks } from './air';
-import { damageMulOf, incomeMulOf, researchStep, upgradeNewUnit, vehicleSpeedOf } from './research';
+import { antiAirTakenMulOf, damageMulOf, incomeMulOf, researchStep, upgradeNewUnit, vehicleSpeedOf } from './research';
 import { spawnSurvivors } from './commands';
 import { menderStep } from './engineering';
 import {
@@ -98,6 +98,7 @@ import { seenBy, sitesStep } from './sites';
 import { buildingSpec, buildingSpecOf, perksFor, unitSpec, unitSpecOf } from './specs';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { auraWeapon, generalsStep, inAura } from './generals';
+import { lostAboard, transportStep } from './transport';
 
 
 /**
@@ -173,6 +174,8 @@ export function step(s: GameState): void {
   generalsStep(s);
   // round6:C end.
   for (const u of s.units) if (u.hp > 0) updateUnit(s, ctx, u);
+  // The air war: infantry climbing into Troop Carriers, and carriers setting them down.
+  transportStep(s);
   // round6:B begin. Heroes in free play: the hero tick also runs in a skirmish with setup.heroes
   // (this condition may widen; nothing else here changes).
   if (s.mission) heroes(s, ctx);
@@ -636,6 +639,8 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
 
 function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: number): void {
   const armor = t.unit ? unitSpecOf(s, t.unit).armor : 'building';
+  // Countermeasures (research): anti-air does less to the side's aircraft.
+  if (armor === 'aircraft' && (p.weapon === 'flak' || p.weapon === 'aamissile')) raw *= antiAirTakenMulOf(s, t.unit!.owner);
   const amount = Math.max(1, Math.round(raw * DAMAGE_VS[p.weapon][armor]));
   const victim = t.unit ?? t.building!;
   if (victim.hp <= 0) return;
@@ -1157,6 +1162,7 @@ function removeDead(s: GameState): void {
     for (const u of s.units) {
       if (u.hp > 0) continue;
       if (u.hero) noteFallen(s, u);
+      if (u.carried) lostAboard(s, u);
       const size = UNITS[u.kind].category === 'infantry' ? 0 : 1;
       s.effects.push({ id: s.nextId++, kind: 'boom', x: u.x, y: u.y, at: s.tick, size: size === 0 ? 0.5 : 1 });
     }

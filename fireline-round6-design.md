@@ -37,7 +37,7 @@ Every summary line of `npm run drive` is the same before and after it (section 1
 |---|---|
 | `Faction = 'meridian' \| 'ashen'`, `FACTIONS`, `FACTION_NAMES` | `src/sim/rules.ts` (round 6 block at the end) |
 | `UnitOverlay`, `BuildingOverlay`, `FactionOverlay`, `FactionMenu` (types); `FACTION_OVERLAY: Record<Faction, FactionOverlay>` and `FACTION_MENUS: Record<Faction, FactionMenu>`, both empty, **inside A's markers** | `src/sim/rules.ts` |
-| `AirRole = 'strafe' \| 'bomb'` and `UnitSpec.airRole?`; the Gunship is `'strafe'`, the Bomber `'bomb'` | `src/sim/rules.ts` |
+| `AirRole = 'strafe' \| 'bomb'` and `UnitSpec.airRole?`; the Gunship is `'strafe'`, the Bomber `'bomb'` (the merge with main's air war adds `'scout'`, `'intercept'` and `'transport'`: section 8) | `src/sim/rules.ts` |
 | `GeneralId = 'hale' \| 'voss' \| 'kade' \| 'ilse'`, `GENERAL_IDS`, `GENERAL_FACTION: Record<GeneralId, Faction>` (Hale and Voss Meridian, Kade and Ilse Ashen). The `GENERALS` table itself is C's | `src/sim/rules.ts` |
 | `FormationShape = 'line' \| 'column' \| 'wedge' \| 'box'`, `FORMATION_SHAPES` | `src/sim/rules.ts` |
 | `SkirmishSetup.factions?: Faction[]`, `.heroes?: boolean`, `.generals?: boolean`, `.generalPicks?: (GeneralId \| null)[]`; `DEFAULT_SETUP` and `LEGACY_SETUP` state each: `factions: ['meridian', 'meridian'], heroes: false, generals: false, generalPicks: [null, null]` | `src/sim/rules.ts` |
@@ -478,3 +478,37 @@ Seams the integrator closes, none of which a workstream should pre-empt:
 failed. The assertion count rose by the groundwork's own assertions only (the stubs' sections: setups,
 per-side specs, old saves and missions, heroes off, perks for every side, squads and formation
 orders), and the run takes about 4 seconds longer.
+
+---
+
+## 8. Merged with main's air war (2026-11-11)
+
+Main gained the air war (`fireline-design.md`, the two 2026-11-10 air war entries) while this round
+was built: the Recon Plane, Interceptor, Troop Carrier and Heavy Bomber, Countermeasures research,
+scrambles, airlifts and their commander. The merge keeps this contract's rules:
+
+- **Every aircraft has a role, and air code branches on it.** `AirRole` is now
+  `'strafe' | 'bomb' | 'scout' | 'intercept' | 'transport'`: the Recon Plane `'scout'`, the
+  Interceptor `'intercept'`, the Troop Carrier `'transport'`, the Heavy Bomber `'bomb'` (it uses the
+  Bomber's run code). Main's kind-name branches in `air.ts`, `aiAir.ts`, `Sidebar.tsx` and
+  `renderer.ts` read the role instead; main's `isBomberKind` (by weapon kind, which would have missed
+  the Firebrand's incendiaries) is gone. `AIR_SLOTS` (the Heavy Bomber takes a whole pad) stays a
+  per-kind table, read through `airSlotsOf`, as data rather than a branch.
+- **Both armies fly the four unchanged.** They are on `AIR_MENU`, which neither army's
+  `remove` touches, and no overlay names them: `unitSpecFor(f, k) === UNITS[k]` for both armies
+  (asserted). Meridian keeps the catalogue's exact numbers and order. Ashen's Air list is the four,
+  then its Kestrel and Firebrand (`menuOf`: shared items, then the army's own, then recruits), so no
+  key is shared and recruits stay last.
+- **Identity fields.** `detector` and `carries` join the fields an overlay cannot hold
+  (`UnitOverlay`), so `sites.ts`, `mission.ts` and `transport.ts` may keep reading `UNITS` for them.
+- **The computer.** `aiAir.ts` picks every aircraft by role from the army's own Air list
+  (`airKindFor`; a `heavy` flag tells the Heavy Bomber, which takes a whole Helipad, from a side's
+  ordinary bomber). Both armies get main's whole air plan: Interceptors and the Recon Plane ahead of
+  the army, a Helipad more to hold them, the Heavy Bomber on Hard, airlifts, interceptors sent at
+  raiders, and Countermeasures research. Ashen's `AIR_FACTION_TACTICS` (one more strike aircraft on
+  Hard) still applies on top.
+- **Seams.** The field General cannot board a Troop Carrier (`canRide`, and old saves' passengers),
+  since leaving the map would read as the General falling; heroes already could not. Boarding is an
+  order, so a boarder leaves its squad (`doMove`). A General's air discount and rearm doctrine (Ilse)
+  reach every aircraft with a role, the air war's included.
+

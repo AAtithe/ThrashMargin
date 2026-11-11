@@ -221,6 +221,86 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
   ok(Array.isArray(createLedger(old).state.resets), 'migrate: a save from before the Reset loads with no resets');
 }
 
+// --- Daily system calls ----------------------------------------------------------------------------
+// One a day, operations and sales alternating; answering scores nothing; a call missed comes back round.
+{
+  const l = fresh();
+  for (const t of ['ops', 'sales']) ok(l.SYSTEM.filter((c: { theme: string }) => c.theme === t).length >= 12, `system: at least twelve ${t} calls`);
+  ok(new Set(l.SYSTEM.map((c: { id: string }) => c.id)).size === l.SYSTEM.length, 'system: ids are unique');
+  for (const c of l.SYSTEM) {
+    ok(c.opts.length === 3 && c.opts.filter((o: { v: string }) => o.v === 'best').length === 1, `system: ${c.id} has three options and one world-class call`);
+    ok(c.todo && c.todo.text && ['Start', 'Stop', 'Keep'].includes(c.todo.type), `system: ${c.id} offers a real action`);
+  }
+  ok(!/[—–]/.test(JSON.stringify([l.SYSTEM, l.OFF, l.FEARS, l.OUTCOMES])), 'system: no em or en dashes in the copy');
+  const day0 = T, day1 = T + DAY;
+  const a = l.sysToday(day0), b = l.sysToday(day1);
+  ok(a.call && b.call && a.call.theme !== b.call.theme, 'system: themes alternate by day');
+  ok(a.played === null, 'system: today starts unplayed');
+  const worst = a.call.opts.findIndex((o: { v: string }) => o.v === 'trap');
+  ok(l.playSys(a.call.id, worst, day0) === true, 'system: first call of the day plays');
+  ok(l.playSys(a.call.id, 0, day0 + 60_000) === false, 'system: only one a day');
+  ok(l.sysToday(day0).played && l.sysToday(day0).call.id === a.call.id, 'system: today shows the call already played');
+  ok(l.points() === 0, 'system: answering scores nothing');
+  ok(l.sysMastered().size === 0, 'system: a trap is not mastery');
+  // Play the rest of that theme on its days; the missed one comes back once the unplayed ones run out.
+  const theme = a.call.theme; let d = day0; const seen: string[] = [a.call.id];
+  for (let i = 0; i < 60; i++) {
+    d += DAY; const t = l.sysToday(d); if (!t.call || t.call.theme !== theme) continue;
+    if (t.call.id === a.call.id) break;
+    seen.push(t.call.id); l.playSys(t.call.id, t.call.opts.findIndex((o: { v: string }) => o.v === 'best'), d);
+  }
+  ok(seen.length === l.SYSTEM.filter((c: { theme: string }) => c.theme === theme).length, `system: every ${theme} call dealt before a repeat (dealt ${seen.length})`);
+  ok(l.sysToday(d).call.id === a.call.id, 'system: the missed call comes back round');
+  ok(l.sysProgress().find((x: { theme: string }) => x.theme === theme).done === seen.length - 1, 'system: progress counts world-class calls');
+  ok(l.sysRhythm(d) >= 1 && l.sysRhythm(d) <= 7, 'system: rhythm counts days in the last seven');
+}
+
+// --- Phone-off day ------------------------------------------------------------------------------------
+{
+  const l = fresh();
+  const plan = l.planOff({ day: T + DAY, decider: 'My managing director', route: 'call my second in command, who can reach me', threshold: ['staff safety', 'a client about to leave'], ts: T });
+  ok(l.offCurrent() === plan, 'off: planned day is current');
+  ok(l.state.todos.some((t: { source: string }) => t.source === 'off-brief-' + plan.id), 'off: the brief goes on the list');
+  const brief = l.offBrief(plan);
+  ok(brief.includes('My managing director decides') && brief.includes('staff safety or a client about to leave'), 'off: the brief names who decides and the emergencies');
+  ok(!/[—–]/.test(brief), 'off: no dashes in the brief');
+  ok(l.points() === 0, 'off: planning scores nothing');
+  l.logOff({ waited: ['A client question', 'An approval', 'A deadline'], handled: ['A team question'], broke: ['A sales enquiry'] });
+  ok(l.offCurrent() === null && l.state.offDays[0].status === 'back', 'off: logging closes the day');
+  ok(l.points() === l.OFF_PTS + 10 + 3, `off: a logged day scores ${l.OFF_PTS}, plus the brief done and one noticed thing (got ${l.points()})`);
+  ok(l.state.notes.some((n: { text: string }) => n.text === 'Handled without me: A team question'), 'off: handled items go in the notice log');
+  ok(l.state.todos.some((t: { text: string; done: boolean }) => t.text.startsWith('Design out: A sales enquiry') && !t.done), 'off: stalled items become fixes');
+  const tot = l.offTotals();
+  ok(tot.days === 1 && tot.waited === 3 && tot.handled === 1 && tot.broke === 1, 'off: totals');
+  ok(l.receipts().some((r: string) => r.includes('3 things waited fine')), 'off: waited-fine is a receipt');
+  ok(l.receipts().some((r: string) => r.startsWith('Once so far, someone solved it')), 'off: handled-without-me feeds the receipts');
+  // A second day in the same week does not score again; the next week does.
+  const before = l.points();
+  const p2 = l.planOff({ day: T + 2 * DAY }); l.state.todos = l.state.todos.filter((t: { source: string }) => t.source !== 'off-brief-' + p2.id);
+  l.logOff({ waited: ['A deadline'] });
+  const sameWeek = Math.floor(((T + DAY) / DAY + 3) / 7) === Math.floor(((T + 2 * DAY) / DAY + 3) / 7);
+  ok(l.points() - before === (sameWeek ? 0 : l.OFF_PTS), `off: one phone-off day a week scores (same week ${sameWeek}, got ${l.points() - before})`);
+  ok(l.offRecent(T + 3 * DAY) >= 1, 'off: weeks with a phone-off day are counted');
+  // Logging without a plan still works.
+  const u = fresh(); u.logOff({ waited: ['An approval'] }, T);
+  ok(u.offTotals().days === 1, 'off: a day can be logged without planning it first');
+}
+
+// --- Fear and reality --------------------------------------------------------------------------------
+{
+  const l = fresh();
+  l.state.reviews.push({ ts: T - 14 * DAY, fear: 'Cash running short', fearOutcome: 'never' });
+  l.state.reviews.push({ ts: T - 7 * DAY, fear: 'Losing a big client', fearOutcome: 'worse' });
+  l.state.reviews.push({ ts: T, fear: 'Nothing this week' });
+  const g = l.fearGap();
+  ok(g.logged === 2 && g.better === 1 && g.worse === 1, 'fear: counts named fears and how they turned out');
+  ok(l.receipts().some((r: string) => r.includes('1 turned out better')), 'fear: the gap is a receipt');
+  ok(l.FEARS.includes('Nothing this week') && l.OUTCOMES.length === 4, 'fear: options');
+  const old = JSON.parse(JSON.stringify(fresh().state)); delete old.offDays; delete old.sysLog;
+  const m = createLedger(old);
+  ok(Array.isArray(m.state.offDays) && Array.isArray(m.state.sysLog), 'migrate: older saves load with no phone-off days or system calls');
+}
+
 console.log(`\n${passed + failures.length} assertions, ${failures.length} failed`);
 if (failures.length) {
   for (const f of failures) console.error('  FAIL ' + f);

@@ -119,8 +119,12 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   28 seeds, every order, the campaign's heroes, powers, objectives and mission AI modes, aircraft and
   research, three- and four-sided battles, large and huge maps, engineering vehicles, neutral sites
   and tier three; about 368,000 assertions, about 6 minutes; `-- --seeds 60` for a wider sweep, `-- --campaign` for the
-  campaign sections alone). `npm run campaign:fire` checks progression and builds and runs all eight
-  missions; both are in `npm run check`. `npm run ladder:fire` pits AI commanders over 150 seeds
+  campaign sections alone). `npm run campaign:fire` checks progression, builds and runs all fourteen
+  missions at every campaign difficulty, and plays every one of them to a win with a scripted player
+  (`scripts/campaign-player.ts`); both are in `npm run check`. `npm run sweep:fire` plays the campaign
+  missions by every scripted plan at Easy, Normal and Hard and counts wins (about 4 minutes, so not
+  in check); use it for any change to a mission, the campaign difficulty, the AI or the balance, and
+  read one plan's result as noise. `npm run ladder:fire` pits AI commanders over 150 seeds
   (about 10 minutes, so not in check); use it for any balance or AI change. Fireline is real time: it saves every 15 seconds of play rather than per action, and
   its guided tour runs on the live battle (see `fireline-design.md` §5).
 - **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and

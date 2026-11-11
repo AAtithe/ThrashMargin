@@ -172,7 +172,9 @@ function abilities(ok: Ok): void {
 function savesAndMissions(ok: Ok): void {
   // Byte-identical replay, and through a save, with the computer playing heroes.
   const start = createInitialState('hr', 'hr', { seed: 'hf-replay', createdAt: 0, autopilot: true, setup: { tech: 'advanced', heroes: true } });
-  start.players.forEach(p => (p.credits = 20000));
+  // 30,000 since the merge with main's air war: at 20,000 the commanders' Interceptors and
+  // Countermeasures spent the spare credits, and side 0 fell at minute 9 before either fielded a hero.
+  start.players.forEach(p => (p.credits = 30000));
   const run = (from: GameState, ticks: number) => {
     let x = from;
     for (let n = 0; n < ticks; n += 50) x = processAction(x, { type: 'tick', n: 50 });

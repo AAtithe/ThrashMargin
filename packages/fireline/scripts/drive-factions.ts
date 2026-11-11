@@ -151,7 +151,7 @@ function specs(ok: Ok): void {
       const a = unitSpecFor(f, k);
       const b = UNITS[k];
       ok(
-        a.category === b.category && a.hero === b.hero && a.medic === b.medic && a.mender === b.mender && a.deploysTo === b.deploysTo && a.stealth === b.stealth && a.airRole === b.airRole,
+        a.category === b.category && a.hero === b.hero && a.medic === b.medic && a.mender === b.mender && a.deploysTo === b.deploysTo && a.stealth === b.stealth && a.airRole === b.airRole && a.detector === b.detector && a.carries === b.carries,
         `${f} ${k}: the same kind of unit as the catalogue's`,
       );
       ok(unitSpecFor(f, k) === a, `${f} ${k}: one spec object, every time`);
@@ -236,6 +236,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Integration: build keys for every army, heroes and Generals on', buildKeys],
   ['Integration: stat cards and the setup text', cardsAndSetupText],
   // round6:integration end.
+  ['Merge: the air war for both armies', airWarBothArmies],
 ];
 
 // ---- Workstream A: two armies ----------------------------------------------------------------
@@ -302,7 +303,8 @@ function overlayAndMenus(ok: Ok): void {
   ok(UNITS.raider.speed > UNITS.buggy.speed && UNITS.raider.hp < UNITS.buggy.hp, 'the Raider Bike: faster and frailer than the buggy');
   ok(UNITS.sapper.requires.includes('barracks') && UNITS.sapper.category === 'infantry', 'the Sapper: infantry, from the Barracks');
   // Menus per army.
-  ok(menuOf('ashen', 'air').join() === 'kestrel,firebrand', "Ashen's Air list: Kestrel, Firebrand");
+  // Merged with the air war: its four aircraft on both armies' lists, then Ashen's own two.
+  ok(menuOf('ashen', 'air').join() === 'reconplane,interceptor,carrier,heavybomber,kestrel,firebrand', "Ashen's Air list: the air war's four, then Kestrel, Firebrand");
   const today = (l: readonly (BuildingKind | UnitKind)[]) => l.filter(k => !RECRUITS.includes(k));
   const recruits = (l: readonly (BuildingKind | UnitKind)[]) => l.filter(k => RECRUITS.includes(k)).sort((a, b) => (a === 'general' ? 0 : 1) - (b === 'general' ? 0 : 1));
   ok(menuOf('ashen', 'vehicle').join() === [...today(VEHICLE_MENU), 'raider', ...recruits(VEHICLE_MENU)].join(), "Ashen's Vehicles: today's, then the Raider Bike, then the Ace");
@@ -679,3 +681,88 @@ function cardsAndSetupText(ok: Ok): void {
   ok(techText('standard', { heroes: true, generals: true }) === techText('standard'), 'standard tech: neither, whatever the options say');
 }
 // round6:integration end.
+
+// ---- Merge: main's air war (2026-11-10) with round 6's two armies ----------------------------------
+import { airArena, padWith, tick as ticks, tickUntil } from './drive-air';
+
+/** The air war's aircraft: shared by both armies, unchanged, each with its role. */
+const AIR_WAR: [UnitKind, string][] = [
+  ['reconplane', 'scout'],
+  ['interceptor', 'intercept'],
+  ['carrier', 'transport'],
+  ['heavybomber', 'bomb'],
+];
+
+function airWarBothArmies(ok: Ok): void {
+  for (const [k, role] of AIR_WAR) {
+    ok(UNITS[k].airRole === role, `${k}: air role ${role}`);
+    ok(FACTIONS.every(f => factionAllows(f, k) && menuOf(f, 'air').includes(k)), `${k}: on both armies' Air lists`);
+    ok(FACTIONS.every(f => unitSpecFor(f, k) === UNITS[k]), `${k}: the catalogue's exact numbers for both armies`);
+    ok(!STANDARD_TECH.includes(k), `${k}: advanced tech only`);
+  }
+  ok(menuOf('meridian', 'air') === MENUS.air && MENUS.air.join() === AIR_MENU.join(), "Meridian's Air list is the catalogue's, in order");
+  quietly(() => {
+    // An Ashen Interceptor parked on its pad scrambles at a Meridian Gunship, and fires.
+    {
+      const { s, cx, cy } = airArena('fa-aw-scramble', { map: 'plains', tech: 'advanced', credits: 20000, factions: ['meridian', 'ashen'] });
+      const { craft } = padWith(s, 1, cx + 3, cy, ['interceptor']);
+      const g = put(s, 0, 'gunship', cx - 4.5, cy + 0.5, { stance: 'hold', order: { type: 'idle' } });
+      let missiles = 0;
+      const t = watch(s, 400, x => {
+        for (const p of x.projectiles) if (p.shooter === craft[0].id && p.weapon === 'aamissile' && p.firedAt === x.tick - 1) missiles++;
+      });
+      ok(missiles > 0, `an Ashen Interceptor scrambles at a Meridian Gunship and fires (${missiles} missiles)`);
+      ok(!unitIn(t, g.id) || unitIn(t, g.id)!.hp < UNITS.gunship.hp, 'and hurts it');
+    }
+    // A Meridian Interceptor at an Ashen Kestrel: the role, not the name, makes it a target.
+    {
+      const { s, cx, cy } = airArena('fa-aw-kestrel', { map: 'plains', tech: 'advanced', credits: 20000, factions: ['meridian', 'ashen'] });
+      const { craft } = padWith(s, 0, cx + 3, cy, ['interceptor']);
+      const k = put(s, 1, 'kestrel', cx - 4.5, cy + 0.5, { stance: 'hold', order: { type: 'idle' } });
+      const t = tickUntil(s, x => unitIn(x, craft[0].id)?.scramble === true, 200);
+      ok(unitIn(t, craft[0].id)?.scramble === true, 'a Meridian Interceptor scrambles at an Ashen Kestrel');
+      ok(!!unitIn(t, k.id), 'which is there to be chased');
+    }
+    // An Ashen Heavy Bomber: a run of bombs, as the Bomber's.
+    {
+      const { s, cx, cy } = arena();
+      const target = addBuilding(s, 0, 'barracks', cx, cy, -100);
+      const hb = put(s, 1, 'heavybomber', cx - 7.5, cy + 1, { stance: 'hold' });
+      doAttack(s, 1, [hb.id], target.id);
+      let run = false;
+      let bombs = 0;
+      watch(s, 300, x => {
+        if (unitIn(x, hb.id)?.bombRun) run = true;
+        for (const p of x.projectiles) if (p.shooter === hb.id && p.weapon === 'bomb' && p.firedAt === x.tick - 1) bombs++;
+      });
+      ok(run && bombs > 0, `an Ashen Heavy Bomber makes a bomb run (${bombs} bombs)`);
+    }
+    // An Ashen Recon Plane sent to a point burns fuel and circles there.
+    {
+      const { s, cx, cy } = arena();
+      const { craft } = padWith(s, 1, cx - 6, cy - 6, ['reconplane']);
+      doMove(s, 1, [craft[0].id], cx + 4, cy + 4, false);
+      const t = ticks(s, 300);
+      const r = unitIn(t, craft[0].id)!;
+      ok(r.order.type === 'idle' && (r.ammo ?? 0) < (AIR_AMMO.reconplane ?? 0), `an Ashen Recon Plane flies out, circles and burns fuel (${r.ammo} left)`);
+    }
+  });
+  // The Ashen computer on Hard, faced with Gunships, answers with its own kinds for every role.
+  {
+    let s = copy(createInitialState('fa-aw-ai', 'fa-aw-ai', { seed: 'fa-aw-ai', createdAt: 0, difficulty: 'hard', setup: { map: 'plains', tech: 'advanced', credits: 10000, factions: ['meridian', 'ashen'] } }));
+    s.units = s.units.filter(u => u.owner !== 0);
+    for (const m of s.ai) {
+      m.nextAttack = 1e9;
+      m.nextRaid = 1e9;
+    }
+    const hq = s.buildings.find(b => b.owner === 0 && b.kind === 'hq')!;
+    padWith(s, 0, hq.x + 4, hq.y, ['gunship', 'gunship']);
+    const flown = new Set<UnitKind>();
+    for (let k = 0; k < 150 && !flown.has('interceptor'); k++) {
+      s = ticks(s, 100);
+      for (const u of s.units) if (u.owner === 1 && UNITS[u.kind].category === 'air') flown.add(u.kind);
+    }
+    ok(flown.has('interceptor'), `the Ashen computer on Hard answers Gunships with an Interceptor (flew ${[...flown].join(', ') || 'nothing'} by minute ${(s.tick / 600).toFixed(1)})`);
+    ok(!flown.has('gunship') && !flown.has('bomber'), 'and never a Gunship or a Bomber');
+  }
+}

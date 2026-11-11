@@ -1,3 +1,4 @@
+import { boardProblem, doBoard, doUnload, unloadProblem } from './transport';
 import {
   canAttack,
   canCancel,
@@ -182,6 +183,19 @@ export function processAction(s: GameState, a: GameAction): GameState {
       return c;
     }
     // round6:D end.
+    // The air war: boarding a Troop Carrier and setting its infantry down.
+    case 'board': {
+      if (!Number.isInteger(a.carrier) || boardProblem(s, 0, ids(a.ids), a.carrier) !== null) return s;
+      const c = cloneState(s);
+      doBoard(c, 0, ids(a.ids), a.carrier);
+      return c;
+    }
+    case 'unload': {
+      if (!Number.isInteger(a.id) || unloadProblem(s, 0, a.id) !== null) return s;
+      const c = cloneState(s);
+      doUnload(c, 0, a.id);
+      return c;
+    }
     default:
       return s;
   }

@@ -42,6 +42,7 @@ import type { CampaignState, PerkId, PerkSpec } from '../src/campaign/types';
 import { processAction } from '../src/sim/actions';
 import { generateMap, isWalkable } from '../src/sim/map';
 import { abilityProblem, createMissionState } from '../src/sim/mission';
+import { BASE_PLANS, planName, playAceOfSpades, playBase, playQuietMan } from './campaign-player';
 import { distToBuilding } from '../src/sim/grid';
 import { seedFromString } from '../src/sim/rng';
 import {
@@ -706,7 +707,8 @@ section('act two: progression and old saves', () => {
   const adv = ['wall', 'grenadier', 'medic', 'repairbay', 'rocketturret', 'missilecarrier', 'techcentre', 'flametank', 'bastion', 'strikecommand'];
   const last = missionById('last-light')!;
   for (const t of adv) ok(last.tech.includes(t as never), `Last Light offers ${t}`);
-  ok(last.difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander on hard, with a full base');
+  // Normal tier since the campaign difficulty settings: Hard gives the Hard tier back (difficulty.ts).
+  ok(last.difficulty === 'normal' && scaleMission(last, 'hard').difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander, hard at campaign Hard, with a full base');
   const kinds = new Set<string>(['hq', ...last.enemy.structures]);
   // Skirmish-only structures (round 5): a Field Yard is never built, only deployed from a truck, and
   // the tier-three structures are in no mission; nor is the Command Academy (round 6, heroes in free play).
@@ -783,7 +785,10 @@ section('act two in the simulation', () => {
 });
 
 // ---- Act two, played ---------------------------------------------------------------------------
-const clockText = (ticks: number) => `${Math.floor(ticks / 600)} min ${Math.round((ticks % 600) / 10)} s`;
+const clockText = (ticks: number) => {
+  const secs = Math.round(ticks / 10);
+  return `${Math.floor(secs / 60)} min ${secs % 60} s`;
+};
 
 /** The campaign as it stands on reaching this mission, every mission before it won. */
 function campaignBefore(id: string): CampaignState {
@@ -986,6 +991,31 @@ section('campaign difficulty', () => {
   return notes.join('; ');
 });
 
+section('every mission, played', () => {
+  // Each mission no other section plays is played here by a scripted player (campaign-player.ts),
+  // and must be won. Base missions: the skirmish commander runs the base, held at home and sent at
+  // the mission's target at eight minutes, with the heroes and powers scripted. The full set of plans
+  // at every difficulty is `npm run sweep:fire`. Hard is checked there, not here: a scripted player
+  // that loses proves little, and Hard is meant to be lost sometimes.
+  const notes: string[] = [];
+  const plan = BASE_PLANS.find(p => p.commander === 'normal' && p.attackAt === 8)!;
+  for (const id of ['first-light', 'hold-the-ford', 'blackout', 'fireline', 'iron-coast', 'firestorm', 'last-light'])
+    for (const level of ['easy', 'normal'] as const) {
+      const r = playBase(id, level, plan);
+      ok(r.result === 'won', `${id} ${level}: won by ${planName(plan)} (${r.result} at ${clockText(r.ticks)}${r.lostBecause ? `: ${r.lostBecause}` : ''})`);
+      if (level === 'normal') notes.push(`${id} ${clockText(r.ticks)}`);
+    }
+  // The Quiet Man: the Spy round the north to the Uplink, the riflemen holding the extraction point.
+  // Ace of Spades: the ridge held, the two tanks it brings waited for, then the sweep. Every level.
+  for (const level of CAMPAIGN_LEVELS) {
+    const q = playQuietMan(level, 'north', 'extraction');
+    ok(q.result === 'won', `quiet-man ${level}: won (${q.result} at ${clockText(q.ticks)}${q.lostBecause ? `: ${q.lostBecause}` : ''})`);
+    const a = playAceOfSpades(level, 'gather');
+    ok(a.result === 'won', `ace-of-spades ${level}: won (${a.result} at ${clockText(a.ticks)}${a.lostBecause ? `: ${a.lostBecause}` : ''})`);
+  }
+  return `at Normal: ${notes.join(', ')}`;
+});
+
 section('act two, played', () => {
   const notes: string[] = [];
   // Convoy North: left alone, the convoy drives into the Combine posts and is lost; escorted (the
@@ -1093,7 +1123,7 @@ section('act two, played', () => {
   // Last Light: both sides' structure powers, the enemy's on hard.
   {
     const s = startOf('last-light');
-    ok(s.difficulty === 'hard' && s.powers![1].missile !== undefined && s.powers![1].barrage !== undefined, 'last-light: the enemy holds the missile and the barrage');
+    ok(s.difficulty === 'normal' && s.powers![1].missile !== undefined && s.powers![1].barrage !== undefined, 'last-light: the enemy holds the missile and the barrage');
     ok(s.powers![0].recon === 0 && s.powers![0].barrage === 0 && s.powers![0].reinforce === 0, 'last-light: our three powers are ready at the start');
     ok(s.powers![0].missile === undefined, 'last-light: no missile for us until we build a Strike Command');
   }
