@@ -126,7 +126,7 @@ export function pressBuild(
   for (let i = 0; i < n; i++) if (!dispatch({ type: 'queue', category: tab, kind })) break;
 }
 
-const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure', aircraft: 'Aircraft' };
+const ARMOR_NAME: Record<Armor, string> = { infantry: 'Infantry', light: 'Light', heavy: 'Heavy', building: 'Structure', aircraft: 'Aircraft', ship: 'Ship' };
 const WEAPON_NAME: Record<WeaponKind, string> = {
   bullet: 'Machine gun',
   shell: 'Cannon',
@@ -138,6 +138,7 @@ const WEAPON_NAME: Record<WeaponKind, string> = {
   aamissile: 'Anti-air missiles',
   bomb: 'Bombs',
   rail: 'Railgun',
+  torpedo: 'Torpedo',
 };
 const secs = (ticks: number) => {
   const v = ticks / TICKS_PER_SECOND;

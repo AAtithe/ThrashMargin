@@ -1130,7 +1130,7 @@ function dodgeMissiles(s: GameState, owner: Owner, units: Unit[]): void {
   }
 }
 
-type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft';
+type ArmorClass = 'infantry' | 'light' | 'heavy' | 'building' | 'aircraft' | 'ship';
 
 /**
  * The opponent's things a blast at (x, y) would hurt, in credits' worth destroyed: each one's cost
