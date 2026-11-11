@@ -1584,7 +1584,7 @@ function paintMarks(o: Sheetish, view: TheatreView, whole: boolean, withFront: b
       sabres(g, x, y, s * 0.7, pal.pencil, Math.max(0.8, 0.9 * k));
     }
     g.restore();
-    if (!inFocus || compact) continue;
+    if (!inFocus || whole) continue;
     const style: MapText['style'] = e.state === 'locked' ? 'italic' : r.kind === 'city' ? 'roman' : 'caps';
     const colour = e.state === 'locked' ? pal.pencil : e.state === 'open' ? pal.red : pal.ink;
     const weight = e.state === 'open' ? 700 : 400;
@@ -1648,7 +1648,7 @@ function paintMarks(o: Sheetish, view: TheatreView, whole: boolean, withFront: b
     }
     g.restore();
     if (!inFocus) continue;
-    if (compact && n.state !== 'open') continue;
+    if (whole && n.state !== 'open') continue;
     // The name, and the stars won beneath it.
     const style: MapText['style'] = n.state === 'locked' ? 'italic' : 'caps';
     const weight = n.state === 'open' ? 700 : 600;
@@ -1774,7 +1774,7 @@ function furniture(g: Ctx, w: number, h: number, view: TheatreView, pal: Palette
     const n = compact ? 2 : 3;
     const bh = Math.max(3, 4 * k);
     const north = Math.max(16, 26 * k);
-    const x1 = w - m - 12 * k - north * (cam.rot ? 1.7 : 0.9);
+    const x1 = w - m - 10 * k - north * (cam.rot ? 1.35 : 0.85) - seg * 0.4 - 12 * k;
     const x0 = x1 - seg * n;
     const y = bottom - bh - 2;
     const ts = Math.max(7, 8.5 * k);
@@ -2101,10 +2101,15 @@ export function drawCampaignMap(ctx: Ctx, w: number, h: number, view: TheatreVie
       ctx.clip();
       ctx.drawImage(after, 0, 0, w, h);
       ctx.restore();
-      // The leading edge: a bright blue rim that fades as the fill completes.
+      // The leading edge: a bright blue rim on a paper glow, fading as the fill completes.
+      const fade = 1 - e * e;
+      ctx.strokeStyle = pal.halo;
+      ctx.globalAlpha = 0.55 * fade;
+      ctx.lineWidth = 9;
+      ctx.stroke();
       ctx.strokeStyle = pal.blue;
-      ctx.globalAlpha = 0.7 * (1 - e);
-      ctx.lineWidth = 2.2;
+      ctx.globalAlpha = 0.9 * fade;
+      ctx.lineWidth = 2.6;
       ctx.stroke();
       ctx.restore();
     }
