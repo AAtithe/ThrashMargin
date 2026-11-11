@@ -4,7 +4,7 @@
  * Run after the guided tour by scripts/tours/fireline.cjs, or alone:
  *   TOUR_BASE=http://localhost:5306 node scripts/tours/fireline-build-window.cjs   (with Vite running)
  *
- * On a fresh advanced-tech skirmish it checks that:
+ * On a fresh advanced-tech skirmish on a fixed Coast map (so the Naval tab is always there) it checks that:
  * - every kind in the rules' MENUS is on its tab, greyed (locked) exactly when a structure it needs
  *   is missing, with the lines and tiers the rules give; the round 6 recruits (the Academy, the
  *   heroes, the field General) are absent, since this battle has Heroes and Generals off;
@@ -53,6 +53,12 @@ async function checkBuildWindow(browser, base, problems, out) {
       localStorage.removeItem('fl_build_window');
     }, USER);
     await page.reload();
+    // A fixed battlefield. The lobby draws a fresh seed each visit and its default map type is
+    // "let the seed choose", and about 38% of those maps (most Canyon, Plains and Highlands draws)
+    // have no open sea, so no Naval tab: the run then waited on #fl-tab-naval until Playwright
+    // timed out. The Coast always has sea, so every MENUS tab, Naval included, is checked every run.
+    await page.getByTestId('seed').fill('tour-build-window');
+    await page.getByTestId('map-coast').click();
     await page.getByTestId('tech-advanced').click();
     await page.getByRole('button', { name: /Begin the battle/ }).click();
     await page.waitForURL(/\/game\//);
@@ -98,6 +104,10 @@ async function checkBuildWindow(browser, base, problems, out) {
     if (!focusIn) await fail('focus did not move into the window on open');
     let seen = 0;
     for (const [tab, list] of Object.entries(rules.menus)) {
+      if (!(await page.locator(`#fl-tab-${tab}`).count())) {
+        await fail(`the window has no ${tab} tab on an advanced-tech Coast battle`);
+        continue;
+      }
       await page.locator(`#fl-tab-${tab}`).click();
       await sleep(250);
       for (const item of list) {
@@ -121,6 +131,7 @@ async function checkBuildWindow(browser, base, problems, out) {
       }
     }
     for (const [tab, list] of Object.entries(rules.absent)) {
+      if (!list.length || !(await page.locator(`#fl-tab-${tab}`).count())) continue;
       await page.locator(`#fl-tab-${tab}`).click();
       await sleep(150);
       for (const k of list) if (await page.locator(`#fl-build-${k}`).count()) await fail(`${k} is on the ${tab} tab with Heroes and Generals off`);
@@ -235,7 +246,10 @@ async function checkBuildWindow(browser, base, problems, out) {
 
     for (const e of errors) await fail(e);
   } catch (e) {
-    await fail('driver crashed: ' + (e.stack || e.message).split('\n')[0]);
+    // Playwright's first line says only what timed out; the call log names the locator.
+    const lines = String(e.stack || e.message).split('\n');
+    const what = lines.find(l => /waiting for /.test(l));
+    await fail('driver crashed: ' + lines[0] + (what ? ` (${what.trim()})` : ''));
   } finally {
     await ctx.close();
   }
