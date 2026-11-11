@@ -341,8 +341,12 @@ export default function HowToPlay() {
             </li>
             <li>
               <strong>Diplomacy.</strong> War, ceasefire, trade pact, alliance. Every faction trusts every other to a degree, shown as a bar.
-              A proposal shows whether they would accept before you send it. Breaking a treaty before its end is a breach: the victim's trust in
-              you falls by 30 and everyone else's by 10. Allies bordering a battle join it on your side, and their regions are open to your army.
+              A proposal shows whether they would accept before you send it, and why. The computer factions sign treaties for a set number of
+              turns and renew them only while peace pays them better than war: trade that flows, a stronger neighbour, enemies elsewhere. A
+              treaty that runs out leaves you at war. They turn on a weak or exposed neighbour, and every one of them turns on a faction close to
+              winning, you included. Breaking a treaty before its end is a breach: the victim's trust in you falls by 30 and everyone else's by
+              10. Peace and war wear trust up or down each turn, but never past 90 or below 10 on their own. Allies bordering a battle join it
+              on your side, and their regions are open to your army.
             </li>
             <li>
               <strong>Battles.</strong> Each attack is a Fireline battle on the region's own terrain, two to four sides on two teams, with the

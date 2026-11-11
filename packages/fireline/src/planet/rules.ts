@@ -209,11 +209,14 @@ export type AiBuild = CityBuildingId | 'grow';
 export interface TemperamentSpec {
   attackRatio: number;
   neutralRatio: number;
-  mayBreak: boolean;
   ceasefireBias: number;
   tradeBias: number;
   allianceBias: number;
   allianceTrust: number;
+  /** Added to a faction's interest in war on any other faction (section 12.1). */
+  warBias: number;
+  /** War interest at which it declares war through a dated treaty (a breach); null never. */
+  breakAt: number | null;
   exchangeMargin: number;
   garrisonShare: number;
   build: AiBuild[];
@@ -226,11 +229,12 @@ export const TEMPERAMENTS: Record<Temperament, TemperamentSpec> = {
   expansionist: {
     attackRatio: 1.2,
     neutralRatio: 1.0,
-    mayBreak: true,
     ceasefireBias: -15,
     tradeBias: 0,
     allianceBias: 5,
     allianceTrust: 65,
+    warBias: 10,
+    breakAt: 30,
     exchangeMargin: 1.15,
     garrisonShare: 0.3,
     build: ['factory', 'refinery', 'farms', 'airfield', 'institute', 'fortifications', 'port', 'grow'],
@@ -240,12 +244,13 @@ export const TEMPERAMENTS: Record<Temperament, TemperamentSpec> = {
   },
   mercantile: {
     attackRatio: 1.6,
-    neutralRatio: 1.3,
-    mayBreak: false,
+    neutralRatio: 1.15,
     ceasefireBias: 15,
     tradeBias: 25,
     allianceBias: 5,
     allianceTrust: 60,
+    warBias: -10,
+    breakAt: null,
     exchangeMargin: 1.0,
     garrisonShare: 0.4,
     build: ['refinery', 'farms', 'port', 'institute', 'grow', 'factory', 'fortifications', 'airfield'],
@@ -255,12 +260,13 @@ export const TEMPERAMENTS: Record<Temperament, TemperamentSpec> = {
   },
   defensive: {
     attackRatio: 2.0,
-    neutralRatio: 1.5,
-    mayBreak: false,
+    neutralRatio: 1.25,
     ceasefireBias: 20,
     tradeBias: 10,
     allianceBias: 15,
     allianceTrust: 55,
+    warBias: -5,
+    breakAt: null,
     exchangeMargin: 1.1,
     garrisonShare: 0.6,
     build: ['fortifications', 'farms', 'refinery', 'factory', 'institute', 'grow', 'airfield', 'port'],
@@ -282,6 +288,72 @@ export const AI_LOADOUTS: [UnitKind, ModuleId[]][] = [
 export const AI_RESERVE: Stock = { ore: 6, fuel: 4, alloys: 4, food: 6 };
 export const AI_MAX_BUILDS = 3;
 export const AI_MAX_PROPOSALS = 2;
+
+// ---- War and peace (section 12.1) -------------------------------------------------------------
+
+/** A faction is a threat from victoryShare - LEADER_BAND per cent of the regions, fully at victoryShare. */
+export const LEADER_BAND = 30;
+/** Lengths of the treaties a computer faction proposes, as a share of the turn limit (clamped to TREATY_TURNS). */
+export const AI_TREATY_SHARE = { ceasefire: 0.1, trade: 0.3, alliance: 0.35 } as const;
+/**
+ * Weights of warInterest (diplomacy.ts): how much f would rather fight b than keep the peace.
+ * strength: times clamp((P(f) - P(b)) / P(b), -1, 1). noBorder: when no link joins them. soft: per
+ * region of b next to f that f's strike strength would dare attack (at most softMax). noIndependents:
+ * when f borders no independent region. nearWin / rivalNearWin: times threatOf(f) / threatOf(b).
+ * otherLeader: times the highest threat of any third faction. otherFront: per other faction at war
+ * with f across a border. theirFront: per other faction at war with b. trade / alliance: the pact in
+ * force. route: per point of tradeValue, at most routeMax. needsTrade: f makes no fuel and b is in
+ * route range. envy: per region b holds above f (neighbours only). trust: (50 - trust) / trust.
+ */
+export const WAR_INTEREST = {
+  strength: 20,
+  noBorder: -10,
+  soft: 8,
+  softMax: 3,
+  noIndependents: 20,
+  nearWin: 40,
+  rivalNearWin: 60,
+  otherLeader: -10,
+  otherFront: -12,
+  theirFront: 6,
+  trade: -5,
+  alliance: -12,
+  route: -1.5,
+  routeMax: 20,
+  needsTrade: -6,
+  envy: 2,
+  trust: 5,
+} as const;
+/** Added to an alliance's score per unit of the highest threat of a third faction (section 8.5). */
+export const COALITION_ALLIANCE = 30;
+/** Below this war interest a faction renews or seeks peace; at or above it lets a treaty run out. */
+export const RENEW_BELOW = 0;
+/** War interest at which a faction ends an open-ended treaty (not a breach). */
+export const CANCEL_AT = 20;
+/** A faction breaches a dated treaty only while its trust in the partner is at most this. */
+export const BREACH_TRUST_MAX = 60;
+/**
+ * In a war of at most BREAK_SHORT_TURNS turns a temperament that breaks treaties does so at
+ * BREAK_SHORT_BY less war interest: a short war leaves little time for a broken word to cost it
+ * anything. Short (40 turns) only; Long and Very long are untouched.
+ */
+export const BREAK_SHORT_TURNS = 60;
+export const BREAK_SHORT_BY = 10;
+/** A faction at the victory share attacks at (1 - AI_BOLD_LEAD) of its usual ratio; in the last half of the war down to (1 - AI_BOLD_LATE). */
+export const AI_BOLD_LEAD = 0.3;
+export const AI_BOLD_LATE = 0.2;
+/** Credits worth one point of strength in an auto-resolve (resolve.ts uses the same 200). */
+export const AI_CREDITS_PER_POINT = 200;
+/** A full field army swaps its weakest unit for one worth at least this much more strength. */
+export const AI_REFIT_GAIN = 2;
+/** Border garrisons facing a faction at war are filled to this share of their room; within reach of its field army, further. */
+export const AI_GARRISON_BORDER = 0.35;
+export const AI_GARRISON_THREATENED = 0.6;
+/** Extra value of a target region held by a faction rather than by independents, and more per unit of its owner's threat. */
+export const AI_RIVAL_TARGET = 6;
+export const AI_LEADER_TARGET = 10;
+/** A food or fuel deficit counts as sustainable while the stock covers this many turns of it. */
+export const AI_UPKEEP_TURNS = 10;
 
 // ---- Commander (section 6.4) ------------------------------------------------------------------
 
@@ -305,6 +377,9 @@ export const TREATY_TURNS: Record<'ceasefire' | 'trade' | 'alliance', { min: num
 export const TREATY_TERMS_MAX = 4;
 export const TERM_AMOUNT_MAX = 20;
 export const PAYMENT_MAX = 60;
+/** Turn-by-turn trust drift (section 8.3) stops at these bounds; events (breaches, gifts, payments, expiry) do not. */
+export const TRUST_DRIFT_MIN = 10;
+export const TRUST_DRIFT_MAX = 90;
 export const ACCEPT_AT: Record<'ceasefire' | 'trade' | 'alliance', number> = { ceasefire: 0, trade: 5, alliance: 25 };
 
 /** Most units a side brings to one battle, and most survivors a report may carry. */

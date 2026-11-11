@@ -171,6 +171,21 @@ function rulesAndPresets(ok: Ok): void {
     const n = normaliseSetup({ map: 'river', size: k as never }, LEGACY_SETUP);
     ok(n.pace === k && n.size === 'standard', `a pre-merge setup with size '${k}' reads as pace ${k} on a standard map`);
   }
+  // 'standard' is both a pace and a map size. This branch's pre-merge setups carried `research` and
+  // never `sites`; main's always carry `sites` and never `research`.
+  const pre = normaliseSetup({ map: 'river', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', research: 'lines', size: 'standard' as never }, LEGACY_SETUP);
+  ok(pre.pace === 'standard' && pre.size === 'standard' && pre.research === 'lines', `a pre-merge setup with size 'standard' reads as pace Standard on a standard map (${pre.pace})`);
+  ok(normaliseSetup({ map: 'river', tech: 'standard', research: 'classic', size: 'standard' as never }, LEGACY_SETUP).pace === 'standard', 'a pre-merge standard-tech setup with size \'standard\' reads as pace Standard');
+  ok(normaliseSetup({ map: 'river', size: 'standard', sites: false }, LEGACY_SETUP).pace === 'quick', 'a main setup with size \'standard\' and sites reads Quick (a map size, not a pace)');
+  ok(normaliseSetup({ map: 'river', size: 'standard' }, LEGACY_SETUP).pace === 'quick', 'size \'standard\' with neither research nor sites reads Quick');
+  ok(normaliseSetup({ map: 'river', size: 'standard', research: 'lines', pace: 'long' }, LEGACY_SETUP).pace === 'long', 'an explicit pace wins over a pre-merge \'standard\'');
+  {
+    const s = tick(createInitialState('size-pre', 'size-pre', { seed: 'size-pre', difficulty: 'normal', createdAt: 0, autopilot: true, setup: { map: 'river', tech: 'advanced', research: 'lines', pace: 'standard' } }), 600);
+    const old = JSON.parse(JSON.stringify(s));
+    old.setup = { map: old.setup.map, tech: old.setup.tech, credits: old.setup.credits, ore: old.setup.ore, sides: old.setup.sides, mode: old.setup.mode, research: 'lines', size: 'standard' };
+    const m = migrateState(old);
+    ok(!!m && paceOf(m) === 'standard' && pacedResearch(m), 'a pre-merge Standard save migrates to Standard pace with paced research kept');
+  }
   ok(normaliseSetup({ map: 'river', size: 'large' }, LEGACY_SETUP).pace === 'quick', 'a map size is never read as a pace');
   ok(normaliseSetup({ size: 'epic' as never, pace: 'standard' }).pace === 'standard', 'an explicit pace wins over a pre-merge size');
   ok(normaliseSetup({ tech: 'standard', pace: 'long' }).pace === 'long', 'standard tech keeps its pace (attack timing applies to any tech)');

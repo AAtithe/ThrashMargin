@@ -124,13 +124,14 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   (about 10 minutes, so not in check; `-- --pace long --size large` for a game size on a larger map, far longer); use it for any balance or AI change. Fireline is real time: it saves every 15 seconds of play rather than per action, and
   its guided tour runs on the live battle (see `fireline-design.md` §5).
 - **Fireline's War for the Planet has its own harness: `npm run drive:planet`** (`packages/fireline/scripts/drive-planet.ts`,
-  in `npm run check`; about 40,000 assertions in about 70 seconds, most of it W2's battle sections from
+  in `npm run check`; about 35,000 assertions in about 70 seconds, most of it W2's battle sections from
   `drive-planet-battle.ts`). 200 maps per preset, a refusal and a legal case for every action type on
   deep-frozen states, a source scan of `src/planet/` for clocks and dice, trade conservation and
   blockade, every treaty transition and breach, allied battles, encirclement, every way a war ends,
   whole bot-played wars on all three presets checked every turn (stocks, caps, trust, treaties, the
   48 KB strategic budget, the save migrating to itself), exact replay, junk saves and the v1 fixture.
-  Run it after touching anything under `src/planet/`; balance changes need `ladder:planet` at 150 seeds.
+  Run it after touching anything under `src/planet/`; balance changes need `ladder:planet` at its default seed
+  counts (Short 150, Long 50, Very long 50 per difficulty; about 2 minutes), and `-- --prefix holdout` as well.
 - **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and
   difficulty). Its engine (`packages/thrash-margin/shared/sim/`) follows the same purity rule as the
   Tea Race's `sim/`: no `Math.random`, no clock, illegal actions return the same state object.

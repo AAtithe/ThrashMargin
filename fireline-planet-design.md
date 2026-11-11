@@ -763,10 +763,10 @@ Validation of a `TreatyDraft` between `a` and `b` (both alive, `a !== b`, neithe
 
 | Event | Change |
 |---|---|
-| Each turn at trade | +1 both ways |
-| Each turn at alliance | +2 both ways |
-| Each turn at war | -1 both ways |
-| Each turn both at war with a common faction | +1 both ways |
+| Each turn at trade | +1 both ways (drift) |
+| Each turn at alliance | +2 both ways (drift) |
+| Each turn at war | -1 both ways (drift) |
+| Each turn both at war with a common faction | +1 both ways (drift) |
 | Treaty runs to its end | +5 both ways |
 | Tribute received (per turn) | receiver toward payer +1 |
 | Payment or gift received | receiver toward giver `+min(15, floor(value / 5))` |
@@ -776,13 +776,19 @@ Validation of a `TreatyDraft` between `a` and `b` (both alive, `a !== b`, neithe
 
 `value` sums `amount * VALUE[res]`.
 
+Drift (the four per-turn rows, summed) stops at `TRUST_DRIFT_MIN` 10 going down and
+`TRUST_DRIFT_MAX` 90 going up and never crosses them; the events (breach, payment, gift, expiry,
+tribute, unpaid term, attacking an ally) still move trust all the way to 0 or 100. Before
+2026-11-11 drift ran to the clamp, and most pairs ended a long war at 0 or 100.
+
 ### 8.4 Temperaments (`TEMPERAMENTS: Record<Temperament, TemperamentSpec>`)
 
 | Field | expansionist | mercantile | defensive |
 |---|---|---|---|
 | `attackRatio` (own / defender strength to attack a faction) | 1.2 | 1.6 | 2.0 |
-| `neutralRatio` (the same against independents) | 1.0 | 1.3 | 1.5 |
-| `mayBreak` | true | false | false |
+| `neutralRatio` (the same against independents) | 1.0 | 1.15 | 1.25 |
+| `warBias` (added to its war interest toward anyone, section 12.1) | 10 | -10 | -5 |
+| `breakAt` (war interest at which it breaches a dated treaty; none never; 10 less in a war of at most 60 turns) | 30 | none | none |
 | `ceasefireBias` | -15 | 15 | 20 |
 | `tradeBias` | 0 | 25 | 10 |
 | `allianceBias` | 5 | 5 | 15 |
@@ -826,6 +832,15 @@ Score = kind base + terms + `(trust[judge][other] - 50) / 2`, where:
   `-VALUE * amount`; access granted by the judge `-10` (defensive `-20`), to the judge `+8`;
   split `+12` per region assigned to the judge, `-6` per region assigned to the other.
   `turnsLeft` for an open-ended treaty is 10.
+
+- interest (since 2026-11-11): `wi = warInterest(judge, other)` (section 12.1). A ceasefire's base
+  falls by `0.8 * wi` and a trade pact's or alliance's by `wi` when `wi > 0`; when `wi < 0` (peace
+  pays) every kind gains `0.2 * -wi`. An alliance gains `COALITION_ALLIANCE` 30 times the highest
+  `threatOf` of any third faction (a common rival close to winning), and loses 100 when it would
+  complete an allied victory for the player (`handsAlliedVictory`: every other computer faction
+  already allied with the player, the player leading each, and the alliance together at the
+  victory share). The reasons list says why ("They think you weak.", "You are close to winning the
+  war.", "Your trade is worth keeping.", "You share a rival close to winning." and so on).
 
 Accept iff score is at least `ceasefire 0`, `trade 5`, `alliance 25`, and for an alliance
 `trust[judge][other] >= T.allianceTrust`. The player's proposals to a computer faction are judged
@@ -1073,46 +1088,109 @@ with `applyPlanetAction(state, action, f)`, skipping any that return the same st
 deterministic: the only dice are `rngSeed` draws for ties of equal score, made through the state.
 Same state in, same list out (the harness calls it twice and compares).
 
-Order of planning for faction `f` with spec `T`:
+Order of planning for faction `f` with spec `T` (rewritten 2026-11-11; the W1 rules it replaced are
+in the W5 build log of that date):
 
 1. **Diplomacy** (toward the player always; toward computer factions only with `aiDiplomacy`). For
-   each other alive faction `b` by id, at most one proposal per `b` and two per turn:
-   - **Primary target**: the bordering faction with the lowest `P(b) / P(f)` and
-     `trust[f][b] <= 60` (none if no border). Toward every other faction add +10 to the desire
-     below.
-   - **Desire** of a draft is `proposalScore(s, f, b, draft).score`. At war with `b`, not the
-     primary target: propose a ceasefire of 6 turns if desire >= 15. At ceasefire: propose an
-     open-ended trade pact if desire >= 15 and `trust[f][b] >= 45`. At trade since 3 or more
-     turns: propose an open-ended alliance if desire >= 30 and the trust gate holds. At trade or
-     alliance with a deficit resource (stock below 10 and negative net) and a surplus (stock above
-     30): re-propose the same treaty with one exchange term added (give 3 of the surplus, get
-     `max(1, floor(3 * VALUE[surplus] / VALUE[deficit] / T.exchangeMargin))` of the deficit).
-   - **Break**: `T.mayBreak`, ceasefire with the primary target, `P(f) >= 1.6 * P(b)` and
-     `trust[f][b] <= 35`: `declareWar` (a breach).
-   - **Allied duty**: allied with `c`, `c` at war with `b`, and no treaty with `b`: `declareWar`
-     is not needed (no treaty is war); the faction treats `b` as a valid target this turn.
+   each other alive faction `b` by id, with `wi = warInterest(f, b)` (section 12.1), at most one
+   order per `b` and two proposals per turn:
+   - **War through a treaty.** A dated treaty with turns still to run is breached (`declareWar`)
+     when `T.breakAt` is set, `wi >= T.breakAt` (+10 against an ally) and `trust[f][b] <= 60`
+     (`BREACH_TRUST_MAX`). In a war of at most 60 turns (`BREAK_SHORT_TURNS`, so Short only) the bar
+     is 10 lower (`BREAK_SHORT_BY`): a short war leaves little time for a broken word to cost it. An open-ended treaty (only the player's, or a save from before
+     2026-11-11) is ended with `declareWar` when `wi >= 20` (`CANCEL_AT`), which is not a breach.
+   - **Peace matters** only with a neighbour (`borders > 0`), a faction its routes already trade with
+     (`tradeValue > 0`), or, when `f` makes no fuel, a faction with a city within 6 hops
+     (`needsTrade`). With nobody to fight and nothing to trade, a lapsed truce is left lapsed.
+   - **At war**, when peace matters and `wi < 0` (`RENEW_BELOW`): propose a ceasefire of
+     `aiTreatyTurns` turns.
+   - **Treaties are dated and run out** unless renewed. `aiTreatyTurns(kind)` is
+     `round(turnLimit * share)` with shares ceasefire 0.1, trade 0.3, alliance 0.35, clamped to
+     section 8.2 (Short 4, 12, 14; Long 9, 27, 32; Very long 16, 40, 56). When a dated treaty has at
+     most one turn left, peace matters and `wi < 0`: propose an alliance if `f` would accept it
+     itself and the trust gate holds (not straight from a ceasefire), else (from an alliance) the
+     same alliance again, else a trade pact keeping the treaty's terms. Otherwise the treaty runs out
+     (a ceasefire's end puts them at war; so does a pact's, since no treaty is war).
+   - **Alliance against a common rival.** At trade for 3 or more turns, not yet due, peace matters
+     and `wi < 0`: propose an alliance when `f` would accept it (the coalition term of section 8.5
+     usually decides it).
+   - **Exchanges**: at trade or alliance with a deficit resource (stock below 10 and net at most 0)
+     and a surplus (stock above 30), re-propose the same treaty with one exchange term added (give 3
+     of the surplus, get `max(1, floor(3 * VALUE[surplus] / VALUE[deficit] / T.exchangeMargin))`).
+   - Every proposal to a computer faction is sent only when `proposalVerdict` says it would accept,
+     and `f` proposes only what it would itself accept (`proposalScore >= ACCEPT_AT`), so the
+     player's proposals and the computers' are judged by one rule.
 2. **Research**: if `current` is null, the first item of `T.research` not done whose prerequisites
    hold; set the doctrine from `T.doctrines` first when the item is a Mk III branch. Loadouts as
    section 8.4 whenever they differ.
-3. **Builds**: keep a reserve `{ ore 6, fuel 4, alloys 4, food 6 }`. Regions by total yield,
-   highest first (ties lowest id); for each, the first item of `T.build` that is legal and
-   affordable above the reserve. At most 3 builds per turn. A food net below 0 moves `farms` to
-   the front of the list for this turn. A fuel net below 0 changes no build (fuel comes from
-   terrain and trade) but stops vehicle recruitment this turn.
-4. **Recruitment**: spend above the reserve, `T.garrisonShare` of the value toward garrisons of
-   border regions facing a faction at war (most adjacent enemy strength first, up to 60 per cent of
-   cap), the rest toward the army in `T.recruit` order (cycling, skipping kinds not affordable or
-   needing a factory where the army stands), up to the army cap.
-5. **Attack**: candidates are `attackTargets` from the army's region and from every region reachable
-   within the remaining moves. For each, `D` = strength of the defending garrison, the city's
-   structures (per section 9.3, valued by `STRUCTURE_VALUE`) and any field army there, times
-   `DEFENCE_TERRAIN`; `A` = own army strength. Eligible if `A / D >= T.attackRatio`
-   (`T.neutralRatio` for independents). Value = total yield of the region + `3 * cityLevel` +
-   (10 if a capital) + (5 if cut off). Pick the highest value (ties lowest id), move there, attack
-   with credits 1000 if alloys allow above the reserve, else 0.
-6. **Otherwise move** the army one step toward its own region with the highest adjacent enemy
-   strength, unless defensive and its capital's adjacent enemy strength exceeds the capital's
-   garrison strength (then it stays at, or returns to, the capital).
+3. **Builds, routes and recruitment**, against a running budget that keeps the reserve
+   `{ ore 6, fuel 4, alloys 4, food 6 }` of every resource a cost uses, after setting aside this
+   turn's attack fuel (`2 + ceil(vehicles / 4)`). A faction at war with a neighbour recruits first,
+   then builds and opens routes; any other builds first.
+   - **Builds**: at most 3 a turn. A port comes first when some foe (an independent or a faction at
+     war) lies across the sea and no own port faces one: the first coastal region with such a sea
+     link builds it, or grows its city first when the city has no room. Then regions by total yield,
+     highest first (ties lowest id), each taking the first legal and affordable item of `T.build`;
+     a food net below 0 moves `farms` to the front, otherwise ore above 40 moves `factory` to the
+     front; where the field army stands, while it holds any infantry, `factory` comes first.
+   - **Routes** (3a): with room under `routeCap` and the cost affordable, open the best-paying legal
+     route, valued at its yield times `VALUE` (a foreign route to a partner's city pays fuel and
+     alloys, a domestic one ore and food); ties lowest ids.
+   - **Recruitment**: `T.garrisonShare` of what is above the reserve toward garrisons of border
+     regions facing a faction at war, most adjacent enemy strength first, up to 35 per cent of
+     their room (`AI_GARRISON_BORDER`), or 60 per cent (`AI_GARRISON_THREATENED`) within
+     `armyMove + 1` hops of that faction's field army; the rest toward the field army in `T.recruit`
+     order up to the cap (vehicles only where a factory stands). A full army **refits**: its weakest
+     unit (value times rank) is stationed in the garrison where it stands (disbanded when that is
+     full) for a unit worth at least `AI_REFIT_GAIN` 2 more. Upkeep is sustainable while net income
+     plus a tenth of the stock covers it (one fuel a turn kept back for attacks); garrison units
+     count at 1 food per 5.
+4. **Attack**: candidates are `attackTargets` from the army's region and from every own region it
+   can reach this turn. `A` = the army after this turn's recruitment plus the credits it will spend
+   (the most of 3000, 2000, 1000 its alloys allow above the reserve, at 200 credits a point); `D` =
+   `defenceEstimate`. Eligible if `A / D >= ratio * boldness`, with `ratio` = `T.attackRatio`
+   (`T.neutralRatio` for independents) and `boldness = (1 - 0.3 * threatOf(f)) * (1 - 0.2 * late)`,
+   `late` rising from 0 at half the turn limit to 1 at the end. Value = total yield + `3 * cityLevel`
+   + 10 for a capital + 5 if cut off, and for a faction's region + 6 + `10 * threatOf(owner)`.
+   Highest value (ties lowest id), move there, attack with those credits if the fuel is there.
+5. **Otherwise march**: toward the own supplied region next to the target with the best
+   `value * min(1.5, A / (D * ratio))`, as far along the shortest path through own and allied
+   regions as its moves allow. A defensive faction whose capital faces more adjacent enemy strength
+   than its garrison holds stays at, or returns to, the capital. An army with infantry, no target in
+   reach of its march goal, alloys at least 10 and fuel at least 8 goes to the nearest own factory
+   to refit. With no target anywhere it goes toward the own region with the most adjacent enemy
+   strength.
+
+### 12.1 War and peace (`warInterest`, `diplomacy.ts`)
+
+`warInterest(s, f, b)` says how much `f` would rather fight `b` than keep the peace; positive means
+war pays. Pure and deterministic. With the weights of `WAR_INTEREST` in `rules.ts`:
+
+| Term | Weight |
+|---|---|
+| Temperament | `T.warBias` (10, -10, -5) |
+| Relative strength | `20 * clamp((P(f) - P(b)) / P(b), -1, 1)` |
+| No link between them | -10 |
+| Neighbours: each region of `b` next to `f` that `f`'s strike strength (army plus affordable credits) would attack at `T.attackRatio`, at most 3 | +8 each |
+| Neighbours: `f` borders no independent region | +20 |
+| Neighbours: `f` close to winning | `+40 * threatOf(f)` |
+| Neighbours: envy | `+2` per region `b` holds above `f` |
+| `b` close to winning | `+60 * threatOf(b)` |
+| A third faction close to winning | `-10 * ` its highest `threatOf` |
+| Each other faction at war with `f` across a border | -12 |
+| Each other faction at war with `b` | +6 |
+| A trade pact / an alliance in force | -5 / -12 |
+| The routes between them | `-1.5 * tradeValue`, at most -20 |
+| Otherwise, `f` makes no fuel and `b` is in route range | -6 |
+| Trust | `(50 - trust[f][b]) / 5` |
+
+`threatOf(f)` is 0 below `victoryShare - 30` per cent of the regions (`LEADER_BAND`), rising to 1 at
+the victory share. `tradeValue(f, b)` is what the routes between them pay `f` a turn, weighted by
+`VALUE`. So an expansionist breaks a pact when a weak, exposed neighbour or a rival near its win is
+worth more than the trade and the trust; a mercantile faction, which never breaches, keeps its
+pacts while the routes pay and lets them lapse otherwise; a defensive one allies with whoever shares
+its rival. A leader draws war from every neighbour and loses its allies' alliance scores, so a
+faction close to winning faces a coalition.
 
 An attack between computer factions, or on independents, is resolved at once with
 `quickResolve(battleSetupFor(...))` and applied as in section 9.6. An attack on the player is
@@ -1455,6 +1533,67 @@ with the bot player: win rate (must fall from easy to normal to hard), turns to 
 end, breaches by temperament; and 40 setups comparing `quickResolve` with `simulateBattle`
 (agreement on the winner is reported; tune section 9.5 if below 65 per cent). Use it for any
 balance change; 150 seeds is the project's minimum for win-rate comparisons.
+
+### 18.1 Balance targets (ladder:planet)
+
+Written on 2026-11-11, before the first measurement, so the numbers say what a war should feel like
+rather than what the code happens to do. A war should feel like a war: factions fight each other
+and not only the independents, alliances form and sometimes break, someone betrays someone now and
+then but not every turn, and in most games someone wins before the clock runs out.
+
+**How the ladder plays.** `npm run ladder:planet` (`packages/fireline/scripts/planet-ladder.ts`,
+not in `npm run check`) plays whole wars from `newPlanetState` with every computer faction driven
+by `planAiActions` inside End turn, and the player seat by `planAiActions(s, 0, 'expansionist')`
+(the drive-planet bot), every battle auto-resolved. It reads only the state and the journal
+entries each step adds; it changes no rule. Flags: `--preset short|long|veryLong|all`, `--seeds N`,
+`--difficulty easy|normal|hard|all`, `--json`, `--strict` (exit 1 on any failed target), `--prefix P`
+(seeds `P-<preset>-<i>` instead of `ladder-<preset>-<i>`; `--prefix holdout` checks the targets on
+seeds no tuning has seen).
+
+**Seeds.** Short: 150 per difficulty (450 wars), the project's minimum for win-rate comparisons.
+Long: 50 per difficulty (150 wars). Very long: 50 per difficulty (150 wars; 25 until the review of
+2026-11-11, raised because a Very long win rate read 24 per cent on one seed set and 8 on another).
+A Long war has more than twice the turns of a Short one on twice the regions with one more faction,
+and a Very long war four times the turns on three times the regions, so equal seed counts would
+cost several minutes more for little. At 50 seeds a share reads to about plus or minus 8 points,
+so on Long and Very long the targets are distribution checks (endings, battles, diplomacy, length)
+plus a floor under the Normal win rate (T15), and the difficulty ordering is reported but only
+asserted on Short.
+
+**Definitions.** A *decisive* ending is `domination`, `elimination`, `alliance`, `rival` or `fallen`;
+the other is `turnLimit`. A *battle* is any battle report applied (journal "takes" or "holds"),
+including independents; a *faction battle* has a faction (computer or player) on both sides. A
+*faction-turn* is one alive faction (player included) in one End turn. A *pair* is two computer
+factions both alive at the start. *Signed* counts every treaty put in force, the opening truce
+excluded. *Broken* counts every treaty ended by a war declaration or a cancellation; a *breach* is
+the subset that broke a dated promise (section 8.3). T9 and T10 count only the treaties a computer
+faction broke: the player seat's bot is an expansionist and breaks treaties itself, and its breaks
+say nothing about the computer diplomacy (the ladder reports the counts with the bot as T9b and
+T10b, without a target). *Expired* counts treaties that ran out, the
+opening truce excluded. End trust is every `trust[a][b]`, `a` not `b`, both alive at the end.
+
+| # | Target | Short | Long | Very long |
+|---|---|---|---|---|
+| T1 | Decisive endings, share of wars (turn-limit endings a minority) | at least 70% | at least 65% | at least 60% |
+| T2 | Battles per faction-turn | 0.20 to 0.80 | 0.20 to 0.80 | 0.20 to 0.80 |
+| T3 | Faction battles, share of all battles | at least 40% | at least 40% | at least 40% |
+| T4 | Defence battles (a computer attacks the player seat) per war | at least 1 | at least 2 | at least 3 |
+| T5 | Pairs at war after the opening truce at some point | at least 60% | at least 60% | at least 60% |
+| T6 | Pairs that fight at least one battle against each other | at least 40% | at least 50% | at least 50% |
+| T7 | Treaties signed per war | 1 to 12 | 2 to 25 | 3 to 40 |
+| T8 | Wars with at least one alliance signed | at least 25% | at least 30% | at least 30% |
+| T9 | Wars with at least one treaty broken by a computer faction (betrayal happens, but not always) | 15% to 75% | 20% to 85% | 20% to 90% |
+| T10 | Treaties broken by computer factions per war (not constant) | at most 2 | at most 4 | at most 6 |
+| T11 | Treaties expired per war (ceasefires do run out) | at least 0.3 | at least 0.5 | at least 0.5 |
+| T12 | End trust spread: 10th percentile at most 40, 90th at least 65, at most half at 0 or 100 | all three | all three | all three |
+| T13 | Median war length, share of the turn limit | 25% to 85% | 25% to 85% | 25% to 85% |
+| T14 | Player-seat bot win rate: Easy > Normal > Hard, Easy minus Hard at least 10 points | asserted | reported | reported |
+| T15 | Player-seat bot win rate on Normal (on Long and Very long a floor: a leading player can still win a long war) | 20% to 60% | at least 15% | at least 8% |
+| T16 | Every war ends, and no war passes its turn limit | 100% | 100% | 100% |
+| T17 | Determinism: the first 3 seeds of each difficulty replayed give byte-identical final states | 100% | 100% | 100% |
+
+The ladder also reports, without a target: endings by kind, battles per war, eliminations per war,
+signed treaties by kind, breaches by temperament, unpaid endings, and wall time.
 
 ---
 
@@ -1822,3 +1961,207 @@ seeds); a treaty ended by an unpaid term keeps its foreign routes (`unpaid` in `
 call `pruneRoutes`). Measured, not asserted: on Short every war ended on the turn limit, with no
 defence battles while rival diplomacy is on (W1's balance note stands); with it off and a bot that
 makes no treaties, 16 defence battles in 6 wars; no breaches by any temperament.
+
+**2026-11-11: `planet-ladder.ts` is in, and the baseline is measured.** Files:
+`packages/fireline/scripts/planet-ladder.ts` (new), `ladder:planet` in `packages/fireline/package.json`
+and the root `package.json` (with the trailing `--`, so flags pass through), section 18.1 (the
+targets, written before this measurement). Not in `npm run check`. No rule changed.
+
+How it counts: each action is applied to the state with an empty journal, the entries it adds are
+read, and the journal is rebuilt by appending them and keeping the last 40 (what `note` does), so
+an End turn that writes more than 40 entries is still counted in full. Nothing in `src/planet/`
+reads the journal, and T17 replays the first 3 seeds of each difficulty without this and compares
+the final states byte for byte. Not built yet: section 18's 40 setups comparing `quickResolve` with
+`simulateBattle`.
+
+Baseline at the target seed counts, 40.7 seconds in all (Short 10.7, Long 12.3, Very long 17.7):
+
+| # | Target | Short (450 wars) | Long (150) | Very long (75) |
+|---|---|---|---|---|
+| T1 | Decisive endings | 0.2% FAIL | 19.3% FAIL | 18.7% FAIL |
+| T2 | Battles per faction-turn | 0.062 FAIL | 0.053 FAIL | 0.057 FAIL |
+| T3 | Faction battles, share | 2.3% FAIL | 0.6% FAIL | 4.2% FAIL |
+| T4 | Defence battles per war | 0.11 FAIL | 0.03 FAIL | 0.91 FAIL |
+| T5 | Pairs at war after the truce | 0.0% FAIL | 0.0% FAIL | 0.0% FAIL |
+| T6 | Pairs that fought each other | 0.4% FAIL | 0.2% FAIL | 0.7% FAIL |
+| T7 | Treaties signed per war | 6.16 pass | 19.97 pass | 33.49 pass |
+| T8 | Wars with an alliance signed | 68.0% pass | 100% pass | 100% pass |
+| T9 | Wars with a treaty broken | 0.0% FAIL | 0.0% FAIL | 0.0% FAIL |
+| T10 | Treaties broken per war | 0.00 pass | 0.00 pass | 0.00 pass |
+| T11 | Treaties expired per war | 0.00 FAIL | 0.00 FAIL | 0.00 FAIL |
+| T12 | End trust p10 / p90 / at 0 or 100 | 90 / 100 / 44.6% FAIL | 94 / 100 / 87.0% FAIL | 94 / 100 / 85.0% FAIL |
+| T13 | Median length, share of limit | 40 of 40, 100% FAIL | 90 of 90, 100% FAIL | 160 of 160, 100% FAIL |
+| T14 | Bot win rate easy / normal / hard | 55.3 / 37.3 / 26.0% pass | 44.0 / 30.0 / 24.0% (reported) | 52.0 / 32.0 / 12.0% (reported) |
+| T15 | Bot win rate on Normal | 37.3% pass | reported | reported |
+| T16 | Every war ends within the limit | 450 of 450 pass | 150 of 150 pass | 75 of 75 pass |
+| T17 | Replays byte-identical | yes pass | yes pass | yes pass |
+
+Endings: Short `turnLimit` 449 and `fallen` 1; Long `turnLimit` 121 and `alliance` 29; Very long
+`turnLimit` 61 and `alliance` 14. Battles per war 7.5, 17.1 and 39.4, almost all against
+independents. Signed per war (ceasefire, trade, alliance): Short 0, 4.26, 1.90; Long 0, 8.76, 11.21;
+Very long 0, 13.93, 19.56. No breach by any temperament, no unpaid ending, 0.01 eliminations per
+war on Very long and none elsewhere. Long's Easy and Normal rows come out identical (41
+`turnLimit`, 9 `alliance`, mean 81.4 turns).
+
+What the numbers say, and where in the code (W1's 2026-11-09 note, now measured): every pair of
+factions trades its opening truce for an open-ended trade pact before the truce ends, so the truce
+never expires (T11) and no two computer factions are ever at war afterwards (T5). Nothing then
+leads out of peace: in `ai.ts` `diplomacy()`, the only `declareWar` is the break rule, and it needs
+a ceasefire, which a trade pact has already replaced; the primary target also needs trust of at
+most 60, and `trustDrift` in `diplomacy.ts` adds 1 a turn under trade and 2 under alliance with
+nothing pulling it down in peace, so after about ten turns no faction has a primary target at all
+(T12). `proposalScore` scores an open-ended trade pact at 5 or more for every temperament at the starting trust, against
+`ACCEPT_AT.trade` 5, and the +10 non-primary bonus in `diplomacy()` lifts the expansionist proposer
+over its own threshold of 15. With every faction at peace, `attackTargetsFrom` in `battleSetup.ts`
+offers only independents, so armies attack about once in 16 faction-turns and stop once the
+independents near them are taken (T2, T3, T6); the player seat's bot accepts the computers' trade
+offers in `answerOffers`, so computers almost never attack it (T4). `victoryCheck` in `victory.ts`
+needs 60 to 70 per cent of the map, which nobody reaches from independents alone, so Short ends on
+the turn limit (T1, T13); on Long and Very long the bot's own alliance proposals give the
+`alliance` endings. The difficulty ordering holds through income alone (`AI_INCOME`), at the turn
+limit.
+
+**2026-11-11: the computer factions' diplomacy and war-making, tuned to section 18.1.** Files:
+`src/planet/ai.ts`, `src/planet/diplomacy.ts`, `src/planet/rules.ts` (constants), sections 8.3,
+8.4, 8.5, 12 and the new 12.1 above, the Diplomacy item of How to play
+(`src/pages/HowToPlay.tsx`), one assertion in `scripts/drive-planet.ts`, one counting fix in
+`scripts/planet-ladder.ts`. `turn.ts`, the save format and every action's legality are unchanged; a
+save from before loads and plays (its open-ended treaties are handled by the cancel rule of section
+12, step 1), and the v1 fixture passes.
+
+Rule changes, every one:
+
+1. **Interest replaces the primary target** (`warInterest`, section 12.1). Removed: the primary
+   target (bordering, lowest power ratio, trust at most 60), the +10 desire bonus toward everyone
+   else, the desire bars of 15 and 30, and the break rule (`mayBreak`, ceasefire with the primary
+   target, power 1.6 times, trust at most 35). `TemperamentSpec.mayBreak` is gone; `warBias` and
+   `breakAt` are new (section 8.4).
+2. **Treaties are dated.** Computer factions (and the bot) propose ceasefires, trade pacts and
+   alliances of `aiTreatyTurns` turns, never open-ended, and renew one only in its last turn and
+   only while `warInterest < 0`; otherwise it runs out. An alliance may also be offered during a
+   trade pact. Peace is only sought where it matters (a neighbour, a trading partner, or fuel to be
+   had). The player may still make open-ended treaties.
+3. **Breaking** a dated treaty needs `breakAt` (expansionist only, 40, +10 against an ally) and
+   trust in the victim of at most 60; an open-ended treaty is ended at interest 20 (not a breach).
+4. **Judging** (section 8.5): the interest term, the coalition bonus for alliances (30 times a third
+   faction's threat), and the refusal of an alliance that would complete the player's allied
+   victory. The player's proposals are judged by the same function as before, now with these terms.
+5. **Trust drift** stops at 10 and 90 (section 8.3).
+6. **Temperaments**: `neutralRatio` mercantile 1.3 to 1.15, defensive 1.5 to 1.25 (they took too
+   few independents to meet anyone). `attackRatio` is unchanged.
+7. **War-making** (section 12, steps 3 to 5): the reserve applies only to the resources a cost uses
+   (a faction with 3 fuel used to build nothing at all); attack fuel is set aside first; a faction
+   at war with a neighbour recruits before it builds; computer factions open trade routes (they
+   never did, so their exchange terms never flowed); a port when a foe lies across the sea; a
+   factory first where the army stands, and first anywhere while ore is above 40; border garrisons
+   to 35 per cent of their room, 60 within reach of an enemy army (was 60 everywhere); full armies
+   refit; upkeep counts a tenth of the stock and garrison units; attacks spend up to 3000 credits
+   and count them in the odds; longer odds near a win and late in the war; a faction's regions are
+   worth 6 more than independents' plus 10 times the owner's threat; idle armies march on the most
+   promising target or go to refit at a factory instead of standing still.
+
+Assertion changed in `drive-planet.ts` (a rule genuinely changed): the allied-victory case now gives
+the player dated alliances and allies trusting it at 90. With the old open-ended alliances and trust
+50, both computer factions now end the alliance in their own turn, because the player is about to
+win (interest above `CANCEL_AT`), so the case no longer reached `victoryCheck` as an alliance. The
+victory rule itself is unchanged and the case still asserts it. 35,561 assertions, all passing, 66.5 s.
+
+Ladder fix: `planet-ladder.ts` read the attacker of a "holds ... against X" entry from the wrong
+regex group (the suffix), so every successful defence added a phantom pair to T6. Fixed (group 2).
+The baseline's T6 (0.4, 0.2, 0.7 per cent) was measured before the fix and is at most that high.
+
+Before and after, at the target seed counts (after: 75.8 s in all; Short 16.0, Long 24.0, Very long 35.8):
+
+| # | Target | Short before | Short after | Long before | Long after | Very long before | Very long after |
+|---|---|---|---|---|---|---|---|
+| T1 | Decisive endings | 0.2% FAIL | 81.3% pass | 19.3% FAIL | 73.3% pass | 18.7% FAIL | 81.3% pass |
+| T2 | Battles per faction-turn | 0.062 FAIL | 0.423 pass | 0.053 FAIL | 0.484 pass | 0.057 FAIL | 0.549 pass |
+| T3 | Faction battles, share | 2.3% FAIL | 58.2% pass | 0.6% FAIL | 74.2% pass | 4.2% FAIL | 77.1% pass |
+| T4 | Defence battles per war | 0.11 FAIL | 6.24 pass | 0.03 FAIL | 22.59 pass | 0.91 FAIL | 44.88 pass |
+| T5 | Pairs at war after the truce | 0.0% FAIL | 81.1% pass | 0.0% FAIL | 83.6% pass | 0.0% FAIL | 93.8% pass |
+| T6 | Pairs that fought each other | 0.4% FAIL | 48.0% pass | 0.2% FAIL | 52.7% pass | 0.7% FAIL | 59.6% pass |
+| T7 | Treaties signed per war | 6.16 pass | 4.04 pass | 19.97 pass | 9.77 pass | 33.49 pass | 15.68 pass |
+| T8 | Wars with an alliance signed | 68.0% pass | 39.1% pass | 100% pass | 68.7% pass | 100% pass | 77.3% pass |
+| T9 | Wars with a treaty broken | 0.0% FAIL | 19.8% pass | 0.0% FAIL | 34.7% pass | 0.0% FAIL | 65.3% pass |
+| T10 | Treaties broken per war | 0.00 pass | 0.22 pass | 0.00 pass | 0.48 pass | 0.00 pass | 1.32 pass |
+| T11 | Treaties expired per war | 0.00 FAIL | 1.14 pass | 0.00 FAIL | 2.55 pass | 0.00 FAIL | 4.85 pass |
+| T12 | End trust p10 / p90 / at 0 or 100 | 90 / 100 / 44.6% FAIL | 22 / 89 / 2.0% pass | 94 / 100 / 87.0% FAIL | 10 / 90 / 8.9% pass | 94 / 100 / 85.0% FAIL | 0 / 90 / 12.0% pass |
+| T13 | Median length, share of limit | 100% FAIL | 23 of 40, 57.5% pass | 100% FAIL | 52 of 90, 57.8% pass | 100% FAIL | 81 of 160, 50.6% pass |
+| T14 | Bot win rate easy / normal / hard | 55.3 / 37.3 / 26.0% pass | 77.3 / 52.7 / 32.0% pass | 44 / 30 / 24% | 62 / 38 / 20% | 52 / 32 / 12% | 24 / 24 / 20% |
+| T15 | Bot win rate on Normal | 37.3% pass | 52.7% pass | reported | 38.0% | reported | 24.0% |
+| T16 | Every war ends within the limit | pass | 450 of 450 pass | pass | 150 of 150 pass | pass | 75 of 75 pass |
+| T17 | Replays byte-identical | pass | yes pass | pass | yes pass | pass | yes pass |
+
+After, without targets: endings Short `domination` 203, `rival` 131, `turnLimit` 84, `fallen` 26,
+`alliance` 6; Long `domination` 44, `turnLimit` 40, `fallen` 36, `rival` 29, `alliance` 1; Very long
+`fallen` 25, `rival` 22, `turnLimit` 14, `domination` 13, `alliance` 1. Battles per war 31.2, 103.7
+and 218.9. Signed per war (ceasefire, trade, alliance): Short 0.80, 2.48, 0.76; Long 3.93, 3.96,
+1.87; Very long 9.01, 4.47, 2.20. Breaches: Short 99 (bot 64, expansionist 35), Long 72 (37, 35),
+Very long 99 (52, 47); one unpaid ending per preset. Eliminations per war 0.26, 0.73 and 1.32. The
+"runs short of food" disbands fell from 60 to 22 in the same 12 Short wars.
+
+Margins and what to watch. The thinnest are Long T6 (52.7 against 50, 50 seeds, about plus or
+minus 8 points of noise), Short T9 (19.8 against 15) and Short T6 (48.0 against 40). T6 is mostly
+geography: on Short about 40 per cent of computer pairs never share a border, because the player
+seat sits between them or the war ends first; on Easy, where the bot wins fast, only about 1 pair in
+5 fights. The port rule above was worth 8 points of Short T6 on its own. On Long and Very long the
+computer factions turn on the player seat as soon as it leads (22 and 45 defence battles per war,
+`fallen` the commonest Very long ending), and the bot's win rate there is low (Very long 24 / 24 /
+20 per cent, barely ordered); those rows are reported, not targets, but a human player who leads
+early on Very long will be ganged up on, which is what section 12.1's coalition is for. Section
+18's 40 setups comparing `quickResolve` with `simulateBattle` are still not built.
+
+**2026-11-11: review fixes to the ladder and the computer diplomacy.** Files: `src/planet/ai.ts`,
+`src/planet/diplomacy.ts`, `src/planet/rules.ts`, `scripts/planet-ladder.ts`, section 8.4's table,
+section 12 step 1, section 18.1 (seeds, definitions, T9, T10, T15), and outside this file
+`src/sim/state.ts`, `scripts/drive-size.ts`, `src/styles.css` and `CLAUDE.md`.
+
+1. **The ladder counted the bot's betrayals.** T9 and T10 counted every faction, and the player
+   seat's bot (an expansionist) made most of the breaks: computer breaks alone were 7.8 per cent of
+   Short wars against a target of 15. T9 and T10 now count computer breakers only, with the
+   all-faction counts reported as T9b and T10b. Then two rule changes: the expansionist's `breakAt`
+   is 30 (was 40), and in a war of at most 60 turns (`BREAK_SHORT_TURNS`, Short only) the bar is 10
+   lower (`BREAK_SHORT_BY`). A global 20 was tried and rejected: it gave Short 24.9 per cent but
+   pushed Very long's T9 to 84.7 against a ceiling of 90 and its Normal win rate to 6 per cent.
+2. **A floor under the Normal win rate on Long and Very long** (T15, at least 15 and at least 8 per
+   cent), and Very long's default seeds raised from 25 to 50 (a 25-seed win rate read 24 per cent on
+   one seed set and 8 on another). The review blamed the coalition against a leader. Measured on
+   Very long, it is not the main cause: with `COALITION_ALLIANCE`, `AI_LEADER_TARGET` and
+   `WAR_INTEREST.rivalNearWin` all at 0, the Normal win rate on the holdout seeds moved from 8 to 12
+   per cent (25 seeds); halving them moved it not at all. The player seat falls mostly because the
+   bot breaks a treaty about once per war and every faction then distrusts it, over 160 turns. The
+   leader terms are kept as they were.
+3. **The refit could disband the wrong unit.** `recruitment` measured room in the army's garrison
+   before counting the garrison recruits already ordered there this turn; a failed `station` order
+   left the plan's slot indices pointing at other units, and a later `disband` could throw away a
+   veteran. Room now subtracts the queued garrison recruits.
+4. **Refusal reasons.** A proposal refused because war pays shows only the reasons that push toward
+   war (`warInterest` returns them as `forWar`); "They are busy on other fronts." and the trade
+   reasons no longer appear as reasons to refuse.
+5. **Pre-merge Standard-pace saves.** A setup saved by this branch before the merge with main kept
+   the pace as `size`, and 'standard' is both a pace and a map size, so such a save loaded at Quick
+   (attacks 25 per cent sooner, paced research dropped). `normaliseSetup` now reads size 'standard'
+   with `research` present and `sites` absent (only this branch's old setups look like that) as pace
+   Standard. Five new assertions in `drive-size.ts`.
+6. The dead `.fl-build-grid` rules in `styles.css` are gone (main's build window replaced the grid).
+
+`npm run check` passes: `drive-planet.ts` 34,941 assertions (was 35,561; the bot wars are shorter
+again), `drive.ts` 368,210, the campaign 2,965.
+
+`ladder:planet` at the default seeds, then the same on the holdout seeds (`--prefix holdout`):
+
+| # | Target | Short | Short holdout | Long | Long holdout | Very long | Very long holdout |
+|---|---|---|---|---|---|---|---|
+| T1 | Decisive endings | 81.6% | | 69.3% | | 76.7% | |
+| T6 | Pairs that fought each other | 48.7% | 43.1% | 54.0% | 52.7% | 52.8% | 56.2% |
+| T9 | Wars with a treaty broken by a computer | 24.9% | 20.9% | 37.3% | 32.7% | 58.0% | 58.0% |
+| T9b | The same, bot included | 50.9% | | 56.0% | | 78.0% | |
+| T10 | Treaties broken by computers per war | 0.28 | | 0.57 | | 1.07 | |
+| T14 | Bot win rate easy / normal / hard | 80.0 / 50.0 / 32.0% | 81.3 / 48.7 / 31.3% | 62 / 38 / 18% | 46 / 34 / 24% | 22 / 14 / 16% | 22 / 16 / 4% |
+| T15 | Bot win rate on Normal | 50.0% | 48.7% | 38.0% | 34.0% | 14.0% | 16.0% |
+
+Every target passes on both seed sets. Margins to watch, any of which a small AI change can flip:
+Long T1 (69.3 against 65), Short T6 on the holdout seeds (43.1 against 40), Long T6 (52.7 to 54.0
+against 50), Very long T6 (52.8 against 50), and Very long T15 (14 and 16 against 8, about plus or
+minus 10 at 50 seeds). Very long's difficulty ordering does not hold (Normal 14, Hard 16 in sample);
+it is reported, not asserted.

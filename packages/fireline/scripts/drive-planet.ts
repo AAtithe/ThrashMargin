@@ -1302,7 +1302,11 @@ function victoryTests(): void {
   ok(!oe.factions[3].alive && oe.result === null && !oe.offers.some(o => o.from === 3) && !oe.treaties.some(t => t.a === 3 || t.b === 3), 'an eliminated faction loses its treaties and offers, the war goes on');
   // Allied victory.
   const av = frozenAi('victory-ally');
-  av.treaties = [treaty(0, 1, 'alliance', null), treaty(0, 2, 'alliance', null), treaty(1, 2, 'trade', null)];
+  // Dated alliances and trusting allies: a computer faction ends an open-ended alliance with a player
+  // about to win, and breaches a dated one only at low trust (section 12.1).
+  av.treaties = [treaty(0, 1, 'alliance', 40), treaty(0, 2, 'alliance', 40), treaty(1, 2, 'trade', null)];
+  av.trust[1][0] = 90;
+  av.trust[2][0] = 90;
   const need = Math.ceil((N(av) * av.options.victoryShare) / 100);
   giveShare(av, 0, need - 4);
   const ar = end(av);

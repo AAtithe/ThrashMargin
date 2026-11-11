@@ -91,9 +91,14 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // Game pace (round 6; the cards call it game size): anything not a pace takes the base's. Kept on
   // standard tech too: the attack timing applies to any tech; research scaling needs development
   // lines. A setup from before the merge with main stored the pace as `size`; where that value is a
-  // pace and not a map size ('quick', 'long', 'epic') it is read as the pace.
-  const legacyPace = r.pace === undefined && GAME_PACE_ORDER.includes((r as { size?: string }).size as GamePace) && !MAP_SIZES.includes(r.size as MapSize)
-    ? ((r as { size?: string }).size as GamePace)
+  // pace and not a map size ('quick', 'long', 'epic') it is read as the pace. 'standard' is both a
+  // pace and a map size, so the two lineages are told apart by their other keys: main's setups always
+  // carry `sites` beside `size` and never `research`; this branch's pre-merge setups always carried
+  // `research` and never `sites`. Such a setup with size 'standard' was a Standard-pace battle.
+  const rawSize = (r as { size?: string }).size;
+  const preMergeStandard = r.pace === undefined && rawSize === 'standard' && r.sites === undefined && r.research !== undefined;
+  const legacyPace = r.pace === undefined && GAME_PACE_ORDER.includes(rawSize as GamePace) && (!MAP_SIZES.includes(r.size as MapSize) || preMergeStandard)
+    ? (rawSize as GamePace)
     : undefined;
   const pace: GamePace = GAME_PACE_ORDER.includes(r.pace as GamePace) ? (r.pace as GamePace) : legacyPace ?? base.pace ?? 'quick';
   // Round 5: map size and neutral sites. Anything but a known size falls back to the base's (and a

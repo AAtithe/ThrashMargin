@@ -2,12 +2,33 @@
  * War for the Planet: treaties, trust and how a computer faction judges a proposal
  * (fireline-planet-design.md, section 8). W1. Pure.
  */
-import { power } from './battleSetup';
+import { defenceEstimate, power, strengthOf } from './battleSetup';
+import { factionIncome } from './economy';
 import { listNames, note } from './journal';
 import { planetMapOf } from './map';
-import { ACCEPT_AT, PAYMENT_MAX, TEMPERAMENTS, TERM_AMOUNT_MAX, TREATY_TERMS_MAX, TREATY_TURNS, VALUE, type TemperamentSpec } from './rules';
+import {
+  ACCEPT_AT,
+  AI_CREDITS_PER_POINT,
+  AI_RESERVE,
+  AI_TREATY_SHARE,
+  ATTACK_CREDITS,
+  COALITION_ALLIANCE,
+  LEADER_BAND,
+  PAYMENT_MAX,
+  ROUTE_MAX_HOPS,
+  TEMPERAMENTS,
+  TERM_AMOUNT_MAX,
+  TREATY_TERMS_MAX,
+  TREATY_TURNS,
+  TRUST_DRIFT_MAX,
+  TRUST_DRIFT_MIN,
+  VALUE,
+  WAR_INTEREST,
+  type TemperamentSpec,
+} from './rules';
 import { aliveFaction, atWar, isInt, sortTreaties, stanceOf, treatyBetween } from './state';
-import { pruneRoutes } from './trade';
+import { pruneRoutes, routePartner, routeYield } from './trade';
+import { regionShare } from './victory';
 import { NEUTRAL, RESOURCES, type FactionId, type PlanetState, type Resource, type Treaty, type TreatyDraft, type TreatyKind, type TreatyTerm } from './types';
 
 export { stanceOf };
@@ -172,6 +193,149 @@ export function borders(s: PlanetState, a: number, b: number): number {
 
 const enemiesOf = (s: PlanetState, f: FactionId): FactionId[] => s.factions.filter(x => x.alive && x.id !== f && atWar(s, f, x.id)).map(x => x.id);
 
+// ---- War and peace (section 12.1) -------------------------------------------------------------
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+/** How close f is to winning outright, 0..1: 0 below victoryShare - LEADER_BAND, 1 at victoryShare. */
+export function threatOf(s: PlanetState, f: FactionId): number {
+  if (!s.factions[f]?.alive) return 0;
+  const share = 100 * regionShare(s, f);
+  return clamp((share - (s.options.victoryShare - LEADER_BAND)) / LEADER_BAND, 0, 1);
+}
+
+/** Strength f could bring to an attack now: its field army plus the most credits its alloys buy above the reserve. */
+export function strikeStrength(s: PlanetState, f: FactionId): number {
+  const fac = s.factions[f];
+  if (!fac?.army || !fac.army.units.length) return 0;
+  const spare = fac.stock.alloys - AI_RESERVE.alloys;
+  const credits = [...ATTACK_CREDITS].reverse().find(c => c / 250 <= spare) ?? 0;
+  return strengthOf(fac.army.units) + credits / AI_CREDITS_PER_POINT;
+}
+
+/** Regions of b next to a region of f that f's strike strength would dare attack (temperament's attackRatio). */
+export function softTargets(s: PlanetState, f: FactionId, b: FactionId, T: TemperamentSpec = specOf(s, f)): number {
+  const A = strikeStrength(s, f);
+  if (A <= 0) return 0;
+  const m = planetMapOf(s);
+  let n = 0;
+  s.regions.forEach((reg, r) => {
+    if (reg.owner !== b) return;
+    if (!m.regions[r].links.some(l => s.regions[l.to].owner === f)) return;
+    if (A / defenceEstimate(s, r) >= T.attackRatio) n++;
+  });
+  return n;
+}
+
+/** True when f borders at least one independent region. */
+export function bordersIndependents(s: PlanetState, f: FactionId): boolean {
+  for (const l of planetMapOf(s).links) {
+    const oa = s.regions[l.a].owner;
+    const ob = s.regions[l.b].owner;
+    if ((oa === f && ob === NEUTRAL) || (oa === NEUTRAL && ob === f)) return true;
+  }
+  return false;
+}
+
+/**
+ * How much f would rather fight b than keep the peace (section 12.1), with the reasons. Positive:
+ * war pays; negative: peace pays. Weighs a weak or exposed neighbour, a rival nearing a win and
+ * running out of independents against fear of a stronger side, other fronts, the pact in force
+ * and trust. Pure and deterministic.
+ */
+export function warInterest(s: PlanetState, f: FactionId, b: FactionId, T: TemperamentSpec = specOf(s, f)): { value: number; reasons: string[]; forWar: string[] } {
+  const W = WAR_INTEREST;
+  const reasons: string[] = [];
+  // The reasons that push toward war, the only ones a refusal driven by war interest may give.
+  const forWar: string[] = [];
+  const pro = (t: string) => {
+    reasons.push(t);
+    forWar.push(t);
+  };
+  const pf = Math.max(1, power(s, f));
+  const pb = Math.max(1, power(s, b));
+  const border = borders(s, f, b) > 0;
+  let v = T.warBias;
+  const rel = W.strength * clamp((pf - pb) / pb, -1, 1);
+  v += rel;
+  if (rel >= 8) pro('They think you weak.');
+  else if (rel <= -8) reasons.push('They fear your strength.');
+  if (!border) v += W.noBorder;
+  else {
+    const soft = Math.min(W.softMax, softTargets(s, f, b, T));
+    v += W.soft * soft;
+    if (soft) pro('Your border regions are poorly held.');
+    if (!bordersIndependents(s, f)) v += W.noIndependents;
+    // Close to winning: finish it.
+    v += W.nearWin * threatOf(s, f);
+    // Envy: a neighbour holding more of the planet.
+    v += W.envy * Math.max(0, regionsOfCount(s, b) - regionsOfCount(s, f));
+  }
+  const lead = W.rivalNearWin * threatOf(s, b);
+  v += lead;
+  if (lead >= 10) pro('You are close to winning the war.');
+  // A third faction close to winning worries f more than b does: keep b quiet.
+  const third = s.factions.filter(x => x.alive && x.id !== f && x.id !== b);
+  v += W.otherLeader * Math.max(0, ...third.map(x => threatOf(s, x.id)));
+  const fronts = third.filter(x => atWar(s, f, x.id) && borders(s, f, x.id) > 0).length;
+  v += W.otherFront * fronts;
+  if (fronts) reasons.push('They are busy on other fronts.');
+  v += W.theirFront * third.filter(x => atWar(s, b, x.id)).length;
+  const st = stanceOf(s, f, b);
+  v += st === 'trade' ? W.trade : st === 'alliance' ? W.alliance : 0;
+  // What the routes between them pay f each turn, lost in a war.
+  const trade = tradeValue(s, f, b);
+  v += Math.max(-W.routeMax, W.route * trade);
+  if (trade >= 4) reasons.push('Your trade is worth keeping.');
+  else if (needsTrade(s, f, b)) {
+    // Short of fuel and nothing flowing yet: a pact with a faction in route range is worth having.
+    v += W.needsTrade;
+    reasons.push('They need what trade with you would bring.');
+  }
+  v += (50 - s.trust[f][b]) / W.trust;
+  return { value: Math.round(v * 100) / 100, reasons, forWar };
+}
+
+const regionsOfCount = (s: PlanetState, f: FactionId): number => s.regions.reduce((n, r) => n + (r.owner === f ? 1 : 0), 0);
+
+/** Value per turn (VALUE-weighted) that the routes between f and b pay f. */
+export function tradeValue(s: PlanetState, f: FactionId, b: FactionId): number {
+  let v = 0;
+  for (const r of s.routes) {
+    const p = routePartner(s, r);
+    if (!((r.owner === f && p === b) || (r.owner === b && p === f))) continue;
+    const y = routeYield(s, r);
+    v += y.fuel * VALUE.fuel + y.alloys * VALUE.alloys;
+  }
+  return v;
+}
+
+/** True when f makes no fuel (net at most 0) and some city of b lies within route range of one of f's. */
+export function needsTrade(s: PlanetState, f: FactionId, b: FactionId): boolean {
+  if (tradeValue(s, f, b) > 0 || factionIncome(s, f).net.fuel > 0) return false;
+  const m = planetMapOf(s);
+  // Hops over every link from f's regions, up to ROUTE_MAX_HOPS.
+  const dist = s.regions.map(r => (r.owner === f ? 0 : Infinity));
+  let frontier = s.regions.map((r, i) => (r.owner === f ? i : -1)).filter(i => i >= 0);
+  for (let h = 1; h <= ROUTE_MAX_HOPS && frontier.length; h++) {
+    const next: number[] = [];
+    for (const x of frontier) for (const l of m.regions[x].links) {
+      if (dist[l.to] !== Infinity) continue;
+      dist[l.to] = h;
+      if (s.regions[l.to].owner === b) return true;
+      next.push(l.to);
+    }
+    frontier = next;
+  }
+  return false;
+}
+
+/** The length of a treaty a computer faction proposes. */
+export function aiTreatyTurns(s: PlanetState, kind: TreatyKind): number {
+  const lim = TREATY_TURNS[kind];
+  return clamp(Math.round(s.options.turnLimit * AI_TREATY_SHARE[kind]), lim.min, lim.max);
+}
+
 export function proposalScore(s: PlanetState, judge: FactionId, other: FactionId, draft: TreatyDraft): { score: number; reasons: string[] } {
   const T = specOf(s, judge);
   const reasons: string[] = [];
@@ -197,6 +361,23 @@ export function proposalScore(s: PlanetState, judge: FactionId, other: FactionId
     base = T.allianceBias + 20 * common - 25 * clash;
     if (common) reasons.push('You share an enemy.');
     if (clash) reasons.push('You are at war with one of their partners.');
+  }
+  // Interest (section 12.1): a faction that would rather fight will not sign; one that fears war signs more readily.
+  const wi = warInterest(s, judge, other);
+  const pull = draft.kind === 'ceasefire' ? 0.8 : 1;
+  base += wi.value > 0 ? -pull * wi.value : -0.2 * wi.value;
+  // Only the reasons that push toward war explain a refusal; the pro-peace ones would argue the other way.
+  if (wi.value > 5) reasons.push(...wi.forWar);
+  if (draft.kind === 'alliance') {
+    const rival = Math.max(0, ...s.factions.filter(x => x.alive && x.id !== judge && x.id !== other).map(x => threatOf(s, x.id)));
+    if (rival > 0) {
+      base += COALITION_ALLIANCE * rival;
+      reasons.push('You share a rival close to winning.');
+    }
+    if (other === 0 && handsAlliedVictory(s, judge)) {
+      base -= 100;
+      reasons.push('An alliance would hand you the war.');
+    }
   }
   let terms = 0;
   const left = Math.min(draft.turns ?? 10, 10);
@@ -232,6 +413,17 @@ export function proposalScore(s: PlanetState, judge: FactionId, other: FactionId
   return { score: Math.round((base + terms + trust) * 100) / 100, reasons };
 }
 
+/** True when an alliance between the player and computer faction j would complete an allied victory for the player. */
+export function handsAlliedVictory(s: PlanetState, j: FactionId): boolean {
+  if (!s.options.alliedVictory) return false;
+  const ai = s.factions.filter(x => x.id !== 0 && x.alive);
+  if (!ai.every(x => x.id === j || stanceOf(s, 0, x.id) === 'alliance')) return false;
+  const count = (f: FactionId) => s.regions.filter(r => r.owner === f).length;
+  const mine = count(0);
+  const counts = ai.map(x => count(x.id));
+  return (100 * (mine + counts.reduce((t, n) => t + n, 0))) / s.regions.length >= s.options.victoryShare && counts.every(n => mine > n);
+}
+
 export function proposalVerdict(s: PlanetState, judge: FactionId, other: FactionId, draft: TreatyDraft): { accept: boolean; score: number; reasons: string[] } {
   const { score, reasons } = proposalScore(s, judge, other, draft);
   let accept = score >= ACCEPT_AT[draft.kind];
@@ -253,9 +445,12 @@ export function trustDrift(d: PlanetState): void {
     const st = stanceOf(d, a, b);
     let by = st === 'trade' ? 1 : st === 'alliance' ? 2 : st === 'war' ? -1 : 0;
     if (alive.some(c => c !== a && c !== b && atWar(d, a, c) && atWar(d, b, c))) by += 1;
-    if (by) {
-      shiftTrust(d, a, b, by);
-      shiftTrust(d, b, a, by);
+    if (!by) continue;
+    // Drift wears trust toward a floor or a ceiling, never past it; events still move it all the way.
+    for (const [x, y] of [[a, b], [b, a]]) {
+      const t = d.trust[x][y];
+      if (by > 0 && t < TRUST_DRIFT_MAX) shiftTrust(d, x, y, Math.min(by, TRUST_DRIFT_MAX - t));
+      else if (by < 0 && t > TRUST_DRIFT_MIN) shiftTrust(d, x, y, Math.max(by, TRUST_DRIFT_MIN - t));
     }
   }
 }

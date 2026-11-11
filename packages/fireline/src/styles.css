@@ -208,11 +208,6 @@ kbd {
 
 /* ---- Build menu extras ------------------------------------------------------------------- */
 
-.fl-build-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 5px;
-}
 .fl-build img {
   width: 100%;
   height: auto;
@@ -227,36 +222,6 @@ kbd {
 .fl-build-cost {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
-/* Advanced tech: up to eleven items on a tab, three to a row with shorter pictures. */
-.fl-build-grid[data-compact="1"] {
-  grid-template-columns: repeat(3, 1fr);
-  gap: 4px;
-}
-.fl-build-grid[data-compact="1"] .fl-build {
-  padding: 3px 2px 4px;
-  font-size: 0.62rem;
-  gap: 1px;
-}
-.fl-build-grid[data-compact="1"] .fl-build img {
-  height: 38px;
-  object-fit: cover;
-}
-.fl-build-grid[data-compact="1"] .fl-key {
-  /* The letter sits on the picture's lower right, so the name below keeps its own line. */
-  position: absolute;
-  top: 27px;
-  right: 5px;
-  background: var(--ui-panel-raised);
-}
-.fl-build-grid[data-compact="1"] .fl-build-name {
-  min-height: 2.2em;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 2px;
-}
-
 .fl-key {
   display: inline-block;
   min-width: 1.35em;

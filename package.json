@@ -25,6 +25,7 @@
     "drive:fire": "npm run drive --workspace=packages/fireline --",
     "campaign:fire": "npm run campaign-check --workspace=packages/fireline --",
     "drive:planet": "npm run drive:planet --workspace=packages/fireline",
+    "ladder:planet": "npm run ladder:planet --workspace=packages/fireline --",
     "ladder:fire": "npm run ladder --workspace=packages/fireline --",
     "build:portal": "bash scripts/build-portal.sh",
     "check": "bash scripts/check.sh",
