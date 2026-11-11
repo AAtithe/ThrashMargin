@@ -1274,10 +1274,17 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
     const text = 'SECRET';
     const tw = measure(g, text, size, 'roman', 800, 3 * k);
     const bw = tw + 14 * k;
-    const bh = size * 1.7;
+    // A little more air on a small map, where the inner rule otherwise crowds the letters.
+    const bh = size * (compact ? 2 : 1.7);
     g.save();
     g.translate(w - m - bw / 2 - 10 * k, m + bh / 2 + 8 * k);
     g.rotate(-0.06);
+    // Clear the paper under the stamp first: on a narrow map it lands on a hill's contours and
+    // spot height, and ink over ink read as a smudge.
+    const clear = 4 * k;
+    const below = compact ? 0 : size * 0.85;
+    g.fillStyle = pal.halo;
+    g.fillRect(-bw / 2 - clear, -bh / 2 - clear, bw + clear * 2, bh + clear * 2 + below);
     g.strokeStyle = pal.stamp;
     g.lineWidth = 2;
     g.strokeRect(-bw / 2, -bh / 2, bw, bh);
@@ -1287,7 +1294,8 @@ function furniture(g: Ctx, w: number, h: number, act: 0 | 1, pal: Palette, compa
     if (!compact) letter(g, 'COPY No. 4 OF 9', 0, bh / 2 + size * 0.55, { size: size * 0.48, colour: pal.stamp, weight: 700, spacing: 1 });
     // Worn ink: flecks of paper showing through.
     g.globalCompositeOperation = 'destination-out';
-    for (let i = 0; i < 40; i++) {
+    // Fewer on a small stamp: at 40 the letters of a phone-sized one read as hollow.
+    for (let i = 0, flecks = compact ? 10 : 40; i < flecks; i++) {
       g.fillStyle = `rgba(0,0,0,${0.25 + hash(i + 77) * 0.5})`;
       g.fillRect((hash(i * 2 + 60) - 0.5) * bw, (hash(i * 2 + 61) - 0.5) * bh, 1.2, 1.2);
     }
