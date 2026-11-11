@@ -23,7 +23,7 @@ A CEO coaching game for Tom Stanley.
   built-in bank exactly as before. The prompts live on the server; the browser sends only the facts a
   task needs. Tasks: `readback` (Claude's read in the Reset and a suggested move), `pressure` (a call
   written from the player's own line), `call` (the weekly call from the closed week), `letterDraft`
-  and `letterCoach`. Claude Opus 5.5 with structured output and server-side refusal fallback; 30 a
+  and `letterCoach`. The model named in coach.ts, with structured output and refusal fallback; 30 an
   hour and 120 a day per account. Words that suggest a crisis get a support card (Samaritans, GP,
   999) with no coaching and no model call. Covered by `npm run drive:fl` (prompts, checks, backstop)
   and `npm run test:api` (the whole path, against a local stand-in for the API).

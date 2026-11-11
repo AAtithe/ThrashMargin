@@ -533,7 +533,7 @@ async function suite(mode: 'fresh' | 'legacy') {
   const coachRead = await coach('POST', 'readback', A2, coachRb);
   ok(coachRead.status === 200 && coachRead.body.result.read.includes('3 weeks') && coachRead.body.result.move === 'Chase the oldest debtor with one email', `coach: a readback (got ${coachRead.status} ${JSON.stringify(coachRead.body)})`);
   const coachSent = claudeRequests[0];
-  ok(!!coachSent && coachSent.body.model === 'claude-opus-5-5', 'coach: asks Claude Opus 5.5');
+  ok(!!coachSent && coachSent.body.model === 'claude-opus-5-5', 'coach: asks the model coach.ts names');
   ok(!!coachSent && coachSent.body.output_config?.format?.type === 'json_schema' && coachSent.body.output_config?.effort === 'low', 'coach: structured output, low effort for a reset');
   ok(!!coachSent && coachSent.body.fallbacks === 'default' && String(coachSent.headers['anthropic-beta']).includes('server-side-fallback-2026-07-01'), 'coach: refusal fallback on');
   ok(!!coachSent && String(coachSent.body.system).includes('<player> tags') && String(coachSent.body.messages[0].content).includes('<player>Payroll Friday'), 'coach: the player text is fenced and the system prompt says so');
