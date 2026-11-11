@@ -8,7 +8,8 @@
     "preview": "vite preview",
     "drive": "tsx scripts/drive.ts",
     "campaign-check": "tsx scripts/campaign-check.ts",
-    "ladder": "tsx scripts/ai-ladder.ts"
+    "ladder": "tsx scripts/ai-ladder.ts",
+    "campaign-sweep": "tsx scripts/campaign-sweep.ts"
   },
   "dependencies": {
     "react": "^18.2.0",

@@ -210,8 +210,8 @@ Decisions the contract left open:
 Difficulty: missions were tuned against act one's equivalents rather than measured by hand play.
 Left alone, Firestorm's base falls at about the same time as Blackout's (just under eight
 minutes); the skirmish commander playing side 0 loses Last Light at about the same time as it
-loses Fireline. Four act-two missions are won by scripted or computer players in
-`campaign:fire`; Firestorm and Last Light are not, and want a human with heroes.
+loses Fireline. (Superseded 2026-11-10: every mission is now won by a scripted player in
+`campaign:fire`, and `sweep:fire` measures each at every campaign difficulty. See section 10.)
 
 After integration (workstream A's air units): mission 11 gets enemy gunship raids by trigger and
 Skyhunters for the player; mission 12 enemy bombers by trigger and a Flak Cannon to build; mission
@@ -226,4 +226,9 @@ written at Normal; `scaleMission` in `src/campaign/difficulty.ts` derives Easy a
 (enemy troops and triggered groups, enemy credits, commander tier, player credits, a time limit, and
 on Easy tougher troops through the perks). Structures, objectives and rewards are never scaled. The
 battle records its level on `MissionRuntime.level`. Numbers and reasons: `fireline-design.md`,
-2026-11-10.
+2026-11-10 (both entries).
+
+The bar, measured by `npm run sweep:fire` (twelve plans for a base mission, six for The Quiet Man,
+three for Ace of Spades): Easy is won by every or nearly every plan, Normal by most, Hard by some.
+`campaign:fire` pins one winning plan per mission at Easy and Normal (The Quiet Man and Ace of Spades
+at all three). A scripted player that loses proves little; one that wins proves the mission can be won.

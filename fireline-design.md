@@ -889,3 +889,60 @@ campaign-check plays Borrowed Steel by script three ways in at every level (Easy
 all three; Hard at least one), checks the scaling for every mission, and builds and runs all 14
 missions at Easy and Hard. drive.ts covers the spared structure, the failed capture and the trigger
 order.
+
+### 2026-11-10: every campaign mission played to a win; three missions and the enemy barrage fixed
+
+Checked whether every mission can be won, at every campaign difficulty, by a scripted player
+(`scripts/campaign-player.ts`): the skirmish commander runs side 0's base, held at home and sent at
+the mission's target at a chosen minute, and a script plays the heroes and support powers. Twelve
+plans per base mission (two commander strengths, six attack times), six for The Quiet Man, three
+for Ace of Spades; `npm run sweep:fire` runs them all. Before this, six of the fourteen missions had
+a played proof; the rest were only built and run for 2,000 ticks.
+
+Found and fixed:
+
+- **The Quiet Man could not be won at Normal or Hard.** Two buggies sent after the Spy drove to the
+  extraction point and parked on it; they beat his four riflemen, and he could not come within two
+  tiles of them unseen. Every run ended with him alive, waiting, until the time ran out. A squad of
+  three riflemen goes after him now, the same fix Demolition had.
+- **The enemy barrage aimed at what it could not see.** Firestorm, Bastion Line and Last Light give
+  the enemy a Tech Centre's barrage, and it found the player's rally point deep in their own base
+  every three minutes: one barrage killed 27 of side 0's units at once in Firestorm, with no enemy
+  near. A mission enemy now shells only troops within sight of its own units or structures, else
+  one of the player's structures. With the barrage switched off entirely, Firestorm went from 0 to 5
+  wins of 6 plans; with the sight rule instead, 5 of 12.
+- **Blackout, Firestorm and Last Light were not won at Normal by most plans** (3, 0 and 0 of 12 at
+  first). Blackout: enemy credits 5,000 to 2,500, a rifleman fewer, the armoured column three tanks
+  not four. Last Light: the commander at Normal rather than Hard (campaign Hard gives Hard back),
+  credits 10,000 to 5,000, and about two-thirds of its garrison and of every wave. Firestorm needed
+  only the barrage fix; its remaining losses are all its 15-minute deadline, every one of them a plan
+  that attacks too late or builds too slowly to get there. Every plan that reaches it in time wins.
+- **Campaign Hard eased** from x1.3 troops and x1.5 credits to x1.15 and x1.25 (still a tier up):
+  at the steeper setting no plan held Hold the Ford for its eight minutes.
+
+Not missions, but the scripted player, and worth knowing for the next one: left to attack on its own,
+the skirmish commander threw its whole army into the enemy's turrets at four and a half minutes in
+every base mission (52 units lost for 6 in thirty seconds in Fireline); heroes walked in alone and
+died in the first minute and a half; and in First Light, where it may not build tanks, it trained
+nothing and sat on 33,500 credits. Fireline read as unwinnable at Normal until the heroes were used
+properly, then won 9 of 12 with no change to the mission. A scripted player that loses proves little.
+
+Wins out of plans tried (`npm run sweep:fire`):
+
+| Mission | Easy | Normal | Hard |
+|---|---|---|---|
+| 1 First Light | 12/12 | 12/12 | 12/12 |
+| 2 The Quiet Man | 6/6 | 6/6 | 6/6 |
+| 3 Hold the Ford | 12/12 | 12/12 | 7/12 |
+| 6 Ace of Spades | 3/3 | 2/3 | 2/3 |
+| 7 Blackout | 12/12 | 9/12 | 0/12 |
+| 8 Fireline | 12/12 | 9/12 | 0/12 |
+| 9 Iron Coast | 12/12 | 11/12 | 0/12 |
+| 12 Firestorm | 10/12 | 5/12 | 0/12 |
+| 14 Last Light | 12/12 | 12/12 | 5/12 |
+
+Missions 4, 5, 10, 11 and 13 have their own players in campaign-check (Borrowed Steel at every
+level). campaign-check now plays every mission to a win at Easy and Normal, The Quiet Man and Ace of
+Spades at all three. Hard on Blackout, Fireline, Iron Coast and Firestorm is not won by any scripted
+plan; that proves less than it seems (the player does not micro and its heroes go in on a timer), but
+it is the open question if Hard is reported as too hard.
