@@ -463,21 +463,101 @@ kbd {
   animation: none;
 }
 
+/* ==== B: lobby (home screen, skirmish setup) ==== */
 /* ---- Lobby ------------------------------------------------------------------------------- */
 
+/* Tokens for the lobby. The hero is canvas art, the same in both modes, so its overlays are too. */
+:root {
+  --b-art-grid: rgba(244, 247, 243, 0.07);
+  --b-art-line: rgba(244, 247, 243, 0.55);
+  --b-art-glass: rgba(10, 16, 12, 0.5);
+  --b-art-glass-hover: rgba(10, 16, 12, 0.72);
+  --b-art-cta: #e0a43a;
+  --b-art-cta-ink: #1a1408;
+  --b-sheet-paper: #efeadd;
+  --b-sheet-ink: rgba(70, 58, 30, 0.45);
+  --b-sheet-ink-soft: rgba(70, 58, 30, 0.16);
+  --b-card-wash: rgba(168, 106, 12, 0.06);
+  --b-step-done: #a86a0c;
+}
+:root[data-theme="dark"] {
+  --b-art-grid: rgba(244, 247, 243, 0.07);
+  --b-art-line: rgba(244, 247, 243, 0.55);
+  --b-art-glass: rgba(10, 16, 12, 0.5);
+  --b-art-glass-hover: rgba(10, 16, 12, 0.72);
+  --b-art-cta: #e0a43a;
+  --b-art-cta-ink: #1a1408;
+  --b-sheet-paper: #1c2220;
+  --b-sheet-ink: rgba(214, 222, 200, 0.4);
+  --b-sheet-ink-soft: rgba(214, 222, 200, 0.12);
+  --b-card-wash: rgba(224, 164, 58, 0.06);
+  --b-step-done: #e0a43a;
+}
+
+/* The hero: a live battle on a tall banner, a plotting grid over it, the title and the way in. */
 .fl-hero {
   position: relative;
   border-radius: 6px;
   overflow: hidden;
-  border: 1px solid var(--ui-rule);
+  border: 1px solid var(--ui-rule-strong);
   background: #2d4220;
-  margin-bottom: 1.4rem;
-  min-height: 210px;
+  margin-bottom: 1.1rem;
+  height: clamp(300px, 34vw, 380px);
+  box-shadow: 0 10px 30px -18px var(--ui-shadow);
+}
+.fl-hero-stage {
+  position: absolute;
+  inset: 0;
 }
 .fl-hero canvas {
   display: block;
   width: 100%;
-  height: 210px;
+  height: 100%;
+}
+.fl-hero-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--b-art-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--b-art-grid) 1px, transparent 1px);
+  background-size: 48px 48px;
+  box-shadow: inset 0 0 120px 10px var(--ui-art-scrim);
+}
+.fl-hero-readout {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ui-on-art-soft);
+  background: var(--b-art-glass);
+  padding: 4px 8px;
+  border-radius: 3px;
+  pointer-events: none;
+}
+.fl-hero-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ui-on-art);
+}
+.fl-hero-live::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--ui-alert);
+  box-shadow: 0 0 0 3px var(--ui-alert-glow);
+  animation: b-live 1.6s ease-in-out infinite;
+}
+@keyframes b-live {
+  50% { opacity: 0.35; }
 }
 .fl-hero-text {
   position: absolute;
@@ -485,41 +565,573 @@ kbd {
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
-  gap: 0.35rem;
-  padding: 1.1rem 1.3rem;
-  width: min(100%, 420px);
-  background: linear-gradient(90deg, var(--ui-art-scrim) 0%, var(--ui-art-scrim) 70%, transparent 100%);
+  gap: 0.5rem;
+  padding: 1.4rem 1.6rem 1.5rem;
+  width: min(100%, 560px);
+  box-sizing: border-box;
+  background: linear-gradient(90deg, var(--ui-art-scrim) 0%, var(--ui-art-scrim) 62%, transparent 100%);
   color: var(--ui-on-art);
-  pointer-events: none;
 }
 .fl-hero-text p {
   margin: 0;
   color: var(--ui-on-art-soft);
 }
-
-.fl-new {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+.fl-hero-text .fl-hero-line {
+  font-size: 0.95rem;
+  line-height: 1.45;
+  max-width: 40ch;
+  color: var(--ui-on-art);
+}
+.fl-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
-  margin: 0 0 1.5rem;
-  padding: 0;
+  margin-top: 0.5rem;
+}
+.fl-hero-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0.55rem 0.9rem;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-decoration: none;
+  color: var(--ui-on-art);
+  background: var(--b-art-glass);
+  border: 1px solid var(--b-art-line);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.fl-hero-cta:hover {
+  background: var(--b-art-glass-hover);
+}
+.fl-hero-cta[data-tone="primary"] {
+  color: var(--b-art-cta-ink);
+  background: var(--b-art-cta);
+  border-color: var(--b-art-cta);
+}
+.fl-hero-cta[data-tone="primary"]:hover {
+  filter: brightness(1.08);
+}
+.fl-hero-cta[data-tone="quiet"] {
+  background: transparent;
+  border-color: transparent;
+  font-weight: 500;
+  color: var(--ui-on-art-soft);
+}
+.fl-hero-cta[data-tone="quiet"]:hover {
+  color: var(--ui-on-art);
+  text-decoration: underline;
+}
+.fl-hero-cta-num {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  opacity: 0.7;
+}
+.fl-hero-cta:focus-visible,
+.fl-lobby-path button:focus-visible,
+.fl-lobby-theatre-sheet:focus-visible,
+.fl-new summary:focus-visible {
+  outline: 2px solid var(--ui-accent);
+  outline-offset: 2px;
+}
+
+/* Under the hero: the pitch, and the order of play as a three-stop path. */
+.fl-lobby-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 1.2rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+.fl-lobby-path {
+  display: flex;
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  background: var(--ui-panel);
+  overflow: hidden;
+}
+.fl-lobby-path button {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ui-text);
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--ui-rule);
+  cursor: pointer;
+  text-align: left;
+}
+.fl-lobby-path button:first-child {
+  border-left: 0;
+  box-shadow: inset 0 3px 0 var(--ui-accent);
+}
+.fl-lobby-path button:hover {
+  background: var(--ui-panel-raised);
+}
+.fl-lobby-path button span {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  color: var(--ui-accent);
+}
+
+/* What is new: one line of headings; open it for a sentence on each. */
+.fl-new {
+  margin: 0 0 1.6rem;
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  background: var(--ui-panel);
+}
+.fl-new summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
   list-style: none;
+  min-width: 0;
+}
+.fl-new summary::-webkit-details-marker {
+  display: none;
+}
+.fl-new-kicker {
+  flex-shrink: 0;
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ui-accent);
+  font-weight: 600;
+}
+.fl-new-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  gap: 6px;
+  overflow: hidden;
+  white-space: nowrap;
+  mask-image: linear-gradient(90deg, #000 85%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
+}
+.fl-new-chip {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  color: var(--ui-text-soft);
+  padding: 1px 8px;
+  border: 1px solid var(--ui-rule);
+  border-radius: 999px;
+  background: var(--ui-panel-raised);
+}
+.fl-new-more {
+  flex-shrink: 0;
+  font-size: 0.74rem;
+  color: var(--ui-text-soft);
+}
+.fl-new-more::after {
+  content: "Show all ▾";
+}
+.fl-new[open] .fl-new-more::after {
+  content: "Hide ▴";
+}
+.fl-new[open] .fl-new-strip {
+  visibility: hidden;
+}
+.fl-new ul {
+  margin: 0;
+  padding: 0.2rem 0.75rem 0.8rem;
+  list-style: none;
+  columns: 3 240px;
+  column-gap: 22px;
+  border-top: 1px solid var(--ui-rule);
 }
 .fl-new li {
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--ui-rule);
-  border-left: 3px solid var(--ui-accent);
-  border-radius: 3px;
-  background: var(--ui-panel);
+  break-inside: avoid;
+  padding: 0.55rem 0 0.1rem;
   font-size: 0.76rem;
-  line-height: 1.4;
+  line-height: 1.45;
   color: var(--ui-text-soft);
 }
 .fl-new strong {
   display: block;
   color: var(--ui-text);
   font-size: 0.8rem;
+  margin-bottom: 1px;
+}
+.fl-new strong::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  vertical-align: 1px;
+  background: var(--ui-accent);
+  transform: rotate(45deg);
+}
+
+/* The three sections: a numbered heading over a panel. */
+.fl-lobby-section {
+  position: relative;
+  margin-bottom: 1.6rem;
+  padding: 1rem 1.1rem 1.15rem;
+  border: 1px solid var(--ui-rule);
+  border-radius: 5px;
+  background: var(--ui-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  scroll-margin-top: 12px;
+}
+.fl-lobby-head {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--ui-rule);
+}
+.fl-lobby-num {
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ui-accent);
+  border: 1px solid var(--ui-accent);
+  border-radius: 3px;
+  background: var(--ui-tint-accent);
+}
+.fl-lobby-kicker {
+  margin: 0 0 2px;
+  font-size: 0.64rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-lobby-title {
+  margin: 0;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 1.35rem;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  color: var(--ui-text);
+}
+.fl-lobby-aside {
+  flex-shrink: 0;
+}
+
+/* The campaign's war-room card: the theatre map beside the briefing. */
+.fl-campaign-card {
+  border-color: var(--ui-rule-strong);
+  background: linear-gradient(180deg, var(--b-card-wash), transparent 60%), var(--ui-panel);
+  box-shadow: inset 0 3px 0 var(--ui-accent);
+}
+.fl-campaign-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 1.2rem;
+  align-items: start;
+}
+.fl-lobby-theatre {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.fl-lobby-theatre-sheet {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 10px;
+  font: inherit;
+  background: var(--b-sheet-paper);
+  border: 1px solid var(--ui-rule-strong);
+  border-radius: 3px;
+  cursor: pointer;
+  /* Graticule ticks along the sheet's margin, like the edge of a printed map. */
+  background-image:
+    repeating-linear-gradient(90deg, var(--b-sheet-ink) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(90deg, var(--b-sheet-ink) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(0deg, var(--b-sheet-ink) 0 1px, transparent 1px 24px),
+    repeating-linear-gradient(0deg, var(--b-sheet-ink) 0 1px, transparent 1px 24px);
+  background-size: 100% 5px, 100% 5px, 5px 100%, 5px 100%;
+  background-position: 0 0, 0 100%, 0 0, 100% 0;
+  background-repeat: no-repeat;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.fl-lobby-theatre-sheet:hover {
+  border-color: var(--ui-accent);
+  box-shadow: 0 6px 22px -12px var(--ui-shadow);
+}
+.fl-lobby-theatre-map {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--b-sheet-ink);
+  line-height: 0;
+}
+.fl-lobby-theatre-map canvas {
+  display: block;
+  width: 100%;
+}
+.fl-lobby-theatre-corner {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-color: var(--ui-accent);
+  border-style: solid;
+  border-width: 0;
+  z-index: 1;
+}
+.fl-lobby-theatre-corner[data-c="tl"] { top: 4px; left: 4px; border-top-width: 2px; border-left-width: 2px; }
+.fl-lobby-theatre-corner[data-c="tr"] { top: 4px; right: 4px; border-top-width: 2px; border-right-width: 2px; }
+.fl-lobby-theatre-corner[data-c="bl"] { bottom: 4px; left: 4px; border-bottom-width: 2px; border-left-width: 2px; }
+.fl-lobby-theatre-corner[data-c="br"] { bottom: 4px; right: 4px; border-bottom-width: 2px; border-right-width: 2px; }
+.fl-lobby-theatre-caption {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-lobby-theatre-caption span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fl-campaign-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.fl-campaign-facts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin: 0;
+  border: 1px solid var(--ui-rule);
+  border-radius: 3px;
+  background: var(--ui-ground);
+}
+.fl-campaign-facts div {
+  padding: 0.45rem 0.6rem;
+  border-left: 1px solid var(--ui-rule);
+}
+.fl-campaign-facts div:first-child {
+  border-left: 0;
+}
+.fl-campaign-facts dt {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-campaign-facts dd {
+  margin: 0;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text);
+}
+.fl-campaign-heroes {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--ui-text-soft);
+}
+.fl-campaign-latest button {
+  white-space: nowrap;
+}
+.fl-campaign-latest {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--ui-accent);
+  border-radius: 3px;
+  background: var(--ui-tint-accent);
+}
+.fl-campaign-latest strong {
+  display: block;
+  font-size: 0.92rem;
+  margin: 1px 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fl-campaign-latest-kicker {
+  display: block;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.58rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-campaign-new {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-top: 0.15rem;
+}
+.fl-campaign-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0 12px;
+}
+
+/* Missions won: one cell per mission, a gap where act two begins. */
+.fl-progress {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.fl-progress-bar {
+  display: inline-flex;
+  gap: 2px;
+}
+.fl-progress-bar span {
+  width: 9px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--ui-rule);
+}
+.fl-progress-bar span[data-on="1"] {
+  background: var(--b-step-done);
+}
+.fl-progress-bar span[data-act-break="1"] {
+  margin-left: 4px;
+}
+.fl-progress-text {
+  white-space: nowrap;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  color: var(--ui-text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Saved campaigns and battles. */
+.fl-saves {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.fl-saves-label {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
   margin-bottom: 2px;
+}
+.fl-saves-empty {
+  margin: 0;
+  padding: 1rem;
+  text-align: center;
+  font-size: 0.83rem;
+  color: var(--ui-text-faint);
+  border: 1px dashed var(--ui-rule);
+  border-radius: 3px;
+}
+.fl-save {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 0.55rem 0.7rem 0.55rem 0;
+  border: 1px solid var(--ui-rule);
+  border-left: 4px solid var(--ui-rule-strong);
+  border-radius: 3px;
+  background: var(--ui-panel-raised);
+  --b-status: var(--ui-text-soft);
+}
+.fl-save[data-status="active"] { border-left-color: var(--ui-accent); --b-status: var(--ui-accent); }
+.fl-save[data-status="victory"] { border-left-color: var(--ui-good); --b-status: var(--ui-good); }
+.fl-save[data-status="defeated"] { border-left-color: var(--ui-bad); --b-status: var(--ui-bad); }
+.fl-save[data-status="campaign"] { border-left-color: var(--ui-accent); --b-status: var(--ui-accent); }
+.fl-save[data-confirming="1"] {
+  border-color: var(--ui-bad);
+  background: var(--ui-tint-bad);
+}
+.fl-save-status {
+  justify-self: center;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--b-status);
+  text-align: center;
+}
+.fl-save[data-kind="campaign"] .fl-save-status {
+  display: none;
+}
+.fl-save[data-kind="campaign"] {
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding-left: 0.7rem;
+}
+.fl-save-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.fl-save-name {
+  font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fl-save-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  font-size: 0.72rem;
+  color: var(--ui-text-faint);
+}
+.fl-save-meta > span:not(.fl-progress):not(.fl-save-when) {
+  color: var(--ui-text-soft);
+}
+.fl-save-meta > span + span:not(.fl-save-when)::before,
+.fl-save-when::before {
+  content: "·";
+  margin-right: 10px;
+  color: var(--ui-text-faint);
+}
+.fl-save-meta > .fl-progress + .fl-save-when::before {
+  content: "";
+  margin: 0;
+}
+.fl-save-meta > span:first-child::before {
+  content: none;
+}
+.fl-save-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.fl-save-ask {
+  font-size: 0.76rem;
+  color: var(--ui-bad);
+  margin-right: 2px;
 }
 
 .fl-levels {
@@ -528,6 +1140,7 @@ kbd {
   gap: 8px;
 }
 .fl-level {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -569,8 +1182,101 @@ kbd {
   background: var(--ui-tint-accent);
   box-shadow: inset 0 0 0 1px var(--ui-accent);
 }
+/* A tick in the corner of the chosen card, so the choice reads without relying on colour alone. */
+.fl-lobby .fl-level[aria-pressed="true"]::after,
+.fl-lobby .fl-level[aria-checked="true"]::after,
+.fl-map[aria-checked="true"]::after {
+  content: "✓";
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--ui-ground);
+  background: var(--ui-accent);
+  border-radius: 50%;
+}
 
 /* ---- Skirmish setup ------------------------------------------------------------------------ */
+
+/* Numbered steps down a rail. */
+.fl-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.fl-step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 0 14px;
+  padding-bottom: 1.3rem;
+}
+.fl-step:last-child {
+  padding-bottom: 0;
+}
+.fl-step::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  top: 36px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--ui-rule);
+}
+.fl-step:last-child::before {
+  display: none;
+}
+.fl-step-mark {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ui-accent);
+  background: var(--ui-panel);
+  border: 2px solid var(--ui-accent);
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+.fl-step:last-child .fl-step-mark {
+  color: var(--ui-ground);
+  background: var(--ui-accent);
+}
+.fl-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.fl-step-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-height: 34px;
+  align-content: center;
+}
+.fl-step-title {
+  margin: 0;
+  font-family: "Bahnschrift", "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
+  font-size: 1.02rem;
+  letter-spacing: 0.03em;
+  color: var(--ui-text);
+}
+.fl-step-hint {
+  margin: 0;
+  font-size: 0.76rem;
+  color: var(--ui-text-faint);
+}
 
 .fl-setup-field {
   display: flex;
@@ -584,22 +1290,57 @@ kbd {
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 0 16px;
 }
+.fl-setup-terms {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 6px 16px;
+}
 .fl-setup-note {
   margin: 0;
   font-size: 0.76rem;
   line-height: 1.45;
   color: var(--ui-text-faint);
 }
+
+/* Battlefield cards, each preview framed like a map sheet. */
+/* Seven cards: Random as a large sheet over two columns and two rows, the six types beside it in
+   three by two, so the grid always closes square. Narrower, Random runs across the top. */
 .fl-maps {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+.fl-map[data-testid="map-random"] {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+.fl-map[data-testid="map-random"] .fl-map-name {
+  font-size: 1rem;
+}
+@media (max-width: 820px) {
+  .fl-maps {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .fl-map[data-testid="map-random"] {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    display: grid;
+    grid-template-columns: minmax(0, 150px) minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    gap: 4px 12px;
+  }
+  .fl-map[data-testid="map-random"] .fl-map-sheet {
+    grid-row: span 2;
+  }
+  .fl-map[data-testid="map-random"] .fl-map-name {
+    align-self: end;
+  }
 }
 .fl-map {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 6px;
+  padding: 6px 6px 8px;
   text-align: left;
   font: inherit;
   color: var(--ui-text);
@@ -608,6 +1349,7 @@ kbd {
   border-radius: 4px;
   cursor: pointer;
   min-width: 0;
+  transition: border-color 0.12s, transform 0.12s;
 }
 .fl-map:hover {
   border-color: var(--ui-rule-strong);
@@ -615,20 +1357,67 @@ kbd {
 .fl-map[aria-checked="true"] {
   border-color: var(--ui-accent);
   background: var(--ui-tint-accent);
-  box-shadow: inset 0 0 0 1px var(--ui-accent);
+  box-shadow: inset 0 0 0 1px var(--ui-accent), 0 6px 16px -10px var(--ui-shadow);
+}
+.fl-map[aria-checked="true"]::after {
+  top: 2px;
+  right: 2px;
+  z-index: 2;
+}
+.fl-map-sheet {
+  position: relative;
+  display: block;
+  padding: 12px 7px 7px;
+  background: var(--b-sheet-paper);
+  border: 1px solid var(--b-sheet-ink);
+  border-radius: 2px;
+  background-image:
+    repeating-linear-gradient(90deg, var(--b-sheet-ink) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(0deg, var(--b-sheet-ink) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(0deg, var(--b-sheet-ink) 0 1px, transparent 1px 12px);
+  background-size: 100% 3px, 3px 100%, 3px 100%;
+  background-position: 0 100%, 0 0, 100% 0;
+  background-repeat: no-repeat;
+}
+.fl-map-sheet-id {
+  position: absolute;
+  top: 1px;
+  left: 7px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.52rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--b-sheet-ink);
+  line-height: 10px;
+}
+.fl-map-north {
+  position: absolute;
+  top: 1px;
+  right: 7px;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.52rem;
+  font-weight: 700;
+  color: var(--b-sheet-ink);
+  line-height: 10px;
+}
+.fl-map-north::before {
+  content: "▲ ";
+  font-size: 0.45rem;
 }
 .fl-map-thumb {
   width: 100%;
   aspect-ratio: 1;
   display: block;
   image-rendering: pixelated;
-  border-radius: 3px;
+  border-radius: 0;
   border: 1px solid var(--ui-preview-frame);
+  box-sizing: border-box;
 }
 .fl-map-name {
   font-weight: 700;
   font-size: 0.86rem;
   letter-spacing: 0.04em;
+  margin-top: 2px;
 }
 .fl-map-blurb {
   font-size: 0.72rem;
@@ -658,8 +1447,8 @@ kbd {
 }
 .fl-seg button[aria-checked="true"] {
   border-color: var(--ui-accent);
-  background: var(--ui-tint-accent);
-  box-shadow: inset 0 0 0 1px var(--ui-accent);
+  background: var(--ui-accent);
+  color: var(--ui-ground);
   font-weight: 700;
 }
 .fl-seed {
@@ -668,10 +1457,41 @@ kbd {
   flex-wrap: wrap;
   align-items: center;
 }
-@media (max-width: 480px) {
-  .fl-maps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
+
+/* Step five: the orders as a summary, then the name and the button. */
+.fl-orders {
+  list-style: none;
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  border: 1px dashed var(--ui-rule-strong);
+  border-radius: 3px;
+  background: var(--ui-ground);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ui-text);
+}
+.fl-orders li {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.fl-orders li span {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.56rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ui-text-faint);
+}
+.fl-deploy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
 }
 
 .fl-badge {
@@ -689,11 +1509,101 @@ kbd {
   border: 1px solid var(--ui-accent);
   border-radius: 2px;
 }
-.fl-campaign-form {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0 12px;
+
+@media (max-width: 820px) {
+  .fl-campaign-grid,
+  .fl-lobby-intro {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
+@media (max-width: 560px) {
+  .fl-hero {
+    height: 360px;
+  }
+  .fl-hero-text {
+    width: 100%;
+    padding: 1rem 1rem 1.1rem;
+    background: linear-gradient(0deg, var(--ui-art-scrim) 0%, var(--ui-art-scrim) 55%, transparent 100%);
+  }
+  .fl-hero-readout {
+    top: 8px;
+    right: 8px;
+  }
+  .fl-lobby-section {
+    padding: 0.85rem 0.8rem 1rem;
+  }
+  .fl-lobby-num {
+    width: 34px;
+    height: 34px;
+    font-size: 0.82rem;
+  }
+  .fl-lobby-aside {
+    display: none;
+  }
+  .fl-step {
+    grid-template-columns: 26px minmax(0, 1fr);
+    gap: 0 10px;
+  }
+  .fl-step-mark {
+    width: 26px;
+    height: 26px;
+    font-size: 0.74rem;
+  }
+  .fl-step::before {
+    left: 12px;
+    top: 28px;
+  }
+  .fl-step-head {
+    min-height: 26px;
+  }
+  .fl-save {
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding-left: 0.7rem;
+  }
+  .fl-save-status {
+    grid-column: 1 / -1;
+    justify-self: start;
+    margin-bottom: -6px;
+  }
+  .fl-save-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .fl-save-ask {
+    flex-basis: 100%;
+    text-align: right;
+  }
+  .fl-save-meta .fl-save-when {
+    flex-basis: 100%;
+  }
+  .fl-save-meta .fl-save-when::before {
+    content: none;
+  }
+  .fl-progress-bar span {
+    width: 6px;
+  }
+  .fl-lobby-theatre-caption span:last-child {
+    display: none;
+  }
+}
+@media (max-width: 480px) {
+  .fl-maps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .fl-map[data-testid="map-random"] {
+    grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fl-hero-live::before {
+    animation: none;
+  }
+}
+:root[data-motion="off"] .fl-hero-live::before {
+  animation: none;
+}
+/* ==== end B ==== */
 
 /* ---- Shared campaign pieces ----------------------------------------------------------------- */
 

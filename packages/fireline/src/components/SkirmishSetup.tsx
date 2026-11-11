@@ -1,6 +1,6 @@
 import { siteSpots, type SiteSpot } from '../sim/sites';
 import { SITE_ART } from '../game/art';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { generateSkirmishMap, randomMapType } from '../sim/maps';
 import type { GeneratedMap } from '../sim/map';
 import { seedFromString } from '../sim/rng';
@@ -56,7 +56,8 @@ function sitesNote(setup: SkirmishSetup): string {
 /**
  * The skirmish's setup: map type (with a preview of each, drawn from the real generator and the
  * seed the battle will use), tech level, starting credits and ore. The lobby owns the values; the
- * battle is created from exactly what is shown here.
+ * battle is created from exactly what is shown here. It renders steps 2 to 4 of the lobby's
+ * numbered skirmish orders (SetupStep); the lobby owns steps 1 and 5 around it.
  */
 
 const STORE_KEY = 'fireline_setup';
@@ -130,11 +131,14 @@ export default function SkirmishSetupPanel({
   value,
   onChange,
   seedText,
+  seedSlot,
 }: {
   value: SkirmishSetup;
   onChange: (v: SkirmishSetup) => void;
   /** The seed the battle will be created with (typed, or the lobby's fresh one). */
   seedText: string;
+  /** The lobby's seed field, shown at the head of the Battlefield step since the seed draws the maps. */
+  seedSlot?: ReactNode;
 }) {
   // Six maps take a few tens of milliseconds: wait for the typing to settle before drawing them.
   const [settled, setSettled] = useState(seedText);
@@ -159,10 +163,10 @@ export default function SkirmishSetupPanel({
 
   return (
     <>
-      <div className="fl-setup-field">
-        <Label>Battlefield</Label>
+      <SetupStep n={2} title="Battlefield" hint="The seed draws the ground; pick the kind of country to fight over.">
+        {seedSlot}
         <div className="fl-maps" role="radiogroup" aria-label="Battlefield">
-          {(['random', ...MAP_TYPES] as SkirmishSetup['map'][]).map(t => {
+          {(['random', ...MAP_TYPES] as SkirmishSetup['map'][]).map((t, i) => {
             const type = t === 'random' ? drawn : t;
             return (
               <button
@@ -174,7 +178,13 @@ export default function SkirmishSetupPanel({
                 data-testid={`map-${t}`}
                 onClick={() => set({ map: t })}
               >
-                <MapThumb map={maps[type]} sites={siteMarks[type]} label={`${t === 'random' ? 'Random: ' : ''}${MAP_TYPE_NAMES[type]} map preview`} />
+                <span className="fl-map-sheet">
+                  <span className="fl-map-sheet-id" aria-hidden="true">
+                    Sheet {String(i + 1).padStart(2, '0')}
+                  </span>
+                  <MapThumb map={maps[type]} sites={siteMarks[type]} label={`${t === 'random' ? 'Random: ' : ''}${MAP_TYPE_NAMES[type]} map preview`} />
+                  <span className="fl-map-north" aria-hidden="true">N</span>
+                </span>
                 <span className="fl-map-name">{t === 'random' ? 'Random' : MAP_TYPE_NAMES[t]}</span>
                 <span className="fl-map-blurb">
                   {t === 'random' ? `Any of the six, chosen by the seed. This one draws ${MAP_TYPE_NAMES[drawn]}.` : value.sides > 2 ? MAP_TYPE_BLURBS_SIDES[t] : MAP_TYPE_BLURBS[t]}
@@ -189,93 +199,118 @@ export default function SkirmishSetupPanel({
             : `Previews show the real map for this seed: each base in its side's colour, yours blue, ore gold. Every base's share of the map is the same share turned round the centre, so every side starts with ${value.sides === 4 ? 'the same' : 'close to the same'} ground and ore.`}
           {value.sites ? ' Grey diamonds are the neutral sites any side can capture.' : ''}
         </p>
-      </div>
+      </SetupStep>
 
-      <div className="fl-setup-row">
-        <div className="fl-setup-field">
-          <Label>Sides</Label>
-          <div className="fl-seg" role="radiogroup" aria-label="Sides">
-            {SIDE_COUNTS.map(n => (
-              <button key={n} type="button" role="radio" aria-checked={value.sides === n} data-testid={`sides-${n}`} onClick={() => set({ sides: n, mode: n === 2 ? 'ffa' : value.mode })}>
-                {n}
-              </button>
-            ))}
-          </div>
-          <p className="fl-setup-note">{value.sides === 2 ? 'You against one computer commander.' : `You and ${value.sides - 1} computer commanders, on a larger map.`}</p>
-        </div>
-        {value.sides > 2 && (
+      <SetupStep n={3} title="Forces" hint="Who takes the field, and with what.">
+        <div className="fl-setup-row">
           <div className="fl-setup-field">
-            <Label>Mode</Label>
-            <div className="fl-seg" role="radiogroup" aria-label="Mode">
-              {(['ffa', 'teams'] as SideMode[]).map(m => (
-                <button key={m} type="button" role="radio" aria-checked={value.mode === m} data-testid={`mode-${m}`} onClick={() => set({ mode: m })}>
-                  {m === 'ffa' ? 'Free for all' : 'Teams'}
+            <Label>Sides</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Sides">
+              {SIDE_COUNTS.map(n => (
+                <button key={n} type="button" role="radio" aria-checked={value.sides === n} data-testid={`sides-${n}`} onClick={() => set({ sides: n, mode: n === 2 ? 'ffa' : value.mode })}>
+                  {n}
                 </button>
               ))}
             </div>
-            <p className="fl-setup-note">{MODE_TEXT[value.sides === 4 ? 4 : 3][value.mode]}</p>
+            <p className="fl-setup-note">{value.sides === 2 ? 'You against one computer commander.' : `You and ${value.sides - 1} computer commanders, on a larger map.`}</p>
           </div>
-        )}
-      </div>
-      <SideLine setup={value} />
+          {value.sides > 2 && (
+            <div className="fl-setup-field">
+              <Label>Mode</Label>
+              <div className="fl-seg" role="radiogroup" aria-label="Mode">
+                {(['ffa', 'teams'] as SideMode[]).map(m => (
+                  <button key={m} type="button" role="radio" aria-checked={value.mode === m} data-testid={`mode-${m}`} onClick={() => set({ mode: m })}>
+                    {m === 'ffa' ? 'Free for all' : 'Teams'}
+                  </button>
+                ))}
+              </div>
+              <p className="fl-setup-note">{MODE_TEXT[value.sides === 4 ? 4 : 3][value.mode]}</p>
+            </div>
+          )}
+        </div>
+        <SideLine setup={value} />
 
-      <div className="fl-setup-field">
-        <Label>Tech level</Label>
-        <div className="fl-levels" role="radiogroup" aria-label="Tech level">
-          {(['standard', 'advanced'] as TechLevel[]).map(t => (
-            <button key={t} type="button" role="radio" className="fl-level" aria-checked={value.tech === t} data-testid={`tech-${t}`} onClick={() => set({ tech: t })}>
-              <span className="fl-level-name">{TECH_TEXT[t].name}</span>
-              <span className="fl-level-facts">{TECH_TEXT[t].text}</span>
-            </button>
-          ))}
+        <div className="fl-setup-field">
+          <Label>Tech level</Label>
+          <div className="fl-levels" role="radiogroup" aria-label="Tech level">
+            {(['standard', 'advanced'] as TechLevel[]).map(t => (
+              <button key={t} type="button" role="radio" className="fl-level" aria-checked={value.tech === t} data-testid={`tech-${t}`} onClick={() => set({ tech: t })}>
+                <span className="fl-level-name">{TECH_TEXT[t].name}</span>
+                <span className="fl-level-facts">{TECH_TEXT[t].text}</span>
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      </SetupStep>
 
-      <div className="fl-setup-row">
-        <div className="fl-setup-field">
-          <Label>Starting credits</Label>
-          <div className="fl-seg" role="radiogroup" aria-label="Starting credits">
-            {SETUP_CREDIT_CHOICES.map(c => (
-              <button key={c} type="button" role="radio" aria-checked={value.credits === c} data-testid={`credits-${c}`} onClick={() => set({ credits: c })}>
-                {c.toLocaleString('en-GB')}
-              </button>
-            ))}
+      <SetupStep n={4} title="Terms of engagement" hint="Money, ore, room to manoeuvre and ground worth taking.">
+        <div className="fl-setup-row fl-setup-terms">
+          <div className="fl-setup-field">
+            <Label>Starting credits</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Starting credits">
+              {SETUP_CREDIT_CHOICES.map(c => (
+                <button key={c} type="button" role="radio" aria-checked={value.credits === c} data-testid={`credits-${c}`} onClick={() => set({ credits: c })}>
+                  {c.toLocaleString('en-GB')}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">
+              {value.sides === 3 && value.mode === 'teams'
+                ? `Every side starts with the same, except the ${SIDE_NAMES[1]}, alone against two, which starts with ${LONE_SIDE_CREDITS} times as much.`
+                : value.sides === 2
+                  ? 'Both sides start with the same.'
+                  : 'Every side starts with the same.'}
+            </p>
           </div>
-          <p className="fl-setup-note">
-            {value.sides === 3 && value.mode === 'teams'
-              ? `Every side starts with the same, except the ${SIDE_NAMES[1]}, alone against two, which starts with ${LONE_SIDE_CREDITS} times as much.`
-              : value.sides === 2
-                ? 'Both sides start with the same.'
-                : 'Every side starts with the same.'}
-          </p>
-        </div>
-        <div className="fl-setup-field">
-          <Label>Ore</Label>
-          <div className="fl-seg" role="radiogroup" aria-label="Ore">
-            {(['poor', 'normal', 'rich'] as OreLevel[]).map(o => (
-              <button key={o} type="button" role="radio" aria-checked={value.ore === o} data-testid={`ore-${o}`} onClick={() => set({ ore: o })}>
-                {ORE_TEXT[o].name}
-              </button>
-            ))}
+          <div className="fl-setup-field">
+            <Label>Ore</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Ore">
+              {(['poor', 'normal', 'rich'] as OreLevel[]).map(o => (
+                <button key={o} type="button" role="radio" aria-checked={value.ore === o} data-testid={`ore-${o}`} onClick={() => set({ ore: o })}>
+                  {ORE_TEXT[o].name}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{ORE_TEXT[value.ore].text}</p>
           </div>
-          <p className="fl-setup-note">{ORE_TEXT[value.ore].text}</p>
-        </div>
-        {/* round5:B. Larger maps (fireline-round5-design.md): the Map size field goes on the line below. */}
-        <MapSizeField value={value} onPick={size => set({ size })} />
-        {/* round5:D. Neutral sites (fireline-round5-design.md): the Neutral sites field goes on the line below. */}
-        <div className="fl-setup-field">
-          <Label>Neutral sites</Label>
-          <div className="fl-seg" role="radiogroup" aria-label="Neutral sites">
-            {[false, true].map(on => (
-              <button key={on ? 'on' : 'off'} type="button" role="radio" aria-checked={!!value.sites === on} data-testid={`sites-${on ? 'on' : 'off'}`} onClick={() => set({ sites: on })}>
-                {on ? 'On' : 'Off'}
-              </button>
-            ))}
+          {/* round5:B. Larger maps (fireline-round5-design.md): the Map size field goes on the line below. */}
+          <MapSizeField value={value} onPick={size => set({ size })} />
+          {/* round5:D. Neutral sites (fireline-round5-design.md): the Neutral sites field goes on the line below. */}
+          <div className="fl-setup-field">
+            <Label>Neutral sites</Label>
+            <div className="fl-seg" role="radiogroup" aria-label="Neutral sites">
+              {[false, true].map(on => (
+                <button key={on ? 'on' : 'off'} type="button" role="radio" aria-checked={!!value.sites === on} data-testid={`sites-${on ? 'on' : 'off'}`} onClick={() => set({ sites: on })}>
+                  {on ? 'On' : 'Off'}
+                </button>
+              ))}
+            </div>
+            <p className="fl-setup-note">{sitesNote(value)}</p>
           </div>
-          <p className="fl-setup-note">{sitesNote(value)}</p>
         </div>
-      </div>
+      </SetupStep>
     </>
+  );
+}
+
+/**
+ * One numbered step of the skirmish orders. The lobby lists them in an <ol>, so each is an <li>:
+ * a numbered marker on a rail down the left, then the step's title, a line of guidance and its fields.
+ */
+export function SetupStep({ n, title, hint, children }: { n: number; title: string; hint?: string; children: ReactNode }) {
+  return (
+    <li className="fl-step">
+      <span className="fl-step-mark" aria-hidden="true">
+        {n}
+      </span>
+      <div className="fl-step-body">
+        <div className="fl-step-head">
+          <h3 className="fl-step-title">{title}</h3>
+          {hint && <p className="fl-step-hint">{hint}</p>}
+        </div>
+        {children}
+      </div>
+    </li>
   );
 }
 
