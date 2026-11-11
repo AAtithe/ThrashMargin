@@ -16,6 +16,43 @@ export interface Sprites {
   light: HTMLCanvasElement;
   /** A dark soft disc, for scorch marks. */
   scorch: HTMLCanvasElement;
+  /**
+   * A muzzle flash seen from above, pointing along +x from the muzzle at (8, 16) of its 64 by 32
+   * canvas: a hot core, a flame tongue forward and two short side jets. Drawn with 'lighter'.
+   */
+  flash: HTMLCanvasElement;
+}
+
+function muzzleFlash(): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 64;
+  c.height = 32;
+  const g = c.getContext('2d')!;
+  const blob = (x: number, y: number, rx: number, ry: number, ang: number, stops: [number, string][]) => {
+    g.save();
+    g.translate(x, y);
+    g.rotate(ang);
+    g.scale(rx / 16, ry / 16);
+    const grad = g.createRadialGradient(0, 0, 0, 0, 0, 16);
+    for (const [at, col] of stops) grad.addColorStop(at, col);
+    g.fillStyle = grad;
+    g.fillRect(-16, -16, 32, 32);
+    g.restore();
+  };
+  const flame: [number, string][] = [
+    [0, 'rgba(255,236,170,0.95)'],
+    [0.4, 'rgba(255,170,60,0.6)'],
+    [1, 'rgba(220,90,20,0)'],
+  ];
+  blob(26, 16, 24, 7, 0, flame);
+  blob(14, 10, 7, 3, -1.25, flame);
+  blob(14, 22, 7, 3, 1.25, flame);
+  blob(10, 16, 9, 9, 0, [
+    [0, 'rgba(255,255,240,1)'],
+    [0.5, 'rgba(255,230,160,0.7)'],
+    [1, 'rgba(255,190,90,0)'],
+  ]);
+  return c;
 }
 
 function radial(size: number, stops: [number, string][]): HTMLCanvasElement {
@@ -64,6 +101,7 @@ export function sprites(): Sprites {
       [0.55, 'rgba(22,18,14,0.45)'],
       [1, 'rgba(26,22,16,0)'],
     ]),
+    flash: muzzleFlash(),
   };
   return cache;
 }
