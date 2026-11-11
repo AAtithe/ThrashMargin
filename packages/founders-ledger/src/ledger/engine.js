@@ -968,7 +968,7 @@ function vActions(){
   </section>`;
 }
 function item(t){
-  const src=t.source?(t.source.startsWith('w')?'Wildcard':t.source.startsWith('audit')?'Opening':t.source.startsWith('review')?'Review':t.source.startsWith('reset-')?'Reset':t.source.startsWith('fix-')?'Pattern':'Call'):'';
+  const src=t.source?(t.source.startsWith('w')?'Wildcard':t.source.startsWith('audit')?'Opening':t.source.startsWith('review')?'Review':t.source.startsWith('reset-')?'Reset':t.source.startsWith('fix-')?'Pattern':t.source.startsWith('sys-')?'System':t.source.startsWith('off-')?'Phone off':'Call'):'';
   return `<div class="item ${t.done?'done':''}"><input type="checkbox" ${t.done?'checked':''} data-done="${t.id}" aria-label="Done"><div class="txt"><span>${esc(t.text)}</span><div class="meta"><span class="pill ${t.type}">${t.type}</span>${src?`<span class="pill">${src}</span>`:''}<span class="hrs"><input type="number" min="0" max="40" step="0.5" value="${t.hours||0}" data-hrs="${t.id}" aria-label="Hours back per week"> hrs/wk back</span>${t.done&&t.doneAt?`<span class="small muted">done ${fmtDate(t.doneAt)}</span>`:''}</div></div><div class="acts">${t.done?'':`<button class="icon-btn ${t.star?'on':''}" data-star="${t.id}">${t.star?'Starred':'Star'}</button>`}<button class="icon-btn" data-del="${t.id}">Del</button></div></div>`;
 }
 
@@ -1235,7 +1235,7 @@ on('click',async e=>{
     }
     return;
   }
-  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;if(d.tab!=='off')OFFLOG=false;S.view=d.tab;save();render();toTop();return;}
+  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;if(d.tab!=='off')OFFLOG=false;setStatus('');S.view=d.tab;save();render();toTop();return;}
   if(d.goto){S.view='future';save();render();const el=byId(d.goto);if(el)el.scrollIntoView({block:'start'});return;}
   if(d.lqstep!=null){S.letterQ.step=Number(d.lqstep);save();renderLetter();return;}
   if(d.keep){const w=WILD.find(x=>x.id===d.keep);const ex=S.todos.find(t=>t.source===w.id);
