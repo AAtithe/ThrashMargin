@@ -152,11 +152,14 @@ export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: numb
   const ships = mine.filter(isShip);
   const queued = (kind: UnitKind) => mine.filter(u => u.kind === kind).length + (p.queues.naval ?? []).filter(i => i.kind === kind).length;
 
+  // With no refinery or no hauler the economy comes first: no yard and no ships are bought (their
+  // funding would take back the last troops a broke side is training), only the fleet is fought.
+  const crisis = count('refinery') === 0 || !mine.some(u => u.kind === 'hauler');
   // 1. The Naval Yard, once the economy stands; Generators toward the shore if it is out of reach.
   const based = count('factory') > 0 && count('refinery') >= Math.min(2, d.refineries);
   const yard = s.buildings.find(b => b.owner === owner && b.kind === 'shipyard' && b.hp > 0) ?? null;
   const building = p.queues.building.some(q => q.kind === 'shipyard');
-  if (!yard && based && !building && p.queues.building.length === 0) {
+  if (!yard && based && !crisis && !building && p.queues.building.length === 0) {
     if (navalSpot(s, owner, home)) {
       mem.navalCreep = false;
       queueStructure(s, owner, 'shipyard');
@@ -169,7 +172,7 @@ export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: numb
   if (!yard) return;
 
   // 2. Ships, to the plan.
-  if ((p.queues.naval ?? []).length === 0) {
+  if (!crisis && (p.queues.naval ?? []).length === 0) {
     const plan: [UnitKind, number][] = [
       ['gunboat', t.gunboats],
       ['destroyer', t.destroyers],
