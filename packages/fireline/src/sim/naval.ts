@@ -96,6 +96,27 @@ export function navalStep(s: GameState): void {
  * the copy migrateState builds (its units are already copies).
  */
 export function migrateNaval(s: GameState): void {
+  // A commander's landing and sea from a save: kept only when well formed.
+  s.ai = s.ai.map(m => {
+    const out = { ...m };
+    const l = m.landing as unknown as Record<string, unknown> | null | undefined;
+    if (l !== undefined && l !== null) {
+      const ok =
+        typeof l === 'object' &&
+        Number.isInteger(l.craft) &&
+        Array.isArray(l.ids) &&
+        (l.ids as unknown[]).every(Number.isInteger) &&
+        Number.isFinite(l.x) &&
+        Number.isFinite(l.y) &&
+        Number.isInteger(l.target) &&
+        (l.phase === 'board' || l.phase === 'sail') &&
+        Number.isFinite(l.since);
+      if (!ok) out.landing = null;
+    }
+    const sh = m.navalShore as unknown;
+    if (sh !== undefined && sh !== null && !(Array.isArray(sh) && sh.length === 2 && sh.every(Number.isFinite))) delete out.navalShore;
+    return out;
+  });
   for (const u of s.units) {
     if (!UNITS[u.kind] || UNITS[u.kind].category !== 'naval' || u.carried === undefined) continue;
     const cap = UNITS[u.kind].carries ?? 0;

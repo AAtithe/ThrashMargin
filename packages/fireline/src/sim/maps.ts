@@ -300,7 +300,7 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
     // wobbling shore and a few rock islets.
     const shore = wobble(7);
     const ends = wobble(6);
-    const halfW = sc(8);
+    const halfW = sc(9);
     const corridor = si(9);
     for (let y = Math.floor(CY); y < CY + halfW + 3; y++)
       for (let x = 0; x < W; x++) {
@@ -312,6 +312,10 @@ export function draftSkirmishMap(seed: number, type: MapType, oreLevel: OreLevel
         if (off < depth && x + 0.5 >= end + taper && x + 0.5 <= W - end - taper) paint(x, y, 'w');
         else if (off < depth + 1 && x + 0.5 >= end + taper - 1 && x + 0.5 <= W - end - taper + 1 && t[idx(x, y)] !== 'w') paint(x, y, 'd');
       }
+    // A harbour: a bay off the sea toward each base (the brush gives side 1 its own), so the shore
+    // lies at about the edge of the base's clearing.
+    const hx = Math.max(corridor + 6, Math.min(W - corridor - 6, b0.x));
+    disc(hx, CY + halfW + sc(2.5), sc(3.2), 'w', 0.6);
     const islets = Math.round(rng.int(1, 3) * ks * ks);
     for (let i = 0; i < islets; i++) disc(corridor + 6 + rng.float() * (W - 2 * corridor - 12), CY + 1.5 + rng.float() * (halfW - 4), 0.8 + rng.float() * 0.9, 'r', 0.5);
     // Where the line as far from one base as the other crosses each corridor.

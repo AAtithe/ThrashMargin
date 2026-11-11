@@ -744,16 +744,28 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
         ((u.order.type === 'attackMove' || (u.order.type === 'idle' && stance === 'aggressive')) && d <= spec.sight + 3 && !(t.unit && isAir(t.unit)))
       ) {
         firing = true;
+        let near = false;
         if (d < (w.minRange ?? 0)) {
           // Too close for artillery: back away from the target.
           travel(s, ctx, u, u.x + (u.x - tp.x), u.y + (u.y - tp.y));
-        } else travel(s, ctx, u, tp.x, tp.y);
+        } else near = travel(s, ctx, u, tp.x, tp.y);
         aim(u, tp.x, tp.y);
+        // The naval war: a ship as close as the water allows to a target still out of range (or
+        // a soldier as close as the shore allows to a ship) gives it up rather than wait forever.
+        if (near && d > w.range && (isShip(u) || (t.unit && isShip(t.unit)))) {
+          firing = false;
+          u.engage = 0;
+          if (u.order.type === 'attack') nextOrder(u);
+        }
       } else if (u.order.type === 'idle' && d <= spec.sight + 1 && u.engage) {
         // Shot at from out of range while idle: close in, but give up beyond sight.
         firing = true;
-        travel(s, ctx, u, tp.x, tp.y);
+        const near = travel(s, ctx, u, tp.x, tp.y);
         aim(u, tp.x, tp.y);
+        if (near && d > w.range && (isShip(u) || (t.unit && isShip(t.unit)))) {
+          firing = false;
+          u.engage = 0;
+        }
       } else {
         u.engage = 0;
       }
