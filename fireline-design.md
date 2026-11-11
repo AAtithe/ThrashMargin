@@ -98,6 +98,15 @@ team's colours; the same functions draw the build menu icons. `game/terrain.ts` 
 once per battle. `game/renderer.ts` draws a frame: terrain window, scorch marks, ore, structures,
 units interpolated between ticks, projectiles, muzzle flashes and explosions, particles, fog
 (a 64 by 64 canvas scaled up with smoothing, which gives soft edges), placement ghost, drag box.
+Ore fields are drawn by `game/fx/ore.ts` (a ragged stain with lit crystal clusters that shrink as a
+tile is mined, glints held still with motion off); `game/fx/ground.ts` gives each structure a
+trampled skirt and a contact shadow and each unit a soft shadow. The fog grid is blurred before it
+is scaled up, so its edge is a curve rather than a tile staircase.
+
+The campaign's theatre maps (`game/campaignArt.ts`) are drawn as staff operational maps: paper,
+grid references, contours, a front line that advances with each mission won, arrows of advance and
+OBJ markers. Static layers are cached; only the open objective pulses. The lobby draws a preview of
+the same map through `components/campaignArtBridge.ts`.
 Particles and scorch marks are renderer-only and may use `Math.random`.
 
 Saves: every 15 seconds of play, on pause, on leaving, when the tab hides and when the battle
@@ -1105,3 +1114,15 @@ long as before (Normal mirror 23.4 to 24.1 minutes on average).
 Harness at the end: `npm run drive:fire` 371,018 assertions, 0 failed (the round-4 Hard battle now
 "side 1 won at 17 min; 6 bombs, 6 gunship rockets"; the air war battle "gunship, interceptor,
 bomber; 2 interceptor missiles; side 0 won at 31 min"); `npm run campaign:fire` 2,595, unchanged.
+
+### 2026-11-11: the visual pass
+
+Four parallel strands, each owning its own files. The lobby became a briefing room: Campaign, then
+Skirmish, then Your battles, with a live preview of the theatre map and mission counts read from
+the mission lists (the copy still said eight missions after act two added six). The theatre maps
+were redrawn as operational maps, in a night map-table version for dark mode. The battle console
+was regrouped (clock, speed, sound and display clusters; a twelve-light power meter; build buttons
+whose state reads at a glance; an after-action table on the victory and defeat cards). The
+battlefield gained ore fields, structure skirts and contact shadows, a curved fog edge, leaning
+grass, directional muzzle flashes and notched health bars. Frame time held: median 2.7 to 3.0 ms
+against 2.9 ms before at minute 25 of a huge battle, 60 fps either way.

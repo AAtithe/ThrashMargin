@@ -954,10 +954,10 @@ function relief(ctx: CanvasRenderingContext2D, W: number, H: number) {
       const low = 0.5 - height[k];
       const i = k * 4;
       if (lit > 0) {
-        d[i] = 236;
-        d[i + 1] = 226;
-        d[i + 2] = 160;
-        d[i + 3] = Math.min(70, lit * 120);
+        d[i] = 206;
+        d[i + 1] = 214;
+        d[i + 2] = 128;
+        d[i + 3] = Math.min(46, lit * 90);
       } else {
         d[i] = 8;
         d[i + 1] = 26;
