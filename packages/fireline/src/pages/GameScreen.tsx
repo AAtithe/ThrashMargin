@@ -1831,7 +1831,10 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
     ['` (backquote) or Build', 'Open or close the build window: every structure, unit and upgrade, laid out by what each needs'],
     ['Q W E R T Y', 'Build or train the first to sixth item in the list the Build button names, window open or closed (the letter is on each button)'],
-    ['U I J K L B N D', 'With advanced tech: the seventh to fourteenth item in that list; any further items are clicked'],
+    [
+      'U I J K L B N D',
+      'With advanced tech: the seventh to fourteenth item in that list. Items past the fourteenth (the Prototype Works, the Fortress and, with heroes on, the Command Academy) have no key: click them in the build window',
+    ],
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
     ['Tab', 'Next build list: Structures, Infantry, Vehicles, then Air and Research when you have them (Shift + Tab goes back)'],
     ['Production strip', 'Under the Build button: click an item to cancel the last one queued; click a ready structure to place it'],
@@ -1847,7 +1850,7 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
       : []),
     // round6:B end.
     // round6:C begin. Generals: the 0 row.
-    ['0', 'Skirmish with Generals on: select your General; twice to jump to it'],
+    ...(skirmish ? ([['0', 'Skirmish with Generals on: select your General; twice to jump to it']] as [string, string][]) : []),
     // round6:C end.
     // round6:D begin. Formations and squads: the period row.
     ['. (period)', 'Formation for the selected units: line, column, wedge, box, then none (Shift + . goes back). Moving exactly those units keeps it'],
@@ -1878,6 +1881,9 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['× on a build button', 'Cancel it for a full refund'],
     ['Production strip', 'Under Build: tap an item to open its list, its × to cancel the last one queued, a ready structure to place it'],
     ['Base', 'Jump to your Command Yard'],
+    // round6:integration. Formations and control groups on touch (workstream D's buttons).
+    ['Line, Column, Wedge, Box', 'In the selection panel: the selected units form up and keep it on the move; None breaks it up'],
+    ['Group chips, + Group', 'Under the formation buttons: + Group makes the selection a group; tap a chip to select it, twice to jump to it'],
   ];
   const rows = touch ? touchRows : mouseRows;
   const campaignRows: [string, string][] = touch

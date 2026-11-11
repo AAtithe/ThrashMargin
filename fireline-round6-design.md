@@ -60,9 +60,13 @@ Every summary line of `npm run drive` is the same before and after it (section 1
 
 ### Rules the groundwork fixes, which every workstream keeps
 
-- **Meridian is today's army, exactly.** `FACTION_OVERLAY.meridian` and `FACTION_MENUS.meridian`
-  stay empty. `unitSpecFor('meridian', k)` returns the very object `UNITS[k]` (the harness asserts
-  reference equality), `menuOf('meridian', c)` is `MENUS[c]`.
+- **Meridian is today's army, exactly.** `FACTION_OVERLAY.meridian` stays empty, and
+  `FACTION_MENUS.meridian` only adds its signature Sapper (`add: { infantry: ['sapper'] }`, after
+  workstream A; the integration settled it, since a signature unit must be in its army's `add` list
+  for `factionAllows` to keep it Meridian's). `unitSpecFor('meridian', k)` returns the very object
+  `UNITS[k]` (the harness asserts reference equality). `menuOf('meridian', c)` is `MENUS[c]` in
+  order, then the Sapper on Infantry, then this round's recruits (the field General, then the
+  heroes), which close every army's lists so that no key in use moves when Heroes or Generals are on.
 - **An army changes numbers, never a kind's identity.** `UnitOverlay` cannot hold `category`, `hero`,
   `medic`, `mender`, `deploysTo`, `stealth` or `airRole`; `BuildingOverlay` cannot hold `w`, `h`,
   `wall` or `undeploysTo` (the types forbid it and the harness asserts it). So code that asks only
@@ -240,7 +244,9 @@ overlays of roughly 10 to 15 percent, plus one signature item each, plus its own
   `BuildingOverlay`). `FACTION_OVERLAY.meridian` stays `{}`.
 - Signature units, one each: new `UnitKind`s with specs in `UNITS` (between A's markers), listed in
   `FACTION_MENUS[f].add` for their army only (for example Meridian's Sapper squad that lays mines,
-  Ashen's Raider bike, fast and fragile). Starting ids: `sapper`, `raider`.
+  Ashen's Raider bike, fast and fragile). Starting ids: `sapper`, `raider`. As built:
+  `FACTION_MENUS.meridian.add.infantry` is `['sapper']` (so Meridian's menus are not quite empty;
+  section 1 says so), and the Sapper carries satchel charges rather than mines.
 - Aircraft: new kinds `kestrel` (`airRole: 'strafe'`: less health, more loads in `AIR_AMMO`, quicker
   rearm in `REARM_TICKS`) and `firebrand` (`airRole: 'bomb'`, trading splash for an incendiary patch;
   if that needs a new `WeaponKind` or effect, A adds it with its `DAMAGE_VS` row, `FLIGHT_TICKS` and

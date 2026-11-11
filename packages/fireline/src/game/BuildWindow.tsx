@@ -366,6 +366,7 @@ function BuildTab({
         <StatTip
           kind={tip.key}
           faction={faction}
+          state={state}
           anchor={tip.el}
           extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={BUILD_KEYS[menu.indexOf(tip.key)]} lowPower={lowPower} />}
         />

@@ -21,6 +21,8 @@ import {
   SKIRMISH_POWERS,
   PRODUCER,
   BOMB_PATCH,
+  HERO_RECRUIT_COST,
+  HERO_RECRUIT_TICKS,
   STANDARD_TECH,
   UNITS,
   TICKS_PER_SECOND,
@@ -28,6 +30,8 @@ import {
   type BuildingKind,
   type Category,
   type Faction,
+  type HeroKind,
+  type Owner,
   type SupportPower,
   type UnitKind,
   type WeaponKind,
@@ -150,16 +154,33 @@ export interface StatRow {
   value: string;
 }
 
-/** Every number worth knowing about a unit or structure, straight from rules.ts, as this army fields it. */
-export function statsOf(kind: BuildingKind | UnitKind, faction: Faction = 'meridian'): StatRow[] {
+/**
+ * The price and build time a list shows for a kind, as this army fields it (round 6 integration).
+ * Given the battle, what this side pays there (costFor and buildTicksFor: its army, its doctrine,
+ * a hero's recruit price); without one, the army's own numbers, and a hero's recruit price and
+ * training time in place of the campaign's 0, which no list ever charges.
+ */
+export function listedCost(kind: BuildingKind | UnitKind, faction: Faction = 'meridian', state?: GameState, owner: Owner = 0): { cost: number; ticks: number } {
+  if (state) return { cost: costFor(state, owner, kind), ticks: buildTicksFor(state, owner, kind) };
+  if (kind in UNITS && UNITS[kind as UnitKind].hero) return { cost: HERO_RECRUIT_COST[kind as HeroKind], ticks: HERO_RECRUIT_TICKS[kind as HeroKind] };
+  const spec = kind in BUILDINGS ? buildingSpecFor(faction, kind as BuildingKind) : unitSpecFor(faction, kind as UnitKind);
+  return { cost: spec.cost, ticks: spec.buildTicks };
+}
+
+/**
+ * Every number worth knowing about a unit or structure, straight from rules.ts, as this army fields
+ * it. Given the battle, the price and build time are what that side pays (listedCost).
+ */
+export function statsOf(kind: BuildingKind | UnitKind, faction: Faction = 'meridian', state?: GameState, owner: Owner = 0): StatRow[] {
   const isB = kind in BUILDINGS;
   const b = isB ? buildingSpecFor(faction, kind as BuildingKind) : null;
   const u = isB ? null : unitSpecFor(faction, kind as UnitKind);
   const spec = (b ?? u)!;
   const rows: StatRow[] = [];
   if (kind !== 'hq') {
-    rows.push({ label: 'Cost', value: `${spec.cost.toLocaleString('en-GB')} credits` });
-    rows.push({ label: 'Build time', value: secs(spec.buildTicks) });
+    const listed = listedCost(kind, faction, state, owner);
+    rows.push({ label: 'Cost', value: `${listed.cost.toLocaleString('en-GB')} credits` });
+    rows.push({ label: 'Build time', value: secs(listed.ticks) });
   }
   rows.push({ label: 'Health', value: `${spec.hp}` });
   rows.push({ label: 'Armour', value: ARMOR_NAME[u ? u.armor : 'building'] });
@@ -215,7 +236,22 @@ export function statsOf(kind: BuildingKind | UnitKind, faction: Faction = 'merid
  * never takes the pointer, so it cannot cover anything a click is aimed at, and it sits under
  * the guided tour's card.
  */
-export function StatTip({ kind, anchor, extra, faction }: { kind: BuildingKind | UnitKind; anchor: HTMLElement; extra?: ReactNode; faction?: Faction }) {
+export function StatTip({
+  kind,
+  anchor,
+  extra,
+  faction,
+  state,
+  owner = 0,
+}: {
+  kind: BuildingKind | UnitKind;
+  anchor: HTMLElement;
+  extra?: ReactNode;
+  faction?: Faction;
+  /** The battle, so the price and build time are what this side pays there. */
+  state?: GameState;
+  owner?: Owner;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -241,7 +277,7 @@ export function StatTip({ kind, anchor, extra, faction }: { kind: BuildingKind |
       <strong className="fl-tip-title">{nameOf(kind, faction)}</strong>
       <span className="fl-tip-blurb">{blurbOf(kind, faction)}</span>
       <dl>
-        {statsOf(kind, faction).map(r => (
+        {statsOf(kind, faction, state, owner).map(r => (
           <div key={r.label}>
             <dt>{r.label}</dt>
             <dd>{r.value}</dd>
@@ -789,7 +825,8 @@ export function SelectionPanel({
   const units = state.units.filter(u => selected.has(u.id));
   const building = state.buildings.find(b => selected.has(b.id));
   const { tip, bind } = useTip<BuildingKind | UnitKind>();
-  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} faction={factionOf(state, (units[0] ?? building)?.owner ?? 0)} />;
+  const tipOwner = ((units[0] ?? building)?.owner ?? 0) as Owner;
+  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} faction={factionOf(state, tipOwner)} state={state} owner={tipOwner} />;
   if (!units.length && !building) {
     if (touch) {
       return (

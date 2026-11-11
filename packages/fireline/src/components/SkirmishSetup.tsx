@@ -138,8 +138,10 @@ const ORE_TEXT: Record<OreLevel, { name: string; text: string }> = {
 
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
 /** What advanced tech adds, from the menus, so the list cannot drift from the rules. */
+// The recruits behind their own options (the Academy and its heroes, the field General) are named
+// only when those options are on (techText), never as part of advanced tech itself.
 const ADVANCED_STRUCTURES = BUILD_MENU.filter(k => !STANDARD_TECH.includes(k) && k !== HERO_ACADEMY).map(nameOf);
-const ADVANCED_UNITS = [...INFANTRY_MENU, ...VEHICLE_MENU].filter(k => !STANDARD_TECH.includes(k) && !UNITS[k].hero).map(nameOf);
+const ADVANCED_UNITS = [...INFANTRY_MENU, ...VEHICLE_MENU].filter(k => !STANDARD_TECH.includes(k) && !UNITS[k].hero && k !== 'general').map(nameOf);
 const ADVANCED_POWERS = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).map(
   ([p, b]) => `${POWERS[p].name} (${BUILDINGS[b].name})`,
 );
@@ -153,6 +155,21 @@ export const TECH_TEXT: Record<TechLevel, { name: string; text: string }> = {
     text: `Adds the ${list(ADVANCED_UNITS)}; the ${list(ADVANCED_STRUCTURES)}; and support powers that come with structures: ${list(ADVANCED_POWERS)}. The enemy has them too.`,
   },
 };
+
+/**
+ * A tech level's description for this setup (round 6 integration): advanced tech names the Command
+ * Academy and its heroes only with Heroes on, and the field General only with Generals on. Without a
+ * setup (How to play), it says what each option adds.
+ */
+export function techText(t: TechLevel, setup?: Pick<SkirmishSetup, 'heroes' | 'generals'>): string {
+  const base = TECH_TEXT[t].text;
+  if (t !== 'advanced') return base;
+  const academy = BUILDINGS[HERO_ACADEMY].name;
+  const general = UNITS.general.name;
+  if (!setup) return `${base} With Heroes on, a ${academy} recruits the campaign's heroes; with Generals on, each side may field a ${general}.`;
+  const more = [setup.heroes ? `a ${academy} to recruit the campaign's heroes` : '', setup.generals ? `a field ${general}` : ''].filter(Boolean);
+  return more.length ? `${base} This battle also has ${list(more)}.` : base;
+}
 
 export default function SkirmishSetupPanel({
   value,
@@ -253,7 +270,7 @@ export default function SkirmishSetupPanel({
           {(['standard', 'advanced'] as TechLevel[]).map(t => (
             <button key={t} type="button" role="radio" className="fl-level" aria-checked={value.tech === t} data-testid={`tech-${t}`} onClick={() => set({ tech: t })}>
               <span className="fl-level-name">{TECH_TEXT[t].name}</span>
-              <span className="fl-level-facts">{TECH_TEXT[t].text}</span>
+              <span className="fl-level-facts">{techText(t, value)}</span>
             </button>
           ))}
         </div>

@@ -1688,8 +1688,9 @@ export const FACTION_MENUS: Record<Faction, FactionMenu> = {
     remove: ['gunship', 'bomber'],
   },
 };
-// Meridian's one addition is its signature Sapper, appended after Infantry's own list, so every kind
-// of today keeps its place and hotkey and Meridian's specs, prices and lists are otherwise MENUS.
+// Meridian's one addition is its signature Sapper, after Infantry's own items (the round's recruits,
+// the General and the heroes, close every list: menuOf), so every kind of today keeps its place and
+// hotkey and Meridian's specs, prices and lists are otherwise MENUS.
 
 /**
  * The Firebrand's incendiary patch: a bomb of a 'bomb' role aircraft whose weapon is listed here

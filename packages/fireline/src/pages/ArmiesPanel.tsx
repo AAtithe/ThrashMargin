@@ -4,7 +4,7 @@
  */
 import { Panel, bodySmall } from '../components/ui';
 import { iconFor } from '../game/icons';
-import { statsOf } from '../game/Sidebar';
+import { listedCost, statsOf } from '../game/Sidebar';
 import {
   BUILDINGS,
   FACTION_DOCTRINES,
@@ -37,7 +37,7 @@ const specOf = (f: Faction, k: Kind) => (k in BUILDINGS ? buildingSpecFor(f, k a
 /** One army's numbers for a kind, in one short line. */
 function facts(f: Faction, k: Kind): string {
   const s = specOf(f, k);
-  const out = [`${s.cost} credits`, `${s.hp} hp`];
+  const out = [`${listedCost(k, f).cost} credits`, `${s.hp} hp`];
   if (!(k in BUILDINGS)) out.push(`${((s as { speed: number }).speed * 10).toFixed(2)} tiles/s`);
   if (s.weapon) out.push(`range ${s.weapon.range}`);
   return out.join(' · ');

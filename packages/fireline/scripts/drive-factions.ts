@@ -37,6 +37,7 @@ import {
   VEHICLE_MENU,
   type BuildingKind,
   type BuildingSpec,
+  HERO_KINDS,
   type Category,
   type Faction,
   type Owner,
@@ -129,13 +130,19 @@ function specs(ok: Ok): void {
   ok(buildingKinds.every(k => buildingSpecFor('meridian', k) === BUILDINGS[k]), 'Meridian: every structure spec is the catalogue\'s own');
   // Meridian's lists are MENUS, in order (every kind of today keeps its place and hotkey), with its
   // one signature item, the Sapper, after Infantry's own (workstream A, section 3 of the contract).
+  // Integration: this round's recruits (the General and the heroes) close each list, after the
+  // signature items, so a key in use never moves when Heroes or Generals are on (menuOf).
+  const everyday = (c: Category) => MENUS[c].filter(k => !RECRUITS.includes(k));
+  const recruitsOf = (c: Category) => MENUS[c].filter(k => RECRUITS.includes(k)).sort((a, b) => (a === 'general' ? 0 : 1) - (b === 'general' ? 0 : 1));
   ok(
-    CATEGORIES.every(c => JSON.stringify(menuOf('meridian', c).slice(0, MENUS[c].length)) === JSON.stringify(MENUS[c])),
-    'Meridian: every build list is MENUS, in order',
+    CATEGORIES.every(c => JSON.stringify(menuOf('meridian', c).slice(0, everyday(c).length)) === JSON.stringify(everyday(c))),
+    "Meridian: every build list is MENUS, in order (today's items keep their places)",
   );
   ok(
-    CATEGORIES.every(c => JSON.stringify(menuOf('meridian', c).slice(MENUS[c].length)) === JSON.stringify(FACTION_MENUS.meridian.add?.[c] ?? [])),
-    'Meridian: and its own signature items after them, nothing else',
+    CATEGORIES.every(
+      c => JSON.stringify(menuOf('meridian', c).slice(everyday(c).length)) === JSON.stringify([...(FACTION_MENUS.meridian.add?.[c] ?? []), ...recruitsOf(c)]),
+    ),
+    'Meridian: then its own signature items, then the recruits (the General, then the heroes), nothing else',
   );
   for (const c of CATEGORIES) ok(MENUS[c].every(k => factionAllows('meridian', k)), `Meridian fields everything on ${c}`);
   // An army changes numbers, never a kind's identity.
@@ -225,9 +232,16 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Two armies: an Ashen side measured', ashenMeasured],
   ['Two armies: whole battles, Ashen against Meridian from each seat', twoArmyBattles],
   // round6:A end.
+  // round6:integration begin. Build keys over every army's lists, with Heroes and Generals on.
+  ['Integration: build keys for every army, heroes and Generals on', buildKeys],
+  ['Integration: stat cards and the setup text', cardsAndSetupText],
+  // round6:integration end.
 ];
 
 // ---- Workstream A: two armies ----------------------------------------------------------------
+
+/** This round's recruits, which close every list (integration): the field General and the heroes. */
+const RECRUITS: (BuildingKind | UnitKind)[] = ['general', ...HERO_KINDS];
 
 /** The four kinds workstream A adds: each army's signature unit and Ashen's two aircraft. */
 const NEW_KINDS: UnitKind[] = ['sapper', 'raider', 'kestrel', 'firebrand'];
@@ -289,10 +303,12 @@ function overlayAndMenus(ok: Ok): void {
   ok(UNITS.sapper.requires.includes('barracks') && UNITS.sapper.category === 'infantry', 'the Sapper: infantry, from the Barracks');
   // Menus per army.
   ok(menuOf('ashen', 'air').join() === 'kestrel,firebrand', "Ashen's Air list: Kestrel, Firebrand");
-  ok(menuOf('ashen', 'vehicle').join() === [...VEHICLE_MENU, 'raider'].join(), "Ashen's Vehicles: today's, then the Raider Bike");
-  ok(menuOf('ashen', 'infantry').join() === INFANTRY_MENU.join() && menuOf('ashen', 'building').join() === BUILD_MENU.join(), "Ashen's Infantry and Structures: today's");
-  ok(menuOf('meridian', 'infantry').join() === [...INFANTRY_MENU, 'sapper'].join(), "Meridian's Infantry: today's, then the Sapper");
-  ok(menuOf('meridian', 'air').join() === AIR_MENU.join() && menuOf('meridian', 'vehicle') === MENUS.vehicle, "Meridian's Air and Vehicles: today's, the very lists");
+  const today = (l: readonly (BuildingKind | UnitKind)[]) => l.filter(k => !RECRUITS.includes(k));
+  const recruits = (l: readonly (BuildingKind | UnitKind)[]) => l.filter(k => RECRUITS.includes(k)).sort((a, b) => (a === 'general' ? 0 : 1) - (b === 'general' ? 0 : 1));
+  ok(menuOf('ashen', 'vehicle').join() === [...today(VEHICLE_MENU), 'raider', ...recruits(VEHICLE_MENU)].join(), "Ashen's Vehicles: today's, then the Raider Bike, then the Ace");
+  ok(menuOf('ashen', 'infantry').join() === [...today(INFANTRY_MENU), ...recruits(INFANTRY_MENU)].join() && menuOf('ashen', 'building').join() === BUILD_MENU.join(), "Ashen's Infantry and Structures: today's");
+  ok(menuOf('meridian', 'infantry').join() === [...today(INFANTRY_MENU), 'sapper', ...recruits(INFANTRY_MENU)].join(), "Meridian's Infantry: today's, then the Sapper, then the General and the heroes");
+  ok(menuOf('meridian', 'air') === MENUS.air && menuOf('meridian', 'vehicle').join() === [...today(VEHICLE_MENU), ...recruits(VEHICLE_MENU)].join(), "Meridian's Air and Vehicles: today's");
   ok(!factionAllows('ashen', 'gunship') && !factionAllows('ashen', 'bomber'), 'Ashen never flies the Gunship or the Bomber');
   ok(FACTIONS.every(f => FACTION_DOCTRINES[f].length > 20), 'each army has its one-line doctrine');
   // The build window's catalogue, per army: lists, numbers, and a tree that lays out the new kinds.
@@ -594,3 +610,72 @@ function twoArmyBattles(ok: Ok): void {
   // Over the two battles the Ashen computer fields its own kinds (a single battle may end before it does).
   ok(ashenOwn.has('raider') || ashenOwn.has('kestrel') || ashenOwn.has('firebrand'), `the Ashen computer fields its own units (${[...ashenOwn].join(', ') || 'none'})`);
 }
+
+// round6:integration begin. Build keys (fireline-round6-design.md section 7): every list of every
+// army, with Heroes and Generals on and an Academy standing, so every recruit is listed.
+import { BUILD_KEYS, listedCost, menuFor, statsOf } from '../src/game/Sidebar';
+import { techText } from '../src/components/SkirmishSetup';
+
+/** Keys the battle screen gives other jobs (its key table): no build key may be one of them. */
+const RESERVED_KEYS = ['o', 'p', 'a', 's', 'g', 'h', 'm', 'f', 'z', 'x', 'c', 'v', '0', '.', ' ', '`', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+/** The Structures past the fourteenth on advanced tech, clicked or tapped in the build window (the key table says so). */
+const KEYLESS: (BuildingKind | UnitKind)[] = ['protoworks', 'fortress', 'academy'];
+
+function buildKeys(ok: Ok): void {
+  ok(new Set(BUILD_KEYS).size === BUILD_KEYS.length, `the ${BUILD_KEYS.length} build keys are all different`);
+  ok(BUILD_KEYS.every(k => !RESERVED_KEYS.includes(k)), 'and none is a key with another job');
+  for (const f of FACTIONS) {
+    const plain = createInitialState(`keys-${f}`, 'k', { seed: `keys-${f}`, createdAt: 0, setup: { tech: 'advanced', factions: [f, f] } });
+    const full = copy(createInitialState(`keys-${f}`, 'k', { seed: `keys-${f}`, createdAt: 0, setup: { tech: 'advanced', factions: [f, f], heroes: true, generals: true } }));
+    const st = full.starts![0];
+    const dx = st.x < full.mapW / 2 ? 1 : -1;
+    (['barracks', 'factory', 'techcentre', 'uplink', 'helipad', 'academy'] as BuildingKind[]).forEach((k, i) =>
+      addBuilding(full, 0, k, Math.round(st.x + dx * (5 + 4 * (i % 3))), Math.round(st.y + 5 + 4 * Math.floor(i / 3)), -100),
+    );
+    for (const tab of CATEGORIES) {
+      const list = menuFor(tab, full);
+      const keyed = list.slice(0, BUILD_KEYS.length).map((k, i) => `${BUILD_KEYS[i]}:${k}`);
+      const keys = keyed.map(x => x.split(':')[0]);
+      ok(new Set(keys).size === keys.length && new Set(list).size === list.length, `${f}, ${tab}: no two items share a key (${keyed.join(' ')})`);
+      const over = list.slice(BUILD_KEYS.length);
+      ok(over.every(k => KEYLESS.includes(k)), `${f}, ${tab}: past the fourteenth only ${over.length ? over.join(', ') : 'nothing'}, which the key table names as clicked`);
+      if (tab !== 'building') ok(list.length <= BUILD_KEYS.length, `${f}, ${tab}: every unit has a key (${list.length} items)`);
+      // An everyday item keeps its key whether or not the recruits are listed.
+      const before = menuFor(tab, plain);
+      ok(before.every((k, i) => RECRUITS.includes(k) || list[i] === k), `${f}, ${tab}: turning Heroes and Generals on moves no key already in use`);
+    }
+    ok(RECRUITS.every(k => menuFor(UNITS[k as UnitKind].category, full).includes(k)), `${f}: the General and every hero are listed with Heroes and Generals on`);
+  }
+}
+
+/** Stat cards price what a list charges (costFor and buildTicksFor), and the setup names recruits only when they are on. */
+function cardsAndSetupText(ok: Ok): void {
+  const row = (rows: { label: string; value: string }[], label: string) => rows.find(r => r.label === label)?.value ?? '';
+  for (const f of FACTIONS) {
+    const s = createInitialState(`cards-${f}`, 'c', {
+      seed: `cards-${f}`,
+      createdAt: 0,
+      setup: { tech: 'advanced', factions: [f, f], heroes: true, generals: true, generalPicks: [f === 'ashen' ? 'kade' : 'voss', null] },
+    });
+    for (const k of RECRUITS) {
+      const card = statsOf(k, f, s, 0);
+      ok(row(card, 'Cost') === `${costFor(s, 0, k).toLocaleString('en-GB')} credits` && costFor(s, 0, k) > 0, `${f}: the ${UNITS[k as UnitKind].name}'s card shows its price in the battle (${row(card, 'Cost')})`);
+      ok(listedCost(k, f, s).ticks === buildTicksFor(s, 0, k) && buildTicksFor(s, 0, k) > 0, `${f}: and its training time (${row(card, 'Build time')})`);
+      ok(listedCost(k, f).cost > 0 && listedCost(k, f).ticks > 0, `${f}: How to play lists the ${UNITS[k as UnitKind].name} at a price, not 0`);
+    }
+    // A doctrine's price reaches the card: Voss's tanks, Kade's queues are not prices.
+    if (f === 'meridian') ok(row(statsOf('tank', f, s, 0), 'Cost') === `${costFor(s, 0, 'tank').toLocaleString('en-GB')} credits` && costFor(s, 0, 'tank') < costOf('tank'), "Voss's cheaper Tank shows on the card");
+    ok(listedCost('rifleman', f).cost === costFor(createInitialState('c', 'c', { seed: 'c', createdAt: 0, setup: { tech: 'advanced', factions: [f, f] } }), 0, 'rifleman'), `${f}: without a battle, the army's own price`);
+  }
+  const general = UNITS.general.name;
+  const academy = BUILDINGS.academy.name;
+  const plain = techText('advanced', { heroes: false, generals: false });
+  ok(!plain.includes(general) && !plain.includes(academy) && HERO_KINDS.every(k => !plain.includes(UNITS[k].name)), 'advanced tech, Heroes and Generals off: no General, Academy or hero named');
+  const heroes = techText('advanced', { heroes: true, generals: false });
+  ok(heroes.includes(academy) && !heroes.includes(general), 'Heroes on: the Academy named, the General not');
+  const generals = techText('advanced', { heroes: false, generals: true });
+  ok(generals.includes(general) && !generals.includes(academy), 'Generals on: the General named, the Academy not');
+  ok(techText('advanced', { heroes: true, generals: true }).includes(general) && techText('advanced', { heroes: true, generals: true }).includes(academy), 'both on: both named');
+  ok(techText('standard', { heroes: true, generals: true }) === techText('standard'), 'standard tech: neither, whatever the options say');
+}
+// round6:integration end.

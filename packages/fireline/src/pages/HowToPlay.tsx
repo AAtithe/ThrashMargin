@@ -4,8 +4,8 @@ import PortalNav from '../components/PortalNav';
 import { Button, Panel, bodySmall } from '../components/ui';
 import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
-import { statsOf } from '../game/Sidebar';
-import { TECH_TEXT } from '../components/SkirmishSetup';
+import { listedCost, statsOf } from '../game/Sidebar';
+import { TECH_TEXT, techText } from '../components/SkirmishSetup';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralsPanel } from '../components/Generals';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
@@ -119,7 +119,7 @@ export default function HowToPlay() {
             </li>
             <li>
               <strong>Tech level.</strong> {TECH_TEXT.standard.name}: {TECH_TEXT.standard.text} {TECH_TEXT.advanced.name}:{' '}
-              {TECH_TEXT.advanced.text}
+              {techText('advanced')}
             </li>
             <li>
               <strong>Starting credits</strong> are the same for both sides. <strong>Ore</strong> sets how rich the fields are:
@@ -363,7 +363,8 @@ function Grid({ kinds }: { kinds: (BuildingKind | UnitKind)[] }) {
         const isB = k in BUILDINGS;
         const spec = isB ? BUILDINGS[k as BuildingKind] : UNITS[k as UnitKind];
         const needs = spec.requires.map(r => BUILDINGS[r].name).join(', ');
-        const facts: ReactNode[] = [`${spec.cost} credits`, `${spec.hp} hp`];
+        // A hero's recruit price, not the campaign's 0 (listedCost).
+        const facts: ReactNode[] = [`${listedCost(k).cost} credits`, `${spec.hp} hp`];
         if (isB) {
           const p = BUILDINGS[k as BuildingKind].power;
           facts.push(p > 0 ? `+${p} power` : `${p} power`);
@@ -472,8 +473,8 @@ function SitesPanel() {
           <strong>Tier three</strong> comes with advanced tech. A <strong>{BUILDINGS.protoworks.name}</strong> needs a{' '}
           {BUILDINGS.researchlab.name} and a {BUILDINGS.techcentre.name}, and unlocks the {UNITS.railtank.name}, the{' '}
           {UNITS.stealthtank.name} and the {BUILDINGS.fortress.name}. The {BUILDINGS.protoworks.name} and the{' '}
-          {BUILDINGS.fortress.name} are the fifteenth and sixteenth Structures, so they have no hotkey: click them in the build
-          list.
+          {BUILDINGS.fortress.name} are the fifteenth and sixteenth Structures (with heroes on, the {BUILDINGS.academy.name} is
+          the seventeenth), so they have no hotkey: click them in the build list.
         </li>
         <li>
           The <strong>{UNITS.railtank.name}</strong> fires a slug that lands the instant it fires: the heaviest hit on armour in

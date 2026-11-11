@@ -84,12 +84,37 @@ export function factionAllows(faction: Faction, kind: BuildingKind | UnitKind): 
   return !exclusive.has(kind) || added[faction].has(kind);
 }
 
-/** An army's build list for a queue: MENUS[category] less what it never builds, then its own additions. */
+/**
+ * Round 6 integration: the units recruited behind a setup option (the field General, then the
+ * heroes) close a list, after the army's own additions. Build keys go by position, so an army's
+ * everyday units keep their keys whether or not Heroes and Generals are on, and building an Academy
+ * mid-battle never moves a key already in use.
+ */
+const isRecruit = (k: BuildingKind | UnitKind): boolean => k in UNITS && (k === 'general' || !!UNITS[k as UnitKind].hero);
+const recruitRank = (k: BuildingKind | UnitKind): number => (k === 'general' ? 0 : 1);
+
+/**
+ * An army's build list for a queue: MENUS[category] less what it never builds and less the recruits,
+ * then its own additions, then the recruits (the General first, then the heroes, in MENUS order).
+ */
 export function menuOf(faction: Faction, category: Category): readonly (BuildingKind | UnitKind)[] {
-  const extra = FACTION_MENUS[faction].add?.[category];
-  if (!extra?.length && !removed[faction].size) return MENUS[category];
-  return [...MENUS[category].filter(k => !removed[faction].has(k)), ...(extra ?? [])];
+  return menus[faction][category];
 }
+
+const menus = Object.fromEntries(
+  FACTIONS.map(f => [
+    f,
+    Object.fromEntries(
+      (Object.keys(MENUS) as Category[]).map(c => {
+        const extra = FACTION_MENUS[f].add?.[c] ?? [];
+        const base = MENUS[c].filter(k => !removed[f].has(k));
+        const recruits = base.filter(isRecruit).sort((a, b) => recruitRank(a) - recruitRank(b));
+        if (!extra.length && !removed[f].size && !recruits.length) return [c, MENUS[c]];
+        return [c, [...base.filter(k => !isRecruit(k)), ...extra, ...recruits]];
+      }),
+    ),
+  ]),
+) as Record<Faction, Record<Category, readonly (BuildingKind | UnitKind)[]>>;
 
 /**
  * The perks this side plays with, or undefined for none. Side 0's are `s.perks` (the campaign's
