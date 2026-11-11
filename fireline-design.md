@@ -1188,3 +1188,24 @@ does, a Patrol Boat fires at a gunship, a ship gives up an inland target), Subma
 Destroyer, mending, landings (two tanks and two riflemen fill six places, nowhere to land at sea, all
 ashore at the far beach), old saves, and the computer (a yard, a fleet that scores kills, a landing,
 exact replay, and no navy on Plains).
+
+**The ladder** (150 seeds, advanced tech, standard size). On the six older map types (the same
+seeds and maps as before the naval war, `--map classic,river,highlands,lakes,plains,canyon`), and on
+the Coast map alone:
+
+| Match | Six types, before (air war) | Six types, now | Coast |
+|---|---|---|---|
+| Normal mirror | 47% / 53% | 47% / 49% (5 unfinished) | 49% / 45% (9 unfinished) |
+| Hard beats Normal, both ways | 73.0% (68-78) | 75.3% (70-80) | 81.7% (77-86) |
+| Normal beats Easy, both ways | 99.0% | 99.7% | 99.3% |
+| Average minutes, Normal mirror | 24.1 | 25.6 | 32.3 |
+
+On the older maps the intervals overlap: a Lakes or Classic map with a big enough lake near both
+bases can now carry a small navy, which is the only way the naval war reaches them. On the Coast
+map the difficulty ladder holds and Hard pulls further ahead (its plan adds a Battleship, a third
+Destroyer and a second Submarine), and battles run longer: the armies go round the sea. Unfinished
+battles at the 100-minute cap are more common there (6% in the mirror, up to 17% in one cross
+match against the frozen commander); a long naval stand-off between two navies that each hold their
+own shore is the likely cause, and is the first thing to look at if Coast games feel stuck.
+Harness at the end: `npm run drive:fire` 391,798 assertions, 0 failed; `npm run campaign:fire`
+2,951 (the Naval Yard joins the skirmish-only structures its Last Light check skips).
