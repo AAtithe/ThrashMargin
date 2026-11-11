@@ -6,7 +6,8 @@
  *
  * On a fresh advanced-tech skirmish it checks that:
  * - every kind in the rules' MENUS is on its tab, greyed (locked) exactly when a structure it needs
- *   is missing, with the lines and tiers the rules give;
+ *   is missing, with the lines and tiers the rules give; the round 6 recruits (the Academy, the
+ *   heroes, the field General) are absent, since this battle has Heroes and Generals off;
  * - the window opens and closes by the Build button, the backquote key and Esc, focus moving into it
  *   and back to the Build button, and Tab cycles the lists with it open or closed;
  * - a hotkey queues with the window closed (Q, Generator) and with it open (W, Refinery);
@@ -70,9 +71,16 @@ async function checkBuildWindow(browser, base, problems, out) {
         memo[k] = need.length ? 1 + Math.max(...need.map(tier)) : 0;
         return memo[k];
       };
+      // Round 6: the Academy, the heroes and the field General are listed only with Heroes or
+      // Generals on; this battle has both off, so they must be absent.
+      const optional = k => k === r.HERO_ACADEMY || k === 'general' || (k in r.UNITS && !!r.UNITS[k].hero);
       const menus = {};
-      for (const [tab, list] of Object.entries(r.MENUS)) menus[tab] = list.map(k => ({ kind: k, needs: req(k), tier: tier(k) }));
-      return { menus, tier: Object.fromEntries(Object.keys(memo).map(k => [k, memo[k]])) };
+      const absent = {};
+      for (const [tab, list] of Object.entries(r.MENUS)) {
+        menus[tab] = list.filter(k => !optional(k)).map(k => ({ kind: k, needs: req(k), tier: tier(k) }));
+        absent[tab] = list.filter(optional);
+      }
+      return { menus, absent, tier: Object.fromEntries(Object.keys(memo).map(k => [k, memo[k]])) };
     });
     const owned = await page.evaluate(() => {
       const k = Object.keys(localStorage).find(x => x.startsWith('fireline_save_'));
@@ -112,7 +120,12 @@ async function checkBuildWindow(browser, base, problems, out) {
         }
       }
     }
-    console.log(`  build window: ${seen} menu items checked`);
+    for (const [tab, list] of Object.entries(rules.absent)) {
+      await page.locator(`#fl-tab-${tab}`).click();
+      await sleep(150);
+      for (const k of list) if (await page.locator(`#fl-build-${k}`).count()) await fail(`${k} is on the ${tab} tab with Heroes and Generals off`);
+    }
+    console.log(`  build window: ${seen} menu items checked, ${Object.values(rules.absent).flat().length} kept off with Heroes and Generals off`);
 
     // ---- Tab cycles, open and closed --------------------------------------------------------------
     await page.locator('#fl-tab-building').click();
