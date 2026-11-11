@@ -83,6 +83,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   // round6:integration begin. The seams section 7 leaves to the integrator.
   ['Integration: a General leads a formation', quiet(generalLeadsSquad)],
   ['Integration: Generals and the two armies', generalsAndArmies],
+  ['Integration: the computer never recruits its General with its economy broken', quiet(brokeNoGeneral)],
   // round6:integration end.
 ];
 
@@ -632,5 +633,37 @@ function generalsAndArmies(ok: Ok): void {
     ok(costFor(s, 0, k) < costFor(s, 1, k), `Ilse: the ${UNITS[k].name} is cheaper on her side (${costFor(s, 0, k)} against ${costFor(s, 1, k)})`);
   }
   ok(checked === pairs.length * 8, 'every pairing of armies checked from both seats');
+}
+
+/**
+ * Found at integration (a 100-minute battle with every option on): raiseFunds cancelled the queued
+ * General to pay for a hauler, generalPlan queued it again at once, and the infantry queue never
+ * moved. With no refinery, or no hauler standing or queued, the computer recruits no General.
+ */
+function brokeNoGeneral(ok: Ok): void {
+  const { s } = arena({}, 'broke');
+  const home = { x: 5, y: s.mapH - 5 };
+  const enemyHome = { x: s.mapW - 5, y: 5 };
+  const st = s.starts![1];
+  const dx = st.x < s.mapW / 2 ? 1 : -1;
+  for (const [i, k] of (['barracks', 'uplink', 'refinery'] as BuildingKind[]).entries()) addBuilding(s, 1, k, Math.round(st.x + dx * (5 + 4 * i)), Math.round(st.y + 5), -100);
+  s.ai[1].wave = 1;
+  const queued = (t: GameState) => t.players[1].queues.infantry.some(q => q.kind === 'general');
+  const plan = (t: GameState) => {
+    for (let i = 0; i < 6; i++) generalPlan(t, 1, home, enemyHome, t.units.filter(u => u.owner === 1));
+    return t;
+  };
+  const rich = (t: GameState) => {
+    t.players[1].credits = 5000;
+    return t;
+  };
+  const noHauler = plan(rich(copy(s)));
+  ok(!queued(noHauler) && !noHauler.ai[1].generalFund, 'no hauler: no General queued, nothing put by');
+  const withHauler = copy(s);
+  addUnit(withHauler, 1, 'hauler', st.x + 0.5, st.y + 6.5);
+  ok(queued(plan(rich(copy(withHauler)))), 'with a refinery and a hauler: the General is queued');
+  const noRefinery = copy(withHauler);
+  noRefinery.buildings = noRefinery.buildings.filter(b => !(b.owner === 1 && b.kind === 'refinery'));
+  ok(!queued(plan(rich(noRefinery))), 'no refinery: none');
 }
 // round6:integration end.

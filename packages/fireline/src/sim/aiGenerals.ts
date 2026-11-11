@@ -18,7 +18,7 @@ import { squadById } from './formations';
 import { fieldGenerals, generalOf, generalQueueable } from './generals';
 import { dist, nearestPassable, occupancy } from './grid';
 import { GENERAL_RETREAT_BELOW, GENERAL_RETURN_AT, UNITS, type Owner } from './rules';
-import { costFor, maxHpOf, unlocked } from './state';
+import { costFor, hasBuilding, maxHpOf, unlocked } from './state';
 import type { GameState, Unit } from './types';
 
 interface Pt {
@@ -69,7 +69,13 @@ export function generalPlan(s: GameState, owner: Owner, home: Pt, enemyHome: Pt,
     const p = s.players[owner];
     const due = mem.wave >= 1 || s.tick >= GENERAL_AI_AFTER;
     const queued = p.queues.infantry.some(q => q.kind === 'general');
-    if (!due || queued || !generalQueueable(s, owner) || !unlocked(s, owner, 'general')) {
+    // Integration: never while the economy is broken (no refinery, or no hauler standing or queued).
+    // The commander's raiseFunds cancels queued units to pay for a hauler; recruiting the General
+    // again at once undid that every decision, and the infantry queue never moved (found in a
+    // 100-minute battle with every option on).
+    const broke =
+      !hasBuilding(s, owner, 'refinery') || (!units.some(u => u.kind === 'hauler') && !p.queues.vehicle.some(q => q.kind === 'hauler'));
+    if (!due || queued || broke || !generalQueueable(s, owner) || !unlocked(s, owner, 'general')) {
       // Not wanted now (or already queued): any savings go back.
       if (mem.generalFund) {
         p.credits += mem.generalFund;
