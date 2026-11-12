@@ -33,7 +33,9 @@
  * (`data-tour-target`; `data-tour-manual` steps are read and dismissed): offered unasked to a fresh
  * character on both viewports, and in full mode started from the header after the first mission and
  * tried on a character with no Energy. Each new step is left alone for 1.5s and must not move on its
- * own; the target must be on screen, enabled, not under the card and what a click actually hits; a
+ * own; once the card and ring have come to rest on it (not after a fixed pause: they glide when a
+ * step moves from a nav button to the control itself), the target must be on screen, enabled, not
+ * under the card and what a click actually hits; a
  * spell in the Steen or the infirmary after a failed scheme hides the card, and the run must come
  * back where it left off: on the next step, since the scheme it was asking for has been attempted
  * (the step is complete, and its run keeps advancing while hidden), or on the same step if the
@@ -475,6 +477,37 @@ const cardOf = page => page.evaluate(() => {
   };
 });
 
+/**
+ * Waits (up to 5s) until the tour's card and ring have stopped moving and the ring is on `target`:
+ * no transition running on the tour's own elements (portalled straight into <body>), the ring
+ * centred on the target, and the card, ring and target where they were on the previous read. A
+ * time limit on settling, not on anything the check asserts: false means the tour never came to
+ * rest, which is a failure in its own right.
+ */
+async function settled(page, target) {
+  let prev = '';
+  for (let i = 0; i < 50; i++) {
+    const now = await page.evaluate(t => {
+      const card = document.querySelector('[data-tour-step]'), el = document.getElementById(t);
+      if (!card || !el || card.getAttribute('data-tour-target') !== t) return null;
+      const chrome = [...document.body.children];
+      if (document.getAnimations().some(a => a.playState === 'running' && chrome.includes(a.effect && a.effect.target))) return null;
+      // The ring: the one that dims everything around it (its border is a CSS variable, so it has
+      // no readable border longhands).
+      const ring = chrome.find(e => e !== card && e.style.position === 'fixed' && e.style.boxShadow.includes('9999px'));
+      if (!ring) return null;
+      const box = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom].map(Math.round); };
+      const [rl, rt, rr, rb] = box(ring), [tl, tt, tr, tb] = box(el);
+      if (Math.abs(rl + rr - tl - tr) > 2 || Math.abs(rt + rb - tt - tb) > 2) return null;
+      return JSON.stringify([box(card), box(ring), box(el)]);
+    }, target);
+    if (now && now === prev) return true;
+    prev = now || '';
+    await page.waitForTimeout(100);
+  }
+  return false;
+}
+
 /** Seeds a character with the real sim, so a run can start from a particular state. */
 async function seedCharacter(page, id, mutate, caught = false) {
   await page.evaluate(async ({ id, start, mutate, caught }) => {
@@ -582,8 +615,13 @@ async function tourRun(page, { vp, variant }, local) {
       if (now) c = now;
     }
     if (!c.target) { await fail(`step ${c.step + 1} "${c.title}" points at nothing`); break; }
-    // Geometry, once the card has settled.
+    // Geometry, once the card has settled: actually settled, not a fixed pause. A step that first
+    // points at a nav button and then, once the player is there, at the control itself keeps its
+    // step number, so it gets no 1.5s wait; the card and ring glide from the old target to the new
+    // one (a 0.2s transition that starts only when the tour re-measures), and on a loaded CI runner
+    // a fixed 300ms ran out with the card still over the Train button (Nov 2026).
     await page.waitForTimeout(300);
+    if (!(await settled(page, c.target))) await fail(`step ${c.step + 1} the card and ring never settled on ${c.target}`);
     const geo = await page.evaluate(t => {
       const el = document.getElementById(t), card = document.querySelector('[data-tour-step]');
       if (!el || !card) return null;
