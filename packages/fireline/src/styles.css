@@ -2415,11 +2415,18 @@ kbd {
   color: var(--ui-text-faint);
 }
 
-.fl-cbar {
+/* The foot of the map: the battle feed, then the bar row under it, in flow, so the feed always sits
+   on the row's real height. A wrapped row on a phone lifts the feed rather than covering it. */
+.fl-dock {
   position: absolute;
   left: 10px;
   right: 10px;
-  bottom: 10px;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+.fl-cbar {
   display: flex;
   align-items: flex-end;
   gap: 8px;
@@ -2437,6 +2444,19 @@ kbd {
   border-radius: 5px;
   box-shadow: 0 2px 12px var(--ui-shadow);
   pointer-events: auto;
+}
+/* On a phone the hero bar is wider than the map once two heroes stand: it keeps to the row's width
+   and scrolls sideways under a finger, rather than running off both edges where no slot can be
+   reached. */
+@media (max-width: 760px), (pointer: coarse) {
+  .fl-herobar {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .fl-herobar > .fl-hero-slot {
+    flex-shrink: 0;
+  }
 }
 .fl-hero-slot {
   display: flex;
@@ -5179,9 +5199,9 @@ kbd {
 
 /* ---- Battlefield overlays: feed, alerts, hint, toast -------------------------------------- */
 
+/* In the dock (.fl-dock), above the bar row; its maximum width is set where it is rendered. */
 .fl-d-feed {
-  position: absolute;
-  left: 10px;
+  align-self: flex-start;
   display: flex;
   flex-direction: column-reverse;
   align-items: flex-start;
@@ -5258,10 +5278,20 @@ div:has(> .fl-alert-chip) > .fl-banners {
 
 /* ---- Support dock and hero bar ------------------------------------------------------------ */
 
-/* The dock sits on the bottom edge of the battlefield, like a drawer pulled out of the console. */
+/* The dock sits on the bottom edge of the battlefield, like a drawer pulled out of the console. On a
+   touch screen it is lifted over the command bar (an inline bottom, with data-lifted). With no bar
+   row the feed keeps its 10px off the bottom edge. */
+.fl-dock:not([data-lifted]) > .fl-d-feed:last-child {
+  margin-bottom: 10px;
+}
 .fl-cbar {
-  bottom: 0;
   gap: 6px;
+  /* One line's height at least: where the feed sat over the row before it was in flow (80px off the
+     edge, 70px over a lifted row), so a row that fits on one line leaves the feed where it was. */
+  min-height: 80px;
+}
+.fl-dock[data-lifted] > .fl-cbar {
+  min-height: 70px;
 }
 .fl-cbar > .fl-herobar,
 .fl-cbar > .fl-powerbar {
@@ -5270,8 +5300,8 @@ div:has(> .fl-alert-chip) > .fl-banners {
   padding-bottom: 6px;
 }
 /* On a touch screen the command bar holds the bottom edge, and the dock floats above it. */
-.fl-cbar[style] > .fl-herobar,
-.fl-cbar[style] > .fl-powerbar {
+.fl-dock[data-lifted] .fl-cbar > .fl-herobar,
+.fl-dock[data-lifted] .fl-cbar > .fl-powerbar {
   border-bottom: 1px solid var(--d-btn-rule);
   border-radius: 8px;
 }
@@ -5960,8 +5990,8 @@ div:has(> .fl-alert-chip) > .fl-banners {
   box-shadow: inset 0 1px 0 var(--d-bevel), 0 6px 20px var(--ui-shadow);
   pointer-events: auto;
 }
-.fl-cbar[style] > .fl-genbar-inline,
-.fl-cbar[style] > .fl-hero-revive {
+.fl-dock[data-lifted] .fl-cbar > .fl-genbar-inline,
+.fl-dock[data-lifted] .fl-cbar > .fl-hero-revive {
   border-bottom: 1px solid var(--d-btn-rule);
   border-radius: 8px;
 }
@@ -6346,3 +6376,278 @@ div:has(> .fl-alert-chip) > .fl-banners {
   color: var(--ui-good);
 }
 /* ==== end R ==== */
+
+/* ---- A phone's bar row: one line, and the hero drawer --------------------------------------- */
+/* On a phone (layout.phone: 760px wide or narrower, or a touch screen on its side) the dock runs the
+   height of the map: the centred banners head it, the battle feed and the strip keep to its foot,
+   so the low-power banner and the feed take separate lanes and the feed never runs above the map.
+   The feed gives way first: its oldest lines are clipped, the newest stays on the strip. */
+.fl-dock[data-phone] {
+  --fl-strip-h: 50px;
+  top: 10px;
+}
+div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
+  top: 50px;
+}
+.fl-dock[data-phone] > .fl-banners {
+  position: static;
+  transform: none;
+  align-self: center;
+  flex-shrink: 0;
+  max-width: 100%;
+  margin-bottom: auto;
+  padding-bottom: 6px;
+}
+.fl-dock[data-phone] > .fl-d-feed {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.fl-dock[data-phone] > .fl-barstrip-wrap {
+  display: flex;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 6px;
+}
+/* The strip: one console drawer, one line. Should it ever be wider than the map it scrolls sideways
+   rather than wrap. */
+.fl-dock[data-phone] .fl-barstrip {
+  box-sizing: border-box;
+  height: var(--fl-strip-h);
+  min-height: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 4px;
+  padding: 3px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  background: linear-gradient(180deg, var(--d-console-hi), var(--d-console));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 6px 20px var(--ui-shadow);
+  pointer-events: auto;
+}
+.fl-barstrip > * {
+  flex-shrink: 0;
+}
+.fl-barstrip-powers {
+  display: flex;
+  gap: 4px;
+}
+.fl-barstrip .fl-power {
+  width: 54px;
+  min-height: 0;
+  padding: 2px 2px;
+  font-size: 0.64rem;
+  letter-spacing: -0.01em;
+}
+.fl-barstrip .fl-power small {
+  font-size: 0.6rem;
+  letter-spacing: 0;
+}
+.fl-barstrip .fl-power[data-ready="1"] small {
+  letter-spacing: 0.03em;
+}
+
+/* The Heroes button: the count of heroes standing, and a dot when one is down (red) or an ability is
+   ready (green). */
+.fl-heroes-btn {
+  position: relative;
+  width: 56px;
+  padding: 2px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--ui-text);
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 2px var(--d-drop-soft);
+  cursor: pointer;
+}
+.fl-heroes-btn[data-selected="1"] {
+  border-color: var(--ui-good);
+}
+.fl-heroes-btn[aria-expanded="true"] {
+  border-color: var(--ui-accent);
+  background: var(--d-well);
+  box-shadow: inset 0 1px 2px var(--d-drop-soft);
+}
+.fl-heroes-btn[data-aiming="1"] {
+  border-color: var(--ui-target);
+  box-shadow: inset 0 0 0 1px var(--ui-target);
+}
+.fl-heroes-btn-count {
+  min-width: 18px;
+  padding: 0 5px;
+  font-size: 0.64rem;
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  color: var(--ui-text-soft);
+  background: var(--d-well);
+  border: 1px solid var(--d-well-rule);
+  border-radius: 8px;
+}
+.fl-heroes-btn-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ui-good);
+  box-shadow: 0 0 0 2px var(--d-console);
+}
+.fl-heroes-btn-dot[data-kind="down"] {
+  background: var(--ui-bad);
+}
+
+/* The General in the strip: its star, and its health or the wait for a replacement. */
+.fl-barstrip .fl-genbtn-compact {
+  width: 42px;
+  min-width: 0;
+  max-width: none;
+  padding: 2px 5px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  text-align: center;
+  background: var(--d-well);
+  border-color: var(--d-well-rule);
+  box-shadow: inset 0 1px 2px var(--d-drop-soft);
+}
+.fl-barstrip .fl-genbtn-compact[data-ready="1"] {
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border-color: var(--ui-general);
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 2px var(--d-drop-soft);
+}
+.fl-barstrip .fl-genbtn-compact[data-selected="1"] {
+  border-color: var(--ui-good);
+  background: linear-gradient(var(--ui-tint-good), var(--ui-tint-good)), var(--d-btn);
+}
+.fl-barstrip .fl-genbtn-compact[data-fallen="1"] {
+  border-color: var(--ui-bad);
+}
+.fl-genbtn-compact .fl-genbtn-star {
+  font-size: 1.05rem;
+}
+.fl-genbtn-compact .fl-genbtn-hp {
+  align-self: stretch;
+}
+.fl-genbtn-compact small {
+  font-size: 0.6rem;
+  color: var(--ui-text-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The hero drawer: the hero cards over the map, just above the strip, no taller than the dock. It
+   lies over the battlefield and moves nothing; a touch on the map, Close or Escape puts it away. */
+.fl-hero-drawer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--fl-strip-h) + 6px);
+  max-height: calc(100% - var(--fl-strip-h) - 6px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 6px 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: linear-gradient(180deg, var(--d-console-hi), var(--d-console));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 8px 24px var(--ui-shadow);
+  pointer-events: auto;
+  outline: none;
+  animation: fl-drawer-in 160ms ease-out;
+}
+@keyframes fl-drawer-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-hero-drawer { animation: none; }
+}
+:root[data-motion="off"] .fl-hero-drawer {
+  animation: none;
+}
+.fl-hero-drawer-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0 4px 2px;
+  background: var(--d-console-hi);
+  border-bottom: 1px solid var(--d-groove);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--d-label);
+}
+.fl-hero-drawer-close {
+  height: 32px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--ui-text);
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border: 1px solid var(--d-btn-rule);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.fl-hero-drawer .fl-herobar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 290px), 1fr));
+  gap: 4px;
+  max-width: none;
+  padding: 0;
+  overflow: visible;
+  background: none;
+  border: none;
+  box-shadow: none;
+}
+.fl-hero-drawer .fl-herobar > .fl-d-dock-label {
+  display: none;
+}
+.fl-hero-drawer .fl-hero-slot {
+  border-color: var(--d-well-rule);
+}
+.fl-hero-drawer .fl-hero-info {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+.fl-hero-drawer .fl-ability {
+  flex-shrink: 0;
+}
+.fl-hero-drawer .fl-hero-revive {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 2px 4px;
+  font-size: 0.7rem;
+  color: var(--ui-text-soft);
+}
+.fl-hero-drawer-none {
+  margin: 4px 2px;
+  font-size: 0.72rem;
+  color: var(--ui-text-soft);
+}

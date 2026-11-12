@@ -11,16 +11,20 @@ import { useEffect, useState } from 'react';
  * - `compact`: too narrow for the full top bar. Speed, sound, the tour and the controls sheet move
  *   into a Menu.
  * - `short`: a phone on its side. The sidebar narrows so the battlefield keeps its width.
+ * - `phone`: a phone either way up: as narrow as the console's own phone breakpoint (760px, the
+ *   width at which the hero bar starts to scroll), or a touch screen on its side. The bar row
+ *   (heroes, powers, the General) folds into one line with a Heroes button and a drawer.
  */
 export interface Layout {
   touch: boolean;
   stacked: boolean;
   compact: boolean;
   short: boolean;
+  phone: boolean;
 }
 
 function read(): Layout {
-  if (typeof window === 'undefined') return { touch: false, stacked: false, compact: false, short: false };
+  if (typeof window === 'undefined') return { touch: false, stacked: false, compact: false, short: false, phone: false };
   const w = window.innerWidth;
   const h = window.innerHeight;
   const touch = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches;
@@ -29,6 +33,7 @@ function read(): Layout {
     stacked: w <= 760 && h >= w,
     compact: w < 1100,
     short: h < 520,
+    phone: w <= 760 || (touch && h < 520),
   };
 }
 
@@ -38,7 +43,7 @@ export function useLayout(): Layout {
     const update = () =>
       setLayout(prev => {
         const next = read();
-        return prev.touch === next.touch && prev.stacked === next.stacked && prev.compact === next.compact && prev.short === next.short
+        return prev.touch === next.touch && prev.stacked === next.stacked && prev.compact === next.compact && prev.short === next.short && prev.phone === next.phone
           ? prev
           : next;
       });

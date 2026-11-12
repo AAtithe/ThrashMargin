@@ -2218,3 +2218,92 @@ Heroes and Generals on (Kade for side 0) starts with both armies, a Wedge holds,
 shows, the Ashen Vehicles tab lists the Raider Bike; a war starts on its map; no console errors and no
 horizontal scroll. `npm run check` from the root: "All checks passed", after main's #43 (Founder's
 Ledger only) was merged on top too.
+### 2026-11-12: The bar row no longer covers the battle feed on a phone
+
+**Cause.** The feed was placed at a fixed `bottom` (80px, plus the command bar's lift on a touch
+screen), sized for a bar row of one line, while the row (`.fl-cbar`: heroes, the recruit-again note,
+powers, the General) was absolutely placed and wraps. On a phone it wraps to two to four lines, 135
+to 240px tall in the console's current look, and covered the feed's lowest lines by 65 to 168px
+(iPhone 13, iPhone SE and Pixel 7 upright, the iPhone on its side; even the bare advanced setup with
+only the powers and the General covered 70px). The same fault showed on a desktop: at 1440 by 900 a
+four-hero row wraps and covered the feed, in a skirmish and in a mission alike. On a phone the hero
+bar also ran off both edges of the map once two heroes stood, so some slots could not be reached.
+
+**Fix.** The feed and the row now sit in one absolutely placed dock (`.fl-dock`), in flow: the feed
+always rests on the row's real height. This holds in every battle type, since the mission row, the
+War for the Planet battle's row and the skirmish row are all `.fl-cbar` in the same dock. The dock
+keeps the console's look: on the bottom edge of the battlefield on a desktop, lifted over the
+command bar on a touch screen (an inline `bottom` with `data-lifted`, which the drawers' squared or
+rounded lower corners now key on, where they keyed on the row's own inline style). The row keeps a
+one-line minimum, 80px on the edge and 70px lifted, where the feed sat before, so a row that fits
+on one line leaves the feed exactly where it was (a planet battle at 1440 by 900 and on an iPad,
+checked by bounding box against origin/main); with no row the feed keeps its 10px off the edge. On
+touch and narrow screens the hero bar keeps to the row's width and scrolls sideways.
+
+**Guard.** `scripts/tours/fireline-touch.cjs` builds three advanced skirmishes with Generals on in
+the page from the game's own modules (four heroes; three and a fallen Ace; heroes off) and fails if
+the feed and the row intersect, if either covers the command bar, if the row runs off the map, if
+the newest feed line is above the map or the page scrolls sideways. It runs on every phone the tour
+plays, plus the 320px iPhone SE in the full run. On origin/main's layout it reports 20 failures; now
+one, the open item below.
+
+**Then decided: a single Heroes button on phones.** See the next entry; the row no longer wraps on a
+phone at all.
+
+**Numbers.** In the browser (iPhone SE at 320 and 375px, iPhone 13, iPad, desktop 1440 by 900; light
+and dark; an advanced skirmish with heroes and Generals on, with and without a fallen hero, a
+campaign mission with four heroes and a War for the Planet battle; 40 layouts): the feed and the row
+never meet, nothing covers the command bar, no sideways page scroll and no console errors; the one
+failure is the 320px SE case above. `npm run tours -- fireline-touch fireline fireline-planet`
+(full): fireline and fireline-planet ok, fireline-touch ok on every tour and phone but that case.
+`npm run check:loading -- fireline` 27/27. `npm run check` from the root: "All checks passed" (Fireline drive 401,464 assertions, campaign-check 7,699, drive:planet 35,255).
+
+### 2026-11-12: On a phone, one line: a Heroes button and a drawer
+
+**Why.** The previous entry kept the feed off the bar row, but on a phone the row itself (a hero bar of
+wide cards, Support, General; about 65px each) took most of the map: 240px of the 320px iPhone SE's
+290px map, pushing the feed above the map and under the header, and on the 375px SE the feed lay over
+the low-power banner. The decision, from the options in `fireline-improvements.md`, was a single
+Heroes button.
+
+**What.** On a phone (`layout.phone`: 760px wide or narrower, the console's own phone breakpoint, or a
+touch screen on its side; tablets and desktops are untouched, checked by the bounding boxes of
+seventeen elements in five battles on two desktops and three iPads against f73a908: no difference)
+the bar row is one 50px line (`.fl-barstrip`): a Heroes button showing how many heroes stand, with a
+red dot when one is down and a green one when an ability is ready; the support powers with short
+names (Recon, Barrage, Reinforce, Missile; the full name stays in the accessible name and title, a
+skirmish power without its structure reads Locked); and in a skirmish the General's star with its
+health or the wait for a replacement. All four powers and the Heroes button fit at 320px, so nothing
+needs a second control. The Heroes button opens the hero cards in a drawer (`#fl-hero-drawer`, a
+non-modal dialog) over the map just above the strip, no taller than the dock (it scrolls) and moving
+nothing; a fallen hero's recruit-again note heads it. It takes focus on opening; Close, Escape, a
+touch on the map, or selecting a hero or using an ability puts it away (a targeted ability then asks
+for its target on the open map) and focus returns to the button. It slides in over 160ms, not at all
+with reduced motion. The hero hotkeys are unchanged. On a phone the dock runs the height of the map:
+the centred banners (hint, missile warning, low power) head it in flow, the feed (three lines) and
+the strip keep to its foot, so the banners and the feed take separate lanes and the feed's oldest
+lines are clipped at the map's top rather than running under the header. The same strip and drawer
+serve skirmishes (heroes and Generals on, a fallen hero awaiting recruitment), missions and War for
+the Planet battles. No guided tour rings a hero card or an ability (the first-battle tour, the War
+for the Planet tour and the build-window driver were checked), so no tour needed changing.
+
+**Guard.** `scripts/tours/fireline-touch.cjs` now plays five battles per phone (four heroes; three
+and a fallen Ace; heroes off; the "fireline" mission with four heroes and four powers; a War for the
+Planet battle) on the iPhone 13 upright and on its side, the Pixel 7 and, in the full run, both
+iPhone SEs (320 and 375px). It fails if the row is more than one line (more than one top among its
+controls, or over 64px), if the feed meets the row, the low-power banner, the header or the command
+bar, if the feed runs above the map, the row meets the command bar or leaves the map, or the page
+scrolls sideways; then it opens the drawer (the map must not move, the drawer must stay on the map),
+fires an ability from it (the Ace's Overdrive, checked on cooldown on reopening, or a targeted one,
+which must ask for a target), closes it and checks focus is back on the button. On f73a908's layout:
+63 failures over all five phones; now none.
+
+
+**Numbers.** In the browser at twice the pixel density (the 320px and 375px iPhone SEs, the iPhone 13
+upright and on its side, the Pixel 7, an iPad and a 1440 by 900 desktop; light and dark; a skirmish
+with heroes, a General and low power, the same with a fallen Ace, the "fireline" mission with four
+heroes and four powers, and a War for the Planet battle; the drawer closed and open): one line on
+every phone, no console errors and no sideways page scroll. `node scripts/tours/run.mjs fireline-touch
+fireline fireline-planet` (full): all ok, the 320px SE included. `npm run tours -- --quick`: all eight
+ok. `npm run check:loading -- fireline` 27/27. `npm run check` from the root: "All checks passed"
+(Fireline drive 401,464 assertions, campaign-check 7,699, drive:planet 35,255).
