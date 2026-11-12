@@ -1,0 +1,1092 @@
+{
+ "version": 1,
+ "kind": "planet",
+ "id": "5f0c2a7e-3b1d-4c8e-9a6f-2d4b8e1c7a90",
+ "name": "Fixture war",
+ "createdAt": 1767225600000,
+ "planet": {
+  "version": 1,
+  "seedText": "fixture-4",
+  "rngSeed": 2108591775,
+  "createdAt": 1767225600000,
+  "options": {
+   "preset": "short",
+   "factions": 3,
+   "regions": 18,
+   "continents": 2,
+   "startRegions": 2,
+   "openingTruce": 3,
+   "armyCap": 10,
+   "armyMove": 2,
+   "heroesPerBattle": 2,
+   "surrenderTurns": 2,
+   "victoryShare": 60,
+   "turnLimit": 40,
+   "alliedVictory": true,
+   "ironRule": false,
+   "simulatedAutoResolve": false,
+   "aiDiplomacy": true,
+   "battleMinutes": 20,
+   "neutralStrength": 1
+  },
+  "difficulty": "normal",
+  "turn": 6,
+  "regions": [
+   {
+    "owner": 1,
+    "city": {
+     "level": 2,
+     "b": {
+      "farms": 2,
+      "refinery": 1
+     },
+     "built": 5
+    },
+    "garrison": [
+     3,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 1,
+    "city": {
+     "level": 3,
+     "b": {
+      "refinery": 2,
+      "farms": 2,
+      "factory": 1,
+      "fortifications": 1
+     },
+     "built": 2
+    },
+    "garrison": [
+     4,
+     2,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": -1,
+    "city": {
+     "level": 2,
+     "b": {
+      "fortifications": 1
+     },
+     "built": -1
+    },
+    "garrison": [
+     4,
+     2,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 1,
+    "city": {
+     "level": 1,
+     "b": {
+      "farms": 1
+     },
+     "built": 4
+    },
+    "garrison": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 2,
+    "city": {
+     "level": 2,
+     "b": {
+      "farms": 1,
+      "factory": 1
+     },
+     "built": 5
+    },
+    "garrison": [
+     3,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 2,
+    "city": {
+     "level": 1,
+     "b": {},
+     "built": -1
+    },
+    "garrison": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 2,
+    "city": {
+     "level": 3,
+     "b": {
+      "refinery": 2,
+      "farms": 2,
+      "factory": 1,
+      "fortifications": 1
+     },
+     "built": 2
+    },
+    "garrison": [
+     4,
+     2,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 2,
+    "city": {
+     "level": 1,
+     "b": {
+      "farms": 1,
+      "factory": 1
+     },
+     "built": 4
+    },
+    "garrison": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": -1,
+    "city": {
+     "level": 2,
+     "b": {
+      "farms": 1
+     },
+     "built": -1
+    },
+    "garrison": [
+     4,
+     2,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 0,
+    "city": {
+     "level": 1,
+     "b": {
+      "farms": 1
+     },
+     "built": 3
+    },
+    "garrison": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": -1,
+    "city": {
+     "level": 1,
+     "b": {},
+     "built": -1
+    },
+    "garrison": [
+     3,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 0,
+    "city": {
+     "level": 2,
+     "b": {
+      "farms": 1,
+      "factory": 1
+     },
+     "built": 6
+    },
+    "garrison": [
+     3,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": -1,
+    "city": {
+     "level": 2,
+     "b": {
+      "farms": 1
+     },
+     "built": -1
+    },
+    "garrison": [
+     4,
+     2,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 0,
+    "city": {
+     "level": 1,
+     "b": {
+      "farms": 1
+     },
+     "built": 6
+    },
+    "garrison": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": -1,
+    "city": {
+     "level": 1,
+     "b": {},
+     "built": -1
+    },
+    "garrison": [
+     3,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 0,
+    "city": {
+     "level": 3,
+     "b": {
+      "refinery": 2,
+      "farms": 2,
+      "factory": 1,
+      "fortifications": 2
+     },
+     "built": 5
+    },
+    "garrison": [
+     5,
+     2,
+     0,
+     0,
+     0,
+     1,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 0,
+    "city": {
+     "level": 1,
+     "b": {},
+     "built": -1
+    },
+    "garrison": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   },
+   {
+    "owner": 0,
+    "city": {
+     "level": 1,
+     "b": {},
+     "built": -1
+    },
+    "garrison": [
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0,
+     0
+    ],
+    "cut": 0
+   }
+  ],
+  "factions": [
+   {
+    "id": 0,
+    "name": "Meridian Corps",
+    "temperament": null,
+    "alive": true,
+    "capital": 15,
+    "stock": {
+     "ore": 9,
+     "fuel": 4,
+     "alloys": 4,
+     "food": 13
+    },
+    "research": {
+     "current": "calibration",
+     "points": 5,
+     "done": [],
+     "doctrines": {},
+     "loadouts": {}
+    },
+    "army": {
+     "region": 13,
+     "units": [
+      {
+       "kind": "tank",
+       "kills": 4
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 2
+      },
+      {
+       "kind": "rifleman",
+       "kills": 2
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "rifleman",
+       "kills": 0
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "rifleman",
+       "kills": 0
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "rifleman",
+       "kills": 0
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      }
+     ],
+     "moved": 0,
+     "attacked": true
+    }
+   },
+   {
+    "id": 1,
+    "name": "Verdant Directorate",
+    "temperament": "mercantile",
+    "alive": true,
+    "capital": 1,
+    "stock": {
+     "ore": 17,
+     "fuel": 14,
+     "alloys": 8,
+     "food": 17
+    },
+    "research": {
+     "current": "refining",
+     "points": 5,
+     "done": [],
+     "doctrines": {},
+     "loadouts": {}
+    },
+    "army": {
+     "region": 0,
+     "units": [
+      {
+       "kind": "rifleman",
+       "kills": 1
+      },
+      {
+       "kind": "rifleman",
+       "kills": 1
+      },
+      {
+       "kind": "rifleman",
+       "kills": 1
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "tank",
+       "kills": 0
+      },
+      {
+       "kind": "buggy",
+       "kills": 0
+      },
+      {
+       "kind": "rifleman",
+       "kills": 0
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "rifleman",
+       "kills": 0
+      }
+     ],
+     "moved": 0,
+     "attacked": false
+    }
+   },
+   {
+    "id": 2,
+    "name": "Tidewater League",
+    "temperament": "expansionist",
+    "alive": true,
+    "capital": 6,
+    "stock": {
+     "ore": 18,
+     "fuel": 7,
+     "alloys": 16,
+     "food": 12
+    },
+    "research": {
+     "current": "calibration",
+     "points": 5,
+     "done": [],
+     "doctrines": {},
+     "loadouts": {}
+    },
+    "army": {
+     "region": 4,
+     "units": [
+      {
+       "kind": "rifleman",
+       "kills": 2
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 1
+      },
+      {
+       "kind": "tank",
+       "kills": 1
+      },
+      {
+       "kind": "buggy",
+       "kills": 0
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "rifleman",
+       "kills": 0
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "rifleman",
+       "kills": 0
+      },
+      {
+       "kind": "rocketeer",
+       "kills": 0
+      },
+      {
+       "kind": "rifleman",
+       "kills": 0
+      }
+     ],
+     "moved": 0,
+     "attacked": false
+    }
+   }
+  ],
+  "trust": [
+   [
+    100,
+    55,
+    55
+   ],
+   [
+    55,
+    100,
+    55
+   ],
+   [
+    55,
+    55,
+    100
+   ]
+  ],
+  "treaties": [
+   {
+    "kind": "trade",
+    "turns": null,
+    "terms": [],
+    "a": 0,
+    "b": 1,
+    "since": 1,
+    "ends": null
+   },
+   {
+    "kind": "trade",
+    "turns": null,
+    "terms": [],
+    "a": 0,
+    "b": 2,
+    "since": 1,
+    "ends": null
+   },
+   {
+    "kind": "trade",
+    "turns": null,
+    "terms": [],
+    "a": 1,
+    "b": 2,
+    "since": 1,
+    "ends": null
+   }
+  ],
+  "routes": [
+   {
+    "id": 5,
+    "owner": 0,
+    "from": 9,
+    "to": 15
+   }
+  ],
+  "offers": [],
+  "pending": [
+   {
+    "id": 10,
+    "kind": "attack",
+    "region": 10,
+    "attacker": 0,
+    "defender": -1,
+    "setup": {
+     "battleId": 10,
+     "turn": 6,
+     "region": 10,
+     "regionName": "Eskfield Valley",
+     "seedText": "fixture-4:t6:r10:b10",
+     "mapType": "river",
+     "ore": "poor",
+     "difficulty": "normal",
+     "sides": [
+      {
+       "faction": 0,
+       "role": "attacker",
+       "team": 0,
+       "human": true,
+       "structures": [
+        "hq",
+        "power",
+        "power",
+        "refinery",
+        "barracks",
+        "factory"
+       ],
+       "cityTags": [
+        null,
+        null,
+        null,
+        null,
+        null,
+        null
+       ],
+       "credits": 2500,
+       "units": [
+        {
+         "kind": "tank",
+         "kills": 4,
+         "core": 0
+        },
+        {
+         "kind": "rocketeer",
+         "kills": 2,
+         "core": 1
+        },
+        {
+         "kind": "rifleman",
+         "kills": 2,
+         "core": 2
+        },
+        {
+         "kind": "rocketeer",
+         "kills": 0,
+         "core": 3
+        },
+        {
+         "kind": "rifleman",
+         "kills": 0,
+         "core": 4
+        },
+        {
+         "kind": "rocketeer",
+         "kills": 0,
+         "core": 5
+        },
+        {
+         "kind": "rifleman",
+         "kills": 0,
+         "core": 6
+        },
+        {
+         "kind": "rocketeer",
+         "kills": 0,
+         "core": 7
+        },
+        {
+         "kind": "rifleman",
+         "kills": 0,
+         "core": 8
+        },
+        {
+         "kind": "rocketeer",
+         "kills": 0,
+         "core": 9
+        }
+       ],
+       "heroes": [],
+       "upgrades": [],
+       "doctrines": {},
+       "loadouts": {},
+       "ai": "normal",
+       "fromRegion": null
+      },
+      {
+       "faction": -1,
+       "role": "defender",
+       "team": 1,
+       "human": false,
+       "structures": [
+        "hq",
+        "power",
+        "barracks",
+        "refinery",
+        "turret"
+       ],
+       "cityTags": [
+        null,
+        null,
+        null,
+        null,
+        null
+       ],
+       "credits": 1000,
+       "units": [
+        {
+         "kind": "rifleman",
+         "kills": 0,
+         "core": null
+        },
+        {
+         "kind": "rifleman",
+         "kills": 0,
+         "core": null
+        },
+        {
+         "kind": "rifleman",
+         "kills": 0,
+         "core": null
+        },
+        {
+         "kind": "rocketeer",
+         "kills": 0,
+         "core": null
+        }
+       ],
+       "heroes": [],
+       "upgrades": [],
+       "doctrines": {},
+       "loadouts": {},
+       "ai": "defend",
+       "fromRegion": null
+      }
+     ],
+     "defenderSeat": 1,
+     "timeLimit": 12000,
+     "cityLevel": 1,
+     "cityBuildings": {},
+     "perks": {
+      "harvestMul": 1,
+      "buildSpeedMul": 1,
+      "costMul": 1,
+      "unitHpMul": 1,
+      "powerCooldownMul": 1,
+      "extraStartCredits": 0
+     },
+     "powers": []
+    },
+    "fighting": false
+   }
+  ],
+  "commander": {
+   "name": "Fixture",
+   "xp": 335,
+   "points": 1,
+   "perks": {}
+  },
+  "heroes": {
+   "spy": {
+    "unlocked": false,
+    "xp": 0,
+    "wounded": false,
+    "lost": false
+   },
+   "commando": {
+    "unlocked": true,
+    "xp": 0,
+    "wounded": false,
+    "lost": false
+   },
+   "engineer": {
+    "unlocked": true,
+    "xp": 0,
+    "wounded": false,
+    "lost": false
+   },
+   "ace": {
+    "unlocked": false,
+    "xp": 0,
+    "wounded": false,
+    "lost": false
+   }
+  },
+  "nextId": 11,
+  "journal": [
+   {
+    "turn": 1,
+    "text": "The war for Orrin begins. Meridian Corps, Verdant Directorate and Tidewater League hold their capitals under an opening truce of 3 turns.",
+    "tone": "info"
+   },
+   {
+    "turn": 1,
+    "text": "Meridian Corps and Verdant Directorate sign a trade pact, open-ended.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 1,
+    "text": "Meridian Corps and Tidewater League sign a trade pact, open-ended.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 1,
+    "text": "Corwick: Refinery district raised to Mk 2.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 1,
+    "text": "The field army marches on Rosford Valley.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 1,
+    "text": "The independents hold Rosford Valley against Meridian Corps (auto-resolved).",
+    "tone": "bad",
+    "f": 0
+   },
+   {
+    "turn": 1,
+    "text": "Verdant Directorate and Tidewater League sign a trade pact, open-ended.",
+    "tone": "info"
+   },
+   {
+    "turn": 1,
+    "text": "Verdant Directorate takes Ulmwick Highlands from the independents (auto-resolved).",
+    "tone": "info",
+    "f": 1
+   },
+   {
+    "turn": 1,
+    "text": "Tidewater League takes Luncrest Highlands from the independents (auto-resolved).",
+    "tone": "info",
+    "f": 2
+   },
+   {
+    "turn": 2,
+    "text": "Jorton: Factory raised to Mk 1.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 2,
+    "text": "The field army marches on Rosford Valley.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 2,
+    "text": "Meridian Corps takes Rosford Valley from the independents (auto-resolved).",
+    "tone": "good",
+    "f": 0
+   },
+   {
+    "turn": 2,
+    "text": "A trade route opens between Rosford and Corwick.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 2,
+    "text": "Tidewater League takes Rosmoor Highlands from the independents (auto-resolved).",
+    "tone": "info",
+    "f": 2
+   },
+   {
+    "turn": 3,
+    "text": "Rosford: Farms raised to Mk 1.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 3,
+    "text": "The field army marches on Holgate Valley.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 3,
+    "text": "Meridian Corps takes Holgate Valley from the independents (auto-resolved).",
+    "tone": "good",
+    "f": 0
+   },
+   {
+    "turn": 4,
+    "text": "Corwick: Farms raised to Mk 2.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 4,
+    "text": "The field army marches on Holmere Valley.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 4,
+    "text": "Meridian Corps takes Holmere Valley from the independents (auto-resolved).",
+    "tone": "good",
+    "f": 0
+   },
+   {
+    "turn": 5,
+    "text": "Corwick: Fortifications raised to Mk 2.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 5,
+    "text": "The field army marches on Wenstead Plains.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 5,
+    "text": "Promoted to Captain. A skill point to spend.",
+    "tone": "good",
+    "f": 0
+   },
+   {
+    "turn": 5,
+    "text": "Meridian Corps takes Wenstead Plains from the independents (auto-resolved).",
+    "tone": "good",
+    "f": 0
+   },
+   {
+    "turn": 6,
+    "text": "Jorton grows to level 2.",
+    "tone": "good",
+    "f": 0
+   },
+   {
+    "turn": 6,
+    "text": "Wenstead: Farms raised to Mk 1.",
+    "tone": "info",
+    "f": 0
+   },
+   {
+    "turn": 6,
+    "text": "The field army marches on Eskfield Valley.",
+    "tone": "info",
+    "f": 0
+   }
+  ],
+  "result": null
+ },
+ "battle": null
+}

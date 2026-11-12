@@ -4,6 +4,7 @@ import { isEnemy } from './sides';
 import { airRoom, canHit, isAir } from './air';
 import { shoreProblem } from './naval';
 import { upgradeNewUnit } from './research';
+import { loadoutCost, loadoutOf, queueCostFor } from './loadout';
 import type { Target } from './grid';
 import {
   BUILD_RADIUS,
@@ -65,11 +66,20 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if (category === 'air' && airRoom(s, owner) < airSlotsOf(kind as UnitKind)) return false;
   // Forward Base Trucks: no more than MAX_FIELD_YARDS, counting yards, trucks and trucks queued.
   if (kind === 'basetruck' && fieldYardsOf(s, owner) >= MAX_FIELD_YARDS) return false;
+  // Vehicles: the price includes the current loadout's modules (development lines only).
+  if (category === 'vehicle') return p.credits >= queueCostFor(s, owner, kind as UnitKind);
   return p.credits >= costFor(s, owner, kind);
 }
 
 export function doQueue(s: GameState, owner: Owner, category: Category, kind: BuildingKind | UnitKind): void {
   const p = s.players[owner];
+  const mods = category === 'vehicle' ? loadoutOf(s, owner, kind as UnitKind) : [];
+  if (mods.length) {
+    const extra = loadoutCost(mods);
+    p.credits -= costFor(s, owner, kind) + extra;
+    p.queues[category].push({ kind, progress: 0, modules: [...mods], extra });
+    return;
+  }
   p.credits -= costFor(s, owner, kind);
   p.queues[category].push({ kind, progress: 0 });
 }
@@ -83,8 +93,9 @@ export function doCancel(s: GameState, owner: Owner, category: Category, kind: B
   const q = s.players[owner].queues[category];
   for (let i = q.length - 1; i >= 0; i--) {
     if (q[i].kind === kind) {
+      const extra = q[i].extra ?? 0;
       q.splice(i, 1);
-      s.players[owner].credits += costFor(s, owner, kind);
+      s.players[owner].credits += costFor(s, owner, kind) + extra;
       return;
     }
   }

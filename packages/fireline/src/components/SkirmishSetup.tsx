@@ -8,7 +8,10 @@ import {
   BUILD_MENU,
   BUILDINGS,
   DEFAULT_SETUP,
+  GAME_PACE_ORDER,
+  GAME_PACES,
   INFANTRY_MENU,
+  LOBBY_DEFAULT_PACE,
   MAP_TYPE_BLURBS,
   MAP_TYPE_BLURBS_SIDES,
   MAP_TYPE_NAMES,
@@ -26,11 +29,15 @@ import {
   STANDARD_TECH,
   UNITS,
   VEHICLE_MENU,
+  applyPace,
+  researchPaceText,
   type BuildingKind,
+  type GamePace,
   type MapSize,
   type MapType,
   type OreLevel,
   type Owner,
+  type ResearchMode,
   type SideMode,
   type SkirmishSetup,
   type SupportPower,
@@ -65,13 +72,20 @@ function sitesNote(setup: SkirmishSetup): string {
 
 const STORE_KEY = 'fireline_setup';
 
-/** The player's last setup, so the next battle starts from it. Per browser, and only a convenience. */
+/** What the lobby offers a player who has never chosen: the default setup at the lobby's default pace, sites on. */
+const FIRST_SETUP: SkirmishSetup = { ...applyPace(DEFAULT_SETUP, LOBBY_DEFAULT_PACE), sites: true };
+
+/**
+ * The player's last setup, so the next battle starts from it. Per browser, and only a convenience.
+ * A setup stored before game paces existed keeps its credits and ore and gets the lobby's default pace.
+ */
 export function readStoredSetup(): SkirmishSetup {
   try {
     const raw = localStorage.getItem(STORE_KEY);
-    // Sites are on for a new lobby (the player asked for bases to fight over); DEFAULT_SETUP keeps
-    // them off, because it also fills in setups saved before sites existed.
-    if (!raw) return { ...DEFAULT_SETUP, sites: true };
+    // A new lobby: the default setup at the lobby's default pace, with sites on (the player asked for
+    // bases to fight over); DEFAULT_SETUP keeps them off, because it also fills in setups saved
+    // before sites existed.
+    if (!raw) return FIRST_SETUP;
     const r = JSON.parse(raw) as Partial<SkirmishSetup>;
     return {
       map: r.map === 'random' || MAP_TYPES.includes(r.map as MapType) ? (r.map as SkirmishSetup['map']) : DEFAULT_SETUP.map,
@@ -80,11 +94,19 @@ export function readStoredSetup(): SkirmishSetup {
       ore: r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : DEFAULT_SETUP.ore,
       sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
+      research: r.research === 'classic' || r.research === 'lines' ? r.research : DEFAULT_SETUP.research,
+      // A setup stored before the merge with main kept the pace as `size` ('quick', 'long', 'epic'
+      // read as the pace; 'standard' is ambiguous and reads as the map size, with the default pace).
+      pace: GAME_PACE_ORDER.includes(r.pace as GamePace)
+        ? (r.pace as GamePace)
+        : GAME_PACE_ORDER.includes(r.size as unknown as GamePace) && !MAP_SIZES.includes(r.size as MapSize)
+          ? (r.size as unknown as GamePace)
+          : LOBBY_DEFAULT_PACE,
       size: MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : 'standard',
       sites: r.sites !== false,
     };
   } catch {
-    return { ...DEFAULT_SETUP, sites: true };
+    return FIRST_SETUP;
   }
 }
 
@@ -106,7 +128,7 @@ export function freshSeed(): string {
 /** The seed text exactly as createInitialState will read it. */
 const seedNumber = (text: string) => seedFromString(text.trim().slice(0, 64));
 
-const ORE_TEXT: Record<OreLevel, { name: string; text: string }> = {
+export const ORE_TEXT: Record<OreLevel, { name: string; text: string }> = {
   poor: { name: 'Poor', text: 'Thin fields: every hauler trip counts, and expansions matter early.' },
   normal: { name: 'Normal', text: 'The standard amount.' },
   rich: { name: 'Rich', text: 'Denser, wider fields: bigger armies, sooner.' },
@@ -127,6 +149,14 @@ export const TECH_TEXT: Record<TechLevel, { name: string; text: string }> = {
   advanced: {
     name: 'Advanced',
     text: `Adds the ${list(ADVANCED_UNITS)}; the ${list(ADVANCED_STRUCTURES)}; and support powers that come with structures: ${list(ADVANCED_POWERS)}. The enemy has them too.`,
+  },
+};
+
+export const RESEARCH_TEXT: Record<ResearchMode, { name: string; text: string }> = {
+  classic: { name: 'Classic', text: 'Five upgrades from the Research Lab, one at a time.' },
+  lines: {
+    name: 'Development lines',
+    text: 'Five lines of three marks each, a doctrine to choose at the top of every line, and modules for your vehicles. The enemy researches them too.',
   },
 };
 
@@ -163,6 +193,8 @@ export default function SkirmishSetupPanel({
   }, [maps, seed, value.sites, value.size]);
   const drawn = randomMapType(seed);
   const set = (patch: Partial<SkirmishSetup>) => onChange({ ...value, ...patch });
+
+  const lines = value.tech === 'advanced' && value.research === 'lines';
 
   return (
     <>
@@ -244,9 +276,47 @@ export default function SkirmishSetupPanel({
             ))}
           </div>
         </div>
+
+        <div className="fl-setup-field" data-testid="setup-research">
+          <Label>Research</Label>
+          {/* Standard tech keeps the stored choice, so switching back to advanced restores it. */}
+          <div className="fl-levels" role="radiogroup" aria-label="Research" aria-disabled={value.tech === 'standard' || undefined}>
+            {(['classic', 'lines'] as ResearchMode[]).map(r => (
+              <button
+                key={r}
+                type="button"
+                role="radio"
+                className="fl-level"
+                aria-checked={value.tech === 'advanced' && value.research === r}
+                disabled={value.tech === 'standard'}
+                data-testid={`setup-research-${r}`}
+                onClick={() => set({ research: r })}
+              >
+                <span className="fl-level-name">{RESEARCH_TEXT[r].name}</span>
+                <span className="fl-level-facts">{RESEARCH_TEXT[r].text}</span>
+              </button>
+            ))}
+          </div>
+          {value.tech === 'standard' && <p className="fl-setup-note">Advanced tech only.</p>}
+        </div>
       </SetupStep>
 
-      <SetupStep n={4} title="Terms of engagement" hint="Money, ore, room to manoeuvre and ground worth taking.">
+      <SetupStep n={4} title="Terms of engagement" hint="How long a battle runs, money, ore, room to manoeuvre and ground worth taking.">
+        <div className="fl-setup-field">
+          <Label>Game size</Label>
+          {/* Customise sets the pace alone: credits, ore and map size stay as the player set them. */}
+          <div className="fl-seg" role="radiogroup" aria-label="Game size">
+            {GAME_PACE_ORDER.map(k => (
+              <button key={k} type="button" role="radio" aria-checked={value.pace === k} data-testid={`setup-size-${k}`} onClick={() => set({ pace: k })}>
+                {GAME_PACES[k].name}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note" data-testid="setup-size-note">
+            {GAME_PACES[value.pace].tagline}
+            {lines ? ` Research: ${researchPaceText(value.pace).toLowerCase()}.` : ''}
+          </p>
+        </div>
         <div className="fl-setup-row fl-setup-terms">
           <div className="fl-setup-field">
             <Label>Starting credits</Label>

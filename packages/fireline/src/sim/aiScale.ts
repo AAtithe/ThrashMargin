@@ -1,4 +1,4 @@
-import { MAP_SIZE_FOR, type DifficultySpec, type MapSize } from './rules';
+import { MAP_SIZE_FOR, MAP_SIZE_TILES, type DifficultySpec, type MapSize, type SkirmishSetup } from './rules';
 import type { GameState } from './types';
 
 /**
@@ -52,7 +52,19 @@ export const AI_SCALE = {
 
 /** The difficulty's numbers for this map's size. Standard size: `d` itself. */
 export function scaledFor(s: GameState, d: DifficultySpec): DifficultySpec {
-  const k = mapScale(s);
+  return scaledBy(mapScale(s), d);
+}
+
+/**
+ * The same for a setup not yet played (the lobby's enemy cards): the scale its map will have.
+ * createInitialState builds the map at MAP_SIZE_TILES, so this equals mapScale of the battle.
+ */
+export function scaledForSetup(setup: Pick<SkirmishSetup, 'sides' | 'size'>, d: DifficultySpec): DifficultySpec {
+  const size = setup.size ?? 'standard';
+  return scaledBy(size === 'standard' ? 1 : Math.max(1, MAP_SIZE_TILES[size][setup.sides] / MAP_SIZE_FOR[setup.sides]), d);
+}
+
+function scaledBy(k: number, d: DifficultySpec): DifficultySpec {
   if (k === 1) return d;
   const e = k - 1;
   return {

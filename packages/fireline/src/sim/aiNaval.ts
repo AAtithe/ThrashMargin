@@ -132,7 +132,7 @@ export function creepFocus(s: GameState, owner: Owner): { x: number; y: number }
   return m.navalCreep && m.navalShore ? { x: m.navalShore[0], y: m.navalShore[1] } : null;
 }
 
-export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: number }, enemy: Building[], foes: Unit[]): void {
+export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: number }, enemy: Building[], foes: Unit[], hold = false): void {
   if (s.mission || !techAllowed(s, owner, 'shipyard')) return;
   const mem = s.ai[owner];
   if (mem.navalShore === undefined) {
@@ -171,8 +171,9 @@ export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: numb
   }
   if (!yard) return;
 
-  // 2. Ships, to the plan.
-  if (!crisis && (p.queues.naval ?? []).length === 0) {
+  // 2. Ships, to the plan. Not while paced research holds unit purchases (`hold`, from ai.ts), nor
+  // in an economic crisis.
+  if (!hold && !crisis && (p.queues.naval ?? []).length === 0) {
     const plan: [UnitKind, number][] = [
       ['gunboat', t.gunboats],
       ['destroyer', t.destroyers],

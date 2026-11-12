@@ -74,7 +74,7 @@ import {
   type HeroKind,
   type UnitKind,
 } from '../src/sim/rules';
-import { createInitialState } from '../src/sim/state';
+import { createInitialState, pacedResearch, paceOf } from '../src/sim/state';
 import type { GameState, MissionOutcome, MissionSpec, ObjectiveSpec } from '../src/sim/types';
 
 const MIN = 600;
@@ -472,6 +472,8 @@ section('mission specs', () => {
     if (m.enemy.base === 'outpost') ok(m.enemy.ai !== 'normal' && m.enemy.ai !== 'raid' || m.enemy.structures.some(b => b === 'factory' || b === 'barracks'), `${L}: an attacking outpost can train`);
     const hasBase = m.player.structures.includes('hq');
     ok(hasBase || !m.tech.some(isBuilding), `${L}: building tech only with a Command Yard`);
+    // Round 5 (fireline-round5b-design.md, section 7): missions never use development lines.
+    ok(m.research === 'classic', `${L}: classic research, never development lines`);
 
     // Tech and powers, and the unlock arc.
     for (const t of m.tech) ok(isBuilding(t) || isUnit(t), `${L}: tech ${t} is a real, buildable kind`);
@@ -623,6 +625,8 @@ section('missions in the simulation', () => {
       continue;
     }
     ok(!!s.mission && s.mission.id === m.id, `${m.id}: state carries the mission`);
+    // Game size (fireline-round6-design.md): a mission always plays at Quick, today's numbers.
+    ok(paceOf(s) === 'quick' && !pacedResearch(s), `${m.id}: plays at the Quick size, no paced research`);
     ok(s.mission?.objectives.length === m.objectives.length && s.mission?.bonus.length === m.bonus.length, `${m.id}: objectives built`);
     ok(s.seedText === m.seed || s.rngSeed === seedFromString(m.seed), `${m.id}: map from the mission seed`);
     ok(s.tiles === generateMap(seedFromString(m.seed)).tiles, `${m.id}: tiles match the generated map`);

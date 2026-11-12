@@ -46,5 +46,8 @@ done
 step "Test suite: fireline campaign (progression, the eight missions built and run)"
 npm run campaign-check --workspace=packages/fireline --silent | tail -2
 
+step "Test suite: fireline War for the Planet"
+npm run drive:planet --workspace=packages/fireline --silent | tail -3
+
 echo
 echo "==> All checks passed"

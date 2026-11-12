@@ -79,9 +79,10 @@ export function quietCommander(fn: (ok: Ok) => void): (ok: Ok) => void {
 
 /**
  * An advanced skirmish on open plains with everyone's units gone, nothing attacking, and a
- * (cx, cy) with 17 by 17 tiles of clear ground round it.
+ * (cx, cy) with 17 by 17 tiles of clear ground round it. Classic research by default: these
+ * sections test the round 4 rules exactly (drive-lines.ts tests development lines).
  */
-export function airArena(seed = 'air-arena', setup: Partial<SkirmishSetup> = { map: 'plains', tech: 'advanced', credits: 20000 }) {
+export function airArena(seed = 'air-arena', setup: Partial<SkirmishSetup> = { map: 'plains', tech: 'advanced', credits: 20000, research: 'classic' }) {
   const s = copy(createInitialState(seed, seed, { seed, createdAt: 0, setup }));
   s.units = [];
   for (const m of s.ai) m.nextAttack = 1e9;
@@ -145,7 +146,8 @@ function rulesAndMenus(ok: Ok): void {
   ok(DAMAGE_VS.bullet.aircraft > 0.2 && DAMAGE_VS.bullet.aircraft < 0.5, 'bullets hurt aircraft at a reduced effect');
   for (const w of ['flak', 'aamissile', 'bomb'] as const) ok(FLIGHT_TICKS[w] > 0, `${w}: has a flight time`);
   for (const id of UPGRADE_ORDER) ok(UPGRADES[id].requires.includes('researchlab') && UPGRADES[id].cost > 0 && UPGRADES[id].ticks > 0, `${id}: needs a Lab, costs and takes time`);
-  ok(new Set(UPGRADE_ORDER).size === Object.keys(UPGRADES).length, 'every upgrade listed once');
+  // Round 5 widened UPGRADES with development lines; UPGRADE_ORDER stays the classic ones (six since the air war's Countermeasures).
+  ok(new Set(UPGRADE_ORDER).size === UPGRADE_ORDER.length && UPGRADE_ORDER.length === 6 && UPGRADE_ORDER.every(id => id in UPGRADES), 'every classic upgrade listed once');
 }
 
 /** Standard tech, the original game and missions offer none of it; advanced tech offers all of it. */
@@ -622,7 +624,7 @@ function research(ok: Ok): void {
 function oldSaves(ok: Ok): void {
   for (const [label, setup] of [
     ['the original game', undefined],
-    ['advanced tech', { map: 'river', tech: 'advanced' }],
+    ['advanced tech', { map: 'river', tech: 'advanced', research: 'classic' }],
   ] as [string, Partial<SkirmishSetup> | undefined][]) {
     let s = createInitialState('old-air', 'old-air', { seed: 'old-air', createdAt: 0, autopilot: true, ...(setup ? { setup } : {}) });
     s = tick(s, 400);
@@ -656,7 +658,7 @@ function oldSaves(ok: Ok): void {
 function computer(ok: Ok): void {
   // Side 1 builds on its own; side 0 is a Command Yard that never moves. No attacks.
   const quietBattle = (seed: string, withAir: boolean): { aa: boolean; s: GameState; aaAt: number } => {
-    let s = copy(createInitialState(seed, seed, { seed, createdAt: 0, setup: { map: 'plains', tech: 'advanced', credits: 10000 } }));
+    let s = copy(createInitialState(seed, seed, { seed, createdAt: 0, setup: { map: 'plains', tech: 'advanced', credits: 10000, research: 'classic' } }));
     s.units = s.units.filter(u => u.owner !== 0);
     for (const m of s.ai) {
       m.nextAttack = 1e9;
@@ -693,7 +695,7 @@ function computer(ok: Ok): void {
 /** Real battles: both commanders fly strikes; a battle with aircraft replays exactly. */
 function battles(ok: Ok): void {
   const play = (seed: string): { s: GameState; bombs: number; rockets: number; air: number } => {
-    let s = createInitialState(`air-${seed}`, seed, { seed, difficulty: 'hard', createdAt: 0, autopilot: true, setup: { map: 'plains', tech: 'advanced' } });
+    let s = createInitialState(`air-${seed}`, seed, { seed, difficulty: 'hard', createdAt: 0, autopilot: true, setup: { map: 'plains', tech: 'advanced', research: 'classic' } });
     s.autopilotDifficulty = 'hard';
     let bombs = 0;
     let rockets = 0;

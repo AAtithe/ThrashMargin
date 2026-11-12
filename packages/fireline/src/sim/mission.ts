@@ -72,12 +72,12 @@ const newPlayer = (owner: Owner, credits: number): PlayerState => ({
 });
 
 /** The centre of a side's Command Yard site: a skirmish's own (s.starts), else the original sites missions use. */
-const startCentre = (s: GameState, owner: Owner) => {
+export const startCentre = (s: GameState, owner: Owner) => {
   const st = startOf(s, owner);
   return { x: st.x + 1.5, y: st.y + 1.5 };
 };
 
-function toward(a: { x: number; y: number }, b: { x: number; y: number }, by: number): { x: number; y: number } {
+export function toward(a: { x: number; y: number }, b: { x: number; y: number }, by: number): { x: number; y: number } {
   const d = dist(a.x, a.y, b.x, b.y) || 1;
   return { x: a.x + ((b.x - a.x) / d) * by, y: a.y + ((b.y - a.y) / d) * by };
 }
@@ -115,7 +115,7 @@ function siteOk(s: GameState, occ: Int32Array, owner: Owner, kind: BuildingKind,
 }
 
 /** Puts a structure as near `focus` as the ground allows. Null if there is nowhere within reach. */
-function placeNear(s: GameState, owner: Owner, kind: BuildingKind, focus: { x: number; y: number }): Building | null {
+export function placeNear(s: GameState, owner: Owner, kind: BuildingKind, focus: { x: number; y: number }): Building | null {
   const spec = BUILDINGS[kind];
   const occ = occupancy(s);
   const fx = Math.round(focus.x);
@@ -141,7 +141,7 @@ function placeNear(s: GameState, owner: Owner, kind: BuildingKind, focus: { x: n
 }
 
 /** Where a structure of this kind goes in an opening layout: turrets out front, refineries toward ore. */
-function focusFor(s: GameState, kind: BuildingKind, home: { x: number; y: number }, enemy: { x: number; y: number }) {
+export function focusFor(s: GameState, kind: BuildingKind, home: { x: number; y: number }, enemy: { x: number; y: number }) {
   if (kind === 'turret' || kind === 'rocketturret') return toward(home, enemy, 6);
   // Sandbags in a band ahead of the turrets: the base's outer line.
   if (kind === 'wall') return toward(home, enemy, 8);
@@ -188,7 +188,7 @@ function freeTile(s: GameState, occ: Int32Array, taken: Set<number>, x: number, 
 }
 
 /** Adds units one to a tile around (x, y). Returns those that found room. */
-function placeUnits(s: GameState, owner: Owner, kinds: UnitKind[], x: number, y: number): Unit[] {
+export function placeUnits(s: GameState, owner: Owner, kinds: UnitKind[], x: number, y: number): Unit[] {
   const occ = occupancy(s);
   const taken = new Set<number>();
   for (const u of s.units) taken.add(tileAt(s, Math.floor(u.x), Math.floor(u.y)));
@@ -212,6 +212,26 @@ function heroMaxHp(s: GameState, u: Unit, level: number): number {
 function setMaxHp(u: Unit, v: number): void {
   if (v === UNITS[u.kind].hp) delete u.maxHp;
   else u.maxHp = v;
+}
+
+/**
+ * Heroes placed around (x, y) with their carried xp: level from xp, full health from the level (and
+ * side 0's Armour perk), half of it for a wounded hero. Unknown kinds and repeats are skipped.
+ * Returns the heroes that found room. Used by missions and planet battles alike.
+ */
+export function placeHeroes(s: GameState, owner: Owner, heroes: { kind: HeroKind; xp: number; wounded: boolean }[], x: number, y: number): Unit[] {
+  const list = heroes.filter((h, i, all) => UNITS[h.kind]?.hero && all.findIndex(o => o.kind === h.kind) === i);
+  const placed = placeUnits(s, owner, list.map(h => h.kind), x, y);
+  for (const u of placed) {
+    const carried = list.find(h => h.kind === u.kind)!;
+    const xp = Math.max(0, Math.floor(carried.xp || 0));
+    const level = heroLevelFor(xp);
+    u.hero = { level, xp, abilityCd: 0 };
+    const max = heroMaxHp(s, u, level);
+    setMaxHp(u, max);
+    u.hp = carried.wounded ? Math.max(1, Math.round(max / 2)) : max;
+  }
+  return placed;
 }
 
 /** A fresh battle set up from a mission spec and the campaign's context. Deterministic. */
@@ -288,15 +308,13 @@ export function createMissionState(spec: MissionSpec, ctx: MissionContext): Game
   const muster1 = toward(home1, home0, spec.enemy.base === 'full' || spec.enemy.structures.length ? 4 : 0);
   placeUnits(s, 0, spec.player.units, muster0.x, muster0.y);
   const heroes = spec.player.heroes.filter((h, i, all) => all.indexOf(h) === i && ctx.heroes[h] && UNITS[h]?.hero);
-  for (const u of placeUnits(s, 0, heroes, muster0.x, muster0.y)) {
-    const carried = ctx.heroes[u.kind as HeroKind]!;
-    const xp = Math.max(0, Math.floor(carried.xp || 0));
-    const level = heroLevelFor(xp);
-    u.hero = { level, xp, abilityCd: 0 };
-    const max = heroMaxHp(s, u, level);
-    setMaxHp(u, max);
-    u.hp = carried.wounded ? Math.max(1, Math.round(max / 2)) : max;
-  }
+  placeHeroes(
+    s,
+    0,
+    heroes.map(kind => ({ kind, xp: ctx.heroes[kind]!.xp, wounded: ctx.heroes[kind]!.wounded })),
+    muster0.x,
+    muster0.y,
+  );
   placeUnits(s, 1, spec.enemy.units, muster1.x, muster1.y);
   if (spec.convoy) placeConvoy(s, spec.convoy);
   if (spec.structurePowers) syncStructurePowers(s);
@@ -778,6 +796,7 @@ export function noteDestroyed(s: GameState, b: Building): void {
 export function noteFallen(s: GameState, u: Unit): void {
   if (!u.hero || u.owner !== 0) return;
   if (s.mission) s.mission.fallen = { ...s.mission.fallen, [u.kind]: u.hero.xp };
+  if (s.planet) s.planet.fallen = { ...s.planet.fallen, [u.kind]: u.hero.xp };
   log(s, `${UNITS[u.kind].name} has fallen.`, 'bad');
 }
 

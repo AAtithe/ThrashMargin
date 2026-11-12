@@ -32,6 +32,7 @@ function mspec(over: Partial<MissionSpec> = {}): MissionSpec {
     player: { credits: 2000, structures: [], units: ['rifleman'], heroes: [] },
     enemy: { credits: 0, base: 'outpost', structures: ['power'], units: [], ai: 'passive' },
     tech: ['power', 'barracks', 'rifleman'],
+    research: 'classic',
     powers: [],
     objectives: [{ kind: 'destroyAll' }],
     bonus: [],

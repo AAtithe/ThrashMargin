@@ -11,7 +11,8 @@ jobs:
   checks:
     name: Typecheck and game test suites
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # npm run check is about 9 minutes on a runner; the extra is headroom, not room to grow into.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

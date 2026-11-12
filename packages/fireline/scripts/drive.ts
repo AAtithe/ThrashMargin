@@ -6,6 +6,7 @@ import { setAutopilotAi } from '../src/sim/ai';
  *   npm run drive                 20 seeds on Normal, plus Easy and Hard samples
  *   npm run drive -- --seeds 60   a wider sweep
  *   npm run drive -- --campaign   only the campaign sections (missions, heroes, powers, perks)
+ *   npm run drive -- --deep       the full development-lines and pace sweeps (npm run check runs a lighter sample)
  *
  * The campaign sections build their own test missions inline (the real mission list belongs to
  * the campaign layer) and cover every ability, stealth, every power, every objective and trigger
@@ -23,6 +24,10 @@ import { setAutopilotAi } from '../src/sim/ai';
 import { processAction } from '../src/sim/actions';
 // round4:A. Air power and research: its import (scripts/drive-air.ts) goes on the line below.
 import { sections as airSections } from './drive-air';
+// round5. Development lines and loadouts (fireline-round5b-design.md): its sections.
+import { sections as linesSections } from './drive-lines';
+// round6. Game size and paced research (fireline-round6-design.md): its sections.
+import { sections as sizeSections } from './drive-size';
 // The air war (2026-11-10): the Recon Plane, the Interceptor and Countermeasures.
 import { sections as airWarSections } from './drive-airwar';
 // The naval war (2026-11-11): the Coast map, ships, the Naval Yard, landings and the computer's navy.
@@ -921,6 +926,7 @@ function mspec(over: Partial<MissionSpec> = {}): MissionSpec {
     player: { credits: 2000, structures: [], units: ['rifleman'], heroes: [] },
     enemy: { credits: 0, base: 'outpost', structures: ['power'], units: [], ai: 'passive' },
     tech: ['power', 'barracks', 'rifleman'],
+    research: 'classic',
     powers: [],
     objectives: [{ kind: 'destroyAll' }],
     bonus: [],
@@ -2749,6 +2755,13 @@ if (!CAMPAIGN_ONLY) {
     // round4:A. Air power and research (fireline-round4-design.md): its sections, imported from
     // scripts/drive-air.ts, go on the lines below this comment.
     ...airSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round5. Development lines and loadouts (fireline-round5b-design.md): its sections, imported
+    // from scripts/drive-lines.ts.
+    ...linesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6. Game size and paced research (fireline-round6-design.md): its sections, imported
+    // from scripts/drive-size.ts.
+    ...sizeSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // The air war (2026-11-10): its sections, imported from scripts/drive-airwar.ts.
     ...airWarSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     ...navalSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // round4:B. Bigger battles (fireline-round4-design.md): its sections, imported from

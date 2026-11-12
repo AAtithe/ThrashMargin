@@ -2,6 +2,7 @@ import { boardProblem, canRide } from '../sim/transport';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { isCampaignSave } from '../campaign/save';
+import { isPlanetSave, type PlanetSave } from '../planet/save';
 import type { CampaignSave } from '../campaign/types';
 import { HERO_KEYS, HeroBar, heroName, ObjectivesPanel, PowerBar, SkirmishPowerBar, abilityBlock, type Targeting } from '../components/CampaignHud';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
@@ -19,6 +20,7 @@ import { researchProblem } from '../sim/research';
 import { sound } from '../game/sound';
 import { statusOf, useSaves } from '../hooks/useSaves';
 import CampaignFlow from './Campaign';
+import PlanetFlow from './Planet';
 import { campaignSaves } from './campaignSaves';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
 import { clearToken, getStoredUser } from '../lib/portalAuth';
@@ -75,7 +77,7 @@ export default function GameScreen() {
   // The campaign's calls (create, load, save of a CampaignSave) alongside the skirmish ones.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const camp = useMemo(() => campaignSaves(saves), [saves.cloud, saves.load, saves.save]);
-  const [state, setState] = useState<GameState | CampaignSave | null>(null);
+  const [state, setState] = useState<GameState | CampaignSave | PlanetSave | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [failed, setFailed] = useState(false);
   const { load } = camp;
@@ -134,6 +136,10 @@ export default function GameScreen() {
   if (isCampaignSave(state)) {
     return <CampaignFlow initial={state} save={camp.save} saveError={saves.error} lastSaved={saves.lastSaved} cloud={saves.cloud} />;
   }
+  // War for the Planet (fireline-planet-design.md, section 17): the whole war, battles included.
+  if (isPlanetSave(state)) {
+    return <PlanetFlow initial={state} save={camp.save} saveError={saves.error} lastSaved={saves.lastSaved} cloud={saves.cloud} />;
+  }
   return <Battle initial={state} save={saves.save} saveError={saves.error} lastSaved={saves.lastSaved} cloud={saves.cloud} />;
 }
 
@@ -141,8 +147,12 @@ export default function GameScreen() {
 export interface CampaignBattle {
   leaveLabel: string;
   onLeave: () => void;
-  /** Drawn over the battlefield once `s.mission.result` is set, in place of the skirmish end card. */
+  /**
+   * Drawn over the battlefield in place of the skirmish end card: once `s.mission.result` is set
+   * (`endWhen: 'mission'`, the default), or once `s.winner` is set (`'winner'`, a planet battle).
+   */
   renderEnd: (s: GameState) => ReactNode;
+  endWhen?: 'mission' | 'winner';
 }
 
 export function Battle({
@@ -240,7 +250,7 @@ export function Battle({
   // in this browser; the Tour button reopens it at any time. Bumping `tourRun` remounts it, so a
   // reopened run always starts on the welcome card.
   // The tour teaches a skirmish base; a campaign battle never opens it.
-  const [tourOpen, setTourOpen] = useState(() => !initial.mission && !hasSeenGuidedTour() && initial.tick < 600 && initial.winner === null);
+  const [tourOpen, setTourOpen] = useState(() => !initial.mission && !initial.planet && !hasSeenGuidedTour() && initial.tick < 600 && initial.winner === null);
   const [tourRun, setTourRun] = useState(0);
   const [soundPrefs, setSoundPrefs] = useState(sound.prefs);
   const changeSound = useCallback((p: Partial<typeof soundPrefs>) => {
@@ -970,13 +980,13 @@ export function Battle({
         return;
       }
       const heroKey = (HERO_KEYS as readonly string[]).indexOf(k);
-      if (cur.current.mission && heroKey >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if ((cur.current.mission || cur.current.planet) && heroKey >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // Z X C V: heroes 1 to 4 in bar order; twice to jump to the hero.
         const kind = heroOrder()[heroKey];
         if (kind) selectHero(kind);
         return;
       }
-      if (cur.current.mission && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if ((cur.current.mission || cur.current.planet) && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // F: the selected hero's ability.
         const u = cur.current.units.find(x => x.owner === 0 && x.hero && ov.selected.has(x.id));
         if (u) triggerAbility(u.kind as HeroKind);
@@ -1349,8 +1359,8 @@ export function Battle({
       />
     </div>
   );
-  // The tour teaches a skirmish base; a campaign battle has no Tour button.
-  const tourButton = mission ? null : (
+  // The tour teaches a skirmish base; a campaign or planet battle has no Tour button.
+  const tourButton = mission || s.planet ? null : (
     <button
       type="button"
       className="fl-d-btn"
@@ -1378,7 +1388,9 @@ export function Battle({
   const zones = mission ? missionZones(s) : [];
   const missiles = s.projectiles.filter(p => p.weapon === 'missile');
   const incoming = ended ? null : missiles.filter(p => isEnemy(s, 0, p.owner)).sort((a, b) => a.hitAt - b.hitAt)[0] ?? null;
-  const skirmishPowers = !mission && !ended && !!s.powers && s.setup?.tech === 'advanced';
+  const skirmishPowers = !mission && !s.planet && !ended && !!s.powers && s.setup?.tech === 'advanced';
+  // A planet battle: the heroes brought and every power held (perk powers and those of standing structures).
+  const planetBar = !!s.planet && !ended;
   const leave = () => {
     doSave();
     if (campaign) campaign.onLeave();
@@ -1649,7 +1661,7 @@ export function Battle({
           )}
           <div
             className="fl-d-feed"
-            style={{ bottom: ((mission && !ended) || skirmishPowers ? 80 : 10) + barLift, maxWidth: layout.stacked ? '90%' : 'min(60%, 520px)' }}
+            style={{ bottom: ((mission && !ended) || skirmishPowers || planetBar ? 80 : 10) + barLift, maxWidth: layout.stacked ? '90%' : 'min(60%, 520px)' }}
             aria-live="polite"
           >
             {(layout.stacked ? recent.slice(0, 3) : recent).map(l => (
@@ -1660,6 +1672,12 @@ export function Battle({
           </div>
           {mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
           {mission && !ended && (
+            <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
+              <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
+              <PowerBar s={s} targeting={targeting} onPower={choosePower} />
+            </div>
+          )}
+          {planetBar && (
             <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
               <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
               <PowerBar s={s} targeting={targeting} onPower={choosePower} />
@@ -1711,7 +1729,13 @@ export function Battle({
               </div>
             </div>
           )}
-          {mission && campaign ? (mission.result ? campaign.renderEnd(s) : null) : s.winner !== null && <EndCard state={s} onLobby={() => navigate('/')} />}
+          {campaign?.endWhen === 'winner'
+            ? s.winner !== null && campaign.renderEnd(s)
+            : mission && campaign
+              ? mission.result
+                ? campaign.renderEnd(s)
+                : null
+              : s.winner !== null && <EndCard state={s} onLobby={() => navigate('/')} />}
         </div>
 
         {tourOpen && (

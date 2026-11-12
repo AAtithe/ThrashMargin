@@ -8,6 +8,8 @@ import { cleanName, createGame, isGameId, saveState, sendGameLimit, sendSaveResu
 import { createInitialState, normaliseSetup } from '../../src/sim/state';
 import { DEFAULT_SETUP, MAP_TYPES } from '../../src/sim/rules';
 import { campaignSaveStatus, campaignSaveTurn, isCampaignSave, migrateCampaignSave, newCampaignSave } from '../../src/campaign/save';
+import { isPlanetSave, migratePlanetSave, newPlanetSave, PLANET_SAVE_MAX_BYTES, planetSaveStatus, planetSaveTurn, readPreset } from '../../src/planet/save';
+import { LENGTH_PRESETS } from '../../src/planet/rules';
 
 /**
  * Fireline's saves, in the shared `games` table, discriminated by `game = 'fireline'` so no other
@@ -38,11 +40,18 @@ const statusOf = (state: { winner?: unknown }) =>
  * A campaign is one row holding the whole career (`kind: 'campaign'`). Its `turn` is missions won and
  * its status is 'victory' once the last mission is won, 'active' until then: a lost mission can be
  * retried, so a campaign is never 'defeated'.
+ *
+ * A planet war is one row too (`kind: 'planet'`): its `turn` is the strategic turn and its status
+ * follows the war's result (fireline-planet-design.md, section 15.2).
  */
 function rowFields(state: object): { status: string; turn: number } {
   if (isCampaignSave(state)) {
     const c = migrateCampaignSave(state);
     return c ? { status: campaignSaveStatus(c), turn: campaignSaveTurn(c) } : { status: 'active', turn: 0 };
+  }
+  if (isPlanetSave(state)) {
+    const p = migratePlanetSave(state);
+    return p ? { status: planetSaveStatus(p), turn: planetSaveTurn(p) } : { status: 'active', turn: 0 };
   }
   return { status: statusOf(state), turn: minutes(state) };
 }
@@ -72,6 +81,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(201).json({ gameId: newId, state, version: 0 });
       } catch (err) {
         console.error('create fireline campaign error', err);
+        return res.status(500).json({ message: 'Server error' });
+      }
+    }
+
+    if (req.method === 'POST' && req.body?.mode === 'planet') {
+      // Every field is untrusted: newPlanetState normalises the options against the preset itself.
+      const newId = uuid();
+      const name = cleanName(req.body?.name, 'War');
+      const commander = cleanName(req.body?.commander, 'Commander');
+      const seed = typeof req.body?.seed === 'string' ? req.body.seed.slice(0, 64) : '';
+      const preset = readPreset(req.body?.preset);
+      const state = newPlanetSave(newId, name, {
+        seedText: seed.trim() ? seed : newId,
+        preset,
+        options: req.body?.options,
+        difficulty: readDifficulty(req.body?.difficulty) ?? 'normal',
+        commander,
+        createdAt: Date.now(),
+      });
+      try {
+        const created = await createGame(db, {
+          id: newId, ownerId: user.userId, game: GAME_KIND, status: 'active', turn: 1, state, config: {},
+        });
+        if (!created) return sendGameLimit(res);
+        return res.status(201).json({ gameId: newId, state, version: 0 });
+      } catch (err) {
+        console.error('create fireline planet error', err);
         return res.status(500).json({ message: 'Server error' });
       }
     }
@@ -109,6 +145,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           `SELECT id, status, turn, state->>'name' AS name, state->>'kind' AS kind, state->>'mapType' AS map_type,
                   CASE WHEN jsonb_typeof(state->'players') = 'array' THEN jsonb_array_length(state->'players') END AS sides,
                   state->'setup'->>'mode' AS mode, state->'setup'->>'size' AS size,
+                  state->'planet'->'options'->>'preset' AS preset,
                   EXTRACT(EPOCH FROM updated_at) * 1000 AS saved_at
            FROM games WHERE owner_id = $1 AND game = $2 ORDER BY updated_at DESC LIMIT 50`,
           [user.userId, GAME_KIND],
@@ -120,6 +157,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           status: r.status,
           savedAt: Math.round(parseFloat(r.saved_at)),
           ...(r.kind === 'campaign' ? { kind: 'campaign' as const } : {}),
+          ...(r.kind === 'planet'
+            ? { kind: 'planet' as const, ...((LENGTH_PRESETS as string[]).includes(r.preset) ? { preset: r.preset } : {}) }
+            : {}),
           ...(typeof r.map_type === 'string' && (MAP_TYPES as readonly string[]).includes(r.map_type) ? { mapType: r.map_type } : {}),
           // Battles of three or four sides: how many, and whether they were played as teams.
           ...(Number(r.sides) === 3 || Number(r.sides) === 4 ? { sides: Number(r.sides), mode: r.mode === 'teams' ? 'teams' : 'ffa' } : {}),
@@ -154,7 +194,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'PUT') {
     const { state } = req.body ?? {};
     if (!state || typeof state !== 'object') return res.status(400).json({ message: 'state required' });
+    // A war is checked whole before it is stored: a save the game could not open is refused, and one
+    // over the war's own budget (half the portal's limit) is refused before the portal's check.
     try {
+      if (isPlanetSave(state)) {
+        if (!migratePlanetSave(state)) return res.status(400).json({ message: 'Not a valid war save' });
+        if (JSON.stringify(state).length > PLANET_SAVE_MAX_BYTES) {
+          return res.status(413).json({ message: 'This war is too large to save. Please report it.' });
+        }
+      }
       const result = await saveState(db, {
         id, ownerId: user.userId, game: GAME_KIND, state, ...rowFields(state),
         version: req.body?.version,

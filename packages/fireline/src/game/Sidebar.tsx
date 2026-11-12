@@ -3,7 +3,13 @@ import {
   AIR_AMMO,
   HELIPAD_SLOTS,
   REARM_TICKS,
+  LINES,
+  LINE_ORDER,
+  MODULES,
+  MODULE_ORDER,
+  MODULE_SLOTS,
   UPGRADES,
+  UPGRADE_LINE,
   UPGRADE_ORDER,
   hitsAir,
   hitsGround,
@@ -27,8 +33,12 @@ import {
   type Armor,
   type BuildingKind,
   type Category,
+  type LineId,
+  type ModuleId,
+  type ResearchMode,
   type SupportPower,
   type UnitKind,
+  type UpgradeId,
   type WeaponKind,
   BOARD_RANGE,
   DETECTOR_RANGE,
@@ -43,9 +53,10 @@ import {
   SCRAMBLE_LEASH,
   SCRAMBLE_RANGE,
 } from '../sim/rules';
-import { buildTicksOf, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, techAllowed, unlocked } from '../sim/state';
+import { buildTicksOf, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, researchModeOf, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
-import { hasUpgrade, researchProblem } from '../sim/research';
+import { doctrineOf, doctrineProblem, hasUpgrade, researchCostOf, researchProblem, researchTicksOf } from '../sim/research';
+import { cargoMaxOf, inModuleOrder, loadoutCost, loadoutOf, queueCostFor } from '../sim/loadout';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
@@ -177,7 +188,7 @@ export interface StatRow {
 }
 
 /** Every number worth knowing about a unit or structure, straight from rules.ts. */
-export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
+export function statsOf(kind: BuildingKind | UnitKind, research: ResearchMode = 'classic'): StatRow[] {
   const isB = kind in BUILDINGS;
   const b = isB ? BUILDINGS[kind as BuildingKind] : null;
   const u = isB ? null : UNITS[kind as UnitKind];
@@ -236,7 +247,11 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
   if (kind === 'shipyard')
     rows.push({ label: 'Shore', value: `Must stand beside open sea (${NAVAL_MIN_SEA}+ tiles of water); mends ships within ${SHIPYARD_MEND_RANGE} tiles, ${SHIPYARD_MEND_HP} hp every ${secs(SHIPYARD_MEND_TICKS)}` });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
-  if (kind === 'researchlab') rows.push({ label: 'Research', value: 'Upgrades listed on the Research tab of the build window once it stands' });
+  if (kind === 'researchlab')
+    rows.push({
+      label: 'Research',
+      value: research === 'lines' ? 'Development lines on the Research tab of the build window once it stands' : 'Upgrades listed on the Research tab of the build window once it stands',
+    });
   if (u?.medic) rows.push({ label: 'Heals', value: `${MEDIC_HEAL} hp to the most hurt infantry within ${MEDIC_RANGE} tiles every ${secs(MEDIC_HEAL_TICKS)}` });
   if (u?.selfRepair)
     rows.push({ label: 'Self-repair', value: `${u.selfRepair} hp every ${secs(SELF_REPAIR_TICKS)} when out of combat` });
@@ -254,7 +269,18 @@ export function statsOf(kind: BuildingKind | UnitKind): StatRow[] {
  * never takes the pointer, so it cannot cover anything a click is aimed at, and it sits under
  * the guided tour's card.
  */
-export function StatTip({ kind, anchor, extra }: { kind: BuildingKind | UnitKind; anchor: HTMLElement; extra?: ReactNode }) {
+export function StatTip({
+  kind,
+  anchor,
+  extra,
+  research = 'classic',
+}: {
+  kind: BuildingKind | UnitKind;
+  anchor: HTMLElement;
+  extra?: ReactNode;
+  /** The battle's research mode: only the Research Lab's card reads it. */
+  research?: ResearchMode;
+}) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const el = ref.current;
@@ -280,7 +306,7 @@ export function StatTip({ kind, anchor, extra }: { kind: BuildingKind | UnitKind
       <strong className="fl-tip-title">{nameOf(kind)}</strong>
       <span className="fl-tip-blurb">{blurbOf(kind)}</span>
       <dl>
-        {statsOf(kind).map(r => (
+        {statsOf(kind, research).map(r => (
           <div key={r.label}>
             <dt>{r.label}</dt>
             <dd>{r.value}</dd>
@@ -566,7 +592,7 @@ function ProductionStrip({
             className="fl-strip-item"
             data-testid="strip-research"
             data-state="building"
-            aria-label={`Research: ${UPGRADES[research.id].name}, ${Math.round((research.progress / UPGRADES[research.id].ticks) * 100)}%. ${touch ? 'Tap to open Research; × cancels it' : 'Click to cancel it'} for a full refund`}
+            aria-label={`Research: ${UPGRADES[research.id].name}, ${Math.round(Math.min(1, research.progress / researchTicksOf(state, research.id)) * 100)}%. ${touch ? 'Tap to open Research; × cancels it' : 'Click to cancel it'} for a full refund`}
             title={`Research: ${UPGRADES[research.id].name}. ${touch ? 'Tap to open Research; × cancels it' : 'Click to cancel it'} for a full refund`}
             onClick={() => (touch ? onOpenTab('research') : dispatch({ type: 'cancelResearch' }))}
             onContextMenu={e => {
@@ -576,7 +602,7 @@ function ProductionStrip({
           >
             <img src={iconFor('researchlab')} alt="" width={48} height={32} />
             <span className="fl-strip-bar research" aria-hidden="true">
-              <span style={{ width: `${Math.round(Math.min(1, research.progress / UPGRADES[research.id].ticks) * 100)}%` }} />
+              <span style={{ width: `${Math.round(Math.min(1, research.progress / researchTicksOf(state, research.id)) * 100)}%` }} />
             </span>
           </button>
           {touch && (
@@ -625,7 +651,8 @@ export function BuildButton({
   const isHead = !!head && head.kind === kind;
   const progress = isHead ? head.progress / buildTicksOf(kind) : 0;
   const open = unlocked(state, 0, kind);
-  const cost = costFor(state, 0, kind);
+  // Vehicles carry the loadout's modules in their price (development lines only).
+  const cost = tab === 'vehicle' ? queueCostFor(state, 0, kind as UnitKind) : costFor(state, 0, kind);
   const isReady = tab === 'building' && readyStructure(state, 0) === kind;
   const blockedByOther = tab === 'building' && q.length > 0 && !isHead;
   const full = tab !== 'building' && q.length >= MAX_QUEUE;
@@ -747,13 +774,16 @@ export function BuildButton({
 export function ResearchBlock({ state, dispatch, lowPower }: { state: GameState; dispatch: (a: GameAction) => boolean; lowPower: boolean }) {
   const p = state.players[0];
   const busy = p.research ?? null;
+  const lines = researchModeOf(state) === 'lines';
   return (
-    <section className="fl-research" data-testid="research" aria-label="Research">
+    <section className="fl-research" data-testid="research" data-mode={lines ? 'lines' : 'classic'} aria-label="Research">
       <h3 className="fl-research-head">
         Research
         {busy && lowPower && <span className="fl-research-slow">half speed: power low</span>}
       </h3>
-      {UPGRADE_ORDER.map(id => {
+      {lines
+        ? LINE_ORDER.map(line => <LineRow key={line} state={state} line={line} dispatch={dispatch} />)
+        : UPGRADE_ORDER.map(id => {
         const spec = UPGRADES[id];
         const done = hasUpgrade(state, 0, id);
         const running = busy?.id === id;
@@ -774,22 +804,22 @@ export function ResearchBlock({ state, dispatch, lowPower }: { state: GameState;
                   type="button"
                   className="fl-research-btn"
                   disabled={!!problem && problem !== 'Not enough credits'}
-                  title={problem ?? `Research for ${spec.cost} credits`}
+                  title={problem ?? `Research for ${researchCostOf(state, id)} credits`}
                   onClick={() => dispatch({ type: 'research', upgrade: id })}
                 >
-                  {spec.cost}
+                  {researchCostOf(state, id)}
                 </button>
               )}
             </div>
             <span className="fl-research-blurb">
-              {spec.blurb} {!done && <span className="fl-research-time">{secs(spec.ticks)}</span>}
+              {spec.blurb} {!done && <span className="fl-research-time">{secs(researchTicksOf(state, id))}</span>}
               {!done && !running && problem && problem !== 'Not enough credits' && problem !== 'Already researching' && (
                 <span className="fl-research-why"> {problemText(problem)}</span>
               )}
             </span>
             {running && (
-              <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((busy!.progress / spec.ticks) * 100)}>
-                <span style={{ width: `${Math.round((busy!.progress / spec.ticks) * 100)}%` }} />
+              <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((busy!.progress / researchTicksOf(state, id)) * 100)}>
+                <span style={{ width: `${Math.round((busy!.progress / researchTicksOf(state, id)) * 100)}%` }} />
               </div>
             )}
           </div>
@@ -799,8 +829,228 @@ export function ResearchBlock({ state, dispatch, lowPower }: { state: GameState;
   );
 }
 
+type NodeState = 'done' | 'running' | 'ready' | 'blocked' | 'closed' | 'choose';
+const MARK_NAME = ['', 'Mk I', 'Mk II', 'Mk III'] as const;
+
+/** Where one node of a development line stands for the player. */
+function nodeState(state: GameState, id: UpgradeId): NodeState {
+  const p = state.players[0];
+  if (hasUpgrade(state, 0, id)) return 'done';
+  if (p.research?.id === id) return 'running';
+  const { line, mark } = UPGRADE_LINE[id]!;
+  if (mark === 3) {
+    const chosen = doctrineOf(state, 0, line);
+    if (!chosen) return hasUpgrade(state, 0, LINES[line].marks[1]) ? 'choose' : 'blocked';
+    if (chosen !== id) return 'closed';
+  }
+  return researchProblem(state, 0, id) ? 'blocked' : 'ready';
+}
+
+/** What the caption line says about one node: its effect, price and time, and what stands in the way. */
+function nodeCaption(state: GameState, id: UpgradeId): string {
+  const spec = UPGRADES[id];
+  const { line, mark } = UPGRADE_LINE[id]!;
+  const head = `${spec.name}, ${MARK_NAME[mark]}: ${spec.blurb}`;
+  const st = nodeState(state, id);
+  if (st === 'done') return `${head} Done.`;
+  if (st === 'closed') return `Closed: you adopted ${UPGRADES[doctrineOf(state, 0, line)!].name}.`;
+  const price = `${researchCostOf(state, id)} credits, ${secs(researchTicksOf(state, id))}.`;
+  if (st === 'running') return `${head} Researching.`;
+  if (st === 'choose') return `${head} Adopt this doctrine to research it for ${price} The other one closes for the rest of the battle.`;
+  const problem = researchProblem(state, 0, id);
+  const why = problem && problem !== 'Already researching' ? ` ${problemText(problem)}` : '';
+  return `${head} ${price}${why}`;
+}
+
+/** The node the caption describes when nothing is pointed at: the one under way, or the next step. */
+function defaultNode(state: GameState, line: LineId): UpgradeId | null {
+  const l = LINES[line];
+  const ids = [...l.marks, ...l.fork];
+  const running = ids.find(id => state.players[0].research?.id === id);
+  if (running) return running;
+  return ids.find(id => {
+    const st = nodeState(state, id);
+    return st !== 'done' && st !== 'closed';
+  }) ?? null;
+}
+
+/**
+ * One development line: Mk I, Mk II, then the doctrine fork. The caption under the nodes describes
+ * whichever node is pointed at or focused, and otherwise the next step.
+ */
+function LineRow({ state, line, dispatch }: { state: GameState; line: LineId; dispatch: (a: GameAction) => boolean }) {
+  const [hover, setHover] = useState<UpgradeId | null>(null);
+  const l = LINES[line];
+  const chosen = doctrineOf(state, 0, line);
+  const shown = hover ?? defaultNode(state, line);
+  const node = (id: UpgradeId) => (
+    <LineNode key={id} state={state} id={id} chosen={chosen === id} dispatch={dispatch} onPoint={setHover} />
+  );
+  const choosing = !chosen && hasUpgrade(state, 0, l.marks[1]);
+  return (
+    <div className="fl-line-row" data-testid={`line-${line}`} onMouseLeave={() => setHover(null)}>
+      <span className="fl-line-label">{l.name}</span>
+      <div className="fl-line-nodes">
+        {node(l.marks[0])}
+        <span className="fl-line-link" aria-hidden="true" />
+        {node(l.marks[1])}
+        <span className="fl-line-link" aria-hidden="true" />
+        <div className="fl-line-fork" role="group" aria-label={`${l.name} doctrine`}>
+          {node(l.fork[0])}
+          {node(l.fork[1])}
+        </div>
+      </div>
+      <span className="fl-line-caption" aria-live="polite">
+        {shown ? nodeCaption(state, shown) : 'Line complete.'}
+        {!hover && choosing && ' Adopt one of the two doctrines.'}
+      </span>
+    </div>
+  );
+}
+
+function LineNode({
+  state,
+  id,
+  chosen,
+  dispatch,
+  onPoint,
+}: {
+  state: GameState;
+  id: UpgradeId;
+  chosen: boolean;
+  dispatch: (a: GameAction) => boolean;
+  onPoint: (id: UpgradeId | null) => void;
+}) {
+  const spec = UPGRADES[id];
+  const { line, mark } = UPGRADE_LINE[id]!;
+  const st = nodeState(state, id);
+  const busy = state.players[0].research;
+  const problem = st === 'ready' || st === 'blocked' ? researchProblem(state, 0, id) : null;
+  const doctrineWhy = st === 'choose' ? doctrineProblem(state, 0, line, id) : null;
+  // Nodes without a button still take focus, so the caption can be read from the keyboard.
+  const focusable = st === 'done' || st === 'closed';
+  return (
+    <div
+      className="fl-line-node"
+      data-testid={`research-${id}`}
+      data-state={st}
+      data-doctrine={chosen ? '1' : undefined}
+      tabIndex={focusable ? 0 : undefined}
+      aria-label={focusable ? `${spec.name}, ${MARK_NAME[mark]}, ${st === 'done' ? 'done' : 'closed'}` : undefined}
+      onMouseEnter={() => onPoint(id)}
+      onFocus={() => onPoint(id)}
+      onBlur={() => onPoint(null)}
+    >
+      <span className="fl-line-mark">{MARK_NAME[mark]}</span>
+      <span className="fl-line-name">{spec.name}</span>
+      {st === 'done' ? (
+        <span className="fl-research-done">Done</span>
+      ) : st === 'running' ? (
+        <>
+          <div className="fl-research-bar" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((busy!.progress / researchTicksOf(state, id)) * 100)}>
+            <span style={{ width: `${Math.round((busy!.progress / researchTicksOf(state, id)) * 100)}%` }} />
+          </div>
+          <button type="button" className="fl-research-btn" data-kind="cancel" onClick={() => dispatch({ type: 'cancelResearch' })}>
+            Cancel
+          </button>
+        </>
+      ) : st === 'choose' ? (
+        <button
+          type="button"
+          className="fl-research-btn fl-line-adopt"
+          data-testid={`doctrine-${line}-${id}`}
+          disabled={!!doctrineWhy}
+          title="Adopt this doctrine. The other one closes for the rest of the battle."
+          onClick={() => dispatch({ type: 'doctrine', line, branch: id })}
+        >
+          Adopt
+        </button>
+      ) : st === 'closed' ? null : (
+        <button
+          type="button"
+          className="fl-research-btn"
+          disabled={!!problem && problem !== 'Not enough credits'}
+          title={problem ? problemText(problem) : `Research for ${researchCostOf(state, id)} credits`}
+          aria-label={`Research ${spec.name} for ${researchCostOf(state, id)} credits`}
+          onClick={() => dispatch({ type: 'research', upgrade: id })}
+        >
+          {researchCostOf(state, id)}
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Loadouts, on the Vehicles tab of a development-lines battle once a module is unlocked: per vehicle
+ * kind, the modules every new one is built with. A chip toggles a module; the price shows after.
+ */
+export function LoadoutPanel({ state, dispatch }: { state: GameState; dispatch: (a: GameAction) => boolean }) {
+  if (researchModeOf(state) !== 'lines') return null;
+  const ups = state.players[0].upgrades ?? [];
+  if (!MODULE_ORDER.some(m => ups.includes(MODULES[m].unlock))) return null;
+  const kinds = (menuFor('vehicle', state) as UnitKind[]).filter(k => MODULE_SLOTS[k] && !UNITS[k].hero);
+  return (
+    <section className="fl-loadout" data-testid="loadout" aria-label="Loadouts">
+      <h3 className="fl-research-head">Loadouts</h3>
+      <p className="fl-loadout-note">New vehicles are built with these. Units already built keep theirs.</p>
+      {kinds.map(kind => {
+        const slots = MODULE_SLOTS[kind]!;
+        const current = loadoutOf(state, 0, kind);
+        const extra = loadoutCost(current);
+        const fits = MODULE_ORDER.filter(m => MODULES[m].fits.includes(kind));
+        const toggle = (m: ModuleId) => {
+          const next = current.includes(m) ? current.filter(x => x !== m) : inModuleOrder([...current, m]);
+          dispatch({ type: 'loadout', kind, modules: next });
+        };
+        return (
+          <div key={kind} className="fl-loadout-row" data-testid={`loadout-${kind}`}>
+            <span className="fl-loadout-kind">
+              {UNITS[kind].name}
+              <span className="fl-loadout-slots">
+                {current.length}/{slots}
+              </span>
+            </span>
+            <div className="fl-loadout-chips" role="group" aria-label={`${UNITS[kind].name} modules`}>
+              {fits.map(m => {
+                const spec = MODULES[m];
+                const on = current.includes(m);
+                const researched = ups.includes(spec.unlock);
+                const full = !on && current.length >= slots;
+                const title = !researched
+                  ? `Unlocked by ${UPGRADES[spec.unlock].name}.`
+                  : full
+                    ? `${spec.name}: ${spec.blurb} ${slots === 1 ? 'The slot is' : 'Both slots are'} full: take a module off first.`
+                    : `${spec.name}, +${spec.cost}: ${spec.blurb}`;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    className="fl-loadout-chip"
+                    data-testid={`module-${kind}-${m}`}
+                    aria-pressed={on}
+                    disabled={!researched || full}
+                    title={title}
+                    onClick={() => toggle(m)}
+                  >
+                    {spec.name}
+                  </button>
+                );
+              })}
+              {extra > 0 && <span className="fl-loadout-cost">+{extra}</span>}
+            </div>
+          </div>
+        );
+      })}
+    </section>
+  );
+}
+
 /** A research refusal in the player's words: requirements named as structures. */
 function problemText(problem: string): string {
+  if (problem === 'Needs Mk I') return 'Research Mk I first.';
+  if (problem === 'Needs Mk II') return 'Research Mk II first.';
+  if (problem === 'Choose a doctrine first') return 'Adopt a doctrine first.';
   if (!problem.startsWith('Needs: ')) return `${problem}.`;
   const kind = problem.slice(7) as BuildingKind;
   return `Needs a ${BUILDINGS[kind]?.name ?? kind}.`;
@@ -822,7 +1072,9 @@ export function BuildTipFooter({
 }) {
   const p = state.players[0];
   const missing = needsOf(kind).filter(r => !hasBuilding(state, 0, r));
-  const short = costFor(state, 0, kind) - p.credits;
+  const price = tab === 'vehicle' ? queueCostFor(state, 0, kind as UnitKind) : costFor(state, 0, kind);
+  const modules = price - costFor(state, 0, kind);
+  const short = price - p.credits;
   const notes: string[] = [];
   if (state.allowed && !state.allowed.includes(kind)) notes.push('Not available in this mission.');
   else if (missing.length) notes.push(`Locked: build a ${missing.map(r => BUILDINGS[r].name).join(' and a ')} first.`);
@@ -835,6 +1087,7 @@ export function BuildTipFooter({
       : `${k ? `${k} or click` : 'Click'} to train one; with Shift, ${BATCH}. Right-click cancels one.`;
   return (
     <div className="fl-tip-foot">
+      {modules > 0 && <span>Includes {modules} for modules.</span>}
       {notes.map(n => (
         <span key={n} className="fl-tip-warn">
           {n}
@@ -859,7 +1112,7 @@ export function SelectionPanel({
   const units = state.units.filter(u => selected.has(u.id));
   const building = state.buildings.find(b => selected.has(b.id));
   const { tip, bind } = useTip<BuildingKind | UnitKind>();
-  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} />;
+  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} research={researchModeOf(state)} />;
   if (!units.length && !building) {
     if (touch) {
       return (
@@ -993,8 +1246,13 @@ export function SelectionPanel({
       {tipCard}
       {one && one.kind === 'hauler' && mine && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }}>
-          Carrying {one.cargo} of 600 ore.{' '}
+          Carrying {one.cargo} of {cargoMaxOf(one)} ore.{' '}
           {one.order.type === 'harvest' ? 'Harvesting.' : touch ? 'Idle: tap ore or a refinery.' : 'Idle: right-click ore or a refinery.'}
+        </span>
+      )}
+      {one && one.modules && one.modules.length > 0 && (
+        <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="unit-modules">
+          Modules: {one.modules.map(m => MODULES[m]?.name ?? m).join(', ')}.
         </span>
       )}
       {one && mine && AIR_AMMO[one.kind] && (

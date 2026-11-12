@@ -1,4 +1,4 @@
-import type { BuildingKind, Category, Difficulty, HeroKind, MapType, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
+import type { BuildingKind, Category, Difficulty, HeroKind, LineId, MapType, ModuleId, Owner, SiteKind, SkirmishSetup, SupportPower, UnitKind, UpgradeId, WeaponKind } from './rules';
 
 /**
  * Positions are in tiles, as floats: the centre of tile (3, 7) is (3.5, 7.5). Tile indices are
@@ -81,6 +81,10 @@ export interface Unit {
   pad?: number;
   /** Bombers only: present while a bomb run is under way (it always finishes the run). */
   bombRun?: true;
+  /** Vehicles only, lines battles only: the modules it was built with. Absent: none. Never changes. */
+  modules?: ModuleId[];
+  /** Planet battles: the field army slot this unit stands for. Absent everywhere else. */
+  core?: number;
   /** Interceptors only: present while it is up on a scramble from its pad, so it comes home after. */
   scramble?: true;
   /**
@@ -165,6 +169,10 @@ export interface QueueItem {
   kind: BuildingKind | UnitKind;
   /** Ticks of work done. Halves its rate while power is short. */
   progress: number;
+  /** Vehicle queue, lines battles only: the loadout copied when it was queued. Absent: none. */
+  modules?: ModuleId[];
+  /** Credits paid for those modules on top of the unit's price; refunded with it. Absent: 0. */
+  extra?: number;
 }
 
 export interface PlayerState {
@@ -178,6 +186,10 @@ export interface PlayerState {
   upgrades?: UpgradeId[];
   /** The upgrade being researched, already paid for; ticks of work done. Absent or null: none. */
   research?: { id: UpgradeId; progress: number } | null;
+  /** Lines battles: the branch each line is committed to. Absent: none chosen. Permanent. */
+  doctrines?: Partial<Record<LineId, UpgradeId>>;
+  /** Lines battles: the loadout per vehicle kind. Absent or missing kind: no modules. */
+  loadouts?: Partial<Record<UnitKind, ModuleId[]>>;
 }
 
 export interface Projectile {
@@ -265,6 +277,8 @@ export interface AiMemory {
   /** Aircraft out on a strike (aiAir.ts), and the tick the next strike may go. */
   airIds?: number[];
   nextAirStrike?: number;
+  /** Paced research (round 6): credits the commander is saving for its next research, or absent. */
+  researchFor?: number;
   /** The tick before which no new airlift sets out. */
   nextAirlift?: number;
   /**
@@ -407,6 +421,29 @@ export interface GameState {
   // ---- Round 5 (all optional: absent on older saves, missions and setups without them) ----------
   /** Neutral sites on the map (workstream D). Absent: none. Never present in a mission. */
   sites?: Site[];
+  // ---- War for the Planet (optional: absent on every skirmish and mission) -----------------
+  /** A battle generated from the planet war (fireline-planet-design.md, section 14). */
+  planet?: PlanetBattle;
+}
+
+/** What a planet battle adds to a GameState. Every field is read only when `s.planet` is set. */
+export interface PlanetBattle {
+  battleId: number;
+  /** At this tick, with no winner yet, the defending team wins. */
+  timeLimit: number;
+  /** The principal defender's seat: when it has no Command Yard left, the attacking team wins. */
+  defenderSeat: Owner;
+  /** Computer behaviour per seat (read by missionMode). */
+  ai: AiMode[];
+  /** Structures that stand for city buildings: [building id, city building id]. */
+  city: [number, string][];
+  /** Side 0's heroes that fell, with their xp. */
+  fallen?: Partial<Record<HeroKind, number>>;
+  /**
+   * Side 0's support powers from Commander perks. Kept even without the structure that grants them
+   * in a skirmish (syncSkirmishPowers leaves them be). Absent: none.
+   */
+  perkPowers?: SupportPower[];
 }
 
 // ---- Missions --------------------------------------------------------------------------------
@@ -499,6 +536,8 @@ export interface MissionSpec {
   };
   /** What side 0 may build or train. */
   tech: (BuildingKind | UnitKind)[];
+  /** Research mode for this mission. Always 'classic': missions never use development lines. */
+  research: 'classic';
   powers: SupportPower[];
   objectives: ObjectiveSpec[];
   /** Optional objectives: each one done earns a star (the mission itself earns the first). */
@@ -597,6 +636,8 @@ export type GameAction =
   | { type: 'power'; power: SupportPower; x: number; y: number }
   | { type: 'research'; upgrade: UpgradeId }
   | { type: 'cancelResearch' }
+  | { type: 'doctrine'; line: LineId; branch: UpgradeId }
+  | { type: 'loadout'; kind: UnitKind; modules: ModuleId[] }
   // round5:C begin. Engineering vehicles: deploying a Forward Base truck, packing up a Field Yard.
   | { type: 'deploy'; id: number }
   // Air war: infantry walk to a Troop Carrier and climb in; a Troop Carrier sets its infantry down.

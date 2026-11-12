@@ -131,6 +131,10 @@ by doing what the card names. That driver waits 1.5s on every step before acting
 ringed control is on screen, uncovered and enabled, pauses and resumes mid-run, checks the save
 for the real effects, and checks a finished run is not offered again.
 
+War for the Planet has its own guided first turn on the same pattern (`components/planet/PlanetTour.tsx`,
+driven by `scripts/tours/fireline-planet.cjs`); see fireline-planet-design.md, build log, "Guided
+first turn".
+
 ## 6. Sound
 
 `game/sound.ts`, synthesised with the Web Audio API: no audio files, for the same reasons the art
@@ -853,6 +857,50 @@ tours (desktop, and touch on three phones), 27 loading checks. AI ladder, 150 se
 advanced tech: the mirror 45% to 53%, Hard on side 1 wins 93%, Easy 0%.
 
 
+### 2026-11-10: Development lines and loadouts (round 5b)
+
+The contract and the full build log are in `fireline-round5b-design.md`. On an advanced-tech skirmish
+the setup offers a second research mode, **Development lines** (the default for a new advanced
+skirmish; Classic is one click away, standard tech disables the choice): each line runs Mk I to
+Mk II, then a doctrine fork whose adopted branch has a Mk III and whose other branch closes. Mk II
+research unlocks vehicle modules, fitted per kind on the Vehicles tab's Loadouts panel and paid
+for on top of the unit's price (for example a tank with Long barrel and Reinforced tracks costs
+1050, not 800); units already built keep what they were built with. The computer researches its
+difficulty's lines list, adopts doctrines and fits modules at Normal and Hard (Easy fits none).
+Classic battles, every campaign mission (all pinned to `research: 'classic'`), standard tech and
+every existing save play exactly as before; a save without the new fields reads as classic.
+
+Ladder, 150 seeds, `--map random` (advanced tech, 3000 credits, normal ore), 1650 battles each.
+Before: the tree at HEAD (classic research, the only mode it has), exported with `git archive` and
+run on its own. After: this round, `--research lines`. The two tables are identical in every cell,
+so one table serves for both:
+
+| Side 0 | Side 1 | Side 0 wins | Side 1 wins | Unfinished | Median min |
+|---|---|---|---|---|---|
+| new hard | new normal | 67 (45%) | 81 (54%) | 2 | 24.6 |
+| new normal | new hard | 12 (8%) | 137 (91%) | 1 | 19.2 |
+| new normal | new easy | 150 (100%) | 0 (0%) | 0 | 15.6 |
+| new easy | new normal | 2 (1%) | 148 (99%) | 0 | 19.5 |
+| new normal | prev normal | 105 (70%) | 44 (29%) | 1 | 17.3 |
+| prev normal | new normal | 34 (23%) | 114 (76%) | 2 | 16.9 |
+| new hard | prev hard | 4 (3%) | 146 (97%) | 0 | 14.9 |
+| prev hard | new hard | 2 (1%) | 148 (99%) | 0 | 14.8 |
+| new hard | prev normal | 75 (50%) | 74 (49%) | 1 | 19.4 |
+| prev hard | prev normal | 42 (28%) | 106 (71%) | 2 | 17.1 |
+| new normal | new normal | 77 (51%) | 71 (47%) | 2 | 23.9 |
+
+Summary lines, the same before and after: Hard beats Normal 68.0% both ways round, Normal beats
+Easy 99.3%, Normal beats prev Normal 73.0%, Hard beats prev Hard 50.7%. Hard beats Normal beats
+Easy (monotonic), every pairing is 0 points from baseline, median length up 0%.
+
+Why identical: a per-battle comparison (the ladder's worker output, 150 seeds, both trees) found
+Hard against Normal unchanged in every battle, and the Normal mirror changed in length in 6 of 150
+battles and in winner in none. The development lines' Mk I nodes are the classic five, and at
+3000 credits a battle is decided (median 15 to 25 minutes) before either side reaches Mk II or
+fits a module that matters. So the thresholds pass, but this ladder says little about lines play
+itself; a richer setup (`--credits 10000 --ore rich`) would exercise it, and is the place to look
+if section 2.4 or section 5 numbers are ever tuned.
+
 ### 2026-11-10: Borrowed Steel (mission 5) made winnable; campaign difficulty settings
 
 Reported unbeatable. Played by script straight at the outpost, round its north and round its east,
@@ -898,6 +946,69 @@ campaign-check plays Borrowed Steel by script three ways in at every level (Easy
 all three; Hard at least one), checks the scaling for every mission, and builds and runs all 14
 missions at Easy and Hard. drive.ts covers the spared structure, the failed capture and the trigger
 order.
+
+### 2026-11-10: War for the Planet (a strategic campaign)
+
+The contract and the five workstreams' build logs are in `fireline-planet-design.md`. A new panel in
+the lobby, inside the signed-in branch like everything else, starts a turn-based war for a whole
+seeded planet: Short (3 factions, 18 regions, 40 turns), Long (4, 36, 90) or Very long (5, 60, 160),
+each preset stating every option explicitly; the setup also picks the number of factions, the
+difficulty and four optional rules (allied victory, iron rule, simulated battles, rival
+diplomacy). The player and two to four
+computer factions (each with a temperament) hold regions with cities, build and grow them, earn ore,
+fuel, food and science, open trade routes, research the round 5 development lines with doctrines
+and loadouts, recruit a persistent army that keeps its kills and ranks, and make or break ceasefires,
+trade pacts and alliances with tribute and exchange terms. Regions cut off from supply lose yield and
+in the end surrender. An attack becomes a battle: fought in the ordinary real-time engine as a
+skirmish built from the region (two to four sides, allies' contingents included, heroes and powers
+in play, saved every 15 seconds), auto-resolved by a formula, or, with the option on, simulated to
+the end in a worker. The result flows back into the war: the region changes hands, survivors are
+promoted, heroes are wounded or lost, the city takes damage, the Commander earns xp for perks. A
+war ends by domination, elimination, an allied share, the player's fall, a rival's share, or the
+turn limit.
+
+The strategic layer (`src/planet/`) is pure like `src/sim/`: no clock, no dice outside the seed, an
+illegal order returns the same object. A war is one more save kind (`kind: 'planet'`) in Fireline's
+existing endpoint behind the same 401 and 403; campaign and skirmish saves, every story mission and
+every skirmish replay exactly as before (the harness checks 118 recorded hashes). `npm run
+drive:planet` (about 38,500 assertions, about a minute) is in `npm run check`. Its first run found
+two strategic defects, both fixed the same day: a faction could start short of its start regions on
+a few seeds, and a treaty ended by an unpaid term kept its foreign trade routes.
+
+Not built yet: a guided tour for the war, a `ladder:planet` for balance (computer factions currently
+sign open-ended trade pacts and rarely fight one another after the truce, so most wars end on the
+turn limit), and a check that a full battle fought by hand reaches its end card in the browser.
+
+
+### 2026-11-10: Game size and deep research in skirmishes (round 6)
+
+The contract and the full build log are in `fireline-round6-design.md`. Round 5's ladder showed
+that at 3000 credits a skirmish ends before the computer gets past Mk I, so doctrines and modules
+rarely mattered. A skirmish now opens on a **game size** screen: four cards, Quick, Standard
+(checked for a new player), Long and Epic, each with its credits and ore, how long a battle lasts,
+how far research gets, and Begin or Customise. Quick is the game as it was; the three paced sizes
+give more credits and richer ore, scale every upgrade's price and research time on the
+development-lines tree, delay the computer's first attack, and give the computer a paced research
+list that saves for its next item. The detailed setup keeps every control and gains a Size row; a
+setup changed by hand reads "Customised" on its card. Classic research and standard tech keep their
+prices at every size. Every campaign mission, every battle without a setup and every save from
+before this round reads as Quick and plays exactly as before (30 pre-round-6 battles hashed and
+unchanged).
+
+Ladder, 150 seeds, `--map random`, development lines, each size's preset, 1650 battles a size.
+Depth counts new against new, Normal and Hard sides only.
+
+| Size | Credits, ore | Normal Mk II / Mk III | Hard Mk II / Mk III | Normal mirror median (p10 to p90) | Hard beats Normal | Normal beats Easy | Unfinished |
+|---|---|---|---|---|---|---|---|
+| Quick | 3000, normal | 0% / 0% | 0% / 0% | 23.9 (16.0 to 33.6) | 68.0% | 99.3% | 11 |
+| Standard | 3000, normal | 70% / 51% | 93% / 82% | 23.7 (16.0 to 32.5) | 79.7% | 100% | 0 |
+| Long | 5000, rich | 96% / 85% | 100% / 93% | 23.8 (16.4 to 32.5) | 58.3% | 99.7% | 0 |
+| Epic | 10000, rich | 100% / 97% | 100% / 98% | 21.3 (19.8 to 30.3) | 58.7% | 99.7% | 0 |
+
+Quick matches round 5's table in every cell. Every card says 15 to 35 minutes, because at today's
+map sizes battles last about as long at every size: the sizes differ in how deep research gets.
+Larger maps would make the bigger sizes longer, and are out of scope for this round. `drive:fire`
+gains 582 assertions (about 345,700 in all, about 8 to 9 minutes).
 
 ### 2026-11-10: every campaign mission played to a win; three missions and the enemy barrage fixed
 
@@ -1115,6 +1226,168 @@ Harness at the end: `npm run drive:fire` 371,018 assertions, 0 failed (the round
 "side 1 won at 17 min; 6 bombs, 6 gunship rockets"; the air war battle "gunship, interceptor,
 bomber; 2 interceptor missiles; side 0 won at 31 min"); `npm run campaign:fire` 2,595, unchanged.
 
+### 2026-11-11: Merge with main (main's round 5 and this branch's rounds 5b and 6, War for the Planet)
+
+Main, built in parallel and live, had its own round 5 (the pop-out build window, map sizes, engineering
+vehicles, neutral sites and tier three) and the Demolition, Borrowed Steel and trigger fixes. Sixteen
+files conflicted. Main's names won wherever they collided:
+
+- **`SkirmishSetup.size` is main's map size** (`MapSize`). This branch's game size became the
+  **pace**: `SkirmishSetup.pace` (`GamePace`), `GAME_PACES`, `GAME_PACE_ORDER`, `LOBBY_DEFAULT_PACE`,
+  `GamePaceSpec`, `applyPace`, `difficultyForPace`, `paceOf`, `GamePacePicker.tsx`, ladder `--pace`.
+  The cards still say "game size". A setup without a pace reads as Quick; a setup saved by this
+  branch before the merge with `size: 'quick' | 'long' | 'epic'` reads that as the pace, on a
+  standard map (`'standard'` is ambiguous and reads as the map size). Planet battles state
+  `pace: 'quick', size: 'standard', sites: false`. `normaliseSetup` returns map, tech, credits, ore,
+  sides, mode, size, sites, research, pace, and both presets state every field in that order.
+- **Design docs.** Main's `fireline-round5-design.md` keeps its name; this branch's became
+  `fireline-round5b-design.md` (development lines and loadouts), with every reference updated.
+- **Research in the build window.** The development-lines tree is the build window's Research tab
+  (classic research is there exactly as main has it), and the loadouts panel sits under the tree on
+  its Vehicles tab. Build buttons and the production strip price a vehicle with its loadout and time
+  research by `researchTicksOf`. Every data-testid kept; the build-window tour now opens Customise
+  before choosing advanced tech, since the lobby opens on the game size cards.
+- **Tier three and lines.** Main's new vehicles (Repair Truck, Forward Base Truck, Railgun Tank,
+  Stealth Tank) play in development lines as main defines them, without modules: the module
+  `fits` lists and `MODULE_SLOTS` name the round 5b vehicles only (`MODULE_VEHICLES`).
+- **The commander.** `scaledFor(s, tuned(difficultyFor(s, diff), mode))`: the pace's attack timing,
+  then main's map-size scaling. Main's "no new structure with the ore gone" rule for paced research
+  now also counts a Field Yard as a yard.
+
+**Game size cards now pick the map size.** Quick and Standard keep the standard map; Long plays on
+a Large map and Epic on a Huge one, which is what round 6 said a genuinely longer Long and Epic
+needed (round 6, section 10.2). `applyPace` writes the map size, `isPresetSetup` checks it, the card
+shows it, and the enemy cards show first-attack times scaled for the map (`scaledForSetup`).
+Measured with the ladder, `--map random`, lines, each pace's preset (Normal mirror 150 seeds;
+Hard and Easy rows 60 seeds each way):
+
+| Card | Map | Normal mirror median (p10 to p90), minutes | Finished | Hard beats Normal (side 0 / side 1) | Card says |
+|---|---|---|---|---|---|
+| Quick | Standard | 22.1 (15.1 to 32.1) | 147 of 150 | (unchanged rules) | 15 to 35 |
+| Standard | Standard | 23.9 (15.0 to 33.2) | 150 of 150 | (unchanged rules) | 15 to 35 |
+| Long | Large, 96 tiles | 32.0 (24.7 to 41.5), longest 96.4 | 150 of 150 | 68% / 95% (60 seeds) | 20 to 45 (was 15 to 35) |
+| Epic | Huge, 128 tiles | 52.6 (49.8 to 80.1), longest 115.0 | 150 of 150 | 90% / 100% (30 seeds) | 45 to 85 (was 15 to 35) |
+
+Normal beat Easy in all 60 Long battles. Every Normal side reached Mk II and Mk III at Long and Epic
+(medians 11.3 and 12.8 minutes at Long, 10.8 and 12.3 at Epic). Quick's three unfinished battles are
+mined-out stand-offs of main's commander (round 6 recorded 11 at Quick before main's changes). So
+the larger maps make the bigger cards genuinely longer, as round 6 said they would, and the card
+minutes are the measured p10 and p90 rounded outwards to five minutes. A 150-seed Epic ladder on
+huge maps takes about an hour on four cores. Hard's lead grows with the map (Epic on 64 tiles had
+it beating Normal 58.7% both ways round; on a huge map 90% and 100% over 30 seeds): the order holds,
+but a balance pass at 150 seeds on large and huge maps is owed (not done here).
+
+Gates at the merge: `npm run check` passed (drive:fire 368,204 assertions, about 20 minutes on one
+core; campaign-check 2,965; drive:planet 38,471), `npm run tours -- --quick fireline` ok (build
+window: 35 menu items), `npm run test:api` 607 passed, `npm run check:loading` 183 of 184 under ladder load (the one
+failure, Niccolo's handover blink sample, untouched here, passed 28 of 28 when rerun idle).
+
+**Byte identity.** Every story mission and every classic and standard-tech skirmish in the merged
+tree hashes exactly as origin/main's own code (setup projected without `research` and `pace`): 78
+of 78. Every lines skirmish hashes as this branch did before the merge once `pace`, `size` and
+`sites` are left out: 62 of 62 in `drive-planet-battle.ts`, so those hashes are unchanged. Regenerated:
+
+- `drive-planet-battle.ts` STORY_HASHES, 22 of 56, all now origin/main's values: Demolition (all
+  four: the mission itself, ce964a2), Borrowed Steel (all four: cb7044c, and at 600 ticks ce964a2's
+  garrison), the Commando's health at tick 0 wherever he is brought (heroes runs of Blackout,
+  Fireline, Firestorm and Last Light, ce964a2), and a defending enemy's `garrison` written at its
+  first decision (ce964a2) at 600 ticks in Ace of Spades, Convoy North and Bastion Line. Probed at
+  every main commit between: main's round 5 changed none of them, the trigger fix none.
+- `drive-size.ts` PRE_ROUND6, 12 of 30: the Normal and Hard advanced battles (lines, classic,
+  three sides). Main's computer fields Repair Trucks on advanced tech; its first engineering decision
+  comes at ticks 4,200 to 8,100 in these battles, and every one first differs from the pre-merge
+  build in the 1,000-tick snapshot after it. The classic ones equal origin/main's own battles; no
+  setup, standard tech and Easy are unchanged.
+- `drive-lines.ts` hashes nothing fixed; two of its computer checks were made precise rather than
+  loosened: a lines battle may reach the cap only if the same seed played classic does too, with no
+  research done (ai-normal-3: a mined-out stand-off, identical on origin/main's classic), and when
+  Hard researches nothing at Quick (main's Repair Trucks come first; its one researching battle,
+  ai-hard-5, researches in neither mode on main) the loadouts are checked at the Standard pace.
+
+### 2026-11-11: Merge with main's air war (development lines, pace and War for the Planet kept)
+
+Main's PRs #32 to #34 (the air war: the Recon Plane, Interceptors, Countermeasures, Troop Carriers,
+the Heavy Bomber, the airlift's own timer and a lone Gunship's strikes; every campaign mission played
+to a win; Founder's Ledger work) met this branch's development lines, loadouts, game size (pace) and
+War for the Planet. Twelve files conflicted. Both sides' features are kept, and main's air war rules
+and units apply in every mode:
+
+- **Countermeasures is a classic upgrade only.** `UPGRADE_ORDER` lists six, as on main; the
+  development lines stay five lines of four, and Armoured cockpits (the Air line's defensive
+  doctrine, the same quarter off flak and anti-air missiles, and off bullets too) is its counterpart.
+  A lines battle refuses Countermeasures as "Not in this battle" and a lines save drops it.
+  `UPGRADE_LINE` is now a partial record. The computer's classic lists end with Countermeasures, as
+  main's do; its lines and paced lists are unchanged.
+- **The Air line covers main's aircraft through the paths every aircraft shares:** Air frames and
+  Armoured cockpits by category, Avionics in `fly`, Heavy munitions where an aircraft fires
+  (`gunshipFight` for the Gunship and the Interceptor, `dropBomb` for both bombers). Heavy munitions'
+  blurb now names the Interceptor's missiles. No aircraft takes a module; `MODULE_VEHICLES` stays the
+  eight round 5b vehicles. The decision and its table are in `fireline-round5b-design.md` (build log,
+  2026-11-11), and `drive-lines.ts` gained a section for it ("Lines: the air war's aircraft").
+- **`hurt`** applies this branch's `damageTakenMul` (armour forks, cockpits, smoke) and then main's
+  Countermeasures; each is 1 where the other mode's upgrade lives, so classic is main's arithmetic.
+- **`step`** runs main's `transportStep`, then heroes in a mission or a planet battle.
+- **War for the Planet.** Planet battles are advanced lines battles, so carriers can fly in them; a
+  battle's report now counts infantry aboard a living Troop Carrier as survivors, core slot kept.
+  Planet battle setups already state every `SkirmishSetup` field (main added none).
+- **Harness.** `drive.ts` runs main's `drive-airwar.ts` sections beside `drive-lines.ts` and
+  `drive-size.ts`; `drive-air.ts` exports `airArena` (main's air war sections use it) with this
+  branch's explicit `research: 'classic'`. `package.json` has main's `sweep:fire` beside
+  `drive:planet` and `ladder:planet`.
+
+**Byte identity.** Every story mission (at 0, 600 and 3,000 ticks, default and every hero), every
+classic and standard-tech skirmish (2, 3 and 4 sides, every map, 3,000 ticks) and twelve classic
+computer battles to 18,000 ticks (advanced, 10,000 credits, rich ore, every difficulty) hash in the
+merged tree exactly as in origin/main's own code with `research` and `pace` left out of the setup:
+251 of 251. Lines skirmishes of the same kind are unchanged against this branch before the merge
+(the 3,000-tick ones, and Easy's computer battles). Lines computer battles at Normal and Hard change,
+and only where main's air war commander acts. Bisected over main's air war commits (e7c5cef,
+461af83, 265800d, a3d3040, d7536fc) by stepping each pair of trees tick by tick to the first
+difference, on the classic battle of the same seed:
+
+| Battle | First difference in lines (merged against this branch) | Same tick and change on main's classic | Commit |
+|---|---|---|---|
+| air-normal-1 | tick 2,946: a Helipad queued instead of a Gunship | yes | 265800d (a Helipad more for the Troop Carrier) |
+| air-hard-1 | tick 2,994: a parked Gunship sent at a target, `airIds` and `nextAirStrike` set | yes | a3d3040 (a lone Gunship strikes) |
+| size-a and size-b, Normal (lines) | ticks 7,008 and 7,038: a Helipad instead of a Gunship | yes | 265800d |
+| size-a and size-b, Hard (lines) | ticks 4,026 and 4,236: a Power Plant queued | yes | 265800d |
+| size-a Hard, three sides | tick 10,555: a Grenadier queued | yes (three sides, classic) | 265800d |
+
+Regenerated, with the reasons in the files:
+
+- `drive-planet-battle.ts` STORY_HASHES, 12 of 56, all now origin/main's values: Quiet Man, Blackout
+  and Last Light, all four each, rebuilt by main's 2668bda so a player can win them. Skirmish hashes
+  unchanged (62 of 62).
+- `drive-size.ts` PRE_ROUND6, 11 of 30: Normal and Hard lines and classic, both Normal three-sided
+  battles and Hard three-sided size-a (the table above; the classic ones equal origin/main's own
+  battles). No setup, standard tech and Easy unchanged.
+- `drive-size.ts`'s replayed Standard battle moved from seed size-replay to size-replay-2: on
+  size-replay main's commander now ends the battle at tick 7,246, before either side reaches a Mk II.
+- `drive-lines.ts`'s long quiet battle now also holds off `nextAirlift`: main's airlift raids keep
+  their own timer, and the first took side 0's lone structure at tick 5,867 to 7,231.
+
+Normal mirror at the Standard pace, lines, `--map random`, 150 seeds (`npm run ladder:fire -- --map
+random --pace standard --match new:normal,new:normal`): side 0 wins 61 (41%), side 1 89 (59%), none
+unfinished, median 24.1 minutes, Mk II reached by 81% of sides at 12.8 minutes and Mk III by 65% at
+15.4. The same ladder on this branch before the merge: 68 (45%) and 82 (55%), median 23.9 minutes,
+Mk II 82% at 12.9, Mk III 66% at 15.5. Length and research depth are unchanged; the 4-point seat
+swing is inside the noise at 150 seeds.
+
+The branch gained two commits while this merge was under way (lighter development-lines and pace
+sweeps in `npm run check`, with `npm run drive:fire -- --deep` for the full ones; the build-window
+tour waiting for the window to close), so the merge was redone on top of them; they touch only the
+harness, CI and the tour driver, and merged cleanly with the changes above.
+
+Gates at the merge: `npm run check` "All checks passed" (drive:fire "372968 assertions, 0 failed,
+820.5s", about 14 minutes on one core; campaign-check "2979 assertions, 0 failures", about a
+minute; drive:planet "34944 assertions passed, 0 failed, 68.4s"; the whole check 18m09s). The full
+sweeps, run before the lighter sample landed (what `-- --deep` runs now): "373039 assertions, 0
+failed, 1152.3s". `npm run
+sweep:fire` 279 battles in 302s, the same table as main's (missions are byte-identical to main).
+`npm run tours -- --quick fireline` "ok fireline" (build window: 39 menu items). `npm run
+ladder:planet` "Every target passes; 106.5 s in all", and with `-- --prefix holdout` "Every target
+passes; 109.4 s in all".
+
 ### 2026-11-11: The naval war, and the Coast map
 
 The player asked for naval warfare next. No map had a sea to fight on: over six seeds of every type
@@ -1219,6 +1492,95 @@ own shore is the likely cause, and is the first thing to look at if Coast games 
 Harness at the end: `npm run drive:fire` 391,798 assertions, 0 failed; `npm run campaign:fire`
 2,951 (the Naval Yard joins the skirmish-only structures its Last Light check skips).
 
+### 2026-11-11: Merge with main's naval war (development lines, pace and War for the Planet kept)
+
+Main's PRs #38 and #39 (the naval war: the Coast map, five ships, the Naval Yard, the computer's navy;
+a small Founder's Ledger change) met this branch's development lines, game size (pace) and War for
+the Planet. Five files conflicted (this log, `renderer.ts`, `Lobby.tsx`, `state.ts`, `tick.ts`), each
+a both-sides merge: the Landing Craft's places beside the hauler's cargo over `cargoMaxOf` (the ore
+cage), "War for the Planet" and "Seven battlefields" in What's new, `migrateNaval` after the paced
+research repair, main's `navalStep` before heroes (which still run in a mission or a planet battle),
+and the module and research speeds before main's sea layer in `stepAlong`. The decisions:
+
+- **Coast and the game size.** The cards do not choose a map type, so Coast plays at every size
+  as main built it, and `random` now draws it one time in seven at every size. Long on a Large map
+  and Epic on a Huge one were played on the Coast map, lines, Normal mirror: both sides built a
+  Naval Yard and a fleet in every battle (4 Long seeds, played before and after the hold below; 3
+  Epic, before it), and every side reached Mk II and Mk III (Long medians about 13 and 15 minutes,
+  Epic about 12 and 13). Long Coast battles ran 27 to 76 minutes, beyond the card's 20 to 45 in five
+  of the eight; Epic's ran 50 to 82, inside 45 to 85.
+  The card minutes were measured over the six land maps and are kept; Coast at Long runs long, as
+  main found at the standard size (32 minutes against 25).
+- **Paced research holds ships too.** At a paced research size the commander holds its unit
+  purchases while short of its next research with an army at home. Main's navy bought ships through
+  that hold, and ships counted as the army at home, so on a Coast map a paced commander could hold
+  its land army back while it built a fleet. Now ships do not count toward the army at home and the
+  ship purchases wait while the hold is on (`navalPlan`'s `hold`, from `ai.ts`). Only paced lines
+  battles can see this; classic, standard tech, Quick and missions never hold.
+- **No navy in War for the Planet.** No planet terrain is the Coast map: `PlanetTerrain` is the six
+  land types (`PLANET_TERRAINS`, in `MAP_TYPES`' old order, so every planet map and draw is
+  unchanged), the yield, defence, ore and name tables are keyed by it, and a save whose battle names
+  any other map type is refused. A large Lakes or Classic battle could still hold a sea, so a
+  planet battle refuses the Naval Yard and every ship for every side (`techAllowed`), and the
+  computer never looks for a sea there. The planet's armies are infantry and vehicles, a ship
+  could never come home from a battle, and the battles stay the ones this branch built: the v1
+  fixture and the battle rules 1 wars give their old hashes (OLD_WAR_HASHES, unchanged; the battles
+  are hashed without the empty Naval queue every state now carries). Larger planet maps by stakes
+  (`battleRules`, `mapSize`) are untouched; a planet battle's setup still states every field.
+- **Ships and development lines.** No Naval line and no module for a ship: the decision and its
+  checks are in `fireline-round5b-design.md` (build log, 2026-11-11). In short, ships are neither
+  vehicles nor aircraft, so the Armour, Engines and Air lines, Autoloaders, Field workshops and
+  Salvage crews pass them by, while Calibration, HEAT rounds (the Destroyer's shells),
+  High-explosive fill (the Battleship's blast) and Assembly lines (the Naval queue) reach them as
+  they reach every weapon and queue; Assembly lines' blurb now names ships. Nothing stacks, and
+  main added no `SkirmishSetup` field, so every preset still states every field.
+- **Purity.** `src/sim/` and `src/planet/` still use no `Math.random` and no clock; main's naval
+  code draws nothing. The harness's refusal and same-object checks cover main's new actions.
+
+**Byte identity.** Every story mission (0, 600 and 3,000 ticks, default and every hero: 84), every
+classic and standard-tech skirmish (2, 3 and 4 sides, all seven map types, 3,000 ticks: 142) and
+fifteen classic computer battles to 18,000 ticks (advanced, 10,000 credits, rich ore, every
+difficulty, on random, Coast and Lakes maps) hash in the merged tree exactly as in origin/main's own
+code (345207f) with `research` and `pace` left out of the setup: 241 of 241. Regenerated, with the
+reasons in the files:
+
+- `drive-planet-battle.ts` STORY_HASHES, all 56, now origin/main's values. Bisected: all 56 equal
+  the old values at 1608d33's parent and origin/main's at 1608d33 (part one of the naval war),
+  which gives every player an empty Naval queue, so every state's JSON changed.
+- `drive-planet-battle.ts` SKIRMISH_HASHES, all 62, for the same reason, and because main's
+  computer (62f30b6) notes `navalShore: null` at its first decision in an advanced battle with no
+  sea. Every old value equals the merged state with only those two left out, so no battle played
+  differently. The loop keeps the six old map types (`PRE_NAVAL_MAPS`), so its seeds are unchanged,
+  and ten Coast skirmish hashes were added.
+- `drive-size.ts` PRE_ROUND6, 24 of 30: every battle on `map: 'random'`. Main's 1608d33 puts Coast
+  in `MAP_TYPES`, so `random` draws among seven and both seeds now draw another map (size-a canyon
+  to Coast, size-b highlands to Lakes). The classic and standard ones equal origin/main's own
+  battles. The six without a setup are unchanged: the hash now also leaves out an empty Naval queue
+  and `navalShore: null`.
+- `drive-size.ts`'s starvation guard counts ground units without ships, and leaves out seeds that
+  draw the Coast map, where the fleets' fight decided the land armies (one seed: 2 ground units at
+  Standard against 19 at Quick, with side 0 broke for the last 3,000 ticks and nobody holding for
+  research).
+
+Normal mirror at the Standard pace, lines, 150 seeds (`npm run ladder:fire -- --pace standard
+--match new:normal,new:normal`). On the six land maps (`--map classic,river,highlands,lakes,plains,canyon`,
+the same maps both builds): this branch before the merge side 0 57 (38%), side 1 92 (61%), 1
+unfinished, median 24.3 minutes, Mk II 82% at 12.9, Mk III 64% at 15.4; merged 57 (38%), 91 (61%),
+2 unfinished, median 24.3, Mk II 80% at 12.9, Mk III 64% at 15.6 (the one battle more unfinished is
+on a Lakes map with a sea). With `--map random`: before 61 (41%) and 89 (59%), none unfinished, median
+24.1, Mk II 81% at 12.8, Mk III 65% at 15.4; merged 71 (47%), 76 (51%), 3 unfinished, median 23.7,
+Mk II 77% at 12.6, Mk III 62% at 15.3, Coast 14/5/1 of its 20 battles.
+
+The build-window tour driver walks every tab in `MENUS`, which now includes Naval; the Naval tab is
+offered only on a map with open sea, so the driver's battle is now on the Coast map and checks the
+Naval tab's five ships and the Naval Yard too (45 menu items, was 39).
+
+Gates at the merge: `npm run check` "All checks passed" (drive:fire "393357 assertions, 0 failed,
+979.4s"; campaign-check "2979 assertions, 0 failures"; drive:planet "35252 assertions passed, 0
+failed, 97.8s"; the whole check 21m28s). `npm run tours -- --quick fireline fireline-planet` "ok
+fireline" (build window: 45 menu items) and "ok fireline-planet". `npm run ladder:planet` "Every
+target passes; 107.8 s in all", and with `-- --prefix holdout` "Every target passes; 110.3 s in all".
+
 ### 2026-11-11: the visual pass
 
 Four parallel strands, each owning its own files. The lobby became a briefing room: Campaign, then
@@ -1250,6 +1612,48 @@ start with a smaller garrison. After: 43 of 44 won with the army sent at twelve 
 at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
 three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
 assertions, about 25 seconds more than before.
+
+### 2026-11-11: Merge with main's visual pass and territory campaign (pace, lines and War for the Planet kept)
+
+Main's PRs #36 (the visual pass: the briefing-room lobby, the war-map theatre, the battle console,
+the field-manual How to play; territory and engagements) and #40 (a Founder's Ledger coach) met this
+branch's game size (pace), development lines and War for the Planet. Six files conflicted (this log,
+`SkirmishSetup.tsx`, `GameScreen.tsx`, `HowToPlay.tsx`, `Lobby.tsx`, `styles.css`), each merged with
+both sides kept. The decisions:
+
+- **The lobby reads 01 Campaign, 02 War for the Planet, 03 Skirmish, 04 Your battles.** The war's
+  setup panel became a numbered section like main's, with its saves under "Your wars" in main's save
+  rows (a war's row names its length and turn); the hero banner and the section path gained a War
+  for the Planet entry. `WarSetup` is unchanged but for a class, `fl-war-setup`, under which the
+  lobby gives it main's monospaced field labels, larger inputs, ticked length cards and boxed rules.
+  "Guided first turn" and every `war-*` hook are where they were.
+- **The game size start screen lives inside main's numbered skirmish orders.** The section still
+  opens on the size cards every visit: 1 Game size (the cards, now two by two with main's corner
+  tick), 2 Enemy commander (scaled for the pace and map size, as before), 3 Deploy (main's orders
+  table, which now also lists the game size and the research mode and carries `setup-summary`, the
+  name, Begin and Customise). Customise shows main's five steps, with "Game size" as a back button:
+  1 Enemy commander, 2 Battlefield (with the seed), 3 Forces (sides, mode, tech level, and the
+  research choice under it, still greyed at standard tech), 4 Terms of engagement (the game size
+  row first, then credits, ore, map size and sites), 5 Deploy. One Begin button at a time, so the
+  tour drivers' `Begin the battle` lookups still find exactly one.
+- **The war screen in the campaign screen's lettering.** Main restyled the campaign map, the war
+  screen's neighbour; the war screen's title and card headings now use the campaign's small-caps
+  serif (`--a-serif`), its tabs main's monospaced labels with an accent rule on the open tab. Only
+  CSS changed; every `data-tour-target` id, the Tour button and its tests are untouched.
+- **The battle console.** The message feed takes main's `fl-d-feed` class and offsets (80 pixels
+  over a bar) and still rises over a planet battle's hero and power bar.
+- **How to play** became main's field manual: War for the Planet is a `Section` after Campaign, and
+  the index lists it, and Naval, which the index had left out.
+- **What's new** keeps War for the Planet first, beside main's counted campaign line.
+- **Engagements state their research mode.** This branch's `MissionSpec.research` is required, so
+  `engagementSpec` sets `research: 'classic'`, as every story mission does. Main's territory
+  campaign changed no file under `src/sim/` or `src/planet/`, and no mission.
+
+**Byte identity.** Every story mission (default and every hero, 0, 600 and 3,000 ticks: 28) and every
+engagement (fresh campaign and every mission won, 0 and 1,500 ticks: 44) hash in the merged tree
+exactly as in origin/main's own code (268d78a), with `research` and `pace` left out of the setup:
+72 of 72. No hash in any harness was regenerated; OLD_WAR_HASHES, STORY_HASHES and SKIRMISH_HASHES
+are unchanged and pass.
 
 ### 2026-11-11: campaign Hard winnable on Blackout, Fireline, Iron Coast and Firestorm
 
@@ -1331,3 +1735,66 @@ the six older map types nothing moved beyond the noise (Hard beats Normal 75.0%,
 unfinished in all, was 16). The round-4 air battle's one seed now ends a minute before its Bombers
 fly, so its bombing check counts a second, longer battle as well. Harness: `npm run drive:fire`
 396,367 assertions, 0 failed; `npm run campaign:fire` 7,642, 0 failures.
+
+### 2026-11-12: Merge with main's Coast stalemates (pace, lines and War for the Planet kept)
+
+Main's PR #42 (the Coast stalemates: ships that never chase what they cannot reach, a broke
+commander's recovery, mop-up, the land-only last stand) met this branch's development lines, game
+size (pace) and War for the Planet. Three files conflicted (`ai.ts`, `aiAir.ts`, `aiNaval.ts`), each
+merged with both sides kept: the imports joined, main's last stand, `recover` and `mopUp` in place
+of the old last-stand line and ahead of the paced research block, and the navy's ship purchases
+gated on both the paced hold and main's crisis. The decisions:
+
+- **Mop-up, all-in and the paced hold run side by side.** The hold (2026-11-11, the naval war's
+  merge) only stops purchases: no land units and no ships are bought while the commander saves for
+  its next research. Mop-up and a broke side's all-in buy nothing; they send idle units already
+  built. So both apply at once: a holding commander whose opponent has no armed unit left still
+  sends its army in, and keeps saving. Neither needed a change.
+- **The attack timer is the pace's.** Mop-up and all-in wait for `nextAttack`, which at a paced size
+  is already the pace's first attack, scaled for the map (`difficultyForPace`, `scaledFor`). So at
+  Long and Epic they wait as long as the first wave does, and a quiet harness battle stays quiet.
+- **A crisis lifts the hold.** Paced research is planned only out of a crisis, and the plan clears
+  `researchFor` at every decision, so in a crisis the hold falls away. The hold in `ai.ts` reads the
+  previous decision's note, so it can last one decision into a crisis; that costs at most one
+  decision's purchases and was left as it is. Main's crisis rule (no yard and no ships with no
+  income) and the hold both stop ships; either is enough.
+- **Recovery and paced research.** `recover` sells the Research Lab first, paced research or not:
+  the economy comes first. Research in progress pauses until a Lab stands again (its progress and
+  any doctrine kept), and the paced plan rebuilds the Lab once out of the crisis with ore on the map.
+- **Development lines: a queued unit's modules count.** Main's `raiseFunds` now does nothing when
+  even every queued unit and spare structure would not reach the price. Taking a queued vehicle back
+  refunds its modules too (`extra`), so the sum it adds up now includes them. Classic battles carry
+  no modules, so they are unchanged to the credit.
+- **War for the Planet.** A planet battle has no Naval Yard and no ships (`techAllowed`), so
+  `recover` finds no yard to sell there and the land-only last stand is the old one. OLD_WAR_HASHES
+  unchanged and passing.
+- **Purity.** Main's code draws nothing and reads no clock; `src/sim/` still uses neither.
+
+**Byte identity.** Every story mission (default and every hero; 0, 600 and 6,000 ticks: 84 hashes in
+28 runs), 98 classic and standard-tech skirmishes played to the end or 60,000 ticks (all seven map
+types, 2, 3 and 4 sides, every difficulty with two sides) and 24 computer battles on the original
+game to the end (every difficulty, eight seeds) hash in the merged tree exactly as in origin/main's
+own code (d16b2bf) with `research` and `pace` left out of the setup: 150 of 150 runs. The same runs
+on this branch before the merge differ from main in 50 of them, so the check sees main's change.
+Regenerated, with the reasons in the file:
+
+- `drive-size.ts` PRE_ROUND6, 18 of 30: every advanced battle (lines, classic and three, both
+  seeds). Bisected on the pre-merge build: every one first changes with main's 611005a alone
+  (recovery when broke, ships that never chase what they cannot reach), and most again with
+  f216f26 and 385ce76. The six classic ones equal origin/main's own battles exactly. No setup and
+  standard tech are unchanged.
+
+No other hash moved: STORY_HASHES, SKIRMISH_HASHES and OLD_WAR_HASHES are unchanged and pass.
+
+Normal mirror, Standard pace, lines, 150 seeds on `--map random` (`npm run ladder:fire -- --pace
+standard --match new:normal,new:normal --map random --seeds 150`): this branch before the merge
+side 0 71 (47%), side 1 76 (51%), 3 unfinished, median 23.7 minutes, Mk II 77% at 12.6, Mk III 62%
+at 15.3, Coast 14/5/1; merged 71 (47%), 77 (51%), 2 unfinished, median 23.6, Mk II 77% at 12.6,
+Mk III 62% at 15.3, Coast 13/7/0. `npm run sweep:fire` gives exactly the table in main's campaign
+Hard entry (2026-11-11), every mission and level.
+
+Gates at the merge: `npm run check` "All checks passed" (drive:fire "397801 assertions, 0 failed,
+838.2s"; campaign-check "7699 assertions, 0 failures"; drive:planet "35252 assertions passed, 0
+failed, 84.3s"; the whole check 19m16s). `npm run tours -- --quick fireline fireline-planet` "ok
+fireline" (build window: 45 menu items) and "ok fireline-planet". `npm run ladder:planet` "Every
+target passes; 94.5 s in all", and with `-- --prefix holdout` "Every target passes; 96.1 s in all".
