@@ -73,6 +73,9 @@ export const ACT_TWO: MissionSpec[] = [
     summary: 'Land on the northern coast and clear the Combine from the shore.',
     seed: 'iron-coast',
     difficulty: 'normal',
+    // Its own Hard: a Normal commander, with Hard's larger forces. One step up on top of them and no
+    // scripted plan won it at campaign Hard (npm run sweep:fire); with this, about 5 of 12.
+    hard: { tier: 'normal' },
     player: {
       credits: 4000,
       structures: ['hq', 'power', 'refinery', 'barracks'],
@@ -232,6 +235,9 @@ export const ACT_TWO: MissionSpec[] = [
     summary: 'Destroy the Combine Strike Command before its missiles flatten you.',
     seed: 'firestorm',
     difficulty: 'normal',
+    // Its own Hard: a Normal commander, with Hard's larger forces. One step up on top of them and no
+    // scripted plan won it at campaign Hard (npm run sweep:fire); with this, about 5 of 12.
+    hard: { tier: 'normal' },
     player: {
       credits: 7000,
       structures: ['hq', 'power', 'power', 'refinery', 'refinery', 'barracks', 'factory', 'uplink'],

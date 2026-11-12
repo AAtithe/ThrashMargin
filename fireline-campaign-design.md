@@ -224,14 +224,16 @@ One setting per campaign, `CampaignState.difficulty` (Easy, Normal, Hard; Normal
 for every save from before it), chosen on the briefing and changeable between missions. Missions are
 written at Normal; `scaleMission` in `src/campaign/difficulty.ts` derives Easy and Hard from them
 (enemy troops and triggered groups, enemy credits, commander tier, player credits, a time limit, and
-on Easy tougher troops through the perks). Structures, objectives and rewards are never scaled. The
+on Easy tougher troops through the perks). A mission may set its own Hard (`MissionSpec.hard`: the
+commander's tier, the enemy's credits) where the general one is more than it can bear; Blackout,
+Fireline, Iron Coast and Firestorm do. Structures, objectives and rewards are never scaled. The
 battle records its level on `MissionRuntime.level`. Numbers and reasons: `fireline-design.md`,
 2026-11-10 (both entries).
 
 The bar, measured by `npm run sweep:fire` (twelve plans for a base mission, six for The Quiet Man,
 three for Ace of Spades): Easy is won by every or nearly every plan, Normal by most, Hard by some.
-`campaign:fire` pins one winning plan per mission at Easy and Normal (The Quiet Man and Ace of Spades
-at all three). A scripted player that loses proves little; one that wins proves the mission can be won.
+`campaign:fire` pins a winning plan for every mission at Normal, and at Easy and Hard as well for all
+but Demolition, Convoy North, The Long Hold and Bastion Line, whose own players run at Normal only. A scripted player that loses proves little; one that wins proves the mission can be won.
 
 ## 11. Territory and engagements
 
