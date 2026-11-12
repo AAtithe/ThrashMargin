@@ -2199,8 +2199,8 @@ alone: with the two formation moves switched off in a scratch copy of the merged
 origin/main's values. The two setup key-order checks name round 6's four after the pace.
 
 **Numbers.** origin/main (5e91242) in a scratch worktree: `npm run drive` 397,801 assertions, 0
-failed; campaign-check 7,699, 0 failures; drive:planet 35,252. Merged: `npm run drive` 0 failed
-(numbers at the gates below); campaign-check 7,699, 0 failures; drive:planet 35,255 (three new), 0
+failed; campaign-check 7,699, 0 failures; drive:planet 35,252. Merged: `npm run drive` 401,464 assertions, 0
+failed (about 18 minutes); campaign-check 7,699, 0 failures; drive:planet 35,255 (three new), 0
 failed. Every mission line, the standard-tech line, every standard-tech sides line and the tier-three
 battle are main's exactly. The advanced lines moved: the Hard air battle (main side 1 at 17 minutes,
 0 bombs, 4 rockets; merged 30 minutes, 1 rocket, so round 6's second air battle is counted too), the
@@ -2216,4 +2216,5 @@ fireline-touch fireline-planet` ok (build window 45 items, 6 kept off; touch on 
 lobby shows War for the Planet and the skirmish orders; an Ashen-against-Meridian lines skirmish with
 Heroes and Generals on (Kade for side 0) starts with both armies, a Wedge holds, the General's drawer
 shows, the Ashen Vehicles tab lists the Raider Bike; a war starts on its map; no console errors and no
-horizontal scroll.
+horizontal scroll. `npm run check` from the root: "All checks passed", after main's #43 (Founder's
+Ledger only) was merged on top too.
