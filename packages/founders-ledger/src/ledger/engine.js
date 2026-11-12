@@ -11,7 +11,7 @@
  * which the host wires to the server (api/game/coach.ts); the prompts and the key live there. With
  * `ai` false, or when a task returns null, every feature falls back to the built-in bank.
  */
-const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Loud day? Reset in three minutes</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
+const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Take control: a 3-minute reset</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
 
 export function mountLedger(root, opts = {}) {
   return createLedger(opts.initial, { ...opts, root }).mount();
@@ -554,6 +554,7 @@ function points(){
   if(wc(S.future.letter)>=150)p+=30;
   p+=10*new Set((S.letterReads||[]).map(monthKey)).size;
   habits().forEach(h=>{p+=HABIT_PTS*habitMet(h);});
+  p+=fullDayPoints();
   const sessWeeks=new Set();(S.sessions||[]).forEach(s=>{if(s.status==='done'&&s.takeaway&&!sessWeeks.has(weekNo(s.doneTs))){sessWeeks.add(weekNo(s.doneTs));p+=SESSION_PTS;}});
   return p;
 }
@@ -768,6 +769,82 @@ function agendaText(s){
   return out.join('\n');
 }
 
+/* ---------- The daily game: three rings, a day streak, rest days banked, honours ----------
+   Everything here is derived from what is already logged, so nothing can drift and nothing is stored
+   except which honours he has already been told about. A rest day is earned for every seven days
+   in a row and spent automatically on a missed day: time off is vital, so it never breaks the streak. */
+const RINGS=[
+  {k:'notice',name:'Notice',hint:'Log one good thing'},
+  {k:'move',name:'Move',hint:'Finish one action or reset move'},
+  {k:'space',name:'Space',hint:'A non-negotiable, a moment of space, or a phone-off day'}
+];
+const FULL_DAY_PTS=5, REST_MAX=2, REST_EVERY=7;
+const dayStart=ts=>{const d=new Date(ts);d.setHours(0,0,0,0);return d.getTime();};
+/* Rings closed on each day, keyed by dayKey. */
+function dayRings(){
+  const by={};const mark=(ts,k)=>{if(!ts)return;const d=dayKey(ts);(by[d]=by[d]||{notice:false,move:false,space:false,any:false});if(k)by[d][k]=true;by[d].any=true;};
+  (S.notes||[]).forEach(n=>mark(n.ts,n.kind==='good'?'notice':'space'));
+  S.todos.forEach(t=>{if(t.done)mark(t.doneAt,'move');});
+  (S.habitLog||[]).forEach(l=>mark(l.ts,'space'));
+  (S.offDays||[]).forEach(o=>{if(o.status==='back')mark(o.day,'space');});
+  (S.resets||[]).forEach(r=>mark(r.ts,null));
+  S.reviews.forEach(r=>mark(r.ts,null));
+  (S.sysLog||[]).forEach(l=>mark(l.ts,null));
+  return by;
+}
+const ringsOn=(by,ts)=>by[dayKey(ts)]||{notice:false,move:false,space:false,any:false};
+const fullDay=r=>r.notice&&r.move&&r.space;
+/* Walks every day from the first one logged to today. A day keeps the streak if anything real happened
+   on it; a gap spends a banked rest day if there is one; today only counts once it has happened. */
+function dayStreak(now=Date.now()){
+  const by=dayRings();const days=Object.keys(by);
+  if(!days.length)return {current:0,best:0,rest:0,fullDays:0,activeDays:0};
+  let d=Math.min(...days.map(k=>{const [y,m,dd]=k.split('-').map(Number);return new Date(y,m-1,dd).getTime();}));
+  const end=dayStart(now);let cur=0,best=0,rest=0,run=0,full=0,active=0;
+  for(;d<=end;d=dayStart(d+DAY+3600000)){
+    const r=ringsOn(by,d);
+    if(r.any){cur++;run++;active++;if(fullDay(r))full++;if(run%REST_EVERY===0&&rest<REST_MAX)rest++;}
+    else if(d===end){/* today is not over */}
+    else if(rest>0){rest--;run=0;}
+    else{cur=0;run=0;}
+    best=Math.max(best,cur);
+  }
+  return {current:cur,best,rest,fullDays:full,activeDays:active};
+}
+function fullDayPoints(){const by=dayRings();return Object.values(by).filter(fullDay).length*FULL_DAY_PTS;}
+/* Rings closed per week, for the last n weeks, oldest first. */
+function weeklyRings(n=8,now=Date.now()){
+  const by=dayRings();const out=[];const w0=weekNo(now);
+  for(let w=w0-n+1;w<=w0;w++)out.push({w,n:0});
+  Object.entries(by).forEach(([k,r])=>{const [y,m,dd]=k.split('-').map(Number);const w=weekNo(new Date(y,m-1,dd).getTime());const o=out.find(x=>x.w===w);if(o)o.n+=(r.notice?1:0)+(r.move?1:0)+(r.space?1:0);});
+  return out;
+}
+const HONOURS=[
+  {id:'d7',name:'A week in charge',desc:'Seven days in a row',goal:7,v:()=>dayStreak().best},
+  {id:'d30',name:'A month in charge',desc:'Thirty days in a row',goal:30,v:()=>dayStreak().best},
+  {id:'d100',name:'A hundred days',desc:'A hundred days in a row',goal:100,v:()=>dayStreak().best},
+  {id:'full1',name:'Full day',desc:'Close all three rings in one day',goal:1,v:()=>dayStreak().fullDays},
+  {id:'full10',name:'Ten full days',desc:'All three rings on ten days',goal:10,v:()=>dayStreak().fullDays},
+  {id:'full50',name:'Fifty full days',desc:'All three rings on fifty days',goal:50,v:()=>dayStreak().fullDays},
+  {id:'pil1',name:'Showed up',desc:'Your first Pilates class',goal:1,v:()=>(S.habitLog||[]).filter(l=>l.id==='pilates').length},
+  {id:'pil4',name:'Rhythm',desc:'Pilates four weeks running',goal:4,v:()=>{const h=habits().find(x=>x.id==='pilates');return h?habitBest(h):0;}},
+  {id:'pil12',name:'Non-negotiable',desc:'Pilates twelve weeks running',goal:12,v:()=>{const h=habits().find(x=>x.id==='pilates');return h?habitBest(h):0;}},
+  {id:'good10',name:'Noticer',desc:'Ten good things logged',goal:10,v:()=>(S.notes||[]).filter(n=>n.kind==='good').length},
+  {id:'good50',name:'An eye for it',desc:'Fifty good things logged',goal:50,v:()=>(S.notes||[]).filter(n=>n.kind==='good').length},
+  {id:'stop1',name:'Off the plate',desc:'Your first Stop action done',goal:1,v:()=>S.todos.filter(t=>t.done&&t.type==='Stop').length},
+  {id:'stop5',name:'Five things gone',desc:'Five Stop actions done',goal:5,v:()=>S.todos.filter(t=>t.done&&t.type==='Stop').length},
+  {id:'move10',name:'Heat into moves',desc:'Ten reset moves done',goal:10,v:()=>S.todos.filter(t=>t.done&&isResetMove(t)).length},
+  {id:'inbox5',name:'Inbox closed',desc:'Five email resets turned into moves',goal:5,v:()=>(S.resets||[]).filter(r=>r.loud==='inbox'&&(S.todos.find(t=>t.id===r.todo)||{}).done).length},
+  {id:'rule10',name:'My rules',desc:'Choose your own rule on ten hard moments',goal:10,v:()=>(S.resets||[]).filter(r=>r.rule).length},
+  {id:'rev4',name:'Closes his own week',desc:'Four Friday reviews',goal:4,v:()=>S.reviews.length},
+  {id:'rev12',name:'A quarter closed',desc:'Twelve Friday reviews',goal:12,v:()=>S.reviews.length},
+  {id:'off1',name:'The firm held',desc:'Your first phone-off day',goal:1,v:()=>(S.offDays||[]).filter(o=>o.status==='back').length},
+  {id:'coach3',name:'Prepared',desc:'Three coaching sessions with an agenda',goal:3,v:()=>(S.sessions||[]).filter(s=>s.status==='done').length},
+  {id:'letter',name:'Written it down',desc:'A 2030 letter of 150 words',goal:1,v:()=>wc(S.future.letter)>=150?1:0}
+];
+function honours(){return HONOURS.map(h=>{const v=Number(h.v())||0;return {...h,value:Math.min(v,h.goal),earned:v>=h.goal};});}
+function habitBest(h){const by=habitWeeks(h.id);const ws=Object.keys(by).map(Number).sort((a,b)=>a-b);let best=0,run=0,prev=null;ws.forEach(w=>{if(by[w]>=h.target){run=prev!==null&&w===prev+1&&run>0?run+1:1;prev=w;}else{run=0;prev=w;}best=Math.max(best,run);});return best;}
+
 function fearGap(){
   const rs=S.reviews.filter(r=>r.fear&&r.fear!=='Nothing this week'&&r.fearOutcome);
   const better=rs.filter(r=>r.fearOutcome==='never'||r.fearOutcome==='better').length;
@@ -788,7 +865,7 @@ function renderTabs(){
   const unplayed=S.calls.filter(c=>S.answers[c.id]==null).length+(S.pendingCall?1:0)+FOUNDING.filter(c=>S.answers[c.id]==null).length;
   const sysWaiting=sysToday().call&&!sysToday().played;
   const oc=offCurrent();const offDue=oc&&dayKey(oc.day)!==dayKey(Date.now())&&oc.day<Date.now();
-  const tabs=[['today','Today',sysWaiting?'1':''],['reset','Reset',''],['off','Phone off',offDue?'due':''],['review','Friday review',reviewDue()?'due':''],['coach','Coach session',openSession()?'1':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
+  const tabs=[['today','Today',sysWaiting?'1':''],['stats','Stats',''],['reset','Reset',''],['off','Phone off',offDue?'due':''],['review','Friday review',reviewDue()?'due':''],['coach','Coach session',openSession()?'1':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
   $('#tabs').innerHTML=tabs.map(([k,l,n])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:''}</button>`).join('');
 }
 
@@ -807,6 +884,7 @@ function vToday(){
   const played=S.reviews.filter(r=>r.game);const onGame=chosen?played.filter(r=>r.game===chosen.id).length:0;
   const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
   return `<section>
+  ${vDayCard()}
   ${vResetCard()}
   ${vHabitCard()}
   ${vSessionCard()}
@@ -949,6 +1027,42 @@ function vSysPanel(){
    <div class="sys-list">${SYSTEM.map(c=>`<span class="sys-chip ${m.has(c.id)?'won':(S.sysLog||[]).some(l=>l.id===c.id)?'tried':''}" title="${esc(c.title)}">${esc(c.title)}</span>`).join('')}</div></div>`;
 }
 /* ---------- Momentum: this week at a glance ---------- */
+function ringSvg(on,label){
+  return `<svg class="ring ${on?'on':''}" viewBox="0 0 44 44" role="img" aria-label="${esc(label)}: ${on?'closed':'open'}"><circle cx="22" cy="22" r="18" class="ring-bg"/><circle cx="22" cy="22" r="18" class="ring-fg" stroke-dasharray="${on?113:0} 113"/></svg>`;
+}
+function vDayCard(){
+  const ds=dayStreak();const r=ringsOn(dayRings(),Date.now());const closed=RINGS.filter(x=>r[x.k]).length;
+  const next=honours().filter(h=>!h.earned).sort((a,b)=>b.value/b.goal-a.value/a.goal)[0];
+  return `<div class="card day-card"><div class="spread"><div><div class="eyebrow">Today</div><h2>${ds.current?`Day ${ds.current} in charge`:'Start your streak today'}</h2></div><button class="btn small ghost" data-tab="stats">Stats</button></div>
+   <div class="rings">${RINGS.map(x=>`<div class="ring-cell">${ringSvg(r[x.k],x.name)}<span class="lbl small">${x.name}</span><span class="tiny muted">${r[x.k]?'closed':esc(x.hint)}</span></div>`).join('')}</div>
+   <p class="small ${closed===3?'delta-up':'muted'}">${closed===3?`Full day. +${FULL_DAY_PTS} points.`:`${closed} of 3 rings closed. Close all three for a full day.`}${ds.rest?` &middot; ${plural(ds.rest,'rest day')} banked`:''}${ds.best>ds.current?` &middot; best ${ds.best}`:''}</p>
+   ${next?`<div class="honour-next"><span class="small">Next honour: <span style="font-weight:600">${esc(next.name)}</span>, ${esc(next.desc.toLowerCase())}</span><div class="bar"><i style="width:${Math.round(next.value/next.goal*100)}%"></i></div><span class="tiny muted">${next.value} of ${next.goal}</span></div>`:''}</div>`;
+}
+function vStats(){
+  const ds=dayStreak();const by=dayRings();const now=Date.now();
+  const end=dayStart(now);const start=dayStart(end-(7*12-1)*DAY);
+  const cells=[];for(let d=start;d<=end;d=dayStart(d+DAY+3600000)){const r=ringsOn(by,d);const n=(r.notice?1:0)+(r.move?1:0)+(r.space?1:0);cells.push(`<i class="h${n}${d===end?' today':''}" title="${fmtDate(d)}: ${n} of 3"></i>`);}
+  const wk=weeklyRings(8);const max=21;
+  const pil=habits().find(x=>x.id==='pilates');
+  const hs=honours();const earned=hs.filter(h=>h.earned);const next=hs.filter(h=>!h.earned).sort((a,b)=>b.value/b.goal-a.value/a.goal).slice(0,4);
+  const tile=(lab,fig,sub)=>`<div class="mo"><span class="lab">${lab}</span><span class="fig">${fig}</span><span class="sub">${sub}</span></div>`;
+  return `<section>
+  <div class="card"><div class="eyebrow">Your numbers</div><div class="mo-grid">
+   ${tile('Days in charge',ds.current,`best ${ds.best}${ds.rest?` &middot; ${ds.rest} rest banked`:''}`)}
+   ${tile('Full days',ds.fullDays,`all three rings &middot; ${ds.activeDays} active days`)}
+   ${pil?tile('Pilates',`${habitStreak(pil)} wk${habitStreak(pil)===1?'':'s'}`,`running &middot; best ${habitBest(pil)}`):''}
+   ${tile('Honours',`${earned.length}/${hs.length}`,'earned')}
+  </div></div>
+  <div class="card"><div class="eyebrow">Last twelve weeks</div><h3>Every day you were in charge</h3>
+   <div class="heat" role="img" aria-label="Calendar of the last twelve weeks, darker means more rings closed">${cells.join('')}</div>
+   <div class="row small muted heat-key"><span>Rings closed:</span><i class="h0"></i>0<i class="h1"></i>1<i class="h2"></i>2<i class="h3"></i>3</div></div>
+  <div class="card"><div class="eyebrow">Rings closed per week</div><h3>Out of 21</h3>
+   <div class="bars">${wk.map((x,i)=>`<div class="bar-col"><div class="bar-v" style="height:${Math.round(x.n/max*100)}%"></div><span class="tiny muted">${i===wk.length-1?'now':`-${wk.length-1-i}`}</span><span class="tiny">${x.n}</span></div>`).join('')}</div></div>
+  <div class="card"><div class="eyebrow">Honours</div><h3>${earned.length?`${plural(earned.length,'honour')} earned`:'Your first honours are close'}</h3>
+   ${next.length?`<div class="lbl small">Next up</div>${next.map(h=>`<div class="honour-next"><span class="small"><span style="font-weight:600">${esc(h.name)}</span>: ${esc(h.desc)}</span><div class="bar"><i style="width:${Math.round(h.value/h.goal*100)}%"></i></div><span class="tiny muted">${h.value} of ${h.goal}</span></div>`).join('')}`:''}
+   ${earned.length?`<div class="lbl small">Earned</div><div class="chips-row">${earned.map(h=>`<span class="honour">${esc(h.name)}</span>`).join('')}</div>`:''}</div>
+  </section>`;
+}
 function vHabitCard(){
   if(!habits().length)return '';
   const day=new Date().getDay();const late=day===0||day>=4;
@@ -1294,11 +1408,19 @@ function vFuture(){
   </section>`;
 }
 
+function announceHonours(){
+  const seen=new Set(S.honoursSeen||[]);const fresh=honours().filter(h=>h.earned&&!seen.has(h.id));
+  if(!fresh.length)return;
+  S.honoursSeen=[...seen,...fresh.map(h=>h.id)];save();
+  if(!seen.size&&fresh.length>1)setStatus(`${plural(fresh.length,'honour')} already earned. See them in Stats.`);
+  else setStatus(`Honour earned: ${fresh.map(h=>h.name).join(', ')}.`);
+}
 function render(){
   renderBoard();renderTabs();
   const rt=byId('resetTop');if(rt)rt.hidden=S.view==='reset';
-  const v={today:vToday,coach:vCoach,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
+  const v={today:vToday,stats:vStats,coach:vCoach,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
   $('#view').innerHTML=v();
+  announceHonours();
 }
 
 /* ---------- The coach: Claude, through the host (the portal's server) ---------- */
@@ -1618,6 +1740,7 @@ return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
+  RINGS, FULL_DAY_PTS, REST_MAX, dayRings, dayStreak, weeklyRings, honours, habitBest,
   DEFAULT_HABITS, HABIT_IDEAS, HABIT_PTS, habitCount, habitStreak, habitMet, sessionBrief, agendaText, SESSION_PTS,
   RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE,
   sysToday, sysRhythm, sysMastered, sysProgress, playSys, offCurrent, offTotals, offRecent, planOff, logOff, offBrief, fearGap,

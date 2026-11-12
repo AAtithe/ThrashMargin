@@ -363,6 +363,44 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
     ok(l.habitStreak(l.state.habits[0]) === 0, 'habits: a missed week breaks the streak');
   }
 
+  // The daily game: rings, the day streak, rest days banked, honours.
+  {
+    const D = 86_400_000; const noon = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d.getTime(); })();
+    const day = (n: number) => noon - n * D;
+    const l = createLedger(null);
+    ok(l.dayStreak(noon).current === 0 && l.dayStreak(noon).best === 0, 'day: a new ledger has no streak');
+    l.state.notes = [{ ts: day(0), kind: 'good', text: 'a' }];
+    l.state.todos = [{ id: 't', text: 'x', type: 'Start', h: 'week', done: true, doneAt: day(0) }];
+    l.state.habitLog = [{ id: 'pilates', ts: day(0) }];
+    const r = l.dayRings()[Object.keys(l.dayRings())[0]];
+    ok(r.notice && r.move && r.space, 'rings: a good thing, an action and Pilates close all three');
+    ok(l.dayStreak(noon).fullDays === 1 && l.points() >= l.FULL_DAY_PTS, 'rings: a full day counts and scores');
+    // Three days in a row, then a gap with nothing banked: the streak breaks.
+    l.state.notes = [day(5), day(4), day(3), day(1)].map(ts => ({ ts, kind: 'good', text: 'g' }));
+    l.state.todos = []; l.state.habitLog = [];
+    let s = l.dayStreak(noon);
+    ok(s.current === 1 && s.best === 3, `day: a gap with no rest banked breaks the streak (current ${s.current}, best ${s.best})`);
+    ok(s.fullDays === 0, 'rings: one ring is not a full day');
+    // Today not yet active does not break yesterday's streak.
+    l.state.notes = [day(2), day(1)].map(ts => ({ ts, kind: 'good', text: 'g' }));
+    ok(l.dayStreak(noon).current === 2, 'day: today does not count as missed while it is still going');
+    // Seven days earn a rest day, which covers one missed day.
+    l.state.notes = [10, 9, 8, 7, 6, 5, 4, 2, 1].map(n => ({ ts: day(n), kind: 'good', text: 'g' }));
+    s = l.dayStreak(noon);
+    ok(s.current === 9 && s.rest === 0, `day: a banked rest day covers the missed day (current ${s.current}, rest ${s.rest})`);
+    l.state.notes = [10, 9, 8, 7, 6, 5, 4, 1].map(n => ({ ts: day(n), kind: 'good', text: 'g' }));
+    ok(l.dayStreak(noon).current === 1, 'day: two missed days with one rest banked break the streak');
+    // Weekly rings and honours.
+    const wk = l.weeklyRings(8, noon);
+    ok(wk.length === 8 && wk.reduce((a: number, x: { n: number }) => a + x.n, 0) === 8, 'stats: rings per week add up');
+    const hs = l.honours();
+    ok(hs.find((h: { id: string }) => h.id === 'd7').earned === true && hs.find((h: { id: string }) => h.id === 'd30').earned === false, 'honours: a week in charge earned, a month not yet');
+    ok(hs.every((h: { value: number; goal: number }) => h.value <= h.goal), 'honours: progress never shows past the goal');
+    ok(!/[\u2014\u2013]/.test(JSON.stringify(hs.map((h: { name: string; desc: string }) => [h.name, h.desc]))), 'honours: no dashes in the names');
+    l.state.habitLog = [3, 2, 1, 0].map(w => ({ id: 'pilates', ts: noon - w * 7 * D }));
+    ok(l.habitBest(l.state.habits[0]) === 4 && l.honours().find((h: { id: string }) => h.id === 'pil4').earned, 'honours: four weeks of Pilates is Rhythm');
+  }
+
   // Coach sessions: the agenda comes from the ledger.
   {
     const l = createLedger(null);

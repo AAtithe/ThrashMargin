@@ -217,3 +217,27 @@ textarea.talk{min-height:160px;font-size:16px}
 .habit:first-of-type{border-top:0}
 ul.brief{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px}
 pre.agenda{white-space:pre-wrap;font:15px/1.55 var(--body);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:14px;margin:0}
+
+/* The daily game: rings, the day card, the calendar, weekly bars and honours. Colours are tokens only. */
+.day-card h2{font-size:22px}
+.rings{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;text-align:center}
+.ring-cell{display:grid;justify-items:center;gap:2px;min-width:0}
+.ring{width:56px;height:56px;transform:rotate(-90deg)}
+.ring circle{fill:none;stroke-width:6}
+.ring .ring-bg{stroke:var(--sunk)}
+.ring .ring-fg{stroke:var(--accent);stroke-linecap:round;transition:stroke-dasharray .5s ease}
+.tiny{font-size:11px;line-height:1.3}
+.honour-next{display:grid;gap:4px;margin-top:4px}
+.honour{display:inline-block;font:600 13px var(--body);padding:6px 12px;border-radius:999px;background:var(--good-bg);color:var(--good)}
+.heat{display:grid;grid-template-rows:repeat(7,14px);grid-auto-flow:column;grid-auto-columns:14px;gap:3px;overflow-x:auto;padding-bottom:4px}
+.heat i,.heat-key i{display:inline-block;width:14px;height:14px;border-radius:3px}
+.heat-key{gap:6px;align-items:center}
+.h0{background:var(--sunk)}
+.h1{background:color-mix(in srgb, var(--accent) 35%, var(--sunk))}
+.h2{background:color-mix(in srgb, var(--accent) 65%, var(--sunk))}
+.h3{background:var(--accent)}
+.heat i.today{outline:2px solid var(--brass);outline-offset:1px}
+.bars{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;align-items:end;height:150px}
+.bar-col{display:grid;grid-template-rows:1fr auto auto;justify-items:center;height:100%;gap:2px}
+.bar-v{width:100%;max-width:28px;align-self:end;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
+@media (prefers-reduced-motion: reduce){.ring .ring-fg{transition:none}}
