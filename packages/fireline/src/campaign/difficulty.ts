@@ -9,7 +9,9 @@ import type { MissionSpec, TriggerSpec } from '../sim/types';
  *
  * What it changes: the enemy's starting troops and every enemy group a trigger sends, the enemy's
  * credits, the commander's tier (one step down on Easy, one up on Hard, from the mission's own),
- * the player's credits and a mission's overall time limit. Easy also makes the player's units a
+ * the player's credits and a mission's overall time limit. A mission may set its own Hard
+ * (MissionSpec.hard: the commander's tier, the enemy's credits) where the general one is more than
+ * it can bear; four do, each measured by `npm run sweep:fire`. Easy also makes the player's units a
  * quarter tougher (applied with the perks, in missionContext).
  *
  * What it never changes: structures (a bonus such as "destroy 2 Gun Turrets" must stay possible),
@@ -96,14 +98,18 @@ function scaleTrigger(t: TriggerSpec, f: number): TriggerSpec {
 export function scaleMission(spec: MissionSpec, level: Difficulty): MissionSpec {
   const L = CAMPAIGN_LEVEL[isCampaignLevel(level) ? level : 'normal'];
   if (level === 'normal' || !isCampaignLevel(level)) return spec;
-  const tierIndex = Math.max(0, Math.min(TIERS.length - 1, TIERS.indexOf(spec.difficulty in DIFFICULTIES ? spec.difficulty : 'normal') + L.tier));
+  const stepped = TIERS[Math.max(0, Math.min(TIERS.length - 1, TIERS.indexOf(spec.difficulty in DIFFICULTIES ? spec.difficulty : 'normal') + L.tier))];
+  // A mission may set its own Hard (MissionSpec.hard): the commander's tier, the enemy's credits.
+  const own = level === 'hard' ? spec.hard : undefined;
+  const tier = own?.tier && own.tier in DIFFICULTIES ? own.tier : stepped;
+  const enemyCredits = own?.enemyCredits !== undefined && Number.isFinite(own.enemyCredits) && own.enemyCredits > 0 ? own.enemyCredits : L.enemyCredits;
   return {
     ...spec,
-    difficulty: TIERS[tierIndex],
+    difficulty: tier,
     player: { ...spec.player, credits: Math.round(spec.player.credits * L.playerCredits) },
     enemy: {
       ...spec.enemy,
-      credits: Math.round(spec.enemy.credits * L.enemyCredits),
+      credits: Math.round(spec.enemy.credits * enemyCredits),
       units: scaleUnits(spec.enemy.units, L.enemyUnits),
     },
     triggers: spec.triggers.map(t => scaleTrigger(t, L.enemyUnits)),

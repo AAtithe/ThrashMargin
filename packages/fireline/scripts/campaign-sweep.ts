@@ -5,6 +5,7 @@
  *
  *   npm run sweep:fire                       every mission, every level
  *   npm run sweep:fire -- blackout fireline  only these
+ *   npm run sweep:fire -- --level hard       only Hard (comma-separate several)
  *
  * Several minutes, so not part of `npm run check`; campaign-check plays one winning plan for each.
  * Use it after any change to a mission, the campaign difficulty, the AI or the balance. One plan
@@ -46,9 +47,12 @@ if (process.argv[2] === '--job') {
 } else void main();
 
 async function main(): Promise<void> {
-  const wanted = process.argv.slice(2).filter(a => !a.startsWith('-'));
+  const args = process.argv.slice(2);
+  const li = args.indexOf('--level');
+  const levels = li >= 0 ? (args[li + 1].split(',') as Difficulty[]) : LEVELS;
+  const wanted = args.filter((a, i) => !a.startsWith('-') && !(li >= 0 && i === li + 1));
   const missions = wanted.length ? wanted : ['first-light', 'quiet-man', 'hold-the-ford', 'ace-of-spades', ...BASE_MISSIONS.slice(2)];
-  const jobs: Job[] = missions.flatMap(m => LEVELS.flatMap(level => jobsFor(m).map(j => ({ ...j, level }))));
+  const jobs: Job[] = missions.flatMap(m => levels.flatMap(level => jobsFor(m).map(j => ({ ...j, level }))));
   const results: PlayResult[] = [];
   const self = __filename;
   const width = Math.max(1, cpus().length);
@@ -72,9 +76,9 @@ async function main(): Promise<void> {
     launch();
   });
   console.log(`Fireline campaign sweep: ${jobs.length} battles in ${Math.round((Date.now() - t0) / 1000)}s\n`);
-  console.log(`  ${'mission'.padEnd(16)}${LEVELS.map(l => l.padStart(10)).join('')}`);
+  console.log(`  ${'mission'.padEnd(16)}${levels.map(l => l.padStart(10)).join('')}`);
   for (const m of missions) {
-    const cells = LEVELS.map(l => {
+    const cells = levels.map(l => {
       const rs = results.filter(r => r.mission === m && r.level === l);
       return `${rs.filter(r => r.result === 'won').length}/${rs.length}`.padStart(10);
     });

@@ -352,6 +352,9 @@ export const MISSIONS: MissionSpec[] = [
     summary: 'Black out a full Combine base and bring down its War Factory.',
     seed: 'blackout',
     difficulty: 'normal',
+    // Its own Hard: a Normal commander, with Hard's larger forces. One step up on top of them and no
+    // scripted plan won it at campaign Hard (npm run sweep:fire); with this, about 5 of 12.
+    hard: { tier: 'normal' },
     player: {
       credits: 5000,
       structures: ['hq', 'power', 'refinery', 'barracks'],
@@ -398,6 +401,9 @@ export const MISSIONS: MissionSpec[] = [
     summary: 'The finale: every hero, every power, destroy everything.',
     seed: 'fireline',
     difficulty: 'hard',
+    // Its own Hard: no extra credits. Already the Hard commander at Normal, with 8000 credits, it was
+    // won by no scripted plan at campaign Hard with a quarter more; with the extra troops alone, 6 of 12.
+    hard: { enemyCredits: 1 },
     player: {
       credits: 6000,
       structures: ['hq', 'power', 'power', 'refinery', 'barracks', 'factory'],

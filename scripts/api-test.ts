@@ -388,7 +388,10 @@ async function suite(mode: 'fresh' | 'legacy') {
     ok(made.status === 201 && st.mapType === 'river' && st.setup?.tech === 'standard' && st.setup?.ore === 'rich', 'fireline: a skirmish setup reaches the game');
     ok(st.setup?.credits === 20000 && st.players[0].credits === 20000, 'fireline: setup credits are clamped on the server');
     const junk = await play('POST', 'fireline', A2, undefined, { name: 'junk setup', setup: { map: 'moon', tech: 'godmode', credits: 'lots', ore: ['x'] } });
-    ok(junk.status === 201 && ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon'].includes(junk.body.state.mapType) && junk.body.state.setup.tech === 'advanced', 'fireline: unknown setup values fall back to the defaults');
+    // An unknown map falls back to a random one, so any map type the game has is a pass. The list is
+    // the game's own: written out here it missed the Coast map, and failed one run in seven.
+    const { MAP_TYPES } = require(path.join(ROOT, 'packages/fireline/src/sim/rules'));
+    ok(junk.status === 201 && (MAP_TYPES as string[]).includes(junk.body.state.mapType) && junk.body.state.setup.tech === 'advanced', `fireline: unknown setup values fall back to the defaults (${junk.body.state.mapType})`);
     const none = await play('POST', 'fireline', A2, undefined, { name: 'no setup' });
     ok(none.status === 201 && !none.body.state.setup, 'fireline: no setup (an older client) gives the original game');
     const listed = await play('GET', 'fireline', A2);

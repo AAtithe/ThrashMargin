@@ -1250,3 +1250,39 @@ start with a smaller garrison. After: 43 of 44 won with the army sent at twelve 
 at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
 three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
 assertions, about 25 seconds more than before.
+
+### 2026-11-11: campaign Hard winnable on Blackout, Fireline, Iron Coast and Firestorm
+
+No scripted plan won these four at campaign Hard (0 of 12 each, again on main after the air war
+landed). Measured one part of Hard at a time over the four:
+
+| Hard as | Blackout | Fireline | Iron Coast | Firestorm |
+|---|---|---|---|---|
+| tier up, troops x1.15, credits x1.25 (as it was) | 0 | 0 | 0 | 0 |
+| no tier step, troops x1.15, credits x1.25 | 5 | 0 | 4 | 5 |
+| tier up, no extra troops or credits | 1 | 9 | 3 | 1 |
+
+So the commander's tier step broke three of them, and Fireline (whose Normal already plays the Hard
+commander, with 8,000 credits) was broken by the extra credits. Dropping the tier step from Hard for
+every mission was tried and rejected: Hold the Ford and Last Light then won 12 of 12 at Hard, the
+same as Normal. Instead a mission may now set its own Hard (`MissionSpec.hard`: the commander's tier
+and the enemy's credits multiplier, anything unnamed being Hard as usual). Blackout, Iron Coast and
+Firestorm keep a Normal commander at Hard with Hard's larger forces; Fireline keeps its Hard
+commander and the extra troops but no extra credits.
+
+| Mission | Easy | Normal | Hard |
+|---|---|---|---|
+| 1 First Light | 12/12 | 12/12 | 12/12 |
+| 2 The Quiet Man | 6/6 | 6/6 | 6/6 |
+| 3 Hold the Ford | 12/12 | 12/12 | 7/12 |
+| 6 Ace of Spades | 3/3 | 2/3 | 2/3 |
+| 7 Blackout | 12/12 | 9/12 | 5/12 |
+| 8 Fireline | 12/12 | 9/12 | 6/12 |
+| 9 Iron Coast | 12/12 | 11/12 | 4/12 |
+| 12 Firestorm | 10/12 | 5/12 | 5/12 |
+| 14 Last Light | 12/12 | 12/12 | 5/12 |
+
+Firestorm reads the same at Normal and Hard: its losses at both are mostly its 15-minute deadline,
+which Hard does not move, and the plans that reach the Strike Command in time win at both.
+campaign-check now plays one winning plan for each base mission at Hard as well as Easy and Normal,
+and `npm run sweep:fire -- --level hard` runs one level alone.
