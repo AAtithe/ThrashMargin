@@ -1,9 +1,11 @@
 import { airRoleOf, airRoom, ammoMax, isAir, parkAircraft } from './air';
+import { isShip } from './naval';
 import { canQueue, doAttack, doMove, doQueue, doSell } from './commands';
 import { canRide, doBoard, doUnload, isStill } from './transport';
 import { buildingCentre, dist, distToBuilding } from './grid';
 import { canResearch, doResearch } from './research';
 import {
+  BUILDINGS,
   DIFFICULTIES,
   HELIPAD_SLOTS,
   MAX_QUEUE,
@@ -19,7 +21,7 @@ import {
   type UnitKind,
   type UpgradeId,
 } from './rules';
-import { costFor, countBuildings, powerOf, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, isStructure, powerOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, menuOf, unitSpec, unitSpecOf } from './specs';
@@ -193,6 +195,9 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // to the next wave's size and to the opponent's army, as the commander's own extras are.
   const mem = s.ai[owner];
   const armed = mine.filter(u => unitSpecOf(s, u).weapon && !isAir(u)).length;
+  // An army that can take ground: not aircraft, and not ships (the naval war), which cannot reach a
+  // structure inland. The last stand and recovery read this.
+  const landArmed = mine.filter(u => unitSpecOf(s, u).weapon && !isAir(u) && !isShip(u)).length;
   const foeArmy = foes.filter(u => unitSpecOf(s, u).weapon && !isAir(u)).length;
   const armyReady = armed >= Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9);
 
@@ -229,7 +234,11 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // aircraft or research that pay back only over time; with it all gone, the last stand below.
   let ore = 0;
   for (const o of s.ore) ore += o;
-  if (ore <= 0) lastStand(s, owner, armed);
+  if (ore <= 0) lastStand(s, owner, landArmed);
+  // Broke with no income and no way to buy one back: sell what it can live without (recover).
+  else if (crisis) recover(s, owner, landArmed);
+  // An opponent with nothing left that shoots: everything idle goes in, wave or no wave.
+  mopUp(s, owner, mine);
   if (crisis || !armyReady || ore < AIR_ORE_FLOOR) {
     strikes(s, owner, t, home, enemy, foes, mine.filter(isAir));
     return;
@@ -305,6 +314,108 @@ function lastStand(s: GameState, owner: Owner, armed: number): void {
   }
   const kind: UnitKind = p.credits >= unitSpec(s, owner, 'grenadier').cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
   if (p.queues.infantry.length < MAX_QUEUE && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
+}
+
+/**
+ * No income, and not the credits to restore it: no refinery and less than one costs, or a refinery
+ * and no hauler and less than one costs. Without this both commanders of a long Coast battle once
+ * sat for an hour on a few hundred credits each, saving for the one thing that would pay again,
+ * with the map's ore still there. Units queued but not started are taken back first (fund); then,
+ * one a decision, the structures it can live without are sold, the Research Lab first and Generators
+ * never; with nothing left to sell, the last stand: whatever remains goes on infantry.
+ */
+function recover(s: GameState, owner: Owner, armed: number): void {
+  const p = s.players[owner];
+  if (p.queues.building.length) return;
+  const has = (k: BuildingKind) => s.buildings.some(b => b.owner === owner && b.kind === k && b.hp > 0);
+  const hauling = s.units.some(u => u.owner === owner && u.kind === 'hauler') || p.queues.vehicle.some(q => q.kind === 'hauler');
+  const need = !has('refinery') ? costFor(s, owner, 'refinery') : !hauling ? costFor(s, owner, 'hauler') : 0;
+  if (!need || p.credits >= need || fund(s, owner, need)) return;
+  const flying = s.units.some(u => u.owner === owner && isAir(u));
+  const sailing = s.units.some(u => u.owner === owner && isShip(u));
+  const spare: [BuildingKind, boolean][] = [
+    ['researchlab', true],
+    ['helipad', !flying],
+    ['shipyard', !sailing],
+    ['flakcannon', true],
+    ['techcentre', true],
+    ['strikecommand', true],
+    ['repairbay', true],
+  ];
+  for (const [kind, ok] of spare) {
+    if (!ok) continue;
+    const b = s.buildings.find(x => x.owner === owner && x.kind === kind && x.hp > 0);
+    if (b) {
+      doSell(s, owner, b.id);
+      return;
+    }
+  }
+  // No troops and not the price of one: the last resort, structures that cannot win the battle back
+  // (a Naval Yard whose ships cannot reach the last enemy structures inland, a Helipad, the Uplink,
+  // turrets), and then any Generator but the last: two broke sides once sat for the rest of the
+  // battle on five Generators each, neither able to pay for a rifleman. Never the yard, a Barracks,
+  // a Factory or a refinery.
+  if (armed === 0 && p.credits < UNITS.rifleman.cost) {
+    const last: BuildingKind[] = ['shipyard', 'helipad', 'uplink', 'rocketturret', 'turret'];
+    for (const kind of last) {
+      const b = s.buildings.find(x => x.owner === owner && x.kind === kind && x.hp > 0);
+      if (b) {
+        doSell(s, owner, b.id);
+        return;
+      }
+    }
+    const generators = s.buildings.filter(x => x.owner === owner && x.kind === 'power' && x.hp > 0);
+    if (generators.length > 1) {
+      doSell(s, owner, generators[generators.length - 1].id);
+      return;
+    }
+  }
+  // Nothing left to sell: train what the credits allow, and send everything that can take ground at
+  // the opponent now, wave or no wave. Waiting cannot help a side with no income; two such sides
+  // once faced each other for an hour, one with a Buggy and a Grenadier idle at home.
+  lastStand(s, owner, armed);
+  if (armed > 0 && s.tick >= s.ai[owner].nextAttack) allIn(s, owner, s.units.filter(u => u.owner === owner));
+}
+
+/**
+ * The opponent has no armed unit left anywhere: every idle armed unit of ours goes at its structure
+ * nearest it, attack-move, whatever the wave's size. Without this a winning side whose only armed
+ * units were ships, or too few for its next wave, could sit for an hour beside an opponent reduced
+ * to a Barracks and three Generators. Units already ordered somewhere are left alone.
+ */
+function mopUp(s: GameState, owner: Owner, mine: Unit[]): void {
+  // An attack like any other: not before the commander's first attack is due (a scripted hold-off,
+  // or a harness's quiet battle, sets that far off).
+  if (s.tick < s.ai[owner].nextAttack) return;
+  // Every enemy unit and structure on the map, seen or not: the commander already knows the map. A
+  // side defending with turrets alone is not defenceless: the waves deal with it as ever.
+  if (s.units.some(f => f.hp > 0 && unitSpecOf(s, f).weapon && isEnemy(s, owner, f.owner))) return;
+  if (s.buildings.some(b => b.hp > 0 && buildingSpecOf(s, b).weapon && isEnemy(s, owner, b.owner))) return;
+  allIn(s, owner, mine);
+}
+
+/**
+ * Every idle armed unit that can take ground (not aircraft, not ships, which cannot reach a structure
+ * inland), attack-move at the opponent's structure nearest it.
+ */
+function allIn(s: GameState, owner: Owner, mine: Unit[]): void {
+  const targets = s.buildings.filter(b => b.hp > 0 && isStructure(b) && isEnemy(s, owner, b.owner));
+  if (!targets.length) return;
+  for (const u of mine) {
+    if (!unitSpecOf(s, u).weapon || isAir(u) || isShip(u) || u.order.type !== 'idle' || u.engage) continue;
+    let best = targets[0];
+    let bestD = Infinity;
+    for (const b of targets) {
+      const c = buildingCentre(b);
+      const d = dist(u.x, u.y, c.x, c.y);
+      if (d < bestD) {
+        bestD = d;
+        best = b;
+      }
+    }
+    const c = buildingCentre(best);
+    doMove(s, owner, [u.id], c.x, c.y, true);
+  }
 }
 
 /**

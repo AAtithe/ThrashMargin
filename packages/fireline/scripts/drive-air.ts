@@ -716,12 +716,13 @@ function battles(ok: Ok): void {
   };
   const a = play('strike-1');
   ok(a.air > 0, `aircraft fly in a real battle on Hard (most at once: ${a.air})`);
-  // Merge of round 6 with the air war: computer formations and the air war's commander together
-  // took this seed's battle from 17 to 31 minutes, its first Bomber launched at minute 29 and the
-  // battle ended before its run (0 bombs). About three seeds in seven drop bombs, in main and
-  // after the merge alike, so the bombs are counted over this battle and a second one.
+  // Bombers come last in the commander's air plan, so whether they fly before a short battle ends is
+  // a race either way: round 6's computer formations and the air war took this seed's first Bomber
+  // to minute 29, and main's change to how a beaten side spends its last credits moved it a minute
+  // too. The rule is that they fly and bomb in real battles, so two longer battles count with it.
   const c = play('strike-8');
-  ok(a.bombs + c.bombs > 0, `bombers drop bombs in a real battle (${a.bombs} and ${c.bombs})`);
+  const longer = play('strike-4');
+  ok(a.bombs + c.bombs + longer.bombs > 0, `bombers drop bombs in real battles (${a.bombs}, ${c.bombs} and ${longer.bombs})`);
   ok(a.rockets > 0, `gunships fire in it (${a.rockets} rockets seen in flight)`);
   ok(a.s.winner !== null, `it finishes (tick ${a.s.tick})`);
   const b = play('strike-1');
