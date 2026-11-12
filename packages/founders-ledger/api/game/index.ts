@@ -5,6 +5,7 @@ import { requireUser } from '../_lib/auth';
 import { handleCors } from '../_lib/cors';
 import { queryParam } from '../_lib/query';
 import { createGame, isGameId, saveState, sendGameLimit, sendSaveResult } from '../_lib/saves';
+import { handleCoach } from './coach';
 
 /**
  * The Founder's Ledger: one coaching ledger per account, in the shared `games` table like every other
@@ -45,6 +46,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!user) return;
 
   const db = getDb();
+  // The coach (Claude): ?coach=status, or POST ?coach=<task>. See ./coach.ts.
+  const coach = queryParam(req, 'coach');
+  if (coach !== undefined) return handleCoach(req, res, db, user.userId, coach);
+
   // From req.url, never req.query, which logs a deprecation warning on Vercel; see _lib/query.ts.
   const id = queryParam(req, 'id');
   if (id !== undefined && !isGameId(id)) return res.status(404).json({ message: 'Ledger not found' });
