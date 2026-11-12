@@ -512,6 +512,12 @@ export interface MissionSpec {
   summary: string;
   seed: string;
   difficulty: Difficulty;
+  /**
+   * This mission's own campaign Hard (campaign/difficulty.ts), where the general one is more than
+   * it can bear: the commander's tier in place of one step up, and the multiplier on the enemy's
+   * credits in place of Hard's. Anything not named is Hard as usual.
+   */
+  hard?: { tier?: Difficulty; enemyCredits?: number };
   player: {
     credits: number;
     /** Structures besides nothing at all; include 'hq' for a base mission. */

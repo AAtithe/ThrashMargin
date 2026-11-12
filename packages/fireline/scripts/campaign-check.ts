@@ -963,7 +963,18 @@ section('campaign difficulty', () => {
     ok(scaleMission(m, 'normal') === m, `${m.id}: Normal is the mission as written`);
     const easy = scaleMission(m, 'easy');
     const hard = scaleMission(m, 'hard');
-    ok(tierOf[easy.difficulty] === Math.max(0, tierOf[m.difficulty] - 1) && tierOf[hard.difficulty] === Math.min(2, tierOf[m.difficulty] + 1), `${m.id}: the commander is a step easier on Easy and harder on Hard`);
+    // A step up on Hard, unless the mission names its own Hard commander (MissionSpec.hard).
+    const hardTier = m.hard?.tier ?? (['easy', 'normal', 'hard'] as const)[Math.min(2, tierOf[m.difficulty] + 1)];
+    ok(tierOf[easy.difficulty] === Math.max(0, tierOf[m.difficulty] - 1) && hard.difficulty === hardTier, `${m.id}: the commander is a step easier on Easy, and on Hard ${hardTier}`);
+    const hardCredits = m.hard?.enemyCredits ?? CAMPAIGN_LEVEL.hard.enemyCredits;
+    ok(hard.enemy.credits === Math.round(m.enemy.credits * hardCredits) && easy.enemy.credits === Math.round(m.enemy.credits * CAMPAIGN_LEVEL.easy.enemyCredits), `${m.id}: enemy credits ${easy.enemy.credits} / ${m.enemy.credits} / ${hard.enemy.credits}`);
+    if (m.hard) {
+      const { hard: _own, ...plain } = m;
+      for (const lv of ['easy', 'normal'] as const) {
+        const { hard: _h, ...withOwn } = scaleMission(m, lv);
+        ok(JSON.stringify(withOwn) === JSON.stringify(scaleMission(plain as MissionSpec, lv)), `${m.id}: its own Hard leaves ${lv} alone`);
+      }
+    }
     ok(count(easy.enemy.units) <= count(m.enemy.units) && count(hard.enemy.units) >= count(m.enemy.units), `${m.id}: fewer enemy troops on Easy, more on Hard (${count(easy.enemy.units)} / ${count(m.enemy.units)} / ${count(hard.enemy.units)})`);
     ok(new Set(easy.enemy.units).size === new Set(m.enemy.units).size, `${m.id}: Easy keeps every kind of enemy troop`);
     ok(JSON.stringify(easy.enemy.structures) === JSON.stringify(m.enemy.structures) && JSON.stringify(hard.enemy.structures) === JSON.stringify(m.enemy.structures), `${m.id}: structures are never changed`);
@@ -1016,8 +1027,8 @@ section('every mission, played', () => {
   // Each mission no other section plays is played here by a scripted player (campaign-player.ts),
   // and must be won. Base missions: the skirmish commander runs the base, held at home and sent at
   // the mission's target at eight minutes, with the heroes and powers scripted. The full set of plans
-  // at every difficulty is `npm run sweep:fire`. Hard is checked there, not here: a scripted player
-  // that loses proves little, and Hard is meant to be lost sometimes.
+  // at every difficulty is `npm run sweep:fire`. At Hard, one plan known to win each mission: Hard is
+  // meant to be lost by many plans, but never by all of them.
   const notes: string[] = [];
   const plan = BASE_PLANS.find(p => p.commander === 'normal' && p.attackAt === 8)!;
   for (const id of ['first-light', 'hold-the-ford', 'blackout', 'fireline', 'iron-coast', 'firestorm', 'last-light'])
@@ -1026,6 +1037,21 @@ section('every mission, played', () => {
       ok(r.result === 'won', `${id} ${level}: won by ${planName(plan)} (${r.result} at ${clockText(r.ticks)}${r.lostBecause ? `: ${r.lostBecause}` : ''})`);
       if (level === 'normal') notes.push(`${id} ${clockText(r.ticks)}`);
     }
+  // Blackout, Fireline, Iron Coast and Firestorm were won by no plan at Hard until they had their
+  // own Hard (MissionSpec.hard); these are plans that win them now.
+  const hardPlans: Record<string, { commander: 'normal' | 'hard'; attackAt: number }> = {
+    'first-light': { commander: 'normal', attackAt: 8 },
+    'hold-the-ford': { commander: 'normal', attackAt: 0 },
+    blackout: { commander: 'hard', attackAt: 10 },
+    fireline: { commander: 'normal', attackAt: 8 },
+    'iron-coast': { commander: 'hard', attackAt: 12 },
+    firestorm: { commander: 'normal', attackAt: 8 },
+    'last-light': { commander: 'hard', attackAt: 8 },
+  };
+  for (const [id, hp] of Object.entries(hardPlans)) {
+    const r = playBase(id, 'hard', hp);
+    ok(r.result === 'won', `${id} hard: won by ${planName(hp)} (${r.result} at ${clockText(r.ticks)}${r.lostBecause ? `: ${r.lostBecause}` : ''})`);
+  }
   // The Quiet Man: the Spy round the north to the Uplink, the riflemen holding the extraction point.
   // Ace of Spades: the ridge held, the two tanks it brings waited for, then the sweep. Every level.
   for (const level of CAMPAIGN_LEVELS) {

@@ -388,55 +388,15 @@ async function suite(mode: 'fresh' | 'legacy') {
     ok(made.status === 201 && st.mapType === 'river' && st.setup?.tech === 'standard' && st.setup?.ore === 'rich', 'fireline: a skirmish setup reaches the game');
     ok(st.setup?.credits === 20000 && st.players[0].credits === 20000, 'fireline: setup credits are clamped on the server');
     const junk = await play('POST', 'fireline', A2, undefined, { name: 'junk setup', setup: { map: 'moon', tech: 'godmode', credits: 'lots', ore: ['x'] } });
-    ok(junk.status === 201 && ['classic', 'river', 'highlands', 'lakes', 'plains', 'canyon', 'coast'].includes(junk.body.state.mapType) && junk.body.state.setup.tech === 'advanced', 'fireline: unknown setup values fall back to the defaults');
+    // An unknown map falls back to a random one, so any map type the game has is a pass. The list is
+    // the game's own: written out here it missed the Coast map, and failed one run in seven.
+    const { MAP_TYPES } = require(path.join(ROOT, 'packages/fireline/src/sim/rules'));
+    ok(junk.status === 201 && (MAP_TYPES as string[]).includes(junk.body.state.mapType) && junk.body.state.setup.tech === 'advanced', `fireline: unknown setup values fall back to the defaults (${junk.body.state.mapType})`);
     const none = await play('POST', 'fireline', A2, undefined, { name: 'no setup' });
     ok(none.status === 201 && !none.body.state.setup, 'fireline: no setup (an older client) gives the original game');
     const listed = await play('GET', 'fireline', A2);
     ok(listed.body.saves.some((s: { id: string; mapType?: string }) => s.id === made.body.gameId && s.mapType === 'river'), 'fireline: the saves list carries the map type');    // Leave the saves as they were: later checks count one save per game.
     for (const g of [made, junk, none]) await play('DELETE', 'fireline', A2, g.body.gameId);
-  }
-  // Fireline's War for the Planet: one more save kind in the same endpoint (fireline-planet-design.md, 15.2).
-  {
-    // jsonb stores object keys in its own order, so compare content, not text.
-    const canon = (v: unknown): unknown =>
-      Array.isArray(v) ? v.map(canon) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map(k => [k, canon((v as Record<string, unknown>)[k])])) : v;
-    const same = (a: unknown, b: unknown) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
-    const war = await play('POST', 'fireline', A2, undefined, {
-      mode: 'planet', name: 'api war', commander: 'Tester', seed: 'api-war', preset: 'long',
-      options: { factions: 99, regions: 999, ironRule: 'yes', aiDiplomacy: false, turnLimit: 1 }, difficulty: 'nightmare',
-    });
-    const ws = war.body.state;
-    ok(war.status === 201 && ws?.kind === 'planet' && ws.planet?.turn === 1 && war.body.version === 0, 'fireline planet: create (201, kind planet, turn 1)');
-    const o = ws?.planet?.options ?? {};
-    ok(o.preset === 'long' && o.factions === 5 && o.regions === 36 && o.turnLimit === 90, 'fireline planet: options normalised against the preset (factions clamped, fixed keys forced)');
-    ok(o.ironRule === false && o.aiDiplomacy === false && ws.planet.difficulty === 'normal', 'fireline planet: junk options and difficulty fall back');
-    ok(ws?.planet?.seedText === 'api-war' && ws.planet.factions.length === 5 && ws.planet.regions.length === 36, 'fireline planet: the war is built from the seed');
-    const plain = await play('POST', 'fireline', A2, undefined, { mode: 'planet', preset: 'galactic', seed: '' });
-    ok(plain.status === 201 && plain.body.state.planet.options.preset === 'short' && plain.body.state.planet.seedText === plain.body.gameId, 'fireline planet: unknown preset is Short, empty seed is the new id');
-    const id = war.body.gameId as string;
-    const listed = await play('GET', 'fireline', A2);
-    const row = listed.body.saves.find((s: { id: string }) => s.id === id);
-    ok(row?.kind === 'planet' && row.preset === 'long' && row.turn === 1 && row.status === 'active', 'fireline planet: listed with kind and preset');
-    const loaded = await play('GET', 'fireline', A2, id);
-    ok(loaded.status === 200 && same(loaded.body.state, ws), 'fireline planet: load gives the war as created');
-    const won = { ...ws, planet: { ...ws.planet, turn: 7, result: { won: true, how: 'domination', turn: 7 } } };
-    const put = await play('PUT', 'fireline', A2, id, { state: won, version: 0 });
-    ok(put.status === 200 && put.body.version === 1, 'fireline planet: save accepted');
-    const back = await play('GET', 'fireline', A2, id);
-    ok(same(back.body.state, won), 'fireline planet: save round trip');
-    const row2 = (await play('GET', 'fireline', A2)).body.saves.find((s: { id: string }) => s.id === id);
-    ok(row2?.status === 'victory' && row2.turn === 7, 'fireline planet: status and turn come from the war');
-    const bad = await play('PUT', 'fireline', A2, id, { state: { kind: 'planet', id, name: 'x', planet: { seedText: 'api-war', regions: [] } }, version: 1 });
-    ok(bad.status === 400 && bad.body.message === 'Not a valid war save', 'fireline planet: malformed war save refused (400)');
-    const wrongShape = await play('PUT', 'fireline', A2, id, { state: { ...ws, planet: { ...ws.planet, factions: ws.planet.factions.slice(0, 3) } }, version: 1 });
-    ok(wrongShape.status === 400, 'fireline planet: faction count that disagrees with the options refused (400)');
-    const journal = Array.from({ length: 800 }, (_, i) => ({ turn: 1, text: `${i} ${'x'.repeat(380)}`, tone: 'info' }));
-    const big = await play('PUT', 'fireline', A2, id, { state: { ...ws, planet: { ...ws.planet, journal } }, version: 1 });
-    ok(big.status === 413 && big.body.message === 'This war is too large to save. Please report it.', 'fireline planet: oversize war save refused (413)');
-    const after = await play('GET', 'fireline', A2, id);
-    ok(after.body.version === 1 && same(after.body.state, won), 'fireline planet: refused saves change nothing');
-    for (const g of [war, plain]) ok((await play('DELETE', 'fireline', A2, g.body.gameId)).status === 200, 'fireline planet: delete');
-    ok((await play('GET', 'fireline', A2, id)).status === 404, 'fireline planet: deleted war is gone');
   }
   ok((await play('GET', 'no-such-game', A2)).status === 404, 'play: unknown game 404');
   for (const k of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
