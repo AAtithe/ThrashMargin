@@ -26,15 +26,20 @@ import {
   SELF_REPAIR_TICKS,
   SKIRMISH_POWERS,
   PRODUCER,
-  MENUS,
+  BOMB_PATCH,
+  HERO_RECRUIT_COST,
+  HERO_RECRUIT_TICKS,
   STANDARD_TECH,
   UNITS,
   TICKS_PER_SECOND,
   type Armor,
   type BuildingKind,
   type Category,
+  type Faction,
+  type HeroKind,
   type LineId,
   type ModuleId,
+  type Owner,
   type ResearchMode,
   type SupportPower,
   type UnitKind,
@@ -53,14 +58,17 @@ import {
   SCRAMBLE_LEASH,
   SCRAMBLE_RANGE,
 } from '../sim/rules';
-import { buildTicksOf, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, researchModeOf, techAllowed, unlocked } from '../sim/state';
+import { buildTicksFor, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, researchModeOf, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
+import { buildingSpecFor, buildingSpecOf, factionOf, menuOf, unitSpecFor } from '../sim/specs';
 import { doctrineOf, doctrineProblem, hasUpgrade, researchCostOf, researchProblem, researchTicksOf } from '../sim/research';
 import { cargoMaxOf, inModuleOrder, loadoutCost, loadoutOf, queueCostFor } from '../sim/loadout';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
 import { selectionActions, type Selection } from './selectionActions';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralNote } from '../components/Generals';
 
 /** A tab of the build window: a build list, or Research once a Research Lab stands. */
 export type Tab = Category | 'research';
@@ -110,9 +118,12 @@ export function hasSea(state: GameState): boolean {
 }
 
 
-const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
-const blurbOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].blurb : UNITS[k as UnitKind].blurb);
-const needsOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].requires : UNITS[k as UnitKind].requires);
+/** A kind's spec as an army fields it (round 6): Meridian's is the catalogue's own. */
+const specFor = (k: BuildingKind | UnitKind, f: Faction = 'meridian') =>
+  k in BUILDINGS ? buildingSpecFor(f, k as BuildingKind) : unitSpecFor(f, k as UnitKind);
+const nameOf = (k: BuildingKind | UnitKind, f?: Faction) => specFor(k, f).name;
+const blurbOf = (k: BuildingKind | UnitKind, f?: Faction) => specFor(k, f).blurb;
+const needsOf = (k: BuildingKind | UnitKind, f?: Faction) => specFor(k, f).requires;
 
 /**
  * The build hotkeys, in menu order: the first item on the open tab is Q, the second W, and so on.
@@ -126,14 +137,16 @@ export const BUILD_KEYS = ['q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'j', 'k', 'l'
  * Items for a tab, in menu (and hotkey) order. Given the battle, only what can be built in it: a
  * skirmish on standard tech, or a mission, shows the original items alone (still greyed until
  * their requirements stand, as ever), and advanced tech adds the rest. A mission's own tech list
- * keeps greying the original items it leaves out, so the campaign looks as it always has.
+ * keeps greying the original items it leaves out, so the campaign looks as it always has. The
+ * lists are the player's army's (round 6, menuOf): Meridian's are MENUS with its Sapper after the
+ * infantry; Ashen's add the Raider Bike and fly the Kestrel and Firebrand.
  */
 export const menuFor = (tab: Tab, state?: GameState): (BuildingKind | UnitKind)[] =>
   tab === 'research'
     ? []
     : state
-      ? MENUS[tab].filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k))
-      : MENUS[tab].slice();
+      ? menuOf(factionOf(state, 0), tab).filter(k => STANDARD_TECH.includes(k) || techAllowed(state, 0, k))
+      : menuOf('meridian', tab).slice();
 
 /** How many units a shift-click or shift+hotkey queues. */
 export const BATCH = 5;
@@ -187,16 +200,41 @@ export interface StatRow {
   value: string;
 }
 
-/** Every number worth knowing about a unit or structure, straight from rules.ts. */
-export function statsOf(kind: BuildingKind | UnitKind, research: ResearchMode = 'classic'): StatRow[] {
+/**
+ * The price and build time a list shows for a kind, as this army fields it (round 6 integration).
+ * Given the battle, what this side pays there (costFor and buildTicksFor: its army, its doctrine,
+ * a hero's recruit price); without one, the army's own numbers, and a hero's recruit price and
+ * training time in place of the campaign's 0, which no list ever charges.
+ */
+export function listedCost(kind: BuildingKind | UnitKind, faction: Faction = 'meridian', state?: GameState, owner: Owner = 0): { cost: number; ticks: number } {
+  if (state) return { cost: costFor(state, owner, kind), ticks: buildTicksFor(state, owner, kind) };
+  if (kind in UNITS && UNITS[kind as UnitKind].hero) return { cost: HERO_RECRUIT_COST[kind as HeroKind], ticks: HERO_RECRUIT_TICKS[kind as HeroKind] };
+  const spec = kind in BUILDINGS ? buildingSpecFor(faction, kind as BuildingKind) : unitSpecFor(faction, kind as UnitKind);
+  return { cost: spec.cost, ticks: spec.buildTicks };
+}
+
+/**
+ * Every number worth knowing about a unit or structure, straight from rules.ts, as this army fields
+ * it. Given the battle, the price and build time are what that side pays (listedCost). The research
+ * mode (development lines or classic) is the battle's when given, else `research`: only the
+ * Research Lab's card reads it.
+ */
+export function statsOf(
+  kind: BuildingKind | UnitKind,
+  faction: Faction = 'meridian',
+  state?: GameState,
+  owner: Owner = 0,
+  research: ResearchMode = state ? researchModeOf(state) : 'classic',
+): StatRow[] {
   const isB = kind in BUILDINGS;
-  const b = isB ? BUILDINGS[kind as BuildingKind] : null;
-  const u = isB ? null : UNITS[kind as UnitKind];
+  const b = isB ? buildingSpecFor(faction, kind as BuildingKind) : null;
+  const u = isB ? null : unitSpecFor(faction, kind as UnitKind);
   const spec = (b ?? u)!;
   const rows: StatRow[] = [];
   if (kind !== 'hq') {
-    rows.push({ label: 'Cost', value: `${spec.cost.toLocaleString('en-GB')} credits` });
-    rows.push({ label: 'Build time', value: secs(spec.buildTicks) });
+    const listed = listedCost(kind, faction, state, owner);
+    rows.push({ label: 'Cost', value: `${listed.cost.toLocaleString('en-GB')} credits` });
+    rows.push({ label: 'Build time', value: secs(listed.ticks) });
   }
   rows.push({ label: 'Health', value: `${spec.hp}` });
   rows.push({ label: 'Armour', value: ARMOR_NAME[u ? u.armor : 'building'] });
@@ -221,15 +259,21 @@ export function statsOf(kind: BuildingKind | UnitKind, research: ResearchMode = 
     rows.push({ label: 'Targets', value: hitsGround(w) && hitsAir(w) ? 'Ground and air' : hitsAir(w) ? 'Aircraft only' : 'Ground only' });
   }
   const ammo = AIR_AMMO[kind as UnitKind];
-  if (u && ammo && kind === 'reconplane')
+  if (u && ammo && u.airRole === 'scout')
     rows.push({
       label: 'Fuel',
-      value: `About ${secs(ammo * FUEL_TICKS)} aloft; turns for home with ${FUEL_RESERVE} loads left; refuels at its Helipad, a load every ${secs(REARM_TICKS.reconplane ?? 0)}`,
+      value: `About ${secs(ammo * FUEL_TICKS)} aloft; turns for home with ${FUEL_RESERVE} loads left; refuels at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
     });
   else if (u && ammo)
     rows.push({
       label: 'Ammunition',
-      value: `${ammo} ${kind === 'bomber' || kind === 'heavybomber' ? 'bombs, dropped in one run' : kind === 'interceptor' ? 'air-to-air missiles' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
+      value: `${ammo} ${u.airRole === 'bomb' ? 'bombs, dropped in one run' : u.airRole === 'intercept' ? 'air-to-air missiles' : 'rockets'}; rearms at its Helipad, a load every ${secs(REARM_TICKS[kind as UnitKind] ?? 0)}`,
+    });
+  const patch = u?.airRole === 'bomb' && w ? BOMB_PATCH[w.kind] : undefined;
+  if (patch && w)
+    rows.push({
+      label: 'Burns',
+      value: `Each bomb's ground burns ${patch.pulses} more times, every ${secs(patch.gap)}, at ${Math.round(patch.share * 100)}% of its damage`,
     });
   if (u?.carries)
     rows.push({
@@ -241,7 +285,7 @@ export function statsOf(kind: BuildingKind | UnitKind, research: ResearchMode = 
     });
   if (u && airSlotsOf(kind as UnitKind) > 1) rows.push({ label: 'Helipad', value: 'Takes a whole Helipad to itself' });
   if (u?.detector) rows.push({ label: 'Detects', value: `Stealth Tanks and Spies within ${DETECTOR_RANGE} tiles, for its whole side` });
-  if (kind === 'interceptor') rows.push({ label: 'Scrambles', value: `Parked, at enemy aircraft within ${SCRAMBLE_RANGE} tiles of its Helipad; breaks off ${SCRAMBLE_LEASH} tiles out` });
+  if (u?.airRole === 'intercept') rows.push({ label: 'Scrambles', value: `Parked, at enemy aircraft within ${SCRAMBLE_RANGE} tiles of its Helipad; breaks off ${SCRAMBLE_LEASH} tiles out` });
   if (u?.category === 'air') rows.push({ label: 'Flies', value: 'Over water, rock and structures; only anti-air and bullets reach it' });
   if (u?.category === 'naval') rows.push({ label: 'Sails', value: 'Open water only; anything that hits the ground hits a ship, and torpedoes hit nothing else' });
   if (kind === 'shipyard')
@@ -273,11 +317,18 @@ export function StatTip({
   kind,
   anchor,
   extra,
+  faction,
+  state,
+  owner = 0,
   research = 'classic',
 }: {
   kind: BuildingKind | UnitKind;
   anchor: HTMLElement;
   extra?: ReactNode;
+  faction?: Faction;
+  /** The battle, so the price and build time are what this side pays there. */
+  state?: GameState;
+  owner?: Owner;
   /** The battle's research mode: only the Research Lab's card reads it. */
   research?: ResearchMode;
 }) {
@@ -303,10 +354,10 @@ export function StatTip({
   });
   return (
     <div ref={ref} className="fl-tip" role="tooltip" data-testid="stat-tip">
-      <strong className="fl-tip-title">{nameOf(kind)}</strong>
-      <span className="fl-tip-blurb">{blurbOf(kind)}</span>
+      <strong className="fl-tip-title">{nameOf(kind, faction)}</strong>
+      <span className="fl-tip-blurb">{blurbOf(kind, faction)}</span>
       <dl>
-        {statsOf(kind, research).map(r => (
+        {statsOf(kind, faction, state, owner, research).map(r => (
           <div key={r.label}>
             <dt>{r.label}</dt>
             <dd>{r.value}</dd>
@@ -540,7 +591,7 @@ function ProductionStrip({
         const head = q[0];
         const last = q[q.length - 1];
         const isReady = c === 'building' && ready === head.kind;
-        const progress = Math.min(1, head.progress / buildTicksOf(head.kind));
+        const progress = Math.min(1, head.progress / buildTicksFor(state, 0, head.kind));
         const name = nameOf(head.kind);
         const cancelLast = () => {
           dispatch({ type: 'cancel', category: c, kind: last.kind });
@@ -649,7 +700,7 @@ export function BuildButton({
   const inQueue = q.filter(i => i.kind === kind).length;
   const head = q[0];
   const isHead = !!head && head.kind === kind;
-  const progress = isHead ? head.progress / buildTicksOf(kind) : 0;
+  const progress = isHead ? head.progress / buildTicksFor(state, 0, kind) : 0;
   const open = unlocked(state, 0, kind);
   // Vehicles carry the loadout's modules in their price (development lines only).
   const cost = tab === 'vehicle' ? queueCostFor(state, 0, kind as UnitKind) : costFor(state, 0, kind);
@@ -661,7 +712,7 @@ export function BuildButton({
   const disabled = !open || blockedByOther || (!isHead && !isReady && full);
   // A hotkey letter means nothing without a keyboard.
   const key = touch ? undefined : hotkey?.toUpperCase();
-  const missing = needsOf(kind).filter(r => r !== 'hq' && !hasBuilding(state, 0, r));
+  const missing = needsOf(kind, factionOf(state, 0)).filter(r => r !== 'hq' && !hasBuilding(state, 0, r));
   const cancel = () => {
     dispatch({ type: 'cancel', category: tab, kind });
     if (placing === kind) setPlacing(null);
@@ -1006,12 +1057,12 @@ export function LoadoutPanel({ state, dispatch }: { state: GameState; dispatch: 
         return (
           <div key={kind} className="fl-loadout-row" data-testid={`loadout-${kind}`}>
             <span className="fl-loadout-kind">
-              {UNITS[kind].name}
+              {unitSpecFor(factionOf(state, 0), kind).name}
               <span className="fl-loadout-slots">
                 {current.length}/{slots}
               </span>
             </span>
-            <div className="fl-loadout-chips" role="group" aria-label={`${UNITS[kind].name} modules`}>
+            <div className="fl-loadout-chips" role="group" aria-label={`${unitSpecFor(factionOf(state, 0), kind).name} modules`}>
               {fits.map(m => {
                 const spec = MODULES[m];
                 const on = current.includes(m);
@@ -1071,7 +1122,7 @@ export function BuildTipFooter({
   lowPower: boolean;
 }) {
   const p = state.players[0];
-  const missing = needsOf(kind).filter(r => !hasBuilding(state, 0, r));
+  const missing = needsOf(kind, factionOf(state, 0)).filter(r => !hasBuilding(state, 0, r));
   const price = tab === 'vehicle' ? queueCostFor(state, 0, kind as UnitKind) : costFor(state, 0, kind);
   const modules = price - costFor(state, 0, kind);
   const short = price - p.credits;
@@ -1098,6 +1149,9 @@ export function BuildTipFooter({
   );
 }
 
+// round6:D. Formations and squads: the formation row and the touch group chips (fireline-round6-design.md).
+import { FormationControls } from './Formations';
+
 export function SelectionPanel({
   state,
   selected,
@@ -1112,7 +1166,8 @@ export function SelectionPanel({
   const units = state.units.filter(u => selected.has(u.id));
   const building = state.buildings.find(b => selected.has(b.id));
   const { tip, bind } = useTip<BuildingKind | UnitKind>();
-  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} research={researchModeOf(state)} />;
+  const tipOwner = ((units[0] ?? building)?.owner ?? 0) as Owner;
+  const tipCard = tip && <StatTip kind={tip.key} anchor={tip.el} faction={factionOf(state, tipOwner)} state={state} owner={tipOwner} research={researchModeOf(state)} />;
   if (!units.length && !building) {
     if (touch) {
       return (
@@ -1151,6 +1206,12 @@ export function SelectionPanel({
         </div>
         <div>
           <dt>
+            <kbd>.</kbd>
+          </dt>
+          <dd>Formation: line, column, wedge, box</dd>
+        </div>
+        <div>
+          <dt>
             <kbd>Q</kbd> <kbd>W</kbd> <kbd>E</kbd>…
           </dt>
           <dd>Build the item with that letter</dd>
@@ -1171,7 +1232,7 @@ export function SelectionPanel({
     );
   }
   if (building) {
-    const spec = BUILDINGS[building.kind];
+    const spec = buildingSpecOf(state, building);
     const mine = building.owner === 0;
     const refund = Math.floor((spec.cost * 0.5 * (building.hp / spec.hp)) / 10) * 10;
     return (
@@ -1257,24 +1318,24 @@ export function SelectionPanel({
       )}
       {one && mine && AIR_AMMO[one.kind] && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="air-ammo">
-          {one.kind === 'bomber' || one.kind === 'heavybomber' ? 'Bombs' : one.kind === 'reconplane' ? 'Fuel' : one.kind === 'interceptor' ? 'Missiles' : 'Rockets'} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
+          {{ bomb: 'Bombs', scout: 'Fuel', intercept: 'Missiles', strafe: 'Rockets', transport: 'Rockets' }[UNITS[one.kind].airRole ?? 'strafe']} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
           {one.order.type === 'rearm'
             ? (one.ammo ?? 0) < (AIR_AMMO[one.kind] ?? 0)
               ? one.order.pad
-                ? one.kind === 'reconplane'
+                ? UNITS[one.kind].airRole === 'scout'
                   ? (one.ammo ?? 0) <= FUEL_RESERVE
                     ? 'Low on fuel: home to refuel.'
                     : 'Refuelling at its Helipad.'
                   : 'Rearming at its Helipad.'
                 : 'No Helipad with room: waiting.'
-              : one.kind === 'interceptor'
+              : UNITS[one.kind].airRole === 'intercept'
                 ? 'Parked on its Helipad, ready to scramble.'
                 : 'Parked on its Helipad.'
             : one.bombRun
               ? 'On its bomb run.'
               : one.scramble
                 ? 'Scrambled after an intruder.'
-                : one.kind === 'reconplane' && one.order.type === 'idle'
+                : UNITS[one.kind].airRole === 'scout' && one.order.type === 'idle'
                   ? 'Circling.'
                   : 'In the air.'}
         </span>
@@ -1332,6 +1393,14 @@ export function SelectionPanel({
           })}
         </div>
       )}
+      {/* round6:D begin. Formations and squads (fireline-round6-design.md): the formation button row, beside Stance. */}
+      {mine && <FormationControls state={state} units={units} dispatch={dispatch} touch={touch} />}
+      {/* round6:D end. */}
+      {/* round6:B begin. Heroes in free play: anything of B's in the selection panel. */}
+      {/* round6:B end. */}
+      {/* round6:C begin. Generals: anything of C's in the selection panel. */}
+      {mine && <GeneralNote units={units} />}
+      {/* round6:C end. */}
       {mine && (
         <span style={{ fontSize: '0.68rem', color: UI.textFaint }}>
           <kbd>Shift</kbd>+right-click queues waypoints.

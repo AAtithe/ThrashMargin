@@ -1,6 +1,7 @@
 import {
   FUEL_TANK_SPEED,
   HAULER_CAPACITY,
+  LONG_BARREL_RANGE,
   LONG_BARREL_WEAPON,
   MODULES,
   MODULE_ORDER,
@@ -14,6 +15,7 @@ import {
   type Weapon,
 } from './rules';
 import { costFor, maxHpOf, researchModeOf, techAllowed } from './state';
+import { unitSpecOf } from './specs';
 import type { GameState, QueueItem, Unit } from './types';
 
 /**
@@ -81,9 +83,26 @@ export function fitModules(u: Unit, mods: ModuleId[] | undefined): void {
   }
 }
 
-/** This unit's weapon, a long barrel included. */
-export const weaponOf = (u: Unit): Weapon | undefined =>
-  u.modules && u.modules.includes('longbarrel') ? LONG_BARREL_WEAPON[u.kind] ?? UNITS[u.kind].weapon : UNITS[u.kind].weapon;
+/** Another army's weapon with a long barrel, built once per weapon object (constant data, as LONG_BARREL_WEAPON). */
+const longBarrels = new Map<Weapon, Weapon>();
+
+/**
+ * This unit's weapon, its army's (round 6: unitSpecOf, so an army's overlay counts), a long barrel
+ * included. Meridian's weapon is the catalogue's own object, so it takes LONG_BARREL_WEAPON exactly
+ * as before; another army's weapon for a kind the barrel fits gets the same range added to its own.
+ */
+export const weaponOf = (s: GameState, u: Unit): Weapon | undefined => {
+  const w = unitSpecOf(s, u).weapon;
+  if (!w || !u.modules || !u.modules.includes('longbarrel')) return w;
+  if (w === UNITS[u.kind].weapon) return LONG_BARREL_WEAPON[u.kind] ?? w;
+  if (!MODULES.longbarrel.fits.includes(u.kind)) return w;
+  let lb = longBarrels.get(w);
+  if (!lb) {
+    lb = { ...w, range: w.range + LONG_BARREL_RANGE };
+    longBarrels.set(w, lb);
+  }
+  return lb;
+};
 
 /** Multiplier on this unit's speed from its modules (Extra fuel tank). */
 export const moduleSpeedOf = (u: Unit): number => (u.modules && u.modules.includes('fueltank') ? FUEL_TANK_SPEED : 1);

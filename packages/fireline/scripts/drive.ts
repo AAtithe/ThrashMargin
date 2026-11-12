@@ -26,7 +26,7 @@ import { processAction } from '../src/sim/actions';
 import { sections as airSections } from './drive-air';
 // round5. Development lines and loadouts (fireline-round5b-design.md): its sections.
 import { sections as linesSections } from './drive-lines';
-// round6. Game size and paced research (fireline-round6-design.md): its sections.
+// round6. Game size and paced research (fireline-round6b-design.md): its sections.
 import { sections as sizeSections } from './drive-size';
 // The air war (2026-11-10): the Recon Plane, the Interceptor and Countermeasures.
 import { sections as airWarSections } from './drive-airwar';
@@ -72,6 +72,14 @@ import { sections as mapsSections } from './drive-maps';
 import { sections as engineeringSections } from './drive-engineering';
 // round5:D. Neutral sites and tier three: its import (scripts/drive-sites.ts) goes on the line below.
 import { sections as sitesSections } from './drive-sites';
+// round6:A. Two armies (and the round 6 groundwork's setups, specs and saves): its import (scripts/drive-factions.ts) goes on the line below.
+import { sections as factionsSections } from './drive-factions';
+// round6:B. Heroes in free play: its import (scripts/drive-heroes.ts) goes on the line below.
+import { sections as heroesSections } from './drive-heroes';
+// round6:C. Generals (and the groundwork's per-side perks): its import (scripts/drive-generals.ts) goes on the line below.
+import { sections as generalsSections } from './drive-generals';
+// round6:D. Formations and squads: its import (scripts/drive-formations.ts) goes on the line below.
+import { sections as formationsSections } from './drive-formations';
 
 import { frontDir as gridFront } from '../src/sim/grid';
 import { MAX_SIDES, SIDE_NAMES } from '../src/sim/rules';
@@ -706,7 +714,7 @@ function threeSided(teams: number[] | undefined, label: string): GameState {
     owner: 2,
     name: SIDE_NAMES[2],
     credits: 3000,
-    queues: { building: [], infantry: [], vehicle: [] },
+    queues: { building: [], infantry: [], vehicle: [], air: [], naval: [] },
     stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
   });
   c.ai.push(newAiMemory(DIFFICULTIES.normal.firstAttack));
@@ -1137,6 +1145,11 @@ function buildRules(): void {
   for (const h of HERO_KINDS) refused(s, { type: 'queue', category: UNITS[h].category, kind: h }, `queueing hero ${h}`);
   const sk = createInitialState('h', 'h', { seed: 'h', createdAt: 0 });
   for (const h of HERO_KINDS) refused(sk, { type: 'queue', category: UNITS[h].category, kind: h }, `queueing hero ${h} in a skirmish`);
+  // round6:B. With heroes on (advanced tech, a Command Academy standing) a skirmish accepts them.
+  const on = createInitialState('h', 'h', { seed: 'h', createdAt: 0, setup: { tech: 'advanced', heroes: true } });
+  on.players[0].credits = 100000;
+  (['barracks', 'factory', 'techcentre', 'academy'] as const).forEach((k, i) => addBuilding(on, 0, k, 2 + 4 * i, 2, -100));
+  for (const h of HERO_KINDS) ok(processAction(on, { type: 'queue', category: UNITS[h].category, kind: h }) !== on, `queueing hero ${h} in a skirmish with heroes on`);
   ok(processAction(s, { type: 'queue', category: 'infantry', kind: 'rifleman' }) !== s, 'an allowed unit can be queued');
   refused(s, { type: 'queue', category: 'infantry', kind: 'rocketeer' }, 'a unit the mission does not allow');
   refused(s, { type: 'queue', category: 'building', kind: 'barracks' }, 'a structure the mission does not allow');
@@ -2758,7 +2771,7 @@ if (!CAMPAIGN_ONLY) {
     // round5. Development lines and loadouts (fireline-round5b-design.md): its sections, imported
     // from scripts/drive-lines.ts.
     ...linesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
-    // round6. Game size and paced research (fireline-round6-design.md): its sections, imported
+    // round6. Game size and paced research (fireline-round6b-design.md): its sections, imported
     // from scripts/drive-size.ts.
     ...sizeSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
     // The air war (2026-11-10): its sections, imported from scripts/drive-airwar.ts.
@@ -2776,6 +2789,15 @@ if (!CAMPAIGN_ONLY) {
     // round5:D. Neutral sites and tier three (fireline-round5-design.md): its sections, imported from
     // scripts/drive-sites.ts, go on the line below this comment.
     ...sitesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6:A. Two armies (fireline-round6-design.md): its sections, imported from
+    // scripts/drive-factions.ts, go on the line below this comment.
+    ...factionsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6:B. Heroes in free play: its sections, from scripts/drive-heroes.ts, on the line below.
+    ...heroesSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6:C. Generals: its sections, from scripts/drive-generals.ts, on the line below.
+    ...generalsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
+    // round6:D. Formations and squads: its sections, from scripts/drive-formations.ts, on the line below.
+    ...formationsSections.map(([name, fn]): [string, () => void] => [name, () => fn(ok)]),
   ];
   for (const [name, fn] of freeplay) {
     const t0 = Date.now();

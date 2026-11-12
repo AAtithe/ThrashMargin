@@ -4,6 +4,7 @@ import { dist, nearestPassable, occupancy } from './grid';
 import { BOARD_RANGE, RIDE_SLOTS, UNITS, UNLOAD_RADIUS, type Owner } from './rules';
 import { log } from './state';
 import type { GameState, Unit } from './types';
+import { unitSpecOf } from './specs';
 
 /**
  * Troop Carriers (the air war, 2026-11-10). Advanced tech only, like every aircraft.
@@ -32,10 +33,12 @@ export const aboard = (u: Unit): number => (u.carried ?? []).reduce((n, r) => n 
 /**
  * Whether this unit may ride in that carrier (or, with none given, in any): infantry but the
  * campaign's heroes in either; ground vehicles too in a ship, but never a hauler or a deploying truck.
+ * Never (round 6 merge) the field General, by air or by sea: its aura and doctrine would read it as
+ * fallen the moment it left the map.
  */
 export function canRide(u: Unit, carrier?: Unit): boolean {
   const spec = UNITS[u.kind];
-  if (spec.hero) return false;
+  if (spec.hero || u.kind === 'general') return false;
   if (spec.category === 'infantry') return true;
   if (spec.category !== 'vehicle' || u.kind === 'hauler' || spec.deploysTo) return false;
   return !carrier || UNITS[carrier.kind].category === 'naval';
@@ -66,7 +69,7 @@ export function boardProblem(s: GameState, owner: Owner, ids: number[], carrier:
   if (!c) return 'No such Troop Carrier';
   const riders = s.units.filter(u => ids.includes(u.id) && u.owner === owner && u.hp > 0 && canRide(u, c));
   if (!riders.length) return UNITS[c.kind].category === 'naval' ? 'Only infantry and vehicles can board' : 'Only infantry can board';
-  if (!riders.some(u => fits(c, u))) return `The ${UNITS[c.kind].name} is full`;
+  if (!riders.some(u => fits(c, u))) return `The ${unitSpecOf(s, c).name} is full`;
   return null;
 }
 
@@ -154,7 +157,7 @@ export function transportStep(s: GameState): void {
       delete rider.boarding;
       c.carried = [...(c.carried ?? []), rider];
       gone.add(u.id);
-      if (c.owner === 0 && aboard(c) === capacityOf(c)) log(s, `${UNITS[c.kind].name} full.`, 'info');
+      if (c.owner === 0 && aboard(c) === capacityOf(c)) log(s, `${unitSpecOf(s, c).name} full.`, 'info');
     } else if (u.order.type === 'idle') delete u.boarding;
   }
   if (gone.size) s.units = s.units.filter(u => !gone.has(u.id));
@@ -166,6 +169,6 @@ export function lostAboard(s: GameState, c: Unit): void {
   const n = c.carried?.length ?? 0;
   if (!n) return;
   s.players[c.owner].stats.lost += n;
-  if (c.owner === 0) log(s, `${UNITS[c.kind].name} lost with ${c.carried!.length} aboard.`, 'bad');
+  if (c.owner === 0) log(s, `${unitSpecOf(s, c).name} lost with ${c.carried!.length} aboard.`, 'bad');
   delete c.carried;
 }

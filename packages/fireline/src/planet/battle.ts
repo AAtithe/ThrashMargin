@@ -81,7 +81,25 @@ export function buildPlanetBattle(setup: BattleSetup, ids: { id: string; name: s
     difficulty: setup.difficulty,
     createdAt: ids.createdAt,
     autopilot: !human || !!opts?.autopilot,
-    setup: { map: setup.mapType, tech: 'advanced', credits: 3000, ore: setup.ore, sides: n as 2 | 3 | 4, mode: n > 2 ? 'teams' : 'ffa', research: 'lines', pace: 'quick', size: battleMapSizeOf(setup), sites: false },
+    // Every field stated. Round 6's options are stated off (fireline-round6-design.md, section 10):
+    // every seat Meridian, no recruitable heroes (the war brings its own), no field General and no
+    // doctrine General, so a planet battle plays exactly as War for the Planet built it.
+    setup: {
+      map: setup.mapType,
+      tech: 'advanced',
+      credits: 3000,
+      ore: setup.ore,
+      sides: n as 2 | 3 | 4,
+      mode: n > 2 ? 'teams' : 'ffa',
+      research: 'lines',
+      pace: 'quick',
+      size: battleMapSizeOf(setup),
+      sites: false,
+      factions: setup.sides.map(() => 'meridian' as const),
+      heroes: false,
+      generals: false,
+      generalPicks: setup.sides.map(() => null),
+    },
     teams: setup.sides.map(x => x.team),
   });
   // Only the three riflemen per side stand at the start: every unit goes; the Command Yards stay.

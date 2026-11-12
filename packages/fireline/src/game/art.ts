@@ -342,6 +342,25 @@ export function drawUnit(ctx: Ctx, kind: UnitKind, owner: Owner, x: number, y: n
       drawTierThreeCached(ctx, kind, owner, team, pose);
       break;
     // round5:D end.
+    // round6:A begin. Two armies (fireline-round6-design.md): its units' cases, appended here.
+    case 'sapper':
+      drawSapper(ctx, owner, team, pose);
+      break;
+    case 'raider':
+      drawRaiderBike(ctx, team, pose);
+      break;
+    case 'kestrel':
+      drawKestrel(ctx, team, pose);
+      break;
+    case 'firebrand':
+      drawFirebrand(ctx, team, pose);
+      break;
+    // round6:A end.
+    // round6:C begin. Generals (fireline-round6-design.md): the field General's case, appended here.
+    case 'general':
+      drawGeneral(ctx, team, pose);
+      break;
+    // round6:C end.
   }
   ctx.restore();
   ctx.globalAlpha = baseAlpha;
@@ -1668,6 +1687,15 @@ export function drawBuilding(ctx: Ctx, kind: BuildingKind, owner: Owner, x: numb
       drawFortress(ctx, w, h, team, pose);
       break;
     // round5:D end.
+    // round6:A begin. Two armies: its structures' cases, if any, appended here.
+    // round6:A end.
+    // round6:B begin. Heroes in free play: its structures' cases (the Command Academy), appended here.
+    case 'academy':
+      drawAcademy(ctx, w, h, team, pose);
+      break;
+    // round6:B end.
+    // round6:C begin. Generals: its structures' cases, if any, appended here.
+    // round6:C end.
   }
   if (kind !== 'wall') buildingDamage(ctx, w, h, clamp01(pose.hp, 1), pose.t, seed);
   if (pose.rise < 1) {
@@ -4172,7 +4200,7 @@ export function drawAirShadow(ctx: Ctx, kind: UnitKind, x: number, y: number, hu
   ctx.translate(x + 5, y + 4);
   ctx.rotate(hull);
   ctx.fillStyle = 'rgba(0,0,0,0.26)';
-  if (kind === 'bomber') {
+  if (kind === 'bomber' || kind === 'firebrand') {
     ctx.beginPath();
     ctx.moveTo(15, 0);
     ctx.lineTo(4, -2.4);
@@ -5226,6 +5254,327 @@ export function drawSiteLayer(ctx: Ctx, s: GameState, explored: string, vis: Uin
   }
 }
 // round5:D end.
+
+// round6:A begin. Two armies (fireline-round6-design.md, workstream A): its drawing functions, appended here.
+
+/**
+ * The Sapper (Meridian): a trooper stamped from the Grenadier's sprites (the same kit and stance),
+ * with a satchel charge on his back and a red-banded fuse bag drawn live over the stamp.
+ */
+function drawSapper(ctx: Ctx, owner: Owner, team: Team, p: UnitPose) {
+  drawTrooperCached(ctx, 'grenadier', owner, team, p);
+  ctx.save();
+  ctx.rotate(p.turret);
+  ctx.fillStyle = '#5a4a2e';
+  rrect(ctx, -6.2, -2.6, 3.2, 5.2, 0.8);
+  ctx.fill();
+  ctx.fillStyle = '#c0392b';
+  ctx.fillRect(-6.2, -0.5, 3.2, 1);
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 0.5;
+  rrect(ctx, -6.2, -2.6, 3.2, 5.2, 0.8);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * The Raider Bike (Ashen), nose along +x: two wheels in line, a slim frame, the rider leaning in,
+ * and a rocket tube on the rider's shoulder. Small enough to draw live rather than from the cache.
+ */
+function drawRaiderBike(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  bodyShadow(ctx, p.hull, 16, 6, 2, 2.5, 3);
+  ctx.save();
+  ctx.rotate(p.hull);
+  const spin = p.moving ? frac(p.t * 8) * 2 : 0;
+  for (const wx of [-5.5, 5.5]) {
+    ctx.fillStyle = '#141515';
+    rrect(ctx, wx - 3, -1.5, 6, 3, 1.4);
+    ctx.fill();
+    ctx.fillStyle = '#3a3c3c';
+    ctx.fillRect(wx - 2 + spin, -1.2, 0.6, 2.4);
+  }
+  ctx.fillStyle = litGrad(ctx, p.hull, 7, team.light, team.dark);
+  ctx.beginPath();
+  ctx.moveTo(-6, -1.8);
+  ctx.lineTo(4, -2.2);
+  ctx.lineTo(7.5, 0);
+  ctx.lineTo(4, 2.2);
+  ctx.lineTo(-6, 1.8);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  ctx.fillStyle = '#26292a';
+  ctx.fillRect(3, -3.4, 1, 6.8);
+  emblem(ctx, team, -3.5, 0, 1.1);
+  hullDamage(ctx, hp, p.t, 14, 5, 'both');
+  ctx.restore();
+  // The rider and the rocket tube, turned to the target.
+  ctx.save();
+  ctx.rotate(p.turret);
+  ctx.fillStyle = '#3c4334';
+  circle(ctx, -0.5, 0, 2.2);
+  ctx.fill();
+  ctx.fillStyle = '#2b2f30';
+  rrect(ctx, -3, 1.4, 9, 1.8, 0.8);
+  ctx.fill();
+  if (firing && p.sinceShot < 0.1) {
+    ctx.fillStyle = 'rgba(255,190,110,0.85)';
+    circle(ctx, -4, 2.3, 1.8);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * The Kestrel (Ashen's light gunship): the Gunship's frame drawn smaller, with a pale nose band
+ * so the two read apart at a glance.
+ */
+function drawKestrel(ctx: Ctx, team: Team, p: UnitPose) {
+  ctx.save();
+  ctx.scale(0.82, 0.82);
+  drawGunship(ctx, team, p);
+  ctx.rotate(p.hull);
+  ctx.fillStyle = team.light;
+  ctx.fillRect(3.5, -4.2, 1.4, 8.4);
+  ctx.restore();
+}
+
+/**
+ * The Firebrand (Ashen's bomber): the Bomber's frame drawn a little smaller, with orange warning
+ * stripes on the wings for the incendiaries it carries.
+ */
+function drawFirebrand(ctx: Ctx, team: Team, p: UnitPose) {
+  ctx.save();
+  ctx.scale(0.88, 0.88);
+  drawBomber(ctx, team, p);
+  ctx.rotate(p.hull);
+  ctx.fillStyle = '#e8742a';
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(-3.2, side * 15);
+    ctx.lineTo(-1.6, side * 12);
+    ctx.lineTo(-3.4, side * 12);
+    ctx.lineTo(-5, side * 15);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+// round6:A end.
+
+// round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): its drawing functions, appended here.
+/**
+ * The Command Academy: a pale stone hall with a colonnade along its front, a team-coloured roof with
+ * the side's emblem, a flag on a mast, and a small parade square marked out beside it. Its windows
+ * light while a hero trains.
+ */
+function drawAcademy(ctx: Ctx, w: number, h: number, team: Team, p: BuildingPose) {
+  slab(ctx, w, h);
+  const on = !p.lowPower;
+  const work = !!p.working && on;
+  // The parade square: a marked-out patch of ground along the bottom.
+  ctx.fillStyle = 'rgba(40,46,42,0.35)';
+  ctx.fillRect(6, h - 15, w - 12, 10);
+  ctx.strokeStyle = 'rgba(235,235,220,0.55)';
+  ctx.lineWidth = 0.8;
+  ctx.strokeRect(7.5, h - 13.5, w - 15, 7);
+  hazardStripe(ctx, 6, h - 5, w - 12, 2);
+  // The hall.
+  const hx = 7;
+  const hy = 10;
+  const hw = w - 22;
+  const hh = h - 30;
+  block(ctx, hx, hy, hw, hh, shade(ctx, hx, hy, hw, hh, '#d9d2bf', '#a39a83'), '#7b7360', 4);
+  // The roof, team-coloured, and the emblem on it.
+  ctx.fillStyle = shade(ctx, hx - 1, hy - 3, hw + 2, 9, team.light, team.dark);
+  ctx.beginPath();
+  ctx.moveTo(hx - 2, hy + 5);
+  ctx.lineTo(hx + hw / 2, hy - 4);
+  ctx.lineTo(hx + hw + 2, hy + 5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  emblem(ctx, team, hx + hw / 2, hy + 1.5, 1.8);
+  // The colonnade along the front, with lit windows between the columns.
+  const cols = 5;
+  for (let i = 0; i < cols; i++) {
+    const cx = hx + 3 + (i * (hw - 6)) / (cols - 1);
+    ctx.fillStyle = '#efe9d8';
+    ctx.fillRect(cx - 1.2, hy + 7, 2.4, hh - 4);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(cx + 1.2, hy + 7, 0.8, hh - 4);
+    if (i < cols - 1) {
+      const lit = on && (work ? frac(p.t * 0.6 + i * 0.29) < 0.75 : i % 2 === 0);
+      ctx.fillStyle = lit ? 'rgba(255,220,140,0.85)' : 'rgba(60,64,62,0.7)';
+      ctx.fillRect(cx + 3, hy + 10, (hw - 6) / (cols - 1) - 5, 5);
+    }
+  }
+  // Steps in front.
+  ctx.fillStyle = '#bdb5a0';
+  ctx.fillRect(hx + 2, hy + hh + 3, hw - 4, 2);
+  // The flag mast at the side, its flag stirring.
+  const mx = w - 9;
+  ctx.strokeStyle = '#2c3032';
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  ctx.moveTo(mx, h - 16);
+  ctx.lineTo(mx, 5);
+  ctx.stroke();
+  const wave = Math.sin(p.t * 3) * 1.2;
+  ctx.fillStyle = team.main;
+  ctx.beginPath();
+  ctx.moveTo(mx, 5);
+  ctx.quadraticCurveTo(mx - 4, 7 + wave, mx - 8, 6.5);
+  ctx.lineTo(mx - 8, 11.5);
+  ctx.quadraticCurveTo(mx - 4, 12 + wave, mx, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 0.6;
+  ctx.stroke();
+  lamp(ctx, mx, h - 18, on, work ? '#7dff8a' : '#ffb43a', p.t, work ? 8 : 2, work);
+}
+// round6:B end.
+
+// round6:C begin. Generals (fireline-round6-design.md, workstream C): its drawing functions, appended here.
+import { GENERAL_AURA_RANGE } from '../sim/rules';
+
+/**
+ * The field General: an officer a little larger than a line trooper, in a long greatcoat of the
+ * side's dark colour, gold epaulettes, a peaked cap with a gold band and star, and a pistol drawn
+ * when firing. Painted from the battlefield palette (ART, TEAM, the heroes' GOLD), the same in both
+ * colour modes. One per side at most, so it is drawn live rather than stamped.
+ */
+function drawGeneral(ctx: Ctx, team: Team, p: UnitPose) {
+  const hp = clamp01(p.hp, 1);
+  const firing = p.firing ?? p.sinceShot < 0.15;
+  const step = p.moving ? Math.sin(p.t * 14) : 0;
+  ctx.save();
+  ctx.scale(1.8, 1.8);
+  ctx.fillStyle = ART.shadow;
+  ctx.beginPath();
+  ctx.ellipse(1.4, 2.6, 5.4, 3.8, 0, 0, TAU);
+  ctx.fill();
+  ctx.rotate(p.turret);
+  // Boots, striding or planted.
+  ctx.strokeStyle = ART.metalDark;
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(-0.6, -1.3);
+  ctx.lineTo(-0.6 + step * 2.4, -1.7);
+  ctx.moveTo(-0.6, 1.3);
+  ctx.lineTo(-0.6 - step * 2.4, 1.7);
+  ctx.stroke();
+  // Greatcoat: long, flaring behind.
+  ctx.fillStyle = team.dark;
+  ctx.beginPath();
+  ctx.moveTo(1.6, -3.4);
+  ctx.lineTo(-4.6, -3.9);
+  ctx.quadraticCurveTo(-5.6, 0, -4.6, 3.9);
+  ctx.lineTo(1.6, 3.4);
+  ctx.closePath();
+  ctx.fill();
+  // Shoulders in team colour, lit toward the light.
+  ctx.fillStyle = litGrad(ctx, p.turret, 3, team.light, team.main);
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 2.5, 3.7, 0, 0, TAU);
+  ctx.fill();
+  ctx.strokeStyle = team.dark;
+  ctx.lineWidth = 0.7;
+  ctx.stroke();
+  // Gold epaulettes and a sash.
+  ctx.fillStyle = GOLD;
+  rrect(ctx, -1, -4.1, 2, 1.2, 0.4);
+  ctx.fill();
+  rrect(ctx, -1, 2.9, 2, 1.2, 0.4);
+  ctx.fill();
+  ctx.strokeStyle = GOLD_DARK;
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(-1.6, -2.8);
+  ctx.lineTo(1.4, 2.6);
+  ctx.stroke();
+  // The pistol arm: out and level when firing, at the side otherwise. White gloves.
+  const skin = ART.concreteLight;
+  ctx.strokeStyle = team.main;
+  ctx.lineWidth = 1.1;
+  ctx.beginPath();
+  if (firing) {
+    ctx.moveTo(0.4, 2.4);
+    ctx.lineTo(4.4, 1.2);
+  } else {
+    ctx.moveTo(0.2, 2.6);
+    ctx.lineTo(1.8, 3.4);
+  }
+  ctx.stroke();
+  ctx.fillStyle = skin;
+  circle(ctx, firing ? 4.5 : 1.9, firing ? 1.2 : 3.4, 0.55);
+  ctx.fill();
+  if (firing) {
+    ctx.fillStyle = ART.metalDark;
+    ctx.fillRect(4.6, 0.8, 2.2, 0.8);
+    if (p.sinceShot < 0.08) {
+      ctx.fillStyle = ART.oreGlow;
+      ctx.beginPath();
+      ctx.moveTo(6.8, 0.6);
+      ctx.lineTo(8.6, 1.2);
+      ctx.lineTo(6.8, 1.8);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+  // Peaked cap: dark crown, a gold band, the peak toward the facing, and a star on top.
+  ctx.fillStyle = ART.metalDark;
+  ctx.beginPath();
+  ctx.ellipse(1.9, 0, 1.1, 1.8, 0, -Math.PI / 2, Math.PI / 2);
+  ctx.fill();
+  ctx.fillStyle = team.dark;
+  circle(ctx, 0.3, 0, 2.1);
+  ctx.fill();
+  ctx.strokeStyle = GOLD;
+  ctx.lineWidth = 0.6;
+  circle(ctx, 0.3, 0, 1.8);
+  ctx.stroke();
+  ctx.fillStyle = GOLD;
+  starPath(ctx, 0.3, 0, 1.05);
+  ctx.fill();
+  ctx.restore();
+  if (hp < 0.25) sparks(ctx, 0, -2, p.t, 2, 3);
+}
+
+/**
+ * The command aura: a slowly turning dashed ring of the side's light colour round each General the
+ * renderer drew, at GENERAL_AURA_RANGE tiles, with a faint wash inside. Called once by the renderer
+ * after the units pass.
+ */
+export function drawGeneralAuras(ctx: Ctx, drawn: { u: { kind: UnitKind; owner: Owner }; x: number; y: number }[], t: number) {
+  const r = GENERAL_AURA_RANGE * TILE;
+  for (const { u, x, y } of drawn) {
+    if (u.kind !== 'general') continue;
+    const team = TEAM[u.owner];
+    ctx.save();
+    ctx.globalAlpha = 0.07;
+    ctx.fillStyle = team.light;
+    circle(ctx, x, y, r);
+    ctx.fill();
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = team.light;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -t * 12;
+    circle(ctx, x, y, r);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+// round6:C end.
 
 // ---- The naval war (2026-11-11) ----------------------------------------------------------------
 

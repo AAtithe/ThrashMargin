@@ -7,7 +7,8 @@
  * from rules.ts through a `Catalogue`, so a kind added to the rules (or, in a test, to a copy of
  * the menus) is laid out without this file changing.
  */
-import { BUILDINGS, MENUS, UNITS, type BuildingKind, type Category, type UnitKind } from '../sim/rules';
+import { BUILDINGS, FACTIONS, MENUS, UNITS, type BuildingKind, type Category, type Faction, type UnitKind } from '../sim/rules';
+import { buildingSpecFor, menuOf, unitSpecFor } from '../sim/specs';
 
 /** What the window needs to know about one item. */
 export interface ItemSpec {
@@ -24,17 +25,28 @@ export interface Catalogue {
   isStructure: (kind: string) => boolean;
 }
 
-/** The real rules. */
-export const RULES_CATALOGUE: Catalogue = {
-  menus: MENUS,
-  spec: kind =>
-    kind in BUILDINGS
-      ? BUILDINGS[kind as BuildingKind]
-      : kind in UNITS
-        ? UNITS[kind as UnitKind]
-        : null,
-  isStructure: kind => kind in BUILDINGS,
-};
+/** Every queue's list, the naval war's included (merge): read from MENUS so a new tab is never left out. */
+const CATEGORIES = Object.keys(MENUS) as Category[];
+
+/** The real rules, as one army fields them: its own build lists (menuOf) and its own numbers. */
+function makeCatalogue(faction: Faction): Catalogue {
+  const menus = {} as Record<Category, readonly string[]>;
+  for (const c of CATEGORIES) menus[c] = menuOf(faction, c);
+  return {
+    menus,
+    spec: kind =>
+      kind in BUILDINGS
+        ? buildingSpecFor(faction, kind as BuildingKind)
+        : kind in UNITS
+          ? unitSpecFor(faction, kind as UnitKind)
+          : null,
+    isStructure: kind => kind in BUILDINGS,
+  };
+}
+const CATALOGUES = Object.fromEntries(FACTIONS.map(f => [f, makeCatalogue(f)])) as Record<Faction, Catalogue>;
+
+/** The real rules for an army (round 6, workstream A). Made once per army; the same object every time. */
+export const rulesCatalogue = (faction: Faction): Catalogue => CATALOGUES[faction];
 
 /**
  * A test-only extra item (`window.__flExtraMenuItem`), honoured in development builds alone. It

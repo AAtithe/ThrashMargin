@@ -18,7 +18,7 @@ import {
   type MapType,
 } from '../sim/rules';
 import { sidesOf } from '../sim/sides';
-import { buildTicksOf, powerOf, producerFor, teamVisibility } from '../sim/state';
+import { buildTicksFor, powerOf, producerFor, teamVisibility } from '../sim/state';
 import type { Building, Effect, GameState, Projectile, Unit } from '../sim/types';
 import { ART, TEAM } from '../theme';
 import { AIR_LIFT, drawAirShadow, drawBuilding, drawDock, drawHeroBadge, drawUnit, TILE, type BuildingPose, type UnitPose } from './art';
@@ -37,6 +37,8 @@ import { paintMiniTerrain, paintTerrain, paintTerrainOffThread } from './terrain
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { drawSiteLayer } from './art';
 import { stealthSeen } from '../sim/sites';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { drawGeneralAuras } from './art';
 
 /**
  * The pose fields art.ts reads for damage, recoil flashes and working structures. Declared here as
@@ -580,6 +582,9 @@ export class Renderer {
       if (u.hero) drawHeroBadge(ctx, x - r + 4, y - r - 13, u.hero.level);
     }
 
+    // round6:C. Generals (fireline-round6-design.md): the command aura's ring round each General drawn.
+    drawGeneralAuras(ctx, drawn, t);
+
     // 5b. Aircraft, in one pass over every ground unit: the shadow on the ground, then the craft
     // lifted above it with its rotor turning or a contrail behind it.
     this.aircraft(ctx, cur, prevById, aloft, ov, alpha, t, dt);
@@ -677,7 +682,8 @@ export class Renderer {
         ctx.fill();
       } else if (p.weapon === 'flak' || p.weapon === 'aamissile') {
         // Climbing from the gun to the aircraft's height; an Interceptor's flies level at it.
-        const lift = (shooterKind(p) === 'interceptor' ? 1 : f) * AIR_LIFT * TILE;
+        const sk = shooterKind(p);
+        const lift = (sk && UNITS[sk].airRole === 'intercept' ? 1 : f) * AIR_LIFT * TILE;
         if (p.weapon === 'aamissile') {
           const ang = Math.atan2(p.toY - p.fromY - AIR_LIFT, p.toX - p.fromX);
           ctx.save();
@@ -1028,7 +1034,7 @@ export class Renderer {
       // Parked on its pad it sits low; in flight it rides AIR_LIFT above its shadow.
       const h = !moving && u.order.type === 'rearm' ? lift * 0.3 : lift;
       drawUnit(ctx, u.kind, u.owner, x, y - h, pose);
-      if ((u.kind === 'bomber' || u.kind === 'heavybomber') && moving && Math.random() < dt * 30) {
+      if (UNITS[u.kind].airRole === 'bomb' && moving && Math.random() < dt * 30) {
         // Contrails from the outer engines.
         for (const side of [-1, 1]) {
           const ox = Math.cos(pose.hull) * -6 - Math.sin(pose.hull) * side * 13;
@@ -1036,9 +1042,11 @@ export class Renderer {
           this.fx.add({ kind: 'smoke', x: x + ox, y: y + oy, z: lift, vx: 0, vy: 0, life: 1.4, size: 1.4, grow: 1.6 });
         }
       }
-      if (u.kind === 'interceptor' && moving && Math.random() < dt * 20)
+      const role = UNITS[u.kind].airRole;
+      if (role === 'intercept' && moving && Math.random() < dt * 20)
         this.fx.add({ kind: 'smoke', x: x - Math.cos(pose.hull) * 12, y: y - Math.sin(pose.hull) * 12, z: lift, vx: 0, vy: 0, life: 0.8, size: 1.1, grow: 1.4 });
-      if ((u.kind === 'gunship' || u.kind === 'carrier') && Math.random() < dt * 4) this.fx.add({ kind: 'dust', x: x + (Math.random() - 0.5) * 18, y: y + (Math.random() - 0.5) * 12, z: 0, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 8, life: 0.7, size: 2.2, grow: 2.4 });
+      // Rotor wash: the helicopters (a 'strafe' gunship and the 'transport' carrier).
+      if ((role === 'strafe' || role === 'transport') && Math.random() < dt * 4) this.fx.add({ kind: 'dust', x: x + (Math.random() - 0.5) * 18, y: y + (Math.random() - 0.5) * 12, z: 0, vx: (Math.random() - 0.5) * 10, vy: (Math.random() - 0.5) * 8, life: 0.7, size: 2.2, grow: 2.4 });
     }
     for (const { u, x, y } of aloft) {
       const frac = u.hp / maxHpOf(u);
@@ -1170,7 +1178,7 @@ export class Renderer {
       const q = s.players[owner].queues;
       for (const cat of ['building', 'infantry', 'vehicle', 'air', 'naval'] as const) {
         const head = q[cat]?.[0];
-        if (!head || head.progress >= buildTicksOf(head.kind)) continue;
+        if (!head || head.progress >= buildTicksFor(s, owner, head.kind)) continue;
         const b = producerFor(s, owner, cat);
         if (b) set.add(b.id);
       }

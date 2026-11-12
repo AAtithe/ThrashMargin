@@ -718,17 +718,19 @@ function battles(ok: Ok): void {
   };
   const a = play('strike-1');
   ok(a.air > 0, `aircraft fly in a real battle on Hard (most at once: ${a.air})`);
-  // Bombers come last in the commander's air plan, so whether they fly before a short battle ends
-  // is a race of a minute or so either way (2026-11-11: an unrelated change to how a beaten side
-  // spends its last credits moved this one's first Bomber from minute 16 to 17, as it ended). The
-  // rule is that they fly and bomb in real battles, so a second, longer battle counts with it.
+  // Bombers come last in the commander's air plan, so whether they fly before a short battle ends is
+  // a race either way: round 6's computer formations and the air war took this seed's first Bomber
+  // to minute 29, and main's change to how a beaten side spends its last credits moved it a minute
+  // too. The rule is that they fly and bomb in real battles, so two longer battles count with it.
+  const c = play('strike-8');
   const longer = play('strike-4');
-  ok(a.bombs + longer.bombs > 0, `bombers drop bombs in them (${a.bombs} and ${longer.bombs})`);
+  ok(a.bombs + c.bombs + longer.bombs > 0, `bombers drop bombs in real battles (${a.bombs}, ${c.bombs} and ${longer.bombs})`);
   ok(a.rockets > 0, `gunships fire in it (${a.rockets} rockets seen in flight)`);
   ok(a.s.winner !== null, `it finishes (tick ${a.s.tick})`);
   const b = play('strike-1');
   ok(JSON.stringify(a.s) === JSON.stringify(b.s), 'a battle with aircraft and research replays byte-identically');
   console.log(`  air battle on Hard: ${a.s.winner === null ? 'unfinished' : `side ${a.s.winner} won at ${Math.round(a.s.tick / 600)} min`}; ${a.bombs} bombs, ${a.rockets} gunship rockets, ${a.air} aircraft at most; upgrades ${a.s.players.map(p => (p.upgrades ?? []).length).join(' and ')}`);
+  console.log(`  second air battle on Hard: ${c.s.winner === null ? 'unfinished' : `side ${c.s.winner} won at ${Math.round(c.s.tick / 600)} min`}; ${c.bombs} bombs, ${c.rockets} gunship rockets`);
 }
 
 export const sections: [string, (ok: Ok) => void][] = [

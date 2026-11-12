@@ -625,7 +625,7 @@ section('missions in the simulation', () => {
       continue;
     }
     ok(!!s.mission && s.mission.id === m.id, `${m.id}: state carries the mission`);
-    // Game size (fireline-round6-design.md): a mission always plays at Quick, today's numbers.
+    // Game size (fireline-round6b-design.md): a mission always plays at Quick, today's numbers.
     ok(paceOf(s) === 'quick' && !pacedResearch(s), `${m.id}: plays at the Quick size, no paced research`);
     ok(s.mission?.objectives.length === m.objectives.length && s.mission?.bonus.length === m.bonus.length, `${m.id}: objectives built`);
     ok(s.seedText === m.seed || s.rngSeed === seedFromString(m.seed), `${m.id}: map from the mission seed`);
@@ -731,15 +731,15 @@ section('act two: progression and old saves', () => {
   ok(last.difficulty === 'normal' && scaleMission(last, 'hard').difficulty === 'hard' && last.enemy.ai === 'normal' && last.enemy.base === 'full', 'Last Light: a normal commander, hard at campaign Hard, with a full base');
   const kinds = new Set<string>(['hq', ...last.enemy.structures]);
   // Skirmish-only structures (round 5): a Field Yard is never built, only deployed from a truck, and
-  // the tier-three structures are in no mission. Nor is the Naval Yard (the naval war): no mission
-  // map has a sea.
-  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'shipyard']);
+  // the tier-three structures are in no mission; nor is the Command Academy (round 6, heroes in free play),
+  // nor the Naval Yard (the naval war): no mission map has a sea.
+  const skirmishOnly = new Set<string>(['protoworks', 'fortress', 'academy', 'shipyard']);
   for (const b of Object.keys(BUILDINGS) as (keyof typeof BUILDINGS)[]) {
     if (BUILDINGS[b].undeploysTo || skirmishOnly.has(b)) continue;
     if (b !== 'hq' || last.enemy.base === 'full') ok(kinds.has(b), `Last Light: the enemy has a ${b}`);
   }
   // The new objective kinds are used across the act.
-  const used = new Set(act2.flatMap(m => [...m.objectives, ...m.bonus].map(o => (o.kind === 'holdZone' && o.reset ? 'holdZone reset' : o.kind))));
+  const used = new Set<string>(act2.flatMap(m => [...m.objectives, ...m.bonus].map(o => (o.kind === 'holdZone' && o.reset ? 'holdZone reset' : o.kind))));
   for (const k of ['escort', 'destroyWithin', 'holdZone reset']) ok(used.has(k), `act two uses ${k}`);
   for (const m of act2) ok(m.bonus.length === 2 && m.rewards.xp > 0, `${m.id}: two bonus objectives and a reward`);
   return `act two: ${c.commander.xp} xp after a clean run`;

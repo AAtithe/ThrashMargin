@@ -7,6 +7,7 @@ import { isEnemy } from './sides';
 import { countBuildings, maxHpOf, techAllowed, unlocked } from './state';
 import { canRide, doBoard, doUnload } from './transport';
 import type { Building, GameState, Unit } from './types';
+import { unitSpec, unitSpecOf } from './specs';
 
 /**
  * The computer commander's navy (the naval war, 2026-11-11). Called once a decision from the
@@ -182,14 +183,14 @@ export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: numb
       ['battleship', t.battleships],
     ];
     const want = plan.find(([k, n]) => queued(k) < n && unlocked(s, owner, k));
-    if (want && fund(s, owner, UNITS[want[0]].cost) && canQueue(s, owner, 'naval', want[0])) doQueue(s, owner, 'naval', want[0]);
+    if (want && fund(s, owner, unitSpec(s, owner, want[0]).cost) && canQueue(s, owner, 'naval', want[0])) doQueue(s, owner, 'naval', want[0]);
   }
 
   // 3. The fleet.
   const yc = buildingCentre(yard);
   const shore = { x: mem.navalShore[0], y: mem.navalShore[1] };
   const enemyShips = foes.filter(f => isShip(f) && isEnemy(s, owner, f.owner) && (!UNITS[f.kind].stealth || f.lastShot !== undefined));
-  const warships = ships.filter(u => UNITS[u.kind].weapon);
+  const warships = ships.filter(u => unitSpecOf(s, u).weapon);
   // Hurt ships home first.
   for (const u of warships) {
     if (u.hp < maxHpOf(u) * MEND_BELOW && dist(u.x, u.y, yc.x, yc.y) > 4 && u.order.type !== 'move') doMove(s, owner, [u.id], yc.x, yc.y, false);
@@ -301,7 +302,7 @@ function landing(s: GameState, owner: Owner, t: NavalTactics, home: { x: number;
   const troops: Unit[] = [];
   let used = 0;
   const pool = s.units
-    .filter(u => u.owner === owner && canRide(u, c) && UNITS[u.kind].weapon && hitsGround(UNITS[u.kind].weapon!) && u.order.type === 'idle' && !busy.has(u.id) && dist(u.x, u.y, home.x, home.y) < 16)
+    .filter(u => u.owner === owner && canRide(u, c) && unitSpecOf(s, u).weapon && hitsGround(unitSpecOf(s, u).weapon!) && u.order.type === 'idle' && !busy.has(u.id) && dist(u.x, u.y, home.x, home.y) < 16)
     .sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y) || a.id - b.id);
   for (const u of pool) {
     const slots = UNITS[u.kind].category === 'vehicle' ? 2 : 1;

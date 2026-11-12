@@ -4,9 +4,10 @@
  * Run after the guided tour by scripts/tours/fireline.cjs, or alone:
  *   TOUR_BASE=http://localhost:5306 node scripts/tours/fireline-build-window.cjs   (with Vite running)
  *
- * On a fresh advanced-tech skirmish it checks that:
+ * On a fresh advanced-tech skirmish on a fixed Coast map (so the Naval tab is always there) it checks that:
  * - every kind in the rules' MENUS is on its tab, greyed (locked) exactly when a structure it needs
- *   is missing, with the lines and tiers the rules give;
+ *   is missing, with the lines and tiers the rules give; the round 6 recruits (the Academy, the
+ *   heroes, the field General) are absent, since this battle has Heroes and Generals off;
  * - the window opens and closes by the Build button, the backquote key and Esc, focus moving into it
  *   and back to the Build button, and Tab cycles the lists with it open or closed;
  * - a hotkey queues with the window closed (Q, Generator) and with it open (W, Refinery);
@@ -52,8 +53,14 @@ async function checkBuildWindow(browser, base, problems, out) {
       localStorage.removeItem('fl_build_window');
     }, USER);
     await page.reload();
-    // The lobby opens on the game size cards (round 6); the tech level is under Customise.
+    // The lobby opens on the game size cards (round 6, pace); the tech level is under Customise.
     await page.getByTestId('setup-customise').click();
+    // A fixed battlefield. The lobby draws a fresh seed each visit and its default map type is
+    // "let the seed choose", and about 38% of those maps (most Canyon, Plains and Highlands draws)
+    // have no open sea, so no Naval tab: the run then waited on #fl-tab-naval until Playwright
+    // timed out. The Coast always has sea (clicked below), so every MENUS tab, Naval included, is
+    // checked every run.
+    await page.getByTestId('seed').fill('tour-build-window');
     await page.getByTestId('tech-advanced').click();
     // The Coast map (the naval war): its open sea is what offers the Naval tab, checked below too.
     await page.getByTestId('map-coast').click();
@@ -74,9 +81,16 @@ async function checkBuildWindow(browser, base, problems, out) {
         memo[k] = need.length ? 1 + Math.max(...need.map(tier)) : 0;
         return memo[k];
       };
+      // Round 6: the Academy, the heroes and the field General are listed only with Heroes or
+      // Generals on; this battle has both off, so they must be absent.
+      const optional = k => k === r.HERO_ACADEMY || k === 'general' || (k in r.UNITS && !!r.UNITS[k].hero);
       const menus = {};
-      for (const [tab, list] of Object.entries(r.MENUS)) menus[tab] = list.map(k => ({ kind: k, needs: req(k), tier: tier(k) }));
-      return { menus, tier: Object.fromEntries(Object.keys(memo).map(k => [k, memo[k]])) };
+      const absent = {};
+      for (const [tab, list] of Object.entries(r.MENUS)) {
+        menus[tab] = list.filter(k => !optional(k)).map(k => ({ kind: k, needs: req(k), tier: tier(k) }));
+        absent[tab] = list.filter(optional);
+      }
+      return { menus, absent, tier: Object.fromEntries(Object.keys(memo).map(k => [k, memo[k]])) };
     });
     const owned = await page.evaluate(() => {
       const k = Object.keys(localStorage).find(x => x.startsWith('fireline_save_'));
@@ -94,6 +108,10 @@ async function checkBuildWindow(browser, base, problems, out) {
     if (!focusIn) await fail('focus did not move into the window on open');
     let seen = 0;
     for (const [tab, list] of Object.entries(rules.menus)) {
+      if (!(await page.locator(`#fl-tab-${tab}`).count())) {
+        await fail(`the window has no ${tab} tab on an advanced-tech Coast battle`);
+        continue;
+      }
       await page.locator(`#fl-tab-${tab}`).click();
       await sleep(250);
       for (const item of list) {
@@ -116,7 +134,13 @@ async function checkBuildWindow(browser, base, problems, out) {
         }
       }
     }
-    console.log(`  build window: ${seen} menu items checked`);
+    for (const [tab, list] of Object.entries(rules.absent)) {
+      if (!list.length || !(await page.locator(`#fl-tab-${tab}`).count())) continue;
+      await page.locator(`#fl-tab-${tab}`).click();
+      await sleep(150);
+      for (const k of list) if (await page.locator(`#fl-build-${k}`).count()) await fail(`${k} is on the ${tab} tab with Heroes and Generals off`);
+    }
+    console.log(`  build window: ${seen} menu items checked, ${Object.values(rules.absent).flat().length} kept off with Heroes and Generals off`);
 
     // ---- Tab cycles, open and closed --------------------------------------------------------------
     await page.locator('#fl-tab-building').click();
@@ -228,7 +252,10 @@ async function checkBuildWindow(browser, base, problems, out) {
 
     for (const e of errors) await fail(e);
   } catch (e) {
-    await fail('driver crashed: ' + (e.stack || e.message).split('\n')[0]);
+    // Playwright's first line says only what timed out; the call log names the locator.
+    const lines = String(e.stack || e.message).split('\n');
+    const what = lines.find(l => /waiting for /.test(l));
+    await fail('driver crashed: ' + lines[0] + (what ? ` (${what.trim()})` : ''));
   } finally {
     await ctx.close();
   }

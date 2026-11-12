@@ -67,7 +67,7 @@ export function iconFor(kind: BuildingKind | UnitKind): string {
   } else {
     const infantry = UNITS[kind as UnitKind].category === 'infantry';
     const air = UNITS[kind as UnitKind].category === 'air';
-    const scale = kind === 'ace' ? 1.5 : kind === 'bastion' ? 1.3 : kind === 'commando' ? 2.4 : air ? 1.45 : infantry ? 2.6 : 1.9;
+    const scale = kind === 'ace' ? 1.5 : kind === 'raider' ? 2.8 : kind === 'bastion' ? 1.3 : kind === 'commando' ? 2.4 : air ? 1.45 : infantry ? 2.6 : 1.9;
     ctx.save();
     ctx.translate(W / 2, H / 2);
     ctx.scale(scale, scale);

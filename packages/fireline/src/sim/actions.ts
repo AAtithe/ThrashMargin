@@ -36,6 +36,9 @@ export const MAX_TICKS_PER_ACTION = 600;
 
 const ids = (v: unknown): number[] => (Array.isArray(v) ? v.filter(n => Number.isInteger(n)) : []);
 
+// round6:D. Formations and squads: the move-in-formation and 'formation' cases' imports (fireline-round6-design.md).
+import { canFormation, canFormationMove, doFormation, doFormationMove } from './commands';
+
 /**
  * The reducer. Orders are always side 0's (the player's); the computer gives its orders from
  * inside the tick. An illegal action returns the very same state object, which the client uses to
@@ -53,6 +56,15 @@ export function processAction(s: GameState, a: GameAction): GameState {
       return c;
     }
     case 'move': {
+      // round6:D begin. Formations and squads: a move carrying a formation is refused until D
+      // validates the shape (FORMATION_SHAPES) and passes it to doMove. Without one: exactly as before.
+      if (a.formation !== undefined) {
+        if (!canFormationMove(s, 0, ids(a.ids), a.x, a.y, !!a.queue, a.formation)) return s;
+        const c = cloneState(s);
+        doFormationMove(c, 0, ids(a.ids), a.x, a.y, !!a.attackMove, a.formation, !!a.queue);
+        return c;
+      }
+      // round6:D end.
       if (!canMove(s, 0, ids(a.ids), a.x, a.y, !!a.queue)) return s;
       const c = cloneState(s);
       doMove(c, 0, ids(a.ids), a.x, a.y, !!a.attackMove, !!a.queue);
@@ -171,6 +183,19 @@ export function processAction(s: GameState, a: GameAction): GameState {
       return c;
     }
     // round5:C end.
+    // round6:B begin. Heroes in free play: any case of its own (recruiting goes through 'queue').
+    // round6:B end.
+    // round6:C begin. Generals: any case of its own (recruiting goes through 'queue').
+    // round6:C end.
+    // round6:D begin. Formations and squads: the 'formation' case (until then refused by the
+    // default below: the same state back).
+    case 'formation': {
+      if (!canFormation(s, 0, ids(a.ids), a.shape)) return s;
+      const c = cloneState(s);
+      doFormation(c, 0, ids(a.ids), a.shape);
+      return c;
+    }
+    // round6:D end.
     // The air war: boarding a Troop Carrier and setting its infantry down.
     case 'board': {
       if (!Number.isInteger(a.carrier) || boardProblem(s, 0, ids(a.ids), a.carrier) !== null) return s;

@@ -27,9 +27,12 @@ import { applyPlanetAction, planetActionProblem } from '../src/planet/turn';
 import { ARMY_KINDS, type ArmyKind, type BattleReport, type BattleSetup, type BattleSide, type CityBuildingId, type PlanetState, type Treaty } from '../src/planet/types';
 import { processAction } from '../src/sim/actions';
 import { missionMode } from '../src/sim/ai';
+import { fieldGenerals } from '../src/sim/generals';
+import { heroesInPlay } from '../src/sim/heroes';
 import { createMissionState } from '../src/sim/mission';
 import { seedFromString, stream } from '../src/sim/rng';
 import {
+  HERO_ACADEMY,
   HERO_KINDS,
   MAP_SIZE_TILES,
   MODULES,
@@ -52,6 +55,42 @@ type Ok = (cond: unknown, what: string) => void;
 
 const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 const hash = (x: unknown): string => createHash('sha256').update(JSON.stringify(x)).digest('hex').slice(0, 16);
+/**
+ * A battle state as hashed before the merge with the armies' round 6 (fireline-round6-design.md,
+ * section 10). A skirmish setup now states every seat's army, heroes, Generals and each seat's
+ * doctrine General, and every player of a skirmish records its army; left at their defaults (all
+ * Meridian, everything off) they mean the earlier battle exactly. So they are checked to be the
+ * defaults, nothing else of round 6's (perks for other sides, squads, a General or a recruited
+ * hero's record) may appear, and then they are left out of the hash.
+ */
+const round6Off = (s: GameState): boolean => {
+  try {
+    preRound6(s);
+    return true;
+  } catch {
+    return false;
+  }
+};
+const preRound6 = (s: GameState): GameState => {
+  if (s.sidePerks !== undefined) throw new Error('a battle gained perks for another side');
+  if (s.squads !== undefined) throw new Error('a battle formed a squad');
+  const players = s.players.map(p => {
+    if (p.faction !== undefined && p.faction !== 'meridian') throw new Error(`side ${p.owner} fields ${p.faction}`);
+    if (p.heroFallen !== undefined || p.general !== undefined || p.generalUnit !== undefined || p.generalLostAt !== undefined)
+      throw new Error(`side ${p.owner} has a round 6 hero or General record`);
+    const { faction: _f, ...rest } = p;
+    return rest;
+  });
+  if (s.units.some(u => u.kind === 'general' || u.squad !== undefined)) throw new Error('a General or a squad member on the field');
+  if (s.buildings.some(b => b.kind === HERO_ACADEMY)) throw new Error('a Command Academy on the field');
+  if (!s.setup) return { ...s, players };
+  const { factions, heroes, generals, generalPicks, ...setup } = s.setup;
+  if (factions !== undefined && (factions.length !== s.players.length || factions.some(f => f !== 'meridian'))) throw new Error(`setup armies ${factions}`);
+  if (heroes !== undefined && heroes !== false) throw new Error('setup heroes on');
+  if (generals !== undefined && generals !== false) throw new Error('setup Generals on');
+  if (generalPicks !== undefined && (generalPicks.length !== s.players.length || generalPicks.some(g => g !== null))) throw new Error('setup doctrine Generals picked');
+  return { ...s, players, setup: setup as GameState['setup'] };
+};
 /**
  * A skirmish state as hashed before round 6 added the game size (now `setup.pace`) and before the
  * merge with main added `setup.size` (the map size) and `setup.sites`. A setup that leaves them out
@@ -611,8 +650,8 @@ function quickTests(ok: Ok): void {
   const more = copy(base);
   more.sides[0].units.push(...Array.from({ length: 10 }, () => ({ kind: 'tank' as ArmyKind, kills: 0, core: null })));
   ok(attackOdds(more) > attackOdds(base), 'more attacking tanks raise the odds');
-  const high = { ...copy(base), mapType: 'highlands' as MapType };
-  const flat = { ...copy(base), mapType: 'plains' as MapType };
+  const high = { ...copy(base), mapType: 'highlands' as const };
+  const flat = { ...copy(base), mapType: 'plains' as const };
   ok(attackOdds(high) < attackOdds(flat), 'highlands defend better than plains');
   const vet = copy(base);
   for (const u of vet.sides[0].units) u.kills = 9;
@@ -832,9 +871,9 @@ function storyTests(ok: Ok): void {
         if (sides === 2 && mode === 'teams') continue;
         k++;
         let s = createInitialState('sk', 'Sk', { seed: `hash${k}`, createdAt: 0, autopilot: true, setup: { map, tech: k % 2 ? 'advanced' : 'standard', credits: 5000, ore: 'normal', sides, mode, research: k % 3 ? 'lines' : 'classic' } });
-        ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:0`], `skirmish ${sides} ${mode} ${map} byte-identical at tick 0`);
+        ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:0`], `skirmish ${sides} ${mode} ${map} byte-identical at tick 0`);
         s = tick(s, 1500);
-        ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:1500`], `skirmish ${sides} ${mode} ${map} byte-identical after 1,500 ticks`);
+        ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:${map}:1500`], `skirmish ${sides} ${mode} ${map} byte-identical after 1,500 ticks`);
       }
   // The Coast map (the naval war): advanced tech, where navies sail, recorded at the merge.
   let c = 0;
@@ -843,9 +882,9 @@ function storyTests(ok: Ok): void {
       if (sides === 2 && mode === 'teams') continue;
       c++;
       let s = createInitialState('sk', 'Sk', { seed: `coast${c}`, createdAt: 0, autopilot: true, setup: { map: 'coast', tech: 'advanced', credits: 5000, ore: 'normal', sides, mode, research: c % 2 ? 'lines' : 'classic' } });
-      ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:0`], `skirmish ${sides} ${mode} coast byte-identical at tick 0`);
+      ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:0`], `skirmish ${sides} ${mode} coast byte-identical at tick 0`);
       s = tick(s, 1500);
-      ok(hash(preSize(s)) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:1500`], `skirmish ${sides} ${mode} coast byte-identical after 1,500 ticks`);
+      ok(hash(preSize(preRound6(s))) === SKIRMISH_HASHES[`sk:${sides}:${mode}:coast:1500`], `skirmish ${sides} ${mode} coast byte-identical after 1,500 ticks`);
     }
   let s = createInitialState('legacy', 'L', { seed: 'legacy', createdAt: 0, autopilot: true });
   ok(hash(s) === SKIRMISH_HASHES['legacy:0'], 'the original game byte-identical at tick 0');
@@ -1012,7 +1051,7 @@ function warWithSetups(w: PlanetState, turns: number, build: (st: BattleSetup) =
         const st = battleSetupFor(w, f.id, r, 0, [], 9000 + setups.length);
         if (!st) continue;
         setups.push(st);
-        if (build(st)) built.push(hash(preNaval(buildPlanetBattle(st, { id: 'o', name: 'o', createdAt: 0 }))));
+        if (build(st)) built.push(hash(preNaval(preRound6(buildPlanetBattle(st, { id: 'o', name: 'o', createdAt: 0 })))));
       }
     }
     w = botTurn(w);
@@ -1146,7 +1185,10 @@ function mapSizeTests(ok: Ok): void {
     // Save size: the whole save (the strategic part at its 48 KB budget) with this battle in progress.
     const STRATEGIC = 48 * 1024;
     const at0 = JSON.stringify(g).length;
-    const at3000 = JSON.stringify(tick({ ...g, autopilot: true }, 3000)).length;
+    const later = tick({ ...g, autopilot: true }, 3000);
+    const at3000 = JSON.stringify(later).length;
+    // The armies' round 6 stays out of a war's battles (fireline-round6-design.md, section 10).
+    ok(round6Off(g) && round6Off(later), 'the four-sided capital battle: all Meridian, no recruits, no Generals, no squads after 3,000 ticks');
     console.log(`  large four-sided battle: ${Math.round(at0 / 1024)} KB at tick 0, ${Math.round(at3000 / 1024)} KB at tick 3,000`);
     ok(STRATEGIC + at0 < 256 * 1024 && STRATEGIC + at3000 < 256 * 1024, 'whole save with a large four-sided battle under 256 KB');
     break;
@@ -1159,9 +1201,14 @@ function mapSizeTests(ok: Ok): void {
   const fx = migratePlanetSave(JSON.parse(readFileSync(fxPath, 'utf8')))!;
   ok(fx.planet.battleRules === undefined && !('mapSize' in fx.planet.pending[0].setup), 'the v1 fixture stays on battle rules 1 with a standard map');
   let g = buildPlanetBattle(fx.planet.pending[0].setup, { id: 'fx', name: 'Fixture', createdAt: 0 }, { autopilot: true });
-  ok(hash(preNaval(g)) === OLD_WAR_HASHES.fxBattle0, "the fixture's battle byte-identical at tick 0");
+  ok(
+    JSON.stringify([g.setup?.factions, g.setup?.heroes, g.setup?.generals, g.setup?.generalPicks]) === JSON.stringify([g.players.map(() => 'meridian'), false, false, g.players.map(() => null)]),
+    "a planet battle states round 6's options: every seat Meridian, heroes, Generals and doctrine Generals off",
+  );
+  ok(!heroesInPlay(g) && !fieldGenerals(g), 'a planet battle recruits no heroes and fields no General');
+  ok(hash(preNaval(preRound6(g))) === OLD_WAR_HASHES.fxBattle0, "the fixture's battle byte-identical at tick 0");
   g = processAction(g, { type: 'tick', n: 600 });
-  ok(hash(preNaval(g)) === OLD_WAR_HASHES.fxBattle600, "the fixture's battle byte-identical after 600 ticks");
+  ok(hash(preNaval(preRound6(g))) === OLD_WAR_HASHES.fxBattle600, "the fixture's battle byte-identical after 600 ticks");
   let t = applyPlanetAction(fx.planet, { type: 'autoResolve' });
   for (let i = 0; i < 5 && !t.result; i++) t = botTurn(t);
   ok(hash(t) === OLD_WAR_HASHES.fxPlayed, 'the fixture played 5 turns byte-identical');

@@ -1,4 +1,4 @@
-import { airRoom, ammoMax, isAir, parkAircraft } from './air';
+import { airRoleOf, airRoom, ammoMax, isAir, parkAircraft } from './air';
 import { isShip } from './naval';
 import { canQueue, doAttack, doMove, doQueue, doSell } from './commands';
 import { canRide, doBoard, doUnload, isStill } from './transport';
@@ -8,15 +8,19 @@ import { canResearch, doDoctrine, doResearch, doctrineProblem, researchCostOf } 
 import {
   BUILDINGS,
   DIFFICULTIES,
+  HELIPAD_SLOTS,
   MAX_QUEUE,
   PACED_ORE_FLOOR,
   MODULES,
   UNITS,
   UPGRADES,
   UPGRADE_LINE,
+  airSlotsOf,
   hitsGround,
+  type AirRole,
   type BuildingKind,
   type Difficulty,
+  type Faction,
   type ModuleId,
   type Owner,
   type UnitKind,
@@ -25,6 +29,7 @@ import {
 import { costFor, countBuildings, difficultyFor, isStructure, pacedResearch, powerOf, researchModeOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
+import { buildingSpec, buildingSpecOf, factionOf, menuOf, unitSpec, unitSpecOf } from './specs';
 
 /**
  * The computer commander's air power, anti-air and research (fireline-round4-design.md, workstream
@@ -163,13 +168,36 @@ const AIR_TACTICS: Record<Difficulty, AirTactics> = {
   },
 };
 
+/**
+ * Round 6 (fireline-round6-design.md, workstream A): each army's changes to its air plan. Meridian
+ * flies today's numbers; Ashen's Kestrels are cheaper and rearm sooner, so on Hard it keeps one
+ * more of them.
+ */
+const AIR_FACTION_TACTICS: Record<Faction, Partial<Record<Difficulty, Partial<AirTactics>>>> = {
+  meridian: {},
+  ashen: {
+    hard: { gunships: 3 },
+  },
+};
+
+/**
+ * This side's aircraft kind for a role: the first on its army's Air list (the Gunship and Bomber for
+ * Meridian, the Kestrel and Firebrand for Ashen). `heavy` asks for one that takes a whole Helipad (the
+ * Heavy Bomber), otherwise one that does not, so a bomber role never picks the heavy one by its place
+ * on the list. Read by its spec, never by a kind's name.
+ */
+function airKindFor(s: GameState, owner: Owner, role: AirRole, heavy = false): UnitKind | null {
+  const k = menuOf(factionOf(s, owner), 'air').find(k => UNITS[k as UnitKind]?.airRole === role && airSlotsOf(k as UnitKind) >= HELIPAD_SLOTS === heavy);
+  return (k as UnitKind | undefined) ?? null;
+}
+
 /** The structures and anti-air units that count as anti-air cover, and how far each reaches. */
-function coverOf(enemy: Building[], foes: Unit[]): { x: number; y: number; r: number; b?: Building }[] {
+function coverOf(s: GameState, enemy: Building[], foes: Unit[]): { x: number; y: number; r: number; b?: Building }[] {
   const out: { x: number; y: number; r: number; b?: Building }[] = [];
-  for (const b of enemy) if (b.kind === 'flakcannon') out.push({ x: b.x + 0.5, y: b.y + 0.5, r: (BUILDINGS.flakcannon.weapon?.range ?? 7) + 1, b });
+  for (const b of enemy) if (b.kind === 'flakcannon') out.push({ x: b.x + 0.5, y: b.y + 0.5, r: (buildingSpecOf(s, b).weapon?.range ?? 7) + 1, b });
   for (const u of foes) {
-    if (u.kind !== 'flaktrack' && u.kind !== 'skyhunter' && u.kind !== 'interceptor') continue;
-    out.push({ x: u.x, y: u.y, r: (UNITS[u.kind].weapon?.range ?? 6) + 1 });
+    if (u.kind !== 'flaktrack' && u.kind !== 'skyhunter' && airRoleOf(u) !== 'intercept') continue;
+    out.push({ x: u.x, y: u.y, r: (unitSpecOf(s, u).weapon?.range ?? 6) + 1 });
   }
   return out;
 }
@@ -185,7 +213,8 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   if (s.mission || !techAllowed(s, owner, 'helipad')) return;
   const diff: Difficulty = owner === 0 && s.autopilotDifficulty ? s.autopilotDifficulty : s.difficulty;
   const d = difficultyFor(s, diff);
-  const t = AIR_TACTICS[diff];
+  const over = AIR_FACTION_TACTICS[factionOf(s, owner)][diff];
+  const t = over ? { ...AIR_TACTICS[diff], ...over } : AIR_TACTICS[diff];
   const p = s.players[owner];
   const count = (k: BuildingKind) => countBuildings(s, owner, k);
   const mine = s.units.filter(u => u.owner === owner);
@@ -203,17 +232,17 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // back units queued but not yet started, and (but for anti-air) only once the army at home is up
   // to the next wave's size and to the opponent's army, as the commander's own extras are.
   const mem = s.ai[owner];
-  const armed = mine.filter(u => UNITS[u.kind].weapon && !isAir(u)).length;
+  const armed = mine.filter(u => unitSpecOf(s, u).weapon && !isAir(u)).length;
   // An army that can take ground: not aircraft, and not ships (the naval war), which cannot reach a
   // structure inland. The last stand and recovery read this.
-  const landArmed = mine.filter(u => UNITS[u.kind].weapon && !isAir(u) && !isShip(u)).length;
-  const foeArmy = foes.filter(u => UNITS[u.kind].weapon && !isAir(u)).length;
+  const landArmed = mine.filter(u => unitSpecOf(s, u).weapon && !isAir(u) && !isShip(u)).length;
+  const foeArmy = foes.filter(u => unitSpecOf(s, u).weapon && !isAir(u)).length;
   const armyReady = armed >= Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9);
 
   // 1. Anti-air, in proportion to what the opponent flies.
   const foeAir = foes.filter(isAir).length;
   if (foeAir > 0 && !crisis) {
-    if (queued('skyhunter') < Math.min(8, Math.ceil(foeAir * t.skyhuntersPer)) && p.queues.infantry.length < MAX_QUEUE && fund(s, owner, UNITS.skyhunter.cost))
+    if (queued('skyhunter') < Math.min(8, Math.ceil(foeAir * t.skyhuntersPer)) && p.queues.infantry.length < MAX_QUEUE && fund(s, owner, unitSpec(s, owner, 'skyhunter').cost))
       if (canQueue(s, owner, 'infantry', 'skyhunter')) doQueue(s, owner, 'infantry', 'skyhunter');
     if (queued('flaktrack') < Math.min(4, Math.ceil(foeAir * t.flaktracksPer)) && p.queues.vehicle.length < MAX_QUEUE && fund(s, owner, vehiclePrice(s, owner, 'flaktrack')))
       if (canQueue(s, owner, 'vehicle', 'flaktrack')) doQueue(s, owner, 'vehicle', 'flaktrack');
@@ -222,18 +251,21 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   }
   // Interceptors are anti-air too, so they come before the army is ready, as Skyhunters do: once a
   // Research Lab stands, one on the Helipads' room, or a Helipad more to hold them.
-  const interceptors = foeAir > 0 && !crisis ? Math.min(t.interceptorsMax, Math.ceil(foeAir * t.interceptorsPer)) : 0;
-  if (interceptors > 0 && count('researchlab') > 0 && queued('interceptor') < interceptors) {
+  // Round 6 merge: every aircraft kind below is the army's own for its role (airKindFor).
+  const interceptKind = airKindFor(s, owner, 'intercept');
+  const scoutKind = airKindFor(s, owner, 'scout');
+  const interceptors = interceptKind && foeAir > 0 && !crisis ? Math.min(t.interceptorsMax, Math.ceil(foeAir * t.interceptorsPer)) : 0;
+  if (interceptKind && interceptors > 0 && count('researchlab') > 0 && queued(interceptKind) < interceptors) {
     if (airRoom(s, owner) > 0) {
-      if (p.queues.air.length === 0 && fund(s, owner, UNITS.interceptor.cost) && canQueue(s, owner, 'air', 'interceptor')) doQueue(s, owner, 'air', 'interceptor');
+      if (p.queues.air.length === 0 && fund(s, owner, unitSpec(s, owner, interceptKind).cost) && canQueue(s, owner, 'air', interceptKind)) doQueue(s, owner, 'air', interceptKind);
     } else if (count('helipad') < t.helipads + 1) queueStructure(s, owner, 'helipad');
   }
   // A Recon Plane against Stealth Tanks, likewise ahead of the army: its guns cannot hit what they cannot see.
   const stealthy = foes.filter(f => UNITS[f.kind].stealth && isEnemy(s, owner, f.owner));
-  const recon = t.recon && stealthy.length > 0 && !crisis ? 1 : 0;
-  if (recon && count('helipad') > 0 && queued('reconplane') < recon) {
+  const recon = scoutKind && t.recon && stealthy.length > 0 && !crisis ? 1 : 0;
+  if (scoutKind && recon && count('helipad') > 0 && queued(scoutKind) < recon) {
     if (airRoom(s, owner) > 0) {
-      if (p.queues.air.length === 0 && fund(s, owner, UNITS.reconplane.cost) && canQueue(s, owner, 'air', 'reconplane')) doQueue(s, owner, 'air', 'reconplane');
+      if (p.queues.air.length === 0 && fund(s, owner, unitSpec(s, owner, scoutKind).cost) && canQueue(s, owner, 'air', scoutKind)) doQueue(s, owner, 'air', scoutKind);
     } else if (count('helipad') < t.helipads + 1) queueStructure(s, owner, 'helipad');
   }
   // With the map's ore running low, what credits are left go on the army, not on structures,
@@ -273,8 +305,11 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // 2. A Research Lab and Helipads, once the economy and the turrets stand.
   // Interceptors and a Recon Plane, when the opponent gives a reason, take a Helipad more.
   // A Troop Carrier takes a Helipad place, and a Heavy Bomber a whole pad more.
-  const heavy = t.heavyBombers > 0 && unlocked(s, owner, 'heavybomber') ? t.heavyBombers : 0;
-  const pads = t.helipads + (interceptors + recon + t.carriers > 0 ? 1 : 0) + heavy;
+  const heavyKind = airKindFor(s, owner, 'bomb', true);
+  const transportKind = airKindFor(s, owner, 'transport');
+  const carriers = transportKind ? t.carriers : 0;
+  const heavy = heavyKind && t.heavyBombers > 0 && unlocked(s, owner, heavyKind) ? t.heavyBombers : 0;
+  const pads = t.helipads + (interceptors + recon + carriers > 0 ? 1 : 0) + heavy;
   const based = count('factory') > 0 && count('uplink') > 0 && count('refinery') >= d.refineries && count('turret') >= d.turrets;
   if (based) {
     if (count('researchlab') < 1) queueStructure(s, owner, 'researchlab');
@@ -284,23 +319,27 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // 3. Aircraft, up to the plan and the Helipads' room: Interceptors and the Recon Plane first.
   let saving = based && (count('researchlab') < 1 || count('helipad') < pads);
   if (airRoom(s, owner) > 0) {
+    // By role, from the army's own Air list: the Gunship and Bomber, or Ashen's Kestrel and Firebrand;
+    // the air war's Interceptor, Recon Plane, Troop Carrier and Heavy Bomber for both.
+    const strafe = airKindFor(s, owner, 'strafe');
+    const bomb = airKindFor(s, owner, 'bomb');
     const want: UnitKind | null =
-      queued('interceptor') < interceptors
-        ? 'interceptor'
-        : queued('reconplane') < recon
-          ? 'reconplane'
-          : queued('gunship') < t.gunships
-            ? 'gunship'
-            : queued('bomber') < t.bombers
-              ? 'bomber'
-              : queued('carrier') < t.carriers
-                ? 'carrier'
-                : queued('heavybomber') < heavy
-                  ? 'heavybomber'
+      interceptKind && queued(interceptKind) < interceptors
+        ? interceptKind
+        : scoutKind && queued(scoutKind) < recon
+          ? scoutKind
+          : strafe && queued(strafe) < t.gunships
+            ? strafe
+            : bomb && queued(bomb) < t.bombers
+              ? bomb
+              : transportKind && queued(transportKind) < carriers
+                ? transportKind
+                : heavyKind && queued(heavyKind) < heavy
+                  ? heavyKind
                   : null;
     if (want && unlocked(s, owner, want)) {
       saving = true;
-      if (p.queues.air.length === 0 && fund(s, owner, UNITS[want].cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);
+      if (p.queues.air.length === 0 && fund(s, owner, unitSpec(s, owner, want).cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);
     }
   }
 
@@ -351,7 +390,7 @@ function lastStand(s: GameState, owner: Owner, armed: number): void {
       return;
     }
   }
-  const kind: UnitKind = p.credits >= UNITS.grenadier.cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
+  const kind: UnitKind = p.credits >= unitSpec(s, owner, 'grenadier').cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
   if (p.queues.infantry.length < MAX_QUEUE && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
 }
 
@@ -428,8 +467,8 @@ function mopUp(s: GameState, owner: Owner, mine: Unit[]): void {
   if (s.tick < s.ai[owner].nextAttack) return;
   // Every enemy unit and structure on the map, seen or not: the commander already knows the map. A
   // side defending with turrets alone is not defenceless: the waves deal with it as ever.
-  if (s.units.some(f => f.hp > 0 && UNITS[f.kind].weapon && isEnemy(s, owner, f.owner))) return;
-  if (s.buildings.some(b => b.hp > 0 && BUILDINGS[b.kind].weapon && isEnemy(s, owner, b.owner))) return;
+  if (s.units.some(f => f.hp > 0 && unitSpecOf(s, f).weapon && isEnemy(s, owner, f.owner))) return;
+  if (s.buildings.some(b => b.hp > 0 && buildingSpecOf(s, b).weapon && isEnemy(s, owner, b.owner))) return;
   allIn(s, owner, mine);
 }
 
@@ -441,7 +480,7 @@ function allIn(s: GameState, owner: Owner, mine: Unit[]): void {
   const targets = s.buildings.filter(b => b.hp > 0 && isStructure(b) && isEnemy(s, owner, b.owner));
   if (!targets.length) return;
   for (const u of mine) {
-    if (!UNITS[u.kind].weapon || isAir(u) || isShip(u) || u.order.type !== 'idle' || u.engage) continue;
+    if (!unitSpecOf(s, u).weapon || isAir(u) || isShip(u) || u.order.type !== 'idle' || u.engage) continue;
     let best = targets[0];
     let bestD = Infinity;
     for (const b of targets) {
@@ -483,7 +522,7 @@ export function fund(s: GameState, owner: Owner, need: number): boolean {
  * What the commander budgets for one vehicle of this kind: its base price and the current loadout's
  * modules (none in a classic battle, so the classic sum is unchanged to the credit).
  */
-export const vehiclePrice = (s: GameState, owner: Owner, kind: UnitKind): number => UNITS[kind].cost + loadoutCost(loadoutOf(s, owner, kind));
+export const vehiclePrice = (s: GameState, owner: Owner, kind: UnitKind): number => unitSpec(s, owner, kind).cost + loadoutCost(loadoutOf(s, owner, kind));
 
 /** Development lines: sets each kind's loadout to the difficulty's modules already unlocked, or none. */
 function fitLoadouts(s: GameState, owner: Owner, t: AirTactics, bare: boolean): void {
@@ -502,8 +541,8 @@ export function queueStructure(s: GameState, owner: Owner, kind: BuildingKind): 
   const p = s.players[owner];
   if (p.queues.building.length) return;
   const pw = powerOf(s, owner);
-  const want: BuildingKind = pw.made - pw.used + BUILDINGS[kind].power < 10 ? 'power' : kind;
-  if (!unlocked(s, owner, want) || !fund(s, owner, BUILDINGS[want].cost)) return;
+  const want: BuildingKind = pw.made - pw.used + buildingSpec(s, owner, kind).power < 10 ? 'power' : kind;
+  if (!unlocked(s, owner, want) || !fund(s, owner, buildingSpec(s, owner, want).cost)) return;
   if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);
 }
 
@@ -519,7 +558,7 @@ function strikes(
   const mem = s.ai[owner];
   const alive = new Map(craft.map(u => [u.id, u]));
   let out = (mem.airIds ?? []).filter(id => alive.has(id));
-  const cover = coverOf(enemy, foes);
+  const cover = coverOf(s, enemy, foes);
   const parked = (u: Unit) => u.order.type === 'rearm';
   const full = (u: Unit) => (u.ammo ?? 0) >= ammoMax(u);
 
@@ -546,20 +585,20 @@ function strikes(
   // A Gunship out on a strike whose target has gone (now idle): on to the next, or home.
   for (const id of out) {
     const u = alive.get(id)!;
-    if (u.kind !== 'gunship' || u.order.type !== 'idle') continue;
+    if (airRoleOf(u) !== 'strafe' || u.order.type !== 'idle') continue;
     const next = (u.ammo ?? 0) > 0 ? pickFor(u) : null;
     if (next) doAttack(s, owner, [u.id], next.id);
   }
   // Anything else idle goes home to its pad; a Recon Plane circling keeps circling until its fuel says.
-  for (const u of craft) if (u.order.type === 'idle' && u.kind !== 'reconplane') parkAircraft(s, u);
+  for (const u of craft) if (u.order.type === 'idle' && airRoleOf(u) !== 'scout') parkAircraft(s, u);
   out = out.filter(id => !parked(alive.get(id)!));
 
   const due = s.tick >= (mem.nextAirStrike ?? 0);
   // Gunships: a group of full ones parked at home, at the safest hauler or artillery piece.
-  const ready = craft.filter(u => u.kind === 'gunship' && parked(u) && full(u) && !out.includes(u.id));
+  const ready = craft.filter(u => airRoleOf(u) === 'strafe' && parked(u) && full(u) && !out.includes(u.id));
   // A group as large as the plan, or as all the Gunships it has: a lone survivor once sat parked
   // for fourteen minutes waiting for a partner that never came.
-  const gunships = craft.filter(u => u.kind === 'gunship').length;
+  const gunships = craft.filter(u => airRoleOf(u) === 'strafe').length;
   if (due && enemy.length && ready.length > 0 && ready.length >= Math.min(t.gunshipGroup, gunships)) {
     const target = pickFor(home);
     if (target) {
@@ -570,14 +609,14 @@ function strikes(
     }
   }
   // Bombers: each full one at the thickest knot of structures the fewest guns cover.
-  const bombers = craft.filter(u => (u.kind === 'bomber' || u.kind === 'heavybomber') && parked(u) && full(u) && !out.includes(u.id));
+  const bombers = craft.filter(u => airRoleOf(u) === 'bomb' && parked(u) && full(u) && !out.includes(u.id));
   if (due && bombers.length && enemy.length) {
     let best: Building | null = null;
     let bestScore = -Infinity;
     for (const b of enemy) {
       const c = buildingCentre(b);
       let near = 0;
-      for (const o of enemy) if (distToBuilding(c.x, c.y, o) <= 2.5) near += BUILDINGS[o.kind].weapon ? 1.5 : 1;
+      for (const o of enemy) if (distToBuilding(c.x, c.y, o) <= 2.5) near += buildingSpecOf(s, o).weapon ? 1.5 : 1;
       const score = near - danger(cover, c.x, c.y) - dist(home.x, home.y, c.x, c.y) * 0.02;
       if (score > bestScore) {
         bestScore = score;
@@ -597,7 +636,7 @@ function strikes(
   // Interceptors: an enemy aircraft over its haulers or structures draws the nearest one fit to
   // fight (parked full, or aloft with half its missiles), one each. Enemy gunships hunt haulers out
   // at the ore, beyond any Helipad's scramble range, so the commander sends them itself.
-  const fighters = craft.filter(u => u.kind === 'interceptor' && u.stance !== 'hold');
+  const fighters = craft.filter(u => airRoleOf(u) === 'intercept' && u.stance !== 'hold');
   if (fighters.length) {
     const guarded: { x: number; y: number }[] = s.units.filter(u => u.owner === owner && u.kind === 'hauler' && u.hp > 0);
     const mineB = s.buildings.filter(b => b.owner === owner && b.hp > 0);
@@ -629,7 +668,7 @@ function strikes(
   if (stealthy.length) {
     for (const u of craft) {
       // Parked, only once refuelled; aloft, it follows the tank as it moves.
-      if (u.kind !== 'reconplane' || (parked(u) && !full(u))) continue;
+      if (airRoleOf(u) !== 'scout' || (parked(u) && !full(u))) continue;
       let best: Unit | null = null;
       let bestD = Infinity;
       for (const f of stealthy) {
@@ -701,11 +740,11 @@ function airlift(s: GameState, owner: Owner, t: AirTactics, home: { x: number; y
   }
   // A new one: a parked carrier, enough idle infantry at home, a target, and the strike timer.
   if (s.tick < (mem.nextAirlift ?? 0) || !enemy.length) return;
-  const c = craft.find(u => u.kind === 'carrier' && u.order.type === 'rearm' && !u.carried?.length && isStill(s, u));
+  const c = craft.find(u => airRoleOf(u) === 'transport' && u.order.type === 'rearm' && !u.carried?.length && isStill(s, u));
   if (!c) return;
   const busy = new Set([...(mem.waveIds ?? []), ...(mem.raidIds ?? []), ...(mem.siteParties ?? []).flatMap(p => p.ids)]);
   const idle = s.units
-    .filter(u => u.owner === owner && canRide(u) && UNITS[u.kind].weapon && hitsGround(UNITS[u.kind].weapon!) && u.order.type === 'idle' && !busy.has(u.id) && dist(u.x, u.y, home.x, home.y) < 14)
+    .filter(u => u.owner === owner && canRide(u) && unitSpecOf(s, u).weapon && hitsGround(unitSpecOf(s, u).weapon!) && u.order.type === 'idle' && !busy.has(u.id) && dist(u.x, u.y, home.x, home.y) < 14)
     .sort((a, b) => dist(a.x, a.y, c.x, c.y) - dist(b.x, b.y, c.x, c.y) || a.id - b.id)
     .slice(0, t.airliftSize);
   if (idle.length < Math.min(4, t.airliftSize)) return;

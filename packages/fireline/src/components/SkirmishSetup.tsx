@@ -29,6 +29,12 @@ import {
   STANDARD_TECH,
   UNITS,
   VEHICLE_MENU,
+  // round6:B. Heroes in free play.
+  HERO_ACADEMY,
+  HERO_RECRUIT_COST,
+  HERO_REVIVE_TICKS,
+  TICKS_PER_SECOND,
+  type HeroKind,
   applyPace,
   researchPaceText,
   type BuildingKind,
@@ -46,15 +52,29 @@ import {
 } from '../sim/rules';
 import { paintMiniTerrain } from '../game/terrain';
 import { teamsFor } from '../sim/sides';
+import { normaliseSetup } from '../sim/state';
 import { TEAM, UI } from '../theme';
 import { Label } from './ui';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { SITE_KINDS, SITES, SITES_PER_SIDE } from '../sim/rules';
+// round6:A. Two armies (fireline-round6-design.md, workstream A): the Army row.
+import ArmyField from './ArmyField';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralsSetup } from './Generals';
 
 /** For the Random card's line: the map types counted in words. */
 const COUNT_WORDS: Record<number, string> = { 6: 'six', 7: 'seven', 8: 'eight', 9: 'nine', 10: 'ten' };
 
 /** What the Neutral sites field says each side gets at this map size. */
+// round6:B begin. Heroes in free play: the Heroes field's note.
+function heroesNote(setup: SkirmishSetup): string {
+  if (setup.tech !== 'advanced') return 'Advanced tech only.';
+  if (!setup.heroes) return 'The Spy, Commando, Engineer and Ace stay in the campaign.';
+  const price = (['engineer', 'spy', 'commando', 'ace'] as HeroKind[]).map(k => `${UNITS[k].name.replace(/^The /, '')} ${HERO_RECRUIT_COST[k].toLocaleString('en-GB')}`);
+  return `A ${BUILDINGS[HERO_ACADEMY].name} (after a Tech Centre) recruits the campaign's heroes, one of each: ${price.join(', ')} credits. A fallen hero can come back after ${HERO_REVIVE_TICKS / TICKS_PER_SECOND} seconds at half price. The computer recruits them too.`;
+}
+// round6:B end.
+
 function sitesNote(setup: SkirmishSetup): string {
   if (!setup.sites) return 'No sites: ore is the only income.';
   const per = SITES_PER_SIDE[setup.size ?? 'standard'];
@@ -87,12 +107,16 @@ export function readStoredSetup(): SkirmishSetup {
     // before sites existed.
     if (!raw) return FIRST_SETUP;
     const r = JSON.parse(raw) as Partial<SkirmishSetup>;
+    const sides = r.sides === 3 || r.sides === 4 ? r.sides : 2;
+    // Round 6: each seat's army and doctrine General, heroes and Generals, repaired exactly as the
+    // server will (normaliseSetup), so the setup screens of workstreams A, B and C need not touch this.
+    const r6 = normaliseSetup({ sides, factions: r.factions, heroes: r.heroes, generals: r.generals, generalPicks: r.generalPicks });
     return {
       map: r.map === 'random' || MAP_TYPES.includes(r.map as MapType) ? (r.map as SkirmishSetup['map']) : DEFAULT_SETUP.map,
       tech: r.tech === 'standard' || r.tech === 'advanced' ? r.tech : DEFAULT_SETUP.tech,
       credits: SETUP_CREDIT_CHOICES.includes(r.credits as number) ? (r.credits as number) : DEFAULT_SETUP.credits,
       ore: r.ore === 'poor' || r.ore === 'normal' || r.ore === 'rich' ? r.ore : DEFAULT_SETUP.ore,
-      sides: r.sides === 3 || r.sides === 4 ? r.sides : 2,
+      sides,
       mode: (r.sides === 3 || r.sides === 4) && r.mode === 'teams' ? 'teams' : 'ffa',
       research: r.research === 'classic' || r.research === 'lines' ? r.research : DEFAULT_SETUP.research,
       // A setup stored before the merge with main kept the pace as `size` ('quick', 'long', 'epic'
@@ -104,6 +128,10 @@ export function readStoredSetup(): SkirmishSetup {
           : LOBBY_DEFAULT_PACE,
       size: MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : 'standard',
       sites: r.sites !== false,
+      factions: r6.factions,
+      heroes: r6.heroes,
+      generals: r6.generals,
+      generalPicks: r6.generalPicks,
     };
   } catch {
     return FIRST_SETUP;
@@ -136,8 +164,10 @@ export const ORE_TEXT: Record<OreLevel, { name: string; text: string }> = {
 
 const nameOf = (k: BuildingKind | UnitKind) => (k in BUILDINGS ? BUILDINGS[k as BuildingKind].name : UNITS[k as UnitKind].name);
 /** What advanced tech adds, from the menus, so the list cannot drift from the rules. */
-const ADVANCED_STRUCTURES = BUILD_MENU.filter(k => !STANDARD_TECH.includes(k)).map(nameOf);
-const ADVANCED_UNITS = [...INFANTRY_MENU, ...VEHICLE_MENU].filter(k => !STANDARD_TECH.includes(k)).map(nameOf);
+// The recruits behind their own options (the Academy and its heroes, the field General) are named
+// only when those options are on (techText), never as part of advanced tech itself.
+const ADVANCED_STRUCTURES = BUILD_MENU.filter(k => !STANDARD_TECH.includes(k) && k !== HERO_ACADEMY).map(nameOf);
+const ADVANCED_UNITS = [...INFANTRY_MENU, ...VEHICLE_MENU].filter(k => !STANDARD_TECH.includes(k) && !UNITS[k].hero && k !== 'general').map(nameOf);
 const ADVANCED_POWERS = (Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][]).map(
   ([p, b]) => `${POWERS[p].name} (${BUILDINGS[b].name})`,
 );
@@ -152,6 +182,20 @@ export const TECH_TEXT: Record<TechLevel, { name: string; text: string }> = {
   },
 };
 
+/**
+ * A tech level's description for this setup (round 6 integration): advanced tech names the Command
+ * Academy and its heroes only with Heroes on, and the field General only with Generals on. Without a
+ * setup (How to play), it says what each option adds.
+ */
+export function techText(t: TechLevel, setup?: Pick<SkirmishSetup, 'heroes' | 'generals'>): string {
+  const base = TECH_TEXT[t].text;
+  if (t !== 'advanced') return base;
+  const academy = BUILDINGS[HERO_ACADEMY].name;
+  const general = UNITS.general.name;
+  if (!setup) return `${base} With Heroes on, a ${academy} recruits the campaign's heroes; with Generals on, each side may field a ${general}.`;
+  const more = [setup.heroes ? `a ${academy} to recruit the campaign's heroes` : '', setup.generals ? `a field ${general}` : ''].filter(Boolean);
+  return more.length ? `${base} This battle also has ${list(more)}.` : base;
+}
 export const RESEARCH_TEXT: Record<ResearchMode, { name: string; text: string }> = {
   classic: { name: 'Classic', text: 'Five upgrades from the Research Lab, one at a time.' },
   lines: {
@@ -271,7 +315,7 @@ export default function SkirmishSetupPanel({
             {(['standard', 'advanced'] as TechLevel[]).map(t => (
               <button key={t} type="button" role="radio" className="fl-level" aria-checked={value.tech === t} data-testid={`tech-${t}`} onClick={() => set({ tech: t })}>
                 <span className="fl-level-name">{TECH_TEXT[t].name}</span>
-                <span className="fl-level-facts">{TECH_TEXT[t].text}</span>
+                <span className="fl-level-facts">{techText(t, value)}</span>
               </button>
             ))}
           </div>
@@ -299,6 +343,33 @@ export default function SkirmishSetupPanel({
           </div>
           {value.tech === 'standard' && <p className="fl-setup-note">Advanced tech only.</p>}
         </div>
+        {/* round6:A begin. Two armies (fireline-round6-design.md): the Army row, one choice per seat, goes below. */}
+        <ArmyField value={value} onPick={factions => set({ factions })} />
+        {/* round6:A end. */}
+        {/* round6:B begin. Heroes in free play: the Heroes field (Off, On; greyed on standard tech) goes below. */}
+        <div className="fl-setup-field" data-disabled={value.tech === 'advanced' ? '0' : '1'}>
+          <Label>Heroes</Label>
+          <div className="fl-seg" role="radiogroup" aria-label="Heroes">
+            {[false, true].map(on => (
+              <button
+                key={on ? 'on' : 'off'}
+                type="button"
+                role="radio"
+                aria-checked={!!value.heroes === on}
+                disabled={value.tech !== 'advanced'}
+                data-testid={`heroes-${on ? 'on' : 'off'}`}
+                onClick={() => set({ heroes: on })}
+              >
+                {on ? 'On' : 'Off'}
+              </button>
+            ))}
+          </div>
+          <p className="fl-setup-note">{heroesNote(value)}</p>
+        </div>
+        {/* round6:B end. */}
+        {/* round6:C begin. Generals: the doctrine General per seat and the Generals field (Off, On) go below. */}
+        <GeneralsSetup value={value} set={set} />
+        {/* round6:C end. */}
       </SetupStep>
 
       <SetupStep n={4} title="Terms of engagement" hint="How long a battle runs, money, ore, room to manoeuvre and ground worth taking.">

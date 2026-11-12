@@ -1,5 +1,5 @@
 /**
- * Game size and paced research (fireline-round6-design.md, section 9.1): the harness sections.
+ * Game size and paced research (fireline-round6b-design.md, section 9.1): the harness sections.
  * Quick must be the game before round 6 to the byte; the larger sizes scale research price and time
  * in development lines only, scale the commander's attack timing at any tech, and give the
  * commander its paced research list. Imported by drive.ts, so its assertions count in the main
@@ -82,7 +82,15 @@ const strip = (k: string, v: unknown) =>
         // computer's note that there is no sea to sail, are left out too.
         (k === 'naval' && Array.isArray(v) && v.length === 0) || (k === 'navalShore' && v === null)
         ? undefined
-        : v;
+        : // The armies' round 6 (fireline-round6-design.md, section 10): a setup's armies, heroes,
+          // Generals and doctrine picks, and each player's army, at their defaults (all Meridian,
+          // everything off) are the earlier battle exactly, so they are left out too.
+          (k === 'faction' && v === 'meridian') ||
+            (k === 'factions' && Array.isArray(v) && v.every(x => x === 'meridian')) ||
+            ((k === 'heroes' || k === 'generals') && v === false) ||
+            (k === 'generalPicks' && Array.isArray(v) && v.every(x => x === null))
+          ? undefined
+          : v;
 const hashOf = (s: GameState) => createHash('sha256').update(JSON.stringify(s, strip)).digest('hex').slice(0, 16);
 
 const PERKS0 = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1, powerCooldownMul: 1, extraStartCredits: 0 };
@@ -169,7 +177,8 @@ function rulesAndPresets(ok: Ok): void {
   ok(DEFAULT_SETUP.pace === 'quick' && LEGACY_SETUP.pace === 'quick', 'both presets are Quick');
   ok(DEFAULT_SETUP.size === 'standard' && LEGACY_SETUP.size === 'standard', 'both presets state the standard map size');
   const keys = Object.keys(normaliseSetup({}));
-  ok(keys[keys.length - 1] === 'pace', 'pace is the last field of a normalised setup');
+  // The armies' round 6 (fireline-round6-design.md, section 10) puts its four fields after the pace.
+  ok(JSON.stringify(keys.slice(keys.indexOf('pace'))) === JSON.stringify(['pace', 'factions', 'heroes', 'generals', 'generalPicks']), "pace is the last field of a normalised setup before round 6's four");
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     const pk = Object.keys(preset);
     ok(JSON.stringify(pk) === JSON.stringify(keys), `${name} states every setup field, in order, pace last`);
@@ -283,6 +292,12 @@ function rulesAndPresets(ok: Ok): void {
  * reach), most of them again with f216f26 (mop-up, the land-only last stand, raiseFunds and the
  * navy's crisis rule) and 385ce76 (mop-up waits for the attack timer). The classic ones equal
  * origin/main's own battles exactly; no setup and standard tech are unchanged.
+ * At the merge of the armies' round 6 with War for the Planet (2026-11-12) the same 18 advanced
+ * battles were regenerated, for the armies' round 6's computer formations alone (its waves attack in
+ * a wedge and regroup in a box on advanced tech): in a scratch copy of the merged tree with those two
+ * formation moves switched off, all 30 equal the values before, that is origin/main's. Round 6's
+ * setup and player fields at their defaults are left out of the hash (strip, above), so no setup and
+ * standard tech are unchanged. See fireline-round6-design.md, section 10.
  */
 const PRE_ROUND6: Record<string, string> = {
   'nosetup|easy|size-a': '3425e6edb280df2e',
@@ -291,30 +306,30 @@ const PRE_ROUND6: Record<string, string> = {
   'nosetup|normal|size-b': 'ee788c01da261681',
   'nosetup|hard|size-a': '061e68bb7dd33891',
   'nosetup|hard|size-b': '6120a39f5cd1b61e',
-  'lines|easy|size-a': 'e1e9250e4b72aa74',
-  'lines|easy|size-b': '51292960451d2c3d',
-  'lines|normal|size-a': 'ceec651d265ae5af',
-  'lines|normal|size-b': 'bce7c66db7422cd3',
-  'lines|hard|size-a': 'c5b9819f2eb7da73',
-  'lines|hard|size-b': 'e0c4f68cddca7387',
-  'classic|easy|size-a': '0cc8ce4e62b63bce',
-  'classic|easy|size-b': '11380ac8e94d94c9',
-  'classic|normal|size-a': 'a0b7c4de7e4d9526',
-  'classic|normal|size-b': 'a634197aec25c5b3',
-  'classic|hard|size-a': '10c1e1eeb9c7acbd',
-  'classic|hard|size-b': 'f6a92d074fdeadad',
+  'lines|easy|size-a': 'bddba69c5c564520',
+  'lines|easy|size-b': '965c654a0a5fbbd8',
+  'lines|normal|size-a': 'd71e1a8bd4da98f0',
+  'lines|normal|size-b': '1acd764501f02f15',
+  'lines|hard|size-a': 'da6c635074caaaac',
+  'lines|hard|size-b': '1784ee295dbf4c14',
+  'classic|easy|size-a': 'dfa69500c8f26d33',
+  'classic|easy|size-b': 'b34f54e52da2ef32',
+  'classic|normal|size-a': 'f206f33639fb9733',
+  'classic|normal|size-b': '9efacdbff77428ae',
+  'classic|hard|size-a': 'b0e1c9fde1ef2f46',
+  'classic|hard|size-b': '42e1c1d08d96b6ea',
   'standard|easy|size-a': '20bd8da2b8758bc5',
   'standard|easy|size-b': '341594413f75a712',
   'standard|normal|size-a': '38d88b6d845f533c',
   'standard|normal|size-b': 'b91a872ee84ceff5',
   'standard|hard|size-a': '1f4d39caa46bbeef',
   'standard|hard|size-b': '586549cee40c3055',
-  'three|easy|size-a': '63bc90a2406c8beb',
-  'three|easy|size-b': 'a4d6867b45f26106',
-  'three|normal|size-a': '84d9b72e0c0ca909',
-  'three|normal|size-b': 'dabe77a90a00b22d',
-  'three|hard|size-a': 'ae2476bcf5f0dc2f',
-  'three|hard|size-b': '1a871e8600ec8118',
+  'three|easy|size-a': '10f32b01d00c6b55',
+  'three|easy|size-b': 'cddc488339c84c05',
+  'three|normal|size-a': 'a6f3bae58f760576',
+  'three|normal|size-b': 'f6fe85e5118f9e36',
+  'three|hard|size-a': '6ed6c38fdf6b8935',
+  'three|hard|size-b': '7b54141e7d25b3e5',
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
   nosetup: undefined,

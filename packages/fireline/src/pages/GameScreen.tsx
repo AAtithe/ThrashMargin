@@ -43,10 +43,14 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
-import { costOf, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
+import { costFor, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { selectionActions } from '../game/selectionActions';
+// round6:B. Heroes in free play (fireline-round6-design.md): the hero bar and keys in a skirmish with heroes on.
+import { heroesInPlay, reviveWait } from '../sim/heroes';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralButton, generalPress } from '../components/Generals';
 
 const TICK_MS = 1000 / TICKS_PER_SECOND;
 const SAVE_EVERY_MS = 15000;
@@ -154,6 +158,10 @@ export interface CampaignBattle {
   renderEnd: (s: GameState) => ReactNode;
   endWhen?: 'mission' | 'winner';
 }
+
+// round6:D. Formations and squads: the period key and control groups kept per battle (fireline-round6-design.md).
+import { cycleFormation, GROUPS_SYNC_CODE, rememberGroup, restoreGroups } from '../game/Formations';
+import { FORMATION_NAMES } from '../sim/rules';
 
 export function Battle({
   initial,
@@ -336,7 +344,7 @@ export function Battle({
           } else if (a.category === 'building' && q.length) showToast('One structure at a time');
           else if (q.length >= MAX_QUEUE) showToast('Queue full');
           else if (a.category === 'air' && airRoom(s, 0) <= 0) showToast('Every Helipad is full: build another');
-          else if (s.players[0].credits < costOf(a.kind)) showToast('Insufficient funds');
+          else if (s.players[0].credits < costFor(s, 0, a.kind)) showToast('Insufficient funds');
         }
         if (a.type === 'research') {
           sound.play('denied');
@@ -979,10 +987,15 @@ export function Battle({
         setTab(order[(i + (e.shiftKey ? order.length - 1 : 1)) % order.length]);
         return;
       }
+      // round6:B begin. Heroes in free play (fireline-round6-design.md): Z X C V and F in a skirmish
+      // with heroes on (F runs the ability only when the selection is exactly one hero). B may change
+      // the two blocks from here to "round6:B end".
       const heroKey = (HERO_KEYS as readonly string[]).indexOf(k);
-      if ((cur.current.mission || cur.current.planet) && heroKey >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        // Z X C V: heroes 1 to 4 in bar order; twice to jump to the hero.
-        const kind = heroOrder()[heroKey];
+      const freeHeroes = !cur.current.mission && heroesInPlay(cur.current);
+      if ((cur.current.mission || cur.current.planet || freeHeroes) && heroKey >= 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Z X C V: heroes 1 to 4 in bar order; twice to jump to the hero. A skirmish's bar holds the
+        // heroes standing, in the campaign's order (a planet battle's is the campaign's bar).
+        const kind = (freeHeroes ? skirmishHeroes(cur.current) : heroOrder())[heroKey];
         if (kind) selectHero(kind);
         return;
       }
@@ -992,6 +1005,16 @@ export function Battle({
         if (u) triggerAbility(u.kind as HeroKind);
         return;
       }
+      if (freeHeroes && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey && ov.selected.size === 1) {
+        // F in a skirmish with heroes on: the hero's ability when the selection is exactly one hero;
+        // anything else falls through to the selection's command below, as without heroes.
+        const u = cur.current.units.find(x => x.owner === 0 && x.hero && ov.selected.has(x.id));
+        if (u) {
+          triggerAbility(u.kind as HeroKind);
+          return;
+        }
+      }
+      // round6:B end.
       if (!cur.current.mission && k === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
         // F in a skirmish: the selection's first command that can go (selectionActions.ts), if any.
         const st = cur.current;
@@ -1001,6 +1024,38 @@ export function Battle({
         if (go) dispatch(go.action);
         return;
       }
+      // round6:C begin. Generals: the 0 key selects your General (twice jumps to it).
+      if (!cur.current.mission && e.key === '0' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const press = generalPress(cur.current, ov.selected);
+        if (press && 'centre' in press) centreOn(press.centre.x, press.centre.y);
+        else if (press) {
+          ov.selected = press.select;
+          sound.play('select');
+        }
+        if (press) refresh();
+        return;
+      }
+      // round6:C end.
+      // round6:D begin. Formations and squads: the period key (e.code 'Period') sets the selection's
+      // formation, cycling line, column, wedge, box and none.
+      // Control groups are kept per battle in this browser (game/Formations.tsx): filled in from
+      // storage on the first key, and each Ctrl + digit recorded before the branch below makes it.
+      if (restoreGroups(groups.current, cur.current.id)) {
+        syncGroupBadges();
+        refresh();
+      }
+      if (e.code === GROUPS_SYNC_CODE) return;
+      if (/^[1-9]$/.test(e.key) && (e.ctrlKey || e.metaKey)) {
+        rememberGroup(cur.current.id, e.key, ownSelectedUnits().map(u => u.id));
+        refresh();
+      }
+      if (e.code === 'Period' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const go = cycleFormation(cur.current, ownSelectedUnits(), e.shiftKey);
+        if (!go) showToast('Select two or more of your ground units to form up');
+        else if (dispatch(go)) showToast(go.type === 'formation' && go.shape !== 'none' ? `Formation: ${FORMATION_NAMES[go.shape]}` : 'No formation');
+        return;
+      }
+      // round6:D end.
       if (e.key === 'Escape') {
         // The controls sheet hides the build window, so it goes first; then the window, then the rest.
         if (help) setHelp(false);
@@ -1671,6 +1726,8 @@ export function Battle({
             ))}
           </div>
           {mission && !ended && <ObjectivesPanel s={s} onLocate={centreOn} />}
+          {/* round6:B begin. Heroes in free play: the hero bar also shows in a skirmish with heroes on; B may
+              change the two bars from here to "round6:B end". */}
           {mission && !ended && (
             <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
               <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
@@ -1685,9 +1742,35 @@ export function Battle({
           )}
           {skirmishPowers && (
             <div className="fl-cbar" style={barLift ? { bottom: 10 + barLift } : undefined}>
+              {heroesInPlay(s) && (
+                <>
+                  <HeroBar s={s} heroes={skirmishHeroes(s)} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
+                  <HeroRevive s={s} />
+                </>
+              )}
               <SkirmishPowerBar s={s} targeting={targeting} onPower={choosePower} />
+              {/* round6:integration. C's General button, in the same row as B's hero bar. */}
+              <GeneralButton
+                s={s}
+                selected={overlay.current.selected}
+                inline
+                onPress={() => {
+                  const press = generalPress(cur.current, overlay.current.selected);
+                  if (press && 'centre' in press) centreOn(press.centre.x, press.centre.y);
+                  else if (press) {
+                    overlay.current.selected = press.select;
+                    sound.play('select');
+                  }
+                  if (press) refresh();
+                }}
+              />
             </div>
           )}
+          {/* round6:B end. */}
+          {/* round6:C begin. Generals: the General's button (select, its aura, its replacement timer) goes below.
+              Integration: it sits in the bar row above, beside the hero and power bars (fieldGenerals
+              implies advanced tech, so that row is always there), so the three wrap together on a phone. */}
+          {/* round6:C end. */}
           {buildOpen && !paused && !help && !ended && (
             <BuildWindow
               state={s}
@@ -1831,11 +1914,30 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['Ctrl + 1–9', 'Make a group; press the number to select it, twice to jump to it'],
     ['` (backquote) or Build', 'Open or close the build window: every structure, unit and upgrade, laid out by what each needs'],
     ['Q W E R T Y', 'Build or train the first to sixth item in the list the Build button names, window open or closed (the letter is on each button)'],
-    ['U I J K L B N D', 'With advanced tech: the seventh to fourteenth item in that list; any further items are clicked'],
+    [
+      'U I J K L B N D',
+      'With advanced tech: the seventh to fourteenth item in that list. Items past the fourteenth (the Prototype Works, the Fortress, the Naval Yard and, with heroes on, the Command Academy) have no key: click them in the build window',
+    ],
     ['Shift + click or key', 'Queue five infantry or vehicles at once'],
     ['Tab', 'Next build list: Structures, Infantry, Vehicles, then Air and Research when you have them (Shift + Tab goes back)'],
     ['Production strip', 'Under the Build button: click an item to cancel the last one queued; click a ready structure to place it'],
     ['G', 'Toggle repair on the selected structure'],
+    // round6:B begin. Heroes in free play: the Z X C V row for a skirmish with heroes on.
+    ...(skirmish
+      ? ([
+          [
+            'Z X C V, F (heroes on)',
+            "Skirmish with heroes on: select hero 1 to 4 in the hero bar, twice to jump to it; F uses the hero's ability when that hero alone is selected",
+          ],
+        ] as [string, string][])
+      : []),
+    // round6:B end.
+    // round6:C begin. Generals: the 0 row.
+    ...(skirmish ? ([['0', 'Skirmish with Generals on: select your General; twice to jump to it']] as [string, string][]) : []),
+    // round6:C end.
+    // round6:D begin. Formations and squads: the period row.
+    ['. (period)', 'Formation for the selected units: line, column, wedge, box, then none (Shift + . goes back). Moving exactly those units keeps it'],
+    // round6:D end.
     ['F', "Skirmish: the selection's own command when it has one, such as Deploy (the key shows on its button)"],
     ['Arrows / screen edge', 'Scroll; middle-drag to pan; wheel to zoom'],
     ['H', 'Jump to your Command Yard'],
@@ -1862,6 +1964,9 @@ export function Controls({ campaign = false, skirmish = !campaign, touch = false
     ['× on a build button', 'Cancel it for a full refund'],
     ['Production strip', 'Under Build: tap an item to open its list, its × to cancel the last one queued, a ready structure to place it'],
     ['Base', 'Jump to your Command Yard'],
+    // round6:integration. Formations and control groups on touch (workstream D's buttons).
+    ['Line, Column, Wedge, Box', 'In the selection panel: the selected units form up and keep it on the move; None breaks it up'],
+    ['Group chips, + Group', 'Under the formation buttons: + Group makes the selection a group; tap a chip to select it, twice to jump to it'],
   ];
   const rows = touch ? touchRows : mouseRows;
   const campaignRows: [string, string][] = touch
@@ -2142,3 +2247,29 @@ const errorStrip: CSSProperties = {
   fontSize: '0.8rem',
   borderBottom: `1px solid ${UI.rule}`,
 };
+
+// round6:B begin. Heroes in free play (fireline-round6-design.md): the skirmish hero bar's order and
+// the fallen heroes' recruit timers.
+/** A skirmish's hero bar: side 0's heroes standing, in the campaign's order. */
+function skirmishHeroes(s: GameState): HeroKind[] {
+  return HERO_KINDS.filter(k => s.units.some(u => u.owner === 0 && u.kind === k && u.hp > 0 && !!u.hero));
+}
+
+/** Side 0's fallen heroes and when each may be recruited again (at half price). */
+function HeroRevive({ s }: { s: GameState }) {
+  const fallen = HERO_KINDS.filter(k => s.players[0].heroFallen?.[k]);
+  if (!fallen.length) return null;
+  return (
+    <div className="fl-hero-revive" data-testid="hero-revive">
+      {fallen.map(k => {
+        const wait = reviveWait(s, 0, k);
+        return (
+          <span key={k} data-hero={k}>
+            {UNITS[k].name}: {wait > 0 ? `recruit again in ${Math.ceil(wait / TICKS_PER_SECOND)}s` : 'ready to recruit, half price'}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+// round6:B end.

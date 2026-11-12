@@ -1,12 +1,16 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
-import { Button, bodySmall } from '../components/ui';
+import { Button, ManualSection as Section, bodySmall, manualSlug as slug } from '../components/ui';
 import { iconFor } from '../game/icons';
 import { Controls } from './GameScreen';
-import { statsOf } from '../game/Sidebar';
-import { TECH_TEXT } from '../components/SkirmishSetup';
+import { listedCost, statsOf } from '../game/Sidebar';
+import { TECH_TEXT, techText } from '../components/SkirmishSetup';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { GeneralsPanel } from '../components/Generals';
 import { MAP_SIZE_NAMES, MAP_SIZE_TILES, MAP_SIZES } from '../sim/rules';
+// round6:B. Heroes in free play: its panel's numbers.
+import { HERO_ACADEMY, HERO_RECRUIT_COST, HERO_RECRUIT_TICKS, HERO_REVIVE_SHARE, HERO_REVIVE_TICKS } from '../sim/rules';
 import {
   AIR_MENU,
   NAVAL_MENU,
@@ -30,6 +34,8 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { FONT, UI } from '../theme';
+// round6:A. Two armies (fireline-round6-design.md, workstream A): its panel.
+import ArmiesPanel from './ArmiesPanel';
 import { CITY_BUILDING_SPECS, LENGTH_PRESETS, PRESETS } from '../planet/rules';
 import { CITY_BUILDINGS } from '../planet/types';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
@@ -131,7 +137,7 @@ export default function HowToPlay() {
             </li>
             <li>
               <strong>Tech level.</strong> {TECH_TEXT.standard.name}: {TECH_TEXT.standard.text} {TECH_TEXT.advanced.name}:{' '}
-              {TECH_TEXT.advanced.text}
+              {techText('advanced')}
             </li>
             <li>
               <strong>Starting credits</strong> are the same for both sides. <strong>Ore</strong> sets how rich the fields are:
@@ -265,6 +271,41 @@ export default function HowToPlay() {
         </Section>
         {/* round5:D. Neutral sites and tier three: its panel goes on the line below. */}
         <SitesPanel />
+        {/* round6:A. Two armies (fireline-round6-design.md): its panel goes on the line below. */}
+        <ArmiesPanel />
+        {/* round6:B. Heroes in free play: its panel goes on the line below. */}
+        <FreeHeroesPanel />
+        {/* round6:C. Generals: its panel goes on the line below. */}
+        <GeneralsPanel />
+        {/* round6:D. Formations and squads: its panel goes on the line below. */}
+        <Section title="Formations and groups">
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              Select two or more units and press <strong>Line</strong>, <strong>Column</strong>, <strong>Wedge</strong> or{' '}
+              <strong>Box</strong> beside the stance buttons (or press <kbd>.</kbd> to cycle through them). They form up where they
+              stand and become a squad. From then on, any move you give exactly those units keeps the shape, turned to face the way
+              you send them. <strong>None</strong> breaks the squad up.
+            </li>
+            <li>
+              Tanks and other armour take the front, infantry the ranks behind, Medics and Repair Trucks the middle (the inside of a
+              box), and artillery and unarmed vehicles the rear. A line puts every gun forward; a column fits roads and bridges; a
+              wedge drives in with its armour at the tip; a box holds, with the support inside.
+            </li>
+            <li>
+              A squad keeps pace: nobody outruns its slowest member, so it arrives together. One unit leads and the rest keep to
+              their places beside it. Order some of a squad elsewhere and they leave it; a squad down to one unit is over.
+            </li>
+            <li>
+              In an advanced-tech skirmish the computer does the same: its waves attack in a wedge and pull together into a box. A
+              War for the Planet battle keeps the computer's old marching order, and its armies are all Meridian.
+            </li>
+            <li>
+              Control groups (<kbd>Ctrl</kbd> + 1 to 9) are remembered for each battle in this browser. On a touch screen they are
+              chips under the formation buttons: tap one to select the group, again to jump to it, and <strong>+ Group</strong> to
+              make the selection the next group.
+            </li>
+          </ul>
+        </Section>
 
         <Section title="Campaign">
           <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -407,7 +448,8 @@ export default function HowToPlay() {
             shot down takes everyone aboard with it. Defend: an Interceptor left on its Helipad
             scrambles at enemy aircraft that come near, chases them a short way and lands again; Countermeasures research cuts what
             flak and missiles do to your aircraft by a quarter. Send Interceptors on attack-move with a strike and they take on
-            the fighters that come up to meet it.
+            the fighters that come up to meet it. Both armies fly the Recon Plane, Interceptor, Troop Carrier and Heavy Bomber
+            alike; the Ashen Combine strikes with the Kestrel and Firebrand in place of the Gunship and Bomber.
           </p>
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             With development lines (the default for a new advanced skirmish), research is five lines: Logistics, Armour, Engines,
@@ -458,6 +500,10 @@ const SECTIONS = [
   'Larger maps and long games',
   'Engineering vehicles',
   'Neutral sites and tier three',
+  'Two armies',
+  'Heroes in free play',
+  'Generals',
+  'Formations and groups',
   'Campaign',
   'War for the Planet',
   'Structures',
@@ -468,17 +514,6 @@ const SECTIONS = [
   'Controls',
 ];
 
-const slug = (t: string) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-/** One section of the manual: a plate heading with a groove, and an anchor the index links to. */
-function Section({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <section className="fl-d-manual-sect" id={slug(title)} aria-labelledby={`${slug(title)}-h`}>
-      <h2 id={`${slug(title)}-h`}>{title}</h2>
-      {children}
-    </section>
-  );
-}
 
 function Grid({ kinds }: { kinds: (BuildingKind | UnitKind)[] }) {
   return (
@@ -487,7 +522,8 @@ function Grid({ kinds }: { kinds: (BuildingKind | UnitKind)[] }) {
         const isB = k in BUILDINGS;
         const spec = isB ? BUILDINGS[k as BuildingKind] : UNITS[k as UnitKind];
         const needs = spec.requires.map(r => BUILDINGS[r].name).join(', ');
-        const facts: ReactNode[] = [`${spec.cost} credits`, `${spec.hp} hp`];
+        // A hero's recruit price, not the campaign's 0 (listedCost).
+        const facts: ReactNode[] = [`${listedCost(k).cost} credits`, `${spec.hp} hp`];
         if (isB) {
           const p = BUILDINGS[k as BuildingKind].power;
           facts.push(p > 0 ? `+${p} power` : `${p} power`);
@@ -598,8 +634,8 @@ function SitesPanel() {
           <strong>Tier three</strong> comes with advanced tech. A <strong>{BUILDINGS.protoworks.name}</strong> needs a{' '}
           {BUILDINGS.researchlab.name} and a {BUILDINGS.techcentre.name}, and unlocks the {UNITS.railtank.name}, the{' '}
           {UNITS.stealthtank.name} and the {BUILDINGS.fortress.name}. The {BUILDINGS.protoworks.name} and the{' '}
-          {BUILDINGS.fortress.name} are the fifteenth and sixteenth Structures, so they have no hotkey: click them in the build
-          list.
+          {BUILDINGS.fortress.name} are the fifteenth and sixteenth Structures (with heroes on, the {BUILDINGS.academy.name} is
+          the seventeenth), so they have no hotkey: click them in the build list.
         </li>
         <li>
           The <strong>{UNITS.railtank.name}</strong> fires a slug that lands the instant it fires: the heaviest hit on armour in
@@ -619,3 +655,48 @@ function SitesPanel() {
   );
 }
 // round5:D end.
+
+// round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B).
+function FreeHeroesPanel() {
+  const order = ['engineer', 'spy', 'commando', 'ace'] as const;
+  return (
+    <Section title="Heroes in free play">
+      <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <li>
+          Turn on <strong>Heroes</strong> in the lobby (advanced tech only) and the campaign's four heroes can be recruited in a
+          skirmish. Build a <strong>{BUILDINGS[HERO_ACADEMY].name}</strong> after a Tech Centre: the Spy, Commando and Engineer
+          then join the Infantry list (trained at the Barracks) and the Ace the Vehicles list (at the War Factory).
+        </li>
+        <li>
+          One of each at a time, counting the one in the queue. A hero who falls can be recruited again after{' '}
+          {seconds(HERO_REVIVE_TICKS)} at {Math.round(HERO_REVIVE_SHARE * 100)}% of the price, and comes back wounded, at half
+          health, with the experience it had.
+        </li>
+        <li>
+          Heroes level up from kills as in the campaign. The hero bar at the bottom of the battlefield works the same way:{' '}
+          <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd> <kbd>V</kbd> select them, and <kbd>F</kbd> uses the ability when one hero alone is
+          selected (otherwise <kbd>F</kbd> is the selection's own command, such as Deploy).
+        </li>
+        <li>
+          The computer recruits heroes too: its Engineer takes undefended structures and sites, its Commando goes with an escort
+          for an outlying structure, its Ace rides with the attack, and its Spy slips into your base before an attack.
+        </li>
+        <li>
+          Looking for an engineer without heroes? The <strong>{UNITS.repairtruck.name}</strong> and the{' '}
+          <strong>{UNITS.basetruck.name}</strong> are free play's engineering units.
+        </li>
+      </ul>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 10 }}>
+        {order.map(k => (
+          <div key={k} style={{ ...tile, flexDirection: 'column', gap: 4 }}>
+            <strong style={{ fontSize: '0.88rem' }}>{UNITS[k].name}</strong>
+            <span style={{ fontSize: '0.72rem', color: UI.textFaint, fontFamily: FONT.mono }}>
+              {HERO_RECRUIT_COST[k].toLocaleString('en-GB')} credits · {seconds(HERO_RECRUIT_TICKS[k])} · {HERO_ABILITY[k].name}
+            </span>
+          </div>
+        ))}
+      </div>
+    </Section>
+  );
+}
+// round6:B end.

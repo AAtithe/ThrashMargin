@@ -165,6 +165,9 @@ function climb(s: GameState, line: LineId, branch?: UpgradeId): GameState {
   return t;
 }
 
+/** The setup fields of the armies' round 6, in order, after the pace (fireline-round6-design.md, section 10). */
+const ROUND6_ARMY_FIELDS = ['factions', 'heroes', 'generals', 'generalPicks'];
+
 const PERKS0 = { harvestMul: 1, buildSpeedMul: 1, costMul: 1, unitHpMul: 1, powerCooldownMul: 1, extraStartCredits: 0 };
 const mctx = (): MissionContext => ({ id: 'm1', name: 'Mission', createdAt: 0, perks: { ...PERKS0 }, heroes: {}, extraTech: [], extraPowers: [] });
 
@@ -177,8 +180,10 @@ function rulesAndPresets(ok: Ok): void {
   ok(DEFAULT_SETUP.research === 'lines', 'a new skirmish defaults to development lines');
   // Toggle-leak guard: every preset states every field, and in the same order as the normalised setup.
   const keys = Object.keys(normaliseSetup({}));
-  // Round 6 added the pace after research (fireline-round6-design.md); drive-size.ts checks it in full.
-  ok(keys[keys.length - 1] === 'pace' && keys[keys.length - 2] === 'research', 'research is second to last, before pace');
+  // Round 6 added the pace after research (fireline-round6b-design.md); drive-size.ts checks it in full.
+  // The armies' round 6 (fireline-round6-design.md, section 10) puts its four fields after the pace.
+  ok(keys.indexOf('pace') === keys.indexOf('research') + 1, 'research comes just before pace');
+  ok(JSON.stringify(keys.slice(keys.indexOf('pace') + 1)) === JSON.stringify(ROUND6_ARMY_FIELDS), "after the pace come round 6's armies, heroes and Generals fields");
   for (const [name, preset] of [['DEFAULT_SETUP', DEFAULT_SETUP], ['LEGACY_SETUP', LEGACY_SETUP]] as const) {
     ok(JSON.stringify(Object.keys(preset)) === JSON.stringify(keys), `${name} states every setup field, research included`);
     for (const k of keys) ok((preset as unknown as Record<string, unknown>)[k] !== undefined, `${name}.${k} is stated`);

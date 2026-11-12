@@ -135,6 +135,15 @@ export type UnitKind =
   | 'railtank'
   | 'stealthtank'
   // round5:D end.
+  // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its unit kinds (signature units, aircraft variants).
+  | 'sapper'
+  | 'raider'
+  | 'kestrel'
+  | 'firebrand'
+  // round6:A end.
+  // round6:C begin. Generals (fireline-round6-design.md, workstream C): its unit kinds (the field General).
+  | 'general'
+  // round6:C end.
   | HeroKind;
 export type BuildingKind =
   | 'hq'
@@ -161,8 +170,18 @@ export type BuildingKind =
   | 'protoworks'
   | 'fortress'
   // round5:D end.
+  // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its structure kinds, if any.
+  // round6:A end.
+  // round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): its structure kinds (the Command Academy).
+  | 'academy'
+  // round6:B end.
+  // round6:C begin. Generals (fireline-round6-design.md, workstream C): its structure kinds, if any.
+  // round6:C end.
   ;
 export type Category = 'building' | 'infantry' | 'vehicle' | 'air' | 'naval';
+
+/** Round 6 groundwork: how an aircraft fights (UnitSpec.airRole). */
+export type AirRole = 'strafe' | 'bomb' | 'scout' | 'intercept' | 'transport';
 
 export interface UnitSpec {
   name: string;
@@ -192,6 +211,15 @@ export interface UnitSpec {
    * fires (the Stealth Tank). Absent on the rest; the Spy keeps its own rule in mission.ts.
    */
   stealth?: true;
+  /**
+   * Round 6 groundwork: how an aircraft fights. 'strafe' (the Gunship) hovers and rockets what it
+   * finds; 'bomb' (the Bomber) flies over its mark dropping a line of bombs. The air war (merged after
+   * round 6) adds 'scout' (the Recon Plane: unarmed, fuelled, circles), 'intercept' (the Interceptor:
+   * air-to-air, scrambles from its pad) and 'transport' (the Troop Carrier). air.ts and aiAir.ts
+   * branch on this, never on a kind's name, so a faction's variant aircraft needs no new branch.
+   * Absent off aircraft.
+   */
+  airRole?: AirRole;
   /**
    * Air war: sees Stealth Tanks and Spies within DETECTOR_RANGE (the Recon Plane), where any other
    * unit sees them only close up. Absent on the rest.
@@ -440,6 +468,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     sight: 7,
     weapon: { kind: 'rocket', damage: 38, range: 4.5, cooldown: 18, canHitAir: false },
     requires: ['helipad'],
+    airRole: 'strafe',
     blurb: 'Attack helicopter. Flies over anything and rockets ground targets, then returns to its Helipad to rearm.',
   },
   bomber: {
@@ -453,6 +482,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     sight: 6,
     weapon: { kind: 'bomb', damage: 110, range: 3.5, cooldown: 4, splash: 1.3, canHitAir: false },
     requires: ['helipad', 'techcentre'],
+    airRole: 'bomb',
     blurb: 'Fast. Flies over its target dropping a line of bombs, then returns to its Helipad to rearm.',
   },
   flaktrack: {
@@ -492,6 +522,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     speed: 0.24,
     sight: 11,
     requires: ['helipad'],
+    airRole: 'scout',
     blurb: 'Unarmed scout. Sees far, uncovers Stealth Tanks and Spies, circles where it is sent until its fuel runs low.',
     detector: true,
   },
@@ -506,6 +537,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     sight: 8,
     weapon: { kind: 'aamissile', damage: 55, range: 5, cooldown: 10, canHitAir: true, canHitGround: false },
     requires: ['helipad', 'researchlab'],
+    airRole: 'intercept',
     blurb: 'Air-to-air fighter. Scrambles from its Helipad at enemy aircraft nearby; cannot fire at the ground.',
   },
   carrier: {
@@ -518,6 +550,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     speed: 0.17,
     sight: 7,
     requires: ['helipad', 'barracks'],
+    airRole: 'transport',
     blurb: 'Unarmed transport for six infantry. Right-click it with infantry to board; Unload sets them down wherever it hovers.',
     carries: 6,
   },
@@ -532,6 +565,7 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     sight: 6,
     weapon: { kind: 'bomb', damage: 160, range: 3.5, cooldown: 4, splash: 1.8, canHitAir: false },
     requires: ['helipad', 'techcentre', 'researchlab'],
+    airRole: 'bomb',
     blurb: 'Slow and armoured. Ten heavy bombs in one long run. Takes a whole Helipad to itself.',
   },
   // ---- The naval war (2026-11-11): advanced tech only; ships sail open water ------------------
@@ -613,7 +647,8 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     speed: 0.085,
     sight: 6,
     requires: ['factory', 'repairbay'],
-    blurb: 'Unarmed. Mends your vehicles beside it, free, and drives to damaged ones nearby when idle.',
+    blurb:
+      'Unarmed. Mends your vehicles beside it, free, and drives to damaged ones nearby when idle. Free play\'s engineering units are this and the Forward Base Truck; the Engineer is a hero, recruited only with heroes on.',
     mender: true,
   },
   basetruck: {
@@ -626,7 +661,8 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     speed: 0.055,
     sight: 5,
     requires: ['factory', 'uplink'],
-    blurb: 'Unarmed. Deploys where it stands into a Field Yard: a second base that builds structures. Three at most.',
+    blurb:
+      'Unarmed. Deploys where it stands into a Field Yard: a second base that builds structures. Three at most. Free play\'s engineering units are this and the Repair Truck; the Engineer is a hero, recruited only with heroes on.',
     deploysTo: 'fieldyard',
   },
   // round5:C end.
@@ -660,6 +696,80 @@ export const UNITS: Record<UnitKind, UnitSpec> = {
     stealth: true,
   },
   // round5:D end.
+  // round6:A begin. Two armies (fireline-round6-design.md, workstream A): its units (signature units, aircraft variants), appended here.
+  // ---- Two armies (round 6, workstream A): advanced tech only, each fielded by one army alone ----
+  sapper: {
+    name: 'Sapper',
+    category: 'infantry',
+    cost: 400,
+    buildTicks: 90,
+    hp: 90,
+    armor: 'infantry',
+    speed: 0.055,
+    sight: 5,
+    weapon: { kind: 'shell', damage: 80, range: 1.75, cooldown: 40, splash: 0.5 },
+    requires: ['barracks', 'techcentre'],
+    blurb: 'Meridian combat engineer with satchel charges. Must get close; wrecks structures and armour, falls fast to rifles.',
+  },
+  raider: {
+    name: 'Raider Bike',
+    category: 'vehicle',
+    cost: 450,
+    buildTicks: 60,
+    hp: 140,
+    armor: 'light',
+    speed: 0.2,
+    sight: 7,
+    weapon: { kind: 'rocket', damage: 28, range: 4, cooldown: 22 },
+    requires: ['factory'],
+    blurb: 'Ashen rocket bike, fast and fragile. Hits haulers and armour, then gets away.',
+  },
+  kestrel: {
+    name: 'Kestrel',
+    category: 'air',
+    cost: 1200,
+    buildTicks: 130,
+    hp: 260,
+    armor: 'aircraft',
+    speed: 0.16,
+    sight: 7,
+    weapon: { kind: 'rocket', damage: 32, range: 4.25, cooldown: 15, canHitAir: false },
+    requires: ['helipad'],
+    airRole: 'strafe',
+    blurb: "Ashen light gunship. Faster and frailer than a Gunship, with more rockets and a quicker rearm.",
+  },
+  firebrand: {
+    name: 'Firebrand',
+    category: 'air',
+    cost: 1800,
+    buildTicks: 180,
+    hp: 250,
+    armor: 'aircraft',
+    speed: 0.24,
+    sight: 6,
+    weapon: { kind: 'flame', damage: 75, range: 3.5, cooldown: 4, splash: 0.9, canHitAir: false },
+    requires: ['helipad', 'techcentre'],
+    airRole: 'bomb',
+    blurb: 'Ashen bomber. Drops incendiaries in a line: a smaller blast than a Bomber\'s, but the ground keeps burning.',
+  },
+  // round6:A end.
+  // round6:B begin. Heroes in free play: the heroes above keep their campaign specs; anything B adds goes here.
+  // round6:B end.
+  // round6:C begin. Generals (fireline-round6-design.md, workstream C): the field General, appended here.
+  general: {
+    name: 'General',
+    category: 'infantry',
+    cost: 1200,
+    buildTicks: 180,
+    hp: 320,
+    armor: 'infantry',
+    speed: 0.06,
+    sight: 7,
+    weapon: { kind: 'bullet', damage: 12, range: 4, cooldown: 12 },
+    requires: ['barracks', 'uplink'],
+    blurb: 'Your field commander, one at a time (Generals on). Your units within six tiles hit 10% harder and fire 10% faster. If the General falls, the doctrine weakens until a replacement arrives.',
+  },
+  // round6:C end.
 };
 
 export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
@@ -904,6 +1014,25 @@ export const BUILDINGS: Record<BuildingKind, BuildingSpec> = {
     blurb: 'A heavy gun emplacement: long range, splash and a great deal of armour. Slows when power is short.',
   },
   // round5:D end.
+  // round6:A begin. Two armies: its structures, if any, appended here.
+  // round6:A end.
+  // round6:B begin. Heroes in free play: its structures (the Command Academy), appended here.
+  academy: {
+    name: 'Command Academy',
+    w: 2,
+    h: 2,
+    cost: 1500,
+    buildTicks: 160,
+    hp: 900,
+    power: -40,
+    sight: 5,
+    requires: ['techcentre'],
+    blurb:
+      'Heroes on only. Once it stands, the Spy, Commando and Engineer join the Infantry list and the Ace the Vehicles list: one of each at a time, and a fallen hero can be recruited again after 90 seconds at half price.',
+  },
+  // round6:B end.
+  // round6:C begin. Generals: its structures, if any, appended here.
+  // round6:C end.
 };
 
 /** Structures in the order the build menu offers them. */
@@ -926,10 +1055,30 @@ export const BUILD_MENU: BuildingKind[] = [
   'protoworks',
   'fortress',
   // round5:D end.
-  // The naval war (2026-11-11): after tier three, which keeps its places in the list.
+  // The naval war (2026-11-11): after tier three, which keeps its places in the list. Ahead of round 6's
+  // Academy (merge), so turning Heroes on moves no item already listed.
   'shipyard',
+  // round6:B begin. Heroes in free play: its structures, appended here.
+  'academy',
+  // round6:B end.
+  // round6:C begin. Generals: its structures, if any, appended here.
+  // round6:C end.
 ];
-export const INFANTRY_MENU: UnitKind[] = ['rifleman', 'rocketeer', 'grenadier', 'medic', 'skyhunter'];
+export const INFANTRY_MENU: UnitKind[] = [
+  'rifleman',
+  'rocketeer',
+  'grenadier',
+  'medic',
+  'skyhunter',
+  // round6:B begin. Heroes in free play: the heroes, if B lists them here (techAllowed keeps them out unless setup.heroes).
+  'spy',
+  'commando',
+  'engineer',
+  // round6:B end.
+  // round6:C begin. Generals: the field General, if C lists it here.
+  'general',
+  // round6:C end.
+];
 export const VEHICLE_MENU: UnitKind[] = [
   'hauler',
   'buggy',
@@ -947,6 +1096,9 @@ export const VEHICLE_MENU: UnitKind[] = [
   'railtank',
   'stealthtank',
   // round5:D end.
+  // round6:B begin. Heroes in free play: the Ace, if B lists it here.
+  'ace',
+  // round6:B end.
 ];
 /** Aircraft in the order the Air tab offers them. */
 export const AIR_MENU: UnitKind[] = ['reconplane', 'gunship', 'interceptor', 'carrier', 'bomber', 'heavybomber'];
@@ -1003,6 +1155,8 @@ export const ALSO_PRODUCES: Partial<Record<BuildingKind, Category>> = {
   // round5:C begin. The Field Yard works the Structures queue.
   fieldyard: 'building',
   // round5:C end.
+  // round6:B begin. Heroes in free play: the Command Academy's queue, if it works one.
+  // round6:B end.
 };
 
 export const MAX_QUEUE = 5;
@@ -1295,7 +1449,7 @@ export interface SkirmishSetup {
   /** 'classic': the five flat upgrades. 'lines': development lines, doctrines and loadouts. Advanced tech only. */
   research: ResearchMode;
   /**
-   * The game's pace (round 6, fireline-round6-design.md; called "game size" on the cards): the
+   * The game's pace (round 6, fireline-round6b-design.md; called "game size" on the cards): the
    * commander's attack timing, and in development lines research cost and time and how the
    * commander researches. 'quick' is the game before round 6 exactly, and a setup saved without a
    * pace reads as 'quick'. Independent of `size`, which is the map's size.
@@ -1311,18 +1465,69 @@ export interface SkirmishSetup {
    * Absent on setups saved before round 5, which normaliseSetup reads as false.
    */
   sites?: boolean;
+  /**
+   * Round 6, workstream A: each seat's army, one per side (index = Owner). Absent on setups saved
+   * before round 6, which normaliseSetup reads as every seat 'meridian': the army every side always had.
+   */
+  factions?: Faction[];
+  /**
+   * Round 6, workstream B: the campaign's heroes may be recruited in this skirmish (advanced tech
+   * only). Absent on older setups, which normaliseSetup reads as false.
+   */
+  heroes?: boolean;
+  /**
+   * Round 6, workstream C: each side fields a General unit with a command aura. Absent on older
+   * setups, which normaliseSetup reads as false.
+   */
+  generals?: boolean;
+  /**
+   * Round 6, workstream C: each seat's doctrine General (a perks bundle), one per side, or null for
+   * none. A pick that does not belong to its seat's army (GENERAL_FACTION) reads as null. Absent on
+   * older setups, which normaliseSetup reads as every seat null.
+   */
+  generalPicks?: (GeneralId | null)[];
 }
 
 /** How the sides of a battle of three or four are grouped. */
 export type SideMode = 'ffa' | 'teams';
 
 /** What the lobby offers a new skirmish by default. */
-export const DEFAULT_SETUP: SkirmishSetup = { map: 'random', tech: 'advanced', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', size: 'standard', sites: false, research: 'lines', pace: 'quick' };
+export const DEFAULT_SETUP: SkirmishSetup = {
+  map: 'random',
+  tech: 'advanced',
+  credits: 3000,
+  ore: 'normal',
+  sides: 2,
+  mode: 'ffa',
+  size: 'standard',
+  sites: false,
+  research: 'lines',
+  pace: 'quick',
+  factions: ['meridian', 'meridian'],
+  heroes: false,
+  generals: false,
+  generalPicks: [null, null],
+};
 /**
  * A battle with no setup recorded: saves from before setups, and createInitialState called without
  * one. The original game exactly: the original map generator, standard tech, no skirmish powers.
  */
-export const LEGACY_SETUP: SkirmishSetup = { map: 'classic', tech: 'standard', credits: 3000, ore: 'normal', sides: 2, mode: 'ffa', size: 'standard', sites: false, research: 'classic', pace: 'quick' };
+export const LEGACY_SETUP: SkirmishSetup = {
+  map: 'classic',
+  tech: 'standard',
+  credits: 3000,
+  ore: 'normal',
+  sides: 2,
+  mode: 'ffa',
+  size: 'standard',
+  sites: false,
+  research: 'classic',
+  pace: 'quick',
+  factions: ['meridian', 'meridian'],
+  heroes: false,
+  generals: false,
+  generalPicks: [null, null],
+};
 /** A skirmish map's width and height in tiles, by the number of sides: square, larger for more. */
 export const MAP_SIZE_FOR: Record<2 | 3 | 4, number> = { 2: 64, 3: 80, 4: 96 };
 
@@ -1436,9 +1641,15 @@ export const isAirKind = (kind: UnitKind): boolean => UNITS[kind].category === '
  * Loads an aircraft carries. A Gunship fires one rocket per load; a Bomber drops one bomb per load,
  * all of them in one run. With none left it flies back to its Helipad to rearm.
  */
-export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber: 6, interceptor: 6, reconplane: 12, heavybomber: 10 };
+export const AIR_AMMO: Partial<Record<UnitKind, number>> = { gunship: 8, bomber: 6, interceptor: 6, reconplane: 12, heavybomber: 10,
+  kestrel: 10,
+  firebrand: 6,
+};
 /** Ticks on its Helipad to put back one load (Air frames shortens it). */
-export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25, interceptor: 14, reconplane: 10, heavybomber: 30 };
+export const REARM_TICKS: Partial<Record<UnitKind, number>> = { gunship: 12, bomber: 25, interceptor: 14, reconplane: 10, heavybomber: 30,
+  kestrel: 9,
+  firebrand: 22,
+};
 /** Ticks between bombs in a run: with the Bomber's speed, a bomb about every 0.9 tiles. */
 export const BOMB_GAP = 4;
 /** Aircraft keep at least this far from the map's edge. */
@@ -1484,8 +1695,6 @@ export const COUNTERMEASURES_DAMAGE = 0.75;
 /** Helipad places an aircraft takes (HELIPAD_SLOTS each): one, but the Heavy Bomber takes a whole pad. */
 export const AIR_SLOTS: Partial<Record<UnitKind, number>> = { heavybomber: 2 };
 export const airSlotsOf = (kind: UnitKind): number => AIR_SLOTS[kind] ?? 1;
-/** True for a bomber of either size: its weapon drops bombs in a run. */
-export const isBomberKind = (kind: UnitKind): boolean => UNITS[kind].weapon?.kind === 'bomb';
 /** Tiles from a Troop Carrier within which infantry ordered aboard climb in. */
 export const BOARD_RANGE = 2.3;
 /** Tiles round a Troop Carrier within which it sets its infantry down; nowhere to stand within it, it cannot unload. */
@@ -1701,7 +1910,7 @@ export const LONG_BARREL_WEAPON: Partial<Record<UnitKind, Weapon>> = (() => {
   return out;
 })();
 
-// ---- Game pace (round 6; fireline-round6-design.md) ----
+// ---- Game pace (round 6; fireline-round6b-design.md) ----
 //
 // The cards call this "game size". In code it is the pace (SkirmishSetup.pace) because main's
 // round 5 had already given SkirmishSetup.size to the map's size (MapSize); a card's preset sets
@@ -1892,3 +2101,277 @@ export const STEALTH_REVEAL_TICKS = 30;
 /** The computer turns to tier three no sooner than this: 25 minutes. */
 export const TIER3_AI_TICKS = 15000;
 // round5:D end.
+
+// ---- Round 6 (fireline-round6-design.md) --------------------------------------------------------
+// The groundwork: armies, per-side specs, generals' ids and formation shapes, declared here and read
+// through specs.ts. Each workstream adds its numbers between its own round6 markers below.
+
+/**
+ * The two armies. Every side plays 'meridian' unless its setup says otherwise: Meridian Corps is
+ * today's army exactly, so every mission, old save and older setup plays as it always did.
+ */
+export type Faction = 'meridian' | 'ashen';
+export const FACTIONS: Faction[] = ['meridian', 'ashen'];
+export const FACTION_NAMES: Record<Faction, string> = { meridian: 'Meridian Corps', ashen: 'Ashen Combine' };
+
+/**
+ * The spec fields an army may change. A kind's identity (its queue, whether it is a hero, a medic,
+ * a mender, a truck that deploys, stealthy, how it fights in the air, a detector, how many it
+ * carries; a structure's footprint, and whether it is a wall or packs up) is the same for every army, so code that asks only those
+ * questions may keep reading UNITS and BUILDINGS directly. A different role is a different kind.
+ */
+export type UnitOverlay = Partial<Omit<UnitSpec, 'category' | 'hero' | 'medic' | 'mender' | 'deploysTo' | 'stealth' | 'airRole' | 'detector' | 'carries'>>;
+export type BuildingOverlay = Partial<Omit<BuildingSpec, 'w' | 'h' | 'wall' | 'undeploysTo'>>;
+export interface FactionOverlay {
+  units?: Partial<Record<UnitKind, UnitOverlay>>;
+  buildings?: Partial<Record<BuildingKind, BuildingOverlay>>;
+}
+/**
+ * An army's build lists against MENUS: kinds added to a list (its signature items, appended in
+ * order) and kinds it never builds. A kind any army adds belongs to the armies that add it alone.
+ */
+export interface FactionMenu {
+  add?: Partial<Record<Category, readonly (BuildingKind | UnitKind)[]>>;
+  remove?: readonly (BuildingKind | UnitKind)[];
+}
+
+// round6:A begin. Two armies (fireline-round6-design.md, workstream A): FACTION_OVERLAY and
+// FACTION_MENUS filled in, the doctrine lines, and its constants. Meridian's overlay stays empty.
+//
+// The doctrines, on paper first (fireline-round6-design.md, section 3):
+//  - Meridian Corps: heavier and slower. Armour and range; strong static defence, the Bastion and
+//    the Fortress as its identity. Its signature unit is the Sapper (satchel charges, close in). Air:
+//    the Gunship and the Bomber. It is today's army exactly: its overlay is empty, and its lists
+//    are MENUS with the Sapper appended to Infantry.
+//  - Ashen Combine: lighter, faster, cheaper. About 13% less health and 6% more speed across the
+//    army, infantry and light vehicles 5% cheaper, its heavy guns half a tile shorter, its turrets
+//    and Fortress cheaper and frailer. Its signature unit is the Raider Bike (fast, fragile,
+//    rockets). Air: the Kestrel (a lighter, faster gunship with more rockets and a quicker rearm)
+//    and the Firebrand (a bomber whose incendiaries burn on after they land, BOMB_PATCH below).
+//    Tuned on the ladder (npm run ladder:fire -- --factions): the plan's first numbers (10% less
+//    health, 12% faster, 10% cheaper) won 62% for Ashen over 150 seeds from each seat; these 53%.
+
+/** One line on each army, for the setup screen and How to play. */
+export const FACTION_DOCTRINES: Record<Faction, string> = {
+  meridian: 'Heavier and slower: armour, range and strong defences. Signature: the Sapper. Air: Gunship and Bomber.',
+  ashen: 'Lighter, faster and cheaper, with shorter heavy guns. Signature: the Raider Bike. Air: Kestrel and Firebrand in place of the Gunship and Bomber.',
+};
+
+/** Ashen's numbers against the catalogue's (Meridian's), kind by kind. */
+const ASHEN_UNITS: Partial<Record<UnitKind, UnitOverlay>> = {
+  rifleman: { cost: 95, hp: 52, speed: 0.069 },
+  rocketeer: { cost: 285, hp: 44, speed: 0.058 },
+  grenadier: { cost: 235, hp: 57, speed: 0.064 },
+  medic: { cost: 285, hp: 61, speed: 0.069 },
+  skyhunter: { cost: 330, hp: 48, speed: 0.064 },
+  buggy: { cost: 475, hp: 157, speed: 0.18 },
+  flaktrack: { cost: 665, hp: 226, speed: 0.106 },
+  tank: { hp: 360, speed: 0.106, weapon: { ...UNITS.tank.weapon!, range: 4.25 } },
+  artillery: { cost: 900, hp: 131, speed: 0.074, weapon: { ...UNITS.artillery.weapon!, range: 8.5 } },
+  missilecarrier: { hp: 209, speed: 0.085, weapon: { ...UNITS.missilecarrier.weapon!, range: 7.5 } },
+  flametank: { hp: 410, speed: 0.096 },
+  bastion: { hp: 770, speed: 0.064, weapon: { ...UNITS.bastion.weapon!, range: 5 } },
+  railtank: { hp: 566, speed: 0.09, weapon: { ...UNITS.railtank.weapon!, range: 6 } },
+  stealthtank: { cost: 1260, hp: 331, speed: 0.117 },
+};
+const ASHEN_BUILDINGS: Partial<Record<BuildingKind, BuildingOverlay>> = {
+  turret: { cost: 540, hp: 405 },
+  rocketturret: { cost: 810, hp: 450 },
+  fortress: { cost: 2200, hp: 1980, weapon: { ...BUILDINGS.fortress.weapon!, range: 6.5 } },
+};
+
+/** Each army's changes to UNITS and BUILDINGS, merged by unitSpec and buildingSpec (specs.ts). */
+export const FACTION_OVERLAY: Record<Faction, FactionOverlay> = {
+  meridian: {},
+  ashen: { units: ASHEN_UNITS, buildings: ASHEN_BUILDINGS },
+};
+/** Each army's changes to MENUS, read by menuOf and factionAllows (specs.ts). */
+export const FACTION_MENUS: Record<Faction, FactionMenu> = {
+  meridian: {
+    add: { infantry: ['sapper'] },
+  },
+  ashen: {
+    add: { vehicle: ['raider'], air: ['kestrel', 'firebrand'] },
+    remove: ['gunship', 'bomber'],
+  },
+};
+// Meridian's one addition is its signature Sapper, after Infantry's own items (the round's recruits,
+// the General and the heroes, close every list: menuOf), so every kind of today keeps its place and
+// hotkey and Meridian's specs, prices and lists are otherwise MENUS.
+
+/**
+ * The Firebrand's incendiary patch: a bomb of a 'bomb' role aircraft whose weapon is listed here
+ * keeps burning where it lands, `pulses` more times, `gap` ticks apart, each at `share` of the
+ * bomb's damage over its splash. Keyed by weapon kind, so air.ts names no aircraft.
+ */
+export const BOMB_PATCH: Partial<Record<WeaponKind, { pulses: number; gap: number; share: number }>> = {
+  flame: { pulses: 3, gap: 10, share: 0.3 },
+};
+// round6:A end.
+
+// round6:B begin. Heroes in free play (fireline-round6-design.md, workstream B): recruit costs,
+// limits and the revive cooldown.
+//
+// A skirmish set up with heroes on (and advanced tech) may recruit the campaign's four heroes once a
+// Command Academy stands: the Spy, Commando and Engineer at the Barracks, the Ace at the War Factory,
+// through the ordinary queues. The heroes' entries in UNITS keep their campaign numbers (a mission
+// never prices or trains a hero), so the skirmish price and training time are these, read by costFor
+// and buildTicksFor. One of each per side, standing or queued; a fallen hero may be recruited again
+// after HERO_REVIVE_TICKS at HERO_REVIVE_SHARE of the price, and comes back wounded (half health)
+// with the experience it had, as a campaign hero does in the next mission.
+/** What each hero costs to recruit in a skirmish. */
+export const HERO_RECRUIT_COST: Record<HeroKind, number> = { engineer: 1000, spy: 1200, commando: 1800, ace: 2500 };
+/** Ticks of training each hero takes in a skirmish (at full power). */
+export const HERO_RECRUIT_TICKS: Record<HeroKind, number> = { engineer: 200, spy: 220, commando: 300, ace: 360 };
+/** Ticks after a hero falls before it may be recruited again: 90 seconds. */
+export const HERO_REVIVE_TICKS = 900;
+/** A fallen hero's price to recruit again, as a share of HERO_RECRUIT_COST. */
+export const HERO_REVIVE_SHARE = 0.5;
+/** The structure that opens hero recruitment. */
+export const HERO_ACADEMY = 'academy' as const satisfies BuildingKind;
+
+/** A hero's skirmish price: full, or HERO_REVIVE_SHARE of it for one that has fallen in this battle. */
+export function heroRecruitCost(kind: HeroKind, fallen: boolean): number {
+  return fallen ? Math.round(HERO_RECRUIT_COST[kind] * HERO_REVIVE_SHARE) : HERO_RECRUIT_COST[kind];
+}
+// round6:B end.
+
+/** The four doctrine Generals, two to an army. Their perks and powers are workstream C's GENERALS. */
+export type GeneralId = 'hale' | 'voss' | 'kade' | 'ilse';
+export const GENERAL_IDS: GeneralId[] = ['hale', 'voss', 'kade', 'ilse'];
+/** Which army each General serves: a seat may pick only its own army's. */
+export const GENERAL_FACTION: Record<GeneralId, Faction> = { hale: 'meridian', voss: 'meridian', kade: 'ashen', ilse: 'ashen' };
+
+// round6:C begin. Generals (fireline-round6-design.md, workstream C): GENERALS (names, perks, power
+// tweaks), the aura's numbers and the replacement cooldown.
+
+/**
+ * A doctrine General: a bundle of perks for one side, chosen at setup (setup.generalPicks). The
+ * three multipliers become that side's Perks (generals.ts, read through perksFor); `costs` and
+ * `rearmMul` are read by generals.ts where a price is set and where aircraft rearm. A multiplier
+ * below 1 on a price or a time is a saving; above 1 on a rate is a gain.
+ */
+export interface GeneralSpec {
+  name: string;
+  /** The doctrine in a word or two. */
+  doctrine: string;
+  faction: Faction;
+  blurb: string;
+  /** The refinery's take (Perks.harvestMul). */
+  harvestMul: number;
+  /** Production speed in every queue (Perks.buildSpeedMul). */
+  buildSpeedMul: number;
+  /** The support-power tweak: every power's cooldown (Perks.powerCooldownMul). */
+  powerCooldownMul: number;
+  /** Price multipliers on some kinds alone. */
+  costs: Partial<Record<BuildingKind | UnitKind, number>>;
+  /** Price multiplier on every aircraft (any kind with an airRole, whatever its army). */
+  airCostMul: number;
+  /** Time each load takes to rearm at a Helipad. 1: unchanged. */
+  rearmMul: number;
+}
+
+export const GENERALS: Record<GeneralId, GeneralSpec> = {
+  hale: {
+    name: 'General Hale',
+    doctrine: 'Fortress',
+    faction: 'meridian',
+    blurb: 'Defences (Gun and Rocket Turrets, Flak Cannons, the Fortress and walls) 20% cheaper; support powers recharge 10% sooner.',
+    harvestMul: 1,
+    buildSpeedMul: 1,
+    powerCooldownMul: 0.9,
+    costs: { turret: 0.8, rocketturret: 0.8, flakcannon: 0.8, fortress: 0.8, wall: 0.8 },
+    airCostMul: 1,
+    rearmMul: 1,
+  },
+  voss: {
+    name: 'General Voss',
+    doctrine: 'Armour',
+    faction: 'meridian',
+    blurb: 'Tanks, Flame Tanks, Rail Tanks and Bastions 15% cheaper; support powers recharge 5% sooner; but harvesting is 10% slower.',
+    harvestMul: 0.9,
+    buildSpeedMul: 1,
+    powerCooldownMul: 0.95,
+    costs: { tank: 0.85, flametank: 0.85, railtank: 0.85, bastion: 0.85 },
+    airCostMul: 1,
+    rearmMul: 1,
+  },
+  kade: {
+    name: 'General Kade',
+    doctrine: 'Blitz',
+    faction: 'ashen',
+    blurb: 'Every queue works 10% faster; support powers recharge 15% sooner.',
+    harvestMul: 1,
+    buildSpeedMul: 1.1,
+    powerCooldownMul: 0.85,
+    costs: {},
+    airCostMul: 1,
+    rearmMul: 1,
+  },
+  ilse: {
+    name: 'General Ilse',
+    doctrine: 'Air',
+    faction: 'ashen',
+    blurb: 'Helipads 25% cheaper and aircraft 10% cheaper; aircraft rearm 20% faster; support powers recharge 5% sooner.',
+    harvestMul: 1,
+    buildSpeedMul: 1,
+    powerCooldownMul: 0.95,
+    costs: { helipad: 0.75 },
+    airCostMul: 0.9,
+    rearmMul: 0.8,
+  },
+};
+
+/** The field General's command aura: its reach in tiles, and how often it is worked out (ticks). */
+export const GENERAL_AURA_RANGE = 6;
+export const GENERAL_AURA_TICKS = 10;
+/** Inside an aura: damage times this, and the time between shots times GENERAL_AURA_RELOAD. Never stacks. */
+export const GENERAL_AURA_DAMAGE = 1.1;
+export const GENERAL_AURA_RELOAD = 0.9;
+/** After a General falls, a replacement may be queued this many ticks later (two minutes). */
+export const GENERAL_REPLACE_TICKS = 1200;
+/** The computer pulls its General back home below this share of its health, and sends it out again at GENERAL_RETURN_AT. */
+export const GENERAL_RETREAT_BELOW = 0.4;
+export const GENERAL_RETURN_AT = 0.75;
+// round6:C end.
+
+/** Round 6, workstream D: the shapes a group can move in. */
+export type FormationShape = 'line' | 'column' | 'wedge' | 'box';
+export const FORMATION_SHAPES: FormationShape[] = ['line', 'column', 'wedge', 'box'];
+
+// round6:D begin. Formations and squads (fireline-round6-design.md, workstream D): names, slot
+// spacing, the leader's refresh interval and its constants.
+export const FORMATION_NAMES: Record<FormationShape, string> = { line: 'Line', column: 'Column', wedge: 'Wedge', box: 'Box' };
+export const FORMATION_BLURBS: Record<FormationShape, string> = {
+  line: 'Side by side, facing the way you send them: every gun can fire forward.',
+  column: 'Two files, one behind the other: narrow, for roads, bridges and gaps.',
+  wedge: 'An arrowhead with the armour at its tip: for driving into the enemy.',
+  box: 'A tight block, guns all round and the Medics and Repair Trucks inside: for holding or regrouping.',
+};
+/** Tiles between neighbouring slots facing straight up, down or across. */
+export const SLOT_SPACING = 1;
+/**
+ * Facing a diagonal, slot tables are turned with unnormalised diagonal steps (one tile across and
+ * one down), which are 1.41 tiles long; this scale brings them back to about one tile (1.06).
+ */
+export const SLOT_SPACING_DIAGONAL = 0.75;
+/** Ticks between the leader re-aiming its squad's members at their slots beside it. */
+export const SQUAD_REFRESH_TICKS = 8;
+/** On the march, members aim this many tiles ahead of their slot beside the leader, so they keep walking. */
+export const SQUAD_LEAD = 2;
+/** Once the leader is this close to its goal, members head for their own final slots. */
+export const SQUAD_FINAL = 4;
+/** A member further than this from its slot beside the leader may go at its own speed to catch up. */
+export const SQUAD_SLACK = 1.5;
+/** The largest group the line keeps in one rank; more go in further ranks behind. */
+export const LINE_RANK_MAX = 10;
+// round6:D end.
+
+// round6:integration. The General leads a formation (fireline-round6-design.md section 7): a squad
+// with a field General among its members is led by the General, and keeps tighter.
+/** Ticks between a General's re-aiming of its squad (half SQUAD_REFRESH_TICKS). */
+export const GENERAL_SQUAD_REFRESH_TICKS = 4;
+/** In a General's squad, a member further than this from its slot may catch up at its own speed. */
+export const GENERAL_SQUAD_SLACK = 1;
+/** A General holds to half the squad's pace while any member is further than this from its slot (and not ahead of it). */
+export const GENERAL_SQUAD_HOLD = 1.5;

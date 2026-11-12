@@ -4148,6 +4148,291 @@ kbd {
 
 /* round5:D. Neutral sites and tier three. */
 
+/* round6:A. Two armies. */
+:root {
+  --army-meridian: #2f5f8a;
+  --army-meridian-soft: rgba(47, 95, 138, 0.12);
+  --army-ashen: #9a4a1f;
+  --army-ashen-soft: rgba(154, 74, 31, 0.12);
+}
+:root[data-theme="dark"] {
+  --army-meridian: #7fb2dc;
+  --army-meridian-soft: rgba(127, 178, 220, 0.14);
+  --army-ashen: #e39566;
+  --army-ashen-soft: rgba(227, 149, 102, 0.14);
+}
+.fl-army-field {
+  grid-column: 1 / -1;
+}
+.fl-army-seats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px 16px;
+}
+.fl-army-seat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.fl-army-seat-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+.fl-army-seat .fl-seg button[data-army="meridian"][aria-checked="true"] {
+  box-shadow: inset 0 -3px 0 var(--army-meridian);
+}
+.fl-army-seat .fl-seg button[data-army="ashen"][aria-checked="true"] {
+  box-shadow: inset 0 -3px 0 var(--army-ashen);
+}
+.fl-army-doctrine {
+  margin-top: 4px;
+}
+.fl-army-tag {
+  display: inline-block;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+.fl-army-tag[data-army="meridian"] {
+  color: var(--army-meridian);
+  background: var(--army-meridian-soft);
+  border: 1px solid var(--army-meridian);
+}
+.fl-army-tag[data-army="ashen"] {
+  color: var(--army-ashen);
+  background: var(--army-ashen-soft);
+  border: 1px solid var(--army-ashen);
+}
+.fl-armies-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.fl-armies-tile {
+  display: flex;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--ui-rule);
+  border-radius: 4px;
+  background: var(--ui-panel-raised);
+  min-width: 0;
+}
+.fl-armies-tile[data-army="meridian"] {
+  border-left: 3px solid var(--army-meridian);
+}
+.fl-armies-tile[data-army="ashen"] {
+  border-left: 3px solid var(--army-ashen);
+}
+.fl-armies-tile img {
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.fl-armies-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  font-size: 0.76rem;
+  line-height: 1.4;
+  color: var(--ui-text-soft);
+}
+.fl-armies-body strong {
+  font-size: 0.88rem;
+  color: var(--ui-text);
+}
+.fl-armies-facts {
+  font-size: 0.72rem;
+  color: var(--ui-text-faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.fl-armies-body summary {
+  cursor: pointer;
+  color: var(--ui-text-faint);
+}
+.fl-armies-body dl {
+  margin: 4px 0 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  row-gap: 1px;
+  font-size: 0.72rem;
+}
+.fl-armies-body dl > div {
+  display: contents;
+}
+.fl-armies-body dt {
+  color: var(--ui-text-faint);
+}
+.fl-armies-body dd {
+  margin: 0;
+}
+.fl-armies-table-wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.fl-armies-table {
+  border-collapse: collapse;
+  font-size: 0.74rem;
+  color: var(--ui-text-soft);
+  min-width: 100%;
+}
+.fl-armies-table th,
+.fl-armies-table td {
+  text-align: left;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--ui-rule);
+  white-space: nowrap;
+}
+.fl-armies-table thead th {
+  color: var(--ui-text);
+  font-weight: 600;
+}
+.fl-armies-table tbody th {
+  color: var(--ui-text);
+  font-weight: 500;
+}
+
+/* round6:B. Heroes in free play. */
+.fl-hero-revive {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 8px;
+  background: var(--ui-hud);
+  border: 1px solid var(--ui-rule);
+  border-radius: 5px;
+  box-shadow: 0 2px 12px var(--ui-shadow);
+  color: var(--ui-text-soft);
+  font-size: 0.7rem;
+  line-height: 1.3;
+  pointer-events: auto;
+}
+.fl-setup-field[data-disabled="1"] .fl-seg {
+  opacity: 0.45;
+}
+
+/* round6:C. Generals. */
+/* The General's gold, one value per mode. */
+:root {
+  --ui-general: #9a6b08;
+}
+:root[data-theme="dark"] {
+  --ui-general: #f2c94c;
+}
+.fl-gen-seats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.fl-gen-seat {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  align-items: center;
+  gap: 6px;
+}
+.fl-gen-seat-name {
+  font-size: 0.78rem;
+  color: var(--ui-text-soft);
+}
+/* On a phone the seat's name goes above its choices, so the three fit across. */
+@media (max-width: 560px) {
+  .fl-gen-seat {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+}
+[data-testid="generals-field"] .fl-seg button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.fl-genbar {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  pointer-events: none;
+}
+.fl-genbtn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 11rem;
+  max-width: 15rem;
+  padding: 4px 8px 4px 6px;
+  font: inherit;
+  font-size: 0.74rem;
+  text-align: left;
+  color: var(--ui-text);
+  background: var(--ui-hud);
+  border: 1px solid var(--ui-rule);
+  border-radius: 5px;
+  box-shadow: 0 2px 12px var(--ui-shadow);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.fl-genbtn:disabled {
+  cursor: default;
+}
+.fl-genbtn[data-selected="1"] {
+  border-color: var(--ui-good);
+  /* The tint over the HUD colour: the tint alone is nearly clear, and the battlefield shows through. */
+  background: linear-gradient(var(--ui-tint-good), var(--ui-tint-good)), var(--ui-hud);
+}
+/* Round 6 integration: in the bar row beside the hero and power bars. */
+.fl-genbar-inline {
+  position: static;
+  display: flex;
+}
+.fl-genbtn[data-fallen="1"] {
+  border-color: var(--ui-bad);
+}
+.fl-genbtn-star {
+  font-size: 1.3rem;
+  line-height: 1;
+  color: var(--ui-general);
+}
+.fl-genbtn[data-fallen="1"] .fl-genbtn-star {
+  color: var(--ui-text-faint);
+}
+.fl-genbtn-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.fl-genbtn-info span {
+  color: var(--ui-text-soft);
+}
+.fl-genbtn-half {
+  color: var(--ui-bad) !important;
+}
+.fl-genbtn-hp {
+  display: block;
+  height: 4px;
+  background: var(--ui-ground);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.fl-genbtn-hp > span {
+  display: block;
+  height: 100%;
+  background: var(--ui-good);
+}
+.fl-genbtn-hp > span[data-low="1"] {
+  background: var(--ui-bad);
+}
+.fl-gen-note {
+  margin: 0;
+  font-size: 0.7rem;
+  line-height: 1.4;
+  color: var(--ui-text-soft);
+}
+
+/* round6:D. Formations and squads. */
+
 /* ==== D: battle chrome ==== */
 /*
  * The battle screen's console: top bar, sidebar gauges and radar frame, build buttons, the support
@@ -5659,6 +5944,83 @@ div:has(> .fl-alert-chip) > .fl-banners {
 :root[data-motion="off"] .fl-d-tour-prog > span,
 :root[data-motion="off"] .fl-build {
   transition: none;
+}
+/* ---- Round 6 in the console: the General's drawer, hero revivals, formations and groups ---- */
+
+/* The General's button and the hero revival note are drawers in the dock, beside Heroes and Support. */
+.fl-cbar > .fl-genbar-inline,
+.fl-cbar > .fl-hero-revive {
+  align-items: stretch;
+  gap: 4px;
+  padding: 5px 6px 6px 4px;
+  background: linear-gradient(180deg, var(--d-console-hi), var(--d-console));
+  border: 1px solid var(--d-btn-rule);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 6px 20px var(--ui-shadow);
+  pointer-events: auto;
+}
+.fl-cbar[style] > .fl-genbar-inline,
+.fl-cbar[style] > .fl-hero-revive {
+  border-bottom: 1px solid var(--d-btn-rule);
+  border-radius: 8px;
+}
+.fl-cbar > .fl-hero-revive {
+  justify-content: center;
+  padding-left: 8px;
+  font-size: 0.68rem;
+  color: var(--ui-text-soft);
+}
+.fl-genbar-inline .fl-genbtn {
+  min-width: 10rem;
+  background: var(--d-well);
+  border-color: var(--d-well-rule);
+  border-radius: 5px;
+  box-shadow: inset 0 1px 2px var(--d-drop-soft);
+}
+.fl-genbar-inline .fl-genbtn[data-ready="1"] {
+  background: linear-gradient(180deg, var(--d-btn-hi), var(--d-btn));
+  border-color: var(--ui-general);
+  box-shadow: inset 0 1px 0 var(--d-bevel), 0 1px 2px var(--d-drop-soft);
+}
+.fl-genbar-inline .fl-genbtn[data-selected="1"] {
+  border-color: var(--ui-good);
+  background: var(--ui-tint-good);
+}
+.fl-genbar-inline .fl-genbtn[data-fallen="1"] {
+  border-color: var(--ui-bad);
+}
+.fl-genbtn .fl-genbtn-hp {
+  height: 6px;
+  background: var(--d-well);
+  border: 1px solid var(--d-well-rule);
+}
+
+/* Formations: a segmented strip under Stance, in the selection panel's small buttons. */
+.fl-d-formation {
+  flex-wrap: nowrap;
+}
+.fl-d-formation > button {
+  flex: 1;
+  min-width: 0;
+  padding: 0 4px;
+}
+/* Control-group chips on a touch screen: finger-sized, the unit count quieter. */
+.fl-d-groupchips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.fl-d-groupchip {
+  min-width: 40px;
+  height: 34px;
+  font-weight: 700;
+}
+.fl-d-groupchip-n {
+  font-size: 0.66rem;
+  font-weight: 500;
+  color: var(--ui-text-soft);
 }
 /* ==== end D ==== */
 

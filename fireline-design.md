@@ -982,7 +982,7 @@ turn limit), and a check that a full battle fought by hand reaches its end card 
 
 ### 2026-11-10: Game size and deep research in skirmishes (round 6)
 
-The contract and the full build log are in `fireline-round6-design.md`. Round 5's ladder showed
+The contract and the full build log are in `fireline-round6b-design.md`. Round 5's ladder showed
 that at 3000 credits a skirmish ends before the computer gets past Mk I, so doctrines and modules
 rarely mattered. A skirmish now opens on a **game size** screen: four cards, Quick, Standard
 (checked for a new player), Long and Epic, each with its credits and ore, how long a battle lasts,
@@ -1225,6 +1225,306 @@ long as before (Normal mirror 23.4 to 24.1 minutes on average).
 Harness at the end: `npm run drive:fire` 371,018 assertions, 0 failed (the round-4 Hard battle now
 "side 1 won at 17 min; 6 bombs, 6 gunship rockets"; the air war battle "gunship, interceptor,
 bomber; 2 interceptor missiles; side 0 won at 31 min"); `npm run campaign:fire` 2,595, unchanged.
+
+### 2026-11-11: Two armies (round 6, workstream A)
+
+Every skirmish seat now picks an army, as `fireline-round6-design.md` section 3 sets out. Meridian
+Corps is today's army exactly; Ashen Combine is the variant. Missions, old saves and every default
+battle (all Meridian) play as before: every summary line of `npm run drive` is unchanged.
+
+- **Doctrines.** Meridian: heavier and slower, armour, range and static defence; signature unit
+  the **Sapper** (infantry, 400 credits, satchel charges at 1.75 tiles: wrecks structures and
+  armour, falls fast to rifles; needs a Tech Centre); air the Gunship and Bomber. Ashen: lighter,
+  faster, cheaper; signature unit the **Raider Bike** (450 credits, 140 hp, 2 tiles/s, rockets);
+  air the **Kestrel** (strafe role: 1,200 credits, 260 hp, 10 rockets, a load every 0.9s) and the
+  **Firebrand** (bomb role: 1,800 credits, a smaller blast than the Bomber, and each incendiary
+  burns three more times on the spot, a second apart, at 30% of its damage). All four are advanced
+  tech, each fielded by its army alone (`FACTION_MENUS`; Ashen removes the Gunship and Bomber).
+- **Ashen's overlay** (`FACTION_OVERLAY.ashen`): about 13% less health and 6% more speed across
+  the army; infantry, the buggy and the Flak Track 5% cheaper; the Tank, Artillery, Missile
+  Carrier, Bastion and Railgun half a tile shorter; Gun and Rocket Turrets and the Fortress cheaper
+  and frailer. How to play has the whole table, read from the specs.
+- **Balance.** The plan's first numbers (10% less health, 12% faster, 10% cheaper) gave Ashen 62%
+  over 150 seeds from each seat on random maps at Normal (`npm run ladder:fire -- --factions`, or
+  the two `--match new:normal:ashen,new:normal:meridian` orientations). Fewer Raider Bikes made it
+  worse (61%: the computer built more tanks instead), a cheaper-only nerf reached 55%, and slowing
+  the army to +6% brought it to **53.0%** (Ashen 159, Meridian 137, 4 unfinished of 300; 56% from
+  seat 0, 50% from seat 1; the Normal mirror gives seat 1 about three in four).
+- **Engine.** Numbers arrive through the per-side specs; nothing in `tick.ts` changed. `air.ts`'s
+  `dropBomb` lands a bomb as its weapon's own kind and, for a weapon kind in `BOMB_PATCH` (the
+  Firebrand's `flame`), adds the patch as later projectiles on the same spot, so the burn is drawn
+  and dealt as flame by the code that already lands every projectile. No new weapon or effect kind.
+- **Computer.** Ashen mixes Raider Bikes into its advanced vehicles and queues aircraft by role
+  from its own Air list (`aiAir.ts`), one more Kestrel on Hard. Meridian's choices are today's,
+  except that in a battle with two armies it also trains Sappers (an all-Meridian battle draws
+  exactly as before).
+- **Interface.** An Army row per seat in the lobby with each army's one-line doctrine; the build
+  window, sidebar, stat cards and How to play read the player's army (`rulesCatalogue(faction)`,
+  `menuOf`, `statsOf(kind, faction)`); the funds toast prices by `costFor`. Army tags are tokens
+  (`--army-meridian`, `--army-ashen`) in both modes; battlefield colours stay the seats'.
+- **Tests** (`scripts/drive-factions.ts`): the overlay merge, the bounds of "slightly different",
+  menus and catalogues per army, signature items refused through `canQueue` and the reducer, none
+  in standard tech or any mission, a Firebrand bombing and burning, a Bomber not, a Kestrel
+  strafing and rearming faster than a Gunship, Ashen's prices, health, speed and range measured,
+  and a whole Ashen-against-Meridian battle from each seat played to a finish, saved and loaded
+  mid-battle, and replayed byte-identically.
+- **For the integrator.** The groundwork's "Meridian: every build list is MENUS" now reads "MENUS
+  in order, then its signature items", since the Sapper is Meridian's addition. With B's Ace
+  appended to Vehicles, Ashen's list (with the Raider) runs to 15 items, one more than the build
+  keys.
+
+### 2026-11-11: Heroes in free play (round 6, workstream B)
+
+A skirmish setup option, **Heroes: Off / On** (off by default; advanced tech only, greyed on
+standard tech), lets the campaign's Spy, Commando, Engineer and Ace be recruited in free play. The
+campaign is untouched: missions never offer the Academy or a hero, and a mission's fallen hero still
+stays out for the rest of the mission.
+
+- **Recruiting**: a new structure, the **Command Academy** (`academy`, 2x2, 1500, needs a Tech
+  Centre, heroes on only). Once one stands, `techAllowed` lets the Spy, Commando and Engineer onto the
+  Infantry list (trained at the Barracks) and the Ace onto the Vehicles list (War Factory), through
+  `'queue'` like any unit. Prices `HERO_RECRUIT_COST` (Engineer 1000, Spy 1200, Commando 1800, Ace
+  2500, read by `costFor`), training `HERO_RECRUIT_TICKS` (20, 22, 30, 36 seconds, read by
+  `buildTicksFor`); the heroes' entries in `UNITS` keep their campaign numbers.
+- **Limit**: one of each per side, standing plus queued (`heroRecruitProblem`, `src/sim/heroes.ts`).
+- **Revive**: a fallen hero is recorded in `PlayerState.heroFallen` and may be recruited again after
+  `HERO_REVIVE_TICKS` (90 seconds) at half price; it comes back wounded (half health) with the
+  experience it had, the campaign's "wounded" rule within one battle.
+- **Engine**: the hero tick runs in a skirmish with heroes on; `enlistHeroes` gives a trained hero
+  its hero state (level from its experience, ability ready) and health from `heroMaxHp`.
+- **Interface**: the hero bar (heroes standing) beside the skirmish power bar, with each fallen
+  hero's recruit timer; Z X C V; F uses the ability only when one hero alone is selected, otherwise
+  the selection's command as before. The Repair Truck's and Forward Base Truck's blurbs say they are
+  free play's engineering units. How to play has a panel.
+- **Computer** (`src/sim/aiHeroes.ts`): saves a share of its credits into `heroFund` for the Academy
+  and then each hero (Engineer, Ace, Commando, Spy). The Engineer captures an undefended structure or
+  site; the Commando takes one to three escorts from the reserve to an outlying structure and plants
+  a charge; the Ace joins the wave and opens Overdrive in a fight; the Spy infiltrates (Generators
+  first) as an attack is about to go, avoiding structures a gun covers. `keptBack` holds back every
+  hero but the Ace, and the escort.
+- **Tests**: `scripts/drive-heroes.ts` (recruiting, limits, prices, revive, levels and abilities,
+  replay and save, missions, a computer battle with heroes on); drive.ts's hero refusal now also
+  asserts acceptance with heroes on. Every summary line of `npm run drive` is unchanged (heroes off
+  by default).
+
+### 2026-11-11: Generals (round 6, workstream C)
+
+Doctrines, in `GENERALS` (rules.ts), applied per side by `applyDoctrines` (generals.ts) when the battle
+is made: the three rate multipliers become that side's Perks (`s.perks` for side 0, `s.sidePerks` for
+the rest, read through perksFor); prices on some kinds alone are read in costFor's C marker from
+`PlayerState.general`, so `Perks` gained no fields. Refined from the plan where a perk needed code
+outside C's markers: Hale's "+10% structure health" would have left health above the spec's (bars,
+repair and sell refunds all read the spec), and Kade's "+10% vehicle speed" lives in movement code;
+both were replaced as below.
+
+- Hale (Meridian, Fortress): Gun and Rocket Turrets, Flak Cannons, the Fortress and walls 20% cheaper;
+  powers recharge 10% sooner.
+- Voss (Meridian, Armour): Tanks, Flame Tanks, Rail Tanks and Bastions 15% cheaper; harvest 10% slower;
+  powers 5% sooner.
+- Kade (Ashen, Blitz): every queue 10% faster; powers 15% sooner.
+- Ilse (Ashen, Air): Helipads 25% and aircraft (any kind with an airRole) 10% cheaper; rearm 20%
+  faster (generals.ts takes an extra tick off a rearming aircraft's cooldown every fourth tick);
+  powers 5% sooner.
+
+With Generals on, a computer seat left on "Any" gets one of its army's two from a generator seeded
+from rngSeed and a constant. Field General (`general`, infantry, Barracks plus Comms Uplink, 1200
+credits, 320 health, a pistol): one per side standing or queued. Aura: own units within 6 tiles,
+scanned every 10 ticks into `Unit.aura`; inside it a shot uses `auraWeapon` (damage x1.1, reload
+x0.9) at tick.ts's C marker; a mark never stacks. A fall halves the doctrine (perks replaced) until a
+replacement arrives, which may be queued 1200 ticks after. The computer saves for one after its first
+wave, keeps it 2.5 tiles behind its wave's centre (gathering point otherwise), and pulls it home
+below 40% health until 75%. Tests: `scripts/drive-generals.ts`. Default battles are unchanged: every
+summary line of `npm run drive` matches the baseline.
+
+### 2026-11-11: Formations and squads (round 6, workstream D)
+
+Contract: `fireline-round6-design.md` section 6. Four shapes (line, column, wedge, box), a squad that
+keeps pace, and the computer's waves in formation on advanced tech.
+
+- **Slots** (`src/sim/formations.ts`): `slotsFor(shape, n, facing)` returns integer offset tables,
+  front first and centred on the group. Line: one rank up to ten, then more ranks. Column: one file
+  up to four, then two. Wedge: row k holds k + 1 slots two tiles apart, so the arms run back at 45
+  degrees. Box: the edge of a near-square first, the inside last (a short box drops back-row corners,
+  never the inside). Turned to eight facings with unnormalised steps (diagonals scaled by 0.75), and
+  `facingOf` snaps a direction with integer comparisons against 0.414 (tan 22.5 degrees).
+- **Role order**, by category and spec, never by name: armed vehicles, then infantry, then Medics and
+  Repair Trucks, then artillery and support (a minimum range, no ground weapon, no weapon, aircraft).
+  In a box the Medics and Repair Trucks go last, so they take the inside. Ties by id.
+- **Squads.** A move with a `formation` (or the `formation` action, which forms up where the units
+  stand) makes the ground units a squad (`s.squads`, ids from `s.nextId`; aircraft take a slot but
+  join none). The leader (slot 0) paths to its slot. Every 8 ticks, from the leader's own step, the
+  rest are aimed at their slot beside the leader plus 2 tiles ahead, or at their final slot once the
+  leader is within 4 tiles of its goal; members that fell or took other orders leave then. Keep pace:
+  one line in `stepAlong` caps every member at the slowest member's speed, except one more than 1.5
+  tiles from its slot, which may catch up. A plain move of exactly a squad's members keeps its shape;
+  any other plain move takes the named units out; a squad down to one is dissolved; `'none'` breaks one
+  up and leaves the orders alone. `migrateRound6` drops fallen members, re-picks a fallen leader,
+  dissolves a squad under two and drops malformed squad fields and stray slots.
+- **No formation, no change**: a move without a `formation`, with no squads in the state, is the
+  spiral exactly, so every replay and every standard-tech and mission line is unchanged.
+- **Interface.** Line, Column, Wedge, Box and None beside Stance in the selection panel (the same panel
+  on touch), the current one pressed. The period key cycles line, column, wedge, box, none (Shift goes
+  back). Control groups are kept per battle in this browser (`fireline_groups:<save id>`), not in the
+  save: the battle screen fills its groups in from storage on the first key and records each
+  Ctrl + digit. On touch, chips under the formation row select a group (again: jump to it) and
+  "+ Group" makes the selection the next free one; a chip presses the same key the keyboard does.
+- **Computer.** On advanced tech only (`adv`), a wave sets off to attack in a wedge and regroups in a
+  box. Gathering, reinforcements and retreats are as before.
+
+Harness (`scripts/drive-formations.ts`, about 380 assertions, about 5 seconds): every table for
+four shapes, 1 to 40 units and eight facings is deterministic, whole, unrepeated, led from the front,
+turned with its facing and centred; facing within 20 degrees and at the 22.5 degree boundaries;
+every shaped move toward eight directions lands on distinct passable tiles with the role order;
+keeping pace (wedge, column and box arrive within 50 ticks of each other and of the slowest member,
+the line within 120; the plain move spreads about 156, the buggies arriving 190 ticks sooner);
+replay and save-and-load mid-march byte-identical; joining, leaving, dissolving, fallen leaders;
+eleven refusals; the computer forms a wedge on advanced tech and never on standard.
+
+`npm run drive`: 0 failed. Only the advanced lines moved, as the contract allows:
+
+| Line | Before | After |
+|---|---|---|
+| Air battle on Hard | side 1 at 21 min; 12 bombs, 5 rockets; upgrades 0 and 0 | side 1 at 19 min; 12 bombs, 4 rockets; upgrades 0 and 2 |
+| Sides block | 12/12, 21.8 min | 12/12, 20.8 min (the six advanced battles moved, the six standard ones did not) |
+| Larger maps | 5/5; 33.2 min larger, 25.6 standard | 5/5; 34.7 and 23.4 |
+| Engineering battle | side 1 in 21 min, 3 trucks, 3 Field Yards, 78 mends | side 1 in 25 min, 3 trucks, 5 Field Yards, 86 mends |
+| Map types | 12/12, 26.2 min; side 0 won 4, side 1 won 8 | 11/12, 25.1 min; side 0 won 4, side 1 won 7 |
+
+The unfinished map-type battle (highlands, seed 2) was followed to its cap: no squad left after
+minute 50, both sides broke with three units each; an attrition stalemate, of the kind the default
+battles already show (26/28). Unchanged: the mission lines, the standard-tech line, the tier-three
+battle, every map and site check.
+
+Ladder, `--map mix`, 150 seeds, Normal: the mirror read 53% / 45% (3 unfinished) before and 47% / 53%
+(1 unfinished) after, inside the noise, average length 25.1 and 25.2 minutes; new against `prev` 69%
+before, 67% after. Formations neither help nor hurt the computer measurably; they change how a wave
+looks on the way in, which is the point.
+
+### 2026-11-11: Round 6 integration
+
+The four workstreams merged in the contract's order (A, B, C, D), each with `git merge --no-ff` and a
+clean typecheck before the next. A and B merged without code conflicts; C met B only in the import
+lines of `GameScreen.tsx`, `ai.ts`, `commands.ts` and `SkirmishSetup.tsx` (both kept), and the build
+log and improvements list met in every merge (every entry kept, in merge order; headings brought to
+this log's "date: title" form).
+
+Seams closed at integration:
+
+- **The General leads a formation.** A squad with a field General among its members is led by the
+  General (`squadLeader`), wherever its slot falls by role (behind the armour). Such a squad re-aims
+  its members every 4 ticks rather than 8; a member out of its slot catches up past 1 tile rather
+  than 1.5, but one ahead of its slot waits for the squad instead of running on; and the General
+  holds to a quarter of the squad's pace while any member is more than 1.5 tiles behind or beside
+  its slot. Measured on open ground over eight directions, once formed: the worst distance from a
+  slot averages 0.99 tiles led by the General against 1.18 led from the front, tighter in 6 of 8
+  directions, never more than 2.2 tiles. The computer adds its General to its wave's wedge and
+  regroup box when it stands within 12 tiles of the wave and is not pulling back (`generalLeads`),
+  and `generalPlan` leaves a leading General to its squad; pulled back below 40% health, a plain move
+  takes it out and the squad goes on under its front slot. In six whole battles the computer's
+  General led its wave's squad in 48 samples of 250 ticks.
+- **Build keys.** `menuOf` now closes every list with the round's recruits (the General, then the
+  heroes) after the army's own items, so a key in use never moves when Heroes or Generals are on or
+  when an Academy goes up mid-battle (it used to: the Raider Bike went from N to D). Every unit list
+  fits the 14 keys with everything on (Ashen's Vehicles: 14, the Ace on D); past the fourteenth only
+  the Prototype Works, the Fortress and the Command Academy, which the key table now names as
+  clicked. The `0` row shows in a skirmish only; the touch table gained rows for the formation
+  buttons and the group chips.
+- **Prices on the cards.** Stat cards price what the battle charges (`listedCost`: `costFor` and
+  `buildTicksFor`, so a doctrine's discount and a hero's recruit price show); How to play's grids and
+  the armies panel show a hero's recruit price and time rather than the campaign's 0.
+- **Setup text.** Advanced tech's description names the Academy and its heroes only with Heroes on,
+  and the General only with Generals on (`techText`); How to play says what each option adds.
+- **Generals and armies.** Already right in C's code (GENERAL_FACTION, the setup's own two, the
+  computer's seeded pick); now asserted over every pairing of armies from both seats, with Ilse's
+  air discount reaching the Kestrel and Firebrand by `airRole`.
+- **The General's button** sat in its own corner and covered the power bar on a phone; it now sits
+  in the bar row beside the hero and power bars and wraps with them. Selected, its tint lay over the
+  battlefield rather than the HUD colour, and its title vanished in light mode.
+- **A livelock found by the all-options battles.** With its economy broken, the computer's
+  `raiseFunds` cancelled the queued General to pay for a hauler and `generalPlan` queued it again at
+  once, every decision, so the infantry queue never moved and the battle ran to its cap.
+  `generalPlan` now recruits nothing without a refinery and a hauler (B's rule for heroes).
+- **Harness repairs.** C's "other kinds at full price" read Meridian's catalogue price for an Ashen
+  side; it now reads the side's own army. B's computer section played one Hard battle, which D's
+  formations end at 17 minutes, before any hero acts (Hard advanced mirrors now average 22 minutes
+  against 31 before D, over 12 seeds); it now plays four Normal battles, 21 hero abilities among them.
+  The tour's build-window check now expects the recruits to be absent with both options off. The
+  script type errors are gone (`drive.ts`'s missing air queue, `drive-heroes`' building list,
+  `campaign-check`'s objective set; `HERO_ACADEMY` is a literal type): every round 6 harness
+  typechecks with `src`.
+- **Contract.** Section 1 now says Meridian's `FACTION_MENUS` adds the Sapper, as built.
+
+`npm run drive`: 0 failed, 374,046 assertions, about 7.7 minutes. Against the round's baseline, only
+the advanced lines D's entry names moved, by exactly D's figures; no line moved at A, B or C, or at
+integration:
+
+| Line | Before round 6 | After |
+|---|---|---|
+| Air battle on Hard | side 1 at 21 min; 12 bombs, 5 rockets; upgrades 0 and 0 | side 1 at 19 min; 12 bombs, 4 rockets; upgrades 0 and 2 |
+| Sides block | 12/12, 21.8 min | 12/12, 20.8 min (the six advanced battles) |
+| Larger maps | 5/5; 33.2 min larger, 25.6 standard | 5/5; 34.7 and 23.4 |
+| Engineering battle | side 1 in 21 min, 3 trucks, 3 Field Yards, 78 mends | side 1 in 25 min, 3 trucks, 5 Field Yards, 86 mends |
+| Map types | 12/12, 26.2 min; side 0 won 4, side 1 won 8 | 11/12, 25.1 min; side 0 won 4, side 1 won 7 |
+
+Unchanged: the three mission lines, the standard-tech line (26/28, 20.6 minutes), the tier-three
+battle and every map and site check. `campaign-check` 2,937 assertions; `npm run check` passes; both
+tours pass (desktop; touch on three phone layouts); 27 of 27 loading checks for Fireline.
+
+AI ladder, default card (150 seeds, the original game): identical to the card before the round
+(mirror 52% to 47%, Hard over Normal 67%, Normal over Easy 100%, new over old 89% at Normal and 56%
+at Hard). Twenty-four advanced battles with every option on (Ashen against Meridian from both seats,
+Heroes and Generals on, Normal, random maps): 23 finished, 10 to 50 minutes; both sides fielded a
+General in every one. The one left at the 100-minute cap is an attrition stalemate (neither side
+has a refinery or a hauler; side 1 is left with a Repair Truck and a Kestrel that stays parked at
+its Helipad, side 0 with structures alone; the same seed with Generals off ends at 31 minutes).
+Ashen won 16 of the 23, more than workstream A's 53% without the options: 23 battles is too few to
+read, but the armies with heroes and Generals on want their own 150-seed run.
+
+In the browser (desktop and iPhone 13, light and dark): an Ashen-against-Meridian lobby offers seat 0
+only Ashen's two Generals and names the Academy and the General in the tech text; in the battle the
+Academy and the General are listed and buildable, the General's button shows, a Wedge given to the
+General and four tanks keeps its shape on the move, the saved squad is led by the General, and no
+page or console errors.
+
+### 2026-11-11: Merged with main's air war
+
+Main's air war (the two 2026-11-10 entries above) and round 6 were built side by side and merged
+here. The contract's rules hold for the new aircraft (`fireline-round6-design.md`, section 8):
+
+- **Roles, not names.** `AirRole` gains `'scout'` (Recon Plane), `'intercept'` (Interceptor) and
+  `'transport'` (Troop Carrier); the Heavy Bomber is `'bomb'`. Every kind-name branch the air war
+  added in `air.ts`, `aiAir.ts`, the sidebar and the renderer reads the role, and the old
+  `isBomberKind` (by weapon kind) is gone, since the Firebrand's incendiaries are not `'bomb'`
+  weapons. `detector` and `carries` are identity fields no overlay may change.
+- **Both armies fly them, unchanged.** No overlay names the four, so both armies get the
+  catalogue's exact numbers (asserted), and Meridian's Air list is main's. Ashen's Air list is the
+  four, then its Kestrel and Firebrand: no key is shared and recruits stay last.
+- **One commander for both.** `aiAir.ts` picks every aircraft by role from the army's own Air list
+  (a `heavy` flag tells the Heavy Bomber from a side's ordinary bomber), so an Ashen side gets main's
+  whole air plan (Interceptors, the Recon Plane, airlifts, the Heavy Bomber, Countermeasures) with
+  its own strike aircraft.
+- **Seams.** The field General may not board a Troop Carrier (off the map it would read as fallen);
+  boarding is an order, so a boarder leaves its squad.
+
+Tests: a new drive-factions section (the four on both lists with exact numbers; an Ashen
+Interceptor scrambling at a Meridian Gunship and a Meridian one at a Kestrel; an Ashen Heavy Bomber's
+run; an Ashen Recon Plane circling; the Ashen Hard commander answering Gunships with an
+Interceptor and never a Gunship or Bomber). Two harness inputs moved with the merge, each a seed
+effect rather than a rule: the round-4 Hard air battle (seed strike-1) now lasts 31 minutes and
+ends while its first Bomber is on its way, so bombs are counted over it and a second battle
+(strike-8, 18 bombs); about three seeds in seven drop bombs, in main and after the merge alike.
+The heroes replay battle starts with 30,000 credits a side (was 20,000): the air war's Interceptors
+spent the spare credits and side 0 fell at minute 9 before anyone fielded a hero.
+
+Numbers. `npm run drive`: 374,120 assertions, 0 failed. Against main's own run, the three mission
+lines, the standard-tech line (26/28, 20.6 minutes), every standard-tech sides line, the tier-three
+battle and every map and site check are identical. The advanced lines moved: the air battles, the
+advanced sides battles (12/12, 21.0 minutes; main 11/12, 20.9), larger maps (33.1 and 20.6 minutes;
+main 31.1 and 28.3), the engineering battle (side 1 in 25 minutes, 36 mends; main 29 and 155) and
+the map types (12/12, 27.2 minutes, 6 to 6; main 11/12, 24.0, 7 to 4). All of it is round 6's
+computer formations on advanced tech: with the two formation moves switched off in a scratch copy,
+every summary line of the merged tree equals main's exactly. `npm run campaign:fire` 2,951, 0
+failures.
 
 ### 2026-11-11: Merge with main (main's round 5 and this branch's rounds 5b and 6, War for the Planet)
 
@@ -1492,6 +1792,35 @@ own shore is the likely cause, and is the first thing to look at if Coast games 
 Harness at the end: `npm run drive:fire` 391,798 assertions, 0 failed; `npm run campaign:fire`
 2,951 (the Naval Yard joins the skirmish-only structures its Last Light check skips).
 
+### 2026-11-11: Merged with main's naval war
+
+Round 6 merged main's naval war (the entry above). The rules are in `fireline-round6-design.md`
+section 9: both armies sail the five ships and build the Naval Yard at the catalogue's exact
+numbers; main's naval code reads prices, weapons and names through the per-side lookups where it
+knows the side; the Naval Yard sits after the Fortress and before the Academy, keyless like both;
+formations are for land units (`formsUp`: a ship takes a rear slot but never joins a squad, and two
+ships cannot form up); the field General boards no Landing Craft either; the computer's ships stay
+out of its waves. Two things the merge itself fixed: the build window's per-army catalogue had four
+tabs and so showed an empty Naval list (it now takes every key of `MENUS`), and the key table names
+the Naval Yard among the clicked Structures. `drive-factions.ts` gains a naval section (lists, specs,
+build keys over the Naval tab, boarding, formations, and an Ashen-against-Meridian Hard battle on the
+Coast map from each seat).
+
+**One harness input changed, and why.** Main put the Coast map in `MAP_TYPES`, so a `'random'` map
+now draws from seven types and many seeds land on another map. Round 6's checks (formations,
+heroes, Generals, armies) were written and measured on the six-type draw; on the new one the
+formations check's middle-of-the-map group stood beside a lake and one heroes battle ran 60 minutes
+on the Coast map. Those checks now create their battles through `createAsWritten`, which gives a
+random-map setup the type the same seed drew from the six, so each keeps the battlefield it was
+written on. Nothing a check asserts was loosened. Main's own checks are untouched.
+
+Harness: `npm run drive:fire` 396,760 assertions, 0 failed. The mission, standard-tech and
+tier-three lines are identical to main's. The advanced lines moved (the air battles, the naval
+battle, the advanced sides battles, larger maps, the engineering battle and the map types); with
+the computer's two formation moves switched off in a scratch copy, every summary line equals main's
+exactly, so all of it is round 6's formations, as at the air-war merge. `npm run campaign:fire`
+2,951, 0 failures.
+
 ### 2026-11-11: Merge with main's naval war (development lines, pace and War for the Planet kept)
 
 Main's PRs #38 and #39 (the naval war: the Coast map, five ships, the Naval Yard, the computer's navy;
@@ -1612,6 +1941,33 @@ start with a smaller garrison. After: 43 of 44 won with the army sent at twelve 
 at ten. `campaign:fire` plays a seeded six of the twenty-two at Normal, builds every engagement at
 three points of its act at every difficulty, and checks the geometry and the control rules: 7,642
 assertions, about 25 seconds more than before.
+
+### 2026-11-11: Round 6 merged with the visual pass
+
+Round 6 merged main's visual pass and territory campaign (the two entries above). Main's look is the
+look; every round 6 control now sits inside it.
+
+- **Skirmish orders.** The Army row, the Heroes field and the two Generals fields go in step 3,
+  Forces, under Tech level (Heroes and Generals are greyed on standard tech, so they follow it).
+  Tech level keeps round 6's `techText`, which names the Command Academy and the field General only
+  when their options are on. The Deploy step's summary gains Armies ("Ashen against Meridian"),
+  Your General, and Heroes and Generals with advanced tech. The army seats fill the row; on a phone
+  each doctrine seat's name goes above its choices, so the three fit across.
+- **Battle console.** The General's button is a drawer in the dock, labelled General like Heroes
+  and Support, its face lit in the General's gold when it stands (the hero revival note is a drawer
+  too). The formation row is a segmented strip of the console's small buttons under Stance, the
+  pressed shape lit as a stance is; the touch group chips are the same buttons, finger-sized. The
+  desktop orders legend gains the period key. The build window was not restyled by main, so its
+  per-army lists and Naval tab are unchanged.
+- **How to play.** Main's manual sections replace the old panels; the manual's section is now
+  `ManualSection` in `components/ui.tsx`, so the round 6 panels (Two armies, Heroes in free play,
+  Generals, Formations and groups) use it too and appear in the page index, with Naval, which
+  main's index had left out.
+- Main added `@fontsource/old-standard-tt`: run `npm install` after pulling.
+
+Harness: `npm run drive:fire` 396,760 assertions, 0 failed, every summary line equal to the run on
+the round 6 head (the visual pass is client-side); `npm run campaign:fire` 7,642, main's number,
+with the territory and engagement checks.
 
 ### 2026-11-11: Merge with main's visual pass and territory campaign (pace, lines and War for the Planet kept)
 
@@ -1798,3 +2154,67 @@ Gates at the merge: `npm run check` "All checks passed" (drive:fire "397801 asse
 failed, 84.3s"; the whole check 19m16s). `npm run tours -- --quick fireline fireline-planet` "ok
 fireline" (build window: 45 menu items) and "ok fireline-planet". `npm run ladder:planet` "Every
 target passes; 94.5 s in all", and with `-- --prefix holdout` "Every target passes; 96.1 s in all".
+
+### 2026-11-12: Round 6 merged with War for the Planet (development lines and the game pace)
+
+Main's PR #35 (War for the Planet, with development lines and loadouts, the game pace and the merges
+recorded in the entries above) met round 6's two armies, heroes in free play, Generals and formations.
+Nineteen files conflicted; every one was merged with both sides kept. The rules are in
+`fireline-round6-design.md`, section 10. In short:
+
+- **Two contracts, one name.** Main's pace contract was also `fireline-round6-design.md`. Round 6's
+  armies keep the name; main's is now `fireline-round6b-design.md`, every reference updated (as round
+  5b was named at the merge before). The build log entries above keep their words; where one of main's
+  says "round 6" about the game size, it means round 6b.
+- **War for the Planet is unchanged.** `buildPlanetBattle` states round 6's four setup fields (every
+  seat Meridian, heroes, Generals and doctrine Generals off), `heroesInPlay` and `fieldGenerals` are
+  false in any planet battle, and the computer's wedge and regroup box run in a skirmish only. The
+  war's own heroes run as main built them; a player may still give a formation. The war's player
+  faction is called Meridian Corps on the planet map, and every planet battle seat fields round 6's
+  Meridian army, so the names agree.
+- **Textual merges.** Setup fields in the order map to pace, then factions, heroes, generals,
+  generalPicks, in both presets. The hero tick runs in a mission or a planet battle (main) or a
+  skirmish with heroes on (round 6), and Z X C V do likewise. The skirmish orders' Forces step is
+  tech level, research, then army, Heroes and Generals. The stat card takes the army, the battle and
+  the research mode; the loadout panel and the build window's Vehicles tab sit with round 6's per-army
+  lists. The ladder has main's `--pace` and `--research` beside `--factions`. The build-window tour
+  opens Customise, then fixes the seed and the Coast map.
+- **Semantic merges.** Main's new lookups read the side's army where the side is known: the
+  computer's vehicle price (`vehiclePrice`), Salvage crews' payment, the bomb run's and flight's speed,
+  the paced hold's armed units, the loadout names. `weaponOf(s, u)` gives the army's weapon with a
+  long barrel; the General's aura copies that weapon (before, round 6's line would have dropped the
+  barrel, and main's would have dropped an Ashen overlay). A squad member's speed cap comes after
+  main's Motorised infantry and fuel tank, and the squad's pace counts both.
+- **Development lines for both armies.** Main added no unit or structure kind, so menus, keys and the
+  recruits' places are unchanged. Both armies research the same lines; modules fit the catalogue kinds
+  their lists name, so an Ashen tank takes a Meridian tank's modules and the Raider Bike takes none.
+
+**Harness.** Round 6's defaults (setup fields and each player's `faction`, all Meridian and off) are
+checked and left out of the hashes main's harness keeps (`preRound6` in `drive-planet-battle.ts`, the
+`strip` in `drive-size.ts`), as the naval merge did for the empty Naval queue; a planet battle with
+any round 6 trace throws. `drive-planet-battle.ts` also asserts a planet battle's stated setup and,
+after 3,000 ticks of the four-sided capital battle, no General, Academy, recruit or squad.
+`drive-size.ts` PRE_ROUND6: the 18 advanced battles regenerated, for round 6's computer formations
+alone: with the two formation moves switched off in a scratch copy of the merged tree, all 30 equal
+origin/main's values. The two setup key-order checks name round 6's four after the pace.
+
+**Numbers.** origin/main (5e91242) in a scratch worktree: `npm run drive` 397,801 assertions, 0
+failed; campaign-check 7,699, 0 failures; drive:planet 35,252. Merged: `npm run drive` 401,464 assertions, 0
+failed (about 18 minutes); campaign-check 7,699, 0 failures; drive:planet 35,255 (three new), 0
+failed. Every mission line, the standard-tech line, every standard-tech sides line and the tier-three
+battle are main's exactly. The advanced lines moved: the Hard air battle (main side 1 at 17 minutes,
+0 bombs, 4 rockets; merged 30 minutes, 1 rocket, so round 6's second air battle is counted too), the
+development-lines computer (Easy, Normal and Hard averages, armed counts, the replayed lines battle
+and a reported Normal stand-off), Long and Epic pace battles, the air war and naval battles, the
+advanced sides battles (14/14, 20.9 to 21.2 minutes), larger maps and the engineering battle, the map
+types (13/14 both; 27.4 to 26.5 minutes) and the survivors count (639 to 694). With the computer's two
+formation moves switched off in a scratch copy, every summary line equals main's exactly (round 6's
+own formation checks then fail, as they should, and its second air battle line is its own).
+`npm run test:api` 607 passed. `npm run tours -- --quick` all eight ok; `npm run tours -- fireline
+fireline-touch fireline-planet` ok (build window 45 items, 6 kept off; touch on three phone layouts).
+`npm run check:loading` 27/27 for Fireline. In the browser (desktop and iPhone 13, light and dark): the
+lobby shows War for the Planet and the skirmish orders; an Ashen-against-Meridian lines skirmish with
+Heroes and Generals on (Kade for side 0) starts with both armies, a Wedge holds, the General's drawer
+shows, the Ashen Vehicles tab lists the Raider Bike; a war starts on its map; no console errors and no
+horizontal scroll. `npm run check` from the root: "All checks passed", after main's #43 (Founder's
+Ledger only) was merged on top too.

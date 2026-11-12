@@ -39,7 +39,10 @@ import {
   type UnitKind,
 } from './rules';
 import { computerSides, isAlly, isEnemy, sidesOf, startOf } from './sides';
-import { addBuilding, addUnit, isStructure, log, newAiMemory, updateExplored } from './state';
+import { addBuilding, addUnit, isStructure, log, newAiMemory, setupOf, updateExplored } from './state';
+// round6:B. Heroes in free play: the revive cooldown for a skirmish hero that falls.
+import { HERO_REVIVE_TICKS, TICKS_PER_SECOND } from './rules';
+import { buildingSpecOf, perksFor, unitSpecOf } from './specs';
 import type {
   Building,
   GameState,
@@ -204,12 +207,14 @@ export function placeUnits(s: GameState, owner: Owner, kinds: UnitKind[], x: num
 }
 
 /** Full health of a hero at a level, with side 0's Armour perk. */
-function heroMaxHp(s: GameState, u: Unit, level: number): number {
-  const perk = u.owner === 0 && s.perks ? s.perks.unitHpMul : 1;
-  return Math.max(1, Math.round(UNITS[u.kind].hp * perk * (1 + HERO_HP_PER_LEVEL * (level - 1))));
+export function heroMaxHp(s: GameState, u: Unit, level: number): number {
+  const perks = perksFor(s, u.owner);
+  const perk = perks ? perks.unitHpMul : 1;
+  return Math.max(1, Math.round(unitSpecOf(s, u).hp * perk * (1 + HERO_HP_PER_LEVEL * (level - 1))));
 }
 
-function setMaxHp(u: Unit, v: number): void {
+export function setMaxHp(u: Unit, v: number): void {
+  // Absent maxHp means UNITS[kind].hp (maxHpOf), whatever the side's army.
   if (v === UNITS[u.kind].hp) delete u.maxHp;
   else u.maxHp = v;
 }
@@ -504,7 +509,7 @@ export function gainHeroXp(s: GameState, u: Unit, amount: number): void {
   setMaxHp(u, after);
   u.hp = Math.min(after, u.hp + (after - before));
   s.effects.push({ id: s.nextId++, kind: 'levelup', x: u.x, y: u.y, at: s.tick, size: level });
-  if (u.owner === 0) log(s, `${UNITS[u.kind].name} reached level ${level}.`, 'good');
+  if (u.owner === 0) log(s, `${unitSpecOf(s, u).name} reached level ${level}.`, 'good');
 }
 
 /** Xp a hero earns for destroying this. */
@@ -533,7 +538,7 @@ export function doAbility(s: GameState, owner: Owner, heroId: number, target?: n
   }
   const b = s.buildings.find(v => v.id === target)!;
   const c = buildingCentre(b);
-  const name = BUILDINGS[b.kind].name;
+  const name = buildingSpecOf(s, b).name;
   if (kind === 'engineer') {
     // The cooldown starts when the capture succeeds; an interrupted one can be tried again at once.
     h.active = { kind: 'capture', target: b.id, progress: 0 };
@@ -546,6 +551,8 @@ export function doAbility(s: GameState, owner: Owner, heroId: number, target?: n
     return;
   }
   h.abilityCd = abilityCooldown(kind, h.level);
+  // round6:B. Heroes in free play: the player hears of an enemy hero at work on their base.
+  if (!s.mission && owner !== 0 && b.owner === 0) log(s, kind === 'commando' ? `Enemy charge set on our ${name}.` : `An enemy Spy got into our ${name}.`, 'bad');
   if (kind === 'commando') {
     b.chargeAt = s.tick + CHARGE_FUSE;
     b.chargedBy = u.id;
@@ -583,7 +590,7 @@ export function doAbility(s: GameState, owner: Owner, heroId: number, target?: n
     case 'hq': {
       if (owner === 0) for (const e of s.buildings) if (e.owner === enemy) {
         const ec = buildingCentre(e);
-        revealArea(s, ec.x, ec.y, BUILDINGS[e.kind].sight + 2);
+        revealArea(s, ec.x, ec.y, buildingSpecOf(s, e).sight + 2);
       }
       // Their next wave: half the growth it has built up, and later.
       const mem = s.ai[enemy];
@@ -612,8 +619,8 @@ export function completeCapture(s: GameState, u: Unit, b: Building): void {
   delete b.sabotagedUntil;
   const c = buildingCentre(b);
   s.effects.push({ id: s.nextId++, kind: 'captured', x: c.x, y: c.y, at: s.tick, size: Math.max(BUILDINGS[b.kind].w, BUILDINGS[b.kind].h) });
-  if (u.owner === 0) log(s, `The Engineer captured the enemy ${BUILDINGS[b.kind].name}.`, 'good');
-  else if (from === 0) log(s, `Our ${BUILDINGS[b.kind].name} has been captured.`, 'bad');
+  if (u.owner === 0) log(s, `The Engineer captured the enemy ${buildingSpecOf(s, b).name}.`, 'good');
+  else if (from === 0) log(s, `Our ${buildingSpecOf(s, b).name} has been captured.`, 'bad');
   noteEvent(s, 'capture', b.kind, u.owner);
   const h = u.hero!;
   delete h.active;
@@ -676,7 +683,8 @@ function draw(s: GameState): number {
 
 /** Calls a support power that powerProblem has passed, on a cloned state. */
 export function doPower(s: GameState, owner: Owner, power: SupportPower, x: number, y: number): void {
-  const mul = owner === 0 && s.perks ? s.perks.powerCooldownMul : 1;
+  const perks = perksFor(s, owner);
+  const mul = perks ? perks.powerCooldownMul : 1;
   const powers: NonNullable<GameState['powers']> = s.powers ? s.powers : sidesOf(s).map(() => ({}));
   powers[owner] = { ...powers[owner], [power]: Math.max(1, Math.round(POWERS[power].cooldown * mul)) };
   s.powers = powers;
@@ -794,10 +802,18 @@ export function noteDestroyed(s: GameState, b: Building): void {
 
 /** A hero has fallen: out for the rest of the battle, remembered for the debrief. */
 export function noteFallen(s: GameState, u: Unit): void {
+  // round6:B. Heroes in free play: a skirmish hero may be recruited again after HERO_REVIVE_TICKS,
+  // keeping its experience (heroes.ts). Missions are untouched: their heroes stay out once fallen.
+  if (u.hero && !s.mission && setupOf(s).heroes === true && setupOf(s).tech === 'advanced') {
+    const p = s.players[u.owner];
+    p.heroFallen = { ...p.heroFallen, [u.kind]: { at: s.tick + HERO_REVIVE_TICKS, xp: u.hero.xp } };
+    if (u.owner === 0) log(s, `${unitSpecOf(s, u).name} has fallen. Recruit again in ${HERO_REVIVE_TICKS / TICKS_PER_SECOND} seconds, at half price.`, 'bad');
+    return;
+  }
   if (!u.hero || u.owner !== 0) return;
   if (s.mission) s.mission.fallen = { ...s.mission.fallen, [u.kind]: u.hero.xp };
   if (s.planet) s.planet.fallen = { ...s.planet.fallen, [u.kind]: u.hero.xp };
-  log(s, `${UNITS[u.kind].name} has fallen.`, 'bad');
+  log(s, `${unitSpecOf(s, u).name} has fallen.`, 'bad');
 }
 
 /** Units arriving by a trigger. */
@@ -808,7 +824,7 @@ export function spawnGroup(s: GameState, sp: SpawnSpec): Unit[] {
   if (sp.order === 'attackMove') {
     const tx = Number.isFinite(sp.tx) ? sp.tx! : sp.x;
     const ty = Number.isFinite(sp.ty) ? sp.ty! : sp.y;
-    for (const u of units) u.order = UNITS[u.kind].weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty };
+    for (const u of units) u.order = unitSpecOf(s, u).weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty };
   }
   return units;
 }
@@ -1007,8 +1023,8 @@ function missionStrikes(s: GameState): void {
       // (27 units with one barrage in Firestorm), with nothing a player could do about it. Out of
       // sight, the army is safe; in sight, near their units or structures, it is fair game.
       const watchers = [
-        ...s.units.filter(v => v.hp > 0 && v.owner === o).map(v => ({ x: v.x, y: v.y, r: UNITS[v.kind].sight })),
-        ...s.buildings.filter(b => b.hp > 0 && b.owner === o).map(b => ({ ...buildingCentre(b), r: BUILDINGS[b.kind].sight + Math.max(BUILDINGS[b.kind].w, BUILDINGS[b.kind].h) / 2 })),
+        ...s.units.filter(v => v.hp > 0 && v.owner === o).map(v => ({ x: v.x, y: v.y, r: unitSpecOf(s, v).sight })),
+        ...s.buildings.filter(b => b.hp > 0 && b.owner === o).map(b => ({ ...buildingCentre(b), r: buildingSpecOf(s, b).sight + Math.max(BUILDINGS[b.kind].w, BUILDINGS[b.kind].h) / 2 })),
       ];
       const seen = (u: { x: number; y: number }) => watchers.some(w => Math.abs(w.x - u.x) <= w.r && Math.abs(w.y - u.y) <= w.r && dist(w.x, w.y, u.x, u.y) <= w.r);
       for (const u of s.units) {

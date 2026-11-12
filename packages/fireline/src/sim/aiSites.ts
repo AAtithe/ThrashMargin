@@ -16,6 +16,7 @@ import { siteCentre, siteDist } from './sites';
 import { costFor, countBuildings, maxHpOf, powerOf, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import type { GameState, Site, Unit } from './types';
+import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
 
 /**
  * The computer commander's neutral sites and tier three (fireline-round5-design.md, workstream D).
@@ -158,7 +159,7 @@ function captureParties(s: GameState, owner: Owner, t: SiteTactics, home: Pt, un
     const pool = units.filter(
       u =>
         UNITS[u.kind].category === 'infantry' &&
-        UNITS[u.kind].weapon &&
+        unitSpecOf(s, u).weapon &&
         u.kind !== 'skyhunter' &&
         !UNITS[u.kind].hero &&
         !busy.has(u.id) &&
@@ -174,7 +175,7 @@ function captureParties(s: GameState, owner: Owner, t: SiteTactics, home: Pt, un
       for (const site of sites) {
         if (ours(site) || targeted.has(site.id) || skip.has(site.id)) continue;
         const c = siteCentre(site);
-        const guard = foes.filter(f => UNITS[f.kind].weapon && dist(f.x, f.y, c.x, c.y) < 7).length;
+        const guard = foes.filter(f => unitSpecOf(s, f).weapon && dist(f.x, f.y, c.x, c.y) < 7).length;
         if (guard > t.partySize) continue;
         const d = dist(home.x, home.y, c.x, c.y);
         // A site lost to an enemy close to home is taken back first.
@@ -223,18 +224,18 @@ function tierThree(s: GameState, owner: Owner, diff: Difficulty, t: SiteTactics,
 
   // Units from the Prototype Works: they are the army, so no waiting on its size.
   if (count('protoworks') > 0 && vq.length <= 1) {
-    const vehicles = units.filter(u => UNITS[u.kind].category === 'vehicle' && UNITS[u.kind].weapon).length;
+    const vehicles = units.filter(u => UNITS[u.kind].category === 'vehicle' && unitSpecOf(s, u).weapon).length;
     const rails = Math.min(t.railMax, 1 + Math.floor(vehicles / t.railPer));
     // Saved for out of units not yet started, as the structures below are: a cheaper unit would
     // otherwise always take the credits first.
     const want: UnitKind | null = queued('stealthtank') < t.stealth ? 'stealthtank' : queued('railtank') < rails ? 'railtank' : null;
-    if (want && unlocked(s, owner, want) && fund(s, owner, UNITS[want].cost) && canQueue(s, owner, 'vehicle', want)) doQueue(s, owner, 'vehicle', want);
+    if (want && unlocked(s, owner, want) && fund(s, owner, unitSpec(s, owner, want).cost) && canQueue(s, owner, 'vehicle', want)) doQueue(s, owner, 'vehicle', want);
   }
 
   // Structures wait for the army at home to be up to the next wave and to the opponent's army,
   // as the commander's own extras do, and then are paid for by taking back units not yet started.
-  const armed = units.filter(u => UNITS[u.kind].weapon && UNITS[u.kind].category !== 'air').length;
-  const foeArmy = foes.filter(u => UNITS[u.kind].weapon && UNITS[u.kind].category !== 'air').length;
+  const armed = units.filter(u => unitSpecOf(s, u).weapon && UNITS[u.kind].category !== 'air').length;
+  const foeArmy = foes.filter(u => unitSpecOf(s, u).weapon && UNITS[u.kind].category !== 'air').length;
   if (armed < Math.max(Math.min(d.waveCap, d.firstWave + mem.wave * d.waveGrowth), foeArmy * 0.9)) return;
   if (p.queues.building.length) return;
   if (count('researchlab') < 1) queueStructure(s, owner, 'researchlab');
@@ -267,8 +268,8 @@ function queueStructure(s: GameState, owner: Owner, kind: BuildingKind): void {
   const p = s.players[owner];
   if (p.queues.building.length) return;
   const pw = powerOf(s, owner);
-  const want: BuildingKind = pw.made - pw.used + BUILDINGS[kind].power < 10 ? 'power' : kind;
-  if (!unlocked(s, owner, want) || !fund(s, owner, BUILDINGS[want].cost)) return;
+  const want: BuildingKind = pw.made - pw.used + buildingSpec(s, owner, kind).power < 10 ? 'power' : kind;
+  if (!unlocked(s, owner, want) || !fund(s, owner, buildingSpec(s, owner, want).cost)) return;
   if (canQueue(s, owner, 'building', want)) doQueue(s, owner, 'building', want);
 }
 

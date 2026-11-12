@@ -2,7 +2,7 @@ import { GAME_PACE_ORDER, GAME_PACES, MAP_SIZE_NAMES, MAP_SIZE_TILES, isPresetSe
 import { ORE_TEXT } from './SkirmishSetup';
 
 /**
- * The first screen of a new skirmish: how big a battle (fireline-round6-design.md, section 7.1).
+ * The first screen of a new skirmish: how big a battle (fireline-round6b-design.md, section 7.1).
  * Each card states what picking it writes into the setup and what it changes; the lobby applies
  * the preset with applyPace. Clicking the card already chosen re-applies its preset, which is how
  * a "Customised" setup goes back to the card's numbers.

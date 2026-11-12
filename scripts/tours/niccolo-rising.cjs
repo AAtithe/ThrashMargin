@@ -33,10 +33,16 @@
  * (`data-tour-target`; `data-tour-manual` steps are read and dismissed): offered unasked to a fresh
  * character on both viewports, and in full mode started from the header after the first mission and
  * tried on a character with no Energy. Each new step is left alone for 1.5s and must not move on its
- * own; the target must be on screen, enabled, not under the card and what a click actually hits; a
+ * own; once the card and ring have come to rest on it (not after a fixed pause: they glide when a
+ * step moves from a nav button to the control itself), the target must be on screen, enabled, not
+ * under the card and what a click actually hits; a
  * spell in the Steen or the infirmary after a failed scheme hides the card, and the run must come
- * back on the same step; at the end every step was shown and the save shows a mission accepted, a
- * stat trained and a scheme attempted, and Finish marks the tour seen.
+ * back where it left off: on the next step, since the scheme it was asking for has been attempted
+ * (the step is complete, and its run keeps advancing while hidden), or on the same step if the
+ * card hid for any other reason. A fresh character lands in the Steen on about 1 run in 80, so that
+ * path is also played every time on a character whose first scheme is caught (`caught`). At the
+ * end every step was shown and the save shows a mission accepted, a stat trained and a scheme
+ * attempted, and Finish marks the tour seen.
  *
  * Screenshots only on failure, into TOUR_OUT. Only the client-side `tm_user` is set; the sign-in gate
  * and server auth are untouched. See scripts/tours/run.mjs.
@@ -63,6 +69,10 @@ for (const vp of ['desktop', 'phone']) runs.push({ kind: 'edges', vp, full: !QUI
 // wait for a new Accept) and on a character with no Energy left (the train step must not point at
 // a control the sim refuses).
 for (const vp of ['desktop', 'phone']) runs.push({ kind: 'tour', vp, variant: 'fresh' });
+// A character whose first scheme is caught by the Watch: the card hides for the Steen and must come
+// back on the step after the scheme. Left to chance (about 1 run in 80), that path went unplayed
+// for months and the check on it was wrong; this plays it on every run.
+runs.push({ kind: 'tour', vp: 'phone', variant: 'caught' });
 if (!QUICK) {
   runs.push({ kind: 'tour', vp: 'desktop', variant: 'after-mission' });
   runs.push({ kind: 'tour', vp: 'phone', variant: 'tired' });
@@ -467,16 +477,58 @@ const cardOf = page => page.evaluate(() => {
   };
 });
 
+/**
+ * Waits (up to 5s) until the tour's card and ring have stopped moving and the ring is on `target`:
+ * no transition running on the tour's own elements (portalled straight into <body>), the ring
+ * centred on the target, and the card, ring and target where they were on the previous read. A
+ * time limit on settling, not on anything the check asserts: false means the tour never came to
+ * rest, which is a failure in its own right.
+ */
+async function settled(page, target) {
+  let prev = '';
+  for (let i = 0; i < 50; i++) {
+    const now = await page.evaluate(t => {
+      const card = document.querySelector('[data-tour-step]'), el = document.getElementById(t);
+      if (!card || !el || card.getAttribute('data-tour-target') !== t) return null;
+      const chrome = [...document.body.children];
+      if (document.getAnimations().some(a => a.playState === 'running' && chrome.includes(a.effect && a.effect.target))) return null;
+      // The ring: the one that dims everything around it (its border is a CSS variable, so it has
+      // no readable border longhands).
+      const ring = chrome.find(e => e !== card && e.style.position === 'fixed' && e.style.boxShadow.includes('9999px'));
+      if (!ring) return null;
+      const box = e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom].map(Math.round); };
+      const [rl, rt, rr, rb] = box(ring), [tl, tt, tr, tb] = box(el);
+      if (Math.abs(rl + rr - tl - tr) > 2 || Math.abs(rt + rb - tt - tb) > 2) return null;
+      return JSON.stringify([box(card), box(ring), box(el)]);
+    }, target);
+    if (now && now === prev) return true;
+    prev = now || '';
+    await page.waitForTimeout(100);
+  }
+  return false;
+}
+
 /** Seeds a character with the real sim, so a run can start from a particular state. */
-async function seedCharacter(page, id, mutate) {
-  await page.evaluate(async ({ id, start, mutate }) => {
+async function seedCharacter(page, id, mutate, caught = false) {
+  await page.evaluate(async ({ id, start, mutate, caught }) => {
     const { createInitialState } = await import('/src/sim/state.ts');
     const s = JSON.parse(JSON.stringify(createInitialState(id, 'Tour', { seed: id, createdAt: start })));
     // eslint-disable-next-line no-new-func
     new Function('s', mutate)(s);
+    if (caught) {
+      // The first seed, by the real sim, whose first roll fails the tour's scheme and lands in the
+      // Steen. Nothing before the scheme step rolls (accepting and training do not).
+      const { processAction } = await import('/src/sim/actions.ts');
+      const { planFirstHours } = await import('/src/components/GuidedTour.tsx');
+      const schemeId = planFirstHours(s).schemeId;
+      for (let r = 1; r < 100000; r++) {
+        const t = processAction({ ...s, rngSeed: r }, { type: 'SCHEME', at: start + 60_000, schemeId });
+        if (t.status.kind === 'steen') { s.rngSeed = r; break; }
+      }
+    }
     localStorage.setItem('nrising_save_' + id, JSON.stringify(s));
     localStorage.setItem('nrising_saves', JSON.stringify([{ id, name: 'Tour', turn: 1, status: 'active', savedAt: start }]));
-  }, { id, start: START, mutate });
+  }, { id, start: START, mutate, caught });
 }
 
 async function tourRun(page, { vp, variant }, local) {
@@ -499,14 +551,14 @@ async function tourRun(page, { vp, variant }, local) {
     // before the run begins. tired: no Energy left to train with.
     await seedCharacter(page, id, variant === 'after-mission'
       ? "s.missions.done = ['goose']; s.counters.schemes = 3;"
-      : "s.bars.energy.cur = 0;");
+      : variant === 'tired' ? "s.bars.energy.cur = 0;" : '', variant === 'caught');
     await page.goto(`${BASE}/game/${id}`);
     await page.waitForSelector('text=Where things stand');
     await page.waitForTimeout(500);
     const offered = (await page.locator('[data-tour-step]').count()) > 0;
     // A tired character has still never played, so the unasked offer is right; one who has
     // finished a mission must not get it unasked, and starts it from the header.
-    if (variant === 'tired' && !offered) await fail('the tour was not offered to a character who has never played');
+    if ((variant === 'tired' || variant === 'caught') && !offered) await fail('the tour was not offered to a character who has never played');
     if (variant === 'after-mission') {
       if (offered) await fail('the tour was offered unasked to a character who has already played');
       const start = page.locator('button', { hasText: 'Guided first hour' });
@@ -520,7 +572,7 @@ async function tourRun(page, { vp, variant }, local) {
   const total = Number((/of (\d+)/.exec((await cardOf(page)).label) || [])[1]);
   const shown = new Set();
   const titles = new Set();
-  let last = -1, finished = false;
+  let last = -1, lastTitle = '', finished = false, hid = 0;
   for (let guard = 0; guard < 60 && !finished; guard++) {
     let c = await cardOf(page);
     if (!c) {
@@ -532,11 +584,19 @@ async function tourRun(page, { vp, variant }, local) {
       await page.waitForTimeout(300);
       c = await cardOf(page);
       if (!c) continue;
-      if (c.step !== last) await fail(`after the ${s.status.kind} the run is on step ${c.step + 1}, was ${last + 1}`);
+      hid++;
+      // The only thing that hides the card mid-run is a failed scheme. If the card hid on the
+      // scheme step and the scheme was attempted, that step is complete (its predicate is a change
+      // in the scheme count), and the run, which keeps advancing while hidden, must come back on
+      // exactly the next step. Otherwise it must come back on the step it left.
+      const schemed = lastTitle === 'Spend Nerve on a scheme' && s.counters.schemes > before.counters.schemes;
+      const want = schemed ? last + 1 : last;
+      if (c.step !== want) await fail(`after the ${s.status.kind} the run is on step ${c.step + 1}, should be ${want + 1} (was on ${last + 1}${schemed ? ', the scheme attempted' : ''})`);
     }
     if (c.step < last) await fail(`went back from step ${last + 1} to ${c.step + 1}`);
     const fresh = c.step !== last;
     last = c.step;
+    lastTitle = c.title;
     shown.add(c.step);
     titles.add(c.title);
 
@@ -555,8 +615,13 @@ async function tourRun(page, { vp, variant }, local) {
       if (now) c = now;
     }
     if (!c.target) { await fail(`step ${c.step + 1} "${c.title}" points at nothing`); break; }
-    // Geometry, once the card has settled.
+    // Geometry, once the card has settled: actually settled, not a fixed pause. A step that first
+    // points at a nav button and then, once the player is there, at the control itself keeps its
+    // step number, so it gets no 1.5s wait; the card and ring glide from the old target to the new
+    // one (a 0.2s transition that starts only when the tour re-measures), and on a loaded CI runner
+    // a fixed 300ms ran out with the card still over the Train button (Nov 2026).
     await page.waitForTimeout(300);
+    if (!(await settled(page, c.target))) await fail(`step ${c.step + 1} the card and ring never settled on ${c.target}`);
     const geo = await page.evaluate(t => {
       const el = document.getElementById(t), card = document.querySelector('[data-tour-step]');
       if (!el || !card) return null;
@@ -587,6 +652,7 @@ async function tourRun(page, { vp, variant }, local) {
     if (!moved) { await fail(`stuck on step ${c.step + 1} "${c.title}" after clicking ${c.target}`); break; }
   }
 
+  if (variant === 'caught' && !hid) await fail('the scheme was not caught: the Steen path was not played');
   if (!finished) await fail(`the run did not finish (last step ${last + 1} of ${total})`);
   for (let i = 0; i < total; i++) if (!shown.has(i)) await fail(`step ${i + 1} of ${total} was never shown`);
   const after = await saveOf(page, id);

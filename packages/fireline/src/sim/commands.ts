@@ -35,8 +35,14 @@ import {
   unlocked,
 } from './state';
 import type { Building, GameState, QueuedOrder, Stance, Unit } from './types';
+import { buildingSpec, buildingSpecOf, unitSpecOf } from './specs';
 // round5:D. Tier three: the Stealth Tank is targetable only when seen (fireline-round5-design.md).
 import { stealthSeen } from './sites';
+// round6:B. Heroes in free play: recruit limits (fireline-round6-design.md).
+import { heroesInPlay, heroRecruitProblem } from './heroes';
+import type { HeroKind } from './rules';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { generalQueueable } from './generals';
 
 /**
  * Orders, shared by the player and the computer. Each `can*` check reads the state without
@@ -53,8 +59,18 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   if (!(kind in BUILDINGS) && !(kind in UNITS)) return false;
   // A Command Yard is never built, and a Field Yard only ever comes from deploying a Forward Base Truck.
   if (kind === 'hq' || kind === 'fieldyard') return false;
-  // Heroes are campaign characters, never built.
-  if (kind in UNITS && UNITS[kind as UnitKind].hero) return false;
+  // round6:B begin. Heroes in free play: the refusal below relaxed when setup.heroes is on, and the
+  // one-of-each limit (standing, queued and on the revive cooldown).
+  // Heroes are campaign characters, never built, except in a skirmish with heroes on (and advanced
+  // tech), where they are recruited once a Command Academy stands (techAllowed, below), one of each.
+  if (kind in UNITS && UNITS[kind as UnitKind].hero) {
+    if (!heroesInPlay(s)) return false;
+    if (heroRecruitProblem(s, owner, kind as HeroKind) !== null) return false;
+  }
+  // round6:B end.
+  // round6:C begin. Generals: one field General per side (standing or queued), and its replacement cooldown.
+  if (kind === 'general' && !generalQueueable(s, owner)) return false;
+  // round6:C end.
   if (categoryOf(kind) !== category) return false;
   // A mission limits what side 0 may build to what the campaign has unlocked; a skirmish on
   // standard tech, and a mission's enemy, to the original game's kinds.
@@ -169,7 +185,7 @@ export function placementProblem(
   // A Field Yard reaches further than the rest (its own buildRadius).
   const near = s.buildings.some(b => {
     if (b.owner !== owner || !isStructure(b)) return false;
-    const bs = BUILDINGS[b.kind];
+    const bs = buildingSpecOf(s, b);
     const gapX = Math.max(0, b.x - (x + spec.w - 1), x - (b.x + bs.w - 1));
     const gapY = Math.max(0, b.y - (y + spec.h - 1), y - (b.y + bs.h - 1));
     return Math.max(gapX, gapY) <= (bs.buildRadius ?? BUILD_RADIUS);
@@ -194,7 +210,7 @@ export function doPlace(s: GameState, owner: Owner, kind: BuildingKind, x: numbe
     upgradeNewUnit(s, h);
   }
   syncSkirmishPowers(s);
-  if (owner === 0) log(s, `${BUILDINGS[kind].name} placed.`, 'good');
+  if (owner === 0) log(s, `${buildingSpec(s, owner, kind).name} placed.`, 'good');
 }
 
 export function canSell(s: GameState, owner: Owner, id: number): boolean {
@@ -203,7 +219,7 @@ export function canSell(s: GameState, owner: Owner, id: number): boolean {
 
 export function doSell(s: GameState, owner: Owner, id: number): void {
   const b = s.buildings.find(x => x.id === id)!;
-  const spec = BUILDINGS[b.kind];
+  const spec = buildingSpecOf(s, b);
   const refund = Math.floor((spec.cost * SELL_RETURN * (b.hp / spec.hp)) / 10) * 10;
   s.players[owner].credits += refund;
   s.buildings = s.buildings.filter(x => x.id !== id);
@@ -307,6 +323,21 @@ export function doMove(s: GameState, owner: Owner, ids: number[], x: number, y: 
   const units = ownUnits(s, owner, ids);
   const occ = occupancy(s);
   const MAP_W = s.mapW;
+  // round6:D begin. Formations and squads: a move with a formation takes its slots from slotsFor
+  // (and forms a squad) instead of the spiral below; without one, exactly the spiral as today.
+  // A shape is given through doFormationMove (below). Here, a plain move of exactly one squad's
+  // members keeps its shape; any other plain move takes the units it names out of their squads.
+  // Without squads (every battle until someone forms one) nothing here runs.
+  if (s.squads) {
+    pruneSquads(s);
+    const q = queue ? undefined : wholeSquad(s, units);
+    if (q) {
+      doFormationMove(s, owner, ids, x, y, attackMove, q.shape);
+      return;
+    }
+    leaveSquads(s, units);
+  }
+  // round6:D end.
   const slots = formation(units.length);
   units.forEach((u, i) => {
     const [ox, oy] = slots[i] ?? [0, 0];
@@ -318,7 +349,7 @@ export function doMove(s: GameState, owner: Owner, ids: number[], x: number, y: 
       tx = (k % MAP_W) + 0.5;
       ty = ((k / MAP_W) | 0) + 0.5;
     }
-    give(u, attackMove && UNITS[u.kind].weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty }, queue);
+    give(u, attackMove && unitSpecOf(s, u).weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty }, queue);
   });
 }
 
@@ -334,6 +365,116 @@ function formation(n: number): [number, number][] {
   return SLOTS.slice(0, Math.max(1, Math.min(n, SLOTS.length)));
 }
 
+// round6:D begin. Formations and squads: slotsFor(shape, n, facing), the role order, and the
+// 'formation' action's check and work (or in a formations.ts of D's own, imported here).
+import { facingOf, formsUp, isFormationShape, leaveSquads, pruneSquads, slotOrder, slotScale, slotsFor, slowest, squadLeader, wholeSquad } from './formations';
+import type { FormationShape } from './rules';
+import type { Squad } from './types';
+
+/**
+ * A move in a formation: slots from slotsFor, facing from the group's middle to the point (or
+ * `facing` when given), handed out by role then id. Not queued, the ground units form a squad (ids
+ * from s.nextId) that keeps to its slowest member's pace, leaving any squads they were in; queued,
+ * each unit queues its slot and squads are left as they are. Aircraft and ships take a slot but join no squad
+ * (formsUp: formations are for land units).
+ */
+export function doFormationMove(
+  s: GameState,
+  owner: Owner,
+  ids: number[],
+  x: number,
+  y: number,
+  attackMove: boolean,
+  shape: FormationShape,
+  queue = false,
+  facing?: number,
+): void {
+  const units = ownUnits(s, owner, ids);
+  if (!units.length) return;
+  const occ = occupancy(s);
+  const MAP_W = s.mapW;
+  let cx = 0;
+  let cy = 0;
+  for (const u of units) {
+    cx += u.x;
+    cy += u.y;
+  }
+  cx /= units.length;
+  cy /= units.length;
+  const face = facing ?? facingOf(x - cx, y - cy, 0);
+  const ordered = slotOrder(s, units, shape);
+  const scale = slotScale(face);
+  const slots = slotsFor(shape, ordered.length, face);
+  const ground = ordered.filter(formsUp);
+  if (!queue) leaveSquads(s, ground);
+  const squad = !queue && ground.length >= 2;
+  const q: Squad | null = squad
+    ? { id: s.nextId++, leader: squadLeader(ground).id, shape, members: ground.map(u => u.id), facing: face, x, y, attack: attackMove, pace: slowest(s, ground) }
+    : null;
+  ordered.forEach((u, i) => {
+    const ox = slots[i][0] * scale;
+    const oy = slots[i][1] * scale;
+    let tx = x + ox;
+    let ty = y + oy;
+    const k = isAir(u) ? -1 : nearestPassable(s, occ, tx, ty, 4);
+    if (k >= 0 && (Math.floor(tx) !== k % MAP_W || Math.floor(ty) !== ((k / MAP_W) | 0))) {
+      tx = (k % MAP_W) + 0.5;
+      ty = ((k / MAP_W) | 0) + 0.5;
+    }
+    // A tile once taken counts as blocked for the slots after it, so no two units share one.
+    if (k >= 0) occ[k] = -1;
+    give(u, attackMove && unitSpecOf(s, u).weapon ? { type: 'attackMove', x: tx, y: ty } : { type: 'move', x: tx, y: ty }, queue);
+    if (q && formsUp(u)) {
+      u.squad = q.id;
+      u.slotX = ox;
+      u.slotY = oy;
+    }
+  });
+  if (q) {
+    pruneSquads(s);
+    s.squads = [...(s.squads ?? []), q];
+  }
+}
+
+/** Legal when the shape is one of FORMATION_SHAPES and the move itself would be. */
+export function canFormationMove(s: GameState, owner: Owner, ids: number[], x: number, y: number, queue: boolean, shape: unknown): boolean {
+  return isFormationShape(shape) && canMove(s, owner, ids, x, y, queue);
+}
+
+/** Legal when the shape is known (or 'none') and there is something to do: two land units to form up, or a squad to leave. */
+export function canFormation(s: GameState, owner: Owner, ids: number[], shape: unknown): boolean {
+  const units = ownUnits(s, owner, ids);
+  if (shape === 'none') return units.some(u => u.squad !== undefined);
+  if (!isFormationShape(shape)) return false;
+  return units.filter(formsUp).length >= 2;
+}
+
+/**
+ * Forms these units up where they stand, as a squad: around their middle, facing the way they face
+ * on the whole. 'none' takes them out of their squads instead, leaving their orders alone.
+ */
+export function doFormation(s: GameState, owner: Owner, ids: number[], shape: FormationShape | 'none'): void {
+  const units = ownUnits(s, owner, ids);
+  if (shape === 'none') {
+    leaveSquads(s, units);
+    return;
+  }
+  const ground = units.filter(formsUp);
+  let cx = 0;
+  let cy = 0;
+  let fx = 0;
+  let fy = 0;
+  for (const u of ground) {
+    cx += u.x;
+    cy += u.y;
+    fx += u.fx;
+    fy += u.fy;
+  }
+  const n = ground.length;
+  doFormationMove(s, owner, ground.map(u => u.id), cx / n, cy / n, false, shape, false, facingOf(fx, fy, 0));
+}
+// round6:D end.
+
 /** The enemy unit or structure with this id, or null. */
 function enemyTarget(s: GameState, owner: Owner, target: number): Target | null {
   const u = s.units.find(v => v.id === target && isEnemy(s, owner, v.owner) && (!UNITS[v.kind].stealth || stealthSeen(s, v, owner)));
@@ -347,7 +488,7 @@ export function canAttack(s: GameState, owner: Owner, ids: number[], target: num
   const t = enemyTarget(s, owner, target);
   if (!t) return false;
   return ownUnits(s, owner, ids).some(u => {
-    const w = UNITS[u.kind].weapon;
+    const w = unitSpecOf(s, u).weapon;
     return !!w && canHit(w, t) && (!queue || acceptsQueued(u));
   });
 }
@@ -356,7 +497,7 @@ export function canAttack(s: GameState, owner: Owner, ids: number[], target: num
 export function doAttack(s: GameState, owner: Owner, ids: number[], target: number, queue = false): void {
   const t = enemyTarget(s, owner, target);
   for (const u of ownUnits(s, owner, ids)) {
-    const w = UNITS[u.kind].weapon;
+    const w = unitSpecOf(s, u).weapon;
     if (!w || (t && !canHit(w, t))) continue;
     give(u, { type: 'attack', target }, queue);
   }
@@ -365,17 +506,17 @@ export function doAttack(s: GameState, owner: Owner, ids: number[], target: numb
 const STANCES: readonly Stance[] = ['aggressive', 'guard', 'hold'];
 
 /** Units a stance means something to: the armed, and the Repair Truck (on hold it stays where it is put). */
-const takesStance = (u: Unit) => !!UNITS[u.kind].weapon || !!UNITS[u.kind].mender;
+const takesStance = (s: GameState, u: Unit) => !!unitSpecOf(s, u).weapon || !!UNITS[u.kind].mender;
 
 /** Legal when at least one of the armed units named would change stance. */
 export function canStance(s: GameState, owner: Owner, ids: number[], stance: Stance): boolean {
   if (!STANCES.includes(stance)) return false;
-  return ownUnits(s, owner, ids).some(u => takesStance(u) && u.stance !== stance);
+  return ownUnits(s, owner, ids).some(u => takesStance(s, u) && u.stance !== stance);
 }
 
 export function doStance(s: GameState, owner: Owner, ids: number[], stance: Stance): void {
   for (const u of ownUnits(s, owner, ids)) {
-    if (!takesStance(u)) continue;
+    if (!takesStance(s, u)) continue;
     u.stance = stance;
     // Holding fire: an idle unit drops whatever it was shooting at.
     if (stance === 'hold' && u.order.type === 'idle') {

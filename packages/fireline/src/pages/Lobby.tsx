@@ -23,7 +23,10 @@ import {
   BUILDINGS,
   DEFAULT_DIFFICULTY,
   DIFFICULTIES,
+  FACTION_NAMES,
   GAME_PACES,
+  GENERAL_FACTION,
+  GENERALS,
   MAP_SIZE_NAMES,
   MAP_TYPE_NAMES,
   TICKS_PER_SECOND,
@@ -465,6 +468,11 @@ export default function Lobby() {
                 <Order k="Ore">{capital(setup.ore)}</Order>
                 <Order k="Map size">{MAP_SIZE_NAMES[setup.size ?? 'standard']}</Order>
                 <Order k="Sites">{setup.sites ? 'On' : 'Off'}</Order>
+                {/* Round 6: each seat's army and doctrine General, and the two advanced-tech options. */}
+                <Order k="Armies">{armiesLabel(setup)}</Order>
+                <Order k="Your General">{generalLabel(setup)}</Order>
+                {setup.tech === 'advanced' && <Order k="Heroes">{setup.heroes ? 'On' : 'Off'}</Order>}
+                {setup.tech === 'advanced' && <Order k="Generals">{setup.generals ? 'On' : 'Off'}</Order>}
                 <Order k="Seed">{seedText}</Order>
               </ul>
               <div className="fl-deploy">
@@ -534,6 +542,19 @@ function SectionHead({ num, kicker, title, id, children }: { num: string; kicker
       {children && <div className="fl-lobby-aside">{children}</div>}
     </header>
   );
+}
+
+/** The deploy summary's armies: yours first, then the computer seats', by short name. */
+function armiesLabel(setup: SkirmishSetup): string {
+  const short = (i: number) => FACTION_NAMES[setup.factions?.[i] ?? 'meridian'].split(' ')[0];
+  const others = Array.from({ length: setup.sides - 1 }, (_, i) => short(i + 1));
+  return setup.sides === 2 ? `${short(0)} against ${others[0]}` : `${short(0)} against ${others.join(', ')}`;
+}
+
+/** Your doctrine General in the deploy summary, or None (a pick from the other army reads as none). */
+function generalLabel(setup: SkirmishSetup): string {
+  const g = setup.generalPicks?.[0] ?? null;
+  return g && GENERAL_FACTION[g] === (setup.factions?.[0] ?? 'meridian') ? GENERALS[g].name : 'None';
 }
 
 /** One line of the deploy step's summary of orders. */

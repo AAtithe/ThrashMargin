@@ -13,7 +13,7 @@
  *   tsx scripts/ai-ladder.ts --map random --research classic   the five flat upgrades (default: lines)
  *     (--research needs a --map other than legacy: a legacy battle has no setup, so it is always classic
  *     and never plays development lines. Use --map random or --map mix to ladder lines.)
- *   tsx scripts/ai-ladder.ts --map random --pace long  a game pace (fireline-round6-design.md; "game size" on the cards): quick (the
+ *   tsx scripts/ai-ladder.ts --map random --pace long  a game pace (fireline-round6b-design.md; "game size" on the cards): quick (the
  *     default, the game before round 6), standard, long or epic. The setup gets the pace and, unless
  *     --credits or --ore is given, the pace's preset credits and ore; side 0's first attack is the
  *     pace's; the default --cap is the pace's (quick and standard 60000, long 90000, epic 150000).
@@ -30,8 +30,13 @@
  *   tsx scripts/ai-ladder.ts ... --out results.jsonl   also writes every battle as one JSON line
  *   tsx scripts/ai-ladder.ts --map random --size large a larger map (round 5): large or huge; the cap
  *                                                      defaults to 72000 ticks on large, 108000 on huge
+ *   tsx scripts/ai-ladder.ts --factions               the two armies (round 6): Ashen against Meridian
+ *                                                      from both seats, and the Meridian mirror, on
+ *                                                      --map random unless a map is given
+ *   tsx scripts/ai-ladder.ts --match new:normal:ashen,new:normal:meridian   a side's army, by name
  *
- * A match is `side0,side1`, each side `commander:difficulty`, where the commander is `new` (the
+ * A match is `side0,side1`, each side `commander:difficulty` or `commander:difficulty:army` (round 6:
+ * `meridian`, the default, or `ashen`; an army needs a skirmish setup), where the commander is `new` (the
  * AI in src/sim/ai.ts), `prev` (the frozen commander from before it learned the advanced tech, in
  * scripts/ai-prev.ts) or `old` (the frozen first build in scripts/ai-baseline.ts). Side 1 plays
  * at `s.difficulty`; side 0 at `s.autopilotDifficulty`. The frozen commanders are swapped in
@@ -64,7 +69,7 @@ import { fileURLToPath } from 'node:url';
 import { processAction } from '../src/sim/actions';
 import { setAutopilotAi } from '../src/sim/ai';
 import { scaledFor } from '../src/sim/aiScale';
-import { DIFFICULTIES, GAME_PACES, GAME_PACE_ORDER, MAP_SIZES, MAP_TYPES, UPGRADE_LINE, difficultyForPace, type Difficulty, type GamePace, type MapSize, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
+import { DIFFICULTIES, FACTIONS, GAME_PACES, GAME_PACE_ORDER, MAP_SIZES, MAP_TYPES, UPGRADE_LINE, difficultyForPace, type Difficulty, type Faction, type GamePace, type MapSize, type MapType, type Owner, type SkirmishSetup } from '../src/sim/rules';
 import { createInitialState } from '../src/sim/state';
 import { baselineAi } from './ai-baseline';
 import { prevAi } from './ai-prev';
@@ -74,6 +79,8 @@ const COMMANDERS: Commander[] = ['new', 'prev', 'old'];
 interface Side {
   ai: Commander;
   difficulty: Difficulty;
+  /** Round 6: this side's army; absent is Meridian. */
+  army?: Faction;
 }
 interface Match {
   sides: [Side, Side];
@@ -96,11 +103,13 @@ const arg = (name: string, fallback: string) => {
   return i >= 0 ? args[i + 1] : fallback;
 };
 const SEEDS = Number(arg('--seeds', '150'));
+/** Round 6: the two armies' card (Ashen against Meridian from both seats), on a skirmish setup. */
+const FACTIONS_CARD = args.includes('--factions');
 const SIZE = arg('--size', 'standard') as MapSize;
 if (!MAP_SIZES.includes(SIZE)) throw new Error(`bad size "${SIZE}"`);
-const MAP = arg('--map', 'legacy');
+const MAP = arg('--map', FACTIONS_CARD ? 'random' : 'legacy');
 const LEGACY = MAP === 'legacy';
-/** Game pace (fireline-round6-design.md): 'quick' (the default) is the game before round 6. */
+/** Game pace (fireline-round6b-design.md): 'quick' (the default) is the game before round 6. */
 const PACE = arg('--pace', 'quick') as GamePace;
 if (!GAME_PACE_ORDER.includes(PACE)) throw new Error(`bad pace "${PACE}"`);
 if (LEGACY && args.includes('--pace')) throw new Error('--pace needs a --map other than legacy: a legacy battle has no setup, so no pace');
@@ -135,9 +144,27 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
 
 function parseSide(text: string): Side {
-  const [ai, difficulty] = text.split(':');
+  const [ai, difficulty, army] = text.split(':');
   if (!COMMANDERS.includes(ai as Commander) || !(difficulty in DIFFICULTIES)) throw new Error(`bad side "${text}"`);
-  return { ai: ai as Commander, difficulty: difficulty as Difficulty };
+  if (army !== undefined && !FACTIONS.includes(army as Faction)) throw new Error(`bad army in "${text}"`);
+  if (army && army !== 'meridian' && LEGACY) throw new Error('an army needs a skirmish setup: give --map');
+  return { ai: ai as Commander, difficulty: difficulty as Difficulty, ...(army && army !== 'meridian' ? { army: army as Faction } : {}) };
+}
+
+/**
+ * Round 6: the two armies. Ashen against Meridian at Normal from each seat (the seat alone is worth
+ * a lot, so only the two orientations together say anything), the same at Hard, and the Normal
+ * Meridian mirror to read them against.
+ */
+function factionsCard(): Match[] {
+  const m = (a: string, b: string): Match => ({ sides: [parseSide(a), parseSide(b)] });
+  return [
+    m('new:normal:ashen', 'new:normal:meridian'),
+    m('new:normal:meridian', 'new:normal:ashen'),
+    m('new:hard:ashen', 'new:hard:meridian'),
+    m('new:hard:meridian', 'new:hard:ashen'),
+    m('new:normal:meridian', 'new:normal:meridian'),
+  ];
 }
 
 function standardCard(): Match[] {
@@ -174,14 +201,16 @@ function matchesFromArgs(): Match[] {
     const [x, y] = args[i + 1].split(',');
     out.push({ sides: [parseSide(x), parseSide(y)] });
   });
-  return out.length ? out : standardCard();
+  return out.length ? out : FACTIONS_CARD ? factionsCard() : standardCard();
 }
 
 function play(m: Match, seed: number): Result & { match: number } {
   setAutopilotAi(AIS[m.sides[0].ai], 0);
   setAutopilotAi(AIS[m.sides[1].ai], 1);
   const name = `ladder-${seed}`;
-  const setup = setupFor(seed);
+  const base = setupFor(seed);
+  const armies = m.sides.map(sd => sd.army ?? 'meridian');
+  const setup = base && armies.some(a => a !== 'meridian') ? { ...base, factions: armies } : base;
   let s = createInitialState(name, name, { seed: name, difficulty: m.sides[1].difficulty, createdAt: 0, autopilot: true, ...(setup ? { setup } : {}) });
   s.autopilotDifficulty = m.sides[0].difficulty;
   // Side 0's first attack at its own difficulty and the pace, scaled for the map's size as side 1's already is.
@@ -202,7 +231,9 @@ function play(m: Match, seed: number): Result & { match: number } {
   return { match: -1, seed, winner: s.winner, tick: s.tick, map: s.mapType ?? 'legacy', ...(LINES_BATTLES ? { mk2, mk3 } : {}) };
 }
 
-const label = (sd: Side) => `${sd.ai} ${sd.difficulty}`;
+/** Round 6: with an army named anywhere on the card, every side's label names its army. */
+const ARMIES_NAMED = FACTIONS_CARD || args.some((a, i) => args[i - 1] === '--match' && a.includes(':ashen'));
+const label = (sd: Side) => `${sd.ai} ${sd.difficulty}${ARMIES_NAMED ? ` ${sd.army ?? 'meridian'}` : ''}`;
 const minutes = (ticks: number) => (ticks / 600).toFixed(1);
 
 // Worker: plays every (match, seed) job whose index is k mod n, one JSON line per battle.
@@ -268,13 +299,14 @@ if (workerAt >= 0) {
       const median = sorted.length ? sorted[sorted.length >> 1] : 0;
       return { rs, w0, w1, draws: rs.length - done.length, avg, median };
     };
-    console.log('side 0'.padEnd(14) + 'side 1'.padEnd(14) + 'side 0 wins'.padEnd(14) + 'side 1 wins'.padEnd(14) + 'unfinished'.padEnd(12) + 'avg min  median min');
+    const W = Math.max(14, ...matches.flatMap(m => m.sides.map(sd => label(sd).length + 2)));
+    console.log('side 0'.padEnd(W) + 'side 1'.padEnd(W) + 'side 0 wins'.padEnd(14) + 'side 1 wins'.padEnd(14) + 'unfinished'.padEnd(12) + 'avg min  median min');
     matches.forEach((m, mi) => {
       const r = row(mi);
       const pct = (w: number) => `${w} (${Math.round((100 * w) / r.rs.length)}%)`;
       console.log(
-        label(m.sides[0]).padEnd(14) +
-          label(m.sides[1]).padEnd(14) +
+        label(m.sides[0]).padEnd(W) +
+          label(m.sides[1]).padEnd(W) +
           pct(r.w0).padEnd(14) +
           pct(r.w1).padEnd(14) +
           String(r.draws).padEnd(12) +
@@ -289,7 +321,7 @@ if (workerAt >= 0) {
     const types = [...new Set(results.map(r => r.map))].sort();
     if (types.length > 1) {
       console.log('\nBy map type (side 0 wins / side 1 wins / unfinished):');
-      console.log(''.padEnd(28) + types.map(t => t.padEnd(13)).join(''));
+      console.log(''.padEnd(2 * W) + types.map(t => t.padEnd(13)).join(''));
       matches.forEach((m, mi) => {
         const cells = types.map(t => {
           const rs = results.filter(r => r.match === mi && r.map === t);
@@ -297,7 +329,7 @@ if (workerAt >= 0) {
           const w1 = rs.filter(r => r.winner === 1).length;
           return `${w0}/${w1}/${rs.length - w0 - w1}`.padEnd(13);
         });
-        console.log(`${label(m.sides[0])} v ${label(m.sides[1])}`.padEnd(28) + cells.join(''));
+        console.log(`${label(m.sides[0])} v ${label(m.sides[1])}`.padEnd(2 * W) + cells.join(''));
       });
     }
     if (LINES_BATTLES) {

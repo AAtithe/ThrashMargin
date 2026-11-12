@@ -9,8 +9,11 @@ import {
   DEFAULT_DIFFICULTY,
   DEFAULT_SETUP,
   DIFFICULTIES,
+  FORMATION_SHAPES,
   GAME_PACE_ORDER,
   GAME_PACES,
+  GENERAL_FACTION,
+  GENERAL_IDS,
   LEGACY_SETUP,
   LONE_SIDE_CREDITS,
   MAP_H,
@@ -32,12 +35,20 @@ import {
   heroLevelFor,
   UNITS,
   vetFor,
+  // round6:B. Heroes in free play: the recruit numbers.
+  HERO_ACADEMY,
+  HERO_KINDS,
+  HERO_RECRUIT_TICKS,
+  heroRecruitCost,
+  type HeroKind,
   type BuildingKind,
   type Category,
   type Difficulty,
   type DifficultySpec,
+  type Faction,
+  type FormationShape,
   type GamePace,
-  type HeroKind,
+  type GeneralId,
   type MapSize,
   type MapType,
   type Owner,
@@ -48,12 +59,17 @@ import {
   type UnitKind,
 } from './rules';
 import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf, teamsFor } from './sides';
-import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, PlanetBattle, PlayerState, Stance, Unit } from './types';
+import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, Perks, PlanetBattle, PlayerState, Squad, Stance, Unit } from './types';
+import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kindSpec, perksFor, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { migrateSites, placeSites, relaysOf } from './sites';
 import { RELAY_RADIUS } from './rules';
+// round6:C. Generals (fireline-round6-design.md, workstream C).
+import { applyDoctrines, doctrineCostMul, fieldGenerals, migrateGenerals } from './generals';
 
 export { startOf };
+// Round 6 groundwork: the per-side specs and perks live in specs.ts (no import cycle); re-exported here.
+export { buildingSpec, buildingSpecOf, factionOf, kindSpec, perksFor, unitSpec, unitSpecOf };
 
 export interface NewGameOptions {
   seed?: string;
@@ -106,7 +122,21 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // base from before round 5 has none: 'standard'); sites are on only when exactly true.
   const size: MapSize = MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : (base.size ?? 'standard');
   const sites = typeof r.sites === 'boolean' ? r.sites : (base.sites ?? false);
-  return { map, tech, credits, ore, sides, mode, size, sites, research, pace };
+  // Round 6: one army and one doctrine General per seat; heroes and field Generals on only when
+  // exactly true. Anything else falls back to the base's (a base from before round 6 has none:
+  // 'meridian', off, no General). A General from the other army reads as none.
+  const seats = Array.from({ length: sides }, (_, i) => i);
+  const rf = Array.isArray(r.factions) ? r.factions : [];
+  const factions: Faction[] = seats.map(i => (isFaction(rf[i]) ? rf[i] : isFaction(base.factions?.[i]) ? base.factions![i] : 'meridian'));
+  const heroes = typeof r.heroes === 'boolean' ? r.heroes : (base.heroes ?? false);
+  const generals = typeof r.generals === 'boolean' ? r.generals : (base.generals ?? false);
+  const isGeneral = (v: unknown): v is GeneralId => GENERAL_IDS.includes(v as GeneralId);
+  const rg = Array.isArray(r.generalPicks) ? r.generalPicks : [];
+  const generalPicks = seats.map(i => {
+    const pick = isGeneral(rg[i]) || rg[i] === null ? rg[i] : isGeneral(base.generalPicks?.[i]) ? base.generalPicks![i] : null;
+    return pick && GENERAL_FACTION[pick] === factions[i] ? pick : null;
+  });
+  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks };
 }
 
 /** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
@@ -130,12 +160,29 @@ export const setupOf = (s: GameState): SkirmishSetup => s.setup ?? LEGACY_SETUP;
  */
 export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): boolean {
   if (owner === 0 && s.allowed && !s.allowed.includes(kind)) return false;
+  // Round 6: an army fields only its own list (FACTION_MENUS); every kind for 'meridian' today.
+  if (!factionAllows(factionOf(s, owner), kind)) return false;
+  // round6:B begin. Heroes in free play: heroes allowed in a skirmish only with setup.heroes (and advanced tech).
+  // The Command Academy likewise, and the heroes themselves only once this side's Academy stands (so
+  // they join the build lists with it). Never in a mission: its heroes are the campaign's own.
+  if (kind === HERO_ACADEMY || (kind in UNITS && UNITS[kind as UnitKind].hero)) {
+    if (!heroesOn(s)) return false;
+    if (kind !== HERO_ACADEMY && !hasBuilding(s, owner, HERO_ACADEMY)) return false;
+  }
+  // round6:B end.
+  // round6:C begin. Generals: the field General allowed only with setup.generals.
+  if (kind === 'general' && !fieldGenerals(s)) return false;
+  // round6:C end.
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
   // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
   // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
   if (s.planet && (kind === 'shipyard' || (kind in UNITS && UNITS[kind as UnitKind].category === 'naval'))) return false;
   return setupOf(s).tech === 'advanced' || STANDARD_TECH.includes(kind);
 }
+
+// round6:B begin. Heroes in free play: a skirmish set up with heroes on and advanced tech (heroes.ts's heroesInPlay).
+const heroesOn = (s: GameState): boolean => !s.mission && setupOf(s).heroes === true && setupOf(s).tech === 'advanced';
+// round6:B end.
 
 /** True for a structure that counts as one: for victory, for the build radius, for survivors. Walls do not. */
 export const isStructure = (b: Building): boolean => !BUILDINGS[b.kind].wall;
@@ -166,13 +213,15 @@ export function syncSkirmishPowers(s: GameState): void {
   s.powers = powers;
 }
 
-function newPlayer(owner: Owner, credits = START_CREDITS): PlayerState {
+function newPlayer(owner: Owner, credits = START_CREDITS, faction?: Faction): PlayerState {
   return {
     owner,
     name: SIDE_NAMES[owner],
     credits,
     queues: { building: [], infantry: [], vehicle: [], air: [], naval: [] },
     stats: { built: 0, trained: 0, lost: 0, killed: 0, harvested: 0 },
+    // Round 6: a skirmish records each side's army; a battle without a setup has none ('meridian').
+    ...(faction ? { faction } : {}),
   };
 }
 
@@ -236,7 +285,10 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     explored: '0'.repeat(map.w * map.h),
     units: [],
     buildings: [],
-    players: n > 2 ? sideList(n).map(o => newPlayer(o, startCredits(credits, o, teams))) : [newPlayer(0, credits), newPlayer(1, credits)],
+    players:
+      n > 2
+        ? sideList(n).map(o => newPlayer(o, startCredits(credits, o, teams), setup?.factions?.[o]))
+        : [newPlayer(0, credits, setup?.factions?.[0]), newPlayer(1, credits, setup?.factions?.[1])],
     teams,
     projectiles: [],
     effects: [],
@@ -260,6 +312,9 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
     // when setup.sites is on, filling s.sites. Nothing else here changes.
     if (setup.sites) placeSites(s);
     // round5:D end.
+    // round6:C begin. Generals: the doctrine Generals' perks (perks for side 0, sidePerks for the rest).
+    if (setup.generals || setup.generalPicks?.some(g => g)) applyDoctrines(s, setup);
+    // round6:C end.
     // Round 5: on a larger map the computer's first attack comes later (aiScale.ts).
     if (size !== 'standard') {
       const first = scaledFor(s, d).firstAttack;
@@ -288,7 +343,9 @@ export function addBuilding(s: GameState, owner: Owner, kind: BuildingKind, x: n
     kind,
     x,
     y,
-    hp: BUILDINGS[kind].hp,
+    // round6:C begin. Generals: a doctrine's structure health (Hale), if it is applied where a structure is made.
+    hp: buildingSpec(s, owner, kind).hp,
+    // round6:C end.
     placedAt,
     repairing: false,
     rally: null,
@@ -304,15 +361,19 @@ export function addBuilding(s: GameState, owner: Owner, kind: BuildingKind, x: n
 export function addUnit(s: GameState, owner: Owner, kind: UnitKind, x: number, y: number): Unit {
   // Facing the middle of the map: north for a base in the bottom half, south for one in the top.
   const fy = -frontDir(s, owner);
-  const hpMul = owner === 0 && s.perks ? s.perks.unitHpMul : 1;
-  const maxHp = hpMul !== 1 ? Math.max(1, Math.round(UNITS[kind].hp * hpMul)) : 0;
+  const perks = perksFor(s, owner);
+  const hpMul = perks ? perks.unitHpMul : 1;
+  // Full health is stored on the unit whenever it differs from UNITS[kind].hp (an Armour perk, an
+  // army's overlay), so maxHpOf needs no side.
+  const hp0 = unitSpec(s, owner, kind).hp;
+  const maxHp = hpMul !== 1 ? Math.max(1, Math.round(hp0 * hpMul)) : hp0 !== UNITS[kind].hp ? hp0 : 0;
   const u: Unit = {
     id: s.nextId++,
     owner,
     kind,
     x,
     y,
-    hp: maxHp || UNITS[kind].hp,
+    hp: maxHp || hp0,
     fx: 0,
     fy,
     tx: 0,
@@ -335,7 +396,10 @@ export function addUnit(s: GameState, owner: Owner, kind: UnitKind, x: number, y
   return u;
 }
 
-/** A unit's full health: perks and hero levels raise it above UNITS[kind].hp. */
+/**
+ * A unit's full health: perks, hero levels and an army's overlay move it from UNITS[kind].hp, and
+ * whatever does so stores it on the unit as maxHp.
+ */
 export const maxHpOf = (u: Unit): number => u.maxHp ?? UNITS[u.kind].hp;
 
 /**
@@ -392,6 +456,11 @@ export function cloneState(s: GameState): GameState {
     // round5:D begin. Neutral sites: s.sites copied one object deep, only when present.
     ...(s.sites ? { sites: s.sites.map(x => ({ ...x })) } : {}),
     // round5:D end.
+    // Round 6: squads copied one level deep (their member lists too), only when present. Perks, side
+    // 0's and the others' alike, are replaced whole and never edited in place, so they are shared.
+    ...(s.squads ? { squads: s.squads.map(q => ({ ...q, members: q.members.slice() })) } : {}),
+    // round6:D begin. Formations and squads: anything else of D's that cloneState must copy.
+    // round6:D end.
     ...(s.planet
       ? {
           planet: {
@@ -412,8 +481,9 @@ export function powerOf(s: GameState, owner: Owner): { made: number; used: numbe
   const blackout = !!s.blackoutUntil && s.tick < (s.blackoutUntil[owner] ?? 0);
   for (const b of s.buildings) {
     if (b.owner !== owner) continue;
-    const p = BUILDINGS[b.kind].power;
-    if (p > 0) made += Math.round(p * Math.max(0.5, b.hp / BUILDINGS[b.kind].hp));
+    const spec = buildingSpecOf(s, b);
+    const p = spec.power;
+    if (p > 0) made += Math.round(p * Math.max(0.5, b.hp / spec.hp));
     else used -= p;
   }
   // A Spy on a Generator: the side's power has failed, whatever it has standing.
@@ -433,8 +503,7 @@ export function countBuildings(s: GameState, owner: Owner, kind: BuildingKind): 
 
 /** True when every structure this needs is standing. */
 export function unlocked(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): boolean {
-  const req = kind in BUILDINGS ? BUILDINGS[kind as BuildingKind].requires : UNITS[kind as UnitKind].requires;
-  return req.every(r => hasBuilding(s, owner, r));
+  return kindSpec(s, owner, kind).requires.every(r => hasBuilding(s, owner, r));
 }
 
 export function categoryOf(kind: BuildingKind | UnitKind): Category {
@@ -442,19 +511,38 @@ export function categoryOf(kind: BuildingKind | UnitKind): Category {
   return UNITS[kind as UnitKind].category;
 }
 
+/** The catalogue's cost (Meridian's). A side's own price is costFor. */
 export function costOf(kind: BuildingKind | UnitKind): number {
   return kind in BUILDINGS ? BUILDINGS[kind as BuildingKind].cost : UNITS[kind as UnitKind].cost;
 }
 
-/** What this side pays for it in this battle: side 0's Procurement perk takes a share off. */
+/** What this side pays for it in this battle: its army's price, less its Procurement perk's share. */
 export function costFor(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): number {
-  const base = costOf(kind);
-  const mul = owner === 0 && s.perks ? s.perks.costMul : 1;
+  // round6:B begin. Heroes in free play: a skirmish hero's recruit price (B's constant) in place of the spec's.
+  const base =
+    heroesOn(s) && kind in UNITS && UNITS[kind as UnitKind].hero
+      ? heroRecruitCost(kind as HeroKind, !!s.players[owner].heroFallen?.[kind as HeroKind])
+      : kindSpec(s, owner, kind).cost;
+  // round6:B end.
+  const perks = perksFor(s, owner);
+  // round6:C begin. Generals: a doctrine's price on some kinds alone (new optional Perks fields), folded into mul.
+  const doctrine = s.players[owner]?.general ? doctrineCostMul(s, owner, kind) : 1;
+  const mul = (perks ? perks.costMul : 1) * doctrine;
+  // round6:C end.
   return mul === 1 ? base : Math.round(base * mul);
 }
 
+/** The catalogue's build time (Meridian's). A side's own is buildTicksFor. */
 export function buildTicksOf(kind: BuildingKind | UnitKind): number {
   return kind in BUILDINGS ? BUILDINGS[kind as BuildingKind].buildTicks : UNITS[kind as UnitKind].buildTicks;
+}
+
+/** Ticks of work this side's queue needs to finish it: its army's build time. */
+export function buildTicksFor(s: GameState, owner: Owner, kind: BuildingKind | UnitKind): number {
+  // round6:B begin. Heroes in free play: a skirmish hero's training time (B's constant); a mission never trains one.
+  if (heroesOn(s) && kind in UNITS && UNITS[kind as UnitKind].hero) return HERO_RECRUIT_TICKS[kind as HeroKind];
+  // round6:B end.
+  return kindSpec(s, owner, kind).buildTicks;
 }
 
 /**
@@ -488,7 +576,7 @@ export const sabotaged = (s: GameState, b: Building): boolean => b.sabotagedUnti
 export function readyStructure(s: GameState, owner: Owner): BuildingKind | null {
   const head = s.players[owner].queues.building[0];
   if (!head) return null;
-  return head.progress >= buildTicksOf(head.kind) ? (head.kind as BuildingKind) : null;
+  return head.progress >= buildTicksFor(s, owner, head.kind) ? (head.kind as BuildingKind) : null;
 }
 
 /** Every tile within sight of something side `owner` owns. */
@@ -503,12 +591,12 @@ export function visibility(s: GameState, owner: Owner): Uint8Array {
         if ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2 <= r2) vis[y * MW + x] = 1;
       }
   };
-  for (const u of s.units) if (u.owner === owner) mark(u.x, u.y, UNITS[u.kind].sight);
+  for (const u of s.units) if (u.owner === owner) mark(u.x, u.y, unitSpecOf(s, u).sight);
   // Recon sweeps are side 0's, and show their area until they run out.
   if (owner === 0 && s.recon) for (const r of s.recon) if (s.tick < r[3]) mark(r[0], r[1], r[2]);
   for (const b of s.buildings)
     if (b.owner === owner) {
-      const spec = BUILDINGS[b.kind];
+      const spec = buildingSpecOf(s, b);
       mark(b.x + spec.w / 2, b.y + spec.h / 2, spec.sight + Math.max(spec.w, spec.h) / 2);
     }
   // round5:D begin. A Comms Relay this side holds reveals its area (one loop calling mark).
@@ -640,6 +728,8 @@ export function migrateState(raw: unknown): GameState | null {
     else delete out.sites;
   }
   // round5:D end.
+  // Round 6: a side's army, its perks, and squads, repaired or dropped, never trusted blind.
+  migrateRound6(s, out);
   // Only two sides may fall back on the original start sites.
   if (n > 2 && !out.starts) return null;
   // A campaign battle: its mission must at least have its objective lists, or it is not trusted.
@@ -689,3 +779,135 @@ function migratePlanetBattle(raw: unknown, n: number): PlanetBattle | null {
 }
 
 export { idx };
+
+const isPerks = (p: unknown): p is Perks =>
+  !!p &&
+  typeof p === 'object' &&
+  (['harvestMul', 'buildSpeedMul', 'costMul', 'unitHpMul', 'powerCooldownMul', 'extraStartCredits'] as const).every(k =>
+    Number.isFinite((p as Perks)[k]),
+  );
+
+/**
+ * Round 6 groundwork, on the copy migrateState builds: an unknown army on a player is dropped (it
+ * reads as 'meridian'); `sidePerks` keeps well-formed perks for sides 1 to n - 1 only; `squads` keeps
+ * well-formed squads (known shape, integer ids, its leader among its members) and a unit's `squad`
+ * is dropped unless it names one of them. A state without any of these is left exactly as it was.
+ */
+function migrateRound6(raw: Partial<GameState>, out: GameState): void {
+  if (out.players.some(p => p.faction !== undefined && !isFaction(p.faction))) {
+    out.players = out.players.map(p => {
+      if (p.faction === undefined || isFaction(p.faction)) return p;
+      const { faction: _junk, ...rest } = p;
+      return rest;
+    });
+  }
+  if (raw.sidePerks !== undefined) {
+    const kept: Partial<Record<Owner, Perks>> = {};
+    let any = false;
+    if (raw.sidePerks && typeof raw.sidePerks === 'object') {
+      for (const o of sidesOf(out)) {
+        const p = (raw.sidePerks as Record<number, unknown>)[o];
+        if (o === 0 || !isPerks(p)) continue;
+        kept[o] = { ...p };
+        any = true;
+      }
+    }
+    if (any) out.sidePerks = kept;
+    else delete out.sidePerks;
+  }
+  const isId = (n: unknown): n is number => Number.isInteger(n) && (n as number) > 0;
+  const squadIds = new Set<number>();
+  if (raw.squads !== undefined) {
+    const squads: Squad[] = [];
+    if (Array.isArray(raw.squads)) {
+      for (const q of raw.squads as Partial<Squad>[]) {
+        if (!q || typeof q !== 'object' || !isId(q.id) || !isId(q.leader) || squadIds.has(q.id)) continue;
+        if (!FORMATION_SHAPES.includes(q.shape as FormationShape) || !Array.isArray(q.members)) continue;
+        const members = q.members.filter(isId);
+        if (!members.includes(q.leader)) continue;
+        squads.push({ ...(q as Squad), members });
+        squadIds.add(q.id);
+      }
+    }
+    if (squads.length) out.squads = squads;
+    else delete out.squads;
+  }
+  if (out.units.some(u => u.squad !== undefined && !squadIds.has(u.squad))) {
+    out.units = out.units.map(u => {
+      if (u.squad === undefined || squadIds.has(u.squad)) return u;
+      const c = { ...u };
+      delete c.squad;
+      return c;
+    });
+  }
+  // round6:B begin. Heroes in free play: its PlayerState and Unit fields repaired or dropped.
+  // A player's fallen heroes: known heroes with a whole-tick time and experience kept; none left, removed.
+  if (out.players.some(p => p.heroFallen !== undefined)) {
+    out.players = out.players.map(p => {
+      if (p.heroFallen === undefined) return p;
+      const kept: Partial<Record<HeroKind, { at: number; xp: number }>> = {};
+      let any = false;
+      const raw = p.heroFallen as unknown;
+      if (raw && typeof raw === 'object')
+        for (const k of HERO_KINDS) {
+          const e = (raw as Record<string, { at?: unknown; xp?: unknown } | undefined>)[k];
+          if (!e || typeof e !== 'object' || !Number.isInteger(e.at)) continue;
+          kept[k] = { at: e.at as number, xp: Number.isFinite(e.xp) && (e.xp as number) > 0 ? (e.xp as number) : 0 };
+          any = true;
+        }
+      const { heroFallen: _old, ...rest } = p;
+      return any ? { ...rest, heroFallen: kept } : rest;
+    });
+  }
+  // round6:B end.
+  // round6:C begin. Generals: its PlayerState and Unit fields repaired or dropped.
+  migrateGenerals(out);
+  // round6:C end.
+  // round6:D begin. Formations and squads: anything more on squads (dead members, a fallen leader).
+  // Members must be standing units of the leader's side, each once; a fallen leader gives way to the
+  // first member left; a squad of fewer than two is dissolved. Its optional fields are kept only when
+  // well formed, and a unit's slot only while it is in a squad.
+  if (out.squads) {
+    const byId = new Map(out.units.map(u => [u.id, u]));
+    const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+    const squads: Squad[] = [];
+    for (const q of out.squads) {
+      const owner = byId.get(q.leader)?.owner ?? byId.get(q.members.find(id => byId.has(id)) ?? -1)?.owner;
+      // Land units alone (formsUp in formations.ts): never an aircraft, nor a ship (the naval war merge).
+      const land = (id: number) => {
+        const v = byId.get(id);
+        const c = v ? UNITS[v.kind]?.category : undefined;
+        return c === 'infantry' || c === 'vehicle';
+      };
+      const members = q.members.filter((id, i, a) => byId.get(id)?.owner === owner && a.indexOf(id) === i && land(id));
+      if (members.length < 2) continue;
+      const c: Squad = { ...q, members, leader: members.includes(q.leader) ? q.leader : members[0] };
+      if (c.facing !== undefined && !(Number.isInteger(c.facing) && c.facing >= 0 && c.facing < 8)) delete c.facing;
+      if (c.x !== undefined && !fin(c.x)) delete c.x;
+      if (c.y !== undefined && !fin(c.y)) delete c.y;
+      if (c.attack !== undefined && typeof c.attack !== 'boolean') delete c.attack;
+      if (c.pace !== undefined && !(fin(c.pace) && c.pace > 0)) delete c.pace;
+      const same = JSON.stringify(c) === JSON.stringify(q);
+      squads.push(same ? q : c);
+    }
+    if (squads.length) out.squads = squads;
+    else delete out.squads;
+  }
+  const liveSquads = new Set((out.squads ?? []).map(q => q.id));
+  const badSlot = (u: Unit) =>
+    (u.squad !== undefined && !liveSquads.has(u.squad)) ||
+    ((u.slotX !== undefined || u.slotY !== undefined) && (u.squad === undefined || !Number.isFinite(u.slotX) || !Number.isFinite(u.slotY)));
+  if (out.units.some(badSlot)) {
+    out.units = out.units.map(u => {
+      if (!badSlot(u)) return u;
+      const c = { ...u };
+      if (c.squad !== undefined && !liveSquads.has(c.squad)) delete c.squad;
+      if (c.squad === undefined || !Number.isFinite(c.slotX) || !Number.isFinite(c.slotY)) {
+        delete c.slotX;
+        delete c.slotY;
+      }
+      return c;
+    });
+  }
+  // round6:D end.
+}

@@ -13,6 +13,7 @@ import {
 } from './rules';
 import { addBuilding, addUnit, isStructure, log, maxHpOf, producerFor, readyStructure } from './state';
 import type { Building, GameState, Unit } from './types';
+import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
 
 /**
  * Engineering vehicles (fireline-round5-design.md, workstream C): the Repair Truck, and the Forward
@@ -100,8 +101,8 @@ export function doDeploy(s: GameState, owner: Owner, id: number): Building {
   const share = u.hp / maxHpOf(u);
   s.units = s.units.filter(v => v.id !== id);
   const b = addBuilding(s, owner, kind, at.x, at.y);
-  b.hp = Math.max(1, Math.round(BUILDINGS[kind].hp * share));
-  if (owner === 0) log(s, `${BUILDINGS[kind].name} deployed.`, 'good');
+  b.hp = Math.max(1, Math.round(buildingSpec(s, owner, kind).hp * share));
+  if (owner === 0) log(s, `${buildingSpec(s, owner, kind).name} deployed.`, 'good');
   return b;
 }
 
@@ -125,7 +126,7 @@ export function undeployProblem(s: GameState, owner: Owner, id: number): string 
 /** The structure goes and its truck stands at its centre, with the structure's share of health. */
 export function doUndeploy(s: GameState, owner: Owner, id: number): Unit {
   const b = s.buildings.find(v => v.id === id)!;
-  const spec = BUILDINGS[b.kind];
+  const spec = buildingSpecOf(s, b);
   const kind = spec.undeploysTo!;
   const share = b.hp / spec.hp;
   s.buildings = s.buildings.filter(v => v.id !== id);

@@ -25,6 +25,7 @@ import {
   hitsGround,
   hitsNaval,
   type BuildingKind,
+  type SkirmishSetup,
   type UnitKind,
 } from '../src/sim/rules';
 import { stealthSeen } from '../src/sim/sites';
@@ -54,8 +55,8 @@ function quiet(fn: (ok: Ok) => void): (ok: Ok) => void {
  * An advanced Coast skirmish with every unit gone and nothing attacking, plus: the open-water tile
  * nearest the middle (`mid`), a shore spot for side 0's Naval Yard (`shore`), and helpers.
  */
-function coastArena(seed = 'naval-arena') {
-  const s = copy(createInitialState(seed, seed, { seed, createdAt: 0, setup: { map: 'coast', tech: 'advanced', credits: 30000 } }));
+export function coastArena(seed = 'naval-arena', extra: Partial<SkirmishSetup> = {}) {
+  const s = copy(createInitialState(seed, seed, { seed, createdAt: 0, setup: { map: 'coast', tech: 'advanced', credits: 30000, ...extra } }));
   s.units = [];
   for (const m of s.ai) m.nextAttack = 1e9;
   const occ = occupancy(s);
@@ -78,7 +79,7 @@ function coastArena(seed = 'naval-arena') {
 }
 
 /** The open water tile nearest (x, y). */
-function seaNear(s: GameState, x: number, y: number): { x: number; y: number } {
+export function seaNear(s: GameState, x: number, y: number): { x: number; y: number } {
   let best = { x: 0, y: 0 };
   let bestD = Infinity;
   for (let k = 0; k < s.tiles.length; k++) {
@@ -95,7 +96,7 @@ function seaNear(s: GameState, x: number, y: number): { x: number; y: number } {
 }
 
 /** Land tile nearest (x, y) that is walkable and clear. */
-function landNear(s: GameState, x: number, y: number): { x: number; y: number } {
+export function landNear(s: GameState, x: number, y: number): { x: number; y: number } {
   const occ = occupancy(s);
   let best = { x: 0, y: 0 };
   let bestD = Infinity;
