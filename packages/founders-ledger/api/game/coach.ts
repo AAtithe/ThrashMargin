@@ -22,7 +22,11 @@ import { isOverLimit, recordEvent, LIMITS } from '../_lib/rateLimit';
 
 const MODEL = 'claude-opus-5-5';
 
-export const COACH_TASKS = ['readback', 'pressure', 'call', 'letterDraft', 'letterCoach'] as const;
+export const COACH_TASKS = ['readback', 'pressure', 'call', 'letterDraft', 'letterCoach', 'talk'] as const;
+
+/* The Reset's pulls and sorts, as the engine names them (engine.js LOUD and SORT). */
+const LOUD_KEYS = ['cash', 'client', 'person', 'load', 'mistake', 'future', 'inbox', 'quiet', 'away', 'firm', 'deli', 'heavy'];
+const SORT_KEYS = ['decide', 'influence', 'not'];
 export type CoachTask = (typeof COACH_TASKS)[number];
 
 export function coachEnabled(): boolean {
@@ -108,6 +112,13 @@ const SCHEMAS: Record<CoachTask, Record<string, unknown>> = {
     },
   },
   letterDraft: { type: 'object', additionalProperties: false, required: ['text'], properties: { text: { type: 'string' } } },
+  talk: {
+    type: 'object', additionalProperties: false, required: ['concern', 'loud', 'sort', 'reply', 'system', 'rule', 'move', 'learned'],
+    properties: {
+      concern: { type: 'boolean' }, loud: { type: 'string', enum: LOUD_KEYS }, sort: { type: 'string', enum: SORT_KEYS },
+      reply: { type: 'string' }, system: { type: 'string' }, rule: { type: 'string' }, move: { type: 'string' }, learned: { type: 'string' },
+    },
+  },
   letterCoach: {
     type: 'object', additionalProperties: false, required: ['strengths', 'sharpen', 'missing', 'firstAction'],
     properties: {
@@ -118,7 +129,7 @@ const SCHEMAS: Record<CoachTask, Record<string, unknown>> = {
     },
   },
 };
-const EFFORT: Record<CoachTask, 'low' | 'medium'> = { readback: 'low', pressure: 'low', call: 'medium', letterDraft: 'medium', letterCoach: 'medium' };
+const EFFORT: Record<CoachTask, 'low' | 'medium'> = { readback: 'low', pressure: 'low', call: 'medium', letterDraft: 'medium', letterCoach: 'medium', talk: 'low' };
 
 const OPTION_RULES = `Exactly three options: one "best" (the world-class call: works on the system, hands over with a standard, or acts calmly on facts), one "ok" (workable but stops short), one "trap" (a default game: doing it himself, firefighting, avoiding, working harder). Shuffle their order so "best" is not always first. Each option's "t" is at most 22 words. Each "n" is one sentence on what happens if he picks it. "title" is two to five words. "scene" is one or two sentences, present tense.`;
 
@@ -192,6 +203,37 @@ ${player(JSON.stringify(material))}
 
 Style: first person, past and present tense only, never "will" or "hope". Plain, direct and warm, the way a confident operator talks. Concrete detail over slogans. No headings or bullet points. Open with "Dear Tom," and a line placing him on a specific morning in November 2030. Then short paragraphs: the firm, his role and what he stopped doing, a normal week, money, the people who run things, health, family and friends, adventure, the game he stopped playing. End with what he is glad 2026 Tom started, and sign off "Tom, November 2030". 300 to 500 words. Put the whole letter in "text".`;
     }
+    case 'talk': {
+      const text = str(b?.text, 2000);
+      if (!text) return null;
+      const rules = strs(b?.rules, 12, 200);
+      return `He has stopped on a hard moment and is talking it through, probably by voice note, so expect it to be loose and unpunctuated.
+${player(text)}
+
+His own rules, written by him for himself:
+${list(rules)}
+
+Notes from earlier conversations about how he works (yours, kept with his permission):
+${list(strs(b?.notes, 12, 240))}
+
+Evidence from his own ledger. These are true and traceable:
+${list(strs(b?.evidence, 8, 300))}
+
+Open actions on his list:
+${list(strs(b?.openActions, 8, 200))}
+
+What has been loud on his recent resets: ${strs(b?.recent, 10, 60).join('; ') || 'nothing yet'}.
+
+He has named three systems he runs and wants to stop: being needed (getting stuck into work while away), checking email for reassurance and not knowing what to do when it goes quiet, and fearing the firm is failing. He wants to run on profit and space instead. Name the system you hear, if one is running, plainly and without judgement.
+
+"reply": three or four short sentences. Reflect back what he actually said in a few words, name what is going on, separate the fear from the facts he has, and point him to what is in his control. When you cite evidence, use only the evidence above, quoted accurately. No flattery and no promises about outcomes.
+"system": the system running, in six words or fewer, or an empty string if none is.
+"rule": the one rule from his list above that points the way here, copied exactly; an empty string if none fits.
+"move": one concrete action he can start now and finish in under fifteen minutes, in the first person as he would write it on a list, at most 14 words, no full stop.
+"loud": the closest of: ${LOUD_KEYS.join(', ')}. "sort": decide if it is his to decide, influence if he can move it but not decide it, not if it is not his.
+"learned": one short sentence worth remembering next time about how he works or what helps him, in the third person, or an empty string if nothing new. Never record anything about his health or his family beyond what helps the coaching.
+Set "concern" to true only if his words suggest crisis or a risk to his safety; otherwise false.`;
+    }
     case 'letterCoach': {
       const letter = str(b?.letter, 8000);
       if (letter.split(/\s+/).length < 40) return null;
@@ -224,6 +266,15 @@ export function checkAnswer(task: CoachTask, r: any): Record<string, unknown> | 
       const t = typeof r.text === 'string' ? clean(r.text) : '';
       return t.split(/\s+/).length >= 80 ? { text: t.slice(0, 6000) } : null;
     }
+    case 'talk':
+      if (r.concern === true) return { concern: true };
+      if (typeof r.reply !== 'string' || !r.reply.trim() || typeof r.move !== 'string' || !r.move.trim()) return null;
+      return {
+        concern: false,
+        loud: LOUD_KEYS.includes(r.loud) ? r.loud : 'heavy', sort: SORT_KEYS.includes(r.sort) ? r.sort : 'decide',
+        reply: clean(r.reply).slice(0, 900), system: clean(r.system).slice(0, 80), rule: clean(r.rule).slice(0, 200),
+        move: clean(r.move).replace(/\.$/, '').slice(0, 140), learned: clean(r.learned).slice(0, 240),
+      };
     case 'letterCoach':
       return {
         strengths: (Array.isArray(r.strengths) ? r.strengths : []).slice(0, 2).map(clean),
@@ -274,6 +325,7 @@ export async function handleCoach(req: VercelRequest, res: VercelResponse, db: P
 
   const t = task as CoachTask;
   if ((t === 'readback' || t === 'pressure') && soundsLikeCrisis(req.body?.line)) return res.json({ result: { concern: true } });
+  if (t === 'talk' && soundsLikeCrisis(req.body?.text)) return res.json({ result: { concern: true } });
   const prompt = buildPrompt(t, req.body ?? {});
   if (!prompt) return res.status(400).json({ message: 'Not enough to coach from yet.' });
 
