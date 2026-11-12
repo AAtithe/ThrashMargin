@@ -117,16 +117,29 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   not others, and a five-seed run once reported two bugs fixed while they were still there.
 - **Fireline has its own harness: `npm run drive:fire`** (whole computer-against-computer battles over
   28 seeds, every order, the campaign's heroes, powers, objectives and mission AI modes, aircraft and
-  research, three- and four-sided battles, large and huge maps, engineering vehicles, neutral sites
-  and tier three; about 368,000 assertions, about 6 minutes; `-- --seeds 60` for a wider sweep, `-- --campaign` for the
-  campaign sections alone). `npm run campaign:fire` checks progression, builds and runs all fourteen
-  missions at every campaign difficulty, and plays every one of them to a win with a scripted player
-  (`scripts/campaign-player.ts`); both are in `npm run check`. `npm run sweep:fire` plays the campaign
-  missions by every scripted plan at Easy, Normal and Hard and counts wins (about 4 minutes, so not
-  in check); use it for any change to a mission, the campaign difficulty, the AI or the balance, and
-  read one plan's result as noise. `npm run ladder:fire` pits AI commanders over 150 seeds
-  (about 10 minutes, so not in check); use it for any balance or AI change. Fireline is real time: it saves every 15 seconds of play rather than per action, and
+  research, the air war (recon, interceptors, Troop Carriers, the Heavy Bomber), development lines and
+  loadouts, game sizes (paces) and paced research, three- and four-sided battles, large and huge maps,
+  engineering vehicles, neutral sites and tier three; about 373,000 assertions, about 14 minutes on one core;
+  `-- --deep` for the full development-lines and pace sweeps (about 19 minutes),
+  `-- --seeds 60` for a wider sweep, `-- --campaign` for the campaign sections alone). `npm run campaign:fire`
+  checks progression, builds and runs all fourteen missions at every campaign difficulty, and plays every
+  one of them to a win with a scripted player (`scripts/campaign-player.ts`; about a minute); both are in
+  `npm run check`. `npm run sweep:fire` plays the campaign missions by every scripted plan at Easy, Normal
+  and Hard and counts wins (about 5 minutes on four cores, so not in check); use it for any change to a mission, the
+  campaign difficulty, the AI or the balance, and read one plan's result as noise. `npm run ladder:fire`
+  pits AI commanders over 150 seeds (about 10 minutes, so not in check; `-- --pace long --size large` for
+  a game size on a larger map, far longer); use it for any balance or AI change. Fireline is real time: it
+  saves every 15 seconds of play rather than per action, and
   its guided tour runs on the live battle (see `fireline-design.md` §5).
+- **Fireline's War for the Planet has its own harness: `npm run drive:planet`** (`packages/fireline/scripts/drive-planet.ts`,
+  in `npm run check`; about 35,000 assertions in about 70 seconds, most of it W2's battle sections from
+  `drive-planet-battle.ts`). 200 maps per preset, a refusal and a legal case for every action type on
+  deep-frozen states, a source scan of `src/planet/` for clocks and dice, trade conservation and
+  blockade, every treaty transition and breach, allied battles, encirclement, every way a war ends,
+  whole bot-played wars on all three presets checked every turn (stocks, caps, trust, treaties, the
+  48 KB strategic budget, the save migrating to itself), exact replay, junk saves and the v1 fixture.
+  Run it after touching anything under `src/planet/`; balance changes need `ladder:planet` at its default seed
+  counts (Short 150, Long 50, Very long 50 per difficulty; about 2 minutes), and `-- --prefix holdout` as well.
 - **Thrash Margin has its own harness: `npm run drive:tm`** (about 12,000 assertions, every map and
   difficulty). Its engine (`packages/thrash-margin/shared/sim/`) follows the same purity rule as the
   Tea Race's `sim/`: no `Math.random`, no clock, illegal actions return the same state object.
@@ -144,7 +157,7 @@ asserts it, so a newly added rule cannot leak into a faithful game by omission.
   (Thrash Margin's attack step read as done on arrival because it watched the game log). Each
   driver also checks the save for the real effects of the run, and none of them may pass on timing
   luck. Thrash Margin's card also carries `data-tour-done` while it pauses after a finished step.
-- **A guided tour is only verified by driving it in a browser.** All six tour cards carry
+- **A guided tour is only verified by driving it in a browser.** All seven tour cards carry
   `data-tour-target`, naming the element actually being ringed — the resolved one, where a step
   offers several candidates — so a script can walk every step by clicking what the card names
   rather than guessing from the copy. Niccolò Rising's card also carries `data-tour-manual`, for

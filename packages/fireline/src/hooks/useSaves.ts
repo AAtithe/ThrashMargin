@@ -6,6 +6,9 @@ import { getToken } from '../lib/portalAuth';
 import { createSaver, SAVE_ERRORS, SAVE_MESSAGES, type Saver } from '../lib/saveQueue';
 import { campaignSaveStatus, campaignSaveTurn, isCampaignSave, migrateCampaignSave, newCampaignSave } from '../campaign/save';
 import type { CampaignSave } from '../campaign/types';
+import { isPlanetSave, migratePlanetSave, newPlanetSave, planetSaveStatus, planetSaveTooLarge, planetSaveTurn, type PlanetSave } from '../planet/save';
+import type { LengthPreset } from '../planet/types';
+import type { Difficulty } from '../sim/rules';
 import { wonBy } from '../sim/sides';
 import { createInitialState, migrateState, type NewGameOptions } from '../sim/state';
 import type { GameState } from '../sim/types';
@@ -29,12 +32,14 @@ const stateKey = (id: string) => `fireline_save_${id}`;
 export interface SaveMeta {
   id: string;
   name: string;
-  /** Minutes of battle played; for a campaign, missions won. */
+  /** Minutes of battle played; for a campaign, missions won; for a planet war, the strategic turn. */
   turn: number;
   status: 'active' | 'victory' | 'defeated';
   savedAt: number;
-  /** Present on a campaign save; absent on a skirmish. */
-  kind?: 'campaign';
+  /** Present on a campaign or planet war save; absent on a skirmish. */
+  kind?: 'campaign' | 'planet';
+  /** A planet war's length preset (absent when the server could not read one). */
+  preset?: LengthPreset;
   /** The map type a skirmish was drawn on, when it was set up with one. */
   mapType?: MapType;
   /** A battle of three or four sides: how many, and whether as teams. Absent for two sides. */
@@ -44,8 +49,23 @@ export interface SaveMeta {
   size?: 'large' | 'huge';
 }
 
-/** What a save row holds: a skirmish battle or a whole campaign (tell them apart with isCampaignSave). */
-export type LoadedSave = GameState | CampaignSave;
+/**
+ * What a save row holds: a skirmish battle, a whole campaign or a whole planet war (tell them apart
+ * with isCampaignSave and isPlanetSave).
+ */
+export type LoadedSave = GameState | CampaignSave | PlanetSave;
+
+/** What the lobby's War for the Planet panel sends. Every field is checked again by the server. */
+export interface NewPlanetRequest {
+  name: string;
+  commander: string;
+  seed: string;
+  preset: LengthPreset;
+  options: unknown;
+  difficulty: Difficulty;
+}
+
+export const PLANET_TOO_LARGE = 'This war is too large to save.';
 
 export const statusOf = (s: GameState): SaveMeta['status'] =>
   s.winner === null ? 'active' : wonBy(s, 0) ? 'victory' : 'defeated';
@@ -54,15 +74,20 @@ function metaOf(s: LoadedSave): SaveMeta {
   if (isCampaignSave(s)) {
     return { id: s.id, name: s.name, turn: campaignSaveTurn(s), status: campaignSaveStatus(s), savedAt: Date.now(), kind: 'campaign' };
   }
+  if (isPlanetSave(s)) {
+    return { id: s.id, name: s.name, turn: planetSaveTurn(s), status: planetSaveStatus(s), savedAt: Date.now(), kind: 'planet', preset: s.planet.options.preset };
+  }
   return { id: s.id, name: s.name, turn: Math.floor(s.tick / 600), status: statusOf(s), savedAt: Date.now(), ...(s.mapType ? { mapType: s.mapType } : {}),
     ...(s.players.length > 2 ? { sides: s.players.length as 3 | 4, mode: s.setup?.mode === 'teams' ? ('teams' as const) : ('ffa' as const) } : {}),
     ...(s.setup?.size === 'large' || s.setup?.size === 'huge' ? { size: s.setup.size } : {}),
   };
 }
 
-/** Either kind of save, made current; null if it is neither. */
+/** Any kind of save, made current; null if it is none of them (or a war that cannot be trusted). */
 function migrateAny(raw: unknown): LoadedSave | null {
-  return isCampaignSave(raw) ? migrateCampaignSave(raw) : migrateState(raw);
+  if (isCampaignSave(raw)) return migrateCampaignSave(raw);
+  if (isPlanetSave(raw)) return migratePlanetSave(raw);
+  return migrateState(raw);
 }
 
 function readIndex(): SaveMeta[] {
@@ -220,9 +245,62 @@ export function useSaves() {
   );
 
   /**
-   * Loads one save. At run time it resolves to a skirmish GameState or a CampaignSave (or null with
+   * Starts a planet war. Resolves to its id, or null with `error` set. In local mode the save is
+   * built here, the clock read in the hook and passed into the pure newPlanetSave.
+   */
+  const createPlanet = useCallback(
+    async (p: NewPlanetRequest): Promise<string | null> => {
+      setError(null);
+      if (!cloud) {
+        const id = localId();
+        const seed = typeof p.seed === 'string' ? p.seed.slice(0, 64) : '';
+        const s = newPlanetSave(id, p.name || 'War', {
+          seedText: seed.trim() ? seed : id,
+          preset: p.preset,
+          options: p.options,
+          difficulty: p.difficulty,
+          commander: p.commander,
+          createdAt: Date.now(),
+        });
+        writeLocal(s);
+        setSaves(readIndex());
+        return s.id;
+      }
+      try {
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({
+            mode: 'planet', name: p.name, commander: p.commander, seed: p.seed, preset: p.preset, options: p.options, difficulty: p.difficulty,
+          }),
+        });
+        if (res.status === 401) {
+          setExpired(true);
+          setError(SESSION_EXPIRED);
+          return null;
+        }
+        const data = await readJson(res);
+        if (!data) {
+          setError(serverFailure('starting the war', res));
+          return null;
+        }
+        if (!res.ok) {
+          setError(data.message ?? 'Could not start the war.');
+          return null;
+        }
+        return data.gameId as string;
+      } catch {
+        setError('Network error: the war could not be started.');
+        return null;
+      }
+    },
+    [cloud],
+  );
+
+  /**
+   * Loads one save. At run time it resolves to a skirmish GameState, a CampaignSave or a PlanetSave (or null with
    * `error` set). The type parameter defaults to GameState so skirmish-only callers keep compiling;
-   * a caller that can open either passes `LoadedSave` and checks with `isCampaignSave`.
+   * a caller that can open any passes `LoadedSave` and checks with `isCampaignSave` and `isPlanetSave`.
    */
   const load = useCallback(
     async <T extends LoadedSave = GameState>(id: string): Promise<T | null> => {
@@ -269,9 +347,19 @@ export function useSaves() {
     [cloud],
   );
 
-  /** Saves a skirmish battle or a whole campaign (with its battle in progress, if any). */
+  /**
+   * Saves a skirmish battle, a whole campaign or a whole planet war (with its battle in progress, if
+   * any). A war over PLANET_SAVE_MAX_BYTES is not sent: the server would refuse it with 413.
+   */
   const save = useCallback(
     (s: LoadedSave) => {
+      if (isPlanetSave(s)) {
+        if (planetSaveTooLarge(s)) {
+          setError(PLANET_TOO_LARGE);
+          return;
+        }
+        setError(prev => (prev === PLANET_TOO_LARGE ? null : prev));
+      }
       if (!cloud) {
         writeLocal(s);
         setLastSaved(Date.now());
@@ -304,5 +392,5 @@ export function useSaves() {
     [cloud],
   );
 
-  return { cloud, saves, savesLoaded, error, expired, lastSaved, create, createCampaign, load, save, remove, refresh };
+  return { cloud, saves, savesLoaded, error, expired, lastSaved, create, createCampaign, createPlanet, load, save, remove, refresh };
 }

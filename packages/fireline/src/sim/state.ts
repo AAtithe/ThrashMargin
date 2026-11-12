@@ -10,6 +10,8 @@ import {
   DEFAULT_SETUP,
   DIFFICULTIES,
   FORMATION_SHAPES,
+  GAME_PACE_ORDER,
+  GAME_PACES,
   GENERAL_FACTION,
   GENERAL_IDS,
   LEGACY_SETUP,
@@ -29,6 +31,7 @@ import {
   SKIRMISH_POWERS,
   STANDARD_TECH,
   START_CREDITS,
+  difficultyForPace,
   heroLevelFor,
   UNITS,
   vetFor,
@@ -41,19 +44,22 @@ import {
   type BuildingKind,
   type Category,
   type Difficulty,
+  type DifficultySpec,
   type Faction,
   type FormationShape,
+  type GamePace,
   type GeneralId,
   type MapSize,
   type MapType,
   type Owner,
+  type ResearchMode,
   type SideMode,
   type SkirmishSetup,
   type SupportPower,
   type UnitKind,
 } from './rules';
 import { frontDir, inwardDiagonal, isAlly, normaliseTeams, sidesOf, startOf, teamsFor } from './sides';
-import type { AiMemory, Building, GameState, HeroState, MissionRuntime, Perks, PlayerState, Squad, Stance, Unit } from './types';
+import type { AiMemory, AiMode, Building, GameState, HeroState, MissionRuntime, Perks, PlanetBattle, PlayerState, Squad, Stance, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionAllows, factionOf, isFaction, kindSpec, perksFor, unitSpec, unitSpecOf } from './specs';
 // round5:D. Neutral sites (fireline-round5-design.md, workstream D).
 import { migrateSites, placeSites, relaysOf } from './sites';
@@ -77,6 +83,11 @@ export interface NewGameOptions {
    * field left out takes DEFAULT_SETUP's value.
    */
   setup?: Partial<SkirmishSetup>;
+  /**
+   * Planet battles: the team of each side. Used only with a setup of 3 or 4 sides, through
+   * normaliseTeams, in place of teamsFor(n, setup.mode). Ignored with 2 sides (always [0, 1]).
+   */
+  teams?: number[];
 }
 
 /** A setup with every field valid: unknown values fall back to DEFAULT_SETUP's, credits are clamped. */
@@ -92,6 +103,21 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
   // 'teams' is 'ffa'; two sides are always 'ffa'.
   const sides = r.sides === 2 || r.sides === 3 || r.sides === 4 ? r.sides : base.sides === 3 || base.sides === 4 ? base.sides : 2;
   const mode: SideMode = sides > 2 && r.mode === 'teams' ? 'teams' : 'ffa';
+  // Research mode (round 5b): standard tech is always 'classic'.
+  const research: ResearchMode = tech === 'standard' ? 'classic' : r.research === 'classic' || r.research === 'lines' ? r.research : base.research;
+  // Game pace (round 6; the cards call it game size): anything not a pace takes the base's. Kept on
+  // standard tech too: the attack timing applies to any tech; research scaling needs development
+  // lines. A setup from before the merge with main stored the pace as `size`; where that value is a
+  // pace and not a map size ('quick', 'long', 'epic') it is read as the pace. 'standard' is both a
+  // pace and a map size, so the two lineages are told apart by their other keys: main's setups always
+  // carry `sites` beside `size` and never `research`; this branch's pre-merge setups always carried
+  // `research` and never `sites`. Such a setup with size 'standard' was a Standard-pace battle.
+  const rawSize = (r as { size?: string }).size;
+  const preMergeStandard = r.pace === undefined && rawSize === 'standard' && r.sites === undefined && r.research !== undefined;
+  const legacyPace = r.pace === undefined && GAME_PACE_ORDER.includes(rawSize as GamePace) && (!MAP_SIZES.includes(r.size as MapSize) || preMergeStandard)
+    ? (rawSize as GamePace)
+    : undefined;
+  const pace: GamePace = GAME_PACE_ORDER.includes(r.pace as GamePace) ? (r.pace as GamePace) : legacyPace ?? base.pace ?? 'quick';
   // Round 5: map size and neutral sites. Anything but a known size falls back to the base's (and a
   // base from before round 5 has none: 'standard'); sites are on only when exactly true.
   const size: MapSize = MAP_SIZES.includes(r.size as MapSize) ? (r.size as MapSize) : (base.size ?? 'standard');
@@ -110,8 +136,19 @@ export function normaliseSetup(raw: Partial<SkirmishSetup> | null | undefined, b
     const pick = isGeneral(rg[i]) || rg[i] === null ? rg[i] : isGeneral(base.generalPicks?.[i]) ? base.generalPicks![i] : null;
     return pick && GENERAL_FACTION[pick] === factions[i] ? pick : null;
   });
-  return { map, tech, credits, ore, sides, mode, size, sites, factions, heroes, generals, generalPicks };
+  return { map, tech, credits, ore, sides, mode, size, sites, research, pace, factions, heroes, generals, generalPicks };
 }
+
+/** The research mode in force. A mission, a battle on standard tech and a save without the field: 'classic'. */
+export const researchModeOf = (s: GameState): ResearchMode =>
+  !s.mission && s.setup && s.setup.tech === 'advanced' && s.setup.research === 'lines' ? 'lines' : 'classic';
+
+/** The pace in force. A mission, a battle without a setup and a save without the field: 'quick'. */
+export const paceOf = (s: GameState): GamePace => (!s.mission && s.setup ? s.setup.pace ?? 'quick' : 'quick');
+/** The difficulty's numbers for this battle (difficultyForPace with paceOf). */
+export const difficultyFor = (s: GameState, diff: Difficulty): DifficultySpec => difficultyForPace(diff, paceOf(s));
+/** True when the commander uses paced research: development lines and a paced pace. */
+export const pacedResearch = (s: GameState): boolean => researchModeOf(s) === 'lines' && GAME_PACES[paceOf(s)].paced;
 
 /** How this battle was set up. Saves from before setups, and missions, read as LEGACY_SETUP. */
 export const setupOf = (s: GameState): SkirmishSetup => s.setup ?? LEGACY_SETUP;
@@ -137,6 +174,9 @@ export function techAllowed(s: GameState, owner: Owner, kind: BuildingKind | Uni
   if (kind === 'general' && !fieldGenerals(s)) return false;
   // round6:C end.
   if (s.mission) return owner === 0 || STANDARD_TECH.includes(kind);
+  // A planet battle has no navy: the planet's armies are infantry and vehicles, and no planet
+  // terrain is the Coast map (2026-11-11 merge, fireline-design.md). Refused for every side.
+  if (s.planet && (kind === 'shipyard' || (kind in UNITS && UNITS[kind as UnitKind].category === 'naval'))) return false;
   return setupOf(s).tech === 'advanced' || STANDARD_TECH.includes(kind);
 }
 
@@ -162,6 +202,8 @@ export function syncSkirmishPowers(s: GameState): void {
       const has = s.buildings.some(b => b.owner === owner && b.kind === kind && b.hp > 0);
       const held = side[power] !== undefined;
       if (has === held) continue;
+      // A planet battle: side 0's perk powers stay without their structure.
+      if (!has && owner === 0 && s.planet?.perkPowers?.includes(power)) continue;
       side = { ...side };
       if (has) side[power] = POWERS[power].cooldown;
       else delete side[power];
@@ -224,8 +266,8 @@ export function createInitialState(id: string, name: string, opts: NewGameOption
       : generateMap(rngSeed);
   const credits = setup ? setup.credits : START_CREDITS;
   const difficulty = opts.difficulty && opts.difficulty in DIFFICULTIES ? opts.difficulty : DEFAULT_DIFFICULTY;
-  const d = DIFFICULTIES[difficulty];
-  const teams = setup && n > 2 ? teamsFor(n, setup.mode) : [0, 1];
+  const d = setup ? difficultyForPace(difficulty, setup.pace) : DIFFICULTIES[difficulty];
+  const teams = setup && n > 2 ? (opts.teams !== undefined ? normaliseTeams(opts.teams, n) : teamsFor(n, setup.mode)) : [0, 1];
 
   const s: GameState = {
     version: 1,
@@ -389,6 +431,8 @@ export function cloneState(s: GameState): GameState {
       stats: { ...p.stats },
       ...(p.upgrades ? { upgrades: p.upgrades.slice() } : {}),
       ...(p.research ? { research: { ...p.research } } : {}),
+      ...(p.doctrines ? { doctrines: { ...p.doctrines } } : {}),
+      ...(p.loadouts ? { loadouts: { ...p.loadouts } } : {}),
     })),
     projectiles: s.projectiles.slice(),
     effects: s.effects.slice(),
@@ -417,6 +461,17 @@ export function cloneState(s: GameState): GameState {
     ...(s.squads ? { squads: s.squads.map(q => ({ ...q, members: q.members.slice() })) } : {}),
     // round6:D begin. Formations and squads: anything else of D's that cloneState must copy.
     // round6:D end.
+    ...(s.planet
+      ? {
+          planet: {
+            ...s.planet,
+            ai: s.planet.ai.slice(),
+            city: s.planet.city.map(c => [c[0], c[1]] as [number, string]),
+            ...(s.planet.fallen ? { fallen: { ...s.planet.fallen } } : {}),
+            ...(s.planet.perkPowers ? { perkPowers: s.planet.perkPowers.slice() } : {}),
+          },
+        }
+      : {}),
   };
 }
 
@@ -621,6 +676,7 @@ export function migrateState(raw: unknown): GameState | null {
       }
     }
     if (u.maxHp !== undefined && !(Number.isFinite(u.maxHp) && u.maxHp > 0)) delete out.maxHp;
+    if (u.core !== undefined && !(Number.isInteger(u.core) && u.core >= 0)) delete out.core;
     return out;
   });
   // Sides: saves from before 3 and 4 sides have two players, no teams and a 64 by 64 map.
@@ -632,7 +688,21 @@ export function migrateState(raw: unknown): GameState | null {
   const ai = s.ai.slice(0, n);
   for (let i = ai.length; i < n; i++) ai.push(newAiMemory(DIFFICULTIES[DEFAULT_DIFFICULTY].firstAttack));
   const out: GameState = { ...(s as GameState), units, mapW, mapH, teams: normaliseTeams(s.teams, n), ai };
+  // A skirmish setup: repaired or dropped, never trusted blind. A save without a setup plays as it
+  // always did (LEGACY_SETUP). Normalised before migrateAir, which reads the research mode from it.
+  if (s.setup !== undefined) {
+    if (s.setup && typeof s.setup === 'object') out.setup = normaliseSetup(s.setup, LEGACY_SETUP);
+    else delete out.setup;
+  }
   migrateAir(out);
+  // Paced research (round 6): the commander's saving target is kept only in a paced battle.
+  const paced = pacedResearch(out);
+  out.ai = out.ai.map(m => {
+    if (!m || typeof m !== 'object' || !('researchFor' in m)) return m;
+    if (paced && Number.isFinite(m.researchFor) && m.researchFor! > 0) return m;
+    const { researchFor: _drop, ...rest } = m;
+    return rest as AiMemory;
+  });
   migrateNaval(out);
   if (s.powers !== undefined) {
     if (Array.isArray(s.powers)) {
@@ -643,12 +713,7 @@ export function migrateState(raw: unknown): GameState | null {
     if (Array.isArray(s.blackoutUntil)) out.blackoutUntil = sidesOf(out).map(o => (Number.isFinite(s.blackoutUntil![o]) ? s.blackoutUntil![o] : 0));
     else delete out.blackoutUntil;
   }
-  // A skirmish setup, its map type and its start sites: repaired or dropped, never trusted blind.
-  // A save without a setup plays as it always did (LEGACY_SETUP).
-  if (s.setup !== undefined) {
-    if (s.setup && typeof s.setup === 'object') out.setup = normaliseSetup(s.setup, LEGACY_SETUP);
-    else delete out.setup;
-  }
+  // Its map type and its start sites: repaired or dropped, never trusted blind.
   if (s.mapType !== undefined && !MAP_TYPES.includes(s.mapType)) delete out.mapType;
   if (s.starts !== undefined) {
     const okSite = (p: unknown) =>
@@ -678,6 +743,38 @@ export function migrateState(raw: unknown): GameState | null {
       result: m.result === 'won' || m.result === 'lost' ? m.result : null,
     };
   }
+  // A planet battle: kept only when well formed, else dropped (the battle then plays as a skirmish).
+  if (s.planet !== undefined) {
+    const p = migratePlanetBattle(s.planet, n);
+    if (p) out.planet = p;
+    else delete out.planet;
+  }
+  return out;
+}
+
+const AI_MODES: AiMode[] = ['normal', 'defend', 'raid', 'passive'];
+
+/** A planet battle's runtime from a save, or null when it is not well formed for n sides. */
+function migratePlanetBattle(raw: unknown, n: number): PlanetBattle | null {
+  const p = raw as Partial<PlanetBattle> | null;
+  if (!p || typeof p !== 'object') return null;
+  if (!Number.isInteger(p.battleId) || !Number.isInteger(p.timeLimit) || p.timeLimit! < 0) return null;
+  if (!Number.isInteger(p.defenderSeat) || p.defenderSeat! < 0 || p.defenderSeat! >= n) return null;
+  if (!Array.isArray(p.ai) || p.ai.length !== n || !p.ai.every(m => AI_MODES.includes(m))) return null;
+  if (!Array.isArray(p.city) || !p.city.every(c => Array.isArray(c) && c.length === 2 && Number.isInteger(c[0]) && typeof c[1] === 'string')) return null;
+  const out: PlanetBattle = {
+    battleId: p.battleId!,
+    timeLimit: p.timeLimit!,
+    defenderSeat: p.defenderSeat as Owner,
+    ai: p.ai.slice(),
+    city: p.city.map(c => [c[0], c[1]] as [number, string]),
+  };
+  if (p.fallen && typeof p.fallen === 'object') {
+    const fallen: NonNullable<PlanetBattle['fallen']> = {};
+    for (const [k, v] of Object.entries(p.fallen)) if (UNITS[k as UnitKind]?.hero && Number.isFinite(v)) fallen[k as HeroKind] = v as number;
+    out.fallen = fallen;
+  }
+  if (Array.isArray(p.perkPowers)) out.perkPowers = p.perkPowers.filter((x, i, all) => x in POWERS && all.indexOf(x) === i);
   return out;
 }
 

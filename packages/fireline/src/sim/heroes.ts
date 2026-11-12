@@ -20,7 +20,8 @@ import type { GameState, Unit } from './types';
 
 /** True in a skirmish set up with heroes on and advanced tech: the one place free-play heroes exist. */
 export function heroesInPlay(s: GameState): boolean {
-  if (s.mission) return false;
+  // A planet battle's heroes are the war's own (main's, side 0 only), never round 6's recruits.
+  if (s.mission || s.planet) return false;
   const setup = setupOf(s);
   return setup.heroes === true && setup.tech === 'advanced';
 }

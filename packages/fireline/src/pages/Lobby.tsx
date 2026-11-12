@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import PortalNav from '../components/PortalNav';
-import SkirmishSetupPanel, { SetupStep, TECH_TEXT, freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
+import GamePacePicker, { attackText } from '../components/GamePacePicker';
+import SkirmishSetupPanel, { RESEARCH_TEXT, SetupStep, TECH_TEXT, freshSeed, readStoredSetup, storeSetup } from '../components/SkirmishSetup';
 import { Button, Label, Panel, bodySmall } from '../components/ui';
 import { drawMap, mapFontsReady } from '../components/campaignArtBridge';
 import { previewView } from '../campaign/theatre';
 import { useSaves, type SaveMeta } from '../hooks/useSaves';
-import { campaignSaves, isCampaignMeta } from './campaignSaves';
+import { campaignSaves, isCampaignMeta, isPlanetMeta } from './campaignSaves';
+import WarSetup from '../components/planet/WarSetup';
+import { startPlanetTour } from '../components/planet/PlanetTour';
+import type { LengthPreset } from '../planet/types';
 import { MISSIONS } from '../campaign/missions';
 import { ACT_TWO } from '../campaign/act2';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
@@ -20,11 +24,14 @@ import {
   DEFAULT_DIFFICULTY,
   DIFFICULTIES,
   FACTION_NAMES,
+  GAME_PACES,
   GENERAL_FACTION,
   GENERALS,
   MAP_SIZE_NAMES,
   MAP_TYPE_NAMES,
   TICKS_PER_SECOND,
+  applyPace,
+  difficultyForPace,
   type MapType,
   type SkirmishSetup,
   type BuildingKind,
@@ -33,6 +40,7 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { ART, FONT, UI } from '../theme';
+import { scaledForSetup } from '../sim/aiScale';
 
 /** The campaign's shape, counted from the mission lists so the lobby's copy cannot go stale again. */
 const CAMPAIGN_MISSIONS = MISSIONS.length;
@@ -58,10 +66,12 @@ export default function Lobby() {
   const { saves: allSaves, savesLoaded, error, create, remove } = savesApi;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const camp = useMemo(() => campaignSaves(savesApi), [savesApi.cloud, savesApi.load, savesApi.save]);
-  const saves = allSaves.filter(s => !isCampaignMeta(s));
+  const saves = allSaves.filter(s => !isCampaignMeta(s) && !isPlanetMeta(s));
   const campaigns = allSaves.filter(isCampaignMeta);
   // The campaign the theatre preview shows and the war-room card offers to continue: the latest saved.
   const latest = campaigns.reduce<SaveMeta | null>((a, s) => (!a || s.savedAt > a.savedAt ? s : a), null);
+  const wars = allSaves.filter(isPlanetMeta);
+  const [warError, setWarError] = useState<string | null>(null);
   const [commander, setCommander] = useState(() => getStoredUser()?.username ?? '');
   const [campName, setCampName] = useState('');
   const [campBusy, setCampBusy] = useState(false);
@@ -77,6 +87,19 @@ export default function Lobby() {
     storeSetup(v);
   };
   const seedText = seed.trim() || autoSeed;
+  // The new-battle panel opens on the game size cards every visit; Customise shows the full setup.
+  const [setupStep, setSetupStep] = useState<'size' | 'custom'>('size');
+  const newBattleRef = useRef<HTMLElement>(null);
+  const stepChanged = useRef(false);
+  useEffect(() => {
+    // Switching step replaces most of the panel: bring its top back into view, not on first render.
+    if (!stepChanged.current) {
+      stepChanged.current = true;
+      return;
+    }
+    const el = newBattleRef.current;
+    if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ block: 'start' });
+  }, [setupStep]);
   const [level, setLevel] = useState<Difficulty>(DEFAULT_DIFFICULTY);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -154,8 +177,12 @@ export default function Lobby() {
               <span className="fl-hero-cta-num">01</span>
               {latest ? 'Continue the campaign' : 'Campaign'}
             </button>
-            <button type="button" className="fl-hero-cta" onClick={() => goTo('fl-skirmish')}>
+            <button type="button" className="fl-hero-cta" onClick={() => goTo('fl-war')}>
               <span className="fl-hero-cta-num">02</span>
+              War for the Planet
+            </button>
+            <button type="button" className="fl-hero-cta" onClick={() => goTo('fl-skirmish')}>
+              <span className="fl-hero-cta-num">03</span>
               Skirmish
             </button>
             <Link to="/how-to-play" className="fl-hero-cta" data-tone="quiet">
@@ -174,11 +201,14 @@ export default function Lobby() {
             <button type="button" onClick={() => goTo('fl-campaign')}>
               <span>01</span>Campaign
             </button>
+            <button type="button" onClick={() => goTo('fl-war')}>
+              <span>02</span>War for the Planet{wars.length > 0 ? ` (${wars.length})` : ''}
+            </button>
             <button type="button" onClick={() => goTo('fl-skirmish')}>
-              <span>02</span>Skirmish
+              <span>03</span>Skirmish
             </button>
             <button type="button" onClick={() => goTo('fl-battles')}>
-              <span>03</span>Your battles{saves.length > 0 ? ` (${saves.length})` : ''}
+              <span>04</span>Your battles{saves.length > 0 ? ` (${saves.length})` : ''}
             </button>
           </nav>
         </div>
@@ -295,15 +325,77 @@ export default function Lobby() {
           )}
         </section>
 
-        <section id="fl-skirmish" className="fl-lobby-section" aria-labelledby="fl-skirmish-title">
-          <SectionHead num="02" kicker="Skirmish" title="A new battle" id="fl-skirmish-title">
-            <Label>You against the computer</Label>
+        <section id="fl-war" className="fl-lobby-section" aria-labelledby="fl-war-title">
+          <SectionHead num="02" kicker="Strategic campaign" title="War for the Planet" id="fl-war-title">
+            <Label>Turn-based · every attack a battle</Label>
           </SectionHead>
+          <WarSetup
+            defaultCommander={commander}
+            onBegin={async (req, guided) => {
+              setWarError(null);
+              try {
+                const id = await camp.createPlanet(req);
+                if (id) {
+                  if (guided) startPlanetTour(id);
+                  navigate(`/game/${id}`);
+                  return true;
+                }
+              } catch {
+                /* Reported below. */
+              }
+              setWarError('The war could not be started. Try again in a moment.');
+              return false;
+            }}
+          />
+          {warError && (
+            <div style={{ ...errorBanner, marginTop: '1rem' }} role="alert">
+              {warError}
+            </div>
+          )}
+          {!savesLoaded ? (
+            <LoadingRows rows={1} label="Loading your wars" />
+          ) : (
+            wars.length > 0 && (
+              <div className="fl-saves" data-testid="war-saves">
+                <span className="fl-saves-label">Your wars</span>
+                {wars.map(s => (
+                  <SaveRow
+                    key={s.id}
+                    s={s}
+                    war
+                    confirming={confirmDelete === s.id}
+                    onOpen={() => navigate(`/game/${s.id}`)}
+                    onAsk={() => setConfirmDelete(s.id)}
+                    onKeep={() => setConfirmDelete(null)}
+                    onDelete={() => remove(s.id).then(() => setConfirmDelete(null))}
+                  />
+                ))}
+              </div>
+            )
+          )}
+        </section>
+
+        <section id="fl-skirmish" ref={newBattleRef} className="fl-lobby-section" aria-labelledby="fl-skirmish-title">
+          <SectionHead num="03" kicker="Skirmish" title="A new battle" id="fl-skirmish-title">
+            <Label>{setupStep === 'size' ? 'You against the computer' : `Customise · ${GAME_PACES[setup.pace].name}`}</Label>
+          </SectionHead>
+          {setupStep === 'custom' && (
+            <div className="fl-steps-back">
+              <Button tone="quiet" testId="setup-back" onClick={() => setSetupStep('size')}>
+                ← Game size
+              </Button>
+            </div>
+          )}
           <ol className="fl-steps">
-            <SetupStep n={1} title="Enemy commander" hint="How hard, and how soon, the other side comes for you.">
+            {setupStep === 'size' && (
+              <SetupStep n={1} title="Game size" hint="How long a battle, on how much ground. Customise changes any of it.">
+                <GamePacePicker value={setup} onPick={pace => setSetup(applyPace(setup, pace))} />
+              </SetupStep>
+            )}
+            <SetupStep n={setupStep === 'size' ? 2 : 1} title="Enemy commander" hint="How hard, and how soon, the other side comes for you.">
               <div className="fl-levels" role="group" aria-label="Enemy commander">
                 {(Object.keys(DIFFICULTIES) as Difficulty[]).map(d => {
-                  const spec = DIFFICULTIES[d];
+                  const spec = scaledForSetup(setup, difficultyForPace(d, setup.pace));
                   return (
                     <button key={d} type="button" className="fl-level" aria-pressed={level === d} data-testid={`level-${d}`} onClick={() => setLevel(d)}>
                       <span className="fl-level-name">{spec.label}</span>
@@ -319,52 +411,62 @@ export default function Lobby() {
                 })}
               </div>
               <p className="fl-setup-note">
-                {DIFFICULTIES[level].blurb} At every level the computer sees the whole map, pays for everything it builds and fights
-                with the same units you do.
+                {DIFFICULTIES[level].blurb}
+                {GAME_PACES[setup.pace].attackMul !== 1 &&
+                  ` At ${GAME_PACES[setup.pace].name} size every attack comes ${attackText(GAME_PACES[setup.pace].attackMul).toLowerCase()}${(setup.size ?? 'standard') !== 'standard' ? ', and later still on a larger map' : ''}: the first at about ${minutes(scaledForSetup(setup, difficultyForPace(level, setup.pace)).firstAttack)} minutes.`}{' '}
+                At every level the computer sees the whole map, pays for everything it builds and fights with the same units you do.
               </p>
             </SetupStep>
-            <SkirmishSetupPanel
-              value={setup}
-              onChange={setSetup}
-              seedText={seedText}
-              seedSlot={
-                <div className="fl-setup-field">
-                  <Label>Map seed</Label>
-                  <div className="fl-seed">
-                    <input
-                      style={{ ...input, width: 200, fontFamily: FONT.mono }}
-                      value={seed}
-                      placeholder={autoSeed}
-                      aria-label="Map seed"
-                      data-testid="seed"
-                      maxLength={64}
-                      onChange={e => setSeed(e.target.value)}
-                    />
-                    <Button
-                      tone="quiet"
-                      onClick={() => {
-                        setSeed('');
-                        setAutoSeed(freshSeed());
-                      }}
-                    >
-                      New map
-                    </Button>
+            {setupStep === 'custom' && (
+              <SkirmishSetupPanel
+                value={setup}
+                onChange={setSetup}
+                seedText={seedText}
+                seedSlot={
+                  <div className="fl-setup-field">
+                    <Label>Map seed</Label>
+                    <div className="fl-seed">
+                      <input
+                        style={{ ...input, width: 200, fontFamily: FONT.mono }}
+                        value={seed}
+                        placeholder={autoSeed}
+                        aria-label="Map seed"
+                        data-testid="seed"
+                        maxLength={64}
+                        onChange={e => setSeed(e.target.value)}
+                      />
+                      <Button
+                        tone="quiet"
+                        onClick={() => {
+                          setSeed('');
+                          setAutoSeed(freshSeed());
+                        }}
+                      >
+                        New map
+                      </Button>
+                    </div>
+                    <p className="fl-setup-note">
+                      Leave it as it is for a fresh map, or type any word: the same seed and settings always draw the same battlefield.
+                    </p>
                   </div>
-                  <p className="fl-setup-note">
-                    Leave it as it is for a fresh map, or type any word: the same seed and settings always draw the same battlefield.
-                  </p>
-                </div>
-              }
-            />
-            <SetupStep n={5} title="Deploy" hint="Check the orders, name the operation and go.">
-              <ul className="fl-orders" aria-label="Battle orders">
+                }
+              />
+            )}
+            <SetupStep
+              n={setupStep === 'size' ? 3 : 5}
+              title="Deploy"
+              hint={setupStep === 'size' ? 'Check the orders and go, or customise the map, sides and terms first.' : 'Check the orders, name the operation and go.'}
+            >
+              <ul className="fl-orders" aria-label="Battle orders" data-testid="setup-summary">
+                <Order k="Game size">{GAME_PACES[setup.pace].name}</Order>
                 <Order k="Enemy">{DIFFICULTIES[level].label}</Order>
                 <Order k="Map">{mapLabel}</Order>
                 <Order k="Sides">{setup.sides === 2 ? '1 against 1' : setup.mode === 'teams' ? (setup.sides === 4 ? '2 against 2' : '2 against 1') : `${setup.sides}, free for all`}</Order>
                 <Order k="Tech">{TECH_TEXT[setup.tech].name}</Order>
+                {setup.tech === 'advanced' && <Order k="Research">{RESEARCH_TEXT[setup.research].name}</Order>}
                 <Order k="Credits">{setup.credits.toLocaleString('en-GB')}</Order>
                 <Order k="Ore">{capital(setup.ore)}</Order>
-                <Order k="Size">{MAP_SIZE_NAMES[setup.size ?? 'standard']}</Order>
+                <Order k="Map size">{MAP_SIZE_NAMES[setup.size ?? 'standard']}</Order>
                 <Order k="Sites">{setup.sites ? 'On' : 'Off'}</Order>
                 {/* Round 6: each seat's army and doctrine General, and the two advanced-tech options. */}
                 <Order k="Armies">{armiesLabel(setup)}</Order>
@@ -378,9 +480,16 @@ export default function Lobby() {
                   <Label>Name this battle</Label>
                   <input style={input} value={name} placeholder="Operation Fireline" maxLength={60} onChange={e => setName(e.target.value)} />
                 </div>
-                <Button tone="primary" disabled={busy} onClick={begin} style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}>
-                  {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
-                </Button>
+                <div className="fl-begin-row">
+                  <Button tone="primary" disabled={busy} onClick={begin} style={{ padding: '0.6rem 1.1rem', fontSize: '0.9rem' }}>
+                    {busy ? <BusyLabel>Deploying…</BusyLabel> : 'Begin the battle →'}
+                  </Button>
+                  {setupStep === 'size' && (
+                    <Button tone="quiet" testId="setup-customise" onClick={() => setSetupStep('custom')}>
+                      Customise →
+                    </Button>
+                  )}
+                </div>
               </div>
               <p className="fl-setup-note">Best with a mouse and keyboard on a laptop or desktop screen.</p>
             </SetupStep>
@@ -388,7 +497,7 @@ export default function Lobby() {
         </section>
 
         <section id="fl-battles" className="fl-lobby-section" aria-labelledby="fl-battles-title">
-          <SectionHead num="03" kicker="Field reports" title="Your battles" id="fl-battles-title">
+          <SectionHead num="04" kicker="Field reports" title="Your battles" id="fl-battles-title">
             {saves.length > 0 ? <Label>{saves.length} saved</Label> : undefined}
           </SectionHead>
           {!savesLoaded ? (
@@ -417,7 +526,7 @@ export default function Lobby() {
   );
 }
 
-/** A numbered section heading: the lobby reads 01 Campaign, 02 Skirmish, 03 Your battles. */
+/** A numbered section heading: the lobby reads 01 Campaign, 02 War for the Planet, 03 Skirmish, 04 Your battles. */
 function SectionHead({ num, kicker, title, id, children }: { num: string; kicker: string; title: string; id: string; children?: ReactNode }) {
   return (
     <header className="fl-lobby-head">
@@ -583,6 +692,7 @@ function WhatsNew() {
 function SaveRow({
   s,
   campaign = false,
+  war = false,
   confirming,
   onOpen,
   onAsk,
@@ -591,6 +701,8 @@ function SaveRow({
 }: {
   s: SaveMeta;
   campaign?: boolean;
+  /** A War for the Planet save: labelled "War" with its length and turn. */
+  war?: boolean;
   confirming: boolean;
   onOpen: () => void;
   onAsk: () => void;
@@ -601,13 +713,16 @@ function SaveRow({
   const statusText = campaign ? 'Campaign' : s.status === 'victory' ? 'Victory' : s.status === 'defeated' ? 'Defeat' : 'In progress';
   const facts = campaign
     ? []
-    : [`${s.turn} min`, mapTypeOf(s) ? MAP_TYPE_NAMES[mapTypeOf(s)!] : null, sizeOfSave(s), sidesOfSave(s)].filter((x): x is string => !!x);
+    : war
+      ? [s.preset ? `${PRESET_NAMES[s.preset]} war` : 'War', `turn ${s.turn}`]
+      : [`${s.turn} min`, mapTypeOf(s) ? MAP_TYPE_NAMES[mapTypeOf(s)!] : null, sizeOfSave(s), sidesOfSave(s)].filter((x): x is string => !!x);
   return (
-    <div className="fl-save" data-kind={campaign ? 'campaign' : 'skirmish'} data-status={status} data-confirming={confirming ? '1' : undefined}>
+    <div className="fl-save" data-kind={campaign ? 'campaign' : war ? 'planet' : 'skirmish'} data-status={status} data-confirming={confirming ? '1' : undefined}>
       <span className="fl-save-status">{statusText}</span>
       <div className="fl-save-main">
         <strong className="fl-save-name">
           {campaign && <span className="fl-badge">Campaign</span>}
+          {war && <span className="fl-badge">War</span>}
           {s.name}
         </strong>
         <span className="fl-save-meta">
@@ -618,7 +733,7 @@ function SaveRow({
       <div className="fl-save-actions">
         {confirming ? (
           <>
-            <span className="fl-save-ask">{campaign ? 'Delete this campaign?' : 'Delete this battle?'}</span>
+            <span className="fl-save-ask">{campaign ? 'Delete this campaign?' : war ? 'Delete this war?' : 'Delete this battle?'}</span>
             <Button tone="danger" onClick={onDelete}>
               Delete
             </Button>
@@ -631,7 +746,7 @@ function SaveRow({
             <Button tone={campaign || s.status === 'active' ? 'primary' : 'default'} onClick={onOpen}>
               {campaign ? 'Continue' : s.status === 'active' ? 'Resume' : 'View'}
             </Button>
-            <Button tone="quiet" onClick={onAsk} title={campaign ? 'Delete this campaign' : 'Delete this battle'}>
+            <Button tone="quiet" onClick={onAsk} title={campaign ? 'Delete this campaign' : war ? 'Delete this war' : 'Delete this battle'}>
               ✕
             </Button>
           </>
@@ -640,6 +755,8 @@ function SaveRow({
     </div>
   );
 }
+
+const PRESET_NAMES: Record<LengthPreset, string> = { short: 'Short', long: 'Long', veryLong: 'Very long' };
 
 /** The battle's map type, when the saves list carries it (older rows and servers do not). */
 const mapTypeOf = (s: SaveMeta): MapType | null => {
@@ -935,6 +1052,7 @@ const minutes = (ticks: number) => {
 
 /** What changed lately, in a line each. */
 const WHATS_NEW: { title: string; text: string }[] = [
+  { title: 'War for the Planet', text: 'A whole planet of cities, trade and treaties against two to four rival factions, every attack a real battle.' },
   { title: 'Seven battlefields', text: 'River, Highlands, Lakes, Plains, Canyon, Coast or Classic, or let the seed choose. See each map before you deploy.' },
   { title: 'Advanced tech', text: 'Grenadiers, Medics, Flame Tanks, Missile Carriers, the Bastion, walls, a Repair Bay, and powers: recon, barrage, missile.' },
   { title: 'The campaign', text: `${capital(inWords(CAMPAIGN_MISSIONS))} missions in two acts, a Commander who ranks up and learns perks, ${inWords(HERO_NAMES.length)} heroes who level up, and support powers.` },

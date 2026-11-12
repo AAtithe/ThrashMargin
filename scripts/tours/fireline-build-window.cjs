@@ -53,13 +53,17 @@ async function checkBuildWindow(browser, base, problems, out) {
       localStorage.removeItem('fl_build_window');
     }, USER);
     await page.reload();
+    // The lobby opens on the game size cards (round 6, pace); the tech level is under Customise.
+    await page.getByTestId('setup-customise').click();
     // A fixed battlefield. The lobby draws a fresh seed each visit and its default map type is
     // "let the seed choose", and about 38% of those maps (most Canyon, Plains and Highlands draws)
     // have no open sea, so no Naval tab: the run then waited on #fl-tab-naval until Playwright
-    // timed out. The Coast always has sea, so every MENUS tab, Naval included, is checked every run.
+    // timed out. The Coast always has sea (clicked below), so every MENUS tab, Naval included, is
+    // checked every run.
     await page.getByTestId('seed').fill('tour-build-window');
-    await page.getByTestId('map-coast').click();
     await page.getByTestId('tech-advanced').click();
+    // The Coast map (the naval war): its open sea is what offers the Naval tab, checked below too.
+    await page.getByTestId('map-coast').click();
     await page.getByRole('button', { name: /Begin the battle/ }).click();
     await page.waitForURL(/\/game\//);
     await page.locator('#fl-build-open').waitFor();
@@ -179,7 +183,9 @@ async function checkBuildWindow(browser, base, problems, out) {
     await until(isOpen);
     await page.locator('#fl-build-power').click();
     if (!(await until(async () => (await page.locator('#fl-battlefield').getAttribute('data-placing')) === 'power'))) await fail('clicking the ready Generator did not start placement');
-    if (await isOpen()) await fail('the window stayed open while placing');
+    // The window closes in the render after placement starts (an effect on placing in GameScreen), so
+    // wait for it as every other open and close here does; reading it once raced that render on CI.
+    if (!(await until(async () => !(await isOpen()), 2000))) await fail('the window stayed open while placing');
     const field = await page.locator('#fl-battlefield').boundingBox();
     let placed = false;
     for (let r = 40; r < 360 && !placed; r += 24)

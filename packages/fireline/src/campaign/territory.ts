@@ -232,6 +232,8 @@ export function engagementSpec(c: CampaignState, regionId: string): MissionSpec 
     player: { credits, structures: ['hq'], units: ours, heroes: [] },
     enemy: { credits: enemyCredits, base: full ? 'full' : 'outpost', structures, units, ai },
     tech: [...basics],
+    // Every mission states its research mode; engagements, like the story missions, use classic research.
+    research: 'classic',
     powers: [],
     // An outpost is cleared to the last rifleman; a base is broken when its Command Yard and its
     // factories are down (it rebuilds everything else, and hunting its last harvester is no battle).

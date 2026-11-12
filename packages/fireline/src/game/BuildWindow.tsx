@@ -11,10 +11,10 @@
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { BUILDINGS, PRODUCER, type BuildingKind, type Category, type UnitKind } from '../sim/rules';
-import { hasBuilding, hasProducer, powerOf } from '../sim/state';
+import { hasBuilding, hasProducer, powerOf, researchModeOf } from '../sim/state';
 import { airCount, airRoom } from '../sim/air';
 import type { GameAction, GameState } from '../sim/types';
-import { BUILD_KEYS, BuildButton, BuildTipFooter, ResearchBlock, StatTip, menuFor, tabLabel, tabsFor, useTip, type Tab } from './Sidebar';
+import { BUILD_KEYS, BuildButton, BuildTipFooter, LoadoutPanel, ResearchBlock, StatTip, menuFor, tabLabel, tabsFor, useTip, type Tab } from './Sidebar';
 import { rulesCatalogue, layoutTree, withExtras, type Catalogue, type ExtraItem } from './techTree';
 import { factionOf } from '../sim/specs';
 
@@ -357,6 +357,8 @@ function BuildTab({
           </div>
         ))}
       </div>
+      {/* Development lines: the vehicle loadouts, under the Vehicles tree (round 5b). */}
+      {tab === 'vehicle' && <LoadoutPanel state={state} dispatch={dispatch} />}
       {tab === 'air' && hasBuilding(state, 0, 'helipad') && (
         <p className="fl-air-room" data-testid="air-room">
           Helipads serve {airRoom(state, 0) + airCount(state, 0)} aircraft; {airCount(state, 0)} built or queued.
@@ -368,6 +370,7 @@ function BuildTab({
           faction={faction}
           state={state}
           anchor={tip.el}
+          research={researchModeOf(state)}
           extra={<BuildTipFooter state={state} tab={tab} kind={tip.key} hotkey={BUILD_KEYS[menu.indexOf(tip.key)]} lowPower={lowPower} />}
         />
       )}

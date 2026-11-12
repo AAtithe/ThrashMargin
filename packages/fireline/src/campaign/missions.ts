@@ -68,6 +68,7 @@ export const MISSIONS: MissionSpec[] = [
       ai: 'passive',
     },
     tech: ['power', 'refinery', 'barracks', 'turret', 'rifleman', 'rocketeer'],
+    research: 'classic',
     powers: [],
     objectives: [{ kind: 'destroyAll' }],
     bonus: [
@@ -111,6 +112,7 @@ export const MISSIONS: MissionSpec[] = [
       ai: 'passive',
     },
     tech: [],
+    research: 'classic',
     powers: [],
     objectives: [
       { kind: 'infiltrate', building: 'uplink' },
@@ -167,6 +169,7 @@ export const MISSIONS: MissionSpec[] = [
       ai: 'raid',
     },
     tech: ['power', 'refinery', 'barracks', 'factory', 'turret', 'rifleman', 'rocketeer', 'hauler', 'buggy', 'tank'],
+    research: 'classic',
     powers: [],
     objectives: [{ kind: 'survive', ticks: 8 * MIN }],
     bonus: [
@@ -216,6 +219,7 @@ export const MISSIONS: MissionSpec[] = [
       ai: 'passive',
     },
     tech: [],
+    research: 'classic',
     powers: [],
     objectives: [
       { kind: 'destroy', building: 'power', count: 3 },
@@ -267,6 +271,7 @@ export const MISSIONS: MissionSpec[] = [
       ai: 'passive',
     },
     tech: ['rifleman', 'rocketeer', 'hauler', 'buggy', 'tank'],
+    research: 'classic',
     powers: [],
     objectives: [
       { kind: 'capture', building: 'factory' },
@@ -317,6 +322,7 @@ export const MISSIONS: MissionSpec[] = [
       ai: 'defend',
     },
     tech: [],
+    research: 'classic',
     powers: ['recon'],
     objectives: [
       { kind: 'holdZone', x: 32.5, y: 32.5, r: 3, ticks: 3 * MIN },
@@ -371,6 +377,7 @@ export const MISSIONS: MissionSpec[] = [
       ai: 'normal',
     },
     tech: ALL_TECH,
+    research: 'classic',
     powers: ['recon'],
     objectives: [{ kind: 'destroy', building: 'factory', count: 1 }, { kind: 'destroyAll' }],
     bonus: [
@@ -432,6 +439,7 @@ export const MISSIONS: MissionSpec[] = [
       ai: 'normal',
     },
     tech: ALL_TECH,
+    research: 'classic',
     powers: ['recon', 'barrage', 'reinforce'],
     objectives: [{ kind: 'destroyAll' }],
     bonus: [

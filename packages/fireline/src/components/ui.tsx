@@ -49,6 +49,7 @@ export function Button({
   title,
   style,
   id,
+  testId,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -58,6 +59,8 @@ export function Button({
   style?: CSSProperties;
   /** A stable hook for the guided run to spotlight this control. Unused for now. */
   id?: string;
+  /** Rendered as data-testid, for scripts that drive the page. */
+  testId?: string;
 }) {
   const tones: Record<string, CSSProperties> = {
     default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
@@ -69,6 +72,7 @@ export function Button({
     <button
       type="button"
       id={id}
+      data-testid={testId}
       onClick={onClick}
       disabled={disabled}
       title={title}

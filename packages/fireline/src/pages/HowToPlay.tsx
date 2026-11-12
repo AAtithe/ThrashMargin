@@ -36,6 +36,8 @@ import {
 import { FONT, UI } from '../theme';
 // round6:A. Two armies (fireline-round6-design.md, workstream A): its panel.
 import ArmiesPanel from './ArmiesPanel';
+import { CITY_BUILDING_SPECS, LENGTH_PRESETS, PRESETS } from '../planet/rules';
+import { CITY_BUILDINGS } from '../planet/types';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import {
   DERRICK_INCOME,
@@ -294,7 +296,8 @@ export default function HowToPlay() {
               their places beside it. Order some of a squad elsewhere and they leave it; a squad down to one unit is over.
             </li>
             <li>
-              With advanced tech the computer does the same: its waves attack in a wedge and pull together into a box.
+              In an advanced-tech skirmish the computer does the same: its waves attack in a wedge and pull together into a box. A
+              War for the Planet battle keeps the computer's old marching order, and its armies are all Meridian.
             </li>
             <li>
               Control groups (<kbd>Ctrl</kbd> + 1 to 9) are remembered for each battle in this browser. On a touch screen they are
@@ -346,6 +349,80 @@ export default function HowToPlay() {
           </div>
         </Section>
 
+        <Section title="War for the Planet">
+          <p style={{ ...bodySmall, margin: 0 }}>
+            A whole planet held by you, the Meridian Corps, and two to four computer factions, each with its own temperament. Start a war from
+            the lobby: choose a length, the number of factions, a difficulty and the optional rules. Tick <strong>Guided first turn</strong> for
+            a tutorial that walks your first turn one step at a time; <strong>Tour</strong> at the top of the war screen reopens it.
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 10 }}>
+            {LENGTH_PRESETS.map(k => {
+              const o = PRESETS[k];
+              return (
+                <div key={k} style={{ ...tile, flexDirection: 'column', gap: 2 }}>
+                  <strong style={{ fontSize: '0.88rem' }}>{k === 'short' ? 'Short' : k === 'long' ? 'Long' : 'Very long'}</strong>
+                  <span style={{ fontSize: '0.76rem', color: UI.textSoft, lineHeight: 1.4 }}>
+                    {o.regions} regions on {o.continents} continents, {o.factions} factions. {o.openingTruce} turns of truce, then {o.turnLimit} turns in all;
+                    {' '}{o.victoryShare}% of the planet wins outright. Field army of up to {o.armyCap}.
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <ul style={{ ...bodySmall, margin: 0, paddingLeft: '1.2rem', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <li>
+              <strong>The turn.</strong> Give any number of orders: build, recruit, research, trade, negotiate, move the field army up to two
+              regions, and attack one neighbouring region. Then press <strong>End turn</strong>: every other faction moves, everyone produces, and
+              any attack on you becomes a battle to settle before your next orders.
+            </li>
+            <li>
+              <strong>Cities.</strong> Every region has one city, level 1 to 5. A city holds one more building than its level, and buildings go up
+              to Mk 3 (no higher than the city level). One build or growth per city per turn. What a city has built decides what its defenders
+              start the battle with:
+              <ul style={{ margin: '4px 0 0', paddingLeft: '1.1rem' }}>
+                {CITY_BUILDINGS.map(b => (
+                  <li key={b}>
+                    <strong>{CITY_BUILDING_SPECS[b].name}</strong>: {CITY_BUILDING_SPECS[b].blurb}
+                  </li>
+                ))}
+              </ul>
+            </li>
+            <li>
+              <strong>Resources.</strong> Ore, fuel, alloys and food come from the land and the cities. Food feeds cities and infantry, fuel
+              runs vehicles and airfields, alloys pay for vehicles, buildings and the credits you bring to a battle. Research needs science,
+              from research institutes and the capital. A shortfall disbands units.
+            </li>
+            <li>
+              <strong>Trade.</strong> A route between two of your cities pays ore and food; a route to a city of a trading partner pays fuel and
+              alloys to you both. A route whose path is cut by war pays nothing that turn: it is blockaded. Treaties can add tribute and exchanges
+              of resources each turn, and exchanges flow only while a route between you is open.
+            </li>
+            <li>
+              <strong>Diplomacy.</strong> War, ceasefire, trade pact, alliance. Every faction trusts every other to a degree, shown as a bar.
+              A proposal shows whether they would accept before you send it, and why. The computer factions sign treaties for a set number of
+              turns and renew them only while peace pays them better than war: trade that flows, a stronger neighbour, enemies elsewhere. A
+              treaty that runs out leaves you at war. They turn on a weak or exposed neighbour, and every one of them turns on a faction close to
+              winning, you included. Breaking a treaty before its end is a breach: the victim's trust in you falls by 30 and everyone else's by
+              10. Peace and war wear trust up or down each turn, but never past 90 or below 10 on their own. Allies bordering a battle join it
+              on your side, and their regions are open to your army.
+            </li>
+            <li>
+              <strong>Battles.</strong> Each attack is a Fireline battle on the region's own terrain, two to four sides on two teams, with the
+              defender's city as its base and both sides' research in place. Fight it yourself, or auto-resolve it from the strength of each side.
+              When time runs out, the defenders win. Your units keep their kills and rank from battle to battle; heroes join attacks and defences.
+            </li>
+            <li>
+              <strong>Encirclement.</strong> A region with no path to its owner's capital through friendly ground is cut off: it yields half, and
+              after a few turns it surrenders to the enemy next to it. Lose the capital and the largest remaining city takes its place.
+            </li>
+            <li>
+              <strong>Winning.</strong> Hold the share of the planet the length sets, drive every rival out, or (with allied victory on) hold it
+              together with your allies while you lead them. At the turn limit you win only if you hold more regions than any other faction. Lose every region, or
+              let a rival reach the share first, and the war is lost.
+            </li>
+          </ul>
+        </Section>
+
         <Section title="Structures">
           <Grid kinds={BUILD_MENU} />
         </Section>
@@ -359,7 +436,8 @@ export default function HowToPlay() {
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             Advanced tech only. A Helipad builds and rearms two aircraft. They fly over water, rock and structures, and only
             anti-air (Skyhunters, Flak Tracks, Flak Cannons, Interceptors) and machine guns can reach them. Once a Research Lab
-            stands, the build window's Research tab offers six upgrades, one at a time, that last the rest of the battle.
+            stands, the build window's Research tab offers upgrades, one at a time, that last the rest of the battle: six with
+            classic research, the development lines below otherwise.
           </p>
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
             The air war has four jobs. Scout: send a Recon Plane over the fog and it circles there, seeing far and uncovering
@@ -372,6 +450,20 @@ export default function HowToPlay() {
             flak and missiles do to your aircraft by a quarter. Send Interceptors on attack-move with a strike and they take on
             the fighters that come up to meet it. Both armies fly the Recon Plane, Interceptor, Troop Carrier and Heavy Bomber
             alike; the Ashen Combine strikes with the Kestrel and Firebrand in place of the Gunship and Bomber.
+          </p>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
+            With development lines (the default for a new advanced skirmish), research is five lines: Logistics, Armour, Engines,
+            Weapons and Air, all on the build window's Research tab. Each has three marks, researched in order. At the top of each
+            line you adopt one of two doctrines and the other closes for the rest of the battle. Research also unlocks modules: on
+            the build window's Vehicles tab, under the tree, set a loadout for each vehicle type, and every one built afterwards
+            carries it, for a little more money. Countermeasures is classic research only: in the lines, the Air line's Armoured
+            cockpits doctrine does its job and more.
+          </p>
+          <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
+            A new battle starts with its game size. Quick is the original pace. Standard, Long and Epic give both sides more time
+            before the waves come, and with development lines make research cheaper and quicker, so Mk II and the doctrines
+            come within reach. Long and Epic are also played on a Large and a Huge map. Every size, and the map size on its own,
+            can be changed in Customise.
           </p>
           <Grid kinds={AIR_MENU} />
         </Section>
@@ -413,6 +505,7 @@ const SECTIONS = [
   'Generals',
   'Formations and groups',
   'Campaign',
+  'War for the Planet',
   'Structures',
   'Infantry',
   'Vehicles',

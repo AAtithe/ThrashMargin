@@ -9,6 +9,8 @@
     "drive": "tsx scripts/drive.ts",
     "campaign-check": "tsx scripts/campaign-check.ts",
     "ladder": "tsx scripts/ai-ladder.ts",
+    "drive:planet": "tsx scripts/drive-planet.ts",
+    "ladder:planet": "tsx scripts/planet-ladder.ts",
     "campaign-sweep": "tsx scripts/campaign-sweep.ts"
   },
   "dependencies": {

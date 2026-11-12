@@ -30,6 +30,8 @@ import {
   type FormationShape,
 } from './rules';
 import { unitSpecOf } from './specs';
+import { infantrySpeedOf } from './research';
+import { moduleSpeedOf } from './loadout';
 import type { GameState, Squad, Unit } from './types';
 
 export const isFormationShape = (v: unknown): v is FormationShape => FORMATION_SHAPES.includes(v as FormationShape);
@@ -240,9 +242,24 @@ export function pruneSquads(s: GameState): void {
   }
 }
 
-/** A unit's speed for keeping pace: its spec's, times its side's Engine tuning for vehicles. */
-const paceOf = (s: GameState, u: Unit, tuned: number): number =>
-  unitSpecOf(s, u).speed * (tuned !== 1 && UNITS[u.kind].category === 'vehicle' ? tuned : 1);
+/**
+ * A unit's speed for keeping pace: its spec's, times its side's Engine tuning for vehicles, and (as
+ * stepAlong has it since the merge with development lines) Motorised infantry for infantry and an
+ * Extra fuel tank's module. Both are 1 in a classic battle, so a classic squad keeps its old pace.
+ */
+const paceOf = (s: GameState, u: Unit, tuned: number): number => {
+  const cat = UNITS[u.kind].category;
+  let p = unitSpecOf(s, u).speed * (tuned !== 1 && cat === 'vehicle' ? tuned : 1);
+  if (cat === 'infantry') {
+    const marched = infantrySpeedOf(s, u.owner);
+    if (marched !== 1) p *= marched;
+  }
+  if (u.modules) {
+    const fuel = moduleSpeedOf(u);
+    if (fuel !== 1) p *= fuel;
+  }
+  return p;
+};
 
 /** The slowest member's pace, over these units. */
 export function slowest(s: GameState, units: Unit[], tuned = 1): number {

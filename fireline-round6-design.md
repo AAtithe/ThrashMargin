@@ -549,3 +549,59 @@ this contract's rules:
   plan, alongside round 6's per-army mixes, kept-back heroes, General and formations. Asserted on
   the Coast map at Hard with heroes and Generals on, from both seats: each army's commander builds a
   Naval Yard, no ship is ever in a wave or a squad, and no General or hero is ever aboard.
+
+
+---
+
+## 10. Merged with main's War for the Planet (2026-11-12)
+
+Main gained PR #35 (`fireline-design.md`, the 2026-11-10 entries for development lines, War for the
+Planet and the game pace, and the merge entries after them): development lines, doctrines and vehicle
+loadouts (`fireline-round5b-design.md`), the game pace ("game size" on the cards), and War for the
+Planet (`fireline-planet-design.md`), a turn-based war whose attacks become real-time battles built
+with `createInitialState` (`src/planet/battle.ts`). Main's pace contract had been written under this
+file's name; it is now `fireline-round6b-design.md`, every reference to it updated, as round 5b was
+named at the merge before. The merge keeps this contract's rules:
+
+- **War for the Planet is unchanged by this round.** `buildPlanetBattle` states every field of its
+  setup, round 6's included: `factions` every seat `'meridian'`, `heroes: false`, `generals: false`,
+  `generalPicks` every seat `null`. A planet battle's heroes are the war's own (side 0 only, brought
+  from the strategic layer, run by the hero tick as main built it), never recruits: `heroesInPlay`
+  and `fieldGenerals` are false in any battle with `s.planet`, whatever its setup says, so no
+  Command Academy, recruit or field General can appear there. The computer's two formation moves
+  (the wave's wedge, the regroup's box) run in an advanced skirmish only, not in a planet battle
+  (`adv && !s.planet`), so a war's battles play exactly as main's. A player may still order a
+  formation there: it is a control, not a setup option, and no harness number reads it.
+- **Setup order.** `normaliseSetup` returns map, tech, credits, ore, sides, mode, size, sites,
+  research, pace, then this round's factions, heroes, generals, generalPicks; `DEFAULT_SETUP` and
+  `LEGACY_SETUP` state all fourteen in that order (main's research `'lines'` and `'classic'`, pace
+  `'quick'`). The game pace cards (`applyPace`) set credits, ore and map size and keep every round 6
+  choice; the lobby's remembered setup carries both sides' fields.
+- **Development lines for both armies.** Main added no unit or structure kind, so no menu and no
+  build key moved and the recruits stay last. Research, doctrines and modules are by side and by kind,
+  so both armies research the same five lines. A module fits the kinds its `fits` list names, which are
+  Meridian's catalogue vehicles; an Ashen side's tank or artillery is the same kind with its overlay,
+  so it takes the same modules, while the Raider Bike, like main's tier-three vehicles, takes none.
+- **Per-side numbers in main's new code.** Where an owner is known, main's lookups read the side's
+  army: the computer's vehicle prices (`vehiclePrice`: `unitSpec` plus the loadout), Salvage crews'
+  payment (the wreck's own army's price), the bomb run's and flight's speed and weapon (`unitSpecOf`
+  times main's Avionics, Heavy munitions and High-explosive fill), the paced hold's armed units, and
+  the loadout panel's names. `weaponOf(s, u)` (loadout.ts) is the unit's army's weapon with a long
+  barrel added; Meridian's is the catalogue's object, so it gets main's cached `LONG_BARREL_WEAPON`,
+  and an Ashen weapon gets the same range added once, cached. A General's aura copy is made from that
+  weapon. Category, `hero`, `airRole` and `stealth` stay identity reads of `UNITS`.
+- **Squads keep the new speeds.** `stepAlong` applies main's Motorised infantry and Extra fuel tank,
+  then caps a squad member at the squad's pace, and that pace (formations.ts) counts the same two
+  multipliers beside the Engine tuning it already had. In a classic battle both are 1.
+- **The computer.** Main's paced research, its hold and its loadouts run for both armies; Ashen's air
+  tactics still lay over main's `AIR_TACTICS` (now from `difficultyFor`, the pace's attack timing).
+- **The ladder** keeps main's `--pace` and `--research` beside this round's `--factions` and army
+  sides (`new:normal:ashen`); a planet ladder (`ladder:planet`) is main's and unchanged.
+- **Names.** The war's player faction is called Meridian Corps on the planet map; every planet battle
+  seat fields this round's Meridian army, so the two agree. No army choice reaches the war.
+- **Harness.** Round 6's defaults are checked and left out of the hashes main's harness keeps
+  (`preRound6`, drive-planet-battle.ts; `strip`, drive-size.ts), and a planet battle carrying any trace
+  of this round fails. Only the advanced-tech summary lines of `npm run drive` moved, all of it this
+  round's computer formations (shown as at sections 8 and 9: with the two formation moves switched
+  off, every summary line equals main's). The numbers are in `fireline-design.md`, build log,
+  "Round 6 merged with War for the Planet".

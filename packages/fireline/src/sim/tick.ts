@@ -23,7 +23,6 @@ import {
   DIFFICULTIES,
   FLIGHT_TICKS,
   HARVEST_PER_SCOOP,
-  HAULER_CAPACITY,
   ORE_REGROW_AMOUNT,
   ORE_REGROW_TICKS,
   ORE_SPREAD_TICKS,
@@ -54,6 +53,7 @@ import {
   REPAIR_BAY_HP,
   REPAIR_BAY_RANGE,
   REPAIR_BAY_TICKS,
+  SALVAGE_SHARE,
   SELF_REPAIR_TICKS,
   hitsAir,
   hitsGround,
@@ -65,7 +65,23 @@ import {
   type Weapon,
 } from './rules';
 import { canHit, isAir, launchAircraft, updateAircraft, type AirHooks } from './air';
-import { antiAirTakenMulOf, damageMulOf, incomeMulOf, researchStep, upgradeNewUnit, vehicleSpeedOf } from './research';
+import {
+  antiAirTakenMulOf,
+  buildRateOf,
+  damageMulOf,
+  damageTakenMul,
+  fieldRepairOf,
+  incomeMulOf,
+  infantrySpeedOf,
+  kindDamageMulOf,
+  reloadMulOf,
+  researchStep,
+  salvageOf,
+  splashMulOf,
+  upgradeNewUnit,
+  vehicleSpeedOf,
+} from './research';
+import { cargoMaxOf, fitModules, moduleSpeedOf, weaponOf } from './loadout';
 import { spawnSurvivors } from './commands';
 import { menderStep } from './engineering';
 import {
@@ -129,6 +145,8 @@ interface Ctx {
   keepClear: Set<number>;
   /** Per side: its vehicles' speed multiplier (Engine tuning), 1 without. */
   vehicleSpeed: number[];
+  /** Per side: its infantry's speed multiplier (Motorised infantry), 1 without. */
+  infantrySpeed: number[];
   /** What the aircraft borrow from here (air.ts). */
   air: AirHooks;
 }
@@ -146,6 +164,7 @@ export function step(s: GameState): void {
     power: sidesOf(s).map(o => powerOf(s, o).low),
     keepClear: new Set(),
     vehicleSpeed: sidesOf(s).map(o => vehicleSpeedOf(s, o)),
+    infantrySpeed: sidesOf(s).map(o => infantrySpeedOf(s, o)),
     air: null as unknown as AirHooks,
   };
   ctx.air = {
@@ -187,8 +206,9 @@ export function step(s: GameState): void {
   // The naval war: Naval Yards mending the ships beside them.
   navalStep(s);
   // round6:B begin. Heroes in free play: the hero tick also runs in a skirmish with setup.heroes
-  // (this condition may widen; nothing else here changes).
-  if (s.mission) heroes(s, ctx);
+  // (this condition may widen; nothing else here changes). A mission and a planet battle run it as
+  // main built them; a planet battle states heroes: false, so it never enlists.
+  if (s.mission || s.planet) heroes(s, ctx);
   else if (heroesInPlay(s)) {
     enlistHeroes(s);
     heroes(s, ctx);
@@ -295,6 +315,11 @@ function charges(s: GameState): void {
 function credit(s: GameState, by: Owner, victimOwner: Owner, killer: Unit | undefined, t: Target): void {
   s.players[by].stats.killed++;
   s.players[victimOwner].stats.lost++;
+  // Salvage crews (development lines): paid for every enemy vehicle or aircraft destroyed.
+  if (t.unit && salvageOf(s, by)) {
+    const cat = UNITS[t.unit.kind].category;
+    if (cat === 'vehicle' || cat === 'air') s.players[by].credits += Math.floor(SALVAGE_SHARE * unitSpecOf(s, t.unit).cost);
+  }
   if (!killer) return;
   killer.kills++;
   const rank = vetFor(killer.kills);
@@ -328,7 +353,9 @@ function production(s: GameState, ctx: Ctx): void {
       }
       const producer = producerFor(s, owner, cat);
       if (!producer || sabotaged(s, producer)) continue;
-      head.progress = Math.min(total, head.progress + rate);
+      // Assembly lines (development lines): every queue but the building one.
+      const assembly = buildRateOf(s, owner, cat);
+      head.progress = Math.min(total, head.progress + (assembly !== 1 ? rate * assembly : rate));
       if (head.progress >= total) {
         if (cat === 'building') {
           if (owner === 0) log(s, `${nameOf(s, owner, head.kind)} ready. Choose where to place it.`, 'good');
@@ -369,6 +396,7 @@ function spawnFromQueue(s: GameState, ctx: Ctx, owner: Owner, cat: Category): vo
   u.fx = 0;
   u.fy = frontDir(s, owner);
   upgradeNewUnit(s, u);
+  fitModules(u, head.modules);
   ctx.units.set(u.id, u);
   s.players[owner].stats.trained++;
   if (kind === 'hauler') {
@@ -394,8 +422,17 @@ function stepAlong(s: GameState, ctx: Ctx, u: Unit, tx: number, ty: number, popO
   // Engine tuning (research): vehicles only.
   const tuned = ctx.vehicleSpeed[u.owner];
   if (tuned !== 1 && UNITS[u.kind].category === 'vehicle') sp *= tuned;
+  // Motorised infantry (research) and the Extra fuel tank (a module).
+  const marched = ctx.infantrySpeed[u.owner];
+  if (marched !== 1 && UNITS[u.kind].category === 'infantry') sp *= marched;
+  if (u.modules) {
+    const fuel = moduleSpeedOf(u);
+    if (fuel !== 1) sp *= fuel;
+  }
   // round6:D begin. Formations and squads: a squad member's speed capped at its squad's slowest
-  // (one lookup; no pathing change). Nothing else in stepAlong changes.
+  // (one lookup; no pathing change). After every other speed, so the cap is the last word; the
+  // squad's pace counts the same research and modules (formations.ts, paceOf). Nothing else in
+  // stepAlong changes.
   if (u.squad !== undefined) sp = squadPace(s, ctx.units, ctx.occ, u, sp, tuned);
   // round6:D end.
   // Ships keep to open water (the naval layer); everything else to land.
@@ -583,6 +620,9 @@ function fire(s: GameState, owner: Owner, sx: number, sy: number, w: Weapon, t: 
   // Weapon calibration (research): every weapon of the side.
   const calibrated = damageMulOf(s, owner);
   if (calibrated !== 1) damageMul *= calibrated;
+  // HEAT rounds (development lines): shells and rockets.
+  const heat = kindDamageMulOf(s, owner, w.kind);
+  if (heat !== 1) damageMul *= heat;
   const tp = targetPoint(t);
   let toX = tp.x;
   let toY = tp.y;
@@ -610,11 +650,19 @@ function fire(s: GameState, owner: Owner, sx: number, sy: number, w: Weapon, t: 
     hitAt: s.tick + flight,
     target: t.unit ? t.unit.id : t.building!.id,
     damage: damageMul === 1 ? w.damage : w.damage * damageMul,
-    splash: w.splash ?? 0,
+    splash: splashOf(s, owner, w),
     shooter,
   };
   if (flight === 0) hit(s, p, shooter);
   else s.projectiles.push(p);
+}
+
+/** A weapon's splash radius as this side fires it (High-explosive fill widens it). */
+function splashOf(s: GameState, owner: Owner, w: Weapon): number {
+  const r = w.splash ?? 0;
+  if (!r) return r;
+  const he = splashMulOf(s, owner);
+  return he !== 1 ? r * he : r;
 }
 
 function hit(s: GameState, p: Projectile, shooter = 0): void {
@@ -658,6 +706,11 @@ function hit(s: GameState, p: Projectile, shooter = 0): void {
 
 function hurt(s: GameState, t: Target, raw: number, p: Projectile, shooter: number): void {
   const armor = t.unit ? unitSpecOf(s, t.unit).armor : 'building';
+  // Armour forks, armoured cockpits and smoke (development lines).
+  if (t.unit) {
+    const taken = damageTakenMul(s, t.unit, p.weapon);
+    if (taken !== 1) raw *= taken;
+  }
   // Countermeasures (research): anti-air does less to the side's aircraft.
   if (armor === 'aircraft' && (p.weapon === 'flak' || p.weapon === 'aamissile')) raw *= antiAirTakenMulOf(s, t.unit!.owner);
   const amount = Math.max(1, Math.round(raw * DAMAGE_VS[p.weapon][armor]));
@@ -704,7 +757,7 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
     updateAircraft(s, u, ctx.air);
     return;
   }
-  const w = spec.weapon;
+  const w = weaponOf(s, u);
   if (u.cooldown > 0) u.cooldown--;
 
   if (u.order.type === 'harvest') {
@@ -714,7 +767,8 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
 
   // Elite units patch themselves up between fights.
   const max = u.maxHp ?? spec.hp;
-  if (u.vet >= 2 && !u.engage && u.hp < max && (s.tick + u.id) % VET_REPAIR_TICKS === 0) {
+  // Field workshops (development lines) give every vehicle the same repair, never twice.
+  if ((u.vet >= 2 || (spec.category === 'vehicle' && fieldRepairOf(s, u.owner))) && !u.engage && u.hp < max && (s.tick + u.id) % VET_REPAIR_TICKS === 0) {
     u.hp = Math.min(max, u.hp + Math.max(1, Math.round(max * VET_REPAIR_SHARE)));
   }
   // The Bastion mends its own armour, slowly, while not fighting.
@@ -770,11 +824,16 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
           // veterancy's, only when the unit is inside an aura (so every number is unchanged without one).
           // Inside an aura the shot (fire, then the reload below) uses the aura's copy of the weapon:
           // this block-scoped `w` stands for the unit's own weapon for the rest of this block.
-          const w = inAura(s, u) ? auraWeapon(spec.weapon!) : spec.weapon!;
+          // Since the merge with development lines the unit's own weapon is weaponOf's (a long barrel
+          // counts), as main fires it; without a module it is spec.weapon, as before.
+          const w = inAura(s, u) ? auraWeapon(weaponOf(s, u)!) : weaponOf(s, u)!;
           // round6:C end.
           fire(s, u.owner, u.x + u.tx * 0.35, u.y + u.ty * 0.35, w, t, u.id, (VET_DAMAGE[vet] ?? 1) * (u.hero ? heroDamageMul(u) : 1));
           u.cooldown = vet ? Math.round(w.cooldown * (VET_RELOAD[vet] ?? 1)) : w.cooldown;
           if (u.hero && overdrive(u)) u.cooldown = Math.max(1, Math.round(u.cooldown * OVERDRIVE_RELOAD));
+          // Autoloaders (development lines): ground vehicles.
+          const reload = reloadMulOf(s, u);
+          if (reload !== 1) u.cooldown = Math.max(1, Math.round(u.cooldown * reload));
         }
       } else if (
         u.order.type === 'attack' ||
@@ -941,7 +1000,7 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
   const MAP_W = s.mapW;
   switch (h.phase) {
     case 'seek': {
-      if (u.cargo >= HAULER_CAPACITY) {
+      if (u.cargo >= cargoMaxOf(u)) {
         h.phase = 'return';
         halt(u);
         return;
@@ -973,10 +1032,11 @@ function harvestStep(s: GameState, ctx: Ctx, u: Unit): void {
         return;
       }
       if ((s.tick + u.id) % SCOOP_TICKS === 0) {
-        const take = Math.min(HARVEST_PER_SCOOP, s.ore[h.tile], HAULER_CAPACITY - u.cargo);
+        const cap = cargoMaxOf(u);
+        const take = Math.min(HARVEST_PER_SCOOP, s.ore[h.tile], cap - u.cargo);
         s.ore[h.tile] -= take;
         u.cargo += take;
-        if (u.cargo >= HAULER_CAPACITY) {
+        if (u.cargo >= cap) {
           h.phase = 'return';
           halt(u);
         } else if (s.ore[h.tile] <= 0) {
@@ -1237,6 +1297,7 @@ function removeDead(s: GameState): void {
  * fall together).
  */
 function checkVictory(s: GameState): void {
+  if (s.planet && planetVictory(s, s.planet)) return;
   const has: boolean[] = s.players.map(() => false);
   for (const b of s.buildings) if (isStructure(b)) has[b.owner] = true;
   const sides = sidesOf(s);
@@ -1254,4 +1315,33 @@ function checkVictory(s: GameState): void {
       ? 'Defeat. Our last structure has fallen.'
       : 'Defeat. Our last ally has fallen.';
   log(s, text, won ? 'good' : 'bad');
+}
+
+/**
+ * War for the Planet (fireline-planet-design.md, section 14.3): the attacking team wins when the
+ * principal defender has no Command Yard standing; the defending team wins when the time limit is
+ * reached first. `winner` is the lowest seat of the winning team. Returns true when it decided the
+ * battle; otherwise the ordinary rule above runs.
+ */
+function planetVictory(s: GameState, p: NonNullable<GameState['planet']>): boolean {
+  const defTeam = teamOf(s, p.defenderSeat);
+  const yardStands = s.buildings.some(b => b.owner === p.defenderSeat && b.kind === 'hq' && b.hp > 0);
+  let attackersWon: boolean;
+  if (!yardStands) attackersWon = true;
+  else if (s.tick >= p.timeLimit) attackersWon = false;
+  else return false;
+  const sides = sidesOf(s);
+  const winners = sides.filter(o => (teamOf(s, o) === defTeam) !== attackersWon);
+  s.winner = winners[0] ?? (attackersWon ? sides.find(o => teamOf(s, o) !== defTeam)! : p.defenderSeat);
+  const humanDefends = teamOf(s, 0) === defTeam;
+  const won = isAlly(s, s.winner, 0);
+  const text = attackersWon
+    ? humanDefends
+      ? 'Defeat. Our Command Yard has fallen.'
+      : 'Victory. The Command Yard has fallen.'
+    : humanDefends
+      ? 'Victory. The defenders held.'
+      : 'Defeat. The defenders held.';
+  log(s, text, won ? 'good' : 'bad');
+  return true;
 }

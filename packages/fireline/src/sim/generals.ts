@@ -47,7 +47,8 @@ export const isGeneralId = (g: unknown): g is GeneralId => typeof g === 'string'
 
 /** The field General is in this battle: a skirmish with Generals on and advanced tech. */
 export function fieldGenerals(s: GameState): boolean {
-  return !s.mission && !!s.setup && s.setup.generals === true && s.setup.tech === 'advanced';
+  // Never in a planet battle: War for the Planet has no field General (its setups state generals: false).
+  return !s.mission && !s.planet && !!s.setup && s.setup.generals === true && s.setup.tech === 'advanced';
 }
 
 /** This side's doctrine and the strength it counts at: 1, or 0.5 while its fallen General is unreplaced. */

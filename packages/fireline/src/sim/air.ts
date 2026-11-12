@@ -24,7 +24,9 @@ import {
   type UnitKind,
   type Weapon,
 } from './rules';
-import { damageMulOf, migrateResearch, rearmMulOf } from './research';
+import { migrateLoadouts } from './loadout';
+import { airDamageMulOf, airSpeedOf, damageMulOf, migrateResearch, rearmMulOf, researchTicksOf, splashMulOf } from './research';
+import { researchModeOf } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 import { unitSpecOf } from './specs';
@@ -125,7 +127,7 @@ export function padSpot(s: GameState, pad: Building, u: Unit): { x: number; y: n
 function fly(s: GameState, u: Unit, x: number, y: number): boolean {
   const tx = Math.max(AIR_EDGE, Math.min(s.mapW - AIR_EDGE, x));
   const ty = Math.max(AIR_EDGE, Math.min(s.mapH - AIR_EDGE, y));
-  const sp = unitSpecOf(s, u).speed;
+  const sp = unitSpecOf(s, u).speed * airSpeedOf(s, u.owner);
   const dx = tx - u.x;
   const dy = ty - u.y;
   const d = Math.sqrt(dx * dx + dy * dy);
@@ -309,7 +311,7 @@ function gunshipFight(s: GameState, u: Unit, h: AirHooks, w: Weapon, t: Target, 
     return;
   }
   if (u.cooldown === 0 && (u.ammo ?? 0) > 0) {
-    h.fire(u.owner, u.x + u.tx * 0.3, u.y + u.ty * 0.3, w, t, u.id, vetMul(u));
+    h.fire(u.owner, u.x + u.tx * 0.3, u.y + u.ty * 0.3, w, t, u.id, vetMul(u) * airDamageMulOf(s, u.owner));
     u.cooldown = w.cooldown;
     u.ammo = (u.ammo ?? 0) - 1;
     if (u.ammo <= 0) goRearm(s, u);
@@ -363,12 +365,13 @@ function bomberAttack(s: GameState, u: Unit, w: Weapon, t: Target): void {
  */
 function dropBomb(s: GameState, u: Unit, w: Weapon): void {
   const flight = FLIGHT_TICKS.bomb;
-  const ahead = unitSpecOf(s, u).speed * flight;
+  const ahead = unitSpecOf(s, u).speed * airSpeedOf(s, u.owner) * flight;
   const toX = Math.max(0, Math.min(s.mapW, u.x + u.fx * ahead));
   const toY = Math.max(0, Math.min(s.mapH, u.y + u.fy * ahead));
-  const mul = vetMul(u) * damageMulOf(s, u.owner);
+  const mul = vetMul(u) * damageMulOf(s, u.owner) * airDamageMulOf(s, u.owner);
   const damage = mul === 1 ? w.damage : w.damage * mul;
-  const splash = w.splash ?? 1;
+  // High-explosive fill (development lines) widens the blast; 1 in a classic battle.
+  const splash = (w.splash ?? 1) * splashMulOf(s, u.owner);
   s.projectiles.push({
     id: s.nextId++,
     owner: u.owner,
@@ -563,8 +566,9 @@ export function airRoom(s: GameState, owner: Owner): number {
  * players are replaced, never changed in place).
  */
 export function migrateAir(s: GameState): void {
+  const mode = researchModeOf(s);
   s.players = s.players.map(p => {
-    const fixed = migrateResearch(p);
+    const fixed = migrateResearch(p, mode, id => researchTicksOf(s, id));
     const queues = p.queues && typeof p.queues === 'object' ? p.queues : ({} as GameState['players'][number]['queues']);
     const out = {
       ...p,
@@ -579,8 +583,12 @@ export function migrateAir(s: GameState): void {
     };
     if (fixed.upgrades !== undefined) out.upgrades = fixed.upgrades;
     if (fixed.research !== undefined) out.research = fixed.research;
+    if (fixed.doctrines === null) delete out.doctrines;
+    else if (fixed.doctrines !== undefined) out.doctrines = fixed.doctrines;
+    if (mode === 'classic') delete out.loadouts;
     return out;
   });
+  migrateLoadouts(s);
   // A commander's airlift in a save: kept only when it is well formed.
   s.ai = s.ai.map(m => {
     const l = m.airlift as unknown;
