@@ -206,3 +206,8 @@ span.dot{display:inline-flex;align-items:center;justify-content:center;cursor:de
 .support{background:var(--bad-bg);border-radius:6px;padding:14px 16px;display:grid;gap:6px}
 .support p{margin:0}
 #rs-line{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+
+/* Tom's rule on each reset, and the talk-it-through box. */
+.anchor{border-left:3px solid var(--accent);background:var(--surface);border-radius:6px;padding:12px 16px;display:grid;gap:4px}
+.anchor p{font-family:var(--display);font-weight:700;font-size:18px;line-height:1.3}
+textarea.talk{min-height:160px;font-size:16px}
