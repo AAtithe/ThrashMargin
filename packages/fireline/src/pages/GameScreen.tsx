@@ -4,7 +4,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { isCampaignSave } from '../campaign/save';
 import { isPlanetSave, type PlanetSave } from '../planet/save';
 import type { CampaignSave } from '../campaign/types';
-import { HERO_KEYS, HeroBar, heroName, ObjectivesPanel, PowerBar, SkirmishPowerBar, abilityBlock, type Targeting } from '../components/CampaignHud';
+import { HERO_KEYS, HeroBar, HeroesButton, heroName, ObjectivesPanel, PowerBar, SkirmishPowerBar, abilityBlock, type Targeting } from '../components/CampaignHud';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import FullscreenToggle from '../components/FullscreenToggle';
 import MotionToggle from '../components/MotionToggle';
@@ -260,6 +260,14 @@ export function Battle({
   // The tour teaches a skirmish base; a campaign battle never opens it.
   const [tourOpen, setTourOpen] = useState(() => !initial.mission && !initial.planet && !hasSeenGuidedTour() && initial.tick < 600 && initial.winner === null);
   const [tourRun, setTourRun] = useState(0);
+  // On a phone the bar row is one line with a Heroes button; the hero cards open in a drawer over the map.
+  const [heroDrawer, setHeroDrawer] = useState(false);
+  const heroesButtonRef = useRef<HTMLButtonElement>(null);
+  const heroDrawerRef = useRef<HTMLDivElement>(null);
+  // The drawer takes focus when it opens, so a keyboard or screen reader lands in it.
+  useEffect(() => {
+    if (heroDrawer) heroDrawerRef.current?.focus({ preventScroll: true });
+  }, [heroDrawer]);
   const [soundPrefs, setSoundPrefs] = useState(sound.prefs);
   const changeSound = useCallback((p: Partial<typeof soundPrefs>) => {
     sound.unlock();
@@ -801,6 +809,8 @@ export function Battle({
   const echo = (e: React.PointerEvent<HTMLCanvasElement>) => e.pointerType !== 'touch' && performance.now() - gesture.current.lastTouch < 1000;
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    // A touch on the map puts the hero drawer away, as a tap outside any sheet does.
+    setHeroDrawer(false);
     const { sx, sy } = local(e);
     const m = mouse.current;
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -1446,6 +1456,78 @@ export function Battle({
   const skirmishPowers = !mission && !s.planet && !ended && !!s.powers && s.setup?.tech === 'advanced';
   // A planet battle: the heroes brought and every power held (perk powers and those of standing structures).
   const planetBar = !!s.planet && !ended;
+  // On a phone the dock runs the height of the map (banners, feed, then the bar row as one strip),
+  // and the hero cards wait in a drawer behind the strip's Heroes button.
+  const phoneDock = layout.phone;
+  const stripHeroes: HeroKind[] = mission || planetBar ? heroOrder() : skirmishPowers && heroesInPlay(s) ? skirmishHeroes(s) : [];
+  const freeHeroBar = skirmishPowers && heroesInPlay(s);
+  const showStripHeroes = phoneDock && !ended && (stripHeroes.length > 0 || freeHeroBar);
+  const drawerOpen = heroDrawer && showStripHeroes;
+  const closeHeroDrawer = (refocus: boolean) => {
+    setHeroDrawer(false);
+    if (refocus) heroesButtonRef.current?.focus({ preventScroll: true });
+  };
+  const pressGeneral = () => {
+    const press = generalPress(cur.current, overlay.current.selected);
+    if (press && 'centre' in press) centreOn(press.centre.x, press.centre.y);
+    else if (press) {
+      overlay.current.selected = press.select;
+      sound.play('select');
+    }
+    if (press) refresh();
+  };
+  const heroCards = (heroes: HeroKind[]) => (
+    <HeroBar
+      s={s}
+      heroes={heroes}
+      selected={overlay.current.selected}
+      targeting={targeting}
+      onSelect={k => {
+        selectHero(k);
+        if (phoneDock) closeHeroDrawer(true);
+      }}
+      onAbility={k => {
+        triggerAbility(k);
+        if (phoneDock) closeHeroDrawer(true);
+      }}
+    />
+  );
+  // The centred banners (a hint, an incoming missile, low power). On a phone they head the dock, in
+  // flow above the battle feed, so the two take separate lanes and never lie over each other.
+  const banners = (
+  <div className="fl-banners">
+    {(placing || attackMode || targeting) && (
+      <div className="fl-hint" data-testid="hint">
+        {placing
+          ? `Place the ${BUILDINGS[placing].name}: ${verb} open ground near your base. ${layout.touch ? 'Drag to look around.' : stopHint}`
+          : targeting?.kind === 'ability'
+            ? `${HERO_ABILITY[targeting.hero].name}: ${verb} an enemy structure for ${heroName(targeting.hero)}. ${stopHint}`
+            : targeting?.kind === 'power'
+              ? `${POWERS[targeting.power].name}: ${verb} the map to call it in. ${stopHint}`
+              : `Attack-move: ${verb} where to go. Units fight anything they meet on the way.`}
+      </div>
+    )}
+    {incoming && (
+      <button
+        type="button"
+        className="fl-missile-warn"
+        role="alert"
+        data-testid="missile-warning"
+        onClick={() => centreOn(incoming.toX, incoming.toY)}
+        title="Jump to the target"
+      >
+        <strong>Enemy missile incoming</strong>
+        <span>Impact in {Math.max(0, Math.ceil((incoming.hitAt - s.tick) / TICKS_PER_SECOND))}s. Move everything out of the red ring.</span>
+      </button>
+    )}
+    {power.low && !ended && (
+      <div className="fl-lowpower" role="status" data-testid="low-power">
+        <strong>Low power</strong> {power.made}/{power.used}. Production at half speed, turrets slowed, radar down. Build a
+        Generator.
+      </div>
+    )}
+  </div>
+  );
   const leave = () => {
     doSave();
     if (campaign) campaign.onLeave();
@@ -1604,38 +1686,7 @@ export function Battle({
             </div>
           ))}
           <div ref={ringRef} className="fl-target-ring" aria-hidden="true" />
-          <div className="fl-banners">
-            {(placing || attackMode || targeting) && (
-              <div className="fl-hint" data-testid="hint">
-                {placing
-                  ? `Place the ${BUILDINGS[placing].name}: ${verb} open ground near your base. ${layout.touch ? 'Drag to look around.' : stopHint}`
-                  : targeting?.kind === 'ability'
-                    ? `${HERO_ABILITY[targeting.hero].name}: ${verb} an enemy structure for ${heroName(targeting.hero)}. ${stopHint}`
-                    : targeting?.kind === 'power'
-                      ? `${POWERS[targeting.power].name}: ${verb} the map to call it in. ${stopHint}`
-                      : `Attack-move: ${verb} where to go. Units fight anything they meet on the way.`}
-              </div>
-            )}
-            {incoming && (
-              <button
-                type="button"
-                className="fl-missile-warn"
-                role="alert"
-                data-testid="missile-warning"
-                onClick={() => centreOn(incoming.toX, incoming.toY)}
-                title="Jump to the target"
-              >
-                <strong>Enemy missile incoming</strong>
-                <span>Impact in {Math.max(0, Math.ceil((incoming.hitAt - s.tick) / TICKS_PER_SECOND))}s. Move everything out of the red ring.</span>
-              </button>
-            )}
-            {power.low && !ended && (
-              <div className="fl-lowpower" role="status" data-testid="low-power">
-                <strong>Low power</strong> {power.made}/{power.used}. Production at half speed, turrets slowed, radar down. Build a
-                Generator.
-              </div>
-            )}
-          </div>
+          {!phoneDock && banners}
           {alert && !ended && (
             <button type="button" className="fl-alert-chip" data-testid="alert-chip" data-kind={alert.kind} onClick={jumpToAlert}>
               <span className="fl-alert-dot" aria-hidden="true" />
@@ -1723,15 +1774,17 @@ export function Battle({
             className="fl-dock"
             style={barLift ? { bottom: 10 + barLift } : undefined}
             data-lifted={barLift ? '1' : undefined}
+            data-phone={phoneDock ? '1' : undefined}
             data-testid="battle-dock"
           >
+          {phoneDock && banners}
           <div
             className="fl-d-feed"
             style={{ maxWidth: layout.stacked ? 'calc((100% + 20px) * 0.9)' : 'min(calc((100% + 20px) * 0.6), 520px)' }}
             aria-live="polite"
             data-testid="battle-feed"
           >
-            {(layout.stacked ? recent.slice(0, 3) : recent).map(l => (
+            {(layout.stacked || phoneDock ? recent.slice(0, 3) : recent).map(l => (
               <div key={`${l.tick}-${l.text}`} data-tone={l.tone ?? 'info'} style={{ opacity: Math.max(0.3, 1 - (s.tick - l.tick) / 300) }}>
                 {l.text}
               </div>
@@ -1739,42 +1792,83 @@ export function Battle({
           </div>
           {/* round6:B begin. Heroes in free play: the hero bar also shows in a skirmish with heroes on; B may
               change the two bars from here to "round6:B end". */}
-          {mission && !ended && (
+          {phoneDock && (mission || planetBar || skirmishPowers) && !ended && (
+            // A phone: one line. The Heroes button (its cards in a drawer above the strip), the powers
+            // with short names, and the General's star; the drawer lies over the map and moves nothing.
+            <div className="fl-barstrip-wrap">
+              {drawerOpen && (
+                <div
+                  ref={heroDrawerRef}
+                  id="fl-hero-drawer"
+                  className="fl-hero-drawer"
+                  role="dialog"
+                  aria-modal="false"
+                  aria-label="Heroes"
+                  tabIndex={-1}
+                  data-testid="hero-drawer"
+                  onKeyDown={e => {
+                    if (e.key === 'Escape') {
+                      e.stopPropagation();
+                      closeHeroDrawer(true);
+                    }
+                  }}
+                >
+                  <div className="fl-hero-drawer-head">
+                    <span>Heroes</span>
+                    <button type="button" className="fl-hero-drawer-close" data-testid="hero-drawer-close" onClick={() => closeHeroDrawer(true)}>
+                      Close
+                    </button>
+                  </div>
+                  {/* The fallen first: the red dot on the Heroes button is about them. */}
+                  {freeHeroBar && <HeroRevive s={s} />}
+                  {heroCards(stripHeroes)}
+                  {!stripHeroes.length && !s.players[0].heroFallen && <p className="fl-hero-drawer-none">No hero stands. Recruit one at the Academy.</p>}
+                </div>
+              )}
+              <div className="fl-cbar fl-barstrip" data-testid="bar-row">
+                {showStripHeroes && (
+                  <HeroesButton
+                    ref={heroesButtonRef}
+                    s={s}
+                    heroes={stripHeroes}
+                    open={drawerOpen}
+                    targeting={targeting}
+                    selected={overlay.current.selected}
+                    onToggle={() => (drawerOpen ? closeHeroDrawer(false) : setHeroDrawer(true))}
+                  />
+                )}
+                {skirmishPowers ? (
+                  <SkirmishPowerBar s={s} targeting={targeting} onPower={choosePower} compact />
+                ) : (
+                  <PowerBar s={s} targeting={targeting} onPower={choosePower} compact />
+                )}
+                {skirmishPowers && <GeneralButton s={s} selected={overlay.current.selected} compact onPress={pressGeneral} />}
+              </div>
+            </div>
+          )}
+          {!phoneDock && mission && !ended && (
             <div className="fl-cbar" data-testid="bar-row">
-              <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
+              {heroCards(heroOrder())}
               <PowerBar s={s} targeting={targeting} onPower={choosePower} />
             </div>
           )}
-          {planetBar && (
+          {!phoneDock && planetBar && (
             <div className="fl-cbar" data-testid="bar-row">
-              <HeroBar s={s} heroes={heroOrder()} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
+              {heroCards(heroOrder())}
               <PowerBar s={s} targeting={targeting} onPower={choosePower} />
             </div>
           )}
-          {skirmishPowers && (
+          {!phoneDock && skirmishPowers && (
             <div className="fl-cbar" data-testid="bar-row">
               {heroesInPlay(s) && (
                 <>
-                  <HeroBar s={s} heroes={skirmishHeroes(s)} selected={overlay.current.selected} targeting={targeting} onSelect={selectHero} onAbility={triggerAbility} />
+                  {heroCards(skirmishHeroes(s))}
                   <HeroRevive s={s} />
                 </>
               )}
               <SkirmishPowerBar s={s} targeting={targeting} onPower={choosePower} />
               {/* round6:integration. C's General button, in the same row as B's hero bar. */}
-              <GeneralButton
-                s={s}
-                selected={overlay.current.selected}
-                inline
-                onPress={() => {
-                  const press = generalPress(cur.current, overlay.current.selected);
-                  if (press && 'centre' in press) centreOn(press.centre.x, press.centre.y);
-                  else if (press) {
-                    overlay.current.selected = press.select;
-                    sound.play('select');
-                  }
-                  if (press) refresh();
-                }}
-              />
+              <GeneralButton s={s} selected={overlay.current.selected} inline onPress={pressGeneral} />
             </div>
           )}
           {/* round6:B end. */}

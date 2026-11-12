@@ -110,6 +110,7 @@ export function GeneralButton({
   onPress,
   lift = 0,
   inline = false,
+  compact = false,
 }: {
   s: GameState;
   selected: Set<number>;
@@ -117,6 +118,8 @@ export function GeneralButton({
   lift?: number;
   /** In the bar row beside the hero and power bars (round 6 integration), rather than in its own corner. */
   inline?: boolean;
+  /** In a phone's one-line strip: the star, and the health bar or the wait for a replacement. */
+  compact?: boolean;
 }) {
   if (!fieldGenerals(s) || s.winner !== null) return null;
   const g = generalOf(s, 0);
@@ -131,6 +134,34 @@ export function GeneralButton({
   else if (p.generalLostAt !== undefined) status = 'Fallen: train a replacement';
   else status = 'Train one at the Barracks';
   const hp = g ? Math.max(0, Math.min(1, g.hp / maxHpOf(g))) : 0;
+  if (compact) {
+    const short = g ? null : queued ? 'Training' : wait > 0 ? `${seconds(wait)}s` : 'None';
+    return (
+      <button
+        type="button"
+        className="fl-genbtn fl-genbtn-compact"
+        data-testid="general-button"
+        data-selected={g && selected.has(g.id) ? '1' : '0'}
+        data-fallen={!g && p.generalLostAt !== undefined ? '1' : '0'}
+        data-ready={g ? '1' : '0'}
+        disabled={!g}
+        aria-label={`${doctrine ? doctrine.name : 'General'}: ${g ? `${status}, health ${Math.round(hp * 100)}%` : status}`}
+        title={g ? 'Select your General (0); press again to jump to it' : status}
+        onClick={onPress}
+      >
+        <span className="fl-genbtn-star" aria-hidden="true">
+          ★
+        </span>
+        {g ? (
+          <span className="fl-genbtn-hp" aria-hidden="true">
+            <span style={{ width: `${hp * 100}%` }} data-low={hp < 0.4 ? '1' : '0'} />
+          </span>
+        ) : (
+          <small aria-hidden="true">{short}</small>
+        )}
+      </button>
+    );
+  }
   return (
     <div className={inline ? 'fl-genbar fl-genbar-inline' : 'fl-genbar'} style={lift && !inline ? { bottom: 10 + lift } : undefined}>
       {inline && (

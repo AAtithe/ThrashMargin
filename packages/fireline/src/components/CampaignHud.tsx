@@ -1,10 +1,11 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { forwardRef, useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 import { abilityCooldown, abilityProblem, heroUnit } from '../sim/mission';
 import { maxHpOf, perksFor } from '../sim/state';
 import {
   BUILDINGS,
   HERO_ABILITY,
   HERO_COOLDOWN_PER_LEVEL,
+  HERO_KINDS,
   HERO_HP_PER_LEVEL,
   HERO_LEVEL_XP,
   HERO_MAX_LEVEL,
@@ -325,21 +326,50 @@ export function HeroBar({
   );
 }
 
-export function PowerBar({ s, targeting, onPower }: { s: GameState; targeting: Targeting; onPower: (p: SupportPower) => void }) {
+/**
+ * A power's name in a phone's one-line strip, where the full name would not fit beside the rest. The
+ * button's accessible name and title keep the full name.
+ */
+export const POWER_SHORT: Record<SupportPower, string> = { recon: 'Recon', barrage: 'Barrage', reinforce: 'Reinforce', missile: 'Missile' };
+
+/** The support-power buttons' wrapper: the console's Support drawer, or bare in a phone's strip. */
+function PowerGroup({ compact, testid, children }: { compact: boolean; testid: string; children: ReactNode }) {
+  return (
+    <div className={compact ? 'fl-barstrip-powers' : 'fl-powerbar'} data-testid={testid} role="group" aria-label="Support powers">
+      {!compact && (
+        <span className="fl-d-dock-label" aria-hidden="true">
+          Support
+        </span>
+      )}
+      {children}
+    </div>
+  );
+}
+
+export function PowerBar({
+  s,
+  targeting,
+  onPower,
+  compact = false,
+}: {
+  s: GameState;
+  targeting: Targeting;
+  onPower: (p: SupportPower) => void;
+  /** In a phone's one-line strip: short names. */
+  compact?: boolean;
+}) {
   const mine = s.powers?.[0];
   if (!mine) return null;
   const list = POWER_ORDER.filter(p => mine[p] !== undefined);
   if (!list.length) return null;
   const mul = perksFor(s, 0)?.powerCooldownMul ?? 1;
   return (
-    <div className="fl-powerbar" data-testid="power-bar" role="group" aria-label="Support powers">
-      <span className="fl-d-dock-label" aria-hidden="true">
-        Support
-      </span>
+    <PowerGroup compact={compact} testid="power-bar">
       {list.map(p => {
         const cd = mine[p] ?? 0;
         const full = Math.max(1, POWERS[p].cooldown * mul);
         const sweep = cd > 0 ? Math.min(1, cd / full) : 0;
+        const status = cd > 0 ? clockOf(cd) : 'Ready';
         return (
           <button
             key={p}
@@ -348,17 +378,18 @@ export function PowerBar({ s, targeting, onPower }: { s: GameState; targeting: T
             data-testid={`power-${p}`}
             data-ready={cd > 0 ? '0' : '1'}
             aria-pressed={targeting?.kind === 'power' && targeting.power === p}
+            aria-label={compact ? `${POWERS[p].name}: ${cd > 0 ? `ready in ${status}` : 'ready'}` : undefined}
             disabled={cd > 0}
             onClick={() => onPower(p)}
             title={`${POWERS[p].name}. ${POWERS[p].blurb}${cd > 0 ? ` Ready in ${Math.ceil(cd / TICKS_PER_SECOND)}s.` : ' Click, then click the map.'}`}
             style={{ '--sweep': `${Math.round(sweep * 360)}deg` } as CSSProperties}
           >
-            <span>{POWERS[p].name}</span>
-            <small>{cd > 0 ? clockOf(cd) : 'Ready'}</small>
+            <span>{compact ? POWER_SHORT[p] : POWERS[p].name}</span>
+            <small>{status}</small>
           </button>
         );
       })}
-    </div>
+    </PowerGroup>
   );
 }
 
@@ -367,15 +398,23 @@ export function PowerBar({ s, targeting, onPower }: { s: GameState; targeting: T
  * SKIRMISH_POWERS order. One whose structure is standing charges and then fires like the campaign's;
  * one without says what to build, so the bar also teaches where the powers come from.
  */
-export function SkirmishPowerBar({ s, targeting, onPower }: { s: GameState; targeting: Targeting; onPower: (p: SupportPower) => void }) {
+export function SkirmishPowerBar({
+  s,
+  targeting,
+  onPower,
+  compact = false,
+}: {
+  s: GameState;
+  targeting: Targeting;
+  onPower: (p: SupportPower) => void;
+  /** In a phone's one-line strip: short names, and "Locked" for a power whose structure is not built. */
+  compact?: boolean;
+}) {
   if (s.mission || !s.powers || s.setup?.tech !== 'advanced') return null;
   const mine = s.powers[0] ?? {};
   const list = Object.entries(SKIRMISH_POWERS) as [SupportPower, BuildingKind][];
   return (
-    <div className="fl-powerbar" data-testid="skirmish-power-bar" role="group" aria-label="Support powers">
-      <span className="fl-d-dock-label" aria-hidden="true">
-        Support
-      </span>
+    <PowerGroup compact={compact} testid="skirmish-power-bar">
       {list.map(([p, from]) => {
         const held = mine[p] !== undefined;
         const cd = mine[p] ?? 0;
@@ -393,16 +432,60 @@ export function SkirmishPowerBar({ s, targeting, onPower }: { s: GameState; targ
             data-held={held ? '1' : '0'}
             data-ready={held && cd <= 0 ? '1' : '0'}
             aria-pressed={targeting?.kind === 'power' && targeting.power === p}
+            aria-label={
+              compact ? `${POWERS[p].name}: ${!held ? `needs a ${BUILDINGS[from].name}` : cd > 0 ? `ready in ${clockOf(cd)}` : 'ready'}` : undefined
+            }
             disabled={!held || cd > 0}
             onClick={() => onPower(p)}
             title={title}
             style={{ '--sweep': `${Math.round(sweep * 360)}deg` } as CSSProperties}
           >
-            <span>{POWERS[p].name}</span>
-            <small>{!held ? `Needs ${BUILDINGS[from].name}` : cd > 0 ? clockOf(cd) : 'Ready'}</small>
+            <span>{compact ? POWER_SHORT[p] : POWERS[p].name}</span>
+            <small>{!held ? (compact ? 'Locked' : `Needs ${BUILDINGS[from].name}`) : cd > 0 ? clockOf(cd) : 'Ready'}</small>
           </button>
         );
       })}
-    </div>
+    </PowerGroup>
   );
 }
+
+/**
+ * The Heroes button of a phone's one-line strip, standing in for the hero bar, which opens in a
+ * drawer over the map. It shows how many heroes stand, and a dot when one is down (red) or, with
+ * none down, when an ability is ready to use.
+ */
+export const HeroesButton = forwardRef<
+  HTMLButtonElement,
+  { s: GameState; heroes: HeroKind[]; open: boolean; targeting: Targeting; selected: Set<number>; onToggle: () => void }
+>(function HeroesButton({ s, heroes, open, targeting, selected, onToggle }, ref) {
+  const standing = heroes.map(k => heroUnit(s, 0, k)).filter((u): u is Unit => !!u && !!u.hero);
+  // Down: a mission's fallen hero (still in its bar), or a skirmish's awaiting recruitment.
+  const down = heroes.length - standing.length + HERO_KINDS.filter(k => s.players[0].heroFallen?.[k] && !heroes.includes(k)).length;
+  const ready = standing.filter(u => !abilityBlock(s, u)).length;
+  const alert = down > 0 ? 'down' : ready > 0 ? 'ready' : null;
+  const said = [`${standing.length} standing`, ready ? `${ready} ${ready === 1 ? 'ability' : 'abilities'} ready` : '', down ? `${down} down` : '']
+    .filter(Boolean)
+    .join(', ');
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className="fl-heroes-btn"
+      data-testid="heroes-button"
+      data-alert={alert ?? undefined}
+      data-selected={standing.some(u => selected.has(u.id)) ? '1' : '0'}
+      data-aiming={targeting?.kind === 'ability' ? '1' : '0'}
+      aria-expanded={open}
+      aria-controls="fl-hero-drawer"
+      aria-label={`Heroes: ${said}`}
+      title={`Heroes: ${said}`}
+      onClick={onToggle}
+    >
+      <span className="fl-heroes-btn-name">Heroes</span>
+      <span className="fl-heroes-btn-count" aria-hidden="true">
+        {standing.length}
+      </span>
+      {alert && <span className="fl-heroes-btn-dot" data-kind={alert} aria-hidden="true" />}
+    </button>
+  );
+});
