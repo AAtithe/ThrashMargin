@@ -347,6 +347,81 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
   ok((checkAnswer('talk', { concern: true, reply: 'x', move: 'y' }) as any).concern === true, 'coach: concern overrides talk coaching');
   ok(COACH_TASKS.includes('talk' as any), 'coach: talk is a coach task');
 
+  // Non-negotiables: Pilates once a week, counted by weeks met, never by extra logging.
+  {
+    const l = createLedger(null);
+    ok(l.state.habits.length === 1 && l.state.habits[0].id === 'pilates' && l.state.habits[0].target === 1, 'habits: Pilates once a week from the start');
+    const WK = 7 * 86_400_000; const now = Date.now();
+    l.state.habitLog = [{ id: 'pilates', ts: now - 2 * WK }, { id: 'pilates', ts: now - WK }, { id: 'pilates', ts: now }, { id: 'pilates', ts: now }];
+    ok(l.habitCount('pilates') === 2, 'habits: two classes logged this week');
+    ok(l.habitMet(l.state.habits[0]) === 3, 'habits: three weeks met');
+    ok(l.habitStreak(l.state.habits[0]) === 3, 'habits: three weeks running');
+    ok(l.points() === 3 * l.HABIT_PTS, `habits: points per week met, not per class (got ${l.points()})`);
+    l.state.habitLog = [{ id: 'pilates', ts: now - WK }];
+    ok(l.habitStreak(l.state.habits[0]) === 1, 'habits: this week does not break the streak before it ends');
+    l.state.habitLog = [{ id: 'pilates', ts: now - 3 * WK }];
+    ok(l.habitStreak(l.state.habits[0]) === 0, 'habits: a missed week breaks the streak');
+  }
+
+  // The daily game: rings, the day streak, rest days banked, honours.
+  {
+    const D = 86_400_000; const noon = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d.getTime(); })();
+    const day = (n: number) => noon - n * D;
+    const l = createLedger(null);
+    ok(l.dayStreak(noon).current === 0 && l.dayStreak(noon).best === 0, 'day: a new ledger has no streak');
+    l.state.notes = [{ ts: day(0), kind: 'good', text: 'a' }];
+    l.state.todos = [{ id: 't', text: 'x', type: 'Start', h: 'week', done: true, doneAt: day(0) }];
+    l.state.habitLog = [{ id: 'pilates', ts: day(0) }];
+    const r = l.dayRings()[Object.keys(l.dayRings())[0]];
+    ok(r.notice && r.move && r.space, 'rings: a good thing, an action and Pilates close all three');
+    ok(l.dayStreak(noon).fullDays === 1 && l.points() >= l.FULL_DAY_PTS, 'rings: a full day counts and scores');
+    // Three days in a row, then a gap with nothing banked: the streak breaks.
+    l.state.notes = [day(5), day(4), day(3), day(1)].map(ts => ({ ts, kind: 'good', text: 'g' }));
+    l.state.todos = []; l.state.habitLog = [];
+    let s = l.dayStreak(noon);
+    ok(s.current === 1 && s.best === 3, `day: a gap with no rest banked breaks the streak (current ${s.current}, best ${s.best})`);
+    ok(s.fullDays === 0, 'rings: one ring is not a full day');
+    // Today not yet active does not break yesterday's streak.
+    l.state.notes = [day(2), day(1)].map(ts => ({ ts, kind: 'good', text: 'g' }));
+    ok(l.dayStreak(noon).current === 2, 'day: today does not count as missed while it is still going');
+    // Seven days earn a rest day, which covers one missed day.
+    l.state.notes = [10, 9, 8, 7, 6, 5, 4, 2, 1].map(n => ({ ts: day(n), kind: 'good', text: 'g' }));
+    s = l.dayStreak(noon);
+    ok(s.current === 9 && s.rest === 0, `day: a banked rest day covers the missed day (current ${s.current}, rest ${s.rest})`);
+    l.state.notes = [10, 9, 8, 7, 6, 5, 4, 1].map(n => ({ ts: day(n), kind: 'good', text: 'g' }));
+    ok(l.dayStreak(noon).current === 1, 'day: two missed days with one rest banked break the streak');
+    // Weekly rings and honours.
+    const wk = l.weeklyRings(8, noon);
+    ok(wk.length === 8 && wk.reduce((a: number, x: { n: number }) => a + x.n, 0) === 8, 'stats: rings per week add up');
+    const hs = l.honours();
+    ok(hs.find((h: { id: string }) => h.id === 'd7').earned === true && hs.find((h: { id: string }) => h.id === 'd30').earned === false, 'honours: a week in charge earned, a month not yet');
+    ok(hs.every((h: { value: number; goal: number }) => h.value <= h.goal), 'honours: progress never shows past the goal');
+    ok(!/[\u2014\u2013]/.test(JSON.stringify(hs.map((h: { name: string; desc: string }) => [h.name, h.desc]))), 'honours: no dashes in the names');
+    l.state.habitLog = [3, 2, 1, 0].map(w => ({ id: 'pilates', ts: noon - w * 7 * D }));
+    ok(l.habitBest(l.state.habits[0]) === 4 && l.honours().find((h: { id: string }) => h.id === 'pil4').earned, 'honours: four weeks of Pilates is Rhythm');
+  }
+
+  // Coach sessions: the agenda comes from the ledger.
+  {
+    const l = createLedger(null);
+    const now = Date.now();
+    l.state.resets = [{ ts: now - 1000, loud: 'inbox', sort: 'decide' }, { ts: now - 2000, loud: 'inbox', sort: 'decide' }, { ts: now - 3000, loud: 'deli', sort: 'decide' }];
+    l.state.habitLog = [{ id: 'pilates', ts: now }];
+    const b = l.sessionBrief(now);
+    ok(b.lines.some((x: string) => x.startsWith('3 resets') && x.includes('the pull to check email (2)')), 'session: the brief counts the resets and the loudest pull');
+    ok(b.lines.some((x: string) => x.startsWith('Pilates class: target met')), 'session: the brief includes Pilates');
+    l.state.baselineTs = now - 1000;
+    ok(l.sessionBrief(now).lines.includes('Pilates class: target met in 1 of 1 week'), 'session: weeks counted from the day the ledger began');
+    l.state.habitLog = [];
+    ok(!l.sessionBrief(now).lines.some((x: string) => x.startsWith('Pilates')), 'session: an unfinished week is not counted as missed');
+    ok(b.topics.some((x: string) => x.includes('keeps coming up')), 'session: a repeating pull becomes a topic');
+    const txt = l.agendaText({ when: 'This week', want: 'To be challenged', lines: b.lines, items: ['The deli: fix, hold or exit'] });
+    ok(txt.includes('What I want from today: To be challenged') && txt.includes('1. The deli: fix, hold or exit') && txt.includes('Since we last met:'), 'session: the agenda reads as a message to send');
+    ok(!/[\u2014\u2013]/.test(txt + JSON.stringify([l.HABIT_IDEAS, b.topics])), 'session: no dashes in the agenda or habits');
+    l.state.sessions = [{ id: 's', status: 'done', doneTs: now, takeaway: 'Hand one task over for good' }];
+    ok(l.points() === l.SESSION_PTS, `session: a session with a takeaway scores (got ${l.points()})`);
+  }
+
   // Tom's own pulls, rules and systems.
   {
     const l = createLedger(null);
