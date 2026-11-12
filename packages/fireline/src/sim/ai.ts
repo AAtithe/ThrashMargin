@@ -23,7 +23,7 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, isStructure, powerOf, readyStructure, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
@@ -708,6 +708,17 @@ function normalise(mem: AiMemory): void {
 function raiseFunds(s: GameState, owner: Owner, need: number): void {
   const p = s.players[owner];
   if (p.credits >= need) return;
+  const order: BuildingKind[] = !s.mission && techAllowed(s, owner, 'techcentre')
+    ? ['strikecommand', 'repairbay', 'uplink', 'rocketturret', 'turret', 'techcentre', 'barracks']
+    : ['uplink', 'turret', 'barracks'];
+  const refund = (b: Building) => Math.floor((BUILDINGS[b.kind].cost * SELL_RETURN * (b.hp / BUILDINGS[b.kind].hp)) / 10) * 10;
+  // Nothing at all if even every queued unit and every spare structure would not reach the sum:
+  // taking back the last troops a broke side is training only stopped its last stand (a Coast
+  // battle cancelled and requeued one Grenadier every decision for twenty minutes).
+  let reach = p.credits;
+  for (const cat of ['vehicle', 'infantry'] as const) for (const q of p.queues[cat]) if (q.kind !== 'hauler') reach += costFor(s, owner, q.kind);
+  for (const b of s.buildings) if (b.owner === owner && order.includes(b.kind)) reach += refund(b);
+  if (reach < need) return;
   for (const cat of ['vehicle', 'infantry'] as const) {
     const q = p.queues[cat];
     while (q.length && p.credits < need) {
@@ -721,11 +732,7 @@ function raiseFunds(s: GameState, owner: Owner, need: number): void {
   if (s.units.some(u => u.owner === owner && u.kind === 'hauler') && countBuildings(s, owner, 'refinery') > 0) return;
   // And only if selling everything spare would actually reach the sum: otherwise keep it all.
   // With the advanced tech, the expensive extras go first: the economy comes before all of them.
-  const order: BuildingKind[] = !s.mission && techAllowed(s, owner, 'techcentre')
-    ? ['strikecommand', 'repairbay', 'uplink', 'rocketturret', 'turret', 'techcentre', 'barracks']
-    : ['uplink', 'turret', 'barracks'];
   const spare = s.buildings.filter(v => v.owner === owner && order.includes(v.kind));
-  const refund = (b: Building) => Math.floor((BUILDINGS[b.kind].cost * SELL_RETURN * (b.hp / BUILDINGS[b.kind].hp)) / 10) * 10;
   if (p.credits + spare.reduce((a, b) => a + refund(b), 0) < need) return;
   for (const kind of order) {
     const b = spare.find(v => v.kind === kind);
