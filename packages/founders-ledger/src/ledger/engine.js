@@ -39,10 +39,13 @@ const GAMES=[
  {id:'please',kind:'default',name:'Pleasing everyone',payoff:'No conflict today.',cost:'The conflict arrives later with interest, and standards slide in the meantime.',move:'Say the hard thing early and kindly. Clarity is the kind option.'},
  {id:'win',kind:'default',name:'Winning every deal',payoff:'Growth on paper.',cost:'Margin, focus and your team’s goodwill.',move:'Win the right clients at the right price. Lose the rest on purpose.'},
  {id:'control',kind:'default',name:'Control',payoff:'Certainty.',cost:'Good people stop thinking or leave.',move:'Set the standard and the outcome. Let them choose the route.'},
+ {id:'inbox',kind:'default',name:'Checking for reassurance',payoff:'A moment of feeling safe.',cost:'Your best hours go to other people’s priorities, and the feeling never lasts.',move:'Set two email times a day. Between them, the inbox is closed.'},
+ {id:'quiet',kind:'default',name:'Filling the quiet',payoff:'Relief from not knowing what to do.',cost:'Space appears and you give it straight back. The thinking never happens.',move:'When it goes quiet, use it: one question, written down, for twenty minutes.'},
  {id:'build',kind:'chosen',name:'Building a firm that runs without me',payoff:'Freedom and a firm worth more.',cost:'Short-term mess while others learn.',move:'Each week, take one thing out of your own hands for good.'},
  {id:'leaders',kind:'chosen',name:'Growing leaders',payoff:'A bench that multiplies you.',cost:'Patience. They will do it differently and sometimes worse at first.',move:'Coach the judgement. Never supply it when they could.'},
  {id:'life',kind:'chosen',name:'Designing the life I want',payoff:'The firm serves your life, not the reverse.',cost:'Saying no to things that look like opportunities.',move:'Check every new commitment against the 2030 letter.'},
- {id:'long',kind:'chosen',name:'The long game',payoff:'Reputation and margin that compound.',cost:'Fewer quick wins.',move:'Choose what will still be paying off in five years.'}
+ {id:'long',kind:'chosen',name:'The long game',payoff:'Reputation and margin that compound.',cost:'Fewer quick wins.',move:'Choose what will still be paying off in five years.'},
+ {id:'profitspace',kind:'chosen',name:'Profit and space',payoff:'A firm that pays you well and does not need you every hour.',cost:'Letting go of being busy as proof you matter.',move:'Judge each week by profit made and space protected, not hours worked.'},
 ];
 
 const FOUNDING=[
@@ -135,6 +138,14 @@ const WILD=[
    fifteen minutes, then go and do it. A reset never takes points away and never touches the streak. Its move
    scores only when ticked, and only the first three a day score, so the ledger never rewards reaching for it. */
 const RESET_CAP=6;
+/* Tom's rules: the directions he wrote for himself. Shown on every reset; he taps the one he is choosing.
+   Reinforcement that points somewhere, not reassurance: each one is a direction he can act on. */
+const DEFAULT_RULES=['Profit is a good thing.','Taking time off is vital.','My systems run on profit and space, not on working all the time.','I am enough, and I can trace it in this ledger.','I control the next move, not the outcome.'];
+const RULE_IDEAS=['The firm does not need me to check my email to be safe.','Quiet is space, not danger.','When I am away, the team decides.','A fear is not a fact until the numbers say so.','Rest is part of the job, not a reward for finishing it.'];
+const rules=()=>(Array.isArray(S.rules)&&S.rules.length?S.rules:DEFAULT_RULES);
+/* What Tom says in "Talk it through" is matched to a pull when the coach is off. */
+const TALK_HINTS=[['inbox',/e-?mail|inbox|check/i],['quiet',/quiet|nothing to do|don.?t know what to do/i],['away',/away|holiday|off work|time off/i],['deli',/deli/i],['firm',/dead|failing|going under|the firm|\bws\b/i],['cash',/cash|money|bank|pay/i],['client',/client/i],['person',/team|staff|manager/i],['load',/too much|overwhelm/i]];
+const talkLoud=s=>{const h=TALK_HINTS.find(([,re])=>re.test(s));return h?h[0]:'heavy';};
 const LOUD=[
  {k:'cash',name:'Cash'},
  {k:'client',name:'A client'},
@@ -142,6 +153,11 @@ const LOUD=[
  {k:'load',name:'Too much on'},
  {k:'mistake',name:'A mistake'},
  {k:'future',name:'Where the firm is heading'},
+ {k:'inbox',name:'The pull to check email'},
+ {k:'quiet',name:'It has gone quiet'},
+ {k:'away',name:'Pulled into work while away'},
+ {k:'firm',name:'Fear the firm is failing'},
+ {k:'deli',name:'The deli'},
  {k:'heavy',name:'Nothing specific, just heavy'}
 ];
 const SORT=[
@@ -157,10 +173,20 @@ const MOVES={
   mistake:['Write what happened in three lines, facts only','Tell the person affected, today, plainly','Name the check that would have caught it','Name who owns the fix to the cause'],
   future:['Read my 2030 letter','Write the one decision that would move the firm most this quarter','Book a two-hour thinking block this week','Write down three things going well that nobody has noticed'],
   heavy:['Ten-minute walk, no phone','Water, five slow breaths, then one small task','Tell someone I trust how today is going','Finish one small thing I have been putting off'],
+  inbox:['Close email until my next set time, and write that time down','Set two email times for today and keep to them','Write the decision I am hoping to find in there','Turn notifications off for the next two hours'],
+  quiet:['Use the quiet for one thinking question, written down','Walk for twenty minutes, no phone','Read my 2030 letter','Call a client who is doing well, just to listen'],
+  away:['Name who decides while I am away, and tell them','Reply once with an owner and a date, then close the laptop','Write what can wait until I am back, and let it wait','Ask the team for one update at a set time, not all day'],
+  firm:['Write three facts about the firm today: cash, clients, pipeline','Look at one real number, not the feeling','List the clients who paid us this month','Write the one decision that would move the firm most this quarter'],
+  deli:['Write the deli’s three real numbers this week','Name the one thing that would fix the deli most','Decide fix, hold or exit, and by what date','Book thirty minutes to look at the deli properly, not now'],
   not:['Write it down and park it until Friday','Name who does own it and tell them','Ten-minute walk, no phone']
 };
 /* When the same thing is loud on three days in a week it is a system problem, and the Friday review says so. */
 const FIX={
+  inbox:{text:'Set two email times a day and tell the team when they are.',type:'Stop',h:'week',hours:4},
+  quiet:{text:'Keep a list of three thinking questions for when it goes quiet.',type:'Start',h:'week',hours:1},
+  away:{text:'Write who decides what while I am away, and send it before I go.',type:'Start',h:'month',hours:3},
+  firm:{text:'Put cash, debtors and pipeline on one page and read it every Monday.',type:'Start',h:'week',hours:1},
+  deli:{text:'Set the deli’s three numbers and a date to decide fix, hold or exit.',type:'Start',h:'month',hours:1},
   cash:{text:'Build a 13-week cash flow and read it every Monday at 9.',type:'Start',h:'week',hours:1},
   client:{text:'Write the client standard: what we do, what we charge, and when we walk away.',type:'Start',h:'month',hours:1},
   person:{text:'Hold the overdue conversation: gap, standard, thirty days, support.',type:'Start',h:'week',hours:1},
@@ -243,6 +269,51 @@ const PRESSURE=[
  {id:'p-future4',k:'future',title:'Is this still what I want?',scene:'Driving home you wonder whether you even want to be doing this in five years.',
   opts:[{t:'Push the thought away. There is too much to do.',v:'trap',n:'It will be back, louder.'},{t:'Book an hour this week to answer it on paper, using the 2030 letter.',v:'best',n:'A big question deserves a proper slot, not a car journey.'},{t:'Decide tonight.',v:'ok',n:'Big decisions made tired are made twice.'}],
   coach:['That question is not a crisis. It is the most useful question a founder can ask. Give it time on purpose.']},
+ {id:'p-inbox1',k:'inbox',title:'The itch',scene:'You closed email twenty minutes ago. The urge to check is back, and nothing has happened.',
+  opts:[{t:'Check quickly. Just to be sure.',v:'trap',n:'The relief lasts a minute and the urge comes back stronger.'},{t:'Notice the urge, name it as the reassurance system, and go back to the one thing.',v:'best',n:'The urge passes. Each time it does, it gets weaker.'},{t:'Check, but reply to nothing.',v:'ok',n:'Less damage, same habit.'}],
+  coach:['The inbox is not where safety lives. It is where other people put their priorities.','An urge you do not feed gets quieter. That is the whole skill.']},
+ {id:'p-inbox2',k:'inbox',title:'The 7am scroll',scene:'It is 7am and your hand reaches for the phone before your feet hit the floor.',
+  opts:[{t:'Read everything in bed so nothing surprises you.',v:'trap',n:'Your day now belongs to whoever emailed last night.'},{t:'Leave it until your first set email time. Start the day on your own terms.',v:'best',n:'You meet the inbox when you are ready, not when it is.'},{t:'Glance at the subject lines only.',v:'ok',n:'Better. The worry still gets in before breakfast.'}],
+  coach:['The first hour sets the operating system for the day. Give it to yourself, not the inbox.']},
+ {id:'p-inbox3',k:'inbox',title:'Copied in',scene:'You are copied on a thread between two managers. They have not asked you anything.',
+  opts:[{t:'Jump in with your view.',v:'trap',n:'They stop deciding and start waiting for you.'},{t:'Stay out. If they need a decision, they will ask.',v:'best',n:'They decide. You get your hour back.'},{t:'Reply "happy with whatever you decide".',v:'ok',n:'Kind, and it still tells them you are watching.'}],
+  coach:['Being copied is information, not an invitation. Let the people you trust do the job you gave them.']},
+ {id:'p-quiet1',k:'quiet',title:'The empty diary',scene:'Your afternoon is clear for the first time in weeks and it makes you uneasy.',
+  opts:[{t:'Fill it with email and small tasks.',v:'trap',n:'Space appeared and you gave it straight back.'},{t:'Take one thinking question about the firm, a pad and a walk.',v:'best',n:'This is the work only you can do.'},{t:'Book a meeting to fill it.',v:'ok',n:'Useful perhaps. Ask whether it needed you.'}],
+  coach:['Quiet is not danger. It is the space you have been building the whole firm to create.']},
+ {id:'p-quiet2',k:'quiet',title:'Nothing needs me',scene:'The team has it all in hand today. Nobody needs you, and you feel lost.',
+  opts:[{t:'Find something to fix so you feel useful.',v:'trap',n:'That is the Being needed game, looking for a stage.'},{t:'Recognise it as the firm working, and spend an hour on next year.',v:'best',n:'The feeling of not being needed is the sign the system works.'},{t:'Go home early.',v:'ok',n:'Fine, if it is rest you chose rather than escape.'}],
+  coach:['A firm that does not need you every hour is the goal. Feeling lost is what the goal feels like before you are used to it.']},
+ {id:'p-quiet3',k:'quiet',title:'The quiet Friday',scene:'Friday afternoon, nothing urgent. You start wondering whether you are working hard enough.',
+  opts:[{t:'Invent a project to look busy.',v:'trap',n:'Busy is not a measure of value.'},{t:'Close the week: review, three good things, one change. Then stop.',v:'best',n:'Profit and space, both protected.'},{t:'Keep checking in with the team.',v:'ok',n:'They notice, and start checking in back.'}],
+  coach:['Profit and space are the scores now. Hours are not.']},
+ {id:'p-away1',k:'away',title:'The holiday ping',scene:'You are on day two of a week off. A message comes in about a client query.',
+  opts:[{t:'Pick it up. It will only take ten minutes.',v:'trap',n:'Ten minutes, then the rest of the day thinking about work.'},{t:'Reply once: who owns it and by when. Then put the phone away.',v:'best',n:'They decide, and you are back on holiday.'},{t:'Leave it unread and worry about it.',v:'ok',n:'No work done, no rest either.'}],
+  coach:['Time off is vital. The firm proving it can run without you this week is worth more than the query.']},
+ {id:'p-away2',k:'away',title:'Just checking in',scene:'Off for the afternoon, you feel the pull to message the team to see how things are going.',
+  opts:[{t:'Send a quick "all ok?".',v:'trap',n:'They now know you are watching, and start sending you things.'},{t:'Trust the arrangement you set. If it matters, they will call.',v:'best',n:'They learn that you mean it when you are off.'},{t:'Check the shared drive instead.',v:'ok',n:'Quieter, same system.'}],
+  coach:['Checking in feels like care. On a day off it reads as not trusting them.']},
+ {id:'p-away3',k:'away',title:'Back from leave',scene:'You return after a week off and find two decisions made differently from how you would have.',
+  opts:[{t:'Reverse them.',v:'trap',n:'Next time they will wait for you to come back.'},{t:'Ask how they reached them, coach the gap, keep what works.',v:'best',n:'Their judgement grows and you can leave again.'},{t:'Say nothing and redo the work quietly.',v:'ok',n:'They never learn, and you never get the time back.'}],
+  coach:['Decisions made without you are the point of time off, not the price of it.']},
+ {id:'p-firm1',k:'firm',title:'The 3am thought',scene:'You wake at 3am convinced the firm is finished.',
+  opts:[{t:'Get up and start working.',v:'trap',n:'Tired decisions made from fear.'},{t:'Write the fear down, then three facts you know. Look at the numbers at 9.',v:'best',n:'At 9 the numbers will tell you more than 3am can.'},{t:'Lie there and replay it.',v:'ok',n:'Human. It does not change the numbers.'}],
+  coach:['A fear is not a fact until the numbers say so. Most 3am verdicts are reversed by breakfast.']},
+ {id:'p-firm2',k:'firm',title:'One bad month',scene:'This month’s numbers are down and the story in your head is that WS is dying.',
+  opts:[{t:'Cut costs hard tomorrow.',v:'trap',n:'A one-month reaction to what may be a one-month dip.'},{t:'Read twelve months of trend, cash and pipeline before deciding anything.',v:'best',n:'You act on the trend, not the feeling.'},{t:'Tell the team you are worried.',v:'ok',n:'Honest, and it spreads fear before facts.'}],
+  coach:['You would never let a client make a big call from one month. Give yourself the same discipline.']},
+ {id:'p-firm3',k:'firm',title:'Saving the firm',scene:'You feel it is all on you to save WS, alone.',
+  opts:[{t:'Work every hour until it turns.',v:'trap',n:'That is the system that tired you out in the first place.'},{t:'Name the three numbers that matter and give each one an owner.',v:'best',n:'Saving a firm is a system, not a sacrifice.'},{t:'Keep it to yourself so nobody panics.',v:'ok',n:'Steady, and lonely. Tell one person you trust.'}],
+  coach:['You are in control of the next move, not the outcome. Profit and space are what save firms, not hours.']},
+ {id:'p-deli1',k:'deli',title:'The deli drain',scene:'The deli is not working and it is taking more of your head than the firm.',
+  opts:[{t:'Throw more of your own hours at it.',v:'trap',n:'Now neither business gets your best.'},{t:'Set its three numbers and a date to decide fix, hold or exit.',v:'best',n:'It becomes a decision with a date, not a weight.'},{t:'Ignore it and hope it turns.',v:'ok',n:'It might. Hope is not a plan.'}],
+  coach:['You tell clients to judge a site on its numbers, not its story. Do the same with the deli.']},
+ {id:'p-deli2',k:'deli',title:'Sunk cost',scene:'You have put a lot into the deli and walking away would feel like failing.',
+  opts:[{t:'Keep going because of what it has cost.',v:'trap',n:'Past money cannot be saved, only future money can.'},{t:'Judge it on what it will make from here, as you would for a client.',v:'best',n:'The decision gets clearer the moment the past is out of it.'},{t:'Ask someone else to decide for you.',v:'ok',n:'Advice helps. The call is still yours.'}],
+  coach:['Sunk cost is a story, not a number. Your job is the next twelve months, not the last twelve.']},
+ {id:'p-deli3',k:'deli',title:'Two businesses',scene:'Worry about the deli is spilling into your time at WS.',
+  opts:[{t:'Switch between them all day.',v:'trap',n:'Both get half of you, all day.'},{t:'Give the deli one fixed slot a week and keep it there.',v:'best',n:'Each business gets your full attention in its own time.'},{t:'Put the deli out of your mind for a month.',v:'ok',n:'Restful, if someone else is watching it.'}],
+  coach:['Attention is the scarce resource. Ration it on purpose, or worry will ration it for you.']},
  {id:'p-heavy1',k:'heavy',title:'The heavy morning',scene:'Nothing has gone wrong. It just feels heavy today.',
   opts:[{t:'Push through and pretend it is fine.',v:'trap',n:'It leaks out in tone and decisions anyway.'},{t:'Lower today’s bar: three things that matter, a walk at lunch, home on time.',v:'best',n:'A smaller day done well beats a big day done badly.'},{t:'Cancel everything and go home.',v:'ok',n:'Sometimes right. Usually a lighter day is better than an empty one.'}],
   coach:['Heavy days happen to every founder. Leading well on one means adjusting the load, not denying the weight.']},
@@ -434,7 +505,7 @@ const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
-const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
+const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
 
 function migrate(o){
   if(!o)return blank();
@@ -533,6 +604,8 @@ function receipts(){
   if(without)out.push(`${without===1?'Once':without+' times'} so far, someone solved it or made the call without you. That is the firm you are building, already working.`);
   const moved=done.filter(isResetMove).length;
   if(moved)out.push(`${moved===1?'Once':moved+' times'} you have turned a heavy moment into a move and done it. That is control: not of the outcome, of the next step.`);
+  const ruled=(S.resets||[]).filter(r=>r.rule).length;
+  if(ruled)out.push(`${ruled===1?'Once':ruled+' times'} on a hard moment you chose one of your own rules over the feeling. That is you setting the direction.`);
   const ot=offTotals();
   if(ot.days)out.push(`On ${plural(ot.days,'phone-off day')}, ${ot.waited} thing${ot.waited===1?'':'s'} waited fine and ${ot.handled} ${ot.handled===1?'was':'were'} handled without you. The firm held.`);
   const fg=fearGap();
@@ -568,6 +641,8 @@ function finishReset(r){
   const entry={ts,loud:r.loud,sort:r.sort,receipt:r.receipt||'',move:todo.text,todo:todo.id,call:null};
   if(r.line)entry.line=String(r.line).slice(0,280);
   if(r.read)entry.read=String(r.read).slice(0,600);
+  if(r.rule)entry.rule=String(r.rule).slice(0,200);
+  if(r.talk)entry.talk=true;
   S.resets=(S.resets||[]).concat(entry);if(S.resets.length>600)S.resets=S.resets.slice(-600);
   return entry;
 }
@@ -725,12 +800,24 @@ function vReset(){
     RD={step:'loud'};
   }
   let body='';
-  if(RD.step==='loud')body=`<div class="card">${head(1,'What is loud right now?')}
+  const rl=rules();const anchor=`<div class="anchor"><div class="eyebrow">Your rule</div><p>${esc(rl[(S.resets||[]).length%rl.length])}</p></div>`;
+  if(RD.step==='loud')body=`${anchor}<div class="card">${head(1,'What is loud right now?')}
     <p class="muted">One tap. Naming it is the first thing that makes it smaller.</p>
+    <div class="row"><button class="btn small ghost" data-act="resetTalk">Talk it through instead</button></div>
     ${AI?`<div class="field"><label class="lbl" for="rs-line">In a line, what is happening? <span class="muted small">Optional</span></label><span class="hint">Type it first, then tap. It goes to Claude with the facts from your ledger, and nobody at the firm sees it.</span><input type="text" id="rs-line" maxlength="280" placeholder="e.g. Two clients late paying and payroll is Friday" value="${esc(RD.line||'')}"></div>`:''}
     ${chipRow('rs-loud',LOUD.map(x=>x.name),{act:'reset-loud'})}
     ${lastT?`<div class="added">Still open from an earlier reset: ${esc(lastT.text)} <button class="btn small ghost" data-act="resetDone" data-id="${lastT.id}" style="margin-left:6px">Done it</button></div>`:''}
     ${n>=RESET_CAP-1?`<p class="small muted">This is reset ${n+1} today. Six is the most the ledger offers before it asks you to step away.</p>`:''}</div>`;
+  else if(RD.step==='talk'){const R=RD.talkReply;body=`${anchor}<div class="card">${head(1,'Talk it through')}
+    ${R?`<div class="coach ai-read"><div class="eyebrow">Your coach</div><p>${esc(R.reply)}</p>${R.system?`<p class="small"><span class="delta-down">The system running:</span> ${esc(R.system)}</p>`:''}${R.rule?`<p class="small"><span class="delta-up">Your rule for this:</span> ${esc(R.rule)}</p>`:''}</div>
+      <div class="lbl small">Your coach suggests</div><div class="chips-row"><button type="button" class="pick ai-pick" data-act="resetSuggest">${esc(R.move)}</button></div>
+      <div class="lbl small">Or one of these</div>${chipRow('rs-move',MOVES[RD.sort==='not'?'not':RD.loud]||MOVES.heavy,{act:'reset-move',other:true})}
+      <div class="row"><button class="btn small ghost" data-act="resetOwn">Use my own words</button><button class="btn small ghost" data-act="resetBack">Start again</button></div>`
+    :RD.concern?SUPPORT:RD.talking?'<p class="muted ai-wait">Your coach is listening...</p>'
+    :`<p class="muted">Say it the way you would say it out loud. Tap the microphone on your phone\u2019s keyboard and speak, for as long as you need.</p>
+      <textarea id="rs-talk" class="talk" placeholder="What is going on, in your own words" aria-label="Talk it through">${esc(RD.talkText||'')}</textarea>
+      <p class="small muted">${AI?'It goes to your coach with the facts from your ledger. Nobody at the firm sees it.':'Your coach is switched off on this portal, so the ledger will match what you say to a reset and take you through it.'}</p>
+      <div class="row"><button class="btn" data-act="talkSend">${AI?'Coach me':'Take me through it'}</button><button class="btn small ghost" data-act="resetBack">Back</button></div>`}</div>`;}
   else if(RD.step==='sort'){const L=LOUD.find(x=>x.k===RD.loud);body=`<div class="card">${head(2,'Whose is it?')}
     <p class="muted">${esc(L.name)}. Be honest about which of these it is. This is the one skill the whole reset is built on.</p>
     ${chipRow('rs-sort',SORT.map(x=>x.name),{act:'reset-sort'})}
@@ -740,6 +827,7 @@ function vReset(){
     <div class="receipt"><div class="eyebrow">From your ledger</div><p>${esc(RD.receipt)}</p></div>
     ${RD.concern?SUPPORT:RD.reading?'<p class="small muted ai-wait">Claude is reading your ledger...</p>':RD.read?`<div class="coach ai-read"><div class="eyebrow">Claude’s read</div><p>${esc(RD.read.read)}</p></div>`:''}
     <p class="small muted">Enough is not a feeling you wait for. It is a balance you can trace, and this is one line of it. You do not control how this turns out. You are in charge of the next move, and that part was always yours.</p>
+    <div class="lbl small">Say it back: which of your rules are you choosing now?</div>${chipRow('rs-rule',rules(),{act:'reset-rule',selected:RD.rule||''})}
     <div class="row"><button class="btn" data-act="resetNext">Pick the move</button><button class="btn small ghost" data-act="resetBack">Back</button></div></div>`;}
   else if(RD.step==='move'){
     const moves=MOVES[RD.sort==='not'?'not':RD.loud]||MOVES.heavy;
@@ -754,6 +842,7 @@ function vReset(){
   else if(RD.step==='done'){const e=RD.entry;body=`<div class="card">
     <div class="eyebrow">Reset done</div><h2>Go and do it.</h2>
     <div class="big3"><div class="eyebrow">Your move</div><p>${esc(e.move)}</p></div>
+    ${e.rule?`<div class="anchor"><div class="eyebrow">Your rule</div><p>${esc(e.rule)}</p></div>`:''}
     <p class="muted">Close this and start. The ledger will be here. Tick it in Actions or on the next reset when it is done.</p>
     <div class="row"><button class="btn" data-act="resetDone" data-id="${e.todo}">Done it already</button><button class="btn small ghost" data-act="resetCall">One pressure call first</button></div></div>`;}
   else if(RD.step==='call'&&(RD.aiLoading||RD.concern&&!RD.aiCall&&!RD.call)){body=`<div class="card"><div class="eyebrow">Pressure call</div>${RD.concern?SUPPORT:'<p class="muted ai-wait">Claude is writing a call for your situation...</p>'}${RD.concern?`<div class="big3"><div class="eyebrow">Your move</div><p>${esc(RD.entry.move)}</p></div><div class="row"><button class="btn" data-tab="today">Close</button></div>`:''}</div>`;}
@@ -1061,6 +1150,16 @@ function vFuture(){
   <div class="card"><div><div class="eyebrow">Creating your future</div><h2>Decide from the life you want, not from habit.</h2></div>
    <p class="muted">You build clients a budget before the year starts so every week can be judged against it. This is the budget for your life. Everything else in the ledger is measured against what you write here.</p></div>
 
+  <div class="card" id="rules"><div class="eyebrow">Your rules</div><h3>The directions you have written for yourself</h3>
+   <p class="small muted">One shows on every reset, and you tap the one you are choosing. Keep them short and true. A rule points somewhere you can act.</p>
+   ${rules().map((r,i)=>`<div class="note"><span class="kd">Rule</span><span>${esc(r)} <button class="icon-btn" data-act="ruleDel" data-i="${i}" aria-label="Remove this rule">Remove</button></span></div>`).join('')}
+   ${RULE_IDEAS.filter(x=>!rules().includes(x)).length?`<div class="lbl small">Add one</div>${chipRow('rule-idea',RULE_IDEAS.filter(x=>!rules().includes(x)),{act:'rule-add'})}`:''}
+   <details class="own"><summary>In my own words</summary><div class="row" style="flex-wrap:nowrap"><input type="text" id="rule-own" placeholder="A rule you want to live by" aria-label="Your own rule"><button class="btn small" data-act="ruleOwn">Add</button></div></details></div>
+
+  <div class="card"><div class="eyebrow">What your coach has learned</div><h3>${(S.coachNotes||[]).length?'Notes it brings to every conversation':'Nothing yet'}</h3>
+   <p class="small muted">${AI?'Each time you talk it through, your coach may note one thing worth remembering about how you work. It reads these next time. Forget any you do not want kept.':'Your coach is switched off on this portal, so it is not taking notes yet.'}</p>
+   ${(S.coachNotes||[]).map((n,i)=>`<div class="note"><span class="kd space">${fmtDate(n.ts)}</span><span>${esc(n.text)} <button class="icon-btn" data-act="noteDel" data-i="${i}" aria-label="Forget this note">Forget</button></span></div>`).join('')}</div>
+
   <div class="card"><div class="eyebrow">The game you choose</div><h3>What game are you playing in real life?</h3>
    <p class="small muted">Every founder is playing a game, chosen or not. The defaults are being needed, firefighting, proving yourself, pleasing everyone. Choose one on purpose, then check each Friday whether that is the one that ran your week.</p>
    <div class="games">${chosenGames.map(g=>`<button class="game ${f.game===g.id?'sel':''}" data-choose="${g.id}" type="button"><span class="gk chosen">Chosen game</span><span class="gn">${esc(g.name)}</span><span class="gd">${esc(g.move)}</span></button>`).join('')}</div>
@@ -1185,7 +1284,7 @@ async function coachLetter(btn){
 function toTop(){if(S.view==='reset'||S.view==='off'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
 function endReset(o){
   if(!RD||!RD.loud||!RD.sort)return;
-  const entry=finishReset({loud:RD.loud,sort:RD.sort,receipt:RD.receipt,move:o.move,todoId:o.todoId,line:RD.line,read:RD.read&&RD.read.read});
+  const entry=finishReset({loud:RD.loud,sort:RD.sort,receipt:RD.receipt,move:o.move,todoId:o.todoId,line:RD.line,read:RD.read&&RD.read.read,rule:RD.rule,talk:!!RD.talkReply});
   RD={step:'done',entry};save();render();toTop();
 }
 function attach(){
@@ -1236,6 +1335,8 @@ on('click',async e=>{
             .then(r=>{if(RD!==mine)return;mine.reading=false;if(r&&r.concern)mine.concern=true;else if(r&&r.read)mine.read=r;if(mine.step==='receipt'||mine.step==='move')render();});}
         render();toTop();break;}
       case 'reset-move':endReset({move:v});break;
+      case 'reset-rule':if(RD)RD.rule=v;break;
+      case 'rule-add':{if(!Array.isArray(S.rules))S.rules=DEFAULT_RULES.slice();if(!S.rules.includes(v))S.rules.push(v);save();render();setStatus('Added to your rules.');break;}
       case 'pillar':{const k=d.pickGroup.slice(3);S.future.pillars[k].ten=v;save();const i=byId('pt-'+k);if(i)i.value=v;break;}
     }
     return;
@@ -1300,6 +1401,25 @@ on('click',async e=>{
       try{await navigator.clipboard.writeText(txt);setStatus('Brief copied. Send it the day before.');}catch(err){const el=byId('offBrief');if(el){const r=document.createRange();r.selectNodeContents(el);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(r);}setStatus('Brief selected. Copy it from the box.');}
       break;}
     case 'resetStart':RD={step:'loud'};render();break;
+    case 'resetTalk':RD={step:'talk'};render();toTop();{const ta=byId('rs-talk');if(ta)ta.focus();}break;
+    case 'talkSend':{
+      const ta=byId('rs-talk');const text=ta?ta.value.trim().slice(0,2000):'';if(!text){setStatus('Say or type a line first.');break;}
+      const mine=RD;mine.talkText=text;mine.line=text.slice(0,280);
+      const fallback=()=>{mine.loud=talkLoud(text);mine.step='sort';render();toTop();setStatus('Matched to: '+(LOUD.find(x=>x.k===mine.loud)||{}).name+'. Now, whose is it?');};
+      if(!AI){fallback();break;}
+      mine.talking=true;render();
+      askCoach('talk',{text,rules:rules(),notes:(S.coachNotes||[]).slice(-12).map(n=>n.text),evidence:receipts().slice(0,8),openActions:S.todos.filter(t=>!t.done&&!isResetMove(t)).slice(0,8).map(t=>t.text),recent:(S.resets||[]).slice(-10).map(r=>(LOUD.find(x=>x.k===r.loud)||{}).name).filter(Boolean)})
+        .then(r=>{if(RD!==mine)return;mine.talking=false;
+          if(r&&r.concern){mine.concern=true;render();return;}
+          if(!r||!r.reply){fallback();return;}
+          mine.loud=LOUD.some(x=>x.k===r.loud)?r.loud:talkLoud(text);mine.sort=SORT.some(x=>x.k===r.sort)?r.sort:'decide';mine.receipt=receiptFor((S.resets||[]).length);
+          mine.talkReply=r;mine.read={read:r.reply,move:r.move};if(r.rule&&rules().includes(r.rule))mine.rule=r.rule;
+          if(r.learned){S.coachNotes=(S.coachNotes||[]).concat({ts:Date.now(),text:String(r.learned).slice(0,240)}).slice(-30);save();}
+          render();toTop();});
+      break;}
+    case 'ruleDel':{const i=Number(d.i);const cur=rules().slice();cur.splice(i,1);S.rules=cur;save();render();break;}
+    case 'ruleOwn':{const i=byId('rule-own');const v=i?i.value.trim().slice(0,200):'';if(!v)break;if(!Array.isArray(S.rules))S.rules=DEFAULT_RULES.slice();S.rules.push(/[.?]$/.test(v)?v:v+'.');save();render();setStatus('Added to your rules.');break;}
+    case 'noteDel':{const i=Number(d.i);S.coachNotes=(S.coachNotes||[]).filter((_,k)=>k!==i);save();render();setStatus('Forgotten.');break;}
     case 'resetBack':{const order=['loud','sort','receipt','move'];const i=order.indexOf(RD&&RD.step);if(i>0)RD.step=order[i-1];render();break;}
     case 'resetNext':if(RD)RD.step='move';render();toTop();break;
     case 'resetOwn':{const t=(byId('other-rs-move')||{}).value;const txt=(t||'').trim();if(!txt){const o=byId('other-rs-move');if(o){o.hidden=false;o.focus();}setStatus('Write the move in a few words, then tap Use my own words.');return;}endReset({move:txt});break;}
@@ -1364,7 +1484,7 @@ return {
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
   RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE,
   sysToday, sysRhythm, sysMastered, sysProgress, playSys, offCurrent, offTotals, offRecent, planOff, logOff, offBrief, fearGap,
-  SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, askCoach, dealCall, validPressure, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
+  DEFAULT_RULES, RULE_IDEAS, talkLoud, receipts, SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, askCoach, dealCall, validPressure, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
   FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS, PICK, LETTER_PICKS,
   mount() {
     ROOT.innerHTML = MARKUP;
