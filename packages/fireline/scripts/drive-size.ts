@@ -277,6 +277,12 @@ function rulesAndPresets(ok: Ok): void {
  * seeds now draw a different map (size-a canyon to coast, size-b highlands to lakes). The classic
  * and standard ones equal origin/main's own battles exactly; the six without a setup (the original
  * map) are unchanged once the empty Naval queue is left out (strip, above).
+ * At the merge with main's Coast stalemates (2026-11-12) the 18 advanced battles (lines, classic and
+ * three, both seeds) were regenerated: each first differs with main's 611005a alone applied to the
+ * pre-merge build (the computer's recovery when broke, and ships that never chase what they cannot
+ * reach), most of them again with f216f26 (mop-up, the land-only last stand, raiseFunds and the
+ * navy's crisis rule) and 385ce76 (mop-up waits for the attack timer). The classic ones equal
+ * origin/main's own battles exactly; no setup and standard tech are unchanged.
  */
 const PRE_ROUND6: Record<string, string> = {
   'nosetup|easy|size-a': '3425e6edb280df2e',
@@ -285,30 +291,30 @@ const PRE_ROUND6: Record<string, string> = {
   'nosetup|normal|size-b': 'ee788c01da261681',
   'nosetup|hard|size-a': '061e68bb7dd33891',
   'nosetup|hard|size-b': '6120a39f5cd1b61e',
-  'lines|easy|size-a': '244963878c49a908',
-  'lines|easy|size-b': 'ff26a28e3f213ad5',
-  'lines|normal|size-a': 'c38089f680404942',
-  'lines|normal|size-b': '35a2c1fbf4875f71',
-  'lines|hard|size-a': 'dd97b6be7e0d3027',
-  'lines|hard|size-b': '86a80c774eec6362',
-  'classic|easy|size-a': '26f8c14831f862d5',
-  'classic|easy|size-b': 'de817d7fe3271d02',
-  'classic|normal|size-a': '381405afbb1340f6',
-  'classic|normal|size-b': 'c07fadb78be4d8cf',
-  'classic|hard|size-a': 'c1bca2f4ba6c06b5',
-  'classic|hard|size-b': 'e398ef1f4d1ca603',
+  'lines|easy|size-a': 'e1e9250e4b72aa74',
+  'lines|easy|size-b': '51292960451d2c3d',
+  'lines|normal|size-a': 'ceec651d265ae5af',
+  'lines|normal|size-b': 'bce7c66db7422cd3',
+  'lines|hard|size-a': 'c5b9819f2eb7da73',
+  'lines|hard|size-b': 'e0c4f68cddca7387',
+  'classic|easy|size-a': '0cc8ce4e62b63bce',
+  'classic|easy|size-b': '11380ac8e94d94c9',
+  'classic|normal|size-a': 'a0b7c4de7e4d9526',
+  'classic|normal|size-b': 'a634197aec25c5b3',
+  'classic|hard|size-a': '10c1e1eeb9c7acbd',
+  'classic|hard|size-b': 'f6a92d074fdeadad',
   'standard|easy|size-a': '20bd8da2b8758bc5',
   'standard|easy|size-b': '341594413f75a712',
   'standard|normal|size-a': '38d88b6d845f533c',
   'standard|normal|size-b': 'b91a872ee84ceff5',
   'standard|hard|size-a': '1f4d39caa46bbeef',
   'standard|hard|size-b': '586549cee40c3055',
-  'three|easy|size-a': 'b45a627fb3ccd1ab',
-  'three|easy|size-b': 'cb5234c5fd6f6900',
-  'three|normal|size-a': 'bd0159cc3b2f94cb',
-  'three|normal|size-b': '7aadfc28154934bd',
-  'three|hard|size-a': '86bd9c81caca3dc6',
-  'three|hard|size-b': '358829fa3cc390c6',
+  'three|easy|size-a': '63bc90a2406c8beb',
+  'three|easy|size-b': 'a4d6867b45f26106',
+  'three|normal|size-a': '84d9b72e0c0ca909',
+  'three|normal|size-b': 'dabe77a90a00b22d',
+  'three|hard|size-a': 'ae2476bcf5f0dc2f',
+  'three|hard|size-b': '1a871e8600ec8118',
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
   nosetup: undefined,

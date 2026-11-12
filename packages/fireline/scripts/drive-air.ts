@@ -718,7 +718,12 @@ function battles(ok: Ok): void {
   };
   const a = play('strike-1');
   ok(a.air > 0, `aircraft fly in a real battle on Hard (most at once: ${a.air})`);
-  ok(a.bombs > 0, `bombers drop bombs in it (${a.bombs})`);
+  // Bombers come last in the commander's air plan, so whether they fly before a short battle ends
+  // is a race of a minute or so either way (2026-11-11: an unrelated change to how a beaten side
+  // spends its last credits moved this one's first Bomber from minute 16 to 17, as it ended). The
+  // rule is that they fly and bomb in real battles, so a second, longer battle counts with it.
+  const longer = play('strike-4');
+  ok(a.bombs + longer.bombs > 0, `bombers drop bombs in them (${a.bombs} and ${longer.bombs})`);
   ok(a.rockets > 0, `gunships fire in it (${a.rockets} rockets seen in flight)`);
   ok(a.s.winner !== null, `it finishes (tick ${a.s.tick})`);
   const b = play('strike-1');

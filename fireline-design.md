@@ -1690,3 +1690,111 @@ Firestorm reads the same at Normal and Hard: its losses at both are mostly its 1
 which Hard does not move, and the plans that reach the Strike Command in time win at both.
 campaign-check now plays one winning plan for each base mission at Hard as well as Easy and Normal,
 and `npm run sweep:fire -- --level hard` runs one level alone.
+
+### 2026-11-11: The Coast stalemates
+
+The naval war left more Coast battles at the 100-minute cap than on any other map (78 across the
+ladder card). The player asked for them to be fixed. Each stalled battle was traced by hand; each was
+a side that could neither win nor lose, waiting:
+
+- **A fleet turning to and fro.** Locked on a Command Yard ten tiles inland, a fleet turned toward
+  it, gave up, turned back to its attack-move, and saw it again, every tick for an hour; the give-up
+  rule waited for an arrival that never came. A ship now never chases a land target no water lies
+  within range of (`canReach` in naval.ts), nor a soldier a ship no shore lies within range of.
+- **Broke with ore on the map.** No hauler and less than one costs; or no refinery. On advanced
+  tech a commander with no income and no way to buy it back takes back queued units, then sells what
+  it can live without, one a decision (`recover` in aiAir.ts: Research Lab first, Generators never),
+  and with nothing left trains what it can and goes all in.
+- **A last stand that never started.** Ships counted as an army, so a side whose only units were
+  at sea never made its last stand; land units only now.
+- **A winner that could not finish.** An opponent reduced to a Barracks and three Generators, out
+  of the fleet's reach, with no armed unit left: every idle unit that can take ground now goes in,
+  wave or no wave (`mopUp`). Like any attack it waits for the commander's first attack to be due,
+  and it leaves an opponent defending with turrets alone to the waves (the full check caught both:
+  harness battles that hold attacks off were overrun at first).
+- **A Grenadier cancelled every decision.** `raiseFunds` took back the last troops a broke side was
+  training to save for a refinery it could never reach; it now leaves the queue alone when even every
+  queued unit and spare structure would not reach the price. And the navy bought ships with the same
+  credits; it now buys no yard and no ships while there is no income.
+- **Nothing to pay for a rifleman.** Two broke sides sat on five Generators each. With no troops and
+  not the price of one, the last resort sells a Naval Yard, Helipads, the Uplink, turrets and any
+  Generator but the last.
+
+The ladder (150 seeds, Coast; the same card before and after):
+
+| | Before | After |
+|---|---|---|
+| Unfinished, all eleven matches | 78 | 30 |
+| Unfinished, Normal mirror | 9 | 0 |
+| Unfinished, the new commander against itself (750 battles) | 17 | 5 |
+| Hard beats Normal, both ways | 78.3% | 81.0% |
+| Normal mirror, average minutes | 34.8 | 30.9 |
+
+Most of what remains involves the frozen `prev` commanders, which by design get none of this. On
+the six older map types nothing moved beyond the noise (Hard beats Normal 75.0%, was 75.3%; 11
+unfinished in all, was 16). The round-4 air battle's one seed now ends a minute before its Bombers
+fly, so its bombing check counts a second, longer battle as well. Harness: `npm run drive:fire`
+396,367 assertions, 0 failed; `npm run campaign:fire` 7,642, 0 failures.
+
+### 2026-11-12: Merge with main's Coast stalemates (pace, lines and War for the Planet kept)
+
+Main's PR #42 (the Coast stalemates: ships that never chase what they cannot reach, a broke
+commander's recovery, mop-up, the land-only last stand) met this branch's development lines, game
+size (pace) and War for the Planet. Three files conflicted (`ai.ts`, `aiAir.ts`, `aiNaval.ts`), each
+merged with both sides kept: the imports joined, main's last stand, `recover` and `mopUp` in place
+of the old last-stand line and ahead of the paced research block, and the navy's ship purchases
+gated on both the paced hold and main's crisis. The decisions:
+
+- **Mop-up, all-in and the paced hold run side by side.** The hold (2026-11-11, the naval war's
+  merge) only stops purchases: no land units and no ships are bought while the commander saves for
+  its next research. Mop-up and a broke side's all-in buy nothing; they send idle units already
+  built. So both apply at once: a holding commander whose opponent has no armed unit left still
+  sends its army in, and keeps saving. Neither needed a change.
+- **The attack timer is the pace's.** Mop-up and all-in wait for `nextAttack`, which at a paced size
+  is already the pace's first attack, scaled for the map (`difficultyForPace`, `scaledFor`). So at
+  Long and Epic they wait as long as the first wave does, and a quiet harness battle stays quiet.
+- **A crisis lifts the hold.** Paced research is planned only out of a crisis, and the plan clears
+  `researchFor` at every decision, so in a crisis the hold falls away. The hold in `ai.ts` reads the
+  previous decision's note, so it can last one decision into a crisis; that costs at most one
+  decision's purchases and was left as it is. Main's crisis rule (no yard and no ships with no
+  income) and the hold both stop ships; either is enough.
+- **Recovery and paced research.** `recover` sells the Research Lab first, paced research or not:
+  the economy comes first. Research in progress pauses until a Lab stands again (its progress and
+  any doctrine kept), and the paced plan rebuilds the Lab once out of the crisis with ore on the map.
+- **Development lines: a queued unit's modules count.** Main's `raiseFunds` now does nothing when
+  even every queued unit and spare structure would not reach the price. Taking a queued vehicle back
+  refunds its modules too (`extra`), so the sum it adds up now includes them. Classic battles carry
+  no modules, so they are unchanged to the credit.
+- **War for the Planet.** A planet battle has no Naval Yard and no ships (`techAllowed`), so
+  `recover` finds no yard to sell there and the land-only last stand is the old one. OLD_WAR_HASHES
+  unchanged and passing.
+- **Purity.** Main's code draws nothing and reads no clock; `src/sim/` still uses neither.
+
+**Byte identity.** Every story mission (default and every hero; 0, 600 and 6,000 ticks: 84 hashes in
+28 runs), 98 classic and standard-tech skirmishes played to the end or 60,000 ticks (all seven map
+types, 2, 3 and 4 sides, every difficulty with two sides) and 24 computer battles on the original
+game to the end (every difficulty, eight seeds) hash in the merged tree exactly as in origin/main's
+own code (d16b2bf) with `research` and `pace` left out of the setup: 150 of 150 runs. The same runs
+on this branch before the merge differ from main in 50 of them, so the check sees main's change.
+Regenerated, with the reasons in the file:
+
+- `drive-size.ts` PRE_ROUND6, 18 of 30: every advanced battle (lines, classic and three, both
+  seeds). Bisected on the pre-merge build: every one first changes with main's 611005a alone
+  (recovery when broke, ships that never chase what they cannot reach), and most again with
+  f216f26 and 385ce76. The six classic ones equal origin/main's own battles exactly. No setup and
+  standard tech are unchanged.
+
+No other hash moved: STORY_HASHES, SKIRMISH_HASHES and OLD_WAR_HASHES are unchanged and pass.
+
+Normal mirror, Standard pace, lines, 150 seeds on `--map random` (`npm run ladder:fire -- --pace
+standard --match new:normal,new:normal --map random --seeds 150`): this branch before the merge
+side 0 71 (47%), side 1 76 (51%), 3 unfinished, median 23.7 minutes, Mk II 77% at 12.6, Mk III 62%
+at 15.3, Coast 14/5/1; merged 71 (47%), 77 (51%), 2 unfinished, median 23.6, Mk II 77% at 12.6,
+Mk III 62% at 15.3, Coast 13/7/0. `npm run sweep:fire` gives exactly the table in main's campaign
+Hard entry (2026-11-11), every mission and level.
+
+Gates at the merge: `npm run check` "All checks passed" (drive:fire "397801 assertions, 0 failed,
+838.2s"; campaign-check "7699 assertions, 0 failures"; drive:planet "35252 assertions passed, 0
+failed, 84.3s"; the whole check 19m16s). `npm run tours -- --quick fireline fireline-planet` "ok
+fireline" (build window: 45 menu items) and "ok fireline-planet". `npm run ladder:planet` "Every
+target passes; 94.5 s in all", and with `-- --prefix holdout` "Every target passes; 96.1 s in all".

@@ -110,7 +110,13 @@ import type { Building, GameState, Projectile, Unit } from './types';
 // round5:D. Neutral sites and tier three (fireline-round5-design.md, workstream D).
 import { seenBy, sitesStep } from './sites';
 import { lostAboard, transportStep } from './transport';
-import { isShip, launchTile, navalStep } from './naval';
+import { canReach, isShip, launchTile, navalStep } from './naval';
+
+/** A ship after something on land, or anything on land after a ship (aircraft aside): the naval war's give-up rules apply. */
+function crossDomain(u: Unit, t: Target): boolean {
+  if (t.unit && isAir(t.unit)) return false;
+  return isShip(u) !== !!(t.unit && isShip(t.unit));
+}
 
 
 /**
@@ -799,7 +805,13 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
       ) {
         firing = true;
         let near = false;
-        if (d < (w.minRange ?? 0)) {
+        // The naval war: a ship never chases a land target it could not shoot from any water, nor a
+        // soldier a ship it could not shoot from any shore.
+        if (crossDomain(u, t) && !canReach(s, ctx.occ, u, t, w.range)) {
+          firing = false;
+          u.engage = 0;
+          if (u.order.type === 'attack') nextOrder(u);
+        } else if (d < (w.minRange ?? 0)) {
           // Too close for artillery: back away from the target.
           travel(s, ctx, u, u.x + (u.x - tp.x), u.y + (u.y - tp.y));
         } else near = travel(s, ctx, u, tp.x, tp.y);
@@ -812,9 +824,10 @@ function updateUnit(s: GameState, ctx: Ctx, u: Unit): void {
           if (u.order.type === 'attack') nextOrder(u);
         }
       } else if (u.order.type === 'idle' && d <= spec.sight + 1 && u.engage) {
-        // Shot at from out of range while idle: close in, but give up beyond sight.
+        // Shot at from out of range while idle: close in, but give up beyond sight (or, the naval
+        // war, when it could never get in range from where it can go).
         firing = true;
-        const near = travel(s, ctx, u, tp.x, tp.y);
+        const near = crossDomain(u, t) && !canReach(s, ctx.occ, u, t, w.range) ? true : travel(s, ctx, u, tp.x, tp.y);
         aim(u, tp.x, tp.y);
         if (near && d > w.range && (isShip(u) || (t.unit && isShip(t.unit)))) {
           firing = false;
