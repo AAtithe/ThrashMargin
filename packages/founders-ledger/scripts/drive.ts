@@ -347,6 +347,43 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
   ok((checkAnswer('talk', { concern: true, reply: 'x', move: 'y' }) as any).concern === true, 'coach: concern overrides talk coaching');
   ok(COACH_TASKS.includes('talk' as any), 'coach: talk is a coach task');
 
+  // Non-negotiables: Pilates once a week, counted by weeks met, never by extra logging.
+  {
+    const l = createLedger(null);
+    ok(l.state.habits.length === 1 && l.state.habits[0].id === 'pilates' && l.state.habits[0].target === 1, 'habits: Pilates once a week from the start');
+    const WK = 7 * 86_400_000; const now = Date.now();
+    l.state.habitLog = [{ id: 'pilates', ts: now - 2 * WK }, { id: 'pilates', ts: now - WK }, { id: 'pilates', ts: now }, { id: 'pilates', ts: now }];
+    ok(l.habitCount('pilates') === 2, 'habits: two classes logged this week');
+    ok(l.habitMet(l.state.habits[0]) === 3, 'habits: three weeks met');
+    ok(l.habitStreak(l.state.habits[0]) === 3, 'habits: three weeks running');
+    ok(l.points() === 3 * l.HABIT_PTS, `habits: points per week met, not per class (got ${l.points()})`);
+    l.state.habitLog = [{ id: 'pilates', ts: now - WK }];
+    ok(l.habitStreak(l.state.habits[0]) === 1, 'habits: this week does not break the streak before it ends');
+    l.state.habitLog = [{ id: 'pilates', ts: now - 3 * WK }];
+    ok(l.habitStreak(l.state.habits[0]) === 0, 'habits: a missed week breaks the streak');
+  }
+
+  // Coach sessions: the agenda comes from the ledger.
+  {
+    const l = createLedger(null);
+    const now = Date.now();
+    l.state.resets = [{ ts: now - 1000, loud: 'inbox', sort: 'decide' }, { ts: now - 2000, loud: 'inbox', sort: 'decide' }, { ts: now - 3000, loud: 'deli', sort: 'decide' }];
+    l.state.habitLog = [{ id: 'pilates', ts: now }];
+    const b = l.sessionBrief(now);
+    ok(b.lines.some((x: string) => x.startsWith('3 resets') && x.includes('the pull to check email (2)')), 'session: the brief counts the resets and the loudest pull');
+    ok(b.lines.some((x: string) => x.startsWith('Pilates class: target met')), 'session: the brief includes Pilates');
+    l.state.baselineTs = now - 1000;
+    ok(l.sessionBrief(now).lines.includes('Pilates class: target met in 1 of 1 week'), 'session: weeks counted from the day the ledger began');
+    l.state.habitLog = [];
+    ok(!l.sessionBrief(now).lines.some((x: string) => x.startsWith('Pilates')), 'session: an unfinished week is not counted as missed');
+    ok(b.topics.some((x: string) => x.includes('keeps coming up')), 'session: a repeating pull becomes a topic');
+    const txt = l.agendaText({ when: 'This week', want: 'To be challenged', lines: b.lines, items: ['The deli: fix, hold or exit'] });
+    ok(txt.includes('What I want from today: To be challenged') && txt.includes('1. The deli: fix, hold or exit') && txt.includes('Since we last met:'), 'session: the agenda reads as a message to send');
+    ok(!/[\u2014\u2013]/.test(txt + JSON.stringify([l.HABIT_IDEAS, b.topics])), 'session: no dashes in the agenda or habits');
+    l.state.sessions = [{ id: 's', status: 'done', doneTs: now, takeaway: 'Hand one task over for good' }];
+    ok(l.points() === l.SESSION_PTS, `session: a session with a takeaway scores (got ${l.points()})`);
+  }
+
   // Tom's own pulls, rules and systems.
   {
     const l = createLedger(null);

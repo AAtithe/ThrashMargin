@@ -140,6 +140,7 @@ const WILD=[
 const RESET_CAP=6;
 /* Tom's rules: the directions he wrote for himself. Shown on every reset; he taps the one he is choosing.
    Reinforcement that points somewhere, not reassurance: each one is a direction he can act on. */
+const DEFAULT_HABITS=[{id:'pilates',name:'Pilates class',target:1}];
 const DEFAULT_RULES=['Profit is a good thing.','Taking time off is vital.','My systems run on profit and space, not on working all the time.','I am enough, and I can trace it in this ledger.','I control the next move, not the outcome.'];
 const RULE_IDEAS=['The firm does not need me to check my email to be safe.','Quiet is space, not danger.','When I am away, the team decides.','A fear is not a fact until the numbers say so.','Rest is part of the job, not a reward for finishing it.'];
 const rules=()=>(Array.isArray(S.rules)&&S.rules.length?S.rules:DEFAULT_RULES);
@@ -505,7 +506,7 @@ const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
-const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
+const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
 
 function migrate(o){
   if(!o)return blank();
@@ -552,6 +553,8 @@ function points(){
   const offWeeks=new Set();(S.offDays||[]).forEach(o=>{if(o.status==='back'&&!offWeeks.has(weekNo(o.day))){offWeeks.add(weekNo(o.day));p+=OFF_PTS;}});
   if(wc(S.future.letter)>=150)p+=30;
   p+=10*new Set((S.letterReads||[]).map(monthKey)).size;
+  habits().forEach(h=>{p+=HABIT_PTS*habitMet(h);});
+  const sessWeeks=new Set();(S.sessions||[]).forEach(s=>{if(s.status==='done'&&s.takeaway&&!sessWeeks.has(weekNo(s.doneTs))){sessWeeks.add(weekNo(s.doneTs));p+=SESSION_PTS;}});
   return p;
 }
 function boughtBack(){
@@ -604,6 +607,9 @@ function receipts(){
   if(without)out.push(`${without===1?'Once':without+' times'} so far, someone solved it or made the call without you. That is the firm you are building, already working.`);
   const moved=done.filter(isResetMove).length;
   if(moved)out.push(`${moved===1?'Once':moved+' times'} you have turned a heavy moment into a move and done it. That is control: not of the outcome, of the next step.`);
+  habits().forEach(h=>{const st=habitStreak(h);const met=habitMet(h);if(st>=2)out.push(`${h.name}: ${st} weeks running. You kept a promise to yourself that nobody else checks.`);else if(met)out.push(`${h.name}: target met in ${plural(met,'week')}. You made room for it while the firm kept going.`);});
+  const sess=(S.sessions||[]).filter(s=>s.status==='done').length;
+  if(sess)out.push(`You have walked into ${plural(sess,'coaching session')} with an agenda. Founders who prepare get more from every hour of help.`);
   const ruled=(S.resets||[]).filter(r=>r.rule).length;
   if(ruled)out.push(`${ruled===1?'Once':ruled+' times'} on a hard moment you chose one of your own rules over the feeling. That is you setting the direction.`);
   const ot=offTotals();
@@ -704,6 +710,64 @@ function offBrief(o){
   return `I am off my phone on ${fmtDay(o.day)}. ${o.decider||'The leadership team'} decides anything that would normally come to me. If it is ${th}, ${o.route||'call my second in command, who can reach me'}. Everything else waits until ${next}, and that is fine. Thank you for running it.`;
 }
 /* ---------- Fear and reality: derived ---------- */
+/* ---------- Non-negotiables: the few things each week that keep the founder working ----------
+   Pilates first, because Tom said it is a massive help. A week counts when the target is met; points and
+   receipts come from weeks met, never from logging more than the target. */
+const HABIT_IDEAS=[{name:'A full day off',target:1},{name:'Training session',target:2},{name:'Walk without my phone',target:3},{name:'Evening fully off',target:2},{name:'Read my 2030 letter',target:1}];
+const HABIT_PTS=10;
+const habits=()=>(Array.isArray(S.habits)?S.habits:[]);
+function habitCount(id,now=Date.now()){const w=weekNo(now);return (S.habitLog||[]).filter(l=>l.id===id&&weekNo(l.ts)===w).length;}
+function habitWeeks(id){const by={};(S.habitLog||[]).filter(l=>l.id===id).forEach(l=>{const w=weekNo(l.ts);by[w]=(by[w]||0)+1;});return by;}
+/* Weeks in a row the target was met, counting this week only once it is met. */
+function habitStreak(h,now=Date.now()){const by=habitWeeks(h.id);let w=weekNo(now);if((by[w]||0)<h.target)w--;let n=0;while((by[w]||0)>=h.target){n++;w--;}return n;}
+function habitMet(h){const by=habitWeeks(h.id);return Object.values(by).filter(c=>c>=h.target).length;}
+
+/* ---------- Coaching sessions: an agenda built from the ledger, and what he brings back ---------- */
+const SESSION_WHEN=['Today','Tomorrow','This week','Next week'];
+const SESSION_WANT=['Clarity on one decision','A plan for the next 30 days','To be challenged','To offload and reset'];
+const SESSION_TOPICS=['How I protect profit and space','Being needed while I am away','Fear the firm is failing: facts against feelings','The deli: fix, hold or exit','Is my 2030 letter still true?','Who could take something off me next'];
+const TAKEAWAYS=['Decide one thing this week and tell the team','Hand one task over for good','Protect one thinking block a week','Book next month’s days off now'];
+const SESSION_PTS=10;
+const openSession=()=>(S.sessions||[]).find(s=>s.status==='planned')||null;
+function sinceLastSession(now=Date.now()){
+  const done=(S.sessions||[]).filter(s=>s.status==='done');
+  return done.length?done[done.length-1].doneTs:now-14*DAY;
+}
+/* What has happened since the last session, as plain lines, and the topics it suggests. */
+function sessionBrief(now=Date.now()){
+  const since=sinceLastSession(now);const lines=[];const topics=[];
+  const rs=(S.resets||[]).filter(r=>r.ts>since);
+  if(rs.length){const by={};rs.forEach(r=>{by[r.loud]=(by[r.loud]||0)+1;});const top=Object.entries(by).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,n])=>`${((LOUD.find(x=>x.k===k)||{}).name||k).toLowerCase()} (${n})`);
+    lines.push(`${plural(rs.length,'reset')}; loudest: ${top.join(', ')}`);
+    const [k1,n1]=Object.entries(by).sort((a,b)=>b[1]-a[1])[0];if(n1>=2)topics.push(`Why "${(LOUD.find(x=>x.k===k1)||{}).name||k1}" keeps coming up (${plural(n1,'reset')})`);}
+  const rv=S.reviews.filter(r=>r.ts>since);
+  if(rv.length){lines.push(`${plural(rv.length,'Friday review')} closed`);
+    const first=rv[0],last=rv[rv.length-1];const ups=METERS.map(m=>({n:m.name,d:(Number(last[m.k])-Number((rv.length>1?first:(S.baseline||first))[m.k]))*10})).filter(x=>x.d);
+    if(ups.length)lines.push(ups.map(x=>`${x.n} ${x.d>0?'up':'down'} ${Math.abs(x.d)}`).join(', '));
+    const gs={};rv.forEach(r=>{if(r.game)gs[r.game]=(gs[r.game]||0)+1;});const g=Object.entries(gs).sort((a,b)=>b[1]-a[1])[0];
+    if(g){const G=GAMES.find(x=>x.id===g[0]);if(G){lines.push(`The game that ran my weeks: ${G.name.toLowerCase()}`);if(G.kind==='default')topics.push(`The system I keep running: ${G.name.toLowerCase()}`);}}
+    const hrs=rv.map(r=>Number(r.hours)).filter(Boolean);if(hrs.length)lines.push(`Hours: ${hrs.join(', ')} against a target of ${S.future.targetHours}`);}
+  // Weeks are counted from the later of the last session and the day the ledger began, and this week
+  // only counts once its target is met: an unfinished week is not a missed one.
+  const start=Math.max(since,S.baselineTs||0);
+  habits().forEach(h=>{const by=habitWeeks(h.id);const weeks=new Set();for(let w=weekNo(start);w<=weekNo(now);w++)weeks.add(w);if((by[weekNo(now)]||0)<h.target)weeks.delete(weekNo(now));if(!weeks.size)return;const met=[...weeks].filter(w=>(by[w]||0)>=h.target).length;
+    lines.push(`${h.name}: target met in ${met} of ${plural(weeks.size,'week')}`);if(met<weeks.size)topics.push(`${h.name}: what gets in the way`);});
+  const doneT=S.todos.filter(t=>t.done&&t.doneAt>since);if(doneT.length)lines.push(`${plural(doneT.length,'action')} done`);
+  const stuck=S.todos.filter(t=>!t.done&&!isResetMove(t)&&t.createdAt&&now-t.createdAt>21*DAY).sort((a,b)=>a.createdAt-b.createdAt).slice(0,2);
+  stuck.forEach(t=>topics.push(`Stuck for ${Math.floor((now-t.createdAt)/WEEK)} weeks: ${t.text}`));
+  const goods=S.notes.filter(n=>n.kind==='good'&&n.ts>since);if(goods.length){lines.push(`${plural(goods.length,'good thing')} logged`);topics.push(`What is working: ${goods[goods.length-1].text}`);}
+  const ruled=rs.filter(r=>r.rule);if(ruled.length)lines.push(`Chose my own rules on ${plural(ruled.length,'hard moment')}`);
+  SESSION_TOPICS.forEach(x=>topics.push(x));
+  return {since,lines,topics:[...new Set(topics)]};
+}
+function agendaText(s){
+  const out=[`Coaching session, ${s.when.toLowerCase()}`,'',`What I want from today: ${s.want}`];
+  if(s.lines.length)out.push('','Since we last met:',...s.lines.map(l=>`- ${l}`));
+  out.push('','To discuss:',...s.items.map((x,i)=>`${i+1}. ${x}`));
+  out.push('','I will leave with one decision and one action.');
+  return out.join('\n');
+}
+
 function fearGap(){
   const rs=S.reviews.filter(r=>r.fear&&r.fear!=='Nothing this week'&&r.fearOutcome);
   const better=rs.filter(r=>r.fearOutcome==='never'||r.fearOutcome==='better').length;
@@ -724,7 +788,7 @@ function renderTabs(){
   const unplayed=S.calls.filter(c=>S.answers[c.id]==null).length+(S.pendingCall?1:0)+FOUNDING.filter(c=>S.answers[c.id]==null).length;
   const sysWaiting=sysToday().call&&!sysToday().played;
   const oc=offCurrent();const offDue=oc&&dayKey(oc.day)!==dayKey(Date.now())&&oc.day<Date.now();
-  const tabs=[['today','Today',sysWaiting?'1':''],['reset','Reset',''],['off','Phone off',offDue?'due':''],['review','Friday review',reviewDue()?'due':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
+  const tabs=[['today','Today',sysWaiting?'1':''],['reset','Reset',''],['off','Phone off',offDue?'due':''],['review','Friday review',reviewDue()?'due':''],['coach','Coach session',openSession()?'1':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
   $('#tabs').innerHTML=tabs.map(([k,l,n])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:''}</button>`).join('');
 }
 
@@ -744,6 +808,8 @@ function vToday(){
   const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
   return `<section>
   ${vResetCard()}
+  ${vHabitCard()}
+  ${vSessionCard()}
   ${vSysCard()}
   ${vMomentum()}
   ${reviewDue()?`<div class="card call-to"><div class="spread"><div><div class="eyebrow">Friday review ${S.reviews.length?'due':'not started'}</div><h2>Close your own week. Ten minutes.</h2></div><button class="btn" data-tab="review">Start the review</button></div><p class="muted">The review is the game. It keeps the streak alive, earns ${15+Math.min(5*streak(),25)} points, and unlocks next week’s call.</p></div>`:''}
@@ -883,6 +949,43 @@ function vSysPanel(){
    <div class="sys-list">${SYSTEM.map(c=>`<span class="sys-chip ${m.has(c.id)?'won':(S.sysLog||[]).some(l=>l.id===c.id)?'tried':''}" title="${esc(c.title)}">${esc(c.title)}</span>`).join('')}</div></div>`;
 }
 /* ---------- Momentum: this week at a glance ---------- */
+function vHabitCard(){
+  if(!habits().length)return '';
+  const day=new Date().getDay();const late=day===0||day>=4;
+  return `<div class="card"><div class="eyebrow">Non-negotiables this week</div>
+   ${habits().map(h=>{const n=habitCount(h.id);const met=n>=h.target;const st=habitStreak(h);const today=(S.habitLog||[]).some(l=>l.id===h.id&&dayKey(l.ts)===dayKey(Date.now()));
+     return `<div class="habit"><div><div class="lbl">${esc(h.name)}</div><div class="small ${met?'delta-up':late?'delta-down':'muted'}">${n} of ${h.target} this week${met?' &middot; done':late?' &middot; the week ends Sunday, book it now':''}${st>=2?` &middot; ${st} weeks running`:''}</div></div>
+     ${today?`<button class="btn small ghost" data-act="habitUndo" data-id="${h.id}">Undo today</button>`:`<button class="btn small" data-act="habitLog" data-id="${h.id}">Did it today</button>`}</div>`;}).join('')}
+   <p class="small muted">${HABIT_PTS} points for every week you hit the target. These keep the founder working, so they come before the inbox.</p></div>`;
+}
+function vSessionCard(){
+  const s=openSession();
+  return `<div class="card"><div class="spread"><div><div class="eyebrow">Coach session</div><h3>${s?`Agenda ready for ${esc(s.when.toLowerCase())}`:'Seeing your coach? Build the agenda in two minutes.'}</h3></div><button class="btn small ${s?'':'ghost'}" data-tab="coach">${s?'Open it':'Build it'}</button></div></div>`;
+}
+function vCoach(){
+  const s=openSession();
+  const past=(S.sessions||[]).filter(x=>x.status==='done').slice(-5).reverse();
+  if(s){
+    if(s.closing)return `<section><div class="card"><div class="eyebrow">After the session</div><h2>What are you taking away?</h2>
+      <p class="muted">One thing. It goes on your list for this week.</p>
+      ${chipRow('take',TAKEAWAYS,{act:'session-take',other:true})}
+      <div class="row"><button class="btn small" data-act="sessionTakeOwn">Save my own words</button><button class="btn small ghost" data-act="sessionReopen">Back to the agenda</button></div></div></section>`;
+    return `<section><div class="card"><div class="eyebrow">Coach session &middot; ${esc(s.when.toLowerCase())}</div><h2>Your agenda</h2>
+      <pre class="agenda" id="agendaText">${esc(agendaText(s))}</pre>
+      <div class="row"><button class="btn" data-act="sessionCopy">Copy to send</button><button class="btn small ghost" data-act="sessionClose">Session done</button><button class="btn small ghost" data-act="sessionDrop">Start again</button></div>
+      <p class="small muted">Send it the day before, so your coach arrives knowing where you are.</p></div></section>`;
+  }
+  const b=sessionBrief();
+  return `<section><div class="card"><div class="eyebrow">Coach session</div><h2>Build the agenda from your ledger</h2>
+    <p class="muted">Two minutes, all taps. Your coach gets the facts, not just how the week felt.</p>
+    <div class="field"><span class="lbl">When is it?</span>${chipRow('s-when',SESSION_WHEN,{selected:'This week'})}</div>
+    <div class="field"><span class="lbl">Since your last session</span>${b.lines.length?`<ul class="brief">${b.lines.map(l=>`<li>${esc(l)}</li>`).join('')}</ul>`:'<p class="small muted">Not much logged yet. The agenda will fill in as you play.</p>'}</div>
+    <div class="field"><span class="lbl">What to discuss (pick up to four)</span>${chipRow('s-topics',b.topics,{multi:true,max:4,other:true})}</div>
+    <div class="field"><span class="lbl">What you want from it</span>${chipRow('s-want',SESSION_WANT,{selected:SESSION_WANT[0]})}</div>
+    <div class="row"><button class="btn" data-act="sessionBuild">Build my agenda</button></div></div>
+    ${past.length?`<div class="card"><h3>Past sessions</h3>${past.map(x=>`<div class="note"><span class="kd">${fmtDate(x.doneTs)}</span><span>${esc(x.takeaway||'')}</span></div>`).join('')}</div>`:''}
+  </section>`;
+}
 function vMomentum(){
   const lw=loudWeek();const ot=offTotals();const fg=fearGap();const pr=sysProgress();
   const mastered=pr.reduce((a,x)=>a+x.done,0),total=pr.reduce((a,x)=>a+x.total,0);
@@ -1016,6 +1119,7 @@ function vReview(){
   ${vLoudWeek()}
 
   <div class="card"><div class="eyebrow">1. What you did</div><h3>Tick what got done</h3>
+   ${habits().length?`<div class="field"><span class="lbl">Non-negotiables</span>${habits().map(h=>{const n=habitCount(h.id);return `<div class="small ${n>=h.target?'delta-up':'delta-down'}">${esc(h.name)}: ${n} of ${h.target}${n>=h.target?', done':', not this week'}</div>`;}).join('')}</div>`:''}
    ${open.length?open.map(t=>`<label class="item" style="cursor:pointer"><input type="checkbox" data-done="${t.id}"><span class="txt"><span>${esc(t.text)}</span><span class="meta"><span class="pill ${t.type}">${t.type}</span><span class="pill">+${ptsFor(t)} pts</span>${t.hours?`<span class="pill">${t.hours} hrs/wk back</span>`:''}</span></span><span></span></label>`).join(''):'<p class="empty">Nothing open for this week. Add actions in Actions.</p>'}
    <div class="field"><span class="lbl">Hours worked this week</span><span class="hint">Your target is ${S.future.targetHours} (set in Future).</span>${chipRow('rv-hours',PICK.hours,{selected:hoursChip(l.hours)})}</div></div>
 
@@ -1150,6 +1254,11 @@ function vFuture(){
   <div class="card"><div><div class="eyebrow">Creating your future</div><h2>Decide from the life you want, not from habit.</h2></div>
    <p class="muted">You build clients a budget before the year starts so every week can be judged against it. This is the budget for your life. Everything else in the ledger is measured against what you write here.</p></div>
 
+  <div class="card" id="habits"><div class="eyebrow">Your non-negotiables</div><h3>What you do every week, whatever the firm is doing</h3>
+   ${habits().map((h,i)=>`<div class="note"><span class="kd">${h.target} a week</span><span>${esc(h.name)} <button class="icon-btn" data-act="habitTarget" data-i="${i}">${h.target>=3?'Back to once':'Once more a week'}</button> <button class="icon-btn" data-act="habitDel" data-i="${i}">Remove</button></span></div>`).join('')||'<p class="empty">None yet.</p>'}
+   ${HABIT_IDEAS.filter(x=>!habits().some(h=>h.name===x.name)).length?`<div class="lbl small">Add one</div>${chipRow('habit-idea',HABIT_IDEAS.filter(x=>!habits().some(h=>h.name===x.name)).map(x=>x.name),{act:'habit-add'})}`:''}
+   <details class="own"><summary>In my own words</summary><div class="row" style="flex-wrap:nowrap"><input type="text" id="habit-own" placeholder="Something you do every week" aria-label="Your own non-negotiable"><button class="btn small" data-act="habitOwn">Add</button></div></details></div>
+
   <div class="card" id="rules"><div class="eyebrow">Your rules</div><h3>The directions you have written for yourself</h3>
    <p class="small muted">One shows on every reset, and you tap the one you are choosing. Keep them short and true. A rule points somewhere you can act.</p>
    ${rules().map((r,i)=>`<div class="note"><span class="kd">Rule</span><span>${esc(r)} <button class="icon-btn" data-act="ruleDel" data-i="${i}" aria-label="Remove this rule">Remove</button></span></div>`).join('')}
@@ -1188,7 +1297,7 @@ function vFuture(){
 function render(){
   renderBoard();renderTabs();
   const rt=byId('resetTop');if(rt)rt.hidden=S.view==='reset';
-  const v={today:vToday,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
+  const v={today:vToday,coach:vCoach,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
   $('#view').innerHTML=v();
 }
 
@@ -1287,6 +1396,12 @@ function endReset(o){
   const entry=finishReset({loud:RD.loud,sort:RD.sort,receipt:RD.receipt,move:o.move,todoId:o.todoId,line:RD.line,read:RD.read&&RD.read.read,rule:RD.rule,talk:!!RD.talkReply});
   RD={step:'done',entry};save();render();toTop();
 }
+function closeSession(v){
+  const s=openSession();if(!s||!v)return;
+  s.status='done';s.doneTs=Date.now();s.takeaway=String(v).slice(0,200);delete s.closing;
+  addTodo({text:s.takeaway,type:'Start',h:'week',hours:0,source:'coach-'+s.id});
+  save();render();toTop();setStatus(`Session logged. +${SESSION_PTS} points, and your takeaway is on this week’s list.`);
+}
 function attach(){
 /* ---------- Events ---------- */
 let reviewGame='';
@@ -1336,6 +1451,8 @@ on('click',async e=>{
         render();toTop();break;}
       case 'reset-move':endReset({move:v});break;
       case 'reset-rule':if(RD)RD.rule=v;break;
+      case 'habit-add':{const x=HABIT_IDEAS.find(h=>h.name===v);if(!x)break;S.habits=habits().concat({id:'h'+uid(),name:x.name,target:x.target});save();render();setStatus('Added to your non-negotiables.');break;}
+      case 'session-take':closeSession(v);break;
       case 'rule-add':{if(!Array.isArray(S.rules))S.rules=DEFAULT_RULES.slice();if(!S.rules.includes(v))S.rules.push(v);save();render();setStatus('Added to your rules.');break;}
       case 'pillar':{const k=d.pickGroup.slice(3);S.future.pillars[k].ten=v;save();const i=byId('pt-'+k);if(i)i.value=v;break;}
     }
@@ -1417,6 +1534,25 @@ on('click',async e=>{
           if(r.learned){S.coachNotes=(S.coachNotes||[]).concat({ts:Date.now(),text:String(r.learned).slice(0,240)}).slice(-30);save();}
           render();toTop();});
       break;}
+    case 'habitLog':{S.habitLog=(S.habitLog||[]).concat({id:d.id,ts:Date.now()}).slice(-2000);const h=habits().find(x=>x.id===d.id);save();render();
+      if(h){const n=habitCount(h.id);setStatus(n===h.target?`${h.name}: week done. +${HABIT_PTS} points.`:`${h.name} logged.`);}break;}
+    case 'habitUndo':{const k=dayKey(Date.now());const log=(S.habitLog||[]).slice();for(let i=log.length-1;i>=0;i--){if(log[i].id===d.id&&dayKey(log[i].ts)===k){log.splice(i,1);break;}}S.habitLog=log;save();render();break;}
+    case 'habitTarget':{const i=Number(d.i);const hs=habits().map(h=>({...h}));if(hs[i]){hs[i].target=hs[i].target>=3?1:hs[i].target+1;S.habits=hs;save();render();}break;}
+    case 'habitDel':{const i=Number(d.i);S.habits=habits().filter((_,k)=>k!==i);save();render();break;}
+    case 'habitOwn':{const i=byId('habit-own');const v=i?i.value.trim().slice(0,80):'';if(!v)break;S.habits=habits().concat({id:'h'+uid(),name:v,target:1});save();render();setStatus('Added to your non-negotiables.');break;}
+    case 'sessionBuild':{
+      const items=picked('s-topics').slice(0,5);if(!items.length){setStatus('Pick at least one thing to discuss.');break;}
+      const b=sessionBrief();
+      S.sessions=(S.sessions||[]).concat({id:uid(),ts:Date.now(),when:picked('s-when')[0]||'This week',want:picked('s-want')[0]||SESSION_WANT[0],lines:b.lines,items,status:'planned'}).slice(-60);
+      save();render();toTop();setStatus('Agenda built. Copy it and send it to your coach.');break;}
+    case 'sessionCopy':{const s=openSession();if(!s)break;const txt=agendaText(s);
+      try{await navigator.clipboard.writeText(txt);setStatus('Copied. Paste it into a message to your coach.');}
+      catch(err){const pre=byId('agendaText');if(pre){const r=document.createRange();r.selectNodeContents(pre);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(r);}setStatus('Selected. Copy it from your phone’s menu.');}
+      break;}
+    case 'sessionClose':{const s=openSession();if(s){s.closing=true;render();toTop();}break;}
+    case 'sessionReopen':{const s=openSession();if(s){delete s.closing;render();}break;}
+    case 'sessionDrop':{S.sessions=(S.sessions||[]).filter(x=>x.status!=='planned');save();render();break;}
+    case 'sessionTakeOwn':{const v=picked('take')[0];if(!v){setStatus('Pick one, or write your own under Something else.');break;}closeSession(v);break;}
     case 'ruleDel':{const i=Number(d.i);const cur=rules().slice();cur.splice(i,1);S.rules=cur;save();render();break;}
     case 'ruleOwn':{const i=byId('rule-own');const v=i?i.value.trim().slice(0,200):'';if(!v)break;if(!Array.isArray(S.rules))S.rules=DEFAULT_RULES.slice();S.rules.push(/[.?]$/.test(v)?v:v+'.');save();render();setStatus('Added to your rules.');break;}
     case 'noteDel':{const i=Number(d.i);S.coachNotes=(S.coachNotes||[]).filter((_,k)=>k!==i);save();render();setStatus('Forgotten.');break;}
@@ -1482,6 +1618,7 @@ return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
+  DEFAULT_HABITS, HABIT_IDEAS, HABIT_PTS, habitCount, habitStreak, habitMet, sessionBrief, agendaText, SESSION_PTS,
   RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE,
   sysToday, sysRhythm, sysMastered, sysProgress, playSys, offCurrent, offTotals, offRecent, planOff, logOff, offBrief, fearGap,
   DEFAULT_RULES, RULE_IDEAS, talkLoud, receipts, SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, askCoach, dealCall, validPressure, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
