@@ -106,7 +106,11 @@ function serve(page, { delay = 0, game }) {
   });
 }
 
-const opacity = (page, sel) => page.locator(sel).first().evaluate(e => Number(getComputedStyle(e).opacity)).catch(() => null);
+// A loader React removed between the locator finding it and the evaluate reading it is detached, and
+// a detached element's computed opacity is "" (which Number() made 0, a false blink). It is no
+// longer on screen, so it is no sample: null, the same as not found.
+const opacity = (page, sel) =>
+  page.locator(sel).first().evaluate(e => (e.isConnected ? Number(getComputedStyle(e).opacity) : null)).catch(() => null);
 
 async function checkGame(browser, g) {
   const base = `http://localhost:${g.port}`;
