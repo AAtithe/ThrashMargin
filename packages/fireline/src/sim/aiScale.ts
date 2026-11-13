@@ -95,5 +95,5 @@ export function stageDistance(s: GameState): number {
  * credits in hand, so the saving it does by taking back units not yet started still has some to take.
  * Never in a campaign mission: the missions were balanced on one line, so their commanders keep it.
  */
-export const EXTRA_LINE_RESERVE = 2000;
+export const EXTRA_LINE_RESERVE = 1000;
 export const extraLine = (s: GameState, credits: number): boolean => !s.mission && credits >= EXTRA_LINE_RESERVE;

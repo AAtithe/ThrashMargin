@@ -2386,6 +2386,17 @@ and for Repair Trucks to stop driving into the fighting, with a way to choose wh
   4, firestorm 5, last-light 5). Read plainly: the computer almost never holds 2,000 spare, so its
   second War Factory is still mostly idle. Lowering `EXTRA_LINE_RESERVE`, or reserving only while it
   saves for something, would make Hard use it; that is a difficulty decision, left open.
+- **The reserve lowered to 1,000** (the player: make Hard use both factories). Measured first, Hard
+  against Hard, 16 battles (8 standard, 8 advanced), while two War Factories stood: share of time
+  both lines were busy, at reserve 2,000 / 1,000 / 500 / 0: 0% / 1% / 3% / 3%; at least one busy about
+  20% at every value. At 500 the saving broke again (no Prototype Works in `drive-sites`' 40 minutes);
+  1,000 is the lowest that keeps it (Works at minute 26.7, Stealth and Railgun Tanks fielded). The
+  reason the second factory stays idle is money, not the reserve: with two factories standing, Hard
+  held under 300 credits 60% of the time and under 1,000 93% of it, and its infantry queue was busy
+  44% of the time to the vehicles' 21%. `ladder:fire` at 1,000: Hard beats Normal 196 of 300 (200 at
+  2,000, 201 before the session): no change beyond noise. Six Hard `drive-size` battles regenerated.
+  Making Hard field more from two factories needs more income or a spending mix that favours
+  vehicles: a difficulty decision.
 
 Checks: `drive-air` (Return to base, refusals, repair on the pad and not in flight) and `drive-naval`
 (sailing home, mended there, refused without a yard) gained 17 assertions. In Chromium: a damaged

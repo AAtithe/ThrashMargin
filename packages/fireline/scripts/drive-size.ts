@@ -301,14 +301,17 @@ function rulesAndPresets(ok: Ok): void {
  * Helipads repairing parked aircraft (2026-11-13) moved 7 advanced battles (lines easy size-a and
  * size-b, lines hard size-a, classic easy both seeds, classic hard size-a, three easy size-b), which
  * were regenerated: with that one repair block switched off, all 30 equal the values before exactly.
+ * Production lines' EXTRA_LINE_RESERVE lowered from 2,000 to 1,000 (2026-11-13, so Hard fills its
+ * second War Factory more often) moved the 6 Hard battles without research (no setup, standard,
+ * three, both seeds), regenerated; at 2,000 all 30 equalled the values before.
  */
 const PRE_ROUND6: Record<string, string> = {
   'nosetup|easy|size-a': '3425e6edb280df2e',
   'nosetup|easy|size-b': 'd79837ed09c9f522',
   'nosetup|normal|size-a': '3e97d14ebb56e1bf',
   'nosetup|normal|size-b': 'ee788c01da261681',
-  'nosetup|hard|size-a': '061e68bb7dd33891',
-  'nosetup|hard|size-b': '6120a39f5cd1b61e',
+  'nosetup|hard|size-a': '0c8f88983c26e1e2',
+  'nosetup|hard|size-b': '521c83a6d4e01fbf',
   'lines|easy|size-a': '0ecd7800d160c695',
   'lines|easy|size-b': '94b568def19dc3e9',
   'lines|normal|size-a': 'd71e1a8bd4da98f0',
@@ -325,14 +328,14 @@ const PRE_ROUND6: Record<string, string> = {
   'standard|easy|size-b': '341594413f75a712',
   'standard|normal|size-a': '38d88b6d845f533c',
   'standard|normal|size-b': 'b91a872ee84ceff5',
-  'standard|hard|size-a': '1f4d39caa46bbeef',
-  'standard|hard|size-b': '586549cee40c3055',
+  'standard|hard|size-a': '0e65ebf5a4934062',
+  'standard|hard|size-b': '499823280b1925bf',
   'three|easy|size-a': '10f32b01d00c6b55',
   'three|easy|size-b': 'f8c120a0b8d86d72',
   'three|normal|size-a': 'a6f3bae58f760576',
   'three|normal|size-b': 'f6fe85e5118f9e36',
-  'three|hard|size-a': '6ed6c38fdf6b8935',
-  'three|hard|size-b': '7b54141e7d25b3e5',
+  'three|hard|size-a': 'ee0024d21ede7f96',
+  'three|hard|size-b': 'a0863023f86f362b',
 };
 const KINDS: Record<string, Partial<SkirmishSetup> | undefined> = {
   nosetup: undefined,
