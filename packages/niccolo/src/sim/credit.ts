@@ -134,7 +134,7 @@ export function discountObligation(state: GameState, id: string): GameState {
   if (obligation.direction !== 'receivable') throw new Error('Only a receivable can be discounted');
   if (obligation.settled) throw new Error('Already settled');
   const weeksLeft = obligation.matureWeek - state.week;
-  if (weeksLeft <= 0) throw new Error('Already due — it will settle on the next advance');
+  if (weeksLeft <= 0) throw new Error('Already due. It will settle on the next advance');
 
   const presentValue = obligation.amount / (1 + DISCOUNT_RATE_PER_WEEK * weeksLeft);
   const florinsNow = Math.round(toFlorins(presentValue, obligation.currency, state.exchangeRates));

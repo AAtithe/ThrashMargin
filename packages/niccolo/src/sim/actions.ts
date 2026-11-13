@@ -511,7 +511,7 @@ function advanceWeek(rawState: GameState, hotseatDecision?: HotseatDecision): Ga
 }
 
 function investCourier(state: GameState, cityId: string): GameState {
-  if (cityId === HOME_CITY) throw new Error(`${findCity(HOME_CITY)?.name ?? HOME_CITY} is home — reports are already instant`);
+  if (cityId === HOME_CITY) throw new Error(`${findCity(HOME_CITY)?.name ?? HOME_CITY} is home: reports are already instant`);
   if (!canInvestFurther(cityId, state.courierInvestment)) {
     throw new Error(`The courier line to ${findCity(cityId)?.name ?? cityId} is already as fast as it can be`);
   }
