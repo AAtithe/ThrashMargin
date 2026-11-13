@@ -117,7 +117,7 @@ export default function Login() {
           </button>
         </form>
         <p style={{ fontSize: 12, color: 'var(--portal-soft)', textAlign: 'center', margin: '14px 0 0', lineHeight: 1.5 }}>
-          What we keep about you, and how to delete it: <a href="/privacy.html" style={{ color: 'var(--portal-action)' }}>privacy notice</a>
+          What we keep about you, and how to delete it: <a href="/privacy.html" style={{ color: 'var(--tm-portal-link-text)' }}>privacy notice</a>
         </p>
         </div>
       </div>

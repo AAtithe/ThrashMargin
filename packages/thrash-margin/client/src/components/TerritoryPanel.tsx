@@ -175,7 +175,7 @@ function Buildings({ state, node, act }: { state: GameState; node: Territory; ac
               </div>
               {up && a && (
                 <div style={{ textAlign: 'right' }}>
-                  <Button small icon="upgrade" disabled={!!why} onClick={() => act(a)} title={why ?? `Upgrade to ${BUILDINGS[up].name}: ${BUILDINGS[up].desc}`}>{BUILDINGS[up].name}</Button>
+                  <Button small icon="upgrade" disabled={!!why} disabledReason={why} reasonEnd wrapStyle={{ maxWidth: 150 }} onClick={() => act(a)} title={why ? undefined : `Upgrade to ${BUILDINGS[up].name}: ${BUILDINGS[up].desc}`}>{BUILDINGS[up].name}</Button>
                   <div style={{ marginTop: 3 }}><Cost gold={BUILDINGS[up].cost.gold} mat={BUILDINGS[up].cost.mat} have={f.resources} /></div>
                 </div>
               )}
@@ -191,12 +191,13 @@ function Buildings({ state, node, act }: { state: GameState; node: Territory; ac
               const a: GameAction = { type: 'BUILD', nodeId: node.id, building: b };
               const why = explain(state, a);
               return (
-                <button key={b} type="button" id={`tm-build-${b}`} className="tm-btn tm-row-hover" disabled={!!why} onClick={() => { act(a); setOpen(false); }} title={why ?? undefined}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', borderRadius: 6, background: UI.panelSunk, border: `1px solid ${UI.rule}`, cursor: why ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: why ? 0.55 : 1 }}>
+                <button key={b} type="button" id={`tm-build-${b}`} className="tm-btn tm-row-hover" disabled={!!why} onClick={() => { act(a); setOpen(false); }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 9px', borderRadius: 6, background: UI.panelSunk, border: `1px ${why ? 'dashed' : 'solid'} ${why ? UI.ruleStrong : UI.rule}`, cursor: why ? 'not-allowed' : 'pointer', textAlign: 'left', opacity: 1 }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: PIP[BUILDINGS[b].family] }} />
                   <span style={{ flex: 1 }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 600, display: 'block' }}>{BUILDINGS[b].name}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 600, display: 'block', color: why ? UI.textSoft : UI.text }}>{BUILDINGS[b].name}</span>
                     <span style={{ fontSize: 11, color: UI.textSoft }}>{BUILDINGS[b].desc}</span>
+                    {why && <span style={{ fontSize: 11, color: UI.warn, display: 'block', marginTop: 2 }}>{why}</span>}
                   </span>
                   <Cost gold={BUILDINGS[b].cost.gold} mat={BUILDINGS[b].cost.mat} have={f.resources} />
                 </button>

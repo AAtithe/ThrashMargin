@@ -193,7 +193,7 @@ export default function Profile() {
             <h2 style={s.h2}>Delete account</h2>
             <p style={{ color: 'var(--portal-softer)', fontSize: 13, lineHeight: 1.5, margin: '0 0 14px' }}>
               Permanently deletes your account and every saved game in every game. Feedback you sent is kept
-              without your name. See the <a href="/privacy.html" style={{ color: 'var(--portal-action)' }}>privacy notice</a>.
+              without your name. See the <a href="/privacy.html" style={{ color: 'var(--tm-portal-link-text)' }}>privacy notice</a>.
             </p>
             <form onSubmit={deleteAccount} style={s.form}>
               <label style={s.label}>
@@ -254,5 +254,5 @@ const s: Record<string, React.CSSProperties> = {
   error:    { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
   success:  { color: 'var(--portal-good)', fontSize: 12, margin: 0, fontWeight: 600 },
   btn:      { marginTop: 4, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
-  link:     { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
+  link:     { color: 'var(--tm-portal-link-text)', fontSize: 14, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 40 },
 };

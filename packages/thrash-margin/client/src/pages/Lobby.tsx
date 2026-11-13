@@ -175,7 +175,7 @@ export default function Lobby() {
                 <Label>Name</Label>
                 <input value={setup.name} maxLength={40} placeholder={`Campaign ${saves.length + 1}`}
                   onChange={e => setSetup(s => ({ ...s, name: e.target.value }))}
-                  style={{ background: UI.panelSunk, border: `1px solid ${UI.ruleStrong}`, borderRadius: 7, padding: '8px 10px', color: UI.text, fontSize: 13.5 }} />
+                  className="kit-input" style={{ padding: '8px 10px' }} />
               </label>
               <Segment label="Rivals" value={config.enemyFactions} options={Array.from({ length: MAP_BY_ID[setup.mapId].maxRivals }, (_, i) => [i + 1, String(i + 1)] as [number, string])}
                 onChange={v => setSetup(s => ({ ...s, overrides: { ...s.overrides, enemyFactions: v } }))} />
@@ -294,7 +294,7 @@ function Advanced({ config, onChange, onReset }: { config: GameConfig; onChange:
       <span style={{ fontSize: 11.5, color: UI.textSoft }}>{label}</span>
       <input type="number" min={min} max={max} step={step} value={config[key] as number}
         onChange={e => onChange({ [key]: Number(e.target.value) } as Partial<GameConfig>)}
-        style={{ background: UI.panelSunk, border: `1px solid ${UI.ruleStrong}`, borderRadius: 6, padding: '6px 8px', color: UI.text, width: '100%' }} />
+        className="kit-input" style={{ padding: '6px 8px' }} />
     </label>
   );
   const tog = (key: keyof GameConfig, label: string, desc: string) => (
@@ -396,9 +396,9 @@ function CampaignActs({ saves, busy, onStart }: { saves: SaveMeta[]; busy: strin
         const unlocked = sc.index <= best + 1;
         const done = sc.index <= best;
         return (
-          <div key={sc.index} style={{ background: UI.panel, border: `1px ${unlocked ? 'solid' : 'dashed'} ${done ? UI.goodRule : unlocked ? UI.rule : UI.ruleStrong}`, borderRadius: 10, padding: 14, opacity: unlocked ? 1 : 0.72, display: 'grid', gap: 6, alignContent: 'start' }}>
+          <div key={sc.index} style={{ background: UI.panel, border: `1px ${unlocked ? 'solid' : 'dashed'} ${done ? UI.goodRule : unlocked ? UI.rule : UI.ruleStrong}`, borderRadius: 10, padding: 14, display: 'grid', gap: 6, alignContent: 'start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontFamily: FONT.display, fontSize: 16, fontWeight: 600, flex: 1 }}>{sc.title}</span>
+              <span style={{ fontFamily: FONT.display, fontSize: 16, fontWeight: 600, flex: 1, color: unlocked ? UI.text : UI.textSoft }}>{sc.title}</span>
               {done && <Icon name="check" color={UI.good} />}
             </div>
             <div style={{ fontSize: 11.5, color: UI.textFaint }}>{MAP_BY_ID[sc.mapId].name} · {DIFFICULTY[sc.diff].label}</div>
@@ -424,8 +424,8 @@ function Achievements({ saves }: { saves: SaveMeta[] }) {
         {ACHIEVEMENTS.map(a => {
           const got = earned.has(a.id);
           return (
-            <div key={a.id} style={{ padding: '9px 11px', borderRadius: 8, background: got ? UI.accentBg : UI.panel, border: `1px solid ${got ? UI.accent : UI.rule}`, opacity: got ? 1 : 0.75 }}>
-              <div style={{ fontWeight: 700, fontSize: 12.5, color: got ? UI.accent : UI.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div key={a.id} style={{ padding: '9px 11px', borderRadius: 8, background: got ? UI.accentBg : UI.panel, border: `1px ${got ? 'solid' : 'dashed'} ${got ? UI.accent : UI.ruleStrong}` }}>
+              <div style={{ fontWeight: 700, fontSize: 12.5, color: got ? UI.accent : UI.textSoft, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {got && <Icon name="check" size={12} />}{a.name}
               </div>
               <div style={{ fontSize: 11, color: UI.textSoft, marginTop: 2 }}>{a.desc}</div>

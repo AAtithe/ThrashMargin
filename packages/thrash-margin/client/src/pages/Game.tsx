@@ -30,6 +30,7 @@ import { FONT, MAP, UI } from '../theme';
 import ThemeToggle from '../components/ThemeToggle';
 import MotionToggle from '../components/MotionToggle';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
+import { LiveRegion } from '../lib/Kit';
 import { SESSION_EXPIRED } from '../lib/api';
 import { clearToken } from '../lib/token';
 import GuidedTour, { hasSeenGuidedTour, planFirstTurn, type TourPlan } from '../components/GuidedTour';
@@ -141,6 +142,22 @@ function Game({ id }: { id: string | undefined }) {
     const t = window.setTimeout(() => setToast(null), 3500);
     return () => window.clearTimeout(t);
   }, [toast]);
+
+  // The chronicle, read aloud: each change to the log announces its new entries (oldest first) in a
+  // polite live region, so a screen reader hears what the AI turns and the player's own orders did
+  // without opening the Chronicle tab. Nothing is announced for the log the game loaded with.
+  const [news, setNews] = useState('');
+  const logTop = useRef<GameState['log'][number] | null | undefined>(undefined);
+  useEffect(() => {
+    if (!state) return;
+    const log = state.log;
+    const prev = logTop.current;
+    logTop.current = log[0] ?? null;
+    if (prev === undefined || log[0] === prev) return;
+    const at = prev === null ? log.length : log.indexOf(prev);
+    const fresh = log.slice(0, at < 0 ? Math.min(log.length, 6) : at).slice(0, 6).reverse();
+    if (fresh.length) setNews(fresh.map(l => l.message).join(' '));
+  }, [state]);
 
   // Offer the guided turn unasked on a campaign that has not moved yet, the first time this
   // browser sees one. Every hook lives above the early return further down; one placed after it
@@ -298,6 +315,8 @@ function Game({ id }: { id: string | undefined }) {
     return (
       // Loading until there is a state or an error: the first render comes before the load has even
       // started, and this used to read "Campaign not found." for that one frame.
+      <>
+      <LiveRegion message="" />
       <LoadingScreen
         motif="territories"
         caption="Loading the campaign…"
@@ -314,6 +333,7 @@ function Game({ id }: { id: string | undefined }) {
           )
         }
       />
+      </>
     );
   }
 
@@ -348,25 +368,30 @@ function Game({ id }: { id: string | undefined }) {
   const unlimited = state.actionsLeft >= UNLIMITED_AP;
   const showDiplomacy = state.config.enableDiplomacy || state.config.enableSpies;
   const fc = FACTION_COLORS[me];
+  const phone = layout === 'sheet';
   const tabs = ([['command', sel ? 'Orders' : 'Overview'], ['realm', 'Realm'], ...(state.config.enableTechTree ? [['research', 'Research']] : []), ['log', 'Chronicle']] as Array<[Tab, string]>);
   /** A first turn the run could teach from the board as it stands, or null if there isn't one. */
   const tourCandidate: TourPlan | null = tourPlan ? null : planFirstTurn(state);
 
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, overflow: 'hidden' }}>
-      {/* ── Top bar ── */}
+      <LiveRegion message={news} />
+      {/* ── Top bar ── On a phone it is two rows: the turn and its commands, then the treasury with
+          the actions left. The secondary controls (ledger, help, motion, light/dark, save state)
+          fold into one menu there, so the map keeps the height. */}
       <header className="tm-topbar" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 14, padding: '8px 14px', background: UI.panel, borderBottom: `1px solid ${UI.rule}`, flexShrink: 0 }}>
-        <button type="button" className="tm-link-btn" onClick={() => nav('/')} title="Back to the lobby" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', minHeight: 32 }}>
+        <button type="button" className="tm-link-btn tm-back" onClick={() => nav('/')} title="Back to the lobby" aria-label="Back to the lobby" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', minHeight: phone ? 40 : 32 }}>
           <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><Icon name="next" /></span>
           <span className="tm-hide-mobile" style={{ fontFamily: FONT.display, fontSize: 16, color: UI.text, fontWeight: 600 }}>Thrash Margin</span>
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 10, height: 10, borderRadius: 3, background: fc.fill, border: `1px solid ${fc.edge}` }} />
-          <span key={state.turn} className={pace === 'off' ? undefined : 'tm-anim-pop'} style={{ fontSize: 13, fontWeight: 600, display: 'inline-block' }}>Turn {state.turn}</span>
+          <span key={state.turn} className={pace === 'off' ? undefined : 'tm-anim-pop'} style={{ fontSize: 13, fontWeight: 600, display: 'inline-block', whiteSpace: 'nowrap' }}>Turn {state.turn}</span>
           {hotseat && <span className="tm-hide-mobile" style={{ fontSize: 12, color: UI.textSoft }}>{factionName(state, me)}</span>}
         </div>
-        <ApPips key={me} left={state.actionsLeft} max={unlimited ? 0 : Math.max(state.actionsLeft, state.config.apPerTurn)} unlimited={unlimited} animate={pace !== 'off'} />
+        {!phone && <ApPips key={me} left={state.actionsLeft} max={unlimited ? 0 : Math.max(state.actionsLeft, state.config.apPerTurn)} unlimited={unlimited} animate={pace !== 'off'} />}
         <div className="tm-chips" key={pace === 'off' ? undefined : `chips-${me}`} style={{ display: 'flex', alignItems: 'center', gap: 14, overflowX: 'auto', flex: 1, minWidth: 0 }}>
+          {phone && <ApPips key={me} left={state.actionsLeft} max={unlimited ? 0 : Math.max(state.actionsLeft, state.config.apPerTurn)} unlimited={unlimited} animate={pace !== 'off'} />}
           <Chip kind="gold" value={f.resources.gold} rate={inc.gold} animate floats={floats.gold.items} />
           <Chip kind="food" value={f.resources.food} rate={inc.foodNet} title={`Food: grow ${inc.food}, troops eat ${inc.upkeep}`} animate floats={floats.food.items} />
           <Chip kind="mat" value={f.resources.mat} rate={inc.mat} animate floats={floats.mat.items} />
@@ -374,23 +399,32 @@ function Game({ id }: { id: string | undefined }) {
           {(f.resources.population > 0 || inc.population > 0) && <Chip kind="pop" value={f.resources.population} rate={inc.population} animate floats={floats.pop.items} />}
         </div>
         <span className="tm-spacer" />
-        <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
-        <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
-        <SaveBadge status={game.saveStatus} />
+        {!phone && (
+          <>
+            <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+            <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+            <SaveBadge status={game.saveStatus} />
+          </>
+        )}
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-          <IconButton icon="ledger" label="Ledger (L)" onClick={() => setModal('ledger')} />
-          <IconButton icon="help" label="How to play (?)" onClick={() => setModal('help')} />
+          {!phone && (
+            <>
+              <IconButton icon="ledger" label="Ledger (L)" onClick={() => setModal('ledger')} />
+              <IconButton icon="help" label="How to play (?)" onClick={() => setModal('help')} />
+            </>
+          )}
           {tourCandidate && (
-            <Button tone="quiet" icon="flag" onClick={() => setTourPlan(tourCandidate)} title="Guided turn: walk through one turn">
+            <Button tone="quiet" icon="flag" onClick={() => setTourPlan(tourCandidate)} title="Guided turn: walk through one turn" ariaLabel={phone ? 'Guided turn' : undefined}>
               <span className="tm-hide-mobile">Guided turn</span>
             </Button>
           )}
           <IconButton icon="undo" label={undoStack.length ? 'Undo (Z)' : 'Nothing to undo'} onClick={undo} disabled={!undoStack.length || over} />
           {over && endHidden && <Button tone="quiet" onClick={() => setEndHidden(false)}>Results</Button>}
           <Button id="tm-end-turn" tone="primary" icon="next" onClick={endTurn} disabled={over || !!state.pendingEvent}
-            title={state.pendingEvent ? `Answer "${state.pendingEvent.title}" first` : 'End your turn (E)'}>
+            title={state.pendingEvent ? `Answer "${state.pendingEvent.title}" first` : 'End your turn (E)'} ariaLabel={phone ? 'End turn' : undefined}>
             <span className="tm-hide-mobile">End turn</span>
           </Button>
+          {phone && <MoreMenu saveStatus={game.saveStatus} onLedger={() => setModal('ledger')} onHelp={() => setModal('help')} />}
         </div>
       </header>
 
@@ -548,6 +582,47 @@ function IconButton({ icon, label, onClick, disabled }: { icon: 'ledger' | 'help
       style={{ width: 32, height: 32, borderRadius: 7, background: UI.panelRaised, border: `1px solid ${UI.ruleStrong}`, color: UI.text, cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Icon name={icon} size={15} />
     </button>
+  );
+}
+
+/**
+ * The phone's menu: the top bar's secondary controls, folded into one button so the map keeps the
+ * height. Every control in it is also reachable from the keyboard shortcuts (L, ?) on a desktop,
+ * where the bar shows them all.
+ */
+function MoreMenu({ saveStatus, onLedger, onHelp }: { saveStatus: string; onLedger: () => void; onHelp: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('keydown', onKey);
+    return () => { window.removeEventListener('pointerdown', onDown); window.removeEventListener('keydown', onKey); };
+  }, [open]);
+  const item: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 10, width: '100%', minHeight: 40, padding: '8px 10px', background: 'none', border: 'none', borderRadius: 7, color: UI.text, fontSize: 13.5, cursor: 'pointer', textAlign: 'left' };
+  const toggle: React.CSSProperties = { ...item, fontSize: 13.5, color: UI.text, border: 'none', borderRadius: 7 };
+  const saveText = saveStatus === 'saving' ? 'Saving' : saveStatus === 'saved' ? 'Saved' : saveStatus === 'error' ? 'Not saved' : '';
+  const choose = (fn: () => void) => () => { setOpen(false); fn(); };
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button type="button" id="tm-more" className="tm-btn tm-icon-btn" onClick={() => setOpen(v => !v)} aria-expanded={open} aria-controls="tm-more-menu" aria-label="More: ledger, help and display"
+        style={{ width: 32, height: 32, borderRadius: 7, background: UI.panelRaised, border: `1px solid ${saveStatus === 'error' ? UI.bad : UI.ruleStrong}`, color: saveStatus === 'error' ? UI.bad : UI.text, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon name="more" size={15} />
+      </button>
+      {open && (
+        <div id="tm-more-menu" role="group" aria-label="More" className="tm-modal"
+          style={{ position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 200, width: 230, padding: 6, display: 'grid', gap: 2, background: UI.panel, border: `1px solid ${UI.ruleStrong}`, borderRadius: 10, boxShadow: `0 14px 40px ${UI.shadow}` }}>
+          <button type="button" className="tm-btn tm-row-hover" style={item} onClick={choose(onLedger)}><Icon name="ledger" size={15} />Ledger</button>
+          <button type="button" className="tm-btn tm-row-hover" style={item} onClick={choose(onHelp)}><Icon name="help" size={15} />How to play</button>
+          <div style={{ height: 1, background: UI.rule, margin: '4px 2px' }} />
+          <MotionToggle style={toggle} />
+          <ThemeToggle style={toggle} />
+          {saveText && <div role="status" style={{ padding: '6px 10px 4px', fontSize: 12, color: saveStatus === 'error' ? UI.bad : UI.textSoft }}>{saveText}</div>}
+        </div>
+      )}
+    </div>
   );
 }
 

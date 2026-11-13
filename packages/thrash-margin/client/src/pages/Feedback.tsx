@@ -90,9 +90,10 @@ export default function Feedback() {
                 />
               </label>
               {error && <p style={s.error}>{error}</p>}
-              <button style={s.btn} type="submit" disabled={submitting || !message.trim()}>
+              <button style={s.btn} type="submit" disabled={submitting || !message.trim()} aria-describedby={!message.trim() ? 'tm-feedback-why' : undefined}>
                 {submitting ? 'Sending…' : 'Submit'}
               </button>
+              {!message.trim() && <p id="tm-feedback-why" style={s.why}>Write a message to send it.</p>}
             </form>
           )}
         </div>
@@ -113,9 +114,10 @@ const s: Record<string, React.CSSProperties> = {
   select:   { padding: '9px 10px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none' },
   textarea: { padding: '10px 12px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none', resize: 'vertical', fontFamily: 'inherit' },
   error:    { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
+  why:      { color: 'var(--portal-soft)', fontSize: 12, margin: '-6px 0 0' },
   btn:      { marginTop: 4, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },
   signInPrompt: { textAlign: 'center', padding: '8px 0' },
-  signInLink: { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
+  signInLink: { color: 'var(--tm-portal-link-text)', fontSize: 14, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 40 },
   sentBox:  { textAlign: 'center', padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' },
   linkBtn:  { background: 'none', border: 'none', color: 'var(--portal-soft)', fontSize: 12, cursor: 'pointer', textDecoration: 'underline' },
 };

@@ -68,7 +68,7 @@ function Standings({ state, act }: { state: GameState; act: (a: GameAction) => v
           const cf: GameAction = { type: 'CEASEFIRE', faction: f.id };
           const why = f.id !== me && state.config.enableDiplomacy && !f.eliminated ? explain(state, cf) : undefined;
           return (
-            <div key={f.id} style={{ padding: '6px 4px', borderTop: `1px solid ${UI.rule}`, opacity: f.eliminated ? 0.45 : 1 }}>
+            <div key={f.id} style={{ padding: '6px 4px', borderTop: `1px solid ${UI.rule}`, color: f.eliminated ? UI.textSoft : undefined }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 44px 44px 48px', alignItems: 'center', fontSize: 12.5 }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
                   <span style={{ width: 9, height: 9, borderRadius: 2, background: fc.fill, border: `1px solid ${fc.edge}`, flexShrink: 0 }} />
@@ -84,7 +84,7 @@ function Standings({ state, act }: { state: GameState; act: (a: GameAction) => v
               {why !== undefined && peace === 0 && (
                 <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 4 }}>
                   <Cost influence={CEASEFIRE_COST} have={state.factions[me].resources} />
-                  <Button small icon="peace" disabled={!!why} onClick={() => act(cf)} title={why ?? 'Neither side may attack the other for 4 turns.'}>Ceasefire</Button>
+                  <Button small icon="peace" disabled={!!why} disabledReason={why} reasonEnd onClick={() => act(cf)} title={why ? undefined : 'Neither side may attack the other for 4 turns.'}>Ceasefire</Button>
                 </div>
               )}
             </div>
@@ -163,10 +163,11 @@ function Exchange({ state, act }: { state: GameState; act: (a: GameAction) => vo
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Chip kind={r} value={`${TRADE_LOT}`} compact />
                   <span style={{ flex: 1, fontSize: 11, color: UI.textFaint }}>{TRADE_LOTS_PER_TURN - f.traded[r]} lots left</span>
-                  <Button small disabled={!!bw} onClick={() => act(buy)} title={bw ?? undefined}>Buy {TRADE_PRICES[r].buy}g</Button>
-                  <Button small tone="quiet" disabled={!!sw} onClick={() => act(sell)} title={sw ?? undefined}>Sell {TRADE_PRICES[r].sell}g</Button>
+                  <Button small disabled={!!bw} onClick={() => act(buy)}>Buy {TRADE_PRICES[r].buy}g</Button>
+                  <Button small tone="quiet" disabled={!!sw} onClick={() => act(sell)}>Sell {TRADE_PRICES[r].sell}g</Button>
                 </div>
-                {bw && sw && <Why text={bw} />}
+                {/* One line under the pair: the buy reason, the sell reason, or both when they differ. */}
+                <Why text={bw && sw && bw !== sw ? `Buy: ${bw} Sell: ${sw}` : bw ?? sw} />
               </div>
             );
           })}
