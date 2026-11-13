@@ -166,6 +166,11 @@ button:focus:not(:focus-visible) {
     display: inline-flex;
     align-items: center;
   }
+  /* 16px stops iOS zooming the page when the field takes focus. */
+  .nr-field {
+    min-height: 40px;
+    font-size: 16px !important;
+  }
 }
 
 /*
