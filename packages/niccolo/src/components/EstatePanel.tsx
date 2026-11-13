@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { UI } from '../theme';
+import { Button } from './ui';
 import { findCity, findGood } from '../sim/content';
 import { ESTATE_CITY, ESTATE_ESTABLISH_COST, ESTATE_GOOD } from '../sim/estates';
 import { cargoTotal } from '../sim/market';
@@ -66,7 +67,7 @@ export default function EstatePanel({ estate, flags, cash, selectedVessel, onEst
           A sugar estate has been offered near {cityName}, awaiting the house's capital.
         </p>
         <button style={SMALL_BUTTON} disabled={!canAfford} onClick={onEstablish}>
-          Establish the estate — {ESTATE_ESTABLISH_COST}f{!canAfford && ' (not enough cash)'}
+          Establish the estate, {ESTATE_ESTABLISH_COST}f{!canAfford && ' (not enough cash)'}
         </button>
       </div>
     );
@@ -80,7 +81,7 @@ export default function EstatePanel({ estate, flags, cash, selectedVessel, onEst
 
   return (
     <div>
-      <p style={LABEL}>Estate — {cityName}</p>
+      <p style={LABEL}>Estate: {cityName}</p>
       <p style={{ fontSize: '0.8rem', margin: '0 0 0.4rem' }}>
         {goodName}: {stageLabel(estate)} · {estate.stockpile} in store
       </p>
@@ -100,13 +101,14 @@ export default function EstatePanel({ estate, flags, cash, selectedVessel, onEst
               style={QTY_INPUT}
               onChange={e => setQty(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
             />
-            <button
+            <Button
               style={SMALL_BUTTON}
               disabled={maxLoad <= 0}
+              disabledReason={`${vesselHere.name}'s hold is full`}
               onClick={() => onShip(vesselHere.id, Math.min(qty, maxLoad))}
             >
               Load onto {vesselHere.name}
-            </button>
+            </Button>
           </div>
         ) : (
           <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: 0 }}>Nothing in store yet to load.</p>

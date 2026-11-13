@@ -20,7 +20,7 @@ export function statusSuffix(p: ObjectiveProgress): string {
     return p.status === 'pending' ? 'will occur' : 'occurred';
   }
   if (p.status === 'missed') return 'deadline passed';
-  if (p.status === 'complete') return p.outcome === 'costly' ? 'resolved — cost more than it returned' : 'resolved';
+  if (p.status === 'complete') return p.outcome === 'costly' ? 'resolved, at more cost than it returned' : 'resolved';
   return 'open';
 }
 
@@ -35,7 +35,7 @@ export function ObjectiveRow({ p }: { p: ObjectiveProgress }) {
           <div style={{ fontSize: '0.7rem', color: UI.textSoft }}>{p.objective.description}</div>
         )
       ) : (
-        <div style={{ fontSize: '0.7rem', color: UI.textFaint, fontStyle: 'italic' }}>No lead yet — keep the story moving.</div>
+        <div style={{ fontSize: '0.7rem', color: UI.textFaint, fontStyle: 'italic' }}>No lead yet: keep the story moving.</div>
       )}
       <div style={{ fontSize: '0.7rem', color: statusColor(p) }}>
         {statusSuffix(p)}

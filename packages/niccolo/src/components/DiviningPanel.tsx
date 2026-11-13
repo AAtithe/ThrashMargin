@@ -85,7 +85,7 @@ export default function DiviningPanel({ state, onUse }: DiviningPanelProps) {
               <div key={purpose} style={ROW}>
                 <div style={{ flex: 1 }}>
                   <div>
-                    {label} <span style={{ fontSize: '0.68rem', color: UI.textSoft }}>— at {cityName}</span>
+                    {label} <span style={{ fontSize: '0.68rem', color: UI.textSoft }}>(at {cityName})</span>
                   </div>
                   <div style={{ fontSize: '0.7rem', color: UI.textSoft }}>{asks}</div>
                   {availability.blockedReason && (
@@ -108,7 +108,7 @@ export default function DiviningPanel({ state, onUse }: DiviningPanelProps) {
       {state.lastDiviningEvent && (
         <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: '0.5rem 0 0' }}>
           Week {state.lastDiviningEvent.week}: the rods were used at{' '}
-          {findCity(state.lastDiviningEvent.cityId)?.name ?? state.lastDiviningEvent.cityId} —{' '}
+          {findCity(state.lastDiviningEvent.cityId)?.name ?? state.lastDiviningEvent.cityId}:{' '}
           {state.lastDiviningEvent.conscienceCost} conscience spent, {state.lastDiviningEvent.restWeeks} weeks to recover.
         </p>
       )}

@@ -235,12 +235,12 @@ export default function Lobby() {
             {starting ? <BusyLabel>Opening…</BusyLabel> : 'Begin →'}
           </button>
         </div>
-        <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+        <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', minHeight: 40, marginBottom: '0.6rem' }}>
           <input type="checkbox" checked={freeplay} onChange={e => setFreeplay(e.target.checked)} />
           <span>
-            <strong style={{ color: UI.brass, fontWeight: 'normal' }}>Free play instead of the story</strong> — the
+            <strong style={{ color: UI.brass, fontWeight: 'normal' }}>Free play instead of the story</strong>: the
             whole map open from the first week, {FREEPLAY_START_CASH}f, and rival houses trading against you for real.
-            No chapters and no scripted events — just the market, and somebody else in it.
+            No chapters and no scripted events, just the market, and somebody else in it.
           </span>
         </label>
 
@@ -252,10 +252,10 @@ export default function Lobby() {
               value={rivals}
               onChange={e => setRivals(Number(e.target.value) as RivalCount)}
             >
-              <option value={0}>None — trade the map on your own</option>
-              <option value={1}>One — the Grimani of Venice</option>
-              <option value={2}>Two — Venice and the Doria consortium</option>
-              <option value={3}>Three — and the Hanse factory at London</option>
+              <option value={0}>None: trade the map on your own</option>
+              <option value={1}>One: the Grimani of Venice</option>
+              <option value={2}>Two: Venice and the Doria consortium</option>
+              <option value={3}>Three: add the Hanse factory at London</option>
             </select>
           </label>
         )}
@@ -269,13 +269,13 @@ export default function Lobby() {
               onChange={e => setGoal(e.target.value as FreeplayGoal)}
             >
               <option value="target">
-                First house past {FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f — a race, and you can see who is winning
+                First house past {FREEPLAY_TARGET_NET_WORTH.toLocaleString()}f: a race, and you can see who is winning
               </option>
               <option value="by_year">
-                Richest in week {FREEPLAY_DEADLINE_WEEKS} — five years, and nobody knows until the end
+                Richest in week {FREEPLAY_DEADLINE_WEEKS}: five years, and nobody knows until the end
               </option>
               <option value="survivor">
-                Last house solvent — the trade you decline matters more than the one you take
+                Last house solvent: the trade you decline matters more than the one you take
               </option>
             </select>
           </label>
@@ -284,18 +284,23 @@ export default function Lobby() {
         {/* The three below are campaign settings and mean nothing in free play, which has no
             prologue, no chapter objectives and no scripted houses to hand a friend. Disabled rather
             than hidden, so the mode's cost is visible rather than a silent disappearance. */}
-        <label style={{ fontSize: '0.75rem', color: freeplay ? UI.textFaint : UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+        {freeplay && (
+          <p style={{ fontSize: '0.75rem', color: UI.textSoft, margin: '0 0 0.4rem' }}>
+            The story settings below are off: free play has no prologue, objectives or rival house to hand over.
+          </p>
+        )}
+        <label style={{ fontSize: '0.75rem', color: freeplay ? UI.textFaint : UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', minHeight: 40, marginBottom: '0.6rem' }}>
           <input type="checkbox" disabled={freeplay} checked={!freeplay && skipPrologue} onChange={e => setSkipPrologue(e.target.checked)} />
           <span>
-            Skip the prologue — start straight in as a merchant with a ship, a courier, and 40f,
+            Skip the prologue: start straight in as a merchant with a ship, a courier, and 40f,
             rather than as Claes the dyeworks apprentice with nothing yet.
           </span>
         </label>
 
-        <label style={{ fontSize: '0.75rem', color: freeplay ? UI.textFaint : UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.8rem' }}>
+        <label style={{ fontSize: '0.75rem', color: freeplay ? UI.textFaint : UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', minHeight: 40, marginBottom: '0.6rem' }}>
           <input type="checkbox" disabled={freeplay} checked={!freeplay && hideObjectives} onChange={e => setHideObjectives(e.target.checked)} />
           <span>
-            Hide chapter objectives — track your own progress without a checklist naming which
+            Hide chapter objectives: track your own progress without a checklist naming which
             story threads still need resolving.
           </span>
         </label>
@@ -308,7 +313,7 @@ export default function Lobby() {
             value={freeplay ? '' : hotseatHouseId}
             onChange={e => setHotseatHouseId(e.target.value)}
           >
-            <option value="">No one — every house stays on its own formula</option>
+            <option value="">No one: every house stays on its own formula</option>
             {HOUSES.map(h => (
               <option key={h.id} value={h.id}>{h.name}</option>
             ))}

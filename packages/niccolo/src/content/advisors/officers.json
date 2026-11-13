@@ -56,7 +56,7 @@
     "The ledger has {name} drawing pay for nothing. I mention it only because the ledger cannot mention it itself."
    ],
    "trade": [
-    "The reports on file put {good} at {buyPrice}f in {buyCity} and {sellPrice}f in {sellCity} — a difference of {margin}f the unit. On paper. Paper is what I have.",
+    "The reports on file put {good} at {buyPrice}f in {buyCity} and {sellPrice}f in {sellCity}: a difference of {margin}f the unit. On paper. Paper is what I have.",
     "{good}: {buyPrice}f at {buyCity}, {sellPrice}f at {sellCity}, {margin}f between them by our own correspondence. I make no promise the correspondence is current."
    ],
    "storage_meter": [
@@ -144,7 +144,7 @@
   "lines": {
    "trade": [
     "On your own reports: {good} stands at {buyPrice}f in {buyCity} and {sellPrice}f in {sellCity}. That is {margin}f a unit, if the report is still true when you arrive.",
-    "Your papers put {good} at {buyPrice}f in {buyCity} and {sellPrice}f in {sellCity} — {margin}f a unit between them. Papers have been wrong before."
+    "Your papers put {good} at {buyPrice}f in {buyCity} and {sellPrice}f in {sellCity}: {margin}f a unit between them. Papers have been wrong before."
    ],
    "household_wages": [
     "Wages come to {wages}f next week and the account holds {cash}f. The household will notice. It always notices before the ledger does.",
@@ -155,7 +155,7 @@
     "{name} has had nothing to do for some while. This house has never kept anyone it did not use, and people work that out."
    ],
    "storage_meter": [
-    "You have {units} {good} aboard and {city} is already glutted with it — most of that was us. Land it in the shed and sell it a little at a time, or you will be paying for the privilege of having filled the hold.",
+    "You have {units} {good} aboard and {city} is already glutted with it: most of that was us. Land it in the shed and sell it a little at a time, or you will be paying for the privilege of having filled the hold.",
     "{city} will not pay properly for {good} this week; we saw to that ourselves. There is a warehouse here. Put the {units} away and let the price come back to us."
    ]
   }
@@ -173,7 +173,7 @@
     "You have no one inside {house}, who stand at {relation}. They almost certainly have someone inside us."
    ],
    "houses_unmasked": [
-    "We know what {house} is now, and they do not — they stand at {relation} and think themselves anonymous. That is worth more than the agent it would cost to watch them, and it keeps for exactly as long as we say nothing.",
+    "We know what {house} is now, and they do not: they stand at {relation} and think themselves anonymous. That is worth more than the agent it would cost to watch them, and it keeps for exactly as long as we say nothing.",
     "{house} stands at {relation} and has a name behind it we can prove. Nobody has yet made them answer for it. I would choose the moment carefully."
    ]
   }

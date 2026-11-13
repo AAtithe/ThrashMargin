@@ -67,7 +67,7 @@ export default function CounselPanel({ state }: { state: GameState }) {
   return (
     <div>
       <p style={{ fontSize: '0.72rem', color: UI.textSoft, margin: '0 0 0.5rem' }}>
-        What the household would tell you, if asked. They see only what you see — a price they quote is
+        What the household would tell you, if asked. They see only what you see: a price they quote is
         from a report that has actually arrived, and may already be out of date.
       </p>
       {advice.map((a, i) => (

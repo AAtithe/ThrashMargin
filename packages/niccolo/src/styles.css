@@ -32,6 +32,24 @@
   --ui-tint-bad: rgba(168, 52, 47, 0.08);
   --ui-tint-brass: rgba(125, 84, 19, 0.1);
   --ui-bad-rule: rgba(168, 52, 47, 0.35);
+
+  /* UI kit (lib/kit.css), mapped onto this palette; every line follows dark mode through --ui-*. */
+  --kit-font: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --kit-radius: 2px;
+  --kit-font-size: 0.82rem;
+  --kit-font-size-small: 0.74rem;
+  --kit-pad: 0.35rem 0.65rem;
+  --kit-pad-small: 0.2rem 0.5rem;
+  --kit-text: var(--ui-text);
+  --kit-text-soft: var(--ui-text-soft);
+  --kit-text-faint: var(--ui-text-faint);
+  --kit-surface: var(--ui-panel-raised);
+  --kit-field: var(--ui-panel);
+  --kit-rule: var(--ui-rule);
+  --kit-rule-strong: var(--ui-rule-strong);
+  --kit-accent: var(--ui-brass);
+  --kit-on-accent: var(--ui-ground);
+  --kit-danger: var(--ui-bad);
 }
 :root[data-theme="dark"] {
   --ui-ground: #0d1419;
@@ -127,46 +145,64 @@ body {
     border-width: 1px 0 0;
     transform: translateY(calc(100% + 1.2rem));
   }
-  .niccolo-launcher { font-size: 0.75rem !important; padding: 0.35rem 0.55rem !important; }
-  .niccolo-game-header { padding: 0.4rem 0.6rem !important; gap: 0.3rem !important; }
-  .niccolo-game-header h1 { font-size: 1rem !important; }
-  .niccolo-game-header button { padding: 0.25rem 0.5rem !important; }
-  .niccolo-clock { font-size: 0.78rem !important; }
+  .niccolo-launcher { font-size: 0.75rem !important; padding: 0 0.6rem !important; }
+  /*
+   * The header packs into as few lines as fit, every line of it being a line of chart lost: the
+   * action row dissolves (display: contents) so the title and the chapter share a line, the clock
+   * takes the next, and the buttons the last, each a 40px target.
+   */
+  .niccolo-game-header { padding: 0.4rem 0.6rem !important; gap: 0.3rem 0.4rem !important; align-items: center !important; justify-content: flex-start !important; }
+  .niccolo-header-bar { display: contents !important; }
+  .niccolo-game-header h1 { font-size: 1rem !important; order: 0; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .niccolo-header-progress { order: 1; font-size: 0.72rem !important; }
+  .niccolo-header-progress > * { font-size: inherit !important; }
+  .niccolo-clock { order: 2; flex: 1 0 100%; font-size: 0.74rem !important; letter-spacing: 0.04em !important; }
+  .niccolo-game-header button { order: 3; min-height: 40px; padding: 0 0.55rem !important; }
+  /* The section tabs are glyphs alone here (labels hidden), each a 40px square. */
+  #section-rail > div > button { min-width: 40px; min-height: 40px; justify-content: center; padding: 0 0.45rem !important; }
   .niccolo-rail-label { display: none !important; }
   .niccolo-hide-phone { display: none !important; }
+  .niccolo-phone-only { display: inline !important; }
 }
+.niccolo-phone-only { display: none; }
 
 /*
- * Interaction states for every button and field. The components style themselves inline, so these
- * work only through properties the inline styles leave alone (outline, filter, transform) or with
- * !important on border-color, which every bordered control here sets inline. A control with no
- * border (border: none) is untouched by the border rule, so ghost buttons stay borderless.
+ * Interaction states for the buttons and fields that style themselves inline (most of the game's
+ * panels). The components style themselves inline, so these work only through properties the
+ * inline styles leave alone (outline, filter, transform) or with !important on border-color, which
+ * every bordered control here sets inline. A control with no border (border: none) is untouched by
+ * the border rule, so ghost buttons stay borderless. Kit buttons (.kit-btn, components/ui.tsx's
+ * Button) are left out: lib/kit.css gives them their hover, press and disabled states.
  */
-#root button,
+#root button:not(.kit-btn),
 #root select,
 #root input {
   transition: border-color calc(140ms * var(--tm-motion, 1)) ease, background-color calc(140ms * var(--tm-motion, 1)) ease,
     color calc(140ms * var(--tm-motion, 1)) ease, filter calc(140ms * var(--tm-motion, 1)) ease;
 }
-#root button:not(:disabled):hover,
+#root button:not(.kit-btn):not(:disabled):hover,
 #root select:not(:disabled):hover,
 #root input:not(:disabled):hover {
   border-color: var(--ui-brass) !important;
 }
 /* A danger control keeps its own colour on hover rather than turning brass. */
-#root button[style*="--ui-bad"]:not(:disabled):hover {
+#root button:not(.kit-btn)[style*="--ui-bad"]:not(:disabled):hover {
   border-color: var(--ui-bad) !important;
 }
-#root button:not(:disabled):active {
+#root button:not(.kit-btn):not(:disabled):active {
   filter: brightness(0.94);
 }
-:root[data-theme="dark"] #root button:not(:disabled):active {
+:root[data-theme="dark"] #root button:not(.kit-btn):not(:disabled):active {
   filter: brightness(1.15);
 }
-#root button:disabled,
+#root button:not(.kit-btn):disabled,
 #root select:disabled,
 #root input:disabled {
   cursor: not-allowed;
+}
+/* The kit's quiet tone keeps the game's lighter edge (components/ui.tsx's old quiet button). */
+.kit-btn--quiet {
+  --kit-btn-edge: var(--ui-rule);
 }
 #root input[type="checkbox"],
 #root input[type="radio"] {

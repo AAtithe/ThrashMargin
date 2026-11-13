@@ -116,42 +116,42 @@ const STEPS: Step[] = [
   {
     title: 'The house you are building',
     body:
-      "Bruges, 14 March 1460. You hold 40 florins, a ship, a courier, and a handful of officers already on the payroll. Everything else — every florin of profit, every obligation on the ledger, every officer's loyalty — is yours to build or lose from here. There is no scripted victory; the campaign simply keeps running until it doesn't.",
+      "Bruges, 14 March 1460. You hold 40 florins, a ship, a courier, and a handful of officers already on the payroll. Everything else (every florin of profit, every obligation on the ledger, every officer's loyalty) is yours to build or lose from here. There is no scripted victory; the campaign simply keeps running until it doesn't.",
   },
   {
     title: 'The map',
     body:
-      "Select a vessel in the Fleet panel, click a city on the map to see what's known about it, then send the vessel there from the Orders panel. Couriers travel by land only; the ship can also cross the sea routes (the dashed lines). A vessel already under way can't be redirected — check how many weeks are left before you commit it.",
+      "Select a vessel in the Fleet panel, click a city on the map to see what's known about it, then send the vessel there from the Orders panel. Couriers travel by land only; the ship can also cross the sea routes (the dashed lines). A vessel already under way can't be redirected, so check how many weeks are left before you commit it.",
   },
   {
     title: 'Buying and selling',
     body:
-      "Dock a cargo vessel at a city with a market and use the market in the Orders panel: buy low, carry it somewhere it sells dear. Every trade nudges that city's price against you a little — buying enough wool drives the price up, selling drives it down — and prices drift back toward normal over time if you leave a market alone.",
+      "Dock a cargo vessel at a city with a market and use the market in the Orders panel: buy low, carry it somewhere it sells dear. Every trade nudges that city's price against you a little: buying enough wool drives the price up, selling drives it down, and prices drift back toward normal over time if you leave a market alone.",
   },
   {
     title: 'Information is not the same as truth',
     body:
-      "Except at Bruges — home, where you always know the truth — every price you see for a city is a report, current as of whenever it was written, not as of now. A report takes real weeks to reach you, and a city you haven't visited in a while may have moved on from what you last heard. The Dispatches menu shows each city's report age and lets you pay to speed up its courier line.",
+      "Except at Bruges (home, where you always know the truth), every price you see for a city is a report, current as of whenever it was written, not as of now. A report takes real weeks to reach you, and a city you haven't visited in a while may have moved on from what you last heard. The Dispatches menu shows each city's report age and lets you pay to speed up its courier line.",
   },
   {
     title: 'Credit is leverage, not free money',
     body:
-      "The Ledger menu lets you write bills of exchange (borrow now, owe more later, in a foreign currency whose exchange rate can move against you), take deposits, and lend to merchants or princes. Every obligation lands on the maturity ladder. If a payment comes due and you can't cover it — even after your ships are forced to sell their cargo at a loss — the house goes insolvent and the campaign ends.",
+      "The Ledger menu lets you write bills of exchange (borrow now, owe more later, in a foreign currency whose exchange rate can move against you), take deposits, and lend to merchants or princes. Every obligation lands on the maturity ladder. If a payment comes due and you can't cover it, even after your ships are forced to sell their cargo at a loss, the house goes insolvent and the campaign ends.",
   },
   {
     title: 'Your household',
     body:
-      "Officers can be assigned aboard a vessel (a trade discount), to negotiate at a city (a better rate on credit written there), or to investigate a city (faster reports). Keep their wages paid — miss a week's payroll and loyalty drops hard for everyone. Some choices cost Conscience instead of cash; it doesn't come back.",
+      "Officers can be assigned aboard a vessel (a trade discount), to negotiate at a city (a better rate on credit written there), or to investigate a city (faster reports). Keep their wages paid: miss a week's payroll and loyalty drops hard for everyone. Some choices cost Conscience instead of cash; it doesn't come back.",
   },
   {
     title: 'The sea is not free of risk',
     body:
-      'Cargo under way can be lost to storms or piracy — sea routes more than land, seasonal routes more still. At Bruges, Venice, or Genoa you can insure a cargo before it departs; the premium reflects the route and how stale your own word from the destination is. Insured losses pay out in cash. Uninsured ones do not.',
+      'Cargo under way can be lost to storms or piracy: sea routes more than land, seasonal routes more still. At Bruges, Venice, or Genoa you can insure a cargo before it departs; the premium reflects the route and how stale your own word from the destination is. Insured losses pay out in cash. Uninsured ones do not.',
   },
   {
     title: 'The campaign is also a story',
     body:
-      "Scripted events will interrupt play with a real choice — take the commission, or refuse it; back a claimant, or stay neutral. Choices set flags permanently and can chain into later events, sometimes chapters later. There is no undo. When you're ready, close this and advance the clock.",
+      "Scripted events will interrupt play with a real choice: take the commission, or refuse it; back a claimant, or stay neutral. Choices set flags permanently and can chain into later events, sometimes chapters later. There is no undo. When you're ready, close this and advance the clock.",
   },
 ];
 
@@ -159,22 +159,22 @@ const CHAPTER0_STEPS: Step[] = [
   {
     title: 'You are Claes',
     body:
-      "Bruges, 14 March 1460. No florins, no ship — just a dispatch rider for carrying messages and a handcart Julius has just lent you for carrying a little cargo alongside them. Scripted events (the cards that interrupt play) are most of what drives Chapter 0: read them, choose, and they'll tell you plainly what to do next.",
+      "Bruges, 14 March 1460. No florins, no ship, just a dispatch rider for carrying messages and a handcart Julius has just lent you for carrying a little cargo alongside them. Scripted events (the cards that interrupt play) are most of what drives Chapter 0: read them, choose, and they'll tell you plainly what to do next.",
   },
   {
     title: 'The handcart trades for real',
     body:
-      "It only holds 3 units, but it's a real cargo hold: dock it at a city with a market and the market in the Orders panel works exactly as it will later for a full ship — buy what's cheap, sell what's dear, or just sell whatever an event has handed you. Select it in the Fleet panel, click a city on the map, then send it there from the Orders panel.",
+      "It only holds 3 units, but it's a real cargo hold: dock it at a city with a market and the market in the Orders panel works exactly as it will later for a full ship: buy what's cheap, sell what's dear, or just sell whatever an event has handed you. Select it in the Fleet panel, click a city on the map, then send it there from the Orders panel.",
   },
   {
     title: 'Waiting is part of it',
     body:
-      "Some events wait on a flag from an earlier choice, or on a vessel actually reaching a city — nothing happens until you advance the week (or the handcart arrives) to let it catch up. If nothing's pending and you're not sure what to do, that usually just means: send the handcart where the last event pointed, then advance the week.",
+      "Some events wait on a flag from an earlier choice, or on a vessel actually reaching a city. Nothing happens until you advance the week (or the handcart arrives) to let it catch up. If nothing's pending and you're not sure what to do, that usually just means: send the handcart where the last event pointed, then advance the week.",
   },
   {
     title: 'This all carries over',
     body:
-      "Once Marian judges you ready, she hands you a real ship, a real stake, and the household you've been quietly building — Julius, Godscalc, and whoever else has joined along the way. Everything you've learned here (the map, the market, information lag) works exactly the same from then on, just at a larger scale.",
+      "Once Marian judges you ready, she hands you a real ship, a real stake, and the household you've been quietly building: Julius, Godscalc, and whoever else has joined along the way. Everything you've learned here (the map, the market, information lag) works exactly the same from then on, just at a larger scale.",
   },
 ];
 
@@ -210,7 +210,7 @@ export default function TutorialOverlay({ onClose, variant = 'main', onStartGuid
     <div style={BACKDROP}>
       <div style={CARD}>
         <p style={STEP_LABEL}>
-          How to play — {stepIndex + 1} of {steps.length}
+          How to play, {stepIndex + 1} of {steps.length}
         </p>
         <h2 style={TITLE}>{step.title}</h2>
         <p style={BODY}>{step.body}</p>

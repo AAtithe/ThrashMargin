@@ -164,13 +164,13 @@ interface TourStep {
  * first hop; the seeded RNG decides, so some campaigns hit it and others never do. */
 const closedNote = (cityId: string, cityName: string) => (state: GameState) =>
   tradeBlockedAt(state.marketEvents, cityId, FIRST_HOP_GOOD)
-    ? `${cityName} has closed the cloth trade for now (marked "closed" beside it), so this button is disabled — advance the week until it reopens, or skip this step.`
+    ? `${cityName} has closed the cloth trade for now (marked "closed" beside it), so this button is disabled. Advance the week until it reopens, or skip this step.`
     : null;
 
 const STEPS: TourStep[] = [
   {
     title: "Let's make your first move",
-    body: "I'll point at what to click, one step at a time — the campaign itself keeps running, so anything you do here is real. Skip anytime.",
+    body: "I'll point at what to click, one step at a time. The campaign itself keeps running, so anything you do here is real. Skip anytime.",
     targetId: null,
     isComplete: () => false,
   },
@@ -183,7 +183,7 @@ const STEPS: TourStep[] = [
   },
   {
     title: 'Buy some cloth',
-    body: "Bruges weaves fine cloth — it's in the Orders panel below Fleet. Click Buy to load a bale aboard.",
+    body: "Bruges weaves fine cloth; it's in the Orders panel below Fleet. Click Buy to load a bale aboard.",
     targetId: `market-buy-${FIRST_HOP_GOOD}`,
     blockedNote: closedNote('bruges', 'Bruges'),
     isComplete: (state, _v, _p, memory) =>
@@ -191,7 +191,7 @@ const STEPS: TourStep[] = [
   },
   {
     title: 'Look at Antwerp',
-    body: "Antwerp is a day's ride from Bruges, and pays more for cloth than home does — click its marker on the map to see what's known about it.",
+    body: "Antwerp is a day's ride from Bruges, and pays more for cloth than home does. Click its marker on the map to see what's known about it.",
     targetId: `city-node-${FIRST_HOP_CITY}`,
     // Also true once the ship is actually en route or has arrived — `previewCityId` alone is
     // transient (it changes the moment any other city is clicked, or resets on vessel reselect),
@@ -235,7 +235,7 @@ const STEPS: TourStep[] = [
   },
   {
     title: 'Assign an officer',
-    body: "Officers can be given a posting instead of sitting idle. Open the Household menu and give Julius an assignment — negotiate or investigate somewhere, or send him aboard a ship.",
+    body: "Officers can be given a posting instead of sitting idle. Open the Household menu and give Julius an assignment: negotiate or investigate somewhere, or send him aboard a ship.",
     targetId: `household-assign-${DEMO_CHARACTER_ID}`,
     // A change of posting, not "not idle": Julius may already hold one when the run begins.
     isComplete: (state, _v, _p, memory) =>
@@ -252,17 +252,17 @@ const STEPS: TourStep[] = [
     // invested in it), and a lean purse cannot pay; either way the button is disabled.
     blockedNote: state => {
       if (!canInvestFurther(DEMO_INVEST_CITY, state.courierInvestment, state.characters)) {
-        return 'London\'s courier line is already as fast as it gets (the button reads "Fastest"), so there is nothing to buy here — skip this step.';
+        return 'London\'s courier line is already as fast as it gets (the button reads "Fastest"), so there is nothing to buy here. Skip this step.';
       }
       const cost = courierInvestmentCost(DEMO_INVEST_CITY, state.courierInvestment);
       return cost > state.cash
-        ? `Investing costs ${cost}f and the house holds ${Math.floor(state.cash)}f, so the button is disabled — skip this step, or come back once you can pay.`
+        ? `Investing costs ${cost}f and the house holds ${Math.floor(state.cash)}f, so the button is disabled. Skip this step, or come back once you can pay.`
         : null;
     },
   },
   {
     title: 'Write a bill of exchange',
-    body: 'The Ledger menu\'s Counting House lets you borrow now against a future repayment — real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
+    body: 'The Ledger menu\'s Counting House lets you borrow now against a future repayment: real leverage, real risk. Try the Borrow button with whatever terms are already filled in.',
     targetId: 'counting-house-borrow-button',
     // A *new* obligation: Chapter 0's story, or the player, may already have put one on the ladder.
     isComplete: (state, _v, _p, memory) => state.obligations.some(o => !memory.obligationIds.has(o.id)),
@@ -553,7 +553,7 @@ export default function GuidedTour({ state, selectedVesselId, previewCityId, onF
           ringed. */}
       <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={rect ? step.targetId ?? '' : ''}>
         <p style={STEP_LABEL}>
-          Guided walkthrough — {stepIndex + 1} of {STEPS.length}
+          Guided walkthrough, {stepIndex + 1} of {STEPS.length}
         </p>
         <h3 style={TITLE}>{step.title}</h3>
         <p style={BODY}>{step.body}</p>

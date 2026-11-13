@@ -1,4 +1,5 @@
 import { UI } from '../theme';
+import { Button } from './ui';
 import { CITIES, HOME_CITY, findGood } from '../sim/content';
 import { activeCharacters } from '../sim/characters';
 import { baseLatencyFor, canInvestFurther, courierInvestmentCost, currentLatencyFor } from '../sim/news';
@@ -89,7 +90,7 @@ export default function DispatchesPanel({
                 </div>
                 <div style={{ fontSize: '0.7rem', color: UI.textSoft }}>
                   {live
-                    ? 'You are here — prices are true.'
+                    ? 'You are here: prices are true.'
                     : report
                       ? `As of week ${report.trueAsOfWeek} (${age} wk${age === 1 ? '' : 's'} old)`
                       : 'No report yet'}
@@ -111,14 +112,15 @@ export default function DispatchesPanel({
                 )}
               </div>
               {c.id !== HOME_CITY && (
-                <button
+                <Button
                   id={`dispatches-invest-${c.id}`}
                   style={SMALL_BUTTON}
                   disabled={!investable || cost > cash}
+                  disabledReason={investable ? `Needs ${cost}f` : undefined}
                   onClick={() => onInvest(c.id)}
                 >
                   {investable ? `Invest ${cost}f` : 'Fastest'}
-                </button>
+                </Button>
               )}
             </div>
           );

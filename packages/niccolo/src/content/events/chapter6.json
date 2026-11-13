@@ -59,7 +59,7 @@
           "evidence": {
             "id": "par_godscalc_letter",
             "name": "Godscalc's sealed letter",
-            "description": "The chaplain's last letter, which spends four lines on the house's conscience and eleven on what he was told in Africa about a Bruges christening — by a man who had no reason to lie and is now also dead.",
+            "description": "The chaplain's last letter, which spends four lines on the house's conscience and eleven on what he was told in Africa about a Bruges christening, by a man who had no reason to lie and is now also dead.",
             "track": "parentage",
             "kind": "testimony"
           }
@@ -77,7 +77,7 @@
           "evidence": {
             "id": "par_godscalc_letter",
             "name": "Godscalc's sealed letter",
-            "description": "The chaplain's last letter, which spends four lines on the house's conscience and eleven on what he was told in Africa about a Bruges christening — by a man who had no reason to lie and is now also dead.",
+            "description": "The chaplain's last letter, which spends four lines on the house's conscience and eleven on what he was told in Africa about a Bruges christening, by a man who had no reason to lie and is now also dead.",
             "track": "parentage",
             "kind": "testimony"
           }
@@ -118,7 +118,7 @@
       "flag": "godscalc_mourned"
     },
     "title": "Fish, of all things",
-    "body": "The proposal is unglamorous enough to be worth hearing: dried cod out of Iceland, bought at the stations for almost nothing, sold in Flanders and England for a great deal more, in a trade the English and the Hanse have been shooting at each other over since sixty-nine. Nobody makes a fortune on one shipload. That is the entire point — it only pays in tonnage.",
+    "body": "The proposal is unglamorous enough to be worth hearing: dried cod out of Iceland, bought at the stations for almost nothing, sold in Flanders and England for a great deal more, in a trade the English and the Hanse have been shooting at each other over since sixty-nine. Nobody makes a fortune on one shipload. That is the entire point: it only pays in tonnage.",
     "choices": [
       {
         "text": "Look into it properly",
@@ -247,7 +247,7 @@
       "location": "reykjavik"
     },
     "title": "Landfall in Iceland",
-    "body": "There is no town in any sense the house would recognise: a shore, a church, turf houses banked against a wind that does not stop, and a season's dried cod stacked in open racks by the ton. Everything the island cannot make — salt, meal, cloth, timber, iron — arrives on ships like these or does not arrive.",
+    "body": "There is no town in any sense the house would recognise: a shore, a church, turf houses banked against a wind that does not stop, and a season's dried cod stacked in open racks by the ton. Everything the island cannot make (salt, meal, cloth, timber, iron) arrives on ships like these or does not arrive.",
     "choices": [
       {
         "text": "Open the house's trade at the station",
@@ -452,7 +452,7 @@
         }
       },
       {
-        "text": "Accept, and keep it modest — this is not what a bank is for",
+        "text": "Accept, and keep it modest: this is not what a bank is for",
         "effects": {
           "flag": "nativity_invited"
         }
@@ -566,7 +566,7 @@
       "flag": "burgundy_lent"
     },
     "title": "Trier, and the crown that was not given",
-    "body": "The duke goes to Trier to be made a king, and the Emperor — having spent ten weeks on the arrangements, the vestments and the order of procession — leaves the city before dawn without crowning him and without settling the marriage. What Burgundy owes does not change. What Burgundy can pay it out of has just stopped being a kingdom's revenues and gone back to being a duchy's, and every house that lent against the difference now holds paper worth what the duke's temper allows.",
+    "body": "The duke goes to Trier to be made a king, and the Emperor, having spent ten weeks on the arrangements, the vestments and the order of procession, leaves the city before dawn without crowning him and without settling the marriage. What Burgundy owes does not change. What Burgundy can pay it out of has just stopped being a kingdom's revenues and gone back to being a duchy's, and every house that lent against the difference now holds paper worth what the duke's temper allows.",
     "choices": [
       {
         "text": "Discount the Burgundian paper for whatever it will fetch",
@@ -632,7 +632,7 @@
           "secret": {
             "id": "secret_volterra_alum",
             "name": "Who holds the Volterra concession",
-            "description": "The names on the alum company's own articles, the terms the commune granted, and which Florentine houses are already quietly behind it — including one that will have to choose a side.",
+            "description": "The names on the alum company's own articles, the terms the commune granted, and which Florentine houses are already quietly behind it, including one that will have to choose a side.",
             "value": 95,
             "expiresInWeeks": 18
           }
@@ -656,7 +656,7 @@
     "body": "The trade is genuinely good and the risk is entirely political, which is the combination that has ruined more banks than bad arithmetic ever has. The house can take a real position in the concession, or lend against it at a distance and keep the exposure where a bad season can be survived. Master Gregorio has an opinion. Master Julius has the opposite one, more loudly.",
     "choices": [
       {
-        "text": "Take a full position — this is what the Tolfa lesson was for",
+        "text": "Take a full position: this is what the Tolfa lesson was for",
         "effects": {
           "cash": 60,
           "flags": [
@@ -748,7 +748,7 @@
       "flag": "volterra_reckoning_resolved"
     },
     "title": "What a bank is actually exposed to",
-    "body": "The lesson is not about alum, and every officer in the counting house knows it by the end of the week. A position can be perfectly priced, perfectly documented and perfectly legal, and still be taken off you in two days by a prince who wanted it — and there is no instrument, no spread and no clause that changes that. The house has been treating political risk as a discount on the rate. It is not a discount on the rate.",
+    "body": "The lesson is not about alum, and every officer in the counting house knows it by the end of the week. A position can be perfectly priced, perfectly documented and perfectly legal, and still be taken off you in two days by a prince who wanted it, and there is no instrument, no spread and no clause that changes that. The house has been treating political risk as a discount on the rate. It is not a discount on the rate.",
     "choices": [
       {
         "text": "Write the principle into the house's own standing orders",

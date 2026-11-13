@@ -4,10 +4,9 @@ import { Button } from './ui';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
 
 /**
- * A campaign on its way: first the game screen's code chunk (the Suspense fallback in main.tsx),
- * then the save itself (GameScreen). Both stages render this, with the portal nav in place, so the
- * two read as one load. The shared loader skips its 300ms delay when it replaces another loader,
- * so there is no blink at the handover.
+ * A campaign on its way: the game screen's code chunk and the save, fetched together by
+ * pages/GameRoute.tsx, which keeps this one loader mounted until both are in, so the two read as
+ * one load with nothing to hand over between them. The portal nav stays in place throughout.
  */
 export default function CampaignLoading({
   error = null,

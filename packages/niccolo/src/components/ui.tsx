@@ -1,9 +1,10 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { FONT, UI } from '../theme';
+import { Button as KitButton, type ButtonProps } from '../lib/Kit';
 
 /**
  * Small shared primitives, ported from Tea Race's own `ui.tsx` (same tokens, so this is close to a
- * direct copy) — Niccolò had none of this: every panel defined its own local `BUTTON`/`LABEL`
+ * direct copy). Niccolò had none of this: every panel defined its own local `BUTTON`/`LABEL`
  * consts, duplicated ~25 times with tiny drifts between them. `FleetPanel` and `OrdersPanel` (the
  * two new always-visible sidebars) are built on these; older popup panels are free to adopt them
  * over time but were not forced to for this pass.
@@ -33,46 +34,13 @@ export function Panel({
   );
 }
 
-export function Button({
-  children,
-  onClick,
-  disabled,
-  tone = 'default',
-  title,
-  id,
-  style,
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  tone?: 'default' | 'primary' | 'quiet' | 'danger';
-  title?: string;
-  id?: string;
-  style?: CSSProperties;
-}) {
-  const tones: Record<string, CSSProperties> = {
-    default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
-    primary: { borderColor: UI.brass, color: UI.ground, background: UI.brass, fontWeight: 600 },
-    quiet: { borderColor: UI.rule, color: UI.textSoft, background: 'transparent' },
-    danger: { borderColor: UI.bad, color: UI.bad, background: 'transparent' },
-  };
-  return (
-    <button
-      type="button"
-      id={id}
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      style={{
-        ...buttonBase,
-        ...tones[tone],
-        ...(disabled ? { opacity: 0.38, cursor: 'not-allowed' } : {}),
-        ...style,
-      }}
-    >
-      {children}
-    </button>
-  );
+/**
+ * The game's button, drawn by the portal kit (lib/Kit.tsx, lib/kit.css) in Niccolò's palette (the
+ * --kit-* mapping in styles.css). Hover, press, focus, disabled, the 40px phone target and the
+ * visible disabled reason all come from the kit; `style` still wins where a screen needs it.
+ */
+export function Button({ ariaLabel, ...rest }: ButtonProps & { ariaLabel?: string }) {
+  return <KitButton aria-label={ariaLabel} {...rest} />;
 }
 
 export function Pill({ children, colour }: { children: ReactNode; colour: string }) {
@@ -127,16 +95,6 @@ const panelTitle: CSSProperties = {
   fontSize: '0.95rem',
   letterSpacing: '0.01em',
   color: UI.text,
-};
-
-const buttonBase: CSSProperties = {
-  fontFamily: FONT.body,
-  fontSize: '0.82rem',
-  padding: '0.35rem 0.65rem',
-  border: '1px solid',
-  borderRadius: 2,
-  cursor: 'pointer',
-  lineHeight: 1.25,
 };
 
 export const labelStyle: CSSProperties = {

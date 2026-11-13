@@ -108,7 +108,7 @@ export default function HotseatDecisionModal({ house, sabotageEligible, onConfir
     <div style={BACKDROP}>
       <div style={CARD}>
         <h2 style={TITLE}>{house.name}'s move this week</h2>
-        <p style={SUB}>You're seated at {house.name} this week — everyone else's business proceeds as usual.</p>
+        <p style={SUB}>You're seated at {house.name} this week; everyone else's business proceeds as usual.</p>
 
         <p style={LABEL}>Nudge the market at {house.homeCity}</p>
         <div style={ROW}>

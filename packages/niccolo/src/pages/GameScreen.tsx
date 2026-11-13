@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UI, FONT } from '../theme';
 import { formatWeekDate } from '../sim/clock';
-import { useGameHybrid } from '../hooks/useGameHybrid';
+import type { useGameHybrid } from '../hooks/useGameHybrid';
 import { CITIES, CAMPAIGN_START, HOUSES, findCity, findEvent, findGood, findHouse, findRouteById, otherEndOfRoute } from '../sim/content';
 import type { PlannedRoute } from '../sim/content';
 import { cargoTotal } from '../sim/market';
@@ -43,6 +43,7 @@ import EventOverlay from '../components/EventOverlay';
 import TutorialOverlay, { hasSeenTutorial, hasSeenChapter0Tutorial } from '../components/TutorialOverlay';
 import GuidedTour, { hasSeenGuidedTour } from '../components/GuidedTour';
 import PortalNav from '../components/PortalNav';
+import WeekAnnouncer from '../components/WeekAnnouncer';
 import { WeekDate, WeekSweep } from '../components/WeekTurn';
 import { FlorinsWithDelta } from '../components/motionKit';
 
@@ -157,7 +158,7 @@ const LAUNCHER: React.CSSProperties = {
   background: UI.panelRaised,
   border: `1px solid ${UI.ruleStrong}`,
   boxShadow: `0 4px 14px ${UI.shadow}`,
-  minHeight: 36,
+  minHeight: 40,
   color: UI.text,
   cursor: 'pointer',
   fontFamily: 'inherit',
@@ -233,9 +234,14 @@ const BUTTON_ACTIVE: React.CSSProperties = {
   color: UI.brass,
 };
 
-export default function GameScreen() {
+export interface GameScreenProps {
+  /** The campaign, already loaded by the route (pages/GameRoute.tsx), which fetches it alongside this screen's code. */
+  game: ReturnType<typeof useGameHybrid>;
+}
+
+export default function GameScreen({ game }: GameScreenProps) {
   const { id } = useParams<{ id: string }>();
-  const { state, error, dispatch, loadGame, deleteGame } = useGameHybrid();
+  const { state, error, dispatch, loadGame, deleteGame } = game;
   const nav = useNavigate();
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
   const [previewCityId, setPreviewCityId] = useState<string | null>(null);
@@ -326,10 +332,6 @@ export default function GameScreen() {
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showGuidedTour, tourTarget]);
-
-  useEffect(() => {
-    if (id) loadGame(id);
-  }, [id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setSelectedVesselId(state?.vessels[0]?.id ?? null);
@@ -649,9 +651,12 @@ export default function GameScreen() {
         />
       )}
       <PortalNav variant="header" />
+      <WeekAnnouncer state={state} />
       <header style={HEADER} className="niccolo-game-header">
         <h1 style={TITLE}>{state.name ?? 'Banco di Niccolo'}</h1>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: '0.8rem', flexWrap: 'wrap', rowGap: '0.4rem', flex: '1 1 auto', minWidth: 0 }}>
+        {/* On a phone this row dissolves into the header (styles.css) so the title, the chapter, the
+            clock and the actions pack into as few lines as fit, leaving the chart the screen. */}
+        <div className="niccolo-header-bar" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'flex-end', gap: '0.8rem', flexWrap: 'wrap', rowGap: '0.4rem', flex: '1 1 auto', minWidth: 0 }}>
           <span style={CLOCK} className="niccolo-clock">
             <FlorinsWithDelta value={state.cash} /> &nbsp;·&nbsp; hold: {heldGoodsSummary || 'nothing'}
             &nbsp;·&nbsp; <WeekDate week={state.week} />
@@ -661,7 +666,7 @@ export default function GameScreen() {
               header should always say what the player is actually playing toward. Without this the
               sandbox announced "Chapter 1 — Niccolo Rising" above a game with no story in it. */}
           {freeplayMode ? (
-            <span style={{ ...CLOCK, fontSize: '0.8rem', color: UI.brass }}>
+            <span className="niccolo-header-progress" style={{ ...CLOCK, fontSize: '0.8rem', color: UI.brass }}>
               {(() => {
                 const table = standings(state);
                 const me = table.findIndex(r => r.isPlayer) + 1;
@@ -671,7 +676,9 @@ export default function GameScreen() {
               })()}
             </span>
           ) : (
-            <CampaignProgress chapterNumber={objectiveChapter} title={CHAPTER_TITLES[objectiveChapter] ?? `Chapter ${objectiveChapter}`} />
+            <span className="niccolo-header-progress">
+              <CampaignProgress chapterNumber={objectiveChapter} title={CHAPTER_TITLES[objectiveChapter] ?? `Chapter ${objectiveChapter}`} />
+            </span>
           )}
           {/* The one action every week turns on, so it carries the accent; the rest stay plain. */}
           <button
@@ -708,8 +715,10 @@ export default function GameScreen() {
           <button
             style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textSoft }}
             onClick={() => nav('/')}
+            aria-label="Back to campaigns"
           >
-            ← Back to campaigns
+            ← <span className="niccolo-hide-phone">Back to campaigns</span>
+            <span className="niccolo-phone-only">Campaigns</span>
           </button>
           {/* Not on a phone, where the header must stay short; the lobby's delete does the same. */}
           <button
@@ -853,7 +862,7 @@ export default function GameScreen() {
                 <>
                   {!state.flags.chapter0_complete ? (
                     <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>
-                      Not available yet — credit isn't Claes's to extend until he's formally made the house's factor.
+                      Not available yet: credit isn't Claes's to extend until he's formally made the house's factor.
                     </p>
                   ) : (
                     <div>

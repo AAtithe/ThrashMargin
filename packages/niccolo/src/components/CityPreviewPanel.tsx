@@ -125,14 +125,14 @@ export default function CityPreviewPanel({
   return (
     <div style={{ border: `1px solid ${UI.rule}`, padding: '0.6rem 0.7rem' }}>
       <p style={LABEL}>
-        {city.name} — {city.region}
+        {city.name}, {city.region}
       </p>
 
       {goods.length === 0 ? (
         <p style={{ fontSize: '0.78rem', color: UI.textFaint, margin: 0 }}>No market here.</p>
       ) : isLive ? (
         <>
-          <p style={{ fontSize: '0.72rem', color: UI.good, margin: '0 0 0.3rem' }}>You are here — prices are true.</p>
+          <p style={{ fontSize: '0.72rem', color: UI.good, margin: '0 0 0.3rem' }}>You are here: prices are true.</p>
           {(marketEvents ?? []).filter(e => e.cityId === city.id).map(e => (
             <p key={e.id} style={{ fontSize: '0.7rem', color: e.blocksTrade ? UI.bad : UI.brass, margin: '0 0 0.3rem', fontStyle: 'italic' }}>
               {e.headline}
@@ -168,7 +168,7 @@ export default function CityPreviewPanel({
           {goods.map(goodId => (
             <div key={goodId} style={ROW}>
               <span>{findGood(goodId)?.name ?? goodId}</span>
-              <span style={{ color: UI.brass }}>{report.prices[goodId] ?? '—'}f</span>
+              <span style={{ color: UI.brass }}>{report.prices[goodId] ?? '?'}f</span>
             </div>
           ))}
           {report.causes && report.causes.length > 0 && (
@@ -188,7 +188,7 @@ export default function CityPreviewPanel({
               {canInsureHere && vessel.capacity > 0 && (
                 <label style={{ fontSize: '0.72rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginTop: '0.5rem' }}>
                   <input type="checkbox" checked={insureNext} onChange={e => onInsureChange(e.target.checked)} />
-                  <span>Insure this cargo before it departs — underwritten at the ship's current port.</span>
+                  <span>Insure this cargo before it departs (underwritten at the ship's current port.</span>
                 </label>
               )}
               <button id="confirm-dispatch-button" style={PRIMARY_BUTTON} onClick={onConfirmDispatch}>
@@ -198,15 +198,15 @@ export default function CityPreviewPanel({
           ) : plan ? (
             <>
               <p style={{ fontSize: '0.72rem', color: UI.textFaint, margin: '0.5rem 0 0.3rem' }}>
-                Not reachable directly. Nearest path: {describePath(vessel.location, plan)} —{' '}
+                Not reachable directly. Nearest path: {describePath(vessel.location, plan)},{' '}
                 {plan.routeIds.length} dispatch{plan.routeIds.length === 1 ? '' : 'es'}, {plan.totalWeeks} weeks of
-                sailing. {vessel.name} will dock — and can trade — at each stop, then carry on toward{' '}
+                sailing. {vessel.name} will dock (and can trade) at each stop, then carry on toward{' '}
                 {city.name} automatically; cancel any time before the next stop if you'd rather stay.
               </p>
               {canInsureHere && vessel.capacity > 0 && (
                 <label style={{ fontSize: '0.72rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'flex-start', marginBottom: '0.3rem' }}>
                   <input type="checkbox" checked={insureNext} onChange={e => onInsureChange(e.target.checked)} />
-                  <span>Insure this cargo for the first leg only — underwritten at the ship's current port.</span>
+                  <span>Insure this cargo for the first leg only (underwritten at the ship's current port.</span>
                 </label>
               )}
               <button style={PRIMARY_BUTTON} onClick={() => onQueueRoute(plan)}>
@@ -216,7 +216,7 @@ export default function CityPreviewPanel({
           ) : (
             <p style={{ fontSize: '0.72rem', color: UI.textFaint, margin: '0.5rem 0 0' }}>
               {vessel.kind === 'courier'
-                ? `No all-land route connects ${vessel.name}'s position to ${city.name} — try a ship.`
+                ? `No all-land route connects ${vessel.name}'s position to ${city.name}. Try a ship.`
                 : `No route connects ${vessel.name}'s position to ${city.name}.`}
             </p>
           )}

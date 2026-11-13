@@ -100,7 +100,7 @@ export default function LedgerPanel({ week, cash, exchangeRates, obligations, fl
         ))}
       </div>
 
-      <p style={LABEL}>Maturity ladder{beyond.length > 0 ? ` — next 12 weeks (+${beyond.length} later)` : ''}</p>
+      <p style={LABEL}>Maturity ladder{beyond.length > 0 ? `: next 12 weeks (+${beyond.length} later)` : ''}</p>
       <div style={LIST}>
         {dueSoon.length === 0 && <p style={{ fontSize: '0.75rem', color: UI.textSoft }}>Nothing due soon.</p>}
         {dueSoon.map(o => {
