@@ -2378,6 +2378,14 @@ and for Repair Trucks to stop driving into the fighting, with a way to choose wh
   still single). Every recorded battle hash is unchanged: with the reserve the commander seldom holds
   2,000 spare in those battles. In Chromium with two Barracks: ten places, the eleventh refused, and
   the strip reads "2 building at once". `npm run check`: all passed.
+- **Balance, before this session's changes and after all of them** (Helipad repairs, support holding
+  back, production lines), same machine, same seeds. `ladder:fire` (150 seeds, no setup): Hard beats
+  Normal 201 of 300 before, 200 of 300 after; every other row identical (Normal beats Easy 300/300,
+  new beats old Normal 268/300, new beats old Hard 168/300). `sweep:fire`: identical, mission by
+  mission and difficulty by difficulty (Hard: hold-the-ford 7/12, blackout 5, fireline 6, iron-coast
+  4, firestorm 5, last-light 5). Read plainly: the computer almost never holds 2,000 spare, so its
+  second War Factory is still mostly idle. Lowering `EXTRA_LINE_RESERVE`, or reserving only while it
+  saves for something, would make Hard use it; that is a difficulty decision, left open.
 
 Checks: `drive-air` (Return to base, refusals, repair on the pad and not in flight) and `drive-naval`
 (sailing home, mended there, refused without a yard) gained 17 assertions. In Chromium: a damaged
