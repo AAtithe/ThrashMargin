@@ -1783,7 +1783,9 @@ export function Battle({
           <div
             className="fl-d-feed"
             style={{ maxWidth: layout.stacked ? 'calc((100% + 20px) * 0.9)' : 'min(calc((100% + 20px) * 0.6), 520px)' }}
+            role="log"
             aria-live="polite"
+            aria-label="Battle feed"
             data-testid="battle-feed"
           >
             {(layout.stacked || phoneDock ? recent.slice(0, 3) : recent).map(l => (

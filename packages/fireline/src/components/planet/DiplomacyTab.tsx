@@ -368,7 +368,7 @@ function ProposeDialog({ s, map, act, to, onClose }: PlanetProps & { to: Faction
               type="button"
               className="fl-pl-btn primary"
               disabled={!!sendProblem}
-              title={sendProblem ?? undefined}
+              aria-describedby={!sendProblem ? undefined : sendProblem === problem ? 'pl-treaty-verdict' : 'fl-send-proposal-why'}
               onClick={() => {
                 if (act({ type: 'propose', to, draft })) onClose();
               }}
@@ -378,6 +378,11 @@ function ProposeDialog({ s, map, act, to, onClose }: PlanetProps & { to: Faction
               Send to {who(to)}
             </button>
           </div>
+          {sendProblem && sendProblem !== problem && (
+            <span className="fl-pl-why" id="fl-send-proposal-why" style={{ alignSelf: 'flex-end' }}>
+              {sendProblem}
+            </span>
+          )}
         </div>
       </div>
     </div>

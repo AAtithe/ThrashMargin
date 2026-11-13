@@ -118,7 +118,7 @@ export default function WarSetup({
                 className="fl-pl-btn"
                 aria-pressed={Math.min(factions, top) === n}
                 disabled={n > top}
-                title={n > top ? `A planet of ${p.regions} regions has room for ${top} factions.` : undefined}
+                aria-describedby={n > top ? 'fl-war-factions-why' : undefined}
                 onClick={() => setFactions(n)}
                 data-testid={`war-factions-${n}`}
               >
@@ -126,6 +126,11 @@ export default function WarSetup({
               </button>
             ))}
           </div>
+          {top < 5 && (
+            <span className="fl-pl-why" id="fl-war-factions-why">
+              A planet of {p.regions} regions has room for {top} factions.
+            </span>
+          )}
         </div>
         <div className="fl-pl-field">
           Difficulty
