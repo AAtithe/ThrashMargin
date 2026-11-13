@@ -68,7 +68,9 @@ function startServer(g) {
     let out = '';
     const timer = setTimeout(() => reject(new Error(`${g.key}: dev server did not start\n${out}`)), 60000);
     const onData = d => {
-      out += d;
+      // Vite colours its output where colour is supported (GitHub Actions is), which puts an escape
+      // code between "Local" and ":"; strip colour before looking for the ready line.
+      out += String(d).replace(/\x1b\[[0-9;]*m/g, '');
       if (out.includes('Local:')) { clearTimeout(timer); resolve(child); }
     };
     child.stdout.on('data', onData);
