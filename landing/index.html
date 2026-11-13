@@ -133,8 +133,12 @@
       @media (prefers-reduced-motion: reduce) {
         a.card,
         .account a,
-        .account button {
+        .account button,
+        .resume-go {
           transition: none;
+        }
+        .continue.fresh {
+          animation: none;
         }
         a.card:hover {
           transform: none;
@@ -161,6 +165,107 @@
         font-size: 0.85rem;
         line-height: 1.5;
         color: var(--card-text);
+      }
+      /* A screenshot of each game's main screen, across the top of its card. One image per mode;
+         the other is display:none, so with loading="lazy" the browser never fetches it. */
+      .card .shot {
+        display: block;
+        margin: -1.6rem -1.6rem 1.2rem;
+        border-bottom: 1px solid;
+        border-color: inherit;
+        border-radius: 9px 9px 0 0;
+        overflow: hidden;
+        background: var(--card-b);
+      }
+      .shot img,
+      .resume-shot img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+      .shot-dark {
+        display: none !important;
+      }
+      :root[data-theme="dark"] .shot-light {
+        display: none !important;
+      }
+      :root[data-theme="dark"] .shot-dark {
+        display: block !important;
+      }
+      /* Continue where you left off: the account's most recently played save, filled in by portal.js. */
+      .continue {
+        margin: 0 0 1.8rem;
+      }
+      .continue[hidden] {
+        display: none;
+      }
+      .continue.fresh {
+        animation: resume-in 0.2s ease-out;
+      }
+      @keyframes resume-in {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      a.card.resume {
+        display: flex;
+        align-items: center;
+        gap: 1.2rem;
+        padding: 1rem 1.2rem 1rem 1rem;
+      }
+      .resume-shot {
+        flex: none;
+        width: 176px;
+        border: 1px solid;
+        border-color: inherit;
+        border-radius: 6px;
+        overflow: hidden;
+        background: var(--card-b);
+      }
+      .resume-body {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+      .resume .tag {
+        margin-bottom: 0.6rem;
+      }
+      .resume h2 {
+        margin: 0 0 0.3rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .resume-go {
+        flex: none;
+        display: inline-flex;
+        align-items: center;
+        min-height: 2.5rem;
+        padding: 0.25rem 1rem;
+        border: 1px solid var(--btn-rule);
+        border-radius: 6px;
+        font-size: 0.85rem;
+        color: var(--heading);
+        transition: border-color 0.15s ease;
+      }
+      a.card.resume:hover .resume-go {
+        border-color: var(--btn-hover);
+      }
+      @media (max-width: 520px) {
+        a.card.resume {
+          display: grid;
+          grid-template-columns: 96px minmax(0, 1fr);
+          gap: 0.8rem 0.9rem;
+          padding: 0.9rem;
+        }
+        .resume-shot {
+          width: 96px;
+        }
+        .resume-go {
+          grid-column: 1 / -1;
+          justify-content: center;
+        }
+        .resume h2 {
+          font-size: 1.05rem;
+        }
       }
       .footer {
         text-align: center;
@@ -270,18 +375,34 @@
     <main>
       <h1>Choose a game</h1>
       <p class="subtitle">Seven separate builds, one address.</p>
+      <!-- Filled in by portal.js from the saves of the games this account can play; stays hidden
+           when signed out, with no saves, or when no game's saves could be read. -->
+      <section class="continue" id="continue" aria-label="Continue where you left off" hidden>
+        <a class="card resume" id="continue-link" href="/">
+          <span class="resume-shot" aria-hidden="true"><img class="shot-light" id="continue-light" width="640" height="400" alt="" loading="lazy" /><img class="shot-dark" id="continue-dark" width="640" height="400" alt="" loading="lazy" /></span>
+          <div class="resume-body">
+            <span class="tag">Continue where you left off</span>
+            <h2 id="continue-name"></h2>
+            <p id="continue-detail"></p>
+          </div>
+          <span class="resume-go" aria-hidden="true">Continue</span>
+        </a>
+      </section>
       <div class="cards">
         <a class="card thrash-margin" data-game="thrash_margin" href="/thrash-margin/">
+          <span class="shot" aria-hidden="true"><img class="shot-light" src="/img/thrash-margin-light.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /><img class="shot-dark" src="/img/thrash-margin-dark.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /></span>
           <span class="tag">Territory strategy</span>
           <h2>Thrash Margin</h2>
           <p>Settlers-style building meets Risk-style conquest. Expand, conquer, develop.</p>
         </a>
         <a class="card niccolo" data-game="niccolo" href="/niccolo/">
+          <span class="shot" aria-hidden="true"><img class="shot-light" src="/img/niccolo-light.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /><img class="shot-dark" src="/img/niccolo-dark.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /></span>
           <span class="tag">Trading &amp; banking</span>
           <h2>Banco di Niccolò</h2>
           <p>Trade, credit and intelligence across 15th-century Europe and the Levant.</p>
         </a>
         <a class="card rising" data-game="niccolo_rising" href="/rising/">
+          <span class="shot" aria-hidden="true"><img class="shot-light" src="/img/niccolo-rising-light.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /><img class="shot-dark" src="/img/niccolo-rising-dark.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /></span>
           <span class="tag">Real-time RPG</span>
           <h2>Niccolò Rising</h2>
           <p>
@@ -290,6 +411,7 @@
           </p>
         </a>
         <a class="card tea-race" data-game="tea_race" href="/tea-race/">
+          <span class="shot" aria-hidden="true"><img class="shot-light" src="/img/tea-race-light.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /><img class="shot-dark" src="/img/tea-race-dark.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /></span>
           <span class="tag">Clipper racing</span>
           <h2>The Tea Race</h2>
           <p>
@@ -298,6 +420,7 @@
           </p>
         </a>
         <a class="card steady-eddie" data-game="steady_eddie" href="/steady-eddie/">
+          <span class="shot" aria-hidden="true"><img class="shot-light" src="/img/steady-eddie-light.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /><img class="shot-dark" src="/img/steady-eddie-dark.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /></span>
           <span class="tag">UK haulage</span>
           <h2>Steady Eddie</h2>
           <p>
@@ -307,6 +430,7 @@
         </a>
         <!-- Opt-in (shared/games.ts): hidden until portal.js finds it in the signed-in account's games. -->
         <a class="card founders-ledger" data-game="founders_ledger" href="/founders-ledger/" hidden>
+          <span class="shot" aria-hidden="true"><img class="shot-light" src="/img/founders-ledger-light.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /><img class="shot-dark" src="/img/founders-ledger-dark.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /></span>
           <span class="tag">CEO coaching</span>
           <h2>The Founder's Ledger</h2>
           <p>
@@ -315,6 +439,7 @@
           </p>
         </a>
         <a class="card fireline" data-game="fireline" href="/fireline/">
+          <span class="shot" aria-hidden="true"><img class="shot-light" src="/img/fireline-light.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /><img class="shot-dark" src="/img/fireline-dark.webp" width="640" height="400" alt="" loading="lazy" decoding="async" /></span>
           <span class="tag">Real-time strategy</span>
           <h2>Fireline</h2>
           <p>
