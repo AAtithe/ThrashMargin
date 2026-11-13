@@ -5,6 +5,7 @@ import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
 import { createSaver, SAVE_MESSAGES } from '../lib/saveQueue';
 import { mountLedger } from '../ledger/engine.js';
 import PortalNav from '../components/PortalNav';
+import { Button } from '../lib/Kit';
 
 const ENDPOINT = `${API}/api/play/founders-ledger`;
 /** Typing in the letter or a review saves on every key; this waits for a pause before sending. */
@@ -151,7 +152,7 @@ export default function LedgerScreen() {
             expired ? (
               <a className="btn" href="/thrash-margin/login?next=/founders-ledger/">Sign in again</a>
             ) : (
-              <button type="button" className="btn" onClick={() => setAttempt(a => a + 1)}>Try again</button>
+              <Button tone="primary" onClick={() => setAttempt(a => a + 1)}>Try again</Button>
             )
           }
         />

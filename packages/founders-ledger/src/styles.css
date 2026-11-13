@@ -19,6 +19,12 @@
   --display:"Avenir Next", "Segoe UI", system-ui, sans-serif;
   --body:"Helvetica Neue", Arial, system-ui, sans-serif;
   --mono:ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* UI kit (lib/kit.css), in the shape of this game's .btn. Aliases, so dark mode follows by itself. */
+  --kit-font:var(--body); --kit-radius:5px; --kit-font-size:14px; --kit-font-size-small:13px;
+  --kit-pad:10px 16px; --kit-pad-small:6px 12px;
+  --kit-text:var(--ink); --kit-text-soft:var(--muted); --kit-text-faint:var(--muted);
+  --kit-surface:var(--surface); --kit-field:var(--bg); --kit-rule:var(--control-line); --kit-rule-strong:var(--control-line);
+  --kit-accent:var(--accent); --kit-on-accent:var(--accent-ink); --kit-danger:var(--bad); --kit-focus:var(--brass);
 }
 :root[data-theme="dark"]{
   --bg:#0E1512; --surface:#16201B; --sunk:#111A16; --ink:#E4EBE6; --muted:#93A399; --line:#28352F;
@@ -259,7 +265,9 @@ pre.agenda{white-space:pre-wrap;overflow-wrap:anywhere;font:15px/1.55 var(--body
 .dot:hover{border-color:var(--accent)}
 details.own summary:hover{color:var(--ink)}
 .linkish:hover{text-decoration-thickness:2px}
-@media (pointer:coarse){.btn.small{min-height:40px}.icon-btn{min-height:36px;padding:6px 10px}.dot{min-width:36px;height:36px;border-radius:18px}}
+/* Phones and touch screens: every control at least 40px tall. A range input is only as tall as its
+   thumb (about 16px), so it gets the height itself; the track stays centred and looks the same. */
+@media (max-width:720px),(pointer:coarse){.btn.small{min-height:40px}.icon-btn{min-height:40px;padding:6px 10px}.dot{min-width:40px;height:40px;border-radius:20px}input[type=range]{height:40px;margin:0}}
 @media (max-width:520px){
   .item{grid-template-columns:22px 1fr}
   .item .acts{grid-column:2;justify-content:flex-start}
@@ -268,3 +276,17 @@ details.own summary:hover{color:var(--ink)}
   .rings .tiny{overflow-wrap:anywhere}
 }
 @media (prefers-reduced-motion: reduce){.btn,.pick,.opt,.game,.icon-btn,nav button{transition:none}}
+
+/* Phone-first: the header, the scoreboard and the tabs used to fill the whole first screen at 375px,
+   so the section in hand began below the fold. Tighter spacing, a smaller title, the tagline left to
+   wider screens, and a denser scoreboard and tab row bring the section up into view. */
+@media (max-width:520px){
+  .wrap{padding-top:14px;gap:14px}
+  h1{font-size:26px}
+  header .muted{display:none}
+  .reset-top{margin:0;min-height:44px}
+  .tile{padding:10px 12px}
+  .tile .fig{font-size:23px}
+  .tile .sub{line-height:1.35}
+  nav button{padding:10px 8px}
+}

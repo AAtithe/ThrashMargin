@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client';
 import App from './App';
 import { applyScheme, initialScheme } from './lib/colorScheme';
 import './portal.css';
+import './lib/kit.css';
 import './styles.css';
 
 // Light or dark is the player's choice, shared across the portal (lib/colorScheme.ts). index.html
