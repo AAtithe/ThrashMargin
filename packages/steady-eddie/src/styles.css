@@ -35,6 +35,28 @@
   --ui-bad-rule: rgba(168, 52, 47, 0.35);
   /* Laid over a control's own background on hover (an inset shadow), so it works on any tone. */
   --ui-hover-wash: rgba(42, 37, 30, 0.07);
+  --ui-press-wash: rgba(42, 37, 30, 0.14);
+
+  /* UI kit (lib/kit.css). Every line is a --ui-* reference, so dark mode follows on its own. */
+  --kit-font: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --kit-radius: 2px;
+  --kit-font-size: 0.82rem;
+  --kit-font-size-small: 0.74rem;
+  --kit-pad: 0.35rem 0.65rem;
+  --kit-pad-small: 0.2rem 0.5rem;
+  --kit-text: var(--ui-text);
+  --kit-text-soft: var(--ui-text-soft);
+  --kit-text-faint: var(--ui-text-faint);
+  --kit-surface: var(--ui-panel-raised);
+  --kit-field: var(--ui-ground);
+  /* Fields keep the stronger edge they always had. */
+  --kit-rule: var(--ui-rule-strong);
+  --kit-rule-strong: var(--ui-rule-strong);
+  --kit-accent: var(--ui-brass);
+  --kit-on-accent: var(--ui-ground);
+  --kit-danger: var(--ui-bad);
+  --kit-hover: var(--ui-hover-wash);
+  --kit-press: var(--ui-press-wash);
 }
 :root[data-theme="dark"] {
   --ui-ground: #0d1419;
@@ -61,6 +83,7 @@
   --ui-tint-brass: rgba(208, 154, 78, 0.09);
   --ui-bad-rule: rgba(208, 114, 124, 0.4);
   --ui-hover-wash: rgba(230, 221, 201, 0.08);
+  --ui-press-wash: rgba(230, 221, 201, 0.16);
 }
 
 body {
@@ -88,24 +111,22 @@ button:focus:not(:focus-visible) {
 }
 
 /*
- * Interactive states. Components set their colours inline, which a stylesheet cannot override
- * without !important, so the hover is an inset wash over whatever background the control has, and
- * the border warms to brass. Pressing nudges it down a pixel.
+ * Interactive states for the few controls that are not kit buttons (lib/kit.css covers those).
+ * Components set their colours inline, which a stylesheet cannot override without !important, so
+ * the hover is an inset wash over whatever background the control has, and the border warms to
+ * brass. Pressing nudges it down a pixel.
  */
-.se-btn,
 .tr-launcher,
 .se-zoom,
 .se-save,
 .se-icon-btn {
   transition: box-shadow 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
 }
-.se-btn:not(:disabled):hover,
 .se-zoom:hover,
 .se-icon-btn:hover {
   box-shadow: inset 0 0 0 999px var(--ui-hover-wash);
   border-color: var(--ui-brass) !important;
 }
-.se-btn:not(:disabled):active,
 .se-zoom:active,
 .tr-launcher:active {
   transform: translateY(1px);
@@ -121,16 +142,9 @@ button:focus:not(:focus-visible) {
   border-color: var(--ui-rule-strong) !important;
   box-shadow: inset 0 0 0 999px var(--ui-hover-wash);
 }
-.se-input {
-  transition: border-color 0.15s ease;
-}
-.se-input:hover {
-  border-color: var(--ui-brass) !important;
-}
-.se-input::placeholder {
+/* The run's name and seed are kit fields (lib/kit.css); the placeholder keeps its italic. */
+.kit-input::placeholder {
   font-style: italic;
-  color: var(--ui-text-faint);
-  opacity: 1;
 }
 .se-check input {
   width: 1rem;
@@ -140,17 +154,19 @@ button:focus:not(:focus-visible) {
   cursor: pointer;
 }
 
-/* Fingers, not pointers: every control at least 40px on a phone, and inputs at 16px so iOS does
-   not zoom the page when one takes focus. */
-@media (max-width: 720px) {
-  .se-btn,
-  .se-icon-btn {
+/* Sizes live here rather than inline, so the phone rules below can raise them. */
+.se-icon-btn { min-width: 32px; min-height: 32px; }
+.se-square { min-width: 34px; min-height: 32px; padding: 0; }
+
+/* Fingers, not pointers: every control at least 40px on a phone (kit buttons and fields get this
+   from lib/kit.css). */
+@media (max-width: 720px), (pointer: coarse) {
+  .se-icon-btn,
+  .se-square,
+  .se-save-open,
+  .tr-launcher {
     min-height: 40px;
     min-width: 40px;
-  }
-  .se-input {
-    font-size: 16px !important;
-    min-height: 40px;
   }
   .se-save {
     min-height: 44px;

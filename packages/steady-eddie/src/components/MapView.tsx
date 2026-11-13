@@ -684,7 +684,7 @@ function VehicleMarker({
         {isRival ? haulierName : vehicle.name}
       </text>
       <title>
-        {`${vehicle.name} — ${haulierName}. ${
+        {`${vehicle.name}, ${haulierName}. ${
           vehicle.hold.length ? `${vehicle.hold.length} of 3 slots full` : 'running light'
         }${dest ? `, bound for ${DEPOT_BY_ID[dest]?.name ?? dest}` : ', in depot'}`}
       </title>
@@ -796,7 +796,8 @@ const zoomButton: React.CSSProperties = {
   height: 44,
   border: `1px solid ${CHART.coast}`,
   background: CHART.sea,
-  color: CHART.coast,
+  // The coast colour read 3.2:1 on the sea; the label ink is the chart's own dark text.
+  color: CHART.label,
   fontFamily: FONT.data,
   fontSize: '1.1rem',
   lineHeight: 1,

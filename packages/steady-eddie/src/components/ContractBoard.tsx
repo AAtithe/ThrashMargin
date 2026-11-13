@@ -139,7 +139,7 @@ export default function ContractBoard({
                         }}
                       >
                         {rank === 1 ? '1st' : '2nd'} ×{multiplier} {money(contract.price * multiplier)}
-                        {fill ? ` — ${nameOf(fill.haulierId)}` : ''}
+                        {fill ? ` (${nameOf(fill.haulierId)})` : ''}
                       </span>
                     );
                   })}

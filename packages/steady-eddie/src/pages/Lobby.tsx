@@ -19,7 +19,7 @@ import {
 import type { Hazards } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
-import { Button, Label, Panel, bodySmall, buttonStyle, dataText } from '../components/ui';
+import { Button, Label, Panel, bodySmall, buttonClass, dataText } from '../components/ui';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 
 /**
@@ -210,14 +210,14 @@ export default function Lobby() {
           <h1 style={title}>Steady Eddie</h1>
           <p style={{ ...bodySmall, maxWidth: '58ch', margin: 0 }}>
             {FACE_UP_CONTRACTS} commissions are posted on the exchange at all times, each naming a
-            cargo, the depot that wants it and the price it is reckoned at — load it wherever you can
+            cargo, the depot that wants it and the price it is reckoned at. Load it wherever you can
             get it. Only the first two vehicles home are paid: {PAYOUT_MULTIPLIERS[1]}× the commission
             price a lot, then {PAYOUT_MULTIPLIERS[2]}×, then nothing. Carry {SHARE_MAJORITY} of the{' '}
             {TOTAL_SHARES} company shares, {money(VICTORY_CASH)} and a vehicle still on the road, and
             the company is yours.
           </p>
           {/* A link styled as a button, not a button inside a link: one control, one tab stop. */}
-          <Link to="/how-to-play" className="se-btn" style={{ ...buttonStyle('quiet'), textDecoration: 'none', marginTop: '0.9rem' }}>
+          <Link to="/how-to-play" className={buttonClass('quiet')} style={{ marginTop: '0.9rem' }}>
             How to play →
           </Link>
         </header>
@@ -232,7 +232,7 @@ export default function Lobby() {
           <div style={field}>
             <Label>Name this run</Label>
             <input
-              className="se-input"
+              className="kit-input"
               aria-label="Name this run"
               style={input}
               value={name}
@@ -259,7 +259,7 @@ export default function Lobby() {
                 {humanNames.slice(0, humans).map((n, i) => (
                   <input
                     key={i}
-                    className="se-input"
+                    className="kit-input"
                     aria-label={`Player ${i + 1}`}
                     style={{ ...input, width: 150 }}
                     value={n}
@@ -271,7 +271,7 @@ export default function Lobby() {
               </div>
               <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
                 One device, passed round. Everything on the board is public, so the handover is just
-                a pause — nobody has to look away.
+                a pause: nobody has to look away.
               </p>
             </div>
           )}
@@ -279,7 +279,7 @@ export default function Lobby() {
           <div style={field}>
             <Label>Seed (optional)</Label>
             <input
-              className="se-input"
+              className="kit-input"
               aria-label="Seed (optional)"
               style={{ ...input, width: 220 }}
               value={seed}
@@ -287,7 +287,7 @@ export default function Lobby() {
               onChange={e => setSeed(e.target.value)}
             />
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-              The same seed always deals the same cards and rolls the same dice — useful for playing
+              The same seed always deals the same cards and rolls the same dice, useful for playing
               the identical season twice.
             </p>
           </div>
@@ -312,7 +312,7 @@ export default function Lobby() {
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
               {chosen
                 ? PRESETS[chosen].blurb
-                : 'A mixture of your own — set the switches below however you like.'}
+                : 'A mixture of your own: set the switches below however you like.'}
             </p>
           </div>
 
@@ -331,7 +331,7 @@ export default function Lobby() {
                 ))}
               </div>
               <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0, color: UI.textFaint }}>
-                {DIFFICULTIES[level].blurb} Every handicap is knowledge or discipline — the computer
+                {DIFFICULTIES[level].blurb} Every handicap is knowledge or discipline: the computer
                 hauliers never roll better than you do. Fewer rivals is the other dial: against three,
                 one of them takes the company three times in four even when everybody plays equally.
               </p>
@@ -362,7 +362,7 @@ export default function Lobby() {
 
           {tooMany && (
             <p style={{ ...bodySmall, color: UI.bad, margin: 0 }}>
-              {total} hauliers — the table seats {MAX_HAULIERS}.
+              {total} hauliers, but the table seats {MAX_HAULIERS}.
             </p>
           )}
 
@@ -403,6 +403,7 @@ export default function Lobby() {
                           <button
                             type="button"
                             style={saveOpen}
+                            className="se-save-open"
                             onClick={() => open(save.id)}
                             title={`Open ${save.name}`}
                           >
@@ -456,9 +457,9 @@ export default function Lobby() {
 
         <Panel title="Free-haulage mode" style={{ marginTop: '1.5rem', borderStyle: 'dashed', background: 'transparent' }}>
           <p style={{ ...bodySmall, margin: 0 }}>
-            A deeper ruleset — real days instead of dice, prices that move continuously, standing
+            A deeper ruleset (real days instead of dice, prices that move continuously, standing
             wages and weather and insurance running all the time rather than in this game's turn
-            structure — is designed in <code>steady-eddie-design.md</code> but not built, the same
+            structure) is designed in <code>steady-eddie-design.md</code> but not built, the same
             way The Tea Race deferred its own "Voyage mode". The rules above are this fork's own
             core rules.
           </p>
@@ -554,17 +555,10 @@ const field: React.CSSProperties = {
   alignItems: 'flex-start',
 };
 
+/** Kit fields (lib/kit.css) carry the type, edge and states; this only sizes them. */
 const input: React.CSSProperties = {
-  fontFamily: FONT.body,
-  fontSize: '0.9rem',
-  padding: '0.4rem 0.55rem',
-  background: UI.ground,
-  border: `1px solid ${UI.ruleStrong}`,
-  borderRadius: 2,
-  color: UI.text,
   width: '100%',
   maxWidth: 320,
-  boxSizing: 'border-box',
 };
 
 const saveRow: React.CSSProperties = {
@@ -581,6 +575,7 @@ const saveRow: React.CSSProperties = {
 const saveOpen: React.CSSProperties = {
   display: 'flex',
   alignItems: 'baseline',
+  alignContent: 'center',
   gap: '0.5rem',
   flexWrap: 'wrap',
   flex: 1,
@@ -615,8 +610,6 @@ const saveDelete: React.CSSProperties = {
   fontSize: '0.8rem',
   lineHeight: 1,
   padding: '0.3rem 0.45rem',
-  minWidth: 32,
-  minHeight: 32,
   border: '1px solid transparent',
   borderRadius: 2,
   cursor: 'pointer',
