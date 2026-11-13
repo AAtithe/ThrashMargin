@@ -811,7 +811,11 @@ export default function MapView({
                 textAnchor={LABEL_ANCHOR[side]}
                 fontSize={CITY_FONT * inv}
                 fill={isHovered ? CHART.routeLive : CHART.label}
-                fillOpacity={opacity}
+                /* The fog fades the whole label, halo included, and never below 0.7. Fading the
+                   fill alone left an opaque pale halo carrying faint ink, which read as pale blue
+                   lettering and could not be read over the land; the mark beside it still carries
+                   the full fade. */
+                opacity={0.7 + 0.3 * opacity}
                 fontFamily={FONT.body}
                 stroke={CHART.labelHalo}
                 strokeWidth={3 * inv}

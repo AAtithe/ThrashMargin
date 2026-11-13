@@ -31,7 +31,7 @@ const CONTENT: React.CSSProperties = {
 };
 
 const TITLE: React.CSSProperties = {
-  fontSize: '2rem',
+  fontSize: 'clamp(1.5rem, 6vw, 2rem)',
   letterSpacing: '0.1em',
   color: UI.brass,
   margin: '0 0 0.2rem',
@@ -57,30 +57,65 @@ const CARD: React.CSSProperties = {
   padding: '0.8rem 1rem',
   marginBottom: '0.6rem',
   display: 'flex',
+  flexWrap: 'wrap',
   alignItems: 'center',
   justifyContent: 'space-between',
   gap: '0.8rem',
 };
 
+/** 40px tall at the least, so every lobby control is a comfortable tap on a phone. */
 const BUTTON: React.CSSProperties = {
   background: UI.panel,
-  border: `1px solid ${UI.rule}`,
+  border: `1px solid ${UI.ruleStrong}`,
   color: UI.text,
   padding: '0.5rem 0.9rem',
+  minHeight: 40,
   fontFamily: 'inherit',
   fontSize: '0.85rem',
   letterSpacing: '0.05em',
   cursor: 'pointer',
+  whiteSpace: 'nowrap',
+};
+
+/** The lobby's one call to action, in the accent: the same look as the game's Advance one week. */
+const PRIMARY_BUTTON: React.CSSProperties = {
+  ...BUTTON,
+  border: `1px solid ${UI.brass}`,
+  color: UI.brass,
+  background: UI.tintBrass,
 };
 
 const FIELD: React.CSSProperties = {
   background: UI.panel,
-  border: `1px solid ${UI.rule}`,
+  border: `1px solid ${UI.ruleStrong}`,
   color: UI.text,
   fontFamily: 'inherit',
   fontSize: '0.85rem',
   padding: '0.5rem 0.7rem',
+  minHeight: 40,
+  boxSizing: 'border-box',
   flex: 1,
+  minWidth: 0,
+};
+
+/** A select inside a settings line: as wide as its longest option, but never wider than the column. */
+const SELECT: React.CSSProperties = {
+  ...FIELD,
+  flex: '0 1 auto',
+  width: 'auto',
+  maxWidth: '100%',
+  minHeight: 36,
+  fontSize: '0.75rem',
+  padding: '0.3rem 0.5rem',
+};
+
+/** A settings line holding a select: wraps under its label on a narrow screen rather than overflow. */
+const SELECT_ROW: React.CSSProperties = {
+  fontSize: '0.75rem',
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '0.4rem',
+  alignItems: 'center',
 };
 
 function statusBadge(status: SaveMeta['status']): { text: string; color: string } {
@@ -171,14 +206,14 @@ export default function Lobby() {
       {showTutorial && <TutorialOverlay onClose={() => setShowTutorial(false)} />}
       <PortalNav variant="header" />
       <div style={CONTENT}>
-        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '1rem' }}>
-          <h1 style={TITLE}>Banco di Niccolo</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.6rem 1rem', marginBottom: '0.5rem' }}>
+          <h1 style={{ ...TITLE, margin: 0 }}>Banco di Niccolò</h1>
           <button style={BUTTON} onClick={() => setShowTutorial(true)}>
             How to play
           </button>
         </div>
         <p style={SUBTITLE}>
-          Trading, banking and intelligence in the House of Niccolo — Chapter 0: Claes begins.
+          Trading, banking and intelligence in the House of Niccolò. Chapter 0: Claes begins.
         </p>
 
         {error && (
@@ -196,7 +231,7 @@ export default function Lobby() {
             onChange={e => setName(e.target.value)}
             maxLength={40}
           />
-          <button style={BUTTON} onClick={handleNew} disabled={starting}>
+          <button style={{ ...PRIMARY_BUTTON, ...(starting ? { opacity: 0.6 } : {}) }} onClick={handleNew} disabled={starting}>
             {starting ? <BusyLabel>Opening…</BusyLabel> : 'Begin →'}
           </button>
         </div>
@@ -210,10 +245,10 @@ export default function Lobby() {
         </label>
 
         {freeplay && (
-          <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '0.8rem', paddingLeft: '1.4rem' }}>
+          <label style={{ ...SELECT_ROW, color: UI.textSoft, marginBottom: '0.8rem', paddingLeft: '1.4rem' }}>
             <span style={{ whiteSpace: 'nowrap' }}>Rivals:</span>
             <select
-              style={{ ...FIELD, flex: 'none', width: 'auto', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+              style={SELECT}
               value={rivals}
               onChange={e => setRivals(Number(e.target.value) as RivalCount)}
             >
@@ -226,10 +261,10 @@ export default function Lobby() {
         )}
 
         {freeplay && (
-          <label style={{ fontSize: '0.75rem', color: UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '0.8rem', paddingLeft: '1.4rem' }}>
+          <label style={{ ...SELECT_ROW, color: UI.textSoft, marginBottom: '0.8rem', paddingLeft: '1.4rem' }}>
             <span style={{ whiteSpace: 'nowrap' }}>Winning means:</span>
             <select
-              style={{ ...FIELD, flex: 'none', width: 'auto', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+              style={SELECT}
               value={goal}
               onChange={e => setGoal(e.target.value as FreeplayGoal)}
             >
@@ -265,11 +300,11 @@ export default function Lobby() {
           </span>
         </label>
 
-        <label style={{ fontSize: '0.75rem', color: freeplay ? UI.textFaint : UI.textSoft, display: 'flex', gap: '0.4rem', alignItems: 'center', marginBottom: '2rem' }}>
-          <span style={{ whiteSpace: 'nowrap' }}>Let a friend run a rival house this campaign:</span>
+        <label style={{ ...SELECT_ROW, color: freeplay ? UI.textFaint : UI.textSoft, marginBottom: '2rem' }}>
+          <span>Let a friend run a rival house this campaign:</span>
           <select
             disabled={freeplay}
-            style={{ ...FIELD, flex: 'none', width: 'auto', fontSize: '0.75rem', padding: '0.3rem 0.5rem' }}
+            style={{ ...SELECT, ...(freeplay ? { opacity: 0.6 } : {}) }}
             value={freeplay ? '' : hotseatHouseId}
             onChange={e => setHotseatHouseId(e.target.value)}
           >
@@ -283,7 +318,9 @@ export default function Lobby() {
         <p style={SECTION_LABEL}>Active campaigns</p>
         {!savesLoaded && <LoadingRows rows={2} label="Loading your campaigns" />}
         {savesLoaded && active.length === 0 && (
-          <p style={{ color: UI.textFaint, fontSize: '0.85rem' }}>No active campaigns — start one above.</p>
+          <p style={{ color: UI.textFaint, fontSize: '0.85rem', border: `1px dashed ${UI.rule}`, padding: '0.9rem 1rem', margin: 0 }}>
+            No active campaigns yet. Name one above and press Begin.
+          </p>
         )}
         {active.map(save => (
           <SaveCard
@@ -331,23 +368,29 @@ function SaveCard({ save, confirmDelete, setConfirmDelete, onContinue, onDelete 
   const isConfirming = confirmDelete === save.id;
   return (
     <div style={CARD}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: UI.brass, fontSize: '0.9rem' }}>{save.name}</div>
-        <div style={{ fontSize: '0.72rem', color: UI.textSoft }}>
+      <div style={{ flex: '1 1 10rem', minWidth: 0 }}>
+        <div style={{ color: UI.brass, fontSize: '0.95rem', overflowWrap: 'anywhere' }}>{save.name}</div>
+        <div style={{ fontSize: '0.75rem', color: UI.textSoft, marginTop: '0.15rem' }}>
           Week {save.turn} · <span style={{ color: badge.color }}>{badge.text}</span> · {relTime(save.savedAt)}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0, marginLeft: 'auto' }}>
         {isConfirming ? (
           <>
             <span style={{ color: UI.bad, fontSize: '0.75rem', alignSelf: 'center' }}>Delete?</span>
-            <button style={BUTTON} onClick={onDelete}>Yes</button>
+            <button style={{ ...BUTTON, border: `1px solid ${UI.bad}`, color: UI.bad }} onClick={onDelete}>Yes</button>
             <button style={BUTTON} onClick={() => setConfirmDelete(null)}>No</button>
           </>
         ) : (
           <>
             <button style={BUTTON} onClick={onContinue}>{save.status === 'active' ? 'Continue →' : 'View'}</button>
-            <button style={BUTTON} onClick={() => setConfirmDelete(save.id)}>🗑</button>
+            <button
+              style={{ ...BUTTON, color: UI.textSoft }}
+              onClick={() => setConfirmDelete(save.id)}
+              aria-label={`Delete ${save.name}`}
+            >
+              Delete
+            </button>
           </>
         )}
       </div>

@@ -155,8 +155,9 @@ const LAUNCHER: React.CSSProperties = {
   top: '0.6rem',
   zIndex: 30,
   background: UI.panelRaised,
-  border: `1px solid ${UI.rule}`,
+  border: `1px solid ${UI.ruleStrong}`,
   boxShadow: `0 4px 14px ${UI.shadow}`,
+  minHeight: 36,
   color: UI.text,
   cursor: 'pointer',
   fontFamily: 'inherit',
@@ -183,8 +184,9 @@ const PANEL_CLOSE: React.CSSProperties = {
   color: UI.textSoft,
   cursor: 'pointer',
   fontFamily: 'inherit',
-  width: 30,
-  height: 28,
+  width: 40,
+  height: 40,
+  flexShrink: 0,
 };
 
 /**
@@ -211,7 +213,7 @@ function usePanelLayout() {
 
 const BUTTON: React.CSSProperties = {
   background: UI.panel,
-  border: `1px solid ${UI.rule}`,
+  border: `1px solid ${UI.ruleStrong}`,
   color: UI.text,
   padding: '0.5rem 0.9rem',
   fontFamily: 'inherit',
@@ -671,9 +673,10 @@ export default function GameScreen() {
           ) : (
             <CampaignProgress chapterNumber={objectiveChapter} title={CHAPTER_TITLES[objectiveChapter] ?? `Chapter ${objectiveChapter}`} />
           )}
+          {/* The one action every week turns on, so it carries the accent; the rest stay plain. */}
           <button
             id="advance-week-button"
-            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem' }}
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', border: `1px solid ${UI.brass}`, color: UI.brass, background: UI.tintBrass }}
             onClick={handleAdvanceClick}
           >
             Advance one week
@@ -703,7 +706,7 @@ export default function GameScreen() {
           {/* No motion or theme toggle here: the portal bar directly above carries the same two,
               side by side, and every line of header is a line of chart lost. */}
           <button
-            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textFaint }}
+            style={{ ...BUTTON, padding: '0.35rem 0.7rem', fontSize: '0.75rem', color: UI.textSoft }}
             onClick={() => nav('/')}
           >
             ← Back to campaigns
@@ -914,7 +917,9 @@ export default function GameScreen() {
             <button type="button" style={PANEL_CLOSE} onClick={() => setLeftOpen(false)} aria-label="Close objectives and counsel (Esc)" title="Close (Esc)">✕</button>
           </div>
           <div style={PANEL_BODY} className="niccolo-panel-body">
-          {!freeplayMode && (
+          {/* ObjectivesPanel draws nothing with no progress to show (Chapter 0 authors none), so the
+              frame goes with it rather than standing empty under its title. */}
+          {!freeplayMode && objectiveProgress.length > 0 && (
             <Panel title={`Chapter ${objectiveChapter} objectives`}>
               <ObjectivesPanel chapterNumber={objectiveChapter} progress={objectiveProgress} />
             </Panel>

@@ -1,13 +1,7 @@
 import type { ObjectiveProgress } from '../sim/objectives';
 import { UI } from '../theme';
 
-const LABEL: React.CSSProperties = {
-  fontSize: '0.75rem',
-  letterSpacing: '0.15em',
-  textTransform: 'uppercase',
-  color: UI.textSoft,
-  margin: '0 0 0.4rem',
-};
+// No heading of its own: GameScreen frames this in a Panel already titled "Chapter N objectives".
 
 const ROW: React.CSSProperties = {
   padding: '0.35rem 0',
@@ -69,7 +63,6 @@ export default function ObjectivesPanel({ chapterNumber, progress }: ObjectivesP
 
   return (
     <div>
-      <p style={LABEL}>Chapter {chapterNumber} objectives</p>
       {progress.map(p => (
         <ObjectiveRow key={p.objective.id} p={p} />
       ))}

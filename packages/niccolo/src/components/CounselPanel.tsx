@@ -9,13 +9,8 @@ import { useWeekStagger } from './motionKit';
  * of these: an officer points at something, the player decides. See `sim/advisors.ts` for why.
  */
 
-const LABEL: React.CSSProperties = {
-  fontSize: '0.75rem',
-  letterSpacing: '0.15em',
-  textTransform: 'uppercase',
-  color: UI.textSoft,
-  margin: '0 0 0.5rem',
-};
+// No heading of its own: GameScreen frames this in a Panel titled "Counsel", and a second label
+// directly under that title read as a stutter.
 
 const ROW: React.CSSProperties = {
   padding: '0.55rem 0',
@@ -62,7 +57,6 @@ export default function CounselPanel({ state }: { state: GameState }) {
   if (advice.length === 0) {
     return (
       <div>
-        <p style={LABEL}>Counsel</p>
         <p style={{ fontSize: '0.8rem', color: UI.textFaint, margin: 0, fontStyle: 'italic' }}>
           Nobody has anything pressing to say this week.
         </p>
@@ -72,7 +66,6 @@ export default function CounselPanel({ state }: { state: GameState }) {
 
   return (
     <div>
-      <p style={LABEL}>Counsel</p>
       <p style={{ fontSize: '0.72rem', color: UI.textSoft, margin: '0 0 0.5rem' }}>
         What the household would tell you, if asked. They see only what you see — a price they quote is
         from a report that has actually arrived, and may already be out of date.

@@ -80,7 +80,8 @@ const DOTS: React.CSSProperties = {
 
 const BUTTON: React.CSSProperties = {
   background: UI.panel,
-  border: `1px solid ${UI.rule}`,
+  border: `1px solid ${UI.ruleStrong}`,
+  minHeight: 40,
   color: UI.text,
   padding: '0.5rem 0.9rem',
   fontFamily: 'inherit',
@@ -101,8 +102,9 @@ const PRIMARY_BUTTON: React.CSSProperties = {
 const GHOST_BUTTON: React.CSSProperties = {
   ...BUTTON,
   border: 'none',
-  color: UI.textFaint,
-  padding: '0.5rem 0.3rem',
+  background: 'transparent',
+  color: UI.textSoft,
+  padding: '0.5rem 0.6rem',
 };
 
 interface Step {
