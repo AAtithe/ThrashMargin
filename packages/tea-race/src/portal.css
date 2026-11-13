@@ -95,7 +95,7 @@
   .portal-nav-links .portal-nav-link {
     display: inline-flex;
     align-items: center;
-    min-height: 36px;
+    min-height: 40px;
     padding: 0 0.5rem;
   }
   .portal-nav-right { width: 100%; flex-wrap: wrap; gap: 0.5rem !important; }
