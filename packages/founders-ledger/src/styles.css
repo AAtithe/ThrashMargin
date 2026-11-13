@@ -241,3 +241,7 @@ pre.agenda{white-space:pre-wrap;font:15px/1.55 var(--body);background:var(--bg);
 .bar-col{display:grid;grid-template-rows:1fr auto auto;justify-items:center;height:100%;gap:2px}
 .bar-v{width:100%;max-width:28px;align-self:end;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
 @media (prefers-reduced-motion: reduce){.ring .ring-fg{transition:none}}
+
+/* Away: the holiday card. */
+.away-card{border-color:var(--accent);border-width:2px}
+.away-card h2{font-size:21px}
