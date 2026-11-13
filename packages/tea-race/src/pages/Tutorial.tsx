@@ -12,7 +12,6 @@
  * switched on in the game they are about to play.
  */
 
-import { Link } from 'react-router-dom';
 import {
   DECLARATION_TURNS,
   DIFFICULTIES,
@@ -44,7 +43,7 @@ import { GLUT_FACTOR, SHORTAGE_FACTOR } from '../sim/events';
 import { PRICE_CEILING, PRICE_FLOOR } from '../sim/pricing';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
-import { Button, Label, Panel, bodySmall } from '../components/ui';
+import { ButtonLink, Label, Panel, bodySmall } from '../components/ui';
 import { Vignette, type VignetteKind } from '../components/Art';
 import { FIRST_SKILL_LEVEL } from '../sim/career';
 
@@ -52,9 +51,9 @@ const pct = (n: number) => `${Math.round(n * 100)}%`;
 
 export default function Tutorial() {
   return (
-    <div style={page}>
+    <div style={shell}>
       <PortalNav />
-
+      <main style={page}>
       <header style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
         <Label>How to play</Label>
         <h1 style={title}>The Tea Race</h1>
@@ -304,12 +303,12 @@ export default function Tutorial() {
       </Panel>
 
       <div style={{ display: 'flex', gap: '0.5rem' }}>
-        <Link to="/" style={{ textDecoration: 'none' }}>
-          <Button tone="primary">Set up a voyage →</Button>
-        </Link>
+        <ButtonLink to="/" tone="primary">
+          Set up a voyage →
+        </ButtonLink>
       </div>
-
-      <PortalNav />
+      </main>
+      <PortalNav variant="footer" />
     </div>
   );
 }
@@ -330,10 +329,24 @@ function Rule({ name, art, children }: { name: string; art?: VignetteKind; child
   );
 }
 
+/** Full width, like the lobby, so the portal strip runs edge to edge on both pages. */
+const shell: React.CSSProperties = {
+  minHeight: '100vh',
+  display: 'flex',
+  flexDirection: 'column',
+  background: UI.ground,
+  color: UI.text,
+  fontFamily: FONT.body,
+};
+
 const page: React.CSSProperties = {
-  maxWidth: '52rem',
+  // The lobby's column width, so the two pages read as one site.
+  maxWidth: 720,
+  width: '100%',
+  boxSizing: 'border-box',
+  flex: 1,
   margin: '0 auto',
-  padding: '1.2rem 1rem 2.5rem',
+  padding: '2rem 1.25rem 3rem',
   display: 'flex',
   flexDirection: 'column',
   gap: '1rem',

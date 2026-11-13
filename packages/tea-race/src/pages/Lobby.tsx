@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Hero } from '../components/Art';
 import { useGameHybrid } from '../hooks/useGameHybrid';
 import { getStoredUser, hasGameAccess } from '../lib/portalAuth';
@@ -21,7 +21,7 @@ import type { Hazards } from '../sim/types';
 import { VOYAGE_ROUNDS } from '../sim/voyage';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
-import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
+import { Button, ButtonLink, Label, Panel, bodySmall, dataText } from '../components/ui';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 
 /**
@@ -316,9 +316,9 @@ export default function Lobby() {
             {TOTAL_SHARES} company shares, {money(VICTORY_CASH)} and a ship still afloat, and the
             company is yours.
           </p>
-          <Link to="/how-to-play" style={{ textDecoration: 'none', alignSelf: 'flex-start' }}>
-            <Button tone="quiet">How to play →</Button>
-          </Link>
+          <ButtonLink to="/how-to-play" tone="quiet" style={{ marginTop: '1rem' }}>
+            How to play →
+          </ButtonLink>
         </header>
 
         {error && (
@@ -356,6 +356,8 @@ export default function Lobby() {
           <div style={field}>
             <Label>Name this voyage</Label>
             <input
+              className="tr-field"
+              aria-label="Name this voyage"
               style={input}
               value={name}
               placeholder="The 1866 season"
@@ -366,11 +368,11 @@ export default function Lobby() {
           <div style={{ display: 'flex', gap: '1.2rem', flexWrap: 'wrap' }}>
             <div style={field}>
               <Label>Human captains</Label>
-              <Counter value={humans} min={1} max={MAX_CAPTAINS} onChange={setHumanCount} />
+              <Counter label="human captains" value={humans} min={1} max={MAX_CAPTAINS} onChange={setHumanCount} />
             </div>
             <div style={field}>
               <Label>Computer rivals</Label>
-              <Counter value={ai} min={0} max={MAX_CAPTAINS - 1} onChange={setAi} />
+              <Counter label="computer rivals" value={ai} min={0} max={MAX_CAPTAINS - 1} onChange={setAi} />
             </div>
           </div>
 
@@ -381,6 +383,8 @@ export default function Lobby() {
                 {humanNames.slice(0, humans).map((n, i) => (
                   <input
                     key={i}
+                    className="tr-field"
+                    aria-label={`Captain ${i + 1}'s name`}
                     style={{ ...input, width: 150 }}
                     value={n}
                     onChange={e =>
@@ -399,6 +403,8 @@ export default function Lobby() {
           <div style={field}>
             <Label>Seed (optional)</Label>
             <input
+              className="tr-field"
+              aria-label="Seed (optional)"
               style={{ ...input, width: 180 }}
               value={seed}
               placeholder="leave blank for a fresh one"
@@ -542,7 +548,7 @@ export default function Lobby() {
             <LoadingRows rows={2} label="Loading your voyages" />
           ) : saves.length === 0 ? (
             <p style={{ ...bodySmall, margin: 0, color: UI.textFaint }}>
-              No voyages yet. These are saved to your account.
+              No voyages yet. Begin one above and it will be kept here, on your account.
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
@@ -566,6 +572,7 @@ export default function Lobby() {
                               friction for no reason, and it lets the row be one line instead of two. */}
                           <button
                             type="button"
+                            className="tr-row-btn"
                             style={saveOpen}
                             onClick={() => open(save.id)}
                             title={`Open ${save.name}`}
@@ -600,6 +607,7 @@ export default function Lobby() {
                           ) : (
                             <button
                               type="button"
+                              className="tr-icon-btn"
                               style={saveDelete}
                               title={`Delete ${save.name}`}
                               aria-label={`Delete ${save.name}`}
@@ -638,11 +646,13 @@ function relTime(ts: number): string {
 }
 
 function Counter({
+  label,
   value,
   min,
   max,
   onChange,
 }: {
+  label: string;
   value: number;
   min: number;
   max: number;
@@ -650,18 +660,20 @@ function Counter({
 }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-      <Button tone="quiet" disabled={value <= min} onClick={() => onChange(value - 1)}>
+      <Button tone="quiet" ariaLabel={`Fewer ${label}`} disabled={value <= min} onClick={() => onChange(value - 1)} style={counterBtn}>
         −
       </Button>
-      <span style={{ ...dataText, fontSize: '1rem', minWidth: '1.2rem', textAlign: 'center' }}>
+      <span aria-live="polite" style={{ ...dataText, fontSize: '1rem', minWidth: '1.2rem', textAlign: 'center' }}>
         {value}
       </span>
-      <Button tone="quiet" disabled={value >= max} onClick={() => onChange(value + 1)}>
+      <Button tone="quiet" ariaLabel={`More ${label}`} disabled={value >= max} onClick={() => onChange(value + 1)} style={counterBtn}>
         +
       </Button>
     </div>
   );
 }
+
+const counterBtn: React.CSSProperties = { minWidth: 32, fontFamily: FONT.data };
 
 const page: React.CSSProperties = {
   minHeight: '100vh',
@@ -738,7 +750,9 @@ const saveOpen: React.CSSProperties = {
   minWidth: 0,
   background: 'transparent',
   border: 'none',
-  padding: '0.32rem 0',
+  padding: '0.45rem 0.4rem',
+  margin: '0 0 0 -0.4rem',
+  borderRadius: 2,
   cursor: 'pointer',
   textAlign: 'left',
 };
@@ -766,7 +780,12 @@ const saveDelete: React.CSSProperties = {
   color: UI.textFaint,
   fontSize: '0.8rem',
   lineHeight: 1,
-  padding: '0.3rem 0.35rem',
+  width: 32,
+  height: 32,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: 2,
   cursor: 'pointer',
   flex: '0 0 auto',
 };

@@ -353,8 +353,9 @@ export default function GameScreen() {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
-          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+          {/* Dressed as the quiet Buttons beside them, so the header's controls are one size. */}
+          <MotionToggle style={headerToggle} />
+          <ThemeToggle style={headerToggle} />
           {/* Offered whenever a run can actually be planned from where the fleet stands, not only
               on turn one: a player who skipped the tour, or who came back to a half-played game,
               should still be able to ask for it. */}
@@ -850,6 +851,17 @@ const header: React.CSSProperties = {
   background: UI.panel,
 };
 
+/** The shared light/dark and motion toggles, matched to the quiet tone of ui.tsx's Button. */
+const headerToggle: React.CSSProperties = {
+  borderColor: UI.ruleStrong,
+  color: UI.textSoft,
+  fontFamily: FONT.body,
+  fontSize: '0.82rem',
+  padding: '0.35rem 0.65rem',
+  borderRadius: 2,
+  lineHeight: 1.25,
+};
+
 const seasonBanner: React.CSSProperties = {
   display: 'flex',
   alignItems: 'baseline',
@@ -983,7 +995,8 @@ function PanelHead({ title, onClose }: { title: string; onClose: () => void }) {
         onClick={onClose}
         aria-label={`Close ${title.toLowerCase()} (Esc)`}
         title="Close (Esc)"
-        style={{ background: 'none', border: `1px solid ${UI.rule}`, borderRadius: 2, color: UI.textSoft, cursor: 'pointer', fontFamily: FONT.data, fontSize: '0.8rem', width: 30, height: 28 }}
+        className="tr-icon-btn"
+        style={{ background: 'none', border: `1px solid ${UI.rule}`, borderRadius: 2, color: UI.textSoft, cursor: 'pointer', fontFamily: FONT.data, fontSize: '0.8rem', width: 32, height: 32, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
       >
         ✕
       </button>

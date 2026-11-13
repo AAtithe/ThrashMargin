@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { FONT, UI } from '../theme';
 
 /** Small shared primitives, so every panel in the game agrees on its edges and its type scale. */
@@ -35,38 +36,72 @@ export function Button({
   title,
   style,
   id,
+  ariaLabel,
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
-  tone?: 'default' | 'primary' | 'quiet' | 'danger';
+  tone?: Tone;
   title?: string;
   style?: CSSProperties;
   /** A stable hook for the guided tour to spotlight this control. See `GuidedTour.tsx`. */
   id?: string;
+  /** A spoken name, for a button whose face is only a symbol. */
+  ariaLabel?: string;
 }) {
-  const tones: Record<string, CSSProperties> = {
-    default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
-    primary: { borderColor: UI.brass, color: UI.ground, background: UI.brass, fontWeight: 600 },
-    quiet: { borderColor: UI.rule, color: UI.textSoft, background: 'transparent' },
-    danger: { borderColor: UI.bad, color: UI.bad, background: 'transparent' },
-  };
   return (
     <button
       type="button"
+      className="tr-btn"
       id={id}
+      aria-label={ariaLabel}
       onClick={onClick}
       disabled={disabled}
       title={title}
       style={{
         ...buttonBase,
-        ...tones[tone],
+        ...BUTTON_TONES[tone],
         ...(disabled ? { opacity: 0.38, cursor: 'not-allowed' } : {}),
         ...style,
       }}
     >
       {children}
     </button>
+  );
+}
+
+type Tone = 'default' | 'primary' | 'quiet' | 'danger';
+
+const BUTTON_TONES: Record<Tone, CSSProperties> = {
+  default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
+  primary: { borderColor: UI.brass, color: UI.ground, background: UI.brass, fontWeight: 600 },
+  quiet: { borderColor: UI.ruleStrong, color: UI.textSoft, background: 'transparent' },
+  danger: { borderColor: UI.bad, color: UI.bad, background: 'transparent' },
+};
+
+/**
+ * A link dressed as a Button, for navigation. A <button> inside an <a> is two nested interactive
+ * controls (keyboard users meet it twice, screen readers announce it oddly); this is one.
+ */
+export function ButtonLink({
+  to,
+  children,
+  tone = 'default',
+  style,
+}: {
+  to: string;
+  children: ReactNode;
+  tone?: Tone;
+  style?: CSSProperties;
+}) {
+  return (
+    <Link
+      to={to}
+      className="tr-btn"
+      style={{ ...buttonBase, ...BUTTON_TONES[tone], display: 'inline-flex', alignItems: 'center', textDecoration: 'none', ...style }}
+    >
+      {children}
+    </Link>
   );
 }
 

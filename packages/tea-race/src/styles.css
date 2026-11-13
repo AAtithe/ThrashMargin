@@ -14,15 +14,15 @@
   --ui-panel: #f8f4eb;
   --ui-panel-raised: #e6ddcb;
   --ui-rule: #d4c9b3;
-  --ui-rule-strong: #b0a38a;
+  --ui-rule-strong: #9d8f74;
   --ui-text: #2a251e;
   --ui-text-soft: #5a5345;
-  --ui-text-faint: #847b68;
+  --ui-text-faint: #6a6250;
   --ui-brass: #8b5e17;
-  --ui-verdigris: #2c6f66;
+  --ui-verdigris: #28665e;
   --ui-ensign: #a8342f;
-  --ui-good: #3d7434;
-  --ui-warn: #8f6210;
+  --ui-good: #376a2f;
+  --ui-warn: #835a0e;
   --ui-bad: #a8342f;
   --ui-scrim: rgba(42, 37, 30, 0.45);
   --ui-scrim-light: rgba(42, 37, 30, 0.18);
@@ -33,22 +33,25 @@
   --ui-tint-bad: rgba(168, 52, 47, 0.08);
   --ui-tint-brass: rgba(139, 94, 23, 0.1);
   --ui-bad-rule: rgba(168, 52, 47, 0.35);
+  /* Washed over a control under the pointer, and a little deeper while it is pressed. */
+  --ui-hover: rgba(60, 45, 20, 0.07);
+  --ui-press: rgba(60, 45, 20, 0.14);
 }
 :root[data-theme="dark"] {
   --ui-ground: #0d1419;
   --ui-panel: #141e25;
   --ui-panel-raised: #1b272f;
   --ui-rule: #26343d;
-  --ui-rule-strong: #3a4b56;
+  --ui-rule-strong: #4f626e;
   --ui-text: #e6ddc9;
   --ui-text-soft: #93a3ad;
-  --ui-text-faint: #63737d;
+  --ui-text-faint: #80909a;
   --ui-brass: #d09a4e;
   --ui-verdigris: #6fb0a4;
-  --ui-ensign: #c2606a;
+  --ui-ensign: #d0727b;
   --ui-good: #7fb069;
   --ui-warn: #d9a441;
-  --ui-bad: #c2606a;
+  --ui-bad: #d0727b;
   --ui-scrim: rgba(13, 20, 25, 0.78);
   --ui-scrim-light: rgba(13, 20, 25, 0.35);
   --ui-cover: rgba(6, 11, 14, 0.92);
@@ -57,7 +60,9 @@
   --ui-tint-warn: rgba(217, 164, 65, 0.09);
   --ui-tint-bad: rgba(194, 96, 106, 0.1);
   --ui-tint-brass: rgba(208, 154, 78, 0.09);
-  --ui-bad-rule: rgba(194, 96, 106, 0.4);
+  --ui-bad-rule: rgba(208, 114, 123, 0.4);
+  --ui-hover: rgba(230, 221, 201, 0.07);
+  --ui-press: rgba(230, 221, 201, 0.14);
 }
 
 body {
@@ -82,6 +87,62 @@ body {
 
 button:focus:not(:focus-visible) {
   outline: none;
+}
+
+/*
+ * Pointer feedback for the game's buttons (ui.tsx's Button, the panel launchers, the lobby's save
+ * rows, the panels' close buttons). Inline styles own each control's background, so the wash is
+ * laid over it as a background image, which works on every tone in both modes.
+ */
+.tr-btn,
+.tr-launcher,
+.tr-row-btn,
+.tr-icon-btn {
+  transition: background-image 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
+}
+.tr-btn:not(:disabled):hover,
+.tr-launcher:hover,
+.tr-row-btn:hover,
+.tr-icon-btn:hover {
+  background-image: linear-gradient(var(--ui-hover), var(--ui-hover)) !important;
+}
+.tr-btn:not(:disabled):active,
+.tr-launcher:active,
+.tr-row-btn:active,
+.tr-icon-btn:active {
+  background-image: linear-gradient(var(--ui-press), var(--ui-press)) !important;
+}
+.tr-btn:not(:disabled):active,
+.tr-icon-btn:active {
+  transform: translateY(1px);
+}
+.tr-icon-btn:hover {
+  color: var(--ui-text) !important;
+  border-color: var(--ui-rule-strong) !important;
+}
+.tr-launcher:hover {
+  border-color: var(--ui-brass) !important;
+}
+/* Text fields: the focus ring is the global one; the border follows it so the field reads as live. */
+.tr-field:focus,
+.tr-field:hover {
+  border-color: var(--ui-brass) !important;
+}
+.tr-field::placeholder {
+  color: var(--ui-text-faint);
+  opacity: 1;
+}
+
+/* Fingers need bigger targets than a mouse does. Only on touch screens, so the dense desktop
+   panels keep their tight rhythm. */
+@media (pointer: coarse) {
+  .tr-btn,
+  .tr-icon-btn {
+    min-height: 40px;
+  }
+  .tr-icon-btn {
+    min-width: 40px;
+  }
 }
 
 /* Event cards stack above the floating turn bar rather than over it. */
