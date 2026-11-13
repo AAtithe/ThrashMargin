@@ -298,6 +298,9 @@ function rulesAndPresets(ok: Ok): void {
  * formation moves switched off, all 30 equal the values before, that is origin/main's. Round 6's
  * setup and player fields at their defaults are left out of the hash (strip, above), so no setup and
  * standard tech are unchanged. See fireline-round6-design.md, section 10.
+ * Helipads repairing parked aircraft (2026-11-13) moved 7 advanced battles (lines easy size-a and
+ * size-b, lines hard size-a, classic easy both seeds, classic hard size-a, three easy size-b), which
+ * were regenerated: with that one repair block switched off, all 30 equal the values before exactly.
  */
 const PRE_ROUND6: Record<string, string> = {
   'nosetup|easy|size-a': '3425e6edb280df2e',
@@ -306,17 +309,17 @@ const PRE_ROUND6: Record<string, string> = {
   'nosetup|normal|size-b': 'ee788c01da261681',
   'nosetup|hard|size-a': '061e68bb7dd33891',
   'nosetup|hard|size-b': '6120a39f5cd1b61e',
-  'lines|easy|size-a': 'bddba69c5c564520',
-  'lines|easy|size-b': '965c654a0a5fbbd8',
+  'lines|easy|size-a': '0ecd7800d160c695',
+  'lines|easy|size-b': '94b568def19dc3e9',
   'lines|normal|size-a': 'd71e1a8bd4da98f0',
   'lines|normal|size-b': '1acd764501f02f15',
-  'lines|hard|size-a': 'da6c635074caaaac',
+  'lines|hard|size-a': '1b8ca331fffad212',
   'lines|hard|size-b': '1784ee295dbf4c14',
-  'classic|easy|size-a': 'dfa69500c8f26d33',
-  'classic|easy|size-b': 'b34f54e52da2ef32',
+  'classic|easy|size-a': '037582df23193f78',
+  'classic|easy|size-b': '11189a6f60d080ca',
   'classic|normal|size-a': 'f206f33639fb9733',
   'classic|normal|size-b': '9efacdbff77428ae',
-  'classic|hard|size-a': 'b0e1c9fde1ef2f46',
+  'classic|hard|size-a': 'b5a2baf45ac5dd98',
   'classic|hard|size-b': '42e1c1d08d96b6ea',
   'standard|easy|size-a': '20bd8da2b8758bc5',
   'standard|easy|size-b': '341594413f75a712',
@@ -325,7 +328,7 @@ const PRE_ROUND6: Record<string, string> = {
   'standard|hard|size-a': '1f4d39caa46bbeef',
   'standard|hard|size-b': '586549cee40c3055',
   'three|easy|size-a': '10f32b01d00c6b55',
-  'three|easy|size-b': 'cddc488339c84c05',
+  'three|easy|size-b': 'f8c120a0b8d86d72',
   'three|normal|size-a': 'a6f3bae58f760576',
   'three|normal|size-b': 'f6fe85e5118f9e36',
   'three|hard|size-a': '6ed6c38fdf6b8935',
