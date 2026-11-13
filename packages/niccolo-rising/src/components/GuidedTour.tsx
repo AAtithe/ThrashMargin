@@ -147,7 +147,7 @@ interface TourStep {
 const INTRO: TourStep = {
   title: 'Your first hour in Bruges',
   body: () =>
-    'I will point at one thing at a time and wait while you use it. This is your real character — the training, the money and the mission are all yours to keep. Skip at any time.',
+    'I will point at one thing at a time and wait while you use it. This is your real character: the training, the money and the mission are all yours to keep. Skip at any time.',
   target: () => null,
   isComplete: () => false,
   manual: true,
@@ -156,7 +156,7 @@ const INTRO: TourStep = {
 const BARS: TourStep = {
   title: 'Time is the resource',
   body: (v, plan) =>
-    `Energy, Nerve, Spirits and Health. Every verb in this game spends one of them, and every one of them refills by the clock whether you are at the screen or not — you have ${Math.floor(v.s.bars.energy.cur)} of ${barMax(v.s, 'energy')} Energy and ${Math.floor(v.s.bars.nerve.cur)} of ${barMax(v.s, 'nerve')} Nerve right now. ` +
+    `Energy, Nerve, Spirits and Health. Every verb in this game spends one of them, and every one of them refills by the clock whether you are at the screen or not. You have ${Math.floor(v.s.bars.energy.cur)} of ${barMax(v.s, 'energy')} Energy and ${Math.floor(v.s.bars.nerve.cur)} of ${barMax(v.s, 'nerve')} Nerve right now. ` +
     'That is the whole rhythm: spend what has built up, go and live your life, come back to a full bar. Nothing is lost by closing the tab, and nothing is gained by sitting on it.' +
     (plan.canTrain ? '' : ' Your Energy is spent for now, so training waits for it to refill; this run skips the yard and goes on to what Nerve can buy.'),
   target: () => 'nr-bars',
@@ -454,22 +454,24 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
         data-tour-manual={isManual && !elsewhere ? '1' : '0'}
       >
         <p style={stepLabel}>
-          Guided first hour — {stepIndex + 1} of {steps.length}
+          Guided first hour · {stepIndex + 1} of {steps.length}
         </p>
         <h3 style={cardTitle}>{elsewhere ? `Go to ${PLACE_NAMES[step.place!]}` : step.title}</h3>
         <p style={cardBody}>{body}</p>
         <div style={footer}>
-          <button type="button" style={ghostButton} onClick={finish}>
+          <button type="button" className="nr-btn" data-tone="quiet" style={ghostButton} onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}
           </button>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             {!isFirst && (
-              <button type="button" style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
+              <button type="button" className="nr-btn" data-tone="default" style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
                 Back
               </button>
             )}
             <button
               type="button"
+              className="nr-btn"
+              data-tone={isManual && !elsewhere ? 'primary' : 'default'}
               style={isManual && !elsewhere ? primaryButton : plainButton}
               onClick={() => (isLast ? finish() : setStepIndex(i => Math.min(i + 1, steps.length - 1)))}
             >
@@ -505,7 +507,7 @@ const CARD: React.CSSProperties = {
   boxSizing: 'border-box',
   background: UI.panelRaised,
   border: `1px solid ${UI.brass}`,
-  boxShadow: '0 10px 44px rgba(0,0,0,0.5)',
+  boxShadow: `0 10px 44px ${UI.shadow}`,
   padding: '1rem 1.1rem 0.9rem',
   fontFamily: FONT.body,
   color: UI.text,

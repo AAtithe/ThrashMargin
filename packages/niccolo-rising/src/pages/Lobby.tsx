@@ -13,8 +13,10 @@ const CONTENT: React.CSSProperties = { maxWidth: 640, margin: '0 auto', padding:
 const TITLE: React.CSSProperties = { fontFamily: FONT.display, fontSize: '2rem', letterSpacing: '0.08em', color: UI.brass, margin: '0 0 0.2rem', fontWeight: 'normal' };
 const LABEL: React.CSSProperties = { fontSize: '0.75rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: UI.textSoft, margin: '0 0 0.6rem' };
 const CARD: React.CSSProperties = { border: `1px solid ${UI.rule}`, background: UI.panelRaised, padding: '0.8rem 1rem', marginBottom: '0.6rem', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.8rem' };
-const BUTTON: React.CSSProperties = { background: UI.panel, border: `1px solid ${UI.rule}`, color: UI.text, padding: '0.5rem 0.9rem', fontFamily: 'inherit', fontSize: '0.85rem', cursor: 'pointer' };
-const FIELD: React.CSSProperties = { background: UI.panel, border: `1px solid ${UI.rule}`, color: UI.text, fontFamily: 'inherit', fontSize: '0.85rem', padding: '0.5rem 0.7rem', flex: 1 };
+const BUTTON: React.CSSProperties = { background: UI.panel, border: `1px solid ${UI.ruleStrong}`, color: UI.text, padding: '0.5rem 0.9rem', fontFamily: 'inherit', fontSize: '0.85rem', cursor: 'pointer', whiteSpace: 'nowrap' };
+const PRIMARY: React.CSSProperties = { ...BUTTON, background: UI.brass, borderColor: UI.brass, color: UI.ground, fontWeight: 600 };
+const DANGER: React.CSSProperties = { ...BUTTON, background: 'transparent', borderColor: UI.bad, color: UI.bad };
+const FIELD: React.CSSProperties = { background: UI.panel, border: `1px solid ${UI.ruleStrong}`, color: UI.text, fontFamily: 'inherit', fontSize: '0.85rem', padding: '0.5rem 0.7rem', flex: 1, minWidth: 0 };
 
 function relTime(ts: number): string {
   const m = Math.floor((Date.now() - ts) / 60000);
@@ -97,20 +99,27 @@ export default function Lobby() {
         </p>
 
         {error && (
-          <p style={{ fontSize: '0.8rem', color: UI.bad, border: `1px solid ${UI.bad}`, padding: '0.6rem 0.8rem', margin: '0 0 1.2rem' }}>{error}</p>
+          <p role="alert" style={{ fontSize: '0.8rem', color: UI.bad, background: UI.tintBad, border: `1px solid ${UI.badRule}`, padding: '0.6rem 0.8rem', margin: '0 0 1.2rem' }}>{error}</p>
         )}
 
-        <p style={LABEL}>A new character</p>
-        <div style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem' }}>
-          <input style={FIELD} placeholder="Claes" value={name} onChange={e => setName(e.target.value)} maxLength={40} />
-          <button style={BUTTON} onClick={handleNew} disabled={starting}>
+        <label htmlFor="nr-new-name" style={{ ...LABEL, display: 'block' }}>A new character</label>
+        <form
+          style={{ display: 'flex', gap: '0.6rem', marginBottom: '2rem' }}
+          onSubmit={e => { e.preventDefault(); if (!starting) void handleNew(); }}
+        >
+          <input id="nr-new-name" className="nr-field" style={FIELD} placeholder="Claes" value={name} onChange={e => setName(e.target.value)} maxLength={40} autoComplete="off" />
+          <button type="submit" className="nr-btn" data-tone="primary" style={{ ...PRIMARY, ...(starting ? { opacity: 0.6, cursor: 'wait' } : {}) }} disabled={starting}>
             {starting ? <BusyLabel>Beginning…</BusyLabel> : 'Begin →'}
           </button>
-        </div>
+        </form>
 
-        <p style={LABEL}>Your characters</p>
+        <h2 style={{ ...LABEL, fontWeight: 'normal' }}>Your characters</h2>
         {!savesLoaded && <LoadingRows rows={2} label="Loading your characters" />}
-        {savesLoaded && saves.length === 0 && <p style={{ color: UI.textFaint, fontSize: '0.85rem' }}>None yet. Begin one above.</p>}
+        {savesLoaded && saves.length === 0 && (
+          <p style={{ color: UI.textSoft, fontSize: '0.85rem', border: `1px dashed ${UI.rule}`, padding: '0.9rem 1rem', margin: 0 }}>
+            None yet. Name one above and begin.
+          </p>
+        )}
         {saves.map(save => (
           <SaveCard
             key={save.id}
@@ -137,22 +146,22 @@ function SaveCard({ save, confirming, onConfirm, onCancel, onContinue, onDelete 
   onDelete: () => void;
 }) {
   return (
-    <div style={CARD}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: UI.brass, fontSize: '0.9rem' }}>{save.name}</div>
-        <div style={{ fontSize: '0.72rem', color: UI.textSoft }}>Level {save.turn} · {relTime(save.savedAt)}</div>
+    <div style={{ ...CARD, flexWrap: 'wrap' }}>
+      <div style={{ flex: '1 1 8rem', minWidth: 0 }}>
+        <div style={{ color: UI.brass, fontSize: '0.95rem', fontFamily: FONT.display, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{save.name}</div>
+        <div style={{ fontSize: '0.75rem', color: UI.textSoft, marginTop: 2 }}>Level {save.turn} · {relTime(save.savedAt)}</div>
       </div>
-      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'flex-end' }}>
         {confirming ? (
           <>
-            <span style={{ color: UI.bad, fontSize: '0.75rem', alignSelf: 'center' }}>Delete for good?</span>
-            <button style={BUTTON} onClick={onDelete}>Yes</button>
-            <button style={BUTTON} onClick={onCancel}>No</button>
+            <span style={{ color: UI.bad, fontSize: '0.78rem' }}>Delete for good?</span>
+            <button type="button" className="nr-btn" data-tone="danger" style={DANGER} onClick={onDelete}>Yes</button>
+            <button type="button" className="nr-btn" data-tone="default" style={BUTTON} onClick={onCancel}>No</button>
           </>
         ) : (
           <>
-            <button style={BUTTON} onClick={onContinue}>Continue →</button>
-            <button style={BUTTON} onClick={onConfirm}>Delete</button>
+            <button type="button" className="nr-btn" data-tone="default" style={BUTTON} onClick={onContinue}>Continue →</button>
+            <button type="button" className="nr-btn" data-tone="quiet" style={{ ...BUTTON, background: 'transparent', color: UI.textSoft }} onClick={onConfirm}>Delete</button>
           </>
         )}
       </div>

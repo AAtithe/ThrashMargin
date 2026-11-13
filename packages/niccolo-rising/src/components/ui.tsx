@@ -25,6 +25,7 @@ export function Button({
   title,
   style,
   id,
+  current,
 }: {
   children: ReactNode;
   onClick?: () => void;
@@ -34,6 +35,8 @@ export function Button({
   style?: CSSProperties;
   /** A stable hook for the guided first hours to spotlight this control. See `GuidedTour.tsx`. */
   id?: string;
+  /** The selected one of a set (the place tabs): announced as the current page. */
+  current?: boolean;
 }) {
   const tones: Record<string, CSSProperties> = {
     default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
@@ -45,6 +48,9 @@ export function Button({
     <button
       type="button"
       id={id}
+      className="nr-btn"
+      data-tone={tone}
+      aria-current={current ? 'page' : undefined}
       onClick={onClick}
       disabled={disabled}
       title={title}

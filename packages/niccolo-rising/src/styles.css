@@ -17,12 +17,12 @@
   --ui-rule-strong: #b0a38a;
   --ui-text: #2a251e;
   --ui-text-soft: #5a5345;
-  --ui-text-faint: #847b68;
-  --ui-brass: #8b5e17;
-  --ui-verdigris: #2c6f66;
+  --ui-text-faint: #675f4f;
+  --ui-brass: #7f5514;
+  --ui-verdigris: #296860;
   --ui-ensign: #a8342f;
-  --ui-good: #3d7434;
-  --ui-warn: #8f6210;
+  --ui-good: #386b30;
+  --ui-warn: #80570c;
   --ui-bad: #a8342f;
   --ui-scrim: rgba(42, 37, 30, 0.45);
   --ui-scrim-light: rgba(42, 37, 30, 0.18);
@@ -46,13 +46,13 @@
   --ui-rule-strong: #3a4b56;
   --ui-text: #e6ddc9;
   --ui-text-soft: #93a3ad;
-  --ui-text-faint: #63737d;
+  --ui-text-faint: #808f99;
   --ui-brass: #d09a4e;
   --ui-verdigris: #6fb0a4;
-  --ui-ensign: #c2606a;
+  --ui-ensign: #cf6f79;
   --ui-good: #7fb069;
   --ui-warn: #d9a441;
-  --ui-bad: #c2606a;
+  --ui-bad: #cf6f79;
   --ui-scrim: rgba(13, 20, 25, 0.78);
   --ui-scrim-light: rgba(13, 20, 25, 0.35);
   --ui-cover: rgba(6, 11, 14, 0.92);
@@ -61,7 +61,7 @@
   --ui-tint-warn: rgba(217, 164, 65, 0.09);
   --ui-tint-bad: rgba(194, 96, 106, 0.1);
   --ui-tint-brass: rgba(208, 154, 78, 0.09);
-  --ui-bad-rule: rgba(194, 96, 106, 0.4);
+  --ui-bad-rule: rgba(207, 111, 121, 0.4);
   --bar-energy: #7fb069;
   --bar-nerve: #c2606a;
   --bar-spirits: #d9a441;
@@ -93,6 +93,82 @@ button:focus:not(:focus-visible) {
 }
 
 /*
+ * Buttons. Their colours are inline (ui.tsx, by tone), so these rules only add what inline styles
+ * cannot: hover, press and a short transition. `!important` is needed to beat the inline border.
+ */
+.nr-btn,
+.nr-util button {
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, filter 120ms ease;
+}
+.nr-btn:not(:disabled):hover,
+.nr-util button:hover {
+  border-color: var(--ui-brass) !important;
+  color: var(--ui-text) !important;
+}
+.nr-btn[data-tone="primary"]:not(:disabled):hover {
+  color: var(--ui-ground) !important;
+  filter: brightness(1.1);
+}
+:root:not([data-theme="dark"]) .nr-btn[data-tone="primary"]:not(:disabled):hover {
+  filter: brightness(0.9);
+}
+.nr-btn[data-tone="danger"]:not(:disabled):hover {
+  border-color: var(--ui-bad) !important;
+  color: var(--ui-bad) !important;
+  background: var(--ui-tint-bad) !important;
+}
+.nr-btn:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+/* The lobby's name field: a visible edge when it has focus, in either mode. */
+.nr-field:focus {
+  border-color: var(--ui-brass) !important;
+}
+.nr-field::placeholder {
+  color: var(--ui-text-faint);
+  font-style: italic;
+}
+
+/*
+ * The game's top bar: the way back and the two portal toggles on one line, the eleven places on the
+ * next, so the places read as one row of tabs rather than trailing after the settings.
+ */
+.nr-topbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+.nr-util,
+.nr-places {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+.nr-util {
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+/*
+ * Fingers need bigger targets than a mouse: on a touch screen, or any screen narrow enough to stack
+ * the board, every button is at least 40px tall.
+ */
+@media (max-width: 1100px), (pointer: coarse) {
+  .nr-btn,
+  .nr-util button,
+  .nr-util a {
+    min-height: 40px;
+  }
+  .nr-util a {
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/*
  * The three-column screen needs a real width. Below that the columns stack: status, place, chronicle.
  */
 @media (max-width: 1100px) {
@@ -104,6 +180,26 @@ button:focus:not(:focus-visible) {
     width: 100% !important;
     max-height: none !important;
     position: static !important;
+  }
+  /* Stacked, the rail would fill a phone's first screen: lay the four bars side by side instead. */
+  #nr-bars {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    column-gap: 1.2rem;
+  }
+}
+@media (max-width: 640px) {
+  #nr-bars {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1rem;
+  }
+}
+
+/* The status rail follows the page down on a screen tall enough to show all of it. */
+@media (min-width: 1101px) and (min-height: 640px) {
+  .nr-rail-inner {
+    position: sticky;
+    top: 0;
   }
 }
 

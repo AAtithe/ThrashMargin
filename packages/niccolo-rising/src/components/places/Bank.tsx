@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { CONFIG, DAY } from '../../sim/content';
 import { FONT, UI } from '../../theme';
 import { duration, gr } from '../../lib/format';
-import { Blurb, Meta, Panel, Row } from '../ui';
+import { Blurb, Button, Meta, Panel, Row } from '../ui';
 import ActButton from './ActButton';
 import { TimerBar } from '../motion';
 import type { PlaceProps } from '../types';
@@ -33,18 +33,17 @@ export default function Bank(p: PlaceProps) {
         <>
           <Row>
             <input
+              className="nr-field"
+              aria-label="Groats to deposit"
+              inputMode="numeric"
               value={amount}
               onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder={`at least ${CONFIG.bank.minDeposit}`}
-              style={{ flex: 1, background: UI.ground, border: `1px solid ${UI.rule}`, color: UI.text, fontFamily: FONT.data, padding: '0.4rem 0.6rem' }}
+              style={{ flex: 1, minWidth: 0, background: UI.ground, border: `1px solid ${UI.ruleStrong}`, color: UI.text, fontFamily: FONT.data, fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
             />
-            <button
-              type="button"
-              onClick={() => setAmount(String(s.groats))}
-              style={{ background: 'transparent', border: `1px solid ${UI.rule}`, color: UI.textSoft, padding: '0.35rem 0.6rem', cursor: 'pointer' }}
-            >
+            <Button tone="quiet" onClick={() => setAmount(String(s.groats))}>
               All
-            </button>
+            </Button>
           </Row>
           {CONFIG.bank.terms.map(t => (
             <Row key={t.days}>
