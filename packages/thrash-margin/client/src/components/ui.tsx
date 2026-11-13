@@ -188,11 +188,11 @@ export function Stepper({ value, min, max, onChange, label }: { value: number; m
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
       {label && <div style={{ fontSize: 12, color: UI.textSoft, minWidth: 0, flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</div>}
-      <button type="button" aria-label="Fewer" style={btn} onClick={() => onChange(clamp(value - 1))} disabled={value <= min}><Icon name="minus" size={12} /></button>
+      <button type="button" className="tm-btn" aria-label="Fewer" style={btn} onClick={() => onChange(clamp(value - 1))} disabled={value <= min}><Icon name="minus" size={12} /></button>
       <input className="tm-range" type="range" min={min} max={Math.max(min, max)} value={value} onChange={e => onChange(clamp(Number(e.target.value)))} style={{ flex: 1, minWidth: 60 }} aria-label="Amount" />
-      <button type="button" aria-label="More" style={btn} onClick={() => onChange(clamp(value + 1))} disabled={value >= max}><Icon name="plus" size={12} /></button>
+      <button type="button" className="tm-btn" aria-label="More" style={btn} onClick={() => onChange(clamp(value + 1))} disabled={value >= max}><Icon name="plus" size={12} /></button>
       <span className="tm-num" style={{ fontFamily: FONT.data, fontSize: 13, fontWeight: 700, minWidth: 24, textAlign: 'right' }}>{value}</span>
-      <button type="button" onClick={() => onChange(max)} style={{ ...btn, width: 'auto', padding: '0 7px', fontSize: 11, color: UI.textSoft }} disabled={value >= max}>max</button>
+      <button type="button" className="tm-btn" onClick={() => onChange(max)} style={{ ...btn, width: 'auto', padding: '0 7px', fontSize: 11, color: UI.textSoft }} disabled={value >= max}>max</button>
     </div>
   );
 }
@@ -223,12 +223,12 @@ export function Modal({ children, onClose, width = 460, label }: { children: Rea
 export function ModalHeader({ title, kicker, onClose, color }: { title: ReactNode; kicker?: ReactNode; onClose?: () => void; color?: string }) {
   return (
     <div style={{ padding: '16px 18px 12px', borderBottom: `1px solid ${UI.rule}`, display: 'flex', alignItems: 'flex-start', gap: 12 }}>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         {kicker && <Label style={{ color: color ?? UI.textFaint, marginBottom: 4 }}>{kicker}</Label>}
         <h2 style={{ margin: 0, fontFamily: FONT.display, fontSize: 21, fontWeight: 600, color: UI.text }}>{title}</h2>
       </div>
       {onClose && (
-        <button type="button" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', padding: 4 }}>
+        <button type="button" className="tm-icon-quiet" onClick={onClose} aria-label="Close" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', padding: 6, margin: '-4px -6px 0 0', display: 'inline-flex' }}>
           <Icon name="close" size={16} />
         </button>
       )}

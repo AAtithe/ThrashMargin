@@ -16,16 +16,16 @@
   --ui-rule-strong: #b6ab95;
   --ui-text: #221e17;
   --ui-text-soft: #575245;
-  --ui-text-faint: #857d6b;
-  --ui-accent: #9a6f1c;
+  --ui-text-faint: #6e6757;
+  --ui-accent: #86611a;
   --ui-accent-ink: #fffaf0;
-  --ui-gold: #9a6a10;
+  --ui-gold: #8f620c;
   --ui-food: #45792d;
   --ui-mat: #6a52a6;
   --ui-influence: #a6426a;
   --ui-pop: #27758c;
   --ui-troops: #5a4b2c;
-  --ui-ap: #9a6f1c;
+  --ui-ap: #86611a;
   --ui-good: #3d7530;
   --ui-warn: #95650d;
   --ui-bad: #b0372f;
@@ -72,7 +72,7 @@
   --ui-rule-strong: #3a4653;
   --ui-text: #ebe5d6;
   --ui-text-soft: #a7afb9;
-  --ui-text-faint: #6e7782;
+  --ui-text-faint: #848d98;
   --ui-accent: #e3c27a;
   --ui-accent-ink: #1a1408;
   --ui-gold: #d9a64a;
@@ -189,12 +189,50 @@ input[type="range"].tm-range { width: 100%; accent-color: var(--ui-accent); }
 }
 
 /* Lobby grids collapse to one column on narrow screens */
+/* minmax(0, 1fr), not 1fr: a plain 1fr track is at least as wide as its longest unbreakable line,
+   so one long campaign name pushed the whole lobby wider than a phone. */
 @media (max-width: 760px) {
-  .tm-lobby-grid { grid-template-columns: 1fr !important; }
-  .tm-map-grid { grid-template-columns: 1fr 1fr !important; }
+  .tm-lobby-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .tm-map-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 }
 @media (max-width: 460px) {
-  .tm-map-grid { grid-template-columns: 1fr !important; }
+  .tm-map-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+.tm-lobby-grid > *, .tm-map-grid > * { min-width: 0; }
+
+/* Segmented controls clip their children (rounded ends), so their focus ring sits inside. */
+.tm-seg { transition: background 0.12s, color 0.12s; }
+.tm-seg:focus-visible { outline-offset: -3px; }
+.tm-seg:not([aria-pressed="true"]):hover { background: var(--ui-panel-raised) !important; color: var(--ui-text) !important; }
+
+/* A bare icon button (delete a save, close a panel): quiet until pointed at. */
+.tm-icon-quiet { transition: color 0.12s, background 0.12s; border-radius: 6px; }
+.tm-icon-quiet:hover { color: var(--ui-text) !important; background: var(--ui-panel-raised) !important; }
+.tm-icon-quiet.tm-icon-danger:hover { color: var(--ui-bad) !important; background: var(--ui-danger-bg) !important; }
+
+.tm-link-btn { transition: color 0.12s; }
+.tm-link-btn:hover, .tm-tab:hover { color: var(--ui-text) !important; }
+.tm-tab { transition: color 0.12s, border-color 0.12s; }
+.tm-tab:focus-visible, .tm-sheet-handle:focus-visible { outline-offset: -3px; }
+
+/* Touch screens: bring the small icon controls up to a fingertip. */
+@media (max-width: 720px), (pointer: coarse) {
+  .tm-icon-btn { width: 40px !important; height: 40px !important; }
+  .tm-topbar .tm-btn { min-height: 40px; }
+  .tm-icon-quiet { min-width: 36px; min-height: 36px; display: inline-flex !important; align-items: center; justify-content: center; }
+}
+
+/* Portal pages (sign-in, profile, feedback, admin) are styled inline in portal colours; these are
+   the states inline styles cannot express. */
+.tm-portal button, .tm-portal a { transition: filter 0.12s, background 0.12s, border-color 0.12s, color 0.12s; }
+.tm-portal button:not(:disabled):hover { filter: brightness(1.15); }
+:root:not([data-theme="dark"]) .tm-portal button:not(:disabled):hover { filter: brightness(0.94); }
+.tm-portal button:disabled:not([role="switch"]) { opacity: 0.5; cursor: not-allowed !important; }
+.tm-portal input:focus-visible, .tm-portal select:focus-visible, .tm-portal textarea:focus-visible { outline: 2px solid var(--portal-action) !important; outline-offset: 1px; border-color: var(--portal-action) !important; }
+.tm-portal :focus-visible { outline-color: var(--portal-action); }
+.tm-portal a:hover { text-decoration: underline; }
+@media (pointer: coarse) {
+  .tm-portal button:not([role="switch"]) { min-height: 36px; }
 }
 
 * { scrollbar-width: thin; scrollbar-color: var(--ui-rule-strong) transparent; }

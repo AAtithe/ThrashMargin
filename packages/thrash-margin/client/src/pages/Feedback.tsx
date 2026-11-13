@@ -8,9 +8,9 @@ const API = import.meta.env.VITE_API_URL ?? '';
 
 
 const TYPES = [
-  { value: 'bug',     label: '🐛 Bug report' },
-  { value: 'idea',    label: '💡 Idea / suggestion' },
-  { value: 'comment', label: '💬 General comment' },
+  { value: 'bug',     label: 'Bug report' },
+  { value: 'idea',    label: 'Idea or suggestion' },
+  { value: 'comment', label: 'General comment' },
 ] as const;
 
 export default function Feedback() {
@@ -37,23 +37,23 @@ export default function Feedback() {
         body: JSON.stringify({ game, type, message: message.trim() }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) { setError(data.message ?? 'Failed to submit — try again'); return; }
+      if (!res.ok) { setError(data.message ?? 'Could not send that. Try again.'); return; }
       setSent(true);
       setMessage('');
     } catch {
-      setError('Network error — try again');
+      setError('Network error. Try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div style={s.outer}>
+    <div className="tm-portal" style={s.outer}>
       <PortalNav variant="header" />
       <div style={s.page}>
         <div style={s.card}>
           <h1 style={s.title}>Feedback</h1>
-          <p style={s.subtitle}>Report a bug, suggest an idea, or just say something — about any game on the portal.</p>
+          <p style={s.subtitle}>Report a bug, suggest an idea, or just say something about any game on the portal.</p>
 
           {!signedIn ? (
             <div style={s.signInPrompt}>
@@ -64,7 +64,7 @@ export default function Feedback() {
             </div>
           ) : sent ? (
             <div style={s.sentBox}>
-              <p style={{ margin: 0, color: 'var(--portal-good)', fontSize: 14, fontWeight: 600 }}>✓ Thanks — that's been sent.</p>
+              <p style={{ margin: 0, color: 'var(--portal-good)', fontSize: 14, fontWeight: 600 }}>✓ Thanks, that has been sent.</p>
               <button style={s.linkBtn} onClick={() => setSent(false)}>Submit another</button>
             </div>
           ) : (
@@ -105,7 +105,7 @@ export default function Feedback() {
 const s: Record<string, React.CSSProperties> = {
   outer:    { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
   page:     { flex: 1, background: 'var(--portal-ground)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: '32px 16px' },
-  card:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: '36px 40px', width: 420, maxWidth: '100%', boxSizing: 'border-box' },
+  card:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: 'clamp(24px, 7vw, 36px) clamp(20px, 7vw, 40px)', width: 420, maxWidth: '100%', boxSizing: 'border-box' },
   title:    { color: 'var(--portal-text)', fontSize: 24, fontWeight: 700, margin: '0 0 6px', letterSpacing: -0.5 },
   subtitle: { color: 'var(--portal-soft)', margin: '0 0 24px', fontSize: 13, lineHeight: 1.5 },
   form:     { display: 'flex', flexDirection: 'column', gap: 14 },

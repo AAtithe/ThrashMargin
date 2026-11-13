@@ -128,7 +128,7 @@ export default function Lobby() {
 
         {active.length > 0 && (
           <Section title="Continue">
-            <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 10 }}>
+            <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 10 }}>
               {active.map(s => (
                 <SaveCard key={s.id} save={s} confirming={confirmDelete === s.id} onConfirm={setConfirmDelete}
                   onOpen={() => nav(`/game/${s.id}`)} onDelete={() => { void deleteGame(s.id); setConfirmDelete(null); }} />
@@ -149,7 +149,7 @@ export default function Lobby() {
 
             <div>
               <Label style={{ marginBottom: 8 }}>Map</Label>
-              <div className="tm-map-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+              <div className="tm-map-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(200px, 100%), 1fr))', gap: 10 }}>
                 {MAP_DEFS.filter(m => m.id !== 'tutorial').map(m => (
                   <MapCard key={m.id} id={m.id} active={setup.mapId === m.id} diff={setup.diff}
                     onClick={() => setSetup(s => ({ ...s, mapId: m.id, overrides: { ...s.overrides, enemyFactions: Math.min(s.overrides.enemyFactions ?? PRESETS[s.diff].enemyFactions, m.maxRivals) } }))} />
@@ -161,7 +161,7 @@ export default function Lobby() {
               <Label style={{ marginBottom: 8 }}>Difficulty</Label>
               <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                 {(Object.keys(PRESETS) as Difficulty[]).map(d => (
-                  <button key={d} type="button" className="tm-btn" onClick={() => setSetup(s => ({ ...s, diff: d, overrides: {} }))}
+                  <button key={d} type="button" className="tm-btn" aria-pressed={setup.diff === d} onClick={() => setSetup(s => ({ ...s, diff: d, overrides: {} }))}
                     style={{ textAlign: 'left', padding: 12, borderRadius: 10, cursor: 'pointer', background: setup.diff === d ? UI.accentBg : UI.panel, border: `1px solid ${setup.diff === d ? UI.accent : UI.rule}` }}>
                     <div style={{ fontFamily: FONT.display, fontSize: 17, fontWeight: 600, color: setup.diff === d ? UI.accent : UI.text }}>{DIFFICULTY[d].label}</div>
                     <div style={{ fontSize: 11.5, color: UI.textSoft, marginTop: 4, lineHeight: 1.45 }}>{PRESET_BLURB[d]}</div>
@@ -184,14 +184,14 @@ export default function Lobby() {
             </div>
 
             <div>
-              <button type="button" onClick={() => setAdvanced(v => !v)} style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', padding: 0, fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <button type="button" className="tm-link-btn" aria-expanded={advanced} onClick={() => setAdvanced(v => !v)} style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', padding: '6px 0', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <span style={{ display: 'inline-flex', transform: advanced ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}><Icon name="next" size={12} /></span>
                 Advanced rules
               </button>
               {advanced && <Advanced config={config} onChange={patch => setSetup(s => ({ ...s, overrides: { ...s.overrides, ...patch } }))} onReset={() => setSetup(s => ({ ...s, overrides: {} }))} />}
             </div>
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
               <Button tone="quiet" onClick={() => setReview(true)}>Review settings</Button>
               <Button tone="primary" icon="next" onClick={startNew} disabled={loading}>{loading && starting === 'new' ? <BusyLabel>Starting…</BusyLabel> : 'Start campaign'}</Button>
             </div>
@@ -211,7 +211,7 @@ export default function Lobby() {
 
         {finished.length > 0 && (
           <Section title="Finished">
-            <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 10 }}>
+            <div className="tm-lobby-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(300px, 100%), 1fr))', gap: 10 }}>
               {finished.map(s => (
                 <SaveCard key={s.id} save={s} confirming={confirmDelete === s.id} onConfirm={setConfirmDelete}
                   onOpen={() => nav(`/game/${s.id}`)} onDelete={() => { void deleteGame(s.id); setConfirmDelete(null); }} />
@@ -274,12 +274,12 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 function Segment<T extends number>({ label, value, options, onChange }: { label: string; value: T; options: Array<[T, string]>; onChange: (v: T) => void }) {
   return (
-    <div style={{ display: 'grid', gap: 4 }}>
+    <div role="group" aria-label={label} style={{ display: 'grid', gap: 4 }}>
       <Label>{label}</Label>
       <div style={{ display: 'flex', border: `1px solid ${UI.ruleStrong}`, borderRadius: 7, overflow: 'hidden' }}>
-        {options.map(([v, l]) => (
-          <button key={v} type="button" onClick={() => onChange(v)}
-            style={{ padding: '7px 12px', fontSize: 13, background: value === v ? UI.accent : UI.panelSunk, color: value === v ? UI.accentInk : UI.textSoft, border: 'none', borderRight: `1px solid ${UI.rule}`, cursor: 'pointer', fontWeight: value === v ? 700 : 500 }}>
+        {options.map(([v, l], i) => (
+          <button key={v} type="button" className="tm-seg" aria-pressed={value === v} onClick={() => onChange(v)}
+            style={{ padding: '7px 12px', minWidth: 36, fontSize: 13, background: value === v ? UI.accent : UI.panelSunk, color: value === v ? UI.accentInk : UI.textSoft, border: 'none', borderLeft: i ? `1px solid ${UI.rule}` : 'none', cursor: 'pointer', fontWeight: value === v ? 700 : 500 }}>
             {l}
           </button>
         ))}
@@ -338,9 +338,9 @@ function MapCard({ id, active, diff, onClick }: { id: string; active: boolean; d
   const preview = useMemo(() => createInitialState('preview', { ...DEFAULT_CONFIG, ...PRESETS[diff], mapId: id, enemyFactions: def.maxRivals }, { seed: 1, createdAt: 0 }), [id, diff, def.maxRivals]);
   const [vx, vy, vw, vh] = def.viewBox.split(' ').map(Number);
   return (
-    <button type="button" className="tm-btn" onClick={onClick}
+    <button type="button" className="tm-btn" aria-pressed={active} onClick={onClick}
       style={{ textAlign: 'left', padding: 0, borderRadius: 10, overflow: 'hidden', cursor: 'pointer', background: UI.panel, border: `1px solid ${active ? UI.accent : UI.rule}`, boxShadow: active ? `0 0 0 1px ${UI.accent}` : 'none' }}>
-      <svg viewBox={`${vx} ${vy} ${vw} ${vh}`} style={{ width: '100%', height: 110, display: 'block', background: MAP.sea }}>
+      <svg aria-hidden="true" viewBox={`${vx} ${vy} ${vw} ${vh}`} style={{ width: '100%', height: 110, display: 'block', background: MAP.sea }}>
         {preview.edges.map(([a, b], i) => (
           <line key={i} x1={preview.nodes[a].x} y1={preview.nodes[a].y} x2={preview.nodes[b].x} y2={preview.nodes[b].y} stroke={UI.ruleStrong} strokeWidth={3} />
         ))}
@@ -363,11 +363,11 @@ function SaveCard({ save, confirming, onConfirm, onOpen, onDelete }: {
   const map = save.mapId ? MAP_BY_ID[save.mapId]?.name : undefined;
   const statusColor = save.status === 'victory' ? UI.good : save.status === 'defeated' ? UI.bad : UI.accent;
   return (
-    <div style={{ background: UI.panel, border: `1px solid ${UI.rule}`, borderRadius: 10, padding: 12, display: 'flex', gap: 12, alignItems: 'center' }}>
+    <div style={{ background: UI.panel, border: `1px solid ${confirming ? UI.bad : UI.rule}`, borderRadius: 10, padding: 12, display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{save.name}</div>
-        <div style={{ fontSize: 11.5, color: UI.textSoft, marginTop: 3 }}>
-          <span style={{ color: statusColor }}>{save.status === 'active' ? `Turn ${save.turn}` : save.status === 'victory' ? 'Won' : 'Lost'}</span>
+        <div title={save.name} style={{ fontWeight: 700, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{save.name}</div>
+        <div style={{ fontSize: 11.5, color: UI.textSoft, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ color: statusColor, fontWeight: 600 }}>{save.status === 'active' ? `Turn ${save.turn}` : save.status === 'victory' ? 'Won' : 'Lost'}</span>
           {map ? ` · ${map}` : ''} · {DIFFICULTY[save.diff as Difficulty]?.label ?? save.diff} · {relTime(save.savedAt)}
         </div>
       </div>
@@ -379,7 +379,7 @@ function SaveCard({ save, confirming, onConfirm, onOpen, onDelete }: {
       ) : (
         <>
           <Button small tone={save.status === 'active' ? 'primary' : 'default'} onClick={onOpen}>{save.status === 'active' ? 'Continue' : 'View'}</Button>
-          <button type="button" aria-label={`Delete ${save.name}`} title="Delete" onClick={() => onConfirm(save.id)} style={{ background: 'none', border: 'none', color: UI.textFaint, cursor: 'pointer', padding: 4 }}>
+          <button type="button" aria-label={`Delete ${save.name}`} title="Delete" className="tm-icon-quiet tm-icon-danger" onClick={() => onConfirm(save.id)} style={{ background: 'none', border: 'none', color: UI.textFaint, cursor: 'pointer', padding: 6, display: 'inline-flex', flexShrink: 0 }}>
             <Icon name="close" size={14} />
           </button>
         </>
@@ -396,7 +396,7 @@ function CampaignActs({ saves, busy, onStart }: { saves: SaveMeta[]; busy: strin
         const unlocked = sc.index <= best + 1;
         const done = sc.index <= best;
         return (
-          <div key={sc.index} style={{ background: UI.panel, border: `1px solid ${done ? UI.goodRule : UI.rule}`, borderRadius: 10, padding: 14, opacity: unlocked ? 1 : 0.5, display: 'grid', gap: 6, alignContent: 'start' }}>
+          <div key={sc.index} style={{ background: UI.panel, border: `1px ${unlocked ? 'solid' : 'dashed'} ${done ? UI.goodRule : unlocked ? UI.rule : UI.ruleStrong}`, borderRadius: 10, padding: 14, opacity: unlocked ? 1 : 0.72, display: 'grid', gap: 6, alignContent: 'start' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <span style={{ fontFamily: FONT.display, fontSize: 16, fontWeight: 600, flex: 1 }}>{sc.title}</span>
               {done && <Icon name="check" color={UI.good} />}
@@ -406,7 +406,7 @@ function CampaignActs({ saves, busy, onStart }: { saves: SaveMeta[]; busy: strin
             {sc.bonusGold > 0 && <div style={{ fontSize: 11.5, color: UI.gold }}>Carried forward: {sc.bonusGold} gold{sc.bonusTechs.length ? ` and ${sc.bonusTechs.length} technolog${sc.bonusTechs.length === 1 ? 'y' : 'ies'}` : ''}</div>}
             <div style={{ marginTop: 4 }}>
               {unlocked ? <Button small tone={done ? 'default' : 'primary'} onClick={() => onStart(sc)} disabled={busy !== null}>{busy === `act-${sc.index}` ? <BusyLabel>Starting…</BusyLabel> : done ? 'Replay' : 'Begin'}</Button>
-                : <span style={{ fontSize: 11.5, color: UI.textFaint }}>Win the previous act to unlock.</span>}
+                : <span style={{ fontSize: 11.5, color: UI.textSoft, display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="flag" size={11} />Win the previous act to unlock.</span>}
             </div>
           </div>
         );
@@ -420,11 +420,11 @@ function Achievements({ saves }: { saves: SaveMeta[] }) {
   return (
     <div>
       <Muted style={{ marginBottom: 10 }}>{earned.size} of {ACHIEVEMENTS.length} earned across your campaigns.</Muted>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(min(155px, 100%), 1fr))', gap: 8 }}>
         {ACHIEVEMENTS.map(a => {
           const got = earned.has(a.id);
           return (
-            <div key={a.id} style={{ padding: '9px 11px', borderRadius: 8, background: got ? UI.accentBg : UI.panel, border: `1px solid ${got ? UI.accent : UI.rule}`, opacity: got ? 1 : 0.6 }}>
+            <div key={a.id} style={{ padding: '9px 11px', borderRadius: 8, background: got ? UI.accentBg : UI.panel, border: `1px solid ${got ? UI.accent : UI.rule}`, opacity: got ? 1 : 0.75 }}>
               <div style={{ fontWeight: 700, fontSize: 12.5, color: got ? UI.accent : UI.text, display: 'flex', alignItems: 'center', gap: 6 }}>
                 {got && <Icon name="check" size={12} />}{a.name}
               </div>

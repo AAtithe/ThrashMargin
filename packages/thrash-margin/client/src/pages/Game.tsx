@@ -356,7 +356,7 @@ function Game({ id }: { id: string | undefined }) {
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: UI.ground, overflow: 'hidden' }}>
       {/* ── Top bar ── */}
       <header className="tm-topbar" style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 14, padding: '8px 14px', background: UI.panel, borderBottom: `1px solid ${UI.rule}`, flexShrink: 0 }}>
-        <button type="button" onClick={() => nav('/')} title="Back to the lobby" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: 0 }}>
+        <button type="button" className="tm-link-btn" onClick={() => nav('/')} title="Back to the lobby" style={{ background: 'none', border: 'none', color: UI.textSoft, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0', minHeight: 32 }}>
           <span style={{ transform: 'rotate(180deg)', display: 'inline-flex' }}><Icon name="next" /></span>
           <span className="tm-hide-mobile" style={{ fontFamily: FONT.display, fontSize: 16, color: UI.text, fontWeight: 600 }}>Thrash Margin</span>
         </button>
@@ -381,7 +381,7 @@ function Game({ id }: { id: string | undefined }) {
           <IconButton icon="ledger" label="Ledger (L)" onClick={() => setModal('ledger')} />
           <IconButton icon="help" label="How to play (?)" onClick={() => setModal('help')} />
           {tourCandidate && (
-            <Button tone="quiet" onClick={() => setTourPlan(tourCandidate)} title="Walk through one turn">
+            <Button tone="quiet" icon="flag" onClick={() => setTourPlan(tourCandidate)} title="Guided turn: walk through one turn">
               <span className="tm-hide-mobile">Guided turn</span>
             </Button>
           )}
@@ -429,19 +429,19 @@ function Game({ id }: { id: string | undefined }) {
         {/* ── Panel ── */}
         <aside className={`tm-sidebar${sheetOpen ? ' open' : ''}`} aria-hidden={!sheetOpen && layout !== 'sheet'}
           style={{ background: UI.panel, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
-          <div className="tm-sheet-handle" onClick={() => setSheetOpen(v => !v)}
-            style={{ alignItems: 'center', justifyContent: 'space-between', padding: '14px 16px', borderBottom: `1px solid ${UI.rule}`, cursor: 'pointer' }}>
-            <span style={{ fontSize: 13, fontWeight: 600 }}>{sel ? sel.name : 'Your realm'}</span>
-            <span style={{ transform: sheetOpen ? 'rotate(90deg)' : 'rotate(-90deg)', display: 'inline-flex', color: UI.textSoft }}><Icon name="next" /></span>
-          </div>
+          <button type="button" className="tm-sheet-handle" onClick={() => setSheetOpen(v => !v)} aria-expanded={sheetOpen}
+            style={{ alignItems: 'center', justifyContent: 'space-between', width: '100%', minHeight: 52, padding: '14px 16px', background: 'none', border: 'none', borderBottom: `1px solid ${UI.rule}`, color: UI.text, cursor: 'pointer', textAlign: 'left', flexShrink: 0 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sel ? sel.name : 'Your realm'}</span>
+            <span aria-hidden="true" style={{ transform: sheetOpen ? 'rotate(90deg)' : 'rotate(-90deg)', transition: 'transform 0.2s', display: 'inline-flex', color: UI.textSoft }}><Icon name="next" /></span>
+          </button>
           <nav style={{ display: 'flex', alignItems: 'stretch', borderBottom: `1px solid ${UI.rule}`, flexShrink: 0 }}>
             {tabs.map(([t, label]) => (
-              <button key={t} type="button" onClick={() => setTab(t)}
+              <button key={t} type="button" className="tm-tab" aria-current={tab === t ? 'page' : undefined} onClick={() => setTab(t)}
                 style={{ flex: 1, padding: '10px 4px', background: 'none', border: 'none', borderBottom: `2px solid ${tab === t ? UI.accent : 'transparent'}`, color: tab === t ? UI.text : UI.textSoft, fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
                 {label}
               </button>
             ))}
-            <button type="button" className="tm-panel-close" onClick={() => setSheetOpen(false)} aria-label="Close the panel (Esc)" title="Close the panel (Esc)"
+            <button type="button" className="tm-panel-close tm-link-btn" onClick={() => setSheetOpen(false)} aria-label="Close the panel (Esc)" title="Close the panel (Esc)"
               style={{ width: 38, flexShrink: 0, background: 'none', border: 'none', borderLeft: `1px solid ${UI.rule}`, color: UI.textSoft, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <Icon name="close" size={14} />
             </button>
@@ -544,7 +544,7 @@ function ApPips({ left, max, unlimited, animate }: { left: number; max: number; 
 
 function IconButton({ icon, label, onClick, disabled }: { icon: 'ledger' | 'help' | 'undo'; label: string; onClick: () => void; disabled?: boolean }) {
   return (
-    <button type="button" className="tm-btn" onClick={onClick} disabled={disabled} title={label} aria-label={label}
+    <button type="button" className="tm-btn tm-icon-btn" onClick={onClick} disabled={disabled} title={label} aria-label={label}
       style={{ width: 32, height: 32, borderRadius: 7, background: UI.panelRaised, border: `1px solid ${UI.ruleStrong}`, color: UI.text, cursor: disabled ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Icon name={icon} size={15} />
     </button>
