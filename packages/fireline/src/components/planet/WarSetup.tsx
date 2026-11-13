@@ -139,7 +139,7 @@ export default function WarSetup({
         </div>
         <label className="fl-pl-field">
           Seed (optional)
-          <input className="fl-pl-input" value={seed} placeholder="A fresh planet" maxLength={64} style={{ width: 180 }} onChange={e => setSeed(e.target.value)} data-testid="war-seed" />
+          <input className="fl-pl-input" value={seed} placeholder="A fresh planet" maxLength={64} onChange={e => setSeed(e.target.value)} data-testid="war-seed" />
         </label>
       </div>
       <div className="fl-pl-checks" role="group" aria-label="Optional rules">

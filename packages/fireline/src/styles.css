@@ -12,9 +12,12 @@
   --ui-rule-strong: #9aa59e;
   --ui-text: #1b2420;
   --ui-text-soft: #4c5a55;
-  --ui-text-faint: #7b8883;
+  /* Faint text still meets WCAG AA (4.5:1) on the panel; it was 3.1-3.5:1 before. */
+  --ui-text-faint: #5f6c67;
   --ui-brass: #a86a0c;
   --ui-accent: #a86a0c;
+  /* The accent as small text on a raised card: darker in light mode to hold 4.5:1. */
+  --ui-accent-ink: #8a5606;
   --ui-info: #1f7c87;
   --ui-good: #2f7d34;
   --ui-warn: #9a6400;
@@ -62,9 +65,10 @@
   --ui-rule-strong: #43525a;
   --ui-text: #dfe6e3;
   --ui-text-soft: #94a3a0;
-  --ui-text-faint: #64716e;
+  --ui-text-faint: #7f8c89;
   --ui-brass: #e0a43a;
   --ui-accent: #e0a43a;
+  --ui-accent-ink: #e0a43a;
   --ui-info: #4fb3bf;
   --ui-good: #6fbf73;
   --ui-warn: #e0a43a;
@@ -1134,7 +1138,7 @@ kbd {
 .fl-level-attack {
   font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   font-size: 0.74rem;
-  color: var(--ui-accent);
+  color: var(--ui-accent-ink);
 }
 .fl-level-facts {
   font-size: 0.72rem;
@@ -1238,7 +1242,7 @@ kbd {
 .fl-size-reach {
   font-size: 0.74rem;
   line-height: 1.4;
-  color: var(--ui-accent);
+  color: var(--ui-accent-ink);
 }
 .fl-begin-row {
   display: flex;
@@ -3754,7 +3758,7 @@ kbd {
   --ui-tree-ghost: #9aa59e;
   --ui-tree-ghost-text: #4c5a55;
   --ui-tree-ghost-met: rgba(47, 125, 52, 0.1);
-  --ui-tree-heading: #7b8883;
+  --ui-tree-heading: #5f6c67;
   --ui-tree-tab-on: rgba(168, 106, 12, 0.14);
 }
 :root[data-theme="dark"] {
@@ -3765,7 +3769,7 @@ kbd {
   --ui-tree-ghost: #4f5f66;
   --ui-tree-ghost-text: #a8b6b2;
   --ui-tree-ghost-met: rgba(111, 191, 115, 0.12);
-  --ui-tree-heading: #74827e;
+  --ui-tree-heading: #7f8c89;
   --ui-tree-tab-on: rgba(224, 164, 58, 0.16);
 }
 
@@ -6650,4 +6654,98 @@ div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
   margin: 4px 2px;
   font-size: 0.72rem;
   color: var(--ui-text-soft);
+}
+
+/* ==== Polish pass (2026-11): hover and press feedback, the war setup's spacing, phone tap targets ==== */
+
+/* The shared Button (components/ui.tsx) and the chrome buttons carry their colours inline, so their
+   hover is a ring and a lift in brightness rather than a new background. */
+.fl-ui-btn,
+.fl-chrome-btn,
+.fl-camp-btn,
+.fl-pl-btn,
+.fl-pl-tab {
+  transition: border-color 120ms ease, box-shadow 120ms ease, filter 120ms ease, color 120ms ease;
+}
+.fl-ui-btn:hover:not(:disabled),
+.fl-chrome-btn:hover {
+  box-shadow: inset 0 0 0 1px var(--ui-accent);
+}
+.fl-ui-btn[data-tone="primary"]:hover:not(:disabled),
+.fl-camp-btn.primary:hover:not(:disabled),
+.fl-pl-btn.primary:hover:not(:disabled) {
+  box-shadow: none;
+  filter: brightness(1.1);
+}
+.fl-ui-btn[data-tone="danger"]:hover:not(:disabled) {
+  box-shadow: inset 0 0 0 1px var(--ui-bad);
+}
+.fl-ui-btn:active:not(:disabled),
+.fl-chrome-btn:active,
+.fl-camp-btn:active:not(:disabled),
+.fl-pl-btn:active:not(:disabled) {
+  filter: brightness(0.94);
+}
+@media (prefers-reduced-motion: reduce) {
+  .fl-ui-btn,
+  .fl-chrome-btn,
+  .fl-camp-btn,
+  .fl-pl-btn,
+  .fl-pl-tab {
+    transition: none;
+  }
+}
+:root[data-motion="off"] .fl-ui-btn,
+:root[data-motion="off"] .fl-chrome-btn,
+:root[data-motion="off"] .fl-camp-btn,
+:root[data-motion="off"] .fl-pl-btn,
+:root[data-motion="off"] .fl-pl-tab {
+  transition: none;
+}
+
+/* War for the Planet in the lobby. The factions, difficulty and seed fields sat 8px apart, so the
+   wide "Factions, you included" caption ran into "Difficulty"; and the two name fields stacked with
+   no gap at all on a phone. */
+.fl-lobby .fl-war-setup > .fl-pl-row {
+  align-items: flex-start;
+  gap: 12px 28px;
+}
+.fl-lobby .fl-war-setup .fl-campaign-form {
+  row-gap: 10px;
+}
+.fl-lobby .fl-war-setup .fl-pl-preset span {
+  color: var(--ui-text-soft);
+}
+.fl-lobby .fl-war-setup .fl-pl-input[data-testid="war-seed"] {
+  width: 180px;
+}
+
+/* Phone width: the campaign map's and the war screen's buttons and tabs grow to a thumb's size.
+   The battle HUD (bar row, heroes strip) has its own phone layout and is left alone here. */
+@media (max-width: 640px) {
+  .fl-pl-btn,
+  .fl-camp-btn,
+  .fl-chrome-btn,
+  .fl-camp-top button,
+  .fl-pl-head button,
+  .fl-pl-main select {
+    min-height: 40px;
+  }
+  .fl-pl-btn {
+    min-width: 40px;
+  }
+  .fl-pl-tab {
+    min-height: 40px;
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .fl-lobby .fl-war-setup .fl-pl-input {
+    min-height: 40px;
+  }
+  .fl-lobby .fl-war-setup .fl-pl-input[data-testid="war-seed"] {
+    width: 100%;
+  }
+  .fl-lobby .fl-war-setup .fl-pl-row > .fl-pl-field:last-child {
+    flex: 1 1 100%;
+  }
 }

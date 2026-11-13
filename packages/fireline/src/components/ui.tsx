@@ -72,6 +72,8 @@ export function Button({
     <button
       type="button"
       id={id}
+      className="fl-ui-btn"
+      data-tone={tone}
       data-testid={testId}
       onClick={onClick}
       disabled={disabled}
