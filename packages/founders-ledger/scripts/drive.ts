@@ -401,6 +401,29 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
     ok(l.habitBest(l.state.habits[0]) === 4 && l.honours().find((h: { id: string }) => h.id === 'pil4').earned, 'honours: four weeks of Pilates is Rhythm');
   }
 
+  // Away: holidays close the Space ring, keep the streak, and drop hours from the working-week checks.
+  {
+    const D = 86_400_000; const noon = (() => { const d = new Date(); d.setHours(12, 0, 0, 0); return d.getTime(); })();
+    const l = createLedger(null);
+    l.planAway('Next 7 days', noon);
+    ok(l.state.away.length === 1 && l.awayOn(noon) && l.awayOn(noon + 6 * D) && !l.awayOn(noon + 7 * D), 'away: next 7 days covers today and six more');
+    l.state.away = [{ id: 'a', from: noon - 5 * D - 12 * 3600000, to: noon - 12 * 3600000, pulls: [noon - 2 * D] }];
+    const s = l.dayStreak(noon);
+    ok(s.current >= 6, `away: every away day counts as a day in charge (current ${s.current})`);
+    const r = l.dayRings();
+    ok(Object.values(r).every((x: any) => x.space), 'away: every away day closes the Space ring');
+    l.state.reviews = [
+      { ts: noon - 13 * D, hours: 40, weekType: 'Working week', focus: 6 },
+      { ts: noon - 9 * D, hours: null, weekType: 'Holiday', switchOff: 'Fully', focus: 6 },
+      { ts: noon - 2 * D, hours: 42, weekType: 'Part holiday', focus: 6 },
+    ];
+    ok(l.workedReviews().length === 2, 'away: a holiday week is left out of working weeks');
+    ok(l.honours().find((h: { id: string }) => h.id === 'hol1').earned, 'away: a switched-off holiday earns Properly off');
+    ok(l.receipts().some((x: string) => x.includes('holiday week')), 'away: a holiday becomes a receipt');
+    const b = l.sessionBrief(noon);
+    ok(b.lines.some((x: string) => x.startsWith('Hours: 40, 42')) && b.lines.some((x: string) => x.startsWith('1 holiday week')), 'away: the coach brief keeps holiday weeks out of the hours');
+  }
+
   // Coach sessions: the agenda comes from the ledger.
   {
     const l = createLedger(null);

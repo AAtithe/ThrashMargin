@@ -290,3 +290,6 @@ details.own summary:hover{color:var(--ink)}
   .tile .sub{line-height:1.35}
   nav button{padding:10px 8px}
 }
+/* Away: the holiday card. */
+.away-card{border-color:var(--accent);border-width:2px}
+.away-card h2{font-size:21px}
