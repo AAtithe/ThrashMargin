@@ -45,29 +45,38 @@ export function Button({
   /** A stable hook for the guided run to spotlight this control. See `GuidedTour.tsx`. */
   id?: string;
 }) {
-  const tones: Record<string, CSSProperties> = {
-    default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
-    primary: { borderColor: UI.brass, color: UI.ground, background: UI.brass, fontWeight: 600 },
-    quiet: { borderColor: UI.rule, color: UI.textSoft, background: 'transparent' },
-    danger: { borderColor: UI.bad, color: UI.bad, background: 'transparent' },
-  };
   return (
     <button
       type="button"
+      className="se-btn"
       id={id}
       onClick={onClick}
       disabled={disabled}
       title={title}
       style={{
-        ...buttonBase,
-        ...tones[tone],
-        ...(disabled ? { opacity: 0.38, cursor: 'not-allowed' } : {}),
+        ...buttonStyle(tone),
+        ...(disabled ? { opacity: 0.45, cursor: 'not-allowed' } : {}),
         ...style,
       }}
     >
       {children}
     </button>
   );
+}
+
+type ButtonTone = 'default' | 'primary' | 'quiet' | 'danger';
+
+const tones: Record<ButtonTone, CSSProperties> = {
+  default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
+  primary: { borderColor: UI.brass, color: UI.ground, background: UI.brass, fontWeight: 600 },
+  quiet: { borderColor: UI.ruleStrong, color: UI.textSoft, background: 'transparent' },
+  danger: { borderColor: UI.bad, color: UI.bad, background: 'transparent' },
+};
+
+/** A button's look, for the odd control that has to be something else (a router link) but should
+ *  read as a button. Pair it with `className="se-btn"` for the hover and press states. */
+export function buttonStyle(tone: ButtonTone = 'default'): CSSProperties {
+  return { ...buttonBase, ...tones[tone] };
 }
 
 export function Pill({ children, colour }: { children: ReactNode; colour: string }) {
@@ -125,6 +134,10 @@ const panelTitle: CSSProperties = {
 };
 
 const buttonBase: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.35rem',
   fontFamily: FONT.body,
   fontSize: '0.82rem',
   padding: '0.35rem 0.65rem',

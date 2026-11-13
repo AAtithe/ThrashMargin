@@ -404,8 +404,9 @@ export default function GameScreen() {
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-          <MotionToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
-          <ThemeToggle style={{ borderColor: UI.rule, color: UI.textSoft }} />
+          {/* Sized like the game's own buttons beside them, so the header reads as one row. */}
+          <MotionToggle className="se-btn" style={headerToggle} />
+          <ThemeToggle className="se-btn" style={headerToggle} />
           {/* Offered whenever a run can actually be planned from where the fleet stands, not only
               on day one: a player who skipped it, or who came back to a half-played game, should
               still be able to ask for it. */}
@@ -618,7 +619,7 @@ export default function GameScreen() {
             ) : mustRoll ? (
               <>
                 <Button id="roll-button" tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
-                  Roll for the day — {myVehicles.length === 1 ? 'her' : 'the fleet'}
+                  {myVehicles.length === 1 ? 'Roll for the day' : 'Roll for the fleet'}
                 </Button>
                 <span className="tr-hide-phone" style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
                   2d6 per vehicle. Vehicles already on the road drive on the moment you roll.
@@ -652,7 +653,7 @@ export default function GameScreen() {
                 </Button>
                 {confirmingEnd && (
                   <Button tone="quiet" onClick={() => setConfirmingEnd(false)}>
-                    Wait — give her orders
+                    Wait, give her orders
                   </Button>
                 )}
                 <span
@@ -871,6 +872,16 @@ const launcher: React.CSSProperties = {
   borderRadius: 2,
 };
 
+const headerToggle: React.CSSProperties = {
+  borderColor: UI.ruleStrong,
+  color: UI.textSoft,
+  borderRadius: 2,
+  fontFamily: FONT.body,
+  fontSize: '0.82rem',
+  padding: '0.35rem 0.65rem',
+  lineHeight: 1.25,
+};
+
 const launcherNote: React.CSSProperties = {
   fontFamily: FONT.data,
   fontSize: '0.62rem',
@@ -889,7 +900,8 @@ function PanelHead({ title, onClose }: { title: string; onClose: () => void }) {
         onClick={onClose}
         aria-label={`Close ${title.toLowerCase()} (Esc)`}
         title="Close (Esc)"
-        style={{ background: 'none', border: `1px solid ${UI.rule}`, borderRadius: 2, color: UI.textSoft, cursor: 'pointer', fontFamily: FONT.data, fontSize: '0.8rem', width: 30, height: 28 }}
+        className="se-btn"
+        style={{ background: 'none', border: `1px solid ${UI.ruleStrong}`, borderRadius: 2, color: UI.textSoft, cursor: 'pointer', fontFamily: FONT.data, fontSize: '0.85rem', width: 34, height: 32 }}
       >
         ✕
       </button>

@@ -539,14 +539,16 @@ export default function MapView({
       </svg>
 
       <div style={{ ...zoomControls, right: 10 + (inset?.right ?? 0), bottom: 10 + (inset?.bottom ?? 0) }}>
-        <button style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in (+)" title="Zoom in (+)">
+        <button type="button" className="se-zoom" style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in (+)" title="Zoom in (+)">
           +
         </button>
-        <button style={zoomButton} onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out (-)" title="Zoom out (-)">
+        <button type="button" className="se-zoom" style={zoomButton} onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out (-)" title="Zoom out (-)">
           −
         </button>
         <button
-          style={{ ...zoomButton, fontSize: '0.6rem' }}
+          type="button"
+          className="se-zoom"
+          style={{ ...zoomButton, fontSize: '0.72rem', letterSpacing: '0.04em' }}
           onClick={fit}
           aria-label="Fit every depot in view (0)"
           title="Fit every depot in view (0)"
