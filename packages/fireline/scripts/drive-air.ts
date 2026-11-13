@@ -772,6 +772,39 @@ function battles(ok: Ok): void {
   console.log(`  second air battle on Hard: ${c.s.winner === null ? 'unfinished' : `side ${c.s.winner} won at ${Math.round(c.s.tick / 600)} min`}; ${c.bombs} bombs, ${c.rockets} gunship rockets`);
 }
 
+/** Disband: units off the map for good, nothing paid back; heroes, Generals and loaded carriers refused. */
+function disbanding(ok: Ok): void {
+  const { s, cx, cy } = airArena('disband');
+  const tank = put(s, 0, 'tank', cx + 0.5, cy + 0.5);
+  const rifle = put(s, 0, 'rifleman', cx + 2.5, cy + 0.5);
+  const foe = put(s, 1, 'tank', cx + 20.5, cy + 0.5, { stance: 'hold' });
+  const credits = s.players[0].credits;
+  const t = processAction(s, { type: 'disband', ids: [tank.id, foe.id] });
+  ok(t !== s && !unitIn(t, tank.id) && !!unitIn(t, rifle.id), 'Disband takes the named unit off the map, leaving the rest');
+  ok(!!unitIn(t, foe.id), 'never an enemy unit');
+  ok(t.players[0].credits === credits, 'nothing is paid back');
+  ok(!!unitIn(s, tank.id), 'and the state passed in is untouched');
+  ok(processAction(s, { type: 'disband', ids: [foe.id] }) === s, 'a Disband naming only enemy units is refused');
+  ok(processAction(s, { type: 'disband', ids: [] }) === s, 'as is one naming nothing');
+  const hero = copy(s);
+  unitIn(hero, rifle.id)!.hero = { level: 1, xp: 0, abilityCd: 0 };
+  ok(processAction(hero, { type: 'disband', ids: [rifle.id] }) === hero, 'a hero cannot be disbanded');
+  const loaded = copy(s);
+  const { craft } = padWith(loaded, 0, cx - 6, cy - 1, ['carrier']);
+  const carrier = craft[0];
+  carrier.carried = [{ ...unitIn(loaded, rifle.id)! }];
+  loaded.units = loaded.units.filter(u => u.id !== rifle.id);
+  ok(processAction(loaded, { type: 'disband', ids: [carrier.id] }) === loaded, 'nor a carrier with infantry aboard');
+  const walking = copy(s);
+  const { craft: c2 } = padWith(walking, 0, cx - 6, cy - 1, ['carrier']);
+  unitIn(walking, rifle.id)!.boarding = c2[0].id;
+  const w = processAction(walking, { type: 'disband', ids: [c2[0].id] });
+  ok(!unitIn(w, c2[0].id) && unitIn(w, rifle.id)!.boarding === undefined, 'an empty carrier can, and anyone walking to it stops');
+  const a = tick(t, 300);
+  const b = tick(processAction(s, { type: 'disband', ids: [tank.id, foe.id] }), 300);
+  ok(JSON.stringify(a) === JSON.stringify(b), 'and the battle plays on identically');
+}
+
 export const sections: [string, (ok: Ok) => void][] = [
   ['Air power: rules and menus', rulesAndMenus],
   ['Air power: standard tech offers none of it', techLevels],
@@ -782,5 +815,6 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Air power and research: older saves', oldSaves],
   ['Air power: the computer', computer],
   ['Air power: battles', battles],
+  ['Orders: disband', quietCommander(disbanding)],
 ];
 

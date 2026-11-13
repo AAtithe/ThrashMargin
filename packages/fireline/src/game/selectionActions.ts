@@ -31,6 +31,12 @@ export const isSupport = (u: Unit): boolean => {
   return !spec.weapon && (spec.category === 'infantry' || spec.category === 'vehicle') && u.kind !== 'hauler';
 };
 
+/** The confirmation Disband asks before dismissing units for good. */
+export function disbandQuestion(units: Unit[]): string {
+  const what = units.length === 1 ? `the ${UNITS[units[0].kind].name}` : `these ${units.length} units`;
+  return `Disband ${what}? They leave the battle for good and nothing is paid back. Heroes, Generals and loaded carriers stay.`;
+}
+
 export interface Selection {
   /** Side 0's own selected units (empty when a structure is selected). */
   units: Unit[];

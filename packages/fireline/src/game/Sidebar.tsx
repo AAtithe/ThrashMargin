@@ -66,7 +66,8 @@ import { cargoMaxOf, inModuleOrder, loadoutCost, loadoutOf, queueCostFor } from 
 import type { GameAction, GameState, Unit } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
-import { isSupport, selectionActions, type Selection } from './selectionActions';
+import { disbandQuestion, isSupport, selectionActions, type Selection } from './selectionActions';
+import { canDisband } from '../sim/commands';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralNote } from '../components/Generals';
 
@@ -1413,6 +1414,17 @@ export function SelectionPanel({
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="fl-d-sbtn" onClick={() => dispatch({ type: 'stop', ids: units.map(u => u.id) })}>
             {touch ? 'Stop' : 'Stop (S)'}
+          </button>
+          <button
+            className="fl-d-sbtn"
+            data-action="disband"
+            disabled={!canDisband(state, 0, units.map(u => u.id))}
+            title="Take the selected units off the map for good, nothing paid back: for units stuck where no order can free them. Heroes, Generals and loaded carriers stay."
+            onClick={() => {
+              if (window.confirm(disbandQuestion(units))) dispatch({ type: 'disband', ids: units.map(u => u.id) });
+            }}
+          >
+            {touch ? 'Disband' : 'Disband (Del)'}
           </button>
         </div>
       )}

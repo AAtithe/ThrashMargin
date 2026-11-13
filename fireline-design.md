@@ -2340,6 +2340,19 @@ and for Repair Trucks to stop driving into the fighting, with a way to choose wh
 - **Harness seed.** Repairs on the pad move whole battles: `strike-8`'s first Bomber no longer came
   before side 1 won (24 minutes, was 20), so "bombers drop bombs in real battles" read 0, 0 and 0. A
   sweep of nine fresh seeds had Bombers bombing in four (6 to 18 bombs); the test now plays `strike-7`.
+- **Hashes.** `drive-size.ts` PRE_ROUND6: 7 of the 30 battles moved (lines easy both seeds, lines hard
+  size-a, classic easy both seeds, classic hard size-a, three easy size-b) and were regenerated. With
+  the repair block alone switched off, all 30 equal the values before exactly. No other hash moved.
+
+- **Disband** (`{ type: 'disband', ids }`, `canDisband`/`doDisband` in `commands.ts`), asked for to clear
+  units wedged where no order frees them. Takes own units off the map at once, no wreck, no refund, a
+  line in the log; refused for heroes, the General and any carrier with someone aboard (they would go
+  with it); anyone walking to a dismissed carrier stops. A Disband button beside Stop and the Delete
+  key, both behind a confirmation. `drive-air` "Orders: disband", 10 assertions.
+- **A question answered, not changed: a second Barracks.** Production is one queue per category and
+  `producerFor` hands the work to the lowest-id standing, unsabotaged producer, so a second Barracks
+  (or Factory) builds nothing faster: it is only a spare. How to Play now says so. Making extra
+  producers speed their queue is a balance change for both commanders and is left for a decision.
 
 Checks: `drive-air` (Return to base, refusals, repair on the pad and not in flight) and `drive-naval`
 (sailing home, mended there, refused without a yard) gained 17 assertions. In Chromium: a damaged

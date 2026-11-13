@@ -46,7 +46,8 @@ import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
 import { costFor, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
-import { isSupport, selectionActions } from '../game/selectionActions';
+import { disbandQuestion, isSupport, selectionActions } from '../game/selectionActions';
+import { canDisband } from '../sim/commands';
 // round6:B. Heroes in free play (fireline-round6-design.md): the hero bar and keys in a skirmish with heroes on.
 import { heroesInPlay, reviveWait } from '../sim/heroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
@@ -1119,6 +1120,13 @@ export function Battle({
       } else if (k === 's' && !e.ctrlKey && !e.metaKey) {
         const ids = ownSelectedUnits().map(u => u.id);
         if (ids.length) dispatch({ type: 'stop', ids });
+      } else if (e.key === 'Delete' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        // Disband the selection, after asking: the way out for units stuck where no order frees them.
+        const units = ownSelectedUnits();
+        if (units.length && canDisband(cur.current, 0, units.map(u => u.id)) && window.confirm(disbandQuestion(units))) {
+          dispatch({ type: 'disband', ids: units.map(u => u.id) });
+          refresh();
+        }
       } else if (k === 'p' && !e.ctrlKey && !e.metaKey) {
         setPaused(p => !p);
       } else if (e.key === ' ') {

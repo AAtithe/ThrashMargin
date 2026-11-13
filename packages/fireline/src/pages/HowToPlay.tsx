@@ -108,6 +108,14 @@ export default function HowToPlay() {
             </li>
             <li>Selling returns half the cost, less for a damaged structure. Repair costs credits as it goes.</li>
             <li>Units guard where they stand and return fire. Attack-move (A) makes them fight their way to a point; a plain move does not stop to fight.</li>
+            <li>
+              A unit stuck where no order frees it can be dismissed: select it and press <strong>Disband</strong> (or Delete). It leaves
+              for good and nothing is paid back; heroes, Generals and loaded carriers cannot be disbanded.
+            </li>
+            <li>
+              One Barracks, one War Factory and one Helipad queue is all you get: a second of the same kind does not build faster.
+              It is a spare, so production carries on if the first is destroyed or sabotaged.
+            </li>
             <li>You win when the enemy has no structures left, and lose when you have none.</li>
           </ul>
         </Section>

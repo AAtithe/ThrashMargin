@@ -576,6 +576,34 @@ export function doHome(s: GameState, owner: Owner, ids: number[]): void {
   }
 }
 
+/**
+ * Units Disband can dismiss: not a hero or a General (a mission or the battle may hang on them), and
+ * not a carrier with anyone aboard (they would go with it).
+ */
+const disbandable = (u: Unit) => u.hp > 0 && !u.hero && u.kind !== 'general' && !u.carried?.length;
+
+/** Legal when at least one of the units named can be dismissed. */
+export function canDisband(s: GameState, owner: Owner, ids: number[]): boolean {
+  return ownUnits(s, owner, ids).some(disbandable);
+}
+
+/**
+ * Disband: the units named are taken off the map for good, with nothing paid back. The way out for a
+ * unit wedged where no order can free it. Anyone walking to a dismissed carrier stops.
+ */
+export function doDisband(s: GameState, owner: Owner, ids: number[]): void {
+  const gone = new Set(ownUnits(s, owner, ids).filter(disbandable).map(u => u.id));
+  if (!gone.size) return;
+  s.units = s.units.filter(u => !gone.has(u.id));
+  for (const u of s.units) {
+    if (u.boarding && gone.has(u.boarding)) {
+      delete u.boarding;
+      u.order = { type: 'idle' };
+    }
+  }
+  if (owner === 0) log(s, gone.size === 1 ? 'Unit disbanded.' : `${gone.size} units disbanded.`, 'info');
+}
+
 export function canStop(s: GameState, owner: Owner, ids: number[]): boolean {
   return ownUnits(s, owner, ids).length > 0;
 }

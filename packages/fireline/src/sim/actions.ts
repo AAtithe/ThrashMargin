@@ -2,6 +2,7 @@ import { boardProblem, doBoard, doUnload, unloadProblem } from './transport';
 import {
   canAttack,
   canCancel,
+  canDisband,
   canHarvest,
   canHome,
   canMove,
@@ -14,6 +15,7 @@ import {
   canStop,
   doAttack,
   doCancel,
+  doDisband,
   doHarvest,
   doHome,
   doMove,
@@ -88,6 +90,12 @@ export function processAction(s: GameState, a: GameAction): GameState {
       if (!canStop(s, 0, ids(a.ids))) return s;
       const c = cloneState(s);
       doStop(c, 0, ids(a.ids));
+      return c;
+    }
+    case 'disband': {
+      if (!canDisband(s, 0, ids(a.ids))) return s;
+      const c = cloneState(s);
+      doDisband(c, 0, ids(a.ids));
       return c;
     }
     case 'home': {

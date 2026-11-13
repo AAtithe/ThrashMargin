@@ -745,6 +745,8 @@ export type GameAction =
   | { type: 'stop'; ids: number[] }
   /** Return to base: aircraft to their Helipad (rearm, repair, stay parked), ships to their Naval Yard. */
   | { type: 'home'; ids: number[] }
+  /** Dismisses units for good, nothing paid back (heroes, Generals and loaded carriers refused). */
+  | { type: 'disband'; ids: number[] }
   | { type: 'harvest'; ids: number[]; tile?: number; refinery?: number }
   | { type: 'queue'; category: Category; kind: BuildingKind | UnitKind }
   | { type: 'cancel'; category: Category; kind: BuildingKind | UnitKind }
