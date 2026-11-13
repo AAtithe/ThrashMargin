@@ -254,16 +254,16 @@ function resolveDeclaration(state: GameState): GameState {
   s = log(
     s,
     'lapse',
-    `${captain.name}'s claim collapses — ${missing.join(', ')}. The company is broken up.`,
+    `${captain.name}'s claim collapses: ${missing.join(', ')}. The company is broken up.`,
     captain.id,
   );
   if (heir) {
     s = log(
       s,
       'victory',
-      `${heir.c.name} is left holding the most by value — ${money(
+      `${heir.c.name} is left holding the most by value (${money(
         heir.worth,
-      )} in cash, ships and shares — and takes the company.`,
+      )} in cash, ships and shares) and takes the company.`,
       heir.c.id,
     );
   }
@@ -333,7 +333,7 @@ function turnTheWorld(state: GameState): GameState {
   if (done.length > 0) {
     s = { ...s, events: running };
     for (const e of done) {
-      s = log(s, 'event', `${e.headline} — the news is stale; trade returns to normal.`, null, {
+      s = log(s, 'event', `${e.headline}. The news is stale; trade returns to normal.`, null, {
         event: e.kind,
         ended: 1,
       });
@@ -403,7 +403,7 @@ function doBuyStock(state: GameState, stock: StockId, lots = 1): GameState {
   return log(
     s,
     'stock',
-    `${captain.name} buys ${lots} of ${COMPANIES[stock].name} at ${money(price)} — ${money(cost)}.`,
+    `${captain.name} buys ${lots} of ${COMPANIES[stock].name} at ${money(price)}, ${money(cost)} in all.`,
     captain.id,
     { stock, lots, price },
   );
@@ -427,9 +427,9 @@ function doSellStock(state: GameState, stock: StockId, lots = 1): GameState {
   return log(
     s,
     'stock',
-    `${captain.name} sells ${selling} of ${COMPANIES[stock].name} at ${money(price)} — ${money(
+    `${captain.name} sells ${selling} of ${COMPANIES[stock].name} at ${money(price)}, ${money(
       price * selling,
-    )}.`,
+    )} in all.`,
     captain.id,
     { stock, lots: selling, price, sold: 1 },
   );
@@ -473,7 +473,7 @@ function chargeStandingCosts(state: GameState): GameState {
       s,
       'wages',
       short > 0
-        ? `${captain.name} cannot meet the ${money(owed)} due — ${money(paid)} paid, ${money(
+        ? `${captain.name} cannot meet the ${money(owed)} due: ${money(paid)} paid, ${money(
             short,
           )} left owing.`
         : `${captain.name} pays ${money(owed)} in wages${interest > 0 ? ' and interest' : ''}.`,
@@ -517,7 +517,7 @@ function doTakeLoan(state: GameState): GameState {
   return log(
     s,
     'wages',
-    `${captain.name} draws ${money(LOAN_STEP)} against the fleet — ${money(
+    `${captain.name} draws ${money(LOAN_STEP)} against the fleet, leaving ${money(
       debt + LOAN_STEP,
     )} outstanding at ${loanRateLabel()} a round.`,
     captain.id,
@@ -541,7 +541,7 @@ function doRepayLoan(state: GameState): GameState {
   return log(
     s,
     'wages',
-    `${captain.name} pays ${money(paying)} off the debt — ${money(debt - paying)} outstanding.`,
+    `${captain.name} pays ${money(paying)} off the debt, leaving ${money(debt - paying)} outstanding.`,
     captain.id,
     { repaid: paying, debt: debt - paying },
   );
@@ -563,11 +563,11 @@ function reckonVoyage(state: GameState): GameState {
   s = log(
     s,
     'victory',
-    `The season closes. ${winner.c.name} finishes worth ${money(winner.worth)} — ` +
+    `The season closes. ${winner.c.name} finishes worth ${money(winner.worth)} (` +
       `${ranked
         .slice(1)
         .map(r => `${r.c.name} ${money(r.worth)}`)
-        .join(', ')} — and takes the honours.`,
+        .join(', ')}) and takes the honours.`,
     winner.c.id,
     { worth: winner.worth },
   );
@@ -623,7 +623,7 @@ function turnTheEra(state: GameState): GameState {
   return log(
     s,
     'era',
-    `${byLevel ? `Level ${era.level} — ${era.name}` : `A new era: ${era.name}`}. ${
+    `${byLevel ? `Level ${era.level}: ${era.name}` : `A new era: ${era.name}`}. ${
       arrived.length ? `${arrived[0].charAt(0).toUpperCase()}${arrived.join(', ').slice(1)} ${arrived.length === 1 ? 'comes' : 'come'} into play.` : era.blurb
     }`,
     null,
@@ -764,7 +764,7 @@ function doRoll(state: GameState): GameState {
       return `${ship?.name}: ${d[0]}+${d[1]}${total !== raw ? ` = ${total}` : ''}`;
     })
     .join(', ');
-  s = log(s, 'roll', `${captain.name} takes the wind — ${rolls}.`, captain.id);
+  s = log(s, 'roll', `${captain.name} takes the wind: ${rolls}.`, captain.id);
   if (captain.sullen) s = updateCaptain(s, captain.id, { sullen: undefined });
   // The post, at the top of the turn.
   s = deliverPost(s, captain.id);
@@ -783,7 +783,7 @@ function doRoll(state: GameState): GameState {
         s = log(
           s,
           'sail',
-          `${ship.name} is ${wind.modifier > 0 ? 'carried' : 'held'} — ${wind.label}, ${
+          `${ship.name} is ${wind.modifier > 0 ? 'carried' : 'held'}: ${wind.label}, ${
             wind.modifier > 0 ? '+' : ''
           }${wind.modifier} points.`,
           captain.id,
@@ -894,7 +894,7 @@ function applyPiracy(state: GameState, ship: Ship, captainId: string): GameState
     s = log(
       s,
       'piracy',
-      `${ship.name} is taken and stripped — ${
+      `${ship.name} is taken and stripped: ${
         lost.length ? lost.map(l => goodName(l.good)).join(', ') : 'her cargo'
       } gone.`,
       captainId,
@@ -934,7 +934,7 @@ function turnTheTeaSeason(state: GameState): GameState {
       s,
       'teaRace',
       race.placings.length === 0
-        ? `The year ${race.year} tea race goes unclaimed — nobody landed the new season's tea in London.`
+        ? `The year ${race.year} tea race goes unclaimed. Nobody landed the new season's tea in London.`
         : `The tea race closes with only one ship home. Second money goes unclaimed.`,
       null,
       { closed: 1, year: race.year },
@@ -990,7 +990,7 @@ function landNewSeasonTea(state: GameState, shipId: string): GameState {
   s = log(
     s,
     'teaRace',
-    `${ship.name} ${prize.rank === 1 ? 'wins the Great Tea Race' : 'is second home in the tea race'} — ` +
+    `${ship.name} ${prize.rank === 1 ? 'wins the Great Tea Race' : 'is second home in the tea race'}: ` +
       `${lots.length} lot${lots.length === 1 ? '' : 's'} of the new season landed in London for ` +
       `${money(prize.premium)}, and the ${money(prize.purse)} purse. ${money(paid)} in all.`,
     captain.id,
@@ -1034,7 +1034,7 @@ function charterEvent(state: GameState, captainId: string, e: CharterEvent): Gam
     s = log(
       s,
       'charter',
-      `${now.name} completes a charter for the owners — ${charterText(done).toLowerCase()} — and is paid ${money(paid)}${
+      `${now.name} completes a charter for the owners (${charterText(done).toLowerCase()}) and is paid ${money(paid)}${
         paid > done.reward ? `, sweetened by ${money(paid - done.reward)} to a captain behind on shares` : ''
       }.`,
       captainId,
@@ -1096,7 +1096,7 @@ function gainXp(state: GameState, captainId: string, base: number): GameState {
     s = log(
       s,
       'career',
-      `${captain.name} rises to level ${to} — ${to - from === 1 ? 'a skill point' : `${to - from} skill points`} to spend.`,
+      `${captain.name} rises to level ${to}, with ${to - from === 1 ? 'a skill point' : `${to - from} skill points`} to spend.`,
       captainId,
       { level: to, xp: after },
     );
@@ -1182,7 +1182,7 @@ function doAnswerLetter(state: GameState, accept: boolean): GameState {
       const cost = l.cost ?? 0;
       if (captain.cash < cost) return state;
       s = updateCaptain(s, captain.id, { cash: captain.cash - cost });
-      return log(s, 'letter', `${captain.name} grants the hands their leave — ${money(cost)}, and willing crews.`, captain.id, {
+      return log(s, 'letter', `${captain.name} grants the hands their leave: ${money(cost)}, and willing crews.`, captain.id, {
         kind: l.kind,
         accepted: 1,
       });
@@ -1247,7 +1247,7 @@ function deliverDispatches(state: GameState, shipId: string): GameState {
   s = log(
     s,
     'letter',
-    `${ship.name} delivers the Admiralty's dispatches at ${portName(ship.location)} — ${money(due.reward)}, and the ${money(due.bond)} bond returned.`,
+    `${ship.name} delivers the Admiralty's dispatches at ${portName(ship.location)}: ${money(due.reward)}, and the ${money(due.bond)} bond returned.`,
     captain.id,
     { kind: 'dispatch', delivered: 1, reward: due.reward },
   );
@@ -1298,7 +1298,7 @@ function collectPatron(state: GameState, captainId: string): GameState {
     'letter',
     left > 0
       ? `${captain.name}'s patron takes ${money(paid)}; ${money(left)} is still owed, and comes off the next landing.`
-      : `${captain.name} repays the patron in full — ${money(paid)}.`,
+      : `${captain.name} repays the patron in full: ${money(paid)}.`,
     captainId,
     { kind: 'patron', repaid: paid, owed: left },
   );
@@ -1313,7 +1313,7 @@ function callOffWager(state: GameState, w: Wager, why: string): GameState {
   }
   const a = s.captains.find(c => c.id === w.a)!;
   const b = s.captains.find(c => c.id === w.b)!;
-  return log(s, 'wager', `The wager between ${a.name} and ${b.name} is off — ${why}. Both stakes go back.`, null, {
+  return log(s, 'wager', `The wager between ${a.name} and ${b.name} is off: ${why}. Both stakes go back.`, null, {
     wagerId: w.id,
     void: 1,
   });
@@ -1340,7 +1340,7 @@ function settleWagersOn(state: GameState, contractId: string, fillerId: string):
     s = log(
       s,
       'wager',
-      `${winner.name} lands ${goodName(w.good)} at ${portName(w.destination)} ahead of ${loser.name} and takes the wager — ${money(w.stake * 2)}. ` +
+      `${winner.name} lands ${goodName(w.good)} at ${portName(w.destination)} ahead of ${loser.name} and takes the wager: ${money(w.stake * 2)}. ` +
         `Between them it stands ${record[fillerId]}–${record[loserId] ?? 0}.`,
       fillerId,
       { wagerId: w.id, won: w.stake * 2, loserId },
@@ -1380,7 +1380,7 @@ function runOn(state: GameState, ship: Ship, points: number, captainId: string, 
   return log(
     s,
     'sail',
-    `${ship.name} ${why} — ${outcome.spent} points made good, ${pointsToDestination(outcome.ship)} still to run to ${
+    `${ship.name} ${why}: ${outcome.spent} points made good, ${pointsToDestination(outcome.ship)} still to run to ${
       dest ? portName(dest) : 'her destination'
     }.`,
     captainId,
@@ -1409,7 +1409,7 @@ function doCrackOn(state: GameState, shipId: string): GameState {
     return log(
       s,
       'crackOn',
-      `${ship.name} is driven too hard and carries away her fore-topmast — threw a ${die.value}. ` +
+      `${ship.name} is driven too hard and carries away her fore-topmast (threw a ${die.value}). ` +
         `She makes nothing more this turn and sails ${DAMAGE_SPEED_PENALTY} points slower until repaired.`,
       captain.id,
       { shipId: ship.id, die: die.value, damaged: 1 },
@@ -1421,12 +1421,12 @@ function doCrackOn(state: GameState, shipId: string): GameState {
     return log(
       s,
       'crackOn',
-      `${ship.name} crowds on every stitch for the passage out — threw a ${die.value}, ${s.sailPoints[ship.id]} points to sail.`,
+      `${ship.name} crowds on every stitch for the passage out (threw a ${die.value}): ${s.sailPoints[ship.id]} points to sail.`,
       captain.id,
       { shipId: ship.id, die: die.value },
     );
   }
-  s = log(s, 'crackOn', `${ship.name} cracks on — threw a ${die.value}.`, captain.id, {
+  s = log(s, 'crackOn', `${ship.name} cracks on (threw a ${die.value}).`, captain.id, {
     shipId: ship.id,
     die: die.value,
   });
@@ -1446,7 +1446,7 @@ function doRepairShip(state: GameState, shipId: string): GameState {
   return log(
     s,
     'repair',
-    `${ship.name} is made good at ${portName(ship.location)} — new spars and her seams paid, ${money(price)}.`,
+    `${ship.name} is made good at ${portName(ship.location)} : new spars and her seams paid, ${money(price)}.`,
     captain.id,
     { shipId: ship.id, price },
   );
@@ -1489,7 +1489,7 @@ function doResolveEncounter(state: GameState, shipId: string, accept: boolean): 
       return log(
         s,
         'encounter',
-        `${ship.name} heaves to and boards the derelict — a lot of ${goodName(enc.good)} swung across for nothing, ${enc.points} points lost.`,
+        `${ship.name} heaves to and boards the derelict: a lot of ${goodName(enc.good)} swung across for nothing, ${enc.points} points lost.`,
         captain.id,
         { shipId: ship.id, kind: enc.kind, good: enc.good },
       );
@@ -1533,7 +1533,7 @@ function doResolveEncounter(state: GameState, shipId: string, accept: boolean): 
         return log(
           s,
           'encounter',
-          `The pilot puts ${ship.name} on a reef. She is warped off with her hull strained — ${money(price)} for nothing, and slower until repaired.`,
+          `The pilot puts ${ship.name} on a reef. She is warped off with her hull strained: ${money(price)} for nothing, and slower until repaired.`,
           captain.id,
           { shipId: ship.id, kind: enc.kind, price, damaged: 1 },
         );
@@ -1618,7 +1618,7 @@ function doSailTo(
       s = log(
         s,
         'insurance',
-        `${ship.name}'s policy lapses — the ${money(premium)} premium could not be met. She sails uncovered.`,
+        `${ship.name}'s policy lapses. The ${money(premium)} premium could not be met. She sails uncovered.`,
         captain.id,
         { shipId: ship.id, premium, lapsed: 1 },
       );
@@ -1627,7 +1627,7 @@ function doSailTo(
       s = log(
         s,
         'insurance',
-        `${ship.name}'s policy is endorsed for the passage — premium ${money(premium)}.`,
+        `${ship.name}'s policy is endorsed for the passage, at a premium of ${money(premium)}.`,
         captain.id,
         { shipId: ship.id, premium, risk: Math.round(risk * 100) },
       );
@@ -1701,8 +1701,8 @@ function doBuyCargo(state: GameState, shipId: string, good: string): GameState {
     s,
     'buy',
     `${ship.name} loads ${goodName(good)} at ${portName(ship.location)} for ${money(price)}${
-      standing === 'level' ? '' : standing === 'cheap' ? ' — under the reckoning' : ' — over the reckoning'
-    } — ${ship.hold.length + 1} of ${slotsOf(ship.shipClass)} slots full.`,
+      standing === 'level' ? '' : standing === 'cheap' ? ' (under the reckoning)' : ' (over the reckoning)'
+    }, ${ship.hold.length + 1} of ${slotsOf(ship.shipClass)} slots full.`,
     captain.id,
   );
 }
@@ -1764,7 +1764,7 @@ function doDeliver(state: GameState, shipId: string, contractId: string): GameSt
     'deliver',
     `${ship.name} lands ${landed.length} of ${goodName(contract.good)} at ${portName(
       contract.destination,
-    )} — ${rank === 1 ? 'first home' : 'second home'}, ${PAYOUT_MULTIPLIERS[rank]}x, ${money(payout)}.`,
+    )}: ${rank === 1 ? 'first home' : 'second home'}, ${PAYOUT_MULTIPLIERS[rank]}x, ${money(payout)}.`,
     captain.id,
     {
       contractId: contract.id,
@@ -1850,10 +1850,10 @@ function doSellCargo(state: GameState, shipId: string, good: string): GameState 
     voyageRate !== null
       ? `${ship.name} lands ${sold.length} ${goodName(good)} at ${portName(ship.location)} for ${money(
           takings,
-        )} — ${takings >= paid ? `${money(takings - paid)} clear` : `${money(paid - takings)} down`}.`
+        )}, ${takings >= paid ? `${money(takings - paid)} clear` : `${money(paid - takings)} down`}.`
       : `${ship.name} sells ${sold.length} ${goodName(good)} on the quay at ${portName(
           ship.location,
-        )} for ${money(takings)} — ${money(paid - takings)} down on what she paid.`,
+        )} for ${money(takings)}, ${money(paid - takings)} down on what she paid.`,
     captain.id,
     { shipId: ship.id, units: sold.length, takings, recovered: takings, forfeited: paid - takings },
   );
@@ -1875,7 +1875,7 @@ function doJettison(state: GameState, shipId: string, good?: string): GameState 
     'missed',
     `${ship.name} puts ${dumped.length} ${
       good ? goodName(good) : 'lot' + (dumped.length === 1 ? '' : 's')
-    } over the side — ${money(lost)} lost outright, ${slotsOf(ship.shipClass) - kept.length} slot${
+    } over the side: ${money(lost)} lost outright, ${slotsOf(ship.shipClass) - kept.length} slot${
       slotsOf(ship.shipClass) - kept.length === 1 ? '' : 's'
     } clear.`,
     captain.id,
@@ -1921,7 +1921,7 @@ function doSellShip(state: GameState, shipId: string): GameState {
     'ship',
     `${captain.name} sells ${ship.name} to the yard at ${portName(ship.location)} for ${money(price)}` +
       `${ship.hold.length ? `, ${ship.hold.length} lot${ship.hold.length === 1 ? '' : 's'} aboard going with her` : ''}` +
-      `${settled > 0 ? ` — ${money(settled)} of it straight to the crew owed` : ''}.`,
+      `${settled > 0 ? ` (${money(settled)} of it straight to the crew owed)` : ''}.`,
     captain.id,
     { shipId: ship.id, sold: price, arrearsPaid: settled },
   );
@@ -1964,7 +1964,7 @@ function doBuyShip(state: GameState, requested?: ShipClassId): GameState {
     'ship',
     `${captain.name} buys ${ship.name}, ${classes ? `a ${hull.name.toLowerCase()}, ` : ''}for ${money(
       hull.price,
-    )} — ${hull.slots} slots${hull.fittings?.guns ? ', guns aboard' : ''}. She fits out at ${portName(
+    )} (${hull.slots} slots${hull.fittings?.guns ? ', guns aboard' : ''}). She fits out at ${portName(
       HOME_PORT,
     )}.`,
     captain.id,
@@ -1984,7 +1984,7 @@ function doBuyShare(state: GameState): GameState {
     return log(
       s,
       'share',
-      `${captain.name} takes up a share for ${money(price)} — ${captain.shares + 1} held, ${
+      `${captain.name} takes up a share for ${money(price)}: ${captain.shares + 1} held, ${
         s.sharesRemaining
       } left with the bank at ${money(sharePriceFor(s.sharesRemaining))}.`,
       captain.id,
@@ -2017,10 +2017,10 @@ function doBuyShare(state: GameState): GameState {
     s,
     'share',
     sabotage
-      ? `${captain.name} buys a share out from under ${seller.name} for ${money(price)} — ${
+      ? `${captain.name} buys a share out from under ${seller.name} for ${money(price)}: ${
           captain.shares + 1
         } against ${seller.shares - 1}.`
-      : `${captain.name} buys a share off ${seller.name} on the exchange for ${money(price)} — ${
+      : `${captain.name} buys a share off ${seller.name} on the exchange for ${money(price)}: ${
           captain.shares + 1
         } against ${seller.shares - 1}.`,
     captain.id,
@@ -2058,7 +2058,7 @@ function doHostileBid(state: GameState, targetId: string): GameState {
   return log(
     s,
     'share',
-    `${buyer.name} bids ${money(price)} at the exchange and takes a share off ${seller.name} — ` +
+    `${buyer.name} bids ${money(price)} at the exchange and takes a share off ${seller.name}: ` +
       `${buyer.shares + 1} against ${seller.shares - 1}. ${money(price - proceeds)} goes in ` +
       `brokerage, and her next such bid will cost ${money(hostileBidPrice(made + 1, buyer.shares + 1))}.`,
     buyer.id,
@@ -2080,7 +2080,7 @@ function doSellShare(state: GameState): GameState {
   return log(
     s,
     'share',
-    `${captain.name} surrenders a share to the bank for ${money(proceeds)} — ${
+    `${captain.name} surrenders a share to the bank for ${money(proceeds)}, leaving ${
       captain.shares - 1
     } held. A poor price, but it buys a cargo.`,
     captain.id,
@@ -2104,7 +2104,7 @@ function doBuyFitting(state: GameState, shipId: string, fitting: 'guns' | 'coppe
     'fitting',
     fitting === 'guns'
       ? `${ship.name} is armed at ${portName(ship.location)} for ${money(price)}.`
-      : `${ship.name} is coppered at ${portName(ship.location)} for ${money(price)} — a point faster, and easier on heavy weather.`,
+      : `${ship.name} is coppered at ${portName(ship.location)} for ${money(price)}: a point faster, and easier on heavy weather.`,
     captain.id,
     { shipId: ship.id, fitting, price },
   );
@@ -2121,7 +2121,7 @@ function doSetInsurance(state: GameState, shipId: string, insured: boolean): Gam
     s,
     'insurance',
     insured
-      ? `${ship.name} is entered on an open policy — every voyage covered, premium taken at cast-off.`
+      ? `${ship.name} is entered on an open policy: every voyage covered, premium taken at cast-off.`
       : `${ship.name}'s policy is closed. She sails at her owner's risk.`,
     captain.id,
     { shipId: ship.id },
@@ -2146,7 +2146,7 @@ function doDeclare(state: GameState): GameState {
   return log(
     s,
     'declare',
-    `${captain.name} declares a majority — ${captain.shares} of the ten. The company is wound up in ${DECLARATION_TURNS} turns; ${money(
+    `${captain.name} declares a majority with ${captain.shares} of the ten. The company is wound up in ${DECLARATION_TURNS} turns; ${money(
       VICTORY_CASH,
     )} and a ship must still be in hand.`,
     captain.id,
