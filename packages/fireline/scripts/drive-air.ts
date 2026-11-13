@@ -21,6 +21,8 @@ import {
   DAMAGE_VS,
   ENGINES_SPEED,
   FLIGHT_TICKS,
+  HELIPAD_MEND_HP,
+  HELIPAD_MEND_TICKS,
   HELIPAD_SLOTS,
   INFANTRY_MENU,
   PLATING_HP,
@@ -450,6 +452,41 @@ function rearming(ok: Ok): void {
     const w = unitIn(n, b.id)!;
     ok(w.order.type === 'rearm' && w.pad === 0 && w.x === p0.x && w.y === p0.y && w.ammo === 0, 'with no Helipad at all, it waits where it is');
     ok(homePad(n, w) === 0, 'and has no pad to go to');
+    ok(processAction(n, { type: 'home', ids: [b.id] }) === n, 'and Return to base is refused');
+  }
+  // Return to base: sent away and hurt, an aircraft flies home on the order, lands, rearms and is repaired.
+  {
+    const { s, cx, cy } = airArena('return-home');
+    const { pad, craft } = padWith(s, 0, cx - 6, cy - 1, ['gunship']);
+    const g = craft[0];
+    ok(processAction(s, { type: 'home', ids: [g.id] }) === s, 'Return to base is refused for an aircraft already parked');
+    const tank = put(s, 0, 'tank', cx + 0.5, cy + 4.5, { stance: 'hold' });
+    ok(processAction(s, { type: 'home', ids: [tank.id] }) === s, 'and for a ground unit');
+    let t = processAction(s, { type: 'move', ids: [g.id], x: cx + 12, y: cy + 8 });
+    t = tickUntil(t, x => unitIn(x, g.id)!.order.type === 'idle', 600);
+    const away = copy(t);
+    const ga = unitIn(away, g.id)!;
+    ga.hp = 100;
+    ga.ammo = 2;
+    t = processAction(away, { type: 'move', ids: [g.id], x: cx + 14, y: cy + 8 });
+    t = processAction(t, { type: 'move', ids: [g.id], x: cx + 16, y: cy + 8, queue: true });
+    const sent = processAction(t, { type: 'home', ids: [g.id, tank.id] });
+    ok(sent !== t && unitIn(sent, g.id)!.order.type === 'rearm' && unitIn(sent, g.id)!.queue.length === 0, 'Return to base turns it for home and drops its waypoints');
+    ok(unitIn(sent, tank.id)!.order.type === unitIn(t, tank.id)!.order.type, 'leaving any ground unit named alone');
+    const spot = padSpot(sent, pad, unitIn(sent, g.id)!);
+    let h = tickUntil(sent, x => unitIn(x, g.id)!.x === spot.x && unitIn(x, g.id)!.y === spot.y, 1000);
+    ok(unitIn(h, g.id)!.x === spot.x, 'it lands on its pad');
+    const landedHp = unitIn(h, g.id)!.hp;
+    h = tick(h, HELIPAD_MEND_TICKS * 10);
+    const hp = unitIn(h, g.id)!.hp;
+    ok(hp >= landedHp + HELIPAD_MEND_HP * 9 && hp <= landedHp + HELIPAD_MEND_HP * 10, `and is repaired there (${landedHp} to ${hp})`);
+    ok(h.players[0].credits === sent.players[0].credits, 'for nothing');
+    h = tickUntil(h, x => unitIn(x, g.id)!.hp === UNITS.gunship.hp && unitIn(x, g.id)!.ammo === AIR_AMMO.gunship, 3000);
+    const done = unitIn(h, g.id)!;
+    ok(done.hp === UNITS.gunship.hp && done.ammo === AIR_AMMO.gunship && done.x === spot.x && done.order.type === 'rearm', 'repaired and rearmed in full, it stays parked');
+    // In the air it is not repaired.
+    const flying = tick(processAction(away, { type: 'move', ids: [g.id], x: cx + 4, y: cy + 8 }), HELIPAD_MEND_TICKS * 5);
+    ok(unitIn(flying, g.id)!.hp === 100, 'away from its pad, an aircraft is not repaired');
   }
   // A Helipad serves HELIPAD_SLOTS aircraft: the air queue stops there.
   {
@@ -722,7 +759,9 @@ function battles(ok: Ok): void {
   // a race either way: round 6's computer formations and the air war took this seed's first Bomber
   // to minute 29, and main's change to how a beaten side spends its last credits moved it a minute
   // too. The rule is that they fly and bomb in real battles, so two longer battles count with it.
-  const c = play('strike-8');
+  // Helipads repairing parked aircraft (2026-11-13) moved strike-8's battle so its first Bomber never
+  // came (side 1 won at 24 minutes, not 20); strike-7 bombs (18) with the repairs in.
+  const c = play('strike-7');
   const longer = play('strike-4');
   ok(a.bombs + c.bombs + longer.bombs > 0, `bombers drop bombs in real battles (${a.bombs}, ${c.bombs} and ${longer.bombs})`);
   ok(a.rockets > 0, `gunships fire in it (${a.rockets} rockets seen in flight)`);

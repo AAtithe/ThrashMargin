@@ -743,6 +743,8 @@ export type GameAction =
   | { type: 'attack'; ids: number[]; target: number; queue?: boolean }
   | { type: 'stance'; ids: number[]; stance: 'aggressive' | 'guard' | 'hold' }
   | { type: 'stop'; ids: number[] }
+  /** Return to base: aircraft to their Helipad (rearm, repair, stay parked), ships to their Naval Yard. */
+  | { type: 'home'; ids: number[] }
   | { type: 'harvest'; ids: number[]; tile?: number; refinery?: number }
   | { type: 'queue'; category: Category; kind: BuildingKind | UnitKind }
   | { type: 'cancel'; category: Category; kind: BuildingKind | UnitKind }

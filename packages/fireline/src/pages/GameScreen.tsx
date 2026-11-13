@@ -13,7 +13,7 @@ import { AIR_LIFT, TILE } from '../game/art';
 import { useLayout } from '../game/layout';
 import Minimap, { ALERT_MS, type Alert } from '../game/Minimap';
 import { Renderer, type Camera, type Overlay } from '../game/renderer';
-import { BUILD_KEYS, BuildPanel, SelectionPanel, menuFor, pressBuild, tabsFor, type Tab } from '../game/Sidebar';
+import { BUILD_KEYS, BuildPanel, ForcesPanel, SelectionPanel, menuFor, pressBuild, tabsFor, type Tab } from '../game/Sidebar';
 import BuildWindow from '../game/BuildWindow';
 import { airRoom } from '../sim/air';
 import { researchProblem } from '../sim/research';
@@ -46,7 +46,7 @@ import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
 import { costFor, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
-import { selectionActions } from '../game/selectionActions';
+import { isSupport, selectionActions } from '../game/selectionActions';
 // round6:B. Heroes in free play (fireline-round6-design.md): the hero bar and keys in a skirmish with heroes on.
 import { heroesInPlay, reviveWait } from '../sim/heroes';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
@@ -545,6 +545,8 @@ export function Battle({
   };
 
   // ---- Orders -------------------------------------------------------------------------------
+  /** Tiles short of a fight that support units halt when sent into it with fighting units. */
+  const SUPPORT_STANDOFF = 6;
   const command = useCallback(
     (wx: number, wy: number, forceAttackMove: boolean) => {
       const s = cur.current;
@@ -565,11 +567,34 @@ export function Battle({
       const targetUnit = s.units.find(u => u.id === target);
       const targetBuilding = s.buildings.find(b => b.id === target);
       const enemy = (targetUnit && targetUnit.owner !== 0) || (targetBuilding && targetBuilding.owner !== 0);
+      // Support (Medics, Repair Trucks and the like) sent to a fight alongside fighting units stays
+      // behind it: it halts SUPPORT_STANDOFF tiles short of the target, on the side the force comes
+      // from, and mends from there. A squad in formation keeps its shape instead (support sits inside).
+      const support = mine.some(u => u.squad !== undefined) || !mine.some(u => !isSupport(u) && UNITS[u.kind].weapon) ? [] : mine.filter(isSupport);
+      const holdBack = () => {
+        const fighters = mine.filter(u => !isSupport(u));
+        const cx = fighters.reduce((a, u) => a + u.x, 0) / fighters.length;
+        const cy = fighters.reduce((a, u) => a + u.y, 0) / fighters.length;
+        const d = Math.hypot(wx - cx, wy - cy);
+        // Already within the stand-off: support stays where it is.
+        if (d <= SUPPORT_STANDOFF) return;
+        const k = (d - SUPPORT_STANDOFF) / d;
+        dispatch({ type: 'move', ids: support.map(u => u.id), x: cx + (wx - cx) * k, y: cy + (wy - cy) * k, queue });
+      };
       if (enemy) {
         dispatch({ type: 'attack', ids, target, queue });
-        const haulers = mine.filter(u => !UNITS[u.kind].weapon).map(u => u.id);
+        const haulers = mine.filter(u => !UNITS[u.kind].weapon && !support.includes(u)).map(u => u.id);
         if (haulers.length) dispatch({ type: 'move', ids: haulers, x: wx, y: wy, queue });
+        if (support.length) holdBack();
         ov.pings.push({ x: wx, y: wy, at: now, kind: 'attack' });
+        return;
+      }
+      if (forceAttackMove && support.length) {
+        const rest = mine.filter(u => !support.includes(u)).map(u => u.id);
+        if (dispatch({ type: 'move', ids: rest, x: wx, y: wy, attackMove: true, queue })) {
+          holdBack();
+          ov.pings.push({ x: wx, y: wy, at: now, kind: 'attack' });
+        }
         return;
       }
       // Infantry on one of our own Troop Carriers: they walk to it and climb in; anything else moves there.
@@ -658,6 +683,13 @@ export function Battle({
       if (b.kind === 'hq') setTab('building');
     }
     sound.play('select');
+  };
+
+  /** The selection panel's chips: the selection becomes exactly these units. */
+  const replaceSelection = (ids: number[]) => {
+    overlay.current.selected = new Set(ids);
+    sound.play('select');
+    refresh();
   };
 
   /** Every fighting unit you own: the touch stand-in for a box drawn round the whole army. */
@@ -1950,7 +1982,7 @@ export function Battle({
           {layout.stacked && overlay.current.selected.size > 0 && (
             <section className="fl-d-sel" aria-label="Selection">
               <h3 className="fl-d-sect">Selection</h3>
-              <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} touch={layout.touch} />
+              <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} touch={layout.touch} onSelect={replaceSelection} />
             </section>
           )}
           <BuildPanel
@@ -1969,10 +2001,16 @@ export function Battle({
             }}
             minimap={<Minimap state={s} vis={vis} online={uplinkOnline} cam={cam.current} onJump={centreOn} alerts={alerts.current} />}
           />
+          {s.units.some(u => u.owner === 0) && (
+            <section className="fl-d-sel" aria-label="Forces">
+              <h3 className="fl-d-sect">Forces</h3>
+              <ForcesPanel state={s} selected={overlay.current.selected} onSelect={replaceSelection} onCentre={centreOn} />
+            </section>
+          )}
           {!(layout.stacked && overlay.current.selected.size > 0) && (
             <section className="fl-d-sel" aria-label="Selection">
               <h3 className="fl-d-sect">{overlay.current.selected.size > 0 ? 'Selection' : 'Orders'}</h3>
-              <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} touch={layout.touch} />
+              <SelectionPanel state={s} selected={overlay.current.selected} dispatch={dispatch} touch={layout.touch} onSelect={replaceSelection} />
             </section>
           )}
         </aside>

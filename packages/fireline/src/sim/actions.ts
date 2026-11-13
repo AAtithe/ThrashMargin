@@ -3,6 +3,7 @@ import {
   canAttack,
   canCancel,
   canHarvest,
+  canHome,
   canMove,
   canPlace,
   canQueue,
@@ -14,6 +15,7 @@ import {
   doAttack,
   doCancel,
   doHarvest,
+  doHome,
   doMove,
   doPlace,
   doQueue,
@@ -86,6 +88,12 @@ export function processAction(s: GameState, a: GameAction): GameState {
       if (!canStop(s, 0, ids(a.ids))) return s;
       const c = cloneState(s);
       doStop(c, 0, ids(a.ids));
+      return c;
+    }
+    case 'home': {
+      if (!canHome(s, 0, ids(a.ids))) return s;
+      const c = cloneState(s);
+      doHome(c, 0, ids(a.ids));
       return c;
     }
     case 'harvest': {

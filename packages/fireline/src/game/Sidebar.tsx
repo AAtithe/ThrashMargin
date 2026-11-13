@@ -59,14 +59,14 @@ import {
   SCRAMBLE_RANGE,
 } from '../sim/rules';
 import { buildTicksFor, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, researchModeOf, techAllowed, unlocked } from '../sim/state';
-import { airCount, airRoom } from '../sim/air';
+import { airCount, airRoom, padSpot } from '../sim/air';
 import { buildingSpecFor, buildingSpecOf, factionOf, menuOf, unitSpecFor } from '../sim/specs';
 import { doctrineOf, doctrineProblem, hasUpgrade, researchCostOf, researchProblem, researchTicksOf } from '../sim/research';
 import { cargoMaxOf, inModuleOrder, loadoutCost, loadoutOf, queueCostFor } from '../sim/loadout';
-import type { GameAction, GameState } from '../sim/types';
+import type { GameAction, GameState, Unit } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import { iconFor } from './icons';
-import { selectionActions, type Selection } from './selectionActions';
+import { isSupport, selectionActions, type Selection } from './selectionActions';
 // round6:C. Generals (fireline-round6-design.md, workstream C).
 import { GeneralNote } from '../components/Generals';
 
@@ -1157,11 +1157,14 @@ export function SelectionPanel({
   selected,
   dispatch,
   touch = false,
+  onSelect,
 }: {
   state: GameState;
   selected: Set<number>;
   dispatch: (a: GameAction) => boolean;
   touch?: boolean;
+  /** Replaces the selection with these ids (the chips use it to take a kind out). */
+  onSelect?: (ids: number[]) => void;
 }) {
   const units = state.units.filter(u => selected.has(u.id));
   const building = state.buildings.find(b => selected.has(b.id));
@@ -1289,20 +1292,49 @@ export function SelectionPanel({
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        {[...counts].map(([kind, n]) => (
-          <span
-            key={kind}
-            tabIndex={0}
-            {...bind(kind)}
-            className="fl-has-tip fl-d-chip"
-            data-enemy={mine ? '0' : '1'}
-          >
-            {n > 1 ? `${n}× ` : ''}
-            {mine ? '' : 'Enemy '}
-            {UNITS[kind].name}
-          </span>
-        ))}
+        {[...counts].map(([kind, n]) =>
+          mine && onSelect && counts.size > 1 ? (
+            // Several kinds selected: a chip takes its kind out of the selection (Ctrl or Cmd: keeps only that kind),
+            // so the order that follows goes to the forces you want and the rest stay where they are.
+            <button
+              key={kind}
+              type="button"
+              {...bind(kind)}
+              className="fl-has-tip fl-d-chip fl-d-chip-btn"
+              data-enemy="0"
+              data-kind={kind}
+              aria-label={`Take the ${UNITS[kind].name} out of the selection`}
+              onClick={e =>
+                onSelect(units.filter(u => (e.ctrlKey || e.metaKey ? u.kind === kind : u.kind !== kind)).map(u => u.id))
+              }
+            >
+              {n > 1 ? `${n}× ` : ''}
+              {UNITS[kind].name}
+              <span aria-hidden="true" className="fl-d-chip-x">
+                ×
+              </span>
+            </button>
+          ) : (
+            <span
+              key={kind}
+              tabIndex={0}
+              {...bind(kind)}
+              className="fl-has-tip fl-d-chip"
+              data-enemy={mine ? '0' : '1'}
+            >
+              {n > 1 ? `${n}× ` : ''}
+              {mine ? '' : 'Enemy '}
+              {UNITS[kind].name}
+            </span>
+          ),
+        )}
       </div>
+      {mine && onSelect && counts.size > 1 && (
+        <span style={{ fontSize: '0.68rem', color: UI.textFaint }}>
+          {touch ? 'Tap a kind to take it out of the selection.' : 'Click a kind to take it out of the selection; Ctrl+click to keep only that kind.'}
+          {units.some(isSupport) && units.some(u => !isSupport(u)) ? ' On an attack, Medics and Repair Trucks hold back behind the fighting.' : ''}
+        </span>
+      )}
       <Bar frac={hp / Math.max(1, max)} />
       {tipCard}
       {one && one.kind === 'hauler' && mine && (
@@ -1319,7 +1351,15 @@ export function SelectionPanel({
       {one && mine && AIR_AMMO[one.kind] && (
         <span style={{ fontSize: '0.72rem', color: UI.textSoft }} data-testid="air-ammo">
           {{ bomb: 'Bombs', scout: 'Fuel', intercept: 'Missiles', strafe: 'Rockets', transport: 'Rockets' }[UNITS[one.kind].airRole ?? 'strafe']} {one.ammo ?? 0} of {AIR_AMMO[one.kind]}.{' '}
-          {one.order.type === 'rearm'
+          {one.order.type === 'rearm' && !landed(state, one)
+            ? one.order.pad
+              ? 'Returning to its Helipad.'
+              : 'No Helipad with room: waiting.'
+            : one.order.type === 'rearm' && one.hp < maxHpOf(one)
+              ? (one.ammo ?? 0) < (AIR_AMMO[one.kind] ?? 0)
+                ? 'Rearming and under repair on its Helipad.'
+                : 'Under repair on its Helipad.'
+            : one.order.type === 'rearm'
             ? (one.ammo ?? 0) < (AIR_AMMO[one.kind] ?? 0)
               ? one.order.pad
                 ? UNITS[one.kind].airRole === 'scout'
@@ -1346,7 +1386,11 @@ export function SelectionPanel({
           {one.drop
             ? 'Setting them down where it stops.'
             : one.order.type === 'rearm'
-              ? 'Parked on its Helipad.'
+              ? !landed(state, one)
+                ? 'Returning to its Helipad.'
+                : one.hp < maxHpOf(one)
+                  ? 'Under repair on its Helipad.'
+                  : 'Parked on its Helipad.'
               : one.order.type === 'idle'
                 ? 'Hovering.'
                 : 'In the air.'}{' '}
@@ -1435,6 +1479,93 @@ function ActionButtons({ state, sel, dispatch, touch }: { state: GameState; sel:
       ))}
     </div>
   );
+}
+
+/** The roster's order: aircraft first (the hardest to find mid-battle), then ships, vehicles, infantry; haulers last. */
+const ROSTER_ORDER: Record<string, number> = { air: 0, naval: 1, vehicle: 2, infantry: 3 };
+
+/**
+ * Forces: every kind of unit you have, wherever it is on the map, as a button. Click selects all of
+ * that kind (Shift adds them to the selection); clicking a kind that is already the whole selection
+ * brings the camera to them. With aircraft of more than one kind, All aircraft selects the lot, so air
+ * cover can be called into a fight without hunting for the Helipads.
+ */
+export function ForcesPanel({
+  state,
+  selected,
+  onSelect,
+  onCentre,
+}: {
+  state: GameState;
+  selected: Set<number>;
+  onSelect: (ids: number[]) => void;
+  onCentre: (x: number, y: number) => void;
+}) {
+  const groups = new Map<UnitKind, Unit[]>();
+  for (const u of state.units) {
+    if (u.owner !== 0 || u.hp <= 0) continue;
+    const g = groups.get(u.kind);
+    if (g) g.push(u);
+    else groups.set(u.kind, [u]);
+  }
+  if (!groups.size) return null;
+  const rank = (k: UnitKind) => (k === 'hauler' ? 9 : ROSTER_ORDER[UNITS[k].category] ?? 5);
+  const kinds = [...groups.keys()].sort((a, b) => rank(a) - rank(b) || UNITS[a].name.localeCompare(UNITS[b].name));
+  const air = kinds.filter(k => UNITS[k].category === 'air').flatMap(k => groups.get(k)!);
+  const pick = (units: Unit[], add: boolean) => {
+    const ids = units.map(u => u.id);
+    const already = ids.length === selected.size && ids.every(id => selected.has(id));
+    if (already) {
+      // A second click: go to them.
+      onCentre(units.reduce((a, u) => a + u.x, 0) / units.length, units.reduce((a, u) => a + u.y, 0) / units.length);
+      return;
+    }
+    onSelect(add ? [...new Set([...[...selected].filter(id => state.units.some(u => u.id === id && u.owner === 0)), ...ids])] : ids);
+  };
+  const isSel = (units: Unit[]) => units.every(u => selected.has(u.id));
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }} data-testid="forces">
+      {air.length > 0 && kinds.filter(k => UNITS[k].category === 'air').length > 1 && (
+        <button
+          type="button"
+          className="fl-d-chip fl-d-chip-btn"
+          data-enemy="0"
+          data-kind="all-air"
+          aria-pressed={isSel(air)}
+          title="Select every aircraft you have. Click again to go to them."
+          onClick={e => pick(air, e.shiftKey)}
+        >
+          All aircraft ({air.length})
+        </button>
+      )}
+      {kinds.map(k => {
+        const units = groups.get(k)!;
+        return (
+          <button
+            key={k}
+            type="button"
+            className="fl-d-chip fl-d-chip-btn"
+            data-enemy="0"
+            data-kind={k}
+            aria-pressed={isSel(units)}
+            title={`Select all ${units.length} ${UNITS[k].name} on the map (Shift adds them). Click again to go to them.`}
+            onClick={e => pick(units, e.shiftKey)}
+          >
+            {units.length > 1 ? `${units.length}× ` : ''}
+            {UNITS[k].name}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** True once an aircraft sits on its Helipad's spot (on its way home it is not). */
+function landed(state: GameState, u: Unit): boolean {
+  const pad = u.order.type === 'rearm' ? state.buildings.find(b => b.id === u.pad && b.hp > 0) : undefined;
+  if (!pad) return false;
+  const spot = padSpot(state, pad, u);
+  return Math.abs(u.x - spot.x) < 0.01 && Math.abs(u.y - spot.y) < 0.01;
 }
 
 // Kept here rather than imported so this panel's additions stay in one place (rules.ts VET_NAMES).

@@ -1,5 +1,7 @@
 import { deployProblem, undeployProblem } from '../sim/engineering';
 import { unloadProblem } from '../sim/transport';
+import { canHome } from '../sim/commands';
+import { isAir } from '../sim/air';
 import { BUILDINGS, UNITS } from '../sim/rules';
 import type { Building, GameAction, GameState, Unit } from '../sim/types';
 
@@ -19,6 +21,16 @@ function deployingTruck(state: GameState, sel: Selection): Unit | null {
  * touching the panel (fireline-round5-design.md). Empty until round 5's workstream C adds Deploy
  * and Pack up.
  */
+/**
+ * Support: the unarmed ground units that keep an army going rather than fight (Medics, Repair Trucks,
+ * the Forward Base Truck, the Engineer). Haulers have their own handling. Given an attack or
+ * attack-move alongside fighting units, these hold back behind the fighting (GameScreen's command).
+ */
+export const isSupport = (u: Unit): boolean => {
+  const spec = UNITS[u.kind];
+  return !spec.weapon && (spec.category === 'infantry' || spec.category === 'vehicle') && u.kind !== 'hauler';
+};
+
 export interface Selection {
   /** Side 0's own selected units (empty when a structure is selected). */
   units: Unit[];
@@ -94,6 +106,16 @@ export const SELECTION_ACTIONS: SelectionAction[] = [
     problem: (state, sel) => {
       const c = sel.units.find(u => UNITS[u.kind].carries && (u.carried?.length ?? 0) > 0);
       return c ? unloadProblem(state, 0, c.id) : null;
+    },
+  },
+  // Return to base: aircraft to their Helipad (rearm, repair, park), ships to their Naval Yard (mended there).
+  {
+    id: 'home',
+    label: 'Return to base',
+    title: 'Aircraft fly home to their Helipad, land, rearm and are repaired, then stay parked. Ships sail back beside their Naval Yard, which mends them.',
+    action: (state, sel) => {
+      const ids = sel.units.filter(u => isAir(u) || UNITS[u.kind].category === 'naval').map(u => u.id);
+      return ids.length && canHome(state, 0, ids) ? { type: 'home', ids } : null;
     },
   },
 ];

@@ -251,6 +251,9 @@ export default function HowToPlay() {
               damaged of your vehicles right beside it, free and a little faster than the Repair Bay. It never mends infantry,
               aircraft or itself. Left idle, it drives to a damaged vehicle nearby; select it and press <strong>Stay put</strong> to keep
               it where you parked it, and <strong>Roam</strong> to let it go looking again. The computer sends its own with its attack waves.
+              Sent into an attack with fighting units, a Repair Truck (and a Medic) stops six tiles short of the target, on the side
+              your force comes from, rather than driving into the fire; to leave support out of an order altogether, click its kind
+              in the selection panel to take it out of the selection first.
             </li>
             <li>
               The <strong>{UNITS.basetruck.name}</strong> ({UNITS.basetruck.cost} credits, needs a Comms Uplink) drives anywhere
@@ -434,7 +437,11 @@ export default function HowToPlay() {
         </Section>
         <Section title="Aircraft">
           <p style={{ margin: '0 0 10px', fontSize: '0.8rem', color: UI.textSoft, lineHeight: 1.5 }}>
-            Advanced tech only. A Helipad builds and rearms two aircraft. They fly over water, rock and structures, and only
+            Advanced tech only. A Helipad builds, rearms and repairs two aircraft: an aircraft out of ammunition flies home by
+            itself, and <strong>Return to base</strong> in the selection panel sends one home at any time, to land, rearm, be
+            repaired for nothing and stay parked. Aircraft are repaired only on their Helipad. To bring air cover into a fight,
+            click <strong>All aircraft</strong> or a kind in the sidebar's Forces list (wherever they are on the map), then
+            right-click the enemy; click it again to go to them. They fly over water, rock and structures, and only
             anti-air (Skyhunters, Flak Tracks, Flak Cannons, Interceptors) and machine guns can reach them. Once a Research Lab
             stands, the build window's Research tab offers upgrades, one at a time, that last the rest of the battle: six with
             classic research, the development lines below otherwise.
@@ -475,7 +482,8 @@ export default function HowToPlay() {
             their torpedoes hit ships alone; the Battleship shells the shore from eleven tiles out. Anything that hits the ground
             hits a ship, so turrets on the beach defend a coast. For a landing, right-click a Landing Craft beside the shore with
             infantry or vehicles selected (a vehicle takes two of its six places), sail it to the enemy's beach and press Unload (F).
-            Ships beside your Naval Yard are mended for nothing.
+            Ships beside your Naval Yard are mended for nothing; select a damaged ship and press <strong>Return to base</strong> to
+            sail it back there.
           </p>
           <Grid kinds={NAVAL_MENU} />
         </Section>

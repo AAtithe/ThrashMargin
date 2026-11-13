@@ -2307,3 +2307,43 @@ every phone, no console errors and no sideways page scroll. `node scripts/tours/
 fireline fireline-planet` (full): all ok, the 320px SE included. `npm run tours -- --quick`: all eight
 ok. `npm run check:loading -- fireline` 27/27. `npm run check` from the root: "All checks passed"
 (Fireline drive 401,464 assertions, campaign-check 7,699, drive:planet 35,255).
+
+### 2026-11-13: Return to base, Helipad repairs, and support that holds back
+
+The player asked for a way to send aircraft back to the Helipad, how boats and aircraft are repaired,
+and for Repair Trucks to stop driving into the fighting, with a way to choose which forces go in.
+
+- **Return to base** (`{ type: 'home', ids }`, `canHome`/`doHome` in `commands.ts`): aircraft get the
+  same order an empty one gives itself (`sendHome` in `air.ts`: fly to its pad or the nearest with room,
+  land, rearm, stay parked) with the waypoint queue dropped; ships sail to the open water beside their
+  nearest Naval Yard (`launchTile`), where the yard's mending already works. Refused for an aircraft
+  already on `rearm`, one on a bomb run (it finishes and goes home anyway), a side with no Helipad (or
+  Naval Yard for a ship), and anything else. A selection-panel button after Unload, so Unload stays F.
+- **Helipads repair.** Aircraft had no way to be mended at all. Landed on its pad an aircraft regains
+  `HELIPAD_MEND_HP` (8) every `HELIPAD_MEND_TICKS` (10), free, the Naval Yard's rate; never in the air.
+  Both sides' parked aircraft get it, so the computer's air arm comes back from a strike whole.
+  The status line says Returning to its Helipad, Rearming and under repair, or Under repair.
+- **Support holds back** (client, `GameScreen`'s `command`; nothing in the simulation, so the
+  computer's waves are unchanged). Support is the unarmed ground units bar haulers: Medic, Engineer,
+  Repair Truck, Forward Base Truck (`isSupport`, `selectionActions.ts`). Given an attack or attack-move
+  alongside armed units, they get a plain move to a point 6 tiles short of the target on the line from
+  the fighters' centre, or stay where they are when already that close. A squad in formation is left
+  whole (its box already puts support inside). Plain moves take everyone, as before.
+- **Amending the selection.** With more than one kind selected, each chip in the selection panel is a
+  button: click takes that kind out of the selection, Ctrl or Cmd+click keeps only that kind.
+
+- **Forces** (asked for mid-session: calling air cover into a battle meant finding the Helipads first).
+  A sidebar section above Selection (`ForcesPanel`, `Sidebar.tsx`): one button per kind of unit side 0
+  has anywhere on the map, aircraft first, haulers last, and All aircraft when more than one air kind
+  flies. Click selects them all, Shift adds them, a second click on a kind that is the whole selection
+  centres the camera on them.
+- **Harness seed.** Repairs on the pad move whole battles: `strike-8`'s first Bomber no longer came
+  before side 1 won (24 minutes, was 20), so "bombers drop bombs in real battles" read 0, 0 and 0. A
+  sweep of nine fresh seeds had Bombers bombing in four (6 to 18 bombs); the test now plays `strike-7`.
+
+Checks: `drive-air` (Return to base, refusals, repair on the pad and not in flight) and `drive-naval`
+(sailing home, mended there, refused without a yard) gained 17 assertions. In Chromium: a damaged
+Gunship sent home lands, rearms and repairs from 37% to 80% in 20 seconds; a mixed attack-move sent the
+tanks and riflemen to the point and the Repair Truck and Medic to 6 tiles short; the chips drop and
+isolate kinds; the Forces buttons select a kind anywhere on the map and Shift adds one; no console
+errors.

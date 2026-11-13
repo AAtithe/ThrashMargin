@@ -1,8 +1,8 @@
 import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
 import { isWalkable } from './map';
 import { isEnemy } from './sides';
-import { airRoom, canHit, isAir } from './air';
-import { shoreProblem } from './naval';
+import { airRoom, canHit, canSendHome, isAir, sendHome } from './air';
+import { isShip, launchTile, shoreProblem } from './naval';
 import { upgradeNewUnit } from './research';
 import { loadoutCost, loadoutOf, queueCostFor } from './loadout';
 import type { Target } from './grid';
@@ -524,6 +524,55 @@ export function doStance(s: GameState, owner: Owner, ids: number[], stance: Stan
       u.path = [];
       u.pathGoal = -1;
     }
+  }
+}
+
+/** A standing structure of this kind on this side, nearest (x, y), or null. */
+function nearestOwn(s: GameState, owner: Owner, kind: BuildingKind, x: number, y: number): Building | null {
+  let best: Building | null = null;
+  let bestD = Infinity;
+  for (const b of s.buildings) {
+    if (b.owner !== owner || b.kind !== kind || b.hp <= 0) continue;
+    const spec = BUILDINGS[b.kind];
+    const d = (b.x + spec.w / 2 - x) ** 2 + (b.y + spec.h / 2 - y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = b;
+    }
+  }
+  return best;
+}
+
+/** Whether Return to base means anything to this unit: an aircraft with a Helipad to go to, or a ship with a Naval Yard. */
+function homeable(s: GameState, owner: Owner, u: Unit): boolean {
+  if (canSendHome(u)) return !!nearestOwn(s, owner, 'helipad', u.x, u.y);
+  if (isShip(u)) return !!nearestOwn(s, owner, 'shipyard', u.x, u.y);
+  return false;
+}
+
+/** Legal when at least one of the units named is an aircraft or a ship with somewhere to go home to. */
+export function canHome(s: GameState, owner: Owner, ids: number[]): boolean {
+  return ownUnits(s, owner, ids).some(u => homeable(s, owner, u));
+}
+
+/**
+ * Return to base. Aircraft fly home to their Helipad (or the nearest with room), land, rearm and are
+ * repaired there, and stay parked. Ships sail to the open water beside their nearest Naval Yard,
+ * which mends them. Anything else named is left alone; either way the waypoint queue is dropped.
+ */
+export function doHome(s: GameState, owner: Owner, ids: number[]): void {
+  let occ: Int32Array | null = null;
+  for (const u of ownUnits(s, owner, ids)) {
+    if (!homeable(s, owner, u)) continue;
+    if (isAir(u)) {
+      sendHome(s, u);
+      continue;
+    }
+    const yard = nearestOwn(s, owner, 'shipyard', u.x, u.y)!;
+    occ ??= occupancy(s);
+    const k = launchTile(s, occ, yard);
+    if (k < 0) continue;
+    give(u, { type: 'move', x: (k % s.mapW) + 0.5, y: ((k / s.mapW) | 0) + 0.5 }, false);
   }
 }
 

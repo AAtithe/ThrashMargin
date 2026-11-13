@@ -5009,6 +5009,26 @@ kbd {
   border-left: 3px solid var(--ui-team);
   border-radius: 3px;
 }
+.fl-d-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+.fl-d-chip-btn:hover,
+.fl-d-chip-btn:focus-visible {
+  border-color: var(--ui-team);
+}
+.fl-d-chip-btn[aria-pressed="true"] {
+  background: var(--d-btn-on, var(--d-btn));
+  border-color: var(--ui-team);
+}
+.fl-d-chip-x {
+  color: var(--ui-text-faint);
+  font-weight: 400;
+}
 .fl-d-chip[data-enemy="1"] {
   color: var(--ui-enemy);
   border-left-color: var(--ui-enemy);
