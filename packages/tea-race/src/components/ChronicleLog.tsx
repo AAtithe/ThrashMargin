@@ -47,7 +47,10 @@ export default function ChronicleLog({
 
   return (
     <Panel title="The log" aside={<Label>newest last</Label>}>
-      <div ref={scroller} style={scrollerStyle}>
+      {/* A polite live log: new entries are read out as they land. The panel holding it is
+          aria-hidden while it is put away, and it is put away while the rivals' turns replay (the
+          replay bar narrates those), so nothing is announced twice. */}
+      <div ref={scroller} style={scrollerStyle} role="log" aria-live="polite" aria-label="The log">
         {entries.length === 0 ? (
           <Empty>Nothing has happened yet.</Empty>
         ) : (

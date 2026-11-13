@@ -556,7 +556,7 @@ export default function MapView({
         {vbWidth - insetL - insetR > 700 && <Cartouche x={(insetL + vbWidth - insetR) / 2 - 106} y={14} />}
       </svg>
 
-      <div style={{ ...zoomControls, right: 10 + (inset?.right ?? 0), bottom: 10 + (inset?.bottom ?? 0) }}>
+      <div className="tr-zoom" style={{ ...zoomControls, right: 10 + (inset?.right ?? 0), bottom: 10 + (inset?.bottom ?? 0) }}>
         <button style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in (+)" title="Zoom in (+)">
           +
         </button>
@@ -816,7 +816,7 @@ function ShipMarker({
       </g>
       </g>
       <title>
-        {`${ship.name} — ${captainName}. ${
+        {`${ship.name}, ${captainName}. ${
           ship.hold.length ? `${ship.hold.length} of 3 slots full` : 'running light'
         }${dest ? `, bound for ${PORT_BY_ID[dest]?.name ?? dest}` : ', in port'}`}
       </title>
@@ -1089,11 +1089,12 @@ const zoomButton: React.CSSProperties = {
   height: 44,
   border: `1px solid ${CHART.coast}`,
   background: CHART.sea,
-  color: CHART.coast,
+  // The label ink, not the coastline: the coast colour on the sea is a line colour, too faint for
+  // the symbols (about 3.2:1 on the printed chart).
+  color: CHART.label,
   fontFamily: FONT.data,
   fontSize: '1.1rem',
   lineHeight: 1,
   cursor: 'pointer',
   borderRadius: 2,
-  opacity: 0.92,
 };

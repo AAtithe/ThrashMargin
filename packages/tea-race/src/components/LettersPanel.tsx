@@ -55,7 +55,7 @@ export default function LettersPanel({
 
         {errands.map(e => (
           <Line key={`e${e.id}`} tone={state.round >= e.byRound - 2 ? UI.warn : UI.verdigris}>
-            Dispatches for <strong>{portName(e.port)}</strong> by round {e.byRound} ({e.byRound - state.round} left) —{' '}
+            Dispatches for <strong>{portName(e.port)}</strong> by round {e.byRound} ({e.byRound - state.round} left):{' '}
             {money(e.reward)}, bond {money(e.bond)}
           </Line>
         ))}

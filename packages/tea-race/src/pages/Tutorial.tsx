@@ -78,7 +78,7 @@ export default function Tutorial() {
           </li>
           <li>
             <strong>Buy the cargo wherever you like.</strong> A commission names the buyer, never the
-            seller — sourcing is your decision.
+            seller. Sourcing is your decision.
           </li>
           <li>
             <strong>Turn the money into shares.</strong> Hold {SHARE_MAJORITY} of the {TOTAL_SHARES},
@@ -98,7 +98,7 @@ export default function Tutorial() {
         <ol style={list}>
           <li>
             <strong>Take the wind.</strong> Roll for the whole fleet. Every ship gets her own two
-            dice, and any ship already at sea sails the moment you roll — you do not steer her again.
+            dice, and any ship already at sea sails the moment you roll; you do not steer her again.
           </li>
           <li>
             <strong>Work the quay.</strong> A ship in port can load, land a commission, sell cargo
@@ -121,7 +121,7 @@ export default function Tutorial() {
         <ul style={list}>
           <li>
             <strong>Chasing a commission a rival will reach first.</strong> Second money is half of
-            first, and third is nothing. Check who is already carrying that cargo — every hold on the
+            first, and third is nothing. Check who is already carrying that cargo: every hold on the
             board is public.
           </li>
           <li>
@@ -134,7 +134,7 @@ export default function Tutorial() {
             trade, and cannot earn your way out. Keep a working float.
           </li>
           <li>
-            <strong>Buying shares too late.</strong> The bank's {TOTAL_SHARES} get dearer as they go —
+            <strong>Buying shares too late.</strong> The bank's {TOTAL_SHARES} get dearer as they go:
             the first costs {money(sharePriceFor(TOTAL_SHARES))} and the last{' '}
             {money(sharePriceFor(1))}. Once they are gone, shares only change hands between captains.
           </li>
@@ -144,7 +144,7 @@ export default function Tutorial() {
       <Panel title="Optional rules" aside={<Label>{Object.keys(PRESETS).length} preset games</Label>}>
         <p style={para}>
           Everything above is the published 1988 game. Everything below is optional and switched on in
-          the lobby — the four presets are the quick way in, and each is a{' '}
+          the lobby. The four presets are the quick way in, and each is a{' '}
           <em>different kind</em> of game rather than more or less of the same one.
         </p>
         <dl style={{ margin: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -182,7 +182,7 @@ export default function Tutorial() {
           <Rule name="Crew wages" art="insurance">
             {money(WAGES_PER_SHIP)} a ship every round, more when laden. Cash stops being a score and
             becomes a constraint. If you cannot pay you fall into arrears, which come off the top of
-            what you earn next round — nobody goes bankrupt, but a broke captain's next delivery is
+            what you earn next round. Nobody goes bankrupt, but a broke captain's next delivery is
             not really theirs.{' '}
             In a hole with nothing aboard, a docked hull can be sold back to the yard for half her
             price (never your last), which pays the arrears first.
@@ -193,7 +193,7 @@ export default function Tutorial() {
           </Rule>
           <Rule name="Hostile bids" art="declare">
             Buy a share off anyone, the leader included, whatever your own holding. Cheapest when you
-            hold least — a first bid from nothing costs {money(hostileBidPrice(0, 0))} — and every bid
+            hold least (a first bid from nothing costs {money(hostileBidPrice(0, 0))}), and every bid
             anyone makes doubles the price for everyone after. This is the way back in if you fall
             behind, and it runs out fast.
           </Rule>
@@ -275,7 +275,7 @@ export default function Tutorial() {
           </Rule>
           <Rule name="The shipping exchange" art="event">
             Three companies whose prices rise and fall with the cargo actually landed in their waters.
-            Not another way to win — somewhere for money to go, and a market to read. If you can see
+            Not another way to win: somewhere for money to go, and a market to read. If you can see
             where the commissions are sending everyone, you can see which company is about to move.
           </Rule>
         </dl>
@@ -291,7 +291,7 @@ export default function Tutorial() {
             {(Object.keys(DIFFICULTIES) as (keyof typeof DIFFICULTIES)[])
               .map(k => DIFFICULTIES[k].label)
               .join(', ')}
-            . Every handicap is knowledge and discipline — a gentle captain ignores the wind chart and
+            . Every handicap is knowledge and discipline: a gentle captain ignores the wind chart and
             does not watch her rivals. <strong>They never roll better than you do.</strong>
           </li>
           <li>

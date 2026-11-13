@@ -17,8 +17,8 @@
   --ui-rule-strong: #9d8f74;
   --ui-text: #2a251e;
   --ui-text-soft: #5a5345;
-  --ui-text-faint: #6a6250;
-  --ui-brass: #8b5e17;
+  --ui-text-faint: #645c4b;
+  --ui-brass: #7d5412;
   --ui-verdigris: #28665e;
   --ui-ensign: #a8342f;
   --ui-good: #376a2f;
@@ -36,6 +36,26 @@
   /* Washed over a control under the pointer, and a little deeper while it is pressed. */
   --ui-hover: rgba(60, 45, 20, 0.07);
   --ui-press: rgba(60, 45, 20, 0.14);
+
+  /* UI kit (lib/kit.css). Every line is a --ui-* reference, so the dark block below needs none. */
+  --kit-font: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --kit-radius: 2px;
+  --kit-font-size: 0.82rem;
+  --kit-font-size-small: 0.74rem;
+  --kit-pad: 0.35rem 0.65rem;
+  --kit-pad-small: 0.2rem 0.5rem;
+  --kit-text: var(--ui-text);
+  --kit-text-soft: var(--ui-text-soft);
+  --kit-text-faint: var(--ui-text-faint);
+  --kit-surface: var(--ui-panel-raised);
+  --kit-field: var(--ui-panel);
+  --kit-rule: var(--ui-rule);
+  --kit-rule-strong: var(--ui-rule-strong);
+  --kit-accent: var(--ui-brass);
+  --kit-on-accent: var(--ui-ground);
+  --kit-danger: var(--ui-bad);
+  --kit-hover: var(--ui-hover);
+  --kit-press: var(--ui-press);
 }
 :root[data-theme="dark"] {
   --ui-ground: #0d1419;
@@ -90,29 +110,26 @@ button:focus:not(:focus-visible) {
 }
 
 /*
- * Pointer feedback for the game's buttons (ui.tsx's Button, the panel launchers, the lobby's save
- * rows, the panels' close buttons). Inline styles own each control's background, so the wash is
- * laid over it as a background image, which works on every tone in both modes.
+ * Pointer feedback for the controls that are not kit Buttons (the panel launchers, the lobby's save
+ * rows, the panels' close buttons). Inline styles own each control's background, so the wash is laid
+ * over it as a background image, which works in both modes. ui.tsx's Button is the kit's
+ * (lib/kit.css), which carries its own hover, press, focus, disabled and phone-size rules.
  */
-.tr-btn,
 .tr-launcher,
 .tr-row-btn,
 .tr-icon-btn {
   transition: background-image 0.12s ease, border-color 0.12s ease, color 0.12s ease, transform 0.08s ease;
 }
-.tr-btn:not(:disabled):hover,
 .tr-launcher:hover,
 .tr-row-btn:hover,
 .tr-icon-btn:hover {
   background-image: linear-gradient(var(--ui-hover), var(--ui-hover)) !important;
 }
-.tr-btn:not(:disabled):active,
 .tr-launcher:active,
 .tr-row-btn:active,
 .tr-icon-btn:active {
   background-image: linear-gradient(var(--ui-press), var(--ui-press)) !important;
 }
-.tr-btn:not(:disabled):active,
 .tr-icon-btn:active {
   transform: translateY(1px);
 }
@@ -123,21 +140,29 @@ button:focus:not(:focus-visible) {
 .tr-launcher:hover {
   border-color: var(--ui-brass) !important;
 }
-/* Text fields: the focus ring is the global one; the border follows it so the field reads as live. */
-.tr-field:focus,
-.tr-field:hover {
-  border-color: var(--ui-brass) !important;
+
+/* The lobby's text fields are kit Fields (lib/kit.css), a touch larger and on the ground colour. */
+.tr-input {
+  font-size: 0.9rem;
+  background: var(--ui-ground);
+  border-color: var(--ui-rule-strong);
+  max-width: 320px;
 }
-.tr-field::placeholder {
-  color: var(--ui-text-faint);
-  opacity: 1;
+.tr-input:focus,
+.tr-input:hover {
+  border-color: var(--ui-brass);
 }
 
-/* Fingers need bigger targets than a mouse does. Only on touch screens, so the dense desktop
-   panels keep their tight rhythm. */
-@media (pointer: coarse) {
-  .tr-btn,
-  .tr-icon-btn {
+/* Fingers need bigger targets than a mouse does: on touch screens and at phone width, matching the
+   kit's own rule, so the dense desktop panels keep their tight rhythm. */
+@media (max-width: 720px), (pointer: coarse) {
+  .tr-input {
+    font-size: 16px;
+  }
+  .tr-icon-btn,
+  .tr-launcher,
+  .tr-row-btn,
+  .tr-disclosure {
     min-height: 40px;
   }
   .tr-icon-btn {
@@ -148,7 +173,8 @@ button:focus:not(:focus-visible) {
 /* Event cards stack above the floating turn bar rather than over it. */
 .tr-event-stack { bottom: calc(0.9rem + 72px); }
 @media (max-width: 720px) {
-  .tr-event-stack { bottom: calc(0.9rem + 110px); }
+  /* On a phone the turn bar is docked along the foot of the screen (GameScreen's turnBarDocked). */
+  .tr-event-stack { bottom: calc(0.9rem + 84px); }
 }
 
 /*
@@ -195,6 +221,22 @@ button:focus:not(:focus-visible) {
   .tr-launcher { font-size: 0.8rem !important; padding: 0.35rem 0.55rem !important; }
   .tr-gazette { top: 64px !important; }
   .tr-hide-phone { display: none !important; }
+  /* The zoom buttons lie in a row along the foot of the chart, so over a short chart (a sheet open)
+     they take a corner rather than its whole right-hand edge. */
+  .tr-zoom { flex-direction: row !important; }
+  /* The docked turn bar keeps its note to two lines beside the button; the fleet panel carries the
+     full story of a ship awaiting orders. */
+  .tr-turn-note {
+    flex: 1 1 10rem;
+    min-width: 0;
+    font-size: 0.74rem !important;
+    line-height: 1.35 !important;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
   .tr-era-track { flex: 1 1 90px !important; min-width: 90px !important; }
   .tr-header { padding: 0.4rem 0.7rem !important; gap: 0.4rem !important; }
   .tr-header button { padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }

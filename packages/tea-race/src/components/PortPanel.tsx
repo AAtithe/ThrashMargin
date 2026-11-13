@@ -145,7 +145,7 @@ export default function PortPanel({
                     disabled={!enabled}
                     title={
                       putAbout
-                        ? 'Put about — she loses whatever ground she has made on this leg'
+                        ? 'Put about: she loses whatever ground she has made on this leg'
                         : 'Hold at the next port instead of sailing past it'
                     }
                     onClick={() =>
@@ -184,7 +184,7 @@ export default function PortPanel({
                 title={`Every matching slot lands at once and is paid per unit`}
                 onClick={() => dispatch({ type: 'DELIVER', shipId: ship.id, contractId: c.id })}
               >
-                Land {units} × {goodName(c.good)} — {rank === 1 ? 'first home' : 'second home'},{' '}
+                Land {units} × {goodName(c.good)}: {rank === 1 ? 'first home' : 'second home'},{' '}
                 {money(payoutFor(c) * units)}
               </Button>
             );
@@ -196,7 +196,7 @@ export default function PortPanel({
       {ship.hold.length < slotsOf(ship?.shipClass) && port && (
         <div style={block}>
           <Label>
-            Load a cargo — {slotsOf(ship?.shipClass) - ship.hold.length} of {slotsOf(ship?.shipClass)} slots free
+            Load a cargo: {slotsOf(ship?.shipClass) - ship.hold.length} of {slotsOf(ship?.shipClass)} slots free
           </Label>
           {port.supplies.length === 0 ? (
             <Empty>{port.name} has nothing to sell. She must go elsewhere for a cargo.</Empty>
@@ -216,6 +216,7 @@ export default function PortPanel({
                     key={id}
                     id={`load-cargo-${id}`}
                     disabled={!enabled || !afford}
+                    disabledReason={enabled && !afford ? `Needs ${money(price)}` : ''}
                     title={
                       afford
                         ? `Reckoned at ${money(good.basePrice)} a lot; ${port.name} asks ${money(price)}`
@@ -244,13 +245,20 @@ export default function PortPanel({
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.45rem', flexWrap: 'wrap' }}>
               {mine ? (
                 <span style={{ ...bodySmall, fontSize: '0.75rem', color: UI.verdigris }}>
-                  Your agent is established at {port.name} — he lades{' '}
+                  Your agent is established at {port.name}. He lades{' '}
                   {Math.round(AGENT_LADING_DISCOUNT * 100)}% under the asking price and sells{' '}
                   {Math.round(AGENT_SALE_UPLIFT * 100)}% over it.
                 </span>
               ) : (
                 <Button
                   disabled={!enabled || !canHire}
+                  disabledReason={
+                    !enabled || canHire
+                      ? ''
+                      : (captain.agents?.length ?? 0) >= MAX_AGENTS
+                        ? `No more than ${MAX_AGENTS} agents`
+                        : `Needs ${money(AGENT_PRICE)}`
+                  }
                   title={
                     (captain.agents?.length ?? 0) >= MAX_AGENTS
                       ? `No captain keeps more than ${MAX_AGENTS} agents.`
@@ -264,7 +272,7 @@ export default function PortPanel({
                   }
                   onClick={() => dispatch({ type: 'HIRE_AGENT', port: port.id })}
                 >
-                  Set up an agent — {money(AGENT_PRICE)}
+                  Set up an agent ({money(AGENT_PRICE)})
                 </Button>
               )}
             </div>
@@ -272,7 +280,7 @@ export default function PortPanel({
 
           {shipSaleOn && ship && fleetSize > 1 && (
             <ConfirmSale
-              label={`Sell ${ship.name} to the yard — ${money(shipSalePrice(ship.shipClass))}`}
+              label={`Sell ${ship.name} to the yard (${money(shipSalePrice(ship.shipClass))})`}
               detail={`Half her price${ship.hold.length ? `, and the ${ship.hold.length} lot${ship.hold.length === 1 ? '' : 's'} aboard go with her` : ''}. Pays any arrears first. One less hull on the wage bill.`}
               disabled={!enabled}
               onConfirm={() => dispatch({ type: 'SELL_SHIP', shipId: ship.id })}
@@ -303,21 +311,21 @@ export default function PortPanel({
                       disabled={!enabled}
                       title={`${port.name} will take them at ${money(
                         paysFor(port.id, good),
-                      )} a lot — ${money(paid - takings)} down on the ${money(paid)} she paid. ${
+                      )} a lot, ${money(paid - takings)} down on the ${money(paid)} she paid. ${
                         PORT_BY_ID[port.id]?.demands.includes(good) ||
                         PORT_BY_ID[port.id]?.supplies.includes(good)
                           ? 'This quay deals in it, so the price is fair.'
-                          : 'This quay has no real buyer for it — somewhere that deals in it would pay far more.'
+                          : 'This quay has no real buyer for it. Somewhere that deals in it would pay far more.'
                       }`}
                       onClick={() => dispatch({ type: 'SELL_CARGO', shipId: ship.id, good })}
                     >
-                      Sell {lots.length} × {goodName(good)} — {money(takings)}
+                      Sell {lots.length} × {goodName(good)} ({money(takings)})
                     </Button>
                   )}
                   <Button
                     tone="danger"
                     disabled={!enabled}
-                    title="Dumping recovers nothing at all — the whole purchase price is forfeit"
+                    title="Dumping recovers nothing at all: the whole purchase price is forfeit"
                     onClick={() => dispatch({ type: 'JETTISON', shipId: ship.id, good })}
                   >
                     Jettison {lots.length} × {goodName(good)}
@@ -329,7 +337,7 @@ export default function PortPanel({
           <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
             {sellable
               ? 'A quay that deals in the good pays best; anywhere else takes it off your hands for little. Over the side gets you nothing at all.'
-              : 'Over the side. You get nothing back — only do it to free a slot for better work.'}
+              : 'Over the side. You get nothing back, so only do it to free a slot for better work.'}
           </p>
         </div>
       )}
@@ -346,7 +354,7 @@ export default function PortPanel({
         ) : course ? (
           <>
             <p style={{ ...bodySmall, margin: 0 }}>
-              <strong style={{ color: UI.text }}>{portName(targetPort)}</strong> — {course.distance}{' '}
+              <strong style={{ color: UI.text }}>{portName(targetPort)}</strong>: {course.distance}{' '}
               sail points
               {course.path.length > 1 && (
                 <>
@@ -359,7 +367,7 @@ export default function PortPanel({
             <p style={{ ...dataText, fontSize: '0.72rem', margin: 0, color: UI.textFaint }}>
               {points >= course.distance
                 ? `She has ${points} points and ties up this turn.`
-                : `She has ${points} points — about ${Math.max(1, Math.ceil((course.distance - points) / 7)) + 1} turns.`}
+                : `She has ${points} points, about ${Math.max(1, Math.ceil((course.distance - points) / 7)) + 1} turns.`}
             </p>
 
             {season && course.path.length > 0 && (
@@ -393,8 +401,8 @@ export default function PortPanel({
                         style={{ accentColor: UI.brass }}
                       />
                       <span>
-                        <strong style={{ color: UI.text }}>{fast ? 'Fastest this season' : 'Shortest'}</strong>{' '}
-                        — {c.distance} points
+                        <strong style={{ color: UI.text }}>{fast ? 'Fastest this season' : 'Shortest'}</strong>:{' '}
+                        {c.distance} points
                         {turns !== null ? `, about ${turns.toFixed(1)} turns` : ''}
                       </span>
                     </label>

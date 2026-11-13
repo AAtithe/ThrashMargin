@@ -117,7 +117,7 @@ export default function GameScreen() {
     if (open && layout.oneAtATime) setExchangeOpen(false);
   };
   const exchangeRef = useRef<HTMLElement | null>(null);
-  const boardRef = useRef<HTMLElement | null>(null);
+  const boardRef = useRef<HTMLDivElement | null>(null);
   const ordersRef = useRef<HTMLElement | null>(null);
 
   // Orders slide in once a human captain has rolled: that is the moment there is something to do.
@@ -354,8 +354,8 @@ export default function GameScreen() {
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
           {/* Dressed as the quiet Buttons beside them, so the header's controls are one size. */}
-          <MotionToggle style={headerToggle} />
-          <ThemeToggle style={headerToggle} />
+          <MotionToggle className="kit-btn kit-btn--quiet" style={{ whiteSpace: 'nowrap' }} />
+          <ThemeToggle className="kit-btn kit-btn--quiet" style={{ whiteSpace: 'nowrap' }} />
           {/* Offered whenever a run can actually be planned from where the fleet stands, not only
               on turn one: a player who skipped the tour, or who came back to a half-played game,
               should still be able to ask for it. */}
@@ -410,7 +410,11 @@ export default function GameScreen() {
           and orders from the right, each when wanted; the turn's one big button sits on the chart
           along the bottom. `.tr-panel` in styles.css turns both panels into bottom sheets on a
           phone. */}
-      <main ref={boardRef} style={board} className="tr-board">
+      <main style={board} className="tr-board">
+        {/* The chart and everything floating over it. On a phone the turn bar is docked below this
+            box rather than floating in it, so the bottom sheets rise from above the bar: the open
+            sheet, the turn's button and the chart left between them never cover one another. */}
+        <div ref={boardRef} style={chartArea}>
         <MapView
           ships={view.ships}
           captains={view.captains}
@@ -626,13 +630,19 @@ export default function GameScreen() {
           </div>
         </aside>
 
+        </div>
+
           <div
-            style={{
-              ...turnBar,
-              left: `calc(${insetPx.left}px + 12px)`,
-              right: `calc(${insetPx.right}px + 66px)`,
-              bottom: insetPx.bottom + 12,
-            }}
+            style={
+              layout.sheet
+                ? turnBarDocked
+                : {
+                    ...turnBar,
+                    left: `calc(${insetPx.left}px + 12px)`,
+                    right: `calc(${insetPx.right}px + 66px)`,
+                    bottom: insetPx.bottom + 12,
+                  }
+            }
             className="tr-turnbar"
           >
             {over ? (
@@ -647,7 +657,7 @@ export default function GameScreen() {
             ) : mustRoll ? (
               <>
                 <Button id="roll-button" tone="primary" onClick={() => dispatch({ type: 'ROLL' })}>
-                  Take the wind — roll for {myShips.length === 1 ? 'her' : 'the fleet'}
+                  Take the wind: roll for {myShips.length === 1 ? 'her' : 'the fleet'}
                 </Button>
                 <span className="tr-hide-phone" style={{ ...bodySmall, fontSize: '0.78rem', color: UI.textFaint }}>
                   2d6 per ship. Ships already at sea sail on the moment you roll
@@ -676,10 +686,11 @@ export default function GameScreen() {
                 </Button>
                 {confirmingEnd && (
                   <Button tone="quiet" onClick={() => setConfirmingEnd(false)}>
-                    Wait — give her orders
+                    Wait, give her orders
                   </Button>
                 )}
                 <span
+                  className="tr-turn-note"
                   style={{
                     ...bodySmall,
                     fontSize: '0.78rem',
@@ -688,14 +699,14 @@ export default function GameScreen() {
                 >
                   {offers.length > 0 && (
                     <>
-                      {offers.map(o => `${o.headline} — unanswered, it lapses when you end the turn`).join('. ')}.{' '}
+                      {offers.map(o => `${o.headline}: unanswered, it lapses when you end the turn`).join('. ')}.{' '}
                     </>
                   )}
                   {awaiting.length > 0
                     ? awaiting
                         .map(
                           w =>
-                            `${w.shipName} lies at ${w.portName} with ${w.pointsUnspent} pts unspent — ${w.hint}`,
+                            `${w.shipName} lies at ${w.portName} with ${w.pointsUnspent} pts unspent: ${w.hint}`,
                         )
                         .join('. ') + '.'
                     : selectedShip?.location
@@ -768,7 +779,7 @@ export default function GameScreen() {
             <p style={{ ...bodySmall, margin: 0 }}>
               {state.rules === 'voyage' ? (
                 <>
-                  Worth {money(assetValue(state, winner))} at the close — {money(winner.cash)} in
+                  Worth {money(assetValue(state, winner))} at the close: {money(winner.cash)} in
                   hand, {state.ships.filter(s => s.ownerId === winner.id).length} ship
                   {state.ships.filter(s => s.ownerId === winner.id).length === 1 ? '' : 's'} and
                   whatever was still in the holds.
@@ -851,17 +862,6 @@ const header: React.CSSProperties = {
   background: UI.panel,
 };
 
-/** The shared light/dark and motion toggles, matched to the quiet tone of ui.tsx's Button. */
-const headerToggle: React.CSSProperties = {
-  borderColor: UI.ruleStrong,
-  color: UI.textSoft,
-  fontFamily: FONT.body,
-  fontSize: '0.82rem',
-  padding: '0.35rem 0.65rem',
-  borderRadius: 2,
-  lineHeight: 1.25,
-};
-
 const seasonBanner: React.CSSProperties = {
   display: 'flex',
   alignItems: 'baseline',
@@ -888,6 +888,16 @@ const declarationBanner: React.CSSProperties = {
  * board sideways the way it can scroll an `overflow: hidden` box.
  */
 const board: React.CSSProperties = {
+  position: 'relative',
+  flex: 1,
+  minHeight: 0,
+  overflow: 'clip',
+  display: 'flex',
+  flexDirection: 'column',
+};
+
+/** The chart's own box inside the board: the panels, launchers and zoom controls are placed in it. */
+const chartArea: React.CSSProperties = {
   position: 'relative',
   flex: 1,
   minHeight: 0,
@@ -920,6 +930,25 @@ const turnBar: React.CSSProperties = {
   padding: '0.55rem 0.75rem',
   boxShadow: `0 6px 20px ${UI.shadow}`,
   transition: 'left 0.25s ease, right 0.25s ease, bottom 0.25s ease',
+};
+
+/**
+ * The turn bar on a phone: a strip along the foot of the screen, under the chart and under any open
+ * sheet, never floating over either. Within thumb reach, and the chart above it is all chart.
+ */
+const turnBarDocked: React.CSSProperties = {
+  position: 'relative',
+  zIndex: 41,
+  flex: '0 0 auto',
+  boxSizing: 'border-box',
+  display: 'flex',
+  alignItems: 'center',
+  flexWrap: 'wrap',
+  gap: '0.3rem 0.6rem',
+  borderTop: `1px solid ${UI.ruleStrong}`,
+  background: UI.panel,
+  padding: '0.45rem 0.75rem calc(0.45rem + env(safe-area-inset-bottom, 0px))',
+  boxShadow: `0 -4px 14px ${UI.shadow}`,
 };
 
 /**
