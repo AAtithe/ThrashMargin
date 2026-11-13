@@ -58,7 +58,7 @@ import {
   SCRAMBLE_LEASH,
   SCRAMBLE_RANGE,
 } from '../sim/rules';
-import { buildTicksFor, costFor, hasBuilding, hasProducer, maxHpOf, powerOf, readyStructure, researchModeOf, techAllowed, unlocked } from '../sim/state';
+import { buildTicksFor, costFor, hasBuilding, hasProducer, lineCount, maxHpOf, powerOf, queueCap, readyStructure, researchModeOf, techAllowed, unlocked } from '../sim/state';
 import { airCount, airRoom, padSpot } from '../sim/air';
 import { buildingSpecFor, buildingSpecOf, factionOf, menuOf, unitSpecFor } from '../sim/specs';
 import { doctrineOf, doctrineProblem, hasUpgrade, researchCostOf, researchProblem, researchTicksOf } from '../sim/research';
@@ -292,6 +292,8 @@ export function statsOf(
   if (kind === 'shipyard')
     rows.push({ label: 'Shore', value: `Must stand beside open sea (${NAVAL_MIN_SEA}+ tiles of water); mends ships within ${SHIPYARD_MEND_RANGE} tiles, ${SHIPYARD_MEND_HP} hp every ${secs(SHIPYARD_MEND_TICKS)}` });
   if (kind === 'helipad') rows.push({ label: 'Serves', value: `${HELIPAD_SLOTS} aircraft: builds them and rearms them` });
+  if (kind === 'barracks' || kind === 'factory' || kind === 'helipad' || kind === 'shipyard')
+    rows.push({ label: 'Each one', value: `adds a production line, building alongside the others, and ${MAX_QUEUE} queue places` });
   if (kind === 'researchlab')
     rows.push({
       label: 'Research',
@@ -598,9 +600,10 @@ function ProductionStrip({
           dispatch({ type: 'cancel', category: c, kind: last.kind });
           if (placing === last.kind) setPlacing(null);
         };
+        const atOnce = Math.min(q.length, lineCount(state, 0, c));
         const label = isReady
           ? `${name} ready: ${touch ? 'tap' : 'click'} to place it`
-          : `${tabLabel(c)}: ${name}${q.length > 1 ? `, ${q.length} queued` : ''}, ${Math.round(progress * 100)}%. ${touch ? 'Tap to open the list; × cancels' : 'Click to cancel'} the last one queued (${nameOf(last.kind)}) for a full refund`;
+          : `${tabLabel(c)}: ${name}${q.length > 1 ? `, ${q.length} queued` : ''}${atOnce > 1 ? `, ${atOnce} building at once` : ''}, ${Math.round(progress * 100)}%. ${touch ? 'Tap to open the list; × cancels' : 'Click to cancel'} the last one queued (${nameOf(last.kind)}) for a full refund`;
         return (
           <div key={c} className="fl-strip-cell">
             <button
@@ -699,7 +702,8 @@ export function BuildButton({
   const p = state.players[0];
   const q = p.queues[tab];
   const inQueue = q.filter(i => i.kind === kind).length;
-  const head = q[0];
+  // Units: the item of this kind furthest along on any production line (one line per producer).
+  const head = tab === 'building' ? q[0] : q.slice(0, lineCount(state, 0, tab)).filter(i => i.kind === kind).sort((a, b) => b.progress - a.progress)[0];
   const isHead = !!head && head.kind === kind;
   const progress = isHead ? head.progress / buildTicksFor(state, 0, kind) : 0;
   const open = unlocked(state, 0, kind);
@@ -707,7 +711,7 @@ export function BuildButton({
   const cost = tab === 'vehicle' ? queueCostFor(state, 0, kind as UnitKind) : costFor(state, 0, kind);
   const isReady = tab === 'building' && readyStructure(state, 0) === kind;
   const blockedByOther = tab === 'building' && q.length > 0 && !isHead;
-  const full = tab !== 'building' && q.length >= MAX_QUEUE;
+  const full = tab !== 'building' && q.length >= queueCap(state, 0, tab);
   const affordable = p.credits >= cost;
   // Unaffordable stays clickable: the click is refused with a toast that says why.
   const disabled = !open || blockedByOther || (!isHead && !isReady && full);

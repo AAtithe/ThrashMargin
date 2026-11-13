@@ -2349,10 +2349,35 @@ and for Repair Trucks to stop driving into the fighting, with a way to choose wh
   line in the log; refused for heroes, the General and any carrier with someone aboard (they would go
   with it); anyone walking to a dismissed carrier stops. A Disband button beside Stop and the Delete
   key, both behind a confirmation. `drive-air` "Orders: disband", 10 assertions.
-- **A question answered, not changed: a second Barracks.** Production is one queue per category and
-  `producerFor` hands the work to the lowest-id standing, unsabotaged producer, so a second Barracks
-  (or Factory) builds nothing faster: it is only a spare. How to Play now says so. Making extra
-  producers speed their queue is a balance change for both commanders and is left for a decision.
+- **Production lines** (the player's decision, after a second Barracks turned out to be only a spare:
+  extra producers should each run a queue, not build faster). Every unit queue now runs one line per
+  structure that works it (`productionLines`, `lineCount`, `queueCap` in `state.ts`): the first N
+  items of the category's list are worked at once, item i on the i-th producer (working ones by id,
+  then any a Spy has stopped), and each comes out of its own producer. Each producer adds MAX_QUEUE
+  places. Structures stay one at a time. With one producer it is exactly the old single queue: the
+  engine change alone left all 30 `drive-size` battles byte-identical. The UI keeps one list per
+  category; build buttons show the furthest item of their kind on any line, the queue strip says how
+  many are building at once, a full queue with one producer says another adds a line, the renderer
+  lights every producer at work, and the stat card says what each one adds.
+- **The computer plays by it.** Its queue limits scale with its producers (`lineCount`): a vehicle a
+  line where it was one, infantry one more than its lines where it was two, naval and air a line each
+  where it was one at a time, its anti-air cap `queueCap` where it was MAX_QUEUE, and tier three's
+  "vehicle queue at most one" now at most its vehicle lines. A line beyond the first is filled only
+  with `EXTRA_LINE_RESERVE` (2,000) credits in hand (`extraLine`, `aiScale.ts`). The first attempt filled
+  every line at once and broke the commander's saving, which works by taking back units not yet
+  started: with both lines busy there were none, so Hard's Prototype Works came at minute 34 instead of
+  27.5 and its Railgun Tanks never came ("Railgun Tanks follow" in `drive-sites`). With the reserve, the
+  Works is back at 27.5 and both tier-three units are fielded. With one producer of a kind, the
+  computer's choices are unchanged. Hard, the one level that builds two War Factories (its description
+  promises them), is the level this moves. Never in a campaign mission (`extraLine` reads
+  `s.mission`): the missions were balanced on one line, and with extra lines Last Light on Hard was no
+  longer won by the scripted commander (lost at 26 minutes); with the rule, campaign-check is 7,699 of
+  7,699. The player's extra producers count in missions as anywhere.
+- **Checks.** `drive-air` "Production lines": 24 assertions (places and lines with one and two
+  Barracks, two at once from two doors, a sabotaged line, a lost Barracks, two Helipads, structures
+  still single). Every recorded battle hash is unchanged: with the reserve the commander seldom holds
+  2,000 spare in those battles. In Chromium with two Barracks: ten places, the eleventh refused, and
+  the strip reads "2 building at once". `npm run check`: all passed.
 
 Checks: `drive-air` (Return to base, refusals, repair on the pad and not in flight) and `drive-naval`
 (sailing home, mended there, refused without a yard) gained 17 assertions. In Chromium: a damaged

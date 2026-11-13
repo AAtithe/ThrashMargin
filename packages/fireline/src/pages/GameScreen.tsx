@@ -43,7 +43,7 @@ import {
   type UnitKind,
 } from '../sim/rules';
 import { isAlly, isEnemy, sidesOf, wonBy } from '../sim/sides';
-import { costFor, isStructure, powerOf, readyStructure, unlocked } from '../sim/state';
+import { costFor, isStructure, lineCount, powerOf, queueCap, readyStructure, unlocked } from '../sim/state';
 import type { GameAction, GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { disbandQuestion, isSupport, selectionActions } from '../game/selectionActions';
@@ -351,7 +351,7 @@ export function Battle({
             const needs = (a.kind in BUILDINGS ? BUILDINGS[a.kind as BuildingKind] : UNITS[a.kind as UnitKind]).requires;
             showToast(`Needs a ${needs.filter(r => !s.buildings.some(b => b.owner === 0 && b.kind === r)).map(r => BUILDINGS[r].name).join(' and a ')}`);
           } else if (a.category === 'building' && q.length) showToast('One structure at a time');
-          else if (q.length >= MAX_QUEUE) showToast('Queue full');
+          else if (q.length >= queueCap(s, 0, a.category)) showToast(lineCount(s, 0, a.category) > 1 ? 'Queue full' : 'Queue full: another of this building adds a production line');
           else if (a.category === 'air' && airRoom(s, 0) <= 0) showToast('Every Helipad is full: build another');
           else if (s.players[0].credits < costFor(s, 0, a.kind)) showToast('Insufficient funds');
         }

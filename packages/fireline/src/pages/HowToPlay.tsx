@@ -113,8 +113,9 @@ export default function HowToPlay() {
               for good and nothing is paid back; heroes, Generals and loaded carriers cannot be disbanded.
             </li>
             <li>
-              One Barracks, one War Factory and one Helipad queue is all you get: a second of the same kind does not build faster.
-              It is a spare, so production carries on if the first is destroyed or sabotaged.
+              Each Barracks, War Factory, Helipad and Naval Yard is a production line of its own, with five queue places. Two
+              Barracks train two soldiers at once, each walking out of its own door, and take ten in the queue. Losing one, or a
+              Spy stopping it, stops only its line. Structures are still built one at a time.
             </li>
             <li>You win when the enemy has no structures left, and lose when you have none.</li>
           </ul>

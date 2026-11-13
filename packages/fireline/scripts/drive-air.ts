@@ -25,6 +25,7 @@ import {
   HELIPAD_MEND_TICKS,
   HELIPAD_SLOTS,
   INFANTRY_MENU,
+  MAX_QUEUE,
   PLATING_HP,
   PRODUCER,
   REARM_TICKS,
@@ -43,7 +44,7 @@ import {
   type UnitKind,
   type UpgradeId,
 } from '../src/sim/rules';
-import { addBuilding, addUnit, createInitialState, migrateState } from '../src/sim/state';
+import { addBuilding, addUnit, createInitialState, lineCount, migrateState, powerOf, queueCap } from '../src/sim/state';
 import type { Building, GameState, Unit } from '../src/sim/types';
 
 type Ok = (cond: unknown, what: string) => void;
@@ -772,6 +773,61 @@ function battles(ok: Ok): void {
   console.log(`  second air battle on Hard: ${c.s.winner === null ? 'unfinished' : `side ${c.s.winner} won at ${Math.round(c.s.tick / 600)} min`}; ${c.bombs} bombs, ${c.rockets} gunship rockets`);
 }
 
+/** Production lines: each Barracks, War Factory, Helipad or Naval Yard is a line of its own with MAX_QUEUE places. */
+function productionLinesSection(ok: Ok): void {
+  const { s, cx, cy } = airArena('lines');
+  s.players[0].credits = 50000;
+  // Enough power that every line runs at full rate.
+  for (let i = 0; i < 4; i++) addBuilding(s, 0, 'power', cx - 14 + i * 3, cy + 10, -100);
+  const b1 = addBuilding(s, 0, 'barracks', cx - 8, cy - 8, -100);
+  let t: GameState = s;
+  for (let i = 0; i < MAX_QUEUE; i++) t = processAction(t, { type: 'queue', category: 'infantry', kind: 'rifleman' });
+  ok(t.players[0].queues.infantry.length === MAX_QUEUE && lineCount(t, 0, 'infantry') === 1, `one Barracks: one line, ${MAX_QUEUE} places`);
+  ok(processAction(t, { type: 'queue', category: 'infantry', kind: 'rifleman' }) === t, 'and the next is refused');
+  ok(!powerOf(t, 0).low, 'the test base has full power');
+  // One Barracks: one at a time, as always.
+  const one = tick(t, UNITS.rifleman.buildTicks);
+  ok(one.players[0].queues.infantry.length === MAX_QUEUE - 1, 'one line trains one at a time');
+  // A second Barracks: a second line and five more places, both lines at work together.
+  const two = copy(t);
+  const b2 = addBuilding(two, 0, 'barracks', cx + 6, cy - 8, -100);
+  ok(lineCount(two, 0, 'infantry') === 2 && queueCap(two, 0, 'infantry') === MAX_QUEUE * 2, 'two Barracks: two lines, twice the places');
+  let q2: GameState = two;
+  for (let i = 0; i < MAX_QUEUE; i++) q2 = processAction(q2, { type: 'queue', category: 'infantry', kind: 'rifleman' });
+  ok(q2.players[0].queues.infantry.length === MAX_QUEUE * 2, `${MAX_QUEUE * 2} queued`);
+  ok(processAction(q2, { type: 'queue', category: 'infantry', kind: 'rifleman' }) === q2, 'and no more');
+  const before = new Set(q2.units.map(u => u.id));
+  const after = tick(q2, UNITS.rifleman.buildTicks);
+  const fresh = after.units.filter(u => !before.has(u.id) && u.kind === 'rifleman');
+  ok(fresh.length === 2 && after.players[0].queues.infantry.length === MAX_QUEUE * 2 - 2, `two lines train two together (${fresh.length})`);
+  const near = (u: Unit, b: Building) => distToBuilding(u.x, u.y, b) <= 3;
+  ok(fresh.some(u => near(u, b1)) && fresh.some(u => near(u, b2)), 'each from its own Barracks');
+  // A Spy's sabotage stops that line alone.
+  const sab = copy(q2);
+  sab.buildings.find(b => b.id === b2.id)!.sabotagedUntil = sab.tick + 100000;
+  const sabAfter = tick(sab, UNITS.rifleman.buildTicks);
+  ok(sabAfter.units.filter(u => !before.has(u.id) && u.kind === 'rifleman').length === 1, 'a sabotaged Barracks stops its own line, not the other');
+  // Lose the second Barracks: its line goes, the queue keeps what is there, no more is taken.
+  const lost = copy(q2);
+  lost.buildings = lost.buildings.filter(b => b.id !== b2.id);
+  ok(lineCount(lost, 0, 'infantry') === 1 && processAction(lost, { type: 'queue', category: 'infantry', kind: 'rifleman' }) === lost, 'a Barracks lost takes its places with it');
+  ok(tick(lost, UNITS.rifleman.buildTicks).players[0].queues.infantry.length === MAX_QUEUE * 2 - 1, 'and the rest train on the one left');
+  // Two Helipads: two aircraft built together, each on its own pad.
+  const { s: a } = airArena('lines-air');
+  a.players[0].credits = 50000;
+  for (let i = 0; i < 4; i++) addBuilding(a, 0, 'power', cx - 14 + i * 3, cy + 10, -100);
+  const p1 = addBuilding(a, 0, 'helipad', cx - 8, cy + 4, -100);
+  const p2 = addBuilding(a, 0, 'helipad', cx + 6, cy + 4, -100);
+  let qa: GameState = a;
+  qa = processAction(qa, { type: 'queue', category: 'air', kind: 'gunship' });
+  qa = processAction(qa, { type: 'queue', category: 'air', kind: 'gunship' });
+  const airAfter = tick(qa, UNITS.gunship.buildTicks);
+  const ships = airAfter.units.filter(u => u.kind === 'gunship');
+  ok(ships.length === 2 && ships.some(u => u.pad === p1.id) && ships.some(u => u.pad === p2.id), 'two Helipads build two aircraft together, one on each');
+  // Structures stay one at a time however many yards stand.
+  ok(lineCount(q2, 0, 'building') === 1 && queueCap(q2, 0, 'building') === 1, 'structures: still one at a time');
+}
+
 /** Disband: units off the map for good, nothing paid back; heroes, Generals and loaded carriers refused. */
 function disbanding(ok: Ok): void {
   const { s, cx, cy } = airArena('disband');
@@ -816,5 +872,6 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Air power: the computer', computer],
   ['Air power: battles', battles],
   ['Orders: disband', quietCommander(disbanding)],
+  ['Production lines', quietCommander(productionLinesSection)],
 ];
 

@@ -29,6 +29,7 @@ import {
   costFor,
   isStructure,
   log,
+  queueCap,
   readyStructure,
   syncSkirmishPowers,
   techAllowed,
@@ -76,7 +77,8 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   // standard tech, and a mission's enemy, to the original game's kinds.
   if (!techAllowed(s, owner, kind)) return false;
   const p = s.players[owner];
-  if ((p.queues[category]?.length ?? MAX_QUEUE) >= (category === 'building' ? 1 : MAX_QUEUE)) return false;
+  // Each producer of the kind adds a production line and MAX_QUEUE places (structures: one at a time).
+  if (!p.queues[category] || p.queues[category].length >= queueCap(s, owner, category)) return false;
   if (!unlocked(s, owner, kind)) return false;
   // Aircraft: no more than the Helipads serve, counting those already queued.
   if (category === 'air' && airRoom(s, owner) < airSlotsOf(kind as UnitKind)) return false;

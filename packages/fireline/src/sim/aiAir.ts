@@ -1,3 +1,4 @@
+import { extraLine } from './aiScale';
 import { airRoleOf, airRoom, ammoMax, isAir, parkAircraft } from './air';
 import { isShip } from './naval';
 import { canQueue, doAttack, doMove, doQueue, doSell } from './commands';
@@ -26,7 +27,7 @@ import {
   type UnitKind,
   type UpgradeId,
 } from './rules';
-import { costFor, countBuildings, difficultyFor, isStructure, pacedResearch, powerOf, researchModeOf, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, difficultyFor, isStructure, lineCount, pacedResearch, powerOf, queueCap, researchModeOf, techAllowed, unlocked } from './state';
 import { isEnemy } from './sides';
 import type { Building, GameState, Unit } from './types';
 import { buildingSpec, buildingSpecOf, factionOf, menuOf, unitSpec, unitSpecOf } from './specs';
@@ -242,9 +243,9 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   // 1. Anti-air, in proportion to what the opponent flies.
   const foeAir = foes.filter(isAir).length;
   if (foeAir > 0 && !crisis) {
-    if (queued('skyhunter') < Math.min(8, Math.ceil(foeAir * t.skyhuntersPer)) && p.queues.infantry.length < MAX_QUEUE && fund(s, owner, unitSpec(s, owner, 'skyhunter').cost))
+    if (queued('skyhunter') < Math.min(8, Math.ceil(foeAir * t.skyhuntersPer)) && p.queues.infantry.length < queueCap(s, owner, 'infantry') && fund(s, owner, unitSpec(s, owner, 'skyhunter').cost))
       if (canQueue(s, owner, 'infantry', 'skyhunter')) doQueue(s, owner, 'infantry', 'skyhunter');
-    if (queued('flaktrack') < Math.min(4, Math.ceil(foeAir * t.flaktracksPer)) && p.queues.vehicle.length < MAX_QUEUE && fund(s, owner, vehiclePrice(s, owner, 'flaktrack')))
+    if (queued('flaktrack') < Math.min(4, Math.ceil(foeAir * t.flaktracksPer)) && p.queues.vehicle.length < queueCap(s, owner, 'vehicle') && fund(s, owner, vehiclePrice(s, owner, 'flaktrack')))
       if (canQueue(s, owner, 'vehicle', 'flaktrack')) doQueue(s, owner, 'vehicle', 'flaktrack');
     const cannons = count('flakcannon') + (p.queues.building.some(q => q.kind === 'flakcannon') ? 1 : 0);
     if (cannons < Math.min(t.flakCannons, Math.ceil(foeAir / 2))) queueStructure(s, owner, 'flakcannon');
@@ -257,7 +258,7 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   const interceptors = interceptKind && foeAir > 0 && !crisis ? Math.min(t.interceptorsMax, Math.ceil(foeAir * t.interceptorsPer)) : 0;
   if (interceptKind && interceptors > 0 && count('researchlab') > 0 && queued(interceptKind) < interceptors) {
     if (airRoom(s, owner) > 0) {
-      if (p.queues.air.length === 0 && fund(s, owner, unitSpec(s, owner, interceptKind).cost) && canQueue(s, owner, 'air', interceptKind)) doQueue(s, owner, 'air', interceptKind);
+      if ((p.queues.air.length === 0 || (p.queues.air.length < lineCount(s, owner, 'air') && extraLine(s, p.credits))) && fund(s, owner, unitSpec(s, owner, interceptKind).cost) && canQueue(s, owner, 'air', interceptKind)) doQueue(s, owner, 'air', interceptKind);
     } else if (count('helipad') < t.helipads + 1) queueStructure(s, owner, 'helipad');
   }
   // A Recon Plane against Stealth Tanks, likewise ahead of the army: its guns cannot hit what they cannot see.
@@ -265,7 +266,7 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
   const recon = scoutKind && t.recon && stealthy.length > 0 && !crisis ? 1 : 0;
   if (scoutKind && recon && count('helipad') > 0 && queued(scoutKind) < recon) {
     if (airRoom(s, owner) > 0) {
-      if (p.queues.air.length === 0 && fund(s, owner, unitSpec(s, owner, scoutKind).cost) && canQueue(s, owner, 'air', scoutKind)) doQueue(s, owner, 'air', scoutKind);
+      if ((p.queues.air.length === 0 || (p.queues.air.length < lineCount(s, owner, 'air') && extraLine(s, p.credits))) && fund(s, owner, unitSpec(s, owner, scoutKind).cost) && canQueue(s, owner, 'air', scoutKind)) doQueue(s, owner, 'air', scoutKind);
     } else if (count('helipad') < t.helipads + 1) queueStructure(s, owner, 'helipad');
   }
   // With the map's ore running low, what credits are left go on the army, not on structures,
@@ -339,7 +340,7 @@ export function airPlan(s: GameState, owner: Owner, home: { x: number; y: number
                   : null;
     if (want && unlocked(s, owner, want)) {
       saving = true;
-      if (p.queues.air.length === 0 && fund(s, owner, unitSpec(s, owner, want).cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);
+      if ((p.queues.air.length === 0 || (p.queues.air.length < lineCount(s, owner, 'air') && extraLine(s, p.credits))) && fund(s, owner, unitSpec(s, owner, want).cost) && canQueue(s, owner, 'air', want)) doQueue(s, owner, 'air', want);
     }
   }
 
@@ -391,7 +392,7 @@ function lastStand(s: GameState, owner: Owner, armed: number): void {
     }
   }
   const kind: UnitKind = p.credits >= unitSpec(s, owner, 'grenadier').cost && unlocked(s, owner, 'grenadier') ? 'grenadier' : 'rifleman';
-  if (p.queues.infantry.length < MAX_QUEUE && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
+  if (p.queues.infantry.length < queueCap(s, owner, 'infantry') && canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
 }
 
 /**
