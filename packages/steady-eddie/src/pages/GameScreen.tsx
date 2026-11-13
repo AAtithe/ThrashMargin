@@ -855,7 +855,11 @@ const turnBar: React.CSSProperties = {
   alignItems: 'center',
   gap: '0.8rem',
   flexWrap: 'wrap',
-  border: `1px solid ${UI.ruleStrong}`,
+  // Longhands, not `border`: turnBarDocked overrides borderWidth, and React warns when a rerender
+  // mixes a shorthand with its own longhand.
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: UI.ruleStrong,
   background: UI.panel,
   padding: '0.55rem 0.75rem',
   boxShadow: `0 6px 20px ${UI.shadow}`,
