@@ -267,7 +267,7 @@ details.own summary:hover{color:var(--ink)}
 .linkish:hover{text-decoration-thickness:2px}
 /* Phones and touch screens: every control at least 40px tall. A range input is only as tall as its
    thumb (about 16px), so it gets the height itself; the track stays centred and looks the same. */
-@media (max-width:720px),(pointer:coarse){.btn.small{min-height:40px}.icon-btn{min-height:40px;padding:6px 10px}.dot{min-width:40px;height:40px;border-radius:20px}input[type=range]{height:40px;margin:0}.item input[type=checkbox]{width:24px;height:24px;margin-top:0}input[type=number]{min-height:40px;font-size:16px}}
+@media (max-width:720px),(pointer:coarse){.btn.small{min-height:40px}.icon-btn{min-height:40px;padding:6px 10px}.dot{min-width:40px;height:40px;border-radius:20px}input[type=range]{height:40px;margin:0}.item input[type=checkbox]{width:24px;height:24px;margin-top:0}input[type=number]{min-height:40px;font-size:16px}nav button{min-height:40px}}
 @media (max-width:520px){
   .item{grid-template-columns:22px 1fr}
   .item .acts{grid-column:2;justify-content:flex-start}
@@ -288,7 +288,7 @@ details.own summary:hover{color:var(--ink)}
   .tile{padding:10px 12px}
   .tile .fig{font-size:23px}
   .tile .sub{line-height:1.35}
-  nav button{padding:10px 8px}
+  nav button{padding:10px 8px;min-height:40px}
 }
 /* Away: the holiday card. */
 .away-card{border-color:var(--accent);border-width:2px}
