@@ -90,7 +90,7 @@ export default function Missions(p: PlaceProps) {
             ) : (
               <div style={{ display: 'flex', gap: '0.4rem' }}>
                 <Button tone="quiet" onClick={() => setAbandonAsked(active.accepted)}>Abandon</Button>
-                <ActButton p={p} verb={{ type: 'COMPLETE_MISSION' }} tone="primary">Report back</ActButton>
+                <ActButton p={p} verb={{ type: 'COMPLETE_MISSION' }} tone="primary" reasonShownBy="page">Report back</ActButton>
               </div>
             )}
           </Row>
@@ -113,7 +113,7 @@ export default function Missions(p: PlaceProps) {
           ))}
           <Row>
             <Meta>Reward: {rewardText(upcoming)}</Meta>
-            <ActButton p={p} id={`nr-mission-accept`} verb={{ type: 'ACCEPT_MISSION', missionId: upcoming.id }} tone="primary">Accept</ActButton>
+            <ActButton p={p} id={`nr-mission-accept`} verb={{ type: 'ACCEPT_MISSION', missionId: upcoming.id }} tone="primary" reasonShownBy="page">Accept</ActButton>
           </Row>
           <Why p={p} verb={{ type: 'ACCEPT_MISSION', missionId: upcoming.id }} />
           <Blurb>Schemes, duels, training and journeys count only once you have accepted, so accept before you start.</Blurb>

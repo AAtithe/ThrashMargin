@@ -4,7 +4,7 @@ import { UI } from '../../theme';
 import { gr } from '../../lib/format';
 import { Blurb, Meta, Panel, Row } from '../ui';
 import ActButton from './ActButton';
-import type { PlaceProps } from '../types';
+import type { PlaceProps, Verb } from '../types';
 
 function effectText(item: Item): string {
   const e = item.effect;
@@ -53,6 +53,13 @@ export default function Waterhalle(p: PlaceProps) {
           const item = ITEM[id];
           if (!item) return null;
           const each = saleValue(s, id, now);
+          // A row's buttons often share one reason (abroad, every one is refused alike): the first
+          // button that has it writes it, the rest do not repeat it.
+          const first: { verb: Verb; label: string } | null =
+            item.kind === 'consumable' ? { verb: { type: 'USE_ITEM', itemId: id }, label: 'Use' }
+            : item.kind === 'weapon' || item.kind === 'armour' ? { verb: { type: 'EQUIP', itemId: id }, label: 'Equip' }
+            : null;
+          const sellOne: Verb = { type: 'SELL', itemId: id, qty: 1 };
           return (
             <Row key={id}>
               <div style={{ flex: 1 }}>
@@ -61,10 +68,9 @@ export default function Waterhalle(p: PlaceProps) {
                 </div>
                 <Meta>{effectText(item)} · sells for {gr(each)} today</Meta>
               </div>
-              {item.kind === 'consumable' && <ActButton p={p} verb={{ type: 'USE_ITEM', itemId: id }}>Use</ActButton>}
-              {(item.kind === 'weapon' || item.kind === 'armour') && <ActButton p={p} verb={{ type: 'EQUIP', itemId: id }}>Equip</ActButton>}
-              <ActButton p={p} verb={{ type: 'SELL', itemId: id, qty: 1 }} tone="quiet">Sell 1</ActButton>
-              {qty > 1 && <ActButton p={p} verb={{ type: 'SELL', itemId: id, qty }} tone="quiet">Sell all</ActButton>}
+              {first && <ActButton p={p} verb={first.verb}>{first.label}</ActButton>}
+              <ActButton p={p} verb={sellOne} tone="quiet" reasonShownBy={first?.verb}>Sell 1</ActButton>
+              {qty > 1 && <ActButton p={p} verb={{ type: 'SELL', itemId: id, qty }} tone="quiet" reasonShownBy={sellOne}>Sell all</ActButton>}
             </Row>
           );
         })}

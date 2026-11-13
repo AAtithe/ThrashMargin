@@ -37,6 +37,25 @@
   --bar-nerve: #a8342f;
   --bar-spirits: #8f6210;
   --bar-health: #2c6f66;
+
+  /* UI kit (lib/kit.css): the game's buttons and the lobby's name field, in this palette. One block
+     serves both modes, since every line is a --ui-* reference. */
+  --kit-font: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+  --kit-radius: 0;
+  --kit-font-size: 0.8rem;
+  --kit-font-size-small: 0.74rem;
+  --kit-pad: 0.35rem 0.7rem;
+  --kit-pad-small: 0.2rem 0.5rem;
+  --kit-text: var(--ui-text);
+  --kit-text-soft: var(--ui-text-soft);
+  --kit-text-faint: var(--ui-text-faint);
+  --kit-surface: var(--ui-panel-raised);
+  --kit-field: var(--ui-panel);
+  --kit-rule: var(--ui-rule);
+  --kit-rule-strong: var(--ui-rule-strong);
+  --kit-accent: var(--ui-brass);
+  --kit-on-accent: var(--ui-ground);
+  --kit-danger: var(--ui-bad);
 }
 :root[data-theme="dark"] {
   --ui-ground: #0d1419;
@@ -93,40 +112,40 @@ button:focus:not(:focus-visible) {
 }
 
 /*
- * Buttons. Their colours are inline (ui.tsx, by tone), so these rules only add what inline styles
- * cannot: hover, press and a short transition. `!important` is needed to beat the inline border.
+ * Buttons are the UI kit's (lib/kit.css: hover, press, focus, disabled and 40px phone targets). The
+ * game keeps two things the kit does not do: a label that never wraps, and the brass edge a hovered
+ * button takes in this game. The portal toggles in the top bar are plain buttons and keep their own.
  */
-.nr-btn,
-.nr-util button {
-  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, filter 120ms ease;
+.nr-btn {
+  white-space: nowrap;
 }
-.nr-btn:not(:disabled):hover,
+.nr-btn:not(:disabled):not(.kit-btn--primary):not(.kit-btn--danger):hover,
 .nr-util button:hover {
-  border-color: var(--ui-brass) !important;
+  border-color: var(--ui-brass);
+}
+.nr-util button {
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.nr-util button:hover {
   color: var(--ui-text) !important;
 }
-.nr-btn[data-tone="primary"]:not(:disabled):hover {
-  color: var(--ui-ground) !important;
-  filter: brightness(1.1);
-}
-:root:not([data-theme="dark"]) .nr-btn[data-tone="primary"]:not(:disabled):hover {
-  filter: brightness(0.9);
-}
-.nr-btn[data-tone="danger"]:not(:disabled):hover {
-  border-color: var(--ui-bad) !important;
-  color: var(--ui-bad) !important;
-  background: var(--ui-tint-bad) !important;
-}
-.nr-btn:not(:disabled):active {
-  transform: translateY(1px);
+
+/* The disabled reason under a game button: a touch smaller than the kit's and at most two short
+   lines wide, so a place with several refused buttons stays quiet and a row never runs off a phone. */
+.kit-btn-wrap > .nr-btn + .kit-reason {
+  font-size: 0.7rem;
+  max-width: 9rem;
 }
 
-/* The lobby's name field: a visible edge when it has focus, in either mode. */
+/* The lobby's name field is the kit's; the game draws its edge a shade stronger. */
+.nr-field {
+  border-color: var(--ui-rule-strong);
+  padding: 0.5rem 0.7rem;
+}
 .nr-field:focus {
-  border-color: var(--ui-brass) !important;
+  border-color: var(--ui-brass);
 }
 .nr-field::placeholder {
-  color: var(--ui-text-faint);
   font-style: italic;
 }
 
@@ -157,6 +176,8 @@ button:focus:not(:focus-visible) {
  * the board, every button is at least 40px tall.
  */
 @media (max-width: 1100px), (pointer: coarse) {
+  /* The kit makes its buttons 40px at 720px and below; this game stacks its board at 1100px, so
+     its own buttons take the larger target from there. */
   .nr-btn,
   .nr-util button,
   .nr-util a {
@@ -165,11 +186,6 @@ button:focus:not(:focus-visible) {
   .nr-util a {
     display: inline-flex;
     align-items: center;
-  }
-  /* 16px stops iOS zooming the page when the field takes focus. */
-  .nr-field {
-    min-height: 40px;
-    font-size: 16px !important;
   }
 }
 
@@ -197,6 +213,30 @@ button:focus:not(:focus-visible) {
   #nr-bars {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 1rem;
+  }
+  /*
+   * A phone's first screen goes to the place, not the chrome. The rail's name and purse sit side by
+   * side and the lodging line is left to the Home panel; the eleven places wrap with tight gaps.
+   */
+  .nr-rail-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: 1rem;
+    align-items: start;
+  }
+  .nr-rail-purse {
+    text-align: right;
+  }
+  .nr-rail-lodging {
+    display: none;
+  }
+  .nr-rail-notes:not(:has(div)) {
+    display: none;
+  }
+  /* The places wrap rather than scroll sideways: every place stays on screen, which the tour harness
+     asserts (scripts/tours/niccolo-rising.cjs), with tighter gaps so they take fewer rows. */
+  .nr-places {
+    gap: 0.3rem;
   }
 }
 

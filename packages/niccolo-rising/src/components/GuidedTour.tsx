@@ -34,6 +34,7 @@ import { JOBS, SCHEMES, YARD, barMax } from '../sim/content';
 import { nextMission } from '../sim/missions';
 import { WORK_STATS, type BattleStat, type GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
+import { Button as KitButton } from '../lib/Kit';
 
 const TOUR_SEEN_KEY = 'niccolo_rising_tour_seen';
 
@@ -269,8 +270,11 @@ function useTargetRect(targetId: string | null): DOMRect | null {
         setRect(null);
         return;
       }
-      if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight)) {
-        el.scrollIntoView({ block: 'center', behavior: 'auto' });
+      // Off the side as well as off the top or bottom: on a phone the place tabs are one row that
+      // scrolls sideways, so a target tab can sit past the right edge of the screen.
+      const offSide = r.left < 0 || r.right > window.innerWidth;
+      if (!scrolledOnce && (r.top < 0 || r.bottom > window.innerHeight || offSide)) {
+        el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
         scrolledOnce = true;
         setRect(el.getBoundingClientRect());
         return;
@@ -459,24 +463,24 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false }: Pro
         <h3 style={cardTitle}>{elsewhere ? `Go to ${PLACE_NAMES[step.place!]}` : step.title}</h3>
         <p style={cardBody}>{body}</p>
         <div style={footer}>
-          <button type="button" className="nr-btn" data-tone="quiet" style={ghostButton} onClick={finish}>
+          <KitButton className="nr-btn" tone="quiet" size="small" style={ghostButton} onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}
-          </button>
+          </KitButton>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             {!isFirst && (
-              <button type="button" className="nr-btn" data-tone="default" style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
+              <KitButton className="nr-btn" size="small" style={plainFace} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
                 Back
-              </button>
+              </KitButton>
             )}
-            <button
-              type="button"
+            <KitButton
               className="nr-btn"
-              data-tone={isManual && !elsewhere ? 'primary' : 'default'}
-              style={isManual && !elsewhere ? primaryButton : plainButton}
+              tone={isManual && !elsewhere ? 'primary' : 'default'}
+              size="small"
+              style={isManual && !elsewhere ? plainButton : plainFace}
               onClick={() => (isLast ? finish() : setStepIndex(i => Math.min(i + 1, steps.length - 1)))}
             >
               {isLast ? 'Finish' : isFirst ? 'Start' : isManual && !elsewhere ? 'Next' : 'Skip this'}
-            </button>
+            </KitButton>
           </div>
         </div>
       </div>
@@ -544,32 +548,19 @@ const footer: React.CSSProperties = {
   gap: '0.5rem',
 };
 
-// The full `border` shorthand is set on every variant rather than overriding `borderColor` on a
-// shared base: mixing a shorthand and a longhand for one property across renders of the same
-// element is a real React warning, not a lint nag.
+// The card's buttons are the kit's (lib/Kit.tsx), at the card's slightly smaller size. Colours come
+// from the tone; only the sizes differ from the game's other buttons.
 const plainButton: React.CSSProperties = {
-  background: UI.panel,
-  border: `1px solid ${UI.ruleStrong}`,
-  borderRadius: 2,
-  color: UI.text,
   padding: '0.35rem 0.65rem',
-  fontFamily: 'inherit',
   fontSize: '0.76rem',
-  cursor: 'pointer',
 };
 
-const primaryButton: React.CSSProperties = {
-  ...plainButton,
-  border: `1px solid ${UI.brass}`,
-  background: UI.brass,
-  color: UI.ground,
-  fontWeight: 600,
-};
+/** A plain button sits a shade below the card, as the game's other cards do. */
+const plainFace: React.CSSProperties = { ...plainButton, backgroundColor: UI.panel };
 
 const ghostButton: React.CSSProperties = {
   ...plainButton,
-  border: '1px solid transparent',
-  background: 'transparent',
+  borderColor: 'transparent',
   color: UI.textFaint,
   padding: '0.35rem 0.2rem',
 };

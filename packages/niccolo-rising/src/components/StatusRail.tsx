@@ -6,6 +6,7 @@ import { BAR_COLOURS, FONT, UI } from '../theme';
 import { duration, gr } from '../lib/format';
 import { Meter } from './ui';
 import { usePace } from '../lib/motion';
+import { useEffect, useState } from 'react';
 import { Tally, TimerBar } from './motion';
 
 const HOUR = 60 * 60 * 1000;
@@ -62,32 +63,43 @@ export function statusLine(s: GameState, now: number): { text: string; colour: s
 export default function StatusRail({ s, now }: { s: GameState; now: number }) {
   const status = statusLine(s, now);
   const need = xpToNext(s.level);
+  // On a phone the purse sits at the right edge (styles.css), so its gain marker floats left of the
+  // amount instead of off the side of the screen.
+  const narrow = useNarrow();
   return (
     <aside aria-label="Your character" style={{ width: 230, flexShrink: 0, borderRight: `1px solid ${UI.rule}`, background: UI.panel }}>
       {/* Sticky on a wide, tall enough screen (styles.css), so the bars stay in sight down a long
           Waterhalle list. No scroll box of its own: the floating amounts must not be clipped. */}
       <div className="nr-rail-inner" style={{ padding: '1rem' }}>
-        <div style={{ fontFamily: FONT.display, fontSize: '1.2rem', color: UI.brass }}>{s.name}</div>
-        <div style={{ fontSize: '0.75rem', color: UI.textSoft, marginBottom: '0.4rem' }}>
-          Level <Tally key={s.id} value={s.level} format={plain} /> · standing <Tally key={`st-${s.id}`} value={s.standing} format={count} />
-        </div>
-        <div style={{ marginBottom: '0.8rem' }}>
-          <Meter value={s.xp} max={s.level >= CONFIG.levels.maxLevel ? 1 : need} colour={UI.brass} height={4} />
-          <div style={{ fontFamily: FONT.data, fontSize: '0.65rem', color: UI.textFaint, marginTop: 2 }}>
-            <Tally key={`${s.id}-${s.level}`} value={s.xp} format={plain} float="right" />/{need} experience
+        {/* Name and experience, then purse and whereabouts: one column on a wide screen, side by side
+            on a phone (styles.css), so the place below starts higher up the first screen. */}
+        <div className="nr-rail-head">
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontFamily: FONT.display, fontSize: '1.2rem', color: UI.brass }}>{s.name}</div>
+            <div style={{ fontSize: '0.75rem', color: UI.textSoft, marginBottom: '0.4rem' }}>
+              Level <Tally key={s.id} value={s.level} format={plain} /> · standing <Tally key={`st-${s.id}`} value={s.standing} format={count} />
+            </div>
+            <div style={{ marginBottom: '0.8rem' }}>
+              <Meter value={s.xp} max={s.level >= CONFIG.levels.maxLevel ? 1 : need} colour={UI.brass} height={4} />
+              <div style={{ fontFamily: FONT.data, fontSize: '0.65rem', color: UI.textFaint, marginTop: 2 }}>
+                <Tally key={`${s.id}-${s.level}`} value={s.xp} format={plain} float="right" />/{need} experience
+              </div>
+            </div>
           </div>
-        </div>
-        <div style={{ fontFamily: FONT.data, fontSize: '1rem', color: UI.text, marginBottom: '0.2rem' }}>
-          <Tally key={s.id} value={s.groats} format={gr} float="right" />
-        </div>
-        {s.deposit && (
-          <div style={{ fontFamily: FONT.data, fontSize: '0.68rem', color: UI.textFaint, marginBottom: '0.2rem' }}>
-            + {gr(s.deposit.amount)} with the Medici
+          <div className="nr-rail-purse">
+            <div style={{ fontFamily: FONT.data, fontSize: '1rem', color: UI.text, marginBottom: '0.2rem' }}>
+              <Tally key={s.id} value={s.groats} format={gr} float={narrow ? 'left' : 'right'} />
+            </div>
+            {s.deposit && (
+              <div style={{ fontFamily: FONT.data, fontSize: '0.68rem', color: UI.textFaint, marginBottom: '0.2rem' }}>
+                + {gr(s.deposit.amount)} with the Medici
+              </div>
+            )}
+            <div style={{ fontSize: '0.78rem', color: status.colour, margin: '0.4rem 0 1rem' }}>
+              {status.text}
+              {s.status.kind === 'travelling' && <TimerBar start={s.status.departs} end={s.status.arrives} now={now} colour={UI.verdigris} style={{ marginBottom: 0 }} />}
+            </div>
           </div>
-        )}
-        <div style={{ fontSize: '0.78rem', color: status.colour, margin: '0.4rem 0 1rem' }}>
-          {status.text}
-          {s.status.kind === 'travelling' && <TimerBar start={s.status.departs} end={s.status.arrives} now={now} colour={UI.verdigris} style={{ marginBottom: 0 }} />}
         </div>
         {/* The guided first hours spotlight this block whole: the four bars are one lesson, not four. */}
         <div id="nr-bars">
@@ -95,8 +107,9 @@ export default function StatusRail({ s, now }: { s: GameState; now: number }) {
             <BarLine key={bar} s={s} bar={bar} now={now} />
           ))}
         </div>
-        <div style={{ fontSize: '0.7rem', color: UI.textFaint, marginTop: '0.8rem', lineHeight: 1.4 }}>
-          Lodging: {currentLodging(s).name}
+        <div className="nr-rail-notes" style={{ fontSize: '0.7rem', color: UI.textFaint, marginTop: '0.8rem', lineHeight: 1.4 }}>
+          {/* On a phone the lodging is left to the Home panel, which lists it too. */}
+          <span className="nr-rail-lodging">Lodging: {currentLodging(s).name}</span>
           {s.course && (
             <div style={{ marginTop: 4 }}>
               Studying, {duration(s.course.ends - now)} left
@@ -113,4 +126,17 @@ export default function StatusRail({ s, now }: { s: GameState; now: number }) {
       </div>
     </aside>
   );
+}
+
+/** True at the phone width where styles.css puts the purse beside the name (max-width 640px). */
+function useNarrow(): boolean {
+  const query = '(max-width: 640px)';
+  const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const on = () => setNarrow(mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return narrow;
 }

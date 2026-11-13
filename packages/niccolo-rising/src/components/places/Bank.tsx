@@ -33,13 +33,13 @@ export default function Bank(p: PlaceProps) {
         <>
           <Row>
             <input
-              className="nr-field"
+              className="kit-input nr-field"
               aria-label="Groats to deposit"
               inputMode="numeric"
               value={amount}
               onChange={e => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder={`at least ${CONFIG.bank.minDeposit}`}
-              style={{ flex: 1, minWidth: 0, background: UI.ground, border: `1px solid ${UI.ruleStrong}`, color: UI.text, fontFamily: FONT.data, fontSize: '0.85rem', padding: '0.4rem 0.6rem' }}
+              style={{ flex: 1, minWidth: 0, width: 'auto', backgroundColor: UI.ground, fontFamily: FONT.data }}
             />
             <Button tone="quiet" onClick={() => setAmount(String(s.groats))}>
               All

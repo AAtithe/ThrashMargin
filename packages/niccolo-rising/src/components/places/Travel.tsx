@@ -46,7 +46,7 @@ export default function Travel(p: PlaceProps) {
               </div>
               <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: 1 }}>Buy 1</ActButton>
               {most > 1 && (
-                <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: most }}>
+                <ActButton p={p} verb={{ type: 'BUY_ABROAD', itemId: m.item, qty: most }} reasonShownBy={{ type: 'BUY_ABROAD', itemId: m.item, qty: 1 }}>
                   Buy {most}
                 </ActButton>
               )}

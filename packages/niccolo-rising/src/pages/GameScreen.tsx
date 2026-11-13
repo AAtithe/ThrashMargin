@@ -230,25 +230,34 @@ export default function GameScreen() {
             </p>
           )}
 
+          {/* Away from Bruges most buttons are refused for the same reason. Said once here rather than
+              under every one of them (components/places/ActButton.tsx). */}
+          {(st.kind === 'travelling' || st.kind === 'abroad') && (
+            <p style={{ fontSize: '0.8rem', color: UI.text, background: UI.tintVerdigris, borderLeft: `3px solid ${UI.verdigris}`, padding: '0.5rem 0.8rem', margin: '0 0 0.9rem' }}>
+              {st.kind === 'travelling'
+                ? 'On the road. Anything greyed out waits until you arrive.'
+                : 'Abroad. Anything greyed out waits until you are back in Bruges.'}
+            </p>
+          )}
           {st.kind === 'infirmary' && (
             <Panel title="The Infirmary of St John" style={{ borderColor: UI.bad }}>
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
-                Laid up after {st.reason}. Out in {duration(st.until - now)}. Bandages and theriac shorten the stay.
+                Laid up after {st.reason}. Out in {duration(st.until - now)}. Bandages and theriac shorten the stay; anything else greyed out waits until you are out.
               </p>
               <Countdown since={st.since} until={st.until} now={now} colour={UI.bad} />
               <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
-                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'bandage' }}>Use bandages ({view.inventory.bandage ?? 0})</ActButton>
-                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'theriac' }}>Use theriac ({view.inventory.theriac ?? 0})</ActButton>
+                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'bandage' }} align="start">Use bandages ({view.inventory.bandage ?? 0})</ActButton>
+                <ActButton p={props} verb={{ type: 'USE_ITEM', itemId: 'theriac' }} align="start">Use theriac ({view.inventory.theriac ?? 0})</ActButton>
               </div>
             </Panel>
           )}
           {st.kind === 'steen' && (
             <Panel title="The Steen" style={{ borderColor: UI.bad }}>
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.85rem' }}>
-                Taken for {st.reason.toLowerCase()}. Released in {duration(st.until - now)}, or sooner if the gaoler is paid.
+                Taken for {st.reason.toLowerCase()}. Released in {duration(st.until - now)}, or sooner if the gaoler is paid. Anything else greyed out waits until you are free.
               </p>
               <Countdown since={st.since} until={st.until} now={now} colour={UI.bad} />
-              <ActButton p={props} verb={{ type: 'BRIBE' }}>Bribe the gaoler, {gr(bribeCost(view))}</ActButton>
+              <ActButton p={props} verb={{ type: 'BRIBE' }} align="start">Bribe the gaoler, {gr(bribeCost(view))}</ActButton>
             </Panel>
           )}
 
