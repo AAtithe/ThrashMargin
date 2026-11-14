@@ -6838,3 +6838,12 @@ div:has(> .fl-alert-chip) > .fl-dock[data-phone] {
     min-height: 40px;
   }
 }
+
+/* The selection panel's kind chips and the Forces list (game/Sidebar.tsx) are buttons: a thumb's
+   size on a phone, like every other control. */
+@media (max-width: 720px), (pointer: coarse) {
+  .fl-d-chip-btn {
+    min-height: 40px;
+    padding: 0 10px;
+  }
+}
