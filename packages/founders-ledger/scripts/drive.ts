@@ -627,6 +627,33 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
     ok(!/[—–]/.test(JSON.stringify([l.WTS_SEED, l.WTS_OBJECTIVE, l.WTS_PRINCIPLES, l.WTS_STAGES])), 'wts: no dashes');
   }
 
+  // Above the line: locate, name, shift, and learn which shifts work.
+  {
+    const l = createLedger(null);
+    ok(l.state.shifts.length >= 10 && l.LINE_SIGNS.length >= 8, 'line: his shift moves and the signs to name');
+    l.lineCheck('above');
+    ok(l.lineOpen() === null, 'line: above the line needs nothing more');
+    const at = (h: number) => { const d = new Date(NOW - DAY); d.setHours(h, 0, 0, 0); return d.getTime(); };
+    const e1 = l.lineCheck('below', { signs: ['Anxious', 'Rushing'], trigger: 'The firm' }, at(21));
+    ok(l.lineOpen() === e1 && l.nowItems()[0].k === 'line', 'line: below the line leads Today until it is resolved');
+    ok(l.lineResult(e1.id, 'yes') === null, 'line: no result without a shift');
+    l.lineShift(e1.id, 'Pilates or a walk outside', at(21) + 1000);
+    const before = l.points();
+    l.lineResult(e1.id, 'yes', at(21) + 40 * 60000);
+    ok(l.lineOpen() === null && l.points() - before === l.LINE_PTS, 'line: back above scores');
+    const e2 = l.lineCheck('below', { signs: ['Anxious'], trigger: 'The deli' }, at(22)); l.lineShift(e2.id, 'Phone off for an hour'); l.lineResult(e2.id, 'no');
+    const e3 = l.lineCheck('below', { signs: ['Blaming'], trigger: 'The firm' }, at(23)); l.lineShift(e3.id, 'Phone off for an hour'); l.lineResult(e3.id, 'partly');
+    const e4 = l.lineCheck('below', { signs: ['Anxious'], trigger: 'The firm' }, at(20)); l.lineShift(e4.id, 'Pilates or a walk outside'); l.lineResult(e4.id, 'yes', at(20) + 20 * 60000);
+    const P = l.linePatterns();
+    ok(P.below === 4 && P.above === 1 && P.signs[0][0] === 'Anxious' && P.triggers[0][0] === 'The firm', 'line: signs and triggers tallied');
+    ok(P.shifts[0].name === 'Pilates or a walk outside' && P.shifts[0].rate === 1 && P.shifts[1].rate === 0.25, 'line: shifts ranked by how often they work');
+    ok(l.shiftsFirst()[0] === 'Pilates or a walk outside', 'line: the shift that works is offered first');
+    const lines = l.lineLines(P);
+    ok(lines.some((x: string) => x.includes('most reliable shift: pilates')) && lines.some((x: string) => x.includes('rarely works')), 'line: what works and what does not, in plain words');
+    ok(l.sessionBrief().lines.some((x: string) => x.startsWith('Above the line')) && l.sessionBrief().lines.some((x: string) => x.startsWith('What brings me back')), 'line: in the agenda for Sam');
+    ok(!/[—–]/.test(JSON.stringify([l.LINE_SIGNS, l.LINE_TRIGGERS, l.DEFAULT_SHIFTS, lines])), 'line: no dashes');
+  }
+
   // Today: one thing next, in a fixed order.
   {
     const l = createLedger(null);

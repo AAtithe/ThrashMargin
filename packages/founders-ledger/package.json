@@ -6,7 +6,8 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "drive": "tsx scripts/drive.ts"
+    "drive": "tsx scripts/drive.ts",
+    "choices": "node scripts/choices.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
