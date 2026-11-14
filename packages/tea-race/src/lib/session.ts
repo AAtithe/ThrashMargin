@@ -37,6 +37,8 @@ export function hasGameAccess(user: StoredUser | null, gameKey: string): boolean
  *     holds even if this file is bypassed. The token's own `exp` is read here only to sign the
  *     browser out at the same moment the server would start refusing it.
  *   - 60 minutes with no clicks or key presses, across every game on the portal.
+ * A session signed in with "Keep me signed in on this device" (the token's `rem` claim) lasts 30
+ * days instead, also enforced by the server, and has no idle limit: it is for the player's own phone.
  * A session from before these limits existed has no activity stamp and is treated as expired, so
  * everyone signs in once more and picks up the current fields (isAdmin among them).
  *
@@ -46,15 +48,30 @@ export function hasGameAccess(user: StoredUser | null, gameKey: string): boolean
 const ACTIVE_KEY = 'tm_last_active';
 const IDLE_LIMIT_MS = 60 * 60 * 1000;
 
-function tokenExpiryMs(token: string): number | null {
+function tokenClaims(token: string): { exp?: unknown; rem?: unknown } | null {
   try {
     const part = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(atob(part));
-    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+    return JSON.parse(atob(part));
   } catch {
     return null;
   }
 }
+
+function tokenExpiryMs(token: string): number | null {
+  const c = tokenClaims(token);
+  return c && typeof c.exp === 'number' ? c.exp * 1000 : null;
+}
+
+/** Signed in with "Keep me signed in on this device". Read only to skip the idle limit here. */
+export function rememberedSession(): boolean {
+  const token = localStorage.getItem(KEY);
+  return !!token && tokenClaims(token)?.rem === 1;
+}
+
+/** The sign-in form remembers the tickbox on this device, so a phone keeps it ticked. */
+const REMEMBER_PREF = 'tm_remember';
+export const rememberPreference = (): boolean => localStorage.getItem(REMEMBER_PREF) === '1';
+export const setRememberPreference = (on: boolean) => localStorage.setItem(REMEMBER_PREF, on ? '1' : '0');
 
 function sessionExpired(): boolean {
   const token = localStorage.getItem(KEY);
@@ -62,7 +79,7 @@ function sessionExpired(): boolean {
   const exp = tokenExpiryMs(token);
   if (exp === null || exp <= Date.now()) return true;
   const last = Number(localStorage.getItem(ACTIVE_KEY));
-  if (!last || Date.now() - last > IDLE_LIMIT_MS) return true;
+  if (!rememberedSession() && (!last || Date.now() - last > IDLE_LIMIT_MS)) return true;
   try {
     const u = JSON.parse(localStorage.getItem(USER_KEY) ?? 'null');
     return !u || typeof u.isAdmin !== 'boolean';

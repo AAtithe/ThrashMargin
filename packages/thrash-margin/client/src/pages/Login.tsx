@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { getToken, setToken, setStoredUser } from '../lib/token';
+import { getToken, setToken, setStoredUser, rememberPreference, setRememberPreference } from '../lib/token';
 import PortalNav from '../components/PortalNav';
 
 const API = import.meta.env.VITE_API_URL ?? '';
@@ -20,6 +20,7 @@ const GAME_TITLES: { prefix: string; title: string; subtitle: string }[] = [
   { prefix: '/niccolo/', title: 'Banco di Niccolo', subtitle: 'Trade · Credit · Intelligence' },
   { prefix: '/tea-race/', title: 'The Tea Race', subtitle: 'Clippers · Cargo · First home' },
   { prefix: '/steady-eddie/', title: 'Steady Eddie', subtitle: 'Haulage · Loads · First to the depot' },
+  { prefix: '/founders-ledger/', title: "The Founder's Ledger", subtitle: 'CEO coaching · Profit · Space' },
   { prefix: '/fireline/', title: 'Fireline', subtitle: 'Real-time strategy · Build · Harvest · Conquer' },
 ];
 
@@ -32,6 +33,13 @@ export default function Login() {
   // Registered while the portal requires approval: no session yet, so say so rather than sign in.
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // "Keep me signed in on this device": 30 days, no idle limit, enforced by the server. Ticked by
+  // default when opened as an app from the home screen, and the choice is remembered per device.
+  const [remember, setRemember] = useState(() => {
+    const saved = localStorage.getItem('tm_remember');
+    if (saved !== null) return rememberPreference();
+    return window.matchMedia?.('(display-mode: standalone)').matches === true || (navigator as { standalone?: boolean }).standalone === true;
+  });
   const game = GAME_TITLES.find(g => destination().startsWith(g.prefix));
 
   useEffect(() => {
@@ -45,8 +53,9 @@ export default function Login() {
     setLoading(true);
     try {
       const body = mode === 'register'
-        ? { username, email, password }
-        : { username, password };
+        ? { username, email, password, remember }
+        : { username, password, remember };
+      setRememberPreference(remember);
       const res = await fetch(`${API}/api/auth/${mode}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -107,6 +116,11 @@ export default function Login() {
             style={s.input} type="password" placeholder="Password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             value={password} onChange={e => setPassword(e.target.value)} required
           />
+          <label style={s.remember}>
+            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} style={s.check} />
+            <span>Keep me signed in on this device for 30 days</span>
+          </label>
+          {remember && <p style={s.hint}>Only on your own phone or computer. Signing out, or changing your password, ends it.</p>}
           {new URLSearchParams(window.location.search).get('deleted') === '1' && !error && (
             <p style={{ color: 'var(--portal-good)', fontSize: 13, margin: 0 }} role="status">Your account and saved games have been deleted.</p>
           )}
@@ -137,6 +151,9 @@ const s: Record<string, React.CSSProperties> = {
   tabOff:  { flex: 1, padding: '7px 0', border: 'none', background: 'transparent', color: 'var(--portal-soft)', cursor: 'pointer', borderRadius: 4, fontSize: 13 },
   form:    { display: 'flex', flexDirection: 'column', gap: 10 },
   input:   { padding: '9px 12px', background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 6, color: 'var(--portal-text)', fontSize: 13, outline: 'none' },
+  remember:{ display: 'flex', alignItems: 'center', gap: 10, minHeight: 44, fontSize: 13, color: 'var(--portal-text)', cursor: 'pointer' },
+  check:   { width: 20, height: 20, margin: 0, accentColor: 'var(--portal-text)' },
+  hint:    { color: 'var(--portal-soft)', fontSize: 12, margin: '-4px 0 0', lineHeight: 1.45 },
   error:   { color: 'var(--portal-bad)', fontSize: 12, margin: 0 },
   notice:  { color: 'var(--portal-good)', fontSize: 13, margin: 0, lineHeight: 1.45 },
   btn:     { marginTop: 6, padding: '10px 0', background: 'var(--portal-action)', border: 'none', borderRadius: 6, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer' },

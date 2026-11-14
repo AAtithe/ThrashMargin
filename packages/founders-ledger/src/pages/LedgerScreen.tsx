@@ -3,11 +3,25 @@ import { API, authHeaders } from '../lib/api';
 import { readJson, serverFailure } from '../lib/apiReply';
 import { LoadingScreen, SIGN_IN_AGAIN } from '../lib/Loading';
 import { createSaver, SAVE_MESSAGES } from '../lib/saveQueue';
-import { mountLedger } from '../ledger/engine.js';
 import PortalNav from '../components/PortalNav';
 import { Button } from '../lib/Kit';
 
 const ENDPOINT = `${API}/api/play/founders-ledger`;
+/**
+ * The engine is two thirds of the code, so it is its own file, and its download starts the moment
+ * this module loads: in parallel with the ledger's own request, not after it.
+ */
+type Engine = typeof import('../ledger/engine.js');
+let enginePromise: Promise<Engine> | null = null;
+function loadEngine(): Promise<Engine> {
+  if (!enginePromise) {
+    enginePromise = import('../ledger/engine.js');
+    // A failed download is retried by Try again rather than remembered.
+    enginePromise.catch(() => { enginePromise = null; });
+  }
+  return enginePromise;
+}
+loadEngine();
 /** Typing in the letter or a review saves on every key; this waits for a pause before sending. */
 const SAVE_PAUSE_MS = 700;
 
@@ -59,11 +73,15 @@ async function openLedger(): Promise<Opened> {
   };
 
   const ai = coachStatus();
-  const list = await fetch(ENDPOINT, { headers: authHeaders() });
+  // One round trip: the list and, when there is one, the ledger itself. The engine downloads at the
+  // same time; waiting for it here means a failed download shows as an error with Try again.
+  const [list] = await Promise.all([fetch(`${ENDPOINT}?open=1`, { headers: authHeaders() }), loadEngine()]);
   if (!list.ok) return fail(list, 'opening your ledger');
-  const saves = ((await readJson(list))?.saves ?? []) as { id: string }[];
+  const listed = await readJson(list);
+  const saves = (listed?.saves ?? []) as { id: string }[];
 
   let id = saves[0]?.id;
+  if (id && listed && 'state' in listed) return { id, state: listed.state ?? null, version: listed.version, ai: await ai };
   if (!id) {
     const made = await fetch(ENDPOINT, { method: 'POST', headers: authHeaders(), body: '{}' });
     if (!made.ok) return fail(made, 'starting your ledger');
@@ -119,7 +137,11 @@ export default function LedgerScreen() {
       saver.save(o.id, latest);
       latest = null;
     };
-    const unmount = mountLedger(el, {
+    let unmount = () => {};
+    let gone = false;
+    void loadEngine().then(({ mountLedger }) => {
+      if (gone) return;
+      unmount = mountLedger(el, {
       initial: o.state,
       ai: o.ai,
       coach: askCoach,
@@ -128,10 +150,12 @@ export default function LedgerScreen() {
         window.clearTimeout(timer);
         timer = window.setTimeout(flush, SAVE_PAUSE_MS);
       },
+      });
     });
     // Leaving mid-pause still sends the last change.
     window.addEventListener('pagehide', flush);
     return () => {
+      gone = true;
       window.removeEventListener('pagehide', flush);
       flush();
       unmount();

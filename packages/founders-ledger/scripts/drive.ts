@@ -438,8 +438,8 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
     l.state.habitLog = [];
     ok(!l.sessionBrief(now).lines.some((x: string) => x.startsWith('Pilates')), 'session: an unfinished week is not counted as missed');
     ok(b.topics.some((x: string) => x.includes('keeps coming up')), 'session: a repeating pull becomes a topic');
-    const txt = l.agendaText({ when: 'This week', want: 'To be challenged', lines: b.lines, items: ['The deli: fix, hold or exit'] });
-    ok(txt.includes('What I want from today: To be challenged') && txt.includes('1. The deli: fix, hold or exit') && txt.includes('Since we last met:'), 'session: the agenda reads as a message to send');
+    const txt = l.agendaText({ when: 'This week', want: 'To be challenged', lines: b.lines, items: ['The deli turnaround: profit and cash'] });
+    ok(txt.includes('What I want from today: To be challenged') && txt.includes('1. The deli turnaround: profit and cash') && txt.includes('Since we last met:'), 'session: the agenda reads as a message to send');
     ok(!/[\u2014\u2013]/.test(txt + JSON.stringify([l.HABIT_IDEAS, b.topics])), 'session: no dashes in the agenda or habits');
     l.state.sessions = [{ id: 's', status: 'done', doneTs: now, takeaway: 'Hand one task over for good' }];
     ok(l.points() === l.SESSION_PTS, `session: a session with a takeaway scores (got ${l.points()})`);
@@ -453,6 +453,111 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
     ok(l.talkLoud('keep wanting to check my emails') === 'inbox' && l.talkLoud('WS is dead') === 'firm' && l.talkLoud('the deli is not working') === 'deli' && l.talkLoud('it has gone quiet') === 'quiet' && l.talkLoud('pulled in while I am away') === 'away', 'talk: a voice note is matched to its pull when the coach is off');
     ok(['inbox', 'quiet', 'profitspace'].every(id => l.GAMES.some((g: { id: string }) => g.id === id)), 'games: his named systems and Profit and space are in the game list');
     ok(!/[—–]/.test(JSON.stringify([l.DEFAULT_RULES, l.RULE_IDEAS, l.GAMES])), 'rules: no dashes in his rules or the games');
+  }
+
+  // Bookends: a morning and an evening on the same day score; one alone does not.
+  {
+    const l = createLedger(null);
+    const day = (n: number) => NOW - n * DAY;
+    l.state.mornings = [{ ts: day(0), one: 'The deli numbers', rule: 'Profit is a good thing.' }, { ts: day(1), one: 'x', rule: '' }];
+    l.state.evenings = [{ ts: day(0), oneDone: true, good: 'g', closed: true }];
+    ok(l.bookendDays().length === 1, 'bookends: only a day with both counts');
+    ok(l.points() === l.BOOKEND_PTS, `bookends: a full day scores ${l.BOOKEND_PTS} (got ${l.points()})`);
+    l.state.mornings = Array.from({ length: 7 }, (_, i) => ({ ts: day(i), one: 'x', rule: '' }));
+    l.state.evenings = Array.from({ length: 7 }, (_, i) => ({ ts: day(i), oneDone: false, good: '', closed: true }));
+    ok(l.honours().find((h: { id: string }) => h.id === 'book7').earned, 'bookends: seven days earn Bookends');
+  }
+
+  // The firm pulse: one entry a week, a trend, and the facts on the fear reset.
+  {
+    const l = createLedger(null);
+    ok(l.pulseLine() === '' && l.pulseChange('cash') === null, 'pulse: nothing before the first week');
+    l.state.pulse = [0, 1, 2, 3, 4].map(w => ({ ts: NOW - (4 - w) * 7 * DAY, cash: 100000 + w * 5000, fees: 40000, pipeline: 200000 - w * 10000 }));
+    ok(l.pulseChange('cash') === 20000 && l.pulseChange('pipeline') === -40000, 'pulse: change on four weeks');
+    ok(l.pulseLine().includes('£120,000') && l.pulseLine().includes('up £20,000'), 'pulse: the line reads in pounds with its trend');
+    ok(l.points() === 5 * l.PULSE_PTS, `pulse: scores per week logged (got ${l.points()})`);
+    ok(l.honours().find((h: { id: string }) => h.id === 'pulse4').earned, 'pulse: four weeks earn Facts over fear');
+    ok(l.receipts().some((r: string) => r.includes('firm pulse')), 'pulse: the facts are in the receipts');
+    ok(l.sessionBrief().lines.some((x: string) => x.startsWith('Firm pulse')), 'pulse: the facts go to the coach agenda');
+  }
+
+  // Handovers: a pull becomes a Stop for the person who could have decided it.
+  {
+    const l = createLedger(null);
+    ok(l.state.people.length === 4 && l.PULL_WHAT.length >= 4, 'handover: people and pulls to pick from');
+    const h = l.logPull('A pricing call', 'My operations lead');
+    const td = l.state.todos.find((t: { source: string }) => t.source === 'ho-' + h.id);
+    ok(td && td.type === 'Stop' && td.text === 'Hand over to My operations lead: a pricing call', 'handover: a Stop goes on the list');
+    l.logPull('A client question', 'Nobody yet');
+    ok(l.state.todos.length === 1, 'handover: nobody yet adds no action, it is the gap');
+    ok(!l.handoverDone(h), 'handover: open until the Stop is done');
+    td.done = true; td.doneAt = NOW;
+    ok(l.handoverDone(h) && l.handoverMap()[0].handed === 1, 'handover: done when the Stop is ticked');
+    ok(l.sessionBrief().topics.some((x: string) => x.startsWith('Nobody owns this yet')), 'handover: an unowned pull becomes a coach topic');
+    const away = createLedger(null);
+    away.planAway('This week');
+    away.logPull('A staff issue', 'A client manager');
+    ok(away.pullsThisWeek() === 1, 'handover: a pull while away still counts as a pull');
+    for (let i = 0; i < 4; i++) { const x = l.logPull('A staff issue', 'The deli manager'); const t2 = l.state.todos.find((t: { source: string }) => t.source === 'ho-' + x.id); t2.done = true; t2.doneAt = NOW; }
+    ok(l.honours().find((x: { id: string }) => x.id === 'hand5').earned, 'handover: five handed earn Let go');
+  }
+
+  // Monthly close: last month against the month before, once, for points.
+  {
+    const l = createLedger(null);
+    const d = new Date(NOW); d.setDate(15); d.setMonth(d.getMonth() - 1);
+    const lastMonth = d.getTime();
+    l.state.baselineTs = lastMonth - 40 * DAY;
+    l.state.notes = [{ ts: lastMonth, kind: 'good', text: 'g' }];
+    l.state.todos = [{ id: 't', text: 'x', type: 'Stop', done: true, doneAt: lastMonth, createdAt: lastMonth }];
+    const key = l.prevMonthKey();
+    const m = l.monthStats(key);
+    ok(m.good === 1 && m.actions === 1 && m.stops === 1, 'month: counts what happened in the month');
+    const due = l.monthDue(new Date(new Date(NOW).getFullYear(), new Date(NOW).getMonth(), 3, 9).getTime());
+    ok(due === key, 'month: due early in the month');
+    const before = l.points();
+    ok(l.closeMonth(key, 'The deli turnaround', true) && l.closeMonth(key, 'Profit', false) === null, 'month: closes once');
+    ok(l.points() - before === l.MONTH_PTS, 'month: closing scores');
+    ok(l.monthDue(new Date(new Date(NOW).getFullYear(), new Date(NOW).getMonth(), 3, 9).getTime()) === null, 'month: not due once closed');
+    ok(l.state.todos.some((t: { source: string }) => t.source === 'month-rule-' + key), 'month: changing a rule goes on the list');
+    const nu = createLedger(null); nu.state.baselineTs = NOW;
+    ok(nu.monthDue() === null, 'month: never due in the month the ledger began');
+  }
+
+  // The deli turnaround: profit, break-even and cash from five numbers a week.
+  {
+    const l = createLedger(null);
+    ok(l.deliStatus() === null, 'deli: nothing before the first week');
+    const c = l.deliCalc({ sales: 10000, cogs: 35, labour: 4000, overheads: 3000, cash: 5000 });
+    ok(c.gp === 6500 && c.profit === -500 && Math.round(c.breakEven) === 10769 && Math.round(c.labourPct) === 40, 'deli: margin, profit, break-even and labour');
+    const wk = (n: number) => NOW - n * 7 * DAY;
+    l.saveDeliWeek({ sales: 10000, cogs: 35, labour: 4000, overheads: 3000, cash: 5000 }, wk(3));
+    l.saveDeliWeek({ sales: 11000, cogs: 33, labour: 3500, overheads: 3000, cash: 4800 }, wk(2));
+    l.saveDeliWeek({ sales: 12000, cogs: 32, labour: 3400, overheads: 3000, cash: 5600 }, wk(1));
+    l.saveDeliWeek({ sales: 12500, cogs: 31, labour: 3400, overheads: 3000, cash: 6500 }, wk(0));
+    l.saveDeliWeek({ sales: 12600, cogs: 31, labour: 3400, overheads: 3000, cash: 6600 }, wk(0));
+    ok(l.state.deli.weeks.length === 4, 'deli: one entry a week, a second in the same week replaces it');
+    const s = l.deliStatus();
+    ok(s.run === 3 && s.cashUp === 1000 && s.cashPositive, `deli: profit run and cash going up (run ${s.run}, cash ${s.cashUp})`);
+    ok(l.points() === 4 * l.DELI_PTS, 'deli: scores per week logged');
+    ok(l.honours().find((h: { id: string }) => h.id === 'deli1').earned && !l.honours().find((h: { id: string }) => h.id === 'deli4').earned, 'deli: first week earned, four in profit not yet');
+    const lv = l.startLever('price');
+    ok(lv && lv.source === 'deli-price' && l.startLever('price') === lv && l.startLever('nope') === null, 'deli: a lever goes on the list once');
+    ok(l.DELI_LEVERS.length >= 8 && l.DELI_LEVERS.some((x: { id: string }) => x.id === 'cashflow'), 'deli: the turnaround levers include cash');
+    ok(l.sessionBrief().lines.some((x: string) => x.startsWith('Deli: making')), 'deli: the numbers go to the coach agenda');
+    ok(l.receipts().some((r: string) => r.includes('in profit 3 weeks')), 'deli: a profit run is a receipt');
+    const copy = JSON.stringify([l.MOVES.deli, l.FIX.deli, l.PRESSURE.filter((p: { k: string }) => p.k === 'deli')]);
+    ok(!/fix, hold or exit|exit/i.test(copy), 'deli: keeping it, so no exit language');
+    ok(!/[—–]/.test(copy + JSON.stringify(l.DELI_LEVERS)), 'deli: no dashes');
+  }
+
+  // Reminders: a calendar file the phone understands.
+  {
+    const l = createLedger(null);
+    const ics = l.icsFor(['am', 'deli']);
+    ok(ics.startsWith('BEGIN:VCALENDAR\r\n') && ics.trim().endsWith('END:VCALENDAR'), 'reminders: a calendar file');
+    ok((ics.match(/BEGIN:VEVENT/g) || []).length === 2 && ics.includes('RRULE:FREQ=WEEKLY;BYDAY=MO') && ics.includes('BEGIN:VALARM'), 'reminders: only the picked ones, recurring, with an alarm');
+    ok(/DTSTAMP:\d{8}T\d{6}Z/.test(ics), 'reminders: a valid timestamp');
   }
 }
 async function engineCoach() {
