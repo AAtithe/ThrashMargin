@@ -131,7 +131,8 @@ mission AI once the round-1 opponent work lands.
   - [ ] Hard: Ashen against Meridian not yet measured over 150 seeds (only Normal).
 - [x] B. Heroes in free play behind a setup option (Command Academy, one of each, revive after 90s at half price).
   - [x] The stat card and How to play's unit grids read the catalogue's hero cost and time (0); they should read `costFor` and `buildTicksFor` (integration, with A's per-army stat tip).
-  - [ ] The computer recruits heroes from about minute 13, and Hard advanced battles now end at about 22 minutes (D's formations): on Hard they rarely act before the end.
+  - [x] The computer recruits heroes from about minute 13, and Hard advanced battles now end at about 22 minutes (D's formations): on Hard they rarely act before the end. Fixed in the computer: on Hard with heroes on it builds the Tech Centre in its turn, and its Engineer, Commando and Spy go with each wave. Both on Hard only; Normal and Easy play exactly as before. Over 40 Hard battles a hero now acts in 27 (20 before), 8.5 abilities a battle (2.6); Hard with heroes beats Normal 71.3% both ways round over 300 battles (66.0% before). See the build log (2026-11-12).
+  - [ ] With heroes on, about 1 battle in 120 runs to the cap (4 of 600 on the ladder before the fix above, 5 after): both sides broke with no haulers, or the ore gone and an army at home that never attacks. The end-game stall, not a hero fault, but it wants a look.
 - [x] C. Generals. A doctrine General per seat (two per army, a perks bundle on
   that side alone) and, behind "Generals: On", a field General unit with a command aura.
   - [x] The link "a General leads a formation" waits for workstream D, at integration.
@@ -146,7 +147,7 @@ mission AI once the round-1 opponent work lands.
   - [x] On a phone, a wrapped bar row (heroes, powers, the General) rides over the message feed's lowest lines. (The feed and the row share one dock in flow, in skirmishes, missions and War for the Planet battles alike; the touch tour driver checks it on every phone it plays.)
   - [x] The row is too tall for a small phone in the console's current look (bars about 65px each). On the 320px iPhone SE upright with three heroes, a fallen one and a General it was about 240px on a 290px map, pushing the feed above the map; on the 375px SE the feed lay over the low-power banner. (Decided: a single Heroes button. On a phone the row is one 50px line, the Heroes button with its count and a dot, the powers with short names and the General's star, and the hero cards open in a drawer over the map; the banners and the feed take separate lanes in the dock. The touch guard checks it on five phones, both SEs included, in skirmishes, a four-hero mission and a War for the Planet battle.)
   - [ ] On a phone upright, a mission's objectives panel (top right, 46% of the map) still lies over the battle feed's right-hand end until it is hidden, and at 320px the header's Menu button is clipped at the right edge. Both were so before the Heroes button.
-  - [ ] Ashen won 16 of 23 advanced battles with Heroes and Generals on (Normal, both seats): too few to read; wants a 150-seed ladder run with those options (the ladder has no switch for them yet).
+  - [ ] Ashen won 16 of 23 advanced battles with Heroes and Generals on (Normal, both seats): too few to read; wants a 150-seed ladder run with those options (the ladder now has `--heroes` and `--generals`).
   - [ ] An Ashen side down to a Kestrel and a Repair Truck leaves the Kestrel parked, so the battle stalls to its cap against a side with structures alone (one battle in 24).
 
 ## Found along the way

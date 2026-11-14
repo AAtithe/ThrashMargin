@@ -34,6 +34,9 @@
  *                                                      from both seats, and the Meridian mirror, on
  *                                                      --map random unless a map is given
  *   tsx scripts/ai-ladder.ts --match new:normal:ashen,new:normal:meridian   a side's army, by name
+ *   tsx scripts/ai-ladder.ts --heroes --generals      round 6's options on: heroes (advanced tech only)
+ *                                                      and field Generals, on --map random unless a map
+ *                                                      is given; both off by default
  *
  * A match is `side0,side1`, each side `commander:difficulty` or `commander:difficulty:army` (round 6:
  * `meridian`, the default, or `ashen`; an army needs a skirmish setup), where the commander is `new` (the
@@ -105,9 +108,12 @@ const arg = (name: string, fallback: string) => {
 const SEEDS = Number(arg('--seeds', '150'));
 /** Round 6: the two armies' card (Ashen against Meridian from both seats), on a skirmish setup. */
 const FACTIONS_CARD = args.includes('--factions');
+/** Round 6's setup options: heroes in free play and field Generals. Off by default. */
+const HEROES = args.includes('--heroes');
+const GENERALS = args.includes('--generals');
 const SIZE = arg('--size', 'standard') as MapSize;
 if (!MAP_SIZES.includes(SIZE)) throw new Error(`bad size "${SIZE}"`);
-const MAP = arg('--map', FACTIONS_CARD ? 'random' : 'legacy');
+const MAP = arg('--map', FACTIONS_CARD || HEROES || GENERALS ? 'random' : 'legacy');
 const LEGACY = MAP === 'legacy';
 /** Game pace (fireline-round6b-design.md): 'quick' (the default) is the game before round 6. */
 const PACE = arg('--pace', 'quick') as GamePace;
@@ -129,6 +135,8 @@ const MAP_LIST: (MapType | 'random')[] = LEGACY ? [] : MAP === 'mix' ? [...MAP_T
 for (const m of MAP_LIST) if (m !== 'random' && !MAP_TYPES.includes(m)) throw new Error(`bad map "${m}"`);
 if (TECH !== 'standard' && TECH !== 'advanced') throw new Error(`bad tech "${TECH}"`);
 if (RESEARCH !== 'classic' && RESEARCH !== 'lines') throw new Error(`bad research "${RESEARCH}"`);
+if ((HEROES || GENERALS) && LEGACY) throw new Error('--heroes and --generals need a skirmish setup: give --map');
+if (HEROES && TECH !== 'advanced') throw new Error('heroes need the advanced tech');
 function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
   if (LEGACY) return undefined;
   return {
@@ -139,6 +147,8 @@ function setupFor(seed: number): Partial<SkirmishSetup> | undefined {
     research: RESEARCH as SkirmishSetup['research'],
     pace: PACE,
     ...(SIZE !== 'standard' ? { size: SIZE } : {}),
+    ...(HEROES ? { heroes: true } : {}),
+    ...(GENERALS ? { generals: true } : {}),
   };
 }
 const AIS = { new: null, prev: prevAi, old: baselineAi } as const;
@@ -252,7 +262,7 @@ if (workerAt >= 0) {
   const matches = matchesFromArgs();
   const total = matches.length * SEEDS;
   console.log(`Fireline AI ladder: ${matches.length} matches x ${SEEDS} seeds = ${total} battles, ${JOBS} jobs, cap ${CAP} ticks`);
-  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size`);
+  console.log(LEGACY ? 'Setup: none (the original game)' : `Setup: map ${MAP}, tech ${TECH}, ${CREDITS} credits, ${ORE} ore, research ${RESEARCH}, pace ${PACE}, ${SIZE} size${HEROES ? ', heroes on' : ''}${GENERALS ? ', Generals on' : ''}`);
   const started = Date.now();
   const results: Result[] = [];
   const script = fileURLToPath(import.meta.url);
@@ -268,6 +278,8 @@ if (workerAt >= 0) {
           ...['--worker', `${k}/${JOBS}`, '--spec', spec, '--seeds', String(SEEDS), '--cap', String(CAP)],
           ...['--map', MAP, '--tech', TECH, '--credits', String(CREDITS), '--ore', ORE, '--research', RESEARCH, '--size', SIZE],
           ...(LEGACY ? [] : ['--pace', PACE]),
+          ...(HEROES ? ['--heroes'] : []),
+          ...(GENERALS ? ['--generals'] : []),
         ],
         { stdio: ['ignore', 'pipe', 'inherit'] },
       );

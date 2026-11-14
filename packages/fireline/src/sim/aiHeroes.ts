@@ -13,6 +13,11 @@
  * - The Ace joins the main wave like any tank (it is not kept back), and opens Overdrive in a fight.
  * - The Spy waits at home until an attack is about to go, then infiltrates the chosen enemy's base
  *   ahead of it: its Generators first (their power fails), then a War Factory or Barracks.
+ * - On Hard, while a wave is attacking, the Engineer, Commando and Spy go with it, a few tiles behind its
+ *   middle, and use their abilities on what it has reached: the Engineer captures a structure no
+ *   one is left guarding (and mends the wave's vehicles on the way), the Commando charges the
+ *   nearest structure, the Spy slips into one. Waiting at home for a lone target, they used to see
+ *   out a whole Hard battle without acting (fireline-improvements.md).
  *
  * Every choice is deterministic (distances, then ids); nothing draws from the battle's stream.
  * Errands live in `s.ai[owner]` as replaced arrays, never edited in place.
@@ -43,6 +48,9 @@ const GUARD_RANGE = 7;
 const ESCORT_SIZE = 3;
 /** The Spy sets out this many ticks before the next attack is due. */
 const SPY_LEAD = 300;
+/** Going with a wave: targets within this many tiles of its middle, and kept this far behind it. */
+const WAVE_REACH = 10;
+const WAVE_TRAIL = 3;
 
 /** True for a unit the hero plan commands, which the wave, raid and retreat code leave alone. */
 export function heroKeptBack(s: GameState, u: Unit): boolean {
@@ -50,6 +58,17 @@ export function heroKeptBack(s: GameState, u: Unit): boolean {
   if (isHeroKind(u.kind)) return u.kind !== 'ace';
   const escort = s.ai[u.owner]?.heroEscort;
   return Array.isArray(escort) && escort.includes(u.id);
+}
+
+/**
+ * True when the commander should build its Tech Centre in its turn in the plan rather than hold it
+ * back, as an extra, until the army at home is up to strength: with heroes in play on Hard, where it
+ * is the way to the Command Academy. Held back, it came at about minute 16 of a Hard battle that
+ * lasted about 21, and in a third of them not at all, so the heroes came too late to act
+ * (fireline-improvements.md). Normal and Easy battles run long enough, and keep the hold.
+ */
+export function heroesNeedTechCentre(s: GameState, diff: Difficulty): boolean {
+  return diff === 'hard' && heroesInPlay(s);
 }
 
 export function heroPlan(s: GameState, owner: Owner, home: Pt, enemy: Building[], units: Unit[], foes: Unit[]): void {
@@ -67,6 +86,17 @@ export function heroPlan(s: GameState, owner: Owner, home: Pt, enemy: Building[]
   const guarded = (p: Pt, r = GUARD_RANGE) =>
     armedFoes.some(f => dist(f.x, f.y, p.x, p.y) < r) ||
     s.buildings.some(b => b.hp > 0 && isEnemy(s, owner, b.owner) && !!buildingSpecOf(s, b).weapon && distToBuilding(p.x, p.y, b) < r);
+
+  // The wave on the attack, if one is out: its middle, where the heroes go with it. Hard only:
+  // Normal and Easy battles run long enough for heroes kept at home to act, and play as before.
+  const front = diff === 'hard' ? waveFront(s, mem, alive) : null;
+  const nearFront = (p: Pt) => !!front && dist(p.x, p.y, front.x, front.y) < WAVE_REACH;
+  const follow = (u: Unit) => {
+    if (!front) return;
+    const at = toward(front, home, WAVE_TRAIL);
+    const going = u.order.type === 'move' ? dist(u.order.x, u.order.y, at.x, at.y) < 3 : false;
+    if (!going && !u.engage && dist(u.x, u.y, at.x, at.y) > 4) doMove(s, owner, [u.id], at.x, at.y, false);
+  };
 
   const drop = (e: Errand, again: boolean) => {
     errands = errands.filter(x => x !== e);
@@ -117,6 +147,15 @@ export function heroPlan(s: GameState, owner: Owner, home: Pt, enemy: Building[]
         else if (u.order.type === 'idle') goBeside(s, owner, u, b);
         continue;
       }
+      if (front) {
+        // With the wave: a structure it has reached that no one is left guarding, else keep up.
+        const b = u.hero.abilityCd > 0 ? null : nearestEnemy(s, owner, u, skip, b => b.kind !== 'hq' && nearFront(buildingCentre(b)) && !guarded(buildingCentre(b), 5));
+        if (b) {
+          errands = errands.concat([{ hero: u.id, target: b.id, site: false, since: s.tick }]);
+          goBeside(s, owner, u, b);
+        } else follow(u);
+        continue;
+      }
       if (u.hero.abilityCd > 0) continue;
       const pick = engineerTarget(s, owner, u, skip, guarded);
       if (pick) {
@@ -145,6 +184,19 @@ export function heroPlan(s: GameState, owner: Owner, home: Pt, enemy: Building[]
         const c = buildingCentre(b);
         const idle = escort.filter(id => alive.get(id)!.order.type === 'idle' && !alive.get(id)!.engage);
         if (idle.length) doMove(s, owner, idle, c.x, c.y, true);
+        continue;
+      }
+      if (front && u.hp >= maxHpOf(u) * 0.45) {
+        // With the wave: the nearest structure it has reached, unless their troops crowd it.
+        const crowded = (p: Pt) => armedFoes.filter(f => dist(f.x, f.y, p.x, p.y) < 4).length > 2;
+        const b =
+          u.hero.abilityCd > 0
+            ? null
+            : nearestEnemy(s, owner, u, skip, b => b.chargeAt === undefined && nearFront(buildingCentre(b)) && !crowded(buildingCentre(b)));
+        if (b) {
+          errands = errands.concat([{ hero: u.id, target: b.id, site: false, since: s.tick }]);
+          goBeside(s, owner, u, b);
+        } else follow(u);
         continue;
       }
       if (u.hero.abilityCd > 0 || u.hp < maxHpOf(u) * 0.7 || dist(u.x, u.y, home.x, home.y) > 20) {
@@ -203,6 +255,15 @@ export function heroPlan(s: GameState, owner: Owner, home: Pt, enemy: Building[]
         goBeside(s, owner, u, b);
         continue;
       }
+    }
+    if (front) {
+      // With the wave: its guns are busy with the wave, so a structure it has reached will do.
+      const b = u.hero.abilityCd > 0 ? null : spyTarget(s, enemy.filter(x => nearFront(buildingCentre(x))), u, skip, false);
+      if (b) {
+        errands = errands.concat([{ hero: u.id, target: b.id, site: false, since: s.tick }]);
+        goBeside(s, owner, u, b);
+      } else follow(u);
+      continue;
     }
     if (u.order.type === 'idle') goHome(u);
   }
@@ -329,9 +390,10 @@ function loneStructure(s: GameState, owner: Owner, home: Pt, skip: Set<number>, 
 /** What the Spy goes for ahead of an attack, most useful first; the nearest of that kind. */
 const SPY_ORDER: Building['kind'][] = ['power', 'factory', 'barracks', 'refinery', 'uplink', 'hq'];
 
-function spyTarget(s: GameState, enemy: Building[], u: Unit, skip: Set<number>): Building | null {
-  // A Spy is seen within two tiles of anything of theirs: a structure a gun covers is a lost Spy.
-  const guns = enemy.filter(b => b.hp > 0 && !!buildingSpecOf(s, b).weapon);
+function spyTarget(s: GameState, enemy: Building[], u: Unit, skip: Set<number>, wary = true): Building | null {
+  // A Spy is seen within two tiles of anything of theirs: a structure a gun covers is a lost Spy,
+  // unless a wave is there to keep the guns busy (wary false).
+  const guns = wary ? enemy.filter(b => b.hp > 0 && !!buildingSpecOf(s, b).weapon) : [];
   for (const kind of SPY_ORDER) {
     let best: Building | null = null;
     let bestD = Infinity;
@@ -348,4 +410,48 @@ function spyTarget(s: GameState, enemy: Building[], u: Unit, skip: Set<number>):
     if (best) return best;
   }
   return null;
+}
+
+/**
+ * The middle of this side's wave while it is attacking (phase 2), from the members near the middle
+ * as the commander reckons it; null with no wave out, or one down to a couple of units.
+ */
+function waveFront(s: GameState, mem: AiMemory, alive: Map<number, Unit>): Pt | null {
+  if (mem.wavePhase !== 2 || !Array.isArray(mem.waveIds)) return null;
+  const members = mem.waveIds.map(id => alive.get(id)).filter((u): u is Unit => !!u && u.hp > 0);
+  if (members.length < 3) return null;
+  let c = middle(members);
+  const near = members.filter(u => dist(u.x, u.y, c.x, c.y) < 12);
+  if (near.length >= members.length / 2) c = middle(near);
+  return c;
+}
+
+/** The enemy structure nearest the unit that passes `ok`, not one being left alone for now. */
+function nearestEnemy(s: GameState, owner: Owner, u: Unit, skip: Set<number>, ok: (b: Building) => boolean): Building | null {
+  let best: Building | null = null;
+  let bestD = Infinity;
+  for (const b of s.buildings) {
+    if (b.hp <= 0 || !isStructure(b) || !isEnemy(s, owner, b.owner) || skip.has(b.id) || !ok(b)) continue;
+    const d = distToBuilding(u.x, u.y, b);
+    if (d < bestD) {
+      bestD = d;
+      best = b;
+    }
+  }
+  return best;
+}
+
+function middle(list: Unit[]): Pt {
+  let x = 0;
+  let y = 0;
+  for (const u of list) {
+    x += u.x;
+    y += u.y;
+  }
+  return { x: x / list.length, y: y / list.length };
+}
+
+function toward(a: Pt, b: Pt, by: number): Pt {
+  const d = dist(a.x, a.y, b.x, b.y) || 1;
+  return { x: a.x + ((b.x - a.x) / d) * by, y: a.y + ((b.y - a.y) / d) * by };
 }
