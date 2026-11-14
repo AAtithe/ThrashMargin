@@ -58,8 +58,8 @@ function ensureKeyframes() {
 const HEAD: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
-  alignItems: 'baseline',
-  padding: '0.9rem 1.2rem 0.7rem',
+  alignItems: 'center',
+  padding: '0.6rem 0.7rem 0.6rem 1.2rem',
   borderBottom: `1px solid ${UI.rule}`,
   flexShrink: 0,
 };
@@ -72,14 +72,20 @@ const TITLE: React.CSSProperties = {
   fontWeight: 'normal',
 };
 
+/** 40px square: the same tap target as the over-chart panels' close buttons (GameScreen.tsx). */
 const CLOSE: React.CSSProperties = {
   background: 'none',
-  border: 'none',
+  border: `1px solid ${UI.rule}`,
   color: UI.textSoft,
-  fontSize: '1.1rem',
+  fontSize: '1rem',
   lineHeight: 1,
   cursor: 'pointer',
-  padding: '0.2rem',
+  width: 40,
+  height: 40,
+  flexShrink: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 };
 
 const BODY: React.CSSProperties = {

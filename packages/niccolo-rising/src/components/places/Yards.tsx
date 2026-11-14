@@ -40,7 +40,7 @@ export default function Yards(p: PlaceProps) {
                   <Meta>+{trainGain(s, y, s.battle[k], s.bars.spirits.cur).toFixed(2)} per train</Meta>
                   <ActButton p={p} id={`nr-train-${y.id}-${k}`} verb={{ type: 'TRAIN', yardId: y.id, stat: k, times: 1 }}>Train</ActButton>
                   {most > 1 && (
-                    <ActButton p={p} verb={{ type: 'TRAIN', yardId: y.id, stat: k, times: most }}>
+                    <ActButton p={p} verb={{ type: 'TRAIN', yardId: y.id, stat: k, times: most }} reasonShownBy={{ type: 'TRAIN', yardId: y.id, stat: k, times: 1 }}>
                       Train ×{most}
                     </ActButton>
                   )}

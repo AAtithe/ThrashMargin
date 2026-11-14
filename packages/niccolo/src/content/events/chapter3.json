@@ -38,8 +38,8 @@
     "title": "Two courts, one crown",
     "body": "An agency doing business on Cyprus is expected, sooner rather than later, to have an opinion about which court it does that business under. Both send word, separately and with equal courtesy, inviting the house to make its position known.",
     "choices": [
-      { "text": "Back James — bastard-born, but with Cairo's soldiers behind him", "effects": { "cash": -10, "flag": "sided_zacco" } },
-      { "text": "Back Carlotta — crowned and legitimate, whatever her army's size", "effects": { "cash": -10, "flag": "sided_carlotta" } },
+      { "text": "Back James: bastard-born, but with Cairo's soldiers behind him", "effects": { "cash": -10, "flag": "sided_zacco" } },
+      { "text": "Back Carlotta: crowned and legitimate, whatever her army's size", "effects": { "cash": -10, "flag": "sided_carlotta" } },
       { "text": "Keep the house's name off either banner", "effects": { "flag": "chose_neutral_cyprus" } }
     ]
   },
@@ -48,7 +48,7 @@
     "chapter": 3,
     "trigger": { "flag": "chose_neutral_cyprus", "dateAfter": "1463-06-01" },
     "title": "A civil war has no room for neutrals",
-    "body": "The courtesy of not asking twice runs out. An agency with no declared allegiance is, on an island this small and this contested, simply an agency nobody trusts — and James's men now hold enough of the ground that the choice of who to declare for has effectively stopped being a choice.",
+    "body": "The courtesy of not asking twice runs out. An agency with no declared allegiance is, on an island this small and this contested, simply an agency nobody trusts, and James's men now hold enough of the ground that the choice of who to declare for has effectively stopped being a choice.",
     "choices": [
       { "text": "Declare, now that declaring is the only option left", "effects": { "conscience": -2, "flags": ["sided_zacco", "zacco_forced"] } }
     ]
@@ -88,7 +88,7 @@
     "chapter": 3,
     "trigger": { "flag": "sided_zacco", "dateAfter": "1464-06-01" },
     "title": "The bastard's cause prevails",
-    "body": "James's Mamluk-backed claim outlasts Carlotta's crowned one, on the historical schedule and not the house's — the same lesson Trebizond taught the agency two years and a continent away: history is the deadline, not an opponent that can be out-traded.",
+    "body": "James's Mamluk-backed claim outlasts Carlotta's crowned one, on the historical schedule and not the house's. It is the same lesson Trebizond taught the agency two years and a continent away: history is the deadline, not an opponent that can be out-traded.",
     "choices": [
       { "text": "Bank the goodwill of having backed the winning side", "effects": { "cash": 15, "flag": "zacco_cause_won" } }
     ]
@@ -98,7 +98,7 @@
     "chapter": 3,
     "trigger": { "flag": "reached_famagusta" },
     "title": "Word of Kouklia",
-    "body": "A factor with land near Kouklia, on the island's far side, is offering a stake in his cane fields to any house with capital idle and patience to match — sugar refined and shipped rather than merely traded, the kind of asset that pays slowly and keeps paying.",
+    "body": "A factor with land near Kouklia, on the island's far side, is offering a stake in his cane fields to any house with capital idle and patience to match: sugar refined and shipped rather than merely traded, the kind of asset that pays slowly and keeps paying.",
     "choices": [
       { "text": "Ride out to Kouklia and look the ground over first", "effects": { "cash": -5, "flag": "kouklia_estate_available" } },
       { "text": "Take the factor's word for it and arrange terms from Famagusta", "effects": { "flag": "kouklia_estate_available" } }
@@ -119,7 +119,7 @@
     "chapter": 3,
     "trigger": { "flag": "kouklia_estate_available", "location": "famagusta", "cargoAtLeast": { "location": "famagusta", "goodId": "sugar", "quantity": 5 } },
     "title": "The first sugar reaches market",
-    "body": "The estate's first refined chests come off the cart and onto the Famagusta quay before anyone in Bruges quite believes the venture is real. It sells easily enough — Cyprus sugar is not yet a name Europe recognises, but the mills at Kouklia are the house's own, which no cargo bought off a stranger's quay ever is.",
+    "body": "The estate's first refined chests come off the cart and onto the Famagusta quay before anyone in Bruges quite believes the venture is real. It sells easily enough: Cyprus sugar is not yet a name Europe recognises, but the mills at Kouklia are the house's own, which no cargo bought off a stranger's quay ever is.",
     "choices": [
       { "text": "Sell the first parcel and mark the ledger accordingly", "effects": { "cash": 10 } }
     ]
@@ -132,7 +132,7 @@
     "body": "Genoa holds Famagusta's walls; Venice holds most of the trade that passes through them; neither much likes sharing the arrangement, and a new house on the quay is expected to know which flag it nods to first.",
     "choices": [
       { "text": "Stay visibly even-handed between the two republics", "effects": { "cash": 5 } },
-      { "text": "Favour the Venetian faction quietly — Bruges's own habits run that way", "effects": { "conscience": -1, "cash": 8 } }
+      { "text": "Favour the Venetian faction quietly: Bruges's own habits run that way", "effects": { "conscience": -1, "cash": 8 } }
     ]
   },
   {
@@ -140,10 +140,10 @@
     "chapter": 3,
     "trigger": { "flag": "reached_famagusta" },
     "title": "The customs clerk's private ledger",
-    "body": "A Genoese clerk at the customs house keeps, alongside his official tally, a second set of figures — which Cyprus cargoes are quietly finding their way to a Mamluk broker in Alexandria, and in what quantity. He is not proud of it, but he is not well paid either.",
+    "body": "A Genoese clerk at the customs house keeps, alongside his official tally, a second set of figures: which Cyprus cargoes are quietly finding their way to a Mamluk broker in Alexandria, and in what quantity. He is not proud of it, but he is not well paid either.",
     "choices": [
-      { "text": "Pay for a look at the second ledger", "effects": { "cash": -12, "secret": { "id": "secret_cyprus_mamluk_trade", "name": "The Mamluk broker's tally", "description": "A Genoese customs clerk's private record of Cyprus goods quietly reaching a Mamluk broker in Alexandria — knowledge worth more to a rival house than it ever was to the clerk.", "value": 50, "expiresInWeeks": 18 } } },
-      { "text": "Decline — better not to be seen buying it", "effects": { "conscience": 1 } }
+      { "text": "Pay for a look at the second ledger", "effects": { "cash": -12, "secret": { "id": "secret_cyprus_mamluk_trade", "name": "The Mamluk broker's tally", "description": "A Genoese customs clerk's private record of Cyprus goods quietly reaching a Mamluk broker in Alexandria: knowledge worth more to a rival house than it ever was to the clerk.", "value": 50, "expiresInWeeks": 18 } } },
+      { "text": "Decline: better not to be seen buying it", "effects": { "conscience": 1 } }
     ]
   },
   {
@@ -151,7 +151,7 @@
     "chapter": 3,
     "trigger": { "flag": "reached_famagusta" },
     "title": "Cairo's real preference",
-    "body": "The Mamluk resident's household in Famagusta says one thing in public about which Cypriot claimant Cairo favours, and — if a clerk there can be persuaded to talk — rather a different thing in private.",
+    "body": "The Mamluk resident's household in Famagusta says one thing in public about which Cypriot claimant Cairo favours, and, if a clerk there can be persuaded to talk, rather a different thing in private.",
     "choices": [
       { "text": "Cultivate the resident's clerk", "effects": { "cash": -10, "secret": { "id": "secret_cairo_favor", "name": "Cairo's real preference", "description": "Word from inside the Mamluk resident's own household of which Cypriot claimant Cairo actually intends to back, regardless of what its ambassadors say aloud.", "value": 55, "expiresInWeeks": 20 } } },
       { "text": "Leave the Mamluk household well alone", "effects": { "conscience": 1 } }
@@ -193,7 +193,7 @@
     "chapter": 3,
     "trigger": { "flag": "katelina_lost" },
     "title": "The siege closes in",
-    "body": "Whatever room for manoeuvre Famagusta had is narrowing fast. The house's position, once said aloud, is the same one Trebizond taught it: people first, then capital, then whatever cargo can still be moved — and there may not be time to save all three.",
+    "body": "Whatever room for manoeuvre Famagusta had is narrowing fast. The house's position, once said aloud, is the same one Trebizond taught it: people first, then capital, then whatever cargo can still be moved, and there may not be time to save all three.",
     "choices": [
       { "text": "Set the priorities and start moving on them", "effects": { "flag": "famagusta_siege_open" } }
     ]
@@ -228,7 +228,7 @@
     "chapter": 3,
     "trigger": { "flag": "famagusta_siege_survived" },
     "title": "What Kouklia bought",
-    "body": "The Cyprus agency's ledger is struck through and totalled, an estate's worth of sugar the one asset that came out of the island heavier than it went in. Everything else the venture cost — a queen's cause, a customs clerk's ledger, Katelina — is a cost the house pays without ever entering it as a line.",
+    "body": "The Cyprus agency's ledger is struck through and totalled, an estate's worth of sugar the one asset that came out of the island heavier than it went in. Everything else the venture cost (a queen's cause, a customs clerk's ledger, Katelina) is a cost the house pays without ever entering it as a line.",
     "choices": [
       { "text": "Reckon the gain against the cost, and move on", "effects": { "flag": "famagusta_epilogue" } }
     ]
@@ -248,7 +248,7 @@
     "chapter": 3,
     "trigger": { "flag": "famagusta_epilogue" },
     "title": "A branch worth keeping",
-    "body": "Whatever the season cost, Cyprus is not a market worth walking away from entirely — a formal branch, a manager left in place, correspondence kept up rather than let lapse the way a closed agency's usually does.",
+    "body": "Whatever the season cost, Cyprus is not a market worth walking away from entirely: a formal branch, a manager left in place, correspondence kept up rather than let lapse the way a closed agency's usually does.",
     "choices": [
       { "text": "Formalise the Cyprus branch", "effects": { "cash": -25, "flag": "cyprus_branch_opened" } }
     ]

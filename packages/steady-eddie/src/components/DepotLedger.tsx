@@ -177,10 +177,10 @@ export default function DepotLedger({ contracts, reference, onDepotClick, target
                               wanted
                                 ? `A commission wants ${good?.name} ${mode === 'sells' ? 'loaded' : 'landed'} here`
                                 : mode === 'sells'
-                                  ? `${good?.name} — ${depot.name} asks ${money(
+                                  ? `${good?.name}: ${depot.name} asks ${money(
                                       priceAt(depot.id, id),
                                     )} a lot, reckoned at ${money(good?.basePrice ?? 0)}`
-                                  : `${good?.name} — reckoned at ${money(good?.basePrice ?? 0)} a lot`
+                                  : `${good?.name}, reckoned at ${money(good?.basePrice ?? 0)} a lot`
                             }
                             style={{
                               ...goodChip,

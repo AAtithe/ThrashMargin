@@ -18,7 +18,7 @@
     "body": "A cloth merchant offers good money for a rush batch of madder-dyed wool, no questions asked about how the colour is fixed so fast. The usual process wants another week the merchant won't wait for.",
     "choices": [
       { "text": "Take the commission and cut the process short", "effects": { "cash": 15, "conscience": -2 } },
-      { "text": "Refuse — the vats are done properly or not at all", "effects": { "flag": "refused_shortcut" } }
+      { "text": "Refuse: the vats are done properly or not at all", "effects": { "flag": "refused_shortcut" } }
     ]
   },
   {
@@ -79,7 +79,7 @@
     "chapter": 1,
     "trigger": { "dateAfter": "1460-08-01", "location": "venice" },
     "title": "News from the Rialto",
-    "body": "A broker at the Rialto steps, recognising the Charetty mark on your manifest, offers to talk further than the going gossip — for a price, and in private.",
+    "body": "A broker at the Rialto steps, recognising the Charetty mark on your manifest, offers to talk further than the going gossip, for a price, and in private.",
     "choices": [
       { "text": "Press him for more", "effects": { "cash": -3, "flag": "rialto_contact" } },
       { "text": "Note the offer and move on", "effects": { "flag": "rialto_noted" } }
@@ -111,7 +111,7 @@
     "chapter": 1,
     "trigger": { "location": "geneva" },
     "title": "The Geneva account",
-    "body": "The fairs at Geneva run on paper as much as coin. A local factor offers the Charetty house a standing arrangement — letters and small sums handled on your account whenever a courier passes through, for a fee.",
+    "body": "The fairs at Geneva run on paper as much as coin. A local factor offers the Charetty house a standing arrangement: letters and small sums handled on your account whenever a courier passes through, for a fee.",
     "choices": [
       { "text": "Open a standing account with the factor", "effects": { "cash": -8, "flag": "courier_geneva" } },
       { "text": "Rely on passing traffic for now", "effects": { "flag": "courier_geneva_deferred" } }
@@ -144,7 +144,7 @@
     "chapter": 1,
     "trigger": { "dateAfter": "1460-09-01" },
     "title": "A letter from the Medici agent",
-    "body": "A Florentine correspondent, writing on behalf of the Medici bank's local agent, asks after the Charetty house's standing and hints at business to come — if the acquaintance is worth deepening.",
+    "body": "A Florentine correspondent, writing on behalf of the Medici bank's local agent, asks after the Charetty house's standing and hints at business to come, if the acquaintance is worth deepening.",
     "choices": [
       { "text": "Answer warmly and open the correspondence", "effects": { "cash": -4, "flag": "medici_courted" } },
       { "text": "Reply briefly and keep the house's own counsel", "effects": { "flag": "medici_distant" } }
@@ -168,7 +168,7 @@
     "body": "A Portuguese factor, stuck with a live ostrich meant as a wedding gift for a Burgundian noble and no way to deliver it presentably, offers good money to anyone willing to see the bird safely to its destination.",
     "choices": [
       { "text": "Take the commission", "effects": { "cash": -3, "flag": "ostrich_accepted" } },
-      { "text": "Decline — the house has enough to manage", "effects": {} }
+      { "text": "Decline: the house has enough to manage", "effects": {} }
     ]
   },
   {
@@ -186,9 +186,9 @@
     "chapter": 1,
     "trigger": { "dateAfter": "1461-01-01", "location": "genoa" },
     "title": "A Genoese confidence",
-    "body": "A Genoese contact, well into his cups but not so far gone he doesn't know what he's saying, describes a concealed holding in the Phocea alum works — the kind of knowledge that is worth money precisely because so few people have it.",
+    "body": "A Genoese contact, well into his cups but not so far gone he doesn't know what he's saying, describes a concealed holding in the Phocea alum works: the kind of knowledge that is worth money precisely because so few people have it.",
     "choices": [
-      { "text": "Note it quietly and say nothing further", "effects": { "secret": { "id": "secret_phocea", "name": "The Phocea alum interest", "description": "A Genoese contact's concealed holding in the Phocea alum works — modest value, and no urgency to use it.", "value": 40 } } },
+      { "text": "Note it quietly and say nothing further", "effects": { "secret": { "id": "secret_phocea", "name": "The Phocea alum interest", "description": "A Genoese contact's concealed holding in the Phocea alum works: modest value, and no urgency to use it.", "value": 40 } } },
       { "text": "It isn't the house's business", "effects": {} }
     ]
   },
@@ -197,9 +197,9 @@
     "chapter": 1,
     "trigger": { "dateAfter": "1461-09-01" },
     "title": "Whispers from Rome",
-    "body": "A report reaches the house, third-hand and unconfirmed, that new alum deposits have been found near Tolfa, within the Papal states — deposits that could break the Ottoman alum trade's whole value if the rumour holds. It will not stay a rumour long.",
+    "body": "A report reaches the house, third-hand and unconfirmed, that new alum deposits have been found near Tolfa, within the Papal states: deposits that could break the Ottoman alum trade's whole value if the rumour holds. It will not stay a rumour long.",
     "choices": [
-      { "text": "Weigh the whisper carefully and hold it close", "effects": { "secret": { "id": "secret_tolfa", "name": "The Tolfa alum discovery", "description": "Word of new alum deposits at Tolfa that could break the Ottoman alum monopoly — large value, but it will become common knowledge soon and be worth nothing to hold.", "value": 130, "expiresInWeeks": 20 } } },
+      { "text": "Weigh the whisper carefully and hold it close", "effects": { "secret": { "id": "secret_tolfa", "name": "The Tolfa alum discovery", "description": "Word of new alum deposits at Tolfa that could break the Ottoman alum monopoly: large value, but it will become common knowledge soon and be worth nothing to hold.", "value": 130, "expiresInWeeks": 20 } } },
       { "text": "Dismiss it as market talk", "effects": {} }
     ]
   },
@@ -250,7 +250,7 @@
     "chapter": 1,
     "trigger": { "dateAfter": "1460-11-01", "location": "bruges" },
     "title": "Astorre's opportunity",
-    "body": "Astorre brings word of a condotta on offer at Naples: the company of lances, paid a retainer to serve a campaign's length, with bonuses if it goes well. He wants the house's blessing to broker it — and its backing.",
+    "body": "Astorre brings word of a condotta on offer at Naples: the company of lances, paid a retainer to serve a campaign's length, with bonuses if it goes well. He wants the house's blessing to broker it, and its backing.",
     "choices": [
       { "text": "Negotiate hard through Gregorio", "effects": { "condotta": { "retainerPerWeek": 4, "weeks": 16 }, "flag": "condotta_naples_active" } },
       { "text": "Accept the terms offered and move quickly", "effects": { "cash": 10, "condotta": { "retainerPerWeek": 2.5, "weeks": 16 }, "flag": "condotta_naples_active" } }
@@ -271,10 +271,10 @@
     "chapter": 1,
     "trigger": { "dateAfter": "1460-06-01", "location": "bruges" },
     "title": "A commission from the arsenal",
-    "body": "The Naples campaign needs guns, and Milan's foundries can supply them — if someone will carry them the length of Italy in time to matter. The commission is straightforward and the road is not.",
+    "body": "The Naples campaign needs guns, and Milan's foundries can supply them, if someone will carry them the length of Italy in time to matter. The commission is straightforward and the road is not.",
     "choices": [
       { "text": "Accept the commission", "effects": { "flag": "cannon_commission_accepted" } },
-      { "text": "Decline — too much can go wrong on that road", "effects": { "flags": ["cannon_shipment_resolved"] } }
+      { "text": "Decline: too much can go wrong on that road", "effects": { "flags": ["cannon_shipment_resolved"] } }
     ]
   },
   {
@@ -282,7 +282,7 @@
     "chapter": 1,
     "trigger": { "location": "naples", "flag": "cannon_commission_accepted", "flagAbsent": "cannon_shipment_expired", "cargoAtLeast": { "location": "naples", "goodId": "cannon", "quantity": 6 } },
     "title": "The guns of Naples",
-    "body": "The shipment makes it — six pieces of Milanese ordnance, unloaded on the Naples quay in time to matter. Word of the delivery reaches Astorre's camp before the ink on the receipt is dry.",
+    "body": "The shipment makes it: six pieces of Milanese ordnance, unloaded on the Naples quay in time to matter. Word of the delivery reaches Astorre's camp before the ink on the receipt is dry.",
     "choices": [
       { "text": "Hand over the shipment", "effects": { "cash": 90, "flags": ["cannon_delivered", "cannon_shipment_resolved"] } }
     ]
@@ -316,7 +316,7 @@
     "body": "Felix takes a fall at the lists that should not have killed him, and does anyway, the wound turning bad in the space of a fortnight no physician can explain away. Marian's son, dead at the edge of a war that was never his to fight. Nothing in the house's ledgers accounts for this.",
     "choices": [
       { "text": "Grieve with Marian, and let the house wait", "effects": { "conscience": 2, "flag": "felix_lost" } },
-      { "text": "Keep the house moving — grief can be paid out later", "effects": { "cash": 10, "conscience": -2, "flag": "felix_lost" } }
+      { "text": "Keep the house moving: grief can be paid out later", "effects": { "cash": 10, "conscience": -2, "flag": "felix_lost" } }
     ]
   },
   {

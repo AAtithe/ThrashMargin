@@ -41,7 +41,7 @@ export const COMPANIES: Record<StockId, Company> = {
   central: {
     id: 'central',
     name: 'Crossways Carriers',
-    blurb: "The Midlands motorway crossroads — the real Golden Triangle of UK logistics.",
+    blurb: "The Midlands motorway crossroads: the real Golden Triangle of UK logistics.",
     regions: ['midlands', 'north'],
     base: 100,
   },

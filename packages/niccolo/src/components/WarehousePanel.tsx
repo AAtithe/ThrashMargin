@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { UI } from '../theme';
+import { Button } from './ui';
 import { findCity, findGood } from '../sim/content';
 import { gradeBreakdown, isPilotGood } from '../sim/grades';
 import { cargoTotal, priceAt } from '../sim/market';
@@ -119,8 +120,8 @@ function MoveRow({
         {good?.name ?? goodId}
         <span style={{ color: UI.textSoft, fontSize: '0.72rem' }}>
           {' '}
-          — {storeLabel} {graded && gradedStore ? `(${gradedStore})` : `${inStore}`}, {aboardLabel}{' '}
-          {graded && gradedAboard ? `(${gradedAboard})` : `${aboard}`}
+          ({storeLabel} {graded && gradedStore ? `(${gradedStore})` : `${inStore}`}, {aboardLabel}{' '}
+          {graded && gradedAboard ? `(${gradedAboard})` : `${aboard}`})
         </span>
       </span>
       {price !== null && <span style={{ color: UI.brass, fontSize: '0.72rem' }}>{price}f here</span>}
@@ -138,12 +139,22 @@ function MoveRow({
         style={QTY_INPUT}
         onChange={e => setQty(Math.max(1, Math.floor(Number(e.target.value)) || 1))}
       />
-      <button style={SMALL_BUTTON} disabled={maxStore <= 0} onClick={() => onStore(qty, grade)}>
+      <Button
+        style={SMALL_BUTTON}
+        disabled={maxStore <= 0}
+        disabledReason={aboard <= 0 ? 'None aboard' : 'Store full'}
+        onClick={() => onStore(qty, grade)}
+      >
         Store
-      </button>
-      <button style={SMALL_BUTTON} disabled={maxWithdraw <= 0} onClick={() => onWithdraw(qty, grade)}>
+      </Button>
+      <Button
+        style={SMALL_BUTTON}
+        disabled={maxWithdraw <= 0}
+        disabledReason={inStore <= 0 ? 'None in store' : 'Hold full'}
+        onClick={() => onWithdraw(qty, grade)}
+      >
         Load
-      </button>
+      </Button>
     </div>
   );
 }
@@ -214,7 +225,7 @@ export default function WarehousePanel({
                 disabled={WAREHOUSE_LEASE_COST > state.cash}
                 onClick={() => onLease(hereCityId)}
               >
-                Lease a warehouse — {WAREHOUSE_LEASE_COST}f, then {warehouseRentPerWeek(20)}f a week
+                Lease a warehouse: {WAREHOUSE_LEASE_COST}f, then {warehouseRentPerWeek(20)}f a week
                 {WAREHOUSE_LEASE_COST > state.cash && ' (not enough cash)'}
               </button>
             ) : (
@@ -234,7 +245,7 @@ export default function WarehousePanel({
                   disabled={WAREHOUSE_EXPANSION_COST > state.cash}
                   onClick={() => onExpand(hereCityId)}
                 >
-                  Take the next bay — +{WAREHOUSE_EXPANSION_CAPACITY} units for {WAREHOUSE_EXPANSION_COST}f
+                  Take the next bay: +{WAREHOUSE_EXPANSION_CAPACITY} units for {WAREHOUSE_EXPANSION_COST}f
                   {WAREHOUSE_EXPANSION_COST > state.cash && ' (not enough cash)'}
                 </button>
               ) : (
@@ -293,13 +304,13 @@ export default function WarehousePanel({
                   {findCity(w.cityId)?.name ?? w.cityId}
                   <span style={{ color: UI.textSoft, fontSize: '0.72rem' }}>
                     {' '}
-                    — {warehouseUsed(w)}/{w.capacity} units, {warehouseRentPerWeek(w.capacity)}f a week
+                    ({warehouseUsed(w)}/{w.capacity} units, {warehouseRentPerWeek(w.capacity)}f a week)
                   </span>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: contents.length ? UI.textSoft : UI.textFaint }}>
                   {contents.length
                     ? contents.map(([g, n]) => `${n} ${findGood(g)?.name ?? g}`).join(', ')
-                    : 'empty — paying rent for nothing'}
+                    : 'empty, and paying rent for nothing'}
                 </div>
               </div>
             );

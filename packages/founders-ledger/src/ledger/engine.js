@@ -506,7 +506,7 @@ const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
-const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
+const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],away:[],offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
 
 function migrate(o){
   if(!o)return blank();
@@ -571,8 +571,8 @@ function lastN(n){return S.reviews.slice(-n);}
 function levels(){
   const st=streak(),done=doneBy(()=>true),stops=doneBy(t=>t.type==='Stop');
   const target=Number(S.future.targetHours)||45;
-  const l4=lastN(4);
-  const hrsOk=l4.length===4&&l4.every(r=>Number(r.hours)<=target);
+  const l4=lastN(4);const w4=workedReviews().slice(-4);
+  const hrsOk=w4.length===4&&w4.every(r=>Number(r.hours)<=target);
   const cfo=doneBy(t=>t.source==='cfo'||t.source==='wcfo')>0;
   const off=doneBy(t=>t.source==='woff')>0;
   const focus=l4.length===4&&l4.every(r=>Number(r.focus)>=8);
@@ -580,7 +580,7 @@ function levels(){
   const L=[
     {name:'Operator',checks:[]},
     {name:'Leader',checks:[['Four Friday reviews in a row',st>=4,`${Math.min(st,4)}/4`],['Five actions done',done>=5,`${Math.min(done,5)}/5`],['Two Stop actions done',stops>=2,`${Math.min(stops,2)}/2`]]},
-    {name:'Architect',checks:[['Hours at or under your target ('+target+') for four reviews running',hrsOk,`${l4.filter(r=>Number(r.hours)<=target).length}/4`],['Fifteen actions done',done>=15,`${Math.min(done,15)}/15`],['CFO execution handed over',cfo,cfo?'done':'open']]},
+    {name:'Architect',checks:[['Hours at or under your target ('+target+') for four working weeks running',hrsOk,`${w4.filter(r=>Number(r.hours)<=target).length}/4`],['Fifteen actions done',done>=15,`${Math.min(done,15)}/15`],['CFO execution handed over',cfo,cfo?'done':'open']]},
     {name:'Owner',checks:[['Twelve Friday reviews in a row',st12,`${Math.min(st,12)}/12`],['Two weeks fully off taken',off,off?'done':'open'],['Focus at 8 or above for four reviews running',focus,`${l4.filter(r=>Number(r.focus)>=8).length}/4`]]}
   ];
   let cur=0;for(let i=1;i<L.length;i++){if(L[i].checks.every(c=>c[1]))cur=i;else break;}
@@ -611,6 +611,8 @@ function receipts(){
   habits().forEach(h=>{const st=habitStreak(h);const met=habitMet(h);if(st>=2)out.push(`${h.name}: ${st} weeks running. You kept a promise to yourself that nobody else checks.`);else if(met)out.push(`${h.name}: target met in ${plural(met,'week')}. You made room for it while the firm kept going.`);});
   const sess=(S.sessions||[]).filter(s=>s.status==='done').length;
   if(sess)out.push(`You have walked into ${plural(sess,'coaching session')} with an agenda. Founders who prepare get more from every hour of help.`);
+  const hols=S.reviews.filter(r=>r.weekType==='Holiday');
+  if(hols.length){const off=hols.filter(r=>r.switchOff==='Fully'||r.switchOff==='Mostly').length;out.push(`You have taken ${plural(hols.length,'holiday week')}${off?`, ${off===hols.length?'all':off} of them properly switched off`:''}. The firm was still there when you came back.`);}
   const ruled=(S.resets||[]).filter(r=>r.rule).length;
   if(ruled)out.push(`${ruled===1?'Once':ruled+' times'} on a hard moment you chose one of your own rules over the feeling. That is you setting the direction.`);
   const ot=offTotals();
@@ -747,7 +749,8 @@ function sessionBrief(now=Date.now()){
     if(ups.length)lines.push(ups.map(x=>`${x.n} ${x.d>0?'up':'down'} ${Math.abs(x.d)}`).join(', '));
     const gs={};rv.forEach(r=>{if(r.game)gs[r.game]=(gs[r.game]||0)+1;});const g=Object.entries(gs).sort((a,b)=>b[1]-a[1])[0];
     if(g){const G=GAMES.find(x=>x.id===g[0]);if(G){lines.push(`The game that ran my weeks: ${G.name.toLowerCase()}`);if(G.kind==='default')topics.push(`The system I keep running: ${G.name.toLowerCase()}`);}}
-    const hrs=rv.map(r=>Number(r.hours)).filter(Boolean);if(hrs.length)lines.push(`Hours: ${hrs.join(', ')} against a target of ${S.future.targetHours}`);}
+    const hrs=rv.filter(r=>typeof r.hours==='number'&&r.weekType!=='Holiday'&&r.weekType!=='Off sick').map(r=>Number(r.hours)).filter(Boolean);if(hrs.length)lines.push(`Hours: ${hrs.join(', ')} against a target of ${S.future.targetHours}`);
+    const hol=rv.filter(r=>r.weekType==='Holiday');if(hol.length){lines.push(`${plural(hol.length,'holiday week')}: ${hol.map(r=>(r.switchOff||'').toLowerCase()).filter(Boolean).join(', ')||'logged'} switched off`);const pulled=hol.filter(r=>r.pulledIn&&r.pulledIn!=='None').length;if(pulled)topics.push('Being pulled in while I was away');}}
   // Weeks are counted from the later of the last session and the day the ledger began, and this week
   // only counts once its target is met: an unfinished week is not a missed one.
   const start=Math.max(since,S.baselineTs||0);
@@ -769,6 +772,32 @@ function agendaText(s){
   return out.join('\n');
 }
 
+/* ---------- Away: holidays the ledger knows about ----------
+   Time off is vital, so an away day closes the Space ring by itself and keeps the streak. The Friday
+   review stops asking about hours and asks how switched off he was instead. Being pulled in is logged
+   with one tap, as information about the being-needed system, never as a failure. */
+const AWAY_PLANS=['Until Sunday','Next 7 days','Next 14 days'];
+const WEEK_TYPES=['Working week','Holiday','Part holiday','Off sick'];
+const SWITCH_OFF=['Fully','Mostly','Pulled in a few times','Worked most days'];
+const HANDLED=['Client queries','The month end','A team problem','A decision I would have made','Everything','Not sure yet'];
+const DAYS_OFF=['1','2','3','4'];
+function awayOn(ts){const d=dayStart(ts);return (S.away||[]).find(a=>a.from<=d&&d<=a.to)||null;}
+function awayNow(now=Date.now()){return awayOn(now);}
+function awayNext(now=Date.now()){const d=dayStart(now);return (S.away||[]).filter(a=>a.from>d).sort((a,b)=>a.from-b.from)[0]||null;}
+/* Days of this week (Monday to Sunday) inside an away spell. */
+function awayDaysThisWeek(now=Date.now()){
+  const w=weekNo(now);let n=0;let d=dayStart(now);while(weekNo(d-DAY)===w)d=dayStart(d-DAY+3600000);
+  for(let i=0;i<7;i++){if(weekNo(d)===w&&awayOn(d))n++;d=dayStart(d+DAY+3600000);}return n;
+}
+function pullsThisWeek(now=Date.now()){const w=weekNo(now);return (S.away||[]).reduce((a,x)=>a+(x.pulls||[]).filter(ts=>weekNo(ts)===w).length,0);}
+const workedReviews=()=>S.reviews.filter(r=>typeof r.hours==='number'&&r.weekType!=='Holiday'&&r.weekType!=='Off sick');
+function planAway(label,now=Date.now()){
+  const from=dayStart(now);let to;
+  if(label==='Until Sunday'){to=from;while(new Date(to).getDay()!==0)to=dayStart(to+DAY+3600000);}
+  else to=dayStart(from+(label==='Next 14 days'?13:6)*DAY+3600000);
+  S.away=(S.away||[]).filter(a=>!(a.from<=to&&a.to>=from)).concat({id:'a'+uid(),from,to,pulls:[]});
+}
+
 /* ---------- The daily game: three rings, a day streak, rest days banked, honours ----------
    Everything here is derived from what is already logged, so nothing can drift and nothing is stored
    except which honours he has already been told about. A rest day is earned for every seven days
@@ -787,6 +816,7 @@ function dayRings(){
   S.todos.forEach(t=>{if(t.done)mark(t.doneAt,'move');});
   (S.habitLog||[]).forEach(l=>mark(l.ts,'space'));
   (S.offDays||[]).forEach(o=>{if(o.status==='back')mark(o.day,'space');});
+  const today=dayStart(Date.now());(S.away||[]).forEach(a=>{for(let d=a.from;d<=Math.min(a.to,today);d=dayStart(d+DAY+3600000))mark(d,'space');});
   (S.resets||[]).forEach(r=>mark(r.ts,null));
   S.reviews.forEach(r=>mark(r.ts,null));
   (S.sysLog||[]).forEach(l=>mark(l.ts,null));
@@ -838,6 +868,7 @@ const HONOURS=[
   {id:'rule10',name:'My rules',desc:'Choose your own rule on ten hard moments',goal:10,v:()=>(S.resets||[]).filter(r=>r.rule).length},
   {id:'rev4',name:'Closes his own week',desc:'Four Friday reviews',goal:4,v:()=>S.reviews.length},
   {id:'rev12',name:'A quarter closed',desc:'Twelve Friday reviews',goal:12,v:()=>S.reviews.length},
+  {id:'hol1',name:'Properly off',desc:'A holiday week, fully or mostly switched off',goal:1,v:()=>S.reviews.filter(r=>r.weekType==='Holiday'&&(r.switchOff==='Fully'||r.switchOff==='Mostly')).length},
   {id:'off1',name:'The firm held',desc:'Your first phone-off day',goal:1,v:()=>(S.offDays||[]).filter(o=>o.status==='back').length},
   {id:'coach3',name:'Prepared',desc:'Three coaching sessions with an agenda',goal:3,v:()=>(S.sessions||[]).filter(s=>s.status==='done').length},
   {id:'letter',name:'Written it down',desc:'A 2030 letter of 150 words',goal:1,v:()=>wc(S.future.letter)>=150?1:0}
@@ -884,9 +915,11 @@ function vToday(){
   const played=S.reviews.filter(r=>r.game);const onGame=chosen?played.filter(r=>r.game===chosen.id).length:0;
   const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
   return `<section>
+  ${awayNow()?vAwayCard():''}
   ${vDayCard()}
   ${vResetCard()}
   ${vHabitCard()}
+  ${awayNow()?'':vAwayCard()}
   ${vSessionCard()}
   ${vSysCard()}
   ${vMomentum()}
@@ -1029,6 +1062,19 @@ function vSysPanel(){
 /* ---------- Momentum: this week at a glance ---------- */
 function ringSvg(on,label){
   return `<svg class="ring ${on?'on':''}" viewBox="0 0 44 44" role="img" aria-label="${esc(label)}: ${on?'closed':'open'}"><circle cx="22" cy="22" r="18" class="ring-bg"/><circle cx="22" cy="22" r="18" class="ring-fg" stroke-dasharray="${on?113:0} 113"/></svg>`;
+}
+function vAwayCard(){
+  const a=awayNow();
+  if(a){const day=Math.round((dayStart(Date.now())-a.from)/DAY)+1,len=Math.round((a.to-a.from)/DAY)+1;const p=(a.pulls||[]).length;
+    return `<div class="card away-card"><div class="eyebrow">Away &middot; day ${day} of ${len}</div><h2>You are off. The firm is running without you.</h2>
+     <p class="muted">Today counts as a day in charge and your Space ring is closed. Taking time off is vital, and this is it.</p>
+     <p class="small">${p?`Pulled in ${plural(p,'time')} so far. Each one is information about the being-needed system, not a failure.`:'Not pulled in once so far.'}</p>
+     <div class="row"><button class="btn small ghost" data-act="awayPull">I got pulled in</button><button class="btn small ghost" data-act="awayEnd">Back early</button></div></div>`;}
+  const n=awayNext();
+  if(n)return `<div class="card"><div class="spread"><div><div class="eyebrow">Away soon</div><h3>Off from ${fmtDate(n.from)} to ${fmtDate(n.to)}</h3></div><button class="btn small ghost" data-act="awayCancel" data-id="${n.id}">Cancel</button></div><p class="small muted">Before you go: name who decides what while you are away.</p></div>`;
+  return `<div class="card"><div class="eyebrow">Going away?</div><h3>Tell the ledger, and it stops asking about hours</h3>
+   ${chipRow('away-plan',AWAY_PLANS,{act:'away-plan'})}
+   <details class="own"><summary>Other dates</summary><div class="row"><input type="date" id="away-from" aria-label="First day away"><input type="date" id="away-to" aria-label="Last day away"><button class="btn small" data-act="awayDates">Save</button></div></details></div>`;
 }
 function vDayCard(){
   const ds=dayStreak();const r=ringsOn(dayRings(),Date.now());const closed=RINGS.filter(x=>r[x.k]).length;
@@ -1192,7 +1238,7 @@ function vLetter(){
    <div class="row"><button class="btn" data-act="draftLetter" ${n>=3?'':'disabled'}>Draft my letter from these answers</button><span class="small muted">${n>=3?'Your answers, your numbers, your pillars and your chosen game go into the draft.':'Answer at least three questions first.'}</span></div>
    ${S.letterDraft?`<div class="coach"><div class="eyebrow">First draft${S.letterDraftBy==='claude'?' by Claude':''}</div><div style="white-space:pre-wrap;max-width:66ch">${esc(S.letterDraft)}</div><div class="row"><button class="btn small" data-act="useDraft">${f.letter.trim()?'Replace my letter with this draft':'Use this draft'}</button><button class="btn small ghost" data-act="discardDraft">Discard</button></div></div>`:''}
    <div class="field"><label for="f-letter">Your letter</label><span class="hint">Edit until every line sounds like you. It saves as you type.</span><textarea class="letter" id="f-letter" data-future="letter" placeholder="Dear Tom, it is November 2030...">${esc(f.letter)}</textarea></div>
-   <div class="row"><button class="btn small" data-act="coachLetter" ${words>=40?'':'disabled'}>Coach my letter</button><button class="btn small ghost" data-act="readLetter" ${words>=40&&!read?'':'disabled'}>${read?'Read this month':'I have read it this month'}</button></div>
+   <div class="row"><button class="btn small" data-act="coachLetter" ${words>=40?'':'disabled'}>Coach my letter</button><button class="btn small ghost" data-act="readLetter" ${words>=40&&!read?'':'disabled'}>${read?'Read this month':'I have read it this month'}</button>${words<40?`<span class="small muted">Write at least 40 words first (${words} so far).</span>`:''}</div>
    ${c?`<div class="coach"><div class="eyebrow">Coaching on your letter &middot; ${fmtDate(c.ts)}</div>
      <ul class="checks">${c.checks.map(x=>`<li class="${x.ok?'ok':''}"><span class="mk">${x.ok?'[x]':'[ ]'}</span><span><span style="font-weight:600">${esc(x.label)}.</span> ${esc(x.note)}</span><span></span></li>`).join('')}</ul>
      ${c.ai?`${c.ai.strengths&&c.ai.strengths.length?`<p><span style="font-weight:600">What is working.</span> ${c.ai.strengths.map(esc).join(' ')}</p>`:''}
@@ -1223,19 +1269,34 @@ function vBaseline(){
 }
 
 /* ---------- Friday review ---------- */
+let reviewWeek=''; // the kind of week picked in this review, until it is logged
 function vReview(){
   const l=latest()||{happiness:5,earnings:5,time:5,focus:5,hours:50};
   const open=S.todos.filter(t=>!t.done&&(t.h==='week'||t.star));
   const sameWeek=S.reviews.length&&Date.now()-S.reviews[S.reviews.length-1].ts<4*DAY;
+  const ad=awayDaysThisWeek();if(!reviewWeek)reviewWeek=ad>=5?'Holiday':ad>0?'Part holiday':'Working week';
+  const away=reviewWeek==='Holiday'||reviewWeek==='Off sick';
+  const lw=workedReviews().slice(-1)[0];const pulls=pullsThisWeek();
+  const pullPick=pulls===0?'None':pulls<=2?'1 or 2':pulls<=5?'3 to 5':'6 or more';
+  const weekFields=reviewWeek==='Holiday'?`
+   <div class="field"><span class="lbl">How switched off were you?</span>${chipRow('rv-switch',SWITCH_OFF)}</div>
+   <div class="field"><span class="lbl">Times you were pulled in</span>${pulls?`<span class="hint">You logged ${plural(pulls,'time')} while away.</span>`:''}${chipRow('rv-pulled',['None','1 or 2','3 to 5','6 or more'],{selected:pullPick})}</div>
+   <div class="field"><span class="lbl">What did the firm handle without you?</span>${chipRow('rv-handled',HANDLED,{multi:true,max:4})}</div>`
+   :reviewWeek==='Off sick'?`<p class="small muted">No hours this week. Rest is part of the job, not a reward for finishing it.</p>`
+   :`<div class="field"><span class="lbl">Hours worked this week</span><span class="hint">Your target is ${S.future.targetHours} (set in Future).</span>${chipRow('rv-hours',PICK.hours,{selected:hoursChip(lw?lw.hours:50)})}</div>
+   ${reviewWeek==='Part holiday'?`<div class="field"><span class="lbl">Days off</span>${chipRow('rv-daysoff',DAYS_OFF,{selected:String(Math.min(4,Math.max(1,ad||1)))})}</div>`:''}`;
   return `<section>
   <div class="card"><div><div class="eyebrow">Friday review &middot; ten minutes</div><h2>Close your own week in three days or less.</h2></div>
    <p class="muted">${sameWeek?'You logged a review on '+fmtDate(S.reviews[S.reviews.length-1].ts)+'. Logging again replaces it.':'All taps, no typing. Same six steps every week.'}</p></div>
+  <div class="card"><div class="eyebrow">What kind of week was it?</div>
+   ${chipRow('rv-week',WEEK_TYPES,{act:'week-type',selected:reviewWeek})}
+   ${ad?`<p class="small muted">The ledger has you away on ${plural(ad,'day')} this week.</p>`:''}</div>
   ${vLoudWeek()}
 
-  <div class="card"><div class="eyebrow">1. What you did</div><h3>Tick what got done</h3>
+  <div class="card"><div class="eyebrow">1. What you did</div><h3>${away?'Anything that got done':'Tick what got done'}</h3>
    ${habits().length?`<div class="field"><span class="lbl">Non-negotiables</span>${habits().map(h=>{const n=habitCount(h.id);return `<div class="small ${n>=h.target?'delta-up':'delta-down'}">${esc(h.name)}: ${n} of ${h.target}${n>=h.target?', done':', not this week'}</div>`;}).join('')}</div>`:''}
    ${open.length?open.map(t=>`<label class="item" style="cursor:pointer"><input type="checkbox" data-done="${t.id}"><span class="txt"><span>${esc(t.text)}</span><span class="meta"><span class="pill ${t.type}">${t.type}</span><span class="pill">+${ptsFor(t)} pts</span>${t.hours?`<span class="pill">${t.hours} hrs/wk back</span>`:''}</span></span><span></span></label>`).join(''):'<p class="empty">Nothing open for this week. Add actions in Actions.</p>'}
-   <div class="field"><span class="lbl">Hours worked this week</span><span class="hint">Your target is ${S.future.targetHours} (set in Future).</span>${chipRow('rv-hours',PICK.hours,{selected:hoursChip(l.hours)})}</div></div>
+   ${weekFields}</div>
 
   <div class="card"><div class="eyebrow">2. Re-score</div><h3>Where are the four lines now?</h3>
    <div class="grid2">${METERS.map(m=>`<div class="field"><label for="rv-${m.k}">${m.name}</label><div class="rate-line"><input type="range" id="rv-${m.k}" min="1" max="10" value="${l[m.k]}" data-out="ov-${m.k}"><output id="ov-${m.k}">${l[m.k]}</output></div></div>`).join('')}</div></div>
@@ -1261,7 +1322,7 @@ function vReview(){
    <div class="row"><button class="btn" data-act="review">Log the week</button></div></div>
 
   ${S.reviews.length?`<div class="card"><h3>The trend</h3><div class="tbl-wrap"><table><thead><tr><th>Week</th>${METERS.map(m=>`<th class="num">${m.name}</th>`).join('')}<th class="num">Hours</th><th>Game</th><th>Win</th></tr></thead><tbody>
-   ${[Object.assign({date:'Opening',game:''},S.baseline)].concat(S.reviews.map(r=>Object.assign({date:fmtDate(r.ts)},r))).map((r,i,arr)=>`<tr><td>${esc(r.date)}</td>${METERS.map(m=>{const d=i?r[m.k]-arr[i-1][m.k]:0;return `<td class="num">${r[m.k]}${d?` <span class="${d>0?'delta-up':'delta-down'}">${d>0?'+':''}${d}</span>`:''}</td>`;}).join('')}<td class="num ${i&&Number(r.hours)<=Number(S.future.targetHours)?'delta-up':''}">${r.hours}</td><td>${esc((GAMES.find(g=>g.id===r.game)||{}).name||'')}</td><td class="wrapc">${esc(r.win||r.note||'')}</td></tr>`).join('')}
+   ${[Object.assign({date:'Opening',game:''},S.baseline)].concat(S.reviews.map(r=>Object.assign({date:fmtDate(r.ts)},r))).map((r,i,arr)=>`<tr><td>${esc(r.date)}</td>${METERS.map(m=>{const d=i?r[m.k]-arr[i-1][m.k]:0;return `<td class="num">${r[m.k]}${d?` <span class="${d>0?'delta-up':'delta-down'}">${d>0?'+':''}${d}</span>`:''}</td>`;}).join('')}<td class="num ${i&&typeof r.hours==='number'&&Number(r.hours)<=Number(S.future.targetHours)?'delta-up':''}">${typeof r.hours==='number'?r.hours:esc(r.weekType||'Off')}</td><td>${esc((GAMES.find(g=>g.id===r.game)||{}).name||'')}</td><td class="wrapc">${esc(r.win||r.note||'')}</td></tr>`).join('')}
    </tbody></table></div></div>`:''}
   </section>`;
 }
@@ -1573,6 +1634,8 @@ on('click',async e=>{
         render();toTop();break;}
       case 'reset-move':endReset({move:v});break;
       case 'reset-rule':if(RD)RD.rule=v;break;
+      case 'week-type':reviewWeek=v;render();break;
+      case 'away-plan':planAway(v);save();render();setStatus('Away logged. Enjoy it: the ledger will not ask about hours.');break;
       case 'habit-add':{const x=HABIT_IDEAS.find(h=>h.name===v);if(!x)break;S.habits=habits().concat({id:'h'+uid(),name:x.name,target:x.target});save();render();setStatus('Added to your non-negotiables.');break;}
       case 'session-take':closeSession(v);break;
       case 'rule-add':{if(!Array.isArray(S.rules))S.rules=DEFAULT_RULES.slice();if(!S.rules.includes(v))S.rules.push(v);save();render();setStatus('Added to your rules.');break;}
@@ -1606,16 +1669,20 @@ on('click',async e=>{
     case 'review':{
       const none=v=>v&&v!=='None this week'?v:'';
       const good=picked('rv-good').slice(0,3);
-      const r={ts:Date.now(),hours:parseInt(picked('rv-hours')[0]||'0',10),good,space:none(picked('rv-space')[0]),game:reviewGame,inSystem:none(picked('rv-system')[0]),win:good[0]||'',change:picked('rv-change')[0]||''};
+      const wt=reviewWeek||'Working week';const off=wt==='Holiday'||wt==='Off sick';
+      const r={ts:Date.now(),weekType:wt,hours:off?null:parseInt(picked('rv-hours')[0]||'0',10),good,space:none(picked('rv-space')[0]),game:reviewGame,inSystem:none(picked('rv-system')[0]),win:good[0]||'',change:picked('rv-change')[0]||''};
       {const fear=picked('rv-fear')[0]||'';const oc=OUTCOMES.find(x=>x.name===picked('rv-outcome')[0]);if(fear){r.fear=fear;if(oc&&fear!=='Nothing this week')r.fearOutcome=oc.k;}}
       METERS.forEach(m=>r[m.k]=Number($('#rv-'+m.k).value));
+      if(wt==='Holiday'){r.switchOff=picked('rv-switch')[0]||'';r.pulledIn=picked('rv-pulled')[0]||'';r.handled=picked('rv-handled').filter(x=>x!=='Not sure yet');}
+      if(wt==='Part holiday')r.daysOff=Number(picked('rv-daysoff')[0]||0);
       const before=points();
       if(S.reviews.length&&r.ts-S.reviews[S.reviews.length-1].ts<4*DAY)S.reviews[S.reviews.length-1]=r;else{S.reviews.push(r);S.pendingCall=true;}
       r.good.forEach(g=>S.notes.push({ts:r.ts,kind:'good',text:g}));
+      (r.handled||[]).forEach(h=>S.notes.push({ts:r.ts,kind:'good',text:h==='Everything'?'The firm handled everything without me':`The firm handled ${h.charAt(0).toLowerCase()+h.slice(1)} without me`}));
       if(r.space)S.notes.push({ts:r.ts,kind:'space',text:r.space});
       if(r.change)addTodo({text:r.change,type:'Start',h:'week',hours:0,source:'review-'+r.ts});
       if(r.inSystem)addTodo({text:'Design out: '+r.inSystem,type:'Stop',h:'month',hours:1,source:'review-sys-'+r.ts});
-      reviewGame='';S.view='today';save();render();toTop();
+      reviewGame='';reviewWeek='';S.view='today';save();render();toTop();
       const gained=points()-before;
       $('#view').insertAdjacentHTML('afterbegin',`<div class="toast"><strong>Week closed. +${gained} points, streak ${streak()} week${streak()===1?'':'s'}.</strong><span class="small">${S.pendingCall?'Your next call is ready to deal below.':'Review updated.'}</span></div>`);
       break;}
@@ -1656,6 +1723,12 @@ on('click',async e=>{
           if(r.learned){S.coachNotes=(S.coachNotes||[]).concat({ts:Date.now(),text:String(r.learned).slice(0,240)}).slice(-30);save();}
           render();toTop();});
       break;}
+    case 'awayPull':{const a=awayNow();if(a){a.pulls=(a.pulls||[]).concat(Date.now());save();render();setStatus('Logged. Next time, ask: who could have decided that?');}break;}
+    case 'awayEnd':{const a=awayNow();if(a){a.to=dayStart(Date.now());save();render();setStatus('Welcome back.');}break;}
+    case 'awayCancel':{S.away=(S.away||[]).filter(x=>x.id!==d.id);save();render();break;}
+    case 'awayDates':{const f=byId('away-from'),to=byId('away-to');const a=f&&f.value?new Date(f.value+'T12:00').getTime():0,b=to&&to.value?new Date(to.value+'T12:00').getTime():0;
+      if(!a||!b||b<a){setStatus('Pick a first and last day, the last on or after the first.');break;}
+      const from=dayStart(a),last=dayStart(b);S.away=(S.away||[]).filter(x=>!(x.from<=last&&x.to>=from)).concat({id:'a'+uid(),from,to:last,pulls:[]});save();render();setStatus('Away logged.');break;}
     case 'habitLog':{S.habitLog=(S.habitLog||[]).concat({id:d.id,ts:Date.now()}).slice(-2000);const h=habits().find(x=>x.id===d.id);save();render();
       if(h){const n=habitCount(h.id);setStatus(n===h.target?`${h.name}: week done. +${HABIT_PTS} points.`:`${h.name} logged.`);}break;}
     case 'habitUndo':{const k=dayKey(Date.now());const log=(S.habitLog||[]).slice();for(let i=log.length-1;i>=0;i--){if(log[i].id===d.id&&dayKey(log[i].ts)===k){log.splice(i,1);break;}}S.habitLog=log;save();render();break;}
@@ -1740,6 +1813,7 @@ return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
+  AWAY_PLANS, WEEK_TYPES, awayOn, awayDaysThisWeek, pullsThisWeek, planAway, workedReviews,
   RINGS, FULL_DAY_PTS, REST_MAX, dayRings, dayStreak, weeklyRings, honours, habitBest,
   DEFAULT_HABITS, HABIT_IDEAS, HABIT_PTS, habitCount, habitStreak, habitMet, sessionBrief, agendaText, SESSION_PTS,
   RESET_CAP, RESET_PTS, LOUD, SORT, MOVES, FIX, PRESSURE,

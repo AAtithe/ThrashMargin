@@ -103,7 +103,7 @@ export default function ShipyardPanel({ state, onBuy, onSell }: ShipyardPanelPro
     <div>
       {laidUp && (
         <p style={{ fontSize: '0.78rem', color: UI.bad, margin: '0 0 0.5rem' }}>
-          {laidUp.vesselName} has been laid up — the house could not meet her upkeep. She still sails
+          {laidUp.vesselName} has been laid up: the house could not meet her upkeep. She still sails
           and still carries, but no faster than any other hull, and she costs nothing now.
         </p>
       )}
@@ -111,7 +111,7 @@ export default function ShipyardPanel({ state, onBuy, onSell }: ShipyardPanelPro
       <p style={{ ...LABEL, marginTop: 0 }}>The yard</p>
       <p style={{ fontSize: '0.78rem', color: UI.textSoft, margin: '0 0 0.5rem' }}>
         {upkeep > 0
-          ? `${state.vessels.length} hulls, ${upkeep}f a week in upkeep — drawn with the household's wages.`
+          ? `${state.vessels.length} hulls, ${upkeep}f a week in upkeep, drawn with the household's wages.`
           : `${state.vessels.length} hulls, none of them costing upkeep. Hulls the house was given cost nothing to keep.`}
         {' '}Yards at {yardNames}.
       </p>
@@ -138,7 +138,7 @@ export default function ShipyardPanel({ state, onBuy, onSell }: ShipyardPanelPro
                   <span>
                     {t.name}
                     <span style={{ color: UI.textSoft, fontSize: '0.72rem' }}>
-                      {' '}— hold {t.capacity}, {passageLabel(t.speed)}, {t.upkeepPerWeek}f a week
+                      {' '}(hold {t.capacity}, {passageLabel(t.speed)}, {t.upkeepPerWeek}f a week)
                     </span>
                   </span>
                   <button
@@ -146,7 +146,7 @@ export default function ShipyardPanel({ state, onBuy, onSell }: ShipyardPanelPro
                     disabled={!affordable}
                     onClick={() => { onBuy(t.id, name || undefined); setName(''); }}
                   >
-                    {t.cost}f{!affordable && ' — short'}
+                    {t.cost}f{!affordable && ', short'}
                   </button>
                 </div>
                 <div style={{ fontSize: '0.72rem', color: UI.textFaint, marginTop: '0.15rem' }}>{t.note}</div>
@@ -168,7 +168,7 @@ export default function ShipyardPanel({ state, onBuy, onSell }: ShipyardPanelPro
             <span>
               {v.name}
               <span style={{ color: UI.textSoft, fontSize: '0.72rem' }}>
-                {' '}— {type ? type.name : 'unclassed'}
+                {' '}({type ? type.name : 'unclassed'})
                 {v.capacity > 0 && `, hold ${v.capacity}`}
                 {vesselUpkeep(v) > 0 && `, ${vesselUpkeep(v)}f a week`}
                 {vesselSpeed(v) !== 1 && `, ${passageLabel(vesselSpeed(v))}`}
@@ -178,7 +178,7 @@ export default function ShipyardPanel({ state, onBuy, onSell }: ShipyardPanelPro
               <span style={{ fontSize: '0.72rem', color: UI.textFaint, whiteSpace: 'nowrap' }}>{blocked}</span>
             ) : (
               <button style={SMALL_BUTTON} onClick={() => onSell(v.id)}>
-                Sell — {resaleValue(v)}f
+                Sell for {resaleValue(v)}f
               </button>
             )}
           </div>

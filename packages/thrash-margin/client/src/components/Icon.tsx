@@ -8,7 +8,7 @@ export type IconName =
   | 'gold' | 'food' | 'mat' | 'influence' | 'pop' | 'troops' | 'ap'
   | 'attack' | 'move' | 'build' | 'upgrade' | 'research' | 'capital' | 'stronghold'
   | 'annex' | 'spy' | 'trade' | 'undo' | 'next' | 'log' | 'ledger' | 'help' | 'close'
-  | 'plus' | 'minus' | 'reset' | 'warn' | 'check' | 'peace' | 'flag' | 'eye' | 'fog';
+  | 'plus' | 'minus' | 'reset' | 'warn' | 'check' | 'peace' | 'flag' | 'eye' | 'fog' | 'more';
 
 const PATHS: Record<IconName, JSX.Element> = {
   gold: <><circle cx="8" cy="8" r="5.5" /><path d="M8 5v6M6.3 6.4h2.6a1.1 1.1 0 0 1 0 2.2H7.1a1.1 1.1 0 0 0 0 2.2h2.6" /></>,
@@ -43,6 +43,7 @@ const PATHS: Record<IconName, JSX.Element> = {
   flag: <><path d="M4 14V2.5M4 3h8l-2 3 2 3H4" /></>,
   eye: <><path d="M1.5 8S4 3.5 8 3.5 14.5 8 14.5 8 12 12.5 8 12.5 1.5 8 1.5 8z" /><circle cx="8" cy="8" r="2" /></>,
   fog: <><path d="M2 6h9M4 9h10M2 12h8" /></>,
+  more: <><path d="M3 4.5h10M3 8h10M3 11.5h10" /></>,
 };
 
 export default function Icon({ name, size = 14, color, style, title }: {

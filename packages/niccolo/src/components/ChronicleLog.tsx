@@ -105,7 +105,7 @@ export default function ChronicleLog({ chapters, onClose }: ChronicleLogProps) {
             <div key={chapter.chapterNumber}>
               <button style={CHAPTER_HEADER} onClick={() => toggle(chapter.chapterNumber)}>
                 <span>
-                  {isOpen ? '▾' : '▸'} Chapter {chapter.chapterNumber} — {chapter.title}
+                  {isOpen ? '▾' : '▸'} Chapter {chapter.chapterNumber}: {chapter.title}
                 </span>
                 <span style={{ fontSize: '0.75rem', color: UI.textSoft }}>
                   {resolved} of {counted.length} resolved

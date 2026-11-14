@@ -2,7 +2,7 @@
  * War for the Planet: small pieces shared by the war screens (fireline-planet-design.md, section
  * 17). W4. Presentation only: every rule is read from src/planet/.
  */
-import type { CSSProperties, ReactNode } from 'react';
+import { useId, type CSSProperties, type ReactNode } from 'react';
 import { ownerLetter } from '../../game/planetArt';
 import { planetActionProblem, type PlanetAction } from '../../planet/turn';
 import { factionName } from '../../planet/state';
@@ -79,7 +79,7 @@ export function Odds({ p, label = 'Odds' }: { p: number; label?: string }) {
   );
 }
 
-/** A labelled button that explains, in its title, why it is disabled. */
+/** A labelled button that says, in a visible line under it, why it is disabled. */
 export function OrderButton({
   s,
   a,
@@ -101,11 +101,27 @@ export function OrderButton({
   /** A reason from the interface itself (shown first). */
   extraProblem?: string | null;
 }) {
+  const reasonId = useId();
   const problem = extraProblem ?? why(s, a);
   return (
-    <button type="button" className={`fl-pl-btn${tone ? ` ${tone}` : ''}`} disabled={!!problem} title={problem ?? undefined} id={id} data-testid={testId} onClick={() => act(a)}>
-      {children}
-    </button>
+    <span className="fl-pl-btn-wrap">
+      <button
+        type="button"
+        className={`fl-pl-btn${tone ? ` ${tone}` : ''}`}
+        disabled={!!problem}
+        aria-describedby={problem ? reasonId : undefined}
+        id={id}
+        data-testid={testId}
+        onClick={() => act(a)}
+      >
+        {children}
+      </button>
+      {problem && (
+        <span className="fl-pl-why" id={reasonId}>
+          {problem}
+        </span>
+      )}
+    </span>
   );
 }
 

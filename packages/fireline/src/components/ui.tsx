@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { FONT, UI } from '../theme';
+import { Button as KitButton, type ButtonProps as KitButtonProps } from '../lib/Kit';
 
 /** Small shared primitives, so every panel in the game agrees on its edges and its type scale. */
 
@@ -41,50 +42,28 @@ export function Panel({
   );
 }
 
+/**
+ * The game's button: the portal kit's Button (lib/Kit.tsx, styled by lib/kit.css with the --kit-*
+ * mapping in styles.css), which brings hover, press, focus, disabled, the 40px phone target and
+ * the visible disabled reason. `fl-ui-btn` and `data-tone` stay for the game's own rules.
+ */
 export function Button({
-  children,
-  onClick,
-  disabled,
   tone = 'default',
-  title,
-  style,
-  id,
   testId,
-}: {
-  children: ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  tone?: 'default' | 'primary' | 'quiet' | 'danger';
-  title?: string;
-  style?: CSSProperties;
-  /** A stable hook for the guided run to spotlight this control. Unused for now. */
-  id?: string;
+  className,
+  ...rest
+}: KitButtonProps & {
   /** Rendered as data-testid, for scripts that drive the page. */
   testId?: string;
 }) {
-  const tones: Record<string, CSSProperties> = {
-    default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
-    primary: { borderColor: UI.accent, color: UI.ground, background: UI.accent, fontWeight: 600 },
-    quiet: { borderColor: UI.rule, color: UI.textSoft, background: 'transparent' },
-    danger: { borderColor: UI.bad, color: UI.bad, background: 'transparent' },
-  };
   return (
-    <button
-      type="button"
-      id={id}
+    <KitButton
+      {...rest}
+      tone={tone}
+      data-tone={tone}
       data-testid={testId}
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      style={{
-        ...buttonBase,
-        ...tones[tone],
-        ...(disabled ? { opacity: 0.38, cursor: 'not-allowed' } : {}),
-        ...style,
-      }}
-    >
-      {children}
-    </button>
+      className={className ? `fl-ui-btn ${className}` : 'fl-ui-btn'}
+    />
   );
 }
 
@@ -140,16 +119,6 @@ const panelTitle: CSSProperties = {
   fontSize: '0.95rem',
   letterSpacing: '0.01em',
   color: UI.text,
-};
-
-const buttonBase: CSSProperties = {
-  fontFamily: FONT.body,
-  fontSize: '0.82rem',
-  padding: '0.35rem 0.65rem',
-  border: '1px solid',
-  borderRadius: 2,
-  cursor: 'pointer',
-  lineHeight: 1.25,
 };
 
 export const labelStyle: CSSProperties = {

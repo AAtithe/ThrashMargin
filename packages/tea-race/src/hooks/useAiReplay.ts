@@ -46,7 +46,7 @@ function narrate(before: GameState, after: GameState, action: GameAction, captai
     const ships = after.ships.filter(s => s.ownerId === captainId && after.dice[s.id]);
     if (ships.length === 0) return `${name} takes the wind.`;
     // The dice, not the points left: a ship already at sea spends hers the moment the dice land.
-    return `${name} rolls — ${ships
+    return `${name} rolls: ${ships
       .map(s => `${s.name} ${after.dice[s.id][0] + after.dice[s.id][1]}`)
       .join(', ')}.`;
   }

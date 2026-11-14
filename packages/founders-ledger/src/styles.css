@@ -7,8 +7,11 @@
 /* Layout: a weekly management pack for one person. Scoreboard first, then the section in hand. Bottle green for progress, brass for coaching. */
 :root{
   --bg:#F1F3EE; --surface:#FFFFFF; --sunk:#E6EAE3; --ink:#14231D; --muted:#56665D; --line:#D3D9D0;
-  --accent:#1D5A47; --accent-ink:#FFFFFF; --brass:#9A6B1C; --good:#2B7A4B; --bad:#B0402F;
+  --accent:#1D5A47; --accent-ink:#FFFFFF; --brass:#8A5F18; --good:#256F43; --bad:#B0402F;
   --good-bg:#E2F0E6; --bad-bg:#F6E3DF; --brass-bg:#F3EAD8;
+  /* Borders of things you type into or tap, and the empty part of a meter or ring. --line and --sunk
+     alone sat at about 1.1:1 against the cards, so chips, fields and empty tracks all but vanished. */
+  --control-line:#96A199; --track:#DDE3D9;
   /* The shared loader's names for this palette. Aliases, so dark mode follows by itself. Without the
      text, rule and bad ones it fell back to the portal's greys and red around a green motif. */
   --ui-ground:var(--bg); --ui-accent:var(--accent); --ui-text:var(--ink); --ui-text-soft:var(--muted);
@@ -16,11 +19,18 @@
   --display:"Avenir Next", "Segoe UI", system-ui, sans-serif;
   --body:"Helvetica Neue", Arial, system-ui, sans-serif;
   --mono:ui-monospace, "SFMono-Regular", Menlo, monospace;
+  /* UI kit (lib/kit.css), in the shape of this game's .btn. Aliases, so dark mode follows by itself. */
+  --kit-font:var(--body); --kit-radius:5px; --kit-font-size:14px; --kit-font-size-small:13px;
+  --kit-pad:10px 16px; --kit-pad-small:6px 12px;
+  --kit-text:var(--ink); --kit-text-soft:var(--muted); --kit-text-faint:var(--muted);
+  --kit-surface:var(--surface); --kit-field:var(--bg); --kit-rule:var(--control-line); --kit-rule-strong:var(--control-line);
+  --kit-accent:var(--accent); --kit-on-accent:var(--accent-ink); --kit-danger:var(--bad); --kit-focus:var(--brass);
 }
 :root[data-theme="dark"]{
   --bg:#0E1512; --surface:#16201B; --sunk:#111A16; --ink:#E4EBE6; --muted:#93A399; --line:#28352F;
   --accent:#5DB291; --accent-ink:#0B1410; --brass:#D4A458; --good:#62BF88; --bad:#E57D6C;
-  --good-bg:#16301F; --bad-bg:#36191A; --brass-bg:#2E2414; color-scheme:dark}
+  --good-bg:#16301F; --bad-bg:#36191A; --brass-bg:#2E2414;
+  --control-line:#56675D; --track:#2C3A33; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.55}
 .wrap{max-width:880px;margin:0 auto;padding-block:28px 64px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));display:grid;gap:22px}
@@ -48,13 +58,18 @@ nav button{font:500 14px var(--body);background:none;border:0;border-bottom:3px 
 nav button[aria-current="true"]{color:var(--ink);border-bottom-color:var(--accent)}
 nav button .n{font-family:var(--mono);font-size:11px;margin-left:6px;color:var(--brass)}
 nav button .due{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--bad);margin-left:6px;vertical-align:middle}
-button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible,a:focus-visible,summary:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+nav button:hover{color:var(--ink)}
+nav button{transition:color .15s ease,border-color .15s ease}
 section{display:grid;gap:18px}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:20px;display:grid;gap:14px;min-width:0;align-content:start}
 .card.call-to{border-color:var(--accent);border-width:2px}
-.btn{font:600 14px var(--body);padding:10px 16px;border-radius:5px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer}
+.btn{font:600 14px var(--body);padding:10px 16px;min-height:40px;border-radius:5px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-ink);cursor:pointer;line-height:1.25;transition:background-color .15s ease,border-color .15s ease,color .15s ease,box-shadow .15s ease}
+.btn:hover:not(:disabled){background:color-mix(in srgb, var(--accent) 86%, var(--ink))}
 .btn.ghost{background:transparent;color:var(--accent)}
-.btn.small{padding:6px 10px;font-size:13px}
+.btn.ghost:hover:not(:disabled){background:color-mix(in srgb, var(--accent) 10%, transparent)}
+.btn:active:not(:disabled){box-shadow:inset 0 2px 0 color-mix(in srgb, var(--ink) 18%, transparent)}
+.btn.small{padding:6px 12px;min-height:34px;font-size:13px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
 .spread{display:flex;gap:10px;flex-wrap:wrap;align-items:baseline;justify-content:space-between}
@@ -62,7 +77,7 @@ section{display:grid;gap:18px}
 /* Meters */
 .meter{display:grid;grid-template-columns:110px 1fr 74px;align-items:center;gap:12px;font-variant-numeric:tabular-nums}
 .meter .name{font-size:13px;font-weight:600}
-.bar{height:8px;background:var(--sunk);border-radius:4px;overflow:hidden}
+.bar{height:8px;background:var(--track);border-radius:4px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent);transition:width .5s ease}
 .meter .val{font-family:var(--mono);font-size:13px;text-align:right}
 .delta-up{color:var(--good)} .delta-down{color:var(--bad)}
@@ -73,7 +88,7 @@ section{display:grid;gap:18px}
 .rate-line{display:grid;grid-template-columns:1fr 44px;gap:12px;align-items:center}
 input[type=range]{width:100%;accent-color:var(--accent)}
 .rate-line output{font-family:var(--mono);font-size:16px;text-align:right}
-input[type=text],input[type=number],textarea,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:9px 11px;width:100%;min-width:0}
+input[type=text],input[type=number],textarea,select{font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--control-line);border-radius:5px;padding:9px 11px;width:100%;min-width:0}
 textarea{min-height:70px;resize:vertical}
 textarea.letter{min-height:220px;font-size:15px;line-height:1.6}
 /* Levels */
@@ -89,13 +104,13 @@ textarea.letter{min-height:220px;font-size:15px;line-height:1.6}
 @media (max-width:520px){.ladder{grid-template-columns:repeat(2,minmax(0,1fr))}}
 /* Calls */
 .dots{display:flex;gap:6px;flex-wrap:wrap}
-.dot{min-width:30px;height:30px;padding:0 8px;border-radius:15px;border:1px solid var(--line);background:var(--surface);font:500 12px var(--mono);color:var(--muted);cursor:pointer}
+.dot{min-width:30px;height:30px;padding:0 8px;border-radius:15px;border:1px solid var(--control-line);background:var(--surface);font:500 12px var(--mono);color:var(--muted);cursor:pointer}
 .dot.done{background:var(--sunk);color:var(--ink)}
 .dot.cur{border-color:var(--accent);color:var(--accent);border-width:2px}
 .dot.weekly{border-style:dashed}
 .scene{font-family:var(--display);font-size:clamp(20px,3.2vw,25px);font-weight:700;line-height:1.25}
 .opts{display:grid;gap:10px}
-.opt{text-align:left;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:14px 16px;cursor:pointer;display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start}
+.opt{text-align:left;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--control-line);transition:border-color .15s ease,background-color .15s ease;border-radius:6px;padding:14px 16px;cursor:pointer;display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:start}
 .opt:hover{border-color:var(--accent)}
 .opt .k{font-family:var(--mono);color:var(--brass);font-weight:500}
 .opt.picked{border-color:var(--accent);border-width:2px;background:var(--surface)}
@@ -116,7 +131,8 @@ textarea.letter{min-height:220px;font-size:15px;line-height:1.6}
 .hrs{display:inline-flex;align-items:center;gap:4px;font:500 11px var(--mono);color:var(--muted)}
 .hrs input{width:56px;padding:2px 6px;font:500 12px var(--mono)}
 .item .acts{display:flex;gap:4px}
-.icon-btn{font:500 12px var(--mono);background:none;border:1px solid var(--line);border-radius:4px;color:var(--muted);padding:4px 7px;cursor:pointer}
+.icon-btn{font:500 12px var(--mono);background:none;border:1px solid var(--control-line);border-radius:4px;color:var(--muted);padding:4px 8px;min-height:28px;cursor:pointer;transition:border-color .15s ease,color .15s ease}
+.icon-btn:hover{border-color:var(--accent);color:var(--ink)}
 .icon-btn.on{border-color:var(--brass);color:var(--brass)}
 .big3{background:var(--brass-bg);border-radius:6px;padding:16px 18px;display:grid;gap:8px}
 .big3 ol{margin:0;padding-left:20px;display:grid;gap:4px}
@@ -128,7 +144,8 @@ textarea.letter{min-height:220px;font-size:15px;line-height:1.6}
 .note .kd{font:500 11px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--good);padding-top:2px}
 .note .kd.space{color:var(--brass)}
 .games{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
-.game{text-align:left;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:12px 14px;cursor:pointer;display:grid;gap:4px}
+.game{text-align:left;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--control-line);transition:border-color .15s ease;border-radius:6px;padding:12px 14px;cursor:pointer;display:grid;gap:4px}
+.game:hover{border-color:var(--accent)}
 .game.sel{border-color:var(--accent);border-width:2px;background:var(--surface)}
 .game .gk{font:500 11px var(--mono);letter-spacing:.06em;text-transform:uppercase}
 .game .gk.default{color:var(--bad)} .game .gk.chosen{color:var(--good)}
@@ -166,7 +183,7 @@ a.btn{display:inline-block;text-decoration:none}
 
 /* Tap-first answers: rows of large targets, a quiet "Something else", optional own words behind details. */
 .chips-row{display:flex;flex-wrap:wrap;gap:8px}
-.pick{font:500 14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:10px 14px;min-height:42px;cursor:pointer;text-align:left;line-height:1.3}
+.pick{font:500 14px var(--body);color:var(--ink);background:var(--bg);border:1px solid var(--control-line);transition:border-color .15s ease,background-color .15s ease,color .15s ease;border-radius:999px;padding:10px 14px;min-height:42px;cursor:pointer;text-align:left;line-height:1.3}
 .pick:hover{border-color:var(--accent)}
 .pick.sel{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
 .pick.other{background:transparent;border-style:dashed;color:var(--muted)}
@@ -205,7 +222,7 @@ span.dot{display:inline-flex;align-items:center;justify-content:center;cursor:de
 .ai-wait{font-style:italic}
 .support{background:var(--bad-bg);border-radius:6px;padding:14px 16px;display:grid;gap:6px}
 .support p{margin:0}
-#rs-line{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink)}
+#rs-line{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--control-line);border-radius:6px;background:var(--bg);color:var(--ink)}
 
 /* Tom's rule on each reset, and the talk-it-through box. */
 .anchor{border-left:3px solid var(--accent);background:var(--surface);border-radius:6px;padding:12px 16px;display:grid;gap:4px}
@@ -216,7 +233,7 @@ textarea.talk{min-height:160px;font-size:16px}
 .habit{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line)}
 .habit:first-of-type{border-top:0}
 ul.brief{margin:0;padding-left:18px;display:grid;gap:4px;font-size:14px}
-pre.agenda{white-space:pre-wrap;font:15px/1.55 var(--body);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:14px;margin:0}
+pre.agenda{white-space:pre-wrap;overflow-wrap:anywhere;font:15px/1.55 var(--body);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:14px;margin:0}
 
 /* The daily game: rings, the day card, the calendar, weekly bars and honours. Colours are tokens only. */
 .day-card h2{font-size:22px}
@@ -224,20 +241,55 @@ pre.agenda{white-space:pre-wrap;font:15px/1.55 var(--body);background:var(--bg);
 .ring-cell{display:grid;justify-items:center;gap:2px;min-width:0}
 .ring{width:56px;height:56px;transform:rotate(-90deg)}
 .ring circle{fill:none;stroke-width:6}
-.ring .ring-bg{stroke:var(--sunk)}
+.ring .ring-bg{stroke:var(--track)}
 .ring .ring-fg{stroke:var(--accent);stroke-linecap:round;transition:stroke-dasharray .5s ease}
+/* A zero-length dash with a round cap still paints a dot, so an open ring read as just started. */
+.ring:not(.on) .ring-fg{stroke:transparent}
 .tiny{font-size:11px;line-height:1.3}
 .honour-next{display:grid;gap:4px;margin-top:4px}
 .honour{display:inline-block;font:600 13px var(--body);padding:6px 12px;border-radius:999px;background:var(--good-bg);color:var(--good)}
 .heat{display:grid;grid-template-rows:repeat(7,14px);grid-auto-flow:column;grid-auto-columns:14px;gap:3px;overflow-x:auto;padding-bottom:4px}
 .heat i,.heat-key i{display:inline-block;width:14px;height:14px;border-radius:3px}
 .heat-key{gap:6px;align-items:center}
-.h0{background:var(--sunk)}
-.h1{background:color-mix(in srgb, var(--accent) 35%, var(--sunk))}
-.h2{background:color-mix(in srgb, var(--accent) 65%, var(--sunk))}
+.h0{background:var(--track)}
+.h1{background:color-mix(in srgb, var(--accent) 35%, var(--track))}
+.h2{background:color-mix(in srgb, var(--accent) 65%, var(--track))}
 .h3{background:var(--accent)}
 .heat i.today{outline:2px solid var(--brass);outline-offset:1px}
 .bars{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));gap:8px;align-items:end;height:150px}
 .bar-col{display:grid;grid-template-rows:1fr auto auto;justify-items:center;height:100%;gap:2px}
 .bar-v{width:100%;max-width:28px;align-self:end;background:var(--accent);border-radius:4px 4px 0 0;min-height:2px}
 @media (prefers-reduced-motion: reduce){.ring .ring-fg{transition:none}}
+
+/* Polish: hover on tappable cards, phone-sized tap targets, and actions that wrap under their text on a phone. */
+.dot:hover{border-color:var(--accent)}
+details.own summary:hover{color:var(--ink)}
+.linkish:hover{text-decoration-thickness:2px}
+/* Phones and touch screens: every control at least 40px tall. A range input is only as tall as its
+   thumb (about 16px), so it gets the height itself; the track stays centred and looks the same. */
+@media (max-width:720px),(pointer:coarse){.btn.small{min-height:40px}.icon-btn{min-height:40px;padding:6px 10px}.dot{min-width:40px;height:40px;border-radius:20px}input[type=range]{height:40px;margin:0}.item input[type=checkbox]{width:24px;height:24px;margin-top:0}input[type=number]{min-height:40px;font-size:16px}nav button{min-height:40px}}
+@media (max-width:520px){
+  .item{grid-template-columns:22px 1fr}
+  .item .acts{grid-column:2;justify-content:flex-start}
+  .item>span:empty{display:none}
+  .card{padding:16px}
+  .rings .tiny{overflow-wrap:anywhere}
+}
+@media (prefers-reduced-motion: reduce){.btn,.pick,.opt,.game,.icon-btn,nav button{transition:none}}
+
+/* Phone-first: the header, the scoreboard and the tabs used to fill the whole first screen at 375px,
+   so the section in hand began below the fold. Tighter spacing, a smaller title, the tagline left to
+   wider screens, and a denser scoreboard and tab row bring the section up into view. */
+@media (max-width:520px){
+  .wrap{padding-top:14px;gap:14px}
+  h1{font-size:26px}
+  header .muted{display:none}
+  .reset-top{margin:0;min-height:44px}
+  .tile{padding:10px 12px}
+  .tile .fig{font-size:23px}
+  .tile .sub{line-height:1.35}
+  nav button{padding:10px 8px;min-height:40px}
+}
+/* Away: the holiday card. */
+.away-card{border-color:var(--accent);border-width:2px}
+.away-card h2{font-size:21px}

@@ -539,14 +539,16 @@ export default function MapView({
       </svg>
 
       <div style={{ ...zoomControls, right: 10 + (inset?.right ?? 0), bottom: 10 + (inset?.bottom ?? 0) }}>
-        <button style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in (+)" title="Zoom in (+)">
+        <button type="button" className="se-zoom" style={zoomButton} onClick={() => zoomBy(1.4)} aria-label="Zoom in (+)" title="Zoom in (+)">
           +
         </button>
-        <button style={zoomButton} onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out (-)" title="Zoom out (-)">
+        <button type="button" className="se-zoom" style={zoomButton} onClick={() => zoomBy(1 / 1.4)} aria-label="Zoom out (-)" title="Zoom out (-)">
           −
         </button>
         <button
-          style={{ ...zoomButton, fontSize: '0.6rem' }}
+          type="button"
+          className="se-zoom"
+          style={{ ...zoomButton, fontSize: '0.72rem', letterSpacing: '0.04em' }}
           onClick={fit}
           aria-label="Fit every depot in view (0)"
           title="Fit every depot in view (0)"
@@ -682,7 +684,7 @@ function VehicleMarker({
         {isRival ? haulierName : vehicle.name}
       </text>
       <title>
-        {`${vehicle.name} — ${haulierName}. ${
+        {`${vehicle.name}, ${haulierName}. ${
           vehicle.hold.length ? `${vehicle.hold.length} of 3 slots full` : 'running light'
         }${dest ? `, bound for ${DEPOT_BY_ID[dest]?.name ?? dest}` : ', in depot'}`}
       </title>
@@ -794,7 +796,8 @@ const zoomButton: React.CSSProperties = {
   height: 44,
   border: `1px solid ${CHART.coast}`,
   background: CHART.sea,
-  color: CHART.coast,
+  // The coast colour read 3.2:1 on the sea; the label ink is the chart's own dark text.
+  color: CHART.label,
   fontFamily: FONT.data,
   fontSize: '1.1rem',
   lineHeight: 1,

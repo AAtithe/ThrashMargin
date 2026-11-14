@@ -166,7 +166,7 @@ const nameOf = (v: TourView, id: number): string => nodeOf(v, id)?.name ?? `terr
 const INTRO: TourStep = {
   title: 'One turn, start to finish',
   body: (v, plan) =>
-    `I will point at one control at a time and wait while you use it. This is your real campaign — everything you do here counts. ` +
+    `I will point at one control at a time and wait while you use it. This is your real campaign: everything you do here counts. ` +
     `We will build something at ${nameOf(v, plan.homeId)} that pays for itself, raise troops there, and take ${nameOf(v, plan.targetId)}. Skip at any time.`,
   target: () => null,
   isComplete: () => false,
@@ -175,7 +175,7 @@ const INTRO: TourStep = {
 const SELECT_HOME: TourStep = {
   title: 'Select your capital',
   body: (v, plan) =>
-    `Click ${nameOf(v, plan.homeId)} on the map. Selecting a territory is what opens its orders — nothing in this game happens to a territory you have not selected.`,
+    `Click ${nameOf(v, plan.homeId)} on the map. Selecting a territory is what opens its orders. Nothing in this game happens to a territory you have not selected.`,
   target: (_v, plan) => `tm-territory-${plan.homeId}`,
   isComplete: (v, plan) => v.selected === plan.homeId,
 };
@@ -192,7 +192,7 @@ const RECRUIT: TourStep = {
 const BUILD: TourStep = {
   title: 'Build something that pays',
   body: (_v, plan) =>
-    `A settlement has slots, and an empty slot earns nothing. Open the slot and choose ${BUILDINGS[plan.building].name} — ${BUILDINGS[plan.building].desc.toLowerCase()} — for ${BUILDINGS[plan.building].cost.gold} gold and ${BUILDINGS[plan.building].cost.mat} materials. ` +
+    `A settlement has slots, and an empty slot earns nothing. Open the slot and choose ${BUILDINGS[plan.building].name} (${BUILDINGS[plan.building].desc.toLowerCase().replace(/\.$/, '')}) for ${BUILDINGS[plan.building].cost.gold} gold and ${BUILDINGS[plan.building].cost.mat} materials. ` +
     `It costs one action now and goes on paying every turn for the rest of the campaign. This is the half of the game the sword does not win.`,
   // The picker is two stages: the opener is replaced by the list of buildings once it is pressed.
   target: (_v, plan) => [`tm-build-${plan.building}`, 'tm-build-open'],
@@ -202,7 +202,7 @@ const BUILD: TourStep = {
 const PICK_TARGET: TourStep = {
   title: 'Pick what to take',
   body: (v, plan) =>
-    `With your own territory selected, click ${nameOf(v, plan.targetId)} — the ring round it marks it as somewhere you can reach from here. ` +
+    `With your own territory selected, click ${nameOf(v, plan.targetId)}. The ring round it marks it as somewhere you can reach from here. ` +
     `It holds ${nodeOf(v, plan.targetId)?.troops ?? '?'} troops, the softest thing next to you, and taking it widens everything: more income a turn, more ground to recruit on, more neighbours to go at next.`,
   target: (_v, plan) => `tm-territory-${plan.targetId}`,
   isComplete: (v, plan) => v.target === plan.targetId || nodeOf(v, plan.targetId)?.owner === v.state.activeFaction,
@@ -211,7 +211,7 @@ const PICK_TARGET: TourStep = {
 const ATTACK: TourStep = {
   title: 'Send them in',
   body: () =>
-    `The columns decide how many go and how many actions it costs. Combat here is arithmetic, not dice — what the panel forecasts is what will happen, not what might. ` +
+    `The columns decide how many go and how many actions it costs. Combat here is arithmetic, not dice: what the panel forecasts is what will happen, not what might. ` +
     `Leave a garrison behind: a territory with nothing in it is a territory anyone can walk into.`,
   target: () => 'tm-attack',
   keepClear: ['tm-attack-cancel'],
@@ -227,7 +227,7 @@ const ATTACK: TourStep = {
 const END_TURN: TourStep = {
   title: 'End the turn',
   body: v =>
-    `Ending the turn collects the income, feeds the troops — ${v.state.config.upkeep} food each, every turn, and a shortfall starves them — and lets everyone else move.`,
+    `Ending the turn collects the income, feeds the troops (${v.state.config.upkeep} food each, every turn, and a shortfall starves them) and lets everyone else move.`,
   target: () => 'tm-end-turn',
   isComplete: (v, _plan, memory) => v.state.turn > memory.turn,
 };
@@ -567,22 +567,23 @@ export default function GuidedTour({ view, plan, onFinish, hidden = false, onFoc
           pointing at and clicks that, rather than guessing from the copy. */}
       <div ref={cardRef} style={cardStyle} data-tour-step={String(stepIndex)} data-tour-target={shownTarget ?? ''} data-tour-done={done ? '1' : undefined}>
         <p style={stepLabel}>
-          Guided turn — {stepIndex + 1} of {steps.length}
+          Guided turn: {stepIndex + 1} of {steps.length}
         </p>
         <h3 style={cardTitle}>{step.title}</h3>
         <p style={cardBody}>{step.body(view, plan, memory)}</p>
         <div style={footer}>
-          <button type="button" style={ghostButton} onClick={finish}>
+          <button type="button" className="tm-tour-btn" style={ghostButton} onClick={finish}>
             {isLast ? 'Close' : 'Skip the tour'}
           </button>
           <div style={{ display: 'flex', gap: 6 }}>
             {!isFirst && (
-              <button type="button" style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
+              <button type="button" className="tm-tour-btn" style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
                 Back
               </button>
             )}
             <button
               type="button"
+              className="tm-tour-btn"
               style={isManual ? primaryButton : plainButton}
               onClick={() => (isLast ? finish() : setStepIndex(i => Math.min(i + 1, steps.length - 1)))}
             >

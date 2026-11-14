@@ -8,7 +8,7 @@
     "insiderSecret": {
       "id": "medici_ledger_glimpse",
       "name": "A glimpse of the Medici ledger",
-      "description": "An afternoon's careless talk in the Florence counting house — who the Medici are really lending to this season.",
+      "description": "An afternoon's careless talk in the Florence counting house: who the Medici are really lending to this season.",
       "value": 40,
       "expiresInWeeks": 12
     }

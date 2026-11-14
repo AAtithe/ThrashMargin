@@ -277,7 +277,8 @@ function MoveAndAttack({ s, map, act, region }: PlanetProps & { region: RegionId
                         className="fl-pl-btn"
                         aria-pressed={on}
                         disabled={full}
-                        title={full ? 'No room for another hero in this battle.' : s.heroes[h].wounded ? 'Wounded: starts at half health.' : undefined}
+                        aria-describedby={full ? 'fl-hero-pick-why' : undefined}
+                        title={s.heroes[h].wounded ? 'Wounded: starts at half health.' : undefined}
                         onClick={() => setHeroes(on ? chosen.filter(x => x !== h) : [...chosen, h])}
                         data-testid={`hero-pick-${h}`}
                       >
@@ -286,6 +287,11 @@ function MoveAndAttack({ s, map, act, region }: PlanetProps & { region: RegionId
                       </button>
                     );
                   })}
+                  {chosen.length >= s.options.heroesPerBattle && available.length > chosen.length && (
+                    <span className="fl-pl-why" id="fl-hero-pick-why">
+                      No room for another hero in this battle.
+                    </span>
+                  )}
                 </div>
               )}
               {setup && (

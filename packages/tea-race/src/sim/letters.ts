@@ -131,7 +131,7 @@ export function drawLetter(s: GameState, captain: Captain): { seed: number; lett
             `Your crews have been at sea too long and send a round robin aft: shore leave, or they will ` +
             `work the ships with a will to match. ${money(cost)} sees them ashore and content. Refuse, and ` +
             `every ship of yours sails ${LETTER_TERMS.sullenPenalty} points short on your next roll.`,
-          accept: `Grant leave — ${money(cost)}`,
+          accept: `Grant leave (${money(cost)})`,
           decline: 'Refuse them',
         },
       };
@@ -151,7 +151,7 @@ export function drawLetter(s: GameState, captain: Captain): { seed: number; lett
             `A shipwright at ${portName(offer.ship.location!)} has a slip standing empty and men idle. He ` +
             `will ${offer.fitting === 'copper' ? 'copper' : 'arm'} ${offer.ship.name} for ${money(cost)}, half ` +
             `the usual ${money(FITTING_PRICES[offer.fitting])}, if you say so today.`,
-          accept: `${offer.fitting === 'copper' ? 'Copper' : 'Arm'} her — ${money(cost)}`,
+          accept: `${offer.fitting === 'copper' ? 'Copper' : 'Arm'} her (${money(cost)})`,
           decline: 'Not now',
         },
       };

@@ -77,8 +77,8 @@ function hintFor(
   holdCount: number,
   slots: number,
 ): string {
-  if (holdCount >= slots) return 'her hold is full — she should be running it in';
-  if (portStruck(state, port)) return `${portName(port)} is shut by the strike — she can only sail`;
+  if (holdCount >= slots) return 'her hold is full, and she should be running it in';
+  if (portStruck(state, port)) return `${portName(port)} is shut by the strike, so she can only sail`;
 
   const supplies = PORT_BY_ID[port]?.supplies ?? [];
   const loadable = supplies.filter(
@@ -86,7 +86,7 @@ function hintFor(
   );
   if (loadable.length === 0) {
     return supplies.length === 0
-      ? `${portName(port)} sells nothing — she can only sail`
+      ? `${portName(port)} sells nothing, so she can only sail`
       : 'nothing here she can afford';
   }
 
