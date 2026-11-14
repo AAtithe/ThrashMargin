@@ -599,6 +599,42 @@ const T = new Date(new Date().setHours(12, 0, 0, 0)).getTime(); // noon today, s
     ok(!/[—–]/.test(JSON.stringify([P.lines, l.JOURNAL_KINDS, l.THEMES.map((x: { name: string }) => x.name)])), 'notes: no dashes');
   }
 
+  // Work the System: objective, principles, procedures moved one stage a week.
+  {
+    const l = createLedger(null);
+    ok(l.WTS_STAGES.length === 4 && l.WTS_SEED.length >= 12 && l.WTS_OBJECTIVE.every((x: { picks: string[] }) => x.picks.length >= 3), 'wts: stages, seeded systems, tap-first objective');
+    ok(!l.wtsMovedThisWeek() && l.nowItems().some((x: { k: string }) => x.k === 'wts'), 'wts: due on Today until a procedure moves this week');
+    const p = l.wtsAdd('Client onboarding', 'Firm');
+    ok(p && p.stage === 'spotted' && l.wtsAdd('client onboarding', 'Firm') === null && l.wtsAdd('  ', 'Firm') === null, 'wts: added once');
+    const td = l.wtsStartWriting(p.id);
+    ok(td && td.source === 'wts-' + p.id && td.type === 'Start', 'wts: writing it goes on the list');
+    const before = l.points();
+    ok(l.wtsAdvance(p.id).stage === 'written' && td.done, 'wts: written down ticks the action');
+    ok(l.points() - before > l.WTS_PTS, 'wts: a stage forward scores, and so does the action it finishes');
+    ok(l.wtsMovedThisWeek() && !l.nowItems().some((x: { k: string }) => x.k === 'wts'), 'wts: off Today once moved this week');
+    ok(l.wtsAdvance(p.id) === null, 'wts: no handing over without an owner');
+    p.owner = 'My operations lead';
+    ok(l.wtsAdvance(p.id).stage === 'handed' && l.state.todos.some((t: { source: string }) => t.source === 'wts-chk-' + p.id), 'wts: handed over, with a check-in on the list');
+    ok(l.wtsAdvance(p.id).stage === 'runs' && l.wtsAdvance(p.id) === null, 'wts: runs without me is the last stage');
+    ok(l.honours().find((h: { id: string }) => h.id === 'wts1').earned, 'wts: first procedure written earns System builder');
+    // A streak counts consecutive weeks with a move.
+    const q = l.wtsAdd('Payroll run', 'Firm');
+    q.log = [{ ts: NOW - 7 * DAY, stage: 'written' }, { ts: NOW - 14 * DAY, stage: 'written' }];
+    ok(l.wtsStreak() === 3, `wts: weeks in a row (got ${l.wtsStreak()})`);
+    l.state.wts.objective = { what: 'The finance team for hospitality businesses' };
+    ok(l.wtsObjectiveText().startsWith('What the firm is, in one line: The finance team'), 'wts: the objective reads as text to share');
+    ok(l.sessionBrief().lines.some((x: string) => x.startsWith('Work the System:')), 'wts: in the coach agenda');
+    ok(!/[—–]/.test(JSON.stringify([l.WTS_SEED, l.WTS_OBJECTIVE, l.WTS_PRINCIPLES, l.WTS_STAGES])), 'wts: no dashes');
+  }
+
+  // Today: one thing next, in a fixed order.
+  {
+    const l = createLedger(null);
+    const ks = l.nowItems().map((x: { k: string }) => x.k);
+    ok(ks[0] === 'review', `today: a first review comes first (got ${ks.join(',')})`);
+    ok(ks.includes('deli') && ks.includes('pulse') && ks.includes('wts'), 'today: the week’s numbers and the system are listed');
+  }
+
   // Reminders: a calendar file the phone understands.
   {
     const l = createLedger(null);

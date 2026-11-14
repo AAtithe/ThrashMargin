@@ -200,7 +200,7 @@ details.own[open] summary{margin-bottom:8px}
 span.dot{display:inline-flex;align-items:center;justify-content:center;cursor:default}
 .checks li.loud{grid-template-columns:1fr auto}
 /* On a phone the scoreboard fills the first screen, so the Reset gets a button above it. */
-.reset-top{display:none}
+.reset-top{display:block;width:100%;min-height:48px}.reset-top[hidden]{display:none}
 @media (max-width:660px){.reset-top{display:block;width:100%;margin:4px 0 14px;min-height:48px}.reset-top[hidden]{display:none}}
 /* System calls, momentum, phone-off day */
 .card.sys-card{border-color:var(--accent)}
@@ -362,3 +362,24 @@ nav.tabbar button{display:inline-flex;align-items:center;gap:8px}
 .bar-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,2fr) auto;gap:10px;align-items:center;padding:4px 0}
 .bar-row .bar>span{display:block;height:100%;background:var(--accent);border-radius:4px}
 .btn.live{border-color:var(--bad);color:var(--bad)}
+/* Today, redesigned: one thing next, the day's progress, then a short list. */
+.now-hero{border-left:4px solid var(--accent)}
+.now-hero h2{margin:2px 0 4px}
+.now-hero.clear{border-left-color:var(--good)}
+.progress .rings.mini{display:flex;gap:10px;margin:0}
+.progress .rings.mini .ring-cell{display:grid;justify-items:center;gap:2px}
+.progress .rings.mini .ring{width:34px;height:34px}
+.progress .done-line{margin-top:8px}
+.quick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:12px}
+.quick .btn{padding-left:4px;padding-right:4px;white-space:nowrap}
+.now-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.now-row:first-of-type{border-top:0}
+.big3-mini ol{margin:6px 0 0;padding-left:20px;display:grid;gap:4px}
+/* Work the System */
+.proc{border-top:1px solid var(--line);padding:12px 0;display:grid;gap:8px}
+.stages{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+.stages i{height:6px;border-radius:3px;background:var(--track)}
+.stages i.on{background:var(--accent)}
+.proc select{max-width:260px}
+/* Today on a phone: the name is on the home-screen icon, so the screen starts with the work. */
+@media (max-width:720px){header{display:none}}
