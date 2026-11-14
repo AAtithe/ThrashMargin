@@ -293,3 +293,15 @@ details.own summary:hover{color:var(--ink)}
 /* Away: the holiday card. */
 .away-card{border-color:var(--accent);border-width:2px}
 .away-card h2{font-size:21px}
+/* Bookends, the firm pulse, handovers and the deli turnaround. */
+.bookend{border-left:4px solid var(--brass)}
+.bookend.done{border-left-color:var(--good)}
+.pulse-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:8px 0}
+@media (max-width:520px){.pulse-grid{grid-template-columns:1fr}}
+.spark{width:100%;max-width:140px;height:32px;margin-top:4px}
+.spark polyline{fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.num-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:10px 0}
+.num-field{display:grid;gap:4px}
+.num-field input{width:100%;box-sizing:border-box}
+.pull-panel{border-top:1px solid var(--line);margin-top:10px;padding-top:10px;display:grid;gap:8px}
+td.num,th.num{text-align:right}
