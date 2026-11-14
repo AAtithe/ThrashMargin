@@ -507,7 +507,7 @@ const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
-const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],away:[],mornings:[],evenings:[],pulse:[],people:DEFAULT_PEOPLE.slice(),handovers:[],monthCloses:[],honourAt:{},deli:{weeks:[],targets:{cogs:32,labour:30}},offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
+const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],away:[],mornings:[],evenings:[],pulse:[],people:DEFAULT_PEOPLE.slice(),handovers:[],monthCloses:[],honourAt:{},journal:[],reminderDay:'',deli:{weeks:[],targets:{cogs:32,labour:30}},offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
 
 function migrate(o){
   if(!o)return blank();
@@ -594,7 +594,7 @@ function levels(){
 
 /* ---------- The Reset: derived numbers ---------- */
 function resetsToday(now=Date.now()){const k=dayKey(now);return (S.resets||[]).filter(r=>dayKey(r.ts)===k).length;}
-const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+const plural=(n,w,many)=>`${n} ${n===1?w:(many||w+'s')}`;
 /* Facts from the player's own ledger, never a slogan. Each one can be traced to something they did. */
 function receipts(){
   const out=[];
@@ -771,6 +771,7 @@ function sessionBrief(now=Date.now()){
   const goods=S.notes.filter(n=>n.kind==='good'&&n.ts>since);if(goods.length){lines.push(`${plural(goods.length,'good thing')} logged`);topics.push(`What is working: ${goods[goods.length-1].text}`);}
   const ruled=rs.filter(r=>r.rule);if(ruled.length)lines.push(`Chose my own rules on ${plural(ruled.length,'hard moment')}`);
   if(pulseLine())lines.push('Firm pulse: '+pulseLine());
+  const jr=(S.journal||[]).filter(e=>e.ts>since);if(jr.length){const P=journalPatterns(now);lines.push(`${plural(jr.length,'note')} written${P.themes[0]&&P.themes[0].n?`, mostly about ${P.themes[0].name.toLowerCase()}`:''}`);if(P.stale)topics.push(`${plural(P.stale,'idea')} I have not decided on`);}
   const ds=deliStatus();if(ds){lines.push(`Deli: ${ds.profit>=0?'making':'losing'} ${gbp(Math.abs(ds.profit))} a week, cash ${gbp(ds.cash)}${ds.cashUp!==null?` (${ds.cashUp>=0?'up':'down'} ${gbp(Math.abs(ds.cashUp))})`:''}, ${ds.run?`in profit ${plural(ds.run,'week')} running`:`break-even ${gbp(ds.breakEven)} of sales a week`}`);if(ds.profit<0)topics.push('The deli: which lever next, and who owns it');}
   const ho=(S.handovers||[]).filter(h=>h.ts>since);if(ho.length){const open=ho.filter(h=>!handoverDone(h));lines.push(`Pulled in ${plural(ho.length,'time')}; ${ho.length-open.length} handed over`);const nob=ho.filter(h=>h.who==='Nobody yet');if(nob.length)topics.push(`Nobody owns this yet: ${nob[nob.length-1].what.toLowerCase()}`);}
   SESSION_TOPICS.forEach(x=>topics.push(x));
@@ -886,6 +887,8 @@ const HONOURS=[
   {id:'month1',name:'Month closed',desc:'Your first monthly close',goal:1,v:()=>(S.monthCloses||[]).length},
   {id:'deli1',name:'Numbers, not feelings',desc:'First deli week logged',goal:1,v:()=>deliWeeks().length},
   {id:'deli4',name:'Turning it round',desc:'The deli in profit four weeks running',goal:4,v:()=>{const s=deliStatus();return s?s.run:0;}},
+  {id:'jr20',name:'Thinking on paper',desc:'Twenty notes written',goal:20,v:()=>(S.journal||[]).length},
+  {id:'idea3',name:'Idea to action',desc:'Three ideas made into actions',goal:3,v:()=>(S.journal||[]).filter(e=>e.status==='acted').length},
   {id:'hol1',name:'Properly off',desc:'A holiday week, fully or mostly switched off',goal:1,v:()=>S.reviews.filter(r=>r.weekType==='Holiday'&&(r.switchOff==='Fully'||r.switchOff==='Mostly')).length},
   {id:'off1',name:'The firm held',desc:'Your first phone-off day',goal:1,v:()=>(S.offDays||[]).filter(o=>o.status==='back').length},
   {id:'coach3',name:'Prepared',desc:'Three coaching sessions with an agenda',goal:3,v:()=>(S.sessions||[]).filter(s=>s.status==='done').length},
@@ -996,6 +999,69 @@ function closeMonth(key,focus,changeRule,now=Date.now()){if(monthClosed(key))ret
   if(changeRule)addTodo({text:'Change one of my rules: the one I broke most last month',type:'Start',h:'week',hours:0,source:'month-rule-'+key});return m;}
 const leverTodo=id=>S.todos.find(t=>t.source==='deli-'+id)||null;
 
+/* ---------- Notes: thoughts, ideas, worries, wins and voice notes, read for their patterns ---------- */
+const JOURNAL_KINDS=[{k:'thought',name:'Thought',many:'Thoughts'},{k:'idea',name:'Idea',many:'Ideas'},{k:'worry',name:'Worry',many:'Worries'},{k:'win',name:'Win',many:'Wins'},{k:'note',name:'Note',many:'Notes'}];
+const THEMES=[
+  {k:'firm',name:'The firm',re:/\b(ws|firm|clients?|fees?|pipeline|billing|proposals?|practice|accounts)\b/i},
+  {k:'deli',name:'The deli',re:/\b(deli|shop|till|takings|suppliers?|menu|stock)\b/i},
+  {k:'money',name:'Money and profit',re:/(\bcash\b|\bprofit|\bmoney\b|\bmargins?\b|\bpric(e|es|ing)\b|\bbank\b|£|\brevenue\b|\bcosts?\b|\bdebt\b)/i},
+  {k:'people',name:'People and handing over',re:/\b(team|staff|hir(e|ing)|managers?|delegat\w*|hand ?over|handed|people|recruit\w*)\b/i},
+  {k:'space',name:'Time and space',re:/\b(time|space|holiday|weekend|hours|rest|switch(ed)? off|tired|busy|overwhelm\w*)\b/i},
+  {k:'health',name:'Health and energy',re:/\b(pilates|gym|sleep|health|exercise|anxious|anxiety|stress\w*|energy|walk)\b/i},
+  {k:'family',name:'Family and life',re:/\b(family|kids|children|wife|partner|home|friends|life)\b/i},
+  {k:'growth',name:'Growth and new ideas',re:/\b(launch|grow\w*|product|service|marketing|sales|sell|offer|new client)\b/i}
+];
+const themesOf=text=>THEMES.filter(x=>x.re.test(text)).map(x=>x.k);
+const partOfDay=ts=>{const h=new Date(ts).getHours();return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night';};
+function journalAdd(text,kind,o={},now=Date.now()){
+  const v=String(text||'').trim().slice(0,4000);if(!v)return null;
+  const e={id:'j'+uid(),ts:now,text:v,kind:JOURNAL_KINDS.some(x=>x.k===kind)?kind:'thought',voice:!!o.voice,pin:false,status:kind==='idea'?'open':''};
+  S.journal=(S.journal||[]).concat(e).slice(-1500);return e;
+}
+function journalPatterns(now=Date.now()){
+  const all=S.journal||[];const recent=all.filter(e=>now-e.ts<=30*DAY),before=all.filter(e=>now-e.ts>30*DAY&&now-e.ts<=60*DAY);
+  const count=(list,f)=>list.filter(f).length;
+  const themes=THEMES.map(x=>({k:x.k,name:x.name,n:count(recent,e=>x.re.test(e.text)),was:count(before,e=>x.re.test(e.text))})).filter(x=>x.n||x.was).sort((a,b)=>b.n-a.n);
+  const kinds=Object.fromEntries(JOURNAL_KINDS.map(x=>[x.k,count(recent,e=>e.kind===x.k)]));
+  const parts={morning:0,afternoon:0,evening:0,night:0};recent.forEach(e=>{parts[partOfDay(e.ts)]++;});
+  const worryNight=count(recent,e=>e.kind==='worry'&&partOfDay(e.ts)==='night');
+  const ideas=all.filter(e=>e.kind==='idea');const open=ideas.filter(e=>e.status==='open');
+  const stale=open.filter(e=>now-e.ts>14*DAY);
+  const lines=[];
+  if(recent.length){
+    if(themes[0]&&themes[0].n)lines.push(`Most of what you have written this month is about ${themes[0].name.toLowerCase()}: ${themes[0].n} of ${plural(recent.length,'entry','entries')}.`);
+    const rising=themes.filter(x=>x.was&&x.n>=x.was+3)[0];if(rising)lines.push(`${rising.name} is rising: ${rising.n} entries this month against ${rising.was} the month before. Worth an agenda item.`);
+    if(kinds.worry>kinds.win*2&&kinds.worry>=3)lines.push(`Worries outnumber wins ${kinds.worry} to ${kinds.win}. The wins are happening; log one each evening so the ledger tells the whole story.`);
+    else if(kinds.win>=kinds.worry&&kinds.win>=2)lines.push(`Wins match or beat worries, ${kinds.win} to ${kinds.worry}. That is the evidence that you are enough, written in your own hand.`);
+    if(worryNight>=2)lines.push(`${plural(worryNight,'worry','worries')} written at night. Night is when the story is loudest and the facts are furthest away; park it and read it again in the morning.`);
+    if(kinds.idea>=3&&!ideas.some(e=>e.status==='acted'&&now-(e.decidedAt||e.ts)<=30*DAY))lines.push(`${plural(kinds.idea,'idea')} this month and none turned into an action yet. Pick the best one and give it a first step.`);
+  }
+  if(stale.length)lines.push(`${plural(stale.length,'idea')} waiting more than two weeks for a decision. An undecided idea becomes another thing to carry: act, park or drop.`);
+  return {total:all.length,recent:recent.length,themes,kinds,parts,ideasOpen:open.length,ideasActed:ideas.filter(e=>e.status==='acted').length,stale:stale.length,voice:count(recent,e=>e.voice),lines};
+}
+function decideIdea(id,how,now=Date.now()){
+  const e=(S.journal||[]).find(x=>x.id===id);if(!e)return null;
+  if(how==='acted'){e.status='acted';e.decidedAt=now;return addTodo({text:e.text.length>140?e.text.slice(0,137)+'...':e.text,type:'Start',h:'month',hours:1,source:'jr-'+e.id});}
+  if(how==='parked'||how==='dropped'){e.status=how;e.decidedAt=now;return e;}
+  return null;
+}
+
+/* ---------- The daily reminder: the first thing he sees on his first open of the day ---------- */
+function dailyReminder(now=Date.now()){
+  const n=Math.floor(dayStart(now)/DAY);
+  const pinned=(S.journal||[]).filter(e=>e.pin).map(e=>e.text);
+  const pool=pinned.length?pinned:rules();
+  const line=pool[n%pool.length]||'';
+  const rs=receipts();const fact=rs.length?rs[n%rs.length]:'';
+  const nudges=[];
+  if(!todayOf(S.mornings)&&inWindow(MORNING_HOURS,now))nudges.push('Set today\u2019s one thing before the inbox.');
+  const open=(S.journal||[]).filter(e=>e.kind==='idea'&&e.status==='open').length;if(open)nudges.push(`${plural(open,'idea')} waiting for a decision in Notes.`);
+  const ds=deliStatus();if(ds&&weekNo(deliWeeks().slice(-1)[0].ts)!==weekNo(now)&&new Date(now).getDay()===1)nudges.push('Monday: log last week\u2019s deli numbers.');
+  if(reviewDue()&&new Date(now).getDay()===5)nudges.push('Friday review is due.');
+  return {line,pinned:pinned.length>0,fact,nudges};
+}
+const reminderDue=(now=Date.now())=>S.reminderDay!==dayKey(now);
+
 function fearGap(){
   const rs=S.reviews.filter(r=>r.fear&&r.fear!=='Nothing this week'&&r.fearOutcome);
   const better=rs.filter(r=>r.fearOutcome==='never'||r.fearOutcome==='better').length;
@@ -1016,7 +1082,8 @@ function renderTabs(){
   const unplayed=S.calls.filter(c=>S.answers[c.id]==null).length+(S.pendingCall?1:0)+FOUNDING.filter(c=>S.answers[c.id]==null).length;
   const sysWaiting=sysToday().call&&!sysToday().played;
   const oc=offCurrent();const offDue=oc&&dayKey(oc.day)!==dayKey(Date.now())&&oc.day<Date.now();
-  const badge={today:sysWaiting?'1':'',off:offDue?'due':'',review:reviewDue()?'due':'',coach:openSession()?'1':'',actions:open?String(open):'',calls:unplayed?String(unplayed):''};
+  const ideasOpen=(S.journal||[]).filter(e=>e.kind==='idea'&&e.status==='open').length;
+  const badge={journal:ideasOpen?String(ideasOpen):'',today:sysWaiting?'1':'',off:offDue?'due':'',review:reviewDue()?'due':'',coach:openSession()?'1':'',actions:open?String(open):'',calls:unplayed?String(unplayed):''};
   const mark=n=>n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:'';
   const g=groupOf(S.view);
   $('#tabs').innerHTML=GROUPS.map(G=>{const bs=G.pages.map(([k])=>badge[k]).filter(Boolean);const n=bs.includes('due')?'due':bs.length?String(bs.reduce((a,x)=>a+(Number(x)||0),0)):'';
@@ -1030,7 +1097,7 @@ const GROUPS=[
   {k:'today',label:'Today',ico:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',pages:[['today','Today'],['reset','Reset']]},
   {k:'week',label:'Week',ico:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',pages:[['actions','Actions'],['review','Friday review'],['off','Phone off']]},
   {k:'numbers',label:'Numbers',ico:'<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',pages:[['deli','Deli'],['stats','Stats'],['month','Month']]},
-  {k:'coach',label:'Coach',ico:'<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',pages:[['coach','Session'],['calls','Play']]},
+  {k:'coach',label:'Coach',ico:'<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',pages:[['journal','Notes'],['coach','Session'],['calls','Play']]},
   {k:'future',label:'Future',ico:'<svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',pages:[['future','2030']]}
 ];
 const groupOf=view=>GROUPS.find(G=>G.pages.some(([k])=>k===view))||GROUPS[0];
@@ -1051,6 +1118,7 @@ function vToday(){
   const played=S.reviews.filter(r=>r.game);const onGame=chosen?played.filter(r=>r.game===chosen.id).length:0;
   const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
   return `<section>
+  ${vReminderCard()}
   ${awayNow()?vAwayCard():''}
   ${vMonthCard()}
   ${vBookendCard()}
@@ -1134,6 +1202,7 @@ function vReset(){
     :RD.concern?SUPPORT:RD.talking?'<p class="muted ai-wait">Your coach is listening...</p>'
     :`<p class="muted">Say it the way you would say it out loud. Tap the microphone on your phone\u2019s keyboard and speak, for as long as you need.</p>
       <textarea id="rs-talk" class="talk" placeholder="What is going on, in your own words" aria-label="Talk it through">${esc(RD.talkText||'')}</textarea>
+      <div class="row"><button class="btn ghost small" data-act="rsSpeak" id="rs-speak" aria-pressed="false">Speak</button></div>
       <p class="small muted">${AI?'It goes to your coach with the facts from your ledger. Nobody at the firm sees it.':'Your coach is switched off on this portal, so the ledger will match what you say to a reset and take you through it.'}</p>
       <div class="row"><button class="btn" data-act="talkSend">${AI?'Coach me':'Take me through it'}</button><button class="btn small ghost" data-act="resetBack">Back</button></div>`}</div>`;}
   else if(RD.step==='sort'){const L=LOUD.find(x=>x.k===RD.loud);body=`<div class="card">${head(2,'Whose is it?')}
@@ -1566,6 +1635,51 @@ function vReview(){
 }
 
 /* ---------- Actions ---------- */
+function vReminderCard(){
+  if(!reminderDue())return '';const r=dailyReminder();
+  return `<div class="card reminder" id="daily-reminder"><div class="eyebrow">Today\u2019s reminder</div>
+   <p class="reminder-line">${esc(r.line)}</p>
+   ${r.fact?`<p class="small">${esc(r.fact)}</p>`:''}
+   ${r.nudges.length?`<ul class="small nudges">${r.nudges.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}
+   <div class="row"><button class="btn small" data-act="reminderSeen">Got it</button><span class="small muted">${r.pinned?'From your pinned notes.':'From your rules. Pin any note in Notes to see it here.'}</span></div></div>`;
+}
+let JR={kind:'thought',filter:'all',voice:false,coach:null,asking:false};
+function vJournal(){
+  const P=journalPatterns();const list=(S.journal||[]).slice().reverse();
+  const F=JR.filter;const shown=list.filter(e=>F==='all'||(F==='voice'?e.voice:F==='pinned'?e.pin:e.kind===F)).slice(0,40);
+  const ideas=list.filter(e=>e.kind==='idea'&&e.status==='open');
+  const kindName=k=>(JOURNAL_KINDS.find(x=>x.k===k)||{}).name||k;
+  const time=ts=>new Date(ts).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  return `<section>
+  <div class="card"><div class="eyebrow">Notes</div><h2>Get it out of your head</h2>
+   <p class="muted small">Thoughts, ideas, worries and wins, typed or spoken. The ledger reads them for patterns so you can see what keeps coming up and do something about it.</p>
+   <div class="kinds" role="group" aria-label="What is it">${JOURNAL_KINDS.map(x=>`<button type="button" class="pick ${JR.kind===x.k?'sel':''}" data-act="jrKind" data-k="${x.k}" aria-pressed="${JR.kind===x.k}">${x.name}</button>`).join('')}</div>
+   <textarea id="jr-text" class="talk" placeholder="What is on your mind" aria-label="Your note">${esc(JR.draft||'')}</textarea>
+   <div class="row"><button class="btn ghost small" data-act="jrSpeak" id="jr-speak" aria-pressed="false">Speak</button><button class="btn" data-act="jrSave">Save</button></div>
+   <p class="small muted">Speak records your voice and writes it down as you talk. If your phone will not allow it, tap the microphone on the keyboard instead.</p></div>
+  <div class="card"><div class="eyebrow">Patterns</div><h3>${P.recent?`${plural(P.recent,'entry','entries')} in the last 30 days`:'Patterns appear after a few entries'}</h3>
+   ${P.recent?`<div class="mo-grid">${JOURNAL_KINDS.slice(0,4).map(x=>`<div class="mo"><span class="lab">${x.many}</span><span class="fig">${P.kinds[x.k]}</span></div>`).join('')}</div>`:''}
+   ${P.themes.filter(x=>x.n).length?`<div class="lbl small" style="margin-top:12px">What it is about</div>${P.themes.filter(x=>x.n).slice(0,6).map(x=>{const max=P.themes[0].n||1;return `<div class="bar-row"><span class="small">${esc(x.name)}</span><span class="bar"><span style="width:${Math.round(x.n/max*100)}%"></span></span><span class="small num">${x.n}${x.was?` <span class="muted">(${x.was})</span>`:''}</span></div>`;}).join('')}<p class="small muted">In brackets: the month before.</p>`:''}
+   ${P.recent?`<p class="small">When you write: ${['morning','afternoon','evening','night'].map(k=>`${k} ${P.parts[k]}`).join(', ')}.${P.voice?` ${plural(P.voice,'voice note')}.`:''}</p>`:''}
+   ${P.lines.length?`<div class="receipt"><div class="eyebrow">What the ledger sees</div>${P.lines.map(x=>`<p>${esc(x)}</p>`).join('')}</div>`:''}
+   ${AI&&(S.journal||[]).length>=5?`<div class="row"><button class="btn small" data-act="jrCoach"${JR.asking?' disabled':''}>${JR.asking?'Reading your notes':'Ask the coach to read the pattern'}</button></div>`:''}
+   ${JR.coach?vJournalCoach(JR.coach):''}</div>
+  ${ideas.length?`<div class="card"><div class="eyebrow">Ideas to decide</div><h3>${plural(ideas.length,'idea')} waiting</h3>
+   ${ideas.slice(0,8).map(e=>`<div class="idea"><p>${esc(e.text)}</p><div class="small muted">${time(e.ts)}</div><div class="row"><button class="btn small" data-act="jrDecide" data-id="${e.id}" data-how="acted">Make it an action</button><button class="btn small ghost" data-act="jrDecide" data-id="${e.id}" data-how="parked">Park</button><button class="btn small ghost" data-act="jrDecide" data-id="${e.id}" data-how="dropped">Drop</button></div></div>`).join('')}</div>`:''}
+  <div class="card"><div class="eyebrow">Everything</div>
+   <div class="chips-row" role="group" aria-label="Show">${[['all','All'],['idea','Ideas'],['thought','Thoughts'],['worry','Worries'],['win','Wins'],['note','Notes'],['voice','Voice'],['pinned','Pinned']].map(([k,l])=>`<button type="button" class="pick ${F===k?'sel':''}" data-act="jrFilter" data-k="${k}" aria-pressed="${F===k}">${l}</button>`).join('')}</div>
+   ${shown.length?shown.map(e=>`<div class="entry"><div class="entry-head"><span class="tag ${e.kind}">${kindName(e.kind)}</span>${e.voice?'<span class="tag">Voice</span>':''}${e.status&&e.status!=='open'?`<span class="tag">${e.status==='acted'?'Action':e.status==='parked'?'Parked':'Dropped'}</span>`:''}<span class="small muted">${time(e.ts)}</span></div>
+     <p>${esc(e.text)}</p>
+     <div class="small muted">${themesOf(e.text).map(k=>(THEMES.find(x=>x.k===k)||{}).name).join(' \u00B7 ')}</div>
+     <div class="row"><button class="icon-btn ${e.pin?'on':''}" data-act="jrPin" data-id="${e.id}" aria-pressed="${!!e.pin}">${e.pin?'Pinned as a reminder':'Pin as a reminder'}</button><button class="icon-btn" data-act="jrDel" data-id="${e.id}">Delete</button></div></div>`).join(''):'<p class="small muted">Nothing here yet.</p>'}
+  </div></section>`;
+}
+function vJournalCoach(c){
+  if(c.concern)return `<div class="receipt"><p>This sounds heavy. If you are struggling, talk to someone today: your GP, or Samaritans on 116 123, any time.</p></div>`;
+  return `<div class="receipt"><div class="eyebrow">The coach\u2019s read</div>${(c.patterns||[]).map(x=>`<p><span style="font-weight:600">${esc(x.theme)}.</span> ${esc(x.read)}</p>`).join('')}
+   ${(c.improve||[]).length?`<div class="lbl small">Three improvements</div>${c.improve.map((x,i)=>`<div class="habit"><span>${esc(x)}</span><button class="btn small" data-act="jrImprove" data-i="${i}">Add</button></div>`).join('')}`:''}
+   ${c.reminder?`<p class="small">Suggested reminder: ${esc(c.reminder)} <button class="icon-btn" data-act="jrPinCoach">Pin it</button></p>`:''}</div>`;
+}
 function vHandovers(){
   const map=handoverMap();if(!map.length)return '';
   return `<div class="card"><div class="eyebrow">Handover map</div><h3>What you get pulled into, and who could own it</h3>
@@ -1724,7 +1838,7 @@ function announceHonours(){
 function render(){
   renderBoard();renderTabs();
   const rt=byId('resetTop');if(rt)rt.hidden=S.view==='reset';
-  const v={today:vToday,stats:vStats,deli:vDeli,month:vMonth,coach:vCoach,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
+  const v={today:vToday,stats:vStats,deli:vDeli,month:vMonth,journal:vJournal,coach:vCoach,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
   $('#view').innerHTML=v();
   announceHonours();
 }
@@ -1818,6 +1932,26 @@ async function coachLetter(btn){
 }
 
 /* The Reset sits below the scoreboard, so on a phone "top" means its own steps, not the page. */
+/* Speaking a note: the browser's own speech recognition where the phone allows it, writing into
+   the box as he talks. Anything else falls back to the keyboard's microphone. Nothing is recorded
+   or stored but the words. */
+let SPEECH=null;
+function stopSpeech(){if(SPEECH){try{SPEECH.stop();}catch{}SPEECH=null;}}
+function toggleSpeech(id,btn){
+  if(SPEECH){stopSpeech();return;}
+  const R=typeof window!=='undefined'&&(window.SpeechRecognition||window.webkitSpeechRecognition);
+  const ta=byId(id);
+  if(!R||!ta){if(ta)ta.focus();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  let rec;try{rec=new R();}catch{if(ta)ta.focus();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  const base=ta.value?ta.value.replace(/\s*$/,' '):'';
+  rec.lang='en-GB';rec.continuous=true;rec.interimResults=true;
+  rec.onresult=ev=>{let txt='';for(let i=0;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;ta.value=base+txt.trim();if(id==='jr-text'){JR.draft=ta.value;JR.voice=true;}if(id==='rs-talk'&&RD)RD.talkText=ta.value;};
+  const done=()=>{SPEECH=null;const b=byId(btn.id)||btn;b.textContent='Speak';b.setAttribute('aria-pressed','false');b.classList.remove('live');};
+  rec.onend=done;
+  rec.onerror=ev=>{done();if(ev&&(ev.error==='not-allowed'||ev.error==='service-not-allowed'))setStatus('The microphone is not allowed here. Tap the microphone on your keyboard instead.');};
+  try{rec.start();}catch{done();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  SPEECH=rec;btn.textContent='Stop';btn.setAttribute('aria-pressed','true');btn.classList.add('live');setStatus('Listening. Tap Stop when you are done.');
+}
 function toTop(){if(S.view==='reset'||S.view==='off'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
 function endReset(o){
   if(!RD||!RD.loud||!RD.sort)return;
@@ -1836,6 +1970,7 @@ let reviewGame='';
 on('input',e=>{
   const t=e.target;
   if(t.dataset.out){const o=byId(t.dataset.out);if(o)o.textContent=t.value;}
+  if(t.id==='jr-text')JR.draft=t.value;
   if(t.dataset.future){const k=t.dataset.future;S.future[k]=t.type==='number'?Number(t.value):t.value;save();if(t.type==='number')renderBoard();}
   if(t.dataset.lq){S.letterQ.answers[t.dataset.lq]=t.value;save();}
   if(t.dataset.pillar){S.future.pillars[t.dataset.pillar].now=Number(t.value);save();}
@@ -1970,6 +2105,22 @@ on('click',async e=>{
       break;}
     case 'awayPull':{const a=awayNow();if(a){a.pulls=(a.pulls||[]).concat(Date.now());save();render();setStatus('Logged. Next time, ask: who could have decided that?');}break;}
     case 'pullStart':PULL=true;render();break;
+    case 'rsSpeak':toggleSpeech('rs-talk',b);break;
+    case 'reminderSeen':S.reminderDay=dayKey(Date.now());save();render();break;
+    case 'jrKind':JR.kind=d.k;{const ta=byId('jr-text');if(ta)JR.draft=ta.value;}render();break;
+    case 'jrFilter':JR.filter=d.k;{const ta=byId('jr-text');if(ta)JR.draft=ta.value;}render();break;
+    case 'jrSave':{stopSpeech();const ta=byId('jr-text');const v=ta?ta.value.trim():'';if(!v){setStatus('Write or say something first.');break;}
+      const e=journalAdd(v,JR.kind,{voice:JR.voice});JR.draft='';JR.voice=false;save();render();
+      setStatus(e.kind==='idea'?'Idea saved. Decide it within two weeks: act, park or drop.':e.kind==='worry'?'Out of your head and on paper. Now it is a fact you can sort.':e.kind==='win'?'Win logged. That is evidence.':'Saved.');break;}
+    case 'jrSpeak':toggleSpeech('jr-text',b);break;
+    case 'jrDecide':{const r=decideIdea(d.id,d.how);if(!r)break;save();render();setStatus(d.how==='acted'?'On your list as a Start.':d.how==='parked'?'Parked. It is still here when you want it.':'Dropped. One less thing to carry.');break;}
+    case 'jrPin':{const e=(S.journal||[]).find(x=>x.id===d.id);if(!e)break;e.pin=!e.pin;save();render();setStatus(e.pin?'Pinned. It will come round as your daily reminder.':'Unpinned.');break;}
+    case 'jrDel':{S.journal=(S.journal||[]).filter(x=>x.id!==d.id);save();render();setStatus('Deleted.');break;}
+    case 'jrCoach':{if(JR.asking)break;JR.asking=true;render();
+      const notes=(S.journal||[]).slice(-60).map(e=>({kind:e.kind,when:new Date(e.ts).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),text:e.text.slice(0,400)}));
+      askCoach('patterns',{notes,rules:rules()}).then(r=>{JR.asking=false;JR.coach=r||null;if(!r)setStatus('The coach could not answer just now. The ledger\u2019s own read is above.');render();});break;}
+    case 'jrImprove':{const x=JR.coach&&JR.coach.improve&&JR.coach.improve[Number(d.i)];if(!x)break;addTodo({text:x,type:'Start',h:'week',hours:0,source:'jri-'+uid()});save();render();setStatus('On your list.');break;}
+    case 'jrPinCoach':{if(!JR.coach||!JR.coach.reminder)break;const e=journalAdd(JR.coach.reminder,'note');e.pin=true;save();render();setStatus('Pinned as a daily reminder.');break;}
     case 'pullCancel':PULL=false;render();break;
     case 'pullSave':{const what=picked('pull-what')[0],who=picked('pull-who')[0];if(!what||!who){setStatus('Pick what pulled you in and who could have decided it.');break;}
       PULL=false;logPull(what.slice(0,120),who.slice(0,80));save();render();
@@ -2086,6 +2237,7 @@ return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
+  JOURNAL_KINDS, THEMES, themesOf, journalAdd, journalPatterns, decideIdea, dailyReminder, reminderDue,
   BOOKEND_PTS, bookendDays, PULSE, PULSE_PTS, pulseChange, pulseLine, PULL_WHAT, DEFAULT_PEOPLE, logPull, handoverMap, handoverDone,
   MONTH_PTS, monthStats, monthDue, prevMonthKey, closeMonth, DELI_FIELDS, DELI_LEVERS, DELI_PTS, deliCalc, deliStatus, saveDeliWeek, startLever, REMINDERS, icsFor,
   AWAY_PLANS, WEEK_TYPES, awayOn, awayDaysThisWeek, pullsThisWeek, planAway, workedReviews,
@@ -2096,6 +2248,8 @@ return {
   DEFAULT_RULES, RULE_IDEAS, talkLoud, receipts, SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, askCoach, dealCall, validPressure, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
   FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS, PICK, LETTER_PICKS,
   mount() {
+    // The first open of the day lands on Today, where the daily reminder waits.
+    if (reminderDue()) S.view = 'today';
     ROOT.innerHTML = MARKUP;
     attach();
     render();
