@@ -17,6 +17,7 @@ import {
   MAP_TYPES,
   NAVAL_MENU,
   SHIPYARD_MEND_HP,
+  SHIPYARD_MEND_RANGE,
   SHIPYARD_MEND_TICKS,
   STANDARD_TECH,
   STEALTH_DETECT_RANGE,
@@ -312,6 +313,18 @@ function mending(ok: Ok): void {
   unitIn(far, g.id)!.x = m.x;
   unitIn(far, g.id)!.y = m.y;
   ok(unitIn(tick(far, SHIPYARD_MEND_TICKS * 10), g.id)!.hp === 100, 'out at sea, it is not');
+  // Return to base: the ship sails back beside its Naval Yard and is mended there.
+  let r = processAction(far, { type: 'home', ids: [g.id] });
+  ok(r !== far && unitIn(r, g.id)!.order.type === 'move', 'Return to base sends a ship back toward its Naval Yard');
+  r = tickUntil(r, x => unitIn(x, g.id)!.order.type === 'idle', 3000);
+  const yardC = { x: yard.x + 1.5, y: yard.y + 1.5 };
+  const home = unitIn(r, g.id)!;
+  ok(dist(home.x, home.y, yardC.x, yardC.y) <= 1.5 + SHIPYARD_MEND_RANGE + 1, `it arrives beside the yard (${dist(home.x, home.y, yardC.x, yardC.y).toFixed(1)} tiles from its middle)`);
+  r = tick(r, SHIPYARD_MEND_TICKS * 10);
+  ok(unitIn(r, g.id)!.hp > home.hp, 'and is mended there');
+  const noYard = copy(far);
+  noYard.buildings = noYard.buildings.filter(b => b.kind !== 'shipyard');
+  ok(processAction(noYard, { type: 'home', ids: [g.id] }) === noYard, 'with no Naval Yard, Return to base is refused');
 }
 
 /** The Landing Craft: boards from the shore, carries vehicles at two places, lands on a beach. */

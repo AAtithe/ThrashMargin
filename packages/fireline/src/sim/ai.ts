@@ -6,7 +6,7 @@ import { airPlan, vehiclePrice } from './aiAir';
 import { engineeringPlan, expansionSpot } from './aiEngineering';
 import { doPower, powerProblem } from './mission';
 import { next } from './rng';
-import { reserveRadius, scaledFor, stageDistance } from './aiScale';
+import { extraLine, reserveRadius, scaledFor, stageDistance } from './aiScale';
 import {
   BARRAGE_DAMAGE,
   BUILDINGS,
@@ -25,7 +25,7 @@ import {
   type SupportPower,
   type UnitKind,
 } from './rules';
-import { costFor, countBuildings, difficultyFor, isStructure, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, difficultyFor, isStructure, lineCount, pacedResearch, powerOf, readyStructure, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import { alliedPlan, chooseEnemy, enemyLists } from './aiSides';
 import type { AiMemory, AiMode, Building, GameState, Unit } from './types';
@@ -419,13 +419,14 @@ function commander(s: GameState, owner: Owner): void {
     const nextRaid = mem.raidIds.length > 0 ? Infinity : Math.max(mem.nextRaid, t.firstRaid);
     advancedUnits(s, owner, t, units, foeInfantry, foeArmour, foeTurrets, raidBuggies, nextRaid);
   } else if (!saving) {
-    if (iq.length < 2) {
+    // Two, as with one Barracks; more (a line per Barracks) only from credits to spare.
+    if (iq.length < 2 || (iq.length < lineCount(s, owner, 'infantry') + 1 && extraLine(s, p.credits))) {
       let riflemen = 0.6;
       if (t.counter && foeArmed.length >= 4) riflemen = foeInfantry > foeArmour * 1.5 ? 0.8 : foeArmour > foeInfantry * 1.5 ? 0.35 : 0.6;
       const kind: UnitKind = draw(s) < riflemen ? 'rifleman' : 'rocketeer';
       if (canQueue(s, owner, 'infantry', kind)) doQueue(s, owner, 'infantry', kind);
     }
-    if (vq.length < 1) {
+    if (vq.length < 1 || (vq.length < lineCount(s, owner, 'vehicle') && extraLine(s, p.credits))) {
       const roll = draw(s);
       let tank = 0.55;
       let buggy = 0.23;
@@ -1170,7 +1171,10 @@ function advancedUnits(
   let waiting = 0;
   let waitingFor: UnitKind | null = null;
   const soldiers = units.filter(u => UNITS[u.kind].category === 'infantry' && unitSpecOf(s, u).weapon && !UNITS[u.kind].hero).length;
-  if (vq.length < 1 && countBuildings(s, owner, 'factory') > 0) {
+  // One vehicle a line (a line per War Factory). A line beyond the first is filled only from credits
+  // to spare (extraLine): the commander saves for structures and tier three by taking back units not
+  // yet started, and with every line busy there would be none to take back.
+  if (vq.length < lineCount(s, owner, 'vehicle') && (vq.length === 0 || extraLine(s, p.credits)) && countBuildings(s, owner, 'factory') > 0) {
     const roll = next((p.stats.trained + 1) * 7919 + owner * 104729).value;
     const vehicles: [UnitKind, number][] = [
       ['tank', armourHeavy ? 6 : 5],
@@ -1195,7 +1199,10 @@ function advancedUnits(
   // massed infantry it takes fourteen (grenadiers are worth more there than any vehicle short of
   // a flame tank).
   const holdInfantry = waiting > 0 && soldiers >= (infantryHeavy && waitingFor !== 'flametank' ? 14 : 10) && p.credits < waiting + 250;
-  if (iq.length < (holdInfantry ? 0 : waiting ? 1 : 2)) {
+  // Infantry: two queued as with one Barracks; more (a line per Barracks) only from credits to spare.
+  const iLines = lineCount(s, owner, 'infantry');
+  const iRoom = holdInfantry ? 0 : waiting ? 1 : 2;
+  if (iq.length < iRoom || (!holdInfantry && !waiting && iq.length < iLines + 1 && extraLine(s, p.credits))) {
     const medics = units.filter(u => UNITS[u.kind].medic).length + iq.filter(q => q.kind === 'medic').length;
     let kind: UnitKind | null = null;
     if (medics < Math.min(t.counter ? 3 : 1, Math.floor(soldiers / 6))) kind = 'medic';
@@ -1420,3 +1427,4 @@ function walk(s: GameState, occ: Int32Array, start: number, blocked: number): In
   }
   return steps;
 }
+

@@ -2307,3 +2307,100 @@ every phone, no console errors and no sideways page scroll. `node scripts/tours/
 fireline fireline-planet` (full): all ok, the 320px SE included. `npm run tours -- --quick`: all eight
 ok. `npm run check:loading -- fireline` 27/27. `npm run check` from the root: "All checks passed"
 (Fireline drive 401,464 assertions, campaign-check 7,699, drive:planet 35,255).
+
+### 2026-11-13: Return to base, Helipad repairs, and support that holds back
+
+The player asked for a way to send aircraft back to the Helipad, how boats and aircraft are repaired,
+and for Repair Trucks to stop driving into the fighting, with a way to choose which forces go in.
+
+- **Return to base** (`{ type: 'home', ids }`, `canHome`/`doHome` in `commands.ts`): aircraft get the
+  same order an empty one gives itself (`sendHome` in `air.ts`: fly to its pad or the nearest with room,
+  land, rearm, stay parked) with the waypoint queue dropped; ships sail to the open water beside their
+  nearest Naval Yard (`launchTile`), where the yard's mending already works. Refused for an aircraft
+  already on `rearm`, one on a bomb run (it finishes and goes home anyway), a side with no Helipad (or
+  Naval Yard for a ship), and anything else. A selection-panel button after Unload, so Unload stays F.
+- **Helipads repair.** Aircraft had no way to be mended at all. Landed on its pad an aircraft regains
+  `HELIPAD_MEND_HP` (8) every `HELIPAD_MEND_TICKS` (10), free, the Naval Yard's rate; never in the air.
+  Both sides' parked aircraft get it, so the computer's air arm comes back from a strike whole.
+  The status line says Returning to its Helipad, Rearming and under repair, or Under repair.
+- **Support holds back** (client, `GameScreen`'s `command`; nothing in the simulation, so the
+  computer's waves are unchanged). Support is the unarmed ground units bar haulers: Medic, Engineer,
+  Repair Truck, Forward Base Truck (`isSupport`, `selectionActions.ts`). Given an attack or attack-move
+  alongside armed units, they get a plain move to a point 6 tiles short of the target on the line from
+  the fighters' centre, or stay where they are when already that close. A squad in formation is left
+  whole (its box already puts support inside). Plain moves take everyone, as before.
+- **Amending the selection.** With more than one kind selected, each chip in the selection panel is a
+  button: click takes that kind out of the selection, Ctrl or Cmd+click keeps only that kind.
+
+- **Forces** (asked for mid-session: calling air cover into a battle meant finding the Helipads first).
+  A sidebar section above Selection (`ForcesPanel`, `Sidebar.tsx`): one button per kind of unit side 0
+  has anywhere on the map, aircraft first, haulers last, and All aircraft when more than one air kind
+  flies. Click selects them all, Shift adds them, a second click on a kind that is the whole selection
+  centres the camera on them.
+- **Harness seed.** Repairs on the pad move whole battles: `strike-8`'s first Bomber no longer came
+  before side 1 won (24 minutes, was 20), so "bombers drop bombs in real battles" read 0, 0 and 0. A
+  sweep of nine fresh seeds had Bombers bombing in four (6 to 18 bombs); the test now plays `strike-7`.
+- **Hashes.** `drive-size.ts` PRE_ROUND6: 7 of the 30 battles moved (lines easy both seeds, lines hard
+  size-a, classic easy both seeds, classic hard size-a, three easy size-b) and were regenerated. With
+  the repair block alone switched off, all 30 equal the values before exactly. No other hash moved.
+
+- **Disband** (`{ type: 'disband', ids }`, `canDisband`/`doDisband` in `commands.ts`), asked for to clear
+  units wedged where no order frees them. Takes own units off the map at once, no wreck, no refund, a
+  line in the log; refused for heroes, the General and any carrier with someone aboard (they would go
+  with it); anyone walking to a dismissed carrier stops. A Disband button beside Stop and the Delete
+  key, both behind a confirmation. `drive-air` "Orders: disband", 10 assertions.
+- **Production lines** (the player's decision, after a second Barracks turned out to be only a spare:
+  extra producers should each run a queue, not build faster). Every unit queue now runs one line per
+  structure that works it (`productionLines`, `lineCount`, `queueCap` in `state.ts`): the first N
+  items of the category's list are worked at once, item i on the i-th producer (working ones by id,
+  then any a Spy has stopped), and each comes out of its own producer. Each producer adds MAX_QUEUE
+  places. Structures stay one at a time. With one producer it is exactly the old single queue: the
+  engine change alone left all 30 `drive-size` battles byte-identical. The UI keeps one list per
+  category; build buttons show the furthest item of their kind on any line, the queue strip says how
+  many are building at once, a full queue with one producer says another adds a line, the renderer
+  lights every producer at work, and the stat card says what each one adds.
+- **The computer plays by it.** Its queue limits scale with its producers (`lineCount`): a vehicle a
+  line where it was one, infantry one more than its lines where it was two, naval and air a line each
+  where it was one at a time, its anti-air cap `queueCap` where it was MAX_QUEUE, and tier three's
+  "vehicle queue at most one" now at most its vehicle lines. A line beyond the first is filled only
+  with `EXTRA_LINE_RESERVE` (2,000) credits in hand (`extraLine`, `aiScale.ts`). The first attempt filled
+  every line at once and broke the commander's saving, which works by taking back units not yet
+  started: with both lines busy there were none, so Hard's Prototype Works came at minute 34 instead of
+  27.5 and its Railgun Tanks never came ("Railgun Tanks follow" in `drive-sites`). With the reserve, the
+  Works is back at 27.5 and both tier-three units are fielded. With one producer of a kind, the
+  computer's choices are unchanged. Hard, the one level that builds two War Factories (its description
+  promises them), is the level this moves. Never in a campaign mission (`extraLine` reads
+  `s.mission`): the missions were balanced on one line, and with extra lines Last Light on Hard was no
+  longer won by the scripted commander (lost at 26 minutes); with the rule, campaign-check is 7,699 of
+  7,699. The player's extra producers count in missions as anywhere.
+- **Checks.** `drive-air` "Production lines": 24 assertions (places and lines with one and two
+  Barracks, two at once from two doors, a sabotaged line, a lost Barracks, two Helipads, structures
+  still single). Every recorded battle hash is unchanged: with the reserve the commander seldom holds
+  2,000 spare in those battles. In Chromium with two Barracks: ten places, the eleventh refused, and
+  the strip reads "2 building at once". `npm run check`: all passed.
+- **Balance, before this session's changes and after all of them** (Helipad repairs, support holding
+  back, production lines), same machine, same seeds. `ladder:fire` (150 seeds, no setup): Hard beats
+  Normal 201 of 300 before, 200 of 300 after; every other row identical (Normal beats Easy 300/300,
+  new beats old Normal 268/300, new beats old Hard 168/300). `sweep:fire`: identical, mission by
+  mission and difficulty by difficulty (Hard: hold-the-ford 7/12, blackout 5, fireline 6, iron-coast
+  4, firestorm 5, last-light 5). Read plainly: the computer almost never holds 2,000 spare, so its
+  second War Factory is still mostly idle. Lowering `EXTRA_LINE_RESERVE`, or reserving only while it
+  saves for something, would make Hard use it; that is a difficulty decision, left open.
+- **The reserve lowered to 1,000** (the player: make Hard use both factories). Measured first, Hard
+  against Hard, 16 battles (8 standard, 8 advanced), while two War Factories stood: share of time
+  both lines were busy, at reserve 2,000 / 1,000 / 500 / 0: 0% / 1% / 3% / 3%; at least one busy about
+  20% at every value. At 500 the saving broke again (no Prototype Works in `drive-sites`' 40 minutes);
+  1,000 is the lowest that keeps it (Works at minute 26.7, Stealth and Railgun Tanks fielded). The
+  reason the second factory stays idle is money, not the reserve: with two factories standing, Hard
+  held under 300 credits 60% of the time and under 1,000 93% of it, and its infantry queue was busy
+  44% of the time to the vehicles' 21%. `ladder:fire` at 1,000: Hard beats Normal 196 of 300 (200 at
+  2,000, 201 before the session): no change beyond noise. Six Hard `drive-size` battles regenerated.
+  Making Hard field more from two factories needs more income or a spending mix that favours
+  vehicles: a difficulty decision.
+
+Checks: `drive-air` (Return to base, refusals, repair on the pad and not in flight) and `drive-naval`
+(sailing home, mended there, refused without a yard) gained 17 assertions. In Chromium: a damaged
+Gunship sent home lands, rearms and repairs from 37% to 80% in 20 seconds; a mixed attack-move sent the
+tanks and riflemen to the point and the Repair Truck and Medic to 6 tiles short; the chips drop and
+isolate kinds; the Forces buttons select a kind anywhere on the map and Shift adds one; no console
+errors.

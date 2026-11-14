@@ -21,8 +21,11 @@ import {
   DAMAGE_VS,
   ENGINES_SPEED,
   FLIGHT_TICKS,
+  HELIPAD_MEND_HP,
+  HELIPAD_MEND_TICKS,
   HELIPAD_SLOTS,
   INFANTRY_MENU,
+  MAX_QUEUE,
   PLATING_HP,
   PRODUCER,
   REARM_TICKS,
@@ -41,7 +44,7 @@ import {
   type UnitKind,
   type UpgradeId,
 } from '../src/sim/rules';
-import { addBuilding, addUnit, createInitialState, migrateState } from '../src/sim/state';
+import { addBuilding, addUnit, createInitialState, lineCount, migrateState, powerOf, queueCap } from '../src/sim/state';
 import type { Building, GameState, Unit } from '../src/sim/types';
 
 type Ok = (cond: unknown, what: string) => void;
@@ -450,6 +453,41 @@ function rearming(ok: Ok): void {
     const w = unitIn(n, b.id)!;
     ok(w.order.type === 'rearm' && w.pad === 0 && w.x === p0.x && w.y === p0.y && w.ammo === 0, 'with no Helipad at all, it waits where it is');
     ok(homePad(n, w) === 0, 'and has no pad to go to');
+    ok(processAction(n, { type: 'home', ids: [b.id] }) === n, 'and Return to base is refused');
+  }
+  // Return to base: sent away and hurt, an aircraft flies home on the order, lands, rearms and is repaired.
+  {
+    const { s, cx, cy } = airArena('return-home');
+    const { pad, craft } = padWith(s, 0, cx - 6, cy - 1, ['gunship']);
+    const g = craft[0];
+    ok(processAction(s, { type: 'home', ids: [g.id] }) === s, 'Return to base is refused for an aircraft already parked');
+    const tank = put(s, 0, 'tank', cx + 0.5, cy + 4.5, { stance: 'hold' });
+    ok(processAction(s, { type: 'home', ids: [tank.id] }) === s, 'and for a ground unit');
+    let t = processAction(s, { type: 'move', ids: [g.id], x: cx + 12, y: cy + 8 });
+    t = tickUntil(t, x => unitIn(x, g.id)!.order.type === 'idle', 600);
+    const away = copy(t);
+    const ga = unitIn(away, g.id)!;
+    ga.hp = 100;
+    ga.ammo = 2;
+    t = processAction(away, { type: 'move', ids: [g.id], x: cx + 14, y: cy + 8 });
+    t = processAction(t, { type: 'move', ids: [g.id], x: cx + 16, y: cy + 8, queue: true });
+    const sent = processAction(t, { type: 'home', ids: [g.id, tank.id] });
+    ok(sent !== t && unitIn(sent, g.id)!.order.type === 'rearm' && unitIn(sent, g.id)!.queue.length === 0, 'Return to base turns it for home and drops its waypoints');
+    ok(unitIn(sent, tank.id)!.order.type === unitIn(t, tank.id)!.order.type, 'leaving any ground unit named alone');
+    const spot = padSpot(sent, pad, unitIn(sent, g.id)!);
+    let h = tickUntil(sent, x => unitIn(x, g.id)!.x === spot.x && unitIn(x, g.id)!.y === spot.y, 1000);
+    ok(unitIn(h, g.id)!.x === spot.x, 'it lands on its pad');
+    const landedHp = unitIn(h, g.id)!.hp;
+    h = tick(h, HELIPAD_MEND_TICKS * 10);
+    const hp = unitIn(h, g.id)!.hp;
+    ok(hp >= landedHp + HELIPAD_MEND_HP * 9 && hp <= landedHp + HELIPAD_MEND_HP * 10, `and is repaired there (${landedHp} to ${hp})`);
+    ok(h.players[0].credits === sent.players[0].credits, 'for nothing');
+    h = tickUntil(h, x => unitIn(x, g.id)!.hp === UNITS.gunship.hp && unitIn(x, g.id)!.ammo === AIR_AMMO.gunship, 3000);
+    const done = unitIn(h, g.id)!;
+    ok(done.hp === UNITS.gunship.hp && done.ammo === AIR_AMMO.gunship && done.x === spot.x && done.order.type === 'rearm', 'repaired and rearmed in full, it stays parked');
+    // In the air it is not repaired.
+    const flying = tick(processAction(away, { type: 'move', ids: [g.id], x: cx + 4, y: cy + 8 }), HELIPAD_MEND_TICKS * 5);
+    ok(unitIn(flying, g.id)!.hp === 100, 'away from its pad, an aircraft is not repaired');
   }
   // A Helipad serves HELIPAD_SLOTS aircraft: the air queue stops there.
   {
@@ -722,7 +760,9 @@ function battles(ok: Ok): void {
   // a race either way: round 6's computer formations and the air war took this seed's first Bomber
   // to minute 29, and main's change to how a beaten side spends its last credits moved it a minute
   // too. The rule is that they fly and bomb in real battles, so two longer battles count with it.
-  const c = play('strike-8');
+  // Helipads repairing parked aircraft (2026-11-13) moved strike-8's battle so its first Bomber never
+  // came (side 1 won at 24 minutes, not 20); strike-7 bombs (18) with the repairs in.
+  const c = play('strike-7');
   const longer = play('strike-4');
   ok(a.bombs + c.bombs + longer.bombs > 0, `bombers drop bombs in real battles (${a.bombs}, ${c.bombs} and ${longer.bombs})`);
   ok(a.rockets > 0, `gunships fire in it (${a.rockets} rockets seen in flight)`);
@@ -731,6 +771,94 @@ function battles(ok: Ok): void {
   ok(JSON.stringify(a.s) === JSON.stringify(b.s), 'a battle with aircraft and research replays byte-identically');
   console.log(`  air battle on Hard: ${a.s.winner === null ? 'unfinished' : `side ${a.s.winner} won at ${Math.round(a.s.tick / 600)} min`}; ${a.bombs} bombs, ${a.rockets} gunship rockets, ${a.air} aircraft at most; upgrades ${a.s.players.map(p => (p.upgrades ?? []).length).join(' and ')}`);
   console.log(`  second air battle on Hard: ${c.s.winner === null ? 'unfinished' : `side ${c.s.winner} won at ${Math.round(c.s.tick / 600)} min`}; ${c.bombs} bombs, ${c.rockets} gunship rockets`);
+}
+
+/** Production lines: each Barracks, War Factory, Helipad or Naval Yard is a line of its own with MAX_QUEUE places. */
+function productionLinesSection(ok: Ok): void {
+  const { s, cx, cy } = airArena('lines');
+  s.players[0].credits = 50000;
+  // Enough power that every line runs at full rate.
+  for (let i = 0; i < 4; i++) addBuilding(s, 0, 'power', cx - 14 + i * 3, cy + 10, -100);
+  const b1 = addBuilding(s, 0, 'barracks', cx - 8, cy - 8, -100);
+  let t: GameState = s;
+  for (let i = 0; i < MAX_QUEUE; i++) t = processAction(t, { type: 'queue', category: 'infantry', kind: 'rifleman' });
+  ok(t.players[0].queues.infantry.length === MAX_QUEUE && lineCount(t, 0, 'infantry') === 1, `one Barracks: one line, ${MAX_QUEUE} places`);
+  ok(processAction(t, { type: 'queue', category: 'infantry', kind: 'rifleman' }) === t, 'and the next is refused');
+  ok(!powerOf(t, 0).low, 'the test base has full power');
+  // One Barracks: one at a time, as always.
+  const one = tick(t, UNITS.rifleman.buildTicks);
+  ok(one.players[0].queues.infantry.length === MAX_QUEUE - 1, 'one line trains one at a time');
+  // A second Barracks: a second line and five more places, both lines at work together.
+  const two = copy(t);
+  const b2 = addBuilding(two, 0, 'barracks', cx + 6, cy - 8, -100);
+  ok(lineCount(two, 0, 'infantry') === 2 && queueCap(two, 0, 'infantry') === MAX_QUEUE * 2, 'two Barracks: two lines, twice the places');
+  let q2: GameState = two;
+  for (let i = 0; i < MAX_QUEUE; i++) q2 = processAction(q2, { type: 'queue', category: 'infantry', kind: 'rifleman' });
+  ok(q2.players[0].queues.infantry.length === MAX_QUEUE * 2, `${MAX_QUEUE * 2} queued`);
+  ok(processAction(q2, { type: 'queue', category: 'infantry', kind: 'rifleman' }) === q2, 'and no more');
+  const before = new Set(q2.units.map(u => u.id));
+  const after = tick(q2, UNITS.rifleman.buildTicks);
+  const fresh = after.units.filter(u => !before.has(u.id) && u.kind === 'rifleman');
+  ok(fresh.length === 2 && after.players[0].queues.infantry.length === MAX_QUEUE * 2 - 2, `two lines train two together (${fresh.length})`);
+  const near = (u: Unit, b: Building) => distToBuilding(u.x, u.y, b) <= 3;
+  ok(fresh.some(u => near(u, b1)) && fresh.some(u => near(u, b2)), 'each from its own Barracks');
+  // A Spy's sabotage stops that line alone.
+  const sab = copy(q2);
+  sab.buildings.find(b => b.id === b2.id)!.sabotagedUntil = sab.tick + 100000;
+  const sabAfter = tick(sab, UNITS.rifleman.buildTicks);
+  ok(sabAfter.units.filter(u => !before.has(u.id) && u.kind === 'rifleman').length === 1, 'a sabotaged Barracks stops its own line, not the other');
+  // Lose the second Barracks: its line goes, the queue keeps what is there, no more is taken.
+  const lost = copy(q2);
+  lost.buildings = lost.buildings.filter(b => b.id !== b2.id);
+  ok(lineCount(lost, 0, 'infantry') === 1 && processAction(lost, { type: 'queue', category: 'infantry', kind: 'rifleman' }) === lost, 'a Barracks lost takes its places with it');
+  ok(tick(lost, UNITS.rifleman.buildTicks).players[0].queues.infantry.length === MAX_QUEUE * 2 - 1, 'and the rest train on the one left');
+  // Two Helipads: two aircraft built together, each on its own pad.
+  const { s: a } = airArena('lines-air');
+  a.players[0].credits = 50000;
+  for (let i = 0; i < 4; i++) addBuilding(a, 0, 'power', cx - 14 + i * 3, cy + 10, -100);
+  const p1 = addBuilding(a, 0, 'helipad', cx - 8, cy + 4, -100);
+  const p2 = addBuilding(a, 0, 'helipad', cx + 6, cy + 4, -100);
+  let qa: GameState = a;
+  qa = processAction(qa, { type: 'queue', category: 'air', kind: 'gunship' });
+  qa = processAction(qa, { type: 'queue', category: 'air', kind: 'gunship' });
+  const airAfter = tick(qa, UNITS.gunship.buildTicks);
+  const ships = airAfter.units.filter(u => u.kind === 'gunship');
+  ok(ships.length === 2 && ships.some(u => u.pad === p1.id) && ships.some(u => u.pad === p2.id), 'two Helipads build two aircraft together, one on each');
+  // Structures stay one at a time however many yards stand.
+  ok(lineCount(q2, 0, 'building') === 1 && queueCap(q2, 0, 'building') === 1, 'structures: still one at a time');
+}
+
+/** Disband: units off the map for good, nothing paid back; heroes, Generals and loaded carriers refused. */
+function disbanding(ok: Ok): void {
+  const { s, cx, cy } = airArena('disband');
+  const tank = put(s, 0, 'tank', cx + 0.5, cy + 0.5);
+  const rifle = put(s, 0, 'rifleman', cx + 2.5, cy + 0.5);
+  const foe = put(s, 1, 'tank', cx + 20.5, cy + 0.5, { stance: 'hold' });
+  const credits = s.players[0].credits;
+  const t = processAction(s, { type: 'disband', ids: [tank.id, foe.id] });
+  ok(t !== s && !unitIn(t, tank.id) && !!unitIn(t, rifle.id), 'Disband takes the named unit off the map, leaving the rest');
+  ok(!!unitIn(t, foe.id), 'never an enemy unit');
+  ok(t.players[0].credits === credits, 'nothing is paid back');
+  ok(!!unitIn(s, tank.id), 'and the state passed in is untouched');
+  ok(processAction(s, { type: 'disband', ids: [foe.id] }) === s, 'a Disband naming only enemy units is refused');
+  ok(processAction(s, { type: 'disband', ids: [] }) === s, 'as is one naming nothing');
+  const hero = copy(s);
+  unitIn(hero, rifle.id)!.hero = { level: 1, xp: 0, abilityCd: 0 };
+  ok(processAction(hero, { type: 'disband', ids: [rifle.id] }) === hero, 'a hero cannot be disbanded');
+  const loaded = copy(s);
+  const { craft } = padWith(loaded, 0, cx - 6, cy - 1, ['carrier']);
+  const carrier = craft[0];
+  carrier.carried = [{ ...unitIn(loaded, rifle.id)! }];
+  loaded.units = loaded.units.filter(u => u.id !== rifle.id);
+  ok(processAction(loaded, { type: 'disband', ids: [carrier.id] }) === loaded, 'nor a carrier with infantry aboard');
+  const walking = copy(s);
+  const { craft: c2 } = padWith(walking, 0, cx - 6, cy - 1, ['carrier']);
+  unitIn(walking, rifle.id)!.boarding = c2[0].id;
+  const w = processAction(walking, { type: 'disband', ids: [c2[0].id] });
+  ok(!unitIn(w, c2[0].id) && unitIn(w, rifle.id)!.boarding === undefined, 'an empty carrier can, and anyone walking to it stops');
+  const a = tick(t, 300);
+  const b = tick(processAction(s, { type: 'disband', ids: [tank.id, foe.id] }), 300);
+  ok(JSON.stringify(a) === JSON.stringify(b), 'and the battle plays on identically');
 }
 
 export const sections: [string, (ok: Ok) => void][] = [
@@ -743,5 +871,7 @@ export const sections: [string, (ok: Ok) => void][] = [
   ['Air power and research: older saves', oldSaves],
   ['Air power: the computer', computer],
   ['Air power: battles', battles],
+  ['Orders: disband', quietCommander(disbanding)],
+  ['Production lines', quietCommander(productionLinesSection)],
 ];
 

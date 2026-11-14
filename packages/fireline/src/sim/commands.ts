@@ -1,8 +1,8 @@
 import { dockTile, frontRow, nearestPassable, occupancy, onMap, passable, tileAt } from './grid';
 import { isWalkable } from './map';
 import { isEnemy } from './sides';
-import { airRoom, canHit, isAir } from './air';
-import { shoreProblem } from './naval';
+import { airRoom, canHit, canSendHome, isAir, sendHome } from './air';
+import { isShip, launchTile, shoreProblem } from './naval';
 import { upgradeNewUnit } from './research';
 import { loadoutCost, loadoutOf, queueCostFor } from './loadout';
 import type { Target } from './grid';
@@ -29,6 +29,7 @@ import {
   costFor,
   isStructure,
   log,
+  queueCap,
   readyStructure,
   syncSkirmishPowers,
   techAllowed,
@@ -76,7 +77,8 @@ export function canQueue(s: GameState, owner: Owner, category: Category, kind: B
   // standard tech, and a mission's enemy, to the original game's kinds.
   if (!techAllowed(s, owner, kind)) return false;
   const p = s.players[owner];
-  if ((p.queues[category]?.length ?? MAX_QUEUE) >= (category === 'building' ? 1 : MAX_QUEUE)) return false;
+  // Each producer of the kind adds a production line and MAX_QUEUE places (structures: one at a time).
+  if (!p.queues[category] || p.queues[category].length >= queueCap(s, owner, category)) return false;
   if (!unlocked(s, owner, kind)) return false;
   // Aircraft: no more than the Helipads serve, counting those already queued.
   if (category === 'air' && airRoom(s, owner) < airSlotsOf(kind as UnitKind)) return false;
@@ -525,6 +527,83 @@ export function doStance(s: GameState, owner: Owner, ids: number[], stance: Stan
       u.pathGoal = -1;
     }
   }
+}
+
+/** A standing structure of this kind on this side, nearest (x, y), or null. */
+function nearestOwn(s: GameState, owner: Owner, kind: BuildingKind, x: number, y: number): Building | null {
+  let best: Building | null = null;
+  let bestD = Infinity;
+  for (const b of s.buildings) {
+    if (b.owner !== owner || b.kind !== kind || b.hp <= 0) continue;
+    const spec = BUILDINGS[b.kind];
+    const d = (b.x + spec.w / 2 - x) ** 2 + (b.y + spec.h / 2 - y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = b;
+    }
+  }
+  return best;
+}
+
+/** Whether Return to base means anything to this unit: an aircraft with a Helipad to go to, or a ship with a Naval Yard. */
+function homeable(s: GameState, owner: Owner, u: Unit): boolean {
+  if (canSendHome(u)) return !!nearestOwn(s, owner, 'helipad', u.x, u.y);
+  if (isShip(u)) return !!nearestOwn(s, owner, 'shipyard', u.x, u.y);
+  return false;
+}
+
+/** Legal when at least one of the units named is an aircraft or a ship with somewhere to go home to. */
+export function canHome(s: GameState, owner: Owner, ids: number[]): boolean {
+  return ownUnits(s, owner, ids).some(u => homeable(s, owner, u));
+}
+
+/**
+ * Return to base. Aircraft fly home to their Helipad (or the nearest with room), land, rearm and are
+ * repaired there, and stay parked. Ships sail to the open water beside their nearest Naval Yard,
+ * which mends them. Anything else named is left alone; either way the waypoint queue is dropped.
+ */
+export function doHome(s: GameState, owner: Owner, ids: number[]): void {
+  let occ: Int32Array | null = null;
+  for (const u of ownUnits(s, owner, ids)) {
+    if (!homeable(s, owner, u)) continue;
+    if (isAir(u)) {
+      sendHome(s, u);
+      continue;
+    }
+    const yard = nearestOwn(s, owner, 'shipyard', u.x, u.y)!;
+    occ ??= occupancy(s);
+    const k = launchTile(s, occ, yard);
+    if (k < 0) continue;
+    give(u, { type: 'move', x: (k % s.mapW) + 0.5, y: ((k / s.mapW) | 0) + 0.5 }, false);
+  }
+}
+
+/**
+ * Units Disband can dismiss: not a hero or a General (a mission or the battle may hang on them), and
+ * not a carrier with anyone aboard (they would go with it).
+ */
+const disbandable = (u: Unit) => u.hp > 0 && !u.hero && u.kind !== 'general' && !u.carried?.length;
+
+/** Legal when at least one of the units named can be dismissed. */
+export function canDisband(s: GameState, owner: Owner, ids: number[]): boolean {
+  return ownUnits(s, owner, ids).some(disbandable);
+}
+
+/**
+ * Disband: the units named are taken off the map for good, with nothing paid back. The way out for a
+ * unit wedged where no order can free it. Anyone walking to a dismissed carrier stops.
+ */
+export function doDisband(s: GameState, owner: Owner, ids: number[]): void {
+  const gone = new Set(ownUnits(s, owner, ids).filter(disbandable).map(u => u.id));
+  if (!gone.size) return;
+  s.units = s.units.filter(u => !gone.has(u.id));
+  for (const u of s.units) {
+    if (u.boarding && gone.has(u.boarding)) {
+      delete u.boarding;
+      u.order = { type: 'idle' };
+    }
+  }
+  if (owner === 0) log(s, gone.size === 1 ? 'Unit disbanded.' : `${gone.size} units disbanded.`, 'info');
 }
 
 export function canStop(s: GameState, owner: Owner, ids: number[]): boolean {

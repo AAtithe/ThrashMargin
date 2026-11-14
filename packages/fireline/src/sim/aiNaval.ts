@@ -1,10 +1,11 @@
+import { extraLine } from './aiScale';
 import { fund, queueStructure } from './aiAir';
 import { canQueue, doAttack, doMove, doQueue, placementProblem } from './commands';
 import { buildingCentre, dist, occupancy } from './grid';
 import { isShip } from './naval';
 import { BUILDINGS, DIFFICULTIES, NAVAL_MIN_SEA, UNITS, hitsGround, type Difficulty, type Owner, type UnitKind } from './rules';
 import { isEnemy } from './sides';
-import { countBuildings, maxHpOf, techAllowed, unlocked } from './state';
+import { countBuildings, lineCount, maxHpOf, techAllowed, unlocked } from './state';
 import { canRide, doBoard, doUnload } from './transport';
 import type { Building, GameState, Unit } from './types';
 import { unitSpec, unitSpecOf } from './specs';
@@ -174,7 +175,7 @@ export function navalPlan(s: GameState, owner: Owner, home: { x: number; y: numb
 
   // 2. Ships, to the plan. Not while paced research holds unit purchases (`hold`, from ai.ts), nor
   // in an economic crisis.
-  if (!hold && !crisis && (p.queues.naval ?? []).length === 0) {
+  if (!hold && !crisis && ((p.queues.naval ?? []).length === 0 || ((p.queues.naval ?? []).length < lineCount(s, owner, 'naval') && extraLine(s, p.credits)))) {
     const plan: [UnitKind, number][] = [
       ['gunboat', t.gunboats],
       ['destroyer', t.destroyers],

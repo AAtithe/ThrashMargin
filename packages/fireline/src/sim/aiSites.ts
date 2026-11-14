@@ -13,7 +13,7 @@ import {
   type UnitKind,
 } from './rules';
 import { siteCentre, siteDist } from './sites';
-import { costFor, countBuildings, maxHpOf, powerOf, techAllowed, unlocked } from './state';
+import { costFor, countBuildings, lineCount, maxHpOf, powerOf, techAllowed, unlocked } from './state';
 import { isAlly, isEnemy } from './sides';
 import type { GameState, Site, Unit } from './types';
 import { buildingSpec, buildingSpecOf, unitSpec, unitSpecOf } from './specs';
@@ -223,7 +223,8 @@ function tierThree(s: GameState, owner: Owner, diff: Difficulty, t: SiteTactics,
   if (!economy) return;
 
   // Units from the Prototype Works: they are the army, so no waiting on its size.
-  if (count('protoworks') > 0 && vq.length <= 1) {
+  // Room for one beyond the vehicles the commander keeps queued (one line per War Factory).
+  if (count('protoworks') > 0 && vq.length <= lineCount(s, owner, 'vehicle')) {
     const vehicles = units.filter(u => UNITS[u.kind].category === 'vehicle' && unitSpecOf(s, u).weapon).length;
     const rails = Math.min(t.railMax, 1 + Math.floor(vehicles / t.railPer));
     // Saved for out of units not yet started, as the structures below are: a cheaper unit would
