@@ -19,7 +19,7 @@ import {
 import type { Hazards } from '../sim/types';
 import { FONT, UI, money } from '../theme';
 import PortalNav from '../components/PortalNav';
-import { Button, Label, Panel, bodySmall, dataText } from '../components/ui';
+import { Button, Label, Panel, bodySmall, buttonClass, dataText } from '../components/ui';
 import { BusyLabel, LoadingRows } from '../lib/Loading';
 
 /**
@@ -210,14 +210,15 @@ export default function Lobby() {
           <h1 style={title}>Steady Eddie</h1>
           <p style={{ ...bodySmall, maxWidth: '58ch', margin: 0 }}>
             {FACE_UP_CONTRACTS} commissions are posted on the exchange at all times, each naming a
-            cargo, the depot that wants it and the price it is reckoned at — load it wherever you can
+            cargo, the depot that wants it and the price it is reckoned at. Load it wherever you can
             get it. Only the first two vehicles home are paid: {PAYOUT_MULTIPLIERS[1]}× the commission
             price a lot, then {PAYOUT_MULTIPLIERS[2]}×, then nothing. Carry {SHARE_MAJORITY} of the{' '}
             {TOTAL_SHARES} company shares, {money(VICTORY_CASH)} and a vehicle still on the road, and
             the company is yours.
           </p>
-          <Link to="/how-to-play" style={{ textDecoration: 'none', alignSelf: 'flex-start' }}>
-            <Button tone="quiet">How to play →</Button>
+          {/* A link styled as a button, not a button inside a link: one control, one tab stop. */}
+          <Link to="/how-to-play" className={buttonClass('quiet')} style={{ marginTop: '0.9rem' }}>
+            How to play →
           </Link>
         </header>
 
@@ -231,6 +232,8 @@ export default function Lobby() {
           <div style={field}>
             <Label>Name this run</Label>
             <input
+              className="kit-input"
+              aria-label="Name this run"
               style={input}
               value={name}
               placeholder="The Warrington run"
@@ -256,6 +259,8 @@ export default function Lobby() {
                 {humanNames.slice(0, humans).map((n, i) => (
                   <input
                     key={i}
+                    className="kit-input"
+                    aria-label={`Player ${i + 1}`}
                     style={{ ...input, width: 150 }}
                     value={n}
                     onChange={e =>
@@ -266,7 +271,7 @@ export default function Lobby() {
               </div>
               <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
                 One device, passed round. Everything on the board is public, so the handover is just
-                a pause — nobody has to look away.
+                a pause: nobody has to look away.
               </p>
             </div>
           )}
@@ -274,13 +279,15 @@ export default function Lobby() {
           <div style={field}>
             <Label>Seed (optional)</Label>
             <input
-              style={{ ...input, width: 180 }}
+              className="kit-input"
+              aria-label="Seed (optional)"
+              style={{ ...input, width: 220 }}
               value={seed}
               placeholder="leave blank for a fresh one"
               onChange={e => setSeed(e.target.value)}
             />
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
-              The same seed always deals the same cards and rolls the same dice — useful for playing
+              The same seed always deals the same cards and rolls the same dice, useful for playing
               the identical season twice.
             </p>
           </div>
@@ -305,13 +312,11 @@ export default function Lobby() {
             <p style={{ ...bodySmall, fontSize: '0.75rem', margin: 0, color: UI.textFaint }}>
               {chosen
                 ? PRESETS[chosen].blurb
-                : 'A mixture of your own — set the switches below however you like.'}
+                : 'A mixture of your own: set the switches below however you like.'}
             </p>
           </div>
 
           <div style={field}>
-            <Label>Or pick your own</Label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', marginBottom: '0.5rem' }}>
               <Label>How well the rivals play</Label>
               <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
                 {(Object.keys(DIFFICULTIES) as Difficulty[]).map(id => (
@@ -326,14 +331,16 @@ export default function Lobby() {
                 ))}
               </div>
               <p style={{ ...bodySmall, fontSize: '0.74rem', margin: 0, color: UI.textFaint }}>
-                {DIFFICULTIES[level].blurb} Every handicap is knowledge or discipline — the computer
+                {DIFFICULTIES[level].blurb} Every handicap is knowledge or discipline: the computer
                 hauliers never roll better than you do. Fewer rivals is the other dial: against three,
                 one of them takes the company three times in four even when everybody plays equally.
               </p>
-            </div>
+          </div>
 
+          <div style={field}>
+            <Label>Or pick your own rules</Label>
             {SWITCHES.map(sw => (
-              <label key={sw.key} style={checkRow}>
+              <label key={sw.key} style={checkRow} className="se-check">
                 <input
                   type="checkbox"
                   checked={hazards[sw.key]}
@@ -343,7 +350,7 @@ export default function Lobby() {
                   style={{ accentColor: UI.brass }}
                 />
                 <span>
-                  <strong style={{ color: UI.text }}>{sw.name}</strong> — {sw.blurb}
+                  <strong style={{ color: UI.text }}>{sw.name}.</strong> {sw.blurb}
                 </span>
               </label>
             ))}
@@ -355,7 +362,7 @@ export default function Lobby() {
 
           {tooMany && (
             <p style={{ ...bodySmall, color: UI.bad, margin: 0 }}>
-              {total} hauliers — the table seats {MAX_HAULIERS}.
+              {total} hauliers, but the table seats {MAX_HAULIERS}.
             </p>
           )}
 
@@ -390,12 +397,13 @@ export default function Lobby() {
                     {group.map(save => {
                       const confirming = confirmDelete === save.id;
                       return (
-                        <div key={save.id} style={saveRow}>
+                        <div key={save.id} style={saveRow} className="se-save">
                           {/* The whole row opens it — hunting a button in a list you are scanning is
                               friction, and it lets the row be one line instead of two. */}
                           <button
                             type="button"
                             style={saveOpen}
+                            className="se-save-open"
                             onClick={() => open(save.id)}
                             title={`Open ${save.name}`}
                           >
@@ -429,6 +437,7 @@ export default function Lobby() {
                             <button
                               type="button"
                               style={saveDelete}
+                              className="se-icon-btn"
                               title={`Delete ${save.name}`}
                               aria-label={`Delete ${save.name}`}
                               onClick={() => setConfirmDelete(save.id)}
@@ -446,16 +455,16 @@ export default function Lobby() {
           )}
         </Panel>
 
-        <Panel title="Free-haulage mode" style={{ marginTop: '1.5rem', opacity: 0.72 }}>
+        <Panel title="Free-haulage mode" style={{ marginTop: '1.5rem', borderStyle: 'dashed', background: 'transparent' }}>
           <p style={{ ...bodySmall, margin: 0 }}>
-            A deeper ruleset — real days instead of dice, prices that move continuously, standing
+            A deeper ruleset (real days instead of dice, prices that move continuously, standing
             wages and weather and insurance running all the time rather than in this game's turn
-            structure — is designed in <code>steady-eddie-design.md</code> but not built, the same
+            structure) is designed in <code>steady-eddie-design.md</code> but not built, the same
             way The Tea Race deferred its own "Voyage mode". The rules above are this fork's own
             core rules.
           </p>
           <div>
-            <Button disabled>Free-haulage mode — later</Button>
+            <span style={notBuilt}>Planned, not built yet</span>
           </div>
         </Panel>
       </main>
@@ -546,17 +555,10 @@ const field: React.CSSProperties = {
   alignItems: 'flex-start',
 };
 
+/** Kit fields (lib/kit.css) carry the type, edge and states; this only sizes them. */
 const input: React.CSSProperties = {
-  fontFamily: FONT.body,
-  fontSize: '0.9rem',
-  padding: '0.4rem 0.55rem',
-  background: UI.ground,
-  border: `1px solid ${UI.ruleStrong}`,
-  borderRadius: 2,
-  color: UI.text,
   width: '100%',
   maxWidth: 320,
-  boxSizing: 'border-box',
 };
 
 const saveRow: React.CSSProperties = {
@@ -573,6 +575,7 @@ const saveRow: React.CSSProperties = {
 const saveOpen: React.CSSProperties = {
   display: 'flex',
   alignItems: 'baseline',
+  alignContent: 'center',
   gap: '0.5rem',
   flexWrap: 'wrap',
   flex: 1,
@@ -603,13 +606,26 @@ const saveMeta: React.CSSProperties = {
 
 const saveDelete: React.CSSProperties = {
   background: 'transparent',
-  border: 'none',
   color: UI.textFaint,
   fontSize: '0.8rem',
   lineHeight: 1,
-  padding: '0.3rem 0.35rem',
+  padding: '0.3rem 0.45rem',
+  border: '1px solid transparent',
+  borderRadius: 2,
   cursor: 'pointer',
   flex: '0 0 auto',
+};
+
+const notBuilt: React.CSSProperties = {
+  display: 'inline-block',
+  fontFamily: FONT.data,
+  fontSize: '0.66rem',
+  letterSpacing: '0.12em',
+  textTransform: 'uppercase',
+  color: UI.textSoft,
+  border: `1px dashed ${UI.ruleStrong}`,
+  borderRadius: 2,
+  padding: '0.3rem 0.55rem',
 };
 
 const checkRow: React.CSSProperties = {
@@ -621,7 +637,8 @@ const checkRow: React.CSSProperties = {
   lineHeight: 1.4,
   color: UI.textSoft,
   cursor: 'pointer',
-  maxWidth: '52ch',
+  maxWidth: '68ch',
+  padding: '0.2rem 0',
 };
 
 const errorBanner: React.CSSProperties = {

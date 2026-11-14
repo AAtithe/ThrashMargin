@@ -3,6 +3,7 @@ import type { GameState } from '../sim/types';
 import { FONT, UI } from '../theme';
 import { clock } from '../lib/format';
 import { paced, usePace } from '../lib/motion';
+import { LiveRegion } from '../lib/Kit';
 
 const TONES = { good: UI.good, bad: UI.bad, neutral: UI.text, honour: UI.brass } as const;
 
@@ -25,10 +26,21 @@ export default function Chronicle({ s }: { s: GameState }) {
     if (e.seq <= mem.base || mem.delays.has(e.seq)) continue;
     mem.delays.set(e.seq, fresh++ * paced(110, pace));
   }
+  // New lines are read out to a screen reader, oldest first, once each, without their times. Only
+  // lines the chronicle gains: the screen's one-second clock re-renders this without adding any, so
+  // nothing is said for the clock itself. Lines already there when the character opens are not read.
+  const said = useRef<{ id: string; seq: number; message: string } | null>(null);
+  if (!said.current || said.current.id !== s.id) said.current = { id: s.id, seq: lastSeq, message: '' };
+  if (lastSeq > said.current.seq) {
+    const since = said.current.seq;
+    said.current.message = s.log.filter(e => e.seq > since).map(e => e.text).join(' ');
+    said.current.seq = lastSeq;
+  }
   const entries = [...s.log].reverse().slice(0, 80);
   return (
     <aside style={{ width: 300, flexShrink: 0, borderLeft: `1px solid ${UI.rule}`, background: UI.panel, padding: '1rem', overflowY: 'auto', maxHeight: '100vh', position: 'sticky', top: 0 }}>
       <h2 style={{ margin: '0 0 0.7rem', fontFamily: FONT.display, fontSize: '1rem', color: UI.brass, fontWeight: 'normal' }}>Chronicle</h2>
+      <LiveRegion message={said.current.message} nonce={said.current.seq} />
       {entries.map(e => {
         const delay = mem.delays.get(e.seq);
         return (

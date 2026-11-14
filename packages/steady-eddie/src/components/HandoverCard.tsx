@@ -32,7 +32,7 @@ export default function HandoverCard({
           {onRoad > 0 && ` (${onRoad} on the road)`}.
         </p>
         <Button tone="primary" onClick={onReady} style={{ alignSelf: 'flex-start', fontSize: '0.95rem', padding: '0.5rem 1rem' }}>
-          I'm {next.name} — take the wheel
+          I'm {next.name}, take the wheel
         </Button>
       </div>
     </div>

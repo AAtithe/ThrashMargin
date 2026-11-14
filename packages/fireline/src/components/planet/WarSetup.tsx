@@ -118,7 +118,7 @@ export default function WarSetup({
                 className="fl-pl-btn"
                 aria-pressed={Math.min(factions, top) === n}
                 disabled={n > top}
-                title={n > top ? `A planet of ${p.regions} regions has room for ${top} factions.` : undefined}
+                aria-describedby={n > top ? 'fl-war-factions-why' : undefined}
                 onClick={() => setFactions(n)}
                 data-testid={`war-factions-${n}`}
               >
@@ -126,6 +126,11 @@ export default function WarSetup({
               </button>
             ))}
           </div>
+          {top < 5 && (
+            <span className="fl-pl-why" id="fl-war-factions-why">
+              A planet of {p.regions} regions has room for {top} factions.
+            </span>
+          )}
         </div>
         <div className="fl-pl-field">
           Difficulty
@@ -139,7 +144,7 @@ export default function WarSetup({
         </div>
         <label className="fl-pl-field">
           Seed (optional)
-          <input className="fl-pl-input" value={seed} placeholder="A fresh planet" maxLength={64} style={{ width: 180 }} onChange={e => setSeed(e.target.value)} data-testid="war-seed" />
+          <input className="fl-pl-input" value={seed} placeholder="A fresh planet" maxLength={64} onChange={e => setSeed(e.target.value)} data-testid="war-seed" />
         </label>
       </div>
       <div className="fl-pl-checks" role="group" aria-label="Optional rules">

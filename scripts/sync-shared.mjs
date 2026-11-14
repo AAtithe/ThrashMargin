@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SERVER = ['auth.ts', 'cors.ts', 'db.ts', 'rateLimit.ts', 'saves.ts', 'schema.ts', 'query.ts'];
-const CLIENT = ['session.ts', 'saveQueue.ts', 'colorScheme.ts', 'apiReply.ts', 'NoGameAccess.tsx', 'Loading.tsx', 'motion.ts'];
+const CLIENT = ['session.ts', 'saveQueue.ts', 'colorScheme.ts', 'apiReply.ts', 'NoGameAccess.tsx', 'Loading.tsx', 'motion.ts', 'Kit.tsx', 'kit.css'];
 const GAMES = [
   { server: 'packages/thrash-margin/api/_lib', client: 'packages/thrash-margin/client/src/lib', public: 'packages/thrash-margin/client/public' },
   { server: 'packages/niccolo/api/_lib', client: 'packages/niccolo/src/lib', public: 'packages/niccolo/public' },
@@ -30,9 +30,15 @@ const GAMES = [
 const PUBLIC = ['theme-init.js'];
 
 const check = process.argv.includes('--check');
-const banner = src =>
-  `// GENERATED from ${src} by scripts/sync-shared.mjs. Do not edit this copy: edit the original,\n` +
-  `// then run \`npm run sync-shared\`. \`npm run check\` fails while any copy differs.\n`;
+const BANNER_TEXT = src => [
+  `GENERATED from ${src} by scripts/sync-shared.mjs. Do not edit this copy: edit the original,`,
+  `then run \`npm run sync-shared\`. \`npm run check\` fails while any copy differs.`,
+];
+// `//` is not a comment in CSS, so a stylesheet gets the same banner as one block comment.
+const banner = src => {
+  const [a, b] = BANNER_TEXT(src);
+  return src.endsWith('.css') ? `/* ${a}\n   ${b} */\n` : `// ${a}\n// ${b}\n`;
+};
 
 const jobs = [];
 for (const g of GAMES) {

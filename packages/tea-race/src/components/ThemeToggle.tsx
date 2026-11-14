@@ -5,7 +5,7 @@ import { currentScheme, onSchemeChange, setScheme, type Scheme } from '../lib/co
  * One button that flips the whole portal between light and dark. Styled from the portal variables
  * so it looks the same in every game; pass `style` to fit it into a denser header.
  */
-export default function ThemeToggle({ style }: { style?: React.CSSProperties }) {
+export default function ThemeToggle({ style, className }: { style?: React.CSSProperties; className?: string }) {
   const [scheme, setLocal] = useState<Scheme>(currentScheme);
   useEffect(() => onSchemeChange(setLocal), []);
   const next: Scheme = scheme === 'dark' ? 'light' : 'dark';
@@ -15,7 +15,9 @@ export default function ThemeToggle({ style }: { style?: React.CSSProperties }) 
       onClick={() => setScheme(next)}
       title={`Switch to ${next} mode`}
       aria-label={`Switch to ${next} mode`}
-      style={{
+      className={className}
+      // Given a className (the game header passes the kit's quiet button), the class styles it.
+      style={className ? style : {
         background: 'transparent',
         border: '1px solid var(--portal-btn-rule)',
         color: 'var(--portal-link)',

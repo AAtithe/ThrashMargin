@@ -79,7 +79,6 @@ interface FeedbackItem {
 }
 
 const GAME_LABELS: Record<string, string> = Object.fromEntries(FEEDBACK_TOPICS.map(t => [t.key, t.label]));
-const TYPE_ICONS: Record<string, string> = { bug: '🐛', idea: '💡', comment: '💬' };
 
 function authHeaders(): HeadersInit {
   const token = getToken();
@@ -357,7 +356,7 @@ export default function Admin() {
       <Shell>
         <Centered>
           <p style={{ color: 'var(--portal-bad)', fontSize: 14, fontWeight: 600 }}>
-            {deniedReason === 'forbidden' ? 'Admin access only.' : 'Session expired — sign in again.'}
+            {deniedReason === 'forbidden' ? 'Admin access only.' : 'Session expired. Sign in again.'}
           </p>
           {deniedReason === 'unauthorized' && <Link to="/login" style={s.signInLink}>Sign in →</Link>}
         </Centered>
@@ -428,9 +427,9 @@ export default function Admin() {
                             {u.username}
                             <div style={s.sub}>{u.email}</div>
                           </td>
-                          <td style={s.td}>Registered {fmtDate(u.registeredAt)}</td>
+                          <td style={{ ...s.td, whiteSpace: 'normal', minWidth: 110 }}>Registered {fmtDate(u.registeredAt)}</td>
                           <td style={{ ...s.td, textAlign: 'right' }}>
-                            <button style={s.approveBtn} disabled={pending.has(`acct:${u.id}`)} onClick={() => approve(u)}>Approve</button>
+                            <button style={{ ...s.approveBtn, marginLeft: 8 }} disabled={pending.has(`acct:${u.id}`)} onClick={() => approve(u)}>Approve</button>
                             <button style={s.roleBtn} disabled={pending.has(`acct:${u.id}`)} onClick={() => reject(u)}>Reject</button>
                           </td>
                         </tr>
@@ -534,7 +533,7 @@ export default function Admin() {
                         <td style={s.td}>
                           <span style={u.role === 'admin' ? s.roleAdmin : s.roleUser}>{u.role}</span>
                           {u.id === myId ? (
-                            <span style={{ fontSize: 11, color: 'var(--portal-faint)', marginLeft: 8 }}>you</span>
+                            <span style={{ fontSize: 11, color: 'var(--portal-soft)', marginLeft: 8 }}>you</span>
                           ) : (
                             <>
                               <button onClick={() => changeRole(u)} style={s.roleBtn}>
@@ -627,10 +626,10 @@ export default function Admin() {
             {visibleFeedback.map(item => (
               <div key={item.id} style={s.feedbackCard}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
-                  <span style={s.badge}>{TYPE_ICONS[item.type] ?? ''} {item.type}</span>
+                  <span style={s.badge}>{item.type}</span>
                   <span style={s.badgeMuted}>{GAME_LABELS[item.game] ?? item.game}</span>
                   <span style={{ fontSize: 12, color: 'var(--portal-soft)' }}>by {item.username}</span>
-                  <span style={{ fontSize: 11, color: 'var(--portal-faint)', marginLeft: 'auto' }}>{fmtDate(item.createdAt)}</span>
+                  <span style={{ fontSize: 11, color: 'var(--portal-soft)', marginLeft: 'auto' }}>{fmtDate(item.createdAt)}</span>
                 </div>
                 <p style={{ margin: '0 0 8px', color: 'var(--portal-text)', fontSize: 13, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{item.message}</p>
                 <button onClick={() => toggleStatus(item)} style={item.status === 'open' ? s.resolveBtn : s.reopenBtn}>
@@ -701,7 +700,7 @@ function Stat({ label, value }: { label: string; value: number }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div style={s.outer}>
+    <div className="tm-portal" style={s.outer}>
       <PortalNav variant="header" />
       {children}
       <PortalNav variant="footer" />
@@ -737,33 +736,33 @@ const s: Record<string, React.CSSProperties> = {
   badgeMuted: { fontSize: 11, color: 'var(--portal-soft)', background: 'var(--portal-ground)', border: '1px solid var(--portal-raised)', borderRadius: 4, padding: '2px 8px' },
   resolveBtn: { background: 'none', border: '1px solid var(--portal-good-rule)', color: 'var(--portal-good)', borderRadius: 5, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
   reopenBtn:  { background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-soft)', borderRadius: 5, padding: '4px 10px', fontSize: 12, cursor: 'pointer' },
-  roleAdmin:  { fontSize: 11, fontWeight: 700, color: 'var(--portal-warn)', textTransform: 'uppercase', letterSpacing: 0.4 },
+  roleAdmin:  { fontSize: 11, fontWeight: 700, color: 'var(--tm-portal-warn-text)', textTransform: 'uppercase', letterSpacing: 0.4 },
   roleUser:   { fontSize: 11, color: 'var(--portal-soft)', textTransform: 'uppercase', letterSpacing: 0.4 },
-  roleBtn:    { marginLeft: 8, background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-softer)', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer' },
+  roleBtn:    { marginLeft: 8, background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-softer)', borderRadius: 5, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer' },
   notice:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-warn)', borderRadius: 8, padding: '12px 14px', fontSize: 13, marginBottom: 12, color: 'var(--portal-text)' },
   code:       { fontFamily: 'ui-monospace, monospace', fontSize: 14, background: 'var(--portal-ground)', border: '1px solid var(--portal-rule)', borderRadius: 4, padding: '2px 6px', userSelect: 'all' },
-  signInLink: { color: 'var(--portal-action)', fontSize: 14, fontWeight: 600, textDecoration: 'none' },
+  signInLink: { color: 'var(--tm-portal-link-text)', fontSize: 14, fontWeight: 600, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', minHeight: 40 },
   tdCenter:   { padding: '9px 12px', borderBottom: '1px solid var(--portal-raised)', color: 'var(--portal-text-mid)', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' },
-  sub:        { fontSize: 11, color: 'var(--portal-faint)', fontWeight: 400, marginTop: 3 },
+  sub:        { fontSize: 11, color: 'var(--portal-soft)', fontWeight: 400, marginTop: 3 },
   name:       { color: 'var(--portal-text)', fontWeight: 600 },
   error:      { color: 'var(--portal-bad)', fontSize: 13, margin: '0 0 10px' },
   help:       { color: 'var(--portal-soft)', fontSize: 13, lineHeight: 1.55, margin: '0 0 14px', maxWidth: 760 },
   stats:      { display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20 },
-  stat:       { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 8, padding: '10px 16px', minWidth: 120 },
+  stat:       { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 8, padding: '10px 16px', minWidth: 120, flex: '1 1 120px', maxWidth: 220 },
   statValue:  { fontSize: 22, fontWeight: 700, color: 'var(--portal-text)' },
   statLabel:  { fontSize: 11, color: 'var(--portal-soft)', textTransform: 'uppercase', letterSpacing: 0.4 },
   tabs:       { display: 'flex', gap: 4, borderBottom: '1px solid var(--portal-rule)', marginBottom: 24, flexWrap: 'wrap' },
   tabOn:      { padding: '8px 14px', border: 'none', borderBottom: '2px solid var(--portal-action)', background: 'none', color: 'var(--portal-text)', fontSize: 13, fontWeight: 600, cursor: 'pointer', marginBottom: -1 },
   tabOff:     { padding: '8px 14px', border: 'none', borderBottom: '2px solid transparent', background: 'none', color: 'var(--portal-soft)', fontSize: 13, cursor: 'pointer', marginBottom: -1 },
   sectionHead:{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12, flexWrap: 'wrap' },
-  search:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 6, padding: '6px 10px', fontSize: 13, color: 'var(--portal-text)', minWidth: 220 },
+  search:     { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 6, padding: '7px 10px', fontSize: 13, color: 'var(--portal-text)', minWidth: 0, width: 260, maxWidth: '100%' },
   gameGrid:   { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12 },
   gameCard:   { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 8, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 10 },
   gameName:   { fontSize: 14, fontWeight: 700, color: 'var(--portal-text)' },
   switchRow:  { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--portal-text-mid)' },
   gameCount:  { fontSize: 12, color: 'var(--portal-soft)' },
-  approveBtn: { background: 'none', border: '1px solid var(--portal-good-rule)', color: 'var(--portal-good)', borderRadius: 5, padding: '2px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' },
-  dangerBtn:  { marginLeft: 8, background: 'none', border: '1px solid var(--portal-bad)', color: 'var(--portal-bad)', borderRadius: 5, padding: '2px 8px', fontSize: 11, cursor: 'pointer' },
+  approveBtn: { background: 'none', border: '1px solid var(--portal-good-rule)', color: 'var(--portal-good)', borderRadius: 5, padding: '4px 10px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' },
+  dangerBtn:  { marginLeft: 8, background: 'none', border: '1px solid var(--portal-bad)', color: 'var(--portal-bad)', borderRadius: 5, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer' },
   suspended:  { marginLeft: 8, fontSize: 10, fontWeight: 700, color: 'var(--portal-bad)', textTransform: 'uppercase', letterSpacing: 0.4 },
-  smallBtn:   { background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-softer)', borderRadius: 5, padding: '3px 8px', fontSize: 11, cursor: 'pointer' },
+  smallBtn:   { background: 'none', border: '1px solid var(--portal-rule)', color: 'var(--portal-softer)', borderRadius: 5, padding: '4px 9px', fontSize: 11.5, cursor: 'pointer' },
 };

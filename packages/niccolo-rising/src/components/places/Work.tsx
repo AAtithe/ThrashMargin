@@ -43,7 +43,7 @@ export default function Work(p: PlaceProps) {
             <Meta>{nextRank ? `Next: ${nextRank.name}, needs ${reqText(nextRank.req)}` : 'The top of the ladder.'}</Meta>
             <div style={{ display: 'flex', gap: '0.4rem' }}>
               <ActButton p={p} verb={{ type: 'PROMOTE' }} tone="primary">Seek promotion</ActButton>
-              <ActButton p={p} verb={{ type: 'LEAVE_JOB' }} tone="quiet">Leave</ActButton>
+              <ActButton p={p} verb={{ type: 'LEAVE_JOB' }} tone="quiet" reasonShownBy={{ type: 'PROMOTE' }}>Leave</ActButton>
             </div>
           </Row>
         </Panel>

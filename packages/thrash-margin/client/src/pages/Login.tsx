@@ -70,23 +70,23 @@ export default function Login() {
       // A full page load, not a router push: the destination is usually another app on the portal.
       window.location.assign(destination());
     } catch {
-      setError('Network error — try again');
+      setError('Network error. Try again.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div style={s.outer}>
+    <div className="tm-portal" style={s.outer}>
       <PortalNav variant="header" />
       <div style={s.page}>
         <div style={s.card}>
         <h1 style={s.title}>{game?.title ?? 'Thrash Margin'}</h1>
         <p style={s.subtitle}>{game?.subtitle ?? 'Territory · Economy · Conquest'}</p>
 
-        <div style={s.tabs}>
+        <div style={s.tabs} role="group" aria-label="Sign in or register">
           {(['login', 'register'] as const).map(m => (
-            <button key={m} style={mode === m ? s.tabOn : s.tabOff} onClick={() => { setMode(m); setError(null); setNotice(null); }}>
+            <button key={m} type="button" aria-pressed={mode === m} style={mode === m ? s.tabOn : s.tabOff} onClick={() => { setMode(m); setError(null); setNotice(null); }}>
               {m === 'login' ? 'Sign in' : 'Register'}
             </button>
           ))}
@@ -108,7 +108,7 @@ export default function Login() {
             value={password} onChange={e => setPassword(e.target.value)} required
           />
           {new URLSearchParams(window.location.search).get('deleted') === '1' && !error && (
-            <p style={{ color: '#3fb950', fontSize: 13, margin: 0 }}>Your account and saved games have been deleted.</p>
+            <p style={{ color: 'var(--portal-good)', fontSize: 13, margin: 0 }} role="status">Your account and saved games have been deleted.</p>
           )}
           {error && <p style={s.error}>{error}</p>}
           {notice && !error && <p style={s.notice} role="status">{notice}</p>}
@@ -116,8 +116,8 @@ export default function Login() {
             {loading ? '…' : game ? (mode === 'login' ? 'Sign in →' : 'Create account →') : mode === 'login' ? 'Enter campaign' : 'Begin campaign'}
           </button>
         </form>
-        <p style={{ fontSize: 12, color: '#7d8590', textAlign: 'center', margin: '14px 0 0' }}>
-          What we keep about you, and how to delete it: <a href="/privacy.html" style={{ color: '#58a6ff' }}>privacy notice</a>
+        <p style={{ fontSize: 12, color: 'var(--portal-soft)', textAlign: 'center', margin: '14px 0 0', lineHeight: 1.5 }}>
+          What we keep about you, and how to delete it: <a href="/privacy.html" style={{ color: 'var(--tm-portal-link-text)' }}>privacy notice</a>
         </p>
         </div>
       </div>
@@ -128,8 +128,8 @@ export default function Login() {
 
 const s: Record<string, React.CSSProperties> = {
   outer:   { minHeight: '100vh', display: 'flex', flexDirection: 'column' },
-  page:    { flex: 1, background: 'var(--portal-ground)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif' },
-  card:    { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: '40px 48px', width: 340 },
+  page:    { flex: 1, background: 'var(--portal-ground)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'system-ui,sans-serif', padding: '32px 16px' },
+  card:    { background: 'var(--portal-panel)', border: '1px solid var(--portal-rule)', borderRadius: 10, padding: 'clamp(28px, 8vw, 40px) clamp(20px, 8vw, 48px)', width: 436, maxWidth: '100%', boxSizing: 'border-box' },
   title:   { color: 'var(--portal-text)', fontSize: 28, fontWeight: 700, margin: '0 0 4px', letterSpacing: -0.5 },
   subtitle:{ color: 'var(--portal-soft)', margin: '0 0 28px', fontSize: 13 },
   tabs:    { display: 'flex', gap: 2, marginBottom: 20, background: 'var(--portal-ground)', borderRadius: 6, padding: 3 },

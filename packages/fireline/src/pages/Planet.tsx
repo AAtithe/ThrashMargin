@@ -36,6 +36,7 @@ import { DIFFICULTIES } from '../sim/rules';
 import { wonBy } from '../sim/sides';
 import type { GameState } from '../sim/types';
 import { Battle } from './GameScreen';
+import { LiveRegion } from '../lib/Kit';
 
 type Tab = PlanetTabKey;
 const TABS: { key: Tab; label: string }[] = [
@@ -356,6 +357,8 @@ export default function PlanetFlow({
         {tab === 'trade' && <TradeTab {...props} selected={selected} />}
         {tab === 'journal' && <JournalTab {...props} />}
       </main>
+      {/* Each new turn, read out: its number and the journal's newest entries (what the others did). */}
+      <LiveRegion message={s.turn > initial.planet.turn ? `Turn ${s.turn}. ${s.journal.slice(-4).map(e => e.text).join(' ')}` : ''} />
       {toast && (
         <div key={toast.n} className="fl-pl-toast" role="status" data-testid="planet-toast">
           {toast.text}

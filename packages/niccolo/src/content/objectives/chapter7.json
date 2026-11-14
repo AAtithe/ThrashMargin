@@ -1,6 +1,6 @@
 [
   { "id": "obj_c7_exile", "chapterNumber": 7, "label": "Get through the exile winter", "inevitable": true,
-    "description": "Flanders is closed to the house — not by a signed order anybody can be sued over, which is why it cannot be argued with. Danzig, and four months of reading your own correspondence.",
+    "description": "Flanders is closed to the house, not by a signed order anybody can be sued over, which is why it cannot be argued with. Danzig, and four months of reading your own correspondence.",
     "kind": { "type": "flag", "flag": "exile_winter_resolved" } },
 
   { "id": "obj_c7_caffa", "chapterNumber": 7, "label": "Get out of the Crimea before the fleet does",
@@ -30,6 +30,6 @@
     "kind": { "type": "flag", "flag": "returned_to_bruges" } },
 
   { "id": "obj_c7_passage", "chapterNumber": 7, "label": "The passages west", "optional": true,
-    "description": "Caffa's Genoese were selling passages as briskly as furs, for the same reason. Doesn't gate the chapter — just marks whether the hold carried people.",
+    "description": "Caffa's Genoese were selling passages as briskly as furs, for the same reason. Doesn't gate the chapter, just marks whether the hold carried people.",
     "kind": { "type": "flag", "flag": "caffa_passage_offered" } }
 ]

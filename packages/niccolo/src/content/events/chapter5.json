@@ -15,7 +15,7 @@
     "chapter": 5,
     "trigger": { "flag": "scotland_bound", "location": "edinburgh" },
     "title": "Leith roads, and the town above them",
-    "body": "The ship comes in on the tide to a shore of open beach and timber cranes, with the burgh itself a mile inland up a spine of rock, its castle at one end and its abbey at the other. Everything the kingdom sells goes out through this stretch of sand, and everything it cannot make comes in the same way — which is exactly why the customs of it are worth bidding for.",
+    "body": "The ship comes in on the tide to a shore of open beach and timber cranes, with the burgh itself a mile inland up a spine of rock, its castle at one end and its abbey at the other. Everything the kingdom sells goes out through this stretch of sand, and everything it cannot make comes in the same way, which is exactly why the customs of it are worth bidding for.",
     "choices": [
       { "text": "Take lodgings in the burgh and present the house's credentials", "effects": { "flag": "reached_edinburgh" } }
     ]
@@ -27,7 +27,7 @@
     "title": "Anselm Adorne's niece",
     "body": "The Bruges house of Adorne keeps interests in Scotland the way it keeps interests everywhere: quietly, and through family. Its representative in the burgh this season is Anselm's niece, Katelijne Sersanders, who is small, unwell rather often, and has already worked out three things about the Charetty company's business here that nobody has told her.",
     "choices": [
-      { "text": "Accept her uncle's introduction, family papers and all", "effects": { "joinCharacter": "kathi", "flag": "kathi_joined", "evidence": { "id": "par_adorne_papers", "name": "The Adorne family's Bruges papers", "description": "Copies Anselm Adorne's household keeps of instruments witnessed in Bruges over thirty years — including two whose parties the house would rather not have found together.", "track": "parentage", "kind": "document" } } },
+      { "text": "Accept her uncle's introduction, family papers and all", "effects": { "joinCharacter": "kathi", "flag": "kathi_joined", "evidence": { "id": "par_adorne_papers", "name": "The Adorne family's Bruges papers", "description": "Copies Anselm Adorne's household keeps of instruments witnessed in Bruges over thirty years, including two whose parties the house would rather not have found together.", "track": "parentage", "kind": "document" } } },
       { "text": "Take her on her own account, and leave her uncle out of it", "effects": { "joinCharacter": "kathi", "conscience": 1, "flag": "kathi_joined" } }
     ]
   },
@@ -61,7 +61,7 @@
     "body": "Lord Boyd holds the king's person, his son holds the king's sister in marriage, and between them they hold most of what the crown can grant. They are also, on the evidence of two evenings' conversation, entirely without a plan for the year after this one. Their chamberlain would like the house's money in a Scottish venture, at a rate no Flemish lender would offer a family with better prospects.",
     "choices": [
       { "text": "Take the rate, and the Boyd name with it", "effects": { "cash": 45, "conscience": -2, "flags": ["boyd_money_taken", "boyd_entanglement_made"] } },
-      { "text": "Decline courteously, and buy the chamberlain's candour instead", "effects": { "cash": -12, "flag": "boyd_entanglement_made", "secret": { "id": "secret_boyd_forfeiture", "name": "Whose lands are already listed", "description": "A Scottish chamberlain's own working list of the estates that will change hands when the king moves against the family currently holding him — drawn up, tellingly, by a servant of that family.", "value": 70, "expiresInWeeks": 14 } } }
+      { "text": "Decline courteously, and buy the chamberlain's candour instead", "effects": { "cash": -12, "flag": "boyd_entanglement_made", "secret": { "id": "secret_boyd_forfeiture", "name": "Whose lands are already listed", "description": "A Scottish chamberlain's own working list of the estates that will change hands when the king moves against the family currently holding him: drawn up, tellingly, by a servant of that family.", "value": 70, "expiresInWeeks": 14 } } }
     ]
   },
   {
@@ -69,7 +69,7 @@
     "chapter": 5,
     "trigger": { "weeksAfterFlag": { "flag": "boyd_entanglement_made", "weeks": 8 }, "flag": "boyd_money_taken" },
     "title": "The forfeiture, and what it took with it",
-    "body": "It happens in a single sitting of parliament, and by the standards of such things it is done politely: the family is summoned, does not come, and is forfeited in its absence. The son is at sea before the sentence is read, the king's sister goes after him, and every instrument bearing the Boyd name — including a Flemish house's — becomes a claim against estates that no longer belong to anybody who signed for them.",
+    "body": "It happens in a single sitting of parliament, and by the standards of such things it is done politely: the family is summoned, does not come, and is forfeited in its absence. The son is at sea before the sentence is read, the king's sister goes after him, and every instrument bearing the Boyd name, including a Flemish house's, becomes a claim against estates that no longer belong to anybody who signed for them.",
     "choices": [
       { "text": "Write the Scottish venture down and keep the customs contract", "effects": { "cash": -50, "flags": ["boyd_fall_costly", "scotland_court_resolved"] } }
     ]
@@ -121,9 +121,9 @@
     "chapter": 5,
     "trigger": { "flag": "divined_person" },
     "title": "A direction, and nothing else",
-    "body": "It is done at night, in a walled garden off the Cairo house, with a ring on a thread and no witnesses but one — which is the only condition under which he will do it at all. There is no vision, no voice, nothing anybody could write down and swear to. There is simply, at the end of it, an unarguable certainty about a direction, and afterwards a headache that lasts three days and a silence that lasts longer.",
+    "body": "It is done at night, in a walled garden off the Cairo house, with a ring on a thread and no witnesses but one, which is the only condition under which he will do it at all. There is no vision, no voice, nothing anybody could write down and swear to. There is simply, at the end of it, an unarguable certainty about a direction, and afterwards a headache that lasts three days and a silence that lasts longer.",
     "choices": [
-      { "text": "Write down the bearing and say nothing of how it was got", "effects": { "flag": "child_direction_known", "evidence": { "id": "par_cairo_bearing", "name": "The bearing out of Cairo", "description": "A direction and a date in Nicholas's own hand, with no account whatever of how either was arrived at — and, folded with it, a second sheet in the same hand asking a question about his own birth.", "track": "parentage", "kind": "testimony" } } }
+      { "text": "Write down the bearing and say nothing of how it was got", "effects": { "flag": "child_direction_known", "evidence": { "id": "par_cairo_bearing", "name": "The bearing out of Cairo", "description": "A direction and a date in Nicholas's own hand, with no account whatever of how either was arrived at, and, folded with it, a second sheet in the same hand asking a question about his own birth.", "track": "parentage", "kind": "testimony" } } }
     ]
   },
   {
@@ -131,7 +131,7 @@
     "chapter": 5,
     "trigger": { "flags": ["child_trail_flanders", "child_direction_known"], "flagAbsent": "child_hunt_resolved" },
     "title": "A name, and a closed door",
-    "body": "The bearing is good. The house at the end of it, three days south of the city, has been empty for eleven days, and the man who kept its gate is willing to be paid for what he remembers: a Flemish lady, a nurse, an infant boy about a year old, and a name — the boy's own, given him at a font his father was not told about. They left before the house's own courier reached the road.",
+    "body": "The bearing is good. The house at the end of it, three days south of the city, has been empty for eleven days, and the man who kept its gate is willing to be paid for what he remembers: a Flemish lady, a nurse, an infant boy about a year old, and a name, the boy's own, given him at a font his father was not told about. They left before the house's own courier reached the road.",
     "choices": [
       { "text": "Take the name, pay the gatekeeper, and turn back", "effects": { "conscience": -3, "flags": ["child_named", "child_withheld", "child_hunt_resolved"] } },
       { "text": "Take the name, pay the gatekeeper, and set a watch on every port between here and Flanders", "effects": { "cash": -30, "flags": ["child_named", "child_withheld", "child_hunt_resolved"] } }
@@ -174,7 +174,7 @@
     "chapter": 5,
     "trigger": { "flag": "egypt_licence_choice_made", "location": "cairo" },
     "title": "Cairo, and the market above the customs",
-    "body": "Cairo is not a port and does not behave like one. It is the place where the sultan is, which means it is the place where prices are decided rather than merely paid — and where a court newly settled under a soldier-sultan buys Flemish cloth and Venetian glass at figures that would embarrass a Bruges factor to repeat at home. A red-headed Aberdonian engineer, in the city on somebody else's gun-founding contract, offers to make the introductions for a share.",
+    "body": "Cairo is not a port and does not behave like one. It is the place where the sultan is, which means it is the place where prices are decided rather than merely paid, and where a court newly settled under a soldier-sultan buys Flemish cloth and Venetian glass at figures that would embarrass a Bruges factor to repeat at home. A red-headed Aberdonian engineer, in the city on somebody else's gun-founding contract, offers to make the introductions for a share.",
     "choices": [
       { "text": "Take him on the house's own books and keep him", "effects": { "joinCharacter": "johnlegrant", "flags": ["johnlegrant_joined", "reached_cairo"] } },
       { "text": "Pay him for the introductions only", "effects": { "cash": -10, "flag": "reached_cairo" } }
@@ -185,7 +185,7 @@
     "chapter": 5,
     "trigger": { "flag": "reached_cairo" },
     "title": "The terms, and who has already seen them",
-    "body": "A clerk of the customs, badly paid in a coin that has been getting worse for a decade, will copy out what the spice rate is actually to be for the coming season, and — for the same money — which two European houses were told a fortnight ago. It is precisely the kind of paper that is worth nothing at all once everybody has it.",
+    "body": "A clerk of the customs, badly paid in a coin that has been getting worse for a decade, will copy out what the spice rate is actually to be for the coming season, and, for the same money, which two European houses were told a fortnight ago. It is precisely the kind of paper that is worth nothing at all once everybody has it.",
     "choices": [
       { "text": "Pay the clerk", "effects": { "cash": -18, "secret": { "id": "secret_mamluk_spice_terms", "name": "Next season's spice rate, before it is set", "description": "A customs clerk's copy of the rate the sultan's treasury intends to put on pepper this season, and the names of the two houses already trading on it.", "value": 80, "expiresInWeeks": 14 } } },
       { "text": "Leave the clerk alone and buy at whatever is posted", "effects": { "conscience": 2 } }
@@ -256,7 +256,7 @@
     "chapter": 5,
     "trigger": { "flag": "sinai_journey_success" },
     "title": "What the mountain keeps besides lamps",
-    "body": "The library is not shown to merchants, as a rule. It is shown to this one because the lamps are hung and because Demoiselle Katelijne asked in Greek. Among a great deal else of no commercial interest whatever, the monastery holds notarial copies of instruments deposited by pilgrims for safe keeping over two centuries — including, filed under a year the house has reason to care about, one out of Bruges.",
+    "body": "The library is not shown to merchants, as a rule. It is shown to this one because the lamps are hung and because Demoiselle Katelijne asked in Greek. Among a great deal else of no commercial interest whatever, the monastery holds notarial copies of instruments deposited by pilgrims for safe keeping over two centuries, including, filed under a year the house has reason to care about, one out of Bruges.",
     "choices": [
       { "text": "Pay the monastery for a fair copy", "effects": { "cash": -15, "evidence": { "id": "par_sinai_deposit", "name": "The Bruges instrument, deposited at Sinai", "description": "A notarial copy left with the monastery by a pilgrim in a year the house has cause to remember, naming parties to a settlement that Bruges has always maintained was never made.", "track": "parentage", "kind": "document" } } },
       { "text": "Read it, note the year, and leave it where it lies", "effects": { "conscience": 1 } }
@@ -308,7 +308,7 @@
     "chapter": 5,
     "trigger": { "flag": "vatachino_traced" },
     "title": "The notary at Genoa who will sell anything twice",
-    "body": "The company was constituted somewhere, by someone, before a notary who kept the register — and Genoese notaries keep registers the way the sea keeps wrecks. The man holding this one is perfectly willing to produce a fair copy of the instrument of association, at a price that makes plain he has understood exactly what he is holding.",
+    "body": "The company was constituted somewhere, by someone, before a notary who kept the register, and Genoese notaries keep registers the way the sea keeps wrecks. The man holding this one is perfectly willing to produce a fair copy of the instrument of association, at a price that makes plain he has understood exactly what he is holding.",
     "choices": [
       { "text": "Pay whatever the register costs", "effects": { "cash": -55, "flag": "vatachino_inquiry_closed", "evidence": { "id": "vat_lead_signature", "name": "The third signature", "description": "A notarised instrument out of Genoa, witnessed by three parties, one of whose hands the house has seen on a Bruges writ before.", "track": "vatachino", "kind": "document" } } },
       { "text": "Refuse the price, and let the house's own agents earn it instead", "effects": { "flag": "vatachino_inquiry_closed" } }
@@ -330,7 +330,7 @@
     "chapter": 5,
     "trigger": { "weeksAfterFlag": { "flag": "vatachino_inquiry_closed", "weeks": 12 }, "flagAbsent": "vatachino_unmasked" },
     "title": "Still a name and nothing behind it",
-    "body": "The file is thick and proves nothing. A company exists, is well capitalised, is consistently better informed than it has any right to be, and cannot be shown to belong to anybody at all. The house closes the enquiry for this season on the understanding — Demoiselle Katelijne's phrasing, not the notary's — that an opponent one cannot name is an opponent one has not finished paying for.",
+    "body": "The file is thick and proves nothing. A company exists, is well capitalised, is consistently better informed than it has any right to be, and cannot be shown to belong to anybody at all. The house closes the enquiry for this season on the understanding (Demoiselle Katelijne's phrasing, not the notary's) that an opponent one cannot name is an opponent one has not finished paying for.",
     "choices": [
       { "text": "Close the file, and keep it where it can be reopened", "effects": { "flags": ["vatachino_masked_still", "vatachino_resolved"] } }
     ]
@@ -340,7 +340,7 @@
     "chapter": 5,
     "trigger": { "flag": "divined_ore" },
     "title": "The seam under the Lothian grass",
-    "body": "A tenant of the burgh's has been turning up galena in a field he would rather be growing oats in, and has no idea whether there is a mine under it or a nuisance. The rods say there is, and say where, and the assay afterwards agrees with them to within twenty feet — which is the part that will be remembered, and repeated, and eventually asked about by somebody the house would rather not answer.",
+    "body": "A tenant of the burgh's has been turning up galena in a field he would rather be growing oats in, and has no idea whether there is a mine under it or a nuisance. The rods say there is, and say where, and the assay afterwards agrees with them to within twenty feet, which is the part that will be remembered, and repeated, and eventually asked about by somebody the house would rather not answer.",
     "choices": [
       { "text": "Take a share of the working and let the story travel", "effects": { "cash": 45, "conscience": -3 } },
       { "text": "Buy the tenant's silence along with his lease", "effects": { "cash": 10, "conscience": -1 } }

@@ -4,12 +4,13 @@ import { nextPace, PACE_LABEL, setPace, usePace } from '../lib/motion';
  * One button that cycles the portal's animation pace: full, quick, off (lib/motion.ts). Shared by
  * every game through localStorage, like the light/dark toggle beside it, and styled the same way.
  */
-export default function MotionToggle({ style }: { style?: React.CSSProperties }) {
+export default function MotionToggle({ style, className }: { style?: React.CSSProperties; className?: string }) {
   const pace = usePace();
   const next = nextPace(pace);
   return (
     <button
       type="button"
+      className={className}
       onClick={() => setPace(next)}
       title={`Animation pace. Click for ${next}`}
       aria-label={`${PACE_LABEL[pace]}. Switch to ${next}`}

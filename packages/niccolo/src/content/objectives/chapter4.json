@@ -9,7 +9,7 @@
     "kind": { "type": "flag", "flag": "lisbon_agency_opened" } },
 
   { "id": "obj_c4_madeira", "chapterNumber": 4, "label": "Navigate the collision with St Pol at Madeira",
-    "description": "The confrontation itself isn't avoidable once you've reached the island — only how you handle it is.",
+    "description": "The confrontation itself isn't avoidable once you've reached the island, only how you handle it is.",
     "kind": { "type": "flag", "flag": "madeira_collision_resolved" },
     "inevitable": true },
 
@@ -24,7 +24,7 @@
     "inevitable": true },
 
   { "id": "obj_c4_umar", "chapterNumber": 4, "label": "Umar's kin", "optional": true,
-    "description": "A side reckoning at Timbuktu, mercy against profit — doesn't gate the chapter, just marks the choice.",
+    "description": "A side reckoning at Timbuktu, mercy against profit: doesn't gate the chapter, just marks the choice.",
     "kind": { "type": "flag", "flag": "umars_choice_made" },
     "outcomeFlags": { "positive": "umars_choice_mercy", "costly": "umars_choice_profit" } }
 ]

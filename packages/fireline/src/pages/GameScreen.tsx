@@ -116,6 +116,8 @@ export default function GameScreen() {
           <div style={{ display: 'flex', gap: 8 }}>
             {saves.expired ? (
               <button
+                type="button"
+                className="fl-chrome-btn"
                 style={chromeBtn}
                 onClick={() => {
                   clearToken();
@@ -125,11 +127,11 @@ export default function GameScreen() {
                 Sign in again
               </button>
             ) : (
-              <button style={chromeBtn} onClick={() => setAttempt(a => a + 1)}>
+              <button type="button" className="fl-chrome-btn" style={chromeBtn} onClick={() => setAttempt(a => a + 1)}>
                 Try again
               </button>
             )}
-            <Link to="/" style={{ ...chromeBtn, textDecoration: 'none' }}>
+            <Link to="/" className="fl-chrome-btn" style={{ ...chromeBtn, textDecoration: 'none' }}>
               Back to the lobby
             </Link>
           </div>
@@ -1781,7 +1783,9 @@ export function Battle({
           <div
             className="fl-d-feed"
             style={{ maxWidth: layout.stacked ? 'calc((100% + 20px) * 0.9)' : 'min(calc((100% + 20px) * 0.6), 520px)' }}
+            role="log"
             aria-live="polite"
+            aria-label="Battle feed"
             data-testid="battle-feed"
           >
             {(layout.stacked || phoneDock ? recent.slice(0, 3) : recent).map(l => (

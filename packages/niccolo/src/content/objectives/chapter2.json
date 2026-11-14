@@ -3,7 +3,7 @@
     "id": "obj_c2_extraction",
     "chapterNumber": 2,
     "label": "Extract the Trebizond agency",
-    "description": "People first, then capital, then whatever cargo can still be moved — before the city falls.",
+    "description": "People first, then capital, then whatever cargo can still be moved, before the city falls.",
     "kind": {
       "type": "flag",
       "flag": "trebizond_extraction_resolved"
@@ -17,7 +17,7 @@
     "id": "obj_c2_epilogue",
     "chapterNumber": 2,
     "label": "Reckon what Trebizond cost",
-    "description": "A formality once Trebizond's fate is settled — the house reckons what the season cost, one way or the other.",
+    "description": "A formality once Trebizond's fate is settled: the house reckons what the season cost, one way or the other.",
     "kind": {
       "type": "flag",
       "flag": "trebizond_epilogue"

@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { FONT, UI } from '../theme';
+import { Button as KitButton } from '../lib/Kit';
 
 /** Shared primitives, so every panel agrees on its edges and its type scale. */
 
@@ -17,51 +18,53 @@ export function Panel({ title, aside, children, style }: { title?: string; aside
   );
 }
 
+/**
+ * The game's button: the portal kit's Button (lib/Kit.tsx), coloured by the --kit-* mapping in
+ * styles.css. `disabledReason` shows as a visible line under the button while it is disabled, since
+ * a tooltip never shows on a touch screen.
+ */
 export function Button({
   children,
   onClick,
   disabled,
+  disabledReason,
+  wrapStyle,
   tone = 'default',
   title,
   style,
   id,
+  current,
 }: {
   children: ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  /** Why it is disabled, in a few words. Shown on screen while it is. */
+  disabledReason?: string;
+  /** Style for the wrapper a `disabledReason` puts round the button (its alignment in a row). */
+  wrapStyle?: CSSProperties;
   tone?: 'default' | 'primary' | 'quiet' | 'danger';
   title?: string;
   style?: CSSProperties;
   /** A stable hook for the guided first hours to spotlight this control. See `GuidedTour.tsx`. */
   id?: string;
+  /** The selected one of a set (the place tabs): announced as the current page. */
+  current?: boolean;
 }) {
-  const tones: Record<string, CSSProperties> = {
-    default: { borderColor: UI.ruleStrong, color: UI.text, background: UI.panelRaised },
-    primary: { borderColor: UI.brass, color: UI.ground, background: UI.brass, fontWeight: 600 },
-    quiet: { borderColor: UI.rule, color: UI.textSoft, background: 'transparent' },
-    danger: { borderColor: UI.bad, color: UI.bad, background: 'transparent' },
-  };
   return (
-    <button
-      type="button"
+    <KitButton
       id={id}
+      className="nr-btn"
+      tone={tone}
+      aria-current={current ? 'page' : undefined}
       onClick={onClick}
       disabled={disabled}
+      disabledReason={disabledReason}
+      wrapStyle={wrapStyle}
       title={title}
-      style={{
-        border: '1px solid',
-        padding: '0.35rem 0.7rem',
-        fontFamily: FONT.body,
-        fontSize: '0.8rem',
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-        ...tones[tone],
-        ...(disabled ? { opacity: 0.38, cursor: 'not-allowed' } : {}),
-        ...style,
-      }}
+      style={style}
     >
       {children}
-    </button>
+    </KitButton>
   );
 }
 

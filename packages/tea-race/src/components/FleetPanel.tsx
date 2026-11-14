@@ -140,11 +140,11 @@ export default function FleetPanel({
                     {/* Rolled for and going nowhere — the wasted roll, said before the turn ends
                         rather than after. */}
                     {points > 0 && (
-                      <span style={{ color: UI.warn }}> — awaiting orders</span>
+                      <span style={{ color: UI.warn }}>, awaiting orders</span>
                     )}
                   </>
                 ) : dest ? (
-                  `At sea — ${pointsToDestination(ship)} pts to ${portName(dest)}`
+                  `At sea, ${pointsToDestination(ship)} pts to ${portName(dest)}`
                 ) : (
                   'At sea'
                 )}
@@ -153,7 +153,7 @@ export default function FleetPanel({
               <span style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', alignItems: 'center' }}>
                 {ship.hold.length === 0 ? (
                   <span style={{ ...dataText, fontSize: '0.68rem', color: UI.textFaint }}>
-                    hold empty — {slotsOf(ship.shipClass)} slots
+                    hold empty, {slotsOf(ship.shipClass)} slots
                   </span>
                 ) : (
                   <>

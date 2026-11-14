@@ -77,8 +77,8 @@ function hintFor(
   holdCount: number,
   slots: number,
 ): string {
-  if (holdCount >= slots) return 'her hold is full — she should be running it in';
-  if (depotStruck(state, depot)) return `${depotName(depot)} is shut by the strike — she can only drive`;
+  if (holdCount >= slots) return 'her hold is full, and she should be running it in';
+  if (depotStruck(state, depot)) return `${depotName(depot)} is shut by the strike, so she can only drive`;
 
   const supplies = DEPOT_BY_ID[depot]?.supplies ?? [];
   const loadable = supplies.filter(
@@ -86,7 +86,7 @@ function hintFor(
   );
   if (loadable.length === 0) {
     return supplies.length === 0
-      ? `${depotName(depot)} sells nothing — she can only drive`
+      ? `${depotName(depot)} sells nothing, so she can only drive`
       : 'nothing here she can afford';
   }
 

@@ -7,6 +7,7 @@ import GameScreen from './pages/GameScreen';
 import { applyScheme, initialScheme } from './lib/colorScheme';
 import { initMotion } from './lib/motion';
 import './portal.css';
+import './lib/kit.css';
 import './styles.css';
 
 // Light or dark is the player's choice, shared across the portal (lib/colorScheme.ts). index.html

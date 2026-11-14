@@ -21,78 +21,78 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
   const isFooter = variant === 'footer';
 
   return (
-    <div style={{ ...styles.bar, ...(isFooter ? styles.barFooter : styles.barHeader) }}>
-      <div style={styles.links}>
-        <a href="/" style={styles.link}>
+    <div className="portal-nav" style={{ ...styles.bar, ...(isFooter ? styles.barFooter : styles.barHeader) }}>
+      <div className="portal-nav-links" style={styles.links}>
+        <a href="/" className="portal-nav-link" style={styles.link}>
           🏠 Home
         </a>
         {canSee('niccolo') && (
           <>
-            <span style={styles.sep}>·</span>
-            <a href="/niccolo/" style={styles.link}>
-              ⚖️ Banco di Niccolo
+            <span className="portal-nav-sep" aria-hidden="true" style={styles.sep}>·</span>
+            <a href="/niccolo/" className="portal-nav-link" style={styles.link}>
+              ⚖️ Banco di Niccolò
             </a>
           </>
         )}
         {canSee('tea_race') && (
           <>
-            <span style={styles.sep}>·</span>
-            <a href="/tea-race/" style={styles.link}>
+            <span className="portal-nav-sep" aria-hidden="true" style={styles.sep}>·</span>
+            <a href="/tea-race/" className="portal-nav-link" style={styles.link}>
               ⛵ The Tea Race
             </a>
           </>
         )}
         {canSee('steady_eddie') && (
           <>
-            <span style={styles.sep}>·</span>
-            <a href="/steady-eddie/" style={styles.link}>
+            <span className="portal-nav-sep" aria-hidden="true" style={styles.sep}>·</span>
+            <a href="/steady-eddie/" className="portal-nav-link" style={styles.link}>
               🚚 Steady Eddie
             </a>
           </>
         )}
         {canSee('niccolo_rising') && (
           <>
-            <span style={styles.sep}>·</span>
-            <a href="/rising/" style={styles.link}>
+            <span className="portal-nav-sep" aria-hidden="true" style={styles.sep}>·</span>
+            <a href="/rising/" className="portal-nav-link" style={styles.link}>
               🗡 Niccolò Rising
             </a>
           </>
         )}
         {canSee('fireline') && (
           <>
-            <span style={styles.sep}>·</span>
-            <a href="/fireline/" style={styles.link}>
+            <span className="portal-nav-sep" aria-hidden="true" style={styles.sep}>·</span>
+            <a href="/fireline/" className="portal-nav-link" style={styles.link}>
               🎯 Fireline
             </a>
           </>
         )}
-        <span style={styles.sep}>·</span>
+        <span className="portal-nav-sep" aria-hidden="true" style={styles.sep}>·</span>
         {/* Base-relative, like the Sign in link below — this is Thrash Margin's own route. */}
-        <a href={`${import.meta.env.BASE_URL}feedback`} style={styles.link}>
+        <a href={`${import.meta.env.BASE_URL}feedback`} className="portal-nav-link" style={styles.link}>
           💬 Feedback
         </a>
         {/* Base-relative too. Shown to admins only, as a courtesy: hiding it protects nothing.
             Access is enforced server-side, where every admin endpoint checks users.role. */}
         {user?.isAdmin && (
           <>
-            <span style={styles.sep}>·</span>
-            <a href={`${import.meta.env.BASE_URL}admin`} style={styles.link}>
+            <span className="portal-nav-sep" aria-hidden="true" style={styles.sep}>·</span>
+            <a href={`${import.meta.env.BASE_URL}admin`} className="portal-nav-link" style={styles.link}>
               🛠 Admin
             </a>
           </>
         )}
       </div>
-      <div style={styles.right}>
+      <div className="portal-nav-right" style={styles.right}>
         <MotionToggle />
         <ThemeToggle />
         {user ? (
           <>
-            <span>Signed in as {user.username}</span>
-            <a href={`${import.meta.env.BASE_URL}profile`} style={styles.link}>
+            <span className="portal-nav-user">Signed in as {user.username}</span>
+            <a href={`${import.meta.env.BASE_URL}profile`} className="portal-nav-link" style={styles.link}>
               Profile
             </a>
             <button
-              style={styles.signOut}
+              className="portal-nav-btn" style={styles.signOut}
               onClick={() => {
                 clearToken();
                 window.location.reload();
@@ -106,7 +106,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
           // own login route, so it must resolve under whatever base this app is served from
           // (`/` in local dev, `/thrash-margin/` in the portal build) rather than a hardcoded
           // production path.
-          <a href={`${import.meta.env.BASE_URL}login`} style={styles.link}>
+          <a href={`${import.meta.env.BASE_URL}login`} className="portal-nav-link" style={styles.link}>
             Sign in
           </a>
         )}

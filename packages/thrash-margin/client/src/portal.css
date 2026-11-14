@@ -20,7 +20,7 @@
   --portal-text-mid: #3b4048;
   --portal-soft: #5f6670;
   --portal-softer: #59636e;
-  --portal-faint: #8a9099;
+  --portal-faint: #62686f;
   --portal-good: #1a7f37;
   --portal-good-rule: #2da44e;
   --portal-bad: #cf222e;
@@ -44,10 +44,67 @@
   --portal-text-mid: #c9d1d9;
   --portal-soft: #7d8590;
   --portal-softer: #9198a1;
-  --portal-faint: #4b5563;
+  --portal-faint: #8b929c;
   --portal-good: #3fb950;
   --portal-good-rule: #2ea043;
   --portal-bad: #f85149;
   --portal-warn: #d29922;
   --portal-action: #1f6feb;
+}
+
+/*
+ * The nav strip's states and phone layout. PortalNav sets its look inline; these rules add what an
+ * inline style cannot: hover, keyboard focus, and a layout that stays readable at phone width.
+ * The !important flags are there only to outrank those inline styles.
+ */
+.portal-nav-link,
+.portal-nav-right button {
+  transition: color 120ms ease, border-color 120ms ease, background-color 120ms ease;
+}
+.portal-nav-link:hover { color: var(--portal-text) !important; text-decoration: underline !important; text-underline-offset: 3px; }
+.portal-nav-right button:hover {
+  color: var(--portal-text) !important;
+  border-color: var(--portal-bar-text) !important;
+  background: var(--portal-raised) !important;
+}
+.portal-nav-link:focus-visible,
+.portal-nav-right button:focus-visible {
+  outline: 2px solid var(--portal-action);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.portal-nav-user { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 16rem; }
+
+@media (max-width: 720px) {
+  .portal-nav { padding: 0.4rem 1rem !important; gap: 0.5rem !important; }
+  .portal-nav-links {
+    width: 100%;
+    gap: 0 0.25rem;
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+    /* A fade at the right edge says the row scrolls sideways. */
+    -webkit-mask-image: linear-gradient(to right, #000 82%, transparent);
+    mask-image: linear-gradient(to right, #000 82%, transparent);
+    padding-right: 2rem;
+  }
+  .portal-nav-links::-webkit-scrollbar { display: none; }
+  .portal-nav-links .portal-nav-link { flex: 0 0 auto; white-space: nowrap; }
+  .portal-nav-sep { display: none; }
+  .portal-nav-links .portal-nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 0.5rem;
+  }
+  .portal-nav-right { width: 100%; flex-wrap: wrap; gap: 0.5rem !important; }
+  .portal-nav-user { order: -1; flex: 1 0 100%; max-width: none; }
+  .portal-nav-right .portal-nav-link { display: inline-flex; align-items: center; min-height: 40px; padding: 0 0.25rem; }
+  .portal-nav-right button { min-height: 40px; padding: 0 0.75rem !important; font-size: 0.8rem !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .portal-nav-link,
+  .portal-nav-right button { transition: none; }
 }

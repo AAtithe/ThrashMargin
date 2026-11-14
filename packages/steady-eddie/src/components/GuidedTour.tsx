@@ -39,6 +39,7 @@ import { depotStruck, goodEmbargoed } from '../sim/events';
 import { priceAt } from '../sim/pricing';
 import { PAYOUT_MULTIPLIERS, SHARE_MAJORITY, slotsOf } from '../sim/rules';
 import { FONT, UI, money } from '../theme';
+import { Button } from './ui';
 import type { Contract, ContractId, DepotId, GameState, GoodId, Haulier, Vehicle, VehicleId } from '../sim/types';
 
 const TOUR_SEEN_KEY = 'steady_eddie_tour_seen';
@@ -259,10 +260,10 @@ function depotside(step: TourStep, { perVehicle = true }: { perVehicle?: boolean
       if (!isMyTurn(v)) return 'The other hauliers are taking their turns. I will wait.';
       if (step.manual?.(v, plan)) return step.body(v, plan);
       if (v.state.phase === 'roll') {
-        return 'Roll for the day first — nothing at the depot can be touched until the fleet has its miles. Then we carry on where we left off.';
+        return 'Roll for the day first: nothing at the depot can be touched until the fleet has its miles. Then we carry on where we left off.';
       }
       if (perVehicle && needsSelecting(v, plan)) {
-        return `The Orders panel is showing another vehicle. Select ${v.vehicle?.name ?? 'her'} in your fleet first — every order there goes to whichever vehicle is selected.`;
+        return `The Orders panel is showing another vehicle. Select ${v.vehicle?.name ?? 'her'} in your fleet first, because every order there goes to whichever vehicle is selected.`;
       }
       return step.body(v, plan);
     },
@@ -295,7 +296,7 @@ function courseStep(step: TourStep): TourStep {
     target: (v, plan) => (needsSelecting(v, plan) ? `vehicle-button-${plan.vehicleId}` : step.target(v, plan)),
     body: (v, plan) =>
       needsSelecting(v, plan)
-        ? `The Orders panel is showing another vehicle. Select ${v.vehicle?.name ?? 'her'} in your fleet first — a course is laid off for whichever vehicle is selected.`
+        ? `The Orders panel is showing another vehicle. Select ${v.vehicle?.name ?? 'her'} in your fleet first, because a course is laid off for whichever vehicle is selected.`
         : step.body(v, plan),
   });
 }
@@ -307,7 +308,7 @@ function courseStep(step: TourStep): TourStep {
 const INTRO: TourStep = {
   title: 'One run, start to finish',
   body: (_v, plan) =>
-    `I will point at one control at a time and wait while you use it. This is your real game — the load, the money and the commission are all yours to keep. ` +
+    `I will point at one control at a time and wait while you use it. This is your real game: the load, the money and the commission are all yours to keep. ` +
     `We are going after ${goodName(plan.good)} for ${depotName(plan.destination)}, by way of ${depotName(plan.loadDepot)}, which is where it can be had. Skip at any time.`,
   target: () => null,
   isComplete: () => false,
@@ -316,7 +317,7 @@ const INTRO: TourStep = {
 const ROLL: TourStep = {
   title: 'Roll for the day',
   body: () =>
-    'Nothing moves until you roll. Every vehicle gets her own two dice and those are her miles for the day — roll for the fleet.',
+    'Nothing moves until you roll. Every vehicle gets her own two dice and those are her miles for the day. Roll for the fleet.',
   target: () => 'roll-button',
   isComplete: v => v.state.phase !== 'roll',
 };
@@ -325,7 +326,7 @@ const PICK_COMMISSION: TourStep = {
   title: 'Take the commission',
   body: (_v, plan) =>
     `On the commissions board, click ${goodName(plan.good)} wanted at ${depotName(plan.destination)}. ` +
-    `Clicking one draws its route on the map and shows where the cargo can be bought — the card names the buyer, never the supplier, so sourcing is your decision and it is where this game is won.`,
+    `Clicking one draws its route on the map and shows where the cargo can be bought. The card names the buyer, never the supplier, so sourcing is your decision and it is where this game is won.`,
   target: (_v, plan) => `contract-card-${plan.contractId}`,
   isComplete: (v, plan, memory) =>
     memory.pickedCommission ||
@@ -338,7 +339,7 @@ const COURSE_TO_SELLER: TourStep = {
   title: 'Set a course for the cargo',
   body: (_v, plan) =>
     `Nothing is loaded where she stands. ${depotName(plan.loadDepot)} stocks ${goodName(plan.good)}. ` +
-    `Click ${depotName(plan.loadDepot)} — in the depot ledger under the map, or on the map itself — to lay off a route for her.`,
+    `Click ${depotName(plan.loadDepot)} (in the depot ledger under the map, or on the map itself) to lay off a route for her.`,
   target: (_v, plan) => `ledger-depot-${plan.loadDepot}`,
   isComplete: (v, plan) =>
     (v.targetDepot === plan.loadDepot && !needsSelecting(v, plan)) || boundFor(v.vehicle, plan.loadDepot),
@@ -365,7 +366,7 @@ function setOff(depotOf: (plan: TourPlan) => DepotId, step: TourStep): TourStep 
 const SET_OFF_TO_SELLER: TourStep = setOff(plan => plan.loadDepot, {
   title: 'Set off',
   body: (_v, plan) =>
-    `Commit her to it. She spends today's miles towards ${depotName(plan.loadDepot)} and carries on tomorrow — a vehicle already on the road drives the moment you roll, and you do not steer her again.`,
+    `Commit her to it. She spends today's miles towards ${depotName(plan.loadDepot)} and carries on tomorrow. A vehicle already on the road drives the moment you roll, and you do not steer her again.`,
   target: () => 'set-off-button',
   isComplete: (v, plan) => boundFor(v.vehicle, plan.loadDepot),
 });
@@ -384,7 +385,7 @@ const DRIVE_TO_SELLER: TourStep = {
 const LOAD: TourStep = {
   title: 'Load her up',
   body: (v, plan) =>
-    `Buy a lot of ${goodName(plan.good)} here — ${money(priceAt(plan.loadDepot, plan.good))} a lot. ` +
+    `Buy a lot of ${goodName(plan.good)} here, at ${money(priceAt(plan.loadDepot, plan.good))} a lot. ` +
     `Her bay takes ${slotsOf(v.vehicle?.vehicleClass)} lots in all.`,
   target: (_v, plan) => `load-cargo-${plan.good}`,
   isComplete: (v, plan) => lotsOf(v.vehicle, plan.good) > 0,
@@ -394,7 +395,7 @@ const FILL: TourStep = {
   title: 'Fill the bay',
   body: (_v, plan) =>
     `Three lots of the same good landed together are paid three times over, and the diesel costs the same whether she runs full or half empty. ` +
-    `Take another lot of ${goodName(plan.good)} if you can — ${money(priceAt(plan.loadDepot, plan.good))} more. Running her full on one cargo is usually the strongest move in the game.`,
+    `Take another lot of ${goodName(plan.good)} if you can, for ${money(priceAt(plan.loadDepot, plan.good))} more. Running her full on one cargo is usually the strongest move in the game.`,
   target: (_v, plan) => `load-cargo-${plan.good}`,
   isComplete: (v, plan) => {
     const lots = lotsOf(v.vehicle, plan.good);
@@ -412,7 +413,7 @@ const FILL: TourStep = {
 const COURSE_TO_BUYER: TourStep = {
   title: 'Set a course for the buyer',
   body: (_v, plan) =>
-    `She is loaded. Click ${depotName(plan.destination)} to lay off the route that pays — the map will draw it.`,
+    `She is loaded. Click ${depotName(plan.destination)} to lay off the route that pays. The map will draw it.`,
   target: (_v, plan) => `ledger-depot-${plan.destination}`,
   isComplete: (v, plan) =>
     (v.targetDepot === plan.destination && !needsSelecting(v, plan)) || boundFor(v.vehicle, plan.destination),
@@ -430,7 +431,7 @@ const DRIVE_TO_BUYER: TourStep = {
   title: 'Run her home',
   body: (v, plan) =>
     v.state.phase === 'roll'
-      ? `Roll, and keep rolling. ${depotName(plan.destination)} is the target — I will wait.`
+      ? `Roll, and keep rolling. ${depotName(plan.destination)} is the target. I will wait.`
       : `End the turn, and keep going until she pulls into ${depotName(plan.destination)}.`,
   target: turnBarTarget,
   isComplete: (v, plan) => v.vehicle?.location === plan.destination,
@@ -451,10 +452,10 @@ const LAND: TourStep = {
     // Landed (as second home the card is retired at once) or the cargo went another way: the step
     // is complete and about to move on.
     if (!contract || contract.fills.some(f => f.haulierId === v.haulier.id) || lotsOf(v.vehicle, plan.good) === 0) {
-      return 'Done — the cargo is off the vehicle.';
+      return 'Done: the cargo is off the vehicle.';
     }
     const rank = contract.fills.length + 1;
-    return `Land her. Every matching slot goes at once and is paid per lot — you are ${rank === 1 ? 'first home' : 'second home'}, at ${PAYOUT_MULTIPLIERS[rank as 1 | 2]}× ${money(contract.price)} a lot.`;
+    return `Land her. Every matching slot goes at once and is paid per lot. You are ${rank === 1 ? 'first home' : 'second home'}, at ${PAYOUT_MULTIPLIERS[rank as 1 | 2]}× ${money(contract.price)} a lot.`;
   },
   target: (v, plan) => (lostTheRace(v, plan) ? null : `land-contract-${plan.contractId}`),
   // Landed, or the cargo went some other way once she was on the bay. The last clause is anchored
@@ -474,7 +475,7 @@ const LAND: TourStep = {
 const BUY_SHARE: TourStep = {
   title: 'Turn the money into shares',
   body: () =>
-    `Cash does not win this. In the counting house, buy a share of your own company — hold ${SHARE_MAJORITY} of them, declare, and still be standing at the close, and the company is yours.`,
+    `Cash does not win this. In the counting house, buy a share of your own company. Hold ${SHARE_MAJORITY} of them, declare, and still be standing at the close, and the company is yours.`,
   target: () => 'buy-share-button',
   isComplete: (v, _plan, memory) => v.haulier.shares > memory.shares,
 };
@@ -482,7 +483,7 @@ const BUY_SHARE: TourStep = {
 const OUTRO: TourStep = {
   title: 'That is the loop',
   body: () =>
-    `Source it, run it, land it first, buy shares with what it made. Everything else — loans, the aero kit, a tracker against the thieves, a hostile bid for somebody else's shares — is a way of doing that loop faster than the haulier next to you. Most of it lives in the counting house. Off you go.`,
+    `Source it, run it, land it first, buy shares with what it made. Everything else (loans, the aero kit, a tracker against the thieves, a hostile bid for somebody else's shares) is a way of doing that loop faster than the haulier next to you. Most of it lives in the counting house. Off you go.`,
   target: () => null,
   isComplete: () => false,
 };
@@ -820,27 +821,27 @@ export default function GuidedTour({ view, plan, onFinish, onTargetChange, hidde
         data-tour-manual={isManual ? '1' : ''}
       >
         <p style={stepLabel}>
-          Guided run — {stepIndex + 1} of {steps.length}
+          Guided run · {stepIndex + 1} of {steps.length}
         </p>
         <h3 style={cardTitle}>{step.title}</h3>
         <p style={cardBody}>{step.body(view, plan)}</p>
         <div style={footer}>
-          <button type="button" style={ghostButton} onClick={finish}>
+          <Button tone="quiet" style={ghostButton} onClick={finish}>
             {isLast ? 'Close' : 'Skip the run'}
-          </button>
+          </Button>
           <div style={{ display: 'flex', gap: '0.4rem' }}>
             {!isFirst && (
-              <button type="button" style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
+              <Button style={plainButton} onClick={() => setStepIndex(i => Math.max(0, i - 1))}>
                 Back
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              style={isManual ? primaryButton : plainButton}
+            <Button
+              tone={isManual ? 'primary' : 'default'}
+              style={isManual ? tourButton : plainButton}
               onClick={() => (isLast ? finish() : setStepIndex(i => Math.min(i + 1, steps.length - 1)))}
             >
               {isLast ? 'Finish' : isFirst ? 'Start' : isManual ? 'Carry on' : 'Skip this'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -899,32 +900,15 @@ const footer: React.CSSProperties = {
   gap: '0.5rem',
 };
 
-// The full `border` shorthand is set on every variant rather than overriding `borderColor` on a
-// base: mixing a shorthand and a longhand for the same property across renders of one element is
-// a real React warning, not a lint nag.
-const plainButton: React.CSSProperties = {
-  background: UI.panel,
-  border: `1px solid ${UI.ruleStrong}`,
-  borderRadius: 2,
-  color: UI.text,
-  padding: '0.35rem 0.65rem',
-  fontFamily: 'inherit',
-  fontSize: '0.76rem',
-  cursor: 'pointer',
-};
+// Kit buttons (lib/kit.css) with the card's own sizes. The plain button keeps a panel-coloured face
+// so it stands off the raised card; the kit's tone variables carry it, so hover still shows.
+const tourButton = { fontSize: '0.76rem' } as React.CSSProperties;
 
-const primaryButton: React.CSSProperties = {
-  ...plainButton,
-  border: `1px solid ${UI.brass}`,
-  background: UI.brass,
-  color: UI.ground,
-  fontWeight: 600,
-};
+const plainButton = { ...tourButton, '--kit-btn-face': UI.panel } as React.CSSProperties;
 
-const ghostButton: React.CSSProperties = {
-  ...plainButton,
-  border: '1px solid transparent',
-  background: 'transparent',
-  color: UI.textFaint,
+const ghostButton = {
+  ...tourButton,
+  '--kit-btn-edge': 'transparent',
+  '--kit-btn-ink': UI.textFaint,
   padding: '0.35rem 0.2rem',
-};
+} as React.CSSProperties;
