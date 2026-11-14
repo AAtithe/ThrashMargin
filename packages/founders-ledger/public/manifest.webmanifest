@@ -3,7 +3,7 @@
   "short_name": "Ledger",
   "description": "CEO coaching: profit, space and the systems that protect them.",
   "start_url": "./",
-  "scope": "./",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#F1F3EE",
   "theme_color": "#1D5A47",

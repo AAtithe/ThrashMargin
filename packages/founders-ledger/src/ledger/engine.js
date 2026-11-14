@@ -11,7 +11,7 @@
  * which the host wires to the server (api/game/coach.ts); the prompts and the key live there. With
  * `ai` false, or when a task returns null, every feature falls back to the built-in bank.
  */
-const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Take control: a 3-minute reset</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" aria-label="Sections"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
+const MARKUP = '<div class="wrap">\n  <header>\n    <div class="eyebrow">Williams, Stanley &amp; Co. &middot; CEO coaching</div>\n    <h1>The Founder\'s Ledger</h1>\n    <p class="muted">Points come from what you do, not what you answer. Close your own week every Friday, buy your hours back, and build the life you have written down.</p>\n  </header>\n  <button type="button" class="btn reset-top" id="resetTop" data-tab="reset">Take control: a 3-minute reset</button>\n  <div class="board" id="board"></div>\n  <nav id="tabs" class="tabbar" aria-label="Sections"></nav>\n  <nav id="subtabs" class="subtabs" aria-label="Pages in this section"></nav>\n  <main id="view"></main>\n  <div class="status" id="status" aria-live="polite"></div>\n</div>';
 
 export function mountLedger(root, opts = {}) {
   return createLedger(opts.initial, { ...opts, root }).mount();
@@ -1008,7 +1008,7 @@ function renderBoard(){
   $('#board').innerHTML=`
    <div class="tile lvl"><span class="lab">Level</span><span class="fig">${lv.L[lv.cur].name}</span><span class="sub">${lv.next?'Next: '+lv.next.name+', '+lv.next.checks.filter(c=>c[1]).length+' of '+lv.next.checks.length+' met':'Top of the ladder'}</span></div>
    <div class="tile ${st===0&&S.reviews.length?'warn':''}"><span class="lab">Friday streak</span><span class="fig">${st} wk${st===1?'':'s'}</span><span class="sub">${due?(S.reviews.length?'Review due now':'Start it this Friday'):'Next review from '+fmtDate(S.reviews[S.reviews.length-1].ts+6*DAY)}</span></div>
-   <div class="tile"><span class="lab">Hours bought back</span><span class="fig">${bb.perWeek.toFixed(1)}<span style="font-size:15px;font-weight:500"> hrs/wk</span></span><span class="sub">Worth ${gbp(bb.perWeek*46*(Number(S.future.hourly)||0))} a year at ${gbp(S.future.hourly||0)}/hr &middot; ${bb.total.toFixed(1)} hrs banked so far</span></div>
+   <div class="tile"><span class="lab">Hours bought back</span><span class="fig">${bb.perWeek.toFixed(1)}<span class="u" style="font-weight:500"> hrs/wk</span></span><span class="sub">Worth ${gbp(bb.perWeek*46*(Number(S.future.hourly)||0))} a year at ${gbp(S.future.hourly||0)}/hr &middot; ${bb.total.toFixed(1)} hrs banked so far</span></div>
    <div class="tile"><span class="lab">Ledger points</span><span class="fig">${points()}</span><span class="sub">Earned by doing, never by answering</span></div>`;
 }
 function renderTabs(){
@@ -1016,9 +1016,25 @@ function renderTabs(){
   const unplayed=S.calls.filter(c=>S.answers[c.id]==null).length+(S.pendingCall?1:0)+FOUNDING.filter(c=>S.answers[c.id]==null).length;
   const sysWaiting=sysToday().call&&!sysToday().played;
   const oc=offCurrent();const offDue=oc&&dayKey(oc.day)!==dayKey(Date.now())&&oc.day<Date.now();
-  const tabs=[['today','Today',sysWaiting?'1':''],['stats','Stats',''],['reset','Reset',''],['off','Phone off',offDue?'due':''],['review','Friday review',reviewDue()?'due':''],['deli','Deli',''],['coach','Coach session',openSession()?'1':''],['actions','Actions',open?String(open):''],['calls','Play',unplayed?String(unplayed):''],['future','Future','']];
-  $('#tabs').innerHTML=tabs.map(([k,l,n])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:''}</button>`).join('');
+  const badge={today:sysWaiting?'1':'',off:offDue?'due':'',review:reviewDue()?'due':'',coach:openSession()?'1':'',actions:open?String(open):'',calls:unplayed?String(unplayed):''};
+  const mark=n=>n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:'';
+  const g=groupOf(S.view);
+  $('#tabs').innerHTML=GROUPS.map(G=>{const bs=G.pages.map(([k])=>badge[k]).filter(Boolean);const n=bs.includes('due')?'due':bs.length?String(bs.reduce((a,x)=>a+(Number(x)||0),0)):'';
+    return `<button data-tab="${G.k}" data-group="1" aria-current="${g.k===G.k}"><span class="tab-ico" aria-hidden="true">${G.ico}</span><span class="tab-lbl">${G.label}${mark(n)}</span></button>`;}).join('');
+  const sub=$('#subtabs');sub.hidden=g.pages.length<2||S.view==='reset';
+  sub.innerHTML=g.pages.length<2?'':g.pages.map(([k,l])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${mark(badge[k])}</button>`).join('');
 }
+
+/* Five sections, each with its pages. The tab bar goes to the page last used in a section. */
+const GROUPS=[
+  {k:'today',label:'Today',ico:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',pages:[['today','Today'],['reset','Reset']]},
+  {k:'week',label:'Week',ico:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',pages:[['actions','Actions'],['review','Friday review'],['off','Phone off']]},
+  {k:'numbers',label:'Numbers',ico:'<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',pages:[['deli','Deli'],['stats','Stats'],['month','Month']]},
+  {k:'coach',label:'Coach',ico:'<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',pages:[['coach','Session'],['calls','Play']]},
+  {k:'future',label:'Future',ico:'<svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',pages:[['future','2030']]}
+];
+const groupOf=view=>GROUPS.find(G=>G.pages.some(([k])=>k===view))||GROUPS[0];
+function openGroup(k){const G=GROUPS.find(x=>x.k===k);if(!G)return null;const last=(S.lastPage||{})[k];return G.pages.some(([p])=>p===last)&&last!=='reset'?last:G.pages[0][0];}
 
 function addTodo(t){
   if(t.source){const ex=S.todos.find(x=>x.source===t.source);if(ex){ex.text=t.text;ex.type=t.type;ex.h=t.h;return ex;}}
@@ -1837,7 +1853,7 @@ on('change',e=>{
     if(S.view==='review'){renderBoard();setStatus(t.done?`+${ptsFor(t)} points`:'Unticked');}else render();}
 });
 on('click',async e=>{
-  const b=e.target.closest('button');if(!b)return;const d=b.dataset;
+  const b=e.target.closest('button');if(!b)return;const d=b.dataset.group?Object.assign({},b.dataset,{tab:openGroup(b.dataset.tab)||'today'}):b.dataset;
   if(d.other){const i=byId('other-'+d.other);if(i){i.hidden=!i.hidden;b.classList.toggle('sel',!i.hidden);if(!i.hidden)i.focus();}return;}
   if(d.pickGroup){
     const row=b.closest('.chips-row');const multi=row&&row.dataset.multi==='1';const max=Number(row&&row.dataset.max)||0;
@@ -1872,7 +1888,7 @@ on('click',async e=>{
     }
     return;
   }
-  if(d.tab){if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;if(d.tab!=='off')OFFLOG=false;setStatus('');S.view=d.tab;save();render();toTop();return;}
+  if(d.tab){const G=groupOf(d.tab);S.lastPage=Object.assign({},S.lastPage,{[G.k]:d.tab});if(d.tab==='month'&&!S.monthView)S.monthView=prevMonthKey();if(d.tab==='reset'&&RD&&(RD.step==='done'||RD.step==='call'))RD=null;if(d.tab!=='off')OFFLOG=false;setStatus('');S.view=d.tab;save();render();toTop();return;}
   if(d.goto){S.view='future';save();render();const el=byId(d.goto);if(el)el.scrollIntoView({block:'start'});return;}
   if(d.lqstep!=null){S.letterQ.step=Number(d.lqstep);save();renderLetter();return;}
   if(d.keep){const w=WILD.find(x=>x.id===d.keep);const ex=S.todos.find(t=>t.source===w.id);

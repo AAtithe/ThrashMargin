@@ -23,7 +23,7 @@ export default function PortalNav({ variant = 'header' }: PortalNavProps) {
   const isFooter = variant === 'footer';
 
   return (
-    <div className="portal-nav" style={{ ...styles.bar, ...(isFooter ? styles.barFooter : styles.barHeader) }}>
+    <div className={`portal-nav ${isFooter ? 'portal-nav-footer' : 'portal-nav-header'}`} style={{ ...styles.bar, ...(isFooter ? styles.barFooter : styles.barHeader) }}>
       <div className="portal-nav-links" style={styles.links}>
         <a href="/" className="portal-nav-link" style={styles.link}>
           🏠 Home

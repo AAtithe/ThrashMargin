@@ -305,3 +305,43 @@ details.own summary:hover{color:var(--ink)}
 .num-field input{width:100%;box-sizing:border-box}
 .pull-panel{border-top:1px solid var(--line);margin-top:10px;padding-top:10px;display:grid;gap:8px}
 td.num,th.num{text-align:right}
+/* Five sections and their pages. On a wide screen the sections are the row of tabs under the
+   scoreboard; on a phone they are an app's tab bar along the bottom, in reach of a thumb. */
+nav.tabbar button{display:inline-flex;align-items:center;gap:8px}
+.tab-ico svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;display:block}
+.tab-lbl{display:inline-flex;align-items:center}
+.subtabs{display:flex;gap:6px;flex-wrap:wrap;border:0;margin-top:-8px}
+.subtabs[hidden]{display:none}
+.subtabs button{font:500 13px var(--body);border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted);padding:8px 14px;min-height:40px;margin:0;cursor:pointer}
+.subtabs button[aria-current="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.subtabs button[aria-current="true"] .n{color:inherit}
+@media (max-width:720px){
+  nav.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);border-bottom:0;
+    display:grid;grid-template-columns:repeat(5,1fr);gap:0;padding:4px max(4px, env(safe-area-inset-right, 0px)) max(6px, env(safe-area-inset-bottom, 0px)) max(4px, env(safe-area-inset-left, 0px))}
+  nav.tabbar button{flex-direction:column;gap:2px;padding:6px 2px;min-height:52px;border-bottom:0;border-top:3px solid transparent;margin:0;font-size:11px;justify-content:center}
+  nav.tabbar button[aria-current="true"]{border-top-color:var(--accent);border-bottom-color:transparent;color:var(--accent)}
+  nav.tabbar .tab-ico svg{width:22px;height:22px}
+  nav.tabbar .n{margin-left:3px}
+  nav.tabbar .due{margin-left:4px}
+  .fl-page{padding-bottom:calc(72px + env(safe-area-inset-bottom, 0px))}
+  html{scroll-padding-bottom:calc(80px + env(safe-area-inset-bottom, 0px))}
+  .subtabs{margin-top:-6px}
+  /* The scoreboard as one compact strip: the figures stay, the explanations go to Stats. */
+  .board{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .tile{padding:8px 8px}
+  .tile .lab{font-size:9px;letter-spacing:.04em}
+  .tile .fig{font-size:18px}
+  .tile.lvl .fig{font-size:15px;overflow-wrap:anywhere}
+  h1{font-size:22px}
+  .tile .fig small{font-size:11px}
+  .tile .sub{display:none}
+  header .eyebrow{display:none}
+}
+/* Opened from the home screen: the ledger is the whole app, so the portal's top bar steps aside
+   (its links stay in the footer). */
+@media (display-mode: standalone){
+  .portal-nav-header{display:none !important}
+  .wrap{padding-top:max(14px, env(safe-area-inset-top, 0px))}
+}
+.tile .fig .u{font-size:15px}
+@media (max-width:720px){.tile .fig .u{font-size:11px}}
