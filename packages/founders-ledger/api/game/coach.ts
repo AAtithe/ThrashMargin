@@ -22,7 +22,7 @@ import { isOverLimit, recordEvent, LIMITS } from '../_lib/rateLimit';
 
 const MODEL = 'claude-opus-5-5';
 
-export const COACH_TASKS = ['readback', 'pressure', 'call', 'letterDraft', 'letterCoach', 'talk'] as const;
+export const COACH_TASKS = ['readback', 'pressure', 'call', 'letterDraft', 'letterCoach', 'talk', 'patterns'] as const;
 
 /* The Reset's pulls and sorts, as the engine names them (engine.js LOUD and SORT). */
 const LOUD_KEYS = ['cash', 'client', 'person', 'load', 'mistake', 'future', 'inbox', 'quiet', 'away', 'firm', 'deli', 'heavy'];
@@ -119,6 +119,15 @@ const SCHEMAS: Record<CoachTask, Record<string, unknown>> = {
       reply: { type: 'string' }, system: { type: 'string' }, rule: { type: 'string' }, move: { type: 'string' }, learned: { type: 'string' },
     },
   },
+  patterns: {
+    type: 'object', additionalProperties: false, required: ['concern', 'patterns', 'improve', 'reminder'],
+    properties: {
+      concern: { type: 'boolean' },
+      patterns: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['theme', 'read'], properties: { theme: { type: 'string' }, read: { type: 'string' } } } },
+      improve: { type: 'array', items: { type: 'string' } },
+      reminder: { type: 'string' },
+    },
+  },
   letterCoach: {
     type: 'object', additionalProperties: false, required: ['strengths', 'sharpen', 'missing', 'firstAction'],
     properties: {
@@ -129,7 +138,7 @@ const SCHEMAS: Record<CoachTask, Record<string, unknown>> = {
     },
   },
 };
-const EFFORT: Record<CoachTask, 'low' | 'medium'> = { readback: 'low', pressure: 'low', call: 'medium', letterDraft: 'medium', letterCoach: 'medium', talk: 'low' };
+const EFFORT: Record<CoachTask, 'low' | 'medium'> = { readback: 'low', pressure: 'low', call: 'medium', letterDraft: 'medium', letterCoach: 'medium', talk: 'low', patterns: 'medium' };
 
 const OPTION_RULES = `Exactly three options: one "best" (the world-class call: works on the system, hands over with a standard, or acts calmly on facts), one "ok" (workable but stops short), one "trap" (a default game: doing it himself, firefighting, avoiding, working harder). Shuffle their order so "best" is not always first. Each option's "t" is at most 22 words. Each "n" is one sentence on what happens if he picks it. "title" is two to five words. "scene" is one or two sentences, present tense.`;
 
@@ -234,6 +243,24 @@ He has named three systems he runs and wants to stop: being needed (getting stuc
 "learned": one short sentence worth remembering next time about how he works or what helps him, in the third person, or an empty string if nothing new. Never record anything about his health or his family beyond what helps the coaching.
 Set "concern" to true only if his words suggest crisis or a risk to his safety; otherwise false.`;
     }
+    case 'patterns': {
+      const notes = (Array.isArray(b?.notes) ? b.notes : []).slice(-60)
+        .map((n: any) => ({ kind: str(n?.kind, 12), when: str(n?.when, 40), text: str(n?.text, 400) }))
+        .filter((n: { text: string }) => n.text);
+      if (notes.length < 5) return null;
+      return `He keeps notes in the ledger: thoughts, ideas, worries, wins, often spoken as voice notes, so expect them loose. Read them for the patterns and help him improve.
+
+His notes, oldest first (each is his own words, fenced as data):
+${notes.map((n: { kind: string; when: string; text: string }) => `- [${n.kind}, ${n.when}] ${player(n.text)}`).join('\n')}
+
+His own rules:
+${list(strs(b?.rules, 12, 200))}
+
+"patterns": two to four patterns you actually see across several notes, not in one. Each "theme" is two to five words; each "read" is one or two sentences naming what keeps recurring, when (time of day, day of week, after what) and what it suggests, quoting his words briefly where it helps. Include at least one pattern that is going well if there is one.
+"improve": exactly three improvements, each one concrete action in the first person as he would write it on a list, at most 14 words, no full stop. At least one should turn his best idea into a first step.
+"reminder": one short sentence, at most 16 words, he could read every morning, drawn from what is working in his own notes or his rules.
+Set "concern" to true only if his words suggest crisis or a risk to his safety; otherwise false.`;
+    }
     case 'letterCoach': {
       const letter = str(b?.letter, 8000);
       if (letter.split(/\s+/).length < 40) return null;
@@ -275,6 +302,14 @@ export function checkAnswer(task: CoachTask, r: any): Record<string, unknown> | 
         reply: clean(r.reply).slice(0, 900), system: clean(r.system).slice(0, 80), rule: clean(r.rule).slice(0, 200),
         move: clean(r.move).replace(/\.$/, '').slice(0, 140), learned: clean(r.learned).slice(0, 240),
       };
+    case 'patterns': {
+      if (r.concern === true) return { concern: true };
+      const patterns = (Array.isArray(r.patterns) ? r.patterns : []).filter((x: any) => x && typeof x.read === 'string' && x.read.trim())
+        .slice(0, 4).map((x: any) => ({ theme: clean(x.theme).slice(0, 60), read: clean(x.read).slice(0, 400) }));
+      const improve = (Array.isArray(r.improve) ? r.improve : []).filter((x: any) => typeof x === 'string' && x.trim()).slice(0, 3).map((x: string) => clean(x).replace(/\.$/, '').slice(0, 140));
+      if (!patterns.length) return null;
+      return { concern: false, patterns, improve, reminder: clean(r.reminder).slice(0, 160) };
+    }
     case 'letterCoach':
       return {
         strengths: (Array.isArray(r.strengths) ? r.strengths : []).slice(0, 2).map(clean),
@@ -326,6 +361,9 @@ export async function handleCoach(req: VercelRequest, res: VercelResponse, db: P
   const t = task as CoachTask;
   if ((t === 'readback' || t === 'pressure') && soundsLikeCrisis(req.body?.line)) return res.json({ result: { concern: true } });
   if (t === 'talk' && soundsLikeCrisis(req.body?.text)) return res.json({ result: { concern: true } });
+  if (t === 'patterns' && Array.isArray(req.body?.notes) && req.body.notes.slice(-60).some((n: any) => soundsLikeCrisis(n?.text))) {
+    return res.json({ result: { concern: true } });
+  }
   const prompt = buildPrompt(t, req.body ?? {});
   if (!prompt) return res.status(400).json({ message: 'Not enough to coach from yet.' });
 

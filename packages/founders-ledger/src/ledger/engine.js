@@ -507,7 +507,7 @@ const hoursChip=h=>{const n=Number(h)||0;const opts=PICK.hours.map(x=>parseInt(x
 const wc=s=>(String(s||'').trim().match(/\S+/g)||[]).length;
 
 const blankFuture=()=>({game:'',gameWords:'',targetHours:45,daysOff:30,income:0,hourly:200,letter:'',pillars:Object.fromEntries(PILLARS.map(([k])=>[k,{now:5,ten:''}]))});
-const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],away:[],mornings:[],evenings:[],pulse:[],people:DEFAULT_PEOPLE.slice(),handovers:[],monthCloses:[],honourAt:{},deli:{weeks:[],targets:{cogs:32,labour:30}},offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
+const blank=()=>({v:2,baseline:null,baselineTs:0,todos:[],reviews:[],notes:[],answers:{},calls:[],pendingCall:false,wildMonth:null,wildLog:[],future:blankFuture(),letterQ:{answers:{},step:0},letterDraft:'',letterReads:[],letterCoach:null,practiceRuns:[],resets:[],rules:DEFAULT_RULES.slice(),coachNotes:[],habits:DEFAULT_HABITS.map(h=>({...h})),habitLog:[],sessions:[],away:[],mornings:[],evenings:[],pulse:[],people:DEFAULT_PEOPLE.slice(),handovers:[],monthCloses:[],honourAt:{},journal:[],reminderDay:'',wts:{objective:{},principles:[],procs:[],started:0},deli:{weeks:[],targets:{cogs:32,labour:30}},offDays:[],sysLog:[],deck:{drawn:[],redraws:2},view:'today',callId:null,updatedAt:0});
 
 function migrate(o){
   if(!o)return blank();
@@ -560,6 +560,7 @@ function points(){
   p+=PULSE_PTS*new Set((S.pulse||[]).map(x=>weekNo(x.ts))).size;
   p+=DELI_PTS*new Set(deliWeeks().map(x=>weekNo(x.ts))).size;
   p+=MONTH_PTS*(S.monthCloses||[]).length;
+  p+=WTS_PTS*wtsProcs().reduce((a,x)=>a+(x.log||[]).length,0);
   const sessWeeks=new Set();(S.sessions||[]).forEach(s=>{if(s.status==='done'&&s.takeaway&&!sessWeeks.has(weekNo(s.doneTs))){sessWeeks.add(weekNo(s.doneTs));p+=SESSION_PTS;}});
   return p;
 }
@@ -594,7 +595,7 @@ function levels(){
 
 /* ---------- The Reset: derived numbers ---------- */
 function resetsToday(now=Date.now()){const k=dayKey(now);return (S.resets||[]).filter(r=>dayKey(r.ts)===k).length;}
-const plural=(n,w)=>`${n} ${w}${n===1?'':'s'}`;
+const plural=(n,w,many)=>`${n} ${n===1?w:(many||w+'s')}`;
 /* Facts from the player's own ledger, never a slogan. Each one can be traced to something they did. */
 function receipts(){
   const out=[];
@@ -737,7 +738,7 @@ function habitMet(h){const by=habitWeeks(h.id);return Object.values(by).filter(c
 /* ---------- Coaching sessions: an agenda built from the ledger, and what he brings back ---------- */
 const SESSION_WHEN=['Today','Tomorrow','This week','Next week'];
 const SESSION_WANT=['Clarity on one decision','A plan for the next 30 days','To be challenged','To offload and reset'];
-const SESSION_TOPICS=['How I protect profit and space','The deli turnaround: profit and cash','Being needed while I am away','Fear the firm is failing: facts against feelings','Is my 2030 letter still true?','Who could take something off me next'];
+const SESSION_TOPICS=['How I protect profit and space','Work the System: the next procedure and who owns it','The deli turnaround: profit and cash','Being needed while I am away','Fear the firm is failing: facts against feelings','Is my 2030 letter still true?','Who could take something off me next'];
 const TAKEAWAYS=['Decide one thing this week and tell the team','Hand one task over for good','Protect one thinking block a week','Book next month’s days off now'];
 const SESSION_PTS=10;
 const openSession=()=>(S.sessions||[]).find(s=>s.status==='planned')||null;
@@ -771,6 +772,8 @@ function sessionBrief(now=Date.now()){
   const goods=S.notes.filter(n=>n.kind==='good'&&n.ts>since);if(goods.length){lines.push(`${plural(goods.length,'good thing')} logged`);topics.push(`What is working: ${goods[goods.length-1].text}`);}
   const ruled=rs.filter(r=>r.rule);if(ruled.length)lines.push(`Chose my own rules on ${plural(ruled.length,'hard moment')}`);
   if(pulseLine())lines.push('Firm pulse: '+pulseLine());
+  if(S.wts&&(S.wts.started||wtsProcs().length)){const sm=wtsSummary();lines.push(`Work the System: ${sm.by.written+sm.by.handed+sm.by.runs} of ${plural(sm.total,'procedure')} written, ${sm.by.runs} running without me, ${plural(sm.streak,'week')} in a row`);if(!wtsMovedThisWeek(now))topics.push('Work the System: what stopped me this week');}
+  const jr=(S.journal||[]).filter(e=>e.ts>since);if(jr.length){const P=journalPatterns(now);lines.push(`${plural(jr.length,'note')} written${P.themes[0]&&P.themes[0].n?`, mostly about ${P.themes[0].name.toLowerCase()}`:''}`);if(P.stale)topics.push(`${plural(P.stale,'idea')} I have not decided on`);}
   const ds=deliStatus();if(ds){lines.push(`Deli: ${ds.profit>=0?'making':'losing'} ${gbp(Math.abs(ds.profit))} a week, cash ${gbp(ds.cash)}${ds.cashUp!==null?` (${ds.cashUp>=0?'up':'down'} ${gbp(Math.abs(ds.cashUp))})`:''}, ${ds.run?`in profit ${plural(ds.run,'week')} running`:`break-even ${gbp(ds.breakEven)} of sales a week`}`);if(ds.profit<0)topics.push('The deli: which lever next, and who owns it');}
   const ho=(S.handovers||[]).filter(h=>h.ts>since);if(ho.length){const open=ho.filter(h=>!handoverDone(h));lines.push(`Pulled in ${plural(ho.length,'time')}; ${ho.length-open.length} handed over`);const nob=ho.filter(h=>h.who==='Nobody yet');if(nob.length)topics.push(`Nobody owns this yet: ${nob[nob.length-1].what.toLowerCase()}`);}
   SESSION_TOPICS.forEach(x=>topics.push(x));
@@ -886,6 +889,11 @@ const HONOURS=[
   {id:'month1',name:'Month closed',desc:'Your first monthly close',goal:1,v:()=>(S.monthCloses||[]).length},
   {id:'deli1',name:'Numbers, not feelings',desc:'First deli week logged',goal:1,v:()=>deliWeeks().length},
   {id:'deli4',name:'Turning it round',desc:'The deli in profit four weeks running',goal:4,v:()=>{const s=deliStatus();return s?s.run:0;}},
+  {id:'wts1',name:'System builder',desc:'First procedure written down',goal:1,v:()=>wtsProcs().filter(p=>p.stage!=='spotted').length},
+  {id:'wts4',name:'Working on it',desc:'Four weeks in a row moving a system forward',goal:4,v:()=>wtsStreak()},
+  {id:'wts3',name:'Runs without me',desc:'Three procedures running without you',goal:3,v:()=>wtsProcs().filter(p=>p.stage==='runs').length},
+  {id:'jr20',name:'Thinking on paper',desc:'Twenty notes written',goal:20,v:()=>(S.journal||[]).length},
+  {id:'idea3',name:'Idea to action',desc:'Three ideas made into actions',goal:3,v:()=>(S.journal||[]).filter(e=>e.status==='acted').length},
   {id:'hol1',name:'Properly off',desc:'A holiday week, fully or mostly switched off',goal:1,v:()=>S.reviews.filter(r=>r.weekType==='Holiday'&&(r.switchOff==='Fully'||r.switchOff==='Mostly')).length},
   {id:'off1',name:'The firm held',desc:'Your first phone-off day',goal:1,v:()=>(S.offDays||[]).filter(o=>o.status==='back').length},
   {id:'coach3',name:'Prepared',desc:'Three coaching sessions with an agenda',goal:3,v:()=>(S.sessions||[]).filter(s=>s.status==='done').length},
@@ -902,6 +910,7 @@ const REMINDERS=[
   {id:'review',name:'Friday review, 15:00',on:true,rule:'FREQ=WEEKLY;BYDAY=FR',h:15,m:0,title:'Founder’s Ledger: Friday review'},
   {id:'pilates',name:'Book Pilates, Thursday 12:00',on:true,rule:'FREQ=WEEKLY;BYDAY=TH',h:12,m:0,title:'Book this week’s Pilates class'},
   {id:'deli',name:'Deli numbers, Monday 9:00',on:true,rule:'FREQ=WEEKLY;BYDAY=MO',h:9,m:0,title:'Deli numbers: sales, margin, labour, cash'},
+  {id:'wts',name:'Systems hour, Tuesday 7:30',on:true,rule:'FREQ=WEEKLY;BYDAY=TU',h:7,m:30,title:'Work the System: move one procedure forward'},
   {id:'month',name:'Monthly close, the 1st at 8:00',on:true,rule:'FREQ=MONTHLY;BYMONTHDAY=1',h:8,m:0,title:'Founder’s Ledger: close the month'}
 ];
 function icsFor(ids,now=Date.now()){
@@ -996,6 +1005,69 @@ function closeMonth(key,focus,changeRule,now=Date.now()){if(monthClosed(key))ret
   if(changeRule)addTodo({text:'Change one of my rules: the one I broke most last month',type:'Start',h:'week',hours:0,source:'month-rule-'+key});return m;}
 const leverTodo=id=>S.todos.find(t=>t.source==='deli-'+id)||null;
 
+/* ---------- Notes: thoughts, ideas, worries, wins and voice notes, read for their patterns ---------- */
+const JOURNAL_KINDS=[{k:'thought',name:'Thought',many:'Thoughts'},{k:'idea',name:'Idea',many:'Ideas'},{k:'worry',name:'Worry',many:'Worries'},{k:'win',name:'Win',many:'Wins'},{k:'note',name:'Note',many:'Notes'}];
+const THEMES=[
+  {k:'firm',name:'The firm',re:/\b(ws|firm|clients?|fees?|pipeline|billing|proposals?|practice|accounts)\b/i},
+  {k:'deli',name:'The deli',re:/\b(deli|shop|till|takings|suppliers?|menu|stock)\b/i},
+  {k:'money',name:'Money and profit',re:/(\bcash\b|\bprofit|\bmoney\b|\bmargins?\b|\bpric(e|es|ing)\b|\bbank\b|£|\brevenue\b|\bcosts?\b|\bdebt\b)/i},
+  {k:'people',name:'People and handing over',re:/\b(team|staff|hir(e|ing)|managers?|delegat\w*|hand ?over|handed|people|recruit\w*)\b/i},
+  {k:'space',name:'Time and space',re:/\b(time|space|holiday|weekend|hours|rest|switch(ed)? off|tired|busy|overwhelm\w*)\b/i},
+  {k:'health',name:'Health and energy',re:/\b(pilates|gym|sleep|health|exercise|anxious|anxiety|stress\w*|energy|walk)\b/i},
+  {k:'family',name:'Family and life',re:/\b(family|kids|children|wife|partner|home|friends|life)\b/i},
+  {k:'growth',name:'Growth and new ideas',re:/\b(launch|grow\w*|product|service|marketing|sales|sell|offer|new client)\b/i}
+];
+const themesOf=text=>THEMES.filter(x=>x.re.test(text)).map(x=>x.k);
+const partOfDay=ts=>{const h=new Date(ts).getHours();return h<5?'night':h<12?'morning':h<17?'afternoon':h<21?'evening':'night';};
+function journalAdd(text,kind,o={},now=Date.now()){
+  const v=String(text||'').trim().slice(0,4000);if(!v)return null;
+  const e={id:'j'+uid(),ts:now,text:v,kind:JOURNAL_KINDS.some(x=>x.k===kind)?kind:'thought',voice:!!o.voice,pin:false,status:kind==='idea'?'open':''};
+  S.journal=(S.journal||[]).concat(e).slice(-1500);return e;
+}
+function journalPatterns(now=Date.now()){
+  const all=S.journal||[];const recent=all.filter(e=>now-e.ts<=30*DAY),before=all.filter(e=>now-e.ts>30*DAY&&now-e.ts<=60*DAY);
+  const count=(list,f)=>list.filter(f).length;
+  const themes=THEMES.map(x=>({k:x.k,name:x.name,n:count(recent,e=>x.re.test(e.text)),was:count(before,e=>x.re.test(e.text))})).filter(x=>x.n||x.was).sort((a,b)=>b.n-a.n);
+  const kinds=Object.fromEntries(JOURNAL_KINDS.map(x=>[x.k,count(recent,e=>e.kind===x.k)]));
+  const parts={morning:0,afternoon:0,evening:0,night:0};recent.forEach(e=>{parts[partOfDay(e.ts)]++;});
+  const worryNight=count(recent,e=>e.kind==='worry'&&partOfDay(e.ts)==='night');
+  const ideas=all.filter(e=>e.kind==='idea');const open=ideas.filter(e=>e.status==='open');
+  const stale=open.filter(e=>now-e.ts>14*DAY);
+  const lines=[];
+  if(recent.length){
+    if(themes[0]&&themes[0].n)lines.push(`Most of what you have written this month is about ${themes[0].name.toLowerCase()}: ${themes[0].n} of ${plural(recent.length,'entry','entries')}.`);
+    const rising=themes.filter(x=>x.was&&x.n>=x.was+3)[0];if(rising)lines.push(`${rising.name} is rising: ${rising.n} entries this month against ${rising.was} the month before. Worth an agenda item.`);
+    if(kinds.worry>kinds.win*2&&kinds.worry>=3)lines.push(`Worries outnumber wins ${kinds.worry} to ${kinds.win}. The wins are happening; log one each evening so the ledger tells the whole story.`);
+    else if(kinds.win>=kinds.worry&&kinds.win>=2)lines.push(`Wins match or beat worries, ${kinds.win} to ${kinds.worry}. That is the evidence that you are enough, written in your own hand.`);
+    if(worryNight>=2)lines.push(`${plural(worryNight,'worry','worries')} written at night. Night is when the story is loudest and the facts are furthest away; park it and read it again in the morning.`);
+    if(kinds.idea>=3&&!ideas.some(e=>e.status==='acted'&&now-(e.decidedAt||e.ts)<=30*DAY))lines.push(`${plural(kinds.idea,'idea')} this month and none turned into an action yet. Pick the best one and give it a first step.`);
+  }
+  if(stale.length)lines.push(`${plural(stale.length,'idea')} waiting more than two weeks for a decision. An undecided idea becomes another thing to carry: act, park or drop.`);
+  return {total:all.length,recent:recent.length,themes,kinds,parts,ideasOpen:open.length,ideasActed:ideas.filter(e=>e.status==='acted').length,stale:stale.length,voice:count(recent,e=>e.voice),lines};
+}
+function decideIdea(id,how,now=Date.now()){
+  const e=(S.journal||[]).find(x=>x.id===id);if(!e)return null;
+  if(how==='acted'){e.status='acted';e.decidedAt=now;return addTodo({text:e.text.length>140?e.text.slice(0,137)+'...':e.text,type:'Start',h:'month',hours:1,source:'jr-'+e.id});}
+  if(how==='parked'||how==='dropped'){e.status=how;e.decidedAt=now;return e;}
+  return null;
+}
+
+/* ---------- The daily reminder: the first thing he sees on his first open of the day ---------- */
+function dailyReminder(now=Date.now()){
+  const n=Math.floor(dayStart(now)/DAY);
+  const pinned=(S.journal||[]).filter(e=>e.pin).map(e=>e.text);
+  const pool=pinned.length?pinned:rules();
+  const line=pool[n%pool.length]||'';
+  const rs=receipts();const fact=rs.length?rs[n%rs.length]:'';
+  const nudges=[];
+  if(!todayOf(S.mornings)&&inWindow(MORNING_HOURS,now))nudges.push('Set today\u2019s one thing before the inbox.');
+  const open=(S.journal||[]).filter(e=>e.kind==='idea'&&e.status==='open').length;if(open)nudges.push(`${plural(open,'idea')} waiting for a decision in Notes.`);
+  const ds=deliStatus();if(ds&&weekNo(deliWeeks().slice(-1)[0].ts)!==weekNo(now)&&new Date(now).getDay()===1)nudges.push('Monday: log last week\u2019s deli numbers.');
+  if(reviewDue()&&new Date(now).getDay()===5)nudges.push('Friday review is due.');
+  return {line,pinned:pinned.length>0,fact,nudges};
+}
+const reminderDue=(now=Date.now())=>S.reminderDay!==dayKey(now);
+
 function fearGap(){
   const rs=S.reviews.filter(r=>r.fear&&r.fear!=='Nothing this week'&&r.fearOutcome);
   const better=rs.filter(r=>r.fearOutcome==='never'||r.fearOutcome==='better').length;
@@ -1016,21 +1088,22 @@ function renderTabs(){
   const unplayed=S.calls.filter(c=>S.answers[c.id]==null).length+(S.pendingCall?1:0)+FOUNDING.filter(c=>S.answers[c.id]==null).length;
   const sysWaiting=sysToday().call&&!sysToday().played;
   const oc=offCurrent();const offDue=oc&&dayKey(oc.day)!==dayKey(Date.now())&&oc.day<Date.now();
-  const badge={today:sysWaiting?'1':'',off:offDue?'due':'',review:reviewDue()?'due':'',coach:openSession()?'1':'',actions:open?String(open):'',calls:unplayed?String(unplayed):''};
+  const ideasOpen=(S.journal||[]).filter(e=>e.kind==='idea'&&e.status==='open').length;
+  const badge={journal:ideasOpen?String(ideasOpen):'',today:sysWaiting?'1':'',off:offDue?'due':'',review:reviewDue()?'due':'',coach:openSession()?'1':'',actions:open?String(open):'',calls:unplayed?String(unplayed):''};
   const mark=n=>n==='due'?'<span class="due" aria-label="due"></span>':n?`<span class="n">${n}</span>`:'';
   const g=groupOf(S.view);
   $('#tabs').innerHTML=GROUPS.map(G=>{const bs=G.pages.map(([k])=>badge[k]).filter(Boolean);const n=bs.includes('due')?'due':bs.length?String(bs.reduce((a,x)=>a+(Number(x)||0),0)):'';
     return `<button data-tab="${G.k}" data-group="1" aria-current="${g.k===G.k}"><span class="tab-ico" aria-hidden="true">${G.ico}</span><span class="tab-lbl">${G.label}${mark(n)}</span></button>`;}).join('');
-  const sub=$('#subtabs');sub.hidden=g.pages.length<2||S.view==='reset';
+  const sub=$('#subtabs');sub.hidden=g.pages.length<2||g.k==='today';
   sub.innerHTML=g.pages.length<2?'':g.pages.map(([k,l])=>`<button data-tab="${k}" aria-current="${S.view===k}">${l}${mark(badge[k])}</button>`).join('');
 }
 
 /* Five sections, each with its pages. The tab bar goes to the page last used in a section. */
 const GROUPS=[
   {k:'today',label:'Today',ico:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',pages:[['today','Today'],['reset','Reset']]},
-  {k:'week',label:'Week',ico:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',pages:[['actions','Actions'],['review','Friday review'],['off','Phone off']]},
+  {k:'week',label:'Week',ico:'<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>',pages:[['actions','Actions'],['systems','Systems'],['review','Friday review'],['off','Phone off']]},
   {k:'numbers',label:'Numbers',ico:'<svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>',pages:[['deli','Deli'],['stats','Stats'],['month','Month']]},
-  {k:'coach',label:'Coach',ico:'<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',pages:[['coach','Session'],['calls','Play']]},
+  {k:'coach',label:'Coach',ico:'<svg viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></svg>',pages:[['journal','Notes'],['coach','Session'],['calls','Play']]},
   {k:'future',label:'Future',ico:'<svg viewBox="0 0 24 24"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6L12 16.6 6.6 19.5l1.2-6L3.3 9.3l6.1-.7z"/></svg>',pages:[['future','2030']]}
 ];
 const groupOf=view=>GROUPS.find(G=>G.pages.some(([k])=>k===view))||GROUPS[0];
@@ -1044,35 +1117,110 @@ function addTodo(t){
 /* ---------- Today ---------- */
 function vToday(){
   if(!S.baseline)return vBaseline();
-  const lv=levels();const stars=S.todos.filter(t=>t.star&&!t.done);
-  const l=latest();const b=S.baseline;
-  const call=S.calls.find(c=>S.answers[c.id]==null);
-  const chosen=GAMES.find(g=>g.id===S.future.game);
-  const played=S.reviews.filter(r=>r.game);const onGame=chosen?played.filter(r=>r.game===chosen.id).length:0;
-  const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
-  return `<section>
+  const items=nowItems();
+  const bookend=vBookendCard();const bookendDue=bookend&&!/bookend done/.test(bookend);
+  const hero=bookendDue?bookend:items.length?vNowHero(items[0]):vNowClear();
+  const rest=bookendDue?items:items.slice(1);
+  const stars=S.todos.filter(t=>t.star&&!t.done);
+  return `<section class="today">
+  ${vReminderCard()}
   ${awayNow()?vAwayCard():''}
-  ${vMonthCard()}
-  ${vBookendCard()}
-  ${vDayCard()}
-  ${vResetCard()}
-  ${vHabitCard()}
-  ${awayNow()?'':vAwayCard()}
-  ${vDeliCard()}
-  ${vPulseCard(false)}
-  ${vSessionCard()}
-  ${vSysCard()}
-  ${vMomentum()}
-  ${reviewDue()?`<div class="card call-to"><div class="spread"><div><div class="eyebrow">Friday review ${S.reviews.length?'due':'not started'}</div><h2>Close your own week. Ten minutes.</h2></div><button class="btn" data-tab="review">Start the review</button></div><p class="muted">The review is the game. It keeps the streak alive, earns ${15+Math.min(5*streak(),25)} points, and unlocks next week’s call.</p></div>`:''}
-  ${S.pendingCall||call?`<div class="card"><div class="spread"><div><div class="eyebrow">This week’s call</div><h3>${call?esc(call.title):'Your review unlocked a new call'}</h3></div>${call?`<button class="btn small" data-opencall="${call.id}">Play it</button>`:`<button class="btn small" data-act="dealCall">Deal this week’s call</button>`}</div>${call?`<p class="muted">${esc(call.scene)}</p>`:`<p class="muted">${AI?'Written from what you logged this week.':'Dealt from the coaching bank after your review.'} It adds one action to your list.</p>`}</div>`:''}
-  <div class="big3"><div class="eyebrow">This week’s big three</div>${stars.length?`<ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol>`:'<p class="muted">Star up to three actions in Actions. Three is the most a CEO moves properly in one week.</p>'}</div>
-  <div class="card"><div class="eyebrow">Notice</div><h3>What went well? Where was there space?</h3>
+  ${hero}
+  ${vProgressCard(bookendDue?'':bookend)}
+  ${rest.length?`<div class="card up-next"><div class="eyebrow">Also today</div>${rest.slice(0,5).map(vNowRow).join('')}${rest.length>5?`<p class="small muted">and ${rest.length-5} more in Week and Numbers.</p>`:''}</div>`:''}
+  ${stars.length?`<div class="card big3-mini"><div class="spread"><div class="eyebrow">This week’s big three</div><button class="btn small ghost" data-tab="actions">Actions</button></div><ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol></div>`:''}
+  </section>`;
+}
+/* ---------- Work the System: the business as a set of systems, written down and handed over ---------- */
+const WTS_PTS=10;
+const WTS_STAGES=[{k:'spotted',name:'Spotted'},{k:'written',name:'Written down'},{k:'handed',name:'Handed to an owner'},{k:'runs',name:'Runs without me'}];
+const WTS_SEED=[
+  {name:'Client onboarding',area:'Firm'},{name:'Weekly close and KPI pack',area:'Firm'},{name:'Month-end close',area:'Firm'},{name:'Payroll run',area:'Firm'},
+  {name:'VAT returns',area:'Firm'},{name:'Proposals and pricing',area:'Firm'},{name:'Credit control',area:'Firm'},{name:'New starter onboarding',area:'Firm'},
+  {name:'Client review meeting',area:'Firm'},{name:'Recruitment',area:'Firm'},
+  {name:'Opening and closing checks',area:'Deli'},{name:'Cash-up and banking',area:'Deli'},{name:'Ordering and stock count',area:'Deli'},
+  {name:'Rota to sales',area:'Deli'},{name:'Waste log',area:'Deli'},{name:'Weekly deli numbers',area:'Deli'}
+];
+const WTS_OBJECTIVE=[
+  {id:'what',q:'What the firm is, in one line',picks:['The finance team for hospitality businesses','Hospitality accountants who drive action, not just compliance','The special forces of hospitality finance']},
+  {id:'who',q:'Who it is for',picks:['Independent restaurants, bars and caf\u00E9s','Multi-site hospitality groups','Operators who want weekly numbers, not annual accounts']},
+  {id:'deliver',q:'What every client gets',picks:['A 3-day close and weekly KPIs','Numbers that tell them what to start, stop and keep','A named team who know their business']},
+  {id:'profit',q:'The profit standard',picks:['Every client profitable at our price','A firm margin we hold before we grow','Fees reviewed every year against the work']},
+  {id:'tom',q:'Tom\u2019s role',picks:['Sets direction and the standard, not the work','Works on the system, not in it','Out of the day-to-day; in the room for the big calls']},
+  {id:'not',q:'What we will not do',picks:['Take clients outside hospitality','Compete on price','Let any process live only in one person\u2019s head']}
+];
+const WTS_PRINCIPLES=['Every recurring task has a written procedure and an owner','A decision a procedure can make never comes to Tom','Numbers within three days of the week end','Profit before growth','Fix the system, not the person','Done to the standard, first time','Checklists over memory','Improve one procedure a week','Clients hear from us before they have to ask','Time off is protected and planned'];
+const wtsProcs=()=>((S.wts&&S.wts.procs)||[]);
+function wtsMovedThisWeek(now=Date.now()){const w=weekNo(now);return wtsProcs().some(p=>(p.log||[]).some(x=>weekNo(x.ts)===w));}
+function wtsWeeks(){return new Set(wtsProcs().flatMap(p=>(p.log||[]).map(x=>weekNo(x.ts)))).size;}
+function wtsStreak(now=Date.now()){const ws=new Set(wtsProcs().flatMap(p=>(p.log||[]).map(x=>weekNo(x.ts))));let w=weekNo(now);if(!ws.has(w))w--;let n=0;while(ws.has(w)){n++;w--;}return n;}
+function wtsAdd(name,area,now=Date.now()){
+  const v=String(name||'').trim().slice(0,80);if(!v)return null;S.wts=S.wts||{objective:{},principles:[],procs:[]};
+  if(wtsProcs().some(p=>p.name.toLowerCase()===v.toLowerCase()))return null;
+  const p={id:'w'+uid(),name:v,area:area||'Firm',stage:'spotted',owner:'',log:[]};S.wts.procs=wtsProcs().concat(p);if(!S.wts.started)S.wts.started=now;return p;
+}
+function wtsAdvance(id,now=Date.now()){
+  const p=wtsProcs().find(x=>x.id===id);if(!p)return null;const i=WTS_STAGES.findIndex(s=>s.k===p.stage);if(i>=WTS_STAGES.length-1)return null;
+  if(WTS_STAGES[i+1].k==='handed'&&!p.owner)return null;
+  p.stage=WTS_STAGES[i+1].k;p.log=(p.log||[]).concat({ts:now,stage:p.stage});
+  const td=S.todos.find(t=>t.source==='wts-'+p.id);
+  if(p.stage==='written'&&td&&!td.done){td.done=true;td.doneAt=now;}
+  if(p.stage==='handed')addTodo({text:`Check in with ${p.owner}: is the ${p.name.toLowerCase()} procedure running to the standard?`,type:'Keep',h:'month',hours:0,source:'wts-chk-'+p.id});
+  return p;
+}
+function wtsStartWriting(id){const p=wtsProcs().find(x=>x.id===id);if(!p)return null;return addTodo({text:`Write the ${p.name.toLowerCase()} procedure: purpose, steps, checklist, owner`,type:'Start',h:'week',hours:1,source:'wts-'+p.id});}
+function wtsObjectiveText(){const o=(S.wts&&S.wts.objective)||{};return WTS_OBJECTIVE.filter(x=>o[x.id]).map(x=>`${x.q}: ${o[x.id]}`).join('\n');}
+function wtsSummary(){const ps=wtsProcs();const by=Object.fromEntries(WTS_STAGES.map(s=>[s.k,ps.filter(p=>p.stage===s.k).length]));return {total:ps.length,by,objective:WTS_OBJECTIVE.filter(x=>((S.wts&&S.wts.objective)||{})[x.id]).length,principles:((S.wts&&S.wts.principles)||[]).length,weeks:wtsWeeks(),streak:wtsStreak()};}
+let WTSV={add:false};
+function vSystems(){
+  const sm=wtsSummary();const o=(S.wts&&S.wts.objective)||{};const pr=(S.wts&&S.wts.principles)||[];
+  const ps=wtsProcs();const moved=wtsMovedThisWeek();const people=(S.people||DEFAULT_PEOPLE);
+  const stalled=S.wts&&S.wts.started&&!moved&&Date.now()-Math.max(S.wts.started,...ps.flatMap(p=>(p.log||[]).map(x=>x.ts)))>14*DAY;
+  return `<section>
+  <div class="card"><div class="eyebrow">Work the System</div><h2>Your business is a set of systems</h2>
+   <p class="muted">Step outside the business and look down on it. Every result comes from a system, good or bad. Write down where you are going, the principles you run on, and then the procedures, one at a time, each handed to an owner. You work on the systems; the team works in them.</p>
+   ${stalled||!ps.length?`<div class="receipt"><div class="eyebrow">Back from holiday with a plan</div><p>Coming back fired up and then nothing for weeks is the most common pattern there is. The fix is not more willpower. It is one procedure a week, at the same hour each week, moved one stage forward.</p></div>`:''}
+   <div class="mo-grid">
+    <div class="mo"><span class="lab">This week</span><span class="fig ${moved?'delta-up':''}">${moved?'Moved':'Not yet'}</span><span class="sub">one procedure forward</span></div>
+    <div class="mo"><span class="lab">Weeks in a row</span><span class="fig">${sm.streak}</span><span class="sub">${sm.weeks} weeks in all</span></div>
+    <div class="mo"><span class="lab">Written down</span><span class="fig">${sm.by.written+sm.by.handed+sm.by.runs}</span><span class="sub">of ${sm.total} procedures</span></div>
+    <div class="mo"><span class="lab">Run without you</span><span class="fig">${sm.by.runs}</span><span class="sub">the score that counts</span></div>
+   </div></div>
+  <div class="card"><div class="eyebrow">1. Strategic objective</div><h3>${sm.objective===WTS_OBJECTIVE.length?'Written':'Where the firm is going, on one page'}</h3>
+   <p class="small muted">Six answers. Tap one, or write your own. ${sm.objective} of ${WTS_OBJECTIVE.length} done.</p>
+   ${WTS_OBJECTIVE.map((x,i)=>`<details class="own"${i===WTS_OBJECTIVE.findIndex(y=>!o[y.id])?' open':''}><summary>${esc(x.q)}${o[x.id]?`: <span style="color:var(--ink)">${esc(o[x.id])}</span>`:''}</summary>${chipRow('wo-'+x.id,x.picks,{act:'wts-obj',other:true,selected:o[x.id]?[o[x.id]]:[]})}<div class="row"><button class="btn small ghost" data-act="wtsObjOwn" data-id="${x.id}">Save my own words</button></div></details>`).join('')}
+   ${sm.objective?`<div class="row"><button class="btn small ghost" data-act="wtsCopy">Copy it to share with the team</button></div>`:''}</div>
+  <div class="card"><div class="eyebrow">2. Operating principles</div><h3>${pr.length?`${plural(pr.length,'principle')} you run on`:'The rules the firm runs on'}</h3>
+   <p class="small muted">Pick eight to twelve. They decide the small things so nobody has to ask you.</p>
+   ${chipRow('wp',[...new Set([...WTS_PRINCIPLES,...rules(),...pr])],{multi:true,max:14,selected:pr})}
+   <div class="row"><button class="btn small" data-act="wtsPrinciples">Save principles</button></div></div>
+  <div class="card"><div class="eyebrow">3. Working procedures</div><h3>One a week, one stage at a time</h3>
+   <p class="small muted">Spotted, written down, handed to an owner, runs without you. Each step forward scores ${WTS_PTS} points.</p>
+   ${ps.length?ps.slice().sort((a,b)=>WTS_STAGES.findIndex(s=>s.k===b.stage)-WTS_STAGES.findIndex(s=>s.k===a.stage)).map(p=>{const i=WTS_STAGES.findIndex(s=>s.k===p.stage);const nx=WTS_STAGES[i+1];const td=S.todos.find(x=>x.source==='wts-'+p.id);
+     return `<div class="proc"><div class="spread"><div><div class="lbl">${esc(p.name)}</div><div class="tiny muted">${esc(p.area)}${p.owner?` &middot; ${esc(p.owner)}`:''}</div></div><span class="tag ${p.stage==='runs'?'win':''}">${WTS_STAGES[i].name}</span></div>
+      <div class="stages">${WTS_STAGES.map((s,k)=>`<i class="${k<=i?'on':''}"></i>`).join('')}</div>
+      ${nx?`<div class="row">${p.stage==='spotted'&&!td?`<button class="btn small ghost" data-act="wtsWrite" data-id="${p.id}">Put writing it on my list</button>`:''}${nx.k==='handed'&&!p.owner?`<select data-wtsowner="${p.id}" aria-label="Owner for ${esc(p.name)}"><option value="">Choose an owner</option>${people.map(x=>`<option>${esc(x)}</option>`).join('')}</select>`:`<button class="btn small" data-act="wtsNext" data-id="${p.id}">${esc(nx.name)}</button>`}</div>`:''}</div>`;}).join(''):''}
+   ${WTSV.add||!ps.length?`<div class="lbl small" style="margin-top:10px">Pick the systems to work on</div>${chipRow('wts-seed',WTS_SEED.filter(s=>!ps.some(p=>p.name===s.name)).map(s=>s.name),{multi:true,max:16,other:true})}<div class="row"><button class="btn small" data-act="wtsAddPicked">Add them</button></div>`:`<div class="row"><button class="btn small ghost" data-act="wtsAddOpen">Add a system</button></div>`}
+  </div>
+  </section>`;
+}
+
+/* The pieces that used to stack up on Today, now on the page each belongs to. */
+function vNoticeCard(){
+  return `<div class="card"><div class="eyebrow">Notice</div><h3>What went well? Where was there space?</h3>
    <p class="muted small">One tap the moment you see it. Three a week score points.</p>
    <div class="lbl small">Went well</div>${chipRow('n-good',PICK.good,{act:'note-good'})}
    <div class="lbl small">Space</div>${chipRow('n-space',PICK.space.filter(x=>x!=='None this week'),{act:'note-space'})}
    <details class="own"><summary>Something else</summary><form class="row" id="noticeForm" style="flex-wrap:nowrap"><input type="text" id="noticeText" placeholder="In your own words" aria-label="What you noticed"><button class="btn small" type="submit" data-kind="good">Good</button><button class="btn small ghost" type="submit" data-kind="space">Space</button></form></details>
-   <div class="notes">${S.notes.slice(-5).reverse().map(n=>`<div class="note"><span class="kd ${n.kind}">${n.kind==='good'?'Good':'Space'}</span><span>${esc(n.text)} <span class="muted small">${fmtDate(n.ts)}</span></span></div>`).join('')||'<div class="empty">Nothing logged yet this week.</div>'}</div></div>
-  <div class="grid2">
+   <div class="notes">${S.notes.slice(-5).reverse().map(n=>`<div class="note"><span class="kd ${n.kind}">${n.kind==='good'?'Good':'Space'}</span><span>${esc(n.text)} <span class="muted small">${fmtDate(n.ts)}</span></span></div>`).join('')||'<div class="empty">Nothing logged yet this week.</div>'}</div></div>`;
+}
+function vGameLevel(){
+  if(!S.baseline)return '';
+  const lv=levels();const l=latest();const b=S.baseline;
+  const chosen=GAMES.find(g=>g.id===S.future.game);
+  const played=S.reviews.filter(r=>r.game);const onGame=chosen?played.filter(r=>r.game===chosen.id).length:0;
+  const lastGame=played.length?GAMES.find(g=>g.id===played[played.length-1].game):null;
+  return `<div class="grid2">
    <div class="card"><div class="eyebrow">The game you are playing</div>
     ${chosen?`<h3>You chose: ${esc(chosen.name)}</h3>`:'<h3>You have not chosen your game yet</h3>'}
     ${lastGame?`<p class="small">Last week the game that ran you was <span class="${lastGame.kind==='chosen'?'delta-up':'delta-down'}">${esc(lastGame.name)}</span>.</p><p class="small muted">${esc(lastGame.move)}</p>`:'<p class="small muted">Each Friday you name the game that actually ran your week. The gap between that and the one you chose is the coaching.</p>'}
@@ -1084,12 +1232,13 @@ function vToday(){
     ${lv.next?`<ul class="checks">${lv.next.checks.map(c=>`<li class="${c[1]?'ok':''}"><span class="mk">${c[1]?'[x]':'[ ]'}</span><span>${c[0]}</span><span class="prog">${c[2]}</span></li>`).join('')}</ul><p class="small muted">Levels follow behaviour. Break the streak and the level can drop.</p>`:'<p>The firm runs without you and you have the life you wrote down. Keep the streak.</p>'}
    </div>
   </div>
-  ${vLetterNudge()}
-  ${vWildMonth()}
   <div class="card"><div class="spread"><h3>Your four lines</h3><span class="small muted">${S.reviews.length?'Latest review against your opening position':'Opening position'}</span></div>
    ${METERS.map(m=>{const v=Number(l[m.k])*10,d=(Number(l[m.k])-Number(b[m.k]))*10;return `<div class="meter"><span class="name">${m.name}</span><div class="bar"><i style="width:${v}%"></i></div><span class="val">${v}${d?` <span class="${d>0?'delta-up':'delta-down'}">${d>0?'+':''}${d}</span>`:''}</span></div>`;}).join('')}
-   <p class="small muted">CEO index ${ceoIndex()}. These move only when you re-score yourself on a Friday.</p></div>
-  </section>`;
+   <p class="small muted">CEO index ${ceoIndex()}. These move only when you re-score yourself on a Friday.</p></div>`;
+}
+function vBig3(){
+  const stars=S.todos.filter(t=>t.star&&!t.done);
+  return `<div class="big3"><div class="eyebrow">This week’s big three</div>${stars.length?`<ol>${stars.map(t=>`<li>${esc(t.text)}</li>`).join('')}</ol>`:'<p class="muted">Star up to three actions in Actions. Three is the most a CEO moves properly in one week.</p>'}</div>`;
 }
 /* ---------- Reset ---------- */
 let PULL=false; // the pulled-in panel is open
@@ -1134,6 +1283,7 @@ function vReset(){
     :RD.concern?SUPPORT:RD.talking?'<p class="muted ai-wait">Your coach is listening...</p>'
     :`<p class="muted">Say it the way you would say it out loud. Tap the microphone on your phone\u2019s keyboard and speak, for as long as you need.</p>
       <textarea id="rs-talk" class="talk" placeholder="What is going on, in your own words" aria-label="Talk it through">${esc(RD.talkText||'')}</textarea>
+      <div class="row"><button class="btn ghost small" data-act="rsSpeak" id="rs-speak" aria-pressed="false">Speak</button></div>
       <p class="small muted">${AI?'It goes to your coach with the facts from your ledger. Nobody at the firm sees it.':'Your coach is switched off on this portal, so the ledger will match what you say to a reset and take you through it.'}</p>
       <div class="row"><button class="btn" data-act="talkSend">${AI?'Coach me':'Take me through it'}</button><button class="btn small ghost" data-act="resetBack">Back</button></div>`}</div>`;}
   else if(RD.step==='sort'){const L=LOUD.find(x=>x.k===RD.loud);body=`<div class="card">${head(2,'Whose is it?')}
@@ -1256,6 +1406,40 @@ function vStats(){
   ${vRemindersCard()}
   </section>`;
 }
+/* Today shows one thing first: the next thing due, in this order. Everything else waits on its page. */
+function nowItems(now=Date.now()){
+  const out=[];const wd=new Date(now).getDay();const wk=weekNo(now);
+  const push=(k,eyebrow,title,body,btn)=>out.push({k,eyebrow,title,body,btn});
+  if(reviewDue()&&(wd===5||wd===6||wd===0||S.reviews.length===0))push('review','Friday review','Close your own week. Ten minutes.','It keeps the streak alive and unlocks next week\u2019s call.',{label:'Start the review',attr:'data-tab="review"'});
+  const md=monthDue(now);if(md)push('month','Month end',`Close ${monthName(md)}`,'Five minutes: the month in numbers, your letter, your rules, next month\u2019s focus.',{label:'Close it',attr:`data-act="monthOpen" data-key="${md}"`});
+  if(!wtsMovedThisWeek(now))push('wts','Work the System',wtsProcs().length?'Move one procedure forward this week':'Start working the system','One system a week, written down and handed over. That is the whole method.',{label:'Open Systems',attr:'data-tab="systems"'});
+  const dl=deliWeeks().slice(-1)[0];if(!dl||weekNo(dl.ts)!==wk)push('deli','Deli turnaround','Log this week\u2019s deli numbers','Five numbers: sales, cost of sales, labour, other costs, cash.',{label:'Log them',attr:'data-tab="deli"'});
+  const pl=pulseLatest();if(!pl||weekNo(pl.ts)!==wk)push('pulse','Firm pulse','Three numbers for the firm','Cash, fees billed, pipeline. Facts beat the 3am story.',{label:'Log them',attr:'data-tab="stats"'});
+  const pil=habits().find(h=>h.id==='pilates');if(pil&&!habitMet(pil.id)&&(wd>=3||wd===0))push('pilates','Non-negotiable',`${pil.name}: not done this week`,'Book it now, or log it if you went.',{label:'I went today',attr:`data-act="habitLog" data-id="${pil.id}"`});
+  const ideas=(S.journal||[]).filter(e=>e.kind==='idea'&&e.status==='open').length;if(ideas)push('ideas','Notes',`${plural(ideas,'idea')} waiting for a decision`,'Act, park or drop.',{label:'Decide',attr:'data-tab="journal"'});
+  if(openSession())push('session','Coach session','Your agenda is ready','Close it after the session with what you are taking away.',{label:'Open it',attr:'data-tab="coach"'});
+  const sys=sysToday();if(sys.call&&!sys.played)push('sys','Today\u2019s system call',esc(sys.call.title),'One call a day. Make the world-class one and it is yours.',{label:'Play it',attr:'data-tab="calls"'});
+  const call=S.calls.find(c=>S.answers[c.id]==null);if(call||S.pendingCall)push('call','This week\u2019s call',call?call.title:'A new call is ready','A decision under pressure, scored.',{label:'Play it',attr:'data-tab="calls"'});
+  return out;
+}
+function vNowHero(x){return `<div class="card now-hero"><div class="eyebrow">Next</div><h2>${esc(x.title)}</h2><p class="muted">${esc(x.body)}</p><div class="row"><button class="btn" ${x.btn.attr}>${esc(x.btn.label)}</button></div></div>`;}
+function vNowRow(x){return `<div class="now-row"><div><div class="tiny muted">${esc(x.eyebrow)}</div><div class="lbl">${esc(x.title)}</div></div><button class="btn small ghost" ${x.btn.attr}>${esc(x.btn.label)}</button></div>`;}
+function vNowClear(){const am=todayOf(S.mornings);return `<div class="card now-hero clear"><div class="eyebrow">Next</div><h2>${am&&am.one?esc(am.one):'Nothing is due'}</h2><p class="muted">${am&&am.one?'Today\u2019s one thing. Everything else can wait.':'You are in charge, and the space is yours. Protect it.'}</p></div>`;}
+let QUICK=null; // which quick panel is open on Today
+function vProgressCard(doneLine){
+  const ds=dayStreak();const r=ringsOn(dayRings(),Date.now());const closed=RINGS.filter(x=>r[x.k]).length;
+  const panel=QUICK==='pull'?vPullPanel():QUICK==='good'?`<div class="pull-panel"><div class="lbl small">What went well?</div>${chipRow('n-good',PICK.good,{act:'note-good'})}</div>`:QUICK==='space'?`<div class="pull-panel"><div class="lbl small">Where was there space?</div>${chipRow('n-space',PICK.space.filter(x=>x!=='None this week'),{act:'note-space'})}</div>`:'';
+  return `<div class="card progress"><div class="spread"><div><div class="eyebrow">${ds.current?`Day ${ds.current} in charge`:'Start your streak today'}</div>
+     <div class="small ${closed===3?'delta-up':'muted'}">${closed===3?`Full day. +${FULL_DAY_PTS} points.`:`${closed} of 3 rings closed`}</div></div>
+     <div class="rings mini">${RINGS.map(x=>`<div class="ring-cell" title="${esc(x.hint)}">${ringSvg(r[x.k],x.name)}<span class="tiny">${x.name}</span></div>`).join('')}</div></div>
+   ${doneLine?`<div class="small muted done-line">${doneLine.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim()}</div>`:''}
+   <div class="quick" role="group" aria-label="Quick log">
+     <button class="btn small ${QUICK==='good'?'':'ghost'}" data-act="quick" data-k="good" aria-pressed="${QUICK==='good'}">Went well</button>
+     <button class="btn small ${QUICK==='space'?'':'ghost'}" data-act="quick" data-k="space" aria-pressed="${QUICK==='space'}">Space</button>
+     <button class="btn small ${QUICK==='pull'?'':'ghost'}" data-act="quick" data-k="pull" aria-pressed="${QUICK==='pull'}">Pulled in</button>
+     <button class="btn small ghost" data-tab="journal">Note</button>
+   </div>${panel}</div>`;
+}
 function vBookendCard(){
   const am=todayOf(S.mornings),pm=todayOf(S.evenings);
   if(!am&&inWindow(MORNING_HOURS)){
@@ -1273,7 +1457,7 @@ function vBookendCard(){
   return '';
 }
 function vPullPanel(){
-  if(!PULL)return `<div class="row"><button class="btn small ghost" data-act="pullStart">I got pulled in</button></div>`;
+  if(!PULL&&QUICK!=='pull')return `<div class="row"><button class="btn small ghost" data-act="pullStart">I got pulled in</button></div>`;
   return `<div class="pull-panel"><div class="lbl small">What pulled you in?</div>${chipRow('pull-what',PULL_WHAT,{other:true})}
    <div class="lbl small">Who could have decided it?</div>${chipRow('pull-who',(S.people||DEFAULT_PEOPLE).concat('Nobody yet'))}
    <div class="row"><button class="btn small" data-act="pullSave">Log it</button><button class="btn small ghost" data-act="pullCancel">Cancel</button></div></div>`;
@@ -1566,6 +1750,51 @@ function vReview(){
 }
 
 /* ---------- Actions ---------- */
+function vReminderCard(){
+  if(!reminderDue())return '';const r=dailyReminder();
+  return `<div class="card reminder" id="daily-reminder"><div class="eyebrow">Today\u2019s reminder</div>
+   <p class="reminder-line">${esc(r.line)}</p>
+   ${r.fact?`<p class="small">${esc(r.fact)}</p>`:''}
+   ${r.nudges.length?`<ul class="small nudges">${r.nudges.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}
+   <div class="row"><button class="btn small" data-act="reminderSeen">Got it</button><span class="small muted">${r.pinned?'From your pinned notes.':'From your rules. Pin any note in Notes to see it here.'}</span></div></div>`;
+}
+let JR={kind:'thought',filter:'all',voice:false,coach:null,asking:false};
+function vJournal(){
+  const P=journalPatterns();const list=(S.journal||[]).slice().reverse();
+  const F=JR.filter;const shown=list.filter(e=>F==='all'||(F==='voice'?e.voice:F==='pinned'?e.pin:e.kind===F)).slice(0,40);
+  const ideas=list.filter(e=>e.kind==='idea'&&e.status==='open');
+  const kindName=k=>(JOURNAL_KINDS.find(x=>x.k===k)||{}).name||k;
+  const time=ts=>new Date(ts).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'});
+  return `<section>
+  <div class="card"><div class="eyebrow">Notes</div><h2>Get it out of your head</h2>
+   <p class="muted small">Thoughts, ideas, worries and wins, typed or spoken. The ledger reads them for patterns so you can see what keeps coming up and do something about it.</p>
+   <div class="kinds" role="group" aria-label="What is it">${JOURNAL_KINDS.map(x=>`<button type="button" class="pick ${JR.kind===x.k?'sel':''}" data-act="jrKind" data-k="${x.k}" aria-pressed="${JR.kind===x.k}">${x.name}</button>`).join('')}</div>
+   <textarea id="jr-text" class="talk" placeholder="What is on your mind" aria-label="Your note">${esc(JR.draft||'')}</textarea>
+   <div class="row"><button class="btn ghost small" data-act="jrSpeak" id="jr-speak" aria-pressed="false">Speak</button><button class="btn" data-act="jrSave">Save</button></div>
+   <p class="small muted">Speak records your voice and writes it down as you talk. If your phone will not allow it, tap the microphone on the keyboard instead.</p></div>
+  <div class="card"><div class="eyebrow">Patterns</div><h3>${P.recent?`${plural(P.recent,'entry','entries')} in the last 30 days`:'Patterns appear after a few entries'}</h3>
+   ${P.recent?`<div class="mo-grid">${JOURNAL_KINDS.slice(0,4).map(x=>`<div class="mo"><span class="lab">${x.many}</span><span class="fig">${P.kinds[x.k]}</span></div>`).join('')}</div>`:''}
+   ${P.themes.filter(x=>x.n).length?`<div class="lbl small" style="margin-top:12px">What it is about</div>${P.themes.filter(x=>x.n).slice(0,6).map(x=>{const max=P.themes[0].n||1;return `<div class="bar-row"><span class="small">${esc(x.name)}</span><span class="bar"><span style="width:${Math.round(x.n/max*100)}%"></span></span><span class="small num">${x.n}${x.was?` <span class="muted">(${x.was})</span>`:''}</span></div>`;}).join('')}<p class="small muted">In brackets: the month before.</p>`:''}
+   ${P.recent?`<p class="small">When you write: ${['morning','afternoon','evening','night'].map(k=>`${k} ${P.parts[k]}`).join(', ')}.${P.voice?` ${plural(P.voice,'voice note')}.`:''}</p>`:''}
+   ${P.lines.length?`<div class="receipt"><div class="eyebrow">What the ledger sees</div>${P.lines.map(x=>`<p>${esc(x)}</p>`).join('')}</div>`:''}
+   ${AI&&(S.journal||[]).length>=5?`<div class="row"><button class="btn small" data-act="jrCoach"${JR.asking?' disabled':''}>${JR.asking?'Reading your notes':'Ask the coach to read the pattern'}</button></div>`:''}
+   ${JR.coach?vJournalCoach(JR.coach):''}</div>
+  ${ideas.length?`<div class="card"><div class="eyebrow">Ideas to decide</div><h3>${plural(ideas.length,'idea')} waiting</h3>
+   ${ideas.slice(0,8).map(e=>`<div class="idea"><p>${esc(e.text)}</p><div class="small muted">${time(e.ts)}</div><div class="row"><button class="btn small" data-act="jrDecide" data-id="${e.id}" data-how="acted">Make it an action</button><button class="btn small ghost" data-act="jrDecide" data-id="${e.id}" data-how="parked">Park</button><button class="btn small ghost" data-act="jrDecide" data-id="${e.id}" data-how="dropped">Drop</button></div></div>`).join('')}</div>`:''}
+  <div class="card"><div class="eyebrow">Everything</div>
+   <div class="chips-row" role="group" aria-label="Show">${[['all','All'],['idea','Ideas'],['thought','Thoughts'],['worry','Worries'],['win','Wins'],['note','Notes'],['voice','Voice'],['pinned','Pinned']].map(([k,l])=>`<button type="button" class="pick ${F===k?'sel':''}" data-act="jrFilter" data-k="${k}" aria-pressed="${F===k}">${l}</button>`).join('')}</div>
+   ${shown.length?shown.map(e=>`<div class="entry"><div class="entry-head"><span class="tag ${e.kind}">${kindName(e.kind)}</span>${e.voice?'<span class="tag">Voice</span>':''}${e.status&&e.status!=='open'?`<span class="tag">${e.status==='acted'?'Action':e.status==='parked'?'Parked':'Dropped'}</span>`:''}<span class="small muted">${time(e.ts)}</span></div>
+     <p>${esc(e.text)}</p>
+     <div class="small muted">${themesOf(e.text).map(k=>(THEMES.find(x=>x.k===k)||{}).name).join(' \u00B7 ')}</div>
+     <div class="row"><button class="icon-btn ${e.pin?'on':''}" data-act="jrPin" data-id="${e.id}" aria-pressed="${!!e.pin}">${e.pin?'Pinned as a reminder':'Pin as a reminder'}</button><button class="icon-btn" data-act="jrDel" data-id="${e.id}">Delete</button></div></div>`).join(''):'<p class="small muted">Nothing here yet.</p>'}
+  </div></section>`;
+}
+function vJournalCoach(c){
+  if(c.concern)return `<div class="receipt"><p>This sounds heavy. If you are struggling, talk to someone today: your GP, or Samaritans on 116 123, any time.</p></div>`;
+  return `<div class="receipt"><div class="eyebrow">The coach\u2019s read</div>${(c.patterns||[]).map(x=>`<p><span style="font-weight:600">${esc(x.theme)}.</span> ${esc(x.read)}</p>`).join('')}
+   ${(c.improve||[]).length?`<div class="lbl small">Three improvements</div>${c.improve.map((x,i)=>`<div class="habit"><span>${esc(x)}</span><button class="btn small" data-act="jrImprove" data-i="${i}">Add</button></div>`).join('')}`:''}
+   ${c.reminder?`<p class="small">Suggested reminder: ${esc(c.reminder)} <button class="icon-btn" data-act="jrPinCoach">Pin it</button></p>`:''}</div>`;
+}
 function vHandovers(){
   const map=handoverMap();if(!map.length)return '';
   return `<div class="card"><div class="eyebrow">Handover map</div><h3>What you get pulled into, and who could own it</h3>
@@ -1724,7 +1953,7 @@ function announceHonours(){
 function render(){
   renderBoard();renderTabs();
   const rt=byId('resetTop');if(rt)rt.hidden=S.view==='reset';
-  const v={today:vToday,stats:vStats,deli:vDeli,month:vMonth,coach:vCoach,reset:vReset,off:vOff,review:vReview,actions:vActions,calls:vCalls,future:vFuture}[S.view]||vToday;
+  const v={today:vToday,stats:()=>vStats()+`<section>${vMomentum()}${vGameLevel()}</section>`,deli:vDeli,month:vMonth,journal:()=>vJournal()+`<section>${vNoticeCard()}</section>`,systems:vSystems,coach:vCoach,reset:vReset,off:()=>(awayNow()?'':`<section>${vAwayCard()}</section>`)+vOff(),review:vReview,actions:()=>`<section>${vBig3()}${vHabitCard()}</section>`+vActions(),calls:()=>`<section>${vSysCard()}</section>`+vCalls(),future:()=>`<section>${vLetterNudge()}${vWildMonth()}</section>`+vFuture()}[S.view]||vToday;
   $('#view').innerHTML=v();
   announceHonours();
 }
@@ -1818,6 +2047,26 @@ async function coachLetter(btn){
 }
 
 /* The Reset sits below the scoreboard, so on a phone "top" means its own steps, not the page. */
+/* Speaking a note: the browser's own speech recognition where the phone allows it, writing into
+   the box as he talks. Anything else falls back to the keyboard's microphone. Nothing is recorded
+   or stored but the words. */
+let SPEECH=null;
+function stopSpeech(){if(SPEECH){try{SPEECH.stop();}catch{}SPEECH=null;}}
+function toggleSpeech(id,btn){
+  if(SPEECH){stopSpeech();return;}
+  const R=typeof window!=='undefined'&&(window.SpeechRecognition||window.webkitSpeechRecognition);
+  const ta=byId(id);
+  if(!R||!ta){if(ta)ta.focus();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  let rec;try{rec=new R();}catch{if(ta)ta.focus();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  const base=ta.value?ta.value.replace(/\s*$/,' '):'';
+  rec.lang='en-GB';rec.continuous=true;rec.interimResults=true;
+  rec.onresult=ev=>{let txt='';for(let i=0;i<ev.results.length;i++)txt+=ev.results[i][0].transcript;ta.value=base+txt.trim();if(id==='jr-text'){JR.draft=ta.value;JR.voice=true;}if(id==='rs-talk'&&RD)RD.talkText=ta.value;};
+  const done=()=>{SPEECH=null;const b=byId(btn.id)||btn;b.textContent='Speak';b.setAttribute('aria-pressed','false');b.classList.remove('live');};
+  rec.onend=done;
+  rec.onerror=ev=>{done();if(ev&&(ev.error==='not-allowed'||ev.error==='service-not-allowed'))setStatus('The microphone is not allowed here. Tap the microphone on your keyboard instead.');};
+  try{rec.start();}catch{done();setStatus('Tap the microphone on your keyboard and talk.');return;}
+  SPEECH=rec;btn.textContent='Stop';btn.setAttribute('aria-pressed','true');btn.classList.add('live');setStatus('Listening. Tap Stop when you are done.');
+}
 function toTop(){if(S.view==='reset'||S.view==='off'){const t=byId('tabs');if(t&&t.scrollIntoView){t.scrollIntoView({block:'start'});return;}}window.scrollTo({top:0});}
 function endReset(o){
   if(!RD||!RD.loud||!RD.sort)return;
@@ -1836,6 +2085,7 @@ let reviewGame='';
 on('input',e=>{
   const t=e.target;
   if(t.dataset.out){const o=byId(t.dataset.out);if(o)o.textContent=t.value;}
+  if(t.id==='jr-text')JR.draft=t.value;
   if(t.dataset.future){const k=t.dataset.future;S.future[k]=t.type==='number'?Number(t.value):t.value;save();if(t.type==='number')renderBoard();}
   if(t.dataset.lq){S.letterQ.answers[t.dataset.lq]=t.value;save();}
   if(t.dataset.pillar){S.future.pillars[t.dataset.pillar].now=Number(t.value);save();}
@@ -1848,6 +2098,7 @@ on('submit',e=>{
   if(e.target.id==='noticeForm'){const txt=$('#noticeText').value.trim();if(!txt)return;const kind=(e.submitter&&e.submitter.dataset.kind)||'good';S.notes.push({ts:Date.now(),kind,text:txt});if(S.notes.length>400)S.notes=S.notes.slice(-400);save();render();setStatus(kind==='good'?'Noticed. Find the cause and you can repeat it.':'Noticed. Protect the next one before it fills.');}
 });
 on('change',e=>{
+  if(e.target.dataset&&e.target.dataset.wtsowner){const p2=wtsProcs().find(x=>x.id===e.target.dataset.wtsowner);if(p2&&e.target.value){p2.owner=e.target.value;wtsAdvance(p2.id);save();render();setStatus(`Handed to ${p2.owner}. A check-in is on your list.`);}return;}
   const id=e.target.dataset.done;
   if(id){const t=S.todos.find(x=>x.id===id);t.done=e.target.checked;t.doneAt=t.done?Date.now():null;if(t.done)t.star=false;save();
     if(S.view==='review'){renderBoard();setStatus(t.done?`+${ptsFor(t)} points`:'Unticked');}else render();}
@@ -1879,6 +2130,7 @@ on('click',async e=>{
         render();toTop();break;}
       case 'reset-move':endReset({move:v});break;
       case 'reset-rule':if(RD)RD.rule=v;break;
+      case 'wts-obj':{const id=d.pickGroup.slice(3);S.wts.objective=Object.assign({},S.wts.objective,{[id]:v});if(!S.wts.started)S.wts.started=Date.now();save();render();setStatus('Saved to your strategic objective.');break;}
       case 'week-type':reviewWeek=v;render();break;
       case 'away-plan':planAway(v);save();render();setStatus('Away logged. Enjoy it: the ledger will not ask about hours.');break;
       case 'habit-add':{const x=HABIT_IDEAS.find(h=>h.name===v);if(!x)break;S.habits=habits().concat({id:'h'+uid(),name:x.name,target:x.target});save();render();setStatus('Added to your non-negotiables.');break;}
@@ -1970,9 +2222,33 @@ on('click',async e=>{
       break;}
     case 'awayPull':{const a=awayNow();if(a){a.pulls=(a.pulls||[]).concat(Date.now());save();render();setStatus('Logged. Next time, ask: who could have decided that?');}break;}
     case 'pullStart':PULL=true;render();break;
-    case 'pullCancel':PULL=false;render();break;
+    case 'quick':QUICK=QUICK===d.k?null:d.k;PULL=QUICK==='pull';render();break;
+    case 'rsSpeak':toggleSpeech('rs-talk',b);break;
+    case 'wtsObjOwn':{const i=byId('other-wo-'+d.id);const v=i&&!i.hidden?i.value.trim().slice(0,200):'';if(!v){const o=ROOT.querySelector(`[data-other="wo-${d.id}"]`);if(o)o.click();setStatus('Write it in the box, then save.');break;}S.wts.objective=Object.assign({},S.wts.objective,{[d.id]:v});if(!S.wts.started)S.wts.started=Date.now();save();render();setStatus('Saved in your own words.');break;}
+    case 'wtsCopy':{const txt='Strategic objective\n'+wtsObjectiveText()+(S.wts.principles.length?'\n\nOperating principles\n'+S.wts.principles.map(x=>'- '+x).join('\n'):'');(navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>setStatus('Copied. Paste it into an email or the team handbook.'),()=>setStatus('Could not copy on this device.'));break;}
+    case 'wtsPrinciples':{const v=picked('wp');S.wts.principles=v.slice(0,14);if(!S.wts.started)S.wts.started=Date.now();save();render();setStatus(v.length?`${plural(v.length,'principle')} saved.`:'Principles cleared.');break;}
+    case 'wtsAddOpen':WTSV.add=true;render();break;
+    case 'wtsAddPicked':{const v=picked('wts-seed');if(!v.length){setStatus('Pick at least one system.');break;}let n=0;v.forEach(name=>{const s=WTS_SEED.find(x=>x.name===name);if(wtsAdd(name,s?s.area:'Firm'))n++;});WTSV.add=false;save();render();setStatus(`${plural(n,'system')} added. Pick one and put writing it on your list.`);break;}
+    case 'wtsWrite':{const td=wtsStartWriting(d.id);if(!td)break;save();render();setStatus('On your list for this week.');break;}
+    case 'wtsNext':{const before=points();const p2=wtsAdvance(d.id);if(!p2)break;save();render();setStatus(`${p2.name}: ${(WTS_STAGES.find(s=>s.k===p2.stage)||{}).name.toLowerCase()}. +${points()-before} points.`);break;}
+    case 'reminderSeen':S.reminderDay=dayKey(Date.now());save();render();break;
+    case 'jrKind':JR.kind=d.k;{const ta=byId('jr-text');if(ta)JR.draft=ta.value;}render();break;
+    case 'jrFilter':JR.filter=d.k;{const ta=byId('jr-text');if(ta)JR.draft=ta.value;}render();break;
+    case 'jrSave':{stopSpeech();const ta=byId('jr-text');const v=ta?ta.value.trim():'';if(!v){setStatus('Write or say something first.');break;}
+      const e=journalAdd(v,JR.kind,{voice:JR.voice});JR.draft='';JR.voice=false;save();render();
+      setStatus(e.kind==='idea'?'Idea saved. Decide it within two weeks: act, park or drop.':e.kind==='worry'?'Out of your head and on paper. Now it is a fact you can sort.':e.kind==='win'?'Win logged. That is evidence.':'Saved.');break;}
+    case 'jrSpeak':toggleSpeech('jr-text',b);break;
+    case 'jrDecide':{const r=decideIdea(d.id,d.how);if(!r)break;save();render();setStatus(d.how==='acted'?'On your list as a Start.':d.how==='parked'?'Parked. It is still here when you want it.':'Dropped. One less thing to carry.');break;}
+    case 'jrPin':{const e=(S.journal||[]).find(x=>x.id===d.id);if(!e)break;e.pin=!e.pin;save();render();setStatus(e.pin?'Pinned. It will come round as your daily reminder.':'Unpinned.');break;}
+    case 'jrDel':{S.journal=(S.journal||[]).filter(x=>x.id!==d.id);save();render();setStatus('Deleted.');break;}
+    case 'jrCoach':{if(JR.asking)break;JR.asking=true;render();
+      const notes=(S.journal||[]).slice(-60).map(e=>({kind:e.kind,when:new Date(e.ts).toLocaleString('en-GB',{weekday:'short',day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}),text:e.text.slice(0,400)}));
+      askCoach('patterns',{notes,rules:rules()}).then(r=>{JR.asking=false;JR.coach=r||null;if(!r)setStatus('The coach could not answer just now. The ledger\u2019s own read is above.');render();});break;}
+    case 'jrImprove':{const x=JR.coach&&JR.coach.improve&&JR.coach.improve[Number(d.i)];if(!x)break;addTodo({text:x,type:'Start',h:'week',hours:0,source:'jri-'+uid()});save();render();setStatus('On your list.');break;}
+    case 'jrPinCoach':{if(!JR.coach||!JR.coach.reminder)break;const e=journalAdd(JR.coach.reminder,'note');e.pin=true;save();render();setStatus('Pinned as a daily reminder.');break;}
+    case 'pullCancel':PULL=false;QUICK=null;render();break;
     case 'pullSave':{const what=picked('pull-what')[0],who=picked('pull-who')[0];if(!what||!who){setStatus('Pick what pulled you in and who could have decided it.');break;}
-      PULL=false;logPull(what.slice(0,120),who.slice(0,80));save();render();
+      PULL=false;QUICK=null;logPull(what.slice(0,120),who.slice(0,80));save();render();
       setStatus(who==='Nobody yet'?'Logged. Nobody owns that yet: that is the gap to fill.':`Logged. Handing it to ${who} is now a Stop on your list.`);break;}
     case 'personAdd':{const i=byId('person-own');const v=i?i.value.trim().slice(0,80):'';if(!v)break;if(!(S.people||[]).includes(v))S.people=(S.people||[]).concat(v);save();render();break;}
     case 'personDel':{const i=Number(d.i);S.people=(S.people||[]).filter((_,k)=>k!==i);save();render();break;}
@@ -2086,6 +2362,8 @@ return {
   get state() { return S; },
   set state(v) { S = migrate(v); },
   migrate, points, streak, boughtBack, receipts, receiptFor, resetsToday, loudWeek, finishReset, pressureFor,
+  WTS_STAGES, WTS_SEED, WTS_OBJECTIVE, WTS_PRINCIPLES, WTS_PTS, wtsAdd, wtsAdvance, wtsStartWriting, wtsMovedThisWeek, wtsStreak, wtsSummary, wtsObjectiveText, nowItems,
+  JOURNAL_KINDS, THEMES, themesOf, journalAdd, journalPatterns, decideIdea, dailyReminder, reminderDue,
   BOOKEND_PTS, bookendDays, PULSE, PULSE_PTS, pulseChange, pulseLine, PULL_WHAT, DEFAULT_PEOPLE, logPull, handoverMap, handoverDone,
   MONTH_PTS, monthStats, monthDue, prevMonthKey, closeMonth, DELI_FIELDS, DELI_LEVERS, DELI_PTS, deliCalc, deliStatus, saveDeliWeek, startLever, REMINDERS, icsFor,
   AWAY_PLANS, WEEK_TYPES, awayOn, awayDaysThisWeek, pullsThisWeek, planAway, workedReviews,
@@ -2096,6 +2374,8 @@ return {
   DEFAULT_RULES, RULE_IDEAS, talkLoud, receipts, SYSTEM, OFF, OFF_PTS, FEARS, OUTCOMES, askCoach, dealCall, validPressure, levels, practice, letterChecks, ceoIndex, reviewDue, addTodo, deltaFor,
   FOUNDING, BANK, WILD, LETTER_Q, GAMES, PTS, PICK, LETTER_PICKS,
   mount() {
+    // The first open of the day lands on Today, where the daily reminder waits.
+    if (reminderDue()) S.view = 'today';
     ROOT.innerHTML = MARKUP;
     attach();
     render();
