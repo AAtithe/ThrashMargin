@@ -2514,3 +2514,51 @@ dark, plus the desktop. `node scripts/tours/run.mjs fireline-touch fireline` (fu
 `npm run check:ui -- fireline`: 32/32 (its game screen is a skirmish, so the panel is not in it).
 `npm run check`, before and after merging main: "All checks passed" (Fireline drive 401,690
 assertions, campaign-check 7,699, drive:planet 35,255). Left open: the Menu button clipped at 320px (`fireline-improvements.md`).
+
+### 2026-11-21: The battle header fits a 320px phone
+
+**Why.** On a phone the battle header holds the back button, the T+ clock, Pause and Menu (and "Not
+saving" when the account's saves fail). The touch sizing (40px tall, 12px either side) was an inline
+style on each button, and nothing gave way when the row ran out of width. Measured on the objectives
+branch, header boxes at 320px (iPhone SE): in the "fireline" mission the back button ("Campaign") ran
+10..122, the clock 128..199, Pause 211..293 and Menu 299..362, so 42px of Menu lay past the edge; in a
+skirmish or a War for the Planet battle ("Lobby", "Planet") Menu ended at 336 or 337, 16 or 17px off.
+With the save warning showing, the mission header needed 434px: Menu was clipped by 104px on the SE,
+49px on the 375px SE, 34px on the iPhone 13 and 12px on the 412px Pixel 7.
+
+**Options weighed.** Tighter padding and gaps alone would have bought about 35px at 320, short of the
+42 the mission needed and far short of the save warning's case. A shorter back label ("Back") still
+left the warning case over. A compact clock (no "T+") saves 15px and loses the one cue that the
+numbers are battle time. Moving the save warning into the Menu would hide a failure the player needs
+to see. Chosen: below 480px the back button keeps only its arrow and Pause only its glyph (the same
+pause bars and play triangle it already drew), each a 40px square; their words stay in the button as
+visually hidden text, so the accessible names ("Campaign", "Lobby", "Planet", "Pause", "Resume") do
+not change. Menu keeps its word, because it is the way to everything else (speed, sound, the tour, the
+controls). The header's side padding goes from 10 to 8px and its gap from 6 to 4px at the same widths.
+The touch sizing moved from the inline style to the stylesheet (`.fl-d-top[data-touch="1"]`, with
+`.fl-d-back`, `.fl-d-pause` and a new `.fl-d-menu`), which is what lets a media query change it. 480px
+is above the widest phone (430px) and the 434px the worst header needs, and below every phone on its
+side, so landscape phones, tablets and desktops keep the full labels. That does change the iPhone 13
+and the Pixel 7 upright, which is required: both clipped with the save warning showing. No new colours.
+
+**Numbers.** After, at 320px: back 8..48, clock 52..124, Pause 205..245, Menu 249..312, 8px clear of
+the edge; with "Not saving" (145..201) and paused, the same 8px. 375px SE: Menu 304..367; iPhone 13
+upright: 319..382; Pixel 7: 341..404, and with the warning the Pixel 7's runs 237..404. The iPhone 13
+on its side (750px) is unchanged (back 10..122, Menu 677..740), as is the desktop at 1440 by 900: every
+header box the same, and the header's pixels identical to before in light and dark on both.
+
+**Guard.** `scripts/tours/fireline-touch.cjs`, in every case of the bar-row check (three skirmishes, the
+four-hero mission and a War for the Planet battle) on all five phones, running and again paused, fails
+if a header control (button, clock or save warning) leaves the window or the header, overlaps
+another, is a tap target under 40px either way or cuts off its own label, or if the page scrolls
+sideways. It then loads the mission signed in to an account whose saves fail (the API answered in the
+page: the battle loads, every save gets a 500), waits for "Not saving" (about 16 seconds) and checks
+again, running and paused. Before the fix: 21 failures (15 on the 320px SE, 2 each on the 375px SE,
+the iPhone 13 and the Pixel 7); now none. The script also exports its save builders, so a one-off
+screenshot script can use them.
+
+**Checks.** Screenshots at twice the pixel density of the header on the five phones in the mission, a
+skirmish and a War for the Planet battle, light and dark, plus the desktop. `node scripts/tours/run.mjs
+fireline-touch fireline` (full): ok. `npm run tours -- --quick`: all eight ok. `npm run check:ui --
+fireline`: 32/32. `npm run check:loading -- fireline`: 27/27. `npm run check`: "All checks passed"
+(Fireline drive 401,690 assertions, campaign-check 7,699, drive:planet 35,255).
