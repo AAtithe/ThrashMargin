@@ -2510,5 +2510,7 @@ origin/main: 14 failures over all five phones; now none.
 
 **Checks.** Screenshots at twice the pixel density on the five phones, panel open and hidden, light and
 dark, plus the desktop. `node scripts/tours/run.mjs fireline-touch fireline` (full): ok.
-`npm run tours -- --quick`: all ok. `npm run check:loading -- fireline`: ok. `npm run check`: all
-passed. Left open: the Menu button clipped at 320px (`fireline-improvements.md`).
+`npm run tours -- --quick`: all eight ok. `npm run check:loading -- fireline`: 27/27.
+`npm run check:ui -- fireline`: 32/32 (its game screen is a skirmish, so the panel is not in it).
+`npm run check`, before and after merging main: "All checks passed" (Fireline drive 401,690
+assertions, campaign-check 7,699, drive:planet 35,255). Left open: the Menu button clipped at 320px (`fireline-improvements.md`).
